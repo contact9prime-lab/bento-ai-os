@@ -2214,8 +2214,32 @@ class Store:
         return self._subagent_row(row) if row else None
 
     def delete_subagent(self, sid: str):
+        row = self.db.execute("SELECT name FROM subagents WHERE id=?", (sid,)).fetchone()
         self.db.execute("DELETE FROM subagents WHERE id=?", (sid,))
         self.db.commit()
+        if row and row["name"]:
+            self._forget_agent_grants(row["name"])
+
+    def _forget_agent_grants(self, name: str) -> int:
+        """A deleted specialist takes the permissions people gave it with it: what it may
+        do, and who may start or ask it ("Allow & remember" rows and matrix cells). Left
+        behind, a new agent created later under the same name would inherit consent
+        nobody gave it. A mission's own rows (source 'definition') are left to the
+        mission's reconciliation, which owns them. Each revocation is a ledger line."""
+        live = [dict(r) for r in self.db.execute(
+            "SELECT * FROM grants WHERE revoked_at IS NULL AND COALESCE(source,'')!='definition' "
+            "AND ((principal_kind='subagent' AND principal_id=?) OR resource=?)",
+            (name, f"agent:subagent/{name}")).fetchall()]
+        if not live:
+            return 0
+        now = time.time()
+        for g in live:
+            self.db.execute("UPDATE grants SET revoked_at=? WHERE id=?", (now, g["id"]))
+        self.db.commit()
+        self.grants_version += 1
+        for g in live:
+            self._audit_grant("revoke", g, detail=f"the agent '{name}' was deleted")
+        return len(live)
 
     def fabric_run_start(self, kind: str, ref: str, input_text: str,
                          parent_run: str = "", model: str = "", space_id: str = "",

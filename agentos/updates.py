@@ -703,14 +703,9 @@ async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = Fals
         # A plain `uv sync` re-resolves on a machine whose uv differs from the one
         # that wrote the lock, leaves uv.lock modified, and the next `bento
         # update` finds "1 uncommitted change" and asks to stash — every time.
-        ok, out = _run(["uv", "sync", "--frozen"], cwd=root, timeout=APPLY_TIMEOUT)
+        ok, tried = install_deps(root)
         if not ok:
-            ok, out = _run(["uv", "sync"], cwd=root, timeout=APPLY_TIMEOUT)
-        if not ok:
-            ok, out = _run([_python(root), "-m", "pip", "install", "-e", "."],
-                           cwd=root, timeout=APPLY_TIMEOUT)
-        if not ok:
-            return rollback(f"dependencies could not be installed: {out[-300:]}")
+            return rollback("dependencies could not be installed — " + "; ".join(tried))
         restore_derived(root)          # whatever the sync rewrote is not the user's
 
     # Every home on the machine — the machine's and each account's — brought up to the
@@ -835,6 +830,69 @@ def _regressions_only(root: Path, before: str, ref: str,
         say(f"note: {len(new_only)} newly added test(s) fail here and are new to this "
             f"update, so they are not treated as regressions")
     return regressions
+
+
+UV_HOMES = ("~/.local/bin", "~/.cargo/bin", "/opt/homebrew/bin", "/usr/local/bin")
+
+
+def _uv() -> str:
+    """uv, found where it installs itself — not only on this process's PATH.
+
+    The desktop's Update button runs inside the server, and a server started at login
+    (a LaunchAgent, a systemd unit) has a PATH without ~/.local/bin, which is where
+    uv's own installer puts it. `uv` by bare name was "not found" there, on a machine
+    that had it — the first of the three failures behind "No module named pip"."""
+    import shutil
+    from .mcp_client import _extended_path
+    return shutil.which("uv", path=_extended_path()) or ""
+
+
+def _last_line(out: str) -> str:
+    lines = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
+    return (lines[-1] if lines else "no output")[:200]
+
+
+def install_deps(root: Path) -> tuple[bool, list[str]]:
+    """Install exactly what the new code needs, into the checkout's own venv.
+    (ok, [what each attempt said]).
+
+    Every attempt's reason is kept, because the one that matters is rarely the last:
+    shown only the last, a machine whose uv could not be found reported the pip
+    fallback's "No module named pip" — true, and no help at all. The venv is uv's, and
+    uv does not put pip in a venv, so pip is tried only after `ensurepip` gives it one.
+    """
+    tried: list[str] = []
+    uv = _uv()
+    if uv:
+        # --frozen: install exactly what the lockfile says and do NOT rewrite it.
+        # A plain `uv sync` re-resolves on a machine whose uv differs from the one
+        # that wrote the lock, leaves uv.lock modified, and the next `bento
+        # update` finds "1 uncommitted change" and asks to stash — every time.
+        ok, out = _run([uv, "sync", "--frozen"], cwd=root, timeout=APPLY_TIMEOUT)
+        if ok:
+            return True, []
+        tried.append(f"uv sync --frozen: {_last_line(out)}")
+        ok, out = _run([uv, "sync"], cwd=root, timeout=APPLY_TIMEOUT)
+        if ok:
+            return True, tried
+        tried.append(f"uv sync: {_last_line(out)}")
+    else:
+        tried.append("uv was not found (looked on PATH and in " + ", ".join(UV_HOMES) +
+                     ") — install it with `curl -LsSf https://astral.sh/uv/install.sh | sh`, "
+                     "or run `bento update` from a terminal where `uv` works")
+    py = _python(root)
+    has_pip, _ = _run([py, "-m", "pip", "--version"], cwd=root)
+    if not has_pip:
+        # a uv venv: give it pip from the interpreter's own bundle (no network)
+        ok, out = _run([py, "-m", "ensurepip", "--upgrade"], cwd=root, timeout=APPLY_TIMEOUT)
+        if not ok:
+            tried.append(f"pip: this venv has none, and ensurepip could not add it ({_last_line(out)})")
+            return False, tried
+    ok, out = _run([py, "-m", "pip", "install", "-e", "."], cwd=root, timeout=APPLY_TIMEOUT)
+    if ok:
+        return True, tried
+    tried.append(f"pip install: {_last_line(out)}")
+    return False, tried
 
 
 def _python(root: Path) -> str:

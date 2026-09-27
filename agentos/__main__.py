@@ -2689,6 +2689,10 @@ def _flow_cli(args):
                       or pay.get("status") or pay.get("message") or "")
             if not detail and pay:
                 detail = json.dumps(pay)[:90]
+            if e.get("type") == "talk":
+                # agents talking inside the mission: who asked whom, then what was said
+                verb = "answered" if pay.get("phase") == "reply" else "asked"
+                detail = f"{pay.get('from', '?')} {verb} {pay.get('to', '?')}: {pay.get('text', '')}"
             print(f"  {when}  {(e.get('type') or '')[:16]:16} {str(detail)[:90]}")
         if not evs:
             print("  (no events recorded for that run)")
@@ -3216,6 +3220,25 @@ def _reset_cli(args):
     print("✓ reset. Start it again and setup begins: `bento` (the desktop wizard) or `bento setup`.")
 
 
+def _files_cli(args):
+    """The terminal's filing cabinet: the files your agents made lately, newest first, with
+    the full path, so a headless box can say where the deck is (outputs.recent)."""
+    from . import config as cfgmod
+    from . import outputs
+    cfg = cfgmod.load_config()
+    rts = outputs.roots(cfg, admin=True)          # the terminal is the machine's owner
+    rows = outputs.recent(rts, limit=max(1, min(args.limit, 200)))
+    if not rows:
+        print("  nothing yet: ask your agent for a deck or a report and it lands in "
+              + (str(rts[0]) if rts else "the workspace"))
+        return
+    now = time.time()
+    for f in rows:
+        s = now - f["mtime"]
+        ago = f"{int(s // 60)}m" if s < 3600 else f"{int(s // 3600)}h" if s < 86400 else f"{int(s // 86400)}d"
+        print(f"  {f['name'][:40]:40} {outputs.size_words(f['size']):>8}  {ago:>4} ago  {f['path']}")
+
+
 def _office_cli(args):
     """`bento office` — the Office playground, as a terminal can have it.
 
@@ -3595,7 +3618,8 @@ def _team_cli(args):
         if want not in ("off", "matrix", "swarm"):
             from .policy import team_talk
             print(f"  agents message each other: {team_talk(cfg)}\n"
-                  f"  bento team talk matrix|swarm|off   (matrix: each pair asks you first)")
+                  f"  bento team talk matrix|swarm|off   (matrix: each pair asks you first. "
+                  f"swarm: they work together, and your agent hands them work, without asking)")
             return
         mcfg = cfgmod.load_config()
         mcfg.setdefault("team", {})["talk"] = want
@@ -4172,6 +4196,12 @@ def _version_cli(args):
             return 2
         print(f"✓ {got['from']} → {got['to']}  ({', '.join(got['files'])})")
         print("  write what changed under the new heading in CHANGELOG.md, then commit all three")
+        # the model names go stale faster than anything else: a release refreshes them
+        # like the docs (CLAUDE.md, "Every release"). A reminder, never a refusal.
+        from . import modelcatalog as _mc
+        note = _mc.stale_note()
+        if note:
+            print("  ! " + note)
         return 0
     if args.action == "check":
         base = args.arg or "origin/master"
@@ -5835,6 +5865,8 @@ def main():
                                                    "design: a description in words")
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
     verb("migrate")   # unlisted: what `bento update` runs in a fresh process, for every account
+    p_fl = verb("files", help="what your agents made lately, newest first, with where each file is")
+    p_fl.add_argument("--limit", type=int, default=20)
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
@@ -6080,6 +6112,8 @@ def main():
         _avatar_cli(args)
     elif args.cmd == "office":
         _office_cli(args)
+    elif args.cmd == "files":
+        _files_cli(args)
     elif args.cmd == "migrate":
         from . import migrate as _mig
         rows = _mig.everyone(log=print)

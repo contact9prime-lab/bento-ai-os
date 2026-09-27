@@ -196,7 +196,7 @@ function miniFeed(box,opts){
       clearWorking();
       box.appendChild(errBox(ev));scroll();
     },
-    end(ev){clearWorking();actSync();body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
+    end(ev){clearWorking();actSync();if(body&&typeof fileChips==='function')fileChips(body);body=null;think=null;if(opts.onEnd)opts.onEnd(text);text=''},
   };
 }
 
@@ -337,6 +337,7 @@ async function initCopilot(w,panel){
       feedEl.innerHTML=msgs.map(m=>m.role==='user'
         ?`<div class="mf-user">${esc(m.content)}</div>`
         :m.role==='assistant'?`<div class="mf-body body">${md(m.content||'')}</div>`:'').join('');
+      if(typeof fileChips==='function')fileChips(feedEl);
       feedEl.scrollTop=feedEl.scrollHeight;
     }catch(e){}
     // re-attach to a live turn — and say so at once, rather than looking idle

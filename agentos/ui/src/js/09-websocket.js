@@ -480,6 +480,7 @@ function handle(ev){
       if(_sk&&_sk.end){_sk.end(ev);if(!_cur){aiBubble();loadConvs();break}}
       if(!_cur){aiBubble();loadConvs();break}
       removeWorking();const reply=curText;
+      if(curBody&&typeof fileChips==='function')fileChips(curBody);   // a file it named: Open / Download
       if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}
       else speak(reply);
       setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}

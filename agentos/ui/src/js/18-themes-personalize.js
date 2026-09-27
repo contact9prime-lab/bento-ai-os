@@ -1,6 +1,7 @@
 /* ================= themes app ================= */
 async function renderThemes(body){
   await loadThemes();
+  if(typeof pTipBind==='function')pTipBind();   // the ⓘ tips below work before Settings has ever opened
   const swatch=t=>{const v=t.v||t.vars||{};
     return `<span style="display:flex;gap:3px">${['bg2','acc','acc2','txt'].map(k=>`<i style="width:14px;height:14px;border-radius:4px;background:${v[k]||'#333'};border:1px solid rgba(255,255,255,.15)"></i>`).join('')}</span>`;};
   const cards=Object.entries(allThemes()).map(([k,t])=>`<div class="catcard" style="cursor:pointer" onclick="applyTheme('${esc(k)}');refreshApp('themes')">
@@ -10,30 +11,29 @@ async function renderThemes(body){
       ${t.custom?`<button class="endbtn" style="position:absolute;top:8px;right:8px;padding:1px 7px" onclick="event.stopPropagation();themeDel('${esc(k)}')">✕</button>`:''}
     </div>`).join('');
   body.innerHTML=`<div class="pad">
-    <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop — colors, fonts, windows, menu bar, dock, icons and widgets. A theme can even carry a <b>full replacement shell</b>: a completely different interface built by AI against the OS API (<code>GET /api/registry</code>). Click one to apply instantly.</p>
+    <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop. Click one to apply it. ${pInfo('Colours, fonts, windows, menu bar, dock, icons and widgets all change. A theme can even bring a completely new interface built by AI.')}</p>
     <div class="cat">${cards}</div>
     <div class="row" style="margin-top:14px">
       <button class="save" style="margin:0" onclick="themeBuilder()">Build a theme</button>
     </div>
     <label style="margin-top:16px">Effects</label>
-    <p class="mut">Glass is the most expensive thing a desktop can draw, and the cost grows with every
-      window you open — five stacked glass windows can cost eight times the frame time of one.
+    <p class="mut">Glass looks good but is costly to draw, more so with every open window.
       ${glassLevel()==='full'?'This machine keeps up.':'<b>Turned down on this machine</b> to keep windows smooth.'}</p>
     <div class="gq-row">${[
-      ['auto','Automatic','measure this machine and turn glass down only if it cannot keep up'],
-      ['full','Full glass','every surface blurs, as the theme designed it'],
-      ['reduced','Reduced','only the focused window blurs — flat cost, however many are open'],
-      ['off','Off','no blur anywhere, panels go solid. Best on a Raspberry Pi or a VM'],
+      ['auto','Automatic','Checks this machine and turns glass down only if it can\'t keep up'],
+      ['full','Full glass','Every surface blurs, as the theme designed it'],
+      ['reduced','Reduced','Only the focused window blurs, so the cost stays the same however many are open'],
+      ['off','Off','No blur anywhere and panels go solid. Best on a Raspberry Pi or a VM'],
     ].map(([k,label,tip])=>`<button class="endbtn${GLASS.pref===k?' on':''}" title="${esc(tip)}"
         onclick="setGlass('${k}')">${GLASS.pref===k?'✓ ':''}${esc(label)}</button>`).join('')}</div>
-    <p class="mut" style="margin-top:6px">${esc(({auto:'Automatic',full:'Full glass',reduced:'Reduced',off:'Off'})[GLASS.pref]||'')} —
+    <p class="mut" style="margin-top:6px">${esc(({auto:'Automatic',full:'Full glass',reduced:'Reduced',off:'Off'})[GLASS.pref]||'')}:
       ${esc(({auto:'currently drawing at "'+glassLevel()+'"',full:'every surface blurs, as the theme designed it',
-        reduced:'only the focused window blurs — flat cost, however many are open',
+        reduced:'only the focused window blurs',
         off:'no blur anywhere, panels go solid'})[GLASS.pref]||'')}.</p>
     <label style="margin-top:16px">Design a theme with AI</label>
     <div class="row"><input id="th-ai" placeholder="e.g. a warm sunset theme with glass windows, or matrix terminal green">
       <button class="save" style="margin:0;flex:0 0 90px" onclick="themeAI()">Design</button></div>
-    <p class="mut" style="margin:6px 0 0">${esc(agentName())} will generate a full theme (colors, font, chrome) and apply it live.</p>
+    <p class="mut" style="margin:6px 0 0">${esc(agentName())} designs a full theme and applies it live.</p>
     <label style="margin-top:16px">Import / export</label>
     <div class="row">
       <button class="endbtn" onclick="themeExport()">⤓ Export current theme (JSON)</button>
@@ -118,6 +118,7 @@ function tbPalette(tint,mode,acc,acc2){
 function themeBuilder(from){
   const w=WM.wins.get('themes');if(!w)return;
   const body=w.el.querySelector('.wbody');
+  if(typeof pTipBind==='function')pTipBind();
   const all=allThemes(),baseId=from||CURRENT_THEME,base=all[baseId]||THEMES.nova;
   const v0={...(base.v||base.vars||{})};
   const WB=window._WB={name:base.custom?(base.label||base.name||baseId):'My Theme',mode:base.mode||'dark',v:v0,css:base.css||'',
@@ -134,7 +135,7 @@ function themeBuilder(from){
       <input id="tb-name" value="${esc(WB.name)}" placeholder="theme name" style="flex:1;min-width:140px">
       <select id="tb-from" aria-label="Start from">${Object.entries(all).map(([k,t])=>`<option value="${esc(k)}" ${k===baseId?'selected':''}>start from ${esc(t.label||t.name||k)}</option>`).join('')}</select>
     </div>
-    <p class="mut" style="margin:0 0 12px">Build the whole look and feel — the desktop changes live as you edit. Nothing is saved until <b>Save &amp; apply</b>.</p>
+    <p class="mut" style="margin:0 0 12px">The desktop changes live as you edit. Nothing is saved until you press <b>Save &amp; apply</b>.</p>
     <div class="tb-sec"><b>Colours</b>
       <div class="tb-quick">
         <label>Mode<select id="tb-mode"><option value="dark"${WB.mode==='dark'?' selected':''}>Dark</option><option value="light"${WB.mode==='light'?' selected':''}>Light</option></select></label>
@@ -153,7 +154,7 @@ function themeBuilder(from){
       <div class="seg" id="tb-depth">${['flat','soft','normal','deep'].map(d=>`<button class="${d===depth?'on':''}" data-d="${d}">${d[0].toUpperCase()+d.slice(1)}</button>`).join('')}</div></div>
     <div class="tb-sec"><b>Glass</b>
       <div class="seg" id="tb-glass">${[['solid','Solid'],['frosted','Frosted'],['clear','Clear']].map(([g,l])=>`<button class="${g===glass?'on':''}" data-g="${g}">${l}</button>`).join('')}</div>
-      <p class="mut tb-note">Frosted and clear blur what is behind a window — the most expensive thing a desktop draws. Effects (on the Themes page) still turns it down on a machine that cannot keep up.</p></div>
+      <p class="mut tb-note">Frosted and clear blur what's behind a window, which is costly to draw. ${pInfo("Effects on the Themes page still turns glass down on a machine that can't keep up.")}</p></div>
     <div class="tb-sec"><b>Type</b>
       <label>Font<select id="tb-font">${TB_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${((WB.font&&WB.font.family)||'')===f?'selected':''}>${esc(l)}</option>`).join('')}<option value="__custom" ${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'selected':''}>Another web font…</option></select></label>
       <div id="tb-fcustom" style="display:${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'flex':'none'};gap:8px;flex-wrap:wrap">
@@ -213,7 +214,7 @@ function tbCheck(){
   const WB=window._WB,el=document.getElementById('tb-contrast');if(!WB||!el)return;
   const cs=getComputedStyle(document.documentElement),g=k=>tbHex((WB.v[k]||cs.getPropertyValue('--'+k)||'').trim());
   const a=tbContrast(g('txt'),g('bg2')),b=tbContrast(g('on-acc'),g('acc')),c=tbContrast(g('dim'),g('bg2'));
-  const mark=x=>x>=4.5?'✓':x>=3?'— low':'✗ too low';
+  const mark=x=>x>=4.5?'✓':x>=3?'(low)':'✗ too low';
   el.innerHTML=`Text on surfaces ${a.toFixed(1)}:1 ${mark(a)} · muted text ${c.toFixed(1)}:1 ${mark(c)} · text on the accent ${b.toFixed(1)}:1 ${mark(b)}`;
 }
 async function tbSave(exportOnly){
@@ -229,11 +230,12 @@ async function tbSave(exportOnly){
 /* ================= personalize app + wallpaper gallery ================= */
 async function renderPersonalize(body){
   let gal=[];try{gal=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){}
+  if(typeof pTipBind==='function')pTipBind();
   const picked=pickedWall();
   body.innerHTML=`<div class="pad">
     <label>Built-in wallpapers</label>
-    <p class="mut" style="margin:2px 0 8px">Ship with AgentOS, one per design-language theme. They're SVG — a few KB
-      each, sharp at any resolution. Pick a theme and its wallpaper follows automatically; choose one here to pin it instead.</p>
+    <p class="mut" style="margin:2px 0 8px">Each theme brings its own wallpaper. Pick one here to keep it whatever the theme.
+      ${pInfo("They're small SVG files that stay sharp at any resolution.")}</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
       ${BUILTIN_WALLS.map(id=>`<button onclick="pzBuiltin('${id}')" title="${esc(id)}"
         style="position:relative;padding:0;border-radius:9px;overflow:hidden;aspect-ratio:16/9;
@@ -253,14 +255,15 @@ async function renderPersonalize(body){
       <button class="endbtn" onclick="wpSystem()">Use system wallpaper</button>
       <button class="endbtn" onclick="fetch('/api/wallpaper',{method:'DELETE'})">Reset</button>
     </div>
-    <label style="margin-top:16px">Gallery — every wallpaper you've generated (click to apply)</label>
+    <label style="margin-top:16px">Your generated wallpapers (click to apply)</label>
     <div id="pz-gal" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px">
       ${gal.length?gal.map(id=>`<div style="position:relative;border-radius:9px;overflow:hidden;border:1px solid var(--line);aspect-ratio:16/9;cursor:pointer" onclick="pzSet('${id}')">
         <img src="/api/wallpapers/${id}" style="width:100%;height:100%;object-fit:cover" loading="lazy">
         <button class="endbtn" style="position:absolute;top:4px;right:4px;padding:1px 6px" onclick="event.stopPropagation();pzDel('${id}')">✕</button>
-      </div>`).join(''):'<p class="mut">No wallpapers yet — generate one above.</p>'}
+      </div>`).join(''):'<p class="mut">No wallpapers yet. Generate one above.</p>'}
     </div>
-    <p class="mut" style="margin-top:12px">Uses your image provider from Settings (Gemini / OpenAI; free pollinations.ai without a key, which caps resolution). You can also tell ${esc(agentName())}: <i>"change my wallpaper to a snowy mountain at sunrise"</i>.</p>
+    <p class="mut" style="margin-top:12px">Uses the image provider set in Settings. ${pInfo('Gemini or OpenAI with a key. Without one it uses the free pollinations.ai, at a lower resolution.')}
+      You can also ask ${esc(agentName())}: <i>"change my wallpaper to a snowy mountain at sunrise"</i>.</p>
   </div>`;
 }
 async function pzGen(){
@@ -272,7 +275,7 @@ async function pzGen(){
     // a quota/key error is a paragraph, not a toast — show it where it can be read
     if(!d.ok)await osAlert('Image generation failed',String(d.result||'').replace(/^\[error\]\s*/,''));
     else{toast(String(d.result||'generated').replace(/^wallpaper generated with /,'✓ ').slice(0,110));refreshApp('personalize')}
-  }catch(e){toast('generation failed — offline?')}
+  }catch(e){toast('generation failed. Are you offline?')}
   const b2=$('#pz-gen');if(b2){b2.disabled=false;b2.textContent='Generate wallpaper'}
 }
 async function pzBuiltin(id){await setBuiltinWallpaper(id);refreshApp('personalize')}

@@ -11,6 +11,7 @@ import asyncio
 import os
 import json
 import time
+from pathlib import Path
 
 import httpx
 
@@ -36,6 +37,7 @@ def office_name(cfg: dict) -> str:
     from . import office
     return office.current(cfg)["name"]
 CHUNK = 3900  # Telegram hard limit is 4096
+TG_FILE_LIMIT = 50 * 1024 * 1024  # what the Bot API lets a bot upload
 
 
 class TelegramBridge(usersmod.Scoped):
@@ -131,6 +133,51 @@ class TelegramBridge(usersmod.Scoped):
             return f"[error] telegram photo failed: {e}"
         self.store.log("telegram", f"→ sent a picture: {(caption or '')[:120]}")
         return "sent via Telegram"
+
+    async def send_document(self, path: str, caption: str = "", chat_id: int | None = None) -> str:
+        """A file into the chat as a document (a deck, a report). Bots may send up to
+        50 MB; past that the chat is told where the file is instead."""
+        chat_id = chat_id or self._t().get("owner_chat_id")
+        token = self._t().get("bot_token", "")
+        if not token or not chat_id:
+            return "[error] Telegram is not set up"
+        p = Path(path)
+        size = p.stat().st_size
+        if size > TG_FILE_LIMIT:
+            from .outputs import size_words
+            await self.send(f"📎 {p.name} is {size_words(size)}, more than Telegram lets a bot "
+                            f"send. It's on the machine at {p}", chat_id)
+            return "too big"
+        try:
+            async with httpx.AsyncClient(timeout=180) as client:
+                with p.open("rb") as fh:
+                    r = await client.post(api_url(token, "sendDocument"),
+                                          data={"chat_id": str(chat_id), "caption": (caption or "")[:1024]},
+                                          files={"document": (p.name, fh)})
+            data = r.json()
+            if not data.get("ok"):
+                raise RuntimeError(data.get("description", f"HTTP {r.status_code}"))
+        except Exception as e:
+            return f"[error] telegram file failed: {e}"
+        self.store.log("telegram", f"→ sent a file: {p.name}")
+        return "sent via Telegram"
+
+    async def send_files(self, reply: str, chat_id: int) -> None:
+        """The files a reply names, sent after it, so "the deck is ready" arrives with the
+        deck. Only files in this person's folders (outputs.roots); switched off with
+        telegram.files = false. Never fatal: the reply has already been sent."""
+        if self._t().get("files") is False:
+            return
+        try:
+            from . import outputs, users as _u
+            files = outputs.mentioned(reply, outputs.roots(self.cfg, admin=_u.is_admin(_u.current())))
+            for f in files:
+                res = await self.send_document(f["path"], f["name"], chat_id)
+                if res.startswith("[error]"):
+                    await self.send(f"📎 I couldn't send {f['name']} ({res[8:]}). "
+                                    f"It's on the machine at {f['path']}", chat_id)
+        except Exception as e:
+            self.store.log("telegram", f"could not send the reply's files: {e}")
 
     async def send_talk(self, lines: list, chat_id: int) -> None:
         """Agents talked during this chat's turn: the exchange as a comic strip, the
@@ -321,7 +368,7 @@ class TelegramBridge(usersmod.Scoped):
                     try:
                         reply, _run = await execmod.forward(
                             engine, text, self.cfg,
-                            str(_cfgmod.AGENTOS_HOME / "workspace"),
+                            execmod.default_workspace(self.cfg),
                             session_id=self._exec_sessions.get(cid, ""),
                             # the team door: "build me a tool" from the phone reaches
                             # the toolsmith as it does at the desk
@@ -348,6 +395,7 @@ class TelegramBridge(usersmod.Scoped):
             _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
                           surface="telegram", conversation_id=cid)
             await self.send(reply, chat_id)
+            await self.send_files(reply, chat_id)
             await self.send_talk(_pg.close(cid, tap), chat_id)
             await self.broadcast({"type": "telegram_out", "conversation_id": cid, "text": reply[:160]})
             from . import knowledge

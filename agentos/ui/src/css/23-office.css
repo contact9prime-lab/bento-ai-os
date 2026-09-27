@@ -28,9 +28,15 @@
 .of-chat .cp-feed,.of-chat .cp-starters,.of-chat .cp-inbar{min-width:0}
 
 /* the designer: a panel over the office's right edge, so the change is seen as it is made */
-.of-design,.of-visit{position:absolute;right:10px;top:50px;bottom:10px;width:min(360px,calc(100% - 20px));overflow:auto;z-index:3;
+.of-design,.of-visit,.of-files{position:absolute;right:10px;top:50px;bottom:10px;width:min(360px,calc(100% - 20px));overflow:auto;z-index:3;
   background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--el-4);padding:10px 14px 16px}
-.of-design[hidden],.of-visit[hidden]{display:none}
+.of-design[hidden],.of-visit[hidden],.of-files[hidden]{display:none}
+/* the filing cabinet's drawer: everything your agents made, newest first */
+.of-files{width:min(420px,calc(100% - 20px))}
+.of-fhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.of-fitem{margin:0 0 8px}.of-fitem .fc{width:100%}.of-fitem .fc-main{flex:1}
+.of-fitem small{display:block;color:var(--dim);font-size:var(--fs-xs);margin:3px 4px 0}
+body.dev-touch .of-files .endbtn{min-height:var(--tap)}
 /* a visit: their office as our painter draws it, and a door to each person in it */
 .of-visit{width:min(460px,calc(100% - 20px))}
 .of-vpic{width:100%;image-rendering:pixelated;border-radius:var(--r-md);border:1px solid var(--line);margin:6px 0;background:var(--bg3)}

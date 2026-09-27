@@ -189,7 +189,7 @@ def test_one_seam_feeds_every_scene():
 def test_the_page_sleeps_paints_rooms_not_people_and_moves_only_on_events():
     of = _js("24d-office.js")
     assert "setInterval" not in of, "a window's periodic work is winTick, and a canvas is rAF"
-    assert "winAwake(O.w)" in of and "winTick(w,officeKick,0" in of
+    assert "return winAwake(w)" in of and "winTick(w,officeKick,0" in of
     assert "1/30" in of and "1/6" in of, "the frame budget: 30 while something moves, 6 at rest"
     assert "prefers-reduced-motion" in of
     assert ".filter=" not in of and "shadowBlur" not in of, "no blur, no canvas shadow"
@@ -209,3 +209,69 @@ def test_a_phone_gets_the_chat_as_a_sheet_and_the_tap_floor():
     assert "@container (max-width:760px)" in css and "body.dev-mobile .of-chat" in css
     assert ".of-empty[hidden]{display:none}" in css
     assert "body.dev-touch .of-chip" in css and "min-height:var(--tap)" in css
+
+
+def test_a_bad_frame_or_a_huge_canvas_never_leaves_the_office_blank():
+    # found as a full-screen Office on a Retina Mac that came up blank
+    of = _js("24d-office.js")
+    frame = of.split("function officeFrame(")[1].split("function officeStep(")[0]
+    assert "try{officeStep(" in frame and "requestAnimationFrame(officeFrame)" in frame.split("catch")[1]
+    assert "OF_MAX_PX" in of and "O.dpr-.25" in of, "the backing store steps its dpr down past a ceiling"
+    assert "O.bg.width&&O.bg.height" in of, "drawImage of an empty canvas throws"
+    lay = of.split("function officeLayout(")[1].split("function officeSeat(")[0]
+    assert "officeDraw()" in lay, "a resized canvas is cleared, so layout paints at once"
+
+
+def test_work_changes_hands_on_foot_and_every_walk_is_short():
+    of = _js("24d-office.js")
+    pulse = of.split("function officePulse(")[1].split("function officeMsg(")[0]
+    assert "officeHandOver(who,to," in pulse
+    ho = of.split("function officeHandOver(")[1].split("function officeReport(")[0]
+    # a person already away from the desk cannot be in two places: the paper flies
+    assert "from.visit" in ho and "officePaper(" in ho and "O.handed[to.key]" in ho
+    assert "officeReport(p,ok)" in of, "the result walks back to whoever handed it over"
+    assert "OF_WALK_S" in of and "p.speed" in of
+
+
+def test_a_tap_answers_in_the_agents_own_voice():
+    of = _js("24d-office.js")
+    assert "officeGreet(hit)" in of and "hit.hop" in of
+    g = of.split("function officeGreet(")[1].split("\n}")[0]
+    assert "ofHash(p.key)" in g, "the opener is the agent's own, not the same for all"
+    assert "OFFICE.about" in g, "the line comes from what the agent is for"
+
+
+def test_the_office_is_a_scene_and_the_window_takes_it_over():
+    of, imm = _js("24d-office.js"), _js("01b-immersive.js")
+    assert "'office'" in imm.split("var IMMERSIVE_SCENES=")[1].split(";")[0]
+    assert "officeSceneStart()" in imm and "officeSceneStop()" in imm
+    # one office state: the window takes it, closing it hands it back
+    assert "setTimeout(officeSceneAttach,0)" in of.split("function officeClose(")[1].split("function officeSceneStart(")[0]
+    assert "OFFICE.fit=false" in of.split("function renderOffice(")[1][:900]
+    # the scene sleeps when nobody can see it, the Crew stage's test, and has no frame
+    # loop of its own while it sleeps
+    assert "crewCovered()" in of and "function officeSnooze(" in of
+    assert "officeSceneStart();" in of.rsplit("\n", 3)[-2], "first paint: the file starts its own scene"
+    # several things at once are all on the board
+    now = of.split("function officeNow(")[1].split("\n}")[0]
+    assert "O.missions" in now and "O.convWho" in now
+
+
+def test_the_rooms_mean_something_a_mission_meets_escalation_walks_a_stall_is_said():
+    # asked: "how is the meeting room going to be used ... when it is escalated and it's
+    # not happening". Each room and sign is a real state, never decoration.
+    of = _js("24d-office.js")
+    fab = of.split("function officeFabric(")[1].split("function officeHuddle(")[0]
+    # two or more of one mission's specialists at once meet at the table; one does not
+    assert "O.meet[ev.parent_run]" in fab and "officeMeetSync(ev.parent_run)" in fab
+    sync = of.split("function officeMeetSync(")[1].split("function officeEscalate(")[0]
+    assert "who.length>=2" in sync and "!O.huddle" in sync, "a huddle has the room first"
+    # waiting for you walks to your agent's office, hand up, and counts the minutes
+    assert "officeEscalate(p,ev.tool)" in fab and "officeDeEscalate(p," in fab
+    esc = of.split("function officeEscalate(")[1].split("function officeDeEscalate(")[0]
+    assert "lead.home" in esc and "p.hand=1" in esc
+    step = of.split("function officeStep(")[1].split("function officeLine(")[0]
+    assert "p.waitSince" in step and " min" in step
+    # a failed or timed-out step stays said at its own desk until it runs again
+    assert "p.stuck=performance.now()" in fab and "p.stuck=0" in fab and "OF_STUCK_MS" in step
+    assert "officeMeetingDraw(ctx)" in of and "officeStuckDraw(ctx,p)" in of

@@ -548,3 +548,43 @@ def test_limits_have_a_settings_face_and_a_route(client):
     assert "function paintTeamLimits(" in st and "/api/team/limits" in st
     fab = (JS / "13-fabric.js").read_text()
     assert 'id="flw-talk"' in fab and "d.permissions.talk=" in fab
+
+
+# ---- swarm opens the lead's hand-overs too -----------------------------------------
+# Asked for in the person's own words: "swarm is swarm, so that's open". A lead handing a
+# specialist a task under swarm is not a question; the edges below still are.
+
+def _lead(pdp, resource, action="agent.invoke", surface="gui"):
+    return pdp.decide(MAIN, action, resource, {"surface": surface, "autonomy": "balanced"})
+
+
+def test_swarm_opens_the_leads_hand_over_to_your_own_specialists(tmp_path, monkeypatch):
+    c, store, tb, cp, _ = _world(tmp_path, monkeypatch, talk="swarm", autonomy="balanced")
+    d = _lead(tb.pdp, "agent:subagent/researcher")
+    assert d.effect == "allow" and d.rule == "swarm"
+    h = _lead(tb.pdp, "agent:huddle/researcher,validator", action="agent.huddle")
+    assert h.effect == "allow" and h.rule == "swarm"
+
+
+def test_matrix_mode_still_asks_the_lead_once_per_specialist(tmp_path, monkeypatch):
+    c, store, tb, cp, _ = _world(tmp_path, monkeypatch, talk="matrix", autonomy="balanced")
+    assert _lead(tb.pdp, "agent:subagent/researcher").effect == "ask"
+
+
+def test_what_swarm_does_not_open(tmp_path, monkeypatch):
+    c, store, tb, cp, _ = _world(tmp_path, monkeypatch, talk="swarm", autonomy="balanced")
+    pdp = tb.pdp
+    # another team's agent: crossing to somebody else's machine is asked, cell by cell
+    assert _lead(pdp, "agent:subagent/analyst@office").effect != "allow"
+    assert _lead(pdp, "agent:huddle/researcher,analyst@office", action="agent.huddle").effect != "allow"
+    # nobody is watching a scheduled turn or a webhook
+    assert _lead(pdp, "agent:subagent/researcher", surface="task").effect == "ask"
+    assert _lead(pdp, "agent:subagent/researcher", surface="webhook").effect == "ask"
+    # starting a mission is its own question
+    assert _lead(pdp, "agent:flow/digest").effect == "ask"
+    # a specialist still cannot start another (the two-deep tree)
+    assert pdp.decide(Principal("subagent", "researcher"), "agent.invoke",
+                      "agent:subagent/writer", {"surface": "gui"}).effect == "deny"
+    # and an explicit block beats swarm
+    store.add_grant("user", "", "agent.invoke", "agent:subagent/validator", effect="deny")
+    assert _lead(pdp, "agent:subagent/validator").effect == "deny"

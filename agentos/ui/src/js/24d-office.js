@@ -37,18 +37,24 @@
    Phone: the chat becomes a sheet behind a Chat button, every control at the tap floor.
    `var`, not `let`: the bundle is one script. */
 var OFFICE={w:null,cv:null,ctx:null,raf:0,last:0,t:0,view:null,brains:{},L:null,bg:null,
-  people:{},papers:[],bursts:[],pops:[],runs:{},convWho:{},missions:{},huddle:null,
+  people:{},papers:[],bursts:[],pops:[],runs:{},convWho:{},missions:{},handed:{},flowRuns:{},meet:{},meeting:null,huddle:null,
   pet:null,dpr:1,s:1,cw:0,ch:0,font:'',static:false,log:[],sheets:{},design:false,loaded:false};
 var OF_K=3;               // world units per sprite pixel: a 16x26 character is 48x78 units
 var OF_INK='#191827';     // the comic line: one ink for every outline
 var OF_SPEED=170;         // walking, world units a second
+var OF_WALK_S=3.2;        // the longest any walk may take, whatever the distance
 var OF_SAY_MS=5200;       // a speech balloon's life
 var OF_WORK_MS=12000;     // a desk stays lit this long after the last thing it did
 var OF_DESK_W=130, OF_WALL=46, OF_ROOM_H=206, OF_HALL=40, OF_SPINE=34, OF_M=14, OF_GAP=12;
+var OF_MAX_PX=6e6;
+var OF_STUCK_MS=180000;     // a failed or timed-out step stays shown at its desk this long         // backing-store pixels per canvas before the dpr steps down (WebKit blanks big ones)
 function renderOffice(el,w){
   // A re-render (refreshApp, a websocket `office` event) reloads the plan and keeps
   // everybody where they are — rebuilding the canvas would teleport a walker home.
   if(OFFICE.w===w&&el.querySelector('.of-wrap')){officeLoad();return}
+  // the desktop scene may be holding the Office: the window takes it over, and the
+  // scene gets it back when the window closes (officeClose)
+  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;OFFICE.fit=false;
   OFFICE.w=w;OFFICE.people={};OFFICE.papers=[];OFFICE.bursts=[];OFFICE.pops=[];OFFICE.sheets={};
   OFFICE.static=matchMedia('(prefers-reduced-motion: reduce)').matches;
   try{OFFICE.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){OFFICE.font='sans-serif'}
@@ -62,12 +68,14 @@ function renderOffice(el,w){
         <button class="endbtn of-vz" title="Visit a linked team's office">⇄ Visit</button>
         <button class="endbtn of-snap" data-ic="camera" title="Send the office right now, as a picture, to your phone">◉ Snap</button>
         <button class="endbtn of-dz" data-ic="palette" title="Change how the office looks and who sits where">✎ Design</button>
+        <button class="endbtn of-fl" title="Everything your agents made">▤ Files</button>
         <button class="endbtn of-ct" title="Talk to your agent">Chat</button></div>
       <div class="of-scroll"><canvas class="of-cv" aria-hidden="true"></canvas>
         <div class="of-empty" hidden></div></div>
       <div class="of-log" role="log" aria-live="polite" aria-label="What the office is doing"></div>
       <div class="of-design" hidden></div>
       <div class="of-visit" hidden></div>
+      <div class="of-files" hidden></div>
     </div>
     <div class="of-chat"></div>
   </div>`;
@@ -75,6 +83,7 @@ function renderOffice(el,w){
   el.querySelector('.of-dz').onclick=()=>officeDesign(!OFFICE.design);
   el.querySelector('.of-snap').onclick=officeSnap;
   el.querySelector('.of-vz').onclick=()=>officeVisit(OFFICE.visiting===undefined?'':null);
+  el.querySelector('.of-fl').onclick=()=>officeFiles();
   el.querySelector('.of-ct').onclick=()=>el.querySelector('.of-wrap').classList.toggle('chat-open');
   OFFICE.cv.addEventListener('click',officeTap);
   const chat=el.querySelector('.of-chat');
@@ -90,14 +99,83 @@ function officeClose(w){
   cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
   try{w._ofro&&w._ofro.disconnect()}catch(e){}
   OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;OFFICE.visiting=undefined;
+  setTimeout(officeSceneAttach,0);
   return true;
+}
+/* ---------------- the Office as a desktop scene ----------------
+   Settings → Appearance → Scene → Office. The same office, drawn by the same code,
+   in the lower half of the desktop behind every window, so nobody has to open an app
+   to see who is working. There is ONE office state (OFFICE), so the scene and the
+   window never both draw: opening the window takes it over, closing it hands it back.
+   View only, like the Crew stage: the wall is under the desktop and cannot be
+   tapped, and the home screen's "See them at work" chip is the door to the window.
+   Faces: GUI/SUI this canvas inside #wall; TUI has no wallpaper (bento office is its
+   roll call). */
+var OFFICE_SCENE={on:false,host:null,wake:0};
+function officeSceneStart(){
+  if(OFFICE_SCENE.on)return;
+  const wall=document.getElementById('wall');if(!wall)return;
+  let host=document.getElementById('office-scene');
+  if(!host){host=document.createElement('div');host.id='office-scene';host.setAttribute('aria-hidden','true');
+    host.innerHTML='<div class="of-scroll"><canvas class="of-cv"></canvas></div>';wall.appendChild(host)}
+  OFFICE_SCENE.on=true;OFFICE_SCENE.host=host;
+  // the band starts under the home screen's last line, and follows it when a line
+  // appears there (a working line, the office chip): the greeting must never sit on
+  // top of the office
+  const home=document.getElementById('home');
+  if(home&&typeof ResizeObserver!=='undefined'){OFFICE_SCENE.ro=new ResizeObserver(officeSceneResize);
+    [...home.children].forEach(c=>OFFICE_SCENE.ro.observe(c))}
+  officeSceneFit();
+  addEventListener('resize',officeSceneResize);
+  document.addEventListener('visibilitychange',officeKick);
+  officeSceneAttach();
+}
+function officeSceneStop(){
+  const S=OFFICE_SCENE;if(!S.on)return;
+  S.on=false;clearTimeout(S.wake);
+  try{S.ro&&S.ro.disconnect()}catch(e){}S.ro=null;
+  removeEventListener('resize',officeSceneResize);
+  document.removeEventListener('visibilitychange',officeKick);
+  if(OFFICE.w&&OFFICE.w.scene){cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
+    OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.fit=false}
+  if(S.host)S.host.remove();S.host=null;
+}
+function officeSceneAttach(){
+  const S=OFFICE_SCENE;if(!S.on||!S.host||OFFICE.w)return;
+  const cv=S.host.querySelector('canvas');
+  OFFICE.w={scene:true,el:S.host};OFFICE.people={};OFFICE.papers=[];OFFICE.bursts=[];OFFICE.pops=[];
+  OFFICE.sheets={};OFFICE.handed={};OFFICE.fit=true;
+  OFFICE.static=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  try{OFFICE.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){OFFICE.font='sans-serif'}
+  OFFICE.cv=cv;OFFICE.ctx=cv.getContext('2d');
+  officeLoad();
+}
+function officeSceneFit(){
+  const S=OFFICE_SCENE,home=document.getElementById('home');if(!S.host)return false;
+  let top=Math.round(innerHeight*.42);
+  if(home&&!home.hidden)[...home.children].forEach(c=>{const r=c.getBoundingClientRect();if(r.height)top=Math.max(top,Math.round(r.bottom)+14)});
+  top=Math.min(top,innerHeight-96-160);          // never less than a strip of office
+  if(S.top===top)return false;
+  S.top=top;S.host.style.top=top+'px';return true;
+}
+function officeSceneResize(){officeSceneFit();if(OFFICE.w&&OFFICE.w.scene)officeLayout()}
+/* Can anybody see the office right now? A window asks the window manager; the scene
+   asks what the Crew stage asks (hidden tab, a full-screen or maximised window, a
+   phone sheet). */
+function officeAwake(){
+  const w=OFFICE.w;if(!w)return false;
+  if(w.scene)return !!(w.el&&w.el.isConnected)&&!(typeof crewCovered==='function'?crewCovered():document.hidden);
+  return winAwake(w);
 }
 async function officeLoad(){
   try{
     const [v,sa]=await Promise.all([apiJSON('/api/office'),
       fetch('/api/subagents').then(r=>r.json()).catch(()=>({}))]);
     OFFICE.view=v;OFFICE.brains={};
-    (sa.subagents||sa.agents||[]).forEach(s=>{if(s&&s.name)OFFICE.brains[s.name]=(s.brain&&s.brain.provider_name)||''});
+    OFFICE.about={};
+    (sa.subagents||sa.agents||[]).forEach(s=>{if(!s||!s.name)return;
+      OFFICE.brains[s.name]=(s.brain&&s.brain.provider_name)||'';
+      OFFICE.about[s.name]=[s.description,s.mission].filter(Boolean).join(' ')});
     OFFICE.brains['@agent']=(sa.agent_brain&&sa.agent_brain.provider_name)||'';
     if(typeof avatarsLoad==='function'&&(v.agents||[]).some(n=>!AVATARS.by[n]))await avatarsLoad();
     OFFICE.loaded=true;
@@ -119,7 +197,7 @@ function officeContext(){
 /* ---------------- layout: rooms into rows, desks into rooms ---------------- */
 function officeLayout(){
   const O=OFFICE,v=O.view;if(!O.cv||!v)return;
-  const sc=O.cv.parentElement,cw=Math.max(280,sc.clientWidth);
+  const sc=O.cv.parentElement;let cw=Math.max(280,sc.clientWidth);
   const phone=cw<640;
   O.s=phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
   const W=cw/O.s, x0=OF_M+OF_SPINE, avail=W-x0-OF_M;
@@ -145,7 +223,7 @@ function officeLayout(){
   // a short office on a tall window: the rooms get more floor rather than leaving a
   // dark band under them (capped, so one row of rooms does not become a ballroom)
   const natural=OF_M*2+plan.reduce((a,r)=>a+r.h+OF_HALL,0)-OF_HALL*.5, room=sc.clientHeight/O.s;
-  const grow=phone?0:Math.max(0,Math.min(140,(room-natural)/plan.length));
+  const grow=(phone||O.fit)?0:Math.max(0,Math.min(140,(room-natural)/plan.length));
   const rooms=[];let y=OF_M;
   plan.forEach((row,ri)=>{
     const h=row.h+grow;let x=x0;
@@ -153,15 +231,26 @@ function officeLayout(){
     y+=h+OF_HALL;
   });
   const H=y+OF_M-OF_HALL+OF_HALL*.5;
+  // the scene has a fixed band of the screen: the whole office fits in it, smaller,
+  // rather than scrolling behind the windows where nobody can scroll it
+  const band=O.fit?sc.clientHeight:0;
+  if(band>0&&H*O.s>band){O.s=band/H;cw=Math.round(W*O.s)}
   O.L={W,H,rooms,rowsY:rows.map((_,i)=>{const r=rooms.find(q=>q.row===i);return r.y+r.h+OF_HALL/2}),spineX:OF_M+OF_SPINE/2};
   // the canvas is as tall as the office: a phone scrolls it rather than shrinking people to ants
   O.cw=cw;O.ch=Math.ceil(H*O.s);O.dpr=Math.min(2,devicePixelRatio||1);
+  // Two backing stores this size (the canvas and the painted rooms). Past a few
+  // million pixels WebKit quietly stops drawing a canvas, which is how a full-screen
+  // Office on a Retina Mac came up blank; a slightly softer office is the better trade.
+  while(O.dpr>1&&cw*O.ch*O.dpr*O.dpr>OF_MAX_PX)O.dpr=Math.max(1,O.dpr-.25);
   O.cv.style.width=cw+'px';O.cv.style.height=O.ch+'px';
   O.cv.width=Math.round(cw*O.dpr);O.cv.height=Math.round(O.ch*O.dpr);
   officeSeat();
   officeBg();
   officeEmpty();
   officeLine();
+  // resizing a canvas clears it, so paint now rather than leave a blank frame
+  // until the loop's next tick (at rest that is a sixth of a second away)
+  if(officeAwake())officeDraw();
   officeKick();
 }
 /* Everybody gets a home: a chair at a desk. A person already on the floor keeps
@@ -218,6 +307,10 @@ function officeWalk(p,to,mode,then){
   const route=officeRoute(p,mode==='seat'?{x:p.home.x+40,y:p.home.y+56}:to);
   if(mode==='seat')route.push({x:p.home.x,y:p.home.y,sit:1});
   p.path=route;p.mode='walk';p.then={mode,fn:then||null};
+  // a walk across a big office at a stroll takes ten seconds, long after the thing it
+  // was showing has happened: nobody takes longer than OF_WALK_S to get anywhere
+  let len=0,at={x:p.x,y:p.y};route.forEach(q=>{len+=Math.hypot(q.x-at.x,q.y-at.y);at=q});
+  p.speed=Math.max(OF_SPEED,len/OF_WALK_S);
   if(OFFICE.static){const last=route[route.length-1];p.x=last.x;p.y=last.y;officeArrive(p)}
   officeKick();
 }
@@ -291,10 +384,11 @@ function officePulse(kind,label,ev){
     const who=O.people[(ev.conversation_id&&O.convWho[ev.conversation_id])||'@agent']||O.people['@agent'];
     if(label==='delegate'){
       const to=officeMatch((ev.args||{}).subagent);
-      if(to){officePaper(officeHead(who),to,()=>{officeWork(to,true);officePop(to,'!');
-        officeSay(to,'on it: '+((ev.args||{}).task||''),'think',3600)});
+      if(to){officeHandOver(who,to,(ev.args||{}).task||'');
         officeLog(`${officeName(who.key)} handed ${to.label} some work`)}
     }
+    if(OF_WRITES.has(label)){const c=officeCabinetAt();
+      if(c)officePaper(officeHead(who),{x:c.x+c.w/2,y:c.y+10,board:1},()=>{O.newFiles=(O.newFiles||0)+1;officeKick()})}
     officeBurst(who,label);return;
   }
   if(kind==='say'){
@@ -312,6 +406,36 @@ function officePulse(kind,label,ev){
     if(label&&O.missions[label]){delete O.missions[label];officeKick()}
     return;
   }
+}
+/* Handing work over is a walk, not a teleport: the one handing it stands up, carries
+   the paper to the other desk, says what it wants, hears "on it" and walks back. When
+   the specialist finishes it walks the result over to whoever handed it the work. If
+   the giver is already away from its desk (asking someone, in a huddle) the paper flies
+   instead, because a person cannot be in two places. */
+function officeHandOver(from,to,task){
+  const O=OFFICE,start=()=>{officeWork(to,true);officePop(to,'!');officeSay(to,'on it'+(task?': '+task:''),'think',3600)};
+  if(!to)return;
+  if(!from||from===to||from.visit||from.mode!=='seat'||O.static)return officePaper(from?officeHead(from):officeBoardPoint(),to,start);
+  O.handed[to.key]=from.key;
+  const visit={to:to.key,handover:1};from.visit=visit;officeWork(from,true);
+  officeWalk(from,{x:to.home.x+34,y:to.home.y+62},'stand',()=>{
+    if(from.visit!==visit)return;
+    officeSay(from,'@'+to.label+(task?' '+task:' this one is yours'),'say',2600);
+    setTimeout(()=>{start();setTimeout(()=>{if(from.visit===visit)officeHome(from)},1400)},1300);
+  });
+}
+/* The result comes back the same way: on foot, to the desk of whoever handed it over. */
+function officeReport(p,ok){
+  const O=OFFICE,boss=O.people[O.handed[p.key]];delete O.handed[p.key];
+  if(!boss||boss===p||p.visit||O.static)return false;
+  const visit={to:boss.key,report:1};p.visit=visit;
+  officeWalk(p,{x:boss.home.x+44,y:boss.home.y+62},'stand',()=>{
+    if(p.visit!==visit)return;
+    officeSay(p,ok?'done ✓ here it is':'hit a snag ✗ have a look','say',2600);
+    setTimeout(()=>{if(boss.mode==='seat')officeSay(boss,ok?'thanks!':'hm, ok','say',1600);
+      setTimeout(()=>{if(p.visit===visit)officeHome(p)},900)},1400);
+  });
+  return true;
 }
 /* One agent asking another (fabric.message). The asker walks to the other's desk and
    asks there; the answer is said at that desk, and then the asker walks back. From a
@@ -358,8 +482,14 @@ function officeReply(asker,who,text){
    (which names a tool and no agent) lands on the right desk. */
 function officeFabric(ev){
   const O=OFFICE,e=ev.event;
-  if(e==='flow_start'){O.missions[ev.flow]=performance.now();officeLog(`mission ${ev.flow} started`);officeKick();return}
-  if(e==='flow_end'){if(ev.flow)delete O.missions[ev.flow];else O.missions={};return}
+  if(e==='flow_start'){O.missions[ev.flow]=performance.now();if(ev.run_id)O.flowRuns[ev.run_id]=ev.flow;
+    officeLog(`mission ${ev.flow} started`);officeKick();return}
+  if(e==='flow_end'){if(ev.flow)delete O.missions[ev.flow];else O.missions={};
+    if(ev.run_id){const set=O.meet[ev.run_id];delete O.meet[ev.run_id];
+      if(O.meeting&&O.meeting.run===ev.run_id){O.meeting=null;
+        (set?[...set]:[]).forEach(k=>{const p=O.people[k];if(p&&p.visit&&p.visit.meet)officeHome(p)})}
+      delete O.flowRuns[ev.run_id]}
+    return}
   if(e==='node_add'){
     const to=officeMatch(ev.agent);
     if(to){officePaper(officeBoardPoint(),to,()=>{officeWork(to,true);officePop(to,'!');
@@ -370,25 +500,39 @@ function officeFabric(ev){
   }
   if(e==='status'&&ev.ref){
     const p=officeMatch(ev.ref);if(!p)return;
-    if(ev.status==='running'){O.runs[ev.run_id]=p.key;officeWork(p,true);return}
+    if(ev.status==='running'){O.runs[ev.run_id]=p.key;officeWork(p,true);p.stuck=0;
+      if(ev.parent_run&&O.flowRuns[ev.parent_run]){(O.meet[ev.parent_run]=O.meet[ev.parent_run]||new Set()).add(p.key);
+        officeMeetSync(ev.parent_run)}
+      return}
     delete O.runs[ev.run_id];
     const ok=ev.status==='ok'||ev.status==='done';
     officeWork(p,false);
+    if(p.hand)officeDeEscalate(p,ok);
+    if(ev.parent_run&&O.meet[ev.parent_run]){O.meet[ev.parent_run].delete(p.key);
+      if(p.visit&&p.visit.meet===ev.parent_run){p.visit=null;if(!O.handed[p.key])officeHome(p)}
+      officeMeetSync(ev.parent_run)}
+    // stalled work stays said at the desk until the agent runs again
+    if(!ok){p.stuck=performance.now();p.stuckWhy=ev.status==='timeout'?'timed out':ev.status==='cancelled'?'stopped':'hit a snag'}
+    if(officeReport(p,ok))return;
     officeSay(p,ok?'done ✓':'hit a snag ✗','say',3200);
     if(ev.parent_run)officePaper(officeHead(p),{x:officeBoardPoint().x,y:officeBoardPoint().y+20,board:1});
     return;
   }
-  if(e==='step'&&ev.status==='start'){const p=O.people[O.runs[ev.run_id]];if(p)officeBurst(p,ev.tool);return}
+  if(e==='step'&&ev.status==='start'){const p=O.people[O.runs[ev.run_id]];if(p){officeBurst(p,ev.tool);
+    if(OF_WRITES.has(ev.tool)){const c=officeCabinetAt();
+      if(c)officePaper(officeHead(p),{x:c.x+c.w/2,y:c.y+10,board:1},()=>{O.newFiles=(O.newFiles||0)+1;officeKick()})}}return}
   if(e==='approval'){
     const p=officeMatch(ev.ref)||O.people[O.runs[ev.run_id]];if(!p)return;
-    if(ev.state==='asked'){officeSay(p,'? needs you — '+(ev.tool||''),'shout',120000);p.hand=1;
+    if(ev.state==='asked'){officeEscalate(p,ev.tool);
       officeLog(`${p.label} is waiting for you to allow ${ev.tool||'a step'}`)}
-    else{p.hand=0;officeSay(p,ev.state==='allowed'?'thanks!':'ok, not that','say',2000)}
+    else officeDeEscalate(p,ev.state==='allowed');
   }
 }
 /* ---------------- huddles: the meeting room ---------------- */
 function officeHuddle(names,cid){
   const O=OFFICE;
+  if(O.meeting){const run=O.meeting.run;O.meeting=null;
+    (O.meet[run]?[...O.meet[run]]:[]).forEach(k=>{const p=O.people[k];if(p&&p.visit&&p.visit.meet)officeHome(p)})}
   O.huddle={cid:cid||'',who:[],until:performance.now()+25000};
   (names||[]).forEach(n=>{const p=officeMatch(n);if(p)officeHuddleJoin(p)});
   officeLog(`huddle: ${(names||[]).join(', ')}`);
@@ -397,12 +541,60 @@ function officeHuddleJoin(p){
   const O=OFFICE,h=O.huddle;if(!h||h.who.includes(p))return;
   h.who.push(p);officeWork(p,true);
   const r=officeRoomOf('meeting')||officeRoomOf('lounge')||officeRoomOf('lead');
-  const i=h.who.length-1, cx=r.x+r.w/2, ty=r.y+OF_WALL+92+(r.grow||0)*.45;
-  // three behind the table (feet at its far edge), three in front, then the two ends
-  const spots=[[-58,-30],[0,-34],[58,-30],[-58,62],[0,66],[58,62],[-126,20],[126,20]];
-  const s=spots[i%spots.length];
   p.visit={huddle:1};
-  officeWalk(p,{x:cx+s[0],y:ty+s[1]},'stand');
+  officeWalk(p,officeTableSpot(h.who.length-1),'stand');
+}
+/* A seat at the meeting table: three behind it (feet at its far edge), three in front,
+   then the two ends. Huddles and missions share the one table. */
+function officeTableSpot(i){
+  const r=officeRoomOf('meeting')||officeRoomOf('lounge')||officeRoomOf('lead');
+  const cx=r.x+r.w/2, ty=r.y+OF_WALL+92+(r.grow||0)*.45;
+  // the first two sit apart, so two people and the card on the table can all be read
+  const spots=[[-70,-30],[70,-30],[0,-36],[-58,64],[58,64],[0,68],[-128,20],[128,20]];
+  const s=spots[i%spots.length];return {x:cx+s[0],y:ty+s[1]};
+}
+/* A mission working with two or more specialists at once meets at the table, with the
+   mission's name on the card, and each goes back to its desk as its part ends. One
+   specialist working alone stays at its desk: a meeting of one is not a meeting. A
+   huddle has the room first. */
+function officeMeetSync(runId){
+  const O=OFFICE,set=O.meet[runId];if(!set)return;
+  const who=[...set].map(k=>O.people[k]).filter(Boolean);
+  if(who.length>=2&&!O.huddle&&(!O.meeting||O.meeting.run===runId)){
+    O.meeting={run:runId,flow:O.flowRuns[runId]||'mission'};
+    who.forEach((p,i)=>{
+      if(p.visit&&p.visit.meet===runId)return;
+      if(p.visit&&!p.visit.meet)return;          // asking someone, escalating: it comes later
+      p.visit={meet:runId};officeWalk(p,officeTableSpot(i),'stand');
+    });
+    officeLog(`${O.meeting.flow}: ${who.map(p=>p.label).join(', ')} are working on it together`);
+  }else if(who.length<2&&O.meeting&&O.meeting.run===runId){
+    O.meeting=null;who.forEach(p=>{if(p.visit&&p.visit.meet===runId)officeHome(p)});
+  }
+  officeKick();
+}
+/* Waiting for you is a walk to your agent's office, hand up. The bubble counts the
+   minutes, so a question nobody has answered looks like one. Answered, it goes back
+   to the table or its desk. */
+function officeEscalate(p,tool){
+  const O=OFFICE,lead=O.people['@agent'];
+  p.hand=1;p.waitSince=performance.now();p.waitTool=tool||'a step';
+  officeSay(p,'? needs you: '+p.waitTool,'shout',36e5);
+  if(p===lead||!lead||O.static)return;
+  p.back=p.visit&&p.visit.meet?p.visit.meet:null;
+  const visit={escalate:1};p.visit=visit;
+  officeWalk(p,{x:lead.home.x+64,y:lead.home.y+58},'stand');
+}
+function officeDeEscalate(p,ok){
+  p.hand=0;p.waitSince=0;
+  officeSay(p,ok?'thanks!':'ok, not that','say',2000);
+  if(p.visit&&p.visit.escalate){
+    const back=p.back;p.back=null;p.visit=null;
+    const O=OFFICE,set=back&&O.meet[back];
+    if(set&&set.has(p.key)&&O.meeting&&O.meeting.run===back){
+      p.visit={meet:back};officeWalk(p,officeTableSpot([...set].indexOf(p.key)),'stand')}
+    else setTimeout(()=>officeHome(p),OFFICE.static?0:900);
+  }
 }
 function officeHuddleEnd(){
   const O=OFFICE,h=O.huddle;if(!h)return;O.huddle=null;
@@ -412,27 +604,37 @@ function officeHuddleEnd(){
 /* ---------------- the loop ---------------- */
 function officeKick(){
   const O=OFFICE;if(!O.w||!O.ctx)return;
-  if(O.static||!winAwake(O.w)){if(winAwake(O.w))officeDraw();return}
+  if(O.static||!officeAwake()){if(officeAwake())officeDraw();else officeSnooze();return}
   if(!O.raf){O.last=performance.now();O.raf=requestAnimationFrame(officeFrame)}
+}
+/* A window is re-kicked by winTick when it is seen again. The scene has nobody to do
+   that, so it looks again once a second — a timer, not a frame loop. */
+function officeSnooze(){
+  const S=OFFICE_SCENE;if(!(OFFICE.w&&OFFICE.w.scene)||!S.on)return;
+  clearTimeout(S.wake);S.wake=setTimeout(officeKick,1000);
 }
 function officeMoving(){
   const O=OFFICE;
-  return O.papers.length||O.bursts.length||O.pops.length||Object.values(O.people).some(p=>p.mode==='walk'||p.busy||p.say)
+  return O.papers.length||O.bursts.length||O.pops.length||Object.values(O.people).some(p=>p.mode==='walk'||p.busy||p.say||p.hop)
     ||(O.pet&&O.pet.walking);
 }
 function officeFrame(now){
   const O=OFFICE;O.raf=0;
-  if(!O.w||!O.ctx||!winAwake(O.w))return;       // asleep: the next wake re-kicks
+  if(!O.w||!O.ctx)return;
+  if(!officeAwake())return officeSnooze();      // asleep: the next wake re-kicks
   const busy=officeMoving(), dt=(now-O.last)/1000;
   if(dt<(busy?1/30:1/6)){O.raf=requestAnimationFrame(officeFrame);return}
-  O.last=now;officeStep(Math.min(.1,dt));officeDraw();
+  O.last=now;
+  // one bad frame must not end the loop: an exception here used to leave the
+  // Office blank until it was closed and opened again
+  try{officeStep(Math.min(.1,dt));officeDraw()}catch(e){console.warn('office frame',e)}
   O.raf=requestAnimationFrame(officeFrame);
 }
 function officeStep(dt){
   const O=OFFICE,now=performance.now();O.t+=dt;
   Object.values(O.people).forEach(p=>{
     if(p.mode==='walk'&&p.path.length){
-      let d=OF_SPEED*dt;
+      let d=(p.speed||OF_SPEED)*dt;
       while(d>0&&p.path.length){
         const q=p.path[0],dx=q.x-p.x,dy=q.y-p.y,l=Math.hypot(dx,dy);
         if(l<=d){p.x=q.x;p.y=q.y;d-=l;p.path.shift()}else{p.x+=dx/l*d;p.y+=dy/l*d;d=0}
@@ -440,6 +642,10 @@ function officeStep(dt){
       if(!p.path.length)officeArrive(p);
     }
     if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand)p.busy=0;
+    // an unanswered question says how long it has waited
+    if(p.hand&&p.waitSince&&p.say&&p.say.kind==='shout'){const m=Math.floor((now-p.waitSince)/60000);
+      const t='? needs you: '+p.waitTool+(m?` · ${m} min`:'');if(p.say.text!==t)p.say.text=t}
+    if(p.stuck&&now-p.stuck>OF_STUCK_MS)p.stuck=0;
     if(p.say&&now-p.say.at>p.say.ms)p.say=null;
   });
   O.papers=O.papers.filter(pp=>{if(now-pp.at>=pp.ms){if(pp.fn)pp.fn();return false}return true});
@@ -452,8 +658,8 @@ function officeStep(dt){
 function officeLine(){
   const el=OFFICE.w&&OFFICE.w.el.querySelector('#of-line');if(!el||!OFFICE.view)return;
   const ps=Object.values(OFFICE.people), n=ps.length-1, busy=ps.filter(p=>p.busy).length;
-  const talk=ps.filter(p=>p.visit).length;
-  const txt=`${OFFICE.view.office.name} · ${busy?busy+' working':'all quiet'}${talk?' · '+talk+' talking':''} · ${n} ${n===1?'specialist':'specialists'}`;
+  const talk=ps.filter(p=>p.visit&&!p.visit.meet).length, jobs=Object.keys(OFFICE.missions).length+Object.keys(OFFICE.convWho).length;
+  const txt=`${OFFICE.view.office.name} · ${busy?busy+' working':'all quiet'}${jobs>1?' on '+jobs+' things':''}${talk?' · '+talk+' on the move':''} · ${n} ${n===1?'specialist':'specialists'}`;
   if(el.textContent!==txt)el.textContent=txt;
   const t=OFFICE.w.el.querySelector('.of-title');if(t)t.textContent=OFFICE.view.style.label;
 }
@@ -534,6 +740,7 @@ function officeRoomBg(ctx,r,idx){
   if(r.kind==='lounge')officeLounge(ctx,r,decor,st);
   // below the mission board, never behind it
   if(r.kind==='lead'&&decor.includes('bookshelf'))officeShelf(ctx,r.x+r.w-40,r.y+OF_WALL+130+(r.grow||0)*.4);
+  if(r.kind==='lead')officeCabinetBg(ctx,r);
   // the room's outline, broken for the door
   const dw=46;
   ctx.beginPath();ctx.moveTo(r.door-dw/2,r.y+r.h);ctx.lineTo(r.x+6,r.y+r.h);ctx.arcTo(r.x,r.y+r.h,r.x,r.y,6);
@@ -559,6 +766,63 @@ function officeWindow(ctx,x,y,w,h,st){
   if(!night){ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+16,y+15,5,0,6.283);ctx.arc(x+22,y+13,6,0,6.283);ctx.arc(x+28,y+16,4.5,0,6.283);ctx.fill()}
   else{ctx.fillStyle='#fde68a';ctx.beginPath();ctx.arc(x+w-13,y+9,4,0,6.283);ctx.fill()}
   ofRR(ctx,x,y,w,h,3);ofInk(ctx,2.2);ctx.beginPath();ctx.moveTo(x+w/2,y);ctx.lineTo(x+w/2,y+h);ofInk(ctx,1.6);
+}
+/* The filing cabinet: where everything your agents made is kept. It stands in your
+   agent's office, a paper flies into it when an agent saves a file, and a tap (or the
+   bar's Files button) opens the list, each with Open and Download. */
+var OF_WRITES=new Set(['write_file','save_report','save_asset','Write','Edit','NotebookEdit']);
+function officeCabinetAt(){
+  const r=officeRoomOf('lead');if(!r)return null;
+  return {x:r.x+14,y:r.y+OF_WALL+56+(r.grow||0)*.3,w:34,h:62};
+}
+function officeCabinetBg(ctx,r){
+  const c=officeCabinetAt();if(!c)return;
+  ctx.fillStyle='#8b95a7';ofRR(ctx,c.x,c.y,c.w,c.h,3);ctx.fill();ofInk(ctx,2.2);
+  for(let i=0;i<3;i++){const y=c.y+5+i*19;
+    ctx.fillStyle='#aeb7c6';ofRR(ctx,c.x+4,y,c.w-8,15,2);ctx.fill();ofInk(ctx,1.4);
+    ctx.fillStyle=OF_INK;ctx.fillRect(c.x+c.w/2-5,y+6,10,2.4)}
+  ofFont(ctx,8.5,900);ctx.fillStyle=OF_INK;ctx.textAlign='center';ctx.textBaseline='top';
+  ctx.fillText('FILES',c.x+c.w/2,c.y+c.h+3);
+}
+function officeMeetingDraw(ctx){
+  const O=OFFICE;if(!O.meeting)return;const r=officeRoomOf('meeting');if(!r)return;
+  const cx=r.x+r.w/2,cy=r.y+OF_WALL+92+(r.grow||0)*.45;
+  ofFont(ctx,10.5,900);const t=O.meeting.flow.length>22?O.meeting.flow.slice(0,21)+'…':O.meeting.flow;
+  const w=Math.max(60,ctx.measureText(t).width+16);
+  ctx.fillStyle='#fde68a';ofRR(ctx,cx-w/2,cy-9,w,18,3);ctx.fill();ofInk(ctx,1.6);
+  ctx.fillStyle=OF_INK;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,cx,cy+.5);
+}
+function officeStuckDraw(ctx,p){
+  // under its own name tag, so it cannot be read as the neighbour's
+  ofFont(ctx,9.5,900);const t='✗ '+(p.stuckWhy||'stuck'),w=ctx.measureText(t).width+12;
+  const x=p.home.x-w/2,y=p.home.y+47;
+  ctx.fillStyle='#ef4444';ofRR(ctx,x,y,w,16,4);ctx.fill();ofInk(ctx,1.6);
+  ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,p.home.x,y+8.5);
+}
+function officeCabinetDraw(ctx){
+  const O=OFFICE,c=officeCabinetAt();if(!c||!O.newFiles)return;
+  const bx=c.x+c.w-2,by=c.y+2;
+  ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(bx,by,9,0,6.283);ctx.fill();ofInk(ctx,1.8);
+  ofFont(ctx,9.5,900);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(O.newFiles>9?'9+':String(O.newFiles),bx,by+.5);
+}
+async function officeFiles(open){
+  const O=OFFICE,el=O.w&&O.w.el.querySelector('.of-files');if(!el)return;
+  if(open===undefined)open=el.hidden;
+  el.hidden=!open;if(!open)return;
+  O.newFiles=0;officeKick();
+  el.innerHTML='<p class="mut">looking…</p>';
+  let d;try{d=await apiJSON('/api/files/recent?limit=40')}catch(e){el.innerHTML=`<p class="mut">${esc(e.message||String(e))}</p>`;return}
+  const ago=t=>{const s=(Date.now()/1000-t);return s<3600?Math.max(1,Math.round(s/60))+' min ago':s<86400?Math.round(s/3600)+' h ago':Math.round(s/86400)+' d ago'};
+  const files=d.files||[];
+  el.innerHTML=`<div class="of-fhead"><b>What your agents made</b>
+      <button class="endbtn of-fx" aria-label="Close">✕</button></div>
+    ${files.length?files.map(f=>`<div class="of-fitem">${fileChipHTML(f)}<small>${esc(ago(f.mtime))}${f.rel.includes('/')?' · '+esc(f.rel.split('/').slice(0,-1).join('/')):''}</small></div>`).join('')
+      :'<p class="mut">Nothing yet. Ask your agent for a deck or a report and it lands here.</p>'}
+    <button class="endbtn of-fall">Open the Files app</button>`;
+  el.querySelector('.of-fx').onclick=()=>officeFiles(false);
+  el.querySelector('.of-fall').onclick=()=>openApp('files');
+  fileChipWire(el);
 }
 function officePlant(ctx,x,y,col){
   ctx.fillStyle='#16a34a';[[-7,-18,8],[6,-20,8],[0,-28,9],[-2,-14,7]].forEach(q=>{ctx.beginPath();ctx.ellipse(x+q[0],y+q[1],q[2]*.62,q[2],q[0]*.05,0,6.283);ctx.fill();ofInk(ctx,1.6)});
@@ -601,7 +865,7 @@ function officeDraw(){
   const O=OFFICE,ctx=O.ctx;if(!ctx||!O.L)return;
   const k=O.dpr*O.s;
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,O.cv.width,O.cv.height);
-  if(O.bg)ctx.drawImage(O.bg,0,0);
+  if(O.bg&&O.bg.width&&O.bg.height)ctx.drawImage(O.bg,0,0);
   ctx.setTransform(k,0,0,k,0,0);
   officeBoard(ctx);
   // desks in depth order, each with its owner if the owner is sitting at it
@@ -610,6 +874,14 @@ function officeDraw(){
   // everybody on their feet, back to front
   Object.values(O.people).filter(p=>p.mode!=='seat').sort((a,b)=>a.y-b.y).forEach(p=>officeSprite(ctx,p,p.x,p.y,false));
   if(O.pet)officePetDraw(ctx);
+  officeCabinetDraw(ctx);
+  officeMeetingDraw(ctx);
+  Object.values(O.people).forEach(p=>{if(p.stuck)officeStuckDraw(ctx,p)});
+  // your agent in several conversations at once: a count badge by its head
+  const chats=Object.keys(O.convWho).length,lead=O.people['@agent'];
+  if(lead&&chats>1){const h=officeHead(lead),bx=h.x+26,by=h.y-18;
+    ctx.fillStyle='#ef4444';ctx.beginPath();ctx.arc(bx,by,11,0,6.283);ctx.fill();ofInk(ctx,2);
+    ofFont(ctx,10.5,900);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('×'+chats,bx,by+.5)}
   O.papers.forEach(pp=>officePaperDraw(ctx,pp));
   O.bursts.forEach(b=>officeBurstDraw(ctx,b));
   O.pops.forEach(b=>officePopDraw(ctx,b));
@@ -623,11 +895,23 @@ function officeBoard(ctx){
   const O=OFFICE,r=officeRoomOf('lead');if(!r||!O.view.office.decor.includes('whiteboard'))return;
   const x=r.x+r.w*.62,y=r.y+6,w=r.w*.34,h=72;
   ctx.fillStyle='#ffffff';ofRR(ctx,x,y,w,h,4);ctx.fill();ofInk(ctx,2.6);
-  ofFont(ctx,10,900);ctx.fillStyle='#ef4444';ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('MISSIONS',x+8,y+7);
-  const names=Object.keys(O.missions).slice(0,3);
+  ofFont(ctx,10,900);ctx.fillStyle='#ef4444';ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText('RIGHT NOW',x+8,y+7);
+  const rows=officeNow();
   ofFont(ctx,10.5,700);ctx.fillStyle='#1d4ed8';
-  if(!names.length){ctx.fillStyle='#94a3b8';ctx.fillText('nothing running',x+8,y+26)}
-  names.forEach((n,i)=>{const t=n.length>18?n.slice(0,17)+'…':n;ctx.fillText('▸ '+t,x+8,y+24+i*15)});
+  if(!rows.length){ctx.fillStyle='#94a3b8';ctx.fillText('nothing running',x+8,y+26)}
+  const cap=w-16,fit=t=>{while(t.length>4&&ctx.measureText(t).width>cap)t=t.slice(0,-2)+'…';return t};
+  rows.slice(0,3).forEach((t,i)=>ctx.fillText(fit(i===2&&rows.length>3?`+${rows.length-2} more`:t),x+8,y+24+i*15));
+}
+/* Everything running at once, one line each: missions first, then conversations your
+   agent is in, then how many specialists are at their desks working. The line under
+   the title says the same in words (officeLine). */
+function officeNow(){
+  const O=OFFICE,rows=Object.keys(O.missions).map(n=>'▸ '+n);
+  const chats=Object.keys(O.convWho).length;
+  if(chats)rows.push(`✎ ${chats} ${chats===1?'chat':'chats'} going`);
+  const busy=Object.values(O.people).filter(p=>p.busy&&p.key!=='@agent').length;
+  if(busy)rows.push(`⚙ ${busy} at work`);
+  return rows;
 }
 function officeDesk(ctx,p){
   const O=OFFICE,x=p.home.x,y=p.home.y,col=O.view.colors[p.room.color]||O.view.style.accent,st=O.view.style;
@@ -669,7 +953,10 @@ function officeSprite(ctx,p,x,feet,seated){
   const walking=p.mode==='walk'&&!still;
   const blink=!still&&((t*.29+ph)%1)<.05;
   const frame=still?0:walking?(Math.floor(t*7)%2?3:2):p.hand?2:(p.busy&&seated)?(Math.floor(t*5+ph)%2?3:2):blink?1:0;
-  const bob=walking?Math.floor(t*7)%2:(!still&&Math.sin(t*1.5+ph)>.4?1:0);
+  let bob=walking?Math.floor(t*7)%2:(!still&&Math.sin(t*1.5+ph)>.4?1:0);
+  // tapped: a little hop, two quick bounces over half a second
+  if(p.hop&&!still){const a=(performance.now()-p.hop)/520;
+    if(a<1)bob=Math.round(Math.abs(Math.sin(a*Math.PI*2))*(a<.5?5:2.5));else p.hop=0}
   const k=O.dpr*O.s, dx=Math.round(x*k)-8*u, dy=Math.round(feet*k)-26*u-bob*u;
   if(!seated){ctx.fillStyle='#00000033';ctx.beginPath();ctx.ellipse(x,feet+1,15,4,0,0,6.283);ctx.fill()}
   if(!img)return;
@@ -776,12 +1063,41 @@ function officePetDraw(ctx){
 function officeTap(e){
   const O=OFFICE;if(!O.L)return;
   const r=O.cv.getBoundingClientRect(),x=(e.clientX-r.left)/O.s,y=(e.clientY-r.top)/O.s;
+  const c=officeCabinetAt();
+  if(c&&x>=c.x-6&&x<=c.x+c.w+6&&y>=c.y-6&&y<=c.y+c.h+14)return officeFiles(true);
   const hit=Object.values(O.people).find(p=>{const h=officeHead(p);return Math.abs(x-h.x)<34&&y>h.y-34&&y<h.y+60});
   if(!hit)return;
   const i=O.w.el.querySelector('.of-chat .cp-in');
   if(hit.key!=='@agent'&&i){i.value='@'+hit.key+' ';i.focus();
     O.w.el.querySelector('.of-wrap').classList.add('chat-open')}
-  officeSay(hit,hit.busy?'busy — ask away':(hit.key==='@agent'?'what shall we do?':'yes?'),'say',2200);
+  hit.hop=performance.now();officePop(hit,hit.busy?'…':'!');
+  officeSay(hit,officeGreet(hit),'say',2600);
+}
+/* What an agent says when it is tapped. Its own voice: the opener is picked from its
+   name (so two agents never answer alike), the rest from what it is FOR, read off its
+   description. A second tap gets the next line rather than the same one again. */
+var OF_OPENERS=['Yes?','Hm?','You rang?','Yep!','Hey!','Mm-hm?','Oh, hi!','Right here.'];
+var OF_ROLES=[
+  [/research|find|search|dig|source/,['Point me at a question and I\'ll dig.','Want me to look something up?','I\'ve got a hunch about that one.']],
+  [/writ|draft|copy|blog|email|edit/,['Need words for something?','I can draft that in a minute.','Tell me the tone and I\'ll write it.']],
+  [/valid|review|check|test|qa|audit|verif/,['Show me what needs checking.','I\'ll find the hole in it.','Anything I should double-check?']],
+  [/deck|slide|present|pitch/,['Got something that needs slides?','I\'ll make it look sharp.','Ten slides or three?']],
+  [/tool|smith|build|code|engineer|develop|script|app/,['What should I build?','I\'ve got my tools out.','Give me a spec and I\'ll make it.']],
+  [/analy|number|data|metric|report|financ/,['Got numbers for me?','Let\'s see what the data says.','I love a good spreadsheet.']],
+  [/watch|monitor|alert|track|keep an eye/,['What should I keep an eye on?','Nothing slips past me.','I\'m watching.']],
+  [/mail|inbox|calendar|meeting|assist|schedul/,['Want me to sort your inbox?','Shall I check your day?','What can I take off your plate?']],
+  [/design|look|brand|ui|image/,['Want something to look better?','I have opinions about colours.','Show me the sketch.']],
+];
+function officeGreet(p){
+  if(p.busy)return ['Busy, but ask away.','Mid-task. What is it?','One sec, nearly there.'][(p.taps=(p.taps||0)+1)%3];
+  const n=(p.taps=(p.taps||0)+1)-1, h=Math.floor(ofHash(p.key)*1e6);
+  const open=OF_OPENERS[(h+n)%OF_OPENERS.length];
+  if(p.key==='@agent')return [open+' What shall we do?',open+' I\'ll get the team on it.',open+' Say the word.'][(h+n)%3];
+  const text=(p.label+' '+((OFFICE.about||{})[p.key]||'')).toLowerCase();
+  const role=OF_ROLES.find(r=>r[0].test(text));
+  if(role)return open+' '+role[1][(h+n)%role[1].length];
+  const what=String((OFFICE.about||{})[p.key]||'').split(/[.;\n]/)[0].trim().replace(/^(i am|i'm|an?|the)\s+/i,'');
+  return open+(what?' '+what.charAt(0).toUpperCase()+what.slice(1,70)+'. That\'s me.':' What do you need?');
 }
 function officeEmpty(){
   const el=OFFICE.w&&OFFICE.w.el.querySelector('.of-empty');if(!el)return;
@@ -977,3 +1293,5 @@ async function officeSave(patch){
     OFFICE.view=d;officeLayout();officeDesignPaint();
   }catch(e){toast('could not change the office')}
 }
+// first paint: 01b ran before this file existed, so the scene starts itself
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();

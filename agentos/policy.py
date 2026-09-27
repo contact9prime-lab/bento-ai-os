@@ -812,6 +812,18 @@ class PDP(usersmod.Scoped):
                         f"{principal.label} was quarantined: {reason}.",
                         rule="quarantined")
 
+    def _swarm_opens(self, principal: Principal, action: str, resource: str, ctx: dict) -> bool:
+        """Does swarm let the lead start this specialist (or this huddle) without asking?"""
+        if principal.kind != "user" or team_talk(self.cfg) != "swarm":
+            return False
+        if ctx.get("surface") in ("task", "webhook"):
+            return False                 # nobody is there: unattended work still asks
+        kind, _, names = resource.partition(":")[2].partition("/")
+        if (action, kind) not in (("agent.invoke", "subagent"), ("agent.huddle", "huddle")):
+            return False                 # run_flow and anything else keep their own question
+        names = [n for n in names.split(",") if n]
+        return bool(names) and "*" not in names and all("@" not in n for n in names)
+
     def _invoke_reason(self, resource: str) -> str:
         """What approving this invocation actually hands over.
 
@@ -1290,6 +1302,16 @@ class PDP(usersmod.Scoped):
         # denial with the reason in the ledger — the same shape a flow's ungranted
         # roster takes, and for the same reason: this must not become a way for
         # something running alone to acquire an actor the user never approved.
+        #
+        # Swarm is the person saying "my agents work together without asking me" (asked
+        # for in those words: "swarm is swarm, so that's open"). Handing a specialist a
+        # task is the first thing that means, so on a surface somebody is at, swarm opens
+        # the lead's hand-overs and huddles with YOUR OWN specialists. A linked team's
+        # agent (name@link), a flow and an unattended run are still asked, and a deny row
+        # still wins because grants are read before this default.
+        if action in ("agent.invoke", "agent.huddle") and autonomy != "full" \
+                and self._swarm_opens(principal, action, resource, ctx):
+            return Decision("allow", rule="swarm")
         if action in ("agent.invoke", "agent.huddle") and autonomy != "full":
             return Decision("ask", reason or self._invoke_reason(resource),
                             rule="default", grant_offer=offer)

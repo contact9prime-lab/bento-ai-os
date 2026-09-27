@@ -248,7 +248,7 @@ class Scheduler(usersmod.Scoped):
                 # do, so a forwarder forwards them too — otherwise "forward
                 # everything" would quietly exclude everything that runs unattended.
                 result_text, _run = await execmod.forward(
-                    engine, prompt, self.cfg, str(_cfgmod.AGENTOS_HOME / "workspace"))
+                    engine, prompt, self.cfg, execmod.default_workspace(self.cfg))
                 result_text = result_text or "(no output)"
                 steps = 1
             else:

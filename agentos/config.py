@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 
+from . import modelcatalog as _mc
+
 AGENTOS_HOME = Path(os.environ.get("AGENTOS_HOME", Path.home() / ".agentos"))
 CONFIG_PATH = AGENTOS_HOME / "config.json"
 DB_PATH = AGENTOS_HOME / "agentos.db"
@@ -74,20 +76,19 @@ DEFAULTS = {
             "enabled": False,
             "base_url": "https://api.anthropic.com",
             "api_key": "",
-            "models": ["claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5-20251001"],
+            "models": _mc.suggested("anthropic"),
         },
         "openai": {
             "enabled": False,
             "base_url": "https://api.openai.com/v1",
             "api_key": "",
-            "models": ["gpt-4o", "gpt-4o-mini"],
+            "models": _mc.suggested("openai"),
         },
         "openrouter": {  # one key, hundreds of models (OpenAI-compatible)
             "enabled": False,
             "base_url": "https://openrouter.ai/api/v1",
             "api_key": "",
-            "models": ["anthropic/claude-sonnet-4.5", "openai/gpt-4o",
-                       "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct"],
+            "models": _mc.suggested("openrouter"),
         },
         "custom": {  # any OpenAI-compatible endpoint (LM Studio, vLLM, Groq, ...)
             "enabled": False,
@@ -99,7 +100,7 @@ DEFAULTS = {
             "enabled": False,
             "base_url": "https://generativelanguage.googleapis.com",
             "api_key": "",
-            "models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+            "models": _mc.suggested("google"),
         },
         # DeepSeek and Moonshot (Kimi) are their own front doors rather than
         # OpenRouter entries, because the reason to reach for either is usually price
@@ -111,13 +112,13 @@ DEFAULTS = {
             "enabled": False,
             "base_url": "https://api.deepseek.com/v1",
             "api_key": "",
-            "models": ["deepseek-chat", "deepseek-reasoner"],
+            "models": _mc.suggested("deepseek"),
         },
-        "moonshot": {  # Kimi. `kimi-k2` reasons and calls tools; the k1.5 line is older
+        "moonshot": {  # Kimi
             "enabled": False,
             "base_url": "https://api.moonshot.ai/v1",
             "api_key": "",
-            "models": ["kimi-k2-0711-preview", "moonshot-v1-128k", "moonshot-v1-32k"],
+            "models": _mc.suggested("moonshot"),
         },
     },
     # image generation: provider auto|google|openai|pollinations; model optional

@@ -65,6 +65,17 @@ body.immersive #movement,body.immersive #crew{position:absolute;inset:0;width:10
    greeting in the upper third must not. */
 body.immersive.imm-crew #wall.has::after{background:linear-gradient(rgba(4,5,8,.0) 42%,rgba(4,5,8,.20))}
 body.immersive.imm-crew #wall.has::before{opacity:.03}
+/* The Office scene: the office itself, in a band above the dock, behind every window.
+   View only (the wall takes no pointer); the dock height is measured by 00-sui.js
+   for SUI, and 96px clears the floating dock everywhere else. */
+body.immersive #office-scene{position:absolute;left:0;right:0;top:42%;bottom:96px;
+  display:flex;justify-content:center;align-items:flex-end;pointer-events:none}
+body.immersive #office-scene .of-scroll{width:min(1180px,94vw);height:100%;display:flex;align-items:flex-end;
+  justify-content:center;overflow:hidden}
+body.immersive #office-scene canvas{display:block;border-radius:var(--r-lg,14px);
+  box-shadow:0 18px 50px color-mix(in srgb,var(--bg) 60%,transparent)}
+body.immersive.imm-office #wall.has::after{background:linear-gradient(rgba(4,5,8,.0) 42%,rgba(4,5,8,.20))}
+body.immersive.dev-mobile #office-scene{display:none}
 body.immersive.imm-movement #wall.has::after{background:linear-gradient(rgba(4,5,8,.0),rgba(4,5,8,.12))}
 body.immersive.imm-movement #wall.has::before{opacity:.035}
 

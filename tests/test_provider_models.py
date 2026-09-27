@@ -199,5 +199,10 @@ def test_anthropic_is_not_asked_because_it_has_no_such_endpoint(monkeypatch):
                                        "base_url": "https://api.anthropic.com",
                                        "models": ["claude-sonnet-5"]}}}
     ids = [m["id"] for m in asyncio.run(pr.available_models(cfg))]
-    assert ids == ["anthropic/claude-sonnet-5"]
+    # the person's own first; this release's suggestions after it (Anthropic cannot
+    # list its models, so the catalogue is the only way a new one reaches the picker)
+    from agentos import modelcatalog
+    assert ids[0] == "anthropic/claude-sonnet-5"
+    assert ids[1:] == [f"anthropic/{m}" for m in modelcatalog.suggested("anthropic")
+                       if m != "claude-sonnet-5"]
     assert not called

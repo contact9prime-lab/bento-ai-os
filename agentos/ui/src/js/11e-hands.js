@@ -21,7 +21,7 @@ async function renderHands(){
   const box=document.getElementById('hands-list');if(!box)return;
   // apiJSON, never a bare .json(): a server older than the page answers 404 with JSON, and
   // reading that as the list threw later and left "loading…" on screen for good
-  try{HANDS.data=await apiJSON('/api/hands')}catch(e){box.innerHTML='<p class="mut">could not load executors — '+esc(e.message)+'</p>';return}
+  try{HANDS.data=await apiJSON('/api/hands')}catch(e){box.innerHTML='<p class="mut">could not load executors: '+esc(e.message)+'</p>';return}
   const d=HANDS.data;
   box.innerHTML=`<div class="hands-top"><button class="pact" onclick="handsEdit('')">＋ New executor</button></div>`
     +d.profiles.map(p=>`<div class="hands-card" data-name="${esc(p.name)}">
@@ -64,11 +64,11 @@ function handsPaintEditor(){
       <label class="tlk-chk"><input type="radio" name="he-tm" value="all" ${every?'checked':''}><span>Every tool</span></label>
       <label class="tlk-chk"><input type="radio" name="he-tm" value="some" ${every?'':'checked'}><span>Only the ones ticked</span></label>
       ${every?'':`<div class="hands-groups">${groups}</div>`}
-      ${shell?'<p class="mut tlk-why">Includes a shell. A command line reaches whatever the machine’s folder jail allows, not only the folders below — leave the shell tools out to make the folders a real limit.</p>':''}</div>
+      ${shell?`<p class="mut tlk-why">Includes a shell, which can reach any folder the machine allows, beyond the list below. ${pInfo('Leave the shell tools out if you want the folder list to be a real limit.')}</p>`:''}</div>
     <div class="hands-sec"><b>Folders</b>
       <div id="he-folders">${s.folders.map((f,i)=>`<div class="hands-folder"><input data-fi="${i}" value="${esc(f.path)}" placeholder="~/projects or /srv/data" autocomplete="off" autocapitalize="off" spellcheck="false">
         <select data-fm="${i}"><option value="rw" ${f.mode==='rw'?'selected':''}>read-write</option><option value="ro" ${f.mode==='ro'?'selected':''}>read-only</option></select>
-        <button class="endbtn" aria-label="Remove this folder" onclick="handsFolder(${i})">✕</button></div>`).join('')||'<p class="mut tlk-why">No folders — the file tools reach nothing.</p>'}</div>
+        <button class="endbtn" aria-label="Remove this folder" onclick="handsFolder(${i})">✕</button></div>`).join('')||'<p class="mut tlk-why">No folders yet, so the file tools can\'t reach anything.</p>'}</div>
       <div class="tlk-actions"><button class="endbtn" onclick="handsFolder(-1,'')">＋ Folder</button>
         <button class="endbtn" onclick="handsFolder(-1,'@workspace')">＋ Workspace</button>
         <button class="endbtn" onclick="handsFolder(-1,'*')">＋ Anywhere the machine allows</button></div></div>
@@ -118,7 +118,7 @@ async function handsSave(){
 async function handsDelete(name){
   if(!await osConfirm('Delete the executor “'+name+'”?','Any agent using it goes back to the default executor.',{danger:true,confirmText:'Delete'}))return;
   const r=await teamApi('/api/hands/'+encodeURIComponent(name),'DELETE');
-  if(r){toast('deleted'+(r.moved_to_default?' — '+r.moved_to_default+' agent(s) moved to default':''));renderHands()}
+  if(r){toast('deleted'+(r.moved_to_default?'. '+r.moved_to_default+' agent(s) moved to default':''));renderHands()}
 }
 
 /* ---------------- Agents: the lead, the others, and their hands ---------------- */
@@ -131,7 +131,7 @@ async function renderAgentsList(){
   try{AGENTS.data=await apiJSON('/api/agents')}catch(e){
     // the editor saves through /api/subagents, which is older than this list: adding an
     // agent must not depend on the overview having loaded
-    box.innerHTML='<p class="mut">could not load agents — '+esc(e.message)+'</p>'
+    box.innerHTML='<p class="mut">could not load agents: '+esc(e.message)+'</p>'
       +'<div class="tlk-actions"><button class="pact" onclick="agentEdit(\'\')">＋ New agent</button></div>';return}
   const d=AGENTS.data,profs=d.profiles||[];
   const opts=cur=>profs.map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
@@ -147,7 +147,7 @@ async function renderAgentsList(){
   // the very end of a long list, against the last card, off screen when the page opened
   box.innerHTML=`<div class="pgroup"><div class="ag-head"><h3>Your agents</h3>
       <button class="pact ag-new" onclick="agentEdit('')">＋ New agent</button></div>
-    <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} delegates to these. Each has its own soul, and its own brain, hands, permissions and skills.</p>
+    <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} hands work to these. ${pInfo('Each one has its own soul, brain, executor, permissions and skills.')}</p>
     ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
       <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${esc(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
@@ -155,15 +155,15 @@ async function renderAgentsList(){
       ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
       <div class="ag-rows">
         <div><span class="ag-k">Look</span><button class="endbtn" onclick="avatarEdit('${esc(a.key)}')">Change…</button><button class="endbtn" onclick="avatarDesignAsk('${esc(a.key)}')">✦ Describe it</button></div>
-        <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">— ${esc(a.brain.note)}</span>`:''}</div>
+        <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">(${esc(a.brain.note)})</span>`:''}</div>
         <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
-        <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet — it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
+        <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet, so it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
           <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
         <div><span class="ag-k">Skills</span>${(a.skills||[]).length?a.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' '):'<span class="mut">none</span>'}</div>
         ${a.asks.length||a.blocked.length?`<div><span class="ag-k">May ask</span>${a.asks.map(esc).join(', ')||'<span class="mut">nobody without asking you</span>'}${a.blocked.length?` <span class="mut">· blocked: ${a.blocked.map(esc).join(', ')}</span>`:''}</div>`:''}
         ${a.missions.length?`<div><span class="ag-k">Missions</span>${a.missions.map(esc).join(', ')}</div>`:''}
         ${(a.links||[]).filter(l=>l.they_may_ask||(l.their_missions||[]).length).map(l=>`<div><span class="ag-k">${esc(l.label)}</span>may ask it${l.standing?` · ${l.standing} standing permission${l.standing===1?'':'s'}`:''}${(l.their_missions||[]).length?' · their missions: '+l.their_missions.map(esc).join(', '):''}</div>`).join('')}
-      </div></div>`}).join('')||'<p class="mut">No other agents yet — press ＋ New agent and describe the first one in a sentence.</p>'}</div>`;
+      </div></div>`}).join('')||'<p class="mut">No other agents yet. Press ＋ New agent and describe one in a sentence.</p>'}</div>`;
 }
 async function agentEdit(name){
   // the Missions editor's wizard, borrowed: one way to define an agent, not two
@@ -179,7 +179,7 @@ var AG_EDGE={brain:'var(--acc)',hands:'color-mix(in srgb,var(--txt) 55%,transpar
   talk:'#4ade80',blocked:'#f87171',delegate:'#a78bfa',roster:'#fbbf24',link:'#60a5fa'};
 async function renderAgentsGraph(){
   const box=document.getElementById('agents-graph');if(!box)return;
-  let g;try{g=await apiJSON('/api/agents/graph')}catch(e){box.textContent='could not load the map — '+e.message;return}
+  let g;try{g=await apiJSON('/api/agents/graph')}catch(e){box.textContent='could not load the map: '+e.message;return}
   box.classList.remove('mut');
   const cols=[[],[],[],[]];g.nodes.forEach(n=>cols[AG_COLS[n.kind]??3].push(n));
   const W=190,GX=70,GUT=60,H=46,GY=12,X=[0,W+GX+GUT,2*(W+GX)+GUT,3*(W+GX)+GUT];

@@ -106,3 +106,18 @@
 
 /* a link inside Settings is one of ours, not the browser's blue underline */
 .prefs a{color:var(--acc)}
+
+/* The ⓘ beside a setting's name: the rest of what there is to know, on hover, focus
+   or tap. Real size on a touch screen (the --tap floor), never an invisible halo. */
+.pinfo{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin:0 0 0 6px;
+  padding:0;border-radius:50%;border:1px solid color-mix(in srgb,var(--dim) 55%,transparent);background:transparent;
+  color:var(--dim);font:italic 700 10px/1 Georgia,serif;vertical-align:1px;cursor:help;flex:0 0 auto}
+.pinfo:hover,.pinfo:focus-visible{color:var(--txt);border-color:var(--acc);outline:none}
+body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical-align:middle}
+#pinfo-tip{position:fixed;z-index:99990;padding:9px 12px;border-radius:var(--r-md,10px);background:var(--bg3);
+  color:var(--txt);border:1px solid var(--line);box-shadow:var(--el-4);font-size:var(--fs-sm);line-height:1.45;
+  pointer-events:none;width:max-content}
+#pinfo-tip[hidden]{display:none}
+/* the label keeps its own line, and the ⓘ sits on it rather than under it */
+.prow .pl>b:has(+.pinfo),.acct-door .pl>b:has(+.pinfo){display:inline}
+.prow .pl>.pinfo+small{display:block}

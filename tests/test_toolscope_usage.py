@@ -208,8 +208,10 @@ def test_user_pricing_overrides_the_shipped_table():
 
 
 def test_cost_arithmetic():
-    # $3/M in, $15/M out
-    assert usage.cost({}, "anthropic/claude-sonnet-5", 1_000_000, 100_000) == pytest.approx(4.5)
+    # an older Sonnet: $3/M in, $15/M out
+    assert usage.cost({}, "anthropic/claude-sonnet-4-6", 1_000_000, 100_000) == pytest.approx(4.5)
+    # Sonnet 5 at Anthropic's published $2/M in, $10/M out (refreshed with the catalogue)
+    assert usage.cost({}, "anthropic/claude-sonnet-5", 1_000_000, 100_000) == pytest.approx(3.0)
 
 
 def test_a_turn_is_recorded_with_its_cost(tmp_path):

@@ -128,6 +128,13 @@ card the first time a pair talks:
 **Allow & remember** fills that cell, so the matrix builds itself from your answers. Cells are
 ordinary permissions, so the **Permissions** app lists and revokes the same rows.
 
+A remembered answer lasts until you take it back. It has no expiry, survives a restart and
+applies wherever you talk to your agent (the desk, Telegram, WhatsApp, the terminal). The same
+goes for *Allow & remember* when your agent hands a specialist a task. It ends when you
+revoke it in Permissions, set the cell back to *ask*, or delete the agent: a deleted agent's
+permissions go with it, so a new agent with the same name starts from nothing. Inside a
+mission only the mission's own rules count.
+
 ![The matrix in Settings: four agents, one allowed pair and one blocked pair](screenshots/team-matrix.png)
 
 **The mode switch** (Settings, or `bento team talk`) has three settings:
@@ -140,6 +147,13 @@ ordinary permissions, so the **Permissions** app lists and revokes the same rows
 
 Swarm is the matrix switched wide open. It is not a second system: every limit below still
 holds, every message is still a run and a ledger row, and a cell you blocked stays blocked.
+
+Swarm also opens your lead agent's hand-overs. When your agent gives one of your specialists
+a task, or pulls a few of them into a huddle, it no longer asks you first. Some things still
+ask: an agent on a linked team, starting a mission, and anything that runs on a schedule or
+from a webhook, because nobody is there to watch it. Blocking a specialist in Permissions
+still stops it. Under *Ask me* your lead asks once per specialist, and *Allow & remember*
+makes that stick.
 
 ### The shape of a conversation, and the limits you set
 

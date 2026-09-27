@@ -21,13 +21,29 @@ Everything in the office moves because something really happened on this machine
 
 | You see | Because |
 |---|---|
-| A **paper flies** from the mission board to a desk, and a **!** pops over the specialist | A mission handed that specialist work, or your agent delegated to it |
+| Your agent **gets up, carries the work over** to a specialist's desk, says what it wants and walks back | Your agent handed that specialist a task |
+| A **paper flies** from the mission board to a desk, and a **!** pops over the specialist | A mission handed that specialist work (a mission's lead has no desk to walk from) |
 | The **monitor lights** in the department's colour and the specialist **types** | Its run started; a tag above its head names the AI provider it is answering on |
 | A **comic burst** ("FETCH!", "SCRIBBLE!") with the real tool name under it | It called that tool |
 | One agent **gets up and walks** across the office to another's desk, asks in a speech balloon, waits for the answer, says thanks and walks back | It asked that colleague something (the team's permission matrix let it) |
 | Agents **gather round the meeting table**, the one talking in a balloon | A huddle started |
-| A **"? needs you"** shout and a raised hand | It is waiting for you to allow a step |
-| **"done ✓"**, and the paper flies back to the board | Its run finished |
+| The specialist **walks the result back** to whoever gave it the work, says "done ✓ here it is" and goes back to its desk | The work your agent handed over is finished |
+| **"done ✓"**, and the paper flies back to the board | A mission's step finished |
+| Two or more specialists **sit round the meeting table**, the mission's name on a card | One mission has them working at the same time. Each goes back to its desk when its part is done |
+| An agent **walks to your agent's office and raises its hand**, "? needs you: write_file · 3 min" | It's waiting for you to allow a step. The minutes count up until you answer, then it goes back to work |
+| A red **✗ timed out** sign under an agent's desk | Its last step failed or ran out of time. It stays until that agent runs again |
+| A paper flies into the **filing cabinet** and a red badge counts up | An agent saved a file. Tap the cabinet to see them all ([files.md](files.md)) |
+| The whiteboard in your agent's office reads **RIGHT NOW**, and a red **×2** sits by your agent's head | Several things are running at once: each mission gets a line, then how many chats your agent is in, then how many specialists are at work |
+| An agent **hops** and answers in a balloon ("You rang? Point me at a question and I'll dig.") | You tapped it. Each agent has its own opener, and the rest comes from what its description says it is for. Tap again for another line. |
+
+![Two specialists at the meeting table with the mission's name on the card](screenshots/office-meeting.png)
+
+![A specialist at your agent's desk with its hand up: "? needs you: write_file"](screenshots/office-escalate.png)
+
+No walk takes longer than about three seconds, however big the office, because a walk
+that finishes long after the thing it shows has happened is showing you the past. If
+your agent is already away from its desk (asking someone, or in a huddle) the work
+flies over on paper instead.
 
 When nothing is happening, everyone sits at their desk, breathing and blinking. **They do
 not wander about for show.** An office where everybody strolls around would look busy
@@ -102,6 +118,14 @@ the same burst in its corner.
   *Describe it*. Departments and who sits where stay in the Office, where you can see the
   desks.
 - **Setup** asks for it in the crew step (below), and you can describe it there too.
+- **As your desktop.** Settings → Appearance → Scene → *Office* draws the whole office
+  under the greeting, behind your windows, so you can see who is working without opening
+  anything. It is the same office: opening the Office app takes it over and closing the
+  app hands it back. You can't tap the desktop picture, so the *Your office* button is
+  still the way in. It stops drawing while a window is maximised or full screen, and a
+  terminal has no wallpaper, so `bento office` is its answer there.
+
+![The Office as the desktop scene: the greeting and the prompt bar above, the office below it with your agent carrying work to a specialist and the whiteboard reading RIGHT NOW](screenshots/office-scene.png)
 
 ![Settings → Appearance → Office: the style, the name on the door, the pet, and a description turned into a greenhouse called The Nursery, with Undo](screenshots/appearance-office.png)
 

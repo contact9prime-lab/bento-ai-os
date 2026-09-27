@@ -28,6 +28,7 @@ function applyImmersive(){
   document.body.classList.toggle('immersive',IMMERSIVE.on);
   document.body.classList.toggle('imm-movement',IMMERSIVE.on&&IMMERSIVE.scene==='movement');
   document.body.classList.toggle('imm-crew',IMMERSIVE.on&&IMMERSIVE.scene==='crew');
+  document.body.classList.toggle('imm-office',IMMERSIVE.on&&IMMERSIVE.scene==='office');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
@@ -38,6 +39,8 @@ function applyImmersive(){
   // unreachable on a first paint, which is the bundle-order trap in a new shape.
   if(typeof MOVEMENT!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop()}
   if(typeof CREW!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();else crewStop()}
+  // the Office scene (24d) loads later still; it starts itself on first paint
+  if(typeof OFFICE_SCENE!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();else officeSceneStop()}
 }
 /* Which scene: 'aurora' (a sky that follows the day), 'movement' (a watch movement
    that shows what is running) or 'crew' (the roster, drawn, working). Per browser,
@@ -45,7 +48,7 @@ function applyImmersive(){
    this value comes out of localStorage, which outlives any release that renames a
    scene, and a desktop that fails to paint because of a stale string is not a
    trade worth making. */
-var IMMERSIVE_SCENES=['aurora','movement','crew'];
+var IMMERSIVE_SCENES=['aurora','movement','crew','office'];
 function setImmersiveScene(scene){
   scene=IMMERSIVE_SCENES.indexOf(scene)<0?'aurora':scene;
   IMMERSIVE.scene=scene;localStorage.setItem('immersive.scene',scene);

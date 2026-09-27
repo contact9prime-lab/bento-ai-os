@@ -36,19 +36,15 @@ async function renderAgentShare(){
     '<span class="mut">no apps to ship</span>';
   const sign = d.can_sign
     ? `<label class="ck"><input type="checkbox" id="ags-sign"> sign it with this machine's key</label>`
-    : `<span class="mut">unsigned (fine for your own shares) — <code>bento registry keygen</code> would let you sign</span>`;
+    : `<span class="mut">unsigned, which is fine for your own shares ${pInfo('Run bento registry keygen on this machine to sign what you share.')}</span>`;
   box.innerHTML = `<h3>Share this agent</h3>
-    <div class="ghint">Package what makes ${esc(d.agent_name)} <em>${esc(d.agent_name)}</em> —
-      ${d.skills.length} skill(s), ${d.subagents.length} teammate(s), ${d.flows.length} flow(s)
-      and the shapes of ${d.mcp_servers.length} MCP server(s) — into one file anyone can fork.
-      What never travels: your memory, conversations, knowledge graph, and every key and
-      secret. A credential found in the bundle refuses the share outright; there is no
-      override, because a shared credential cannot be unshared.</div>
+    <div class="ghint">Pack ${esc(d.agent_name)}'s ${d.skills.length} skill(s), ${d.subagents.length} teammate(s),
+      ${d.flows.length} flow(s) and ${d.mcp_servers.length} MCP server setup(s) into one file anyone can fork.
+      ${pInfo("Your memory, conversations, knowledge graph, keys and secrets stay here. If a credential turns up in the bundle, the share stops, and there's no override.")}</div>
     <div class="prow"><input id="ags-name" placeholder="a name for it (default: ${esc(d.agent_name)})"
         autocomplete="off" class="ags-grow">
       <input id="ags-desc" placeholder="one sentence on what it is for" autocomplete="off" class="ags-grow"></div>
-    <div class="prow"><div class="pl"><small>Ship apps with it? Each is a choice — an app is the
-      piece most likely to have something personal built in.</small><div>${apps}</div></div></div>
+    <div class="prow"><div class="pl"><small>Include apps? Check each one, since apps often hold something personal.</small><div>${apps}</div></div></div>
     <div class="prow">
       <label class="ck"><input type="checkbox" id="ags-soul"> include the soul${d.has_soul?'':' <span class="mut">(none written yet)</span>'}</label>
       ${sign}
@@ -56,20 +52,13 @@ async function renderAgentShare(){
       <button class="endbtn" onclick="agsShare()">Build the bundle</button>
     </div>
     <div id="ags-report"></div>
-    <h3 style="margin-top:14px">Host it — "it stays with me, take it"</h3>
-    <div class="ghint">Sharing a file and hosting a share are two different intentions.
-      A fork of a published file is a copy the taker owns forever. Hosting keeps the
-      agent <em>with you</em>: peers take the <b>current</b> version through an
-      authenticated MCP door on this machine, each take is a ledger row, and revoking a
-      peer's key — here or in Permissions — ends the arrangement. The same leak scan
-      runs on every single take.</div>
+    <h3 style="margin-top:14px">Host it</h3>
+    <div class="ghint">Let people you give a key to take the latest version from this machine.
+      ${pInfo("A published file is a copy they keep. Hosting logs every take, runs the leak scan each time, and ends when you revoke their key.")}</div>
     <div id="ags-host"><p class="mut">checking…</p></div>
     <h3 style="margin-top:14px">Fork a shared agent</h3>
-    <div class="ghint">Point at a <code>${esc(d.well_known)}</code> — a URL, <code>owner/repo[@ref]</code>
-      (discovery: GitHub topic <code>${esc(d.topic)}</code>), or a file. You read exactly what it
-      contains and the permission ceiling enabling it all would reach, then fork. The fork
-      writes <b>zero</b> permissions: every flow lands disabled, MCP servers land off with
-      placeholder credentials for you to fill, and nothing of yours is overwritten.</div>
+    <div class="ghint">Paste a URL, <code>owner/repo</code> or a file, read what's inside, then fork it.
+      ${pInfo(`Look for ${d.well_known} files under the GitHub topic ${d.topic}. A fork grants no permissions: flows and MCP servers arrive switched off, and nothing of yours is overwritten.`)}</div>
     <div class="prow">
       <input id="ags-src" placeholder="owner/repo · https://… · ${esc(d.well_known)}" autocomplete="off" class="ags-grow">
       <input id="ags-key" placeholder="peer key (only for a hosted share)" autocomplete="off" class="ags-key">
@@ -77,9 +66,7 @@ async function renderAgentShare(){
       <label class="endbtn" style="cursor:pointer">from a file<input type="file" accept=".json"
         style="display:none" onchange="agsFromFile(this)"></label>
     </div>
-    <div class="sub mut">With a key, the source is another machine hosting its share
-      (<code>http://host:port</code>) — you take their live version through their door,
-      and they can end it. Without one, it is a published file.</div>
+    <div class="sub mut">Only add a key if the agent is hosted on another machine. ${pInfo('Use its http://host:port address. You get their live version, and they can end it at any time.')}</div>
     <div id="ags-fork"></div>`;
   renderAgsHost();
 }
@@ -122,7 +109,7 @@ async function agsHostToggle(on){
 
 async function agsMintPeer(){
   const name = ((document.getElementById('ags-peer-name')||{}).value||'').trim();
-  if(!name){ toast('Who is this key for? A short name'); return }
+  if(!name){ toast('Who is this key for? Give a short name'); return }
   let d = null;
   try{
     d = await (await fetch('/api/agent/peers', {method:'POST',
@@ -134,16 +121,15 @@ async function agsMintPeer(){
      The list re-render runs first, then the key lands in the fresh box. */
   await renderAgsHost();
   const box = document.getElementById('ags-peer-key');
-  if(box) box.innerHTML = `<div class="ghint" style="border-color:var(--warn)"><b>The key for
-      ${esc(name)} — shown once, hand it over yourself:</b>
+  if(box) box.innerHTML = `<div class="ghint" style="border-color:var(--warn)"><b>Key for
+      ${esc(name)}. It's shown only once, so pass it on yourself:</b>
     <pre style="user-select:all">${esc(d.key)}</pre>
-    <div class="sub mut">They take your agent with:
-      <code>bento agent fork http://&lt;this-host&gt; --key &lt;key&gt; --yes</code> —
-      or paste both into the Fork box on their machine.</div></div>`;
+    <div class="sub mut">They can paste it into the Fork box on their machine, or run
+      <code>bento agent fork http://&lt;this-host&gt; --key &lt;key&gt; --yes</code></div></div>`;
 }
 
 async function agsRevokePeer(name){
-  if(!confirm(`End the arrangement with '${name}'? Their key and its grant die together.`)) return;
+  if(!confirm(`Stop sharing with '${name}'? Their key and its permission are removed together.`)) return;
   try{ await fetch('/api/agent/peers/' + encodeURIComponent(name), {method:'DELETE'}) }catch(e){}
   renderAgsHost();
 }
@@ -162,7 +148,7 @@ async function agsShare(){
                             sign: !!(document.getElementById('ags-sign')||{}).checked})});
     d = await r.json();
   }catch(e){}
-  if(!d){ out.innerHTML = '<p class="mut">the share failed — is the server reachable?</p>'; return }
+  if(!d){ out.innerHTML = '<p class="mut">the share failed. Is the server reachable?</p>'; return }
   if(d.error){
     /* The refusal, with each finding named. Deliberately no way onward from
        here except fixing it — the one control that must not exist. */
@@ -189,7 +175,7 @@ async function agsShare(){
       <div style="margin-top:6px">${withheld}</div>
       <div class="prow" style="margin-top:6px">
         <button class="endbtn" onclick="agsDownload()">Download ${esc(d.filename)}</button>
-        <span class="mut">commit it to a repo and add the topic to publish</span>
+        <span class="mut">to publish, commit it to a repo and add the topic</span>
       </div></div>${soul}`;
 }
 
@@ -233,28 +219,26 @@ async function agsPreview(bundle, label){
   const bad = d.verify.status==='checksum-mismatch' || d.verify.status==='bad-signature';
   const vb = d.verify.status==='verified' ? 'ok' : bad ? 'err' : '';
   const items = d.items.map(i =>
-    `<div class="sub ${i.skipped?'mut':''}">· ${esc(i.kind)}: <b>${esc(i.name)}</b>${i.skipped?` — ${esc(i.note)}`:''}</div>`).join('');
+    `<div class="sub ${i.skipped?'mut':''}">· ${esc(i.kind)}: <b>${esc(i.name)}</b>${i.skipped?`, ${esc(i.note)}`:''}</div>`).join('');
   const ceil = (d.permissions_ceiling||[]).map(g =>
     `<div class="sub mut">· ${esc(g.principal_kind)}:${esc(g.principal_id)} may ${esc(g.action)}${g.resource?` on ${esc(g.resource)}`:''}</div>`).join('');
   const needs = (d.mcp_needs||[]).filter(m=>m.fill.length).map(m =>
     `<div class="sub mut">· '${esc(m.name)}' will need you to fill: ${esc(m.fill.join(', '))}</div>`).join('');
   const soul = d.soul_included
-    ? `<div class="ghint" style="border-color:var(--warn)"><b>A soul is included.</b> It is NOT
-        adopted unless you tick this — your agent keeps its own identity otherwise.
+    ? `<div class="ghint" style="border-color:var(--warn)"><b>A soul is included.</b> Your agent keeps its own identity unless you tick this.
         <label class="ck"><input type="checkbox" id="ags-adopt"> adopt it as my agent's identity</label>
         <pre style="white-space:pre-wrap">${esc(d.soul_text)}</pre></div>` : '';
   out.innerHTML = `<div class="ghint">
-      <b>${esc(d.name)}</b>${d.description?` — ${esc(d.description)}`:''}
+      <b>${esc(d.name)}</b>${d.description?`: ${esc(d.description)}`:''}
       <div class="sub">integrity: <span class="badge ${vb}">${esc(d.verify.status)}</span> ${esc(d.verify.note)}</div>
       <div class="sub">provenance: <span class="badge ${d.tofu.status==='changed-key'?'err':''}">${esc(d.tofu.status)}</span> ${esc(d.tofu.note)}</div>
       <div class="sub">app scan: ${esc(d.security.verdict)}</div>
       <div style="margin-top:6px">${items}</div>
-      <div class="sub" style="margin-top:6px"><b>Permissions written by the fork now:
-        ${d.grants_written_now}.</b> Enabling each flow later is what grants — this is the
-        ceiling if you enabled everything:</div>${ceil || '<div class="sub mut">· nothing — no flows declare permissions</div>'}
+      <div class="sub" style="margin-top:6px"><b>Permissions granted by the fork:
+        ${d.grants_written_now}.</b> Turning on each flow later grants its part. If you turned everything on, it could:</div>${ceil || '<div class="sub mut">· nothing, since no flows ask for permissions</div>'}
       ${needs}
-      ${bad?`<div class="sub" style="color:var(--err)">This will not fork: the bytes are not what the sharer shared.</div>`
-           :`<div class="prow" style="margin-top:6px"><button class="endbtn" onclick="agsFork()">Fork it — disabled, nothing granted</button></div>`}
+      ${bad?`<div class="sub" style="color:var(--err)">This can't be forked because the file was changed after it was shared.</div>`
+           :`<div class="prow" style="margin-top:6px"><button class="endbtn" onclick="agsFork()">Fork it, switched off</button></div>`}
     </div>${soul}`;
 }
 
@@ -269,7 +253,7 @@ async function agsFork(){
     d = await (await fetch('/api/agent/fork', {method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json();
   }catch(e){}
-  if(!d){ toast('the fork failed — is the server reachable?'); return }
+  if(!d){ toast('the fork failed. Is the server reachable?'); return }
   if(d.error){ out.innerHTML = `<div class="ghint" style="border-color:var(--err)">${esc(d.error)}</div>`; return }
   out.innerHTML = agsArrivalHTML(d);
 }
@@ -281,18 +265,17 @@ async function agsFork(){
 function agsArrivalHTML(d){
   const arr = d.arrival || {changed:[], unchanged:[], try_message:''};
   const changed = arr.changed.map(c =>
-    `<div class="sub">· <b>${esc(c.kind)}</b>: ${esc(c.names.join(', '))}${c.note?` — ${esc(c.note)}`:''}</div>`).join('')
-    || '<div class="sub mut">· nothing — every name already existed here</div>';
+    `<div class="sub">· <b>${esc(c.kind)}</b>: ${esc(c.names.join(', '))}${c.note?`, ${esc(c.note)}`:''}</div>`).join('')
+    || '<div class="sub mut">· nothing, every name already existed here</div>';
   const unchanged = arr.unchanged.map(u=>`<div class="sub mut">· ${esc(u)}</div>`).join('');
   return `<div class="ghint"><b>It arrived.</b> ${d.created.length} thing(s) created,
-      ${d.skipped.length} skipped, <b>${d.grants_written} permission(s) granted</b> — that
-      number is the design.${d.soul?`<div class="sub">soul: ${esc(d.soul)}</div>`:''}
+      ${d.skipped.length} skipped, <b>${d.grants_written} permission(s) granted</b>.${d.soul?`<div class="sub">soul: ${esc(d.soul)}</div>`:''}
       <div style="margin-top:8px"><b>What changed:</b>${changed}</div>
       <div style="margin-top:8px"><b>What did not:</b>${unchanged}</div>
       <div class="prow" style="margin-top:8px">
         <button class="endbtn" onclick='agsTestChat(${JSON.stringify(arr.try_message||'')})'>
-          Test it — start chatting</button>
-        <span class="mut">the question is prefilled; press Enter to send it</span>
+          Test it in Chat</button>
+        <span class="mut">the question is filled in, press Enter to send it</span>
       </div>
       <div class="sub mut" style="margin-top:6px">${esc(d.next||'')}</div></div>`;
 }
