@@ -1373,6 +1373,14 @@ things keep it true:
   back after the reply, a huddle gathers on `turn_start.huddle`/`agent_say`. Idle agents sit.
   They must not wander for the look — an office that strolls about says work is happening when
   none is. Only the pet wanders, and it is visibly not an agent.
+- **Handing work over is a walk, and so is bringing it back** (`officeHandOver`, `officeReport`).
+  A giver already away from its desk sends paper instead, and no walk lasts over `OF_WALK_S`:
+  a walk that ends after the event it shows is showing the past.
+- **The Office is also a desktop scene, with ONE state.** The window takes `OFFICE` over and
+  `officeClose` hands it back (`officeSceneAttach`); two drawers of one state would each be
+  half right. The scene sleeps on `crewCovered()` and re-checks on a one-second timer
+  (`officeSnooze`), never a frame loop. A frame that throws is caught, and the backing store
+  steps its dpr down past `OF_MAX_PX`: a full-screen Office on a Retina Mac came up blank.
 - **One seam.** `scenePulse()` in `01c-movement.js` feeds the Crew stage and the Office; nothing
   else calls `officePulse`. `tool_start`/`turn_start` pass their event on, because the Office
   attributes a tool to the conversation's speaker (`convWho`) and a bare `step` to its run

@@ -338,7 +338,7 @@ function setTab(body,all){
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
          stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it'],['crew','Crew — your specialists, drawn, at work']],
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it'],['crew','Crew — your specialists, drawn, at work'],['office','Office — the whole office, behind your windows']],
           (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
         {desc:'Movement draws this machine as one slow dial that turns once an hour, and stamps everything that happens on it as it happens: '
              +'a tool call is a tick with its name, a turn is an arc as long as it took, a workflow that runs lights its mark, and the soul is the '
