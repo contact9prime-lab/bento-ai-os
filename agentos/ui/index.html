@@ -11897,10 +11897,10 @@ function setTab(body,all){
          another. It applies on the spot; `bento team talk` is the terminal's switch. */
       pRow('Agents message each other',pSelect('s-team-talk',[
           ['matrix','Ask me first (the matrix below)'],
-          ['swarm','Swarm: they ask each other freely'],
+          ['swarm','Swarm: they work together freely'],
           ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
-         more:'The colleague answers with its own model and permissions. Loops are refused and each task has a question limit. Missions use their own roster.',
+         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. Loops are refused and each task has a question limit.',
          f:'team agents message talk each other swarm matrix permission ask'}),
       /* The limits: how far a question travels, how many one task may send, how often a
          colleague may ask back, and a huddle's size. Defaults are conservative; each has a
@@ -12098,7 +12098,7 @@ function setTab(body,all){
   if(tt)tt.onchange=async()=>{
     await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{talk:tt.value}})});
     cfg.team={...(cfg.team||{}),talk:tt.value};paintTeamMatrix();
-    toast({matrix:'agents ask you before messaging a new colleague',swarm:'swarm: your agents may ask each other freely',off:'agents no longer message each other'}[tt.value])};
+    toast({matrix:'agents ask you before messaging a new colleague',swarm:'swarm: your agents work together without asking you',off:'agents no longer message each other'}[tt.value])};
   const tw=main.querySelector('#s-team-own');
   if(tw)tw.onchange=async()=>{
     await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{own_brains:tw.checked}})});

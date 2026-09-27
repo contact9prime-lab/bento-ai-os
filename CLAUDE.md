@@ -1510,6 +1510,10 @@ Permissions and "Allow & remember" read and write the same cells. Five things ho
   (`headless_approver` excludes `ask_agent`). Autonomy is what an agent may DO; who may recruit
   whom is only the matrix's question. `team.talk == "swarm"` is the one thing that opens an
   empty cell (`rule="swarm"`), and an explicit block still wins over it.
+  Swarm also opens the LEAD's hand-overs and huddles with local specialists
+  (`PDP._swarm_opens`, asked for by the owner: "swarm is swarm, so that's open"). Only on a
+  surface somebody is at: a linked agent, `run_flow`, and a `task`/`webhook` turn still
+  ask, and a deny row still wins because grants are read before the default.
 - **The gate decides `agent.message` in full at 2e, because WHICH grants count depends on
   where.** Talk `off` refuses everywhere. Inside a flow run only that flow's own definition
   rows count (`permissions.talk` writes the roster's pairs), so a desk cell never widens a

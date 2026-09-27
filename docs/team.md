@@ -141,6 +141,13 @@ ordinary permissions, so the **Permissions** app lists and revokes the same rows
 Swarm is the matrix switched wide open. It is not a second system: every limit below still
 holds, every message is still a run and a ledger row, and a cell you blocked stays blocked.
 
+Swarm also opens your lead agent's hand-overs. When your agent gives one of your specialists
+a task, or pulls a few of them into a huddle, it no longer asks you first. Some things still
+ask: an agent on a linked team, starting a mission, and anything that runs on a schedule or
+from a webhook, because nobody is there to watch it. Blocking a specialist in Permissions
+still stops it. Under *Ask me* your lead asks once per specialist, and *Allow & remember*
+makes that stick.
+
 ### The shape of a conversation, and the limits you set
 
 - **Asking back is a clarification, not a loop.** The validator, asked by the researcher, may

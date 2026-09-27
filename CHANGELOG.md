@@ -6,6 +6,11 @@
 behind an ⓘ beside it: hover, click or tap to read it. The wording is plainer too. Appearance
 went from about 2,500 characters on screen to under 600, and System from 1,900 to under 700.
 
+**Swarm means your agents work together without asking.** In Swarm mode your agent now hands
+tasks to your specialists and pulls them into huddles without an approval card. Agents on a
+linked team, starting a mission, and scheduled or webhook runs still ask. A specialist you
+blocked in Permissions stays blocked.
+
 **The Run Inspector tells you what happened.** Open a mission's run and you see when it
 started, what started it, how long it has been going, and whether it is waiting for you. The
 runs before it are dots you can step through. Below that is the run as a story with faces:

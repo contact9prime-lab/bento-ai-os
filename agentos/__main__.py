@@ -3599,7 +3599,8 @@ def _team_cli(args):
         if want not in ("off", "matrix", "swarm"):
             from .policy import team_talk
             print(f"  agents message each other: {team_talk(cfg)}\n"
-                  f"  bento team talk matrix|swarm|off   (matrix: each pair asks you first)")
+                  f"  bento team talk matrix|swarm|off   (matrix: each pair asks you first. "
+                  f"swarm: they work together, and your agent hands them work, without asking)")
             return
         mcfg = cfgmod.load_config()
         mcfg.setdefault("team", {})["talk"] = want
