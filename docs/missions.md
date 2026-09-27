@@ -62,6 +62,22 @@ number for that and it is there.
 A failed run says so in the row, in the words the run recorded — `error ·
 ConnectError` — not softened.
 
+### One run, start to finish
+
+Open a run and the Run Inspector tells it as a story. At the top you see when it
+started, what started it (its schedule, you, a webhook, another mission), how long it
+has been going or how long it took, and whether it is running, finished, failed or
+waiting for you. The dots under that are the runs before this one. Tap one to replay it.
+
+Below that is what happened, in order, with each agent's face: who was handed which
+task, which tools they used, what they asked each other and what came back, and any
+step that is waiting for your approval (with a Review button that brings the card to
+you). Questions between agents are saved with the run, so a replay shows them too.
+The graph, the results and the raw log are in the column beside it, for when you
+want to dig in.
+
+![The Run Inspector: a morning brief started on its schedule, the researcher handed a task, its tool calls, the researcher asking the validator a question and the answer, and the whole run's time, agents and tokens at the top](screenshots/run-inspector.png)
+
 ## Can it run here?
 
 A mission's consent block is a promise about every step, so a mission only runs

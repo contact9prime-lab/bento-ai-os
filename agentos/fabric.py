@@ -1067,6 +1067,12 @@ class ControlPlane(usersmod.Scoped):
         question, and a reply from an agent that read untrusted content comes back
         marked (TAINTED_REPLY), so the ceiling follows the content across the hop."""
         target = (target or "").strip().lstrip("@")
+        # Inside a mission the conversation is part of the run: the Run Inspector shows
+        # who asked whom and what came back, on a replay as well as live. So each ask and
+        # reply is also written to the MISSION's run, not only broadcast to open screens.
+        flow_run = self._flow_run_of(parent_run or root)
+        if flow_run:
+            say = self._talk_recorder(flow_run, say)
         if "@" in target:
             # a colleague on a LINKED team: another machine over mTLS, or another account
             return await self._message_linked(sender, target, question, list(chain or [sender]),
@@ -1152,6 +1158,30 @@ class ControlPlane(usersmod.Scoped):
                 pass
         head = f"[{target} · {res['model']}]\n"
         return (TAINTED_REPLY if res.get("tainted") else "") + head + text[:3500]
+
+    def _flow_run_of(self, run_id: str) -> str:
+        """The mission run a run belongs to, walking up parent_run ('' outside one)."""
+        for _ in range(6):                   # master → specialist → colleague is 3 deep
+            r = self.store.fabric_run(run_id) if run_id else None
+            if not r:
+                return ""
+            if r.get("kind") == "flow":
+                return run_id
+            run_id = r.get("parent_run") or ""
+        return ""
+
+    def _talk_recorder(self, flow_run: str, say):
+        async def rec(e: dict):
+            # short: the payload column is cut at 4000 characters, and a cut JSON
+            # string is an event nobody can read back
+            await self._emit(flow_run, "talk", {"phase": e.get("phase", ""),
+                                                "from": str(e.get("from", ""))[:80],
+                                                "to": str(e.get("to", ""))[:80],
+                                                "text": str(e.get("text", ""))[:700],
+                                                "provider": e.get("provider", "")})
+            if say:
+                await say(e)
+        return rec
 
     # -- linked teams: another machine (mTLS) or another account here ----------------
 

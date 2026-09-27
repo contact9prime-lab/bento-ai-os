@@ -310,6 +310,14 @@ and what it returned. Tool detail is fetched per node from the child's own run
 (`/api/fabric/runs/{child}`) rather than duplicated into the flow's event stream, so a chatty
 flow does not bloat `fabric_events`.
 
+Since 0.6.5 the inspector leads with a **story** (`FG.story`, painted by `fgPaintStory`)
+built by the same `fgApply` that builds the graph, live and on replay (`fgLoad` feeds the
+stored events through it with their own timestamps, then `fgLoadKids` adds each child run's
+tool steps). A specialist's `ask_agent` inside a mission is written to the mission's run as
+a `talk` event (`ControlPlane._flow_run_of` walks `parent_run` up to the flow run), so the
+conversation between agents survives a reload. The payload is cut to 700 characters,
+because `fabric_events.payload` is truncated at 4000 and a cut JSON string cannot be read back.
+
 The inspector and the Flows tab's inline panel are two views of one piece of state. `fgPaint`
 finds its targets **by class** (`.fg-svg`, `.fg-log`, `.fg-board`, `.fg-head`), not by id, so
 both stay live and neither has to know the other exists.

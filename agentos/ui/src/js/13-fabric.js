@@ -393,11 +393,21 @@ function fabricLiveRefresh(){
                     truth once instead of replaying what was missed.
      fgPaint()    — idempotent, driven only by winTick. */
 var FG={run:'',flow:'',nodes:new Map(),edges:[],art:new Map(),logs:[],dirty:false,ended:false,
-        sel:'',detail:new Map()};
+        sel:'',detail:new Map(),story:[],kids:{},meta:{}};
 
 function fgReset(runId,flow){
   FG={run:runId||'',flow:flow||'',nodes:new Map(),edges:[],art:new Map(),logs:[],
-      dirty:true,ended:false,sel:'',detail:new Map(),think:null};
+      dirty:true,ended:false,sel:'',detail:new Map(),think:null,
+      // the Run Inspector's story: what happened, in order, said as a person would say it
+      story:[],kids:{},meta:{started:0,finished:0,origin:'',input:'',tokens:0}};
+}
+/* One line of the story. Several tool calls in a row by the same agent are one line
+   ("researcher used fetch_url, read_file"), or a busy run is a wall of tool names. */
+function fgStory(e){
+  const st=FG.story,last=st[st.length-1];
+  if(e.kind==='tool'&&last&&last.kind==='tool'&&last.who===e.who&&e.t-last.t<120000){
+    last.tools.push(e.tools[0]);return}
+  st.push(e);if(st.length>400)st.splice(0,st.length-400);
 }
 /* The agent's reasoning as ONE self-replacing line, never 300 log rows.
    Thinking arrives as a stream of small deltas; pushed through fgLog it would evict
@@ -415,8 +425,23 @@ function fgLog(level,text){
 }
 function fgApply(ev){
   if(!ev||!ev.event)return;
-  const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1,thinking:1};
+  const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1,thinking:1,
+                  talk:1,status:1,step:1};
   if(!graphish[ev.event])return;
+  const t=ev._ts||Date.now();
+  // The specialists run in runs of their own. Their tool calls reach the story through
+  // the run → agent map, learned from each child's "running" status event.
+  if(ev.event==='status'||ev.event==='step'){
+    if(!FG.run)return;
+    if(ev.event==='status'){
+      if(ev.status==='running'&&(ev.parent_run===FG.run||FG.kids[ev.parent_run])){FG.kids[ev.run_id]=ev.ref||'agent';FG.dirty=true}
+      return}
+    const who=FG.kids[ev.run_id];if(!who)return;
+    if(ev.status==='start')fgStory({t,kind:'tool',who,tools:[{name:ev.tool,ok:true}]});
+    else if(ev.ok===false){const row=[...FG.story].reverse().find(x=>x.kind==='tool'&&x.who===who);
+      const tl=row&&[...row.tools].reverse().find(x=>x.name===ev.tool);if(tl)tl.ok=false}
+    FG.dirty=true;return;
+  }
   if(ev.event!=='flow_start'&&ev.run_id&&FG.run&&ev.run_id!==FG.run)return; // another run
   switch(ev.event){
     case 'flow_start':{
@@ -425,6 +450,8 @@ function fgApply(ev){
         status:'running',depth:0,t:Date.now()});
       fgLog('info','flow '+(ev.flow||'')+' started · '+((ev.origin||{}).surface||'manual')
             +(ev.tainted?' · payload from outside this machine':''));
+      FG.meta.started=t;FG.meta.origin=(ev.origin||{}).surface||'';
+      fgStory({t,kind:'start',text:ev.tainted?'It was started from outside this machine, so risky steps wait for you.':''});
       break;}
     case 'node_add':{
       if(FG.nodes.has(ev.node_id))break;
@@ -439,6 +466,7 @@ function fgApply(ev){
       FG.edges.push({from:ev.parent||FG.run,to:ev.node_id,kind:'call'});
       (ev.deps||[]).forEach(h=>FG.edges.push({from:'h:'+h,to:ev.node_id,kind:'data'}));
       fgLog('info','→ '+ev.agent+': '+String(ev.task||'').slice(0,90));
+      fgStory({t,kind:'ask',who:'',to:ev.agent,text:ev.task||'',node:ev.node_id});
       break;}
     case 'node_status':{
       const n=FG.nodes.get(ev.node_id);if(!n)break;
@@ -447,7 +475,13 @@ function fgApply(ev){
       FG.think=null;   // it has acted; the reasoning that led here is now history
       fgLog(ev.status==='ok'?'info':'error',
             n.label+' · '+ev.status+(ev.fault?' · '+ev.fault:'')+(ev.handle?' → '+ev.handle:''));
+      if(ev.child_run)FG.kids[ev.child_run]=n.label;
+      fgStory({t,kind:'done',who:n.label,ok:ev.status==='ok',status:ev.status,fault:ev.fault||'',
+        handle:ev.handle||'',node:ev.node_id,tokens:ev.tokens});
       break;}
+    case 'talk':
+      fgStory({t,kind:'talk',phase:ev.phase,who:ev.from,to:ev.to,text:ev.text||'',provider:ev.provider||''});
+      break;
     case 'artifact':
       FG.art.set(ev.handle,ev);break;
     case 'thinking':
@@ -457,12 +491,17 @@ function fgApply(ev){
       fgLog(ev.state==='asked'?'warn':(ev.state==='allowed'?'info':'error'),
             '⏸ '+ev.tool+' — '+ev.state+(ev.via?' ('+ev.via+')':'')
             +(ev.state==='asked'&&ev.reason?' · '+ev.reason:''));
+      fgStory({t,kind:'wait',who:(n&&n.depth===1?n.label:ev.ref)||'',state:ev.state,tool:ev.tool||'',text:ev.reason||''});
       break;}
     case 'log':
-      fgLog(ev.level,ev.text);break;
+      fgLog(ev.level,ev.text);
+      if(ev.level==='error'||ev.level==='warn')fgStory({t,kind:'note',level:ev.level,text:ev.text||''});
+      break;
     case 'flow_end':{
       const n=FG.nodes.get(FG.run);if(n){n.status=ev.status;n.tokens=ev.tokens}
-      FG.ended=true;FG.think=null;
+      FG.ended=true;FG.think=null;FG.meta.finished=t;if(n&&n.tokens)FG.meta.tokens=(n.tokens.in||0)+(n.tokens.out||0);
+      fgStory({t,kind:'end',ok:ev.status==='ok',status:ev.status,fault:ev.fault||'',delivered:ev.delivered||[]});
+      if(!ev._ts)setTimeout(fgRuns,600);      // this run joins the dots
       fgLog(ev.status==='ok'?'info':'error','flow '+ev.status
         +(ev.delivered&&ev.delivered.length?' · delivered: '+ev.delivered.join(', '):'')
         +(ev.fault?' · '+ev.fault:''));
@@ -476,12 +515,29 @@ async function fgLoad(runId){
   try{
     const d=await fetch('/api/fabric/runs/'+runId).then(r=>r.json());
     fgReset(runId,(d.run||{}).flow||(d.run||{}).ref||'');
-    (d.events||[]).forEach(e=>fgApply(Object.assign({event:e.type,run_id:runId},e.payload||{})));
+    (d.events||[]).forEach(e=>fgApply(Object.assign({event:e.type,run_id:runId},e.payload||{},{_ts:(e.ts||0)*1000})));
+    const r=d.run||{};
+    FG.meta=Object.assign(FG.meta||{},{started:(r.started_at||0)*1000||FG.meta.started,
+      finished:(r.finished_at||0)*1000||FG.meta.finished,origin:r.origin_surface||FG.meta.origin||'',
+      input:r.input||'',tokens:(r.tokens_in||0)+(r.tokens_out||0)||FG.meta.tokens||0});
+    // what each specialist did, from its own run: a replay tells the same story as live
+    (d.steps||[]).forEach(c=>{if(c.id)FG.kids[c.id]=c.ref||'agent'});
+    fgLoadKids((d.steps||[]).slice(0,10),runId);
     if(!FG.nodes.size)FG.nodes.set(runId,{id:runId,agent:'master',label:(d.run||{}).ref||'flow',
       status:(d.run||{}).status||'running',depth:0,t:Date.now()});
     if((d.run||{}).status&&(d.run||{}).status!=='running')FG.ended=true;
     FG.dirty=true;
   }catch(e){}
+}
+async function fgLoadKids(kids,runId){
+  for(const c of kids){
+    try{const d=await fetch('/api/fabric/runs/'+c.id).then(r=>r.json());
+      if(FG.run!==runId)return;
+      (d.events||[]).filter(e=>e.type==='step').forEach(e=>
+        fgApply(Object.assign({event:'step',run_id:c.id},e.payload||{},{_ts:(e.ts||0)*1000})));
+    }catch(e){}
+  }
+  FG.story.sort((a,b)=>a.t-b.t);FG.dirty=true;fgPaint();
 }
 function fgCol(st){
   return st==='ok'?'var(--ok,#34d399)'
@@ -601,6 +657,8 @@ function fgPaint(){
       +fgThinkRow();
     if(atBottom)log.scrollTop=log.scrollHeight;
   });
+  all('.fg-story').forEach(fgPaintStory);
+  fgClock();
   if(FG.run){
     const m=FG.nodes.get(FG.run)||{};
     const kids=[...FG.nodes.values()].filter(n=>n.depth===1);
@@ -939,44 +997,148 @@ function openRunInspector(runId){
   if(w&&!FG.ended)winTick(w,fgPaint,250,{key:'graph'});
   return w;
 }
+/* The Run Inspector reads as a story, top to bottom: when it ran and for how long, what
+   started it, the runs before it, and then what happened in order, with faces. Who was
+   asked what, what they used, what they said to each other and what came back. The
+   graph, the raw log and the editor are still here, one column over, for debugging. */
 function renderFlowRun(body,w){
   if(!FG.run){
-    body.innerHTML=`<div class="pad"><p class="mut">No run is being watched. Run a flow from
-      Missions → Build → Flows, or click a past run to replay it here.</p>
-      <button class="save" onclick="openApp('fabric');fabSetTab(1)">Open Flows</button></div>`;
+    body.innerHTML=`<div class="pad fr-empty"><div class="fr-glyph big">▲</div>
+      <p><b>No run open.</b></p><p class="mut">Run a mission, or click one of its past runs to replay it here.</p>
+      <button class="save" onclick="openApp('fabric');fabSetTab(1)">Open Missions</button></div>`;
     return;
   }
-  body.innerHTML=`<div class="pad">
-    <div class="ptitle" style="margin-top:0"><span class="fg-head"></span></div>
-    <div class="row" style="gap:6px;margin-bottom:6px">
-      <button onclick="fgRerun()">↻ Run again</button>
-      <button onclick="fgOpenBoardRaw()">raw events</button>
-      <div class="grow"></div>
+  body.innerHTML=`<div class="fr">
+    <div class="fr-hero">
+      <div class="fr-top"><span class="fr-glyph big">▲</span>
+        <div class="fr-name"><b>${esc(FG.flow||'mission')}</b><div class="fr-meta fg-meta"></div></div>
+        <span class="fr-pill fg-pill"></span></div>
+      <div class="fr-facts fg-facts"></div>
+      <div class="fr-acts">
+        ${FG.ended?'':`<button class="endbtn" onclick="cancelRun(FG.run)">⏹ Stop</button>`}
+        <button class="endbtn" onclick="fgRerun()">↻ Run again</button>
+        <button class="endbtn" onclick="openFLW&&openFLW(FG.flow)">✎ Edit mission</button>
+        <button class="endbtn" onclick="fgOpenBoardRaw()">Raw events</button></div>
+      <div class="fr-runs fg-runs"></div>
     </div>
-    <div class="fg-svg" style="min-height:90px;border:1px solid var(--line,#232a35);
-      border-radius:12px;padding:6px;overflow-x:auto"></div>
-    <div class="row" style="margin-top:8px;align-items:flex-start;gap:10px">
-      <div style="flex:1.1;min-width:220px">
-        <div class="ptitle" style="margin:0 0 4px">Control-plane log</div>
-        <div class="fg-log" style="font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;
-          max-height:210px;overflow:auto;border:1px solid var(--line,#232a35);border-radius:10px;padding:8px"></div>
-        <div class="ptitle" style="margin:8px 0 4px">Board</div>
-        <div class="fg-board"></div>
-      </div>
-      <div style="flex:1;min-width:220px"><div class="ptitle" style="margin:0 0 4px">Step detail</div>
+    <div class="fr-cols">
+      <div class="fr-main"><div class="fr-h">What happened</div>
+        <div class="fg-story fr-story" aria-live="polite"></div>
+        <div id="fr-raw"></div></div>
+      <div class="fr-side">
+        <div class="fr-h">Who took part</div>
+        <div class="fg-svg fr-graph"></div>
         <div id="fr-detail"></div>
-        <div class="ptitle" style="margin:10px 0 4px">Change this flow with AI</div>
-        <div class="sub" style="margin-bottom:4px">Watching it go wrong is the best moment to fix
-          it. Editing here does not touch the run in flight — it takes effect next time.</div>
+        <div id="fg-artifact"></div>
+        <div class="fr-h">Results</div><div class="fg-board"></div>
+        <div class="fr-h">Change it for next time</div>
         <textarea id="fr-ai" rows="2" placeholder="give the researcher fetch_url too · tell the writer to be shorter"></textarea>
-        <div class="row" style="gap:6px"><button class="save" style="margin:0;flex:0 0 130px"
-          onclick="frAiEdit()">✦ Open with this</button></div>
+        <div class="row" style="gap:6px"><button class="save" style="margin:0;flex:0 0 150px"
+          onclick="frAiEdit()">✦ Open with this</button>${pInfo('The run that is going now keeps going. Your change applies from the next run.')}</div>
+        <details class="fr-log"><summary>Control-plane log</summary><div class="fg-log"></div></details>
       </div>
-    </div>
-    <div id="fg-artifact" style="margin-top:8px"></div>
-    <div id="fr-raw" style="margin-top:8px"></div></div>`;
+    </div></div>`;
   if(w)winTick(w,fgPaint,250,{key:'graph'});
+  if(w)winTick(w,fgClock,1000,{key:'clock'});
+  fgRuns();
   FG.dirty=true;fgPaint();
+}
+/* How long, since when, started by what. Ticks every second while it runs. */
+function fgWhen(ms){
+  const s=Math.max(0,Math.round(ms/1000));
+  return s<60?s+'s':s<3600?Math.floor(s/60)+'m '+String(s%60).padStart(2,'0')+'s':Math.floor(s/3600)+'h '+Math.floor(s%3600/60)+'m';
+}
+function fgAgo(t){
+  const s=Math.round((Date.now()-t)/1000);
+  return s<45?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':Math.round(s/86400)+' d ago';
+}
+var FG_ORIGIN={task:'on its schedule',cron:'on its schedule',gui:'by you',tui:'by you from a terminal',api:'by you',
+  webhook:'by a webhook',telegram:'from Telegram',whatsapp:'from WhatsApp',flow:'after another mission',
+  os_event:'by something on this machine',message:'by a message'};
+function fgClock(){
+  if(!FG.run)return;
+  const m=FG.meta||{},node=FG.nodes.get(FG.run)||{},st=node.status||(FG.ended?'done':'running');
+  const took=m.started?((m.finished||(FG.ended?m.started:Date.now()))-m.started):0;
+  const pill=FG.ended?(st==='ok'?['ok','Finished']:st==='cancelled'?['warn','Stopped']:['err',st==='partial'?'Partly done':'Failed'])
+    :((FG.story.filter(x=>x.kind==='wait').pop()||{}).state==='asked'?['warn','Waiting for you']:['run','Running']);
+  document.querySelectorAll('.fg-pill').forEach(el=>{el.className='fr-pill fg-pill '+pill[0];
+    el.textContent=pill[1]+(took?' · '+fgWhen(took):'')});
+  const when=m.started?new Date(m.started):null;
+  const meta=when?`Started ${when.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} · ${fgAgo(m.started)}`
+    +(m.origin?' · '+(FG_ORIGIN[m.origin]||'by '+m.origin):''):'Starting…';
+  document.querySelectorAll('.fg-meta').forEach(el=>{if(el.textContent!==meta)el.textContent=meta});
+  const who=new Set(FG.story.filter(x=>x.who||x.to).flatMap(x=>[x.who,x.to]).filter(Boolean));
+  const tok=m.tokens||[...FG.nodes.values()].reduce((a,n)=>a+(n.tokens?(n.tokens.in||0)+(n.tokens.out||0):0),0);
+  const talks=FG.story.filter(x=>x.kind==='talk'&&x.phase==='ask').length;
+  const tools=FG.story.filter(x=>x.kind==='tool').reduce((a,x)=>a+x.tools.length,0);
+  const facts=[[who.size,'agent','agents'],[tools,'tool call','tool calls'],[talks,'question between agents','questions between agents']]
+    .filter(f=>f[0]).map(f=>`<span><b>${f[0]}</b> ${f[0]===1?f[1]:f[2]}</span>`)
+    .concat(tok?[`<span><b>${tok>=1000?(tok/1000).toFixed(1)+'k':tok}</b> tokens</span>`]:[]).join('');
+  document.querySelectorAll('.fg-facts').forEach(el=>{if(el.innerHTML!==facts)el.innerHTML=facts});
+}
+/* The card that is waiting, wherever it is: approvalReveal brings it into view. */
+function fgReview(){
+  const id=typeof APPROVALS!=='undefined'&&Object.keys(APPROVALS).pop();
+  if(id&&typeof approvalReveal==='function')approvalReveal(id);else toast('nothing is waiting for you now');
+}
+/* The runs before this one, as dots you can step through: "did it work yesterday?" */
+async function fgRuns(){
+  if(!FG.flow)return;
+  const d=await fetch('/api/fabric/runs?limit=200').then(r=>r.json()).catch(()=>({runs:[]}));
+  const runs=(d.runs||[]).filter(r=>r.kind==='flow'&&(r.flow||r.ref)===FG.flow).slice(0,14);
+  const col=st=>st==='ok'?'ok':st==='running'?'run':(st==='partial'||st==='cancelled')?'warn':'err';
+  const html=runs.length>1?`<span class="fr-runs-l">Recent runs</span>`+runs.slice().reverse().map(r=>{
+      const t=new Date((r.started_at||0)*1000),took=r.finished_at?fgWhen((r.finished_at-r.started_at)*1000):'running';
+      return `<button class="fr-run ${col(r.status)}${r.id===FG.run?' on':''}" onclick="fgWatch('${esc(r.id)}')"
+        title="${esc(t.toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'})+' · '+(r.status||'')+' · '+took)}"
+        aria-label="${esc('run at '+t.toLocaleString()+', '+(r.status||''))}"></button>`}).join(''):'';
+  document.querySelectorAll('.fg-runs').forEach(el=>el.innerHTML=html);
+}
+/* The story. Faces for agents (the mission itself is not a person, so it gets its mark),
+   one line per thing that happened, the time at the right. */
+function fgFace(name){
+  if(!name)return '<span class="fr-glyph">▲</span>';
+  const n=String(name).replace(/^@/,'');
+  return (typeof avatarImg==='function'&&!/-master$/.test(n))?avatarImg(n,'fr-av'):'<span class="fr-glyph">▲</span>';
+}
+function fgWho(name){const n=String(name||'').replace(/-master$/,'');return n?esc(n):esc(FG.flow||'the mission')}
+function fgPaintStory(box){
+  const rows=FG.story.map(e=>{
+    const tm=`<time>${new Date(e.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</time>`;
+    const q=x=>x?`<div class="fr-say">${esc(String(x).slice(0,600))}</div>`:'';
+    switch(e.kind){
+      case 'start':return `<div class="fr-ev sys">${fgFace('')}<div><div class="fr-line">${tm}<b>${fgWho('')}</b> started ${FG_ORIGIN[FG.meta.origin]||''}</div>
+        ${FG.meta.input?q(FG.meta.input):''}${e.text?`<div class="fr-note">${esc(e.text)}</div>`:''}</div></div>`;
+      case 'ask':return `<div class="fr-ev">${fgFace('')}<div><div class="fr-line">${tm}<b>${fgWho('')}</b> handed <b>${esc(e.to)}</b> a task</div>${q(e.text)}</div>${fgFace(e.to)}</div>`;
+      case 'tool':return `<div class="fr-ev tl">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> used ${
+        e.tools.map(x=>`<code class="${x.ok===false?'bad':''}">${esc(x.name)}${x.ok===false?' ✗':''}</code>`).join(' ')}</div></div></div>`;
+      case 'talk':return `<div class="fr-ev talk ${e.phase==='reply'?'reply':''}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${fgWho(e.who)}</b> ${
+        e.phase==='reply'?'answered':'asked'} <b>${fgWho(e.to)}</b>${e.provider?` <span class="mut">· ${esc(e.provider)}</span>`:''}</div>
+        <div class="fr-bubble">${esc(String(e.text||'').slice(0,700))}</div></div></div>`;
+      case 'done':return `<div class="fr-ev ${e.ok?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> ${
+        e.ok?'finished':'stopped ('+esc(e.status||'error')+')'}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}
+        ${e.handle?`<button class="fr-link" onclick="fgOpenHandle('${esc(e.handle)}')">See what came back</button>`:''}
+        ${e.node?`<button class="fr-link" onclick="fgSelect('${esc(e.node)}')">Every step</button>`:''}</div></div>`;
+      case 'wait':return `<div class="fr-ev ${e.state==='asked'?'warn':e.state==='allowed'?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who||'an agent')}</b> ${
+        e.state==='asked'?'is waiting for you to allow':e.state==='allowed'?'was allowed':'was refused'} <code>${esc(e.tool)}</code></div>
+        ${e.state==='asked'&&e.text?`<div class="fr-note">${esc(e.text)}</div>`:''}
+        ${e.state==='asked'&&!FG.ended?`<button class="fr-link" onclick="fgReview()">Review</button>`:''}</div></div>`;
+      case 'note':return `<div class="fr-ev ${e.level==='error'?'err':'warn'} sys"><span class="fr-glyph">!</span><div class="fr-line">${tm}${esc(e.text)}</div></div>`;
+      case 'end':return `<div class="fr-ev sys ${e.ok?'ok':'err'}">${fgFace('')}<div><div class="fr-line">${tm}<b>${e.ok?'Done':'It stopped'}</b>${
+        e.delivered&&e.delivered.length?' · delivered to '+esc(e.delivered.join(', ')):''}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}</div></div>`;
+    }
+    return '';
+  }).join('');
+  const think=FG.think&&FG.think.text?`<div class="fr-ev think">${fgFace(FG.think.agent)}<div class="fr-line"><i>${esc(FG.think.agent||'agent')} is thinking…</i> <span class="mut">${esc(FG.think.text.slice(-160))}</span></div></div>`:'';
+  const html=(rows||(FG.ended?'<p class="mut">Nothing was recorded for this run.</p>':'<p class="mut">Getting started…</p>'))+think;
+  if(box.dataset.h===html)return;
+  // a run in progress opens on its latest line; after that it follows only while you
+  // are already at the bottom, so reading back up is never yanked away
+  const first=!box.dataset.h,atBottom=first||box.scrollHeight-box.scrollTop-box.clientHeight<40;
+  box.dataset.h=html;box.innerHTML=html;
+  if(atBottom&&!FG.ended){box.scrollTop=box.scrollHeight;
+    // the window may be what scrolls, not the story: bring the newest line into view there too
+    if(first&&box.lastElementChild)box.lastElementChild.scrollIntoView({block:'nearest'})}
 }
 async function fgRerun(){
   if(!FG.flow)return;

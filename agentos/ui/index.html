@@ -1386,6 +1386,21 @@ body.dev-touch .tb .seg button{min-height:var(--tap)}
 
 /* a link inside Settings is one of ours, not the browser's blue underline */
 .prefs a{color:var(--acc)}
+
+/* The ⓘ beside a setting's name: the rest of what there is to know, on hover, focus
+   or tap. Real size on a touch screen (the --tap floor), never an invisible halo. */
+.pinfo{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin:0 0 0 6px;
+  padding:0;border-radius:50%;border:1px solid color-mix(in srgb,var(--dim) 55%,transparent);background:transparent;
+  color:var(--dim);font:italic 700 10px/1 Georgia,serif;vertical-align:1px;cursor:help;flex:0 0 auto}
+.pinfo:hover,.pinfo:focus-visible{color:var(--txt);border-color:var(--acc);outline:none}
+body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical-align:middle}
+#pinfo-tip{position:fixed;z-index:99990;padding:9px 12px;border-radius:var(--r-md,10px);background:var(--bg3);
+  color:var(--txt);border:1px solid var(--line);box-shadow:var(--el-4);font-size:var(--fs-sm);line-height:1.45;
+  pointer-events:none;width:max-content}
+#pinfo-tip[hidden]{display:none}
+/* the label keeps its own line, and the ⓘ sits on it rather than under it */
+.prow .pl>b:has(+.pinfo),.acct-door .pl>b:has(+.pinfo){display:inline}
+.prow .pl>.pinfo+small{display:block}
 /* ================= window switcher (Ctrl+Tab) ================= */
 #switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
 #switcher.show{display:flex}
@@ -4080,6 +4095,77 @@ body.dev-touch .of-x{min-width:var(--tap)}
   .ps-p.on img.ps-face,.ps-pop,.ps-burst,.win-burst{animation:none}
   .ps-pop,.ps-burst,.win-burst{opacity:1}
 }
+/* The Run Inspector: a mission run told as a story. The hero says when, how long and
+   started by what; the dots are the runs before it; the story is what happened, with
+   faces; the side column keeps the graph, the results and the editor for debugging. */
+.fr{display:flex;flex-direction:column;gap:12px;padding:14px 16px 18px;min-height:100%;box-sizing:border-box}
+.fr-hero{border:1px solid var(--line);border-radius:var(--r-lg,14px);padding:14px 16px 12px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 12%,transparent),transparent 60%),var(--bg2)}
+.fr-top{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap}
+.fr-name{flex:1 1 200px;min-width:0}
+.fr-name b{font-size:var(--fs-lg,17px);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fr-meta{color:var(--dim);font-size:var(--fs-sm);margin-top:2px}
+.fr-glyph{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:0 0 28px;
+  border-radius:9px;background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--acc);font-size:13px}
+.fr-glyph.big{width:40px;height:40px;flex-basis:40px;border-radius:12px;font-size:18px}
+.fr-pill{padding:5px 12px;border-radius:999px;font-size:var(--fs-sm);font-weight:700;white-space:nowrap;
+  font-variant-numeric:tabular-nums;border:1px solid transparent}
+.fr-pill.run{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 45%,transparent);background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.fr-pill.run::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--acc);
+  margin-right:7px;vertical-align:1px;animation:frpulse 1.4s ease-in-out infinite}
+.fr-pill.ok{color:var(--ok,#34d399);background:color-mix(in srgb,var(--ok,#34d399) 14%,transparent)}
+.fr-pill.warn{color:var(--warn,#f59e0b);background:color-mix(in srgb,var(--warn,#f59e0b) 14%,transparent)}
+.fr-pill.err{color:var(--err,#f87171);background:color-mix(in srgb,var(--err,#f87171) 14%,transparent)}
+@keyframes frpulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.fr-pill.run::before{animation:none}}
+.fr-facts{display:flex;flex-wrap:wrap;gap:6px 16px;margin:10px 0 0;color:var(--dim);font-size:var(--fs-sm)}
+.fr-facts b{color:var(--txt);font-variant-numeric:tabular-nums}
+.fr-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.fr-runs{display:flex;align-items:center;gap:6px;margin-top:10px;flex-wrap:wrap}
+.fr-runs-l{color:var(--dim2,var(--dim));font-size:var(--fs-xs);margin-right:4px;text-transform:uppercase;letter-spacing:.08em}
+.fr-run{width:14px;height:14px;border-radius:50%;border:2px solid transparent;padding:0;cursor:pointer;background:var(--dim)}
+.fr-run.ok{background:var(--ok,#34d399)}.fr-run.err{background:var(--err,#f87171)}
+.fr-run.warn{background:var(--warn,#f59e0b)}.fr-run.run{background:var(--acc)}
+.fr-run.on{outline:2px solid var(--txt);outline-offset:2px}
+body.dev-touch .fr-run{width:var(--tap);height:var(--tap);background-clip:content-box;padding:14px}
+.fr-cols{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.fr-main{flex:1.6 1 340px;min-width:0}
+.fr-side{flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:6px}
+.fr-h{font-size:var(--fs-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim2,var(--dim));margin:6px 2px 4px}
+.fr-story{display:flex;flex-direction:column;gap:2px;max-height:min(60vh,560px);overflow:auto;padding-right:4px}
+.fr-ev{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:12px;position:relative}
+.fr-ev:hover{background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.fr-ev>div{flex:1;min-width:0}
+.fr-ev img.fr-av{width:28px;height:28px;flex:0 0 28px;border-radius:9px;image-rendering:pixelated;
+  background:color-mix(in srgb,var(--txt) 6%,transparent)}
+.fr-ev>img.fr-av:last-child{opacity:.85}
+.fr-line{font-size:var(--fs-sm);line-height:1.45;color:var(--dim)}
+.fr-line b{color:var(--txt);font-weight:650}
+.fr-line time{float:right;margin-left:8px;color:var(--dim2,var(--dim));font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
+.fr-line code{font-size:var(--fs-xs);padding:1px 6px;border-radius:6px;background:color-mix(in srgb,var(--txt) 8%,transparent);color:var(--txt)}
+.fr-line code.bad{color:var(--err,#f87171)}
+.fr-say{margin-top:4px;font-size:var(--fs-sm);color:var(--txt);white-space:pre-wrap;overflow-wrap:anywhere;
+  border-left:2px solid color-mix(in srgb,var(--acc) 50%,transparent);padding-left:8px}
+.fr-bubble{margin-top:5px;padding:8px 11px;border-radius:4px 14px 14px 14px;font-size:var(--fs-sm);line-height:1.45;
+  background:color-mix(in srgb,var(--acc) 12%,var(--bg2));color:var(--txt);white-space:pre-wrap;overflow-wrap:anywhere;display:inline-block;max-width:100%}
+.fr-ev.reply .fr-bubble{background:color-mix(in srgb,var(--txt) 7%,var(--bg2))}
+.fr-ev.tl{padding-top:4px;padding-bottom:4px}
+.fr-ev.tl img.fr-av{width:20px;height:20px;flex-basis:20px;margin:2px 4px 0}
+.fr-ev.ok .fr-line>b:first-child{color:var(--ok,#34d399)}
+.fr-ev.err .fr-line>b:first-child{color:var(--err,#f87171)}
+.fr-ev.warn{background:color-mix(in srgb,var(--warn,#f59e0b) 9%,transparent)}
+.fr-ev.think .fr-line{font-style:normal}
+.fr-note{margin-top:4px;font-size:var(--fs-xs);color:var(--dim)}
+.fr-note.err{color:var(--err,#f87171)}
+.fr-link{margin:6px 8px 0 0;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;
+  color:var(--acc);font-size:var(--fs-xs);cursor:pointer}
+body.dev-touch .fr-link{min-height:var(--tap);padding:0 14px}
+.fr-graph{border:1px solid var(--line);border-radius:12px;padding:6px;overflow-x:auto;min-height:60px}
+.fr-log summary{cursor:pointer;color:var(--dim);font-size:var(--fs-sm);margin-top:8px}
+.fr-log .fg-log{font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;max-height:200px;overflow:auto;
+  border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:6px}
+.fr-empty{text-align:center;padding:48px 20px}
+.fr-empty .fr-glyph{margin:0 auto 12px}
 </style>
 </head>
 <body>
@@ -11516,9 +11602,77 @@ function pGroup(title,rows,o){
 }
 function pRow(label,control,o){
   o=o||{};
-  return `<div class="prow${o.stack?' stack':''}${o.danger?' danger':''}" data-f="${esc(o.f||label)}">
-    <div class="pl"><b>${esc(label)}</b>${o.desc?`<small>${o.desc}</small>`:''}</div>
+  const [d,m]=o.more!=null?[o.desc||'',o.more]:pSplit(o.desc);
+  return `<div class="prow${o.stack?' stack':''}${o.danger?' danger':''}" data-f="${esc(o.f||label)} ${esc(pPlain(m))}">
+    <div class="pl"><b>${esc(label)}</b>${m?pInfo(m):''}${d?`<small>${d}</small>`:''}</div>
     <div class="pc">${control}</div></div>`;
+}
+/* Settings text is a line or two under the label, and the rest behind an ⓘ that
+   shows it on hover, focus or tap. Everything on this page is worth knowing, and
+   nothing on it should be a wall somebody has to read to find a switch.
+   `desc` is the line, `more` the rest; a desc written as one long paragraph is
+   split at its first sentence, so no row ever shows a wall again. `pTidy` does the
+   same for the group hints and leads, which are written inline all over the panes. */
+var PTIP_AT=140;                     // visible characters a line may run to before it splits
+function pPlain(html){return String(html||'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&')
+  .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').trim()}
+function pInfo(text){
+  const t=pPlain(text);if(!t)return '';
+  return `<button type="button" class="pinfo" data-tip="${esc(t)}" aria-label="${esc(t)}">i</button>`;
+}
+/* [the first sentence, the rest] — split only where no tag is open, so a <b> or a
+   <code> is never cut in half, and only past the first 30 visible characters. */
+function pSplit(html){
+  html=String(html||'');
+  if(pPlain(html).length<=PTIP_AT)return [html,''];
+  const open=[];let vis=0;
+  for(let i=0;i<html.length;i++){
+    const c=html[i];
+    if(c==='<'){const j=html.indexOf('>',i);if(j<0)break;
+      const tag=html.slice(i+1,j);
+      if(tag[0]==='/')open.pop();else if(!/\/$/.test(tag)&&!/^(br|img|input|hr|wbr)\b/i.test(tag))open.push(tag);
+      i=j;continue}
+    vis++;
+    if(!open.length&&vis>=30&&/[.?!]/.test(c)&&/\s/.test(html[i+1]||'')&&!/\b(e\.g|i\.e|etc|vs)$/i.test(html.slice(Math.max(0,i-4),i)))
+      return [html.slice(0,i+1),html.slice(i+2).trim()];
+  }
+  return [html,''];
+}
+function pTidy(root){
+  (root||document).querySelectorAll('.ghint,.lead,.pl>small').forEach(el=>{
+    if(el.dataset.tidy)return;el.dataset.tidy='1';
+    if(el.querySelector('button,a,input,select,textarea,label,.pinfo'))return;   // a control inside stays where it is
+    const [a,b]=pSplit(el.innerHTML);if(!b)return;
+    if(el.matches('.pl>small')){el.innerHTML=a;const lb=el.parentNode.querySelector(':scope>b');
+      if(lb&&!el.parentNode.querySelector(':scope>.pinfo'))lb.insertAdjacentHTML('afterend',pInfo(b))}
+    else el.innerHTML=a+' '+pInfo(b);
+  });
+}
+/* One tip for the whole page, placed by hand so it never runs off a 390px screen.
+   Hover and focus show it; a tap on a touch screen toggles it (a finger has no hover). */
+function pTipShow(btn){
+  let t=document.getElementById('pinfo-tip');
+  if(!t){t=document.createElement('div');t.id='pinfo-tip';t.setAttribute('role','tooltip');document.body.appendChild(t)}
+  t.textContent=btn.dataset.tip||'';t.hidden=false;t.dataset.for='1';PTIP.btn=btn;
+  const r=btn.getBoundingClientRect(),w=Math.min(320,innerWidth-24);t.style.maxWidth=w+'px';
+  const tw=t.offsetWidth,th=t.offsetHeight;
+  let x=Math.max(12,Math.min(r.left+r.width/2-tw/2,innerWidth-tw-12));
+  let y=r.bottom+8;if(y+th>innerHeight-8)y=Math.max(8,r.top-th-8);
+  t.style.left=x+'px';t.style.top=y+'px';
+}
+function pTipHide(){const t=document.getElementById('pinfo-tip');if(t)t.hidden=true;PTIP.btn=null}
+var PTIP={btn:null,bound:false};
+function pTipBind(){
+  if(PTIP.bound)return;PTIP.bound=true;
+  document.addEventListener('pointerover',e=>{const b=e.target.closest&&e.target.closest('.pinfo');if(b&&e.pointerType!=='touch')pTipShow(b)});
+  document.addEventListener('pointerout',e=>{const b=e.target.closest&&e.target.closest('.pinfo');if(b&&e.pointerType!=='touch'&&document.activeElement!==b)pTipHide()});
+  document.addEventListener('focusin',e=>{if(e.target.classList&&e.target.classList.contains('pinfo'))pTipShow(e.target)});
+  document.addEventListener('focusout',e=>{if(e.target.classList&&e.target.classList.contains('pinfo'))pTipHide()});
+  document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('.pinfo');
+    if(b){e.preventDefault();e.stopPropagation();if(PTIP.btn===b&&!document.getElementById('pinfo-tip').hidden)pTipHide();else pTipShow(b);return}
+    if(PTIP.btn)pTipHide()},true);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&PTIP.btn)pTipHide()});
+  addEventListener('scroll',()=>{if(PTIP.btn)pTipHide()},true);
 }
 const pSwitch=(id,on)=>`<label class="psw"><input type="checkbox" id="${id}" ${on?'checked':''}><i></i></label>`;
 /* A stored secret is never put back into an input: it shows as a locked chip
@@ -11582,6 +11736,12 @@ async function renderSettings(body){
     if(v){setTab(body,true);listFilter(body.querySelector('#prefs-main'),v)}
     else setTab(body);
   },140)};
+  // every pane is painted in pieces (a provider list arrives later than the page),
+  // so the tidy runs on whatever lands in the pane, not once after the first paint
+  pTipBind();
+  const pm=body.querySelector('#prefs-main');
+  if(typeof MutationObserver!=='undefined'){let q=0;
+    new MutationObserver(()=>{if(q)return;q=1;queueMicrotask(()=>{q=0;pTidy(pm)})}).observe(pm,{childList:true,subtree:true})}
   setTab(body);
 }
 function setTab(body,all){
@@ -11590,7 +11750,7 @@ function setTab(body,all){
   const P=[];
   const want=id=>all||SETTAB===id;
   if(want('ai')){
-    P.push(`<h2>AI providers</h2><p class="lead">The brains. Every model this machine can think with: cloud providers with a key, models running locally, and other AI agents installed here (Claude Code, Gemini CLI, Codex, Hermes, OpenClaw). Your lead agent answers with the one below; each of your other agents can pick its own in <a href="#" onclick="settingsGo('agent');return false">Agents</a>.</p>`);
+    P.push(`<h2>AI providers</h2><p class="lead">Every model this machine can think with. Each agent can use its own, set in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. ${pInfo('Cloud providers with a key, models running on this machine, and other AI agents installed here like Claude Code, Gemini CLI or Codex.')}</p>`);
     // The chat chip has always said "change it in Settings → AI providers", and
     // for a long time this panel had nowhere to change it: you could add a key
     // and edit a provider's model LIST, but choosing which model actually answers
@@ -11607,29 +11767,30 @@ function setTab(body,all){
            <button class="endbtn" id="s-model-refresh" onclick="paintModelPicker(1)" title="Ask every enabled provider what it can run right now">↻ Refresh</button>
            <button class="endbtn" onclick="openApp('models')" title="Pull, delete and inspect local models">Manage…</button>
          </span>`,
-        {desc:'Who answers, then what it runs on — a provider through '+esc((cfg.agent_name||'Aria'))+', or another agent installed here. Every surface uses it: chat, the prompt bar, copilot panels, Telegram, scheduled jobs. It applies on the spot.',
+        {desc:'The AI that answers you, and the model it uses.',
+         more:'Chat, the prompt bar, Telegram and scheduled jobs all use it. Changes apply right away.',
          f:'model default answers with picker which model refresh available executor engine brain'}),
       pRow('Available', '<span id="s-model-count" class="mut">…</span>',
-        {desc:'Fetched from each enabled provider, not a list typed into config. Refresh after pulling a model or adding a key.',
+        {desc:'What your providers can run right now.',more:'Refresh after you pull a model or add a key.',
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
-        {desc:'Local models — private, free, no key.',f:'ollama local base url'}),
+        {desc:'Models running on this machine. Private and free.',f:'ollama local base url'}),
     ],{f:'ollama local'}));
     const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup(name,[
       pRow('Enabled',pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' enable'}),
       pRow('API key',pSecret(idKey,obj&&obj._has_key,(obj&&obj.api_key)||'',ph),
-        {f:key+' api key',desc:(obj&&obj._has_key)?'Stored on this machine. It is never shown again or sent to the browser.':'Pasted once, then hidden.'}),
+        {f:key+' api key',desc:(obj&&obj._has_key)?'Saved on this machine and never shown again.':'Paste it once. It stays hidden after that.'}),
       pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{stack:true,f:key+' models'}),
     ],{f:key+' '+name});
     P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
     P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
     P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
-    P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat + image generation. Free key at aistudio.google.com.',p.google||{}));
+    P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat and images. Get a free key at aistudio.google.com.',p.google||{}));
     P.push(pGroup('Custom (OpenAI-compatible)',[
-      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'LM Studio, vLLM, Groq — anything speaking the OpenAI API.',f:'custom enable'}),
+      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'Anything that speaks the OpenAI API, like LM Studio, vLLM or Groq.',f:'custom enable'}),
       pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{f:'custom base url'}),
       pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{f:'custom key'}),
       pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{stack:true,f:'custom models'}),
@@ -11641,7 +11802,7 @@ function setTab(body,all){
        rest of the brains. The code still calls them executors (agentos/executors.py):
        renaming the identifier would cost every install its saved engine for a word
        nobody sees. */
-    P.push(`<h3 class="pgh">AI agents installed here</h3><p class="mut" style="margin:0 0 8px">Another agent can be the brain: pick it above to have it answer, or give it to one of your agents. AgentOS keeps the desktop and the permissions — an installed agent only reaches the folder you choose.</p>`);
+    P.push(`<h3 class="pgh">AI agents installed here</h3><p class="mut" style="margin:0 0 8px">Another agent can be the brain. Pick it above, or give it to one of your agents. ${pInfo('AgentOS keeps control of the desktop and permissions. An installed agent only reaches the folder you choose.')}</p>`);
     P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code hermes openclaw installed agents brain"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
     P.push(`<div id="exec-offers"></div>`);
     P.push(`<div id="ocp-list" class="pgroup" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
@@ -11649,7 +11810,7 @@ function setTab(body,all){
     setTimeout(renderOcPlugins,0);
     P.push(pGroup('Image generation',[
       pRow('Provider',pSelect('s-img-prov',[['auto','auto'],['google','google'],['openai','openai'],['pollinations','pollinations']],(cfg.image&&cfg.image.provider)||'auto'),
-        {desc:'auto picks Google, then OpenAI, else the free pollinations.ai service.',f:'image provider'}),
+        {desc:'Auto tries Google, then OpenAI, then the free pollinations.ai.',f:'image provider'}),
       pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
     ],{f:'image generation wallpaper'}));
   }
@@ -11660,27 +11821,30 @@ function setTab(body,all){
        step 2a, rule "reach"); what an agent is ALLOWED inside it is still its grants.
        11e-hands.js draws the editor. TUI: `bento hands`, `bento agents hands`. SUI:
        this page — nothing native, nothing touching the compositor. */
-    P.push(`<h2>Executors</h2><p class="lead">An executor is what an agent can reach: which tools, which folders (read-only or read-write), which web addresses and which MCP servers. Give one to each agent in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. Reaching is not permission — an agent still needs its permissions to act, and every step is in the ledger.</p>`);
+    P.push(`<h2>Executors</h2><p class="lead">An executor is what an agent can reach. Pick one for each agent in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. ${pInfo('It covers tools, folders (read-only or read-write), web addresses and MCP servers. An agent still needs permission to act, and every step is logged.')}</p>`);
     P.push(`<div id="hands-list" data-f="executors hands profile tools folders web mcp reach default read-only"><p class="mut">loading…</p></div>`);
     setTimeout(renderHands,0);
     P.push(pGroup('The machine\u2019s own limit',[
       pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
-        {desc:'Commands and the Terminal run confined (bubblewrap): everything outside is read-only and other home files are hidden. This bounds a SHELL — an executor\u2019s folders bound the file tools, and a shell reaches whatever this jail allows.',f:'sandbox jail bubblewrap shell'}),
+        {desc:'Runs commands and the Terminal inside a sandbox.',
+         more:'Everything outside the folder is read-only and other people\u2019s home files are hidden. A shell can reach whatever this jail allows, even past an executor\u2019s folders.',f:'sandbox jail bubblewrap shell'}),
       pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
       pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
-        {desc:'Folders the agent and the Terminal may work in besides the workspace, each read-only or read-write and shared with named accounts. Managed in Users, next to the isolation they are the exception to — or `bento folders` in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
+        {desc:'Extra folders the agent and the Terminal can use, shared with chosen accounts.',
+         more:'Each one is read-only or read-write. Manage them in Users, or with bento folders in a terminal.',f:'sandbox safe shared folders ro rw users data access'}),
     ],{f:'sandbox security jail'}));
   }
   if(want('channels')){
-    P.push(`<h2>Channels</h2><p class="lead">Every way a conversation reaches this machine — this window, the session, a terminal, your phone, the API, the schedule. They all talk to the same agent with the same memory and the same tools. What differs is who can speak through each one, and how far it is trusted.</p>`);
+    P.push(`<h2>Channels</h2><p class="lead">Every way you can reach this agent, and who can use each one. ${pInfo('They all share the same agent, memory and tools. What changes is who can speak through each one and how much it’s trusted.')}</p>`);
     P.push(`<div id="chan-list" data-f="channels telegram whatsapp api remote tui sui gui scheduled messaging permissions"><p class="mut">checking…</p></div>`);
     setTimeout(renderChannels,0);   // live state, not part of cfg
   }
   if(want('accounts')){
-    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and the calendar your agent may read for you. Sign in with Google or Microsoft and it reads through that grant — revocable from your account, nothing to type. Any other provider takes an app password. Every secret goes in the vault, every read is a decision in the ledger, and nothing arrives through an account: the agent reads it for you.</p>`);
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and calendar your agent can read for you. ${pInfo('Sign in with Google or Microsoft, or use an app password for anything else. Passwords are kept in the vault, and every read is logged.')}</p>`);
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
-        {desc:(cfg.github&&cfg.github._has_token)?'A token is already saved. Fine-grained tokens are recommended.':'Lets the agent create repos and push what it builds. Never appears in commands or logs.',f:'github token push'}),
+        {desc:(cfg.github&&cfg.github._has_token)?'A token is saved. Fine-grained tokens work best.':'Lets the agent create repos and push what it builds.',
+         more:(cfg.github&&cfg.github._has_token)?'':'The token never shows up in commands or logs.',f:'github token push'}),
       pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
     ],{f:'github git ship publish'}));
     P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
@@ -11692,22 +11856,22 @@ function setTab(body,all){
        and may talk to colleagues and linked teams — all of it read from ONE answer,
        agentmap.overview(), which the map below and `bento agents` read too.
        11e-hands.js draws the list and the map. */
-    P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. Each one gets a brain (<a href="#" onclick="settingsGo('ai');return false">AI providers</a>), an executor (<a href="#" onclick="settingsGo('executors');return false">Executors</a> — what it can reach), permissions and skills — and everything any of them does is in the ledger.</p>`);
+    P.push(`<h2>Agents</h2><p class="lead">Your lead agent and the agents it works with. ${pInfo('Each one gets a brain, an executor, permissions and skills. Everything they do is logged.')}</p>`);
     P.push(pGroup('Lead agent',[
-      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What it calls itself everywhere in the OS.',f:'agent name'}),
+      pRow('Name',pText('s-name',cfg.agent_name||'Aria'),{desc:'What your agent is called everywhere.',f:'agent name'}),
       // the character is part of who the agent is, so it is edited HERE as well as in
       // Appearance — looking for it on the agent's own page and not finding it was the report
       pRow('Look',`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Change…</button>`
         +`<button class="endbtn" onclick="avatarDesignAsk('@agent')">✦ Describe it</button>`,
-        {desc:'Its character in Chat, Logs, the Office and the Crew stage. Pick from the palette, or describe it in words.',f:'agent look character avatar face appearance'}),
+        {desc:'Its character in Chat, Logs and the Office. Pick one or describe it.',f:'agent look character avatar face appearance'}),
       pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
-        {desc:'What your lead agent thinks with — chosen in AI providers.',f:'lead agent brain model provider'}),
+        {desc:'What your lead agent thinks with. You choose it in AI providers.',f:'lead agent brain model provider'}),
       pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
-        {desc:'What it can reach — tools, folders, web, MCP. Defined in Executors; it applies on the spot.',f:'lead agent hands executor profile reach tools folders'}),
-      pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where files, reports and projects are written.',f:'workspace directory'}),
-      pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn may take before it stops.',f:'max steps'}),
+        {desc:'What it can reach: tools, folders, web and MCP.',more:'Set up in Executors. Changes apply right away.',f:'lead agent hands executor profile reach tools folders'}),
+      pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where it saves files, reports and projects.',f:'workspace directory'}),
+      pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn can take before it stops.',f:'max steps'}),
       pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
-        {desc:'Which model App Studio builds apps with. AgentOS never substitutes another one on its own.',f:'build model app studio'}),
+        {desc:'The model App Studio builds apps with.',more:'AgentOS won’t switch to another model on its own.',f:'build model app studio'}),
     ],{f:'agent identity name workspace lead'}));
     P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
     setTimeout(renderAgentsList,0);
@@ -11719,10 +11883,12 @@ function setTab(body,all){
        the same answer these rows show (fabric.agent_brain). Terminal: `bento team`. */
     P.push(pGroup('Working together',[
       pRow('Agents answer on their own providers',pSwitch('s-team-own',!cfg.team||cfg.team.own_brains!==false),
-        {desc:'On: a specialist pinned to a model answers on that provider, even when this machine answers with another agent such as Claude Code — so agents on different providers can work together and argue in a huddle ("@researcher @validator should we…"). Off: every agent uses the brain above.',
+        {desc:'Let each agent use the model you pin for it.',
+         more:'Agents on different providers can then work together and talk it through in a huddle. When off, every agent uses the brain above.',
          f:'team agents providers multiple own brain model per agent mix openai claude gemini huddle'}),
       pRow('Who answers on what','<div id="s-team-list" class="team-list mut">loading…</div>',
-        {stack:true,desc:'Pick a model for any agent. A pin on a provider that is switched off, or has no key, is kept — and the agent uses the brain above until it is on.',
+        {stack:true,desc:'Pick a model for any agent.',
+         more:'If its provider is off or has no key, the agent uses the brain above until that’s fixed.',
          f:'team agent model pin provider per agent'}),
       /* Agents messaging each other mid-task (ask_agent). Matrix: each pair is a
          permission, and an empty cell asks you — "Allow & remember" fills it. Swarm:
@@ -11730,19 +11896,21 @@ function setTab(body,all){
          still inside the loop, hop and budget limits. Off: no agent can message
          another. It applies on the spot; `bento team talk` is the terminal's switch. */
       pRow('Agents message each other',pSelect('s-team-talk',[
-          ['matrix','Ask me (the matrix below)'],
-          ['swarm','Swarm — they ask each other freely'],
+          ['matrix','Ask me first (the matrix below)'],
+          ['swarm','Swarm: they ask each other freely'],
           ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
-        {desc:'A specialist can ask a colleague mid-task ("validator, is this figure right?"); the colleague answers on its own model with its own permissions. Every message is a run you can see, a loop back is refused, a question travels at most two agents, and a task gets six questions. Inside a mission (a flow) agents work through its roster instead.',
+        {desc:'Let an agent ask a colleague for help in the middle of a task.',
+         more:'The colleague answers with its own model and permissions. Loops are refused and each task has a question limit. Missions use their own roster.',
          f:'team agents message talk each other swarm matrix permission ask'}),
       /* The limits: how far a question travels, how many one task may send, how often a
          colleague may ask back, and a huddle's size. Defaults are conservative; each has a
          ceiling no setting passes, because every one multiplies model calls. */
       pRow('Limits','<div id="s-team-limits" class="team-limits mut">loading…</div>',
-        {stack:true,desc:'Per task, so several swarms at once each get their own. Changes apply to the next question.',
+        {stack:true,desc:'How far agents can go when they ask each other.',more:'Limits count per task and apply from the next question.',
          f:'team limits hops budget clarify ask back huddle rounds agents swarm'}),
       pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
-        {stack:true,desc:'Rows ask, columns answer. Tap a cell: ask me → allow → block. Allow and block are ordinary permissions — the Permissions app lists and revokes them too.',
+        {stack:true,desc:'Rows ask, columns answer. Tap a cell to switch between ask me, allow and block.',
+         more:'Allow and block are normal permissions, so you can also review them in the Permissions app.',
          f:'team matrix who may ask whom agents grid permission'}),
       /* Linked teams: another Bento (mutual TLS) or another account here. The way in is
          Ask → Approve with six digits on both screens (the OAuth device flow); an invite
@@ -11750,14 +11918,15 @@ function setTab(body,all){
          agents may ask yours is chosen per agent, and never opened by swarm. `bento
          link` is the terminal's face; SUI is this page, nothing touches the compositor. */
       pRow('Linked teams','<div id="s-team-links" class="team-links mut">loading…</div>',
-        {stack:true,desc:'Your agents and another team\u2019s: on another machine over mutual TLS, or another account on this one. Ask to link, they approve, and both screens show the same six digits. Linking lets nothing through by itself — choose which of your agents theirs may ask. Every answer from a linked team is treated as untrusted.',
+        {stack:true,desc:'Let your agents work with another team, on another machine or another account here.',
+         more:'Both screens show the same six digits when you link. Nothing gets through until you choose which of your agents they can ask, and their answers are treated as untrusted.',
          f:'team linked teams remote machine mtls pair invite account handshake federation link request approve'}),
     ],{f:'team agents providers huddle'}));
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
     setTimeout(paintTeamLimits,0);
-    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach, who it may ask and who may ask it — drawn from the same permissions the gate checks. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
     setTimeout(renderAgentsGraph,0);
 
     P.push(pGroup('Content from outside',[
@@ -11765,12 +11934,13 @@ function setTab(body,all){
         ['ask','Ask before anything that changes something'],
         ['strict','Refuse to change anything for the rest of the turn'],
         ['off','No extra caution']],(cfg.security&&cfg.security.taint)||'ask'),
-        {desc:'Fetched pages and third-party servers can contain text written to look like an instruction to your agent. This decides what happens for the rest of a turn that has read some — including at Full autonomy, which is trust in <em>your</em> instructions, not a stranger\'s.',
+        {desc:'Web pages and outside servers can hide instructions meant to trick your agent.',
+         more:'This applies for the rest of that turn, even at Full autonomy, which trusts your instructions and nobody else’s.',
          f:'taint injection untrusted prompt security web page mcp'}),
       pRow('Conversation history',pSelect('s-hist-compact',[
         ['on','Summarise older turns when the thread outgrows the model'],
         ['off','Drop them instead']],(cfg.history&&cfg.history.compact===false)?'off':'on'),
-        {desc:'Long threads stop fitting the model\'s context window. Either way you are told in the conversation when it happens.',
+        {desc:'What happens when a long thread no longer fits the model.',more:'Either way, the conversation tells you when it happens.',
          f:'history compaction summary context window long thread'}),
     ],{f:'security untrusted injection history'}));
     /* Sharing the agent belongs on the page that answers "who is my agent" —
@@ -11779,33 +11949,33 @@ function setTab(body,all){
     setTimeout(renderAgentShare,0);
   }
   if(want('locale')){
-    P.push(`<h2>Locale</h2><p class="lead">Where and when you are. The agent localises anything place- or time-dependent — news, weather, prices, holidays, units — and the AgentOS session inherits your timezone and language.</p>`);
+    P.push(`<h2>Locale</h2><p class="lead">Where and when you are, so news, weather, prices and holidays fit where you live. ${pInfo('The desktop session also takes your timezone and language from here.')}</p>`);
     P.push(`<div class="pgroup" data-f="locale region country timezone language units clock"><div id="loc-box"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
   }
   if(want('keys')){
-    P.push(`<h2>Shortcuts</h2><p class="lead">Click a binding, then press the keys you want. Shortcuts marked <em>session</em> are also registered with the compositor, so they keep working while a native app has the keyboard.</p>`);
+    P.push(`<h2>Shortcuts</h2><p class="lead">Click a shortcut, then press the keys you want. ${pInfo('Shortcuts marked session keep working even while a native app has the keyboard.')}</p>`);
     P.push(`<div class="pgroup" data-f="shortcuts keyboard keys bindings hotkeys"><div id="sc-list"></div></div>`);
     P.push(pGroup('',[
-      pRow('Restore defaults','<button class="endbtn" onclick="scReset()">Restore</button>',{desc:'Put every binding back the way it shipped.',f:'shortcuts reset'}),
-      pRow('Re-apply to session','<button class="endbtn" onclick="scApplySession()">Apply</button>',{desc:'Rewrite the compositor keybindings from this table.',f:'shortcuts session apply'}),
+      pRow('Restore defaults','<button class="endbtn" onclick="scReset()">Restore</button>',{desc:'Put every shortcut back the way it was.',f:'shortcuts reset'}),
+      pRow('Re-apply to session','<button class="endbtn" onclick="scApplySession()">Apply</button>',{desc:'Send these shortcuts to the desktop session again.',f:'shortcuts session apply'}),
     ],{f:'shortcuts actions'}));
   }
   if(want('voice')){
-    P.push(`<h2>Voice</h2><p class="lead">Dictate with the mic in the prompt bar or chat; the agent can speak its replies back.</p>`);
+    P.push(`<h2>Voice</h2><p class="lead">Dictate with the mic in the prompt bar or chat, and have replies read aloud.</p>`);
     P.push(pGroup('Speech',[
-      pRow('Speak replies aloud',pSwitch('v-tts',VOICE.tts),{desc:'Text-to-speech for every answer.',f:'tts speak voice'}),
+      pRow('Speak replies aloud',pSwitch('v-tts',VOICE.tts),{desc:'Read every answer out loud.',f:'tts speak voice'}),
       pRow('Voice','<select id="v-voice"></select>',{f:'tts voice picker'}),
       pRow('Speech rate',pText('v-rate',VOICE.rate||1,'','number'),{f:'speech rate'}),
-      pRow('Mic language',pText('v-lang',VOICE.lang||'en-IN','en-IN, en-US, hi-IN…'),{desc:'Language the dictation recogniser listens for.',f:'mic language dictation'}),
+      pRow('Mic language',pText('v-lang',VOICE.lang||'en-IN','en-IN, en-US, hi-IN…'),{desc:'The language dictation listens for.',f:'mic language dictation'}),
     ],{f:'voice tts speech microphone'}));
   }
   if(want('look')){
-    P.push(`<h2>Appearance</h2><p class="lead">How the desktop looks. Themes carry colours, fonts and even whole alternate shells.</p>`);
+    P.push(`<h2>Appearance</h2><p class="lead">How the desktop looks. Themes can change colours, fonts and even the whole shell.</p>`);
     P.push(pGroup('Theme',[
       pRow('Desktop theme',pSelect('s-theme',Object.entries(allThemes()).map(([k,t])=>[k,(t.label||t.name||k)+(t.custom?' ·':'')]),CURRENT_THEME)
         +`<button class="endbtn" onclick="openApp('themes')">Gallery</button>`,{f:'theme appearance'}),
       pRow('Wallpaper','<button class="endbtn" onclick="openApp(\'personalize\')">Personalize</button><button class="endbtn" onclick="wpSystem()">Use system</button>',
-        {desc:'Generate one with AI, pick from the gallery, or adopt the host desktop\'s.',f:'wallpaper background'}),
+        {desc:'Make one with AI, pick one from the gallery, or use your system’s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
     ],{f:'appearance theme wallpaper'}));
     /* The characters are not part of the immersive look: a face beside a message
@@ -11817,12 +11987,11 @@ function setTab(body,all){
       pRow('You and your agent',
         `<button class="endbtn av-set-btn" onclick="avatarEdit('@me')" title="Change how you look">${avatarImg('@me','av-set')}You</button>`
         +`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Your agent</button>`,
-        {desc:'You, your agent and every specialist each have one pixel-art character, the same everywhere: Chat, Logs, '
-             +'approvals, Missions and the Crew stage. Click a face to change it. Your agent can change them too '
-             +'("give the researcher glasses"), and so can bento avatar in a terminal. They are yours, not a space\'s.',
+        {desc:'You, your agent and every specialist each have a pixel-art character.',
+         more:'Click a face to change it. You can also ask your agent, or use bento avatar in a terminal.',
          f:'characters avatars faces pixel art people specialists agent me chat logs crew look'}),
       pRow('Faces beside messages',pSwitch('s-av-on',!AVATARS.off),
-        {desc:'Off shows plain names in Chat, Logs and approvals, as before. Remembered by this browser.',
+        {desc:'Turn off to see plain names instead. Remembered by this browser.',
          f:'characters avatars faces off plain text chat logs'}),
     ],{f:'characters avatars faces'}));
     /* The Office is the crew's scene, so its design lives beside the characters: the
@@ -11837,41 +12006,29 @@ function setTab(body,all){
        for the machine's settings, and this one lives in this browser. */
     P.push(pGroup('Immersive experience',[
       pRow('Immersive experience',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
-        {desc:'A richer desktop over the theme you already use: a wallpaper with depth that follows the pointer, '
-             +'glass on the window you are working in, deeper shadows, rounder chrome and colour in these settings. '
-             +'It is a look, not a feature — nothing works differently — and it costs one blurred surface more than '
-             +'the standard desktop, so Themes → Effects still turns it down on a machine that cannot keep up. '
-             +'On by default; switch it off here for the plain desktop. '
-             +'Remembered by this browser, as the theme is. A terminal (bento, the TUI) has no wallpaper or glass, so it has no switch.',
+        {desc:'Adds depth, glass and richer colour on top of your theme.',
+         more:'On by default and remembered by this browser. Themes → Effects tones it down on a slow machine. The TUI has no wallpaper or glass, so it has no switch.',
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
          stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora — a sky that follows the day'],['movement','Movement — one slow dial, and everything on it'],['crew','Crew — your specialists, drawn, at work'],['office','Office — the whole office, behind your windows']],
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora: a sky that follows the day'],['movement','Movement: one slow dial of everything'],['crew','Crew: your specialists at work'],['office','Office: the whole office behind your windows']],
           (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
-        {desc:'Movement draws this machine as one slow dial that turns once an hour, and stamps everything that happens on it as it happens: '
-             +'a tool call is a tick with its name, a turn is an arc as long as it took, a workflow that runs lights its mark, and the soul is the '
-             +'centre with the brain as its calibre. What happened fifteen minutes ago sits at a quarter past. Hairlines, brass and one ruby — '
-             +'nothing louder. Drawn at most twenty times a second while the desktop is visible; it pauses under a full-screen or maximised window and '
-             +'when this tab is hidden, holds still under reduced motion, and uses no blur. '
-             +'Crew draws the specialists you actually have — the same characters as in Chat and Logs (Characters, above) — '
-             +'with your agent in the middle. They breathe, sway and blink while '
-             +'they wait; one steps forward and brightens when its specialist starts working, with the tool it just called '
-             +'named above its head. With no specialists yet you get your agent alone and a line saying so: a crowd of '
-             +'colleagues who do not exist would be a better-looking lie, not a better desktop. Nothing is downloaded — the '
-             +'figures are drawn, and their colour comes from the theme — and it costs what the dial costs.',
+        {desc:'What the wallpaper shows behind your windows.',
+         more:'Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have.',
          f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated'}),
 
     ],{f:'immersive experience beta look scene movement'}));
   }
   if(want('system')){
-    P.push(`<h2>System</h2><p class="lead">The machine underneath — network, displays, sound and session live in System Settings.</p>`);
+    P.push(`<h2>System</h2><p class="lead">The machine itself. Network, displays, sound and the session are in System Settings.</p>`);
     /* Accounts are a machine-level fact and this is where somebody looks for one,
        so the row belongs here — but the app stays the single place they are
        managed. A second roster in Settings would be two lists to keep true, and
        the one nobody demos is the one that drifts. */
     P.push(pGroup('Accounts',[
       pRow('People on this machine','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
-        {desc:'Who can sign in, their role, and the folders and agents shared between them. AgentOS stays single-user until the first account is added — from then on it asks who you are, at the keyboard as well as from a phone.',
+        {desc:'Who can sign in, their roles, and what they share.',
+         more:'AgentOS stays single-user until you add the first account. After that it asks who you are, at the keyboard and from a phone.',
          f:'users accounts people roles admin executor sign in multi-user shared folders'}),
     ],{f:'users accounts multi-user'}));
     /* The Pi switch. It is in Settings and not only in the installer because the
@@ -11880,40 +12037,42 @@ function setTab(body,all){
        choose it, not discovered the first time a search takes 30 seconds. */
     P.push(pGroup('Footprint',[
       pRow('Profile',pSelect('s-profile',[
-          ['auto','Auto — decide from this machine'],
-          ['full','Full — keep the MCP catalogue, refresh it daily'],
-          ['lite','Light — keep nothing this machine is not using']],cfg.profile||'auto'),
-        {desc:'Light mode is for a Raspberry Pi: the MCP catalogue (21,811 servers, ~12 MB '
-              +'on disk and ~35 MB of memory) is fetched while you search and deleted when '
-              +'you stop, so a search costs a download instead of the card and the RAM. '
-              +'Telemetry is kept 7 days rather than 30. Nothing else changes.',
+          ['auto','Auto: decide from this machine'],
+          ['full','Full: keep the MCP catalogue and refresh it daily'],
+          ['lite','Light: keep only what this machine uses']],cfg.profile||'auto'),
+        {desc:'Light suits a small machine like a Raspberry Pi.',
+         more:'It downloads the MCP catalogue only while you search, and keeps telemetry for 7 days instead of 30.',
          f:'profile lite light footprint raspberry pi memory disk mcp catalogue small machine'}),
       pRow('Now','<span id="s-profile-now" class="mut">…</span>',
-        {desc:'What this machine is doing, and what it is keeping.',f:'profile current'}),
+        {desc:'What this machine is using and keeping right now.',f:'profile current'}),
     ],{f:'footprint profile lite pi'}));
     setTimeout(paintProfile,0);
     P.push(pGroup('Version',[
       pRow('This build','<span id="s-ver" class="mut">checking…</span>',
-        {desc:'AgentOS checks for a new version on its own and asks before installing one. Installing pulls the update, verifies it against the test suite, restarts the service and reloads this page.',
+        {desc:'AgentOS checks for updates and asks before installing one.',
+         more:'An update is tested before it’s applied. Then the service restarts and this page reloads.',
          f:'version update upgrade check for updates auto-update'}),
       pRow('Check automatically',pSwitch('s-upd-on',true),
-        {desc:'Only the CHECK is automatic. Nothing is ever installed without you saying so.',f:'automatic update check'}),
+        {desc:'Only the check is automatic. Nothing installs without your OK.',f:'automatic update check'}),
       // Where updates come from is a setting, so a fork under test is followed
       // here, by the background check and by `bento update` alike.
       pRow('Update source',`<span class="row" style="gap:6px;flex-wrap:wrap">
-          <input id="s-upd-repo" placeholder="owner/name" style="flex:1 1 180px;min-width:0" title="GitHub repository — owner/name or a github.com URL">
+          <input id="s-upd-repo" placeholder="owner/name" style="flex:1 1 180px;min-width:0" title="GitHub repository: owner/name or a github.com URL">
           <input id="s-upd-branch" placeholder="master" style="flex:0 1 140px;min-width:0" title="branch">
         </span><span id="s-upd-src" class="mut" style="display:block;margin-top:4px"></span>`,
-        {desc:'The repository and branch updates are pulled from. Point it at a fork to test one; `bento update --official` or the fields above put it back. A fork gets its own git remote — origin is never rewritten.',
+        {desc:'The repository and branch updates come from.',
+         more:'Point it at a fork to test one. Run bento update --official to go back.',
          f:'update source repository fork branch remote'}),
     ],{f:'version updates'}));
     setTimeout(paintVersion,0);      // live, and it makes a network call
     P.push(pGroup('Setup',[
       pRow('Open Setup','<button class="endbtn" onclick="openApp(\'setup\')">Open the app</button>',
-        {desc:'The nine steps as an ordinary window you can open any time — name, model, a first answer, a specialist, a flow, a schedule, a channel, the look, accounts. Steps already done show ticked, because every one is probed rather than remembered. Nothing here wipes anything: it creates.',
+        {desc:'The setup steps in a normal window you can open any time.',
+         more:'Steps you’ve already done show a tick. Nothing here deletes anything.',
          f:'setup onboarding wizard app steps arc walkthrough tour open'}),
       pRow('Run it again from the start','<button class="endbtn" onclick="obRestart()">Walk me through it</button>',
-        {desc:'The same steps, full screen, with anything you skipped offered again. Still not a reset — see Factory reset below for that.',
+        {desc:'Go through setup again, full screen.',
+         more:'Anything you skipped is offered again. This doesn’t reset anything. Use Factory reset below for that.',
          f:'setup onboarding wizard first run walkthrough tour again restart start over run through'}),
     ],{f:'setup onboarding'}));
     P.push(pGroup('Machine',[
@@ -11924,7 +12083,8 @@ function setTab(body,all){
     ],{f:'system machine'}));
     P.push(pGroup('Danger zone',[
       pRow('Factory reset','<button class="endbtn" style="border-color:var(--err);color:var(--err)" onclick="factoryReset()">Reset…</button>',
-        {danger:true,desc:'Wipes memory, knowledge, conversations, apps, subagents, soul and settings — and every account, on a machine with accounts — then runs first-time setup again. Only from the machine itself, and only an admin. Take a Snapshot first. Terminal: bento reset.',f:'factory reset wipe danger environment start over clean onboarding again everything'}),
+        {danger:true,desc:'Erases everything and runs first-time setup again.',
+         more:'Memory, knowledge, conversations, apps, agents, settings and accounts are all deleted. Only an admin can do it, on the machine itself or with bento reset. Take a Snapshot first.',f:'factory reset wipe danger environment start over clean onboarding again everything'}),
     ],{danger:true,f:'danger zone factory reset'}));
   }
   main.innerHTML=P.join('')+`<div class="savebar"><button class="pact" onclick="saveSettings()">Save</button></div>`;
@@ -12011,7 +12171,7 @@ async function paintVersion(check){
   if(rp&&document.activeElement!==rp)rp.value=d.repo||'';
   if(br&&document.activeElement!==br)br.value=d.branch||'';
   if(srcNote)srcNote.textContent=d.official===false
-    ?`a fork — pulled from git remote '${d.remote||''}'; origin still points at the official repository`
+    ?`a fork, pulled from git remote '${d.remote||''}'. Origin still points at the official repository.`
     :'the official repository';
   const btn=`<button class="endbtn" style="margin-left:10px" onclick="paintVersion(1)">Check now</button>`;
   if(d.update_available){
@@ -12044,7 +12204,7 @@ async function paintVersion(check){
        invisible here: the panel compared against a branch this copy is not on and
        reported the good news. */
     const where=d.mismatch
-      ? `up to date with ${esc(d.tracks||'')} — this copy is on ${esc(d.on_branch||'another branch')}`
+      ? `up to date with ${esc(d.tracks||'')}, but this copy is on ${esc(d.on_branch||'another branch')}`
       : (d.latest?`up to date with ${esc(d.tracks||'')}`:'not checked yet');
     el.innerHTML=`<b>${esc(d.current||'?')}</b>${d.build?` <code class="mut">${esc(d.build)}</code>`:''} `
       +`<span class="mut">${d.error?esc(d.error):where}</span>`+btn;
@@ -12088,19 +12248,19 @@ async function paintModelPicker(refresh){
       if(!items.length)return '';
       return `<optgroup label="${esc(label)}">`+items.map(e=>
         `<option value="${esc(e.id)}"${e.id===cur.executor?' selected':''}${e.available?'':' disabled'}>`
-        +esc(e.name)+(e.available?(e.detail?' · '+esc(e.detail):''):' — '+esc(e.reason||'not available'))
+        +esc(e.name)+(e.available?(e.detail?' · '+esc(e.detail):''):' · '+esc(e.reason||'not available'))
         +'</option>').join('')+'</optgroup>';
     };
-    const none=cur.executor?'':'<option value="" selected>— nothing set —</option>';
-    ex.innerHTML=none+grp('Models — answered by '+((cfg&&cfg.agent_name)||'Aria'),'provider')
-                +grp('Agents — they answer instead','agent');
+    const none=cur.executor?'':'<option value="" selected>Nothing set</option>';
+    ex.innerHTML=none+grp('Models, answered by '+((cfg&&cfg.agent_name)||'Aria'),'provider')
+                +grp('Other agents','agent');
   }
   const chosen=list.find(e=>e.id===cur.executor);
   if(sel){
     const mods=(chosen&&chosen.models)||[];
     sel.innerHTML=mods.length?mods.map(m=>
       `<option value="${esc(m.id)}"${m.id===cur.model?' selected':''}>${esc(m.name||m.id)}</option>`).join('')
-      :`<option value="">no models — add a key below, or pull one in Model Manager</option>`;
+      :`<option value="">No models yet. Add a key below or pull one in Model Manager</option>`;
     // A model set in config that the providers no longer offer must stay visible
     // and selected, or opening Settings would silently look like something else
     // is answering.
@@ -12115,10 +12275,10 @@ async function paintModelPicker(refresh){
     const n=provs.reduce((s,e)=>s+e.models.length,0);
     const per=provs.map(e=>`${esc(e.id)} ${e.models.length}`).join(' · ');
     const agents=list.filter(e=>e.kind==='agent'&&e.available).map(e=>esc(e.name));
-    count.innerHTML=n?`<b>${n}</b> model${n===1?'':'s'} — ${per}`
-                     :`none found — enable a provider below, or pull one in <a href="#" onclick="openApp('models');return false">Model Manager</a>`;
+    count.innerHTML=n?`<b>${n}</b> model${n===1?'':'s'}: ${per}`
+                     :`None found. Enable a provider below or pull one in <a href="#" onclick="openApp('models');return false">Model Manager</a>`;
     count.innerHTML+=agents.length?` · agents here: ${agents.join(', ')}`
-      :` · no other agent installed — see <a href="#" onclick="SETTAB='executors';localStorage.setItem('settab','executors');refreshApp('settings');return false">Executors</a>`;
+      :` · no other agents installed. See <a href="#" onclick="SETTAB='executors';localStorage.setItem('settab','executors');refreshApp('settings');return false">Executors</a>`;
   }
 }
 async function pickExecutor(id){
@@ -12238,7 +12398,7 @@ function scRecord(name,btn){
     const clash=Object.keys(SHORTCUTS).find(n=>n!==name&&SHORTCUTS[n].keys===keys);
     SHORTCUTS[name].keys=keys;
     cleanup();
-    scSave().then(()=>{scRender();toast(clash?`${keys} set — it was also ${SHORTCUTS[clash].label}`:`${keys} set`)});
+    scSave().then(()=>{scRender();toast(clash?`${keys} set. It was also ${SHORTCUTS[clash].label}`:`${keys} set`)});
   };
   const cancel=()=>{cleanup();scRender()};
   const cleanup=()=>{window.removeEventListener('keydown',done,true);SC_REC=null};
@@ -12274,12 +12434,12 @@ async function locRender(){
   const countries=Object.entries(LOCALE.countries).sort((a,b)=>a[1].localeCompare(b[1]));
   box.innerHTML=[
     pRow('Country / region',
-      pSelect('loc-country',[['','— not set —'],...countries.map(([c,n])=>[c,`${n} (${c})`])],lo.country),
-      {desc:'Decides what "local" means: news, prices, holidays, sport.',f:'country region locale'}),
-    pRow('Timezone',pSelect('loc-tz',[['','— not set —'],...LOCALE.timezones.map(t=>[t,t])],lo.timezone),
-      {desc:'Every "today" and "tonight" is resolved in this zone.',f:'timezone clock time'}),
+      pSelect('loc-country',[['','Not set'],...countries.map(([c,n])=>[c,`${n} (${c})`])],lo.country),
+      {desc:'Sets what “local” means for news, prices, holidays and sport.',f:'country region locale'}),
+    pRow('Timezone',pSelect('loc-tz',[['','Not set'],...LOCALE.timezones.map(t=>[t,t])],lo.timezone),
+      {desc:'Used for anything like “today” or “tonight”.',f:'timezone clock time'}),
     pRow('Language',pText('loc-lang',lo.language||'','en-IN'),{f:'language locale'}),
-    pRow('City',pText('loc-city',lo.city||'','Bengaluru'),{desc:'Optional — sharpens weather and local answers.',f:'city location'}),
+    pRow('City',pText('loc-city',lo.city||'','Bengaluru'),{desc:'Optional. Makes weather and local answers more precise.',f:'city location'}),
     pRow('Units',pSelect('loc-units',[['metric','Metric'],['imperial','Imperial']],lo.units),{f:'units metric imperial'}),
     pRow('Clock',pSelect('loc-clock',[['24h','24-hour'],['12h','12-hour']],lo.clock),{f:'clock 12 24 hour'}),
     pRow('Detected on this machine',
@@ -12331,11 +12491,11 @@ async function renderExecutors(){
       <div class="ghint mut">${esc(r.why_not||'not installed')}</div>
       ${off.command?pRow('Install it',
           `<button class="endbtn" onclick="execInstallComponent('${esc(r.id)}',this)">Install ${esc(r.title)}</button>`,
-          {desc:`Runs: <code>${esc(off.command)}</code>${off.licence?' · '+esc(off.licence):''}${
-             off.available?'':' — '+esc(off.reason||'not available here')}`,
+          {desc:`Runs <code>${esc(off.command)}</code>${off.licence?' · '+esc(off.licence):''}${
+             off.available?'':'. '+esc(off.reason||'not available here')}`,
            f:'install '+esc(r.id)})
-        :`<div class="ghint mut">AgentOS does not ship an installer for this one — install
-            it yourself and it will be detected and offered here.</div>`}
+        :`<div class="ghint mut">There’s no installer for this one here. Install it yourself
+            and it will show up.</div>`}
       ${r.docs?`<div class="ghint"><button class="endbtn" onclick="openInBrowser('${esc(r.docs)}')">Read the docs</button></div>`:''}
     </div>`;
   }).join('');
@@ -12357,7 +12517,7 @@ async function renderExecutors(){
         <div class="ghint">${esc(ex.install_note||'')}</div>
         ${pRow('Install it',`<button class="endbtn" id="exec-inst"
              onclick="execInstall()">Install Claude Code</button>`,
-          {desc:`Runs: <code>${esc(ex.install_cmd)}</code> — into your own account, no sudo.`,
+          {desc:`Runs <code>${esc(ex.install_cmd)}</code> in your own account, without sudo.`,
            f:'install claude code executor'})}
         <pre id="exec-instlog" class="exec-log" hidden></pre>`:''}
       ${ex.install?`<p class="mut"><button class="endbtn" onclick="openInBrowser('${esc(ex.install)}')">Read the docs</button></p>`:''}`;
@@ -12375,26 +12535,29 @@ async function renderExecutors(){
   box.innerHTML=`<h3>Claude Code <span class="mut">${esc(ex.version||'')}</span></h3>
     <div class="ghint">${esc(ex.what||'')}</div>${bill}
     ${pRow('Use as an engine',pSwitch('s-exec-on',ex.enabled),
-      {desc:'Adds “Claude Code” to the model picker in Chat. Each turn you send there is delegated to it.',f:'enable claude code executor'})}
-    ${ex.needs_signin?`<div class="ghint bill none">! Installed, but nobody is signed in — run <code>${esc(ex.signin_cmd||'claude')}</code> once in a terminal. Delegated runs will use that subscription.</div>`:''}
+      {desc:'Adds Claude Code to the model picker in Chat, so it can answer your turns.',f:'enable claude code executor'})}
+    ${ex.needs_signin?`<div class="ghint bill none">! Installed, but nobody is signed in yet. Run <code>${esc(ex.signin_cmd||'claude')}</code> once in a terminal.</div>`:''}
     ${pRow('Folder',pText('s-exec-ws',c.workspace),
-      {desc:'The only directory it can read or write. Everything else on the machine is out of reach. The same folder and tools bound Gemini CLI and Codex when one of them is the brain.',f:'executor workspace folder gemini codex'})}
+      {desc:'The only folder it can read or write.',
+       more:'The same folder and tools also apply to Gemini CLI and Codex when one of them is the brain.',f:'executor workspace folder gemini codex'})}
     ${pRow('Let it work on AgentOS itself',pSwitch('s-exec-src',c.allow_source),
-      {desc:`Also gives it <code>${esc(ex.source_root||'')}</code> — the source of this OS — so it can fix AgentOS's own tools and windows. It is told that the UI is built from <code>ui/src</code> and that the suite must pass. Off unless you turn it on: the OS rewriting itself is its own decision.`,
+      {desc:`Also gives it the AgentOS source at <code>${esc(ex.source_root||'')}</code>, so it can fix the OS itself.`,
+       more:'Off until you turn it on. It’s told how the UI is built and that the tests must pass.',
        f:'executor agentos source develop self edit'})}
     ${pRow('Model',pText('s-exec-model',c.model,'its own default'),
-      {desc:'Leave empty to let Claude Code choose. It uses its own credentials — not your AgentOS provider keys.',f:'executor model'})}
+      {desc:'Leave empty to let Claude Code choose.',more:'It signs in with its own account, separate from your AgentOS provider keys.',f:'executor model'})}
     ${pRow(b.mode==='subscription'?'Work limit':'Spend limit',
       pText('s-exec-budget',c.budget_usd,'','number'),
       {desc:b.mode==='subscription'
-        ? 'You are on a Claude subscription, so runs are not billed per token — this is a runaway guard, not a bill. Claude Code stops when its <em>notional</em> cost reaches it; ask it to carry on and it resumes where it stopped.'
-        : 'A hard ceiling in US dollars per run, enforced by Claude Code itself.',
+        ? 'A guard against runaway work. Your subscription isn’t billed per token.'
+        : 'The most one run can spend, in US dollars. Claude Code enforces it.',
+       more:b.mode==='subscription'?'Claude Code stops when its estimated cost reaches this. Ask it to carry on and it picks up where it stopped.':'',
        f:'executor budget cost limit work'})}
     ${pRow('Allowed tools',`<div class="exec-tools">
         ${tool('Read','read files')}${tool('Glob','find files')}${tool('Grep','search text')}
         ${tool('WebSearch','search the web')}${tool('WebFetch','read a page')}
         ${tool('Write','create files')}${tool('Edit','change files')}${tool('Bash','run commands')}
-      </div>`,{stack:true,desc:'Decided here, once, before a run starts — this build of Claude Code has no per-call approval hook, so anything left unticked simply cannot be used.',f:'executor allowed tools permissions'})}
+      </div>`,{stack:true,desc:'Anything left unticked can’t be used.',more:'You choose these before a run starts. This version of Claude Code can’t ask you for approval call by call.',f:'executor allowed tools permissions'})}
     <div class="ghint" id="exec-envelope">${esc(ex.envelope||'')}</div>`;
   const refresh=()=>{
     const t=[...box.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool);
@@ -12421,7 +12584,7 @@ function paintEngineSelect(d){
   sel.innerHTML=rows.map(r=>{
     const label=r.builtin?((cfg.agent_name||'Aria')+' (the built-in agent)')
       :r.installed?(r.title+(r.version?' · '+r.version:''))
-      :(r.title+' — '+(r.why_not||'not installed'));
+      :(r.title+' · '+(r.why_not||'not installed'));
     return `<option value="${esc(r.id)}"${r.id===cur?' selected':''}${
       r.installed?'':' disabled'}>${esc(label)}</option>`;
   }).join('');
@@ -12440,7 +12603,7 @@ async function pickEngine(id){
        ||list.find(e=>e.kind==='provider'&&e.available))
     : list.find(e=>e.id===id);
   if(!target)return toast(id==='aria'
-    ?'no provider model to fall back to — add a key or pull one first'
+    ?'no provider model to fall back to. Add a key or pull one first'
     :'that executor is not on this machine');
   if(await setBrain(target.id,target.model)){renderExecutors();paintModelPicker()}
 }
@@ -12515,11 +12678,11 @@ function chanCard(c){
         {desc:(CHAN_POSTURES.find(p=>p.id===c.posture)||{}).help||'',
          f:c.id+' permissions posture autonomy'})
     : pRow('Permissions',`<span class="mut">follows ${esc(c.posture_from||'another channel')}</span>`,
-        {desc:`Arrives through the same gate, so the same rules apply: ${esc(c.posture_label)}.`,
+        {desc:`Same rules as that channel: ${esc(c.posture_label)}.`,
          f:c.id+' permissions'});
   const onoff=c.builtin
     ? pRow('Available',`<span class="mut">always on</span>`,
-        {desc:'This is how you reach the machine — it has no off switch here.',f:c.id+' always on'})
+        {desc:'This is how you reach the machine, so it can’t be switched off here.',f:c.id+' always on'})
     : pRow('Switched on',pSwitch(`ch-${c.id}-on`,c.enabled),{f:c.id+' enable'});
   /* The walkthrough, open exactly when it is needed. "Create a bot with @BotFather
      and paste its token" is a fine label for the BOX; it is not instructions, and it
@@ -12528,7 +12691,7 @@ function chanCard(c){
      `status==='needs'` is the honest trigger: unfilled channels teach, a working one
      folds itself away rather than nagging. */
   const steps=(c.setup||[]).length?`<details class="chsteps" ${c.status==='needs'?'open':''}>
-      <summary>How to set this up — ${(c.setup||[]).length} steps</summary>
+      <summary>How to set this up (${(c.setup||[]).length} steps)</summary>
       ${/* md() rather than a second inline-markdown pass: it escapes first, and it
             is what renders **bold** and `code` everywhere else in the OS. The <p>
             it wraps a single line in is styled flat below. */''}
@@ -12545,7 +12708,7 @@ function chanCard(c){
     ${/* WhatsApp's two facts a form cannot hold: the callback URL Meta needs, and
          whether the 24-hour window is open. Filled by waPanel() after render. */''}
     ${c.id==='whatsapp'?'<div id="wa-extra" class="wa-extra"></div>':''}
-    ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel — see the Permissions app.</div>`:'')}
+    ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel. See the Permissions app.</div>`:'')}
     <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
       <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
   </div>`;
@@ -12581,7 +12744,7 @@ async function paintTeamBrains(){
   let sa={},mods={};
   try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),fetch('/api/models').then(r=>r.json())])}catch(e){}
   const list=(sa.subagents||[]);
-  if(!list.length){box.textContent='No specialists yet — ask for one, or create one in Missions → Build → Agents.';return}
+  if(!list.length){box.textContent='No specialists yet. Ask for one, or create one in Missions → Build → Agents.';return}
   const models=(mods.models||[]).map(m=>m.id);
   box.classList.remove('mut');
   box.innerHTML=list.map(s=>{
@@ -12607,8 +12770,8 @@ async function paintTeamMatrix(){
   const box=document.getElementById('s-team-matrix');if(!box)return;
   let d={};try{d=await (await fetch('/api/team/matrix')).json()}catch(e){}
   const names=d.agents||[], cells=d.cells||{}, talk=d.talk||'matrix';
-  if(names.length<2){box.textContent='Two or more specialists are needed before any of them can message another.';return}
-  if(talk==='off'){box.classList.add('mut');box.textContent='Off — no agent can message another. Choose "Ask me" or "Swarm" above to use the matrix.';return}
+  if(names.length<2){box.textContent='You need at least two specialists before they can message each other.';return}
+  if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first” or “Swarm” above to turn it on.';return}
   box.classList.remove('mut');
   const label=(v)=>v==='allow'?'allow':v==='deny'?'block':talk==='swarm'?'swarm':'ask';
   box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
@@ -12616,7 +12779,7 @@ async function paintTeamMatrix(){
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
       const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell not blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
     const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
     const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
@@ -12663,13 +12826,13 @@ function openLinkedTeams(){
 function tlkReqHTML(r){
   const who=esc(r.name||'?'), id=r.identity||{};
   const face=avatarRecipeImg(id.agent,'av-set',(id.agent_name||r.name)+'’s agent');
-  const team=id.agent_name?` <span class="mut">— ${esc(id.agent_name)}’s team${id.person?', '+esc(id.person):''}</span>`:'';
+  const team=id.agent_name?` <span class="mut">· ${esc(id.agent_name)}’s team${id.person?', '+esc(id.person):''}</span>`:'';
   if(r.kind==='account')return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} asks to link teams with you.</p>
-      <small class="mut">You are both on this machine, so there is nothing to compare — it is them.</small></div>
+      <small class="mut">You’re both on this machine, so there’s nothing to compare.</small></div>
     <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
   return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} <span class="mut">(${esc(r.addr||'')})</span> asks to link its team with yours.</p>
       <div class="tlk-sas-row">Check that ${who} shows <span class="tlk-sas">${esc(r.sas||'')}</span></div>
-      <small class="mut">Different digits mean something is between you — deny it. Approving lets nothing through yet: you choose which of your agents theirs may ask.</small></div>
+      <small class="mut">If the digits differ, something is in between you, so deny it. After you approve, you still choose which of your agents they can ask.</small></div>
     <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
 }
 function tlkOutHTML(r){
@@ -12678,7 +12841,7 @@ function tlkOutHTML(r){
   const line=st==='pending'
     ?(r.kind==='account'||!r.sas?`Waiting for <b>${esc(r.to_name||r.name)}</b> to approve.`
       :`Waiting for <b>${who}</b> to approve.</p><p class="tlk-sas-row">Make sure it shows <span class="tlk-sas">${esc(r.sas)}</span>`)
-    :st==='approved'?`✓ <b>${who}</b> approved — linked.`
+    :st==='approved'?`✓ <b>${who}</b> approved. You’re linked.`
     :st==='denied'?`<b>${who}</b> said no.`
     :st==='expired'?`Nobody at <b>${who}</b> answered in ten minutes.`
     :`<b>${who}</b>: ${esc(r.error||st)}`;
@@ -12691,12 +12854,12 @@ async function paintTeamLinks(){
   const mine=(sa.subagents||[]).map(s=>s.name), me=d.me||{};
   const keep=box.querySelector('#tlk-addr')?.value||'', open=box.querySelector('.tlk-more')?.open;
   box.classList.remove('mut');
-  const inv=TEAM_INVITE?`<div class="tlk-invite"><b>${TEAM_INVITE.kind==='account'?'Account code':'Invite'}</b> — give it to the other side privately; it works once, for ten minutes.
+  const inv=TEAM_INVITE?`<div class="tlk-invite"><b>${TEAM_INVITE.kind==='account'?'Account code':'Invite'}</b>: share it privately. It works once, for ten minutes.
       <div class="tlk-inv-row"><input readonly value="${esc(TEAM_INVITE.invite||TEAM_INVITE.code)}"><button class="endbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousElementSibling.value);toast('copied')">Copy</button></div>
-      ${TEAM_INVITE.fingerprint?`<small class="mut">This machine's certificate: ${esc(TEAM_INVITE.fingerprint.slice(0,16))}… — the joiner checks it before sending anything.</small>`:''}</div>`:'';
+      ${TEAM_INVITE.fingerprint?`<small class="mut">This machine’s certificate: ${esc(TEAM_INVITE.fingerprint.slice(0,16))}…. The other side checks it before sending anything.</small>`:''}</div>`:'';
   const links=(d.links||[]).map(l=>{const id=l.peer_identity||{};return `<div class="tlk-card">
       <div class="tlk-head">${avatarRecipeImg(id.agent,'av-tool',(id.agent_name||'their agent'))}<b>${esc(l.label)}</b>${id.agent_name?`<span class="mut">${esc(id.agent_name)}’s team${id.person?' · '+esc(id.person):''}</span>`:''}<span class="brainchip">${l.kind==='account'?'account here':'machine · mTLS'}</span>
-        <span class="mut">${esc(l.kind==='machine'?(l.url||'they can reach you; you cannot reach them'):'')}</span>
+        <span class="mut">${esc(l.kind==='machine'?(l.url||'they can reach you, you can’t reach them'):'')}</span>
         <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
         <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
@@ -12715,18 +12878,18 @@ async function paintTeamLinks(){
       ${(d.outgoing||[]).map(tlkOutHTML).join('')}
     </div>
     <div class="tlk-me">This machine: <b>${esc(me.name||'')}</b> <small class="mut">certificate ${esc((me.fingerprint||'').slice(0,16))}…</small></div>
-    ${d.can_listen?`<label class="tlk-chk"><input type="checkbox" id="tlk-listen" ${d.listening?'checked':''}><span>Let other machines ask to link — opens port ${esc(me.port)} on this machine, mutual TLS only</span></label>`
-      :`<p class="mut tlk-why">${d.listening?'Other machines can ask to link with this one.':'Other machines cannot ask to link with this one until an admin turns that on. You can still ask them'+(d.accounts?', and link with another account here.':'.')}</p>`}
-    ${d.can_listen&&!d.listening?'<p class="mut tlk-why">Asking another machine works now. For THEM to ask YOU, turn this on.</p>':''}
+    ${d.can_listen?`<label class="tlk-chk"><input type="checkbox" id="tlk-listen" ${d.listening?'checked':''}><span>Let other machines ask to link (opens port ${esc(me.port)}, mutual TLS only)</span></label>`
+      :`<p class="mut tlk-why">${d.listening?'Other machines can ask to link with this one.':'Other machines can’t ask to link with this one until an admin allows it. You can still ask them'+(d.accounts?', and link with another account here.':'.')}</p>`}
+    ${d.can_listen&&!d.listening?'<p class="mut tlk-why">You can already ask other machines. Turn this on so they can ask you.</p>':''}
     ${links||'<p class="mut">No linked teams yet.</p>'}
     <details class="tlk-more"${open?' open':''}><summary>Use an invite code instead</summary>
-      <p class="mut tlk-why">For a machine nobody can approve on — a headless box set up over SSH. Make the code on one side, paste it on the other.</p>
+      <p class="mut tlk-why">For a machine with no screen to approve on. Make a code on one side and paste it on the other.</p>
       <div class="tlk-actions">
         <button class="endbtn" onclick="teamLinkInvite('machine')" ${d.listening?'':'disabled'}>Invite a machine</button>
         <input id="tlk-join" placeholder="bento://link/… (an invite from the other machine)"><button class="endbtn" onclick="teamLinkJoin()">Join</button>
         ${d.accounts?`<button class="endbtn" onclick="teamLinkInvite('account')">Invite an account here</button>
           <input id="tlk-code" placeholder="code from another account"><button class="endbtn" onclick="teamLinkRedeem()">Redeem</button>`:''}
-      </div>${d.listening?'':'<p class="mut tlk-why">Invite a machine needs other machines allowed to reach this one (above).</p>'}${inv}
+      </div>${d.listening?'':'<p class="mut tlk-why">To invite a machine, first let other machines ask to link (above).</p>'}${inv}
     </details>`;
   const a=box.querySelector('#tlk-addr');if(a){a.value=keep;a.onkeydown=e=>{if(e.key==='Enter')teamLinkRequest()}}
   const ls=box.querySelector('#tlk-listen');
@@ -12752,7 +12915,7 @@ function tlScope(s){return String(s||'').replace(/^(fs|tool):/,'').replace(/\/?\
 function tlStandHTML(l,mine,d){
   const rows=l.standing||[], lab=esc(l.label);
   return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
-    <p class="mut tlk-why">A question from ${lab} can make your agents read and answer, never change anything — a person here is asked first, and when nobody is watching the answer is no. Allow one thing here ahead of time: that agent, that action, inside that folder. If the agent also read a web page or a mail on the way, you are asked again.</p>
+    <p class="mut tlk-why">Questions from ${lab} can make your agents read and answer, but any change needs a person here to say yes. ${pInfo('Allow one thing ahead of time: one agent, one action, in one folder. If the agent also read a web page or an email on the way, you’re asked again.')}</p>
     ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
     ${rows.map(x=>`<div class="tlk-stand-row">${avatarImg(x.agent,'av-tool')}<span><b>${esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
     ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
@@ -12760,7 +12923,7 @@ function tlStandHTML(l,mine,d){
       <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">
       <input data-sa="days" type="number" min="1" inputmode="numeric" placeholder="days (blank: until removed)">
       <button class="pact" onclick="tlStandAdd('${lab}',this)">Allow</button></div>`
-      :'<p class="mut tlk-why">You have no specialists yet — this is for them.</p>'}
+      :'<p class="mut tlk-why">You have no specialists yet. This is for them.</p>'}
   </details>`;
 }
 /* Their missions that use YOUR agents — recorded here when they save one (or on its first
@@ -12776,26 +12939,26 @@ function tlMissionsHTML(l){
       <div class="tlk-miss-main"><b>${esc(m.mission)}</b>
         <span class="brainchip">${m.stopped?'stopped by you':m.enabled===false?'off on their side':'on'}</span>
         ${(m.agents||[]).map(a=>avatarImg(a,'av-tool')+esc(a)).join(' ')}
-        <div class="mut tlk-why">${m.schedule?esc(m.schedule)+' · ':''}asked ${m.runs} time${m.runs===1?'':'s'}, last ${esc(when(m.last_used))}${m.text?' — '+esc(m.text):''}</div></div>
+        <div class="mut tlk-why">${m.schedule?esc(m.schedule)+' · ':''}asked ${m.runs} time${m.runs===1?'':'s'}, last ${esc(when(m.last_used))}${m.text?' · '+esc(m.text):''}</div></div>
       <button class="endbtn" onclick="tlMissionStop('${lab}','${esc(m.mission)}',${m.stopped?'false':'true'})">${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
   </div>`;
 }
 async function tlMissionStop(label,mission,stop){
   if(stop&&!await osConfirm('Stop '+label+'’s mission “'+mission+'”?',
-     'Its questions to your agents are refused here from now on, and they are told so. The record stays; Allow again undoes it.',{confirmText:'Stop'}))return;
+     'Its questions to your agents will be refused, and they’ll be told why. Allow again undoes it.',{confirmText:'Stop'}))return;
   const r=await teamApi('/api/team/links/'+encodeURIComponent(label)+'/missions/'+encodeURIComponent(mission)+'/'+(stop?'stop':'allow'),'POST',{});
-  if(r){toast(stop?'stopped — '+label+'’s mission is refused here':'allowed again');paintTeamLinks()}
+  if(r){toast(stop?'stopped '+label+'’s mission':'allowed again');paintTeamLinks()}
 }
 async function tlStandAdd(label,btn){
   const box=btn.closest('.tlk-stand-add'),v=k=>(box.querySelector(`[data-sa="${k}"]`)||{}).value||'';
-  if(!v('scope').trim()){toast('say which folder or tool — never everything');return}
+  if(!v('scope').trim()){toast('say which folder or tool');return}
   const r=await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing','POST',
     {agent:v('agent'),action:v('action'),scope:v('scope').trim(),days:v('days')?Number(v('days')):null});
   if(r){TL_STAND_OPEN[label]=true;toast(label+' may now have '+r.agent+' '+(TL_ACT_WORDS[r.action]||r.action)+' '+tlScope(r.scope)+' without asking');paintTeamLinks()}
 }
 async function tlStandRemove(label,id){
   if(await teamApi('/api/team/links/'+encodeURIComponent(label)+'/standing/'+encodeURIComponent(id),'DELETE')){
-    TL_STAND_OPEN[label]=true;toast('removed — '+label+' asks a person again for that');paintTeamLinks()}
+    TL_STAND_OPEN[label]=true;toast('removed. '+label+' needs a person to say yes again');paintTeamLinks()}
 }
 async function teamApi(url,method,body){
   const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
@@ -12807,12 +12970,12 @@ async function teamLinkRequest(){
   if(!v){toast('type the other machine’s name or address');a&&a.focus();return}
   toast('asking '+v+'…');
   const r=await teamApi('/api/team/links/request','POST',{address:v});
-  if(r){if(a)a.value='';toast('asked '+r.request.name+' — check it shows '+r.request.sas);paintTeamLinks()}
+  if(r){if(a)a.value='';toast('asked '+r.request.name+'. Check it shows '+r.request.sas);paintTeamLinks()}
 }
 async function teamLinkRequestAccount(){
   const v=(document.getElementById('tlk-acct')||{}).value||'';
   const r=await teamApi('/api/team/links/request','POST',{account:v});
-  if(r){toast('asked '+r.request.to_name+' — they approve from their account');paintTeamLinks()}
+  if(r){toast('asked '+r.request.to_name+'. They approve from their account');paintTeamLinks()}
 }
 async function teamLinkAnswer(id,verb){
   const r=await teamApi('/api/team/links/requests/'+encodeURIComponent(id)+'/'+verb,'POST',{});
@@ -12830,8 +12993,8 @@ async function teamLinkCheck(label,btn){
   const r=await fetch('/api/team/links/'+encodeURIComponent(label)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
   // they show only the agents they let your team ask — a link grants nothing, not even names
   if(el)el.textContent=!r.ok?(r.error||'not reachable')
-    :(r.agents||[]).length?'Reachable. Your agents may ask: '+r.agents.map(a=>a.name+' ('+a.provider+')').join(', ')+' — as name@'+label+'.'
-    :'Reachable. They have not let your team ask any of their agents yet — that is their choice, on their side.';
+    :(r.agents||[]).length?'Reachable. Your agents can ask '+r.agents.map(a=>a.name+' ('+a.provider+')').join(', ')+', as name@'+label+'.'
+    :'Reachable. They haven’t let your team ask any of their agents yet. That’s up to them.';
 }
 /* ================= WhatsApp: the two things a form cannot say =================
    The generic channel card in 11-settings draws WhatsApp's four fields fine. What
@@ -12868,23 +13031,18 @@ async function waPanel(){
     ? `<div class="wa-hook"><b>Callback URL</b>
         <code id="wa-url">${esc(reach.webhook)}</code>
         <button class="endbtn" onclick="waCopy()">Copy</button>
-        <em>Paste this into the WhatsApp product page on developers.facebook.com,
-          with your verify token, and subscribe to <code>messages</code>.</em></div>`
+        <em>Paste it into the WhatsApp page on developers.facebook.com. ${pInfo('Add your verify token there too, and subscribe to the messages field.')}</em></div>`
     : `<div class="wa-hook warnbox"><b>Meta cannot reach this machine yet</b>
         <em>${esc(reach.why||'')}</em></div>`;
   const pairing=d.owner_wa_id
     ? `<div class="wa-line"><b>Paired</b> <code>+${esc(d.owner_wa_id)}</code>
         <button class="endbtn" onclick="waUnpair()">Unpair</button></div>`
-    : `<div class="wa-line mut">Not paired yet — message the number from your phone
-        once, and that chat becomes the owner.</div>`;
+    : `<div class="wa-line mut">Not paired yet. Message the number once from your phone. ${pInfo('The first chat that writes in becomes the owner.')}</div>`;
   // Two different facts, said separately on purpose.
   const win=d.owner_wa_id
     ? (d.window_open
-        ? `<div class="wa-line ok">The ${d.window_hours}-hour window is open — it can
-             message you right now.</div>`
-        : `<div class="wa-line warn">The ${d.window_hours}-hour window has closed.
-             WhatsApp will not let it speak first; send anything to the number and it
-             reopens for a day.</div>`)
+        ? `<div class="wa-line ok">The ${d.window_hours}-hour window is open, so it can message you now.</div>`
+        : `<div class="wa-line warn">The ${d.window_hours}-hour window has closed. Send the number anything to reopen it. ${pInfo('WhatsApp only lets a business message you first within a day of your last message.')}</div>`)
     : '';
   const chats=(d.chats||[]).filter(c=>c.wa_id!==d.owner_wa_id);
   const others=chats.length
@@ -12897,7 +13055,7 @@ async function waPanel(){
   // The way back. Without it, choosing the Business API once is a one-way door:
   // the four fields are the only thing on screen and nothing offers the QR again.
   const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
-    Using the <b>Business (Cloud) API</b> — official, and it needs the fields above.
+    Using the official <b>Business (Cloud) API</b>, set up with the fields above.
     <button class="endbtn" onclick="waSetMode('baileys')">Scan a QR code instead</button></div>`;
   box.innerHTML=`${hook}${pairing}${win}${others}
     ${d.configured&&d.enabled?`<div class="wa-line"><button class="endbtn"
@@ -12928,7 +13086,7 @@ async function waTest(){
   try{
     const d=await (await fetch('/api/whatsapp/test',{method:'POST'})).json();
     const bad=String(d.result||'').startsWith('[error]');
-    if(out){out.textContent=bad?d.result.replace('[error] ',''):'sent — check your phone';
+    if(out){out.textContent=bad?d.result.replace('[error] ',''):'sent, check your phone';
       out.className=bad?'warn':'ok'}
   }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}}
 }
@@ -12940,7 +13098,7 @@ async function waTest(){
 function waLinkPanel(d){
   const L=d.link||{};
   const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
-    Using the <b>WhatsApp Web link</b> — no Meta account needed.
+    Using the <b>WhatsApp Web link</b>. No Meta account needed.
     <button class="endbtn" onclick="waSetMode('cloud')">Use the Business API instead</button></div>`;
   if(!L.installed){
     // The consent ladder: what it unlocks, its licence, the honest warning, and
@@ -12948,12 +13106,8 @@ function waLinkPanel(d){
     return `<div class="wa-hook warnbox">
       <b>The WhatsApp Web bridge is not installed</b>
       <em>${esc(L.why||'')}</em>
-      <div class="wa-line" style="margin-top:8px">Scan a QR code from your phone and this
-        machine becomes a linked device — no Meta developer account, no public webhook,
-        no 24-hour reply window.</div>
-      <div class="wa-line warn" style="margin-top:6px"><b>Unofficial.</b> It emulates a
-        linked WhatsApp Web device. WhatsApp does not support this and has banned
-        accounts for automating on it — prefer a spare number.</div>
+      <div class="wa-line" style="margin-top:8px">Scan a QR code from your phone and this machine becomes a linked device. ${pInfo('You skip the Meta developer account, the public webhook and the 24-hour reply window.')}</div>
+      <div class="wa-line warn" style="margin-top:6px"><b>Unofficial.</b> WhatsApp has banned accounts for automating on it, so use a spare number. ${pInfo('It acts as a linked WhatsApp Web device, which WhatsApp does not support.')}</div>
       <div class="wa-line mut">MIT (Baileys) · needs Node.js · downloads ~60 MB</div>
       <div class="wa-line"><button class="pact" onclick="waInstall()">Install the bridge</button>
         <small id="wa-inst" class="mut"></small></div>
@@ -12962,8 +13116,7 @@ function waLinkPanel(d){
   if(L.state==='qr'&&L.qr_svg){
     return `<div class="wa-hook">
       <b>Scan this with WhatsApp</b>
-      <em>On your phone: WhatsApp → Settings → Linked devices → Link a device.
-        The code refreshes automatically.</em>
+      <em>On your phone, open WhatsApp → Settings → Linked devices → Link a device. The code refreshes on its own.</em>
       <div class="wa-qr" style="background:#fff;padding:10px;border-radius:10px;
         width:min(260px,60vw);margin:10px 0">${L.qr_svg}</div>
       <button class="endbtn" onclick="waUnlink()">Cancel</button>
@@ -12972,10 +13125,8 @@ function waLinkPanel(d){
   if(L.state==='ready'){
     const owner=d.owner_wa_id
       ? `<div class="wa-line"><b>Paired</b> <code>+${esc(d.owner_wa_id)}</code></div>`
-      : `<div class="wa-line mut">Linked, but nobody has written in yet — message this
-           WhatsApp from your phone and that chat becomes the owner.</div>`;
-    return `<div class="wa-line ok">● Linked as <code>${esc((L.me||'').split(':')[0])}</code>
-        — it can message you at any time (no 24-hour window on a linked device).</div>
+      : `<div class="wa-line mut">Linked. Message this WhatsApp from your phone to become the owner.</div>`;
+    return `<div class="wa-line ok">● Linked as <code>${esc((L.me||'').split(':')[0])}</code>. It can message you any time. ${pInfo('A linked device has no 24-hour reply window.')}</div>
       ${owner}
       <div class="wa-line"><button class="endbtn" onclick="waTest()">Send me a test message</button>
         <small id="wa-test" class="mut"></small>
@@ -13004,7 +13155,7 @@ async function waSetMode(mode){
 }
 async function waInstall(){
   const out=document.getElementById('wa-inst');
-  if(out){out.textContent='installing — this takes a minute…';out.className='mut'}
+  if(out){out.textContent='installing, this takes a minute…';out.className='mut'}
   try{
     const r=await fetch('/api/components',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id:'whatsapp-bridge'})});
@@ -13097,17 +13248,15 @@ async function renderOcPlugins(){
         <b>${esc(p.id)}</b>${p.version?`<span class="mut"> ${esc(p.version)}</span>`:''}
         ${p.bundled?'<span class="ck">ships with OpenClaw</span>':''}
         ${p.source?`<div class="sub mut">${esc(p.source)}</div>`:''}
-        ${p.held?`<div class="sub" style="color:var(--err)">held: ${esc(p.held_reason)} — release it in Permissions → Quarantine</div>`:''}
+        ${p.held?`<div class="sub" style="color:var(--err)">held: ${esc(p.held_reason)}. Release it in Permissions → Quarantine.</div>`:''}
       </div>
       ${state}
       <button class="endbtn" onclick="ocpReview('${esc(p.id)}')">Review</button>
     </div>`;
   }).join('');
   box.innerHTML = `<h3>OpenClaw plugins</h3>
-    <div class="ghint">Third-party extensions for OpenClaw — tools, providers, channels and
-      hooks. AgentOS scans one before you turn it on, writes what it may reach as real
-      permissions, and can hold it. What it cannot do is refuse an individual call the
-      plugin makes once it is running: that happens inside OpenClaw's own process.</div>
+    <div class="ghint">Add-ons for OpenClaw. AgentOS scans each one and can hold it, but can't block its calls once it runs.
+      ${pInfo("Before you turn a plugin on, what it may reach is written as permissions you can revoke. Its calls run inside OpenClaw's own process.")}</div>
     <div class="prow">
       <input id="ocp-spec" placeholder="clawhub:name · npm:pkg · git:github.com/owner/repo · a path"
              autocomplete="off" style="flex:1">
@@ -13118,11 +13267,9 @@ async function renderOcPlugins(){
     <div id="ocp-review"></div>
     ${rows || '<p class="mut">no plugins installed</p>'}
     ${d.error?`<div class="ghint mut">${esc(d.error)}</div>`:''}
-    <div class="ghint mut">OpenClaw loads plugin code when its gateway starts, so a change
-      here is live only after that gateway restarts.</div>
+    <div class="ghint mut">Changes take effect after OpenClaw's gateway restarts.</div>
     <div class="ghint"><button class="endbtn" onclick="ocpDoctor()">Check them</button>
-      — asks OpenClaw whether the plugin tree is healthy, and asks this OS whether every
-      enabled plugin still has the permission it was given.</div>`;
+      ${pInfo('Asks OpenClaw if its plugins are healthy, and checks each enabled one still has its permissions.')}</div>`;
 }
 
 async function ocpSearch(){
@@ -13146,7 +13293,7 @@ async function ocpInstall(spec){
   spec = spec || ((document.getElementById('ocp-spec')||{}).value || '').trim();
   if(!spec){ toast('Which plugin? A ClawHub name, npm:…, git:… or a path'); return }
   OCP_BUSY = true;
-  toast('Installing ' + spec + ' — it will land disabled');
+  toast('Installing ' + spec + '. It will arrive switched off.');
   let d = null;
   try{
     d = await (await fetch('/api/openclaw/plugins/install', {
@@ -13160,8 +13307,8 @@ async function ocpInstall(spec){
        it: the person saying they looked. `force` is never sent on its own — it
        answers OpenClaw's own provenance question, so a person has to answer it. */
     if(d && d.needs_force &&
-       confirm((d.source_note||'') + '\n\nInstall it anyway? Only if you have looked at ' +
-               'the source and vouch for it.')){
+       confirm((d.source_note||'') + '\n\nInstall it anyway? Only do this if you have read ' +
+               'the source and trust it.')){
       OCP_BUSY = true;
       try{
         d = await (await fetch('/api/openclaw/plugins/install', {
@@ -13202,7 +13349,7 @@ async function ocpReview(pid){
     <div class="ghint mut">${esc(p.tofu_note||'')}</div>
     ${p.manifest_note?`<div class="ghint mut">${esc(p.manifest_note)}</div>`:''}
     ${p.quarantined?`<div class="ghint" style="color:var(--err)">Held: ${esc((p.quarantine||{}).reason||'')}.
-      Release it in Permissions → Quarantine before it can be turned on.</div>`:''}
+      Release it in Permissions → Quarantine to turn it on.</div>`:''}
     <details class="mtools" open><summary>What this machine's scan found</summary>
       ${((p.security||{}).findings||[]).map(f=>line(f.severity, f.note)).join('')
         || '<div class="mtool"><span>nothing to report</span></div>'}</details>
@@ -13223,8 +13370,7 @@ async function ocpReview(pid){
       <button class="endbtn" onclick="ocpUninstall('${esc(p.id)}')">Uninstall</button>
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Close</button>
     </div>
-    <div class="ghint mut">OpenClaw loads plugin code at gateway start — restart its gateway
-      before expecting a change here to be live.</div>
+    <div class="ghint mut">Changes take effect after OpenClaw's gateway restarts.</div>
   </div>`;
   out.scrollIntoView({block:'nearest', behavior:'smooth'});
 }
@@ -13247,12 +13393,10 @@ function ocpDisclaimer(p){
   return `<div class="pgroup" style="border-left:3px solid var(--err);padding-left:10px">
     <h3>⚠ Before you turn this on</h3>
     <div class="ghint">${esc(c.headline||'')}</div>
-    ${li.headline?`<div class="ghint"><b>${esc(li.headline)}</b> — ${esc(li.implication||'')}</div>`:''}
+    ${li.headline?`<div class="ghint"><b>${esc(li.headline)}</b>. ${esc(li.implication||'')}</div>`:''}
     ${gaps.map(row).join('')}
-    ${((p.native||{}).buildable)?`<div class="ghint">AgentOS can rebuild what this
-      plugin declares out of its own parts — MCP servers, flows and skills — so it runs
-      behind the permission engine instead of beside it. It builds, then checks its own
-      work, and everything it makes lands disabled.</div>`:''}
+    ${((p.native||{}).buildable)?`<div class="ghint">AgentOS can rebuild this plugin from its own parts, where every call is checked.
+      ${pInfo('It uses MCP servers, flows and skills, checks its own work, and leaves everything it makes switched off.')}</div>`:''}
   </div>`;
 }
 
@@ -13270,15 +13414,15 @@ async function ocpNative(pid){
   const lp = d.licence_port || {};
   if(lp.needs_ack && !confirm(
       lp.ask + '\n\n' + (lp.implication||'') +
-      '\n\nAgentOS cannot answer this for you — this is not legal advice.')){
-    toast('Left as it is — nothing was built'); return;
+      '\n\nAgentOS can\'t answer this for you, and this is not legal advice.')){
+    toast('Left as it is. Nothing was built.'); return;
   }
   const out = document.getElementById('ocp-review');
   if(out) out.innerHTML = `<div class="pgroup">
-    <h3>Native build brief — ${esc(pid)}</h3>
-    ${lp.headline?`<div class="ghint"><b>${esc(lp.headline)}</b> — ${esc(lp.implication||'')}</div>`:''}
-    <div class="ghint">This is what the agent will be asked to build. It is derived from
-      the plugin's own manifest, so it asks for nothing the plugin did not declare.</div>
+    <h3>Native build brief: ${esc(pid)}</h3>
+    ${lp.headline?`<div class="ghint"><b>${esc(lp.headline)}</b>. ${esc(lp.implication||'')}</div>`:''}
+    <div class="ghint">This is what the agent will be asked to build.
+      ${pInfo("It comes from the plugin's own manifest, so it only asks for what the plugin declared.")}</div>
     <pre style="white-space:pre-wrap;font-size:12px;max-height:340px;overflow:auto">${esc(d.prompt)}</pre>
     <div class="prow" style="flex-wrap:wrap">
       <button class="endbtn" onclick="ocpSendBrief(${JSON.stringify(pid).replace(/"/g,'&quot;')})">Hand it to the agent</button>
@@ -13302,9 +13446,9 @@ function ocpSendBrief(pid){
   setTimeout(()=>{
     const i = document.getElementById('input');
     if(!i){ navigator.clipboard?.writeText(prompt);
-            toast('Brief copied — paste it into Chat to start the build'); return }
+            toast('Brief copied. Paste it into Chat to start the build.'); return }
     i.value = prompt; i.focus(); i.dispatchEvent(new Event('input'));
-    toast('Read it, then send — the agent builds, then checks its own work');
+    toast('Read it, then send. The agent builds it and checks its own work.');
   }, 250);
 }
 
@@ -13314,10 +13458,10 @@ async function ocpVerify(pid){
   try{ d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/verify')).json() }catch(e){}
   if(!d || d.error){ toast((d&&d.error)||'could not check'); return }
   if(out) out.innerHTML = `<div class="pgroup">
-    <h3>Native build — ${esc(pid)} ${d.ok?'<span class="badge ok">all in place</span>'
+    <h3>Native build: ${esc(pid)} ${d.ok?'<span class="badge ok">all in place</span>'
                                         :'<span class="badge err">incomplete</span>'}</h3>
     ${(d.results||[]).map(r=>`<div class="mtool"><code>${r.ok?'✓':'✗'} ${esc(r.target)}</code>
-        <span>${esc(r.item)} — ${esc(r.note)}</span></div>`).join('')}
+        <span>${esc(r.item)}: ${esc(r.note)}</span></div>`).join('')}
     <div class="ghint mut">${esc(d.note||'')}</div>
     <div class="prow"><button class="endbtn" onclick="ocpReview('${esc(pid)}')">Back</button></div>
   </div>`;
@@ -13336,15 +13480,15 @@ async function ocpReport(pid){
   try{ d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/report')).json() }catch(e){}
   if(!d || d.error){ toast((d&&d.error)||'could not build the report'); return }
   const rows = (list, mark) => list.map(x=>`<div class="mtool"><code>${mark} ${esc(x.target)}</code>
-      <span>${esc(x.item)} — ${esc(x.note)}</span></div>`).join('');
+      <span>${esc(x.item)}: ${esc(x.note)}</span></div>`).join('');
   const lost = (d.not_portable||[]).map(g=>`<div class="mtool"><code>—</code><span>
       <b>${esc(g.what)}</b><br>${esc(g.why)}<br><i>What that costs: ${esc(g.implication)}</i>
     </span></div>`).join('');
   if(out) out.innerHTML = `<div class="pgroup">
-    <h3>Report — ${esc(pid)}
+    <h3>Report: ${esc(pid)}
       ${d.complete?'<span class="badge ok">complete</span>':'<span class="badge">partial</span>'}</h3>
     <div class="ghint">${esc(d.headline||'')}</div>
-    <div class="ghint"><b>${esc((d.licence||{}).headline||'')}</b> — ${esc((d.licence||{}).implication||'')}</div>
+    <div class="ghint"><b>${esc((d.licence||{}).headline||'')}</b>. ${esc((d.licence||{}).implication||'')}</div>
     ${(d.ported||[]).length?`<details class="mtools" open><summary>Ported and reachable</summary>
         ${rows(d.ported,'✓')}</details>`:''}
     ${(d.outstanding||[]).length?`<details class="mtools" open><summary>Declared, not built yet</summary>
@@ -13357,8 +13501,7 @@ async function ocpReport(pid){
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Continue as it is</button>
       ${(d.proposal||{}).keep_the_plugin?`<button class="endbtn" onclick="ocpReview('${esc(pid)}')">Keep running the original</button>`:''}
     </div>
-    <div class="ghint mut">Continuing as it is is a real answer — a partial port that
-      covers what you actually use is a fine place to stop.</div>
+    <div class="ghint mut">If the port covers what you actually use, it's fine to stop here.</div>
   </div>`;
 }
 
@@ -13373,8 +13516,8 @@ async function ocpEnable(pid, on){
   const d = await ocpPost('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/enable',
                           {enabled: !!on});
   if(!d.ok){ toast(String(d.error||'failed').slice(0,200)); return }
-  toast(on ? `${pid} is on — ${(d.grants||{}).added||0} permission(s) written`
-           : `${pid} is off — ${d.revoked||0} permission(s) taken back`);
+  toast(on ? `${pid} is on, ${(d.grants||{}).added||0} permission(s) written`
+           : `${pid} is off, ${d.revoked||0} permission(s) taken back`);
   await renderOcPlugins();
   ocpReview(pid);
 }
@@ -13385,7 +13528,7 @@ async function ocpUpdate(pid){
   if(!d.ok){ toast(String(d.error||'update failed').slice(0,200)); return }
   /* A held update is the supply-chain case this surface exists for, so it is
      said loudly rather than reported as a successful upgrade. */
-  toast(d.held ? `${pid} was HELD after updating: ${String(d.reason).slice(0,120)}`
+  toast(d.held ? `${pid} was held after updating: ${String(d.reason).slice(0,120)}`
                : `${pid} updated`);
   await renderOcPlugins();
   ocpReview(pid);
@@ -13406,7 +13549,7 @@ async function ocpUninstall(pid){
     d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid),
                            {method:'DELETE'})).json();
   }catch(e){}
-  toast((d && d.ok) ? `${pid} removed — ${d.revoked||0} permission(s) taken back`
+  toast((d && d.ok) ? `${pid} removed, ${d.revoked||0} permission(s) taken back`
                     : String((d&&d.error)||'failed').slice(0,200));
   await renderOcPlugins();
 }
@@ -13419,7 +13562,7 @@ async function ocpDoctor(){
   const off = (a.disabled||[]);
   toast(off.length
     ? `${off.length} plugin(s) turned off: ` + off.map(x=>x.id + ' (' + x.why + ')').join(', ')
-    : `${a.checked||0} plugin(s) checked — every enabled one still has the permission it was given`);
+    : `${a.checked||0} plugin(s) checked. Every enabled one still has its permissions.`);
   await renderOcPlugins();
 }
 /* ================= Share this agent / fork another ================= */
@@ -13460,19 +13603,15 @@ async function renderAgentShare(){
     '<span class="mut">no apps to ship</span>';
   const sign = d.can_sign
     ? `<label class="ck"><input type="checkbox" id="ags-sign"> sign it with this machine's key</label>`
-    : `<span class="mut">unsigned (fine for your own shares) — <code>bento registry keygen</code> would let you sign</span>`;
+    : `<span class="mut">unsigned, which is fine for your own shares ${pInfo('Run bento registry keygen on this machine to sign what you share.')}</span>`;
   box.innerHTML = `<h3>Share this agent</h3>
-    <div class="ghint">Package what makes ${esc(d.agent_name)} <em>${esc(d.agent_name)}</em> —
-      ${d.skills.length} skill(s), ${d.subagents.length} teammate(s), ${d.flows.length} flow(s)
-      and the shapes of ${d.mcp_servers.length} MCP server(s) — into one file anyone can fork.
-      What never travels: your memory, conversations, knowledge graph, and every key and
-      secret. A credential found in the bundle refuses the share outright; there is no
-      override, because a shared credential cannot be unshared.</div>
+    <div class="ghint">Pack ${esc(d.agent_name)}'s ${d.skills.length} skill(s), ${d.subagents.length} teammate(s),
+      ${d.flows.length} flow(s) and ${d.mcp_servers.length} MCP server setup(s) into one file anyone can fork.
+      ${pInfo("Your memory, conversations, knowledge graph, keys and secrets stay here. If a credential turns up in the bundle, the share stops, and there's no override.")}</div>
     <div class="prow"><input id="ags-name" placeholder="a name for it (default: ${esc(d.agent_name)})"
         autocomplete="off" class="ags-grow">
       <input id="ags-desc" placeholder="one sentence on what it is for" autocomplete="off" class="ags-grow"></div>
-    <div class="prow"><div class="pl"><small>Ship apps with it? Each is a choice — an app is the
-      piece most likely to have something personal built in.</small><div>${apps}</div></div></div>
+    <div class="prow"><div class="pl"><small>Include apps? Check each one, since apps often hold something personal.</small><div>${apps}</div></div></div>
     <div class="prow">
       <label class="ck"><input type="checkbox" id="ags-soul"> include the soul${d.has_soul?'':' <span class="mut">(none written yet)</span>'}</label>
       ${sign}
@@ -13480,20 +13619,13 @@ async function renderAgentShare(){
       <button class="endbtn" onclick="agsShare()">Build the bundle</button>
     </div>
     <div id="ags-report"></div>
-    <h3 style="margin-top:14px">Host it — "it stays with me, take it"</h3>
-    <div class="ghint">Sharing a file and hosting a share are two different intentions.
-      A fork of a published file is a copy the taker owns forever. Hosting keeps the
-      agent <em>with you</em>: peers take the <b>current</b> version through an
-      authenticated MCP door on this machine, each take is a ledger row, and revoking a
-      peer's key — here or in Permissions — ends the arrangement. The same leak scan
-      runs on every single take.</div>
+    <h3 style="margin-top:14px">Host it</h3>
+    <div class="ghint">Let people you give a key to take the latest version from this machine.
+      ${pInfo("A published file is a copy they keep. Hosting logs every take, runs the leak scan each time, and ends when you revoke their key.")}</div>
     <div id="ags-host"><p class="mut">checking…</p></div>
     <h3 style="margin-top:14px">Fork a shared agent</h3>
-    <div class="ghint">Point at a <code>${esc(d.well_known)}</code> — a URL, <code>owner/repo[@ref]</code>
-      (discovery: GitHub topic <code>${esc(d.topic)}</code>), or a file. You read exactly what it
-      contains and the permission ceiling enabling it all would reach, then fork. The fork
-      writes <b>zero</b> permissions: every flow lands disabled, MCP servers land off with
-      placeholder credentials for you to fill, and nothing of yours is overwritten.</div>
+    <div class="ghint">Paste a URL, <code>owner/repo</code> or a file, read what's inside, then fork it.
+      ${pInfo(`Look for ${d.well_known} files under the GitHub topic ${d.topic}. A fork grants no permissions: flows and MCP servers arrive switched off, and nothing of yours is overwritten.`)}</div>
     <div class="prow">
       <input id="ags-src" placeholder="owner/repo · https://… · ${esc(d.well_known)}" autocomplete="off" class="ags-grow">
       <input id="ags-key" placeholder="peer key (only for a hosted share)" autocomplete="off" class="ags-key">
@@ -13501,9 +13633,7 @@ async function renderAgentShare(){
       <label class="endbtn" style="cursor:pointer">from a file<input type="file" accept=".json"
         style="display:none" onchange="agsFromFile(this)"></label>
     </div>
-    <div class="sub mut">With a key, the source is another machine hosting its share
-      (<code>http://host:port</code>) — you take their live version through their door,
-      and they can end it. Without one, it is a published file.</div>
+    <div class="sub mut">Only add a key if the agent is hosted on another machine. ${pInfo('Use its http://host:port address. You get their live version, and they can end it at any time.')}</div>
     <div id="ags-fork"></div>`;
   renderAgsHost();
 }
@@ -13546,7 +13676,7 @@ async function agsHostToggle(on){
 
 async function agsMintPeer(){
   const name = ((document.getElementById('ags-peer-name')||{}).value||'').trim();
-  if(!name){ toast('Who is this key for? A short name'); return }
+  if(!name){ toast('Who is this key for? Give a short name'); return }
   let d = null;
   try{
     d = await (await fetch('/api/agent/peers', {method:'POST',
@@ -13558,16 +13688,15 @@ async function agsMintPeer(){
      The list re-render runs first, then the key lands in the fresh box. */
   await renderAgsHost();
   const box = document.getElementById('ags-peer-key');
-  if(box) box.innerHTML = `<div class="ghint" style="border-color:var(--warn)"><b>The key for
-      ${esc(name)} — shown once, hand it over yourself:</b>
+  if(box) box.innerHTML = `<div class="ghint" style="border-color:var(--warn)"><b>Key for
+      ${esc(name)}. It's shown only once, so pass it on yourself:</b>
     <pre style="user-select:all">${esc(d.key)}</pre>
-    <div class="sub mut">They take your agent with:
-      <code>bento agent fork http://&lt;this-host&gt; --key &lt;key&gt; --yes</code> —
-      or paste both into the Fork box on their machine.</div></div>`;
+    <div class="sub mut">They can paste it into the Fork box on their machine, or run
+      <code>bento agent fork http://&lt;this-host&gt; --key &lt;key&gt; --yes</code></div></div>`;
 }
 
 async function agsRevokePeer(name){
-  if(!confirm(`End the arrangement with '${name}'? Their key and its grant die together.`)) return;
+  if(!confirm(`Stop sharing with '${name}'? Their key and its permission are removed together.`)) return;
   try{ await fetch('/api/agent/peers/' + encodeURIComponent(name), {method:'DELETE'}) }catch(e){}
   renderAgsHost();
 }
@@ -13586,7 +13715,7 @@ async function agsShare(){
                             sign: !!(document.getElementById('ags-sign')||{}).checked})});
     d = await r.json();
   }catch(e){}
-  if(!d){ out.innerHTML = '<p class="mut">the share failed — is the server reachable?</p>'; return }
+  if(!d){ out.innerHTML = '<p class="mut">the share failed. Is the server reachable?</p>'; return }
   if(d.error){
     /* The refusal, with each finding named. Deliberately no way onward from
        here except fixing it — the one control that must not exist. */
@@ -13613,7 +13742,7 @@ async function agsShare(){
       <div style="margin-top:6px">${withheld}</div>
       <div class="prow" style="margin-top:6px">
         <button class="endbtn" onclick="agsDownload()">Download ${esc(d.filename)}</button>
-        <span class="mut">commit it to a repo and add the topic to publish</span>
+        <span class="mut">to publish, commit it to a repo and add the topic</span>
       </div></div>${soul}`;
 }
 
@@ -13657,28 +13786,26 @@ async function agsPreview(bundle, label){
   const bad = d.verify.status==='checksum-mismatch' || d.verify.status==='bad-signature';
   const vb = d.verify.status==='verified' ? 'ok' : bad ? 'err' : '';
   const items = d.items.map(i =>
-    `<div class="sub ${i.skipped?'mut':''}">· ${esc(i.kind)}: <b>${esc(i.name)}</b>${i.skipped?` — ${esc(i.note)}`:''}</div>`).join('');
+    `<div class="sub ${i.skipped?'mut':''}">· ${esc(i.kind)}: <b>${esc(i.name)}</b>${i.skipped?`, ${esc(i.note)}`:''}</div>`).join('');
   const ceil = (d.permissions_ceiling||[]).map(g =>
     `<div class="sub mut">· ${esc(g.principal_kind)}:${esc(g.principal_id)} may ${esc(g.action)}${g.resource?` on ${esc(g.resource)}`:''}</div>`).join('');
   const needs = (d.mcp_needs||[]).filter(m=>m.fill.length).map(m =>
     `<div class="sub mut">· '${esc(m.name)}' will need you to fill: ${esc(m.fill.join(', '))}</div>`).join('');
   const soul = d.soul_included
-    ? `<div class="ghint" style="border-color:var(--warn)"><b>A soul is included.</b> It is NOT
-        adopted unless you tick this — your agent keeps its own identity otherwise.
+    ? `<div class="ghint" style="border-color:var(--warn)"><b>A soul is included.</b> Your agent keeps its own identity unless you tick this.
         <label class="ck"><input type="checkbox" id="ags-adopt"> adopt it as my agent's identity</label>
         <pre style="white-space:pre-wrap">${esc(d.soul_text)}</pre></div>` : '';
   out.innerHTML = `<div class="ghint">
-      <b>${esc(d.name)}</b>${d.description?` — ${esc(d.description)}`:''}
+      <b>${esc(d.name)}</b>${d.description?`: ${esc(d.description)}`:''}
       <div class="sub">integrity: <span class="badge ${vb}">${esc(d.verify.status)}</span> ${esc(d.verify.note)}</div>
       <div class="sub">provenance: <span class="badge ${d.tofu.status==='changed-key'?'err':''}">${esc(d.tofu.status)}</span> ${esc(d.tofu.note)}</div>
       <div class="sub">app scan: ${esc(d.security.verdict)}</div>
       <div style="margin-top:6px">${items}</div>
-      <div class="sub" style="margin-top:6px"><b>Permissions written by the fork now:
-        ${d.grants_written_now}.</b> Enabling each flow later is what grants — this is the
-        ceiling if you enabled everything:</div>${ceil || '<div class="sub mut">· nothing — no flows declare permissions</div>'}
+      <div class="sub" style="margin-top:6px"><b>Permissions granted by the fork:
+        ${d.grants_written_now}.</b> Turning on each flow later grants its part. If you turned everything on, it could:</div>${ceil || '<div class="sub mut">· nothing, since no flows ask for permissions</div>'}
       ${needs}
-      ${bad?`<div class="sub" style="color:var(--err)">This will not fork: the bytes are not what the sharer shared.</div>`
-           :`<div class="prow" style="margin-top:6px"><button class="endbtn" onclick="agsFork()">Fork it — disabled, nothing granted</button></div>`}
+      ${bad?`<div class="sub" style="color:var(--err)">This can't be forked because the file was changed after it was shared.</div>`
+           :`<div class="prow" style="margin-top:6px"><button class="endbtn" onclick="agsFork()">Fork it, switched off</button></div>`}
     </div>${soul}`;
 }
 
@@ -13693,7 +13820,7 @@ async function agsFork(){
     d = await (await fetch('/api/agent/fork', {method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json();
   }catch(e){}
-  if(!d){ toast('the fork failed — is the server reachable?'); return }
+  if(!d){ toast('the fork failed. Is the server reachable?'); return }
   if(d.error){ out.innerHTML = `<div class="ghint" style="border-color:var(--err)">${esc(d.error)}</div>`; return }
   out.innerHTML = agsArrivalHTML(d);
 }
@@ -13705,18 +13832,17 @@ async function agsFork(){
 function agsArrivalHTML(d){
   const arr = d.arrival || {changed:[], unchanged:[], try_message:''};
   const changed = arr.changed.map(c =>
-    `<div class="sub">· <b>${esc(c.kind)}</b>: ${esc(c.names.join(', '))}${c.note?` — ${esc(c.note)}`:''}</div>`).join('')
-    || '<div class="sub mut">· nothing — every name already existed here</div>';
+    `<div class="sub">· <b>${esc(c.kind)}</b>: ${esc(c.names.join(', '))}${c.note?`, ${esc(c.note)}`:''}</div>`).join('')
+    || '<div class="sub mut">· nothing, every name already existed here</div>';
   const unchanged = arr.unchanged.map(u=>`<div class="sub mut">· ${esc(u)}</div>`).join('');
   return `<div class="ghint"><b>It arrived.</b> ${d.created.length} thing(s) created,
-      ${d.skipped.length} skipped, <b>${d.grants_written} permission(s) granted</b> — that
-      number is the design.${d.soul?`<div class="sub">soul: ${esc(d.soul)}</div>`:''}
+      ${d.skipped.length} skipped, <b>${d.grants_written} permission(s) granted</b>.${d.soul?`<div class="sub">soul: ${esc(d.soul)}</div>`:''}
       <div style="margin-top:8px"><b>What changed:</b>${changed}</div>
       <div style="margin-top:8px"><b>What did not:</b>${unchanged}</div>
       <div class="prow" style="margin-top:8px">
         <button class="endbtn" onclick='agsTestChat(${JSON.stringify(arr.try_message||'')})'>
-          Test it — start chatting</button>
-        <span class="mut">the question is prefilled; press Enter to send it</span>
+          Test it in Chat</button>
+        <span class="mut">the question is filled in, press Enter to send it</span>
       </div>
       <div class="sub mut" style="margin-top:6px">${esc(d.next||'')}</div></div>`;
 }
@@ -13768,17 +13894,17 @@ function acctSigninCard(){
       :(s.available?`<button class="endbtn acct-signin" onclick="acctSignin('${s.id}')">Sign in with ${esc(s.label)}</button>`
         :`<button class="endbtn" disabled title="${esc(s.why)}">Sign in with ${esc(s.label)}</button>`);
     const why=(!on&&!s.available)?`<div class="ghint acct-why">${esc(s.why.split('. ')[0])}. <a href="#" onclick="document.getElementById('acct-clients').scrollIntoView({block:'center'});return false">App registration ↓</a></div>`:'';
-    const wait=pend?`<div class="ghint">waiting for you to finish signing in (${pend.waiting_for}s) — <a href="${esc(pend.url)}" target="_blank" rel="noopener">open the page again</a></div>`:'';
+    const wait=pend?`<div class="ghint">waiting for you to finish signing in (${pend.waiting_for}s). <a href="${esc(pend.url)}" target="_blank" rel="noopener">open the page again</a></div>`:'';
     return `<div class="prow acct-door" data-f="sign in ${esc(s.label)}"><div class="pl"><b>${esc(s.label)}</b><small class="mut">${status}</small>${why}${wait}</div><div class="pc acct-btns">${btns}</div></div>`;
   }).join('');
   return `<div class="pgroup chan" data-f="accounts sign in google microsoft oauth">
     <h3>Sign in</h3>
-    <div class="ghint">One sign-in reads your mail and your calendar. You pick what it may read; the consent page names it; it is revocable from your Google or Microsoft account any time. Sending is asked for separately and every message still asks you first.</div>
+    <div class="ghint">One sign-in covers your mail and calendar. Tick what it may read below. ${pInfo('You can revoke it from your Google or Microsoft account any time. Sending is a separate tick, and each message still asks you first.')}</div>
     ${rows}
     <div class="prow"><div class="pl"><small class="mut">Asks for:</small></div><div class="pc acct-uses">
       <label><input type="checkbox" id="acct-use-mail" checked> mail</label>
       <label><input type="checkbox" id="acct-use-calendar" checked> calendar</label>
-      <label><input type="checkbox" id="acct-use-send"> send (always asks per message)</label></div></div>
+      <label><input type="checkbox" id="acct-use-send"> send (asks before each message)</label></div></div>
   </div>`;
 }
 function acctUses(){return ['mail','calendar','send'].filter(u=>{const el=document.getElementById('acct-use-'+u);return el&&el.checked})}
@@ -13790,7 +13916,7 @@ async function acctSignin(provider){
     if(j.error){toast(j.error.slice(0,160));return}
     const w=window.open(j.url,'_blank','noopener');
     if(!w)toast('open this to sign in: '+j.url.slice(0,80)+'…');
-    toast('finish signing in on the page that opened — this card updates by itself');
+    toast('finish signing in on the page that opened. This card updates by itself.');
     setTimeout(renderAccounts,1500);
   }catch(e){toast('could not reach the server')}
 }
@@ -13804,7 +13930,7 @@ function acctCard(a){
   const lt=a.last_test||{};
   const dot=lt.ok?'on':(a.configured?(lt.detail?'warn':'off'):'off');
   const status=lt.detail?(lt.ok?'✓ ':'✗ ')+lt.detail+(lt.at?' · '+new Date(lt.at*1000).toLocaleString():''):
-    (a.configured?'set up — not tested yet':'not set up');
+    (a.configured?'set up, not tested yet':'not set up');
   const way=a.via;
   const signedWay=way==='google'||way==='microsoft';
   const wayKey=a.id==='mail'?'via':'kind';
@@ -13815,12 +13941,12 @@ function acctCard(a){
     .concat(ACCTS.signin.filter(s=>s.signed_in&&s.signed_in.email).map(s=>[s.id,'Signed in with '+s.label]));
   const doorSel=pSelect('ac-'+a.id+'-'+wayKey,doorOpts,signedWay?way:(way==='mcp'?'mcp':'form'))
     .replace('<select','<select onchange="acctDoor(\''+a.id+'\')"');
-  const mcpRow=way==='mcp'?pRow('MCP server',pSelect('ac-'+a.id+'-mcp_server',[['','— choose a connected server —']].concat((a.mcp_servers||[]).map(n=>[n,n])),a.mcp_server||''),
-      {desc:(a.mcp_servers||[]).length?'the mission\'s specialists use this server\'s tools instead of the built-in ones':'no MCP server is connected — add one in the MCP app first',f:a.id+' mcp server'}):'';
-  const fields=signedWay||way==='mcp'?'':`<details class="acct-adv"><summary>Another provider — an app password${a.id==='calendar'?' or an ICS address':''}</summary>`+a.fields.map(f=>{
+  const mcpRow=way==='mcp'?pRow('MCP server',pSelect('ac-'+a.id+'-mcp_server',[['','choose a connected server']].concat((a.mcp_servers||[]).map(n=>[n,n])),a.mcp_server||''),
+      {desc:(a.mcp_servers||[]).length?'Missions will use this server\'s tools for this account.':'No MCP server is connected yet. Add one in the MCP app first.',f:a.id+' mcp server'}):'';
+  const fields=signedWay||way==='mcp'?'':`<details class="acct-adv"><summary>Another provider: an app password${a.id==='calendar'?' or an ICS address':''}</summary>`+a.fields.map(f=>{
     const id='ac-'+a.id+'-'+f.key;
     let ctl;
-    if(f.kind==='select')ctl=pSelect(id,[['','— choose —']].concat(f.options),a.values[f.key]||'');
+    if(f.kind==='select')ctl=pSelect(id,[['','choose']].concat(f.options),a.values[f.key]||'');
     else if(f.kind==='secret')ctl=pSecret(id,a.set[f.key],a.masked[f.key],f.placeholder);
     else ctl=pText(id,a.values[f.key],f.placeholder,f.kind==='number'?'number':'text');
     return pRow(f.label,ctl,{f:a.id+' '+f.key});
@@ -13843,15 +13969,15 @@ function acctCard(a){
 function acctClientsCard(){
   const rows=ACCTS.signin.map(s=>`
     <div class="acct-client" data-f="app registration ${esc(s.label)} client id">
-      <div class="ghint"><b>${esc(s.label)}</b> — ${esc(s.hint)} <a href="${esc(s.register)}" target="_blank" rel="noopener">open the console ↗</a></div>
-      ${pRow('Redirect URI',`<code class="acct-uri">${esc(s.redirect_uri)}</code>`,{desc:'paste this into the registration as the redirect / callback URI',f:'redirect uri'})}
+      <div class="ghint"><b>${esc(s.label)}</b>. ${esc(s.hint)} <a href="${esc(s.register)}" target="_blank" rel="noopener">open the console ↗</a></div>
+      ${pRow('Redirect URI',`<code class="acct-uri">${esc(s.redirect_uri)}</code>`,{desc:'Paste this into the registration as the redirect URI.',f:'redirect uri'})}
       ${pRow('Client id',pText('oc-'+s.id+'-client_id',s.client_id||'','…apps.googleusercontent.com','text'),{f:s.label+' client id'})}
-      ${s.needs_secret?pRow('Client secret',pSecret('oc-'+s.id+'-client_secret',s.has_secret,s.has_secret?'in config, masked':'','GOCSPX-…'),{desc:'Google issues one for a desktop client and documents it as not secret; it is still masked here',f:s.label+' client secret'}):''}
-      ${s.id==='microsoft'?pRow('Tenant',pText('oc-'+s.id+'-tenant',s.tenant||'common','common','text'),{desc:'"common" for personal and work accounts; your tenant id to limit it to one organisation',f:'tenant'}):''}
+      ${s.needs_secret?pRow('Client secret',pSecret('oc-'+s.id+'-client_secret',s.has_secret,s.has_secret?'in config, masked':'','GOCSPX-…'),{desc:'Google gives one for desktop clients. It\'s masked here.',more:'Google says a desktop client secret isn\'t really secret, but we hide it anyway.',f:s.label+' client secret'}):''}
+      ${s.id==='microsoft'?pRow('Tenant',pText('oc-'+s.id+'-tenant',s.tenant||'common','common','text'),{desc:'Use "common" for personal and work accounts.',more:'Put your tenant id here to limit sign-in to one organisation.',f:'tenant'}):''}
     </div>`).join('');
   return `<div class="pgroup chan" id="acct-clients" data-f="app registration oauth client id secret">
     <h3>App registration <small class="mut">${ACCTS.admin?'':'admins only'}</small></h3>
-    <div class="ghint">Sign in with Google / Microsoft needs an OAuth client that belongs to THIS install — a self-hosted OS has no central application, so the project ships none (the same reason it ships no signing key). Five minutes once, per machine; every account here uses it.</div>
+    <div class="ghint">Google and Microsoft sign-in need an app registered for this machine. It takes about five minutes, once. ${pInfo('A self-hosted install has no shared app, so AgentOS ships none. Every account on this machine uses the one you register.')}</div>
     ${rows}
     <div class="prow"><div class="pl"><small id="oc-msg" class="mut"></small></div><div class="pc"><button class="endbtn" ${ACCTS.admin?'':'disabled'} onclick="acctSaveClients()">Save registration</button></div></div>
   </div>`;
@@ -13862,7 +13988,7 @@ async function acctSaveClients(){
   const msg=document.getElementById('oc-msg');
   try{
     const j=await (await fetch('/api/accounts/clients',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
-    if(msg){msg.textContent=j.error||'saved — the sign-in buttons above are live';msg.className=j.error?'warn':'ok'}
+    if(msg){msg.textContent=j.error||'saved. The sign-in buttons above now work.';msg.className=j.error?'warn':'ok'}
     if(!j.error)renderAccounts();
   }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
 }
@@ -13950,7 +14076,7 @@ async function renderHands(){
   const box=document.getElementById('hands-list');if(!box)return;
   // apiJSON, never a bare .json(): a server older than the page answers 404 with JSON, and
   // reading that as the list threw later and left "loading…" on screen for good
-  try{HANDS.data=await apiJSON('/api/hands')}catch(e){box.innerHTML='<p class="mut">could not load executors — '+esc(e.message)+'</p>';return}
+  try{HANDS.data=await apiJSON('/api/hands')}catch(e){box.innerHTML='<p class="mut">could not load executors: '+esc(e.message)+'</p>';return}
   const d=HANDS.data;
   box.innerHTML=`<div class="hands-top"><button class="pact" onclick="handsEdit('')">＋ New executor</button></div>`
     +d.profiles.map(p=>`<div class="hands-card" data-name="${esc(p.name)}">
@@ -13993,11 +14119,11 @@ function handsPaintEditor(){
       <label class="tlk-chk"><input type="radio" name="he-tm" value="all" ${every?'checked':''}><span>Every tool</span></label>
       <label class="tlk-chk"><input type="radio" name="he-tm" value="some" ${every?'':'checked'}><span>Only the ones ticked</span></label>
       ${every?'':`<div class="hands-groups">${groups}</div>`}
-      ${shell?'<p class="mut tlk-why">Includes a shell. A command line reaches whatever the machine’s folder jail allows, not only the folders below — leave the shell tools out to make the folders a real limit.</p>':''}</div>
+      ${shell?`<p class="mut tlk-why">Includes a shell, which can reach any folder the machine allows, beyond the list below. ${pInfo('Leave the shell tools out if you want the folder list to be a real limit.')}</p>`:''}</div>
     <div class="hands-sec"><b>Folders</b>
       <div id="he-folders">${s.folders.map((f,i)=>`<div class="hands-folder"><input data-fi="${i}" value="${esc(f.path)}" placeholder="~/projects or /srv/data" autocomplete="off" autocapitalize="off" spellcheck="false">
         <select data-fm="${i}"><option value="rw" ${f.mode==='rw'?'selected':''}>read-write</option><option value="ro" ${f.mode==='ro'?'selected':''}>read-only</option></select>
-        <button class="endbtn" aria-label="Remove this folder" onclick="handsFolder(${i})">✕</button></div>`).join('')||'<p class="mut tlk-why">No folders — the file tools reach nothing.</p>'}</div>
+        <button class="endbtn" aria-label="Remove this folder" onclick="handsFolder(${i})">✕</button></div>`).join('')||'<p class="mut tlk-why">No folders yet, so the file tools can\'t reach anything.</p>'}</div>
       <div class="tlk-actions"><button class="endbtn" onclick="handsFolder(-1,'')">＋ Folder</button>
         <button class="endbtn" onclick="handsFolder(-1,'@workspace')">＋ Workspace</button>
         <button class="endbtn" onclick="handsFolder(-1,'*')">＋ Anywhere the machine allows</button></div></div>
@@ -14047,7 +14173,7 @@ async function handsSave(){
 async function handsDelete(name){
   if(!await osConfirm('Delete the executor “'+name+'”?','Any agent using it goes back to the default executor.',{danger:true,confirmText:'Delete'}))return;
   const r=await teamApi('/api/hands/'+encodeURIComponent(name),'DELETE');
-  if(r){toast('deleted'+(r.moved_to_default?' — '+r.moved_to_default+' agent(s) moved to default':''));renderHands()}
+  if(r){toast('deleted'+(r.moved_to_default?'. '+r.moved_to_default+' agent(s) moved to default':''));renderHands()}
 }
 
 /* ---------------- Agents: the lead, the others, and their hands ---------------- */
@@ -14060,7 +14186,7 @@ async function renderAgentsList(){
   try{AGENTS.data=await apiJSON('/api/agents')}catch(e){
     // the editor saves through /api/subagents, which is older than this list: adding an
     // agent must not depend on the overview having loaded
-    box.innerHTML='<p class="mut">could not load agents — '+esc(e.message)+'</p>'
+    box.innerHTML='<p class="mut">could not load agents: '+esc(e.message)+'</p>'
       +'<div class="tlk-actions"><button class="pact" onclick="agentEdit(\'\')">＋ New agent</button></div>';return}
   const d=AGENTS.data,profs=d.profiles||[];
   const opts=cur=>profs.map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
@@ -14076,7 +14202,7 @@ async function renderAgentsList(){
   // the very end of a long list, against the last card, off screen when the page opened
   box.innerHTML=`<div class="pgroup"><div class="ag-head"><h3>Your agents</h3>
       <button class="pact ag-new" onclick="agentEdit('')">＋ New agent</button></div>
-    <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} delegates to these. Each has its own soul, and its own brain, hands, permissions and skills.</p>
+    <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} hands work to these. ${pInfo('Each one has its own soul, brain, executor, permissions and skills.')}</p>
     ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
       <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${esc(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
@@ -14084,15 +14210,15 @@ async function renderAgentsList(){
       ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
       <div class="ag-rows">
         <div><span class="ag-k">Look</span><button class="endbtn" onclick="avatarEdit('${esc(a.key)}')">Change…</button><button class="endbtn" onclick="avatarDesignAsk('${esc(a.key)}')">✦ Describe it</button></div>
-        <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">— ${esc(a.brain.note)}</span>`:''}</div>
+        <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">(${esc(a.brain.note)})</span>`:''}</div>
         <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
-        <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet — it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
+        <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet, so it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
           <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
         <div><span class="ag-k">Skills</span>${(a.skills||[]).length?a.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' '):'<span class="mut">none</span>'}</div>
         ${a.asks.length||a.blocked.length?`<div><span class="ag-k">May ask</span>${a.asks.map(esc).join(', ')||'<span class="mut">nobody without asking you</span>'}${a.blocked.length?` <span class="mut">· blocked: ${a.blocked.map(esc).join(', ')}</span>`:''}</div>`:''}
         ${a.missions.length?`<div><span class="ag-k">Missions</span>${a.missions.map(esc).join(', ')}</div>`:''}
         ${(a.links||[]).filter(l=>l.they_may_ask||(l.their_missions||[]).length).map(l=>`<div><span class="ag-k">${esc(l.label)}</span>may ask it${l.standing?` · ${l.standing} standing permission${l.standing===1?'':'s'}`:''}${(l.their_missions||[]).length?' · their missions: '+l.their_missions.map(esc).join(', '):''}</div>`).join('')}
-      </div></div>`}).join('')||'<p class="mut">No other agents yet — press ＋ New agent and describe the first one in a sentence.</p>'}</div>`;
+      </div></div>`}).join('')||'<p class="mut">No other agents yet. Press ＋ New agent and describe one in a sentence.</p>'}</div>`;
 }
 async function agentEdit(name){
   // the Missions editor's wizard, borrowed: one way to define an agent, not two
@@ -14108,7 +14234,7 @@ var AG_EDGE={brain:'var(--acc)',hands:'color-mix(in srgb,var(--txt) 55%,transpar
   talk:'#4ade80',blocked:'#f87171',delegate:'#a78bfa',roster:'#fbbf24',link:'#60a5fa'};
 async function renderAgentsGraph(){
   const box=document.getElementById('agents-graph');if(!box)return;
-  let g;try{g=await apiJSON('/api/agents/graph')}catch(e){box.textContent='could not load the map — '+e.message;return}
+  let g;try{g=await apiJSON('/api/agents/graph')}catch(e){box.textContent='could not load the map: '+e.message;return}
   box.classList.remove('mut');
   const cols=[[],[],[],[]];g.nodes.forEach(n=>cols[AG_COLS[n.kind]??3].push(n));
   const W=190,GX=70,GUT=60,H=46,GY=12,X=[0,W+GX+GUT,2*(W+GX)+GUT,3*(W+GX)+GUT];
@@ -14796,11 +14922,21 @@ function fabricLiveRefresh(){
                     truth once instead of replaying what was missed.
      fgPaint()    — idempotent, driven only by winTick. */
 var FG={run:'',flow:'',nodes:new Map(),edges:[],art:new Map(),logs:[],dirty:false,ended:false,
-        sel:'',detail:new Map()};
+        sel:'',detail:new Map(),story:[],kids:{},meta:{}};
 
 function fgReset(runId,flow){
   FG={run:runId||'',flow:flow||'',nodes:new Map(),edges:[],art:new Map(),logs:[],
-      dirty:true,ended:false,sel:'',detail:new Map(),think:null};
+      dirty:true,ended:false,sel:'',detail:new Map(),think:null,
+      // the Run Inspector's story: what happened, in order, said as a person would say it
+      story:[],kids:{},meta:{started:0,finished:0,origin:'',input:'',tokens:0}};
+}
+/* One line of the story. Several tool calls in a row by the same agent are one line
+   ("researcher used fetch_url, read_file"), or a busy run is a wall of tool names. */
+function fgStory(e){
+  const st=FG.story,last=st[st.length-1];
+  if(e.kind==='tool'&&last&&last.kind==='tool'&&last.who===e.who&&e.t-last.t<120000){
+    last.tools.push(e.tools[0]);return}
+  st.push(e);if(st.length>400)st.splice(0,st.length-400);
 }
 /* The agent's reasoning as ONE self-replacing line, never 300 log rows.
    Thinking arrives as a stream of small deltas; pushed through fgLog it would evict
@@ -14818,8 +14954,23 @@ function fgLog(level,text){
 }
 function fgApply(ev){
   if(!ev||!ev.event)return;
-  const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1,thinking:1};
+  const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1,thinking:1,
+                  talk:1,status:1,step:1};
   if(!graphish[ev.event])return;
+  const t=ev._ts||Date.now();
+  // The specialists run in runs of their own. Their tool calls reach the story through
+  // the run → agent map, learned from each child's "running" status event.
+  if(ev.event==='status'||ev.event==='step'){
+    if(!FG.run)return;
+    if(ev.event==='status'){
+      if(ev.status==='running'&&(ev.parent_run===FG.run||FG.kids[ev.parent_run])){FG.kids[ev.run_id]=ev.ref||'agent';FG.dirty=true}
+      return}
+    const who=FG.kids[ev.run_id];if(!who)return;
+    if(ev.status==='start')fgStory({t,kind:'tool',who,tools:[{name:ev.tool,ok:true}]});
+    else if(ev.ok===false){const row=[...FG.story].reverse().find(x=>x.kind==='tool'&&x.who===who);
+      const tl=row&&[...row.tools].reverse().find(x=>x.name===ev.tool);if(tl)tl.ok=false}
+    FG.dirty=true;return;
+  }
   if(ev.event!=='flow_start'&&ev.run_id&&FG.run&&ev.run_id!==FG.run)return; // another run
   switch(ev.event){
     case 'flow_start':{
@@ -14828,6 +14979,8 @@ function fgApply(ev){
         status:'running',depth:0,t:Date.now()});
       fgLog('info','flow '+(ev.flow||'')+' started · '+((ev.origin||{}).surface||'manual')
             +(ev.tainted?' · payload from outside this machine':''));
+      FG.meta.started=t;FG.meta.origin=(ev.origin||{}).surface||'';
+      fgStory({t,kind:'start',text:ev.tainted?'It was started from outside this machine, so risky steps wait for you.':''});
       break;}
     case 'node_add':{
       if(FG.nodes.has(ev.node_id))break;
@@ -14842,6 +14995,7 @@ function fgApply(ev){
       FG.edges.push({from:ev.parent||FG.run,to:ev.node_id,kind:'call'});
       (ev.deps||[]).forEach(h=>FG.edges.push({from:'h:'+h,to:ev.node_id,kind:'data'}));
       fgLog('info','→ '+ev.agent+': '+String(ev.task||'').slice(0,90));
+      fgStory({t,kind:'ask',who:'',to:ev.agent,text:ev.task||'',node:ev.node_id});
       break;}
     case 'node_status':{
       const n=FG.nodes.get(ev.node_id);if(!n)break;
@@ -14850,7 +15004,13 @@ function fgApply(ev){
       FG.think=null;   // it has acted; the reasoning that led here is now history
       fgLog(ev.status==='ok'?'info':'error',
             n.label+' · '+ev.status+(ev.fault?' · '+ev.fault:'')+(ev.handle?' → '+ev.handle:''));
+      if(ev.child_run)FG.kids[ev.child_run]=n.label;
+      fgStory({t,kind:'done',who:n.label,ok:ev.status==='ok',status:ev.status,fault:ev.fault||'',
+        handle:ev.handle||'',node:ev.node_id,tokens:ev.tokens});
       break;}
+    case 'talk':
+      fgStory({t,kind:'talk',phase:ev.phase,who:ev.from,to:ev.to,text:ev.text||'',provider:ev.provider||''});
+      break;
     case 'artifact':
       FG.art.set(ev.handle,ev);break;
     case 'thinking':
@@ -14860,12 +15020,17 @@ function fgApply(ev){
       fgLog(ev.state==='asked'?'warn':(ev.state==='allowed'?'info':'error'),
             '⏸ '+ev.tool+' — '+ev.state+(ev.via?' ('+ev.via+')':'')
             +(ev.state==='asked'&&ev.reason?' · '+ev.reason:''));
+      fgStory({t,kind:'wait',who:(n&&n.depth===1?n.label:ev.ref)||'',state:ev.state,tool:ev.tool||'',text:ev.reason||''});
       break;}
     case 'log':
-      fgLog(ev.level,ev.text);break;
+      fgLog(ev.level,ev.text);
+      if(ev.level==='error'||ev.level==='warn')fgStory({t,kind:'note',level:ev.level,text:ev.text||''});
+      break;
     case 'flow_end':{
       const n=FG.nodes.get(FG.run);if(n){n.status=ev.status;n.tokens=ev.tokens}
-      FG.ended=true;FG.think=null;
+      FG.ended=true;FG.think=null;FG.meta.finished=t;if(n&&n.tokens)FG.meta.tokens=(n.tokens.in||0)+(n.tokens.out||0);
+      fgStory({t,kind:'end',ok:ev.status==='ok',status:ev.status,fault:ev.fault||'',delivered:ev.delivered||[]});
+      if(!ev._ts)setTimeout(fgRuns,600);      // this run joins the dots
       fgLog(ev.status==='ok'?'info':'error','flow '+ev.status
         +(ev.delivered&&ev.delivered.length?' · delivered: '+ev.delivered.join(', '):'')
         +(ev.fault?' · '+ev.fault:''));
@@ -14879,12 +15044,29 @@ async function fgLoad(runId){
   try{
     const d=await fetch('/api/fabric/runs/'+runId).then(r=>r.json());
     fgReset(runId,(d.run||{}).flow||(d.run||{}).ref||'');
-    (d.events||[]).forEach(e=>fgApply(Object.assign({event:e.type,run_id:runId},e.payload||{})));
+    (d.events||[]).forEach(e=>fgApply(Object.assign({event:e.type,run_id:runId},e.payload||{},{_ts:(e.ts||0)*1000})));
+    const r=d.run||{};
+    FG.meta=Object.assign(FG.meta||{},{started:(r.started_at||0)*1000||FG.meta.started,
+      finished:(r.finished_at||0)*1000||FG.meta.finished,origin:r.origin_surface||FG.meta.origin||'',
+      input:r.input||'',tokens:(r.tokens_in||0)+(r.tokens_out||0)||FG.meta.tokens||0});
+    // what each specialist did, from its own run: a replay tells the same story as live
+    (d.steps||[]).forEach(c=>{if(c.id)FG.kids[c.id]=c.ref||'agent'});
+    fgLoadKids((d.steps||[]).slice(0,10),runId);
     if(!FG.nodes.size)FG.nodes.set(runId,{id:runId,agent:'master',label:(d.run||{}).ref||'flow',
       status:(d.run||{}).status||'running',depth:0,t:Date.now()});
     if((d.run||{}).status&&(d.run||{}).status!=='running')FG.ended=true;
     FG.dirty=true;
   }catch(e){}
+}
+async function fgLoadKids(kids,runId){
+  for(const c of kids){
+    try{const d=await fetch('/api/fabric/runs/'+c.id).then(r=>r.json());
+      if(FG.run!==runId)return;
+      (d.events||[]).filter(e=>e.type==='step').forEach(e=>
+        fgApply(Object.assign({event:'step',run_id:c.id},e.payload||{},{_ts:(e.ts||0)*1000})));
+    }catch(e){}
+  }
+  FG.story.sort((a,b)=>a.t-b.t);FG.dirty=true;fgPaint();
 }
 function fgCol(st){
   return st==='ok'?'var(--ok,#34d399)'
@@ -15004,6 +15186,8 @@ function fgPaint(){
       +fgThinkRow();
     if(atBottom)log.scrollTop=log.scrollHeight;
   });
+  all('.fg-story').forEach(fgPaintStory);
+  fgClock();
   if(FG.run){
     const m=FG.nodes.get(FG.run)||{};
     const kids=[...FG.nodes.values()].filter(n=>n.depth===1);
@@ -15342,44 +15526,148 @@ function openRunInspector(runId){
   if(w&&!FG.ended)winTick(w,fgPaint,250,{key:'graph'});
   return w;
 }
+/* The Run Inspector reads as a story, top to bottom: when it ran and for how long, what
+   started it, the runs before it, and then what happened in order, with faces. Who was
+   asked what, what they used, what they said to each other and what came back. The
+   graph, the raw log and the editor are still here, one column over, for debugging. */
 function renderFlowRun(body,w){
   if(!FG.run){
-    body.innerHTML=`<div class="pad"><p class="mut">No run is being watched. Run a flow from
-      Missions → Build → Flows, or click a past run to replay it here.</p>
-      <button class="save" onclick="openApp('fabric');fabSetTab(1)">Open Flows</button></div>`;
+    body.innerHTML=`<div class="pad fr-empty"><div class="fr-glyph big">▲</div>
+      <p><b>No run open.</b></p><p class="mut">Run a mission, or click one of its past runs to replay it here.</p>
+      <button class="save" onclick="openApp('fabric');fabSetTab(1)">Open Missions</button></div>`;
     return;
   }
-  body.innerHTML=`<div class="pad">
-    <div class="ptitle" style="margin-top:0"><span class="fg-head"></span></div>
-    <div class="row" style="gap:6px;margin-bottom:6px">
-      <button onclick="fgRerun()">↻ Run again</button>
-      <button onclick="fgOpenBoardRaw()">raw events</button>
-      <div class="grow"></div>
+  body.innerHTML=`<div class="fr">
+    <div class="fr-hero">
+      <div class="fr-top"><span class="fr-glyph big">▲</span>
+        <div class="fr-name"><b>${esc(FG.flow||'mission')}</b><div class="fr-meta fg-meta"></div></div>
+        <span class="fr-pill fg-pill"></span></div>
+      <div class="fr-facts fg-facts"></div>
+      <div class="fr-acts">
+        ${FG.ended?'':`<button class="endbtn" onclick="cancelRun(FG.run)">⏹ Stop</button>`}
+        <button class="endbtn" onclick="fgRerun()">↻ Run again</button>
+        <button class="endbtn" onclick="openFLW&&openFLW(FG.flow)">✎ Edit mission</button>
+        <button class="endbtn" onclick="fgOpenBoardRaw()">Raw events</button></div>
+      <div class="fr-runs fg-runs"></div>
     </div>
-    <div class="fg-svg" style="min-height:90px;border:1px solid var(--line,#232a35);
-      border-radius:12px;padding:6px;overflow-x:auto"></div>
-    <div class="row" style="margin-top:8px;align-items:flex-start;gap:10px">
-      <div style="flex:1.1;min-width:220px">
-        <div class="ptitle" style="margin:0 0 4px">Control-plane log</div>
-        <div class="fg-log" style="font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;
-          max-height:210px;overflow:auto;border:1px solid var(--line,#232a35);border-radius:10px;padding:8px"></div>
-        <div class="ptitle" style="margin:8px 0 4px">Board</div>
-        <div class="fg-board"></div>
-      </div>
-      <div style="flex:1;min-width:220px"><div class="ptitle" style="margin:0 0 4px">Step detail</div>
+    <div class="fr-cols">
+      <div class="fr-main"><div class="fr-h">What happened</div>
+        <div class="fg-story fr-story" aria-live="polite"></div>
+        <div id="fr-raw"></div></div>
+      <div class="fr-side">
+        <div class="fr-h">Who took part</div>
+        <div class="fg-svg fr-graph"></div>
         <div id="fr-detail"></div>
-        <div class="ptitle" style="margin:10px 0 4px">Change this flow with AI</div>
-        <div class="sub" style="margin-bottom:4px">Watching it go wrong is the best moment to fix
-          it. Editing here does not touch the run in flight — it takes effect next time.</div>
+        <div id="fg-artifact"></div>
+        <div class="fr-h">Results</div><div class="fg-board"></div>
+        <div class="fr-h">Change it for next time</div>
         <textarea id="fr-ai" rows="2" placeholder="give the researcher fetch_url too · tell the writer to be shorter"></textarea>
-        <div class="row" style="gap:6px"><button class="save" style="margin:0;flex:0 0 130px"
-          onclick="frAiEdit()">✦ Open with this</button></div>
+        <div class="row" style="gap:6px"><button class="save" style="margin:0;flex:0 0 150px"
+          onclick="frAiEdit()">✦ Open with this</button>${pInfo('The run that is going now keeps going. Your change applies from the next run.')}</div>
+        <details class="fr-log"><summary>Control-plane log</summary><div class="fg-log"></div></details>
       </div>
-    </div>
-    <div id="fg-artifact" style="margin-top:8px"></div>
-    <div id="fr-raw" style="margin-top:8px"></div></div>`;
+    </div></div>`;
   if(w)winTick(w,fgPaint,250,{key:'graph'});
+  if(w)winTick(w,fgClock,1000,{key:'clock'});
+  fgRuns();
   FG.dirty=true;fgPaint();
+}
+/* How long, since when, started by what. Ticks every second while it runs. */
+function fgWhen(ms){
+  const s=Math.max(0,Math.round(ms/1000));
+  return s<60?s+'s':s<3600?Math.floor(s/60)+'m '+String(s%60).padStart(2,'0')+'s':Math.floor(s/3600)+'h '+Math.floor(s%3600/60)+'m';
+}
+function fgAgo(t){
+  const s=Math.round((Date.now()-t)/1000);
+  return s<45?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':Math.round(s/86400)+' d ago';
+}
+var FG_ORIGIN={task:'on its schedule',cron:'on its schedule',gui:'by you',tui:'by you from a terminal',api:'by you',
+  webhook:'by a webhook',telegram:'from Telegram',whatsapp:'from WhatsApp',flow:'after another mission',
+  os_event:'by something on this machine',message:'by a message'};
+function fgClock(){
+  if(!FG.run)return;
+  const m=FG.meta||{},node=FG.nodes.get(FG.run)||{},st=node.status||(FG.ended?'done':'running');
+  const took=m.started?((m.finished||(FG.ended?m.started:Date.now()))-m.started):0;
+  const pill=FG.ended?(st==='ok'?['ok','Finished']:st==='cancelled'?['warn','Stopped']:['err',st==='partial'?'Partly done':'Failed'])
+    :((FG.story.filter(x=>x.kind==='wait').pop()||{}).state==='asked'?['warn','Waiting for you']:['run','Running']);
+  document.querySelectorAll('.fg-pill').forEach(el=>{el.className='fr-pill fg-pill '+pill[0];
+    el.textContent=pill[1]+(took?' · '+fgWhen(took):'')});
+  const when=m.started?new Date(m.started):null;
+  const meta=when?`Started ${when.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} · ${fgAgo(m.started)}`
+    +(m.origin?' · '+(FG_ORIGIN[m.origin]||'by '+m.origin):''):'Starting…';
+  document.querySelectorAll('.fg-meta').forEach(el=>{if(el.textContent!==meta)el.textContent=meta});
+  const who=new Set(FG.story.filter(x=>x.who||x.to).flatMap(x=>[x.who,x.to]).filter(Boolean));
+  const tok=m.tokens||[...FG.nodes.values()].reduce((a,n)=>a+(n.tokens?(n.tokens.in||0)+(n.tokens.out||0):0),0);
+  const talks=FG.story.filter(x=>x.kind==='talk'&&x.phase==='ask').length;
+  const tools=FG.story.filter(x=>x.kind==='tool').reduce((a,x)=>a+x.tools.length,0);
+  const facts=[[who.size,'agent','agents'],[tools,'tool call','tool calls'],[talks,'question between agents','questions between agents']]
+    .filter(f=>f[0]).map(f=>`<span><b>${f[0]}</b> ${f[0]===1?f[1]:f[2]}</span>`)
+    .concat(tok?[`<span><b>${tok>=1000?(tok/1000).toFixed(1)+'k':tok}</b> tokens</span>`]:[]).join('');
+  document.querySelectorAll('.fg-facts').forEach(el=>{if(el.innerHTML!==facts)el.innerHTML=facts});
+}
+/* The card that is waiting, wherever it is: approvalReveal brings it into view. */
+function fgReview(){
+  const id=typeof APPROVALS!=='undefined'&&Object.keys(APPROVALS).pop();
+  if(id&&typeof approvalReveal==='function')approvalReveal(id);else toast('nothing is waiting for you now');
+}
+/* The runs before this one, as dots you can step through: "did it work yesterday?" */
+async function fgRuns(){
+  if(!FG.flow)return;
+  const d=await fetch('/api/fabric/runs?limit=200').then(r=>r.json()).catch(()=>({runs:[]}));
+  const runs=(d.runs||[]).filter(r=>r.kind==='flow'&&(r.flow||r.ref)===FG.flow).slice(0,14);
+  const col=st=>st==='ok'?'ok':st==='running'?'run':(st==='partial'||st==='cancelled')?'warn':'err';
+  const html=runs.length>1?`<span class="fr-runs-l">Recent runs</span>`+runs.slice().reverse().map(r=>{
+      const t=new Date((r.started_at||0)*1000),took=r.finished_at?fgWhen((r.finished_at-r.started_at)*1000):'running';
+      return `<button class="fr-run ${col(r.status)}${r.id===FG.run?' on':''}" onclick="fgWatch('${esc(r.id)}')"
+        title="${esc(t.toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'})+' · '+(r.status||'')+' · '+took)}"
+        aria-label="${esc('run at '+t.toLocaleString()+', '+(r.status||''))}"></button>`}).join(''):'';
+  document.querySelectorAll('.fg-runs').forEach(el=>el.innerHTML=html);
+}
+/* The story. Faces for agents (the mission itself is not a person, so it gets its mark),
+   one line per thing that happened, the time at the right. */
+function fgFace(name){
+  if(!name)return '<span class="fr-glyph">▲</span>';
+  const n=String(name).replace(/^@/,'');
+  return (typeof avatarImg==='function'&&!/-master$/.test(n))?avatarImg(n,'fr-av'):'<span class="fr-glyph">▲</span>';
+}
+function fgWho(name){const n=String(name||'').replace(/-master$/,'');return n?esc(n):esc(FG.flow||'the mission')}
+function fgPaintStory(box){
+  const rows=FG.story.map(e=>{
+    const tm=`<time>${new Date(e.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</time>`;
+    const q=x=>x?`<div class="fr-say">${esc(String(x).slice(0,600))}</div>`:'';
+    switch(e.kind){
+      case 'start':return `<div class="fr-ev sys">${fgFace('')}<div><div class="fr-line">${tm}<b>${fgWho('')}</b> started ${FG_ORIGIN[FG.meta.origin]||''}</div>
+        ${FG.meta.input?q(FG.meta.input):''}${e.text?`<div class="fr-note">${esc(e.text)}</div>`:''}</div></div>`;
+      case 'ask':return `<div class="fr-ev">${fgFace('')}<div><div class="fr-line">${tm}<b>${fgWho('')}</b> handed <b>${esc(e.to)}</b> a task</div>${q(e.text)}</div>${fgFace(e.to)}</div>`;
+      case 'tool':return `<div class="fr-ev tl">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> used ${
+        e.tools.map(x=>`<code class="${x.ok===false?'bad':''}">${esc(x.name)}${x.ok===false?' ✗':''}</code>`).join(' ')}</div></div></div>`;
+      case 'talk':return `<div class="fr-ev talk ${e.phase==='reply'?'reply':''}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${fgWho(e.who)}</b> ${
+        e.phase==='reply'?'answered':'asked'} <b>${fgWho(e.to)}</b>${e.provider?` <span class="mut">· ${esc(e.provider)}</span>`:''}</div>
+        <div class="fr-bubble">${esc(String(e.text||'').slice(0,700))}</div></div></div>`;
+      case 'done':return `<div class="fr-ev ${e.ok?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> ${
+        e.ok?'finished':'stopped ('+esc(e.status||'error')+')'}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}
+        ${e.handle?`<button class="fr-link" onclick="fgOpenHandle('${esc(e.handle)}')">See what came back</button>`:''}
+        ${e.node?`<button class="fr-link" onclick="fgSelect('${esc(e.node)}')">Every step</button>`:''}</div></div>`;
+      case 'wait':return `<div class="fr-ev ${e.state==='asked'?'warn':e.state==='allowed'?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who||'an agent')}</b> ${
+        e.state==='asked'?'is waiting for you to allow':e.state==='allowed'?'was allowed':'was refused'} <code>${esc(e.tool)}</code></div>
+        ${e.state==='asked'&&e.text?`<div class="fr-note">${esc(e.text)}</div>`:''}
+        ${e.state==='asked'&&!FG.ended?`<button class="fr-link" onclick="fgReview()">Review</button>`:''}</div></div>`;
+      case 'note':return `<div class="fr-ev ${e.level==='error'?'err':'warn'} sys"><span class="fr-glyph">!</span><div class="fr-line">${tm}${esc(e.text)}</div></div>`;
+      case 'end':return `<div class="fr-ev sys ${e.ok?'ok':'err'}">${fgFace('')}<div><div class="fr-line">${tm}<b>${e.ok?'Done':'It stopped'}</b>${
+        e.delivered&&e.delivered.length?' · delivered to '+esc(e.delivered.join(', ')):''}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}</div></div>`;
+    }
+    return '';
+  }).join('');
+  const think=FG.think&&FG.think.text?`<div class="fr-ev think">${fgFace(FG.think.agent)}<div class="fr-line"><i>${esc(FG.think.agent||'agent')} is thinking…</i> <span class="mut">${esc(FG.think.text.slice(-160))}</span></div></div>`:'';
+  const html=(rows||(FG.ended?'<p class="mut">Nothing was recorded for this run.</p>':'<p class="mut">Getting started…</p>'))+think;
+  if(box.dataset.h===html)return;
+  // a run in progress opens on its latest line; after that it follows only while you
+  // are already at the bottom, so reading back up is never yanked away
+  const first=!box.dataset.h,atBottom=first||box.scrollHeight-box.scrollTop-box.clientHeight<40;
+  box.dataset.h=html;box.innerHTML=html;
+  if(atBottom&&!FG.ended){box.scrollTop=box.scrollHeight;
+    // the window may be what scrolls, not the story: bring the newest line into view there too
+    if(first&&box.lastElementChild)box.lastElementChild.scrollIntoView({block:'nearest'})}
 }
 async function fgRerun(){
   if(!FG.flow)return;
@@ -18535,6 +18823,7 @@ async function kgClear(){
 /* ================= themes app ================= */
 async function renderThemes(body){
   await loadThemes();
+  if(typeof pTipBind==='function')pTipBind();   // the ⓘ tips below work before Settings has ever opened
   const swatch=t=>{const v=t.v||t.vars||{};
     return `<span style="display:flex;gap:3px">${['bg2','acc','acc2','txt'].map(k=>`<i style="width:14px;height:14px;border-radius:4px;background:${v[k]||'#333'};border:1px solid rgba(255,255,255,.15)"></i>`).join('')}</span>`;};
   const cards=Object.entries(allThemes()).map(([k,t])=>`<div class="catcard" style="cursor:pointer" onclick="applyTheme('${esc(k)}');refreshApp('themes')">
@@ -18544,30 +18833,29 @@ async function renderThemes(body){
       ${t.custom?`<button class="endbtn" style="position:absolute;top:8px;right:8px;padding:1px 7px" onclick="event.stopPropagation();themeDel('${esc(k)}')">✕</button>`:''}
     </div>`).join('');
   body.innerHTML=`<div class="pad">
-    <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop — colors, fonts, windows, menu bar, dock, icons and widgets. A theme can even carry a <b>full replacement shell</b>: a completely different interface built by AI against the OS API (<code>GET /api/registry</code>). Click one to apply instantly.</p>
+    <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop. Click one to apply it. ${pInfo('Colours, fonts, windows, menu bar, dock, icons and widgets all change. A theme can even bring a completely new interface built by AI.')}</p>
     <div class="cat">${cards}</div>
     <div class="row" style="margin-top:14px">
       <button class="save" style="margin:0" onclick="themeBuilder()">Build a theme</button>
     </div>
     <label style="margin-top:16px">Effects</label>
-    <p class="mut">Glass is the most expensive thing a desktop can draw, and the cost grows with every
-      window you open — five stacked glass windows can cost eight times the frame time of one.
+    <p class="mut">Glass looks good but is costly to draw, more so with every open window.
       ${glassLevel()==='full'?'This machine keeps up.':'<b>Turned down on this machine</b> to keep windows smooth.'}</p>
     <div class="gq-row">${[
-      ['auto','Automatic','measure this machine and turn glass down only if it cannot keep up'],
-      ['full','Full glass','every surface blurs, as the theme designed it'],
-      ['reduced','Reduced','only the focused window blurs — flat cost, however many are open'],
-      ['off','Off','no blur anywhere, panels go solid. Best on a Raspberry Pi or a VM'],
+      ['auto','Automatic','Checks this machine and turns glass down only if it can\'t keep up'],
+      ['full','Full glass','Every surface blurs, as the theme designed it'],
+      ['reduced','Reduced','Only the focused window blurs, so the cost stays the same however many are open'],
+      ['off','Off','No blur anywhere and panels go solid. Best on a Raspberry Pi or a VM'],
     ].map(([k,label,tip])=>`<button class="endbtn${GLASS.pref===k?' on':''}" title="${esc(tip)}"
         onclick="setGlass('${k}')">${GLASS.pref===k?'✓ ':''}${esc(label)}</button>`).join('')}</div>
-    <p class="mut" style="margin-top:6px">${esc(({auto:'Automatic',full:'Full glass',reduced:'Reduced',off:'Off'})[GLASS.pref]||'')} —
+    <p class="mut" style="margin-top:6px">${esc(({auto:'Automatic',full:'Full glass',reduced:'Reduced',off:'Off'})[GLASS.pref]||'')}:
       ${esc(({auto:'currently drawing at "'+glassLevel()+'"',full:'every surface blurs, as the theme designed it',
-        reduced:'only the focused window blurs — flat cost, however many are open',
+        reduced:'only the focused window blurs',
         off:'no blur anywhere, panels go solid'})[GLASS.pref]||'')}.</p>
     <label style="margin-top:16px">Design a theme with AI</label>
     <div class="row"><input id="th-ai" placeholder="e.g. a warm sunset theme with glass windows, or matrix terminal green">
       <button class="save" style="margin:0;flex:0 0 90px" onclick="themeAI()">Design</button></div>
-    <p class="mut" style="margin:6px 0 0">${esc(agentName())} will generate a full theme (colors, font, chrome) and apply it live.</p>
+    <p class="mut" style="margin:6px 0 0">${esc(agentName())} designs a full theme and applies it live.</p>
     <label style="margin-top:16px">Import / export</label>
     <div class="row">
       <button class="endbtn" onclick="themeExport()">⤓ Export current theme (JSON)</button>
@@ -18652,6 +18940,7 @@ function tbPalette(tint,mode,acc,acc2){
 function themeBuilder(from){
   const w=WM.wins.get('themes');if(!w)return;
   const body=w.el.querySelector('.wbody');
+  if(typeof pTipBind==='function')pTipBind();
   const all=allThemes(),baseId=from||CURRENT_THEME,base=all[baseId]||THEMES.nova;
   const v0={...(base.v||base.vars||{})};
   const WB=window._WB={name:base.custom?(base.label||base.name||baseId):'My Theme',mode:base.mode||'dark',v:v0,css:base.css||'',
@@ -18668,7 +18957,7 @@ function themeBuilder(from){
       <input id="tb-name" value="${esc(WB.name)}" placeholder="theme name" style="flex:1;min-width:140px">
       <select id="tb-from" aria-label="Start from">${Object.entries(all).map(([k,t])=>`<option value="${esc(k)}" ${k===baseId?'selected':''}>start from ${esc(t.label||t.name||k)}</option>`).join('')}</select>
     </div>
-    <p class="mut" style="margin:0 0 12px">Build the whole look and feel — the desktop changes live as you edit. Nothing is saved until <b>Save &amp; apply</b>.</p>
+    <p class="mut" style="margin:0 0 12px">The desktop changes live as you edit. Nothing is saved until you press <b>Save &amp; apply</b>.</p>
     <div class="tb-sec"><b>Colours</b>
       <div class="tb-quick">
         <label>Mode<select id="tb-mode"><option value="dark"${WB.mode==='dark'?' selected':''}>Dark</option><option value="light"${WB.mode==='light'?' selected':''}>Light</option></select></label>
@@ -18687,7 +18976,7 @@ function themeBuilder(from){
       <div class="seg" id="tb-depth">${['flat','soft','normal','deep'].map(d=>`<button class="${d===depth?'on':''}" data-d="${d}">${d[0].toUpperCase()+d.slice(1)}</button>`).join('')}</div></div>
     <div class="tb-sec"><b>Glass</b>
       <div class="seg" id="tb-glass">${[['solid','Solid'],['frosted','Frosted'],['clear','Clear']].map(([g,l])=>`<button class="${g===glass?'on':''}" data-g="${g}">${l}</button>`).join('')}</div>
-      <p class="mut tb-note">Frosted and clear blur what is behind a window — the most expensive thing a desktop draws. Effects (on the Themes page) still turns it down on a machine that cannot keep up.</p></div>
+      <p class="mut tb-note">Frosted and clear blur what's behind a window, which is costly to draw. ${pInfo("Effects on the Themes page still turns glass down on a machine that can't keep up.")}</p></div>
     <div class="tb-sec"><b>Type</b>
       <label>Font<select id="tb-font">${TB_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${((WB.font&&WB.font.family)||'')===f?'selected':''}>${esc(l)}</option>`).join('')}<option value="__custom" ${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'selected':''}>Another web font…</option></select></label>
       <div id="tb-fcustom" style="display:${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'flex':'none'};gap:8px;flex-wrap:wrap">
@@ -18747,7 +19036,7 @@ function tbCheck(){
   const WB=window._WB,el=document.getElementById('tb-contrast');if(!WB||!el)return;
   const cs=getComputedStyle(document.documentElement),g=k=>tbHex((WB.v[k]||cs.getPropertyValue('--'+k)||'').trim());
   const a=tbContrast(g('txt'),g('bg2')),b=tbContrast(g('on-acc'),g('acc')),c=tbContrast(g('dim'),g('bg2'));
-  const mark=x=>x>=4.5?'✓':x>=3?'— low':'✗ too low';
+  const mark=x=>x>=4.5?'✓':x>=3?'(low)':'✗ too low';
   el.innerHTML=`Text on surfaces ${a.toFixed(1)}:1 ${mark(a)} · muted text ${c.toFixed(1)}:1 ${mark(c)} · text on the accent ${b.toFixed(1)}:1 ${mark(b)}`;
 }
 async function tbSave(exportOnly){
@@ -18763,11 +19052,12 @@ async function tbSave(exportOnly){
 /* ================= personalize app + wallpaper gallery ================= */
 async function renderPersonalize(body){
   let gal=[];try{gal=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){}
+  if(typeof pTipBind==='function')pTipBind();
   const picked=pickedWall();
   body.innerHTML=`<div class="pad">
     <label>Built-in wallpapers</label>
-    <p class="mut" style="margin:2px 0 8px">Ship with AgentOS, one per design-language theme. They're SVG — a few KB
-      each, sharp at any resolution. Pick a theme and its wallpaper follows automatically; choose one here to pin it instead.</p>
+    <p class="mut" style="margin:2px 0 8px">Each theme brings its own wallpaper. Pick one here to keep it whatever the theme.
+      ${pInfo("They're small SVG files that stay sharp at any resolution.")}</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
       ${BUILTIN_WALLS.map(id=>`<button onclick="pzBuiltin('${id}')" title="${esc(id)}"
         style="position:relative;padding:0;border-radius:9px;overflow:hidden;aspect-ratio:16/9;
@@ -18787,14 +19077,15 @@ async function renderPersonalize(body){
       <button class="endbtn" onclick="wpSystem()">Use system wallpaper</button>
       <button class="endbtn" onclick="fetch('/api/wallpaper',{method:'DELETE'})">Reset</button>
     </div>
-    <label style="margin-top:16px">Gallery — every wallpaper you've generated (click to apply)</label>
+    <label style="margin-top:16px">Your generated wallpapers (click to apply)</label>
     <div id="pz-gal" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px">
       ${gal.length?gal.map(id=>`<div style="position:relative;border-radius:9px;overflow:hidden;border:1px solid var(--line);aspect-ratio:16/9;cursor:pointer" onclick="pzSet('${id}')">
         <img src="/api/wallpapers/${id}" style="width:100%;height:100%;object-fit:cover" loading="lazy">
         <button class="endbtn" style="position:absolute;top:4px;right:4px;padding:1px 6px" onclick="event.stopPropagation();pzDel('${id}')">✕</button>
-      </div>`).join(''):'<p class="mut">No wallpapers yet — generate one above.</p>'}
+      </div>`).join(''):'<p class="mut">No wallpapers yet. Generate one above.</p>'}
     </div>
-    <p class="mut" style="margin-top:12px">Uses your image provider from Settings (Gemini / OpenAI; free pollinations.ai without a key, which caps resolution). You can also tell ${esc(agentName())}: <i>"change my wallpaper to a snowy mountain at sunrise"</i>.</p>
+    <p class="mut" style="margin-top:12px">Uses the image provider set in Settings. ${pInfo('Gemini or OpenAI with a key. Without one it uses the free pollinations.ai, at a lower resolution.')}
+      You can also ask ${esc(agentName())}: <i>"change my wallpaper to a snowy mountain at sunrise"</i>.</p>
   </div>`;
 }
 async function pzGen(){
@@ -18806,7 +19097,7 @@ async function pzGen(){
     // a quota/key error is a paragraph, not a toast — show it where it can be read
     if(!d.ok)await osAlert('Image generation failed',String(d.result||'').replace(/^\[error\]\s*/,''));
     else{toast(String(d.result||'generated').replace(/^wallpaper generated with /,'✓ ').slice(0,110));refreshApp('personalize')}
-  }catch(e){toast('generation failed — offline?')}
+  }catch(e){toast('generation failed. Are you offline?')}
   const b2=$('#pz-gen');if(b2){b2.disabled=false;b2.textContent='Generate wallpaper'}
 }
 async function pzBuiltin(id){await setBuiltinWallpaper(id);refreshApp('personalize')}

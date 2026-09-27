@@ -185,7 +185,7 @@ def test_the_routes(tmp_path):
 def test_settings_has_three_clear_places():
     js = (ROOT / "agentos/ui/src/js/11-settings.js").read_text()
     assert "['agent','◈','Agents','agent']" in js
-    assert "The brains." in js and 'id="exec-list"' in js, "installed agents are listed with the brains"
+    assert "Every model this machine can think with" in js and 'id="exec-list"' in js, "installed agents are listed with the brains"
     assert 'id="hands-list"' in js and "An executor is what an agent can reach" in js
     assert 'id="agents-list"' in js and 'id="agents-graph"' in js and "Working together" in js
     ui = (ROOT / "agentos/ui/src/js/11e-hands.js").read_text()

@@ -52,17 +52,15 @@ async function renderOcPlugins(){
         <b>${esc(p.id)}</b>${p.version?`<span class="mut"> ${esc(p.version)}</span>`:''}
         ${p.bundled?'<span class="ck">ships with OpenClaw</span>':''}
         ${p.source?`<div class="sub mut">${esc(p.source)}</div>`:''}
-        ${p.held?`<div class="sub" style="color:var(--err)">held: ${esc(p.held_reason)} — release it in Permissions → Quarantine</div>`:''}
+        ${p.held?`<div class="sub" style="color:var(--err)">held: ${esc(p.held_reason)}. Release it in Permissions → Quarantine.</div>`:''}
       </div>
       ${state}
       <button class="endbtn" onclick="ocpReview('${esc(p.id)}')">Review</button>
     </div>`;
   }).join('');
   box.innerHTML = `<h3>OpenClaw plugins</h3>
-    <div class="ghint">Third-party extensions for OpenClaw — tools, providers, channels and
-      hooks. AgentOS scans one before you turn it on, writes what it may reach as real
-      permissions, and can hold it. What it cannot do is refuse an individual call the
-      plugin makes once it is running: that happens inside OpenClaw's own process.</div>
+    <div class="ghint">Add-ons for OpenClaw. AgentOS scans each one and can hold it, but can't block its calls once it runs.
+      ${pInfo("Before you turn a plugin on, what it may reach is written as permissions you can revoke. Its calls run inside OpenClaw's own process.")}</div>
     <div class="prow">
       <input id="ocp-spec" placeholder="clawhub:name · npm:pkg · git:github.com/owner/repo · a path"
              autocomplete="off" style="flex:1">
@@ -73,11 +71,9 @@ async function renderOcPlugins(){
     <div id="ocp-review"></div>
     ${rows || '<p class="mut">no plugins installed</p>'}
     ${d.error?`<div class="ghint mut">${esc(d.error)}</div>`:''}
-    <div class="ghint mut">OpenClaw loads plugin code when its gateway starts, so a change
-      here is live only after that gateway restarts.</div>
+    <div class="ghint mut">Changes take effect after OpenClaw's gateway restarts.</div>
     <div class="ghint"><button class="endbtn" onclick="ocpDoctor()">Check them</button>
-      — asks OpenClaw whether the plugin tree is healthy, and asks this OS whether every
-      enabled plugin still has the permission it was given.</div>`;
+      ${pInfo('Asks OpenClaw if its plugins are healthy, and checks each enabled one still has its permissions.')}</div>`;
 }
 
 async function ocpSearch(){
@@ -101,7 +97,7 @@ async function ocpInstall(spec){
   spec = spec || ((document.getElementById('ocp-spec')||{}).value || '').trim();
   if(!spec){ toast('Which plugin? A ClawHub name, npm:…, git:… or a path'); return }
   OCP_BUSY = true;
-  toast('Installing ' + spec + ' — it will land disabled');
+  toast('Installing ' + spec + '. It will arrive switched off.');
   let d = null;
   try{
     d = await (await fetch('/api/openclaw/plugins/install', {
@@ -115,8 +111,8 @@ async function ocpInstall(spec){
        it: the person saying they looked. `force` is never sent on its own — it
        answers OpenClaw's own provenance question, so a person has to answer it. */
     if(d && d.needs_force &&
-       confirm((d.source_note||'') + '\n\nInstall it anyway? Only if you have looked at ' +
-               'the source and vouch for it.')){
+       confirm((d.source_note||'') + '\n\nInstall it anyway? Only do this if you have read ' +
+               'the source and trust it.')){
       OCP_BUSY = true;
       try{
         d = await (await fetch('/api/openclaw/plugins/install', {
@@ -157,7 +153,7 @@ async function ocpReview(pid){
     <div class="ghint mut">${esc(p.tofu_note||'')}</div>
     ${p.manifest_note?`<div class="ghint mut">${esc(p.manifest_note)}</div>`:''}
     ${p.quarantined?`<div class="ghint" style="color:var(--err)">Held: ${esc((p.quarantine||{}).reason||'')}.
-      Release it in Permissions → Quarantine before it can be turned on.</div>`:''}
+      Release it in Permissions → Quarantine to turn it on.</div>`:''}
     <details class="mtools" open><summary>What this machine's scan found</summary>
       ${((p.security||{}).findings||[]).map(f=>line(f.severity, f.note)).join('')
         || '<div class="mtool"><span>nothing to report</span></div>'}</details>
@@ -178,8 +174,7 @@ async function ocpReview(pid){
       <button class="endbtn" onclick="ocpUninstall('${esc(p.id)}')">Uninstall</button>
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Close</button>
     </div>
-    <div class="ghint mut">OpenClaw loads plugin code at gateway start — restart its gateway
-      before expecting a change here to be live.</div>
+    <div class="ghint mut">Changes take effect after OpenClaw's gateway restarts.</div>
   </div>`;
   out.scrollIntoView({block:'nearest', behavior:'smooth'});
 }
@@ -202,12 +197,10 @@ function ocpDisclaimer(p){
   return `<div class="pgroup" style="border-left:3px solid var(--err);padding-left:10px">
     <h3>⚠ Before you turn this on</h3>
     <div class="ghint">${esc(c.headline||'')}</div>
-    ${li.headline?`<div class="ghint"><b>${esc(li.headline)}</b> — ${esc(li.implication||'')}</div>`:''}
+    ${li.headline?`<div class="ghint"><b>${esc(li.headline)}</b>. ${esc(li.implication||'')}</div>`:''}
     ${gaps.map(row).join('')}
-    ${((p.native||{}).buildable)?`<div class="ghint">AgentOS can rebuild what this
-      plugin declares out of its own parts — MCP servers, flows and skills — so it runs
-      behind the permission engine instead of beside it. It builds, then checks its own
-      work, and everything it makes lands disabled.</div>`:''}
+    ${((p.native||{}).buildable)?`<div class="ghint">AgentOS can rebuild this plugin from its own parts, where every call is checked.
+      ${pInfo('It uses MCP servers, flows and skills, checks its own work, and leaves everything it makes switched off.')}</div>`:''}
   </div>`;
 }
 
@@ -225,15 +218,15 @@ async function ocpNative(pid){
   const lp = d.licence_port || {};
   if(lp.needs_ack && !confirm(
       lp.ask + '\n\n' + (lp.implication||'') +
-      '\n\nAgentOS cannot answer this for you — this is not legal advice.')){
-    toast('Left as it is — nothing was built'); return;
+      '\n\nAgentOS can\'t answer this for you, and this is not legal advice.')){
+    toast('Left as it is. Nothing was built.'); return;
   }
   const out = document.getElementById('ocp-review');
   if(out) out.innerHTML = `<div class="pgroup">
-    <h3>Native build brief — ${esc(pid)}</h3>
-    ${lp.headline?`<div class="ghint"><b>${esc(lp.headline)}</b> — ${esc(lp.implication||'')}</div>`:''}
-    <div class="ghint">This is what the agent will be asked to build. It is derived from
-      the plugin's own manifest, so it asks for nothing the plugin did not declare.</div>
+    <h3>Native build brief: ${esc(pid)}</h3>
+    ${lp.headline?`<div class="ghint"><b>${esc(lp.headline)}</b>. ${esc(lp.implication||'')}</div>`:''}
+    <div class="ghint">This is what the agent will be asked to build.
+      ${pInfo("It comes from the plugin's own manifest, so it only asks for what the plugin declared.")}</div>
     <pre style="white-space:pre-wrap;font-size:12px;max-height:340px;overflow:auto">${esc(d.prompt)}</pre>
     <div class="prow" style="flex-wrap:wrap">
       <button class="endbtn" onclick="ocpSendBrief(${JSON.stringify(pid).replace(/"/g,'&quot;')})">Hand it to the agent</button>
@@ -257,9 +250,9 @@ function ocpSendBrief(pid){
   setTimeout(()=>{
     const i = document.getElementById('input');
     if(!i){ navigator.clipboard?.writeText(prompt);
-            toast('Brief copied — paste it into Chat to start the build'); return }
+            toast('Brief copied. Paste it into Chat to start the build.'); return }
     i.value = prompt; i.focus(); i.dispatchEvent(new Event('input'));
-    toast('Read it, then send — the agent builds, then checks its own work');
+    toast('Read it, then send. The agent builds it and checks its own work.');
   }, 250);
 }
 
@@ -269,10 +262,10 @@ async function ocpVerify(pid){
   try{ d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/verify')).json() }catch(e){}
   if(!d || d.error){ toast((d&&d.error)||'could not check'); return }
   if(out) out.innerHTML = `<div class="pgroup">
-    <h3>Native build — ${esc(pid)} ${d.ok?'<span class="badge ok">all in place</span>'
+    <h3>Native build: ${esc(pid)} ${d.ok?'<span class="badge ok">all in place</span>'
                                         :'<span class="badge err">incomplete</span>'}</h3>
     ${(d.results||[]).map(r=>`<div class="mtool"><code>${r.ok?'✓':'✗'} ${esc(r.target)}</code>
-        <span>${esc(r.item)} — ${esc(r.note)}</span></div>`).join('')}
+        <span>${esc(r.item)}: ${esc(r.note)}</span></div>`).join('')}
     <div class="ghint mut">${esc(d.note||'')}</div>
     <div class="prow"><button class="endbtn" onclick="ocpReview('${esc(pid)}')">Back</button></div>
   </div>`;
@@ -291,15 +284,15 @@ async function ocpReport(pid){
   try{ d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/report')).json() }catch(e){}
   if(!d || d.error){ toast((d&&d.error)||'could not build the report'); return }
   const rows = (list, mark) => list.map(x=>`<div class="mtool"><code>${mark} ${esc(x.target)}</code>
-      <span>${esc(x.item)} — ${esc(x.note)}</span></div>`).join('');
+      <span>${esc(x.item)}: ${esc(x.note)}</span></div>`).join('');
   const lost = (d.not_portable||[]).map(g=>`<div class="mtool"><code>—</code><span>
       <b>${esc(g.what)}</b><br>${esc(g.why)}<br><i>What that costs: ${esc(g.implication)}</i>
     </span></div>`).join('');
   if(out) out.innerHTML = `<div class="pgroup">
-    <h3>Report — ${esc(pid)}
+    <h3>Report: ${esc(pid)}
       ${d.complete?'<span class="badge ok">complete</span>':'<span class="badge">partial</span>'}</h3>
     <div class="ghint">${esc(d.headline||'')}</div>
-    <div class="ghint"><b>${esc((d.licence||{}).headline||'')}</b> — ${esc((d.licence||{}).implication||'')}</div>
+    <div class="ghint"><b>${esc((d.licence||{}).headline||'')}</b>. ${esc((d.licence||{}).implication||'')}</div>
     ${(d.ported||[]).length?`<details class="mtools" open><summary>Ported and reachable</summary>
         ${rows(d.ported,'✓')}</details>`:''}
     ${(d.outstanding||[]).length?`<details class="mtools" open><summary>Declared, not built yet</summary>
@@ -312,8 +305,7 @@ async function ocpReport(pid){
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Continue as it is</button>
       ${(d.proposal||{}).keep_the_plugin?`<button class="endbtn" onclick="ocpReview('${esc(pid)}')">Keep running the original</button>`:''}
     </div>
-    <div class="ghint mut">Continuing as it is is a real answer — a partial port that
-      covers what you actually use is a fine place to stop.</div>
+    <div class="ghint mut">If the port covers what you actually use, it's fine to stop here.</div>
   </div>`;
 }
 
@@ -328,8 +320,8 @@ async function ocpEnable(pid, on){
   const d = await ocpPost('/api/openclaw/plugins/' + encodeURIComponent(pid) + '/enable',
                           {enabled: !!on});
   if(!d.ok){ toast(String(d.error||'failed').slice(0,200)); return }
-  toast(on ? `${pid} is on — ${(d.grants||{}).added||0} permission(s) written`
-           : `${pid} is off — ${d.revoked||0} permission(s) taken back`);
+  toast(on ? `${pid} is on, ${(d.grants||{}).added||0} permission(s) written`
+           : `${pid} is off, ${d.revoked||0} permission(s) taken back`);
   await renderOcPlugins();
   ocpReview(pid);
 }
@@ -340,7 +332,7 @@ async function ocpUpdate(pid){
   if(!d.ok){ toast(String(d.error||'update failed').slice(0,200)); return }
   /* A held update is the supply-chain case this surface exists for, so it is
      said loudly rather than reported as a successful upgrade. */
-  toast(d.held ? `${pid} was HELD after updating: ${String(d.reason).slice(0,120)}`
+  toast(d.held ? `${pid} was held after updating: ${String(d.reason).slice(0,120)}`
                : `${pid} updated`);
   await renderOcPlugins();
   ocpReview(pid);
@@ -361,7 +353,7 @@ async function ocpUninstall(pid){
     d = await (await fetch('/api/openclaw/plugins/' + encodeURIComponent(pid),
                            {method:'DELETE'})).json();
   }catch(e){}
-  toast((d && d.ok) ? `${pid} removed — ${d.revoked||0} permission(s) taken back`
+  toast((d && d.ok) ? `${pid} removed, ${d.revoked||0} permission(s) taken back`
                     : String((d&&d.error)||'failed').slice(0,200));
   await renderOcPlugins();
 }
@@ -374,6 +366,6 @@ async function ocpDoctor(){
   const off = (a.disabled||[]);
   toast(off.length
     ? `${off.length} plugin(s) turned off: ` + off.map(x=>x.id + ' (' + x.why + ')').join(', ')
-    : `${a.checked||0} plugin(s) checked — every enabled one still has the permission it was given`);
+    : `${a.checked||0} plugin(s) checked. Every enabled one still has its permissions.`);
   await renderOcPlugins();
 }

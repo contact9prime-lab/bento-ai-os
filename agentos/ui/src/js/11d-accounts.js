@@ -38,17 +38,17 @@ function acctSigninCard(){
       :(s.available?`<button class="endbtn acct-signin" onclick="acctSignin('${s.id}')">Sign in with ${esc(s.label)}</button>`
         :`<button class="endbtn" disabled title="${esc(s.why)}">Sign in with ${esc(s.label)}</button>`);
     const why=(!on&&!s.available)?`<div class="ghint acct-why">${esc(s.why.split('. ')[0])}. <a href="#" onclick="document.getElementById('acct-clients').scrollIntoView({block:'center'});return false">App registration ↓</a></div>`:'';
-    const wait=pend?`<div class="ghint">waiting for you to finish signing in (${pend.waiting_for}s) — <a href="${esc(pend.url)}" target="_blank" rel="noopener">open the page again</a></div>`:'';
+    const wait=pend?`<div class="ghint">waiting for you to finish signing in (${pend.waiting_for}s). <a href="${esc(pend.url)}" target="_blank" rel="noopener">open the page again</a></div>`:'';
     return `<div class="prow acct-door" data-f="sign in ${esc(s.label)}"><div class="pl"><b>${esc(s.label)}</b><small class="mut">${status}</small>${why}${wait}</div><div class="pc acct-btns">${btns}</div></div>`;
   }).join('');
   return `<div class="pgroup chan" data-f="accounts sign in google microsoft oauth">
     <h3>Sign in</h3>
-    <div class="ghint">One sign-in reads your mail and your calendar. You pick what it may read; the consent page names it; it is revocable from your Google or Microsoft account any time. Sending is asked for separately and every message still asks you first.</div>
+    <div class="ghint">One sign-in covers your mail and calendar. Tick what it may read below. ${pInfo('You can revoke it from your Google or Microsoft account any time. Sending is a separate tick, and each message still asks you first.')}</div>
     ${rows}
     <div class="prow"><div class="pl"><small class="mut">Asks for:</small></div><div class="pc acct-uses">
       <label><input type="checkbox" id="acct-use-mail" checked> mail</label>
       <label><input type="checkbox" id="acct-use-calendar" checked> calendar</label>
-      <label><input type="checkbox" id="acct-use-send"> send (always asks per message)</label></div></div>
+      <label><input type="checkbox" id="acct-use-send"> send (asks before each message)</label></div></div>
   </div>`;
 }
 function acctUses(){return ['mail','calendar','send'].filter(u=>{const el=document.getElementById('acct-use-'+u);return el&&el.checked})}
@@ -60,7 +60,7 @@ async function acctSignin(provider){
     if(j.error){toast(j.error.slice(0,160));return}
     const w=window.open(j.url,'_blank','noopener');
     if(!w)toast('open this to sign in: '+j.url.slice(0,80)+'…');
-    toast('finish signing in on the page that opened — this card updates by itself');
+    toast('finish signing in on the page that opened. This card updates by itself.');
     setTimeout(renderAccounts,1500);
   }catch(e){toast('could not reach the server')}
 }
@@ -74,7 +74,7 @@ function acctCard(a){
   const lt=a.last_test||{};
   const dot=lt.ok?'on':(a.configured?(lt.detail?'warn':'off'):'off');
   const status=lt.detail?(lt.ok?'✓ ':'✗ ')+lt.detail+(lt.at?' · '+new Date(lt.at*1000).toLocaleString():''):
-    (a.configured?'set up — not tested yet':'not set up');
+    (a.configured?'set up, not tested yet':'not set up');
   const way=a.via;
   const signedWay=way==='google'||way==='microsoft';
   const wayKey=a.id==='mail'?'via':'kind';
@@ -85,12 +85,12 @@ function acctCard(a){
     .concat(ACCTS.signin.filter(s=>s.signed_in&&s.signed_in.email).map(s=>[s.id,'Signed in with '+s.label]));
   const doorSel=pSelect('ac-'+a.id+'-'+wayKey,doorOpts,signedWay?way:(way==='mcp'?'mcp':'form'))
     .replace('<select','<select onchange="acctDoor(\''+a.id+'\')"');
-  const mcpRow=way==='mcp'?pRow('MCP server',pSelect('ac-'+a.id+'-mcp_server',[['','— choose a connected server —']].concat((a.mcp_servers||[]).map(n=>[n,n])),a.mcp_server||''),
-      {desc:(a.mcp_servers||[]).length?'the mission\'s specialists use this server\'s tools instead of the built-in ones':'no MCP server is connected — add one in the MCP app first',f:a.id+' mcp server'}):'';
-  const fields=signedWay||way==='mcp'?'':`<details class="acct-adv"><summary>Another provider — an app password${a.id==='calendar'?' or an ICS address':''}</summary>`+a.fields.map(f=>{
+  const mcpRow=way==='mcp'?pRow('MCP server',pSelect('ac-'+a.id+'-mcp_server',[['','choose a connected server']].concat((a.mcp_servers||[]).map(n=>[n,n])),a.mcp_server||''),
+      {desc:(a.mcp_servers||[]).length?'Missions will use this server\'s tools for this account.':'No MCP server is connected yet. Add one in the MCP app first.',f:a.id+' mcp server'}):'';
+  const fields=signedWay||way==='mcp'?'':`<details class="acct-adv"><summary>Another provider: an app password${a.id==='calendar'?' or an ICS address':''}</summary>`+a.fields.map(f=>{
     const id='ac-'+a.id+'-'+f.key;
     let ctl;
-    if(f.kind==='select')ctl=pSelect(id,[['','— choose —']].concat(f.options),a.values[f.key]||'');
+    if(f.kind==='select')ctl=pSelect(id,[['','choose']].concat(f.options),a.values[f.key]||'');
     else if(f.kind==='secret')ctl=pSecret(id,a.set[f.key],a.masked[f.key],f.placeholder);
     else ctl=pText(id,a.values[f.key],f.placeholder,f.kind==='number'?'number':'text');
     return pRow(f.label,ctl,{f:a.id+' '+f.key});
@@ -113,15 +113,15 @@ function acctCard(a){
 function acctClientsCard(){
   const rows=ACCTS.signin.map(s=>`
     <div class="acct-client" data-f="app registration ${esc(s.label)} client id">
-      <div class="ghint"><b>${esc(s.label)}</b> — ${esc(s.hint)} <a href="${esc(s.register)}" target="_blank" rel="noopener">open the console ↗</a></div>
-      ${pRow('Redirect URI',`<code class="acct-uri">${esc(s.redirect_uri)}</code>`,{desc:'paste this into the registration as the redirect / callback URI',f:'redirect uri'})}
+      <div class="ghint"><b>${esc(s.label)}</b>. ${esc(s.hint)} <a href="${esc(s.register)}" target="_blank" rel="noopener">open the console ↗</a></div>
+      ${pRow('Redirect URI',`<code class="acct-uri">${esc(s.redirect_uri)}</code>`,{desc:'Paste this into the registration as the redirect URI.',f:'redirect uri'})}
       ${pRow('Client id',pText('oc-'+s.id+'-client_id',s.client_id||'','…apps.googleusercontent.com','text'),{f:s.label+' client id'})}
-      ${s.needs_secret?pRow('Client secret',pSecret('oc-'+s.id+'-client_secret',s.has_secret,s.has_secret?'in config, masked':'','GOCSPX-…'),{desc:'Google issues one for a desktop client and documents it as not secret; it is still masked here',f:s.label+' client secret'}):''}
-      ${s.id==='microsoft'?pRow('Tenant',pText('oc-'+s.id+'-tenant',s.tenant||'common','common','text'),{desc:'"common" for personal and work accounts; your tenant id to limit it to one organisation',f:'tenant'}):''}
+      ${s.needs_secret?pRow('Client secret',pSecret('oc-'+s.id+'-client_secret',s.has_secret,s.has_secret?'in config, masked':'','GOCSPX-…'),{desc:'Google gives one for desktop clients. It\'s masked here.',more:'Google says a desktop client secret isn\'t really secret, but we hide it anyway.',f:s.label+' client secret'}):''}
+      ${s.id==='microsoft'?pRow('Tenant',pText('oc-'+s.id+'-tenant',s.tenant||'common','common','text'),{desc:'Use "common" for personal and work accounts.',more:'Put your tenant id here to limit sign-in to one organisation.',f:'tenant'}):''}
     </div>`).join('');
   return `<div class="pgroup chan" id="acct-clients" data-f="app registration oauth client id secret">
     <h3>App registration <small class="mut">${ACCTS.admin?'':'admins only'}</small></h3>
-    <div class="ghint">Sign in with Google / Microsoft needs an OAuth client that belongs to THIS install — a self-hosted OS has no central application, so the project ships none (the same reason it ships no signing key). Five minutes once, per machine; every account here uses it.</div>
+    <div class="ghint">Google and Microsoft sign-in need an app registered for this machine. It takes about five minutes, once. ${pInfo('A self-hosted install has no shared app, so AgentOS ships none. Every account on this machine uses the one you register.')}</div>
     ${rows}
     <div class="prow"><div class="pl"><small id="oc-msg" class="mut"></small></div><div class="pc"><button class="endbtn" ${ACCTS.admin?'':'disabled'} onclick="acctSaveClients()">Save registration</button></div></div>
   </div>`;
@@ -132,7 +132,7 @@ async function acctSaveClients(){
   const msg=document.getElementById('oc-msg');
   try{
     const j=await (await fetch('/api/accounts/clients',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
-    if(msg){msg.textContent=j.error||'saved — the sign-in buttons above are live';msg.className=j.error?'warn':'ok'}
+    if(msg){msg.textContent=j.error||'saved. The sign-in buttons above now work.';msg.className=j.error?'warn':'ok'}
     if(!j.error)renderAccounts();
   }catch(e){if(msg){msg.textContent='could not reach the server';msg.className='warn'}}
 }

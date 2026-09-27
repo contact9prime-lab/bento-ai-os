@@ -1894,6 +1894,26 @@ The guides under `docs/` are **English only**, deliberately for now: nothing has
 translated them, and a half-translated manual is worse than an honest English one.
 `docs/README.md` says so where somebody would go looking.
 
+## How we write: one line on screen, the rest behind an ⓘ
+
+The person asked for this in so many words: a lot of text in every setting irritates, and
+the way a model writes (dash-joined clauses, "not this, not that, just this") reads like a
+model. So everything a person reads, in the UI and in the docs, follows these:
+
+- **A setting gets one short line** under its name, about what it does for the person.
+  Anything else worth knowing is `more:` on `pRow`, or `pInfo('…')` inline, and shows on
+  hover, focus or tap. One or two sentences there, never a paragraph. Implementation
+  detail (module names, config keys, measurements, the history of a bug) belongs in code
+  comments and in this file, not on screen.
+- **Write like a person talking to a colleague.** Full stops and commas, contractions,
+  active voice. No em-dash clauses, no "X, not Y" or "never X, always Y", no capitals for
+  emphasis, no "honest", no "the one place". Say the fact.
+- **Safety sentences stay, shorter.** Unofficial, admin only, cannot contain the network,
+  kept in the vault: each is one plain sentence, usually behind the ⓘ.
+- `pSplit`/`pTidy` split any long paragraph at its first sentence as a safety net, and
+  `tests/test_settings_copy.py` refuses a `desc` over 140 characters or with a dash. The net
+  is for what slips through; write it short in the first place.
+
 ## Honesty rules
 
 - A capability that is missing reports **why**, in a sentence, plus the component

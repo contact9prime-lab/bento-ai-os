@@ -33,23 +33,18 @@ async function waPanel(){
     ? `<div class="wa-hook"><b>Callback URL</b>
         <code id="wa-url">${esc(reach.webhook)}</code>
         <button class="endbtn" onclick="waCopy()">Copy</button>
-        <em>Paste this into the WhatsApp product page on developers.facebook.com,
-          with your verify token, and subscribe to <code>messages</code>.</em></div>`
+        <em>Paste it into the WhatsApp page on developers.facebook.com. ${pInfo('Add your verify token there too, and subscribe to the messages field.')}</em></div>`
     : `<div class="wa-hook warnbox"><b>Meta cannot reach this machine yet</b>
         <em>${esc(reach.why||'')}</em></div>`;
   const pairing=d.owner_wa_id
     ? `<div class="wa-line"><b>Paired</b> <code>+${esc(d.owner_wa_id)}</code>
         <button class="endbtn" onclick="waUnpair()">Unpair</button></div>`
-    : `<div class="wa-line mut">Not paired yet — message the number from your phone
-        once, and that chat becomes the owner.</div>`;
+    : `<div class="wa-line mut">Not paired yet. Message the number once from your phone. ${pInfo('The first chat that writes in becomes the owner.')}</div>`;
   // Two different facts, said separately on purpose.
   const win=d.owner_wa_id
     ? (d.window_open
-        ? `<div class="wa-line ok">The ${d.window_hours}-hour window is open — it can
-             message you right now.</div>`
-        : `<div class="wa-line warn">The ${d.window_hours}-hour window has closed.
-             WhatsApp will not let it speak first; send anything to the number and it
-             reopens for a day.</div>`)
+        ? `<div class="wa-line ok">The ${d.window_hours}-hour window is open, so it can message you now.</div>`
+        : `<div class="wa-line warn">The ${d.window_hours}-hour window has closed. Send the number anything to reopen it. ${pInfo('WhatsApp only lets a business message you first within a day of your last message.')}</div>`)
     : '';
   const chats=(d.chats||[]).filter(c=>c.wa_id!==d.owner_wa_id);
   const others=chats.length
@@ -62,7 +57,7 @@ async function waPanel(){
   // The way back. Without it, choosing the Business API once is a one-way door:
   // the four fields are the only thing on screen and nothing offers the QR again.
   const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
-    Using the <b>Business (Cloud) API</b> — official, and it needs the fields above.
+    Using the official <b>Business (Cloud) API</b>, set up with the fields above.
     <button class="endbtn" onclick="waSetMode('baileys')">Scan a QR code instead</button></div>`;
   box.innerHTML=`${hook}${pairing}${win}${others}
     ${d.configured&&d.enabled?`<div class="wa-line"><button class="endbtn"
@@ -93,7 +88,7 @@ async function waTest(){
   try{
     const d=await (await fetch('/api/whatsapp/test',{method:'POST'})).json();
     const bad=String(d.result||'').startsWith('[error]');
-    if(out){out.textContent=bad?d.result.replace('[error] ',''):'sent — check your phone';
+    if(out){out.textContent=bad?d.result.replace('[error] ',''):'sent, check your phone';
       out.className=bad?'warn':'ok'}
   }catch(e){if(out){out.textContent='could not reach the server';out.className='warn'}}
 }
@@ -105,7 +100,7 @@ async function waTest(){
 function waLinkPanel(d){
   const L=d.link||{};
   const modeSwitch=`<div class="wa-line mut" style="margin-top:10px">
-    Using the <b>WhatsApp Web link</b> — no Meta account needed.
+    Using the <b>WhatsApp Web link</b>. No Meta account needed.
     <button class="endbtn" onclick="waSetMode('cloud')">Use the Business API instead</button></div>`;
   if(!L.installed){
     // The consent ladder: what it unlocks, its licence, the honest warning, and
@@ -113,12 +108,8 @@ function waLinkPanel(d){
     return `<div class="wa-hook warnbox">
       <b>The WhatsApp Web bridge is not installed</b>
       <em>${esc(L.why||'')}</em>
-      <div class="wa-line" style="margin-top:8px">Scan a QR code from your phone and this
-        machine becomes a linked device — no Meta developer account, no public webhook,
-        no 24-hour reply window.</div>
-      <div class="wa-line warn" style="margin-top:6px"><b>Unofficial.</b> It emulates a
-        linked WhatsApp Web device. WhatsApp does not support this and has banned
-        accounts for automating on it — prefer a spare number.</div>
+      <div class="wa-line" style="margin-top:8px">Scan a QR code from your phone and this machine becomes a linked device. ${pInfo('You skip the Meta developer account, the public webhook and the 24-hour reply window.')}</div>
+      <div class="wa-line warn" style="margin-top:6px"><b>Unofficial.</b> WhatsApp has banned accounts for automating on it, so use a spare number. ${pInfo('It acts as a linked WhatsApp Web device, which WhatsApp does not support.')}</div>
       <div class="wa-line mut">MIT (Baileys) · needs Node.js · downloads ~60 MB</div>
       <div class="wa-line"><button class="pact" onclick="waInstall()">Install the bridge</button>
         <small id="wa-inst" class="mut"></small></div>
@@ -127,8 +118,7 @@ function waLinkPanel(d){
   if(L.state==='qr'&&L.qr_svg){
     return `<div class="wa-hook">
       <b>Scan this with WhatsApp</b>
-      <em>On your phone: WhatsApp → Settings → Linked devices → Link a device.
-        The code refreshes automatically.</em>
+      <em>On your phone, open WhatsApp → Settings → Linked devices → Link a device. The code refreshes on its own.</em>
       <div class="wa-qr" style="background:#fff;padding:10px;border-radius:10px;
         width:min(260px,60vw);margin:10px 0">${L.qr_svg}</div>
       <button class="endbtn" onclick="waUnlink()">Cancel</button>
@@ -137,10 +127,8 @@ function waLinkPanel(d){
   if(L.state==='ready'){
     const owner=d.owner_wa_id
       ? `<div class="wa-line"><b>Paired</b> <code>+${esc(d.owner_wa_id)}</code></div>`
-      : `<div class="wa-line mut">Linked, but nobody has written in yet — message this
-           WhatsApp from your phone and that chat becomes the owner.</div>`;
-    return `<div class="wa-line ok">● Linked as <code>${esc((L.me||'').split(':')[0])}</code>
-        — it can message you at any time (no 24-hour window on a linked device).</div>
+      : `<div class="wa-line mut">Linked. Message this WhatsApp from your phone to become the owner.</div>`;
+    return `<div class="wa-line ok">● Linked as <code>${esc((L.me||'').split(':')[0])}</code>. It can message you any time. ${pInfo('A linked device has no 24-hour reply window.')}</div>
       ${owner}
       <div class="wa-line"><button class="endbtn" onclick="waTest()">Send me a test message</button>
         <small id="wa-test" class="mut"></small>
@@ -169,7 +157,7 @@ async function waSetMode(mode){
 }
 async function waInstall(){
   const out=document.getElementById('wa-inst');
-  if(out){out.textContent='installing — this takes a minute…';out.className='mut'}
+  if(out){out.textContent='installing, this takes a minute…';out.className='mut'}
   try{
     const r=await fetch('/api/components',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id:'whatsapp-bridge'})});
