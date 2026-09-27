@@ -166,7 +166,7 @@ BUILTIN = [
     },
     {
         "id": "kestrel-station", "name": "Kestrel Station", "kit": "orbit",
-        "blurb": "A ring station over a blue planet. Work is shuttles, and moods run on oxygen and signal.",
+        "blurb": "A moon base under a blue planet. Work is shuttles, and moods run on oxygen and signal.",
         "voice": "crisp and caring, like mission control on a good day; short, precise, a little dry humour",
         "rest": "nominal",
         "emotions": [

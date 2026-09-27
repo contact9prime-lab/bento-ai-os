@@ -10,8 +10,8 @@
    - a sky SHADER: a gradient that follows the real hour, the sun and its glow, the
      moon, twinkling stars and slow clouds;
    - places with props that say where you are (a canal town with machiya houses, a
-     vermilion bridge, a pagoda, willows and cherry trees; a ring station over a
-     planet; a garden with a pond, stone lanterns and flowers);
+     vermilion bridge, a pagoda, willows and cherry trees; a moon base under a
+     blue planet; a garden with a pond, stone lanterns and flowers);
    - light that glows: halos on every lamp and window, bloom-free and cheap;
    - people who stand somewhere, not in a line: each has a spot, a soft shadow, and
      a mood crystal over the head, green to red by how the feeling sits, spinning.
@@ -326,6 +326,19 @@ function wlBoat(T){
   return g;
 }
 
+/* A small shuttle: a white body, swept wings, a cockpit and an engine glow. */
+function wlShuttle(T){
+  const g=new T.Group(),white=wlMat(T,'shuttle',{color:0xf2f4f8,roughness:.45,metalness:.2}),dark=wlMat(T,'shuttledark',{color:0x2a3446,metalness:.5,roughness:.3});
+  const body=new T.Mesh(new T.CapsuleGeometry(.55,2.2,6,12),white);body.rotation.z=Math.PI/2;g.add(body);
+  const nose=new T.Mesh(new T.SphereGeometry(.42,10,8),dark);nose.scale.set(1,.7,1);nose.position.set(1.2,.3,0);g.add(nose);
+  const wing=new T.Mesh(new T.BoxGeometry(1.5,.08,3.4),white);wing.position.set(-.4,-.15,0);g.add(wing);
+  const fin=new T.Mesh(new T.BoxGeometry(.9,.9,.08),white);fin.position.set(-1.2,.55,0);g.add(fin);
+  const tip=wlMat(T,'shuttletip',{color:0xd9482b});[-1.7,1.7].forEach(z=>{const t=new T.Mesh(new T.BoxGeometry(.6,.1,.1),tip);t.position.set(-.5,-.15,z);g.add(t)});
+  wlHalo(T,g,new T.Vector3(-1.75,0,0),0x7fd8ff,1.6).material.opacity=1;
+  g.traverse(o=>{if(o.isMesh)o.castShadow=true});
+  return g;
+}
+
 /* ---------------- the kits ---------------- */
 /* Each kit: a place, the spots people stand on (nearest first, the lead takes the
    first), where a busy agent goes, how the light moves, and a camera for a wide and a
@@ -431,65 +444,126 @@ var WORLD_KITS={
       tick(t,dt){water.light(t,lit?lit.d:1,lit?lit.c:wlSkyColors(T,1),lit?lit.sd:new T.Vector3(0,1,0),true);sky.u.time.value=t;petals.tick(dt,t)},
       light(d){const r=light(d);lit={d,c:r.c,sd:r.sd};water.light(sky.u.time.value,d,r.c,r.sd,true)}};
   },
+  /* Kestrel Station is a moon base under a blue planet: habitat domes, a comms tower,
+     solar arrays, a radar dish and a rover, and the crew on the landing pad. The first
+     cut was a ring wheel over a checkered deck, and read as neither a place nor a
+     station. Outdoors, like the other two worlds, so the camera and spots work alike. */
   orbit(T,scene,cam){
     WL_MAT={};
-    const hq=WORLD.hq,halos=[];
-    const deckG=new T.Group();scene.add(deckG);
+    const hq=WORLD.hq,halos=[],beacons=[],padLights=[];
+    const base=new T.Group();scene.add(base);
     const sky=wlSky(T,scene,{clouds:0,nebula:true});
-    sky.u.top.value.set(0x02030a);sky.u.horizon.value.set(0x0a0d22);sky.u.night.value=1;
-    const amb=new T.AmbientLight(0x8899ff,.35);scene.add(amb);
-    const hemi=new T.HemisphereLight(0xa9c1ff,0x1a1f33,.7);scene.add(hemi);
-    const sun=new T.DirectionalLight(0xfff4e0,3);sun.position.set(60,30,30);scene.add(sun);
-    // the planet fills the view below the window: its curve is the horizon
-    const planet=new T.Mesh(new T.SphereGeometry(80,64,48),new T.MeshStandardMaterial({color:0x2a6fd6,roughness:.85,
-      map:wlCanvasTex(T,'land',512,256,(g,w,h)=>{g.fillStyle='#3a7fe0';g.fillRect(0,0,w,h);
-        for(let i=0;i<70;i++){g.fillStyle=['#3f8f4a','#6b9a4a','#c8b27a'][i%3];g.beginPath();g.ellipse(Math.random()*w,h*.15+Math.random()*h*.7,6+Math.random()*34,4+Math.random()*16,Math.random()*3,0,7);g.fill()}})}));
-    planet.position.set(-10,-88,-120);scene.add(planet);
-    const clouds=new T.Mesh(new T.SphereGeometry(81,64,48),new T.MeshStandardMaterial({color:0xffffff,transparent:true,opacity:.45,roughness:1,depthWrite:false,
-      alphaMap:wlCanvasTex(T,'pclouds',256,128,(g,w,h)=>{g.fillStyle='#000';g.fillRect(0,0,w,h);for(let i=0;i<140;i++){g.fillStyle=`rgba(255,255,255,${.2+Math.random()*.4})`;g.beginPath();g.ellipse(Math.random()*w,Math.random()*h,8+Math.random()*30,3+Math.random()*6,0,0,7);g.fill()}})}));
-    clouds.position.copy(planet.position);scene.add(clouds);
-    wlHalo(T,scene,planet.position,0x6fb7ff,215,halos).material.opacity=.45;
-    // the ring station, off to the left and turning
-    const ring=new T.Group();ring.position.set(-34,16,-80);scene.add(ring);
-    const hullM=new T.MeshStandardMaterial({color:0xd9dee8,metalness:.55,roughness:.35});
-    ring.add(new T.Mesh(new T.TorusGeometry(14,1.3,16,96),hullM));
-    ring.add(new T.Mesh(new T.TorusGeometry(14,1.32,4,96),new T.MeshStandardMaterial({color:0x111,emissive:0x9fd8ff,emissiveIntensity:.9,wireframe:true})));
-    for(let i=0;i<6;i++){const sp=new T.Mesh(new T.BoxGeometry(.5,28,.5),new T.MeshStandardMaterial({color:0x9aa4b8,metalness:.5}));sp.rotation.z=i*Math.PI/6;ring.add(sp)}
-    const hub=new T.Mesh(new T.CylinderGeometry(2.6,2.6,4.5,24),hullM);hub.rotation.x=Math.PI/2;ring.add(hub);
-    for(let i=0;i<12;i++){const a=i/12*Math.PI*2;wlHalo(T,ring,new T.Vector3(Math.cos(a)*14,Math.sin(a)*14,1.4),i%3?0x9fd8ff:0xff6b6b,1.5,halos)}
-    ring.rotation.set(.5,.5,0);
-    // the observation deck: a lit floor, a window frame with a glowing sill, consoles
-    const floorTex=wlCanvasTex(T,'deckfloor',256,256,(g,w)=>{g.fillStyle='#8f98ab';g.fillRect(0,0,w,w);
-      for(let i=0;i<4;i++)for(let j=0;j<4;j++){g.fillStyle=(i+j)%2?'#7f889b':'#98a1b3';g.fillRect(i*64+2,j*64+2,60,60)}
-      g.fillStyle='#394255';for(let i=0;i<=4;i++){g.fillRect(i*64-1,0,2,w);g.fillRect(0,i*64-1,w,2)}});
-    const lineTex=wlCanvasTex(T,'decklines',256,256,(g,w)=>{g.fillStyle='#000';g.fillRect(0,0,w,w);g.fillStyle='#fff';for(let i=0;i<=4;i++){g.fillRect(i*64-1,0,2,w);g.fillRect(0,i*64-1,w,2)}});
-    const ft=floorTex.clone(),lt=lineTex.clone();[ft,lt].forEach(t=>{t.wrapS=t.wrapT=T.RepeatWrapping;t.repeat.set(11,5);t.needsUpdate=true});
-    const floor=new T.Mesh(new T.BoxGeometry(46,.4,22),new T.MeshStandardMaterial({color:0xffffff,map:ft,emissive:0x2de2e6,emissiveMap:lt,emissiveIntensity:.35,metalness:.25,roughness:.5}));
-    floor.position.set(0,.8,12);floor.receiveShadow=true;scene.add(floor);
-    const frameM=wlMat(T,'frame',{color:0x3a4254,metalness:.5,roughness:.4});
-    const sill=new T.Mesh(new T.BoxGeometry(46,1.2,.8),frameM);sill.position.set(0,1.6,1.2);deckG.add(sill);
-    const railM=new T.MeshStandardMaterial({color:0x2de2e6,emissive:0x2de2e6,emissiveIntensity:1});
-    const rail=new T.Mesh(new T.BoxGeometry(46,.08,.12),railM);rail.position.set(0,2.24,1.4);scene.add(rail);
-    [-22,-11,11,22].forEach(x=>{const m=new T.Mesh(new T.BoxGeometry(.35,24,.5),frameM);m.position.set(x,12,1);deckG.add(m)});
-    const top=new T.Mesh(new T.BoxGeometry(46,.8,.8),frameM);top.position.set(0,23.6,1);deckG.add(top);
-    wlBake(T,deckG);
-    const panels=[];
-    [-13,-7,7,13].forEach((x,i)=>{const c=new T.Mesh(new T.BoxGeometry(2.4,1.1,.7),frameM);c.position.set(x,1.55,2.4);scene.add(c);
-      const pm=new T.MeshStandardMaterial({color:0x0a0f1a,emissive:i%2?0x3a86ff:0x2de2e6,emissiveIntensity:.8,transparent:true,opacity:.8,side:T.DoubleSide});
-      const p=new T.Mesh(new T.PlaneGeometry(2.2,1.1),pm);p.position.set(x,3,2.5);p.rotation.x=-.18;scene.add(p);panels.push(pm);
-      wlHalo(T,scene,new T.Vector3(x,3,2.6),i%2?0x3a86ff:0x2de2e6,3.4,halos).material.opacity=.5});
-    const drift=wlStars(T,scene,hq?120:50,[-40,40,-10,30,-80,0],0xbfd8ff,.4);drift.material.opacity=.8;
+    sky.u.top.value.set(0x010208);sky.u.horizon.value.set(0x0b1024);sky.u.night.value=1;
+    sky.u.sunDir.value.set(.7,.35,.3).normalize();
+    const hemi=new T.HemisphereLight(0x7f96d8,0x26262c,.55);scene.add(hemi);   // planetshine
+    const sun=new T.DirectionalLight(0xfff6ea,2.3);sun.position.set(70,45,40);scene.add(sun);scene.add(sun.target);sun.target.position.set(0,0,-6);
+    if(hq){sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);const sc=sun.shadow.camera;sc.left=-40;sc.right=40;sc.top=40;sc.bottom=-40;sc.near=1;sc.far=200;sun.shadow.bias=-.0015}
+    // the planet, big and low in the black sky, lit from the side, with an atmosphere rim
+    const planet=new T.Mesh(new T.SphereGeometry(70,48,32),new T.MeshStandardMaterial({color:0xffffff,roughness:.9,
+      map:wlCanvasTex(T,'land',512,256,(g,w,h)=>{g.fillStyle='#285fb4';g.fillRect(0,0,w,h);
+        for(let i=0;i<80;i++){g.fillStyle=['#4d7a55','#6f8a5c','#a8997a','#5a7550'][i%4];g.beginPath();g.ellipse(Math.random()*w,h*.12+Math.random()*h*.76,6+Math.random()*34,4+Math.random()*16,Math.random()*3,0,7);g.fill()}
+        g.fillStyle='#eef4ff';g.fillRect(0,0,w,h*.07);g.fillRect(0,h*.93,w,h*.07)})}));
+    planet.position.set(-165,78,-360);planet.rotation.z=.35;scene.add(planet);
+    const clouds=new T.Mesh(new T.SphereGeometry(70.8,48,32),new T.MeshStandardMaterial({color:0xffffff,transparent:true,opacity:.55,roughness:1,depthWrite:false,
+      alphaMap:wlCanvasTex(T,'pclouds',256,128,(g,w,h)=>{g.fillStyle='#000';g.fillRect(0,0,w,h);for(let i=0;i<160;i++){g.fillStyle=`rgba(255,255,255,${.2+Math.random()*.45})`;g.beginPath();g.ellipse(Math.random()*w,Math.random()*h,8+Math.random()*30,3+Math.random()*6,0,0,7);g.fill()}})}));
+    clouds.position.copy(planet.position);clouds.rotation.z=.35;scene.add(clouds);
+    const atmos=new T.Mesh(new T.SphereGeometry(76,48,32),new T.ShaderMaterial({transparent:true,depthWrite:false,side:T.BackSide,blending:T.AdditiveBlending,
+      uniforms:{c:{value:new T.Color(0x5fa8ff)}},
+      vertexShader:`varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+      fragmentShader:`uniform vec3 c;varying vec3 vN;void main(){float i=pow(max(0.,.78-dot(vN,vec3(0.,0.,-1.))),3.)*1.6;gl_FragColor=vec4(c*i,1.);}`}));
+    atmos.position.copy(planet.position);scene.add(atmos);
+    // the ground: grey regolith with craters, rising to far ridges
+    const craters=[[-30,-40,9,1.6],[26,-50,12,2],[-8,-70,7,1.2],[40,-20,6,1],[-44,-8,7,1.3],[14,-34,4,.7],[-22,-58,5,.9],[52,-44,9,1.6],[-58,-36,10,1.8],[30,18,5,.8],[-34,16,6,1]];
+    const gg=new T.PlaneGeometry(280,220,96,76);gg.rotateX(-Math.PI/2);
+    const gp=gg.attributes.position.array;
+    for(let i=0;i<gp.length;i+=3){const x=gp[i],z=gp[i+2]-30;let h=Math.sin(x*.11)*.35+Math.cos(z*.13+x*.05)*.3;
+      craters.forEach(([cx,cz,r,d])=>{const q=Math.hypot(x-cx,z-cz)/r;if(q<1)h-=d*(1-q*q);else if(q<1.5)h+=d*.4*(1-Math.abs(q-1.15)/.35)*(q<1.5?1:0)});
+      if(z<-80)h+=(-80-z)*.22*(1+.5*Math.sin(x*.05));
+      if(Math.hypot(x,z-8)<18||(Math.abs(x)<30&&z<-8&&z>-58))h*=.15;     // the base sits on levelled ground
+      gp[i+1]=h}
+    gg.computeVertexNormals();
+    const regTex=wlCanvasTex(T,'regolith',256,256,(g,w)=>{g.fillStyle='#77777c';g.fillRect(0,0,w,w);
+      for(let i=0;i<1400;i++){const l=Math.random();g.fillStyle=l<.5?'rgba(40,40,48,.22)':'rgba(235,235,240,.18)';g.fillRect(Math.random()*w,Math.random()*w,1+Math.random()*2,1+Math.random()*2)}
+      for(let i=0;i<14;i++){const x=Math.random()*w,y=Math.random()*w,r=3+Math.random()*9;g.strokeStyle='rgba(30,30,36,.35)';g.lineWidth=1.5;g.beginPath();g.arc(x,y,r,0,7);g.stroke();g.strokeStyle='rgba(240,240,245,.25)';g.beginPath();g.arc(x+1,y-1,r,3.6,5.6);g.stroke()}}).clone();
+    regTex.wrapS=regTex.wrapT=T.RepeatWrapping;regTex.repeat.set(34,27);regTex.needsUpdate=true;
+    const ground=new T.Mesh(gg,new T.MeshStandardMaterial({color:0xb4b4ba,map:regTex,roughness:1,flatShading:true}));ground.position.z=-30;ground.receiveShadow=true;scene.add(ground);
+    const ridge=wlRange(T,base,-200,11,520,0x5c5c63,34);
+    // the landing pad the crew stands on: a hexagon with its markings and chasing edge lights
+    const padTop=wlCanvasTex(T,'pad',512,512,(g,w)=>{g.fillStyle='#3a3e46';g.fillRect(0,0,w,w);
+      g.strokeStyle='#2b2f36';g.lineWidth=3;for(let i=0;i<=8;i++){g.beginPath();g.moveTo(i*64,0);g.lineTo(i*64,w);g.stroke();g.beginPath();g.moveTo(0,i*64);g.lineTo(w,i*64);g.stroke()}
+      g.strokeStyle='#f2c230';g.lineWidth=14;g.beginPath();g.arc(w/2,w/2,200,0,7);g.stroke();
+      g.strokeStyle='#e8ecf2';g.lineWidth=5;g.beginPath();g.arc(w/2,w/2,150,0,7);g.stroke();
+      g.fillStyle='rgba(232,236,242,.85)';g.font='bold 170px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText('K',w/2,w/2+8)});
+    const padSide=wlMat(T,'padside',{color:0x5a5f68,metalness:.4,roughness:.6});
+    const pad=new T.Mesh(new T.CylinderGeometry(16,16.6,.6,6),[padSide,new T.MeshStandardMaterial({color:0xffffff,map:padTop,roughness:.7,metalness:.2}),padSide]);
+    pad.rotation.y=Math.PI/6;pad.position.set(0,.2,8);pad.receiveShadow=true;scene.add(pad);
+    for(let k=0;k<18;k++){const a=Math.PI/6+k/18*Math.PI*2,r=15.4*Math.cos(Math.PI/6)/Math.cos(((a-Math.PI/6)%(Math.PI/3))-Math.PI/6);
+      const p=new T.Vector3(Math.sin(a)*r,.62,8+Math.cos(a)*r);
+      const m=new T.MeshStandardMaterial({color:0x223,emissive:0xffb347,emissiveIntensity:1});const l=new T.Mesh(new T.SphereGeometry(.13,8,6),m);l.position.copy(p);scene.add(l);
+      padLights.push({m,h:wlHalo(T,scene,p,0xffb347,1.1)})}
+    // habitat domes joined by tubes, their window bands lit from inside
+    const shell=wlMat(T,'shell',{color:0xe7eaf0,roughness:.55,metalness:.15,flatShading:true});
+    const ringM=wlMat(T,'domering',{color:0x8c929c,metalness:.5,roughness:.4});
+    const winM=wlMat(T,'domewin',{color:0x111,emissive:0xffd9a0,emissiveIntensity:1.4});
+    const domes=[[-24,-28,5],[3,-42,7.5],[25,-32,4.5]];
+    domes.forEach(([x,z,r])=>{
+      const d=new T.Mesh(new T.SphereGeometry(r,18,8,0,Math.PI*2,0,Math.PI/2),shell);d.position.set(x,1.1,z);d.castShadow=true;base.add(d);
+      const ring=new T.Mesh(new T.CylinderGeometry(r*1.02,r*1.06,1.2,24),ringM);ring.position.set(x,.6,z);base.add(ring);
+      for(let k=0;k<10;k++){const a=k/10*Math.PI*2;const w=new T.Mesh(new T.BoxGeometry(r*.28,.35,.1),winM);
+        w.position.set(x+Math.sin(a)*r*1.035,.7,z+Math.cos(a)*r*1.035);w.rotation.y=a;base.add(w);
+        if(Math.cos(a)>.3)halos.push(wlHalo(T,scene,w.position.clone().add(new T.Vector3(0,0,.3)),0xffc986,1.6))}
+      const hatch=new T.Mesh(new T.CylinderGeometry(.9,.9,.4,12),ringM);hatch.position.set(x,1.1+r,z);base.add(hatch)});
+    const tube=(a,b)=>{const A=new T.Vector3(a[0],1.3,a[1]),B=new T.Vector3(b[0],1.3,b[1]),len=A.distanceTo(B);
+      const t=new T.Mesh(new T.CylinderGeometry(1,1,len,12),shell);t.position.copy(A).lerp(B,.5);t.lookAt(B);t.rotateX(Math.PI/2);t.castShadow=true;base.add(t)};
+    tube([-24,-28],[3,-42]);tube([3,-42],[25,-32]);
+    // the comms tower, a lattice with a red beacon on top
+    const steel=wlMat(T,'steel',{color:0xb8bec8,metalness:.6,roughness:.35});
+    const tx=20,tz=-52,th=18;
+    [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([sx,sz])=>{const l=new T.Mesh(new T.CylinderGeometry(.08,.14,th,6),steel);
+      l.position.set(tx+sx*.7,th/2,tz+sz*.7);l.rotation.set(-sz*.035,0,sx*.035);base.add(l)});
+    for(let y=2;y<th;y+=2.2){const w=.7*(1-y/th*.5);[[0,w],[0,-w]].forEach(([dx,dz])=>{const b=new T.Mesh(new T.BoxGeometry(w*2,.06,.06),steel);b.position.set(tx+dx,y,tz+dz);base.add(b)});
+      [[w,0],[-w,0]].forEach(([dx,dz])=>{const b=new T.Mesh(new T.BoxGeometry(.06,.06,w*2),steel);b.position.set(tx+dx,y,tz+dz);base.add(b)})}
+    const bm=new T.MeshStandardMaterial({color:0x300,emissive:0xff3b30,emissiveIntensity:2});const bl=new T.Mesh(new T.SphereGeometry(.28,10,8),bm);bl.position.set(tx,th+.3,tz);scene.add(bl);
+    beacons.push({m:bm,h:wlHalo(T,scene,bl.position,0xff4a3d,5),ph:0});
+    // the radar dish, slowly turning
+    const dish=new T.Group();dish.position.set(40,0,-44);scene.add(dish);
+    const ped=new T.Mesh(new T.CylinderGeometry(.5,.8,4,10),steel);ped.position.y=2;dish.add(ped);
+    const bowl=new T.Mesh(new T.SphereGeometry(4,24,10,0,Math.PI*2,0,Math.PI*.3),new T.MeshStandardMaterial({color:0xe9ecf1,side:T.DoubleSide,roughness:.4,metalness:.3}));
+    bowl.rotation.x=-Math.PI*.62;bowl.position.set(0,5.4,0);bowl.castShadow=true;dish.add(bowl);
+    const horn=new T.Mesh(new T.CylinderGeometry(.06,.06,3,6),steel);horn.position.set(0,6.4,1.6);horn.rotation.x=.9;dish.add(horn);
+    // solar arrays in rows
+    const cells=wlCanvasTex(T,'cells',128,64,(g,w,h)=>{g.fillStyle='#16244a';g.fillRect(0,0,w,h);g.strokeStyle='#5d7fc4';g.lineWidth=1;
+      for(let i=0;i<=8;i++){g.beginPath();g.moveTo(i*16,0);g.lineTo(i*16,h);g.stroke()}for(let i=0;i<=4;i++){g.beginPath();g.moveTo(0,i*16);g.lineTo(w,i*16);g.stroke()}});
+    const cellM=wlMat(T,'cellsm',{color:0xffffff,map:cells,metalness:.6,roughness:.25});
+    [[-52,-40],[-44,-40],[-36,-40],[-52,-48],[-44,-48],[-36,-48],[38,-14],[46,-14],[38,-6],[46,-6]].forEach(([x,z])=>{
+      const p=new T.Mesh(new T.BoxGeometry(6.4,.12,3.2),cellM);p.position.set(x,2.2,z);p.rotation.x=-.55;p.castShadow=true;base.add(p);
+      const leg=new T.Mesh(new T.CylinderGeometry(.08,.08,2.2,6),steel);leg.position.set(x,1.1,z);base.add(leg)});
+    // a rover parked by the pad, and a shuttle on the small pad behind
+    const rover=new T.Group();rover.position.set(20,0,9);rover.rotation.y=-.5;
+    const body=new T.Mesh(new T.BoxGeometry(4.2,1,2.2),wlMat(T,'roverbody',{color:0xf0f0f2,roughness:.5}));body.position.y=1.2;rover.add(body);
+    const cab=new T.Mesh(new T.BoxGeometry(1.8,.9,2),wlMat(T,'rovercab',{color:0x2a3a52,metalness:.5,roughness:.2}));cab.position.set(.9,2.1,0);rover.add(cab);
+    const stripe=new T.Mesh(new T.BoxGeometry(4.25,.18,2.25),wlMat(T,'roverstripe',{color:0xf08a24}));stripe.position.y=1.35;rover.add(stripe);
+    [-1.5,0,1.5].forEach(x=>[-1.2,1.2].forEach(z=>{const w=new T.Mesh(new T.CylinderGeometry(.55,.55,.4,12),wlMat(T,'tyre',{color:0x2b2b30,roughness:.9}));w.rotation.x=Math.PI/2;w.position.set(x,.55,z);rover.add(w)}));
+    const ant=new T.Mesh(new T.CylinderGeometry(.03,.03,1.8,4),steel);ant.position.set(-1.6,2.5,.7);rover.add(ant);
+    base.add(rover);
+    const pad2=new T.Mesh(new T.CylinderGeometry(5,5.3,.4,6),padSide);pad2.position.set(-30,.2,-10);base.add(pad2);
+    const parked=wlShuttle(T);parked.position.set(-30,1.5,-10);parked.rotation.y=.7;base.add(parked);
+    // crates and lamp posts along the walk to the main dome
+    const crateM=wlMat(T,'crate',{color:0x7c8594,metalness:.3,roughness:.6});
+    [[-10,-10,0],[-11.6,-10.4,0],[-10.8,-9.8,1.1],[12,-12,0]].forEach(([x,z,y])=>{const c=new T.Mesh(new T.BoxGeometry(1.4,1.1,1.4),crateM);c.position.set(x,.55+y,z);c.rotation.y=x;c.castShadow=true;base.add(c)});
+    wlBake(T,base);
+    const dust=wlStars(T,scene,hq?60:24,[-30,30,.3,2.5,-30,20],0xd9dce6,.18);dust.material.opacity=.35;
     return {
-      spots:[[0,1,9.2],[-3.3,1,8.4],[3.3,1,8.4],[-6.6,1,7.2],[6.6,1,7.2],[-1.7,1,5.4],[1.7,1,5.4],
-        [-9.8,1,6],[9.8,1,6],[-5,1,4.6],[5,1,4.6],[0,1,4.2]],
-      camWide:[[0,7.2,29],[0,3.2,-30]],camTall:[[0,8.8,27],[0,-4.7,-8]],
-      busy(i,t){const a=t*.3+i*1.3;return new T.Vector3(-34+Math.cos(a)*20,16+Math.sin(a*1.3)*4,-80+Math.sin(a)*20+14)},
-      vessel(){const g=new T.Group();
-        const body=new T.Mesh(new T.CapsuleGeometry(.6,1.4,6,12),new T.MeshStandardMaterial({color:0xf5f7fb,metalness:.4,roughness:.3}));body.rotation.z=Math.PI/2;g.add(body);
-        wlHalo(T,g,new T.Vector3(-1.4,0,0),0x7df9ff,1.8).material.opacity=1;scene.add(g);return g},
-      tick(t){ring.rotation.z=t*.04;planet.rotation.y=t*.006;clouds.rotation.y=t*.01;sky.u.time.value=t;
-        panels.forEach((m,i)=>m.emissiveIntensity=.55+Math.sin(t*1.7+i)*.25);railM.emissiveIntensity=.8+Math.sin(t*.9)*.2},
-      light(d){sun.position.set(Math.cos(d*Math.PI)*60,30,30);amb.intensity=.3+d*.2;WORLD.r.toneMappingExposure=1.05}};
+      spots:[[0,.5,9.2],[-3.3,.5,8.4],[3.3,.5,8.4],[-6.6,.5,7.2],[6.6,.5,7.2],[-1.7,.5,5.4],[1.7,.5,5.4],
+        [-9.8,.5,6],[9.8,.5,6],[-5,.5,4.6],[5,.5,4.6],[0,.5,4.2]],
+      camWide:[[0,7.4,28],[0,2.6,-30]],camTall:[[0,8.8,27],[0,-4.7,-8]],
+      // busy crew fly a shuttle round the base
+      busy(i,t){const a=t*.28+i*1.4;return new T.Vector3(Math.cos(a)*24,11+Math.sin(a*1.7+i)*2.5,-22+Math.sin(a)*14)},
+      vessel(){const g=wlShuttle(T);scene.add(g);return g},
+      tick(t){sky.u.time.value=t;planet.rotation.y=t*.004;clouds.rotation.y=t*.006;dish.rotation.y=t*.15;
+        beacons.forEach(b=>{const on=(t*.9+b.ph)%1<.18;b.m.emissiveIntensity=on?3:.2;b.h.material.opacity=on?1:.05});
+        padLights.forEach((p,k)=>{const f=.35+.65*Math.max(0,Math.cos((t*2.2-k*.35)%(Math.PI*2)));p.m.emissiveIntensity=f*1.6;p.h.material.opacity=f*.8})},
+      light(d){halos.forEach(h=>h.material.opacity=.85);WORLD.r.toneMappingExposure=1.05}};
   },
   garden(T,scene,cam){
     WL_MAT={};

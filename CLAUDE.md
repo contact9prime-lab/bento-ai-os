@@ -1570,7 +1570,7 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
   - **One fog per scene, recoloured** (`wlFog`). `light()` runs every frame, and a `new Fog` there
     was garbage per frame.
   - **Measured at the same size** (1440x900 at pixel ratio .5, SwiftShader): an empty scene
-    111-128 ms, the old worlds 127-161, these 182-196. On a real GPU all of it is noise.
+    111-128 ms, the old worlds 127-161, these 182-207. On a real GPU all of it is noise.
 - **A name tag is anchored at the agent's SPOT, not the sprite** (`worldPlaceTags` uses
   `c.home`). It spans the character from the crystal to the feet so tapping the person opens the
   card, and it must not hop with a cheer or pace with a restless agent: a target that moves every

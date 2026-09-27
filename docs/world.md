@@ -37,7 +37,7 @@ Feelings fade: each one halves every fifteen minutes. A run that finished after 
 refusal isn't a proud one, so its pride is muted.
 
 While an agent works, it goes to work in the world: out on a boat in the canal, off in a
-pod around the station, or into the flower beds in the garden.
+shuttle over the moon base, or into the flower beds in the garden.
 
 ## Your "no" never makes anyone sad
 
@@ -53,10 +53,10 @@ Three are built in, and they're unlike each other on purpose:
 | World | Setting | Some of its feelings | How agents grow |
 |---|---|---|---|
 | **Lantern Canal** | a canal town with lanterns | Serene, Flustered, Restless, Neighbourly | Deckhand → Boatman → Canal pilot → Harbour master → River sage |
-| **Kestrel Station** | a ring station over a planet | Nominal, Overheating, Holding pattern, Low oxygen | Cadet → Specialist → Flight officer → Commander → Station legend |
+| **Kestrel Station** | a moon base under a blue planet | Nominal, Overheating, Holding pattern, Low oxygen | Cadet → Specialist → Flight officer → Commander → Station legend |
 | **The Wild Garden** | a garden that grows | Rooted, Thorny, Thirsty, Wilting | Seed → Sprout → Sapling → Tall tree → Old oak |
 
-![Kestrel Station: the crew on a lit observation deck, holo consoles along the window, the station's ring turning over a blue planet, and the lead asking "Status report, crew member. How are you today?"](screenshots/world-station.png)
+![Kestrel Station: the crew on the landing pad of a moon base, habitat domes joined by tubes behind them, a comms tower with a red beacon, a blue planet low in the black sky, and the lead asking "Status report, crew member. How are you today?"](screenshots/world-station.png)
 
 ![The Wild Garden at night: the team in a clearing before a pond ringed with stones, stone lanterns glowing, flowers and fireflies, and the lead asking "How's the weather inside you today?"](screenshots/world-garden.png)
 
@@ -129,7 +129,7 @@ software rendering) gets a flat drawing of the same world, and the menu says why
 - Software rendering and phones get a lighter version: no shadows, simpler water and sky,
   and 5 frames a second at rest.
 - Reduced motion gets a still world.
-- Each world is 16,500 to 24,000 triangles in 49 to 182 draw calls. The town's fixed parts
+- Each world is 17,000 to 29,000 triangles in 49 to 182 draw calls. The town's fixed parts
   are merged, which is what keeps the canal at 182.
 - The lead's reply and building a world are one brain call each, and only when you ask.
 

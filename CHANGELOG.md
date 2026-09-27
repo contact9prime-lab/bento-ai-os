@@ -10,7 +10,7 @@ helping a colleague makes it wave. Tap anyone to see why they feel the way they 
 
 Three worlds are built in and each has its own feelings and its own way to grow:
 - **Lantern Canal**, a canal town, from Deckhand to River sage;
-- **Kestrel Station**, a ring over a planet, from Cadet to Station legend;
+- **Kestrel Station**, a moon base under a blue planet, from Cadet to Station legend;
 - **The Wild Garden**, where the flowers grow with the team, from Seed to Old oak.
 
 You can also describe your own world in a sentence and your machine's brain builds it.
@@ -30,15 +30,16 @@ from "a night bakery where the bread rises at 3am".
 **And it looks like a place.** The canal is a town at the head of a waterway, with timber
 houses, a vermilion bridge, a pagoda, willows and cherry trees. Lanterns hang over the water
 and each one's light streaks across it at night. The sky follows the real hour with its sun,
-moon, stars and drifting clouds. Kestrel Station is an observation deck over a planet, and the
-garden is a pond in a clearing with stone lanterns and fireflies. Each agent wears a mood
+moon, stars and drifting clouds. Kestrel Station is a moon base under a blue planet, with
+habitat domes, a comms tower and a rover, and busy agents fly shuttles over it. The garden
+is a pond in a clearing with stone lanterns and fireflies. Each agent wears a mood
 crystal that goes from green to red with how the feeling sits, and each feeling has its own
 effect: steam for a tantrum, a rain cloud for gloom, Zs for dozing, hearts, stars and a sweat
 drop. Tap a person to open their card.
 
 Measured on software rendering (SwiftShader, 1440x900 at half resolution): the canal town is
 drawn in 182 calls, because its static parts are merged (1,086 without that). A frame costs 182
-to 196 ms, where an empty scene costs 111 to 128. So software rendering and phones get a lighter
+to 207 ms, where an empty scene costs 111 to 128. So software rendering and phones get a lighter
 version: no shadows, cheaper water and sky, and 5 frames a second at rest instead of 12.
 
 ## 0.6.6 — 2026-09-27
