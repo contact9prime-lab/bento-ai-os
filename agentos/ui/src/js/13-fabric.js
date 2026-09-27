@@ -55,12 +55,28 @@ const SAW_PRESETS={
   'Builder':['create_app','read_file','list_dir','fetch_url','system_info'],
 };
 var SAW_MODELS=null;   // the Brain list from the last open: shown at once next time
+/* The agent CLIs installed here, as brains an agent can be pinned to ("gemini-cli/…",
+   "codex/…", "claude-code/…"). That pin is how Claude Code, Gemini CLI and Codex work
+   on one team: the agent answers on its CLI through the run bridge, with this OS's
+   tools and gate (fabric.agent_brain). Read from /api/brains, which says which CLIs
+   are installed and can be driven; each offers its own documented models. */
+async function cliBrainChoices(){
+  let d;try{d=await apiJSON('/api/brains')}catch(e){return []}
+  const out=[];
+  (d.executors||[]).filter(e=>e.kind==='agent'&&e.available).forEach(e=>(e.models||[]).forEach(m=>
+    out.push({id:e.id+'/'+(m.id||'default'),name:e.name+' · '+(m.id||'its own setting')})));
+  return out;
+}
+async function brainChoices(){
+  const [m,c]=await Promise.all([fetch('/api/models').then(r=>r.json()).catch(()=>null),cliBrainChoices()]);
+  return m?{models:[...(m.models||[]),...c]}:(c.length?{models:c}:null);
+}
 async function openSAW(name,opts){
   // Tools and skills are this machine's own lists and answer in milliseconds. The
   // MODELS ask every provider, and the editor used to wait for them before drawing:
   // "the agent UI takes a lot of time to open". It opens now, and the Brain list is
   // filled in when it arrives (sawModelsArrive), without touching what was typed.
-  const modelsP=fetch('/api/models').then(r=>r.json()).catch(()=>null);
+  const modelsP=brainChoices();
   const [tools,skills]=await Promise.all([
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
     fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]}))]);
@@ -90,7 +106,7 @@ function sawModelsArrive(list){
   const sel=document.getElementById('sw-model');if(!sel)return;
   const keep=sel.value||SAW.d.model||'';
   sel.innerHTML=['<option value="">this machine\'s brain (the default)</option>']
-    .concat(list.map(m=>`<option value="${esc(m.id)}">${esc(m.id)}</option>`)).join('');
+    .concat(list.map(m=>`<option value="${esc(m.id)}">${esc(m.name&&m.name!==m.id?m.name:m.id)}</option>`)).join('');
   if(keep&&!list.some(m=>m.id===keep))sel.insertAdjacentHTML('beforeend',`<option value="${esc(keep)}">${esc(keep)} (not offered now)</option>`);
   sel.value=keep;
 }
@@ -177,7 +193,7 @@ function drawSAW(){
   let inner='';
   if(st===1){
     const opts=['<option value="">this machine\'s brain (the default)</option>']
-      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`))
+      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.name&&m.name!==m.id?m.name:m.id)}</option>`))
       // its own pin, even before the list has arrived — or Next would unpin it
       .concat(d.model&&!SAW.models.some(m=>m.id===d.model)?[`<option value="${esc(d.model)}" selected>${esc(d.model)}</option>`]:[]).join('');
     inner=`<div class="saw-ai">

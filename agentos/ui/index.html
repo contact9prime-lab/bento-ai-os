@@ -3777,6 +3777,15 @@ body.dev-touch .team-row select{min-height:var(--tap)}
 .tm-cell.allow{background:color-mix(in srgb,var(--ok,#5eead4) 18%,transparent);color:var(--ok,#5eead4);border-color:color-mix(in srgb,var(--ok,#5eead4) 45%,transparent)}
 .tm-cell.deny{background:color-mix(in srgb,var(--err,#f87171) 14%,transparent);color:var(--err,#f87171);border-color:color-mix(in srgb,var(--err,#f87171) 45%,transparent)}
 .tm-cell.swarm{color:color-mix(in srgb,var(--ok,#5eead4) 70%,var(--dim));border-style:dashed}
+.tm-cell.vote{color:color-mix(in srgb,var(--acc) 70%,var(--dim));border-style:dotted}
+/* a huddle's vote (democracy mode): the tally under the conversation */
+.hud-vote{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:6px 0 2px;padding:7px 10px;
+  border-radius:var(--r-md,10px);border:1px solid var(--line);font-size:var(--fs-sm,13px);
+  background:color-mix(in srgb,var(--ok,#34d399) 9%,transparent)}
+.hud-vote.no{background:color-mix(in srgb,var(--err,#f87171) 9%,transparent)}
+.hud-vote .hv-b{display:inline-flex;align-items:center;gap:4px;color:var(--dim)}
+.hud-vote .hv-b.yes{color:var(--ok,#34d399)}
+.hud-vote .hv-b.no{color:var(--err,#f87171)}
 .tm-self{min-width:44px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
 body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
 .tm-legend{font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
@@ -11664,10 +11673,22 @@ function brainChip(model,provider){
 }
 function huddleParse(text){
   const lines=String(text||'').split('\n'), out=[];
-  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]})});
+  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
+    // Democracy mode ends a huddle with a vote, one line (fabric.vote_line)
+    const v=l.match(/^\[vote\] (.*)$/);if(v)out.push({vote:true,text:v[1]})});
   return out;
 }
+/* The team's vote, as a strip under the conversation: agreed or not, the tally, and
+   who said what. Live it carries the ballots; after a reload it is the stored line. */
+function huddleVoteRow(e){
+  const v=e.vote&&e.vote!==true?e.vote:null;
+  const ok=v?v.approved:/^agreed/.test(e.text||'');
+  const who=v?(v.ballots||[]).map(b=>`<span class="hv-b ${b.yes?'yes':'no'}" title="${esc(b.why||'')}">${avatarImg(b.key||b.agent,'av-tool')}${esc(b.agent)} ${b.yes?'yes':'no'}</span>`).join('')
+    :`<span>${esc((e.text||'').replace(/^(not )?agreed,\s*/,''))}</span>`;
+  return `<div class="hud-vote ${ok?'yes':'no'}"><b>${ok?'The team agreed':'No agreement'}${v?` · ${v.yes} of ${v.of}`:''}</b>${who}</div>`;
+}
 function huddleRow(e){
+  if(e.vote)return huddleVoteRow(e);
   return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
     <div class="hud-say"><div class="hud-who">@${esc(e.speaker)}${e.to?` <span class="hud-to">→ @${esc(e.to)}</span>`:''} ${e.model||e.provider?brainChip(e.model,e.provider):''}</div>
     <div class="hud-text">${md(e.text||'')}</div></div></div>`;
@@ -11688,7 +11709,7 @@ function huddleWho(names){
    Crew stage hears it too, so the one talking says so over its head. */
 function huddleLive(ev,isCur,kind){
   kind=kind||'huddle';
-  scenePulse('say',ev.speaker,Object.assign({kind},ev));
+  if(!ev.vote)scenePulse('say',ev.speaker,Object.assign({kind},ev));
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id)
     actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
@@ -11707,7 +11728,7 @@ function huddleLive(ev,isCur,kind){
     msg.insertBefore(card,curBody);
   }
   card.insertAdjacentHTML('beforeend',huddleRow(ev));
-  const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))];
+  const who=[...new Set([...card.querySelectorAll('.hud-row')].map(r=>r.dataset.sp))].filter(Boolean);
   if(card.querySelector('.hud-head'))card.querySelector('.hud-head').innerHTML=who.map(n=>avatarImg(n,'av-tool')).join('')+`<span>${kind==='talk'?'agents talking':'huddle'} · ${esc(who.join(', '))}</span>`;
   if(typeof scrollDown==='function')scrollDown();
 }
@@ -12127,10 +12148,11 @@ function setTab(body,all){
       pRow('Agents message each other',pSelect('s-team-talk',[
           ['matrix','Ask me first (the matrix below)'],
           ['swarm','Swarm: they work together freely'],
+          ['democracy','Democracy: 2 of 3 decide'],
           ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
-         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. Loops are refused and each task has a question limit.',
-         f:'team agents message talk each other swarm matrix permission ask'}),
+         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy those same steps go to a vote of three of your agents, on different brains where they can be, and a majority decides. Huddles end with a vote too. Loops are refused and each task has a question limit.',
+         f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
       /* The limits: how far a question travels, how many one task may send, how often a
          colleague may ask back, and a huddle's size. Defaults are conservative; each has a
          ceiling no setting passes, because every one multiplies model calls. */
@@ -12971,17 +12993,19 @@ async function chanSave(id){
 async function paintTeamBrains(){
   const box=document.getElementById('s-team-list');if(!box)return;
   let sa={},mods={};
-  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),fetch('/api/models').then(r=>r.json())])}catch(e){}
+  try{[sa,mods]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),brainChoices()])}catch(e){}
   const list=(sa.subagents||[]);
   if(!list.length){box.textContent='No specialists yet. Ask for one, or create one in Missions → Build → Agents.';return}
-  const models=(mods.models||[]).map(m=>m.id);
+  // provider models and the agent CLIs installed here (Claude Code, Gemini CLI, Codex)
+  const models=((mods||{}).models||[]).map(m=>m.id);
+  const names={};((mods||{}).models||[]).forEach(m=>names[m.id]=m.name||m.id);
   box.classList.remove('mut');
   box.innerHTML=list.map(s=>{
     const b=s.brain||{}, pin=s.model||'';
     const opts=['',...models]; if(pin&&!opts.includes(pin))opts.push(pin);
     return `<div class="team-row">${avatarImg(s.name,'av-set')}<b>${esc(s.name)}</b>
       <select data-agent="${esc(s.name)}" aria-label="Model for ${esc(s.name)}">${opts.map(m=>
-        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
+        `<option value="${esc(m)}"${m===pin?' selected':''}>${m?esc(names[m]||m)+(models.includes(m)?'':' · not available now'):'This machine\u2019s brain'}</option>`).join('')}</select>
       <span class="team-now">${brainChip(b.model,b.provider_name)}${b.note?` <span class="mut">${esc(b.note)}</span>`:''}</span></div>`;
   }).join('');
   box.querySelectorAll('select[data-agent]').forEach(sel=>sel.onchange=async()=>{
@@ -13000,15 +13024,16 @@ async function paintTeamMatrix(){
   let d={};try{d=await (await fetch('/api/team/matrix')).json()}catch(e){}
   const names=d.agents||[], cells=d.cells||{}, talk=d.talk||'matrix';
   if(names.length<2){box.textContent='You need at least two specialists before they can message each other.';return}
-  if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first” or “Swarm” above to turn it on.';return}
+  if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first”, “Swarm” or “Democracy” above to turn it on.';return}
   box.classList.remove('mut');
-  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':talk==='swarm'?'swarm':'ask';
+  const blank=talk==='swarm'?'swarm':talk==='democracy'?'vote':'ask';
+  const label=(v)=>v==='allow'?'allow':v==='deny'?'block':blank;
   box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
     ${names.map(a=>`<tr><th class="tm-row">${avatarImg(a,'')}${esc(a)}</th>${names.map(b=>{
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
-      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':'';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
     const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
     const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
@@ -14813,12 +14838,28 @@ const SAW_PRESETS={
   'Builder':['create_app','read_file','list_dir','fetch_url','system_info'],
 };
 var SAW_MODELS=null;   // the Brain list from the last open: shown at once next time
+/* The agent CLIs installed here, as brains an agent can be pinned to ("gemini-cli/…",
+   "codex/…", "claude-code/…"). That pin is how Claude Code, Gemini CLI and Codex work
+   on one team: the agent answers on its CLI through the run bridge, with this OS's
+   tools and gate (fabric.agent_brain). Read from /api/brains, which says which CLIs
+   are installed and can be driven; each offers its own documented models. */
+async function cliBrainChoices(){
+  let d;try{d=await apiJSON('/api/brains')}catch(e){return []}
+  const out=[];
+  (d.executors||[]).filter(e=>e.kind==='agent'&&e.available).forEach(e=>(e.models||[]).forEach(m=>
+    out.push({id:e.id+'/'+(m.id||'default'),name:e.name+' · '+(m.id||'its own setting')})));
+  return out;
+}
+async function brainChoices(){
+  const [m,c]=await Promise.all([fetch('/api/models').then(r=>r.json()).catch(()=>null),cliBrainChoices()]);
+  return m?{models:[...(m.models||[]),...c]}:(c.length?{models:c}:null);
+}
 async function openSAW(name,opts){
   // Tools and skills are this machine's own lists and answer in milliseconds. The
   // MODELS ask every provider, and the editor used to wait for them before drawing:
   // "the agent UI takes a lot of time to open". It opens now, and the Brain list is
   // filled in when it arrives (sawModelsArrive), without touching what was typed.
-  const modelsP=fetch('/api/models').then(r=>r.json()).catch(()=>null);
+  const modelsP=brainChoices();
   const [tools,skills]=await Promise.all([
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
     fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]}))]);
@@ -14848,7 +14889,7 @@ function sawModelsArrive(list){
   const sel=document.getElementById('sw-model');if(!sel)return;
   const keep=sel.value||SAW.d.model||'';
   sel.innerHTML=['<option value="">this machine\'s brain (the default)</option>']
-    .concat(list.map(m=>`<option value="${esc(m.id)}">${esc(m.id)}</option>`)).join('');
+    .concat(list.map(m=>`<option value="${esc(m.id)}">${esc(m.name&&m.name!==m.id?m.name:m.id)}</option>`)).join('');
   if(keep&&!list.some(m=>m.id===keep))sel.insertAdjacentHTML('beforeend',`<option value="${esc(keep)}">${esc(keep)} (not offered now)</option>`);
   sel.value=keep;
 }
@@ -14935,7 +14976,7 @@ function drawSAW(){
   let inner='';
   if(st===1){
     const opts=['<option value="">this machine\'s brain (the default)</option>']
-      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`))
+      .concat(SAW.models.map(m=>`<option value="${esc(m.id)}" ${d.model===m.id?'selected':''}>${esc(m.name&&m.name!==m.id?m.name:m.id)}</option>`))
       // its own pin, even before the list has arrived — or Next would unpin it
       .concat(d.model&&!SAW.models.some(m=>m.id===d.model)?[`<option value="${esc(d.model)}" selected>${esc(d.model)}</option>`]:[]).join('');
     inner=`<div class="saw-ai">

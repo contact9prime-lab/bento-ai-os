@@ -96,6 +96,15 @@ body.dev-touch .team-row select{min-height:var(--tap)}
 .tm-cell.allow{background:color-mix(in srgb,var(--ok,#5eead4) 18%,transparent);color:var(--ok,#5eead4);border-color:color-mix(in srgb,var(--ok,#5eead4) 45%,transparent)}
 .tm-cell.deny{background:color-mix(in srgb,var(--err,#f87171) 14%,transparent);color:var(--err,#f87171);border-color:color-mix(in srgb,var(--err,#f87171) 45%,transparent)}
 .tm-cell.swarm{color:color-mix(in srgb,var(--ok,#5eead4) 70%,var(--dim));border-style:dashed}
+.tm-cell.vote{color:color-mix(in srgb,var(--acc) 70%,var(--dim));border-style:dotted}
+/* a huddle's vote (democracy mode): the tally under the conversation */
+.hud-vote{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:6px 0 2px;padding:7px 10px;
+  border-radius:var(--r-md,10px);border:1px solid var(--line);font-size:var(--fs-sm,13px);
+  background:color-mix(in srgb,var(--ok,#34d399) 9%,transparent)}
+.hud-vote.no{background:color-mix(in srgb,var(--err,#f87171) 9%,transparent)}
+.hud-vote .hv-b{display:inline-flex;align-items:center;gap:4px;color:var(--dim)}
+.hud-vote .hv-b.yes{color:var(--ok,#34d399)}
+.hud-vote .hv-b.no{color:var(--err,#f87171)}
 .tm-self{min-width:44px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
 body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
 .tm-legend{font-size:var(--fs-xs);color:var(--dim);margin-top:6px}

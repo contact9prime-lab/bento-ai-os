@@ -2846,7 +2846,7 @@ async def api_put_config(patch: dict):
             return JSONResponse({"error": str(e)}, status_code=400)
         fabricmod.audit_team(state["store"], "team.write", "team:limits",
                              "limits: " + ", ".join(f"{k}={v}" for k, v in got.items()))
-    if isinstance(patch.get("team"), dict) and patch["team"].get("talk") in ("off", "matrix", "swarm"):
+    if isinstance(patch.get("team"), dict) and patch["team"].get("talk") in ("off", "matrix", "swarm", "democracy"):
         cfg.setdefault("team", {})["talk"] = patch["team"]["talk"]
         fabricmod.audit_team(state["store"], "team.write", "team:talk",
                              f"agents message each other: {cfg['team']['talk']}")

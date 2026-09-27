@@ -627,9 +627,18 @@ Three things that will bite whoever touches this next:
   conversation row (an in-memory dict lost every phone thread on restart). And `child_env`
   drops `PARENT_SESSION_VARS`: started from a Claude Code terminal, every run adopted THAT
   session's id. `tests/test_exec_context.py`.
-- **Only an MCP engine gets the team door.** Gemini CLI and Codex are not started with a
-  per-run MCP config, so `open_team_door` gives them `team_hint()`: the same roster, and
-  "tell the person to write `@name`". Nothing invented, and the specialists do not go idle.
+- **Every driven CLI takes the bridge, each in its own words** (`bridge_parts`), and each
+  way was checked against the real CLI, not the docs. Claude Code: `--mcp-config` JSON.
+  Gemini CLI: a settings file named by `GEMINI_CLI_SYSTEM_SETTINGS_PATH` (`mcpServers` with
+  the Bearer header and `trust`), and two refusals found by pointing 0.61 at a live bridge:
+  it skips a settings file under a folder others can write (so `_mkscratch` is 0700 under
+  the AgentOS home, never `/tmp`) and disables every MCP server in an untrusted folder (so
+  `GEMINI_CLI_TRUSTED_FOLDERS_PATH` trusts the run's working folder and nothing else); with
+  both, `gemini mcp list` reads Connected. Codex: `-c mcp_servers.bento.*` with
+  `bearer_token_env_var` (the token never on a command line) and
+  `default_tools_approval_mode="approve"` (its parser refuses unknown values, so it was
+  tried); it reached `tools/list` before failing on a dummy key. A CLI with no door (none
+  today) still gets `team_hint()`.
 
 ## The run bridge: an executor's model, this OS's hands
 
@@ -669,8 +678,17 @@ audit rows. Five things are load-bearing:
   forwards text, thinking, status and errors only; a second `tool_start` from the CLI's
   own stream counted every step twice.
 
-`executors.MCP_ENGINES` is the list of executors that can be driven this way — Claude
-Code today — and `runs_missions()` is the one question every surface asks.
+`executors.MCP_ENGINES` (Claude Code, Gemini CLI, Codex) is who can be handed the bridge;
+`FENCED_ENGINES` (Claude Code, Gemini CLI) is who can have ALL their own tools switched off
+for the run, and `runs_missions()` asks that one, because a mission promises what every step
+can reach. Codex is bridged but not fenced: `unified_exec` stays on through `--disable`,
+`features.*=false` and the legacy key (0.157), so a read-only shell remains. A Codex-pinned
+specialist therefore works at the desk, and inside a mission runs on the machine's brain with
+a log line saying why. Gemini CLI is fenced by `tools.core: []` (an empty allow-list
+registers no built-in tool, read from its tool registry) and `--allowed-mcp-server-names`.
+Whether a Gemini or Codex run reached the bridge is read from the bridge (`Session.listed`,
+set on `tools/list`), since neither names its MCP servers at start; a run that never asked
+for its tools is an error, never "ok" with prose as its result.
 
 **A forwarded CHAT turn gets a team door, and an address beats the brain.** Reported as: a
 toolsmith on the roster, "build me a tool", and Claude Code built it with Bash and Write. The
@@ -1528,7 +1546,7 @@ had worked.
 
 ## The team: each agent on its own provider, and huddles
 
-Full story in `docs/team.md`. Two features, four rules.
+Full story in `docs/team.md`. Two features, five rules.
 
 - **`fabric.agent_brain(cfg, defn)` is the ONE answer to "which brain does this agent use".**
   The run (`run_subagent`), the roster route, the Crew stage's provider tag, the chat's chip,
@@ -1537,6 +1555,12 @@ Full story in `docs/team.md`. Two features, four rules.
   agent is on the machine's brain and `note` says why. The badge names what ANSWERS, never the
   pin. A chip that said "Anthropic" while a switched-off provider sent the agent to the default
   model would be the dead-control lie in a new shape.
+- **A pin can be an agent CLI** (`claude-code/…`, `gemini-cli/…`, `codex/…`, or
+  `…/default` for its own setting). `agent_brain` returns that CLI as the engine when it is
+  installed and bridgeable, `set_agent_model` accepts only its documented aliases, and
+  `run_subagent` runs the agent on it through the bridge with the pinned model. That is
+  the multi-CLI team: a lead on Claude Code, a researcher on Gemini CLI, a coder on Codex.
+  `resolve_model` never hands a CLI pin to the built-in loop as a provider model.
 - **A pinned specialist answers on its own provider even under an executor.** With Claude Code
   as the machine's brain, `run_subagent` skips the bridge for an agent whose brain is `own`, so
   it runs in this OS's loop on its pinned provider. That is what "agents on different
@@ -1557,7 +1581,7 @@ Full story in `docs/team.md`. Two features, four rules.
 **Agents messaging each other is the matrix, and swarm is the matrix opened — never a
 second system.** A specialist's `ask_agent` is `agent.message` (principal = asker, resource =
 the one asked); each matrix cell is a `grants` row (`fabric.set_cell`, source `matrix`), so
-Permissions and "Allow & remember" read and write the same cells. Five things hold:
+Permissions and "Allow & remember" read and write the same cells. These hold:
 
 - **An empty cell asks at EVERY autonomy level**, and a run with nobody watching refuses it
   (`headless_approver` excludes `ask_agent`). Autonomy is what an agent may DO; who may recruit
@@ -1572,6 +1596,21 @@ Permissions and "Allow & remember" read and write the same cells. Five things ho
   rows count (`permissions.talk` writes the roster's pairs), so a desk cell never widens a
   mission and swarm never reaches into one; at the desk, definition rows do NOT count, so
   enabling a mission is never consent for its specialists to message each other outside it.
+- **Democracy is swarm with a vote, never a fifth way to answer a person's question.**
+  `team.talk == "democracy"` makes the PDP return `ask` with `rule="democracy"` in exactly
+  the places swarm returns `allow` (an empty local cell at 2e, `_swarm_opens` for the lead),
+  and the agent loop hands that ask to `ControlPlane.council` instead of the approver, but
+  only when `must_person` is empty. The council (`council_of`) is up to three seats: the lead
+  (when the machine has a brain and the lead is not proposing) and specialists, different
+  brains first, the proposer never, the one asked included. With the usual three specialists
+  that still makes three voters, which is why the lead sits. Fewer than two voters is no
+  council, and the person is asked. `read_vote` is strict: not yes or no is no. A ballot is
+  a run of kind `vote` with NO tools. The vote question tells voters a step the person asked
+  for is sensible unless harmful: the first live run voted a requested hand-over down 0 of 3
+  as "too simple to delegate". Every vote is a `team.vote` audit row (principal kind
+  `council`). A huddle in democracy ends with a vote on the last word said, stored as one
+  `[vote] …` line (`vote_line`) that the page's turn pattern ignores and `huddleParse` draws.
+  `tests/test_democracy.py`.
 - **Asking back the direct asker is a clarification, not a loop.** It is handed UP
   (`_clarify`, keyed on the asked one's run): the asker's `ask_agent` returns "X asks you back"
   and the asker — which holds its whole context — asks again. Never start a fresh run of the

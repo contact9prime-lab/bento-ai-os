@@ -145,13 +145,18 @@ _SPACE = {"list_spaces": ("space.read", "space:*"),
           "timeline": ("space.read", "")}
 
 
+TALK_MODES = ("off", "matrix", "swarm", "democracy")
+
+
 def team_talk(cfg: dict) -> str:
     """How specialists may message each other: 'off', 'matrix' (the default — each
     pair is a grant, and an empty cell asks) or 'swarm' (every cell a person has not
-    explicitly blocked is open). One reading, used by the gate, the tool and every
-    surface that shows the switch."""
+    explicitly blocked is open), or 'democracy': where swarm would open, a council of
+    the team votes and a majority decides (2 of 3), and you are asked only when there
+    is no council to ask (fabric.ControlPlane.council). One reading, used by the gate,
+    the tool and every surface that shows the switch."""
     v = str(((cfg or {}).get("team") or {}).get("talk") or "matrix").lower()
-    return v if v in ("off", "matrix", "swarm") else "matrix"
+    return v if v in TALK_MODES else "matrix"
 
 
 def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
@@ -813,8 +818,10 @@ class PDP(usersmod.Scoped):
                         rule="quarantined")
 
     def _swarm_opens(self, principal: Principal, action: str, resource: str, ctx: dict) -> bool:
-        """Does swarm let the lead start this specialist (or this huddle) without asking?"""
-        if principal.kind != "user" or team_talk(self.cfg) != "swarm":
+        """Does swarm (or democracy's vote) let the lead start this specialist, or this
+        huddle, without asking the person? The same places for both modes: only the
+        answer differs (swarm opens, democracy puts it to the council)."""
+        if principal.kind != "user" or team_talk(self.cfg) not in ("swarm", "democracy"):
             return False
         if ctx.get("surface") in ("task", "webhook"):
             return False                 # nobody is there: unattended work still asks
@@ -1205,6 +1212,13 @@ class PDP(usersmod.Scoped):
             # somebody else's machine or account is asked for, cell by cell
             if team_talk(self.cfg) == "swarm" and "@" not in to:
                 return Decision("allow", rule="swarm")
+            if team_talk(self.cfg) == "democracy" and "@" not in to:
+                # the same empty cell swarm would open, put to a vote of the team; the
+                # agent loop hands a `democracy` ask to the council, and only when there
+                # is no council (fewer than two agents to vote) does it reach a person
+                return Decision("ask", f"{principal.id} wants to ask {to} a question. The team "
+                                       f"votes on it, and a majority decides.",
+                                rule="democracy", grant_offer=offer)
             return Decision("ask", f"{principal.id} wants to ask {to} a question. "
                                    f"{to} answers on its own model with its own permissions. "
                                    f"'Allow & remember' fills this cell of the team's matrix.",
@@ -1311,6 +1325,10 @@ class PDP(usersmod.Scoped):
         # still wins because grants are read before this default.
         if action in ("agent.invoke", "agent.huddle") and autonomy != "full" \
                 and self._swarm_opens(principal, action, resource, ctx):
+            if team_talk(self.cfg) == "democracy":
+                return Decision("ask", (reason or self._invoke_reason(resource))
+                                + " The team votes on it, and a majority decides.",
+                                rule="democracy", grant_offer=offer)
             return Decision("allow", rule="swarm")
         if action in ("agent.invoke", "agent.huddle") and autonomy != "full":
             return Decision("ask", reason or self._invoke_reason(resource),

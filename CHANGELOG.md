@@ -2,6 +2,26 @@
 
 ## 0.6.6 — 2026-09-27
 
+**Claude Code, Gemini CLI and Codex can work on one team.** Any agent can now be pinned to
+one of the installed agent CLIs instead of a provider model: "Gemini CLI · gemini-2.5-pro" in
+its Brain picker, or `bento team set researcher gemini-cli/gemini-2.5-pro`. It answers on that
+CLI whatever your lead runs on, with this OS's tools and permission gate, so a lead on Claude
+Code can hand research to a specialist on Gemini CLI and have one on Codex check the code.
+Gemini CLI and Codex now also get your team in a chat (`delegate` and `huddle`), and Gemini
+CLI can run missions, with its own tools switched off. Codex can't run a mission: its
+built-in shell can't be switched off, so a Codex specialist on a mission runs on the
+machine's brain and the run says so. Each CLI's setup was checked against the real one:
+Gemini CLI reported the bridge "Connected", and Codex asked it for its tools.
+
+**Democracy mode: the team votes, and 2 of 3 decide.** A fourth setting for how your agents
+work together (Settings → Agents, or `bento team talk democracy`). The steps swarm lets
+through without asking go to a vote instead: your lead and two other agents, on different
+brains where they can be. A majority decides, the team's reasons come back when it says no,
+and you're asked only when there aren't enough agents to hold a vote. A vote never decides
+anything that must be yours, and every vote is in the ledger. Huddles end with a vote on the
+last thing said, and the card shows whether the team agreed. Tried live on Claude Code: a
+huddle ended "agreed, 2 of 2", and a hand-over went through 3 of 3.
+
 **Chats keep their context when Claude Code answers.** In an app's agent panel, "write a ppt
 for it" could come back as "I don't know what 'it' refers to", right under the answer it
 meant. Claude Code only remembers the turns that ran in its own session, and a conversation
