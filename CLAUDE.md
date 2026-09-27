@@ -532,6 +532,25 @@ somebody's — the passwords and tokens are in the vault (previous section), and
 (`ssl: None` → everything but 143 is IMAPS); a plain server on loopback, which is what
 the tests run, sets `ssl: False` explicitly.
 
+## Files your agents make: reachable from where you read about them
+
+`agentos/outputs.py` is the one answer to "which files does this text name?" (`mentioned`)
+and "what was made lately?" (`recent`). Chat's file chips (`10c-filechips.js`, through
+`/api/files/which`), Telegram's and WhatsApp's `send_files`, the Office's filing cabinet
+(`/api/files/recent`) and `bento files` all call it. Three rules:
+
+- **A forwarded turn works in the PERSON's workspace** (`executors.default_workspace(cfg)`).
+  Every surface used to pass the machine's `~/.agentos/workspace`, so a signed-in person's
+  deck landed in a folder their Files app never showed, and every account's Claude Code
+  shared one folder. A folder set in Settings → Executors still wins.
+- **Only folders you may reach** (`outputs.roots`): your workspace, plus the machine's shared
+  folder and the Executors folder for an admin or a machine without accounts. A reply is
+  model output and can name anything; a path outside those, or a symlink out of them, stays
+  text. `/api/files/get` and `/api/open {file}` check the same list.
+- **Open means where you are.** At the machine, the host app (`/api/open`); from a remote
+  browser, the browser shows it or downloads it (`remoteClient()`), because the host app
+  would open in another room. Full story in `docs/files.md`.
+
 ## A channel is one AgentOS owns end to end
 
 There used to be a second tier: platforms "carried" by the Hermes gateway — Slack,
@@ -1381,6 +1400,11 @@ things keep it true:
   half right. The scene sleeps on `crewCovered()` and re-checks on a one-second timer
   (`officeSnooze`), never a frame loop. A frame that throws is caught, and the backing store
   steps its dpr down past `OF_MAX_PX`: a full-screen Office on a Retina Mac came up blank.
+- **The rooms are states.** Two or more of one mission's specialists running at once meet at
+  the table (`officeMeetSync`, keyed on the flow run from `flow_start`; a huddle has the room
+  first). Waiting for approval walks to the lead's office, hand up, minutes counting
+  (`officeEscalate`). A failed or timed-out step leaves a red sign under that desk until the
+  agent runs again. The filing cabinet takes a paper on every `OF_WRITES` tool.
 - **One seam.** `scenePulse()` in `01c-movement.js` feeds the Crew stage and the Office; nothing
   else calls `officePulse`. `tool_start`/`turn_start` pass their event on, because the Office
   attributes a tool to the conversation's speaker (`convWho`) and a bare `step` to its run

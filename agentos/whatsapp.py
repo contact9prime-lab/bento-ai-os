@@ -51,6 +51,7 @@ import hashlib
 import hmac
 import json
 import time
+from pathlib import Path
 
 import httpx
 
@@ -62,6 +63,7 @@ from . import users as usersmod
 GRAPH = "https://graph.facebook.com/v21.0"
 CHUNK = 3900              # WhatsApp's body limit is 4096
 CAPTION = 1024           # an image caption's limit on both transports
+WA_FILE_LIMIT = 100 * 1024 * 1024   # the Cloud API's document limit
 WINDOW_SECS = 24 * 3600   # Meta's customer-service window
 
 # Reply-button titles. Twenty characters, hard limit — see the module docstring.
@@ -304,6 +306,60 @@ class WhatsAppBridge(usersmod.Scoped):
             return f"[error] whatsapp picture failed: {e}"
         self.store.log("whatsapp", f"→ sent a picture: {caption[:120]}")
         return "sent via WhatsApp"
+
+    async def send_document(self, path: str, caption: str = "", wa_id: str | None = None) -> str:
+        """A file a reply named, as a WhatsApp document. The same refusals as text (the
+        24-hour window applies on the Cloud API). Cloud API uploads the bytes first and
+        sends by media id; a linked device takes them over its stdio line."""
+        import mimetypes
+        c = self._c()
+        wa_id = wa_id or c.get("owner_wa_id") or ""
+        no = self._refusal(c, wa_id)
+        if no:
+            return no
+        p = Path(path)
+        caption = (caption or "")[:CAPTION]
+        if c.get("mode") == "baileys":
+            return await self.link.send_document(str(p), caption, wa_id)
+        if p.stat().st_size > WA_FILE_LIMIT:
+            return "too big"
+        mime = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+        try:
+            async with httpx.AsyncClient(timeout=180) as client:
+                with p.open("rb") as fh:
+                    r = await client.post(
+                        f"{GRAPH}/{c['phone_number_id']}/media",
+                        data={"messaging_product": "whatsapp", "type": mime},
+                        files={"file": (p.name, fh, mime)},
+                        headers={"Authorization": f"Bearer {c.get('access_token', '')}"})
+            up = r.json() if r.content else {}
+            if r.status_code >= 400 or not up.get("id"):
+                raise RuntimeError((up.get("error") or {}).get("message") or f"HTTP {r.status_code}")
+            await self._api(f"{c['phone_number_id']}/messages", {
+                "messaging_product": "whatsapp", "to": wa_id, "type": "document",
+                "document": {"id": up["id"], "filename": p.name, "caption": caption}})
+        except Exception as e:
+            return f"[error] whatsapp file failed: {e}"
+        self.store.log("whatsapp", f"→ sent a file: {p.name}")
+        return "sent via WhatsApp"
+
+    async def send_files(self, reply: str, wa_id: str) -> None:
+        """The files a reply names, after it, as Telegram does (whatsapp.files = false
+        switches it off). A file too big to send is named with where it is instead."""
+        if self._c().get("files") is False:
+            return
+        try:
+            from . import outputs, users as _u
+            for f in outputs.mentioned(reply, outputs.roots(self.cfg, admin=_u.is_admin(_u.current()))):
+                res = await self.send_document(f["path"], f["name"], wa_id)
+                if res == "too big":
+                    await self.send(f"📎 {f['name']} is {outputs.size_words(f['size'])}, too big to "
+                                    f"send here. It's on the machine at {f['path']}", wa_id)
+                elif res.startswith("[error]"):
+                    await self.send(f"📎 I couldn't send {f['name']} ({res[8:]}). "
+                                    f"It's on the machine at {f['path']}", wa_id)
+        except Exception as e:
+            self.store.log("whatsapp", f"could not send the reply's files: {e}")
 
     async def send_talk(self, lines: list, wa_id: str) -> None:
         """Agents talked during this chat's turn: the exchange as a comic strip, as
@@ -564,7 +620,7 @@ class WhatsAppBridge(usersmod.Scoped):
             _k.turn_started()
             try:
                 reply, run = await execmod.forward(
-                    engine, text, self.cfg, str(cfgmod.AGENTOS_HOME / "workspace"),
+                    engine, text, self.cfg, execmod.default_workspace(self.cfg),
                     session_id=self._exec_sessions.get(cid, ""),
                     team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
                           "conversation_id": cid, "surface": "whatsapp"})
@@ -589,6 +645,7 @@ class WhatsAppBridge(usersmod.Scoped):
         _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
                       surface="whatsapp", conversation_id=cid)
         await self.send(reply, wa_id)
+        await self.send_files(reply, wa_id)
         await self.broadcast({"type": "whatsapp_out", "conversation_id": cid,
                               "text": reply[:160]})
         from . import knowledge

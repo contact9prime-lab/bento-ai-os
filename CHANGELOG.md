@@ -6,6 +6,18 @@
 behind an ⓘ beside it: hover, click or tap to read it. The wording is plainer too. Appearance
 went from about 2,500 characters on screen to under 600, and System from 1,900 to under 700.
 
+**Files your agents make can be opened from where you read about them.** A reply that names
+a file gets a card with Open and Download. Telegram and WhatsApp send the file after the
+reply. The Office has a filing cabinet listing everything your agents made, and `bento files`
+does the same in a terminal. Turns answered by Claude Code, Gemini CLI or Codex now save into
+your own workspace, where the Files app looks. They used to go to the machine's shared
+folder, so a deck could be made and still be missing from Files.
+
+**The Office's rooms mean something.** Specialists working on the same mission at the same
+time meet at the meeting table. An agent waiting for your approval walks to your agent's
+office with its hand up, counting the minutes. A step that failed or timed out leaves a red
+sign under that agent's desk.
+
 **Swarm means your agents work together without asking.** In Swarm mode your agent now hands
 tasks to your specialists and pulls them into huddles without an approval card. Agents on a
 linked team, starting a mission, and scheduled or webhook runs still ask. A specialist you

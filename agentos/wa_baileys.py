@@ -48,6 +48,8 @@ import time
 from pathlib import Path
 
 BRIDGE_DIR = Path(__file__).resolve().parent / "wa_bridge"
+#: the most a linked device is handed in one stdio frame (base64 of the whole file)
+LINK_FILE_LIMIT = 16 * 1024 * 1024
 NODE_MODULES = BRIDGE_DIR / "node_modules"
 
 
@@ -369,6 +371,29 @@ class BaileysTransport:
             return "[error] the WhatsApp bridge is not running"
         if self.store:
             self.store.log("whatsapp", f"→ sent a picture: {(caption or '')[:120]}")
+        return "sent via WhatsApp"
+
+    async def send_document(self, path: str, caption: str, wa_id: str) -> str:
+        """A file, base64 in one frame like a picture. Capped at LINK_FILE_LIMIT, because
+        the whole file travels as one line over stdio."""
+        if self.state != "ready":
+            return (f"[error] the WhatsApp link is not connected "
+                    f"({self.state}{': ' + self.error if self.error else ''})")
+        import base64
+        import mimetypes
+        from pathlib import Path as _P
+        p = _P(path)
+        if p.stat().st_size > LINK_FILE_LIMIT:
+            return "too big"
+        to = self._jids.get(wa_id) or wa_id
+        ok = await self._write({"type": "document", "to": to, "caption": caption or "",
+                                "name": p.name,
+                                "mime": mimetypes.guess_type(p.name)[0] or "application/octet-stream",
+                                "data": base64.b64encode(p.read_bytes()).decode()})
+        if not ok:
+            return "[error] the WhatsApp bridge is not running"
+        if self.store:
+            self.store.log("whatsapp", f"→ sent a file: {p.name}")
         return "sent via WhatsApp"
 
     def info(self) -> dict:

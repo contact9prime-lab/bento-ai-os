@@ -27,11 +27,18 @@ Everything in the office moves because something really happened on this machine
 | A **comic burst** ("FETCH!", "SCRIBBLE!") with the real tool name under it | It called that tool |
 | One agent **gets up and walks** across the office to another's desk, asks in a speech balloon, waits for the answer, says thanks and walks back | It asked that colleague something (the team's permission matrix let it) |
 | Agents **gather round the meeting table**, the one talking in a balloon | A huddle started |
-| A **"? needs you"** shout and a raised hand | It is waiting for you to allow a step |
 | The specialist **walks the result back** to whoever gave it the work, says "done ✓ here it is" and goes back to its desk | The work your agent handed over is finished |
 | **"done ✓"**, and the paper flies back to the board | A mission's step finished |
+| Two or more specialists **sit round the meeting table**, the mission's name on a card | One mission has them working at the same time. Each goes back to its desk when its part is done |
+| An agent **walks to your agent's office and raises its hand**, "? needs you: write_file · 3 min" | It's waiting for you to allow a step. The minutes count up until you answer, then it goes back to work |
+| A red **✗ timed out** sign under an agent's desk | Its last step failed or ran out of time. It stays until that agent runs again |
+| A paper flies into the **filing cabinet** and a red badge counts up | An agent saved a file. Tap the cabinet to see them all ([files.md](files.md)) |
 | The whiteboard in your agent's office reads **RIGHT NOW**, and a red **×2** sits by your agent's head | Several things are running at once: each mission gets a line, then how many chats your agent is in, then how many specialists are at work |
 | An agent **hops** and answers in a balloon ("You rang? Point me at a question and I'll dig.") | You tapped it. Each agent has its own opener, and the rest comes from what its description says it is for. Tap again for another line. |
+
+![Two specialists at the meeting table with the mission's name on the card](screenshots/office-meeting.png)
+
+![A specialist at your agent's desk with its hand up: "? needs you: write_file"](screenshots/office-escalate.png)
 
 No walk takes longer than about three seconds, however big the office, because a walk
 that finishes long after the thing it shows has happened is showing you the past. If

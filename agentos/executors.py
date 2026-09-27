@@ -241,6 +241,16 @@ def default_budget() -> float:
             else DEFAULT_BUDGET_USD)
 
 
+def default_workspace(cfg: dict) -> str:
+    """The folder a forwarded turn works in when Settings → Executors names none: the
+    PERSON's workspace (cfg is per-account, so on a machine with accounts this is
+    users/<id>/workspace). Every surface passed the machine's ~/.agentos/workspace
+    instead, so a deck Claude Code made for somebody signed in landed in a folder their
+    Files app never shows, and every account's forwarded turns shared one folder."""
+    from . import config as _cfgmod
+    return os.path.expanduser(str((cfg or {}).get("workspace") or (_cfgmod.AGENTOS_HOME / "workspace")))
+
+
 def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code") -> "Envelope":
     """The configured envelope — one reading of config, used by every surface.
 
@@ -378,7 +388,7 @@ async def ask_brain(cfg: dict, system: str, prompt: str, timeout: float = 180,
             from . import config as _cfgmod
             reply, _run = await asyncio.wait_for(
                 forward(engine, system + "\n\n" + prompt, cfg,
-                        str(_cfgmod.AGENTOS_HOME / "workspace")), timeout)
+                        default_workspace(cfg)), timeout)
             reply = reply or ""
             if reply.startswith("[error]"):
                 return "", engine, f"{engine} could not answer: {reply[7:].strip()}"

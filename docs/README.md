@@ -36,6 +36,7 @@ locally with Ollama or connects to cloud models, and everything happens with you
 | [Licensing & trademarks](licensing.md) | What AgentOS ships and what it only *asks for*; why it redistributes no distribution; where the Ubuntu/Canonical trademark line sits |
 | [The living desktop](experience.md) | Motion & design tokens, window management, the agent's hands, proactivity, the agent-led first run |
 | [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
+| [Files your agents make](files.md) | Open a deck or a report from the chat that mentions it, get it on your phone, or find it in the Office's filing cabinet |
 | [The Office](office.md) | A comic-strip office where you watch your agents work: papers to desks, agents walking over to ask each other, huddles round the meeting table, and a designer for the look |
 | [Agents](agents.md) | Every agent's brain (AI providers), hands (executors: tools, folders, web, MCP), permissions and skills — and the map of who reaches what |
 | [The team](team.md) | Each agent on its own AI provider (a researcher on a local model, a validator on Claude), the provider badge, and huddles — agents talking a question through with each other |

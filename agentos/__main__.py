@@ -3220,6 +3220,25 @@ def _reset_cli(args):
     print("✓ reset. Start it again and setup begins: `bento` (the desktop wizard) or `bento setup`.")
 
 
+def _files_cli(args):
+    """The terminal's filing cabinet: the files your agents made lately, newest first, with
+    the full path, so a headless box can say where the deck is (outputs.recent)."""
+    from . import config as cfgmod
+    from . import outputs
+    cfg = cfgmod.load_config()
+    rts = outputs.roots(cfg, admin=True)          # the terminal is the machine's owner
+    rows = outputs.recent(rts, limit=max(1, min(args.limit, 200)))
+    if not rows:
+        print("  nothing yet: ask your agent for a deck or a report and it lands in "
+              + (str(rts[0]) if rts else "the workspace"))
+        return
+    now = time.time()
+    for f in rows:
+        s = now - f["mtime"]
+        ago = f"{int(s // 60)}m" if s < 3600 else f"{int(s // 3600)}h" if s < 86400 else f"{int(s // 86400)}d"
+        print(f"  {f['name'][:40]:40} {outputs.size_words(f['size']):>8}  {ago:>4} ago  {f['path']}")
+
+
 def _office_cli(args):
     """`bento office` — the Office playground, as a terminal can have it.
 
@@ -5846,6 +5865,8 @@ def main():
                                                    "design: a description in words")
     p_av.add_argument("--user", default="", help="whose characters, on a machine with users")
     verb("migrate")   # unlisted: what `bento update` runs in a fresh process, for every account
+    p_fl = verb("files", help="what your agents made lately, newest first, with where each file is")
+    p_fl.add_argument("--limit", type=int, default=20)
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
@@ -6091,6 +6112,8 @@ def main():
         _avatar_cli(args)
     elif args.cmd == "office":
         _office_cli(args)
+    elif args.cmd == "files":
+        _files_cli(args)
     elif args.cmd == "migrate":
         from . import migrate as _mig
         rows = _mig.everyone(log=print)

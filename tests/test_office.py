@@ -255,3 +255,23 @@ def test_the_office_is_a_scene_and_the_window_takes_it_over():
     # several things at once are all on the board
     now = of.split("function officeNow(")[1].split("\n}")[0]
     assert "O.missions" in now and "O.convWho" in now
+
+
+def test_the_rooms_mean_something_a_mission_meets_escalation_walks_a_stall_is_said():
+    # asked: "how is the meeting room going to be used ... when it is escalated and it's
+    # not happening". Each room and sign is a real state, never decoration.
+    of = _js("24d-office.js")
+    fab = of.split("function officeFabric(")[1].split("function officeHuddle(")[0]
+    # two or more of one mission's specialists at once meet at the table; one does not
+    assert "O.meet[ev.parent_run]" in fab and "officeMeetSync(ev.parent_run)" in fab
+    sync = of.split("function officeMeetSync(")[1].split("function officeEscalate(")[0]
+    assert "who.length>=2" in sync and "!O.huddle" in sync, "a huddle has the room first"
+    # waiting for you walks to your agent's office, hand up, and counts the minutes
+    assert "officeEscalate(p,ev.tool)" in fab and "officeDeEscalate(p," in fab
+    esc = of.split("function officeEscalate(")[1].split("function officeDeEscalate(")[0]
+    assert "lead.home" in esc and "p.hand=1" in esc
+    step = of.split("function officeStep(")[1].split("function officeLine(")[0]
+    assert "p.waitSince" in step and " min" in step
+    # a failed or timed-out step stays said at its own desk until it runs again
+    assert "p.stuck=performance.now()" in fab and "p.stuck=0" in fab and "OF_STUCK_MS" in step
+    assert "officeMeetingDraw(ctx)" in of and "officeStuckDraw(ctx,p)" in of

@@ -292,6 +292,7 @@ async function openConv(cid){
     }
     showWorking();
   }
+  if(typeof fileChips==='function')fileChips(feed);
   setRunning(RUNNING.has(cid));
   renderQueue();
   loadConvs();scrollDown();

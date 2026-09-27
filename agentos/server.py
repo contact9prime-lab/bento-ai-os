@@ -1345,7 +1345,16 @@ async def api_open(body: dict):
     from . import desktop as desktopmod
     url = (body.get("url") or "").strip()
     rel = (body.get("path") or "").strip()
-    if url:
+    full = (body.get("file") or "").strip()
+    if full:
+        # a file an agent made, by its full path: only from the folders you may reach
+        from . import outputs
+        p = outputs.reachable(full, _output_roots())
+        if p is None:
+            return JSONResponse({"error": "not found, or not in a folder you can reach"},
+                                status_code=404)
+        target = str(p)
+    elif url:
         if not url.startswith(("http://", "https://")):
             return JSONResponse({"error": "only http(s) URLs"}, status_code=400)
         target = url
@@ -1375,6 +1384,51 @@ async def api_file_raw(path: str, download: int = 0):
     headers = {}
     if download or not inline:
         headers["Content-Disposition"] = f'attachment; filename="{p.name}"'
+    if p.suffix.lower() in (".md", ".txt", ".log", ".csv", ".json"):
+        mt = "text/plain; charset=utf-8"
+    return FileResponse(p, media_type=mt or "application/octet-stream", headers=headers)
+
+
+def _output_roots():
+    """The folders this person's files may be handed over from (outputs.roots)."""
+    from . import outputs, users as _u
+    return outputs.roots(state["cfg"], admin=_u.is_admin(_u.current()))
+
+
+@app.post("/api/files/which")
+async def api_files_which(body: dict):
+    """The files a reply names that exist where this person may reach: what Chat turns
+    into a chip with Open and Download. Asked for the text, never for a path list, so
+    the page cannot use it to probe the disk file by file."""
+    from . import outputs
+    text = str((body or {}).get("text") or "")[:20000]
+    return {"files": outputs.mentioned(text, _output_roots())}
+
+
+@app.get("/api/files/recent")
+async def api_files_recent(limit: int = 30):
+    """What your agents made lately, newest first: the Office's filing cabinet."""
+    from . import outputs
+    rts = _output_roots()
+    return {"files": await asyncio.to_thread(outputs.recent, rts, max(1, min(int(limit or 30), 100))),
+            "roots": [str(r) for r in rts]}
+
+
+@app.get("/api/files/get")
+async def api_files_get(path: str, download: int = 0):
+    """One file by its full path, from the folders outputs.roots allows. Images, PDFs,
+    text and HTML show inline; everything else (a .pptx, a .zip) downloads."""
+    import mimetypes
+    from . import outputs
+    p = outputs.reachable(path, _output_roots())
+    if p is None:
+        return JSONResponse({"error": "not found, or not in a folder you can reach"}, status_code=404)
+    mt, _ = mimetypes.guess_type(str(p))
+    inline = (mt or "").startswith(("text/", "image/")) or mt == "application/pdf"
+    headers = {}
+    if download or not inline:
+        from urllib.parse import quote
+        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(p.name)}"
     if p.suffix.lower() in (".md", ".txt", ".log", ".csv", ".json"):
         mt = "text/plain; charset=utf-8"
     return FileResponse(p, media_type=mt or "application/octet-stream", headers=headers)
@@ -2515,7 +2569,7 @@ async def api_models():
     # could answer here; an executor that is installed but switched off, or not
     # installed at all, is a fact the user needs in order to choose, so it is
     # listed with the reason rather than left out.
-    env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+    env = execmod.envelope_from(cfg, execmod.default_workspace(cfg))
     engines = [{
         "id": r["id"], "name": r["title"], "kind": "executor",
         "available": bool(r["installed"]),
@@ -2715,7 +2769,7 @@ async def api_executors(refresh: bool = False):
         await asyncio.to_thread(execmod.forget_probes)
     conf = (state["cfg"].get("executors") or {}).get("claude_code") or {}
     info = execmod.available()
-    workspace = conf.get("workspace") or str(cfgmod.AGENTOS_HOME / "workspace")
+    workspace = conf.get("workspace") or execmod.default_workspace(state["cfg"])
     env = execmod.Envelope(
         workspace=workspace,
         tools=tuple(conf.get("tools") or execmod.DEFAULT_TOOLS),
@@ -10276,7 +10330,7 @@ async def api_chat(body: dict, request: Request):
         knowledge.turn_started()
         try:
             content, _run = await execmod.forward(
-                engine, text, cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+                engine, text, cfg, execmod.default_workspace(cfg))
         finally:
             knowledge.turn_ended()
         result = {"content": content, "steps": [{"type": "executor", "name": engine}],
@@ -10837,7 +10891,7 @@ async def _run_chat(cid: str, data: dict):
                 "reason": execmod.probe(model).get("why_not")}
             if not avail.get("available"):
                 raise RuntimeError(avail.get("reason") or f"{ex_title} is not available")
-            env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"), model)
+            env = execmod.envelope_from(cfg, execmod.default_workspace(cfg), model)
             # From the conversation row, not a dict on the server: a restart used to
             # drop every chat's executor session, so a machine that had been running
             # for a week came back with every conversation a stranger.
@@ -11674,7 +11728,7 @@ async def _run_build(data: dict):
                 await terminal({"type": "build_error",
                                 "message": avail.get("reason", "Claude Code is not available")})
                 return
-            env = execmod.envelope_from(cfg, str(cfgmod.AGENTOS_HOME / "workspace"))
+            env = execmod.envelope_from(cfg, execmod.default_workspace(cfg))
             if not any(t in env.tools for t in ("Write", "Edit")):
                 await terminal({"type": "build_error",
                                 "message": ("Claude Code cannot build an app without Write or "

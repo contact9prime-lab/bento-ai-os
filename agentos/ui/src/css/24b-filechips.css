@@ -1,0 +1,19 @@
+/* A file a reply names: a chip with Open and Download (10c-filechips.js). */
+.fc-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 2px}
+.fc{display:flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:12px;
+  background:color-mix(in srgb,var(--txt) 4%,var(--bg2));max-width:100%;overflow:hidden}
+.fc-main{display:flex;align-items:center;gap:9px;padding:7px 10px;background:transparent;border:0;
+  color:var(--txt);cursor:pointer;min-width:0;text-align:left}
+.fc-main:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.fc-main svg{flex:0 0 22px}
+.fc-txt{display:flex;flex-direction:column;min-width:0}
+.fc-txt b{font-size:var(--fs-sm);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.fc-txt small{font-size:var(--fs-xs);color:var(--dim)}
+.fc-act{border:0;border-left:1px solid var(--line);background:transparent;color:var(--acc);
+  font-size:var(--fs-xs);font-weight:650;padding:0 12px;align-self:stretch;cursor:pointer}
+.fc-act:hover{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+code.fc-link{cursor:pointer;text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--acc) 60%,transparent);
+  text-underline-offset:3px}
+code.fc-link:hover{color:var(--acc)}
+body.dev-touch .fc-main,body.dev-touch .fc-act{min-height:var(--tap)}
+body.dev-touch .fc-act{min-width:var(--tap)}
