@@ -8820,6 +8820,57 @@ async def api_world_design(body: dict):
                      "No brain is set up, so this is the closest built-in world, renamed for your words.")}
 
 
+@app.post("/api/world/scene")
+async def api_world_scene(body: dict):
+    """Design how a world looks, from words. The machine's brain maps them onto the
+    scene's closed set (`world.SCENE`, `world.PROPS`), each field checked alone; with
+    nothing answering, the scene's own words are matched and `said` says so. There is
+    no field-by-field editor on purpose: the owner asked for the AI to design it.
+    `scene` puts back one the page kept (Undo); `original` returns a built-in world to
+    how it shipped. `previous` is always the look it had before this call."""
+    from . import executors as execmod, teamlink
+    cfg, store, b = state["cfg"], state["store"], body or {}
+    uid = usersmod.current() or ""
+    wid = str(b.get("world") or worldmod.live_world(uid) or "")
+    w = worldmod.world(store, wid)
+    if not w:
+        return JSONResponse({"error": f"no world called {wid!r}"}, status_code=404)
+    previous, how, who, dropped = w.get("scene"), "", "", []
+    # Undo on a built-in world that still had its shipped look goes back to the original
+    was_original = bool(w.get("builtin") and not w.get("scene_custom"))
+    try:
+        if b.get("original"):
+            new, dropped = worldmod.set_scene(store, wid, None)
+        elif isinstance(b.get("scene"), dict):
+            new, dropped = worldmod.set_scene(store, wid, b["scene"])
+        else:
+            desc = teamlink.plain(b.get("description"), 300, newlines=False)
+            if len(desc) < 3:
+                return JSONResponse({"error": "describe how it should look first, a few words is enough"},
+                                    status_code=400)
+            system, prompt = worldmod.scene_prompt(desc, w["kit"])
+            raw, who = await execmod.ask_once(cfg, system, prompt)
+            sc = None
+            if raw:
+                try:
+                    sc, dropped = worldmod.read_scene(raw, w["kit"], previous)
+                    how = "brain"
+                except ValueError:
+                    sc = None
+            if sc is None:
+                sc, how = worldmod.scene_from_words(desc, w["kit"], previous), "words"
+            new, more = worldmod.set_scene(store, wid, sc)
+            dropped += more
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    said = ("" if how != "words" else
+            "Nothing answered, so this matched the words you used." if execmod.has_brain(cfg) else
+            "No brain is set up, so this matched the words you used.")
+    return {"ok": True, "world": new, "previous": None if was_original else previous, "how": how,
+            "who": who if how == "brain" else "", "dropped": dropped, "said": said,
+            "state": worldmod.view(uid)}
+
+
 @app.delete("/api/world/{wid}")
 async def api_world_delete(wid: str):
     try:

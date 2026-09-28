@@ -55,7 +55,7 @@ import time
 
 KITS = {
     "canal": "a canal town: water, houses, a red bridge, lanterns at night",
-    "orbit": "a space station: a ring in orbit, a planet below, stars",
+    "orbit": "a moon base: domes, a launch tower, a planet in a black sky, stars",
     "garden": "a wild garden: grass, flowers, trees, a pond",
 }
 
@@ -96,6 +96,33 @@ SIGNALS = {
     "grew": "grew into a new role",
     "you_low": "you said today is hard",
     "you_high": "you said today is good",
+}
+
+#: How a world LOOKS, as a closed set the page can draw: every field is a choice, never a
+#: free colour or a model's invention. A person designs their scene from these (the menu's
+#: designer, or words the brain maps onto them), and `scene_of` checks each field alone.
+SCENE = {
+    "time": ("live", "dawn", "day", "dusk", "night"),
+    "weather": ("clear", "clouds", "rain", "snow", "petals", "fireflies"),
+    "sky": ("natural", "rose", "violet", "teal", "gold", "storm"),
+    "water": ("teal", "blue", "jade", "violet", "amber", "ink"),
+    "ground": ("natural", "sand", "snow", "moss", "rust", "ash"),
+    "accent": ("red", "amber", "gold", "blue", "violet", "green", "white"),
+}
+#: The props each setting can show. A scene lists the ones it keeps.
+PROPS = {
+    "canal": ("houses", "bridge", "pagoda", "lanterns", "boats", "trees"),
+    "orbit": ("domes", "tower", "dish", "solar", "rover", "shuttle"),
+    "garden": ("pond", "lanterns", "trees", "flowers", "path"),
+}
+#: What each setting looks like until somebody changes it.
+KIT_SCENE = {
+    "canal": {"time": "live", "weather": "petals", "sky": "natural", "water": "teal",
+              "ground": "natural", "accent": "red"},
+    "orbit": {"time": "live", "weather": "clear", "sky": "natural", "water": "blue",
+              "ground": "natural", "accent": "amber"},
+    "garden": {"time": "live", "weather": "fireflies", "sky": "natural", "water": "blue",
+               "ground": "natural", "accent": "amber"},
 }
 
 #: Signals that may never cause a negative feeling. See the module docstring.
@@ -287,6 +314,36 @@ def _num(v, lo, hi, default):
     return max(lo, min(hi, v))
 
 
+def scene_of(kit: str, sc) -> tuple[dict, list[str]]:
+    """A scene held to the closed sets, field by field: a value that is not on the list
+    is dropped and NAMED, and the setting's own look stands in for it. Props are the
+    ones this setting can draw; an unknown prop is named, and none at all means all."""
+    kit = kit if kit in KITS else "canal"
+    sc = sc if isinstance(sc, dict) else {}
+    out, dropped = dict(KIT_SCENE[kit]), []
+    for field, choices in SCENE.items():
+        v = sc.get(field)
+        if v is None or v == "":
+            continue
+        if v in choices:
+            out[field] = v
+        else:
+            dropped.append(f"scene {field} {v!r} (choose one of {', '.join(choices)})")
+    for k in sc:
+        if k not in SCENE and k != "props":
+            dropped.append(f"scene field {k!r} (a scene has {', '.join(list(SCENE) + ['props'])})")
+    props = sc.get("props")
+    keep = list(PROPS[kit])
+    if isinstance(props, (list, tuple)):
+        wanted = [p for p in props if p in PROPS[kit]]
+        for p in props:
+            if p not in PROPS[kit]:
+                dropped.append(f"prop {p!r} ({kit} has {', '.join(PROPS[kit])})")
+        keep = [p for p in PROPS[kit] if p in wanted]
+    out["props"] = keep
+    return out, dropped
+
+
 def validate(defn: dict) -> tuple[dict, list[str]]:
     """A world definition held to the closed sets. Each field is checked alone: a
     bad one is dropped and NAMED (never guessed at), a world that is missing its
@@ -371,7 +428,9 @@ def validate(defn: dict) -> tuple[dict, list[str]]:
                "reply_low": _clean(c.get("reply_low"), 160) or "Thanks for telling me. I'll keep today light.",
                "reply_ok": _clean(c.get("reply_ok"), 160) or "Good to hear. Let's have an easy day.",
                "reply_high": _clean(c.get("reply_high"), 160) or "Love that. Let's make something good."}
-    out = {"id": _slug(d.get("id") or name) or "world", "name": name, "kit": kit,
+    scene, why = scene_of(kit, d.get("scene"))
+    dropped += why
+    out = {"id": _slug(d.get("id") or name) or "world", "name": name, "kit": kit, "scene": scene,
            "blurb": _clean(d.get("blurb"), 160), "voice": _clean(d.get("voice"), 160),
            "rest": rest, "emotions": emotions,
            "growth": {"earns": earns, "ladder": ladder}, "checkin": checkin}
@@ -388,18 +447,59 @@ for _w in BUILTIN:          # the shipped worlds obey the same rules as anyone's
 
 
 def worlds(store) -> list[dict]:
-    """Every world this person can enter: the built-in ones, then their own."""
-    own = []
+    """Every world this person can enter: the built-in ones (with the scene this person
+    designed for them, when they did), then their own."""
+    own, looks = [], {}
     for r in store.world_rows():
-        if r["id"] in BUILTIN_IDS or not r.get("defn"):
+        if not r.get("defn"):
             continue
         try:
             d = json.loads(r["defn"])
         except Exception:
             continue
+        if r["id"] in BUILTIN_IDS:
+            # a built-in world's row holds only the person's scene for it
+            if isinstance(d.get("scene"), dict):
+                looks[r["id"]] = d["scene"]
+            continue
         d["builtin"] = False
+        if not isinstance(d.get("scene"), dict):      # a world saved before scenes existed
+            d["scene"] = scene_of(d.get("kit"), None)[0]
         own.append(d)
-    return [dict(w) for w in BUILTIN] + own
+    out = []
+    for w in BUILTIN:
+        w = dict(w)
+        if w["id"] in looks:
+            w["scene"] = scene_of(w["kit"], looks[w["id"]])[0]
+            w["scene_custom"] = True
+        out.append(w)
+    return out + own
+
+
+def set_scene(store, wid: str, scene, kit: str = "") -> tuple[dict, list[str]]:
+    """Design a world's scene. A built-in world keeps its setting and stores only the
+    look; a world of your own may change setting too. `scene=None` puts a built-in
+    world back the way it shipped. Returns the world as it now is, and what was dropped."""
+    w = world(store, wid)
+    if not w:
+        raise ValueError(f"No world called {wid!r}.")
+    if w.get("builtin"):
+        if kit and kit != w["kit"]:
+            raise ValueError("A built-in world keeps its setting. Build your own world to choose another.")
+        if scene is None:
+            store.world_put(wid, defn="")
+            return world(store, wid), []
+        sc, dropped = scene_of(w["kit"], scene)
+        store.world_put(wid, defn=json.dumps({"scene": sc}, sort_keys=True))
+        return world(store, wid), dropped
+    d = {k: v for k, v in w.items() if k != "builtin"}
+    if kit:
+        if kit not in KITS:
+            raise ValueError(f"No setting called {kit!r} (choose one of {', '.join(KITS)}).")
+        d["kit"] = kit
+    d["scene"], dropped = scene_of(d["kit"], scene if scene is not None else d.get("scene"))
+    store.world_put(wid, defn=json.dumps(d, sort_keys=True))
+    return world(store, wid), dropped
 
 
 def world(store, wid: str) -> dict | None:
@@ -945,10 +1045,90 @@ JSON fields:
   succeeded, working, helped; "declined" and "you_low" may only trigger emotions with valence 0 or more.
 - rest: the name of the resting emotion
 - growth: {{"earns": {{signal: points 0-10}}, "ladder": [{{"name", "at"}}, ...4 or 5 steps, first at 0]}}
+- scene: how it looks, each field ONE of these: {_scene_choices()};
+  "props": the ones to keep from those the kit has ({_props_choices()})
 - checkin: {{"question": how the lead asks the person how they feel, in this world's voice,
   "choices": [4 answers {{"label" (one to three words, like "Rising well"), "emoji", "valence"}} from best to hardest],
   "reply_low", "reply_ok", "reply_high": the lead's short answers}}"""
     return system, prompt
+
+
+def _scene_choices() -> str:
+    return "; ".join(f"{k} ({'/'.join(v)})" for k, v in SCENE.items())
+
+
+def _props_choices() -> str:
+    return "; ".join(f"{k}: {', '.join(v)}" for k, v in PROPS.items())
+
+
+#: What a setting cannot show, so the designer does not pick a look nobody will see.
+_KIT_NOTE = {"orbit": "This is a base on the moon under black space: the time of day and the "
+                      "sky colour barely show there, and rain or petals make no sense. Keep "
+                      "weather clear unless the words ask for dust (snow) or clouds."}
+
+
+def scene_prompt(words: str, kit: str) -> tuple[str, str]:
+    """Words about how a scene should look, to be mapped onto the closed set."""
+    system = ("You design how a scene looks in an experimental desktop world. Reply with ONE "
+              "JSON object and nothing else, using only the values listed.")
+    prompt = (f'The person wants their {KITS.get(kit, kit)} to look like: "{_clean(words, 300)}"\n\n'
+              f"JSON fields, each ONE of the listed values: {_scene_choices()}.\n"
+              f'"props": a list of the ones to keep from: {", ".join(PROPS.get(kit, ()))}. '
+              "Keep every prop unless the words ask for one to go.\n"
+              + (_KIT_NOTE.get(kit, "") and _KIT_NOTE[kit] + "\n") +
+              "Leave out a field the words say nothing about.")
+    return system, prompt
+
+
+def read_scene(text: str, kit: str, base: dict | None = None) -> tuple[dict, list[str]]:
+    """The brain's scene, on top of the one the world has now: a field the words said
+    nothing about keeps its look."""
+    m = re.search(r"\{.*\}", str(text or ""), re.S)
+    if not m:
+        raise ValueError("The answer had no scene in it.")
+    try:
+        d = json.loads(m.group(0))
+    except Exception:
+        raise ValueError("The answer was not a scene I could read.")
+    return scene_of(kit, {**(base or {}), **(d if isinstance(d, dict) else {})})
+
+
+#: The palette's own words, for when no brain answers (`scene_from_words`).
+_SCENE_WORDS = {
+    "time": {"dawn": ("dawn", "sunrise", "morning"), "day": ("noon", "daytime", "sunny", "bright"),
+             "dusk": ("dusk", "sunset", "evening", "twilight", "golden hour"),
+             "night": ("night", "midnight", "moonlit", "dark")},
+    "weather": {"rain": ("rain", "rainy", "storm", "drizzle"), "snow": ("snow", "snowy", "winter", "frost"),
+                "petals": ("petal", "blossom", "sakura", "spring"), "fireflies": ("firefl", "glow"),
+                "clouds": ("cloud", "overcast", "foggy", "mist"), "clear": ("clear", "cloudless")},
+    "sky": {"rose": ("pink", "rose"), "violet": ("violet", "purple", "lavender"), "teal": ("teal", "aqua"),
+            "gold": ("gold", "golden", "amber sky"), "storm": ("storm", "grey", "gray", "gloomy")},
+    "water": {"blue": ("blue water", "ocean", "sea"), "jade": ("jade", "green water"),
+              "violet": ("violet water", "purple water"), "amber": ("amber water", "golden water"),
+              "ink": ("ink", "black water", "dark water")},
+    "ground": {"sand": ("sand", "desert", "beach"), "snow": ("snow", "winter"), "moss": ("moss", "lush"),
+               "rust": ("rust", "mars", "red earth", "autumn"), "ash": ("ash", "volcan")},
+    "accent": {"red": ("red lantern", "red"), "amber": ("amber",), "gold": ("gold",), "blue": ("blue light", "blue"),
+               "violet": ("violet", "purple"), "green": ("green",), "white": ("white", "paper lantern")},
+}
+
+
+def scene_from_words(words: str, kit: str, base: dict | None = None) -> dict:
+    """No brain answered: the scene's own words matched against what was said. The word
+    said LAST wins a tie, the office designer's rule ("a snowy night at dusk" is dusk)."""
+    low = str(words or "").lower()
+    sc = {}
+    for field, table in _SCENE_WORDS.items():
+        best, at = None, -1
+        for value, ws in table.items():
+            for w in ws:
+                # whole words only, from the start of a word: "pink" is not "ink"
+                hits = [m.start() for m in re.finditer(r"\b" + re.escape(w), low)]
+                if hits and hits[-1] > at:
+                    best, at = value, hits[-1]
+        if best:
+            sc[field] = best
+    return scene_of(kit, {**(base or {}), **sc})[0]
 
 
 def read_design(text: str) -> tuple[dict, list[str]]:
@@ -981,6 +1161,8 @@ def from_words(words: str) -> dict:
     d = json.loads(json.dumps(base))
     name = _clean(words, 40) or base["name"]
     d.update({"id": _slug(name), "name": name[:1].upper() + name[1:],
-              "blurb": f"{base['blurb']} Described as: {_clean(words, 80)}"[:160]})
+              "blurb": f"{base['blurb']} Described as: {_clean(words, 80)}"[:160],
+              "scene": scene_from_words(words, kit)})
     d.pop("builtin", None)
+    d.pop("scene_custom", None)
     return d

@@ -1571,6 +1571,16 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
     was garbage per frame.
   - **Measured at the same size** (1440x900 at pixel ratio .5, SwiftShader): an empty scene
     111-128 ms, the old worlds 127-161, these 182-207. On a real GPU all of it is noise.
+- **A scene's look is designed by the AI from words, and only that way** (the owner's call:
+  "the AI should design it, not an option to build from scratch"). `world.SCENE`/`PROPS` are
+  the closed set, `scene_of` checks each field alone and names what it drops, and
+  `POST /api/world/scene` asks `executors.ask_once` with `scene_prompt`, then `read_scene`
+  MERGES onto the look it had, so "make it teal" keeps the snow. `scene_from_words` answers
+  when no brain does, whole words only ("pink" once matched "ink"). A built-in world stores
+  only its look in its own `worlds` row and never changes setting; `original` clears it.
+  `_KIT_NOTE` tells the designer what a setting cannot show (rain on the moon). Do not add a
+  field-by-field picker. 01f reads the look through `wlScene()` and gates every prop with
+  `wlHas`; the test checks each prop and field is drawn.
 - **A name tag is anchored at the agent's SPOT, not the sprite** (`worldPlaceTags` uses
   `c.home`). It spans the character from the crystal to the feet so tapping the person opens the
   card, and it must not hop with a cheer or pace with a restless agent: a target that moves every

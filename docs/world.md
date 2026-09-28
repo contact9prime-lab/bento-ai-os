@@ -74,6 +74,33 @@ says so.
 
 ![A world built from "a night bakery where the bread rises at 3am": The Proving Hour, drawn in the garden setting, with feelings like Vigil, Rising and Warmth](screenshots/world-built.png)
 
+### Design how it looks
+
+Any world can be given a new look, the built-in ones included. Open the menu, say how you
+want it to look under **Design this scene** ("a snowy night with a pink sky and blue
+lanterns", "no boats", "stormy dusk with gold lights") and press **Design it**. Your
+machine's brain picks from a small closed set, and the scene is redrawn:
+
+| | Choices |
+|---|---|
+| Time | the real hour, dawn, day, dusk or night |
+| Weather | clear, clouds, rain, snow, petals or fireflies |
+| Sky | natural, rose, violet, teal, gold or storm |
+| Water | teal, blue, jade, violet, amber or ink |
+| Ground | natural, sand, snow, moss, rust or ash |
+| Lights | red, amber, gold, blue, violet, green or white |
+| Things in it | canal: houses, bridge, pagoda, lanterns, boats, trees. Moon base: domes, tower, dish, solar panels, rover, shuttle. Garden: pond, lanterns, trees, flowers, path |
+
+A second description changes only what it names, so "make it teal" after a snowy night
+keeps the snow. There is no picker to set each one by hand, on purpose: you describe it and
+the AI designs it. **Undo** puts back the look it had before, and **Original look** takes a
+built-in world back to how it shipped. A built-in world keeps its setting; to change that,
+build your own world. With no brain answering, the words you used are matched against the
+choices and the menu says so. The look is yours and stays when you reset the world's
+feelings.
+
+![Lantern Canal redesigned from "a snowy night with a pink sky and blue lanterns": snow falling over the quay, a rose night sky, blue lanterns, and the menu saying "Designed by AI (claude-code): night, snow, rose sky, teal water, blue lights" with Undo and Original look](screenshots/world-scene-designed.png)
+
 ## Your lead asks how you are
 
 Once a day in each world, your lead asks in that world's voice. Pick an answer and add a
@@ -95,7 +122,7 @@ Feelings never change the rules. The paragraph they get says so in words: never 
 refused step, never ask for more access because of a feeling, never make you responsible
 for their mood. The permission gate is not consulted any differently.
 
-![The world's menu: the three built-in worlds with their feelings and ladders, Build your own, Agents feel it, Ask me again, Reset this world and Leave the world](screenshots/world-menu.png)
+![The world's menu: the three built-in worlds and one built from a description, each with its feelings and ladder, Design this scene, Build your own, Agents feel it, Ask me again, Reset this world and Leave the world](screenshots/world-menu.png)
 
 ## Leaving puts it to sleep
 
@@ -131,7 +158,10 @@ software rendering) gets a flat drawing of the same world, and the menu says why
 - Reduced motion gets a still world.
 - Each world is 17,000 to 29,000 triangles in 49 to 182 draw calls. The town's fixed parts
   are merged, which is what keeps the canal at 182.
-- The lead's reply and building a world are one brain call each, and only when you ask.
+- The lead's reply, building a world and designing its look are one brain call each, and
+  only when you ask.
+- A designed look costs the same as the original, within the noise of the measurement:
+  weather is one set of particles, and leaving things out makes a scene a little cheaper.
 
 ## Faces
 

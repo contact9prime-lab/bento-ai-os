@@ -42,6 +42,16 @@ drawn in 182 calls, because its static parts are merged (1,086 without that). A 
 to 207 ms, where an empty scene costs 111 to 128. So software rendering and phones get a lighter
 version: no shadows, cheaper water and sky, and 5 frames a second at rest instead of 12.
 
+**Design how a world looks by describing it.** Under **Design this scene** in the world's
+menu, say how you want it ("a snowy night with a pink sky and blue lanterns", "no boats") and
+the AI redraws it: the time of day, the weather (rain, snow, petals, fireflies), the colour of
+the sky, water, ground and lights, and which things are in it. It works on the built-in worlds
+too, and a second description changes only what it names. **Undo** puts back the look before,
+and **Original look** returns a built-in world to how it shipped. There are no pickers, on
+purpose: you describe it and the AI designs it. Tried live on Claude Code on all three
+settings. A designed look costs the same to draw as the original, within the noise of the
+measurement.
+
 ## 0.6.6 — 2026-09-27
 
 **Claude Code, Gemini CLI and Codex can work on one team.** Any agent can now be pinned to

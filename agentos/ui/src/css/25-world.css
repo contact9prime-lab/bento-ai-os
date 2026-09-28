@@ -65,6 +65,8 @@ body.has-win #world-ui *{pointer-events:none!important}
 .wd-build{display:flex;gap:8px;align-items:flex-start}
 .wd-build textarea{flex:1;min-height:44px;resize:vertical;border-radius:10px;padding:8px;font:inherit;font-size:13px;
   border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);background:var(--bg);color:var(--txt)}
+.wd-looked p,.wd-built p{margin:8px 0 0;font-size:12.5px;line-height:1.4}
+.wd-looked .wd-acts{margin-top:8px}
 .wd-row{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px;cursor:pointer;min-height:var(--tap,28px)}
 .wd-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
 .wd-acts small{color:var(--txt2)}

@@ -416,6 +416,12 @@ function worldMenuHTML(){
     <div class="wd-worlds">${list.map(w=>`<button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${esc(w.id)}')">
         <b>${esc(w.name)}</b><span>${esc(w.emotions.slice(0,6).map(e=>e.emoji).join(' '))}</span>
         <small>${esc(w.ladder.join(' → '))}</small></button>`).join('')||'<small>loading…</small>'}</div>
+    <div class="wd-h">Design this scene</div>
+    <div class="wd-build"><textarea id="wd-look" rows="2" placeholder="A snowy night with blue lanterns and no boats…">${esc(WORLD.lookWords||'')}</textarea>
+      <button class="endbtn" onclick="worldLook(this)">Design it</button></div>
+    <div class="wd-looked">${WORLD.lookOut||''}${WORLD.undoLook||(v.world.builtin&&v.world.scene_custom)?`<div class="wd-acts">
+      ${WORLD.undoLook?'<button class="endbtn" onclick="worldLookUndo()">Undo</button>':''}
+      ${v.world.builtin&&v.world.scene_custom?'<button class="endbtn" onclick="worldLookSet({original:true},\'Back to how it shipped\')">Original look</button>':''}</div>`:''}</div>
     <div class="wd-h">Build your own</div>
     <div class="wd-build"><textarea id="wd-desc" rows="2" placeholder="A night bakery where bread rises at 3am…"></textarea>
       <button class="endbtn" onclick="worldDesign(this)">Build it</button></div>
@@ -433,7 +439,7 @@ function worldMenuHTML(){
 function pInfoSafe(t){return typeof pInfo==='function'?pInfo(t):''}
 async function worldGo(id){
   if(!await worldEnter(id))return toast('could not open that world');
-  WORLD.menu=false;WORLD.moods={};WORLD.bubbles={};await worldBuild();
+  WORLD.menu=false;WORLD.moods={};WORLD.bubbles={};WORLD.lookOut='';WORLD.undoLook=null;WORLD.lookWords='';await worldBuild();
 }
 async function worldPost(url,body,method){
   const r=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
@@ -464,6 +470,37 @@ async function worldDesign(btn){
     setTimeout(()=>worldGo(d.world.id),1400);
   }catch(e){toast(e.message)}
   finally{btn.disabled=false;btn.textContent='Build it'}
+}
+/* The look is designed by the AI from a description, and only that way: there is no
+   field-by-field picker, on purpose. Undo puts back the look it had before. */
+async function worldLook(btn){
+  const box=document.getElementById('wd-look');const words=(box&&box.value||'').trim();
+  if(words.length<3)return toast('describe how it should look, a few words is enough');
+  WORLD.lookWords=words;
+  btn.disabled=true;btn.textContent='Designing…';
+  try{
+    const d=await worldPost('/api/world/scene',{world:WORLD.id,description:words});
+    WORLD.undoLook={prev:d.previous};
+    const sc=d.world.scene||{};
+    WORLD.lookOut=`<p>${d.how==='brain'?'Designed by AI'+(d.who?' ('+esc(d.who)+')':''):'Designed from your words'}: `+
+      esc([sc.time==='live'?'the real hour':sc.time,sc.weather,sc.sky!=='natural'?sc.sky+' sky':'',sc.water+' water',sc.accent+' lights'].filter(Boolean).join(', '))+'.</p>'+
+      (d.said?`<p class="wd-why">${esc(d.said)}</p>`:'')+
+      (d.dropped&&d.dropped.length?`<p class="wd-why">Left out: ${esc(d.dropped.join('; '))}.</p>`:'');
+    await worldLookApply(d);
+  }catch(e){toast(e.message)}
+  finally{btn.disabled=false;btn.textContent='Design it'}
+}
+async function worldLookApply(d){
+  if(d.state&&d.state.live)WORLD.v=d.state;
+  await worldBuild();worldListLoad();
+}
+async function worldLookSet(body,msg){
+  try{const d=await worldPost('/api/world/scene',Object.assign({world:WORLD.id},body));
+    WORLD.lookOut='';WORLD.undoLook=null;await worldLookApply(d);toast(msg)}catch(e){toast(e.message)}
+}
+function worldLookUndo(){
+  const u=WORLD.undoLook;if(!u)return;
+  worldLookSet(u.prev?{scene:u.prev}:{original:true},'The scene is back how it was');
 }
 /* An agent's card: the feeling, every real cause, how far it has grown, who it works
    with, and one thing you can do: a pat on the back. */

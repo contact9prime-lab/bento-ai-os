@@ -375,3 +375,79 @@ def test_every_world_is_drawn_and_every_feeling_shows():
     assert look.count("new T.Fog(") == 1
     # a hidden tab or a covered desktop draws nothing
     assert "worldCovered()" in scene.split("function worldFrame(", 1)[1].split("\n}", 1)[0]
+
+
+# ------------------------------------------------------------------ designing the look
+
+
+def test_a_scene_is_held_to_its_closed_set():
+    sc, dropped = world.scene_of("canal", {"time": "night", "weather": "lava", "sky": "rose",
+                                           "props": ["bridge", "castle", "boats"], "mood": "x"})
+    assert sc["time"] == "night" and sc["sky"] == "rose"
+    assert sc["weather"] == world.KIT_SCENE["canal"]["weather"], "an invented value keeps the default"
+    assert sc["props"] == ["bridge", "boats"]
+    assert any("lava" in x for x in dropped) and any("castle" in x for x in dropped)
+    assert any("mood" in x for x in dropped)
+    # nothing named means everything there
+    assert world.scene_of("orbit", None)[0]["props"] == list(world.PROPS["orbit"])
+
+
+def test_a_built_in_world_keeps_its_setting_and_can_go_back(store):
+    w = world.world(store, "lantern-canal")
+    assert not w.get("scene_custom")
+    new, _ = world.set_scene(store, "lantern-canal", {"time": "night", "weather": "snow"})
+    assert new["scene"]["weather"] == "snow" and new["scene_custom"] and new["kit"] == "canal"
+    # the look is kept when the world's feelings are reset, and belongs to this person
+    world.enter("", store, "lantern-canal", ["researcher"])
+    world.reset("", store, "lantern-canal")
+    assert world.world(store, "lantern-canal")["scene"]["weather"] == "snow"
+    assert world.view("")["world"]["scene"]["weather"] == "snow", "the live scene draws the new look"
+    with pytest.raises(ValueError):
+        world.set_scene(store, "lantern-canal", {}, kit="orbit")
+    back, _ = world.set_scene(store, "lantern-canal", None)
+    assert back["scene"] == world.scene_of("canal", None)[0] and not back.get("scene_custom")
+
+
+def test_a_world_of_your_own_may_change_its_setting(store):
+    d, _ = world.validate(world.from_words("a quiet canal town"))
+    saved, _ = world.save_custom(store, d)
+    new, _ = world.set_scene(store, saved["id"], {"weather": "rain"}, kit="garden")
+    assert new["kit"] == "garden" and new["scene"]["weather"] == "rain"
+    assert set(new["scene"]["props"]) <= set(world.PROPS["garden"])
+
+
+def test_scene_words_match_whole_words_and_the_last_one_wins():
+    sc = world.scene_from_words("a snowy night with a pink sky and blue lanterns", "canal")
+    assert sc["time"] == "night" and sc["weather"] == "snow" and sc["sky"] == "rose"
+    assert sc["accent"] == "blue" and sc["water"] != "ink", "'pink' is not 'ink'"
+    base = world.scene_of("canal", {"weather": "rain", "time": "dusk"})[0]
+    sc = world.scene_from_words("make it teal", "canal", base)
+    assert sc["weather"] == "rain" and sc["time"] == "dusk", "a follow-up changes only what it names"
+
+
+def test_read_scene_merges_onto_the_look_it_had():
+    base = world.scene_of("orbit", {"time": "night"})[0]
+    sc, dropped = world.read_scene('Sure: {"weather": "snow", "accent": "plaid"}', "orbit", base)
+    assert sc["time"] == "night" and sc["weather"] == "snow"
+    assert sc["accent"] == base["accent"] and any("plaid" in x for x in dropped)
+    with pytest.raises(ValueError):
+        world.read_scene("no json here", "orbit", base)
+
+
+def test_the_look_draws_every_field_and_is_designed_only_by_ai():
+    js = ROOT / "agentos" / "ui" / "src" / "js"
+    look = (js / "01f-world-look.js").read_text()
+    for field in ("time", "weather", "sky", "water", "ground", "accent"):
+        assert f"wlScene().{field}" in look or f"sc.{field}" in look, field
+    for w in world.SCENE["weather"]:
+        if w != "clear" and w != "clouds":
+            assert f"'{w}'" in look, w
+    for kit, props in world.PROPS.items():
+        body = look.split(f"  {kit}(T,scene,cam){{", 1)[1].split("\n  }", 1)[0]
+        for p in props:
+            assert f"wlHas('{p}')" in body, f"{kit}: {p} can be left out"
+    scene = (js / "01e-world.js").read_text()
+    menu = scene.split("function worldMenuHTML(", 1)[1].split("\n}", 1)[0]
+    assert "worldLook(this)" in menu
+    # described, never picked: no select boxes or swatches for the scene fields
+    assert "<select" not in menu and "type=\"range\"" not in menu
