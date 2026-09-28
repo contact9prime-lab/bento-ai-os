@@ -1,0 +1,112 @@
+/* ================= the World scene (experimental, 01e-world.js) =================
+   The 3D world fills the wallpaper layer; its name tags, the lead's question and an
+   agent's card sit in the desktop layer above it, below every window. Like the home
+   scene, all of it steps back while a window is open (has-win), and only the tags and
+   cards take taps. Colours come from the theme's tokens; each tag's ring is the hue of
+   the feeling it shows (--mh). */
+#world-scene{position:absolute;inset:0;overflow:hidden}
+#world-scene .wd-cv{width:100%;height:100%;display:block}
+#world-scene.flat .wd-cv{display:none}
+#world-scene.flat{background:linear-gradient(#27406b,#4a7aa0 55%,#1f7f78 56%,#16585a)}
+#world-scene.flat[data-kit="orbit"]{background:radial-gradient(circle at 20% 110%,#2e6fd8 0 34%,transparent 35%),#03040b}
+#world-scene.flat[data-kit="garden"]{background:linear-gradient(#9fd3ff,#cfe9ff 50%,#6aa84f 51%,#4f8a3a)}
+body.imm-world #wall.has::after{display:none}
+/* a soft shade under the greeting and the prompt bar: a noon sky is brighter than any
+   wallpaper, and the white words over it must still read */
+#world-scene::after{content:"";position:absolute;inset:0 0 auto;height:55%;pointer-events:none;
+  background:linear-gradient(rgba(6,10,26,.46),rgba(6,10,26,.18) 60%,transparent)}
+#world-ui{position:absolute;inset:0;z-index:5;pointer-events:none;transition:opacity var(--d-slow,.3s) var(--ease-out,ease)}
+body.has-win #world-ui,body.deck-full #world-ui,body.exposing #world-ui{opacity:0}
+body.has-win #world-ui *{pointer-events:none!important}
+#world-ui .wd-tags{position:absolute;inset:0}
+
+.wd-tag{position:absolute;left:0;top:0;pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;
+  background:none;border:0;padding:var(--ch,0) 0 0;cursor:pointer;color:var(--txt);font:inherit;min-width:max(var(--tap,32px),calc(var(--ch,0px)*.55));min-height:var(--tap,28px)}
+.wd-tag .wd-name{display:flex;align-items:center;gap:4px;margin-top:2px;padding:2px 8px 2px 6px;border-radius:7px;font-size:11.5px;font-weight:600;white-space:nowrap;
+  color:#fff;background:rgba(10,14,28,.58);text-shadow:0 1px 2px rgba(0,0,0,.5);
+  box-shadow:inset 0 -2px 0 hsl(var(--mh,200) 75% 62% / .9),0 3px 10px rgba(0,0,0,.25)}
+.wd-tag .wd-name b{font-weight:400;font-size:12px}
+.wd-tag.busy .wd-name::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--acc);box-shadow:0 0 6px var(--acc);animation:wdPulse 1.2s ease-in-out infinite}
+.wd-tag:focus-visible .wd-name{outline:2px solid var(--acc);outline-offset:2px}
+.wd-say{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:max-content;max-width:210px;
+  padding:7px 11px;border-radius:14px;font-size:12.5px;line-height:1.3;white-space:normal;text-align:center;
+  background:#fffdf7;color:#1d1a26;box-shadow:0 6px 18px rgba(0,0,0,.3);animation:wdPop .25s var(--ease-out,ease)}
+.wd-say::after{content:"";position:absolute;left:50%;bottom:-5px;width:10px;height:10px;background:inherit;transform:translateX(-50%) rotate(45deg)}
+.wd-tag.flat{top:auto;bottom:124px;transform:translateX(-50%);padding-top:0}
+.wd-flatav{width:40px;height:65px;image-rendering:pixelated}
+.wd-tag.flat.wx-tantrum .wd-flatav{animation:wdShake .25s infinite}
+.wd-tag.flat.wx-cheer .wd-flatav,.wd-tag.flat.wx-sparkle .wd-flatav{animation:wdHop .6s infinite}
+.wd-tag.flat.wx-slump .wd-flatav,.wd-tag.flat.wx-sulk .wd-flatav{transform:scaleY(.88) translateY(6px)}
+.wd-tag.flat.wx-sulk .wd-flatav{transform:scaleX(-1) scaleY(.9) translateY(6px)}
+.wd-tag.flat.wx-doze .wd-flatav{transform:rotate(10deg)}
+.wd-tag.flat.wx-shiver .wd-flatav{animation:wdShake .12s infinite}
+@keyframes wdShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px) rotate(-4deg)}75%{transform:translateX(3px) rotate(4deg)}}
+@keyframes wdHop{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes wdPop{from{opacity:0;translate:0 8px}to{opacity:1;translate:0 0}}
+@keyframes wdPulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.wd-say,.wd-tag.busy .wd-name::after,.wd-tag.flat .wd-flatav{animation:none!important}}
+
+/* the world's chip, top left under the menu bar, and its menu */
+.wd-chip{position:absolute;left:16px;top:44px;pointer-events:auto;max-width:min(360px,calc(100vw - 32px))}
+.wd-chipb{display:flex;align-items:center;gap:8px;min-height:var(--tap,32px);padding:6px 12px;border-radius:999px;border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);
+  background:color-mix(in srgb,var(--bg) 72%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--txt);font:inherit;cursor:pointer}
+.wd-exp{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;
+  background:color-mix(in srgb,var(--acc) 22%,transparent);color:var(--txt)}
+.wd-menu{margin-top:8px;padding:14px;border-radius:16px;max-height:calc(100vh - 200px);overflow:auto;
+  background:color-mix(in srgb,var(--bg2) 96%,transparent);border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);box-shadow:var(--el-4,0 12px 36px rgba(0,0,0,.35))}
+.wd-blurb{margin:0 0 8px;color:var(--txt2);font-size:13px}
+.wd-why{margin:6px 0;color:var(--txt2);font-size:12px}
+.wd-h{margin:12px 0 6px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--txt2)}
+.wd-worlds{display:grid;gap:6px}
+.wd-w{display:grid;grid-template-columns:1fr auto;gap:2px 8px;text-align:left;padding:8px 10px;border-radius:12px;cursor:pointer;min-height:var(--tap,32px);
+  border:1px solid color-mix(in srgb,var(--txt) 10%,transparent);background:color-mix(in srgb,var(--bg) 60%,transparent);color:var(--txt);font:inherit}
+.wd-w small{grid-column:1/-1;color:var(--txt2);font-size:11px}
+.wd-w.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.wd-build{display:flex;gap:8px;align-items:flex-start}
+.wd-build textarea{flex:1;min-height:44px;resize:vertical;border-radius:10px;padding:8px;font:inherit;font-size:13px;
+  border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);background:var(--bg);color:var(--txt)}
+.wd-looked p,.wd-built p{margin:8px 0 0;font-size:12.5px;line-height:1.4}
+.wd-looked .wd-acts{margin-top:8px}
+.wd-row{display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13px;cursor:pointer;min-height:var(--tap,28px)}
+.wd-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;align-items:center}
+.wd-acts small{color:var(--txt2)}
+.wd-note{margin:12px 0 0;color:var(--txt2);font-size:11.5px}
+
+/* an agent's card, and the lead's question: bottom centre, above the dock */
+.wd-side{position:absolute;right:20px;top:44px;width:min(340px,calc(100vw - 32px));display:flex;flex-direction:column;gap:10px}
+.wd-card,.wd-ask{position:relative;pointer-events:auto;
+  padding:14px 16px;border-radius:18px;background:color-mix(in srgb,var(--bg2) 96%,transparent);color:var(--txt);
+  border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);box-shadow:var(--el-4,0 12px 36px rgba(0,0,0,.35));animation:wdPop .22s var(--ease-out,ease)}
+.wd-card{border-top:3px solid hsl(var(--mh,200) 70% 60%)}
+.wd-card[hidden],.wd-ask[hidden]{display:none}
+.wd-x{position:absolute;right:8px;top:8px;width:var(--tap,30px);height:var(--tap,30px);border-radius:50%;border:0;background:transparent;color:var(--txt2);cursor:pointer;font-size:14px}
+.wd-who{display:flex;gap:12px;align-items:center}
+.wd-face{width:44px;height:44px;border-radius:12px;image-rendering:pixelated;background:color-mix(in srgb,var(--txt) 8%,transparent)}
+.wd-feel{color:var(--txt2);font-size:13px;margin-top:2px}
+.wd-because{margin:0;padding-left:18px;font-size:13px;line-height:1.5}
+.wd-because small{color:var(--txt2)}
+.wd-because code{font-size:11.5px}
+.wd-quiet,.wd-under,.wd-friend{margin:8px 0 0;font-size:12.5px;color:var(--txt2)}
+.wd-grow{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;font-weight:600}
+.wd-grow i{flex:1;height:6px;border-radius:3px;background:color-mix(in srgb,var(--txt) 12%,transparent);position:relative;overflow:hidden}
+.wd-grow i::after{content:"";position:absolute;inset:0;width:var(--p,10%);background:var(--acc-grad,var(--acc))}
+.wd-grow small{font-weight:400;color:var(--txt2)}
+.wd-pat{margin-top:12px;width:100%}
+.wd-q,.wd-reply{margin:4px 0 0;font-size:14px;line-height:1.4}
+.wd-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:6px;margin-top:12px}
+.wd-ch{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;min-height:var(--tap,44px);border-radius:12px;cursor:pointer;font:inherit;font-size:12.5px;
+  border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);background:color-mix(in srgb,var(--bg) 60%,transparent);color:var(--txt)}
+.wd-ch span{font-size:20px}
+.wd-ch:hover{border-color:var(--acc)}
+.wd-ask input{width:100%;margin-top:10px;padding:9px 10px;border-radius:10px;font:inherit;font-size:13px;
+  border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);background:var(--bg);color:var(--txt)}
+
+body.dev-mobile .wd-chip{top:auto;bottom:100px;left:12px}
+body.dev-mobile .wd-side{top:auto;bottom:150px;right:auto;left:50%;transform:translateX(-50%);flex-direction:column-reverse}
+body.dev-mobile .wd-menu{max-height:60vh}
+/* the office chip is the Office app's door; in the World it only covers the people */
+body.imm-world .hm-play{display:none!important}
+body.dev-mobile .wd-tag .wd-name{font-size:10.5px;padding:2px 6px 2px 5px;max-width:84px;overflow:hidden;text-overflow:ellipsis}
+body.dev-mobile .wd-say{max-width:150px;font-size:11.5px}
+/* a phone has room for the greeting, the bar and the world; the suggestions step aside */
+body.imm-world.dev-mobile .hm-chips,body.imm-world.dev-mobile .hm-now{display:none!important}

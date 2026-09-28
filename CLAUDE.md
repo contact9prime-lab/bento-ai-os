@@ -1517,6 +1517,79 @@ things keep it true:
   `@<your specialist> ask <name>@<link>: `, never sent, because a question to a linked team goes
   through one of YOUR agents under the matrix; there is no second path.
 
+## The World: feelings that exist only while their scene is on
+
+`agentos/world.py` + `01e-world.js` (lease, state, cards) + `01f-world-look.js` (everything the
+eye sees) + `25-world.css` + the `worlds` table. An experimental scene
+where the team lives in a 3D place (three.js, vendored MIT at `ui/assets/three.module.min.js`,
+imported only by this scene) with feelings, growth and friendships, and the lead asks how the
+person is once a day. The owner's rule is the design: "the moment I leave the world scene it's
+all evaporated, and it comes back when I switch to that world. Scene matters." Full story in
+`docs/world.md`; `tests/test_world.py` pins what follows.
+
+- **A world is live only under the scene's LEASE** (`enter`/`beat`/`leave`, `LEASE_S`). Out of
+  it `observe` returns before reading anything, `inner_note` is empty and the state routes answer
+  `live: false`. The state sleeps in the person's own database and is loaded on the next enter.
+  Nothing but world.py and 01e call any of it; the test fails if the Office, Chat, Telegram,
+  WhatsApp, the TUI or another page file names it. Do not surface a feeling anywhere else.
+- **Every feeling is an event** (SIGNALS, a closed set with the words `why` shows), fed from the
+  two broadcasts (`worldmod.observe(event, uid)`), fabric's step events carrying `outcome` (the
+  one `step_outcome` function) and `untrusted`, chat turns attributed to the lead (a specialist's
+  chat turn is counted once, by its run). A run that finished after a refusal is muted pride
+  (`scale`), found live when the refused researcher came back "Proud".
+- **Your "no" is never guilt.** `GENTLE` signals (`declined`, `you_low`) may only trigger
+  valence ≥ 0; `validate` drops the mapping and names it, for built-in and designed worlds alike.
+- **Feelings never outrank the rules.** "Agents feel it" (`inner`, off by default) adds ONE
+  paragraph to the lead's `_system`, a specialist's `_persona` and a forwarded lead's context,
+  saying so in words. The person's own words go to the lead only. The gate is never consulted
+  differently; nothing here is a capability.
+- **Worlds are definitions over closed sets** (`KITS` the page can draw, `EXPRESSIONS` it can
+  animate, `SIGNALS`). A designed world is read field by field (`read_design`/`validate`, an
+  invented field dropped and NAMED); `from_words` answers when no brain does and the route says
+  so. Labels are cut at a word (`_cut`).
+- **The scene's traps, each found in a screenshot**: a rebuild needs a FRESH canvas (the old
+  context is lost on purpose and a new renderer on it fails, which came up white and flat);
+  characters start at their place (walking in from the origin took seconds on software
+  rendering); eight bubbles at once is a wall, so a whole-team change lets two speak; slow
+  frames halve the pixel ratio (`worldPace`); nothing draws under `crewCovered()`.
+- **The look is 01f, and a kit is a contract.** Each `WORLD_KITS` entry builds a place and returns
+  `spots` (nearest first, the lead takes the first), `camWide`/`camTall`, `busy`, `vessel`,
+  `light(day)` and `tick(t,dt)`, called in that order (tick reads what light worked out). The
+  first cut was boxes and a flat sky, and the owner's word was "blah"; what carries it now is a
+  water shader (Fresnel sky, sun glints, lamp streaks at night), a sky shader that follows the
+  real hour, halos instead of bloom, and a mood crystal over each head coloured by valence. Four
+  things keep it affordable, each measured on SwiftShader:
+  - **Static props are BAKED** (`wlBake`): meshes sharing a material merge into one. The canal
+    town went from 1,086 draw calls to 182. That only works because materials are SHARED by key
+    within a build (`wlMat`, reset with `WL_MAT={}` at the top of each kit). A prop that makes
+    its own `new MeshStandardMaterial` is a draw call per copy again.
+  - **`WORLD.hq` is decided once per build** (`worldQuality`): software rendering (SwiftShader,
+    llvmpipe) and phones get no shadows, three noise octaves instead of five, four lamp
+    streaks instead of eight, and 5 frames a second at rest instead of 12. `world.quality` in
+    localStorage overrides it, which is how the doc screenshots are taken.
+  - **One fog per scene, recoloured** (`wlFog`). `light()` runs every frame, and a `new Fog` there
+    was garbage per frame.
+  - **Measured at the same size** (1440x900 at pixel ratio .5, SwiftShader): an empty scene
+    111-128 ms, the old worlds 127-161, these 182-207. On a real GPU all of it is noise.
+- **A scene's look is designed by the AI from words, and only that way** (the owner's call:
+  "the AI should design it, not an option to build from scratch"). `world.SCENE`/`PROPS` are
+  the closed set, `scene_of` checks each field alone and names what it drops, and
+  `POST /api/world/scene` asks `executors.ask_once` with `scene_prompt`, then `read_scene`
+  MERGES onto the look it had, so "make it teal" keeps the snow. `scene_from_words` answers
+  when no brain does, whole words only ("pink" once matched "ink"). A built-in world stores
+  only its look in its own `worlds` row and never changes setting; `original` clears it.
+  `_KIT_NOTE` tells the designer what a setting cannot show (rain on the moon). Do not add a
+  field-by-field picker. 01f reads the look through `wlScene()` and gates every prop with
+  `wlHas`; the test checks each prop and field is drawn.
+- **A name tag is anchored at the agent's SPOT, not the sprite** (`worldPlaceTags` uses
+  `c.home`). It spans the character from the crystal to the feet so tapping the person opens the
+  card, and it must not hop with a cheer or pace with a restless agent: a target that moves every
+  frame is one a finger misses (Playwright refused to click it as "not stable", which is the
+  same finding). A busy agent's tag goes with it.
+- **The mood effects are sprites from one painted set** (`wlFxTex`, `WORLD_FX`), keyed by
+  expression, so a new expression is a row there and a pose in `worldPose`. The effect table
+  names only real `EXPRESSIONS`; the test checks it.
+
 **A server older than its page is the commonest failure after an update, so it is designed
 for.** Reported as: after `bento update`, the Office "could not load", Executors and the agents
 map sat on "loading…", and "＋ New agent" never appeared. The pull put a new `index.html` on disk

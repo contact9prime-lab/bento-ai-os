@@ -433,6 +433,11 @@ Every agent, and you, has a pixel character painted by the server from a stored 
 Chat, approvals, Logs, the Office and the terminal. Describe one in words, or let "Draft it" design
 it with a new specialist.
 
+**The World** is an experimental scene where your team lives with feelings that come from what
+really happened: a refused step is a tantrum, finished work is pride, and your lead asks how you
+are once a day. Pick another scene and all of it sleeps until you come back.
+[The World →](docs/world.md)
+
 ---
 
 ## What the agent can do

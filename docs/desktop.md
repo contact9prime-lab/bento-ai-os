@@ -304,6 +304,10 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   would be telling you something untrue about what you have.
 
   ![The same scene on a machine with no specialists: the agent alone, under the line "No specialists yet — ask for one and they take a place here"](screenshots/crew-scene-empty.png)
+- **Two more scenes: Office and World.** Office draws the whole office behind your windows
+  ([The Office](office.md)). World, which is experimental, puts your team in a small 3D place
+  where they have feelings that come from what they really do, and your lead asks how you are.
+  It all sleeps the moment you pick another scene ([The World](world.md)).
 - **Toasts and panels.** A toast says what KIND of news it is before you read it: a green tick
   for something done, amber for a warning, red for a failure, the accent for anything else — worked
   out from the sentence itself, so every one of the few hundred toasts in the apps got it without an

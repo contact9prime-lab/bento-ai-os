@@ -38,6 +38,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [The living desktop](experience.md) | Motion & design tokens, window management, the agent's hands, proactivity, the agent-led first run |
 | [The Agent](agent.md) | How the agent works, the full tool set, autonomy levels, policies, memory, soul, skills |
 | [Files your agents make](files.md) | Open a deck or a report from the chat that mentions it, get it on your phone, or find it in the Office's filing cabinet |
+| [The World](world.md) | An experimental scene where your agents live with feelings that come from what they really do, grow in their own world, and your lead asks how you are. It all sleeps when you leave the scene |
 | [The Office](office.md) | A comic-strip office where you watch your agents work: papers to desks, agents walking over to ask each other, huddles round the meeting table, and a designer for the look |
 | [Agents](agents.md) | Every agent's brain (AI providers), hands (executors: tools, folders, web, MCP), permissions and skills — and the map of who reaches what |
 | [The team](team.md) | Each agent on its own brain (a provider model, or Claude Code, Gemini CLI or Codex), huddles, the matrix of who may ask whom, swarm and democracy (2 of 3 decide), and linked teams |

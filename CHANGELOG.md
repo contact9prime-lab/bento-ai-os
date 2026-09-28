@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.6.7 — 2026-09-27
+
+**The World: your agents with feelings (experimental).** A new desktop scene (Settings →
+Appearance → Scene → World) where your team lives in a small 3D place and feels what
+really happens to it. A step the rules refuse makes an agent flustered, with a tantrum and
+papers flying. Waiting for your yes makes it pace. Finishing a task makes it proud, and
+helping a colleague makes it wave. Tap anyone to see why they feel the way they do.
+
+Three worlds are built in and each has its own feelings and its own way to grow:
+- **Lantern Canal**, a canal town, from Deckhand to River sage;
+- **Kestrel Station**, a moon base under a blue planet, from Cadet to Station legend;
+- **The Wild Garden**, where the flowers grow with the team, from Seed to Old oak.
+
+You can also describe your own world in a sentence and your machine's brain builds it.
+
+Once a day your lead asks how you are, in that world's voice, and answers you. Tick
+**Agents feel it** and each agent is told how it feels before its work, and your lead hears
+how you said you are, which changes their tone and approach but never the rules. Your "no"
+and your hard days only ever make your agents gentler; no world can make them sad about
+it.
+
+All of it lives in the scene. Pick another scene and it goes to sleep: nothing is felt,
+nothing is told to any agent, and nothing shows anywhere else. It comes back when you
+return. Tried live on Claude Code: a real refusal made the researcher throw its tantrum, the
+lead answered "choppy, big launch tomorrow" in the canal's voice, and a world was built
+from "a night bakery where the bread rises at 3am".
+
+**And it looks like a place.** The canal is a town at the head of a waterway, with timber
+houses, a vermilion bridge, a pagoda, willows and cherry trees. Lanterns hang over the water
+and each one's light streaks across it at night. The sky follows the real hour with its sun,
+moon, stars and drifting clouds. Kestrel Station is a moon base under a blue planet, with
+habitat domes, a comms tower and a rover, and busy agents fly shuttles over it. The garden
+is a pond in a clearing with stone lanterns and fireflies. Each agent wears a mood
+crystal that goes from green to red with how the feeling sits, and each feeling has its own
+effect: steam for a tantrum, a rain cloud for gloom, Zs for dozing, hearts, stars and a sweat
+drop. Tap a person to open their card.
+
+Measured on software rendering (SwiftShader, 1440x900 at half resolution): the canal town is
+drawn in 182 calls, because its static parts are merged (1,086 without that). A frame costs 182
+to 207 ms, where an empty scene costs 111 to 128. So software rendering and phones get a lighter
+version: no shadows, cheaper water and sky, and 5 frames a second at rest instead of 12.
+
+**Design how a world looks by describing it.** Under **Design this scene** in the world's
+menu, say how you want it ("a snowy night with a pink sky and blue lanterns", "no boats") and
+the AI redraws it: the time of day, the weather (rain, snow, petals, fireflies), the colour of
+the sky, water, ground and lights, and which things are in it. It works on the built-in worlds
+too, and a second description changes only what it names. **Undo** puts back the look before,
+and **Original look** returns a built-in world to how it shipped. There are no pickers, on
+purpose: you describe it and the AI designs it. Tried live on Claude Code on all three
+settings. A designed look costs the same to draw as the original, within the noise of the
+measurement.
+
 ## 0.6.6 — 2026-09-27
 
 **Claude Code, Gemini CLI and Codex can work on one team.** Any agent can now be pinned to

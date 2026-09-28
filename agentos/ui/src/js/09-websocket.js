@@ -282,6 +282,7 @@ function handle(ev){
   if(ev.type&&ev.type.startsWith('build_')){studioBuildEvent(ev);if(ev.type==='build_thinking')jrPulse=Math.min(1.6,jrPulse+.12);return;}
   const _cid=ev.conversation_id, _cur=!_cid||_cid===currentConv, _s=_cid?STREAMS[_cid]:null;
   const _sk=_cid?CHAT_SINKS.get(_cid):null;
+  if(typeof WORLD!=='undefined'&&WORLD.on)worldHear(ev);   // the World scene, only while it is on
   switch(ev.type){
     case 'state_sync':{ // sent on every (re)connect: what is actually still running
       RUNNING.clear();

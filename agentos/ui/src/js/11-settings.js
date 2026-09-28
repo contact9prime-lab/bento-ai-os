@@ -418,11 +418,11 @@ function setTab(body,all){
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
          stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora: a sky that follows the day'],['movement','Movement: one slow dial of everything'],['crew','Crew: your specialists at work'],['office','Office: the whole office behind your windows']],
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora: a sky that follows the day'],['movement','Movement: one slow dial of everything'],['crew','Crew: your specialists at work'],['office','Office: the whole office behind your windows'],['world','World: your agents with feelings (experimental)']],
           (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
         {desc:'What the wallpaper shows behind your windows.',
-         more:'Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have.',
-         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated'}),
+         more:'Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene.',
+         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental'}),
 
     ],{f:'immersive experience beta look scene movement'}));
   }

@@ -689,6 +689,13 @@ class Agent:
                 mem_text += team_note(store.list_subagents(), prefix="")
             except Exception:
                 pass
+        if self.principal is MAIN:
+            # The World scene's "agents feel it" (experimental): empty unless this
+            # person's world is live AND they turned it on. world.py says why.
+            from . import users as _users, world as _world
+            note = _world.inner_note(_users.current() or "", _world.LEAD)
+            if note:
+                mem_text += "\n\n" + note
         skills = self.toolbox.store.list_skills()
         if skills:
             mem_text += ("\n\nSkills — proven procedures. Load one with `use_skill(name)` BEFORE starting "
