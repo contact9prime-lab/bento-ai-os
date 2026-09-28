@@ -89,6 +89,7 @@ function scenePulse(kind,label,ev){
   if(typeof crewPulse==='function')crewPulse(kind,label,ev);
   if(typeof officePulse==='function')officePulse(kind,label,ev);
   if(typeof playPulse==='function')playPulse(kind,label,ev);     // the play strip (24e): Chat, apps, the bar
+  if(typeof mindPulse==='function')mindPulse(kind,label,ev);     // the Mind scene (01g): a spark along a filament
 }
 function movementPulse(kind,label,ev){
   // The crew scene (01d) rides the same impulses. Forwarding here rather than adding a

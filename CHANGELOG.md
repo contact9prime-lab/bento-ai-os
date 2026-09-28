@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.6.8 — 2026-09-28
+
+**Free talk: let your agents talk among themselves (experimental).** In Settings → Agents →
+Working together → **Let them talk**, pick two to six of your agents, a topic if you like, and
+when it ends: 5, 10 or 20 minutes, or 10, 20 or 40 messages, whichever comes first. It also
+ends when nobody has anything new to say, or when you press Stop. **Talk only** gives them no
+tools at all; **Talk and use their tools** lets them act, and anything that needs you still
+asks. A caution says it can cost money, and you tick that you understand before it starts. No
+agent can start one: there is no tool for it, only your screen and `bento team freetalk`.
+
+Everything is kept. It gets its own thread in Chat, written message by message as they speak.
+The session and every message are runs you can replay in the Run Inspector, and the start and
+the end are rows in the audit ledger. Tried live on Claude Code: three agents talked through
+"our onboarding loses half of new users on day one", ten messages in two and a half minutes.
+The first run found that two agents who kept answering each other held the floor while the
+third never spoke, so nobody waits more than a lap of the room now.
+
+**One place to see your agents talking.** Settings → Agents → Working together →
+**Agent-to-agent talk** lists every time your agents talked to each other: free talks,
+huddles and one agent asking another, each with Open in Chat and Replay the run. In a
+terminal, `bento team log`, and `bento flow events <run>` prints a free talk in full.
+
+**A voice for each agent.** With voice on, or in Jarvis mode, huddles, free talks and one
+agent asking another are heard as well as read, each agent in its own voice (your lead keeps
+the one you chose). Lines are queued instead of cut off, so your lead's reply comes after the
+room. In Jarvis mode you can call a huddle out loud: "at researcher, at writer, should we
+launch on Friday?" reaches the chat as `@researcher @writer …`. Settings → Voice → **Each agent
+speaks in its own voice** turns it off.
+
+**The Mind: see your agents' minds and how they connect.** A new desktop scene (Settings →
+Appearance → Scene → Mind). Your lead is a glowing core, and around it sit Memory,
+Knowledge, Missions and one cluster per specialist. Every memory, entity, mission, skill
+and run this week is a strand from the core; facts in the knowledge graph connect the
+entities, a mission is wired to the specialists on its roster, and two specialists who
+talked this week are joined by an arc. A spark runs out along a strand only when something
+runs. The core listens, thinks and speaks with Jarvis, which uses it as its orb here. Side
+panels show the week, what it holds, your Brief and the team, and **Tell me** has your lead
+say them aloud from the same numbers. `bento mind` prints the same picture in a terminal.
+0.4 to 0.8 ms a frame, at most 30 frames a second, none while covered.
+
+**Pick the voice engine.** Settings → Voice → Voice engine: this browser (still the
+default), this computer (`say`, `piper`, `espeak-ng` or Windows' own voices, offline and
+free), or ElevenLabs, OpenAI or Google Cloud with your key. Every agent keeps its own voice
+on every engine, lines are cached so a replay costs nothing, a key is never shown back, and
+an engine that cannot answer falls back to the browser and says why. `bento voice` shows,
+sets and tries it from a terminal.
+
+**Update from another branch, and take an update back.** When this copy is on another
+branch than the one updates track, Settings → System now offers **Switch to that branch and
+update** instead of only Check now. Every update is recorded, and **Roll back to
+<version>** (or `bento update --rollback`) puts the checkout, its branch and the tracked
+branch back where the last update found them.
+
 ## 0.6.7 — 2026-09-27
 
 **The World: your agents with feelings (experimental).** A new desktop scene (Settings →

@@ -170,10 +170,11 @@ def set_agent_model(store, cfg: dict, name: str, model: str) -> dict:
     return brain
 
 
-def audit_team(store, action: str, resource: str, detail: str):
+def audit_team(store, action: str, resource: str, detail: str, run_id: str = ""):
     """A team setting changed — the talk mode (swarm opens the matrix), the
-    own-providers switch, an agent's model. They decide who may reach whom and who is
-    billed, so they go in the same ledger as the permissions, as the person's act."""
+    own-providers switch, an agent's model — or the person let the team talk (a free
+    talk's start and end, `run_id` its session). They decide who may reach whom and who
+    is billed, so they go in the same ledger as the permissions, as the person's act."""
     try:
         from . import users as _users
         uid = _users.current() or ""
@@ -181,7 +182,7 @@ def audit_team(store, action: str, resource: str, detail: str):
         uid = ""
     store.audit_add(uid=uid, principal_kind="user", principal_id="", action=action,
                     resource=resource, effect="allow", rule="person", outcome="ok",
-                    detail=detail[:1000])
+                    detail=detail[:1000], run_id=run_id)
 
 
 # The team's limits. These are DEFAULTS a person can move in Settings → AI providers →
@@ -240,6 +241,140 @@ HUDDLE_WORDS = 120          # per turn: long enough to argue, short enough to re
 # votes, and a majority decides — 2 of 3, as it was asked for ("the quorum agrees").
 COUNCIL_SIZE = 3
 HUDDLE_CONTEXT = 6_000      # chars of transcript handed to each turn
+
+# Free talk: the person lets the team talk among themselves for a few minutes, about
+# whatever they like or about a topic. It is the one place agents talk with nobody
+# asking them a question, so it only ever starts because a person started it, and it
+# ends on the FIRST of its clock, its message count, a quiet room or Stop. These are
+# ceilings no request can pass: every message is a model call.
+FREE_TALK_MINUTES = (5, 10, 20)     # the choices offered; the last is the ceiling
+FREE_TALK_MESSAGES = (10, 20, 40)   # likewise
+FREE_TALK_MAX_AGENTS = 6
+FREE_TALK_WORDS = 90
+FREE_TALK_MODES = ("talk", "act")   # talk: no tools at all · act: their own tools, under the gate
+
+
+def free_talk_limits(minutes, messages) -> tuple[int, int]:
+    """A request's clock and count, held to the ceilings (a typo of 600 is not a bill)."""
+    def clamp(v, choices, default):
+        try:
+            v = int(v)
+        except (TypeError, ValueError):
+            v = default
+        return max(1, min(choices[-1], v))
+    return clamp(minutes, FREE_TALK_MINUTES, 5), clamp(messages, FREE_TALK_MESSAGES, 20)
+
+
+def free_talk_addressee(text: str, speaker: str, names: list) -> str:
+    """Who a free-talk message is for: an opening `@name`, else the first colleague
+    named anywhere in it. '' when it names nobody."""
+    import re
+    low = str(text or "")
+    others = [n for n in names if n.lower() != (speaker or "").lower()]
+    m = re.match(r"\s*@([\w-]+)", low)
+    if m:
+        hit = next((n for n in others if n.lower() == m.group(1).lower()), "")
+        if hit:
+            return hit
+    best, at = "", len(low) + 1
+    for n in others:
+        f = re.search(r"(?<![\w-])@?" + re.escape(n) + r"(?![\w-])", low, re.I)
+        if f and f.start() < at:
+            best, at = n, f.start()
+    return best
+
+
+def free_talk_next(names: list, transcript: list) -> str:
+    """Who speaks next on an open floor: the one the last message was for, else
+    whoever has waited longest. Never the one who just spoke, so nobody talks to
+    themselves, and nobody waits more than a lap of the room: found live, two agents
+    who kept answering each other held the floor for ten messages while the third
+    never spoke."""
+    if not names:
+        return ""
+    last = transcript[-1] if transcript else None
+    spoke_at = {n: -1 for n in names}
+    for i, e in enumerate(transcript):
+        if e.get("speaker") in spoke_at:
+            spoke_at[e["speaker"]] = i
+    pool = [n for n in names if not last or n != last.get("speaker")] or list(names)
+    longest = min(pool, key=lambda n: (spoke_at[n], names.index(n)))
+    if len(transcript) - spoke_at[longest] > len(names):
+        return longest                                # a whole lap without a word: their turn
+    if last:
+        to = last.get("to") or ""
+        if to and to in names and to != last.get("speaker"):
+            return to
+    return longest
+
+
+def free_talk_text(agents: list, topic: str, transcript: list, reason: str) -> str:
+    """The free talk as the chat stores it: the huddle's own line format, so a reloaded
+    thread draws every message as that agent's bubble with nothing new to parse."""
+    head = (f"[free talk · {', '.join(agents)} · {len(transcript)} message"
+            f"{'s' if len(transcript) != 1 else ''} · {reason}]")
+    lines = [f"@{e['speaker']} ({e['model']}): "
+             + (f"@{e['to']} " if e.get("to") and not str(e['text']).lstrip().startswith("@") else "")
+             + e["text"] for e in transcript]
+    return "\n".join([head] + (lines or ["(nobody had anything to say)"]))
+
+
+TALK_ENDS = {"time": "time was up", "messages": "it reached its message limit",
+             "quiet": "nobody had more to say", "stopped": "you stopped it",
+             "errors": "the agents kept failing", "error": "it broke"}
+
+
+def talk_log(store, limit: int = 60) -> list[dict]:
+    """Every time agents talked to each other, newest first: free talks, huddles and
+    one agent asking another. Read from the runs they already are, so there is no
+    second record to disagree with the first; each entry names the run (open it in
+    the Run Inspector) and the conversation it happened in, when there was one.
+    Settings, the Chat thread and `bento team log` all read this."""
+    import re
+    rows = store.fabric_runs_of(("freetalk", "message", "huddle"), limit=max(50, limit * 8))
+    out, huddles = [], {}
+    for r in rows:
+        kind, inp = r.get("kind"), str(r.get("input") or "")
+        base = {"when": r.get("started_at") or 0, "run_id": r["id"],
+                "conversation_id": r.get("conversation_id") or "", "status": r.get("status") or ""}
+        if kind == "freetalk":
+            if r.get("parent_run"):
+                continue                              # one message: its session carries it
+            first, _, rest = inp.partition("\n\n")
+            m = re.search(r"agents: (.*?) · (\d+) min · (\d+) messages · (.*)$", rest)
+            out.append({**base, "kind": "freetalk",
+                        "who": [x.strip() for x in m.group(1).split(",")] if m else [],
+                        "title": "" if first == "(anything useful)" else first,
+                        "messages": int(r.get("steps") or 0),
+                        "detail": (f"{m.group(2)} min · {m.group(3)} messages · {m.group(4)}"
+                                   if m else ""),
+                        "ended": r.get("finished_at") or 0})
+        elif kind == "message":
+            m = re.match(r"(.+?) \(another agent on this team\) asks you:\n\n(.*?)\n\nAnswer ",
+                         inp, re.S)
+            out.append({**base, "kind": "ask", "who": [m.group(1) if m else "?", r.get("ref") or ""],
+                        "title": " ".join((m.group(2) if m else inp).split())[:300],
+                        "detail": " ".join(str(r.get("output") or r.get("fault") or "").split())[:400],
+                        "messages": 2})
+        elif kind == "huddle":
+            m = re.search(r"QUESTION: (.*?)\n\n", inp, re.S)
+            topic = " ".join((m.group(1) if m else "").split())[:300]
+            key = (base["conversation_id"], topic)
+            g = huddles.get(key)
+            if g and g["first"] - base["when"] < 900:
+                # rows come newest first, so an older turn of the same huddle
+                g["first"] = base["when"]
+                g["entry"]["when"] = base["when"]
+                g["entry"]["messages"] += 1
+                if r.get("ref") and r["ref"] not in g["entry"]["who"]:
+                    g["entry"]["who"].insert(0, r["ref"])
+                continue
+            e = {**base, "kind": "huddle", "who": [r.get("ref") or ""], "title": topic,
+                 "detail": "", "messages": 1}
+            huddles[key] = {"first": base["when"], "entry": e}
+            out.append(e)
+    out.sort(key=lambda e: -e["when"])
+    return out[:limit]
 
 
 def matrix(store, cfg: dict) -> dict:
@@ -928,8 +1063,11 @@ class ControlPlane(usersmod.Scoped):
                            agent_slot: dict | None = None, space_id: str = "",
                            flow: str = "", origin: dict | None = None,
                            escalate: bool = False, taint: list | None = None,
-                           chain: list | None = None, root: str = "") -> dict:
-        """ui_emit: optional passthrough for the agent's live events (text/tool/error) —
+                           chain: list | None = None, root: str = "",
+                           no_tools: bool = False) -> dict:
+        """no_tools: the run may only answer in words (a ballot, a free-talk message in
+        talk mode) — it can never act, message a colleague or start anything.
+        ui_emit: optional passthrough for the agent's live events (text/tool/error) —
         set when a subagent runs inside a chat so the user watches it work inline.
         agent_slot: optional dict that receives {"agent": <Agent>} so the caller's
         stop button can abort the data plane directly.
@@ -1053,7 +1191,7 @@ class ControlPlane(usersmod.Scoped):
         # that mission's grants there), and never inside a huddle turn, which is already
         # a conversation.
         from .policy import team_talk
-        talks = team_talk(self.cfg) != "off" and kind not in ("huddle", "vote")
+        talks = team_talk(self.cfg) != "off" and kind not in ("huddle", "vote", "freetalk")
         if talks and flow:
             # inside a mission only if the mission declared it — its consent screen said so
             try:
@@ -1062,9 +1200,9 @@ class ControlPlane(usersmod.Scoped):
                 talks = False
         if talks and "ask_agent" not in tools:
             tools.append("ask_agent")
-        if kind == "vote":
+        if kind == "vote" or no_tools:
             # a ballot is an opinion, not work: no tools, so a vote can never act,
-            # message a colleague or start another vote
+            # message a colleague or start another vote (free talk in talk mode too)
             tools = []
         agent = Agent(child_cfg, self.toolbox, model, emit, approver or headless_approver,
                       extra_system=self._persona(defn, context), tool_filter=tools,
@@ -1607,6 +1745,216 @@ class ControlPlane(usersmod.Scoped):
         return {"agents": [d["name"] for d in cast], "rounds": r, "transcript": transcript,
                 "vote": vote,
                 "text": huddle_text([d["name"] for d in cast], r, transcript, vote)}
+
+    # -- free talk: the team talks among itself, because a person said it may ---------
+
+    def _free_talks(self) -> dict:
+        return self.__dict__.setdefault("_talks", {})
+
+    def free_talks(self, uid: str | None = None) -> list[dict]:
+        """The free talks this process knows about (running first), for one person."""
+        out = [{k: v for k, v in s.items() if k not in ("slot", "stop")}
+               for s in self._free_talks().values() if uid is None or s["uid"] == uid]
+        return sorted(out, key=lambda s: (s["status"] != "running", -s["started"]))
+
+    def start_free_talk(self, names=None, topic: str = "", minutes=5, messages=20,
+                        mode: str = "talk", uid: str = "", conversation_id: str = "",
+                        space_id: str = "") -> dict:
+        """Open the floor: the person lets these agents talk among themselves until the
+        clock, the message count, a quiet room or Stop, whichever comes first.
+
+        It is only ever started by a person (the route; no agent tool reaches it), it
+        is refused while agents messaging each other is Off, and one runs at a time per
+        person. The session is a run of kind `freetalk` from the first moment, so the
+        ledger row written here and every message after it point at one id."""
+        from .policy import team_talk
+        if team_talk(self.cfg) == "off":
+            raise ValueError("Agents messaging each other is off in Settings → Agents → "
+                             "Working together. Turn it on to let them talk.")
+        if mode not in FREE_TALK_MODES:
+            raise ValueError(f"mode is one of: {', '.join(FREE_TALK_MODES)}")
+        if any(s["uid"] == uid and s["status"] == "running" for s in self._free_talks().values()):
+            raise ValueError("Your team is already talking. Stop that first.")
+        pool = [d for d in self.store.list_subagents()
+                if d.get("enabled") is not False and "@" not in d["name"]]
+        want = [str(n).strip().lstrip("@").lower() for n in (names or []) if str(n).strip()]
+        cast = [d for d in pool if d["name"].lower() in want] if want else pool
+        unknown = [n for n in want if n not in {d["name"].lower() for d in pool}]
+        if unknown:
+            raise ValueError(f"no agent called {', '.join(unknown)} here — have: "
+                             f"{', '.join(d['name'] for d in pool) or '(none)'}")
+        if len(cast) < 2:
+            raise ValueError("free talk needs at least two agents. Create one first.")
+        cast = cast[:FREE_TALK_MAX_AGENTS]
+        minutes, messages = free_talk_limits(minutes, messages)
+        topic = " ".join(str(topic or "").split())[:500]
+        who = [d["name"] for d in cast]
+        sid = self.store.fabric_run_start(
+            "freetalk", "team",
+            f"{topic or '(anything useful)'}\n\nagents: {', '.join(who)} · {minutes} min · "
+            f"{messages} messages · {'talk only' if mode == 'talk' else 'talk and act'}",
+            space_id=space_id, conversation_id=conversation_id, origin_surface="gui")
+        now = time.time()
+        s = {"id": sid, "uid": uid, "agents": who, "topic": topic, "mode": mode,
+             "minutes": minutes, "max_messages": messages, "messages": 0, "started": now,
+             "until": now + minutes * 60, "status": "running", "reason": "",
+             "conversation_id": conversation_id, "space_id": space_id,
+             "stop": False, "slot": {}}
+        talks = self._free_talks()
+        for k in [k for k, v in talks.items() if v["status"] != "running"][:-10]:
+            talks.pop(k, None)                        # a few ended ones are kept for the screen
+        talks[sid] = s
+        audit_team(self.store, "team.freetalk", f"agent:talk/{','.join(who)}",
+                   f"started free talk (run {sid}): {', '.join(who)} for up to {minutes} min "
+                   f"or {messages} messages, {'talk only' if mode == 'talk' else 'talk and act'}"
+                   + (f". Topic: {topic}" if topic else ""), run_id=sid)
+        return {k: v for k, v in s.items() if k not in ("slot", "stop")}
+
+    def stop_free_talk(self, sid: str, uid: str | None = None) -> bool:
+        """Stop, now: the turn in flight is cancelled rather than waited for."""
+        s = self._free_talks().get(sid)
+        if not s or (uid is not None and s["uid"] != uid) or s["status"] != "running":
+            return False
+        s["stop"] = True
+        ag = (s.get("slot") or {}).get("agent")
+        if ag:
+            ag.aborted = True
+        return True
+
+    async def run_free_talk(self, sid: str, say=None) -> dict:
+        """The open floor. Each message is an ordinary run (kind `freetalk`, its parent
+        the session), on that agent's own brain: in talk mode with no tools at all, in
+        act mode with its own tools under the gate, where anything that needs
+        permission pauses and asks the person. Every message is also written to the
+        session as a `talk` event, and the whole transcript is its output, so the
+        record survives with nobody watching."""
+        s = self._free_talks().get(sid)
+        if not s:
+            raise KeyError(sid)
+        by = {}
+        for n in s["agents"]:
+            d = self.store.get_subagent(n)
+            if d:
+                by[d["name"]] = d
+        names = list(by)
+        transcript: list[dict] = []
+        passed: set = set()
+        errors = turns = 0
+        reason = ""
+        await self._emit(sid, "status", {"status": "running", "ref": "team", "agents": names,
+                                         "until": s["until"], "max_messages": s["max_messages"],
+                                         "mode": s["mode"]})
+
+        async def guard():
+            # the clock and Stop reach a message that is still being written
+            while True:
+                await asyncio.sleep(1)
+                if s["stop"] or time.time() >= s["until"]:
+                    ag = (s.get("slot") or {}).get("agent")
+                    if ag:
+                        ag.aborted = True
+                    return
+
+        g = asyncio.create_task(guard())
+        try:
+            while True:
+                if s["stop"]:
+                    reason = "stopped"
+                    break
+                if time.time() >= s["until"]:
+                    reason = "time"
+                    break
+                if len(transcript) >= s["max_messages"]:
+                    reason = "messages"
+                    break
+                if errors >= 3:
+                    reason = "errors"
+                    break
+                last = transcript[-1]["speaker"] if transcript else ""
+                free = [n for n in names if n not in passed]
+                if not [n for n in free if n != last] or turns >= s["max_messages"] * 2 + len(names):
+                    reason = "quiet"
+                    break
+                who = free_talk_next(free, transcript)
+                d = by[who]
+                others = [n for n in names if n != who]
+                silent = [n for n in others if transcript
+                          and not any(e["speaker"] == n for e in transcript)]
+                so_far = "\n".join(f"{e['speaker']}" + (f" to {e['to']}" if e.get("to") else "")
+                                   + f": {e['text']}" for e in transcript)
+                task = (f"You are {who}, talking freely with {', '.join(others)}, your "
+                        f"colleagues on this team. The person you all work for has let the "
+                        f"team talk among yourselves for a few minutes, "
+                        + (f"about: {s['topic']}" if s["topic"] else
+                           "about anything that would help them")
+                        + ". They will read every word.\n\n"
+                        + (f"SO FAR:\n{so_far[-HUDDLE_CONTEXT:]}\n\n" if so_far else
+                           "Nobody has spoken yet: you open.\n\n")
+                        + (f"{' and '.join(silent)} {'has' if len(silent) == 1 else 'have'} "
+                           f"not said anything yet, so bring them in.\n\n" if silent else "")
+                        + f"Say one thing in at most {FREE_TALK_WORDS} words: an idea, a "
+                          f"question, a disagreement or something you noticed. Start with "
+                          f"the colleague you are talking to, like \"@{others[0]}, …\". Do not "
+                          f"repeat what was said. If you have nothing new, reply with "
+                          f"exactly: pass"
+                        + ("\n\nYou may use your tools if it helps. Anything that needs "
+                           "permission will ask the person first." if s["mode"] == "act" else ""))
+                s["slot"] = {}
+                res = await self.run_subagent(
+                    d, task, kind="freetalk", parent_run=sid,
+                    conversation_id=s["conversation_id"], space_id=s.get("space_id", ""),
+                    agent_slot=s["slot"], no_tools=s["mode"] == "talk",
+                    escalate=s["mode"] == "act", origin={"surface": "gui", "ref": sid})
+                s["slot"] = {}
+                turns += 1
+                if res["status"] == "cancelled":
+                    continue                          # Stop or the clock: the top of the loop says which
+                text = " ".join(str(res["content"] or "").split())
+                if res["status"] in ("error", "timeout") and not text:
+                    errors += 1
+                    passed.add(who)
+                    continue
+                if not text or text.lower().strip(" .!") == "pass":
+                    passed.add(who)
+                    continue
+                errors = 0
+                passed = set()
+                to = free_talk_addressee(text, who, names)
+                brain = agent_brain(self.cfg, d)
+                entry = {"speaker": who, "to": to, "model": res["model"],
+                         "provider": brain["provider_name"],
+                         "text": text[:FREE_TALK_WORDS * 9], "n": len(transcript) + 1,
+                         "run": res["run_id"]}
+                transcript.append(entry)
+                s["messages"] = len(transcript)
+                await self._emit(sid, "talk", {"phase": "say", "from": who, "to": to,
+                                               "text": entry["text"][:3000], "model": res["model"],
+                                               "provider": entry["provider"], "n": entry["n"],
+                                               "run": res["run_id"]})
+                if say:
+                    try:
+                        await say(entry)
+                    except Exception:
+                        pass
+        except Exception as e:
+            reason = reason or "error"
+            await self._emit(sid, "fault", {"message": f"{type(e).__name__}: {e}"[:500]})
+        finally:
+            g.cancel()
+            reason = reason or "stopped"
+            s["status"], s["reason"], s["slot"] = "ended", reason, {}
+            s["ended"] = time.time()
+            text = free_talk_text(names, s["topic"], transcript, TALK_ENDS.get(reason, reason))
+            self.store.fabric_run_finish(sid, "cancelled" if reason == "stopped" else "ok",
+                                         output=text, steps=len(transcript))
+            await self._emit(sid, "status", {"status": "ended", "ref": "team", "reason": reason,
+                                             "messages": len(transcript)})
+            audit_team(self.store, "team.freetalk", f"agent:talk/{','.join(names)}",
+                       f"free talk ended (run {sid}): {TALK_ENDS.get(reason, reason)}, "
+                       f"{len(transcript)} message{'s' if len(transcript) != 1 else ''} "
+                       f"in {int((s['ended'] - s['started']) // 60)} min", run_id=sid)
+        return {"id": sid, "agents": names, "transcript": transcript, "reason": reason,
+                "text": text}
 
     # -- democracy: the team votes, and a majority decides ----------------------------
 

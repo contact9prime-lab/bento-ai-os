@@ -73,6 +73,10 @@ function huddleLive(ev,isCur,kind){
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id&&!ev.vote)
     actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
+  // heard as well as read, each in its own voice, when it is the thread you are in
+  // (or the one Jarvis mode is talking in)
+  if(!ev.vote&&(isCur||(JARVIS.on&&ev.conversation_id===JARVIS.cid))&&typeof voiceAgentLine==='function')
+    voiceAgentLine(ev.speaker,ev.text);
   if(!isCur||!feed)return;
   if(!curBody)startAssistant();
   if(!curBody)return;

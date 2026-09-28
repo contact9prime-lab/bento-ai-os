@@ -533,6 +533,8 @@ async function fgLoad(runId){
     fgReset(runId,(d.run||{}).flow||(d.run||{}).ref||'');
     (d.events||[]).forEach(e=>fgApply(Object.assign({event:e.type,run_id:runId},e.payload||{},{_ts:(e.ts||0)*1000})));
     const r=d.run||{};
+    // a free talk is a session, not a mission: no Run again, no editor, and messages
+    FG.kind=r.kind||'';if(FG.kind==='freetalk')FG.flow='Free talk';
     FG.meta=Object.assign(FG.meta||{},{started:(r.started_at||0)*1000||FG.meta.started,
       finished:(r.finished_at||0)*1000||FG.meta.finished,origin:r.origin_surface||FG.meta.origin||'',
       input:r.input||'',tokens:(r.tokens_in||0)+(r.tokens_out||0)||FG.meta.tokens||0});
@@ -1031,9 +1033,9 @@ function renderFlowRun(body,w){
         <span class="fr-pill fg-pill"></span></div>
       <div class="fr-facts fg-facts"></div>
       <div class="fr-acts">
-        ${FG.ended?'':`<button class="endbtn" onclick="cancelRun(FG.run)">⏹ Stop</button>`}
-        <button class="endbtn" onclick="fgRerun()">↻ Run again</button>
-        <button class="endbtn" onclick="openFLW&&openFLW(FG.flow)">✎ Edit mission</button>
+        ${FG.ended?'':`<button class="endbtn" onclick="${FG.kind==='freetalk'?'freeTalkStop(FG.run)':'cancelRun(FG.run)'}">⏹ Stop</button>`}
+        ${FG.kind==='freetalk'?'':`<button class="endbtn" onclick="fgRerun()">↻ Run again</button>
+        <button class="endbtn" onclick="openFLW&&openFLW(FG.flow)">✎ Edit mission</button>`}
         <button class="endbtn" onclick="fgOpenBoardRaw()">Raw events</button></div>
       <div class="fr-runs fg-runs"></div>
     </div>
@@ -1047,10 +1049,10 @@ function renderFlowRun(body,w){
         <div id="fr-detail"></div>
         <div id="fg-artifact"></div>
         <div class="fr-h">Results</div><div class="fg-board"></div>
-        <div class="fr-h">Change it for next time</div>
+        ${FG.kind==='freetalk'?'':`<div class="fr-h">Change it for next time</div>
         <textarea id="fr-ai" rows="2" placeholder="give the researcher fetch_url too · tell the writer to be shorter"></textarea>
         <div class="row" style="gap:6px"><button class="save" style="margin:0;flex:0 0 150px"
-          onclick="frAiEdit()">✦ Open with this</button>${pInfo('The run that is going now keeps going. Your change applies from the next run.')}</div>
+          onclick="frAiEdit()">✦ Open with this</button>${pInfo('The run that is going now keeps going. Your change applies from the next run.')}</div>`}
         <details class="fr-log"><summary>Control-plane log</summary><div class="fg-log"></div></details>
       </div>
     </div></div>`;
@@ -1085,9 +1087,9 @@ function fgClock(){
   document.querySelectorAll('.fg-meta').forEach(el=>{if(el.textContent!==meta)el.textContent=meta});
   const who=new Set(FG.story.filter(x=>x.who||x.to).flatMap(x=>[x.who,x.to]).filter(Boolean));
   const tok=m.tokens||[...FG.nodes.values()].reduce((a,n)=>a+(n.tokens?(n.tokens.in||0)+(n.tokens.out||0):0),0);
-  const talks=FG.story.filter(x=>x.kind==='talk'&&x.phase==='ask').length;
+  const talks=FG.story.filter(x=>x.kind==='talk'&&(x.phase==='ask'||x.phase==='say')).length;
   const tools=FG.story.filter(x=>x.kind==='tool').reduce((a,x)=>a+x.tools.length,0);
-  const facts=[[who.size,'agent','agents'],[tools,'tool call','tool calls'],[talks,'question between agents','questions between agents']]
+  const facts=[[who.size,'agent','agents'],[tools,'tool call','tool calls'],[talks,FG.kind==='freetalk'?'message':'question between agents',FG.kind==='freetalk'?'messages':'questions between agents']]
     .filter(f=>f[0]).map(f=>`<span><b>${f[0]}</b> ${f[0]===1?f[1]:f[2]}</span>`)
     .concat(tok?[`<span><b>${tok>=1000?(tok/1000).toFixed(1)+'k':tok}</b> tokens</span>`]:[]).join('');
   document.querySelectorAll('.fg-facts').forEach(el=>{if(el.innerHTML!==facts)el.innerHTML=facts});
@@ -1129,8 +1131,8 @@ function fgPaintStory(box){
       case 'tool':return `<div class="fr-ev tl">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> used ${
         e.tools.map(x=>`<code class="${x.ok===false?'bad':''}">${esc(x.name)}${x.ok===false?' ✗':''}</code>`).join(' ')}</div></div></div>`;
       case 'talk':return `<div class="fr-ev talk ${e.phase==='reply'?'reply':''}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${fgWho(e.who)}</b> ${
-        e.phase==='reply'?'answered':'asked'} <b>${fgWho(e.to)}</b>${e.provider?` <span class="mut">· ${esc(e.provider)}</span>`:''}</div>
-        <div class="fr-bubble">${esc(String(e.text||'').slice(0,700))}</div></div></div>`;
+        e.phase==='reply'?'answered':e.phase==='say'?(e.to?'said to':'said'):'asked'} ${e.to?`<b>${fgWho(e.to)}</b>`:''}${e.provider?` <span class="mut">· ${esc(e.provider)}</span>`:''}</div>
+        <div class="fr-bubble">${esc(String(e.text||'').slice(0,e.phase==='say'?3000:700))}</div></div></div>`;
       case 'done':return `<div class="fr-ev ${e.ok?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> ${
         e.ok?'finished':'stopped ('+esc(e.status||'error')+')'}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}
         ${e.handle?`<button class="fr-link" onclick="fgOpenHandle('${esc(e.handle)}')">See what came back</button>`:''}

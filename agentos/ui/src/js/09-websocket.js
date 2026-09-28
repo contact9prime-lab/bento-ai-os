@@ -591,6 +591,9 @@ function handle(ev){
       // and in an app's agent panel or the prompt bar's card, when the turn is theirs
       if(_sk&&_sk.say)_sk.say(ev);
       break;
+    case 'freetalk':   // your team talking among themselves, because you let it (24f-freetalk.js)
+      if(typeof freeTalkEvent==='function')freeTalkEvent(ev);
+      break;
     case 'avatars': if(typeof avatarsChanged==='function')avatarsChanged(); break;
     case 'quarantined':
       // Loud on purpose: something the user installed just stopped working, and the worst

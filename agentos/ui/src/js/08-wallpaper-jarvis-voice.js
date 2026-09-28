@@ -102,14 +102,11 @@ function jarvisDraw(ts){
 /* ================= voice: TTS + mic ================= */
 let VOICE=JSON.parse(localStorage.getItem('voice')||'{"tts":false,"voice":"","rate":1,"lang":"en-IN"}');
 function saveVoice(){localStorage.setItem('voice',JSON.stringify(VOICE))}
+/* A reply read aloud: your lead, in the engine chosen in Settings → Voice. A new
+   reply replaces one still being read. */
 function speak(text){
-  if(!VOICE.tts||!text||!window.speechSynthesis)return;
-  const clean=text.replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'').slice(0,800);
-  const u=new SpeechSynthesisUtterance(clean);
-  u.rate=VOICE.rate||1;
-  const v=speechSynthesis.getVoices().find(v=>v.name===VOICE.voice);
-  if(v)u.voice=v;
-  speechSynthesis.cancel();speechSynthesis.speak(u);
+  if(!VOICE.tts||!text)return;
+  speechStop();speakAs('@agent',text);
 }
 let rec=null,recOn=false;
 function micToggle(){
@@ -130,4 +127,104 @@ function micToggle(){
   rec.start();recOn=true;$('#mic')?.classList.add('rec');
 }
 function agentName(){return (cfg&&cfg.agent_name)||'Aria'}
+
+/* ================= a voice per agent =================
+   With voice on, or in Jarvis mode, a huddle, a free talk and one agent asking another
+   are heard as well as read, and each agent speaks in its own voice: a system voice
+   picked from the name (so it stays the same every time), and a pitch of its own for
+   the machines that only have one or two voices. Your lead keeps the voice chosen in
+   Settings → Voice. Lines are queued by speechSynthesis itself, never cancelled, so a
+   room of agents is heard in order and your lead's reply comes after them.
+   Faces: GUI and SUI speak through the browser. TUI has no speaker on purpose; the
+   same lines are text in `bento team log` and the chat. */
+function agentVoice(name){
+  const lead=!name||name==='@agent'||name===agentName();
+  const lang=String(VOICE.lang||'en').slice(0,2).toLowerCase();
+  const all=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
+  const vs=all.filter(v=>String(v.lang||'').slice(0,2).toLowerCase()===lang);
+  const mine=all.find(v=>v.name===VOICE.voice);
+  if(lead)return {voice:mine||null,pitch:1};
+  let h=0;for(const c of String(name))h=(h*31+c.charCodeAt(0))>>>0;
+  const pool=vs.filter(v=>v!==mine);
+  return {voice:pool.length?pool[h%pool.length]:(vs[h%(vs.length||1)]||null),pitch:[.85,1.15,.95,1.25,.75,1.05][h%6]};
+}
+function voiceClean(text,n){
+  return String(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'')
+    .replace(/(^|\s)@([\w-]+)/g,'$1$2').slice(0,n||600).trim();
+}
+/* Which engine speaks is the machine's choice (agentos/speech.py): this browser's
+   voices, this computer's, or ElevenLabs, OpenAI or Google Cloud. Anything but the
+   browser is audio from /api/speech/say, fetched as soon as a line is queued so the
+   next one is ready when this one ends, and played strictly in order. A line the
+   server cannot say is said by the browser instead, and the reason is said once. */
+var SPEECH={engine:'browser',loaded:false,warned:false,gen:0,audio:null,chain:Promise.resolve()};
+async function speechLoad(){
+  try{const d=await (await fetch('/api/speech')).json();SPEECH.engine=(d.config||{}).engine||'browser'}catch(e){}
+  SPEECH.loaded=true;
+}
+function speechStop(){
+  SPEECH.gen++;SPEECH.chain=Promise.resolve();
+  try{SPEECH.audio&&SPEECH.audio.pause()}catch(e){}
+  try{window.speechSynthesis&&speechSynthesis.cancel()}catch(e){}
+}
+function speechWho(name){return name&&name!=='@agent'?name:agentName()}
+function browserSay(name,clean){
+  return new Promise(res=>{
+    if(!window.speechSynthesis)return res();
+    const u=new SpeechSynthesisUtterance(clean),a=agentVoice(name);
+    if(a.voice)u.voice=a.voice;u.pitch=a.pitch;u.rate=VOICE.rate||1;
+    u.onstart=()=>{if(JARVIS.on)jarvisSetPhase('speaking',speechWho(name)+' is speaking…')};
+    u.onend=u.onerror=()=>res();
+    speechSynthesis.speak(u);
+  });
+}
+/* One agent's line, spoken in its voice. `done` runs when it has been said. */
+function speakAs(name,text,done){
+  const clean=voiceClean(text);
+  if(!clean){if(done)done();return}
+  if(!SPEECH.loaded){speechLoad().then(()=>speakAs(name,text,done));return}
+  if(SPEECH.engine==='browser'){browserSay(name,clean).then(()=>{if(done)done()});return}
+  const gen=SPEECH.gen,lead=!name||name==='@agent'||name===agentName();
+  const got=fetch('/api/speech/say',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:clean,agent:lead?'':name,lead})})
+    .then(async r=>{if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'the voice engine did not answer');
+      return URL.createObjectURL(await r.blob())});
+  got.catch(()=>{});
+  SPEECH.chain=SPEECH.chain.then(()=>gen!==SPEECH.gen?null:got.then(url=>new Promise(res=>{
+      if(gen!==SPEECH.gen){URL.revokeObjectURL(url);return res()}
+      const a=new Audio(url);SPEECH.audio=a;a.playbackRate=VOICE.rate||1;
+      a.onplay=()=>{if(JARVIS.on)jarvisSetPhase('speaking',speechWho(name)+' is speaking…')};
+      a.onended=a.onerror=a.onpause=()=>{URL.revokeObjectURL(url);res()};
+      a.play().catch(()=>res());
+    })).catch(e=>{
+      if(!SPEECH.warned){SPEECH.warned=true;toast('Voice: '+e.message+' Using this browser’s voice instead.')}
+      return browserSay(name,clean);
+    })).then(()=>{if(done&&gen===SPEECH.gen)done()});
+}
+/* Speech has no "@". Said out loud, "at researcher, at writer, should we…" comes back as
+   words, so the names a spoken request OPENS with become the addresses the chat reads
+   ("@researcher @writer should we…", a huddle; "ask writer to…", that agent). Only the
+   opening words and only names of agents here, so "look at writer's draft" is left alone. */
+var VOICE_AGENTS=null;
+async function voiceAgentsLoad(){
+  try{const d=await (await fetch('/api/subagents')).json();VOICE_AGENTS=(d.subagents||[]).map(s=>s.name)}
+  catch(e){VOICE_AGENTS=VOICE_AGENTS||[]}
+}
+function voiceAddress(text){
+  const names=VOICE_AGENTS||[];if(!names.length)return text;
+  let rest=String(text||''),out=[];
+  for(;;){
+    const m=rest.match(/^\s*(?:at|hey|ask|and|@)?\s*([A-Za-z][\w-]*)[\s,:.]+/i);
+    const hit=m&&names.find(n=>n.toLowerCase()===m[1].toLowerCase());
+    if(!hit)break;
+    out.push('@'+hit);rest=rest.slice(m[0].length);
+  }
+  return out.length?out.join(' ')+' '+rest.replace(/^\s*to\s+/i,''):text;
+}
+/* Called by every surface that shows agents talking to each other. Silent unless you
+   asked to hear it: voice on, or Jarvis mode, and each agent's own voice switched on. */
+function voiceAgentLine(name,text){
+  if(!(VOICE.tts||JARVIS.on)||VOICE.agents===false||!name)return;
+  speakAs(name,text);
+}
 

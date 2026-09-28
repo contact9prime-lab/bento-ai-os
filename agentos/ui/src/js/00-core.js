@@ -22,11 +22,12 @@ function jarvisMode(on){
     JARVIS.on=true;ov.classList.add('show');
     $('#j-transcript').textContent='';$('#j-reply').textContent='';
     JARVIS.cid=JARVIS.cid||currentConv;
+    if(typeof voiceAgentsLoad==='function')voiceAgentsLoad();   // the names a spoken request may open with
     jarvisListen();
   }else{
     JARVIS.on=false;ov.classList.remove('show');
     try{JARVIS.rec&&JARVIS.rec.stop()}catch(e){}
-    try{speechSynthesis.cancel()}catch(e){}
+    try{typeof speechStop==='function'?speechStop():speechSynthesis.cancel()}catch(e){}
     jarvisSetPhase('idle');
   }
 }
@@ -56,19 +57,19 @@ function jarvisAsk(text){
   jarvisSetPhase('thinking',agentName()+' is working…');
   $('#j-reply').textContent='';
   JARVIS.busy=true;jarvisReply='';
+  // "at researcher, at writer, …" said out loud → "@researcher @writer …": a huddle
+  if(typeof voiceAddress==='function')text=voiceAddress(text);
   ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:''}));
   setRunning(true);
 }
 function jarvisSpeakAndListen(text){
   jarvisSetPhase('speaking',agentName()+' is speaking…');
   const clean=(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'').slice(0,900);
-  if(!clean.trim()||!window.speechSynthesis){if(JARVIS.on)jarvisListen();return}
-  const u=new SpeechSynthesisUtterance(clean);
-  u.rate=(VOICE&&VOICE.rate)||1;
-  const v=speechSynthesis.getVoices().find(v=>v.name===(VOICE&&VOICE.voice));if(v)u.voice=v;
-  u.onend=()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')};
-  u.onerror=()=>{if(JARVIS.on)jarvisListen()};
-  speechSynthesis.cancel();speechSynthesis.speak(u);
+  if(!clean.trim()){if(JARVIS.on)jarvisListen();return}
+  // queued, never cancelled: the agents who spoke in this turn (a huddle, a question to
+  // a colleague) are still being heard in their own voices, and the reply comes after.
+  // speakAs is the one door to every voice engine (08-wallpaper-jarvis-voice.js).
+  speakAs('@agent',clean,()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')});
 }
 const RUNNING=new Set();   // conversation_ids with a live turn (several may run at once)
 const STREAMS={};          // conversation_id -> {html, text}: buffered stream for chats not on screen

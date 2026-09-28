@@ -759,6 +759,13 @@ async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = Fals
                 f"too — the update did not cause them, so it stands")
 
     after = _run(["git", "rev-parse", "HEAD"], cwd=root)[1].strip()
+    if after != before:
+        # Kept so this update can be taken back later (`rollback`): where it came
+        # from, including the branch when it switched one, and what it arrived at.
+        _record({"at": time.time(), "from": before, "to": after,
+                 "from_branch": switched or branch, "to_branch": branch,
+                 "from_version": current(), "to_version": _version_on_disk(root) or "",
+                 "source": f"{repo_of(cfg)} @ {branch}"})
     # What was actually pulled, from git rather than from a file somebody has to
     # remember to write. Computed AFTER the merge, so it describes what landed
     # rather than what was expected to.
@@ -768,6 +775,108 @@ async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = Fals
             "unchanged": after == before and not switched,
             "files": len(changed), "restored": restored, "switched": switched,
             "source": f"{repo_of(cfg)} @ {branch}"}
+
+
+# ------------------------------------------------------------------- rollback
+#
+# A successful update used to be one-way: the automatic rollback above only fires when
+# the new code fails its own tests, and a person who updated, tried it and did not like
+# it had to find the old commit in git by hand. Reported as "there is no option to
+# update and roll back here". Each installed update is now recorded, and the newest one
+# can be taken back while it is still what the checkout holds.
+
+HISTORY_KEEP = 10
+
+
+def _history_path() -> Path:
+    from . import config as _cfg              # read at call time: tests move the home
+    return Path(_cfg.AGENTOS_HOME) / "update-history.json"
+
+
+def history() -> list[dict]:
+    import json
+    try:
+        got = json.loads(_history_path().read_text())
+        return [e for e in got if isinstance(e, dict) and e.get("from") and e.get("to")]
+    except Exception:
+        return []
+
+
+def _record(entry: dict) -> None:
+    import json
+    h = (history() + [entry])[-HISTORY_KEEP:]
+    try:
+        p = _history_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(h, indent=1))
+    except OSError:
+        pass                                 # an unwritable home never fails an update
+
+
+def last_update(root: Path | None = None) -> dict | None:
+    """The update this checkout can take back: the newest recorded one that has not
+    been rolled back and whose result is still what HEAD is. Anything else (a pull by
+    hand, a commit on top) is not ours to undo, and saying so beats resetting it."""
+    root = root or install_dir()
+    h = [e for e in history() if not e.get("rolled_back")]
+    if not root or not h:
+        return None
+    ok, head = _run(["git", "rev-parse", "HEAD"], cwd=root)
+    e = h[-1]
+    return e if ok and head.strip() == e["to"] else None
+
+
+async def rollback(cfg: dict, log=None) -> dict:
+    """Take the last update back: the checkout returns to the commit (and branch) it
+    was on before, dependencies follow the lockfile there, and updates track that
+    branch again. The data stays as it is: migrations only ever add, so the older code
+    reads a database the newer one touched. Restarting is the caller's, as in apply."""
+    def say(msg):
+        if log:
+            log(msg)
+    root = install_dir()
+    if not root:
+        return {"ok": False, "error": "This copy was not installed from git, so it cannot roll back."}
+    e = last_update(root)
+    if not e:
+        return {"ok": False, "error": "There is no update to roll back. The code here is not "
+                                      "the result of the last update this machine installed."}
+    if own_changes(root):
+        return {"ok": False, "error": "There are uncommitted changes of your own in the checkout. "
+                                      "Commit or stash them first, then roll back."}
+    restore_derived(root)
+    head = _run(["git", "rev-parse", "HEAD"], cwd=root)[1].strip()
+    ok, on = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
+    back = e.get("from_branch") or on.strip()
+    say(f"going back to {e['from'][:8]}" + (f" on '{back}'" if back != on.strip() else "") + "…")
+    if back != on.strip():
+        ok, out = _run(["git", "checkout", "-B", back, e["from"]], cwd=root, timeout=120)
+    else:
+        # the branch itself moves back: the update was a fast-forward of it
+        ok, out = _run(["git", "reset", "--hard", e["from"]], cwd=root, timeout=120)
+    if not ok:
+        return {"ok": False, "error": f"could not go back to {e['from'][:8]}: {out[-300:]}"}
+    changed = _run(["git", "diff", "--name-only", head, "HEAD"], cwd=root)[1].splitlines()
+    if any(f in ("pyproject.toml", "uv.lock") for f in changed):
+        say("putting the dependencies back…")
+        ok, tried = install_deps(root)
+        if not ok:
+            say("the dependencies could not be put back: " + "; ".join(tried))
+        restore_derived(root)
+    if back != (conf(cfg).get("branch") or DEFAULT_BRANCH):
+        conf(cfg)["branch"] = back           # the panel should agree with the checkout
+    h = history()
+    for x in h:
+        if x.get("to") == e["to"] and x.get("from") == e["from"]:
+            x["rolled_back"] = time.time()
+    try:
+        import json
+        _history_path().write_text(json.dumps(h, indent=1))
+    except OSError:
+        pass
+    return {"ok": True, "from": head[:8], "to": e["from"][:8], "branch": back,
+            "version": _version_on_disk(root) or "", "was": e.get("to_version") or "",
+            "files": len(changed)}
 
 
 def _failed_nodes(pytest_out: str) -> set[str]:

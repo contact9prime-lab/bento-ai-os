@@ -2689,6 +2689,14 @@ def _flow_cli(args):
                       or pay.get("status") or pay.get("message") or "")
             if not detail and pay:
                 detail = json.dumps(pay)[:90]
+            if e.get("type") == "talk" and pay.get("phase") == "say":
+                # a free talk: every message in full, because the whole point is the record
+                import textwrap
+                head = f"{pay.get('from', '?')}" + (f" to {pay['to']}" if pay.get("to") else "")
+                print(f"  {when}  {'said':16} {head} · {pay.get('provider') or pay.get('model') or ''}")
+                for ln in textwrap.wrap(str(pay.get("text", "")), 88):
+                    print(f"  {'':8}  {'':16} {ln}")
+                continue
             if e.get("type") == "talk":
                 # agents talking inside the mission: who asked whom, then what was said
                 verb = "answered" if pay.get("phase") == "reply" else "asked"
@@ -2987,6 +2995,66 @@ def _api_call(port: int, path: str, method: str = "GET", body: dict | None = Non
             return json.loads(e.read() or b"{}")
         except ValueError:
             return {"error": str(e)}
+
+
+def _voice_cli(args):
+    """`bento voice` — which engine reads your agents aloud (agentos/speech.py), from a
+    terminal: the same settings and the same speaking function Settings → Voice uses.
+    `try` writes the audio to a file (and plays it where a player exists), because a
+    terminal over SSH has no speaker of its own."""
+    from . import config as cfgmod
+    from . import speech
+    cfg = cfgmod.load_config()
+    act = args.action
+    if act == "set":
+        patch = {}
+        if args.name:
+            patch["engine"] = args.name
+        if args.key is not None:
+            patch["keys"] = {args.name or speech.conf(cfg)["engine"]: args.key}
+        if args.voice is not None:
+            patch["voice"] = args.voice
+        try:
+            got = speech.save(cfg, patch)
+        except ValueError as e:
+            print(e)
+            return 2
+        cfgmod.save_config(cfg)
+        print(f"  voice engine: {speech.TITLES[got['engine']]}"
+              + (f", your lead's voice {got['voice']}" if got["voice"] else ""))
+        print("  a running server reads it from the next line it speaks")
+        return 0
+    if act == "voices":
+        vs = asyncio.run(speech.voices(cfg, args.name or None))
+        for v in vs[:80]:
+            print(f"  {v['id']:<36} {v['name'][:30]:<30} {v.get('lang', '')}")
+        if not vs:
+            print("  no voices: pick an engine that is ready (bento voice)")
+        return 0
+    if act == "try":
+        text = args.text or args.name or "Hello. This is how I sound."
+        try:
+            data, mime, who = asyncio.run(speech.speak(cfg, text, agent=args.agent,
+                                                       lead=not args.agent))
+        except Exception as e:
+            print(f"✗ {e}")
+            return 1
+        out = Path(args.out or f"bento-voice{'.mp3' if mime == 'audio/mpeg' else '.wav'}")
+        out.write_bytes(data)
+        print(f"  {speech.TITLES[who['engine']]} · {who['voice'] or 'default voice'} → {out}")
+        for player in (["afplay"], ["paplay"], ["aplay", "-q"], ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"]):
+            if shutil.which(player[0]) and not (player[0] in ("aplay", "paplay") and mime == "audio/mpeg"):
+                subprocess.run(player + [str(out)], check=False)
+                break
+        return 0
+    st = speech.status(cfg)
+    c = speech.public(cfg)
+    print(f"  voice engine: {speech.TITLES[st['engine']]}"
+          + (f", your lead's voice {c['voice']}" if c["voice"] else ""))
+    for e, v in st["engines"].items():
+        print(f"    {'✓' if v['ok'] else '·'} {speech.TITLES[e]:<14} {v.get('why') or ('ready' + (' (' + v['tool'] + ')' if v.get('tool') else ''))}")
+    print("\n  bento voice set elevenlabs --key … · bento voice voices · bento voice try \"hello\" --agent researcher")
+    return 0
 
 
 def _vault_cli(args):
@@ -3580,6 +3648,75 @@ def _team_cli(args):
     act = args.action
     if act == "draft":
         return _team_draft(args, cfg, store, colour)
+    if act == "log":
+        # every time agents talked to each other, from the runs (fabric.talk_log): works
+        # with the server down, like `bento flow runs`
+        log = fabricmod.talk_log(store, 30)
+        if not log:
+            print("  your agents haven't talked to each other yet")
+            return
+        kinds = {"freetalk": "free talk", "huddle": "huddle", "ask": "asked"}
+        for e in log:
+            when = time.strftime("%d %b %H:%M", time.localtime(e["when"]))
+            who = (f"{e['who'][0]} → {e['who'][1]}" if e["kind"] == "ask"
+                   else ", ".join(e["who"]))
+            n = "" if e["kind"] == "ask" else f"  ({e['messages']} message{'s' if e['messages'] != 1 else ''})"
+            print(f"  {when}  {kinds.get(e['kind'], e['kind']):<9}  {who}{n}")
+            if e["title"]:
+                print(f"      {e['title'][:110]}")
+            if e["kind"] == "ask" and e["detail"]:
+                print(f"      ↳ {e['detail'][:110]}")
+            print(f"      bento flow events {e['run_id']}")
+        return
+    if act == "freetalk":
+        # the person lets the team talk among themselves; the agents run in the server,
+        # so this is the same route the Settings panel uses, and it needs a server
+        port = int(cfg.get("port", 8321))
+        what = (args.name or "").strip()
+        if what == "stop":
+            live = [t for t in (_api_call(port, "/api/team/freetalk").get("talks") or [])
+                    if t.get("status") == "running"]
+            if not live:
+                print("  nobody is talking")
+                return
+            got = _api_call(port, f"/api/team/freetalk/{live[0]['id']}/stop", "POST", {})
+            print("  stopping them now" if got.get("ok") else f"  {got.get('error', got)}")
+            return
+        if not args.yes:
+            try:
+                st = _api_call(port, "/api/team/freetalk")
+            except OSError:
+                st = {"error": "no server answered. Start one with: bento serve"}
+            live = [t for t in (st.get("talks") or []) if t.get("status") == "running"]
+            if live:
+                t = live[0]
+                print(f"  your team is talking: {', '.join(t['agents'])}, {t['messages']} of "
+                      f"{t['max_messages']} messages\n  bento team freetalk stop")
+                return
+            print("  Free talk lets your agents talk among themselves for a few minutes.\n"
+                  "  It's experimental and every message is a model call. With --act they can\n"
+                  "  also use their tools; anything that needs permission still asks you.\n"
+                  "  Everything is kept: Chat, the runs, and the ledger.\n\n"
+                  "  bento team freetalk \"what should we try next?\" --minutes 5 --messages 20 --yes\n"
+                  "  options: --agents a,b  --act  · stop it with: bento team freetalk stop"
+                  + (f"\n\n  ({st['error']})" if st.get("error") else ""))
+            return
+        body = {"topic": what, "minutes": args.minutes, "messages": args.messages,
+                "mode": "act" if args.act else "talk", "understood": True,
+                "agents": [a.strip() for a in (args.agents or "").split(",") if a.strip()]}
+        try:
+            got = _api_call(port, "/api/team/freetalk", "POST", body)
+        except OSError:
+            print("  no server answered. Free talk runs in the server: bento serve")
+            sys.exit(2)
+        if not got.get("ok"):
+            print(f"  {got.get('error') or got.get('detail') or got}")
+            sys.exit(2)
+        t = got["talk"]
+        print(f"  {', '.join(t['agents'])} are talking, for up to {t['minutes']} min or "
+              f"{t['max_messages']} messages ({'talk and act' if t['mode'] == 'act' else 'talk only'}).\n"
+              f"  Read it in Chat, or afterwards: bento team log · stop: bento team freetalk stop")
+        return
     if act == "limits":
         pairs = [x for x in [args.name, args.model, *(getattr(args, "more", None) or [])] if x]
         if pairs:
@@ -4226,6 +4363,46 @@ def _version_cli(args):
         return 0
     print(f"Bento Box AI {vmod.label()}")
     return 0
+
+
+def _mind_cli(args):
+    """`bento mind` — the Mind scene's picture in a terminal (agentos/mind.py): what
+    your lead and each specialist hold, who talked to whom this week, and the sentence
+    the scene's Tell me says aloud. Read from the database, so it works with the
+    server down. The drawing has no terminal form; the numbers are the same ones."""
+    import json as _json
+
+    from . import mind as mindmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    snap = mindmod.snapshot(store, cfg)
+    if getattr(args, "json", False):
+        print(_json.dumps(snap, indent=2, default=str))
+        return
+    print(f"{snap['lead']}'s mind")
+    print(f"  {snap['spoken']}")
+    print()
+    held = {}
+    for n in snap["nodes"]:
+        held[n["hub"]] = held.get(n["hub"], 0) + 1
+    width = max(len(h["label"]) for h in snap["hubs"])
+    for h in snap["hubs"]:
+        extra = ""
+        if h["kind"] == "agent":
+            t = next((x for x in snap["team"] if x["name"] == h["label"]), {})
+            extra = ("working now" if t.get("busy") else
+                     f"{t.get('runs', 0)} run{'s' if t.get('runs', 0) != 1 else ''} this week")
+            extra += f" · {t['brain']}" if t.get("brain") else ""
+        elif h["kind"] == "knowledge":
+            extra = f"{snap['stats']['facts']} facts between them"
+        elif h["kind"] == "missions":
+            extra = f"{snap['stats']['missions_on']} on"
+        print(f"  {h['label']:<{width}}  {held.get(h['id'], 0):>4}  {extra}")
+    talk = [k for k in snap["links"] if k["kind"] == "talk"]
+    if talk:
+        print()
+        print("  talked this week:")
+        for k in sorted(talk, key=lambda k: -k["n"]):
+            print(f"    {k['a'].split(':', 1)[1]} ↔ {k['b'].split(':', 1)[1]}  ×{k['n']}")
 
 
 def _brief_cli(args):
@@ -4913,6 +5090,35 @@ def _update_cli(args) -> int:
     cfg = cfgmod.load_config()
     root = upd.install_dir()
 
+    if getattr(args, "rollback", False):
+        # the way back from the last update: the same function the Settings button calls
+        last = upd.last_update(root)
+        if not last:
+            print("  nothing to roll back: the code here is not the result of the last "
+                  "update this machine installed")
+            return 1
+        print(f"  the last update: {last.get('from_version') or last['from'][:8]} → "
+              f"{last.get('to_version') or last['to'][:8]}"
+              + (f" (switched from '{last['from_branch']}')" if last.get("from_branch")
+                 and last.get("from_branch") != last.get("to_branch") else ""))
+        if not (getattr(args, "yes", False) or _confirm("roll it back?")):
+            print("  stopped, nothing changed")
+            return 1
+        res = asyncio.run(upd.rollback(cfg, log=lambda m: print(f"  {m}")))
+        if not res.get("ok"):
+            print(f"✗ {res.get('error')}")
+            return 1
+        cfgmod.save_config(cfg)
+        print(f"✓ rolled back {res['from']} → {res['to']} on '{res['branch']}'"
+              + (f", version {res['version']}" if res.get("version") else ""))
+        if args.no_restart:
+            print("  load it:  bento service restart")
+            return 0
+        from . import desktop
+        started, msg = desktop.service_restart()
+        print(f"  {msg}")
+        return 0 if started else 1
+
     # Where updates come from is a setting, so a fork under test is followed by
     # the watcher and Settings too — not only by this one invocation.
     if getattr(args, "official", False):
@@ -4953,6 +5159,12 @@ def _update_cli(args) -> int:
     if state.get("error"):
         print(f"\n! {state['error']}")
 
+    last = upd.last_update(root) if root else None
+    if last:
+        print(f"  last update: {last.get('from_version') or last['from'][:8]} → "
+              f"{last.get('to_version') or last['to'][:8]}, "
+              f"{time.strftime('%d %b %H:%M', time.localtime(last.get('at') or 0))}"
+              f" · take it back: bento update --rollback")
     if not state.get("update_available"):
         if state.get("mismatch"):
             print(f"\n✓ up to date with {tracked} — but this checkout is "
@@ -5586,6 +5798,9 @@ def main():
                             "the tracked one out (the tree must be clean)")
     p_upd.add_argument("--official", action="store_true",
                        help="go back to the official repository and branch")
+    p_upd.add_argument("--rollback", action="store_true",
+                       help="take the last update back: the commit and branch it came from")
+    p_upd.add_argument("--yes", action="store_true", help="with --rollback: do not ask")
 
     p_svc = verb("service",
                            help="the background server: status, start, stop, restart, logs, uninstall")
@@ -5860,6 +6075,8 @@ def main():
                          choices=["show", "done", "later", "reopen", "decide"])
     p_brief.add_argument("id", nargs="?", default="", help="the item's id (from `bento brief`)")
     p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
+    p_mind = verb("mind", help="your agents and what they know, connected: the Mind scene's numbers")
+    p_mind.add_argument("--json", action="store_true", help="the whole snapshot, as the scene reads it")
     p_av = verb("avatar", help="the crew's characters — see them in the terminal, restyle or reroll")
     p_av.add_argument("action", nargs="?", default="list", choices=["list", "show", "set", "reroll", "design"])
     p_av.add_argument("name", nargs="?", default="", help="me, your agent's name, or a specialist")
@@ -5900,17 +6117,33 @@ def main():
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",
                         choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask", "limits",
-                                 "draft"])
+                                 "draft", "freetalk", "log"])
     p_team.add_argument("name", nargs="?", default="",
                         help="set: the agent · own: on|off · talk: matrix|swarm|democracy|off · allow/block/ask: the asker "
-                             "· draft: what the new agent should do, in words")
+                             "· draft: what the new agent should do, in words "
+                             "· freetalk: what they talk about, or stop")
     p_team.add_argument("model", nargs="?", default="",
                         help="set: provider/model, or an agent CLI such as gemini-cli/gemini-2.5-pro, "
                              "codex/default or claude-code/sonnet ('' = this machine's brain) "
                              "· allow/block/ask: the one asked")
     p_team.add_argument("more", nargs="*", default=[], help="limits: more name=value pairs")
     p_team.add_argument("--user", default="", help="whose agents, on a machine with users")
-    p_team.add_argument("--yes", action="store_true", help="draft: save what was drafted without asking")
+    p_team.add_argument("--yes", action="store_true",
+                        help="draft: save what was drafted without asking · freetalk: I understand, start it")
+    p_team.add_argument("--minutes", type=int, default=5, help="freetalk: stop after this many minutes (5, 10 or 20)")
+    p_team.add_argument("--messages", type=int, default=20, help="freetalk: stop after this many messages (up to 40)")
+    p_team.add_argument("--agents", default="", help="freetalk: who talks, comma-separated (default: all)")
+    p_team.add_argument("--act", action="store_true", help="freetalk: let them use their tools too")
+    p_voice = verb("voice", help="which engine reads your agents aloud: this browser, this computer, "
+                                  "ElevenLabs, OpenAI or Google Cloud")
+    p_voice.add_argument("action", nargs="?", default="show", choices=["show", "set", "voices", "try"])
+    p_voice.add_argument("name", nargs="?", default="",
+                         help="set/voices: the engine (browser, system, elevenlabs, openai, google)")
+    p_voice.add_argument("--key", default=None, help="set: the engine's API key ('' removes it)")
+    p_voice.add_argument("--voice", default=None, help="set: your lead's voice on that engine")
+    p_voice.add_argument("--text", default="", help="try: what to say")
+    p_voice.add_argument("--agent", default="", help="try: say it as this agent")
+    p_voice.add_argument("-o", "--out", default="", help="try: where to write the audio")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")
     p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget"])
@@ -6108,6 +6341,8 @@ def main():
         raise SystemExit(_config_cli(args))
     elif args.cmd == "brief":
         _brief_cli(args)
+    elif args.cmd == "mind":
+        _mind_cli(args)
     elif args.cmd == "link":
         _link_cli(args)
     elif args.cmd == "team":
@@ -6124,6 +6359,8 @@ def main():
         sys.exit(0 if all(r["ok"] for r in rows) else 1)
     elif args.cmd in ("mail", "calendar"):
         _account_cli(args, args.cmd)
+    elif args.cmd == "voice":
+        sys.exit(_voice_cli(args) or 0)
     elif args.cmd == "vault":
         _vault_cli(args)
     elif args.cmd == "remote":

@@ -255,6 +255,83 @@ The hash-chained audit ledger (the Audit app, `audit_verify`) records:
 - **every team switch**: the talk mode, the own-providers switch and a model pinned from
   Settings or the CLI (`team.write`, `agent.write`).
 
+## Free talk: let them talk among themselves
+
+Everything above is agents talking because somebody asked them something. **Free talk** is
+the other case: you let the team talk among themselves for a few minutes, about a topic or
+about anything that would help you, and read what they come up with. It's experimental, and
+it only ever starts because you started it.
+
+Settings → Agents → Working together → **Let them talk**:
+
+1. Pick who talks (two to six of your agents) and, if you like, what about.
+2. Pick when it ends: **5, 10 or 20 minutes**, or **10, 20 or 40 messages**, whichever comes
+   first. It also ends when nobody has anything new to say, or when you press **Stop**.
+3. Pick **Talk only** (no tools at all, so they can only talk) or **Talk and use their
+   tools** (their own tools, under their own permissions; anything that needs you still asks).
+4. Read the caution, tick **I understand**, and press **Start free talk**.
+
+![Settings → Agents → Working together → Let them talk: three agents picked, a topic, 5 minutes or 20 messages, Talk only, the caution in amber and the I understand tick](screenshots/team-freetalk.png)
+
+It gets its own thread in Chat, under **Your agents talking**, and every message lands there
+as it is said, in that agent's face, with who it was for and the brain it answered on. Each
+agent speaks when it is spoken to, and nobody waits more than a lap of the room: in the first
+live run two agents kept answering each other and the third never spoke, so now the one who
+has waited longest gets the floor.
+
+![A free talk in Chat: the validator tells the researcher what it thinks is missing, and the researcher answers, each with its face, the one it is talking to and Claude Code as the brain](screenshots/team-freetalk-chat.png)
+
+From a terminal: `bento team freetalk "what should we try next?" --minutes 5 --messages 20 --yes`
+(add `--act` for tools, `--agents a,b` to pick), and `bento team freetalk stop`.
+
+**Why it is careful.** It is the one time your agents talk with nobody asking them anything,
+so every message is a model call you did not ask for one by one. That is why the limits are
+yours to pick and have ceilings no request can pass (20 minutes, 40 messages, 6 agents), why
+the caution has to be ticked, and why no agent can start one: there is no tool for it, only
+your screen and your terminal. It is refused while **Agents message each other** is Off, and
+one runs at a time.
+
+**Everything is kept.** A free talk is a run of its own (kind `freetalk`), and every message
+is a run under it on that agent's own brain, so every tool call in *talk and act* mode is an
+ordinary ledger row. Each message is also written to the session as it is said, the whole
+transcript is the session's output, and the start and the end are ledger rows of their own
+(`team.freetalk`) pointing at the session. The Chat thread is written message by message, so
+a server that stops in the middle keeps everything said until then.
+
+## Where to see your agents talking
+
+- **Settings → Agents → Working together → Agent-to-agent talk** lists every time your
+  agents talked to each other, newest first: free talks, huddles and one agent asking
+  another. Each one opens in Chat or replays in the Run Inspector.
+- **Chat** shows them as they happen, in the thread that caused them: a huddle or a question
+  between agents is a card in that conversation, and a free talk is its own thread.
+- **The Run Inspector** replays any of them message by message, with who said what to whom.
+- **The Office and the Crew stage** show it as it happens: agents walk over to each other and
+  speak over their heads.
+- **With voice on**, you hear them too, each in its own voice (below).
+- **In a terminal**, `bento team log` lists them and `bento flow events <run>` prints one in
+  full, with the server up or down.
+
+![Agent-to-agent talk in Settings: two free talks, each with its three faces, when, how many messages and its topic, with Open in Chat and Replay the run](screenshots/team-talklog.png)
+
+![A free talk replayed in the Run Inspector: 3 agents, 10 messages, finished in 2m 30s, and each message with the one who said it and the one it was for](screenshots/team-freetalk-run.png)
+
+## Hearing them: a voice for each agent
+
+With **Speak replies aloud** on (Settings → Voice, or Voice in Chat's toolbar), or in Jarvis
+mode (the mic in the menu bar or the prompt bar), a huddle, a free talk and one agent asking
+another are heard as well as read, and each agent speaks in its own voice. Your lead keeps the
+voice you chose. The others get a voice picked from their name, so it stays the same every
+time, and a pitch of their own for devices with only one or two voices. Lines are queued, so a
+room of agents is heard in order and your lead's reply comes after them. **Each agent speaks in
+its own voice** in Settings → Voice turns it off.
+
+In Jarvis mode, ask for a huddle out loud ("at researcher, at writer, should we launch on
+Friday?" is heard as `@researcher @writer …`) and you hear the room talk it through, then your
+lead's answer, then it listens again. Voices come from your browser and device, so they vary
+between a Mac, Windows, Linux and a phone. The terminal has no speaker on purpose; the same
+words are text in the chat and in `bento team log`.
+
 ## Linked teams: your agents and somebody else's
 
 Your researcher can ask an analyst that lives on **another Bento**: a colleague's laptop,
@@ -633,6 +710,9 @@ the link's own name, which you chose, is what is verified.
 | Pinning a model | `fabric.set_agent_model` — `PUT /api/subagents/{name}/brain`, `set_agent_brain`, `bento team set` |
 | The switch | `team.own_brains` in config (a machine setting: it decides spend) |
 | A huddle | `ControlPlane.huddle` — the `huddle` tool, a `@a @b …` chat message, `agent_say` events |
+| Free talk | `ControlPlane.start_free_talk` / `run_free_talk` / `stop_free_talk`, `fabric.free_talk_next` (the floor), `FREE_TALK_*` (the ceilings) — `/api/team/freetalk*`, `24f-freetalk.js`, `bento team freetalk` |
+| Every time they talked | `fabric.talk_log` (read from the runs) — `GET /api/team/talklog`, `bento team log` |
+| A voice per agent | `agentVoice` / `speakAs` / `voiceAgentLine` in `08-wallpaper-jarvis-voice.js` |
 | A message | `ask_agent` → `agent.message` (the gate) → `ControlPlane.message` (loops, hops, budget, taint) — `agent_msg` events |
 | The matrix | `fabric.matrix` / `fabric.set_cell` (grant rows) — `GET/PUT /api/team/matrix`, `bento team matrix/allow/block/ask` |
 | The mode | `team.talk` = `matrix` \| `swarm` \| `democracy` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
@@ -644,4 +724,4 @@ the link's own name, which you chose, is what is verified.
 | A linked agent on a mission | `flows.validate` / `declared_grants` (`agent@link`), `ControlPlane._master_tools.delegate_linked` |
 | The other side's record of it | `ControlPlane.announce_mission` (on save/enable/delete, `server._announce_linked`, the `create_flow`/`enable_flow` tools) → op `mission` → `fabric.record_mission`; first question → the same; `fabric.linked_missions` / `stop_mission`; `/api/team/links/{label}/missions*`, `bento link missions/stop/resume` |
 | Linked teams | `agentos/teamlink.py` (PKI, requests and the six digits, identity, invites, the mTLS listener, `call`) — `fabric.link_access` / `set_link_access`, `ControlPlane.answer_linked`; `/api/team/links*`, `bento link` |
-| Tests | `tests/test_team.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py`, `tests/test_teamlink_request.py`, `tests/test_teamchat.py`, `tests/test_team_security.py`, `tests/test_team_standing.py`, `tests/test_team_missions.py` |
+| Tests | `tests/test_team.py`, `tests/test_freetalk.py`, `tests/test_agent_messages.py`, `tests/test_teamlink.py`, `tests/test_teamlink_request.py`, `tests/test_teamchat.py`, `tests/test_team_security.py`, `tests/test_team_standing.py`, `tests/test_team_missions.py` |

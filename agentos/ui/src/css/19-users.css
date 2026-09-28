@@ -131,7 +131,20 @@
 /* The changelog on the update card: what is actually arriving, from git. Scrolls
    rather than growing, because a machine that has fallen ten releases behind must
    not push the Update button off the panel. */
+/* the last update, and the way back from it (11-settings.js verRollback) */
+.upd-back{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:10px;padding-top:10px;
+  border-top:1px solid var(--hairline,var(--line))}
+.upd-back .endbtn{min-height:var(--tap,32px)}
 .upd-log{margin-top:8px;max-height:190px;overflow:auto;border:1px solid var(--hairline);
   border-radius:var(--r-md);background:var(--bg2);padding:8px 10px;font-size:var(--fs-sm)}
 .upd-log div{padding:2px 0;line-height:1.5;overflow-wrap:anywhere}
 .upd-log code{color:var(--acc,#5eead4);margin-right:6px}
+
+/* Settings → Voice → Voice engine (11f-speech.js) */
+.sp-box{display:flex;flex-direction:column;gap:8px;width:100%}
+.sp-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.prow.stack .pc .sp-row select,.prow.stack .pc .sp-row input{flex:1 1 220px;width:auto;min-width:0;min-height:var(--tap,32px)}
+.sp-row .endbtn{min-height:var(--tap,32px)}
+.sp-lab{font-size:var(--fs-sm,13px);font-weight:600}
+.sp-why{margin:0;font-size:var(--fs-sm,13px);color:var(--warn,#fbbf24)}
+.sp-note{margin:0;font-size:var(--fs-xs)}
