@@ -121,3 +121,19 @@ body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical
 /* the label keeps its own line, and the ⓘ sits on it rather than under it */
 .prow .pl>b:has(+.pinfo),.acct-door .pl>b:has(+.pinfo){display:inline}
 .prow .pl>.pinfo+small{display:block}
+
+/* Settings → System → Backup (11g-backup.js): a column of fields that wraps on a phone */
+.bk-box{display:flex;flex-direction:column;gap:8px;align-items:flex-start;max-width:100%}
+.bk-pws{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+.bk-pws input{flex:1 1 180px;min-width:0}
+.bk-ws{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-sm)}
+.bk-ws code{word-break:break-all}
+.bk-box input[type=file]{max-width:100%;min-height:var(--tap,32px)}
+.bk-done{padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--ok,#3c9) 12%,transparent);margin:4px 0 8px}
+.bk-done ul{margin:6px 0 6px 18px;padding:0}
+.bk-done li{margin:3px 0}
+.bk-bad{color:var(--err)}
+.bk-last:empty{display:none}
+.bk-last{padding:0 16px}
+.bk-last .bk-done{margin:12px 0 4px}
+.bk-last li{word-break:break-word}

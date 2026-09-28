@@ -186,6 +186,7 @@ function obPane(pane,s){
       ${s.optional?`<button class="wiz-back" id="ob-skip">${
         s.status==='skipped'?'Skipped — do it after all':'Skip this'}</button>`:''}
       ${s.panel?`<button class="wiz-back" id="ob-panel">Open it in Settings instead</button>`:''}
+      ${s.id==='name'?`<button class="wiz-back" id="ob-restore">Moving from another machine? Restore a backup</button>`:''}
       <span class="ob-msg" id="ob-msg"></span>
     </div></div>`;
   Motion.run(pane.firstElementChild,
@@ -210,6 +211,14 @@ function obPane(pane,s){
       ? openApp(s.panel)
       : (SETTAB=s.panel, localStorage.setItem('settab',s.panel), openApp('settings'));
     if(w)w._backToSetup=from;
+  };
+  // a new machine for somebody who already has one: their backup, not a fresh setup
+  const rb=$('#ob-restore');
+  if(rb)rb.onclick=()=>{
+    obClose();
+    SETTAB='system';try{localStorage.setItem('settab','system')}catch(e){}
+    openApp('settings');
+    setTimeout(()=>{const el=document.getElementById('bk-restore');if(el)el.scrollIntoView({block:'center'})},700);
   };
   if(OB_WIRE[s.id])OB_WIRE[s.id](s);
 }

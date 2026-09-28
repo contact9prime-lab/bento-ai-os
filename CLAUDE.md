@@ -445,6 +445,44 @@ was for. Full story in `docs/vault.md`. Four things that have to stay true:
 resolves; only the module that opens the box resolves. Keep it that way: resolving in a
 state function is how a value ends up on a screen.
 
+## Backup: the whole machine in one file, and restore checks everything first
+
+`agentos/backup.py` + `bento backup` / `bento restore` + Settings → System → Backup
+(`11g-backup.js`) + `/api/backup`, `/api/restore`. Asked for as "what is missing from a
+portability point of view": Snapshots kept three files of one home on the same disk, and
+nothing could move a machine. Full story in `docs/backup.md`; `tests/test_backup.py` pins
+what follows. Kept free of HTTP and asyncio, so both verbs work with the server down.
+
+- **Always sealed, never optional.** The file carries every account and the vault KEYS, so
+  there is no unencrypted mode. AES-256-GCM in 1 MiB records under scrypt; each record's
+  associated data is the header, its counter and a final flag, so a file cut short,
+  reordered, edited or extended is refused in a sentence. The header's `check` (an HMAC of
+  the key) tells a wrong passphrase from a damaged file even when the whole file is one
+  record. Streamed both ways: 157 MB peaked at ~55 MB RSS.
+- **Databases go through SQLite's backup API** (`_copy_db`), never a file copy: a WAL
+  database copied mid-write restores as a corrupt one, and the server may be running.
+- **Restore stages, then swaps; nothing is ever deleted.** `stage` decrypts into
+  `.restoring-<time>` inside the home and checks every name (`_safe`: no absolute path, no
+  `..`, links dropped); only after the last record verifies does `apply` move the current
+  contents into `.before-restore-<time>` and the staged ones in. Contents are moved, not the
+  home itself, because the home can be a mount point (`/data` in Docker). The `PRIVATE`
+  prefixes are never backed up and never moved.
+- **The desktop never swaps a home under a running server.** `/api/restore` stages and marks
+  `.restore-ready`; `/api/restore/apply` restarts (after the answer leaves, `call_later`),
+  and `serve()` calls `apply_pending()` only once it owns the port (`kind != "taken" or
+  mode == "restart"`), or a second instance on another port would swap the first one's home.
+  Restore is loopback + admin (it replaces the machine); backup is admin, any browser.
+- **A keyring key travels inside the file** and goes back into the new keyring, or into a
+  0600 key file with the vault switched to `file` when there is none. Same key, so the
+  vault opens; the report says the protection got weaker. Never mint a new key here.
+- **Paths follow the machine** (`_remap`): values under the old `AGENTOS_HOME` or user home
+  are rewritten in every `config.json` and every `executor_profiles` spec. A prefix is a
+  whole folder (`/home/adam` is not under `/home/ada`).
+- **A snapshot restores code only into the version it was taken on** (`meta.version`).
+  Copying its `.py` files over a newer install rolled half the program back.
+- **The shipped bundle must parse** (`test_the_shipped_bundle_parses`, with Node): one
+  dropped `pRow(` in Settings killed every app while every other test passed.
+
 ## Sign in with Google / Microsoft: the door that asks for nothing to type
 
 `agentos/signin.py` runs OAuth 2.0 + PKCE itself (no SDK: the flow is ten lines and the
