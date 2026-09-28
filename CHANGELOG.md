@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.10 — 2026-09-28
+
+**ElevenLabs lists your voices again.** Settings → Voice said "could not list the voices: 400
+Bad Request" under the ElevenLabs key. That came from ElevenLabs' old voice list (`/v1/voices`),
+which is deprecated and stops answering once a workspace holds more than 500 voices. The voices
+are now read from `/v2/voices` a page at a time, with the old list kept only as a fallback, and
+a refusal shows ElevenLabs' own reason.
+
+**Your name no longer appears in Settings' search box.** A key box was a password field, so the
+browser took Settings for a sign-in page and filled your saved username into the box before it,
+the search box, again every time the pane repainted. Key boxes are now drawn as dots without
+being password fields, and the search box is a search field.
+
 ## 0.6.9 — 2026-09-28
 
 **ElevenLabs works.** It answered *400 Bad Request* because the lead's voice was one setting
