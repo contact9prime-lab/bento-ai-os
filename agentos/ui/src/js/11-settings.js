@@ -85,26 +85,14 @@ const pSwitch=(id,on)=>`<label class="psw"><input type="checkbox" id="${id}" ${o
    with the last four characters, and "Replace" swaps in an empty field. That
    way nothing can echo the mask back to the server, and a shoulder-surfer sees
    nothing useful. */
-/* A key box the browser must not take for a login form. Reported as "piyush keeps coming
-   back in the top right corner": a type=password field made Chrome see a sign-in page,
-   and it filled the saved username into the text box before it, which is Settings' own
-   search box, again on every repaint. So a key is a TEXT field drawn as dots
-   (-webkit-text-security, where the engine has it) with the password managers' opt-outs;
-   an engine without it keeps type=password, told it is a new password so nothing is
-   filled. `secretField` is used by every key box in Settings and Voice. */
-function secretField(id,ph,cls){
-  const dots=typeof CSS!=='undefined'&&CSS.supports&&CSS.supports('-webkit-text-security','disc');
-  return `<input ${dots?'type="text" class="secret-in'+(cls?' '+cls:'')+'"':'type="password"'+(cls?' class="'+cls+'"':'')} id="${id}" placeholder="${esc(ph||'')}"`
-    +` autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-form-type="other">`;
-}
 function pSecret(id,hasKey,masked,ph){
-  if(!hasKey)return secretField(id,ph);
+  if(!hasKey)return `<input type="password" id="${id}" placeholder="${esc(ph||'')}" autocomplete="off">`;
   return `<span class="psecret" id="${id}-wrap"><i>saved</i><code>${esc(masked||'••••')}</code>
     <button class="endbtn" onclick="pSecretReplace('${id}')">Replace</button></span>`;
 }
 function pSecretReplace(id){
   const w=document.getElementById(id+'-wrap');if(!w)return;
-  w.outerHTML=secretField(id,'new key…');
+  w.outerHTML=`<input type="password" id="${id}" placeholder="new key…" autocomplete="off">`;
   const el=document.getElementById(id);if(el)el.focus();
 }
 const pText=(id,val,ph,type)=>`<input type="${type||'text'}" id="${id}" value="${esc(val==null?'':val)}" placeholder="${esc(ph||'')}">`;
@@ -131,7 +119,7 @@ async function renderSettings(body){
   await loadConfig();
   body.innerHTML=`<div class="pshell">
       <div class="phead"><span class="pt">Settings</span><span class="sp"></span>
-        <span class="psearch">${SVG_SEARCH}<input id="set-q" type="search" name="settings-find" placeholder="Find a setting…" autocomplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"></span>
+        <span class="psearch">${SVG_SEARCH}<input id="set-q" placeholder="Find a setting…" autocomplete="off"></span>
         ${/* One Save per page. The sticky bar at the foot is always reachable
               while you scroll; a second copy in the header meant two controls for
               one act, and neither said which settings it covered. */''}

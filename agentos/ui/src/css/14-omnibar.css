@@ -362,7 +362,7 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .prow .pl b{display:block;font-size:var(--fs-base);font-weight:600}
 .prow .pl small{display:block;font-size:var(--fs-sm);color:var(--dim);margin-top:2px;line-height:1.45}
 .prow .pc{flex:0 1 auto;margin-left:auto;display:flex;align-items:center;gap:8px;justify-content:flex-end}
-.prow .pc input[type=text],.prow .pc input[type=password],.prow .pc input[type=search],.prow .pc input[type=number],.prow .pc select{
+.prow .pc input[type=text],.prow .pc input[type=password],.prow .pc input[type=number],.prow .pc select{
   min-width:200px;max-width:340px}
 .prow .pc input[type=number]{min-width:96px}
 .prow.stack{display:block}
@@ -385,9 +385,6 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 
 /* a stored secret: shown, never re-editable until you ask to replace it */
 .psecret{display:flex;align-items:center;gap:8px}
-/* a key box drawn as dots without being a password field (secretField in 11-settings.js) */
-.secret-in{-webkit-text-security:disc}
-#set-q::-webkit-search-cancel-button{cursor:pointer}
 .psecret i{font-style:normal;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;
   color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 40%,transparent);border-radius:var(--r-sm);padding:2px 7px}
 .psecret code{font-family:var(--mono);font-size:var(--fs-sm);color:var(--dim)}

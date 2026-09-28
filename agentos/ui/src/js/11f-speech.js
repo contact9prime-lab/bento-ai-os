@@ -19,7 +19,7 @@ async function speechPaint(){
   box.innerHTML=`<div class="sp-row"><select id="v-engine" onchange="speechSet({engine:this.value})">${opts}</select>
       <button class="endbtn" onclick="speechTry(this)">Try it</button></div>
     ${st.ok?'':`<p class="sp-why">${esc(st.why||'')}</p>`}
-    ${cloud?`<div class="sp-row">${secretField('v-key',(c.keys||{})[cur]?(c.openai_from_provider&&cur==='openai'?'using your OpenAI provider key':'a key is saved'):'paste your '+t[cur]+' API key')}
+    ${cloud?`<div class="sp-row"><input id="v-key" type="password" autocomplete="off" placeholder="${(c.keys||{})[cur]?(c.openai_from_provider&&cur==='openai'?'using your OpenAI provider key':'a key is saved'):'paste your '+esc(t[cur])+' API key'}">
       <button class="endbtn" onclick="speechKey()">Save key</button>${(c.keys||{})[cur]&&!(c.openai_from_provider&&cur==='openai')?`<button class="endbtn" onclick="speechSet({keys:{${cur}:''}})">Remove</button>`:''}</div>`:''}
     ${cur==='browser'?'':`<div class="sp-row"><label class="sp-lab">Your lead’s voice</label><select id="v-srv-voice" onchange="speechSet({voice:this.value})"><option value="">loading…</option></select></div>
       <p class="mut sp-note">Every other agent gets a different voice from this engine, the same one each time.</p>`}`;

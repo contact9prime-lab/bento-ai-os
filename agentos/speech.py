@@ -288,7 +288,12 @@ async def cloud_voices(cfg: dict, engine: str) -> list[dict]:
         return []
     async with httpx.AsyncClient(timeout=TIMEOUT) as c:
         if engine == "elevenlabs":
-            return await _eleven_voices(c, key)
+            r = await c.get("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": key})
+            if r.status_code >= 400:
+                raise _refusal(engine, r)
+            return [{"id": v["voice_id"], "name": v.get("name") or v["voice_id"],
+                     "lang": ((v.get("labels") or {}).get("accent") or "")}
+                    for v in r.json().get("voices", [])]
         if engine == "google":
             lang = conf(cfg).get("language") or "en-US"
             r = await c.get("https://texttospeech.googleapis.com/v1/voices",
@@ -298,40 +303,6 @@ async def cloud_voices(cfg: dict, engine: str) -> list[dict]:
             return [{"id": v["name"], "name": v["name"], "lang": ",".join(v.get("languageCodes") or [])}
                     for v in r.json().get("voices", [])]
     return []
-
-
-#: ElevenLabs lists voices a page at a time (/v2/voices). /v1/voices is deprecated and
-#: stops answering once a workspace holds more than 500 voices, which came back as
-#: "could not list the voices: 400 Bad Request". A few pages is every voice anybody picks.
-ELEVEN_PAGES = 5
-
-
-async def _eleven_voices(c, key: str) -> list[dict]:
-    out, token = [], ""
-    for _ in range(ELEVEN_PAGES):
-        params = {"page_size": 100, **({"next_page_token": token} if token else {})}
-        r = await c.get("https://api.elevenlabs.io/v2/voices", params=params,
-                        headers={"xi-api-key": key})
-        if r.status_code == 404 and not out:
-            # an account or proxy that has not got v2 yet: the old list, as before
-            r = await c.get("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": key})
-            if r.status_code >= 400:
-                raise _refusal("elevenlabs", r)
-            return _eleven_rows(r.json().get("voices", []))
-        if r.status_code >= 400:
-            raise _refusal("elevenlabs", r)
-        js = r.json()
-        out += _eleven_rows(js.get("voices", []))
-        token = js.get("next_page_token") or ""
-        if not js.get("has_more") or not token:
-            break
-    return out
-
-
-def _eleven_rows(vs) -> list[dict]:
-    return [{"id": v["voice_id"], "name": v.get("name") or v["voice_id"],
-             "lang": ((v.get("labels") or {}).get("accent") or "")}
-            for v in vs if isinstance(v, dict) and v.get("voice_id")]
 
 
 async def _cloud_speak(cfg: dict, engine: str, text: str, voice: str) -> tuple[bytes, str]:
