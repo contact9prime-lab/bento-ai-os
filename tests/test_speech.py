@@ -202,6 +202,12 @@ class _Eleven:
 
         def answer(url, kw):
             outer.calls.append((url, kw))
+            if url.endswith("/v2/voices"):
+                # a page at a time, as ElevenLabs lists them
+                tok = (kw.get("params") or {}).get("next_page_token")
+                page = outer.VOICES[1:] if tok else outer.VOICES[:1]
+                return Resp(200, js={"voices": [{"voice_id": v, "name": v} for v in page],
+                                     "has_more": not tok, "next_page_token": "" if tok else "p2"})
             if url.endswith("/v1/voices"):
                 return Resp(200, js={"voices": [{"voice_id": v, "name": v} for v in outer.VOICES]})
             voice = url.split("/text-to-speech/", 1)[1].split("/", 1)[0]
@@ -366,3 +372,53 @@ def test_live_sentences_in_node():
     assert said[1].startswith("The first one is big.") and "code block" in said[1]
     assert "x=1" not in " ".join(said)
     assert said[-1].endswith("Bye")
+
+
+def test_the_voice_list_is_read_a_page_at_a_time(monkeypatch):
+    """Reported as "could not list the voices: 400 Bad Request for /v1/voices": that list
+    is deprecated and stops answering once a workspace holds over 500 voices. The voices
+    are read from /v2/voices, page by page, and /v1 is only a fallback for a 404."""
+    calls = []
+    monkeypatch.setattr(speech.httpx, "AsyncClient", _Eleven(calls).client())
+    cfg = {"providers": {}, "speech": {"engine": "elevenlabs", "elevenlabs": {"api_key": "k"}}}
+    vs = asyncio.run(speech.voices(cfg))
+    assert [v["id"] for v in vs] == _Eleven.VOICES
+    urls = [u for u, _ in calls]
+    assert urls == ["https://api.elevenlabs.io/v2/voices"] * 2, urls
+
+    class R:
+        def __init__(self, code, js):
+            self.status_code, self._js, self.text = code, js, ""
+
+        def json(self):
+            return self._js
+
+    seq = [R(404, {}), R(200, {"voices": [{"voice_id": "old-1", "name": "Old"}]})]
+
+    class C:
+        async def get(self, url, **k):
+            calls.append((url, k))
+            return seq.pop(0)
+    got = asyncio.run(speech._eleven_voices(C(), "k"))
+    assert got == [{"id": "old-1", "name": "Old", "lang": ""}] and calls[-1][0].endswith("/v1/voices")
+    bad = [R(400, {"detail": {"status": "invalid_request", "message": "page_size too large"}})]
+
+    class B:
+        async def get(self, url, **k):
+            return bad.pop(0)
+    with pytest.raises(RuntimeError, match="page_size too large"):
+        asyncio.run(speech._eleven_voices(B(), "k"))
+
+
+def test_a_key_box_is_not_a_login_form():
+    """Reported as "piyush keeps coming back in the top right corner": a password field
+    made the browser fill the saved username into Settings' search box. Key boxes are
+    drawn through secretField, and the search box is a search field."""
+    st = (JS / "11-settings.js").read_text()
+    sp = (JS / "11f-speech.js").read_text()
+    field = st.split("function secretField(", 1)[1].split("\n}", 1)[0]
+    assert 'autocomplete="new-password"' in field and "data-1p-ignore" in field
+    assert "-webkit-text-security" in field
+    assert 'id="set-q" type="search"' in st
+    assert "secretField('v-key'" in sp and 'id="v-key" type="password"' not in sp
+    assert 'type="password" id="${id}" placeholder="${esc(ph||\'\')}" autocomplete="off"' not in st

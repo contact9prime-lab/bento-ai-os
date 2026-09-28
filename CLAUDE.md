@@ -1740,6 +1740,13 @@ speech.py (`tests/test_speech.py`):
   ids the engine lists (`_usable`), a pin from another engine is dropped, `VoiceMissing` is
   retried once with another listed voice, and `_refusal` turns the provider's `detail` into a
   sentence. Never guess ElevenLabs voice ids in source: their defaults are being retired.
+- **ElevenLabs voices are read from `/v2/voices`, a page at a time** (`_eleven_voices`,
+  `ELEVEN_PAGES`). `/v1/voices` is deprecated and answers 400 once a workspace holds over 500
+  voices; it is only a fallback for a 404.
+- **A key box is never a password field** (`secretField` in 11-settings.js): a type=password
+  input made the browser treat Settings as a login form and fill the saved username into the
+  search box before it ("piyush keeps coming back"). Text drawn as dots, with the password
+  managers' opt-outs; `test_a_key_box_is_not_a_login_form`.
 - **Speak as it answers is the page's, the stream is the server's.** `speechLiveFeed` (from
   `text_delta`) says whole sentences, holds an open code fence, and `speechLiveEnd` says the
   rest; `speechLiveTool` says one line for a slow tool that really started (`SPEECH_TOOL_WORDS`,
