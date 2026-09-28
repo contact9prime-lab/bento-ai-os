@@ -62,7 +62,7 @@ var PLACES=[
   ['Locale','settings','Settings → Locale',['language','country','timezone','time zone','units','clock','region'],placeSettings('locale')],
   ['Shortcuts','settings','Settings → Shortcuts',['shortcut','shortcuts','keyboard','keys','hotkey','hotkeys','key binding'],placeSettings('keys')],
   ['Voice','settings','Settings → Voice',['voice','speech','speak','tts','microphone','mic','wake word','dictation'],placeSettings('voice')],
-  ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look'],placeSettings('look')],
+  ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','remote','remote access','passphrase','lock','autonomy','light mode','profile','security'],placeSettings('system')],
   ['Run missions','jobs','Missions → Run',['mission','missions','job','jobs','recipe','recipes','daily','describe a mission','catalogue'],placeMissions('run')],
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],

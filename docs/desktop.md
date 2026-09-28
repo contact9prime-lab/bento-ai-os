@@ -308,6 +308,10 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   ([The Office](office.md)). World, which is experimental, puts your team in a small 3D place
   where they have feelings that come from what they really do, and your lead asks how you are.
   It all sleeps the moment you pick another scene ([The World](world.md)).
+- **And Mind.** Your lead as a glowing core, with Memory, Knowledge, Missions and each
+  specialist around it, every memory, fact, mission and run drawn as a strand, and a spark
+  running out along one whenever something actually runs. The side panels are the week in
+  numbers, and **Tell me** has your lead say them aloud ([The Mind](mind.md)).
 - **Toasts and panels.** A toast says what KIND of news it is before you read it: a green tick
   for something done, amber for a warning, red for a failure, the accent for anything else — worked
   out from the sentence itself, so every one of the few hundred toasts in the apps got it without an
@@ -623,5 +627,37 @@ In **Settings → Voice** you can turn on:
   talk, one asking another), you hear each of them in a different voice. See
   [The team](team.md#hearing-them-a-voice-for-each-agent).
 
-All of it uses your browser's own speech, so the voices depend on the device. Grant
-microphone permission the first time.
+Grant microphone permission the first time.
+
+### Voice engine: which voices your agents speak with
+
+**Settings → Voice → Voice engine** picks what turns their words into sound:
+
+| Engine | What it is | Cost |
+|---|---|---|
+| **This browser** (the default) | The device's own voices, through the browser's `speechSynthesis`. Nothing to set up; the voices depend on the device. | Free |
+| **This computer** | The server's own speech: `say` on a Mac, `piper` (with `PIPER_MODEL` pointing at a voice) or `espeak-ng` on Linux, the built-in voices on Windows. Offline. | Free |
+| **ElevenLabs** | The most natural voices, model `eleven_multilingual_v2`. Needs an API key. | Per character |
+| **OpenAI** | `gpt-4o-mini-tts` with eleven voices. Uses your OpenAI provider key if you have one. | Per character |
+| **Google Cloud** | Cloud Text-to-Speech with an API key, in the language set under Mic language. | Per character |
+
+Whatever the engine, every agent keeps its own voice, the same one each time, and your lead
+keeps the voice you pick. A key is pasted once and never shown again; the page only learns
+that one is set. Each line is kept on the server (the last 300), so replaying a thread
+costs nothing. If an engine cannot answer, the line is spoken by the browser instead and a
+toast says why, once.
+
+The engine is the machine's setting, because the cloud ones spend money, so only an admin
+can change it on a machine with accounts. On Linux, `espeak-ng` is offered under System Settings
+→ Components (it is GPL, so it is asked for rather than shipped).
+
+![Settings → Voice: the voice engine](screenshots/voice-engine.png)
+
+From a terminal:
+
+```bash
+bento voice                        # which engine, and which ones are ready here
+bento voice set elevenlabs --key … # switch, and save the key
+bento voice voices system          # the voices this computer has
+bento voice try "hello" --agent researcher -o hello.mp3
+```

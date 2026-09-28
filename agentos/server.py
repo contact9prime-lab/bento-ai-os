@@ -1078,7 +1078,15 @@ async def api_update_status(check: bool = False):
     # loop — every other request, every WebSocket, every turn — and from the About
     # panel that looks exactly like "check for updates does nothing".
     changes = await asyncio.to_thread(_pending_sync, cfg) if check else []
+    # When the only thing in the way is being on another branch, the page offers
+    # "Switch and update" (apply's `switch`), instead of a sentence about a CLI flag.
+    can_switch = (not ok) and updmod.can_apply(cfg, switch=True)[0]
+    last = await asyncio.to_thread(updmod.last_update)
     return {**res, "can_apply": ok, "blocked_reason": why, "changes": changes,
+            "can_switch": can_switch,
+            "rollback": ({"to": last["from"][:8], "version": last.get("from_version", ""),
+                          "branch": last.get("from_branch", ""), "at": last.get("at", 0),
+                          "now": last.get("to_version", "")} if last else None),
             "build": _running_build(),
             # an update on disk that this process has not restarted into yet
             "pending_restart": await asyncio.to_thread(pending_restart),
@@ -1164,7 +1172,8 @@ async def api_update_apply(request: Request, body: dict | None = None):
     loop = asyncio.get_running_loop()
     res = await updmod.apply(
         state["cfg"], run_tests=bool(body.get("run_tests", True)),
-        log=lambda m: loop.call_soon(asyncio.ensure_future, say(m)))
+        log=lambda m: loop.call_soon(asyncio.ensure_future, say(m)),
+        **({"switch": True} if body.get("switch") else {}))
     state["store"].log("system", f"update: {res}")
     if not res.get("ok"):
         await state["broadcast"]({"type": "update_done", **res})
@@ -1174,6 +1183,37 @@ async def api_update_apply(request: Request, body: dict | None = None):
         # The page first: it must be told to come back, and by whom, before the
         # server that would tell it disappears.
         await state["broadcast"]({"type": "update_done", **res})
+        await asyncio.sleep(1.0)
+        await state["broadcast"]({"type": "reload", "delay": 6000})
+        await asyncio.sleep(0.5)
+        from . import desktop as desktopmod
+        desktopmod.restart_service()
+    asyncio.create_task(_finish())
+    return {**res, "restarting": True}
+
+
+@app.post("/api/update/rollback")
+async def api_update_rollback(request: Request):
+    """Take the last update back (updates.rollback), then restart into the older code.
+    Loopback only, like installing one: it replaces the code that enforces every other
+    permission here."""
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "a rollback can only be started from this machine"},
+                            status_code=403)
+    from . import updates as updmod
+
+    async def say(msg):
+        await state["broadcast"]({"type": "update_progress", "message": msg})
+    loop = asyncio.get_running_loop()
+    res = await updmod.rollback(state["cfg"],
+                                log=lambda m: loop.call_soon(asyncio.ensure_future, say(m)))
+    state["store"].log("system", f"rollback: {res}")
+    if not res.get("ok"):
+        return JSONResponse(res, status_code=400)
+    cfgmod.save_config(state["cfg"])
+
+    async def _finish():
+        await state["broadcast"]({"type": "update_done", "rolled_back_by_you": True, **res})
         await asyncio.sleep(1.0)
         await state["broadcast"]({"type": "reload", "delay": 6000})
         await asyncio.sleep(0.5)
@@ -9657,10 +9697,75 @@ async def api_freetalk_stop(sid: str):
     return {"ok": True}
 
 
+@app.get("/api/speech")
+async def api_speech():
+    """Which engine speaks, which keys are set (never their value) and what can speak
+    here (agentos/speech.py)."""
+    from . import speech
+    return {"config": speech.public(state["cfg"]), **await asyncio.to_thread(speech.status, state["cfg"])}
+
+
+@app.put("/api/speech")
+async def api_speech_save(body: dict):
+    """A cloud voice spends money, so it is the machine's setting: admin only where
+    there are accounts, like a provider key."""
+    from . import speech
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can change this machine's voice engine"},
+                            status_code=403)
+    try:
+        got = speech.save(state["cfg"], body or {})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    state["store"].log("system", f"voice engine: {got['engine']}")
+    return {"ok": True, "config": got}
+
+
+@app.get("/api/speech/voices")
+async def api_speech_voices(engine: str = ""):
+    from . import speech
+    try:
+        return {"voices": await speech.voices(state["cfg"], engine or None)}
+    except Exception as e:
+        return JSONResponse({"error": f"could not list the voices: {str(e)[:200]}", "voices": []},
+                            status_code=400)
+
+
+@app.post("/api/speech/say")
+async def api_speech_say(body: dict):
+    """One agent's line as audio: {text, agent, lead?, engine?, voice?}."""
+    from . import speech
+    b = body or {}
+    try:
+        data, mime, who = await speech.speak(
+            state["cfg"], str(b.get("text") or ""), agent=str(b.get("agent") or ""),
+            lead=bool(b.get("lead")), engine=b.get("engine") or None,
+            voice=(str(b["voice"]) if b.get("voice") else None))
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:300]}, status_code=400)
+    return Response(content=data, media_type=mime,
+                    headers={"X-Speech-Engine": who["engine"], "X-Speech-Voice": who["voice"][:120],
+                             "Cache-Control": "no-store"})
+
+
 @app.get("/api/team/talklog")
 async def api_talk_log(limit: int = 60):
     """Every time your agents talked to each other (fabric.talk_log)."""
     return {"log": fabricmod.talk_log(state["store"], max(1, min(200, int(limit or 60))))}
+
+
+@app.get("/api/mind")
+async def api_mind():
+    """The Mind scene's picture (agentos/mind.py): your agents, what they know and how
+    it connects, with this week's numbers and a sentence to say them aloud. Read from
+    the signed-in person's own database; `running` is who has a run open right now."""
+    from . import mind as mindmod
+    try:
+        running = {i["ref"] for i in state["fabric"].live_instances() if not i.get("stale")}
+    except Exception:
+        running = set()
+    return await asyncio.to_thread(mindmod.snapshot, state["store"], state["cfg"], running)
 
 
 # ---- Brains, hands and agents (agentos/hands.py, agentos/agentmap.py) ----------------

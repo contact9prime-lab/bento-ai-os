@@ -27,7 +27,7 @@ function jarvisMode(on){
   }else{
     JARVIS.on=false;ov.classList.remove('show');
     try{JARVIS.rec&&JARVIS.rec.stop()}catch(e){}
-    try{speechSynthesis.cancel()}catch(e){}
+    try{typeof speechStop==='function'?speechStop():speechSynthesis.cancel()}catch(e){}
     jarvisSetPhase('idle');
   }
 }
@@ -65,16 +65,11 @@ function jarvisAsk(text){
 function jarvisSpeakAndListen(text){
   jarvisSetPhase('speaking',agentName()+' is speaking…');
   const clean=(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'').slice(0,900);
-  if(!clean.trim()||!window.speechSynthesis){if(JARVIS.on)jarvisListen();return}
-  const u=new SpeechSynthesisUtterance(clean);
-  u.rate=(VOICE&&VOICE.rate)||1;
-  const v=speechSynthesis.getVoices().find(v=>v.name===(VOICE&&VOICE.voice));if(v)u.voice=v;
-  u.onstart=()=>jarvisSetPhase('speaking',agentName()+' is speaking…');
-  u.onend=()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')};
-  u.onerror=()=>{if(JARVIS.on)jarvisListen()};
+  if(!clean.trim()){if(JARVIS.on)jarvisListen();return}
   // queued, never cancelled: the agents who spoke in this turn (a huddle, a question to
-  // a colleague) are still being heard in their own voices, and the reply comes after
-  speechSynthesis.speak(u);
+  // a colleague) are still being heard in their own voices, and the reply comes after.
+  // speakAs is the one door to every voice engine (08-wallpaper-jarvis-voice.js).
+  speakAs('@agent',clean,()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')});
 }
 const RUNNING=new Set();   // conversation_ids with a live turn (several may run at once)
 const STREAMS={};          // conversation_id -> {html, text}: buffered stream for chats not on screen

@@ -143,6 +143,7 @@ function updateFailed(d){
 function updateDone(ev){
   if(!ev.ok){updateFailed(ev);return}
   const c=document.getElementById('updcard');
+  if(ev.rolled_back_by_you){toast('Rolled back to '+(ev.version||ev.to||'the previous version')+'. Restarting, this page comes back on its own.');return}
   if(c)c.querySelector('#upd-prog').textContent=
     `updated to ${ev.version||''} — restarting, this page will come back on its own…`;
   toast('updated to '+(ev.version||'the new version'));

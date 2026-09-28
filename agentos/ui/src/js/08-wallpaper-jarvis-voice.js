@@ -102,14 +102,11 @@ function jarvisDraw(ts){
 /* ================= voice: TTS + mic ================= */
 let VOICE=JSON.parse(localStorage.getItem('voice')||'{"tts":false,"voice":"","rate":1,"lang":"en-IN"}');
 function saveVoice(){localStorage.setItem('voice',JSON.stringify(VOICE))}
+/* A reply read aloud: your lead, in the engine chosen in Settings → Voice. A new
+   reply replaces one still being read. */
 function speak(text){
-  if(!VOICE.tts||!text||!window.speechSynthesis)return;
-  const clean=text.replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'').slice(0,800);
-  const u=new SpeechSynthesisUtterance(clean);
-  u.rate=VOICE.rate||1;
-  const v=speechSynthesis.getVoices().find(v=>v.name===VOICE.voice);
-  if(v)u.voice=v;
-  speechSynthesis.cancel();speechSynthesis.speak(u);
+  if(!VOICE.tts||!text)return;
+  speechStop();speakAs('@agent',text);
 }
 let rec=null,recOn=false;
 function micToggle(){
@@ -155,15 +152,54 @@ function voiceClean(text,n){
   return String(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'')
     .replace(/(^|\s)@([\w-]+)/g,'$1$2').slice(0,n||600).trim();
 }
+/* Which engine speaks is the machine's choice (agentos/speech.py): this browser's
+   voices, this computer's, or ElevenLabs, OpenAI or Google Cloud. Anything but the
+   browser is audio from /api/speech/say, fetched as soon as a line is queued so the
+   next one is ready when this one ends, and played strictly in order. A line the
+   server cannot say is said by the browser instead, and the reason is said once. */
+var SPEECH={engine:'browser',loaded:false,warned:false,gen:0,audio:null,chain:Promise.resolve()};
+async function speechLoad(){
+  try{const d=await (await fetch('/api/speech')).json();SPEECH.engine=(d.config||{}).engine||'browser'}catch(e){}
+  SPEECH.loaded=true;
+}
+function speechStop(){
+  SPEECH.gen++;SPEECH.chain=Promise.resolve();
+  try{SPEECH.audio&&SPEECH.audio.pause()}catch(e){}
+  try{window.speechSynthesis&&speechSynthesis.cancel()}catch(e){}
+}
+function speechWho(name){return name&&name!=='@agent'?name:agentName()}
+function browserSay(name,clean){
+  return new Promise(res=>{
+    if(!window.speechSynthesis)return res();
+    const u=new SpeechSynthesisUtterance(clean),a=agentVoice(name);
+    if(a.voice)u.voice=a.voice;u.pitch=a.pitch;u.rate=VOICE.rate||1;
+    u.onstart=()=>{if(JARVIS.on)jarvisSetPhase('speaking',speechWho(name)+' is speaking…')};
+    u.onend=u.onerror=()=>res();
+    speechSynthesis.speak(u);
+  });
+}
 /* One agent's line, spoken in its voice. `done` runs when it has been said. */
 function speakAs(name,text,done){
   const clean=voiceClean(text);
-  if(!clean||!window.speechSynthesis){if(done)done();return}
-  const u=new SpeechSynthesisUtterance(clean),a=agentVoice(name);
-  if(a.voice)u.voice=a.voice;u.pitch=a.pitch;u.rate=VOICE.rate||1;
-  u.onstart=()=>{if(JARVIS.on)jarvisSetPhase('speaking',(name&&name!=='@agent'?name:agentName())+' is speaking…')};
-  u.onend=u.onerror=()=>{if(done)done()};
-  speechSynthesis.speak(u);
+  if(!clean){if(done)done();return}
+  if(!SPEECH.loaded){speechLoad().then(()=>speakAs(name,text,done));return}
+  if(SPEECH.engine==='browser'){browserSay(name,clean).then(()=>{if(done)done()});return}
+  const gen=SPEECH.gen,lead=!name||name==='@agent'||name===agentName();
+  const got=fetch('/api/speech/say',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:clean,agent:lead?'':name,lead})})
+    .then(async r=>{if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'the voice engine did not answer');
+      return URL.createObjectURL(await r.blob())});
+  got.catch(()=>{});
+  SPEECH.chain=SPEECH.chain.then(()=>gen!==SPEECH.gen?null:got.then(url=>new Promise(res=>{
+      if(gen!==SPEECH.gen){URL.revokeObjectURL(url);return res()}
+      const a=new Audio(url);SPEECH.audio=a;a.playbackRate=VOICE.rate||1;
+      a.onplay=()=>{if(JARVIS.on)jarvisSetPhase('speaking',speechWho(name)+' is speaking…')};
+      a.onended=a.onerror=a.onpause=()=>{URL.revokeObjectURL(url);res()};
+      a.play().catch(()=>res());
+    })).catch(e=>{
+      if(!SPEECH.warned){SPEECH.warned=true;toast('Voice: '+e.message+' Using this browser’s voice instead.')}
+      return browserSay(name,clean);
+    })).then(()=>{if(done&&gen===SPEECH.gen)done()});
 }
 /* Speech has no "@". Said out loud, "at researcher, at writer, should we…" comes back as
    words, so the names a spoken request OPENS with become the addresses the chat reads

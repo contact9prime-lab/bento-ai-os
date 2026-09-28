@@ -475,6 +475,33 @@ branch than the one you now track; it refuses on a tree with your own edits, lik
 every other pull here. The background check and Settings → Updates follow the same
 source, so a machine left on a fork keeps saying so.
 
+**The desktop offers the switch too.** When this copy is on another branch than the one
+updates track, Settings → System → This build shows **Switch to `<branch>` and update**,
+with a line saying which branch the copy is on now. It was reported as "I changed the
+branch to test the newer release and there is only Check now": the switch existed only as
+a terminal flag. Anything else in the way (your own edits, a detached checkout) is still
+said in a sentence instead of a button.
+
+![Settings → System: switch branches and update, and roll back the last update](screenshots/update-switch-rollback.png)
+
+### Taking an update back
+
+```bash
+bento update --rollback          # asks first; --yes to skip, --no-restart to leave the restart to you
+```
+
+Every update this machine applies is recorded (`~/.agentos/update-history.json`, the last
+ten): the commit and branch before, the commit and branch after, and both version numbers.
+**Roll back to `<version>`** in Settings → System and `bento update --rollback` put the
+checkout back where the last update found it. If the update switched branches, the rollback
+switches back and points updates at the old branch again, so the next check does not offer
+the same switch at once. Dependencies are re-synced when the update changed them, and the
+server restarts on the old code.
+
+Only the update this machine applied can be taken back, and only while the checkout is
+still on it: after a hand-made `git pull`, or with your own edits in the tree, it says so
+instead. The route answers only on the machine itself, like Update now.
+
 ## Managing the service
 
 Use `bento service`. It talks to whichever supervisor this machine actually has —

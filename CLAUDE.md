@@ -1590,6 +1590,32 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
   expression, so a new expression is a row there and a pose in `worldPose`. The effect table
   names only real `EXPRESSIONS`; the test checks it.
 
+## The Mind: every strand is a real connection
+
+`agentos/mind.py` (the snapshot) + `01g-mind.js` (the canvas) + `26-mind.css` + `GET /api/mind`
++ `bento mind`. The scene asked for with a video of a glowing brain: the lead is the core, and
+Memory, Knowledge, Missions and each specialist are clusters around it. `tests/test_mind.py`
+pins what follows; `docs/mind.md` is the story.
+
+- **The picture is the database.** A node is a memory, a KG entity, a flow, a skill or a run this
+  week; a link is a KG edge, a roster member or a pair of agents who talked (read from
+  `fabric.talk_log`, never a second record). An agent that did nothing holds nothing, and no
+  link is drawn that nobody made. One connection is drawn as a small bundle of strands; that is
+  styling, not data, and the count on the name tag is the node count.
+- **Nothing moves that did not happen.** Sparks come only from `mindPulse`, and `scenePulse` is
+  its only caller (the Office's one-seam rule). The clusters turning is scenery, like the aurora.
+- **The voice says the panel.** `spoken()` is built from `stats`, and the test checks every number
+  it says is one the panels carry. A free talk's messages are conversation, not tasks: counting
+  them made "37 tasks" out of fifteen.
+- **Tags sit at the hub, which never moves** (the World's lesson: a moving target is one a finger
+  misses), always above the cluster, and two that overlap step apart vertically.
+- **The layout is measured.** The ring fits between the prompt bar, the dock and the side panels
+  as they are on screen; guessing put Knowledge under the prompt bar.
+- **Cost**: one stroke per cluster, cached glow sprites, no filter; ≤30 fps awake, 12 at rest,
+  none under `crewCovered()`, one frame under reduced motion. Measured 0.4 to 0.8 ms a frame at
+  1440x900. In this scene Jarvis draws only its words (`body.imm-mind #jarvis-ov`): the core is
+  the orb, and it follows the `js-*` phases and `SPEECH.audio`.
+
 **A server older than its page is the commonest failure after an update, so it is designed
 for.** Reported as: after `bento update`, the Office "could not load", Executors and the agents
 map sat on "loading…", and "＋ New agent" never appeared. The pull put a new `index.html` on disk
@@ -1673,11 +1699,27 @@ Full story in `docs/team.md`. Two features, five rules.
   ledger rows carrying the session's `run_id`. `fabric.talk_log` reads every agent-to-agent
   conversation (free talks, huddles, asks) back out of `fabric_runs`, never a table of its own.
 
-**A voice per agent is the browser's, and it never cuts anyone off.** `voiceAgentLine` speaks
-huddle, ask and free-talk lines in `agentVoice(name)` (a device voice picked from the name, plus
-a pitch, the lead keeping the chosen one), queued by `speechSynthesis` itself: the Jarvis reply
-no longer calls `cancel()`, which silenced the room. Speech has no "@", so `voiceAddress` turns
-the names a spoken request OPENS with into addresses; mid-sentence names are left alone.
+**A voice per agent, on any engine, and it never cuts anyone off.** Every line goes through ONE
+door on the page, `speakAs(name, text)` (08-wallpaper-jarvis-voice.js): the Jarvis reply, huddle,
+ask and free-talk lines (`voiceAgentLine`) and the Mind's Tell me. It asks `/api/speech/say` for
+audio when the machine's engine is a server one (`agentos/speech.py`: this computer's `say` /
+`piper` / `espeak-ng` / Windows voices, or ElevenLabs, OpenAI, Google Cloud), fetches eagerly and
+plays in order through `SPEECH.chain`, and falls back to `browserSay` (`agentVoice(name)`: a
+device voice from the name plus a pitch) with ONE toast saying why. Nothing calls `cancel()`
+mid-room any more; `speechStop()` is for leaving Jarvis and the voice toggle. Speech has no "@",
+so `voiceAddress` turns the names a spoken request OPENS with into addresses. Four rules in
+speech.py (`tests/test_speech.py`):
+
+- **`pick(name, lead, pool, chosen, pins)` is the one voice chooser.** The lead keeps the chosen
+  voice, a person's pin wins, and a specialist hashes onto the pool minus the lead's voice, so it
+  sounds the same every time on every engine.
+- **The system pool is the chosen language only**, exact language first. Found by listening: from
+  espeak-ng's whole list the lead came out Afrikaans and the researcher Russian, reading English.
+- **A key is written, never read back.** `public()` says which are set; a masked value sent back
+  is not a key; the OpenAI provider's key is reused. The engine is the machine's setting (admin
+  only on a machine with accounts), because the cloud ones cost money per character.
+- **A line costs once.** Audio is cached by (engine, voice, text) under the home, capped at
+  `CACHE_FILES`, oldest out.
 
 **Agents messaging each other is the matrix, and swarm is the matrix opened — never a
 second system.** A specialist's `ask_agent` is `agent.message` (principal = asker, resource =
@@ -2002,6 +2044,17 @@ Four things that have to stay true:
 
 Say what it is up to date WITH. A checkout sitting on another branch is the
 commonest reason a push looks like it did nothing, and every surface now names it.
+
+**A switch is offered, and an update can be taken back** (`tests/test_update_rollback.py`).
+Reported as "I changed the branch to test the newer release and there is only Check now": the
+switch was a CLI flag. `/api/update` now carries `can_switch` and the pane's button posts
+`switch: true`. Every `apply()` appends to `update-history.json` in `AGENTOS_HOME` (read at call
+time, so the test home is honoured), and `rollback()` undoes only `last_update(root)`: the newest
+record not already rolled back whose `to` is HEAD. After a hand-made pull, or with the person's
+own edits in the tree, it refuses in a sentence. A rollback of a switch checks the old branch out
+AND points `updates.branch` back at it, or the very next check offers the same switch again.
+`restore_derived` runs first (uv.lock, the UI bundle), deps are re-synced when pyproject/uv.lock
+moved, and the route is loopback-only like apply.
 
 **And the NUMBER moves with the code too** (`agentos/versioning.py`). Reported as "`bento
 update` still shows the old version": VERSION had not moved since 0.4.0 while forty commits

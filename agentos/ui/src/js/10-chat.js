@@ -64,7 +64,7 @@ function renderChat(body){
   const tb=$('#ttsbtn');
   const setTts=()=>{tb.textContent=VOICE.tts?'Voice on':'Voice off'};
   setTts();
-  tb.onclick=()=>{VOICE.tts=!VOICE.tts;saveVoice();setTts();if(!VOICE.tts)speechSynthesis?.cancel()};
+  tb.onclick=()=>{VOICE.tts=!VOICE.tts;saveVoice();setTts();if(!VOICE.tts)(typeof speechStop==='function'?speechStop():speechSynthesis?.cancel())};
   /* The brain is the machine's, not this window's. A per-chat picker meant the
      same machine answered as a different agent depending on which window you
      happened to be in, and background work (tasks, Telegram, the API) could

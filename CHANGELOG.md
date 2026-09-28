@@ -29,6 +29,30 @@ room. In Jarvis mode you can call a huddle out loud: "at researcher, at writer, 
 launch on Friday?" reaches the chat as `@researcher @writer …`. Settings → Voice → **Each agent
 speaks in its own voice** turns it off.
 
+**The Mind: see your agents' minds and how they connect.** A new desktop scene (Settings →
+Appearance → Scene → Mind). Your lead is a glowing core, and around it sit Memory,
+Knowledge, Missions and one cluster per specialist. Every memory, entity, mission, skill
+and run this week is a strand from the core; facts in the knowledge graph connect the
+entities, a mission is wired to the specialists on its roster, and two specialists who
+talked this week are joined by an arc. A spark runs out along a strand only when something
+runs. The core listens, thinks and speaks with Jarvis, which uses it as its orb here. Side
+panels show the week, what it holds, your Brief and the team, and **Tell me** has your lead
+say them aloud from the same numbers. `bento mind` prints the same picture in a terminal.
+0.4 to 0.8 ms a frame, at most 30 frames a second, none while covered.
+
+**Pick the voice engine.** Settings → Voice → Voice engine: this browser (still the
+default), this computer (`say`, `piper`, `espeak-ng` or Windows' own voices, offline and
+free), or ElevenLabs, OpenAI or Google Cloud with your key. Every agent keeps its own voice
+on every engine, lines are cached so a replay costs nothing, a key is never shown back, and
+an engine that cannot answer falls back to the browser and says why. `bento voice` shows,
+sets and tries it from a terminal.
+
+**Update from another branch, and take an update back.** When this copy is on another
+branch than the one updates track, Settings → System now offers **Switch to that branch and
+update** instead of only Check now. Every update is recorded, and **Roll back to
+<version>** (or `bento update --rollback`) puts the checkout, its branch and the tracked
+branch back where the last update found them.
+
 ## 0.6.7 — 2026-09-27
 
 **The World: your agents with feelings (experimental).** A new desktop scene (Settings →

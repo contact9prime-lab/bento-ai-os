@@ -199,6 +199,16 @@ CATALOG: dict[str, dict] = {
                    "comes from RPM Fusion, which has to be enabled first.",
         "detect": lambda: bool(shutil.which("ffmpeg")),
     },
+    "espeak-ng": {
+        "packages": _same("espeak-ng"),
+        "method": "system", "licence": "GPL-3.0+",
+        "group": "optional", "for_session": False,
+        "title": "Voices on this computer (espeak-ng)",
+        "unlocks": "Lets the \"This computer\" voice engine speak on Linux, offline and "
+                   "free, with a different voice for each agent. A Mac already has `say`, "
+                   "and Windows its own speech; the cloud voices need no install.",
+        "detect": lambda: bool(shutil.which("espeak-ng") or shutil.which("espeak")),
+    },
     "ddcutil": {
         "packages": _same("ddcutil"),
         "method": "system", "licence": "GPL-2.0+",
