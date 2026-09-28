@@ -3,7 +3,7 @@
 **Settings → Appearance → Scene → Mind.** Your agents, what they know and how it all
 connects, drawn as one living picture behind your windows.
 
-![The Mind scene: a glowing core in the middle, coloured clusters for Memory, Knowledge, Missions and each specialist around it, strands running from the core into each cluster, and panels for this week, what it holds, your Brief and the team](screenshots/mind-scene.png)
+![The Mind scene: a glowing cell body in the middle, clusters for Memory, Knowledge, Missions and each specialist around it with branching dendrites, wandering fibres from the core into each cluster, and panels for this week, what it holds, your Brief and the team](screenshots/mind-scene.png)
 
 It was asked for with a video of a glowing brain on a wall screen: thousands of coloured
 filaments around a bright core, numbers on the sides, and a voice answering questions.
@@ -30,10 +30,17 @@ This is that, built from what your machine actually holds.
   three letters are left out because they would match everything.
 - **A bright arc between two specialists** means they talked this week (one asked the
   other, a huddle or a free talk). It is thicker the more they did.
-- **A spark only means something ran.** When your lead remembers something, a spark runs
-  out to Memory. When a specialist starts a step, or one asks another, it runs to them.
-  The clusters turn slowly on their own; that is scenery, like the aurora. Nothing else
-  moves unless it happened.
+- **A spark only means something ran.** When your lead remembers something, a bright
+  spark in the cluster's colour runs out to Memory and lights it. When a specialist starts
+  a step, or one asks another, it runs to them.
+- **Resting activity.** Small pale glints travel the fibres all the time, a few a second,
+  more while your lead thinks or speaks, and a node flickers where one lands. That is the
+  mind at rest, like the slow drift of the fibres. It never lights up a cluster, so you can
+  still tell news from rest.
+- **The core talks.** While your lead speaks, the core's edge moves with the sound of the
+  voice and a ripple goes out on each syllable, with warm signals running down the fibres.
+  While it listens, ripples come in. With your browser's own voice there is no sound to
+  follow, so it keeps a speaking rhythm instead.
 
 ## The panels
 
@@ -70,7 +77,7 @@ still brings up the prompt bar. The browser remembers it.
 - **Talk** starts Jarvis. In this scene the core is the orb: your words and the answer
   appear in a panel at the top, and the core listens, thinks and speaks with you.
 
-![Talking to the lead in the Mind: the question and the spoken answer at the top, the core swollen and the pill reading Speaking](screenshots/mind-speaking.png)
+![The Mind while the lead speaks: the core's edge moving with the voice and ripples going out from it, the pill reading Speaking](screenshots/mind-speaking.png)
 
 Which voice it uses is Settings → Voice → Voice engine ([Voice](desktop.md#voice)).
 
@@ -84,10 +91,10 @@ apart so each stays a whole target for a finger.
 
 ## What it costs
 
-Measured in Chromium at 1440x900 with 68 things drawn: 0.4 to 0.8 ms a frame. It draws at
-most 30 frames a second while the core is awake or a spark is travelling, 12 at rest, none
+Measured in Chromium at 1440x900 with 70 things drawn: 1.2 to 1.4 ms a frame. It draws at
+most 30 frames a second while the core is awake or a spark is travelling, 20 at rest, none
 while a window is maximised or the page is hidden, and one still frame under reduced
-motion. The strands of a cluster are one stroke, every glow is a cached image, and nothing
+motion (with no resting glints). A cluster's strands are two strokes, every glow is a cached image, and nothing
 uses a filter. The picture is fetched once when the scene starts, again a second or two
 after something finishes, and once a minute.
 

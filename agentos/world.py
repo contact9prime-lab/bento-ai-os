@@ -97,6 +97,7 @@ SIGNALS = {
     "vote_lost": "the team voted its idea down",
     "outvoted": "voted the other way and lost",
     "praised": "you gave it a pat on the back",
+    "calmed": "you asked it to take a breath",
     "grew": "grew into a new role",
     "you_low": "you said today is hard",
     "you_high": "you said today is good",
@@ -154,6 +155,11 @@ HABIT_S = 30 * 60
 #: A chat reply that used tools is a small success for the lead, never a triumph; a
 #: plain answer is conversation and is not "finished a task" at all.
 CHAT_SUCCESS = 0.5
+#: How far your check-in lifts the team. It reaches every agent at once, so at full
+#: weight "a good day" put a whole dhaba into a jumping, star-throwing party for half
+#: an hour (from a screenshot: "these guys have gone crazy"). It is a tint on the room,
+#: never a triumph of their own.
+YOU_CAP = 0.4
 CHAT_CAP = 0.45
 WHY_KEEP = 8
 MAX_WORLDS = 12         # custom worlds per person
@@ -1001,6 +1007,40 @@ def praise(uid: str, name: str) -> bool:
     return feel(uid, name, "praised", "")
 
 
+#: What is left of every feeling after a person calms an agent down. A feeling is at most
+#: 1.0, so this keeps even the strongest under SHOW and the world's resting mood shows
+#: (0.2 left a full "Proud" at 0.2, still on show: the test found it).
+CALM_KEEPS = 0.1
+
+
+def calm(uid: str, name: str = "") -> list[str]:
+    """The person asks the team (or one agent) to take a breath. Asked for from a
+    screenshot of a canal full of sparkles and cheering: "an option to calm the team
+    down". Every feeling fades to CALM_KEEPS of itself, as if a long quiet hour had
+    passed, and the why list says who did it. It is the person's act, like a pat on the
+    back: nothing is invented, the next real event is felt as usual, and growth is left
+    alone. Returns the agents calmed; empty when the world is asleep."""
+    lease = _alive(uid)
+    st = _STATE.get((uid, lease["world"])) if lease else None
+    if st is None:
+        return []
+    now = time.time()
+    names = [name] if name else list(st["agents"])
+    done = []
+    for n in names:
+        a = st["agents"].get(n)
+        if a is None:
+            continue
+        a["feel"] = {k: [round(_now_level(v, now) * CALM_KEEPS, 3), now]
+                     for k, v in (a.get("feel") or {}).items()}
+        a["why"] = ([["calmed", "", round(now, 1)]] + a["why"])[:WHY_KEEP]
+        done.append(n)
+    if done:
+        st["dirty"] = True
+        _flush(uid, force=True)
+    return done
+
+
 def set_inner(uid: str, on: bool) -> bool:
     lease = _alive(uid)
     st = _STATE.get((uid, lease["world"])) if lease else None
@@ -1028,10 +1068,10 @@ def checkin(uid: str, choice: str = "", words: str = "", skipped: bool = False) 
     st["dirty"] = True
     if ch and ch["valence"] < 0:
         for name in lease["cast"]:
-            feel(uid, name, "you_low", ch["label"])
+            feel(uid, name, "you_low", ch["label"], cap=YOU_CAP, grow=0)
     elif ch and ch["valence"] > 0:
         for name in lease["cast"]:
-            feel(uid, name, "you_high", ch["label"])
+            feel(uid, name, "you_high", ch["label"], cap=YOU_CAP, grow=0)
     _flush(uid, force=True)
     return st["you"]
 
@@ -1260,9 +1300,25 @@ _KIT_WORDS = {"izakaya": ("restaurant", "kitchen", "izakaya", "ramen", "sushi", 
 
 
 def kit_named(words: str) -> str:
-    """The setting some words name ("a ramen place" is the izakaya), or ''."""
+    """The setting some words name ("a ramen place" is the izakaya), or '' when they name
+    none or more than one ("a café on the moon" is the person's call, not a guess)."""
     low = str(words or "").lower()
-    return next((k for k, ws in _KIT_WORDS.items() if any(x in low for x in ws)), "")
+    named = [k for k, ws in _KIT_WORDS.items() if any(x in low for x in ws)]
+    return named[0] if len(named) == 1 else ""
+
+
+def words_win(defn: dict, words: str) -> str:
+    """The person's words name a setting and the brain drew another: the words win, and
+    the look is re-read for that setting. Found by a Japanese kitchen built as the canal
+    town (its blurb said "beside a quiet canal"). Returns the note to show, or ''."""
+    kit = kit_named(words)
+    if not kit or kit == defn.get("kit"):
+        return ""
+    was = defn.get("kit") or ""
+    defn["kit"] = kit
+    defn["scene"] = scene_of(kit, {k: v for k, v in (defn.get("scene") or {}).items() if k != "props"})[0]
+    return (f"Drawn as {KITS[kit].split(':')[0]}, as your words said, "
+            f"rather than {KITS.get(was, was).split(':')[0]}.")
 
 
 def from_words(words: str) -> dict:

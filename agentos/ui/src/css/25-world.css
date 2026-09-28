@@ -98,7 +98,8 @@ body.has-win #world-ui *{pointer-events:none!important}
 .wd-grow i{flex:1;height:6px;border-radius:3px;background:color-mix(in srgb,var(--txt) 12%,transparent);position:relative;overflow:hidden}
 .wd-grow i::after{content:"";position:absolute;inset:0;width:var(--p,10%);background:var(--acc-grad,var(--acc))}
 .wd-grow small{font-weight:400;color:var(--txt2)}
-.wd-pat{margin-top:12px;width:100%}
+.wd-pat,.wd-calm1{flex:1}
+.wd-calm{width:100%;margin:0 0 10px}
 .wd-q,.wd-reply{margin:4px 0 0;font-size:14px;line-height:1.4}
 .wd-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:6px;margin-top:12px}
 .wd-ch{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;min-height:var(--tap,44px);border-radius:12px;cursor:pointer;font:inherit;font-size:12.5px;

@@ -8780,6 +8780,16 @@ async def api_world_pat(body: dict):
     return worldmod.view(uid)
 
 
+@app.post("/api/world/calm")
+async def api_world_calm(body: dict):
+    """Calm the whole team, or one agent (`agent`), down: the person's act, like a pat."""
+    uid = usersmod.current() or ""
+    if worldmod.live_world(uid) == "":
+        return JSONResponse({"error": "the world is asleep"}, status_code=409)
+    worldmod.calm(uid, str((body or {}).get("agent") or ""))
+    return worldmod.view(uid)
+
+
 @app.post("/api/world/inner")
 async def api_world_inner(body: dict):
     uid = usersmod.current() or ""
@@ -8851,12 +8861,13 @@ async def api_world_design(body: dict):
             defn = None
     if defn is None:
         defn, how = worldmod.from_words(desc), "words"
+    setting = worldmod.words_win(defn, desc)
     try:
         saved, more = worldmod.save_custom(store, defn)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     return {"ok": True, "world": saved, "how": how, "who": who if how == "brain" else "",
-            "dropped": dropped + more,
+            "dropped": dropped + more, "setting": setting,
             "said": ("" if how == "brain" else
                      "Nothing answered, so this is the closest built-in world, renamed for your words."
                      if execmod.has_brain(cfg) else

@@ -577,3 +577,69 @@ def test_words_move_a_world_of_your_own_to_another_setting(monkeypatch):
         assert any("The Night Kitchen" in x for x in r.json()["dropped"])
         cl.post("/api/world/scene", json={"world": "lantern-canal", "original": True})
         world.delete_custom(store, saved["id"])
+
+
+def test_the_team_can_be_calmed_down(store):
+    """"An option to calm the team down", from a canal full of sparkles. Every feeling
+    fades to its quiet tail, the resting mood shows, the why list says who did it, growth
+    is untouched, and the next real event is felt as usual."""
+    world.enter("", store, "lantern-canal", ["researcher", "writer"])
+    for _ in range(3):
+        world.feel("", "researcher", "succeeded", "t")
+    world.feel("", "writer", "refused", "t")
+    w = world.world(store, "lantern-canal")
+    st = world._STATE[("", "lantern-canal")]
+    assert world.mood(w, st["agents"]["researcher"])["id"] != w["rest"]
+    xp = st["agents"]["researcher"]["xp"]
+    assert world.calm("", "writer") == ["writer"]
+    assert world.mood(w, st["agents"]["writer"])["id"] == w["rest"]
+    assert world.mood(w, st["agents"]["researcher"])["id"] != w["rest"], "one agent, only that one"
+    assert sorted(world.calm("")) == ["researcher", "writer"]
+    for a in st["agents"].values():
+        assert world.mood(w, a)["id"] == w["rest"]
+        assert a["why"][0][0] == "calmed"
+    assert st["agents"]["researcher"]["xp"] == xp, "growth is the work, and stays"
+    world.feel("", "writer", "refused", "again")
+    assert world.mood(w, st["agents"]["writer"])["id"] != w["rest"], "the next event is felt"
+    world.leave("")
+    assert world.calm("") == [], "out of the scene nothing is felt, or calmed"
+    scene = (ROOT / "agentos/ui/src/js/01e-world.js").read_text()
+    assert "worldCalm()" in scene.split("function worldMenuHTML(", 1)[1].split("\n}", 1)[0]
+    assert "/api/world/calm" in scene
+
+
+def test_the_words_decide_the_setting_when_they_name_one():
+    """A Japanese kitchen was built as the canal town: the brain picked the canal, and
+    the blurb said "beside a quiet canal". Words that name one setting win."""
+    d, _ = world.validate(world.from_words("a lantern town"))
+    assert d["kit"] == "canal"
+    note = world.words_win(d, "A glowing Japanese kitchen beside a quiet canal")
+    assert d["kit"] == "izakaya" and "restaurant" in note
+    assert set(d["scene"]["props"]) == set(world.PROPS["izakaya"])
+    assert world.words_win(d, "a kitchen") == "", "already there"
+    assert world.kit_named("a café on the moon") == "", "two settings named: the brain decides"
+    srv = (ROOT / "agentos" / "server.py").read_text()
+    assert "worldmod.words_win(defn, desc)" in srv.split('@app.post("/api/world/design")', 1)[1].split("\n@app.", 1)[0]
+
+
+def test_calm_keeps_every_feeling_under_show():
+    assert 1.0 * world.CALM_KEEPS < world.SHOW
+
+
+def test_a_good_day_is_a_tint_not_a_party(store):
+    """From a screenshot of a dhaba where every agent jumped and threw stars: the
+    check-in reached the whole team at full weight, and every feeling was drawn at full
+    volume however faint. Now the check-in is capped under a real success, and the pose
+    and its effects scale with how strongly the feeling is felt."""
+    world.enter("", store, "lantern-canal", ["researcher", "writer"])
+    st = world._STATE[("", "lantern-canal")]
+    world.checkin("", choice=world.world(store, "lantern-canal")["checkin"]["choices"][0]["id"])
+    for a in st["agents"].values():
+        assert max(v[0] for v in a["feel"].values()) <= world.YOU_CAP
+        assert a["xp"] == 0, "how you are is not their work"
+    world.leave("")
+    scene = (ROOT / "agentos/ui/src/js/01e-world.js").read_text()
+    pose = scene.split("function worldPose(", 1)[1].split("\n}", 1)[0]
+    assert "a.mood.intensity" in pose and "amp*amp*crowd" in pose
+    # at the check-in's cap a loud feeling is drawn nearly still: (0.4-.3)/.6 of a jump
+    assert "(I-.3)/.6" in pose and (world.YOU_CAP - .3) / .6 < .2

@@ -1430,7 +1430,8 @@ things keep it true:
   and `DRAWS`; the first cut named it `STYLES` too and silently replaced every hair style.
 - **The painter's rules were each learned from a screenshot**: two eyes and nothing in the middle
   of the face; the eye ink chosen against the SKIN (the outline shade vanished on deep skin); a
-  lip-coloured mouth (darker skin under a nose read as a goatee); glasses as rim + pale lens (a
+  lip-coloured mouth (darker skin under a nose read as a goatee); the waving frames SMILE (a
+  dark bar there made every cheering agent look angry); glasses as rim + pale lens (a
   full frame masked a dark face); hands, shoes, one outline pass. Change the painter, look at all
   five skins before believing it.
 
@@ -1553,6 +1554,14 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
   A plain answer is not a task (`_WORKED` needs a tool); a working reply is `CHAT_SUCCESS`
   capped at `CHAT_CAP`; a `ROUTINE` signal felt again within `HABIT_S` counts 1/(1+n).
   Growth is the work, not the feeling: XP takes full points unless `grow` says small.
+- **How you are is a tint on the room, never a party.** The check-in reaches every agent at
+  once, so it is felt with `cap=YOU_CAP` and no growth, and a LOUD move (`WORLD_LOUD`: a jump,
+  stars, a tantrum, a shiver) needs a strong feeling (`(I-.3)/.6` in `worldPose`). Found as
+  "they asked Paaji how are you, I said good, they all started jumping". Effects also thin out
+  when many share a loud feeling (`crowd`). **Calm everyone down** (`world.calm`) is the
+  person's act, like a pat: every feeling to `CALM_KEEPS` (under SHOW), growth untouched.
+- **Your words decide the setting when they name one** (`words_win` in the design route): a
+  Japanese kitchen was built as the canal town because the brain picked it.
 - **Your "no" is never guilt.** `GENTLE` signals (`declined`, `you_low`) may only trigger
   valence ≥ 0; `validate` drops the mapping and names it, for built-in and designed worlds alike.
 - **Feelings never outrank the rules.** "Agents feel it" (`inner`, off by default) adds ONE
@@ -1629,8 +1638,20 @@ pins what follows; `docs/mind.md` is the story.
   `fabric.talk_log`, never a second record). An agent that did nothing holds nothing, and no
   link is drawn that nobody made. One connection is drawn as a small bundle of strands; that is
   styling, not data, and the count on the name tag is the node count.
-- **Nothing moves that did not happen.** Sparks come only from `mindPulse`, and `scenePulse` is
-  its only caller (the Office's one-seam rule). The clusters turning is scenery, like the aurora.
+- **Nothing moves that did not happen, and resting activity looks like rest.** Sparks come only
+  from `mindPulse`, and `scenePulse` is its only caller (the Office's one-seam rule). The owner
+  asked for "neurons in standby sending signals anyway", so `mindGlint` sends pale glints along
+  the real fibres at a few a second: scenery like the fibres' drift, small and white, and it
+  never flares a cluster or touches `MIND.sparks`. Keep the two apart or a glint reads as news.
+- **The core speaks with the SOUND.** `mindTap` puts an analyser on `SPEECH.audio` and
+  `mindVoice` shapes the soma's edge from its bands and sends a ripple on each syllable. It was
+  a timer ("the centre is just beeping"). The tap routes the voice through an AudioContext,
+  which plays nothing while suspended, so it is made only once the context is `running`.
+  speechSynthesis has no stream and keeps the syllable rhythm.
+- **Organic, not placed.** Every line is `mindFibre` (a quadratic pushed off its path by two
+  slow waves, zero at both ends), clusters are nudged off the ring by their own seed and never
+  further out than the measured ring, and each has dendrites. The first cut was "too
+  systematic": bundles of perfect arcs, a clock-face ring and two orbits round the core.
 - **The voice says the panel.** `spoken()` is built from `stats`, and the test checks every number
   it says is one the panels carry. A free talk's messages are conversation, not tasks: counting
   them made "37 tasks" out of fifteen.
@@ -1643,9 +1664,10 @@ pins what follows; `docs/mind.md` is the story.
   misses), always above the cluster, and two that overlap step apart vertically.
 - **The layout is measured.** The ring fits between the prompt bar, the dock and the side panels
   as they are on screen; guessing put Knowledge under the prompt bar.
-- **Cost**: one stroke per cluster, cached glow sprites, no filter; ≤30 fps awake, 12 at rest,
-  none under `crewCovered()`, one frame under reduced motion. Measured 0.4 to 0.8 ms a frame at
-  1440x900. In this scene Jarvis draws only its words (`body.imm-mind #jarvis-ov`): the core is
+- **Cost**: two strokes per cluster (two shades), cached glow sprites, no filter; ≤30 fps awake,
+  20 at rest (the glints stuttered at 12), none under `crewCovered()`, one frame and no glints
+  under reduced motion. Measured 1.2 to 1.4 ms a frame at 1440x900 with 70 things (0.4 to 0.8
+  before the fibres wandered). In this scene Jarvis draws only its words (`body.imm-mind #jarvis-ov`): the core is
   the orb, and it follows the `js-*` phases and `SPEECH.audio`.
 
 **A server older than its page is the commonest failure after an update, so it is designed

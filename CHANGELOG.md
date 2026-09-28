@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.12 — 2026-09-28
+
+**The Mind looks like neurons, and the core talks.** The fibres wander and splay instead of
+running as perfect arcs, clusters have branching dendrites and sit where they grew rather than
+on a clock face, and the lead's core is a cell body instead of a ball with two orbits. While
+your lead speaks, the core follows the actual sound of the voice and sends a ripple out on
+each syllable. At rest, faint signals keep travelling the fibres. They're pale and never
+light a cluster, so a real event still stands out.
+
+**The World calms down.** Saying you're good at the check-in set the whole team jumping and
+throwing stars. Your answer now tints the room, and jumps and stars need a strong feeling of
+their own. There's also **Calm everyone down** in the world's menu, and **Calm down** on each
+agent's card.
+
+**They smile when they cheer.** A waving or jumping character drew its mouth as a dark bar,
+which made the whole team look angry while celebrating. It's a smile now.
+
+**Your words pick the setting.** A world built from "a Japanese kitchen" could come out as the
+canal town if the brain picked it. When your words name a setting, that one is used.
+
 ## 0.6.11 — 2026-09-28
 
 **A restaurant for the World.** A world designed as a Japanese restaurant used to be drawn as
