@@ -400,3 +400,19 @@ def test_smooth_is_the_same_painter_with_the_steps_rounded():
         "the hair styles keep their name"
     import inspect
     assert "draw" not in inspect.signature(avatars.terminal).parameters, "a terminal has only its cells"
+
+
+def test_a_waving_character_smiles():
+    """"If they are jumping why are their smiles gone, it's like they are angry." The
+    waving frames drew the mouth as a bar in the outline colour: a scowl on everybody who
+    cheered. They smile now: lip-coloured corners on row 10, the bottom of the curve on
+    row 11, and nothing dark in the mouth."""
+    from agentos import avatars
+    for skin in range(len(avatars.SKINS)):
+        rec = avatars.clean({**avatars.generate("writer"), "skin": skin})
+        still, wave = avatars.paint(rec, 0), avatars.paint(rec, 2)
+        at = lambda px, x, y: tuple(px[(y * avatars.W + x) * 4:(y * avatars.W + x) * 4 + 3])
+        lip = at(still, 7, 10)
+        assert at(wave, 6, 10) == lip and at(wave, 9, 10) == lip, "corners up"
+        assert at(wave, 7, 11) == lip and at(wave, 8, 11) == lip, "the curve"
+        assert at(wave, 7, 10) != at(wave, 6, 7), "no dark bar where the mouth is"

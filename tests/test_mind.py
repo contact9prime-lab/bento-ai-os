@@ -115,7 +115,7 @@ def test_the_page_draws_only_what_happened():
     assert "mindPulse(kind,label,ev)" in (JS / "01c-movement.js").read_text().split("function scenePulse(", 1)[1].split("\n}", 1)[0]
     # it sleeps, caps its frame rate and never polls for the sake of animation
     assert "crewCovered()" in src and "setInterval" not in src
-    assert "lively?30:12" in src and "prefers-reduced-motion" in src
+    assert "lively?30:20" in src and "prefers-reduced-motion" in src
     assert "/api/mind" in src and "filter" not in src.split("function mindDraw(", 1)[1].split("\nfunction ", 1)[0]
     # a tap carries data; a name is never pasted into an onclick string
     assert "data-hub=" in src and "onclick=\"mindCard(" not in src
@@ -166,3 +166,29 @@ def test_peace_shows_only_the_mind():
         assert f"#mind-ui.peace {sel}" in css, sel
     assert "body.mind-peace" in css and "#omnibar:not(.summoned)" in css
     assert "classList.remove('mind-peace')" in src, "leaving the scene gives the bar back"
+
+
+def test_the_core_speaks_with_the_voice_and_the_neurons_rest_awake():
+    """"The centre is just beeping while speaking" and "the neurons in standby should be
+    sending signals anyway", with a screenshot that read as too systematic.
+    - the core follows the SOUND through an analyser, and the tap is only made on a
+      running AudioContext, because routing the voice into a suspended one silences it;
+    - resting glints are scenery and are kept apart from news: they never flare a
+      cluster, and only mindPulse (fed by scenePulse) sends a spark;
+    - fibres wander (mindFibre) and the ring is not a clock face."""
+    src = (JS / "01g-mind.js").read_text()
+    tap = src.split("function mindTap(", 1)[1].split("\n}", 1)[0]
+    assert "createMediaElementSource" in tap and "state!=='running'" in tap
+    assert tap.index("state!=='running'") < tap.index("createMediaElementSource")
+    voice = src.split("function mindVoice(", 1)[1].split("\n}", 1)[0]
+    assert "getByteFrequencyData" in voice and "SPEECH.audio" in voice
+    core = src.split("function mindCore(", 1)[1].split("\n}", 1)[0]
+    assert "v.bins" in core and "ellipse(" not in core, "the soma, not two orbits"
+    glints = src.split("function mindGlint(", 1)[1].split("\nfunction mindSparks(", 1)[0]
+    assert "MIND.flare" not in glints and "MIND.sparks" not in glints, "a glint is never news"
+    assert "MIND.flare[s.to]=1" in src.split("function mindSparks(", 1)[1]
+    assert "mindGlint(" not in src.split("function mindPulse(", 1)[1].split("\n}", 1)[0]
+    draw = src.split("function mindDraw(", 1)[1].split("\nfunction ", 1)[0]
+    assert "mindNodeFibre(" in draw and "quadraticCurveTo(qx" not in draw
+    layout = src.split("function mindLayout(", 1)[1].split("\n}", 1)[0]
+    assert "far=" in layout and "den.push" in layout

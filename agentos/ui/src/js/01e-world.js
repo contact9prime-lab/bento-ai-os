@@ -328,6 +328,7 @@ function worldPace(ms){
 }
 /* A feeling is a pose, and most feelings have an effect over the head as well. Every
    EXPRESSION world.py lists has one here; calm and think are the quiet ones. */
+var WORLD_LOUD=['cheer','sparkle','tantrum','shiver'];
 var WORLD_FX={
   tantrum:[['puff',3.5,{dy:2.5,v:[0,1.6,0],grow:1.6,life:1.1,size:.8,jit:.5}],['paper',2.5,{dy:2.1,v:[2.6,2.8,1.2],g:6,spin:6,life:1.3,size:.5}]],
   slump:[['cloud',1.1,{dy:3.35,v:[.08,0,0],life:2.6,size:1.5,jit:.3}],['rain',7,{dy:3.05,v:[0,-2.6,0],life:.5,size:.55,jit:.8}]],
@@ -340,22 +341,29 @@ var WORLD_FX={
   sulk:[['scribble',.9,{dy:3.1,v:[0,.1,0],life:1.6,size:.75,spin:1}]],
   pace:[['drop',.5,{dy:2.35,dx:-.45,v:[-.1,-.3,0],g:1.2,life:1,size:.36}]]};
 function worldPose(t,dt){
-  const T=WORLD.T;
-  Object.values(WORLD.chars).forEach(c=>{
+  const T=WORLD.T,chars=Object.values(WORLD.chars);
+  // a loud feeling shared by many is quieter each: eight people throwing stars at once
+  // read as the team going crazy (a screenshot), not as a good evening
+  const loud=chars.filter(c=>c.a&&WORLD_LOUD.indexOf(c.a.mood.expression)>=0).length,crowd=loud>3?3/loud:1;
+  chars.forEach(c=>{
     const a=c.a;if(!a)return;
     const s=c.sprite,m=s.material,e=a.mood.expression,k=t+c.phase;
+    // how strongly it is felt decides how big it looks (world.mood's intensity, 0 to 1).
+    // A loud move (a jump, stars, a tantrum, a shiver) needs a strong feeling: "how are
+    // you, Paaji?", "good", and every agent jumped. A mild one is a small bob, no stars.
+    const I=a.mood.intensity||0,amp=WORLD_LOUD.indexOf(e)>=0?Math.max(0,Math.min(1,(I-.3)/.6)):.3+.7*Math.min(1,I/.8);
     // a blink at an uneven pace, sometimes twice, so a row of them never blinks in step
     const bk=k%(3.4+(c.phase%1.6)),blink=bk<.12||(c.phase>3&&bk>.3&&bk<.4);
     let x=0,y=0,rot=0,frame=blink?1:0,sy=1,flip=false;
     const target=a.busy?WORLD.kit.busy(c.i,t):c.home;
-    if(e==='cheer'){y=Math.abs(Math.sin(k*6))*.5;frame=2+(Math.floor(k*4)%2)}
-    else if(e==='tantrum'){y=Math.abs(Math.sin(k*14))*.25;x=Math.sin(k*40)*.08;rot=Math.sin(k*20)*.15}
+    if(e==='cheer'){y=Math.abs(Math.sin(k*(3+3*amp)))*.5*amp+Math.sin(k*1.5)*.03;if(amp>.5)frame=2+(Math.floor(k*4)%2)}
+    else if(e==='tantrum'){y=Math.abs(Math.sin(k*14))*.25*amp;x=Math.sin(k*40)*.08*amp;rot=Math.sin(k*20)*.15*amp}
     else if(e==='slump'){sy=.86;y=-.12}
     else if(e==='pace'){x=Math.sin(k*1.1)*1.1;flip=Math.cos(k*1.1)<0}
     else if(e==='sulk'){flip=true;y=-.18;rot=.08;sy=.9}
     else if(e==='doze'){rot=.18+Math.sin(k*.8)*.04;y=Math.sin(k*.8)*.03;frame=1}
     else if(e==='shiver'){x=Math.sin(k*55)*.04}
-    else if(e==='sparkle'){y=Math.abs(Math.sin(k*2.2))*.18}
+    else if(e==='sparkle'){y=Math.abs(Math.sin(k*2.2))*.18*amp}
     else if(e==='wave'){frame=2+(Math.floor(k*3)%2)}
     else if(e==='care'){rot=c.home.x>0?.12:-.12;y=Math.sin(k*1.2)*.03}
     else if(e==='think'){rot=Math.sin(k*.8)*.07}
@@ -385,7 +393,7 @@ function worldPose(t,dt){
     cr.material.emissiveIntensity=.45+(WORLD.still?0:Math.sin(k*3)*.12);
     if(c.vessel){c.vessel.position.set(s.position.x,a.busy?s.position.y-.35:-99,s.position.z)}
     // the feeling's effect: spawned at a rate, never faster than the frame allows
-    (WORLD_FX[e]||[]).forEach(([kind,rate,o])=>{if(Math.random()<rate*dt)worldFx(kind,s.position,o)});
+    (WORLD_FX[e]||[]).forEach(([kind,rate,o])=>{if(Math.random()<rate*dt*amp*amp*crowd)worldFx(kind,s.position,o)});
   });
   WORLD.fx=WORLD.fx.filter(p=>{p.life-=dt;
     p.m.position.addScaledVector(p.v,dt);p.v.y-=p.g*dt;p.m.material.rotation+=p.spin*dt;
@@ -443,6 +451,7 @@ function worldMenuHTML(){
   const v=WORLD.v,list=WORLD.list||[];
   return `<div class="wd-menu" role="dialog" aria-label="World">
     <p class="wd-blurb">${esc(v.world.blurb||'')}</p>
+    <button class="endbtn wd-calm" onclick="worldCalm()">🍵 Calm everyone down</button>
     ${WORLD.why?`<p class="wd-why">${esc(WORLD.why)}</p>`:''}
     <div class="wd-h">Worlds</div>
     <div class="wd-worlds">${list.map(w=>`<div class="wd-wrow"><button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${esc(w.id)}')">
@@ -509,6 +518,7 @@ async function worldDesign(btn){
     const d=await worldPost('/api/world/design',{description:words});
     const out=WORLD.ui.querySelector('.wd-built');
     if(out)out.innerHTML=`<p><b>${esc(d.world.name)}</b> is ready: ${esc(d.world.emotions.map(e=>e.emoji+' '+e.name).join(', '))}.</p>`+
+      (d.setting?`<p class="wd-why">${esc(d.setting)}</p>`:'')+
       (d.said?`<p class="wd-why">${esc(d.said)}</p>`:'')+(d.dropped&&d.dropped.length?`<p class="wd-why">Left out: ${esc(d.dropped.join('; '))}.</p>`:'');
     setTimeout(()=>worldGo(d.world.id),1400);
   }catch(e){toast(e.message)}
@@ -565,7 +575,19 @@ function worldCard(name,quiet){
     ${m.under&&m.under.length?`<p class="wd-under">Also: ${m.under.map(u=>esc(u.emoji+' '+u.name)).join(', ')}</p>`:''}
     <div class="wd-grow"><span>${esc(l.name)}</span>${l.next?`<i style="--p:${Math.max(4,100-l.to_next/(l.to_next+l.xp||1)*100)}%"></i><small>${l.to_next} to ${esc(l.next)}</small>`:'<small>top of the ladder</small>'}</div>
     ${a.friend?`<p class="wd-friend">Works best with ${esc(worldLabel(a.friend))}</p>`:''}
-    <button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>`;
+    <div class="wd-acts"><button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>
+      <button class="endbtn wd-calm1" onclick="worldCalm('${esc(name)}')">Calm down</button></div>`;
+}
+/* Calm the team (or one agent) down: the person's act, like a pat on the back. Every
+   feeling fades to its quiet tail and the world's resting mood shows; the why list says
+   who did it, and the next real event is felt as usual (world.calm). */
+async function worldCalm(name){
+  try{WORLD.v=await worldPost('/api/world/calm',name?{agent:name}:{});WORLD.moods={};WORLD.bubbles={};
+    WORLD.menu=false;worldSync();
+    const lead=worldCast().find(x=>x.name==='@agent');
+    if(!name&&lead)worldSay(lead,'Deep breath, everyone.');
+    else{const a=worldCast().find(x=>x.name===name);if(a)worldSay(a)}
+    toast(name?worldLabel(name)+' takes a breath':'The team takes a breath')}catch(e){toast(e.message)}
 }
 async function worldPat(name){
   try{WORLD.v=await worldPost('/api/world/pat',{agent:name});worldSync();

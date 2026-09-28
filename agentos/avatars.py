@@ -463,7 +463,7 @@ def paint(rec: dict, frame: int = 0, costume: str = "") -> bytearray:
     put(3, 7, sk); put(3, 8, skS); put(12, 7, sk); put(12, 8, skS)
 
     # the face: two eyes (never one mark in the middle — that is what made the very
-    # first version of these read as frightening), a mouth that opens while working
+    # first version of these read as frightening), a mouth that laughs while waving
     # The eye ink is chosen against the SKIN. The outline shade sits at 13% lightness,
     # which is plenty on porcelain and nearly nothing on deep skin: the first deep-
     # skinned character came out with eyes you had to know were there. On the darker
@@ -478,7 +478,11 @@ def paint(rec: dict, frame: int = 0, costume: str = "") -> bytearray:
         if deep and not r["glasses"]:
             put(6, 7, (236, 232, 228)); put(9, 7, (236, 232, 228))
     if frame >= 2:
-        box(7, 10, 8, 10, ln)
+        # the waving frames smile, in the lip colour.
+        # A dark bar in the outline colour here read as a scowl on every cheering agent
+        # ("if they are jumping why are their smiles gone, it's like they are angry").
+        # A curve, corners up: an open block of mouth read as shouting.
+        put(6, 10, mouth); put(9, 10, mouth); put(7, 11, mouth); put(8, 11, mouth)
     else:
         put(7, 10, mouth); put(8, 10, mouth)
     if r["blush"]:

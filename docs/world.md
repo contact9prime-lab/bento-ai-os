@@ -133,7 +133,8 @@ keeps the snow. There is no picker to set each one by hand, on purpose: you desc
 the AI designs it. **Undo** puts back the look it had before, and **Original look** takes a
 built-in world back to how it shipped. A built-in world keeps its setting. Your own world
 moves when the words name another one ("make it a restaurant"), so a world built as a
-kitchen before the restaurant existed can be moved into it. With no brain answering, the words you used are matched against the
+kitchen before the restaurant existed can be moved into it. When you build a world and
+your words name one setting, that setting is used even if the brain picked another. With no brain answering, the words you used are matched against the
 choices and the menu says so. The look is yours and stays when you reset the world's
 feelings.
 
@@ -145,6 +146,18 @@ Once a day in each world, your lead asks in that world's voice. Pick an answer a
 few words if you like. The lead replies with your machine's brain, or with the world's own
 words when no brain answers. Your answer stays in that world only. "Not today" skips it,
 and **Ask me again** in the menu forgets today's answer.
+
+Your answer colours the room a little: the team is gently brighter on a good day and
+gentler on a hard one. It doesn't set them jumping. Only a strong feeling of their own, like
+finishing real work, gets a jump and stars.
+
+### Calm everyone down
+
+The top of the world's menu has **Calm everyone down**, and each agent's card has **Calm
+down**. Every feeling fades back to the world's resting mood, the card says you calmed
+them, and growth stays. The next thing that really happens is felt as usual.
+
+![The Night Kitchen's menu with Calm everyone down at the top, and the team standing quietly in chef whites after the lead asked how service was going](screenshots/world-calm.png)
 
 ![The lead's reply to "choppy, big launch tomorrow": "The waters are rough before any crossing, and we've charted this route together", while two of the team say "I'll keep the lantern lit for you" and "Take your time, the river waits"](screenshots/world-lead-replies.png)
 
