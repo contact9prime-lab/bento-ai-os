@@ -8532,7 +8532,7 @@ async def api_avatars():
 
 @app.get("/api/avatar.png")
 async def api_avatar_png(key: str = "", frame: int = 0, crop: str = "", sheet: int = 0,
-                         scale: int = 1, recipe: str = ""):
+                         scale: int = 1, recipe: str = "", costume: str = "", draw: str = ""):
     """A character as a PNG: one frame, the face, or all frames side by side.
 
     A query parameter rather than a path segment, because the keys are '@agent',
@@ -8550,7 +8550,10 @@ async def api_avatar_png(key: str = "", frame: int = 0, crop: str = "", sheet: i
             rec = avatarsmod.clean({})
     else:
         rec = avatarsmod.recipe_for(state["store"], key)
-    body = avatarsmod.png_of(rec, frame=frame, crop=crop, sheet=bool(sheet), scale=scale)
+    # a scene's costume (avatars.COSTUMES) and the smooth drawing are asked for with the
+    # picture and never stored on the recipe
+    body = avatarsmod.png_of(rec, frame=frame, crop=crop, sheet=bool(sheet), scale=scale,
+                             costume=costume, draw=draw)
     # the page asks with ?v=<updated_at>, so an edit is a new URL and this can be long
     return Response(body, media_type="image/png",
                     headers={"Cache-Control": "private, max-age=86400"})
@@ -8888,19 +8891,29 @@ async def api_world_scene(body: dict):
             if len(desc) < 3:
                 return JSONResponse({"error": "describe how it should look first, a few words is enough"},
                                     status_code=400)
-            system, prompt = worldmod.scene_prompt(desc, w["kit"])
+            # Words that name another setting move a world of your own there ("make it
+            # a restaurant": a world designed before the izakaya existed was stuck as a
+            # canal). A built-in world keeps its setting and says which one has it.
+            named = worldmod.kit_named(desc)
+            kit = named if named and named != w["kit"] and not w.get("builtin") else ""
+            design_kit, base = kit or w["kit"], None if kit else previous
+            system, prompt = worldmod.scene_prompt(desc, design_kit)
             raw, who = await execmod.ask_once(cfg, system, prompt)
             sc = None
             if raw:
                 try:
-                    sc, dropped = worldmod.read_scene(raw, w["kit"], previous)
+                    sc, dropped = worldmod.read_scene(raw, design_kit, base)
                     how = "brain"
                 except ValueError:
                     sc = None
             if sc is None:
-                sc, how = worldmod.scene_from_words(desc, w["kit"], previous), "words"
-            new, more = worldmod.set_scene(store, wid, sc)
+                sc, how = worldmod.scene_from_words(desc, design_kit, base), "words"
+            new, more = worldmod.set_scene(store, wid, sc, kit=kit)
             dropped += more
+            if named and named != w["kit"] and w.get("builtin"):
+                has = next((x["name"] for x in worldmod.BUILTIN if x["kit"] == named), "")
+                dropped.append(f"another setting: {w['name']} keeps its own"
+                               + (f", and {has} is that one" if has else ""))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     said = ("" if how != "words" else

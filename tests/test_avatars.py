@@ -266,6 +266,10 @@ def test_the_routes_list_paint_edit_and_refuse(client):
         r = cl.get("/api/avatar.png", params={"key": "@agent", "crop": "face"})
         assert r.headers["content-type"] == "image/png" and _png_size(r.content) == (14, 14)
         assert _png_size(cl.get("/api/avatar.png", params={"key": "@me", "sheet": 1}).content) == (64, 26)
+        # a scene's costume and the smooth drawing are asked for with the picture
+        soft = cl.get("/api/avatar.png", params={"key": "@me", "sheet": 1, "costume": "chef", "draw": "soft"})
+        assert _png_size(soft.content) == (64 * av.SOFT, 26 * av.SOFT)
+        assert "costume" not in cl.get("/api/avatars").json()["avatars"][0]["recipe"], "never stored"
         ok = cl.put("/api/avatars/@me", json={"hair": "mint", "glasses": True})
         assert ok.status_code == 200 and "mint hair" in ok.json()["about"]
         assert sent[-1] == {"type": "avatars", "key": "@me"}, "every open desktop must repaint"
@@ -369,3 +373,30 @@ def test_the_editor_saves_every_click_and_is_a_real_target_on_a_phone():
     assert "body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:var(--tap)}" in css
     assert "image-rendering:pixelated" in css
     assert "prefers-reduced-motion" in css
+
+
+def test_smooth_is_the_same_painter_with_the_steps_rounded():
+    """"Less pixelated." `draw="soft"` rounds the stair steps (Scale2x twice) and invents
+    nothing: every colour is one the painter put there, the small marks (eyes, mouth,
+    buttons) stay exactly as painted, and a sheet is rounded frame by frame."""
+    from agentos import avatars
+    rec = avatars.generate("researcher")
+    w, h, px = avatars.image(rec, frame=0)
+    sw, sh, spx = avatars.image(rec, frame=0, draw="soft")
+    assert (sw, sh) == (w * avatars.SOFT, h * avatars.SOFT)
+    cols = lambda b: {b[i:i + 4] for i in range(0, len(b), 4)}
+    assert cols(spx) <= cols(px), "a rounded figure uses only the painter's colours"
+    count = lambda b, c: sum(1 for i in range(0, len(b), 4) if b[i:i + 4] == c)
+    marks = [c for c in cols(px) if c[3] and 0 < count(px, c) <= avatars.MARK_PX]
+    assert marks
+    for c in marks:
+        assert count(spx, c) == count(px, c) * avatars.SOFT ** 2, c
+    assert spx != bytes(avatars.image(rec, frame=0, scale=avatars.SOFT)[2]), "the steps really are rounded"
+    fw, fh, sheet = avatars.image(rec, sheet=True, draw="soft")
+    assert (fw, fh) == (w * avatars.FRAMES * avatars.SOFT, sh)
+    assert avatars.png_of(rec, draw="soft") != avatars.png_of(rec)
+    assert avatars.png_of(rec, draw="blurry") == avatars.png_of(rec), "an unknown drawing is pixel art"
+    assert avatars.STYLES == ["short", "long", "bun", "curly", "spiky", "bald", "bob"], \
+        "the hair styles keep their name"
+    import inspect
+    assert "draw" not in inspect.signature(avatars.terminal).parameters, "a terminal has only its cells"

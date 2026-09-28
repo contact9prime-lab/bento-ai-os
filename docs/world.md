@@ -56,20 +56,45 @@ has that feeling left out, and the menu says so.
 
 ## Worlds are different places
 
-Three are built in, and they're unlike each other on purpose:
+Four are built in, and they're unlike each other on purpose:
 
 | World | Setting | Some of its feelings | How agents grow |
 |---|---|---|---|
 | **Lantern Canal** | a canal town with lanterns | Serene, Flustered, Restless, Neighbourly | Deckhand → Boatman → Canal pilot → Harbour master → River sage |
 | **Kestrel Station** | a moon base under a blue planet | Nominal, Overheating, Holding pattern, Low oxygen | Cadet → Specialist → Flight officer → Commander → Station legend |
 | **The Wild Garden** | a garden that grows | Rooted, Thorny, Thirsty, Wilting | Seed → Sprout → Sapling → Tall tree → Old oak |
+| **The Night Kitchen** | a small Japanese restaurant after dark | Simmering, Order up, Burnt, Sniffing the fish | Dishwasher → Prep cook → Line cook → Sous-chef → Head chef |
 
 ![Kestrel Station: the crew on the landing pad of a moon base, habitat domes joined by tubes behind them, a comms tower with a red beacon, a blue planet low in the black sky, and the lead asking "Status report, crew member. How are you today?"](screenshots/world-station.png)
 
 ![The Wild Garden at night: the team in a clearing before a pond ringed with stones, stone lanterns glowing, flowers and fireflies, and the lead asking "How's the weather inside you today?"](screenshots/world-garden.png)
 
+![The Night Kitchen: the team in chef whites in front of a wooden counter with red stools and tea cups, paper lanterns overhead, a street window with lit buildings, shelves of bottles and pots on the range behind, and the lead asking "Irasshaimase! How's your service going tonight?"](screenshots/world-kitchen.png)
+
 Agents grow by finishing tasks, helping colleagues, winning votes and being thanked. In the
-garden the flowers grow with the whole team.
+garden the flowers grow with the whole team. In the kitchen, whoever is working goes behind
+the counter to the range.
+
+### What they wear
+
+Each setting dresses the team: yukata by the canal, spacesuits on the moon base, overalls
+and a straw hat in the garden, chef whites in the kitchen. The face, hair and skin stay
+theirs, and your lead keeps the gold pin in any of them. It's only in the World: the chat,
+the Office and the terminal show everyone in their own clothes, and nothing is saved to the
+character. To choose, say it when you design the scene: "everyone in their own clothes",
+"dress them as chefs".
+
+### Smooth characters
+
+The world's menu has **Smooth characters**. It draws the same characters with the stair steps
+of the pixels rounded off, so they look less pixelated up close. Eyes, mouths and buttons stay
+exactly as painted, because rounding those turned a smile into a frown. It's a setting for
+this browser and for the World only.
+
+At rest your team breathes, blinks each at their own pace, and now and then leans towards
+the colleague they work best with. Walking over to work has a step to it.
+
+![Lantern Canal with smooth characters: the team in yukata with sashes, rounded outlines instead of pixel steps, standing on the quay in front of the canal and the red bridge](screenshots/world-smooth.png)
 
 ### Build your own
 
@@ -100,13 +125,15 @@ machine's brain picks from a small closed set, and the scene is redrawn:
 | Water | teal, blue, jade, violet, amber or ink |
 | Ground | natural, sand, snow, moss, rust or ash |
 | Lights | red, amber, gold, blue, violet, green or white |
-| Things in it | canal: houses, bridge, pagoda, lanterns, boats, trees. Moon base: domes, tower, dish, solar panels, rover, shuttle. Garden: pond, lanterns, trees, flowers, path |
+| What they wear | the setting's own, their own clothes, yukata, spacesuits, overalls or chef whites |
+| Things in it | canal: houses, bridge, pagoda, lanterns, boats, trees. Moon base: domes, tower, dish, solar panels, rover, shuttle. Garden: pond, lanterns, trees, flowers, path. Kitchen: counter, lanterns, noren curtains, shelves, kitchen, window |
 
 A second description changes only what it names, so "make it teal" after a snowy night
 keeps the snow. There is no picker to set each one by hand, on purpose: you describe it and
 the AI designs it. **Undo** puts back the look it had before, and **Original look** takes a
-built-in world back to how it shipped. A built-in world keeps its setting; to change that,
-build your own world. With no brain answering, the words you used are matched against the
+built-in world back to how it shipped. A built-in world keeps its setting. Your own world
+moves when the words name another one ("make it a restaurant"), so a world built as a
+kitchen before the restaurant existed can be moved into it. With no brain answering, the words you used are matched against the
 choices and the menu says so. The look is yours and stays when you reset the world's
 feelings.
 
@@ -168,7 +195,9 @@ software rendering) gets a flat drawing of the same world, and the menu says why
   and 5 frames a second at rest.
 - Reduced motion gets a still world.
 - Each world is 17,000 to 29,000 triangles in 49 to 182 draw calls. The town's fixed parts
-  are merged, which is what keeps the canal at 182.
+  are merged, which is what keeps the canal at 182. The kitchen is 7,068 triangles in 84.
+- Smooth characters add no draw calls. Each character's picture is 256 by 104 instead of
+  64 by 26, painted once by the server and cached.
 - The lead's reply, building a world and designing its look are one brain call each, and
   only when you ask.
 - A designed look costs the same as the original, within the noise of the measurement:

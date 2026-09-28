@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.11 — 2026-09-28
+
+**A restaurant for the World.** A world designed as a Japanese restaurant used to be drawn as
+the canal town, because a restaurant wasn't a setting. Now it is: **The Night Kitchen** is a
+small izakaya after dark, with a wooden counter and stools, paper lanterns, noren curtains, a
+street window that shows the weather, and a range with steam where your team goes to work. It
+has its own feelings (Simmering, Order up, Burnt, Sniffing the fish) and ladder (Dishwasher to
+Head chef). A world of your own moves to it when you describe it as a restaurant.
+
+**Scenes dress the team.** Yukata by the canal, spacesuits on the moon base, overalls and a
+straw hat in the garden, chef whites in the kitchen. Faces stay theirs and your lead keeps the
+gold pin. It's only in the World, and you can say "their own clothes" when you design a scene.
+
+**Smooth characters, and a little more alive.** The World's menu has **Smooth characters**,
+which rounds off the pixel steps while keeping eyes and mouths exactly as painted. At rest the
+team breathes, blinks at their own pace and leans towards the colleague they work best with.
+
 ## 0.6.10 — 2026-09-28
 
 **ElevenLabs lists your voices again.** Settings → Voice said "could not list the voices: 400

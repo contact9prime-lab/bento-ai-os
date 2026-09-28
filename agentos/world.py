@@ -57,6 +57,10 @@ KITS = {
     "canal": "a canal town: water, houses, a red bridge, lanterns at night",
     "orbit": "a moon base: domes, a launch tower, a planet in a black sky, stars",
     "garden": "a wild garden: grass, flowers, trees, a pond",
+    # asked for from a screenshot: a world designed as "a Japanese restaurant" had to be
+    # drawn as the canal town, because a restaurant was not a setting at all
+    "izakaya": "a small Japanese restaurant at night: a wooden counter, stools, paper "
+               "lanterns, noren curtains, a kitchen with steam, a window onto the street",
 }
 
 #: What the page can animate. A world picks one per emotion; the page implements all.
@@ -108,22 +112,30 @@ SCENE = {
     "water": ("teal", "blue", "jade", "violet", "amber", "ink"),
     "ground": ("natural", "sand", "snow", "moss", "rust", "ash"),
     "accent": ("red", "amber", "gold", "blue", "violet", "green", "white"),
+    # what the team wears here: the setting's own costume, their own clothes, or one named
+    "costume": ("setting", "own", "yukata", "spacesuit", "overalls", "chef"),
 }
 #: The props each setting can show. A scene lists the ones it keeps.
 PROPS = {
     "canal": ("houses", "bridge", "pagoda", "lanterns", "boats", "trees"),
     "orbit": ("domes", "tower", "dish", "solar", "rover", "shuttle"),
     "garden": ("pond", "lanterns", "trees", "flowers", "path"),
+    "izakaya": ("counter", "lanterns", "noren", "shelves", "kitchen", "window"),
 }
 #: What each setting looks like until somebody changes it.
 KIT_SCENE = {
     "canal": {"time": "live", "weather": "petals", "sky": "natural", "water": "teal",
-              "ground": "natural", "accent": "red"},
+              "ground": "natural", "accent": "red", "costume": "setting"},
     "orbit": {"time": "live", "weather": "clear", "sky": "natural", "water": "blue",
-              "ground": "natural", "accent": "amber"},
+              "ground": "natural", "accent": "amber", "costume": "setting"},
     "garden": {"time": "live", "weather": "fireflies", "sky": "natural", "water": "blue",
-               "ground": "natural", "accent": "amber"},
+               "ground": "natural", "accent": "amber", "costume": "setting"},
+    "izakaya": {"time": "live", "weather": "clear", "sky": "natural", "water": "amber",
+                "ground": "natural", "accent": "red", "costume": "setting"},
 }
+#: What each setting dresses the team in (avatars.COSTUMES), unless the scene says
+#: "own". A costume is asked for with the picture and never stored on the character.
+KIT_COSTUME = {"canal": "yukata", "orbit": "spacesuit", "garden": "overalls", "izakaya": "chef"}
 
 #: Signals that may never cause a negative feeling. See the module docstring.
 GENTLE = ("declined", "you_low")
@@ -290,6 +302,54 @@ BUILTIN = [
                     "reply_ok": "Mild's good growing weather.",
                     "reply_high": "Lovely. Everything grows better on days like this."},
     },
+    {
+        "id": "night-kitchen", "name": "The Night Kitchen", "kit": "izakaya",
+        "blurb": "A small restaurant after dark. Work is orders on the pass, and moods are the "
+                 "heat of the kitchen.",
+        "voice": "warm and quick, like a head chef between orders; kitchen and service images, "
+                 "never shouting",
+        "rest": "simmering",
+        "emotions": [
+            _emo("simmering", "Simmering", "🍲", 30, 1, "calm", {},
+                 ["Stock's on, all's quiet.", "A calm night on the pass."]),
+            _emo("on-the-line", "On the line", "🔪", 200, 1, "think", {"working": .5},
+                 ["Chopping, plating, next.", "Two on the grill, one in the pan."]),
+            _emo("order-up", "Order up", "🍱", 340, 2, "cheer",
+                 {"succeeded": .7, "vote_won": .8, "grew": 1},
+                 ["Order up!", "Plated and out the door."]),
+            _emo("burnt", "Burnt", "🔥", 8, -2, "tantrum", {"refused": .55},
+                 ["They sent it back!", "Who turned the burner off on me?"]),
+            _emo("dropped", "Dropped a plate", "🍽️", 215, -1, "slump", {"failed": .5, "vote_lost": .6},
+                 ["That one hit the floor.", "Starting that dish again."]),
+            _emo("on-the-pass", "Waiting on the pass", "🛎️", 45, 0, "pace", {"waiting": .6},
+                 ["Waiting for the nod…", "Is it going out or not?"]),
+            _emo("sniffing", "Sniffing the fish", "🐟", 265, -1, "shiver", {"untrusted": .6},
+                 ["This delivery smells off.", "Not serving that without checking."]),
+            _emo("out-of-breath", "Out of breath", "💨", 205, -1, "doze", {"rate_limited": .9},
+                 ["Too many tickets at once.", "Need a minute by the back door."]),
+            _emo("shoulder", "Shoulder to shoulder", "🤝", 150, 2, "wave",
+                 {"asked_help": .5, "helped": .6, "huddled": .5},
+                 ["Behind you, hot pan!", "Good to cook with company."]),
+            _emo("sulking", "Sulking by the sink", "😤", 18, -1, "sulk", {"outvoted": .6},
+                 ["Fine, we'll do their sauce.", "Mine had more umami."]),
+            _emo("warm-broth", "Warm broth", "🍵", 28, 1, "care", {"you_low": .45, "declined": .3, "praised": .5},
+                 ["I'll keep a bowl warm for you.", "Sit at the counter, no rush."]),
+            _emo("festive", "Festive", "🏮", 52, 2, "sparkle", {"you_high": .45, "approved": .4, "praised": .5},
+                 ["Full house tonight!", "The lanterns are all lit."]),
+        ],
+        "growth": {"earns": {"succeeded": 3, "helped": 2, "vote_won": 2, "huddled": 1, "praised": 1},
+                   "ladder": [{"name": "Dishwasher", "at": 0}, {"name": "Prep cook", "at": 15},
+                              {"name": "Line cook", "at": 45}, {"name": "Sous-chef", "at": 120},
+                              {"name": "Head chef", "at": 300}]},
+        "checkin": {"question": "Irasshaimase! How's your service going tonight?",
+                    "choices": [{"id": "booked", "label": "Fully booked", "emoji": "🍱", "valence": 2},
+                                {"id": "simmer", "label": "Steady simmer", "emoji": "🍜", "valence": 1},
+                                {"id": "lukewarm", "label": "Lukewarm", "emoji": "🍵", "valence": -1},
+                                {"id": "burning", "label": "Kitchen's burning", "emoji": "🔥", "valence": -2}],
+                    "reply_low": "Then sit at the counter and let us cook tonight. I'll take the heavy orders.",
+                    "reply_ok": "A steady simmer is how the best broth gets made.",
+                    "reply_high": "Wonderful. The whole kitchen can feel it."},
+    },
 ]
 BUILTIN_IDS = {w["id"] for w in BUILTIN}
 DEFAULT = BUILTIN[0]["id"]
@@ -322,6 +382,16 @@ def _num(v, lo, hi, default):
     except (TypeError, ValueError):
         return default
     return max(lo, min(hi, v))
+
+
+def costume_of(w: dict) -> str:
+    """What the team wears in this world: avatars.COSTUMES, or '' for their own clothes."""
+    c = str(((w or {}).get("scene") or {}).get("costume") or "setting")
+    if c == "own":
+        return ""
+    if c == "setting" or c not in SCENE["costume"]:
+        return KIT_COSTUME.get((w or {}).get("kit"), "")
+    return c
 
 
 def scene_of(kit: str, sc) -> tuple[dict, list[str]]:
@@ -746,7 +816,7 @@ def view(uid: str) -> dict:
                        "friend": friend[0] if friend[1] >= 2 else ""})
     you = st.get("you") or {}
     today = _today()
-    return {"live": True, "world": w, "agents": agents, "inner": bool(st.get("inner")),
+    return {"live": True, "world": {**w, "costume": costume_of(w)}, "agents": agents, "inner": bool(st.get("inner")),
             "you": {k: you.get(k) for k in ("choice", "words", "reply", "how", "date", "skipped")},
             "ask_you": you.get("date") != today,
             "events": [e for e in st["events"] if now - e["at"] < 30]}
@@ -1088,7 +1158,10 @@ def _props_choices() -> str:
 
 
 #: What a setting cannot show, so the designer does not pick a look nobody will see.
-_KIT_NOTE = {"orbit": "This is a base on the moon under black space: the time of day and the "
+_KIT_NOTE = {"izakaya": "This is indoors, a restaurant at night: the weather shows only through "
+                        "the street window, and the water colour is the colour of the tea and "
+                        "the glaze on the plates.",
+             "orbit": "This is a base on the moon under black space: the time of day and the "
                       "sky colour barely show there, and rain or petals make no sense. Keep "
                       "weather clear unless the words ask for dust (snow) or clouds."}
 
@@ -1101,6 +1174,8 @@ def scene_prompt(words: str, kit: str) -> tuple[str, str]:
               f"JSON fields, each ONE of the listed values: {_scene_choices()}.\n"
               f'"props": a list of the ones to keep from: {", ".join(PROPS.get(kit, ()))}. '
               "Keep every prop unless the words ask for one to go.\n"
+              '"costume" is what the team wears here: "setting" is this place\'s own outfit '
+              f'({KIT_COSTUME.get(kit, "none")}), "own" is their everyday clothes.\n'
               + (_KIT_NOTE.get(kit, "") and _KIT_NOTE[kit] + "\n") +
               "Leave out a field the words say nothing about.")
     return system, prompt
@@ -1134,6 +1209,10 @@ _SCENE_WORDS = {
               "ink": ("ink", "black water", "dark water")},
     "ground": {"sand": ("sand", "desert", "beach"), "snow": ("snow", "winter"), "moss": ("moss", "lush"),
                "rust": ("rust", "mars", "red earth", "autumn"), "ash": ("ash", "volcan")},
+    "costume": {"own": ("own clothes", "their clothes", "normal clothes", "no costume", "everyday"),
+                "yukata": ("yukata", "kimono"), "spacesuit": ("spacesuit", "space suit", "astronaut"),
+                "overalls": ("overalls", "dungarees", "farmer", "gardener"),
+                "chef": ("chef", "cook", "apron", "whites")},
     "accent": {"red": ("red lantern", "red"), "amber": ("amber",), "gold": ("gold",), "blue": ("blue light", "blue"),
                "violet": ("violet", "purple"), "green": ("green",), "white": ("white", "paper lantern")},
 }
@@ -1174,15 +1253,22 @@ def read_design(text: str) -> tuple[dict, list[str]]:
     return validate(d)
 
 
-_KIT_WORDS = {"orbit": ("space", "station", "star", "planet", "orbit", "rocket", "moon", "galaxy", "ship"),
+_KIT_WORDS = {"izakaya": ("restaurant", "kitchen", "izakaya", "ramen", "sushi", "cafe", "café",
+                          "diner", "bistro", "tavern", "chef", "noodle"),
+              "orbit": ("space", "station", "star", "planet", "orbit", "rocket", "moon", "galaxy", "ship"),
               "garden": ("garden", "forest", "flower", "tree", "farm", "meadow", "jungle", "park", "wood")}
+
+
+def kit_named(words: str) -> str:
+    """The setting some words name ("a ramen place" is the izakaya), or ''."""
+    low = str(words or "").lower()
+    return next((k for k, ws in _KIT_WORDS.items() if any(x in low for x in ws)), "")
 
 
 def from_words(words: str) -> dict:
     """No brain answered: the closest built-in world, renamed for the person's words.
     The route says so rather than pretending it was designed."""
-    low = str(words or "").lower()
-    kit = next((k for k, ws in _KIT_WORDS.items() if any(x in low for x in ws)), "canal")
+    kit = kit_named(words) or "canal"
     base = next(w for w in BUILTIN if w["kit"] == kit)
     d = json.loads(json.dumps(base))
     name = _clean(words, 40) or base["name"]

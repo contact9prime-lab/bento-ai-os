@@ -378,6 +378,9 @@ glance instead of reading names.
   same set.
 - **Yours, not a space's.** Characters live in your own database; switching project does not change
   who your colleagues look like, and another account on this machine has its own.
+- **A scene can dress them.** In the [World](world.md#what-they-wear) the team wears the setting's
+  clothes (yukata, spacesuits, overalls, chef whites) and can be drawn smooth instead of in pixels.
+  Both are asked for with the picture and never saved, so everywhere else they are as you made them.
 - **Only people get faces.** A flow, an app or the system is not a person, and its log lines stay
   plain. **Faces beside messages** (Settings → Appearance) turns them off in Chat, Logs and
   approvals if you would rather read text.
