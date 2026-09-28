@@ -4273,6 +4273,8 @@ body.dev-touch .fc-act{min-width:var(--tap)}
 #world-scene.flat{background:linear-gradient(#27406b,#4a7aa0 55%,#1f7f78 56%,#16585a)}
 #world-scene.flat[data-kit="orbit"]{background:radial-gradient(circle at 20% 110%,#2e6fd8 0 34%,transparent 35%),#03040b}
 #world-scene.flat[data-kit="garden"]{background:linear-gradient(#9fd3ff,#cfe9ff 50%,#6aa84f 51%,#4f8a3a)}
+/* the restaurant with no 3D: a lantern-lit plaster wall, a counter, a wooden floor */
+#world-scene.flat[data-kit="izakaya"]{background:radial-gradient(circle at 22% 22%,rgba(255,120,80,.55) 0 5%,transparent 12%),radial-gradient(circle at 70% 18%,rgba(255,120,80,.5) 0 5%,transparent 12%),linear-gradient(#e9dcc4 0 44%,#2e1d14 44% 46%,#6b4226 46% 60%,#b07a4a 60% 62%,#8a5a36 62%)}
 body.imm-world #wall.has::after{display:none}
 /* a soft shade under the greeting and the prompt bar: a noon sky is brighter than any
    wallpaper, and the white words over it must still read */
@@ -4297,6 +4299,7 @@ body.has-win #world-ui *{pointer-events:none!important}
 .wd-say::after{content:"";position:absolute;left:50%;bottom:-5px;width:10px;height:10px;background:inherit;transform:translateX(-50%) rotate(45deg)}
 .wd-tag.flat{top:auto;bottom:124px;transform:translateX(-50%);padding-top:0}
 .wd-flatav{width:40px;height:65px;image-rendering:pixelated}
+.wd-flatav.soft{image-rendering:auto}
 .wd-tag.flat.wx-tantrum .wd-flatav{animation:wdShake .25s infinite}
 .wd-tag.flat.wx-cheer .wd-flatav,.wd-tag.flat.wx-sparkle .wd-flatav{animation:wdHop .6s infinite}
 .wd-tag.flat.wx-slump .wd-flatav,.wd-tag.flat.wx-sulk .wd-flatav{transform:scaleY(.88) translateY(6px)}
@@ -5181,7 +5184,9 @@ function avatarSrc(key,o){
   const a=AVATARS.by[key],v=a?a.v:0;
   return '/api/avatar.png?key='+encodeURIComponent(key)
     +(o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
-    +(o.frame?'&frame='+o.frame:'')+'&v='+v;
+    +(o.frame?'&frame='+o.frame:'')
+    // a scene's costume and the smooth drawing are asked for with the picture, never stored
+    +(o.costume?'&costume='+encodeURIComponent(o.costume):'')+(o.draw?'&draw='+o.draw:'')+'&v='+v;
 }
 /* A face from ANOTHER team — a linked machine's agent, a person who sent a message.
    Their recipe travelled with the link; the server paints it (and holds it to the
@@ -6739,10 +6744,7 @@ function worldSync(){
     cast.forEach((a,i)=>{
       let c=WORLD.chars[a.name];
       if(!c){
-        const tex=new T.TextureLoader().load(avatarSrc(a.name,{sheet:1}),()=>worldKick());
-        tex.magFilter=T.NearestFilter;tex.minFilter=T.NearestFilter;tex.colorSpace=T.SRGBColorSpace;
-        tex.repeat.set(.25,1);
-        const sp=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,alphaTest:.5}));
+        const sp=new T.Sprite(new T.SpriteMaterial({transparent:true,alphaTest:.5}));
         sp.scale.set(1.5,2.45,1);sp.center.set(.5,0);
         WORLD.scene.add(sp);
         // everyone starts at their place: walking in from the middle of the world
@@ -6752,7 +6754,16 @@ function worldSync(){
         const sh=new T.Mesh(new T.PlaneGeometry(1.5,.75),new T.MeshBasicMaterial({map:wlShadowTex(T),transparent:true,depthWrite:false}));
         sh.rotation.x=-Math.PI/2;WORLD.scene.add(sh);
         const cr=wlCrystal(T);WORLD.scene.add(cr);
-        c=WORLD.chars[a.name]={sprite:sp,tex,shadow:sh,crystal:cr,i,vessel:null,home:null,phase:Math.random()*6};
+        c=WORLD.chars[a.name]={sprite:sp,tex:null,src:'',shadow:sh,crystal:cr,i,vessel:null,home:null,phase:Math.random()*6};
+      }
+      // the sheet in this scene's costume and style; a new look swaps it in place
+      const src=worldSheet(a.name);
+      if(c.src!==src){
+        const soft=worldSoft(),tex=new T.TextureLoader().load(src,()=>worldKick());
+        tex.magFilter=tex.minFilter=soft?T.LinearFilter:T.NearestFilter;tex.generateMipmaps=false;
+        tex.colorSpace=T.SRGBColorSpace;tex.repeat.set(.25,1);
+        if(c.tex)c.tex.dispose();
+        c.tex=tex;c.src=src;c.sprite.material.map=tex;c.sprite.material.alphaTest=soft?.35:.5;c.sprite.material.needsUpdate=true;
       }
       c.i=i;c.a=a;c.home=worldSpot(i);
       const vc=WL_VALENCE[a.mood.valence]!=null?WL_VALENCE[a.mood.valence]:WL_VALENCE[0];
@@ -6773,6 +6784,18 @@ function worldSync(){
   if(WORLD.open)worldCard(WORLD.open,true);
   worldKick();
 }
+/* What the team wears here (world.costume_of: the setting's costume, their own clothes,
+   or one the scene named) and whether they are drawn smooth. Both are asked for with
+   the picture and never stored on the character, so the chat and the Office keep their
+   own clothes and their pixels: leaving the scene gives everything back. */
+var WORLD_WEAR={yukata:'in yukata',spacesuit:'in spacesuits',overalls:'in overalls',chef:'in chef whites'};
+function worldCostume(){return (WORLD.v&&WORLD.v.world&&WORLD.v.world.costume)||''}
+function worldSoft(){try{return localStorage.getItem('world.soft')==='1'}catch(e){return false}}
+function worldSheet(name){return avatarSrc(name,{sheet:1,costume:worldCostume(),draw:worldSoft()?'soft':''})}
+function worldSetSoft(on){
+  try{localStorage.setItem('world.soft',on?'1':'0')}catch(e){}
+  worldSync();toast(on?'Characters are drawn smooth here':'Characters are pixel art again');
+}
 function worldEmotion(id){return ((WORLD.v&&WORLD.v.world.emotions)||[]).find(e=>e.id===id)}
 function worldSay(a,text){
   if(!text){const e=worldEmotion(a.mood.id);const ls=(e&&e.lines)||[];text=ls[Math.floor(Math.random()*ls.length)]||a.mood.name}
@@ -6792,7 +6815,7 @@ function worldTags(){
       el.onclick=()=>worldCard(a.name);box.appendChild(el)}
     const m=a.mood,b=WORLD.bubbles[a.name],say=b&&b.until>now?b.text:'';
     const html=(say?`<span class="wd-say">${esc(say)}</span>`:'')+
-      (WORLD.flat?avatarImg(a.name,'wd-flatav',{crop:''}):'')+
+      (WORLD.flat?avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''}):'')+
       `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`;
     if(el._h!==html){el.innerHTML=html;el._h=html}
     el.style.setProperty('--mh',m.hue);
@@ -6863,7 +6886,9 @@ function worldPose(t,dt){
   Object.values(WORLD.chars).forEach(c=>{
     const a=c.a;if(!a)return;
     const s=c.sprite,m=s.material,e=a.mood.expression,k=t+c.phase;
-    let x=0,y=0,rot=0,frame=((k%4)<.12)?1:0,sy=1,flip=false;
+    // a blink at an uneven pace, sometimes twice, so a row of them never blinks in step
+    const bk=k%(3.4+(c.phase%1.6)),blink=bk<.12||(c.phase>3&&bk>.3&&bk<.4);
+    let x=0,y=0,rot=0,frame=blink?1:0,sy=1,flip=false;
     const target=a.busy?WORLD.kit.busy(c.i,t):c.home;
     if(e==='cheer'){y=Math.abs(Math.sin(k*6))*.5;frame=2+(Math.floor(k*4)%2)}
     else if(e==='tantrum'){y=Math.abs(Math.sin(k*14))*.25;x=Math.sin(k*40)*.08;rot=Math.sin(k*20)*.15}
@@ -6877,10 +6902,22 @@ function worldPose(t,dt){
     else if(e==='care'){rot=c.home.x>0?.12:-.12;y=Math.sin(k*1.2)*.03}
     else if(e==='think'){rot=Math.sin(k*.8)*.07}
     else{y=Math.sin(k*1.5)*.03}
-    if(WORLD.still){x=0;rot=0;y=Math.max(0,y)}
+    // alive at rest: a slow breath in the chest, and now and then a lean to one side
+    // (towards a friend when they have one here). Only the quiet feelings, which is
+    // where a figure standing perfectly still read as a cut-out. A lean, because the
+    // sprite faces front and a mirrored front view looks the same.
+    let sx=1;
+    if(e==='calm'||e==='think'||e==='care'){
+      sy*=1+Math.sin(k*1.7)*.022;sx=1-Math.sin(k*1.7)*.012;
+      const fr=a.friend&&WORLD.chars[a.friend],lean=Math.max(0,Math.sin(k*.31+c.phase)-.75)*.28;
+      rot+=(fr?fr.sprite.position.x<s.position.x:c.phase>3)?lean:-lean}
+    // a step's bob while walking over to work or back
+    const far=s.position.distanceTo(target);
+    if(far>.25&&e!=='pace'){y+=Math.abs(Math.sin(k*9))*.12;rot+=Math.sin(k*9)*.03}
+    if(WORLD.still){x=0;rot=0;y=Math.max(0,y);sx=1}
     s.position.lerp(target,a.busy?.08:.12);
     s.position.x+=x;s.position.y=target.y+y;
-    m.rotation=rot;s.scale.y=2.45*sy;
+    m.rotation=rot;s.scale.y=2.45*sy;s.scale.x=1.5*sx;
     c.tex.offset.x=frame*.25;c.tex.repeat.x=flip?-.25:.25;if(flip)c.tex.offset.x=(frame+1)*.25;
     const ground=a.busy&&c.vessel?target.y+.25:target.y;
     c.shadow.position.set(s.position.x,ground+.04,s.position.z);c.shadow.visible=!(a.busy&&!c.vessel&&target.y>3);
@@ -6966,6 +7003,8 @@ function worldMenuHTML(){
     <div class="wd-build"><textarea id="wd-desc" rows="2" placeholder="A night bakery where bread rises at 3am…"></textarea>
       <button class="endbtn" onclick="worldDesign(this)">Build it</button></div>
     <div class="wd-built"></div>
+    <label class="wd-row"><input type="checkbox" ${worldSoft()?'checked':''} onchange="worldSetSoft(this.checked)">
+      <span>Smooth characters ${pInfoSafe('Draws your team with rounded edges instead of pixels, in this world only. What they wear comes from the scene: say “own clothes” when you design it to keep theirs.')}</span></label>
     <label class="wd-row"><input type="checkbox" ${v.inner?'checked':''} onchange="worldInner(this.checked)">
       <span>Agents feel it ${pInfoSafe('While this world is on, each agent is told how it feels and why, and your lead hears how you said you are. It changes their tone and approach, never the rules. Off, and outside this scene, nothing is told.')}</span></label>
     <div class="wd-acts">
@@ -7029,7 +7068,8 @@ async function worldLook(btn){
     WORLD.undoLook={prev:d.previous};
     const sc=d.world.scene||{};
     WORLD.lookOut=`<p>${d.how==='brain'?'Designed by AI'+(d.who?' ('+esc(d.who)+')':''):'Designed from your words'}: `+
-      esc([sc.time==='live'?'the real hour':sc.time,sc.weather,sc.sky!=='natural'?sc.sky+' sky':'',sc.water+' water',sc.accent+' lights'].filter(Boolean).join(', '))+'.</p>'+
+      esc([sc.time==='live'?'the real hour':sc.time,sc.weather,sc.sky!=='natural'?sc.sky+' sky':'',sc.water+' water',sc.accent+' lights',
+        sc.costume==='own'?'their own clothes':WORLD_WEAR[sc.costume]||''].filter(Boolean).join(', '))+'.</p>'+
       (d.said?`<p class="wd-why">${esc(d.said)}</p>`:'')+
       (d.dropped&&d.dropped.length?`<p class="wd-why">Left out: ${esc(d.dropped.join('; '))}.</p>`:'');
     await worldLookApply(d);
@@ -7812,6 +7852,117 @@ var WORLD_KITS={
         glow.lanterns.forEach(m=>m.emissiveIntensity=.1+night*2.2);halos.forEach(h=>h.material.opacity=night);
         ranges[0].color.set(worldMix(T,0x1d2640,0x86a0ae,d*1.6));wx.light(d);if(butterflies)butterflies.pts.material.opacity=Math.min(1,d*3);
         WORLD.r.toneMappingExposure=.95+night*.35}};
+  },
+  /* A small Japanese restaurant after dark (world.KITS izakaya). Asked for from a
+     screenshot: a world designed as "a Japanese restaurant" had to be drawn as the canal
+     town. Indoors, so the hour shows through the street window and in how bright the
+     lanterns burn; the team stands in front of the counter and goes into the kitchen to
+     work. The water colour is the tea in the cups and the glaze on the plates. */
+  izakaya(T,scene,cam){
+    WL_MAT={};
+    const hq=WORLD.hq,glow={lanterns:[]},halos=[];
+    const props=new T.Group();scene.add(props);
+    const acc=wlAccent(),tea=wlWaterCols();
+    const hemi=new T.HemisphereLight(0xffe2b8,0x3a2418,.75);scene.add(hemi);
+    const key=new T.DirectionalLight(0xffd7a0,1.6);key.position.set(6,18,22);scene.add(key);scene.add(key.target);
+    if(hq){key.castShadow=true;key.shadow.mapSize.set(1024,1024);const sc=key.shadow.camera;sc.left=-26;sc.right=26;sc.top=20;sc.bottom=-20;sc.far=80;key.shadow.bias=-.0015}
+    // the floor: warm wooden boards, in the ground's colour when one was designed
+    const boards=wlCanvasTex(T,'boards',256,256,(g,w)=>{g.fillStyle='#8a5a36';g.fillRect(0,0,w,w);
+      for(let y=0;y<8;y++){const l=Math.floor(Math.random()*24);g.fillStyle=`rgb(${128+l},${84+l},${52+l})`;g.fillRect(0,y*32+1,w,30);
+        g.fillStyle='rgba(40,20,10,.5)';g.fillRect(0,y*32,w,2);g.fillRect((y*97)%w,y*32,2,32)}}).clone();
+    boards.wrapS=boards.wrapT=T.RepeatWrapping;boards.repeat.set(8,6);boards.needsUpdate=true;
+    const floor=new T.Mesh(new T.PlaneGeometry(64,40).rotateX(-Math.PI/2),new T.MeshStandardMaterial({color:wlGround(0xffffff),map:boards,roughness:.9}));
+    floor.position.set(0,0,-4);floor.receiveShadow=true;scene.add(floor);
+    const wood=wlMat(T,'izwood',{color:0x6b4226,roughness:.8}),dark=wlMat(T,'izdark',{color:0x2e1d14,roughness:.9});
+    const plaster=wlMat(T,'izplaster',{color:0xe9dcc4,roughness:1}),cedar=wlMat(T,'izcedar',{color:0xb07a4a,roughness:.7});
+    // the back wall with a dark timber frame, and the two side walls
+    const wall=(w,h,x,y,z,ry)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,.4),plaster);m.position.set(x,y,z);m.rotation.y=ry||0;m.receiveShadow=true;props.add(m)};
+    wall(20,12,10,6,-15);wall(10,5.5,-17,9.25,-15);wall(10,1.5,-17,.75,-15);wall(4,12,-24,6,-15);
+    wall(26,12,-26,6,-2,Math.PI/2);wall(26,12,26,6,-2,Math.PI/2);
+    [-26,-22,-12,0,12,26].forEach(x=>{const b=new T.Mesh(new T.BoxGeometry(.6,12,.6),dark);b.position.set(x,6,-14.7);props.add(b)});
+    const beam=new T.Mesh(new T.BoxGeometry(54,.7,.7),dark);beam.position.set(0,11.2,-14.6);props.add(beam);
+    for(let i=0;i<5;i++){const cb=new T.Mesh(new T.BoxGeometry(.5,.5,22),dark);cb.position.set(-20+i*10,11.6,-4);props.add(cb)}
+    // the street window: a lit street behind glass, and whatever the weather is doing
+    let street=null,wx={tick(){},light(){}};
+    if(wlHas('window')){
+      const sm=new T.MeshBasicMaterial({map:wlCanvasTex(T,'street',512,256,(g,w,h)=>{
+        g.fillStyle='#1b2230';g.fillRect(0,0,w,h);
+        for(let i=0;i<7;i++){const x=i*76-10,hh=120+((i*37)%70);g.fillStyle=i%2?'#2a2f3d':'#232837';g.fillRect(x,h-hh,70,hh);
+          for(let r=0;r<4;r++)for(let c=0;c<3;c++)if((i+r+c)%3){g.fillStyle='rgba(255,200,120,.85)';g.fillRect(x+8+c*20,h-hh+14+r*26,12,14)}}
+        g.fillStyle='rgba(255,90,70,.9)';for(let i=0;i<6;i++){g.beginPath();g.arc(40+i*85,h-150,7,0,7);g.fill()}}),fog:false});
+      street=new T.Mesh(new T.PlaneGeometry(14,7),sm);street.position.set(-17,4,-21);scene.add(street);
+      const frame=wlMat(T,'izframe',{color:0x2e1d14});
+      [[-17,7.05,10.2,.3],[-17,1.55,10.2,.3],[-22,4.3,.3,5.8],[-12,4.3,.3,5.8],[-17,4.3,.18,5.8],[-14.5,4.3,.12,5.8],[-19.5,4.3,.12,5.8]].forEach(([x,y,w,h])=>{
+        const b=new T.Mesh(new T.BoxGeometry(w,h,.3),frame);b.position.set(x,y,-14.9);props.add(b)});
+      wx=wlWeather(T,scene,[-22,-12,1.5,7,-20,-16]);
+    }
+    // the counter along the middle, a cedar top, and stools in front of it
+    if(wlHas('counter')){
+      const body=new T.Mesh(new T.BoxGeometry(26,1.6,1.6),wood);body.position.set(1,.8,-5);body.castShadow=true;props.add(body);
+      const top=new T.Mesh(new T.BoxGeometry(26.6,.25,2.1),cedar);top.position.set(1,1.72,-5);top.castShadow=true;props.add(top);
+      const cup=new T.CylinderGeometry(.18,.14,.32,10),teaM=wlMat(T,'iztea',{color:tea[1],roughness:.3,emissive:tea[1],emissiveIntensity:.08});
+      const plate=new T.CylinderGeometry(.42,.38,.08,14),glaze=wlMat(T,'izglaze',{color:tea[0],roughness:.25});
+      for(let i=0;i<8;i++){const c=new T.Mesh(cup,teaM);c.position.set(-10+i*3.2,2.01,-4.6);props.add(c);
+        if(i%2){const pl=new T.Mesh(plate,glaze);pl.position.set(-9+i*3.2,1.89,-5.1);props.add(pl)}}
+      const seat=wlMat(T,'izseat',{color:0x8b1e1e,roughness:.7});
+      for(let i=0;i<8;i++){const st=new T.Group(),x=-10.5+i*3.2;
+        const leg=new T.Mesh(new T.CylinderGeometry(.12,.16,1.4,6),dark);leg.position.y=.7;st.add(leg);
+        const sq=new T.Mesh(new T.CylinderGeometry(.6,.55,.22,12),seat);sq.position.y=1.45;st.add(sq);
+        st.position.set(x,0,-2.9);st.traverse(o=>{if(o.isMesh)o.castShadow=true});props.add(st)}
+    }
+    // shelves of bottles and bowls on the back wall
+    if(wlHas('shelves')){
+      const bottleCols=[0x2f6b3a,0x7a2b1f,0x2b3f6b,0xd9c9a0,0x5a3a1f,0x3f7f6f];
+      for(let r=0;r<3;r++){const sh=new T.Mesh(new T.BoxGeometry(10,.2,1),cedar);sh.position.set(-5,4+r*1.9,-14.3);props.add(sh);
+        for(let i=0;i<9;i++){const col=bottleCols[(i+r)%bottleCols.length],tall=(i+r)%3===0;
+          const b=new T.Mesh(tall?new T.CylinderGeometry(.18,.24,1.2,8):new T.SphereGeometry(.34,10,8),wlMat(T,'izbottle'+col,{color:col,roughness:.2,metalness:.1}));
+          b.position.set(-9.2+i*1.05,4.1+r*1.9+(tall?.6:.3),-14.2);props.add(b)}}
+    }
+    // the kitchen behind the counter: a range with pots, and steam that never stops
+    const steam=[];
+    if(wlHas('kitchen')){
+      const range=new T.Mesh(new T.BoxGeometry(14,1.8,2.2),wlMat(T,'izsteel',{color:0x9aa0a8,roughness:.35,metalness:.6}));range.position.set(4,.9,-11);range.castShadow=true;props.add(range);
+      const pot=new T.CylinderGeometry(.7,.6,.9,14),potM=wlMat(T,'izpot',{color:0x3a3f46,roughness:.4,metalness:.5});
+      [-1,2,5,8].forEach(x=>{const p=new T.Mesh(pot,potM);p.position.set(x,2.25,-11);p.castShadow=true;props.add(p);
+        if(steam.length<(hq?24:12))for(let k=0;k<(hq?6:3);k++){const s=new T.Sprite(new T.SpriteMaterial({map:wlGlowTex(T),color:0xffffff,transparent:true,opacity:0,depthWrite:false}));
+          s.userData={x,ph:Math.random()*4,sp:.6+Math.random()*.5};scene.add(s);steam.push(s)}});
+      const hood=new T.Mesh(new T.BoxGeometry(14,.6,2.6),wlMat(T,'izsteel2',{color:0x7c828a,roughness:.4,metalness:.5}));hood.position.set(4,8.2,-11.4);props.add(hood);
+    }
+    // the noren: split curtains over the kitchen door, in the accent colour with a mark
+    if(wlHas('noren')){
+      const cloth=wlMat(T,'iznoren',{color:acc,roughness:.9,side:T.DoubleSide,map:wlCanvasTex(T,'noren',128,128,(g,w)=>{
+        g.fillStyle='#ffffff';g.fillRect(0,0,w,w);g.strokeStyle='rgba(255,255,255,.0)';
+        g.fillStyle='rgba(255,255,255,.95)';g.beginPath();g.arc(w*.5,w*.45,w*.22,0,7);g.fill();
+        g.fillStyle='rgba(0,0,0,.18)';g.beginPath();g.arc(w*.5,w*.45,w*.12,0,7);g.fill()})});
+      const rod=new T.Mesh(new T.CylinderGeometry(.08,.08,8,6),dark);rod.rotation.z=Math.PI/2;rod.position.set(14,8.6,-13.4);props.add(rod);
+      for(let i=0;i<4;i++){const c=new T.Mesh(new T.PlaneGeometry(1.8,3.2),cloth);c.position.set(11.3+i*1.9,6.95,-13.35);props.add(c)}
+    }
+    // paper lanterns hanging from the beams, lit always and brighter after dark
+    const lamps=[];
+    if(wlHas('lanterns')){
+      const lm=wlMat(T,'izlantern',{color:acc,emissive:acc,emissiveIntensity:.6,roughness:.8});glow.lanterns.push(lm);
+      const lg=new T.SphereGeometry(.7,14,10);lg.scale(1,1.25,1);
+      [-16,-8,0,8,16,-12,4,12].forEach((x,i)=>{const z=i<5?-2:-8,l=new T.Mesh(lg,lm);l.position.set(x,8.6,z);l.userData.keep=true;scene.add(l);lamps.push(l);
+        const cap=new T.Mesh(new T.CylinderGeometry(.35,.35,.15,10),dark);cap.position.set(x,9.55,z);props.add(cap);
+        wlHalo(T,scene,new T.Vector3(x,8.6,z),acc,4.2,halos)});
+    }
+    wlBake(T,props);
+    scene.background=new T.Color(0x140c08);
+    return {
+      spots:[[0,0,6.8],[-3.3,0,6],[3.3,0,6],[-6.6,0,4.8],[6.6,0,4.8],[-1.7,0,3],[1.7,0,3],
+        [-9.8,0,3.6],[9.8,0,3.6],[-5,0,2],[5,0,2],[0,0,1.4]],
+      camWide:[[0,7.6,27],[0,3.2,-20]],camTall:[[0,8.6,23],[0,-3.8,-10]],
+      // at work they go behind the counter to the range
+      busy(i,t){return new T.Vector3(-2+(i%5)*2.6+Math.sin(t*.9+i)*.5,0,-8.6-(i%2)*.8)},
+      vessel(){return null},
+      tick(t,dt){steam.forEach((s,k)=>{const u=((t*s.userData.sp+s.userData.ph)%3)/3;
+          s.position.set(s.userData.x+Math.sin(t+k)*.25,2.8+u*4.2,-11);const sz=.8+u*2.2;s.scale.set(sz,sz,1);s.material.opacity=(1-u)*.22});
+        lamps.forEach((l,k)=>{l.rotation.z=Math.sin(t*.8+k)*.04});wx.tick(dt,t)},
+      light(d){const night=1-Math.min(1,d*2.4);
+        if(street)street.material.color.copy(worldMix(T,0xffffff,0x9fc4ff,d*1.4));
+        glow.lanterns.forEach(m=>m.emissiveIntensity=.6+night*1.6);halos.forEach(h=>h.material.opacity=.35+night*.65);
+        key.intensity=1.1+d*.9;hemi.intensity=.55+d*.35;wlFog(T,scene,new T.Color(0x140c08),70,160);wx.light(d);
+        WORLD.r.toneMappingExposure=1.02+night*.18}};
   }
 };
 /* ================= the Mind scene =================

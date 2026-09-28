@@ -202,10 +202,7 @@ function worldSync(){
     cast.forEach((a,i)=>{
       let c=WORLD.chars[a.name];
       if(!c){
-        const tex=new T.TextureLoader().load(avatarSrc(a.name,{sheet:1}),()=>worldKick());
-        tex.magFilter=T.NearestFilter;tex.minFilter=T.NearestFilter;tex.colorSpace=T.SRGBColorSpace;
-        tex.repeat.set(.25,1);
-        const sp=new T.Sprite(new T.SpriteMaterial({map:tex,transparent:true,alphaTest:.5}));
+        const sp=new T.Sprite(new T.SpriteMaterial({transparent:true,alphaTest:.5}));
         sp.scale.set(1.5,2.45,1);sp.center.set(.5,0);
         WORLD.scene.add(sp);
         // everyone starts at their place: walking in from the middle of the world
@@ -215,7 +212,16 @@ function worldSync(){
         const sh=new T.Mesh(new T.PlaneGeometry(1.5,.75),new T.MeshBasicMaterial({map:wlShadowTex(T),transparent:true,depthWrite:false}));
         sh.rotation.x=-Math.PI/2;WORLD.scene.add(sh);
         const cr=wlCrystal(T);WORLD.scene.add(cr);
-        c=WORLD.chars[a.name]={sprite:sp,tex,shadow:sh,crystal:cr,i,vessel:null,home:null,phase:Math.random()*6};
+        c=WORLD.chars[a.name]={sprite:sp,tex:null,src:'',shadow:sh,crystal:cr,i,vessel:null,home:null,phase:Math.random()*6};
+      }
+      // the sheet in this scene's costume and style; a new look swaps it in place
+      const src=worldSheet(a.name);
+      if(c.src!==src){
+        const soft=worldSoft(),tex=new T.TextureLoader().load(src,()=>worldKick());
+        tex.magFilter=tex.minFilter=soft?T.LinearFilter:T.NearestFilter;tex.generateMipmaps=false;
+        tex.colorSpace=T.SRGBColorSpace;tex.repeat.set(.25,1);
+        if(c.tex)c.tex.dispose();
+        c.tex=tex;c.src=src;c.sprite.material.map=tex;c.sprite.material.alphaTest=soft?.35:.5;c.sprite.material.needsUpdate=true;
       }
       c.i=i;c.a=a;c.home=worldSpot(i);
       const vc=WL_VALENCE[a.mood.valence]!=null?WL_VALENCE[a.mood.valence]:WL_VALENCE[0];
@@ -236,6 +242,18 @@ function worldSync(){
   if(WORLD.open)worldCard(WORLD.open,true);
   worldKick();
 }
+/* What the team wears here (world.costume_of: the setting's costume, their own clothes,
+   or one the scene named) and whether they are drawn smooth. Both are asked for with
+   the picture and never stored on the character, so the chat and the Office keep their
+   own clothes and their pixels: leaving the scene gives everything back. */
+var WORLD_WEAR={yukata:'in yukata',spacesuit:'in spacesuits',overalls:'in overalls',chef:'in chef whites'};
+function worldCostume(){return (WORLD.v&&WORLD.v.world&&WORLD.v.world.costume)||''}
+function worldSoft(){try{return localStorage.getItem('world.soft')==='1'}catch(e){return false}}
+function worldSheet(name){return avatarSrc(name,{sheet:1,costume:worldCostume(),draw:worldSoft()?'soft':''})}
+function worldSetSoft(on){
+  try{localStorage.setItem('world.soft',on?'1':'0')}catch(e){}
+  worldSync();toast(on?'Characters are drawn smooth here':'Characters are pixel art again');
+}
 function worldEmotion(id){return ((WORLD.v&&WORLD.v.world.emotions)||[]).find(e=>e.id===id)}
 function worldSay(a,text){
   if(!text){const e=worldEmotion(a.mood.id);const ls=(e&&e.lines)||[];text=ls[Math.floor(Math.random()*ls.length)]||a.mood.name}
@@ -255,7 +273,7 @@ function worldTags(){
       el.onclick=()=>worldCard(a.name);box.appendChild(el)}
     const m=a.mood,b=WORLD.bubbles[a.name],say=b&&b.until>now?b.text:'';
     const html=(say?`<span class="wd-say">${esc(say)}</span>`:'')+
-      (WORLD.flat?avatarImg(a.name,'wd-flatav',{crop:''}):'')+
+      (WORLD.flat?avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''}):'')+
       `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`;
     if(el._h!==html){el.innerHTML=html;el._h=html}
     el.style.setProperty('--mh',m.hue);
@@ -326,7 +344,9 @@ function worldPose(t,dt){
   Object.values(WORLD.chars).forEach(c=>{
     const a=c.a;if(!a)return;
     const s=c.sprite,m=s.material,e=a.mood.expression,k=t+c.phase;
-    let x=0,y=0,rot=0,frame=((k%4)<.12)?1:0,sy=1,flip=false;
+    // a blink at an uneven pace, sometimes twice, so a row of them never blinks in step
+    const bk=k%(3.4+(c.phase%1.6)),blink=bk<.12||(c.phase>3&&bk>.3&&bk<.4);
+    let x=0,y=0,rot=0,frame=blink?1:0,sy=1,flip=false;
     const target=a.busy?WORLD.kit.busy(c.i,t):c.home;
     if(e==='cheer'){y=Math.abs(Math.sin(k*6))*.5;frame=2+(Math.floor(k*4)%2)}
     else if(e==='tantrum'){y=Math.abs(Math.sin(k*14))*.25;x=Math.sin(k*40)*.08;rot=Math.sin(k*20)*.15}
@@ -340,10 +360,22 @@ function worldPose(t,dt){
     else if(e==='care'){rot=c.home.x>0?.12:-.12;y=Math.sin(k*1.2)*.03}
     else if(e==='think'){rot=Math.sin(k*.8)*.07}
     else{y=Math.sin(k*1.5)*.03}
-    if(WORLD.still){x=0;rot=0;y=Math.max(0,y)}
+    // alive at rest: a slow breath in the chest, and now and then a lean to one side
+    // (towards a friend when they have one here). Only the quiet feelings, which is
+    // where a figure standing perfectly still read as a cut-out. A lean, because the
+    // sprite faces front and a mirrored front view looks the same.
+    let sx=1;
+    if(e==='calm'||e==='think'||e==='care'){
+      sy*=1+Math.sin(k*1.7)*.022;sx=1-Math.sin(k*1.7)*.012;
+      const fr=a.friend&&WORLD.chars[a.friend],lean=Math.max(0,Math.sin(k*.31+c.phase)-.75)*.28;
+      rot+=(fr?fr.sprite.position.x<s.position.x:c.phase>3)?lean:-lean}
+    // a step's bob while walking over to work or back
+    const far=s.position.distanceTo(target);
+    if(far>.25&&e!=='pace'){y+=Math.abs(Math.sin(k*9))*.12;rot+=Math.sin(k*9)*.03}
+    if(WORLD.still){x=0;rot=0;y=Math.max(0,y);sx=1}
     s.position.lerp(target,a.busy?.08:.12);
     s.position.x+=x;s.position.y=target.y+y;
-    m.rotation=rot;s.scale.y=2.45*sy;
+    m.rotation=rot;s.scale.y=2.45*sy;s.scale.x=1.5*sx;
     c.tex.offset.x=frame*.25;c.tex.repeat.x=flip?-.25:.25;if(flip)c.tex.offset.x=(frame+1)*.25;
     const ground=a.busy&&c.vessel?target.y+.25:target.y;
     c.shadow.position.set(s.position.x,ground+.04,s.position.z);c.shadow.visible=!(a.busy&&!c.vessel&&target.y>3);
@@ -429,6 +461,8 @@ function worldMenuHTML(){
     <div class="wd-build"><textarea id="wd-desc" rows="2" placeholder="A night bakery where bread rises at 3am…"></textarea>
       <button class="endbtn" onclick="worldDesign(this)">Build it</button></div>
     <div class="wd-built"></div>
+    <label class="wd-row"><input type="checkbox" ${worldSoft()?'checked':''} onchange="worldSetSoft(this.checked)">
+      <span>Smooth characters ${pInfoSafe('Draws your team with rounded edges instead of pixels, in this world only. What they wear comes from the scene: say “own clothes” when you design it to keep theirs.')}</span></label>
     <label class="wd-row"><input type="checkbox" ${v.inner?'checked':''} onchange="worldInner(this.checked)">
       <span>Agents feel it ${pInfoSafe('While this world is on, each agent is told how it feels and why, and your lead hears how you said you are. It changes their tone and approach, never the rules. Off, and outside this scene, nothing is told.')}</span></label>
     <div class="wd-acts">
@@ -492,7 +526,8 @@ async function worldLook(btn){
     WORLD.undoLook={prev:d.previous};
     const sc=d.world.scene||{};
     WORLD.lookOut=`<p>${d.how==='brain'?'Designed by AI'+(d.who?' ('+esc(d.who)+')':''):'Designed from your words'}: `+
-      esc([sc.time==='live'?'the real hour':sc.time,sc.weather,sc.sky!=='natural'?sc.sky+' sky':'',sc.water+' water',sc.accent+' lights'].filter(Boolean).join(', '))+'.</p>'+
+      esc([sc.time==='live'?'the real hour':sc.time,sc.weather,sc.sky!=='natural'?sc.sky+' sky':'',sc.water+' water',sc.accent+' lights',
+        sc.costume==='own'?'their own clothes':WORLD_WEAR[sc.costume]||''].filter(Boolean).join(', '))+'.</p>'+
       (d.said?`<p class="wd-why">${esc(d.said)}</p>`:'')+
       (d.dropped&&d.dropped.length?`<p class="wd-why">Left out: ${esc(d.dropped.join('; '))}.</p>`:'');
     await worldLookApply(d);

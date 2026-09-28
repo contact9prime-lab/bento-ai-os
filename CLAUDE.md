@@ -1421,6 +1421,13 @@ things keep it true:
   answer (`teamlink.clean_identity`: a 40-char name, `avatars.clean`'d looks, nothing else) and
   is drawn by `/api/avatar.png?recipe=` through `avatarRecipeImg` — the one door, so still no
   surface builds its own face URL.
+- **A costume and the smooth drawing are asked for with the picture, never stored.**
+  `paint(rec, frame, costume)` dresses a figure for a scene (`COSTUMES`) over the same face, and
+  the lead keeps the gold pin in every one; `image(draw="soft")` rounds the painter's own pixels
+  (Scale2x twice) and invents no colour. A colour used on `MARK_PX` pixels or fewer (eyes,
+  mouth, the chin shading, buttons) is never rounded: rounding everything made a frown and the
+  goatee wedge again, measured by looking. The hair list is `STYLES`, so the drawing is `draw`
+  and `DRAWS`; the first cut named it `STYLES` too and silently replaced every hair style.
 - **The painter's rules were each learned from a screenshot**: two eyes and nothing in the middle
   of the face; the eye ink chosen against the SKIN (the outline shade vanished on deep skin); a
   lip-coloured mouth (darker skin under a nose read as a goatee); glasses as rim + pale lens (a
@@ -1598,6 +1605,17 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
 - **The mood effects are sprites from one painted set** (`wlFxTex`, `WORLD_FX`), keyed by
   expression, so a new expression is a row there and a pose in `worldPose`. The effect table
   names only real `EXPRESSIONS`; the test checks it.
+- **What they wear is the scene's** (`world.costume_of`: `KIT_COSTUME` for "setting", "own" for
+  their clothes, or one named), carried on `view()["world"]["costume"]` and asked for through
+  `avatarSrc` (`worldSheet`), so leaving the scene gives everyone their clothes back. A sheet whose
+  URL changed is swapped in place (`c.src`), never by rebuilding the scene. Smooth is
+  `world.soft` in localStorage, a per-browser look in this scene only.
+- **A world of your own moves setting when the words name one** (`kit_named`, in the scene
+  route), because a world designed as a kitchen before `izakaya` existed was stuck as a canal. A
+  built-in world keeps its setting and the answer names the built-in world that has it.
+- **Alive at rest is small and quiet**: a breath (`sx`/`sy`), a blink on each figure's own period
+  (`c.phase`), a lean towards `a.friend`, and a step's bob while walking. A lean, never a flip:
+  the sprite faces front, and mirrored it looks the same.
 
 ## The Mind: every strand is a real connection
 

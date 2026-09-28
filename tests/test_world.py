@@ -287,9 +287,11 @@ def test_the_built_in_worlds_are_different_worlds():
     kits = {w["kit"] for w in world.BUILTIN}
     assert kits == set(world.KITS)
     names = [{e["name"] for e in w["emotions"]} for w in world.BUILTIN]
-    assert not (names[0] & names[1]) and not (names[1] & names[2])
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            assert not (a & b), a & b
     ladders = [[s["name"] for s in w["growth"]["ladder"]] for w in world.BUILTIN]
-    assert len({tuple(x) for x in ladders}) == 3
+    assert len({tuple(x) for x in ladders}) == len(world.BUILTIN)
     for w in world.BUILTIN:
         covered = {s for e in w["emotions"] for s in e["triggers"]}
         assert {"refused", "failed", "waiting", "succeeded", "working"} <= covered, w["id"]
@@ -439,6 +441,8 @@ def test_the_look_draws_every_field_and_is_designed_only_by_ai():
     look = (js / "01f-world-look.js").read_text()
     for field in ("time", "weather", "sky", "water", "ground", "accent"):
         assert f"wlScene().{field}" in look or f"sc.{field}" in look, field
+    # the costume is drawn by the painter, asked for through the one door
+    assert "world.costume" in (js / "01e-world.js").read_text()
     for w in world.SCENE["weather"]:
         if w != "clear" and w != "clouds":
             assert f"'{w}'" in look, w
@@ -477,3 +481,99 @@ def test_the_lead_is_not_proud_of_every_reply(store):
     for ev in _run("r9", "researcher", end="ok"):
         obs(ev)
     assert _agent(world.view(""), "researcher")["mood"]["name"] == "Proud"
+
+
+# ------------------------------------------------------------------ what they wear, and the restaurant
+
+
+def test_a_scene_dresses_the_team_and_never_their_recipe(store):
+    """"Japanese Restaurant can give him some new clothes." The setting picks a costume,
+    the scene may name another or keep their own, and it is asked for with the picture:
+    nothing is written to the character, so the chat and the Office keep their clothes."""
+    from agentos import avatars
+    assert set(world.KIT_COSTUME) == set(world.KITS)
+    assert set(world.KIT_COSTUME.values()) <= set(avatars.COSTUMES)
+    assert set(world.SCENE["costume"]) == {"setting", "own", *avatars.COSTUMES}
+    for w in world.BUILTIN:
+        assert world.costume_of(w) == world.KIT_COSTUME[w["kit"]], w["id"]
+    canal = world.world(store, "lantern-canal")
+    assert world.costume_of({**canal, "scene": {**canal["scene"], "costume": "own"}}) == ""
+    assert world.costume_of({**canal, "scene": {**canal["scene"], "costume": "chef"}}) == "chef"
+    assert world.costume_of({**canal, "scene": {**canal["scene"], "costume": "cape"}}) == "yukata"
+    sc, dropped = world.scene_of("canal", {"costume": "cape"})
+    assert sc["costume"] == "setting" and any("cape" in x for x in dropped)
+    assert world.scene_from_words("everyone in their own clothes", "izakaya")["costume"] == "own"
+    assert world.scene_from_words("dress them as astronauts", "canal")["costume"] == "spacesuit"
+    world.enter("", store, "night-kitchen", ["researcher"])
+    assert world.view("")["world"]["costume"] == "chef"
+    world.leave("")
+    # the painter: same face, new clothes, and the lead keeps the gold pin in any of them
+    rec = avatars.clean({"outfit": "blazer", "hue": 172})
+    before = avatars.as_json(rec)
+    own, chef = avatars.paint(rec, 0), avatars.paint(rec, 0, "chef")
+    assert own != chef and avatars.as_json(rec) == before
+    face = lambda px: [px[(y * avatars.W + x) * 4:(y * avatars.W + x) * 4 + 4]
+                       for y in range(4, 11) for x in range(4, 12)]
+    assert face(own) == face(chef), "a costume never touches the face"
+    pin = lambda px: tuple(px[(14 * avatars.W + 10) * 4:(14 * avatars.W + 10) * 4 + 3])
+    for c in avatars.COSTUMES:
+        assert pin(avatars.paint(rec, 0, c)) == (240, 194, 72), c
+    assert avatars.paint(rec, 0, "cape") == own, "an unknown costume is their own clothes"
+    srv = (ROOT / "agentos" / "server.py").read_text()
+    route = srv.split('@app.get("/api/avatar.png")', 1)[1].split("\n@app.", 1)[0]
+    assert "costume=costume" in route and "update(" not in route
+
+
+def test_a_restaurant_is_a_setting_of_its_own():
+    """From a screenshot: a world designed as a Japanese restaurant was drawn as the
+    canal town, because a restaurant was not a setting."""
+    assert "izakaya" in world.KITS and "izakaya" in world._KIT_NOTE
+    assert world.from_words("a cosy Japanese restaurant")["kit"] == "izakaya"
+    assert world.from_words("a ramen shop at midnight")["kit"] == "izakaya"
+    assert any(w["kit"] == "izakaya" for w in world.BUILTIN)
+    css = (ROOT / "agentos/ui/src/css/25-world.css").read_text()
+    for kit in world.KITS:
+        if kit != "canal":      # the canal is the plain .flat rule
+            assert f'#world-scene.flat[data-kit="{kit}"]' in css, kit
+    assert "chef" in world.scene_prompt("warmer", "izakaya")[1]
+
+
+def test_the_team_breathes_and_can_be_drawn_smooth():
+    """"Less pixelated and more alive." A quiet figure breathes and leans towards a
+    friend, a blink is at its own pace, a walk has a step; and smooth is the SAME
+    painter's pixels with the steps rounded, asked for with the picture."""
+    js = ROOT / "agentos" / "ui" / "src" / "js"
+    scene = (js / "01e-world.js").read_text()
+    pose = scene.split("function worldPose(", 1)[1].split("\n}", 1)[0]
+    assert "s.scale.x=1.5*sx" in pose and "a.friend" in pose and "c.phase%1.6" in pose
+    assert "Math.sin(k*9)" in pose, "a step's bob while walking"
+    assert "WORLD.still" in pose, "reduced motion still stands still"
+    assert "worldSetSoft(this.checked)" in scene.split("function worldMenuHTML(", 1)[1]
+    assert "draw:worldSoft()?'soft':''" in scene and "T.LinearFilter" in scene
+    av = (js / "00e-avatars.js").read_text()
+    assert "o.draw?'&draw='" in av and "o.costume?'&costume='" in av
+
+
+def test_words_move_a_world_of_your_own_to_another_setting(monkeypatch):
+    """The Hanabi Kitchen was designed before a restaurant existed, so it was stuck as
+    a canal. Describing it as a restaurant now moves it there; a built-in world keeps
+    its setting and the answer says which world has the one asked for."""
+    from fastapi.testclient import TestClient
+    from agentos import executors, server as servermod
+
+    async def silent(cfg, system, prompt):
+        return "", ""
+    monkeypatch.setattr(executors, "ask_once", silent)
+    with TestClient(servermod.app) as cl:
+        store = servermod.state["store"]
+        d, _ = world.validate(world.from_words("Hanabi canal town"))
+        saved, _ = world.save_custom(store, d)
+        assert saved["kit"] == "canal"
+        r = cl.post("/api/world/scene", json={"world": saved["id"], "description": "a warm Japanese restaurant"})
+        assert r.status_code == 200 and r.json()["world"]["kit"] == "izakaya"
+        assert set(r.json()["world"]["scene"]["props"]) <= set(world.PROPS["izakaya"])
+        r = cl.post("/api/world/scene", json={"world": "lantern-canal", "description": "a ramen restaurant"})
+        assert r.json()["world"]["kit"] == "canal"
+        assert any("The Night Kitchen" in x for x in r.json()["dropped"])
+        cl.post("/api/world/scene", json={"world": "lantern-canal", "original": True})
+        world.delete_custom(store, saved["id"])

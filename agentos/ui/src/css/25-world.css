@@ -10,6 +10,8 @@
 #world-scene.flat{background:linear-gradient(#27406b,#4a7aa0 55%,#1f7f78 56%,#16585a)}
 #world-scene.flat[data-kit="orbit"]{background:radial-gradient(circle at 20% 110%,#2e6fd8 0 34%,transparent 35%),#03040b}
 #world-scene.flat[data-kit="garden"]{background:linear-gradient(#9fd3ff,#cfe9ff 50%,#6aa84f 51%,#4f8a3a)}
+/* the restaurant with no 3D: a lantern-lit plaster wall, a counter, a wooden floor */
+#world-scene.flat[data-kit="izakaya"]{background:radial-gradient(circle at 22% 22%,rgba(255,120,80,.55) 0 5%,transparent 12%),radial-gradient(circle at 70% 18%,rgba(255,120,80,.5) 0 5%,transparent 12%),linear-gradient(#e9dcc4 0 44%,#2e1d14 44% 46%,#6b4226 46% 60%,#b07a4a 60% 62%,#8a5a36 62%)}
 body.imm-world #wall.has::after{display:none}
 /* a soft shade under the greeting and the prompt bar: a noon sky is brighter than any
    wallpaper, and the white words over it must still read */
@@ -34,6 +36,7 @@ body.has-win #world-ui *{pointer-events:none!important}
 .wd-say::after{content:"";position:absolute;left:50%;bottom:-5px;width:10px;height:10px;background:inherit;transform:translateX(-50%) rotate(45deg)}
 .wd-tag.flat{top:auto;bottom:124px;transform:translateX(-50%);padding-top:0}
 .wd-flatav{width:40px;height:65px;image-rendering:pixelated}
+.wd-flatav.soft{image-rendering:auto}
 .wd-tag.flat.wx-tantrum .wd-flatav{animation:wdShake .25s infinite}
 .wd-tag.flat.wx-cheer .wd-flatav,.wd-tag.flat.wx-sparkle .wd-flatav{animation:wdHop .6s infinite}
 .wd-tag.flat.wx-slump .wd-flatav,.wd-tag.flat.wx-sulk .wd-flatav{transform:scaleY(.88) translateY(6px)}

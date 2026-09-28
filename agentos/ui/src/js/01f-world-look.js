@@ -703,5 +703,116 @@ var WORLD_KITS={
         glow.lanterns.forEach(m=>m.emissiveIntensity=.1+night*2.2);halos.forEach(h=>h.material.opacity=night);
         ranges[0].color.set(worldMix(T,0x1d2640,0x86a0ae,d*1.6));wx.light(d);if(butterflies)butterflies.pts.material.opacity=Math.min(1,d*3);
         WORLD.r.toneMappingExposure=.95+night*.35}};
+  },
+  /* A small Japanese restaurant after dark (world.KITS izakaya). Asked for from a
+     screenshot: a world designed as "a Japanese restaurant" had to be drawn as the canal
+     town. Indoors, so the hour shows through the street window and in how bright the
+     lanterns burn; the team stands in front of the counter and goes into the kitchen to
+     work. The water colour is the tea in the cups and the glaze on the plates. */
+  izakaya(T,scene,cam){
+    WL_MAT={};
+    const hq=WORLD.hq,glow={lanterns:[]},halos=[];
+    const props=new T.Group();scene.add(props);
+    const acc=wlAccent(),tea=wlWaterCols();
+    const hemi=new T.HemisphereLight(0xffe2b8,0x3a2418,.75);scene.add(hemi);
+    const key=new T.DirectionalLight(0xffd7a0,1.6);key.position.set(6,18,22);scene.add(key);scene.add(key.target);
+    if(hq){key.castShadow=true;key.shadow.mapSize.set(1024,1024);const sc=key.shadow.camera;sc.left=-26;sc.right=26;sc.top=20;sc.bottom=-20;sc.far=80;key.shadow.bias=-.0015}
+    // the floor: warm wooden boards, in the ground's colour when one was designed
+    const boards=wlCanvasTex(T,'boards',256,256,(g,w)=>{g.fillStyle='#8a5a36';g.fillRect(0,0,w,w);
+      for(let y=0;y<8;y++){const l=Math.floor(Math.random()*24);g.fillStyle=`rgb(${128+l},${84+l},${52+l})`;g.fillRect(0,y*32+1,w,30);
+        g.fillStyle='rgba(40,20,10,.5)';g.fillRect(0,y*32,w,2);g.fillRect((y*97)%w,y*32,2,32)}}).clone();
+    boards.wrapS=boards.wrapT=T.RepeatWrapping;boards.repeat.set(8,6);boards.needsUpdate=true;
+    const floor=new T.Mesh(new T.PlaneGeometry(64,40).rotateX(-Math.PI/2),new T.MeshStandardMaterial({color:wlGround(0xffffff),map:boards,roughness:.9}));
+    floor.position.set(0,0,-4);floor.receiveShadow=true;scene.add(floor);
+    const wood=wlMat(T,'izwood',{color:0x6b4226,roughness:.8}),dark=wlMat(T,'izdark',{color:0x2e1d14,roughness:.9});
+    const plaster=wlMat(T,'izplaster',{color:0xe9dcc4,roughness:1}),cedar=wlMat(T,'izcedar',{color:0xb07a4a,roughness:.7});
+    // the back wall with a dark timber frame, and the two side walls
+    const wall=(w,h,x,y,z,ry)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,.4),plaster);m.position.set(x,y,z);m.rotation.y=ry||0;m.receiveShadow=true;props.add(m)};
+    wall(20,12,10,6,-15);wall(10,5.5,-17,9.25,-15);wall(10,1.5,-17,.75,-15);wall(4,12,-24,6,-15);
+    wall(26,12,-26,6,-2,Math.PI/2);wall(26,12,26,6,-2,Math.PI/2);
+    [-26,-22,-12,0,12,26].forEach(x=>{const b=new T.Mesh(new T.BoxGeometry(.6,12,.6),dark);b.position.set(x,6,-14.7);props.add(b)});
+    const beam=new T.Mesh(new T.BoxGeometry(54,.7,.7),dark);beam.position.set(0,11.2,-14.6);props.add(beam);
+    for(let i=0;i<5;i++){const cb=new T.Mesh(new T.BoxGeometry(.5,.5,22),dark);cb.position.set(-20+i*10,11.6,-4);props.add(cb)}
+    // the street window: a lit street behind glass, and whatever the weather is doing
+    let street=null,wx={tick(){},light(){}};
+    if(wlHas('window')){
+      const sm=new T.MeshBasicMaterial({map:wlCanvasTex(T,'street',512,256,(g,w,h)=>{
+        g.fillStyle='#1b2230';g.fillRect(0,0,w,h);
+        for(let i=0;i<7;i++){const x=i*76-10,hh=120+((i*37)%70);g.fillStyle=i%2?'#2a2f3d':'#232837';g.fillRect(x,h-hh,70,hh);
+          for(let r=0;r<4;r++)for(let c=0;c<3;c++)if((i+r+c)%3){g.fillStyle='rgba(255,200,120,.85)';g.fillRect(x+8+c*20,h-hh+14+r*26,12,14)}}
+        g.fillStyle='rgba(255,90,70,.9)';for(let i=0;i<6;i++){g.beginPath();g.arc(40+i*85,h-150,7,0,7);g.fill()}}),fog:false});
+      street=new T.Mesh(new T.PlaneGeometry(14,7),sm);street.position.set(-17,4,-21);scene.add(street);
+      const frame=wlMat(T,'izframe',{color:0x2e1d14});
+      [[-17,7.05,10.2,.3],[-17,1.55,10.2,.3],[-22,4.3,.3,5.8],[-12,4.3,.3,5.8],[-17,4.3,.18,5.8],[-14.5,4.3,.12,5.8],[-19.5,4.3,.12,5.8]].forEach(([x,y,w,h])=>{
+        const b=new T.Mesh(new T.BoxGeometry(w,h,.3),frame);b.position.set(x,y,-14.9);props.add(b)});
+      wx=wlWeather(T,scene,[-22,-12,1.5,7,-20,-16]);
+    }
+    // the counter along the middle, a cedar top, and stools in front of it
+    if(wlHas('counter')){
+      const body=new T.Mesh(new T.BoxGeometry(26,1.6,1.6),wood);body.position.set(1,.8,-5);body.castShadow=true;props.add(body);
+      const top=new T.Mesh(new T.BoxGeometry(26.6,.25,2.1),cedar);top.position.set(1,1.72,-5);top.castShadow=true;props.add(top);
+      const cup=new T.CylinderGeometry(.18,.14,.32,10),teaM=wlMat(T,'iztea',{color:tea[1],roughness:.3,emissive:tea[1],emissiveIntensity:.08});
+      const plate=new T.CylinderGeometry(.42,.38,.08,14),glaze=wlMat(T,'izglaze',{color:tea[0],roughness:.25});
+      for(let i=0;i<8;i++){const c=new T.Mesh(cup,teaM);c.position.set(-10+i*3.2,2.01,-4.6);props.add(c);
+        if(i%2){const pl=new T.Mesh(plate,glaze);pl.position.set(-9+i*3.2,1.89,-5.1);props.add(pl)}}
+      const seat=wlMat(T,'izseat',{color:0x8b1e1e,roughness:.7});
+      for(let i=0;i<8;i++){const st=new T.Group(),x=-10.5+i*3.2;
+        const leg=new T.Mesh(new T.CylinderGeometry(.12,.16,1.4,6),dark);leg.position.y=.7;st.add(leg);
+        const sq=new T.Mesh(new T.CylinderGeometry(.6,.55,.22,12),seat);sq.position.y=1.45;st.add(sq);
+        st.position.set(x,0,-2.9);st.traverse(o=>{if(o.isMesh)o.castShadow=true});props.add(st)}
+    }
+    // shelves of bottles and bowls on the back wall
+    if(wlHas('shelves')){
+      const bottleCols=[0x2f6b3a,0x7a2b1f,0x2b3f6b,0xd9c9a0,0x5a3a1f,0x3f7f6f];
+      for(let r=0;r<3;r++){const sh=new T.Mesh(new T.BoxGeometry(10,.2,1),cedar);sh.position.set(-5,4+r*1.9,-14.3);props.add(sh);
+        for(let i=0;i<9;i++){const col=bottleCols[(i+r)%bottleCols.length],tall=(i+r)%3===0;
+          const b=new T.Mesh(tall?new T.CylinderGeometry(.18,.24,1.2,8):new T.SphereGeometry(.34,10,8),wlMat(T,'izbottle'+col,{color:col,roughness:.2,metalness:.1}));
+          b.position.set(-9.2+i*1.05,4.1+r*1.9+(tall?.6:.3),-14.2);props.add(b)}}
+    }
+    // the kitchen behind the counter: a range with pots, and steam that never stops
+    const steam=[];
+    if(wlHas('kitchen')){
+      const range=new T.Mesh(new T.BoxGeometry(14,1.8,2.2),wlMat(T,'izsteel',{color:0x9aa0a8,roughness:.35,metalness:.6}));range.position.set(4,.9,-11);range.castShadow=true;props.add(range);
+      const pot=new T.CylinderGeometry(.7,.6,.9,14),potM=wlMat(T,'izpot',{color:0x3a3f46,roughness:.4,metalness:.5});
+      [-1,2,5,8].forEach(x=>{const p=new T.Mesh(pot,potM);p.position.set(x,2.25,-11);p.castShadow=true;props.add(p);
+        if(steam.length<(hq?24:12))for(let k=0;k<(hq?6:3);k++){const s=new T.Sprite(new T.SpriteMaterial({map:wlGlowTex(T),color:0xffffff,transparent:true,opacity:0,depthWrite:false}));
+          s.userData={x,ph:Math.random()*4,sp:.6+Math.random()*.5};scene.add(s);steam.push(s)}});
+      const hood=new T.Mesh(new T.BoxGeometry(14,.6,2.6),wlMat(T,'izsteel2',{color:0x7c828a,roughness:.4,metalness:.5}));hood.position.set(4,8.2,-11.4);props.add(hood);
+    }
+    // the noren: split curtains over the kitchen door, in the accent colour with a mark
+    if(wlHas('noren')){
+      const cloth=wlMat(T,'iznoren',{color:acc,roughness:.9,side:T.DoubleSide,map:wlCanvasTex(T,'noren',128,128,(g,w)=>{
+        g.fillStyle='#ffffff';g.fillRect(0,0,w,w);g.strokeStyle='rgba(255,255,255,.0)';
+        g.fillStyle='rgba(255,255,255,.95)';g.beginPath();g.arc(w*.5,w*.45,w*.22,0,7);g.fill();
+        g.fillStyle='rgba(0,0,0,.18)';g.beginPath();g.arc(w*.5,w*.45,w*.12,0,7);g.fill()})});
+      const rod=new T.Mesh(new T.CylinderGeometry(.08,.08,8,6),dark);rod.rotation.z=Math.PI/2;rod.position.set(14,8.6,-13.4);props.add(rod);
+      for(let i=0;i<4;i++){const c=new T.Mesh(new T.PlaneGeometry(1.8,3.2),cloth);c.position.set(11.3+i*1.9,6.95,-13.35);props.add(c)}
+    }
+    // paper lanterns hanging from the beams, lit always and brighter after dark
+    const lamps=[];
+    if(wlHas('lanterns')){
+      const lm=wlMat(T,'izlantern',{color:acc,emissive:acc,emissiveIntensity:.6,roughness:.8});glow.lanterns.push(lm);
+      const lg=new T.SphereGeometry(.7,14,10);lg.scale(1,1.25,1);
+      [-16,-8,0,8,16,-12,4,12].forEach((x,i)=>{const z=i<5?-2:-8,l=new T.Mesh(lg,lm);l.position.set(x,8.6,z);l.userData.keep=true;scene.add(l);lamps.push(l);
+        const cap=new T.Mesh(new T.CylinderGeometry(.35,.35,.15,10),dark);cap.position.set(x,9.55,z);props.add(cap);
+        wlHalo(T,scene,new T.Vector3(x,8.6,z),acc,4.2,halos)});
+    }
+    wlBake(T,props);
+    scene.background=new T.Color(0x140c08);
+    return {
+      spots:[[0,0,6.8],[-3.3,0,6],[3.3,0,6],[-6.6,0,4.8],[6.6,0,4.8],[-1.7,0,3],[1.7,0,3],
+        [-9.8,0,3.6],[9.8,0,3.6],[-5,0,2],[5,0,2],[0,0,1.4]],
+      camWide:[[0,7.6,27],[0,3.2,-20]],camTall:[[0,8.6,23],[0,-3.8,-10]],
+      // at work they go behind the counter to the range
+      busy(i,t){return new T.Vector3(-2+(i%5)*2.6+Math.sin(t*.9+i)*.5,0,-8.6-(i%2)*.8)},
+      vessel(){return null},
+      tick(t,dt){steam.forEach((s,k)=>{const u=((t*s.userData.sp+s.userData.ph)%3)/3;
+          s.position.set(s.userData.x+Math.sin(t+k)*.25,2.8+u*4.2,-11);const sz=.8+u*2.2;s.scale.set(sz,sz,1);s.material.opacity=(1-u)*.22});
+        lamps.forEach((l,k)=>{l.rotation.z=Math.sin(t*.8+k)*.04});wx.tick(dt,t)},
+      light(d){const night=1-Math.min(1,d*2.4);
+        if(street)street.material.color.copy(worldMix(T,0xffffff,0x9fc4ff,d*1.4));
+        glow.lanterns.forEach(m=>m.emissiveIntensity=.6+night*1.6);halos.forEach(h=>h.material.opacity=.35+night*.65);
+        key.intensity=1.1+d*.9;hemi.intensity=.55+d*.35;wlFog(T,scene,new T.Color(0x140c08),70,160);wx.light(d);
+        WORLD.r.toneMappingExposure=1.02+night*.18}};
   }
 };

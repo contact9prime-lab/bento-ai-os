@@ -78,6 +78,18 @@ AGENT_HUE = 172
 # never a second kind of character.
 OUTFITS = ["shirt", "blazer", "hoodie"]
 AGENT_OUTFIT = "blazer"
+# What a SCENE dresses them in (the World: a yukata by the canal, a spacesuit on the moon
+# base). A costume is never part of the recipe and never stored: it is asked for with the
+# picture (`costume=`) by the scene that wants it, so leaving the scene gives everybody
+# their own clothes back and the chat, the Office and the terminal never see it. The lead
+# keeps one mark in any costume (the gold pin), so the lead is still the lead.
+COSTUMES = ("yukata", "spacesuit", "overalls", "chef")
+# How the finished figure is drawn. "soft" is the SAME painted pixels with their stair
+# steps rounded (Scale2x twice, so 4x the size): one painter, one recipe, and a face
+# that is still recognisably theirs. Asked for with the picture like a costume; the
+# World offers it, and a terminal has only its own cells, so `terminal()` never does.
+DRAWS = ("pixel", "soft")     # not STYLES: that name is the hair
+SOFT = 4
 
 FIELDS = ("skin", "hair", "style", "pants", "glasses", "blush", "hue", "outfit")
 
@@ -340,10 +352,13 @@ def _lum(c) -> float:
     """Perceived brightness, 0-255 (Rec. 601 weights) — enough to tell light from deep."""
     return .299 * c[0] + .587 * c[1] + .114 * c[2]
 
-def paint(rec: dict, frame: int = 0) -> bytearray:
+def paint(rec: dict, frame: int = 0, costume: str = "") -> bytearray:
     """One frame of one character as RGBA bytes, W x H. Frames: 0 standing, 1
-    blinking, 2 and 3 the two halves of a working wave (one arm up, then the other)."""
+    blinking, 2 and 3 the two halves of a working wave (one arm up, then the other).
+    `costume` (one of COSTUMES, or '') dresses them for a scene without touching the
+    recipe: the face, hair and skin stay theirs."""
     r = clean(rec)
+    costume = costume if costume in COSTUMES else ""
     buf = bytearray(W * H * 4)
 
     def put(x, y, c):
@@ -367,12 +382,23 @@ def paint(rec: dict, frame: int = 0) -> bytearray:
     # read as a goatee on every light-skinned figure in a row.
     mouth = (round(sk[0] * .78), round(sk[1] * .42), round(sk[2] * .42))
     sh = _hsl(r["hue"], .60, .52)
-    if r["outfit"] == "blazer":
+    if costume:
+        pass                                # the costume decides the cloth below
+    elif r["outfit"] == "blazer":
         # a jacket is DEEPER than a shirt in the same colour; at shirt brightness the
         # first cut read as a shirt with a stain on it
         sh = _hsl(r["hue"], .52, .34)
-    shH, shS = _tone(sh, 1.3), _tone(sh, .7)
     pa = PANTS[r["pants"]][1]
+    if costume == "yukata":
+        # a robe to the ankles in a deep shade of their own colour
+        sh = pa = _hsl(r["hue"], .42, .40)
+    elif costume == "spacesuit":
+        sh, pa = (234, 238, 244), (214, 220, 230)
+    elif costume == "overalls":
+        pa = (72, 102, 164)                 # denim; the shirt under it stays theirs
+    elif costume == "chef":
+        sh, pa = (246, 246, 248), (68, 68, 78)
+    shH, shS = _tone(sh, 1.3), _tone(sh, .7)
     paS = _tone(pa, .72)
     hr = HAIRS[r["hair"]][1]
     hrH, hrS = _tone(hr, 1.35), _tone(hr, .7)
@@ -389,8 +415,10 @@ def paint(rec: dict, frame: int = 0) -> bytearray:
     box(4, 13, 11, 18, sh); box(5, 14, 5, 17, shH); box(11, 14, 11, 18, shS); box(4, 18, 11, 18, shS)
     box(6, 13, 9, 13, shH); put(7, 13, skS); put(8, 13, skS)
     box(7, 12, 8, 12, skS)                                  # neck
-    outfit = r["outfit"]
-    if outfit == "blazer":
+    outfit = "costume" if costume else r["outfit"]
+    if costume:
+        _dress(put, box, costume, r, sh, pa, ln)
+    elif outfit == "blazer":
         # the lead: a jacket in their colour, open over a white shirt, a tie in the
         # complementary colour so it reads against the jacket, and one gold pin. The
         # face crop ends at the collar, so every chat bubble shows who leads.
@@ -496,6 +524,9 @@ def paint(rec: dict, frame: int = 0) -> bytearray:
         box(4, 6, 4, 8, hr); box(11, 6, 11, 8, hr)
         put(6, 4, _tone(sk, 1.18)); put(7, 4, _tone(sk, 1.18))
 
+    if costume:
+        _hat(put, box, costume, r)
+
     # THE OUTLINE: every empty pixel touching the character becomes the line colour.
     # One pass over the finished figure, so a new hair style needs no outline of its
     # own and cannot forget one.
@@ -510,25 +541,119 @@ def paint(rec: dict, frame: int = 0) -> bytearray:
     return buf
 
 
+def _dress(put, box, costume: str, r: dict, sh, pa, ln) -> None:
+    """The costume's own details, drawn over the torso in its cloth colours."""
+    white, gold = (242, 244, 248), (240, 194, 72)
+    if costume == "yukata":
+        # the white under-collar crossing left over right, an obi sash in the
+        # complementary colour, and the robe's hem line at the ankles
+        obi = _hsl((r["hue"] + 180) % 360, .55, .52)
+        put(6, 13, white); put(7, 14, white); put(9, 13, white); put(8, 14, _tone(sh, .75))
+        box(4, 17, 11, 17, obi); put(10, 18, obi); put(11, 18, _tone(obi, .7))
+        box(5, 22, 10, 22, _tone(pa, .7))
+        box(7, 19, 8, 22, _tone(pa, .82))   # the fold where the robe overlaps
+    elif costume == "spacesuit":
+        ring = (150, 158, 172)
+        box(5, 12, 10, 12, ring)            # the helmet ring at the neck
+        box(6, 15, 9, 16, _hsl(r["hue"], .62, .5))   # the chest panel in their colour
+        put(7, 15, (120, 230, 140)); put(9, 16, (240, 90, 90))   # two status lights
+        box(4, 18, 11, 18, ring)            # the belt
+    elif costume == "overalls":
+        denim, button = pa, (240, 200, 90)
+        box(6, 15, 9, 18, denim); put(5, 13, denim); put(5, 14, denim)
+        put(10, 13, denim); put(10, 14, denim); put(6, 15, button); put(9, 15, button)
+        put(7, 16, _tone(denim, .75)); put(8, 16, _tone(denim, .75))    # the bib pocket
+    elif costume == "chef":
+        grey = (178, 182, 192)
+        for y in (14, 16):
+            put(6, y, grey); put(9, y, grey)                 # two rows of buttons
+        box(6, 13, 9, 13, _hsl(r["hue"], .6, .52))          # a neckerchief in their colour
+    if r.get("outfit") == "blazer":
+        put(10, 14, gold)                   # the lead's pin, whatever the scene
+
+
+def _hat(put, box, costume: str, r: dict) -> None:
+    """A costume's hat, over the hair."""
+    if costume == "overalls":
+        straw, band = (224, 192, 122), _hsl(r["hue"], .55, .5)
+        box(2, 3, 13, 3, straw); box(5, 1, 10, 2, straw); box(5, 2, 10, 2, band)
+    elif costume == "chef":
+        white, shade = (250, 250, 252), (214, 216, 224)
+        box(5, 0, 10, 2, white); box(4, 1, 11, 1, white); box(5, 2, 10, 2, shade)
+
+
+#: A colour used on this few pixels of a frame is a MARK (an eye, the mouth, blush, the
+#: shading under the chin, a button, the lead's pin) and is never rounded, nor rounded
+#: into. Found by looking: smoothing everything turned the eyes into a frown, and the
+#: chin shading spread into a wedge under the mouth, the goatee the painter's own rules
+#: already refuse. 8 kept the eyes; the chin shading is 14 pixels, hence 16.
+MARK_PX = 16
+
+
+def _scale2x(px: bytes, w: int, h: int, marks: frozenset = frozenset()) -> bytes:
+    """Scale2x (EPX): each pixel becomes four, and a corner takes its neighbours'
+    colour where two of them agree across it. Stair steps become diagonals and
+    nothing new is invented: every output pixel is a colour the painter put there."""
+    out = bytearray(w * h * 16)
+    at = lambda x, y: px[(y * w + x) * 4:(y * w + x) * 4 + 4]
+    for y in range(h):
+        for x in range(w):
+            p = at(x, y)
+            a = at(x, y - 1) if y else p
+            b = at(x + 1, y) if x < w - 1 else p
+            c = at(x - 1, y) if x else p
+            d = at(x, y + 1) if y < h - 1 else p
+            if p in marks:
+                a = b = c = d = p
+            e0 = a if c == a and c != d and a != b and a not in marks else p
+            e1 = b if a == b and a != c and b != d and b not in marks else p
+            e2 = c if d == c and d != b and c != a and c not in marks else p
+            e3 = d if b == d and b != a and d != c and d not in marks else p
+            o = ((2 * y) * 2 * w + 2 * x) * 4
+            out[o:o + 8] = e0 + e1
+            o += 2 * w * 4
+            out[o:o + 8] = e2 + e3
+    return bytes(out)
+
+
+def _soften(px: bytes, w: int, h: int) -> tuple[int, int, bytes]:
+    seen: dict = {}
+    for i in range(0, len(px), 4):
+        if px[i + 3]:
+            seen[px[i:i + 4]] = seen.get(px[i:i + 4], 0) + 1
+    marks = frozenset(k for k, n in seen.items() if n <= MARK_PX)
+    for _ in range(2):
+        px, w, h = _scale2x(px, w, h, marks), w * 2, h * 2
+    return w, h, px
+
+
 def image(rec: dict, frame: int = 0, crop: str = "", sheet: bool = False,
-          scale: int = 1) -> tuple[int, int, bytes]:
+          scale: int = 1, costume: str = "", draw: str = "") -> tuple[int, int, bytes]:
     """(width, height, rgba) — a frame, the face crop, or all frames side by side,
-    scaled up by a whole number (nearest neighbour: it is pixel art)."""
+    scaled up by a whole number (nearest neighbour: it is pixel art). `draw="soft"`
+    rounds the steps first, per frame, so one frame never bleeds into the next."""
+    soft = draw == "soft"
     if sheet:
-        frames = [paint(rec, f) for f in range(FRAMES)]
-        w, h = W * FRAMES, H
+        frames = [bytes(paint(rec, f, costume)) for f in range(FRAMES)]
+        fw, h = W, H
+        if soft:
+            frames = [_soften(fb, W, H)[2] for fb in frames]
+            fw, h = W * SOFT, H * SOFT
+        w = fw * FRAMES
         rows = bytearray()
-        for y in range(H):
+        for y in range(h):
             for fb in frames:
-                rows += fb[y * W * 4:(y + 1) * W * 4]
+                rows += fb[y * fw * 4:(y + 1) * fw * 4]
         px = bytes(rows)
     else:
-        px = bytes(paint(rec, max(0, min(FRAMES - 1, int(frame)))))
+        px = bytes(paint(rec, max(0, min(FRAMES - 1, int(frame))), costume))
         w, h = W, H
         if crop == "face":
             x0, y0, x1, y1 = FACE
             px = b"".join(px[(y * W + x0) * 4:(y * W + x1) * 4] for y in range(y0, y1))
             w, h = x1 - x0, y1 - y0
+        if soft:
+            w, h, px = _soften(px, w, h)
     scale = max(1, min(12, int(scale or 1)))
     if scale > 1:
         out = bytearray()
@@ -553,16 +678,21 @@ def png(w: int, h: int, rgba: bytes) -> bytes:
 
 
 @functools.lru_cache(maxsize=512)
-def _png_cached(recipe_json: str, frame: int, crop: str, sheet: bool, scale: int) -> bytes:
-    w, h, px = image(json.loads(recipe_json), frame=frame, crop=crop, sheet=sheet, scale=scale)
+def _png_cached(recipe_json: str, frame: int, crop: str, sheet: bool, scale: int,
+                costume: str = "", draw: str = "") -> bytes:
+    w, h, px = image(json.loads(recipe_json), frame=frame, crop=crop, sheet=sheet, scale=scale,
+                     costume=costume, draw=draw)
     return png(w, h, px)
 
 
-def png_of(rec: dict, frame: int = 0, crop: str = "", sheet: bool = False, scale: int = 1) -> bytes:
+def png_of(rec: dict, frame: int = 0, crop: str = "", sheet: bool = False, scale: int = 1,
+           costume: str = "", draw: str = "") -> bytes:
     """A character as PNG bytes. Cached on the RECIPE, not on the key: an edit is a
     new recipe and so a new entry, and nothing has to remember to invalidate."""
     return _png_cached(as_json(rec), max(0, min(FRAMES - 1, int(frame or 0))),
-                       "face" if crop == "face" else "", bool(sheet), max(1, min(12, int(scale or 1))))
+                       "face" if crop == "face" else "", bool(sheet), max(1, min(12, int(scale or 1))),
+                       costume if costume in COSTUMES else "",
+                       "soft" if draw == "soft" else "")
 
 
 def terminal(rec: dict, crop: str = "", frame: int = 0) -> list[str]:
