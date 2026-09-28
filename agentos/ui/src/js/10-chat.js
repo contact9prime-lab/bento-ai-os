@@ -220,7 +220,8 @@ async function loadConvs(){
   // their own sections so app-scoped exchanges never drown the real chats
   const groups=[['From the prompt bar',c=>c.origin==='omni'],
                 ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
-                ['',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]];
+                ['Your agents talking',c=>c.origin==='freetalk'],
+                ['',c=>c.origin!=='omni'&&c.origin!=='freetalk'&&!(c.origin||'').startsWith('copilot:')]];
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
@@ -249,6 +250,8 @@ async function openConv(cid){
   curBody=null;curThink=null;curText='';
   feed.innerHTML='';
   d.messages.forEach(msg=>{
+    // a free talk is one card that grows message by message (24f-freetalk.js)
+    if(msg.meta&&msg.meta.freetalk&&typeof freeTalkRender==='function'&&freeTalkRender(msg))return;
     const m=document.createElement('div');m.className='msg '+msg.role;
     if(msg.role==='user'){m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
     else{const sp=msg.meta&&msg.meta.speaker;

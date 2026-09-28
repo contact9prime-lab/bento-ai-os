@@ -22,6 +22,7 @@ function jarvisMode(on){
     JARVIS.on=true;ov.classList.add('show');
     $('#j-transcript').textContent='';$('#j-reply').textContent='';
     JARVIS.cid=JARVIS.cid||currentConv;
+    if(typeof voiceAgentsLoad==='function')voiceAgentsLoad();   // the names a spoken request may open with
     jarvisListen();
   }else{
     JARVIS.on=false;ov.classList.remove('show');
@@ -56,6 +57,8 @@ function jarvisAsk(text){
   jarvisSetPhase('thinking',agentName()+' is working…');
   $('#j-reply').textContent='';
   JARVIS.busy=true;jarvisReply='';
+  // "at researcher, at writer, …" said out loud → "@researcher @writer …": a huddle
+  if(typeof voiceAddress==='function')text=voiceAddress(text);
   ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:''}));
   setRunning(true);
 }
@@ -66,9 +69,12 @@ function jarvisSpeakAndListen(text){
   const u=new SpeechSynthesisUtterance(clean);
   u.rate=(VOICE&&VOICE.rate)||1;
   const v=speechSynthesis.getVoices().find(v=>v.name===(VOICE&&VOICE.voice));if(v)u.voice=v;
+  u.onstart=()=>jarvisSetPhase('speaking',agentName()+' is speaking…');
   u.onend=()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')};
   u.onerror=()=>{if(JARVIS.on)jarvisListen()};
-  speechSynthesis.cancel();speechSynthesis.speak(u);
+  // queued, never cancelled: the agents who spoke in this turn (a huddle, a question to
+  // a colleague) are still being heard in their own voices, and the reply comes after
+  speechSynthesis.speak(u);
 }
 const RUNNING=new Set();   // conversation_ids with a live turn (several may run at once)
 const STREAMS={};          // conversation_id -> {html, text}: buffered stream for chats not on screen

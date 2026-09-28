@@ -309,6 +309,18 @@ function setTab(body,all){
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
          more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy those same steps go to a vote of three of your agents, on different brains where they can be, and a majority decides. Huddles end with a vote too. Loops are refused and each task has a question limit.',
          f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
+      /* Free talk (24f-freetalk.js): the one time agents talk with nobody asking them
+         anything, so it is started here by the person, after a caution they tick, and it
+         ends on its clock or its message count. And the one place that lists every time
+         agents talked to each other. `bento team freetalk` / `bento team log`. */
+      pRow('Let them talk','<div id="s-team-freetalk" class="ft-box mut">loading…</div>',
+        {stack:true,desc:'Let your agents talk among themselves for a few minutes. Experimental.',
+         more:'It stops at the time or message limit you pick, when they run out of things to say, or when you press Stop. Every message is kept.',
+         f:'free talk let them talk agents talk among themselves open floor swarm minutes messages experimental risky'}),
+      pRow('Agent-to-agent talk','<div id="s-team-talklog" class="ft-log mut">loading…</div>',
+        {stack:true,desc:'Every time your agents talked to each other.',
+         more:'Free talks, huddles and one agent asking another. Open one in Chat, or replay its run with every step.',
+         f:'agent to agent chat talk log history conversation huddle ask transcript record'}),
       /* The limits: how far a question travels, how many one task may send, how often a
          colleague may ask back, and a huddle's size. Defaults are conservative; each has a
          ceiling no setting passes, because every one multiplies model calls. */
@@ -333,6 +345,8 @@ function setTab(body,all){
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
     setTimeout(paintTeamLimits,0);
+    setTimeout(freeTalkPaint,0);
+    setTimeout(talkLogPaint,0);
     P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
     setTimeout(renderAgentsGraph,0);
 
@@ -371,7 +385,11 @@ function setTab(body,all){
     P.push(`<h2>Voice</h2><p class="lead">Dictate with the mic in the prompt bar or chat, and have replies read aloud.</p>`);
     P.push(pGroup('Speech',[
       pRow('Speak replies aloud',pSwitch('v-tts',VOICE.tts),{desc:'Read every answer out loud.',f:'tts speak voice'}),
-      pRow('Voice','<select id="v-voice"></select>',{f:'tts voice picker'}),
+      pRow('Voice','<select id="v-voice"></select>',{desc:'Your lead agent’s voice.',f:'tts voice picker'}),
+      pRow('Each agent speaks in its own voice',pSwitch('v-agents',VOICE.agents!==false),
+        {desc:'Hear huddles and free talk, with a different voice for each agent.',
+         more:'Works with voice on, or in Jarvis mode. Voices come from this device, so a device with few voices tells them apart by pitch.',
+         f:'voice agents each own voice huddle free talk jarvis multiple speakers'}),
       pRow('Speech rate',pText('v-rate',VOICE.rate||1,'','number'),{f:'speech rate'}),
       pRow('Mic language',pText('v-lang',VOICE.lang||'en-IN','en-IN, en-US, hi-IN…'),{desc:'The language dictation listens for.',f:'mic language dictation'}),
     ],{f:'voice tts speech microphone'}));
@@ -719,6 +737,7 @@ async function saveSettings(){
   if(el('v-tts')){
     VOICE.tts=on('v-tts');VOICE.voice=val('v-voice')||'';
     VOICE.rate=+val('v-rate')||1;VOICE.lang=(val('v-lang')||'').trim()||'en-IN';
+    if(el('v-agents'))VOICE.agents=on('v-agents');
     saveVoice();
   }
   const patch={};

@@ -1653,6 +1653,32 @@ Full story in `docs/team.md`. Two features, five rules.
   stored as the message and parsed by `10b-huddle.js` on reload — the page's regex is pinned to
   it in `tests/test_team.py`.
 
+**Free talk is the one time agents talk with nobody asking, so it is the PERSON's act**
+(`ControlPlane.start_free_talk`/`run_free_talk`, `24f-freetalk.js`, `bento team freetalk`;
+`tests/test_freetalk.py`). Five things keep it honest:
+
+- **No agent can start one.** There is no tool; the route needs `understood: true` (the page's
+  caution, ticked) and is a cookie door. It is refused while talk is `off`, one runs per person,
+  and `FREE_TALK_*` are ceilings no request passes: every message is a model call nobody asked for.
+- **It ends on the FIRST of clock, count, a quiet room or Stop.** A guard task aborts the message
+  in flight at the deadline or on Stop, through `agent_slot`; never wait for a slow turn to finish.
+- **Talk mode has no tools** (`run_subagent(no_tools=True)`, the ballot's rule); act mode runs the
+  agent's own tools with `escalate=True`, so a gated step pauses for the person. Neither adds
+  `ask_agent` (`kind == "freetalk"`): they are already talking.
+- **The floor is fair** (`free_talk_next`): the one spoken to answers, but nobody waits more than a
+  lap of the room. Found live: two agents answering each other held the floor for ten messages.
+- **Kept first, shown second, in three places that cannot disagree**: each message is a run under
+  the session and a `talk` event on it, then a Chat message (meta `freetalk`, so a server that
+  dies mid-talk keeps what was said), then a broadcast. The start and end are `team.freetalk`
+  ledger rows carrying the session's `run_id`. `fabric.talk_log` reads every agent-to-agent
+  conversation (free talks, huddles, asks) back out of `fabric_runs`, never a table of its own.
+
+**A voice per agent is the browser's, and it never cuts anyone off.** `voiceAgentLine` speaks
+huddle, ask and free-talk lines in `agentVoice(name)` (a device voice picked from the name, plus
+a pitch, the lead keeping the chosen one), queued by `speechSynthesis` itself: the Jarvis reply
+no longer calls `cancel()`, which silenced the room. Speech has no "@", so `voiceAddress` turns
+the names a spoken request OPENS with into addresses; mid-sentence names are left alone.
+
 **Agents messaging each other is the matrix, and swarm is the matrix opened — never a
 second system.** A specialist's `ask_agent` is `agent.message` (principal = asker, resource =
 the one asked); each matrix cell is a `grants` row (`fabric.set_cell`, source `matrix`), so

@@ -614,8 +614,14 @@ Details for the interactive and integration apps are in [Building Apps](building
 
 ## Voice
 
-In **Settings → Voice** you can enable:
-- **Speak replies** (text-to-speech) — toggle with in the chat toolbar.
-- **Dictation** — the button in the composer transcribes your speech into the message.
+In **Settings → Voice** you can turn on:
+- **Speak replies aloud.** Voice in Chat's toolbar toggles it too.
+- **Dictation.** The mic in the composer types what you say.
+- **Jarvis mode.** The mic in the menu bar or the prompt bar: you talk, your lead answers out
+  loud, and it listens again.
+- **Each agent speaks in its own voice.** When agents talk to each other (a huddle, a free
+  talk, one asking another), you hear each of them in a different voice. See
+  [The team](team.md#hearing-them-a-voice-for-each-agent).
 
-Both use your browser's built-in speech features; grant microphone permission on first use.
+All of it uses your browser's own speech, so the voices depend on the device. Grant
+microphone permission the first time.

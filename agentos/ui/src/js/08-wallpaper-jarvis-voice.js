@@ -131,3 +131,64 @@ function micToggle(){
 }
 function agentName(){return (cfg&&cfg.agent_name)||'Aria'}
 
+/* ================= a voice per agent =================
+   With voice on, or in Jarvis mode, a huddle, a free talk and one agent asking another
+   are heard as well as read, and each agent speaks in its own voice: a system voice
+   picked from the name (so it stays the same every time), and a pitch of its own for
+   the machines that only have one or two voices. Your lead keeps the voice chosen in
+   Settings → Voice. Lines are queued by speechSynthesis itself, never cancelled, so a
+   room of agents is heard in order and your lead's reply comes after them.
+   Faces: GUI and SUI speak through the browser. TUI has no speaker on purpose; the
+   same lines are text in `bento team log` and the chat. */
+function agentVoice(name){
+  const lead=!name||name==='@agent'||name===agentName();
+  const lang=String(VOICE.lang||'en').slice(0,2).toLowerCase();
+  const all=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
+  const vs=all.filter(v=>String(v.lang||'').slice(0,2).toLowerCase()===lang);
+  const mine=all.find(v=>v.name===VOICE.voice);
+  if(lead)return {voice:mine||null,pitch:1};
+  let h=0;for(const c of String(name))h=(h*31+c.charCodeAt(0))>>>0;
+  const pool=vs.filter(v=>v!==mine);
+  return {voice:pool.length?pool[h%pool.length]:(vs[h%(vs.length||1)]||null),pitch:[.85,1.15,.95,1.25,.75,1.05][h%6]};
+}
+function voiceClean(text,n){
+  return String(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'')
+    .replace(/(^|\s)@([\w-]+)/g,'$1$2').slice(0,n||600).trim();
+}
+/* One agent's line, spoken in its voice. `done` runs when it has been said. */
+function speakAs(name,text,done){
+  const clean=voiceClean(text);
+  if(!clean||!window.speechSynthesis){if(done)done();return}
+  const u=new SpeechSynthesisUtterance(clean),a=agentVoice(name);
+  if(a.voice)u.voice=a.voice;u.pitch=a.pitch;u.rate=VOICE.rate||1;
+  u.onstart=()=>{if(JARVIS.on)jarvisSetPhase('speaking',(name&&name!=='@agent'?name:agentName())+' is speaking…')};
+  u.onend=u.onerror=()=>{if(done)done()};
+  speechSynthesis.speak(u);
+}
+/* Speech has no "@". Said out loud, "at researcher, at writer, should we…" comes back as
+   words, so the names a spoken request OPENS with become the addresses the chat reads
+   ("@researcher @writer should we…", a huddle; "ask writer to…", that agent). Only the
+   opening words and only names of agents here, so "look at writer's draft" is left alone. */
+var VOICE_AGENTS=null;
+async function voiceAgentsLoad(){
+  try{const d=await (await fetch('/api/subagents')).json();VOICE_AGENTS=(d.subagents||[]).map(s=>s.name)}
+  catch(e){VOICE_AGENTS=VOICE_AGENTS||[]}
+}
+function voiceAddress(text){
+  const names=VOICE_AGENTS||[];if(!names.length)return text;
+  let rest=String(text||''),out=[];
+  for(;;){
+    const m=rest.match(/^\s*(?:at|hey|ask|and|@)?\s*([A-Za-z][\w-]*)[\s,:.]+/i);
+    const hit=m&&names.find(n=>n.toLowerCase()===m[1].toLowerCase());
+    if(!hit)break;
+    out.push('@'+hit);rest=rest.slice(m[0].length);
+  }
+  return out.length?out.join(' ')+' '+rest.replace(/^\s*to\s+/i,''):text;
+}
+/* Called by every surface that shows agents talking to each other. Silent unless you
+   asked to hear it: voice on, or Jarvis mode, and each agent's own voice switched on. */
+function voiceAgentLine(name,text){
+  if(!(VOICE.tts||JARVIS.on)||VOICE.agents===false||!name)return;
+  speakAs(name,text);
+}
+

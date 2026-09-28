@@ -3792,6 +3792,48 @@ body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}
 .team-limits{display:flex;flex-direction:column;gap:6px;width:100%}
 .tl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .tl-row small{font-size:var(--fs-xs)}
+/* Free talk (24f-freetalk.js): the form with its caution, the running card, the log.
+   Every control is a real tap target on a phone, and every row wraps. */
+.ft-box,.ft-log{display:flex;flex-direction:column;gap:8px;width:100%}
+.ft-form{display:flex;flex-direction:column;gap:10px}
+.ft-who{display:flex;flex-wrap:wrap;gap:6px}
+.ft-agent{display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 6px;border-radius:999px;
+  border:1px solid var(--line);cursor:pointer;font-size:var(--fs-sm,13px);min-height:var(--tap,32px)}
+.ft-agent.on{border-color:color-mix(in srgb,var(--acc) 55%,transparent);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.ft-agent input{margin:0}
+.ft-agent img.av-tool{width:22px;height:22px;border-radius:6px;margin:0}
+.ft-form input[type=text]{width:100%;min-width:0;min-height:var(--tap,32px)}
+.ft-limits{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:var(--fs-sm,13px)}
+.ft-limits label{display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.ft-limits select{min-height:var(--tap,32px)}
+.ft-warn{display:flex;flex-direction:column;gap:3px;padding:9px 12px;border-radius:var(--r-md,10px);font-size:var(--fs-sm,13px);
+  border:1px solid color-mix(in srgb,var(--warn,#fbbf24) 55%,transparent);background:color-mix(in srgb,var(--warn,#fbbf24) 10%,transparent)}
+.ft-warn b{color:var(--warn,#fbbf24)}
+.ft-ok{display:flex;gap:8px;align-items:center;justify-content:flex-start;font-size:var(--fs-sm,13px);font-weight:600;min-height:var(--tap,32px);cursor:pointer}
+/* Settings stacks stretch every input and select to the row (.prow.stack .pc input, 14-omnibar.css);
+   the free-talk checkboxes and the limit pickers keep their own size */
+.prow.stack .pc .ft-agent input[type=checkbox],.prow.stack .pc .ft-ok input[type=checkbox]{width:auto;max-width:none;flex:0 0 auto;margin:0}
+.prow.stack .pc .ft-limits select{width:auto;max-width:100%}
+.ft-form .save{align-self:flex-start;margin:0;min-height:var(--tap,34px);padding:0 18px}
+.ft-form .save:disabled{opacity:.5;cursor:not-allowed}
+.ft-live{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 12px;border-radius:var(--r-md,10px);
+  border:1px solid color-mix(in srgb,var(--acc) 45%,transparent);background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.ft-faces img.av-tool{width:28px;height:28px;border-radius:8px;margin:0 -6px 0 0}
+.ft-now{display:flex;flex-direction:column;gap:2px;flex:1 1 180px;min-width:0;font-size:var(--fs-sm,13px)}
+.ft-acts{display:flex;gap:6px;flex-wrap:wrap}
+.ft-acts .endbtn,.ft-stop{min-height:var(--tap,32px)}
+.endbtn.danger{color:var(--err,#f87171);border-color:color-mix(in srgb,var(--err,#f87171) 45%,transparent)}
+.ft-row{display:flex;flex-direction:column;gap:4px;padding:8px 0;border-top:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.ft-row:first-child{border-top:0}
+.ft-rh{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:var(--fs-sm,13px)}
+.ft-k{font-weight:600}
+.ft-rw{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
+.ft-rw img.av-tool{width:20px;height:20px;border-radius:6px;margin:0}
+.ft-when{font-size:var(--fs-xs)}
+.ft-t{font-size:var(--fs-sm,13px)}
+.ft-a{font-size:var(--fs-xs)}
+.ft-head{justify-content:space-between;flex-wrap:wrap}
+.ft-end{margin-top:6px;font-size:var(--fs-xs);color:var(--dim);font-style:italic}
 .tl-row input{width:80px}
 body.dev-touch .tl-row input{min-height:var(--tap)}
 .flw-talk{display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:var(--fs-sm)}
@@ -4486,6 +4528,7 @@ function jarvisMode(on){
     JARVIS.on=true;ov.classList.add('show');
     $('#j-transcript').textContent='';$('#j-reply').textContent='';
     JARVIS.cid=JARVIS.cid||currentConv;
+    if(typeof voiceAgentsLoad==='function')voiceAgentsLoad();   // the names a spoken request may open with
     jarvisListen();
   }else{
     JARVIS.on=false;ov.classList.remove('show');
@@ -4520,6 +4563,8 @@ function jarvisAsk(text){
   jarvisSetPhase('thinking',agentName()+' is working…');
   $('#j-reply').textContent='';
   JARVIS.busy=true;jarvisReply='';
+  // "at researcher, at writer, …" said out loud → "@researcher @writer …": a huddle
+  if(typeof voiceAddress==='function')text=voiceAddress(text);
   ws.send(JSON.stringify({type:'chat',text,conversation_id:JARVIS.cid,model:''}));
   setRunning(true);
 }
@@ -4530,9 +4575,12 @@ function jarvisSpeakAndListen(text){
   const u=new SpeechSynthesisUtterance(clean);
   u.rate=(VOICE&&VOICE.rate)||1;
   const v=speechSynthesis.getVoices().find(v=>v.name===(VOICE&&VOICE.voice));if(v)u.voice=v;
+  u.onstart=()=>jarvisSetPhase('speaking',agentName()+' is speaking…');
   u.onend=()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')};
   u.onerror=()=>{if(JARVIS.on)jarvisListen()};
-  speechSynthesis.cancel();speechSynthesis.speak(u);
+  // queued, never cancelled: the agents who spoke in this turn (a huddle, a question to
+  // a colleague) are still being heard in their own voices, and the reply comes after
+  speechSynthesis.speak(u);
 }
 const RUNNING=new Set();   // conversation_ids with a live turn (several may run at once)
 const STREAMS={};          // conversation_id -> {html, text}: buffered stream for chats not on screen
@@ -9987,6 +10035,7 @@ function placeMissions(tab,sub){return ()=>{
 var PLACES=[
   ['AI providers','settings','Settings → AI providers',['provider','providers','model','models','brain','api key','key','openai','anthropic','claude','gemini','ollama','openrouter','llm'],placeSettings('ai')],
   ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona','team','swarm','huddle','talk','working together'],placeSettings('agent')],
+  ['Free talk','settings','Settings → Agents → Working together',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent')],
   ['Executors','settings','Settings → Executors',['executor','executors','hands','folders','folder access','claude code','codex','gemini cli','sandbox','reach'],placeSettings('executors')],
   ['Channels','settings','Settings → Channels',['channel','channels','telegram','whatsapp','messaging','phone','bot','notify','notifications'],placeSettings('channels')],
   ['Accounts','settings','Settings → Accounts',['account','accounts','mail','email','gmail','outlook','calendar','imap','caldav','sign in','google','microsoft'],placeSettings('accounts')],
@@ -11492,6 +11541,67 @@ function micToggle(){
 }
 function agentName(){return (cfg&&cfg.agent_name)||'Aria'}
 
+/* ================= a voice per agent =================
+   With voice on, or in Jarvis mode, a huddle, a free talk and one agent asking another
+   are heard as well as read, and each agent speaks in its own voice: a system voice
+   picked from the name (so it stays the same every time), and a pitch of its own for
+   the machines that only have one or two voices. Your lead keeps the voice chosen in
+   Settings → Voice. Lines are queued by speechSynthesis itself, never cancelled, so a
+   room of agents is heard in order and your lead's reply comes after them.
+   Faces: GUI and SUI speak through the browser. TUI has no speaker on purpose; the
+   same lines are text in `bento team log` and the chat. */
+function agentVoice(name){
+  const lead=!name||name==='@agent'||name===agentName();
+  const lang=String(VOICE.lang||'en').slice(0,2).toLowerCase();
+  const all=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
+  const vs=all.filter(v=>String(v.lang||'').slice(0,2).toLowerCase()===lang);
+  const mine=all.find(v=>v.name===VOICE.voice);
+  if(lead)return {voice:mine||null,pitch:1};
+  let h=0;for(const c of String(name))h=(h*31+c.charCodeAt(0))>>>0;
+  const pool=vs.filter(v=>v!==mine);
+  return {voice:pool.length?pool[h%pool.length]:(vs[h%(vs.length||1)]||null),pitch:[.85,1.15,.95,1.25,.75,1.05][h%6]};
+}
+function voiceClean(text,n){
+  return String(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'')
+    .replace(/(^|\s)@([\w-]+)/g,'$1$2').slice(0,n||600).trim();
+}
+/* One agent's line, spoken in its voice. `done` runs when it has been said. */
+function speakAs(name,text,done){
+  const clean=voiceClean(text);
+  if(!clean||!window.speechSynthesis){if(done)done();return}
+  const u=new SpeechSynthesisUtterance(clean),a=agentVoice(name);
+  if(a.voice)u.voice=a.voice;u.pitch=a.pitch;u.rate=VOICE.rate||1;
+  u.onstart=()=>{if(JARVIS.on)jarvisSetPhase('speaking',(name&&name!=='@agent'?name:agentName())+' is speaking…')};
+  u.onend=u.onerror=()=>{if(done)done()};
+  speechSynthesis.speak(u);
+}
+/* Speech has no "@". Said out loud, "at researcher, at writer, should we…" comes back as
+   words, so the names a spoken request OPENS with become the addresses the chat reads
+   ("@researcher @writer should we…", a huddle; "ask writer to…", that agent). Only the
+   opening words and only names of agents here, so "look at writer's draft" is left alone. */
+var VOICE_AGENTS=null;
+async function voiceAgentsLoad(){
+  try{const d=await (await fetch('/api/subagents')).json();VOICE_AGENTS=(d.subagents||[]).map(s=>s.name)}
+  catch(e){VOICE_AGENTS=VOICE_AGENTS||[]}
+}
+function voiceAddress(text){
+  const names=VOICE_AGENTS||[];if(!names.length)return text;
+  let rest=String(text||''),out=[];
+  for(;;){
+    const m=rest.match(/^\s*(?:at|hey|ask|and|@)?\s*([A-Za-z][\w-]*)[\s,:.]+/i);
+    const hit=m&&names.find(n=>n.toLowerCase()===m[1].toLowerCase());
+    if(!hit)break;
+    out.push('@'+hit);rest=rest.slice(m[0].length);
+  }
+  return out.length?out.join(' ')+' '+rest.replace(/^\s*to\s+/i,''):text;
+}
+/* Called by every surface that shows agents talking to each other. Silent unless you
+   asked to hear it: voice on, or Jarvis mode, and each agent's own voice switched on. */
+function voiceAgentLine(name,text){
+  if(!(VOICE.tts||JARVIS.on)||VOICE.agents===false||!name)return;
+  speakAs(name,text);
+}
+
 /* ================= what the agent is doing, right now =================
    A turn is mostly waiting, and every surface that showed the waiting showed
    the same three words — "Aria is working" — for as long as it lasted. A model
@@ -12294,6 +12404,9 @@ function handle(ev){
       // and in an app's agent panel or the prompt bar's card, when the turn is theirs
       if(_sk&&_sk.say)_sk.say(ev);
       break;
+    case 'freetalk':   // your team talking among themselves, because you let it (24f-freetalk.js)
+      if(typeof freeTalkEvent==='function')freeTalkEvent(ev);
+      break;
     case 'avatars': if(typeof avatarsChanged==='function')avatarsChanged(); break;
     case 'quarantined':
       // Loud on purpose: something the user installed just stopped working, and the worst
@@ -12653,7 +12766,8 @@ async function loadConvs(){
   // their own sections so app-scoped exchanges never drown the real chats
   const groups=[['From the prompt bar',c=>c.origin==='omni'],
                 ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
-                ['',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]];
+                ['Your agents talking',c=>c.origin==='freetalk'],
+                ['',c=>c.origin!=='omni'&&c.origin!=='freetalk'&&!(c.origin||'').startsWith('copilot:')]];
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
@@ -12682,6 +12796,8 @@ async function openConv(cid){
   curBody=null;curThink=null;curText='';
   feed.innerHTML='';
   d.messages.forEach(msg=>{
+    // a free talk is one card that grows message by message (24f-freetalk.js)
+    if(msg.meta&&msg.meta.freetalk&&typeof freeTalkRender==='function'&&freeTalkRender(msg))return;
     const m=document.createElement('div');m.className='msg '+msg.role;
     if(msg.role==='user'){m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
     else{const sp=msg.meta&&msg.meta.speaker;
@@ -13120,6 +13236,10 @@ function huddleLive(ev,isCur,kind){
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id&&!ev.vote)
     actMove(ev.conversation_id,'think',{msg:(kind==='talk'?'agents talking · ':'huddle · ')+ev.speaker+(ev.to?' asked '+ev.to:' just spoke')});
+  // heard as well as read, each in its own voice, when it is the thread you are in
+  // (or the one Jarvis mode is talking in)
+  if(!ev.vote&&(isCur||(JARVIS.on&&ev.conversation_id===JARVIS.cid))&&typeof voiceAgentLine==='function')
+    voiceAgentLine(ev.speaker,ev.text);
   if(!isCur||!feed)return;
   if(!curBody)startAssistant();
   if(!curBody)return;
@@ -13560,6 +13680,18 @@ function setTab(body,all){
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
          more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy those same steps go to a vote of three of your agents, on different brains where they can be, and a majority decides. Huddles end with a vote too. Loops are refused and each task has a question limit.',
          f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
+      /* Free talk (24f-freetalk.js): the one time agents talk with nobody asking them
+         anything, so it is started here by the person, after a caution they tick, and it
+         ends on its clock or its message count. And the one place that lists every time
+         agents talked to each other. `bento team freetalk` / `bento team log`. */
+      pRow('Let them talk','<div id="s-team-freetalk" class="ft-box mut">loading…</div>',
+        {stack:true,desc:'Let your agents talk among themselves for a few minutes. Experimental.',
+         more:'It stops at the time or message limit you pick, when they run out of things to say, or when you press Stop. Every message is kept.',
+         f:'free talk let them talk agents talk among themselves open floor swarm minutes messages experimental risky'}),
+      pRow('Agent-to-agent talk','<div id="s-team-talklog" class="ft-log mut">loading…</div>',
+        {stack:true,desc:'Every time your agents talked to each other.',
+         more:'Free talks, huddles and one agent asking another. Open one in Chat, or replay its run with every step.',
+         f:'agent to agent chat talk log history conversation huddle ask transcript record'}),
       /* The limits: how far a question travels, how many one task may send, how often a
          colleague may ask back, and a huddle's size. Defaults are conservative; each has a
          ceiling no setting passes, because every one multiplies model calls. */
@@ -13584,6 +13716,8 @@ function setTab(body,all){
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
     setTimeout(paintTeamLimits,0);
+    setTimeout(freeTalkPaint,0);
+    setTimeout(talkLogPaint,0);
     P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
     setTimeout(renderAgentsGraph,0);
 
@@ -13622,7 +13756,11 @@ function setTab(body,all){
     P.push(`<h2>Voice</h2><p class="lead">Dictate with the mic in the prompt bar or chat, and have replies read aloud.</p>`);
     P.push(pGroup('Speech',[
       pRow('Speak replies aloud',pSwitch('v-tts',VOICE.tts),{desc:'Read every answer out loud.',f:'tts speak voice'}),
-      pRow('Voice','<select id="v-voice"></select>',{f:'tts voice picker'}),
+      pRow('Voice','<select id="v-voice"></select>',{desc:'Your lead agent’s voice.',f:'tts voice picker'}),
+      pRow('Each agent speaks in its own voice',pSwitch('v-agents',VOICE.agents!==false),
+        {desc:'Hear huddles and free talk, with a different voice for each agent.',
+         more:'Works with voice on, or in Jarvis mode. Voices come from this device, so a device with few voices tells them apart by pitch.',
+         f:'voice agents each own voice huddle free talk jarvis multiple speakers'}),
       pRow('Speech rate',pText('v-rate',VOICE.rate||1,'','number'),{f:'speech rate'}),
       pRow('Mic language',pText('v-lang',VOICE.lang||'en-IN','en-IN, en-US, hi-IN…'),{desc:'The language dictation listens for.',f:'mic language dictation'}),
     ],{f:'voice tts speech microphone'}));
@@ -13970,6 +14108,7 @@ async function saveSettings(){
   if(el('v-tts')){
     VOICE.tts=on('v-tts');VOICE.voice=val('v-voice')||'';
     VOICE.rate=+val('v-rate')||1;VOICE.lang=(val('v-lang')||'').trim()||'en-IN';
+    if(el('v-agents'))VOICE.agents=on('v-agents');
     saveVoice();
   }
   const patch={};
@@ -16723,6 +16862,8 @@ async function fgLoad(runId){
     fgReset(runId,(d.run||{}).flow||(d.run||{}).ref||'');
     (d.events||[]).forEach(e=>fgApply(Object.assign({event:e.type,run_id:runId},e.payload||{},{_ts:(e.ts||0)*1000})));
     const r=d.run||{};
+    // a free talk is a session, not a mission: no Run again, no editor, and messages
+    FG.kind=r.kind||'';if(FG.kind==='freetalk')FG.flow='Free talk';
     FG.meta=Object.assign(FG.meta||{},{started:(r.started_at||0)*1000||FG.meta.started,
       finished:(r.finished_at||0)*1000||FG.meta.finished,origin:r.origin_surface||FG.meta.origin||'',
       input:r.input||'',tokens:(r.tokens_in||0)+(r.tokens_out||0)||FG.meta.tokens||0});
@@ -17221,9 +17362,9 @@ function renderFlowRun(body,w){
         <span class="fr-pill fg-pill"></span></div>
       <div class="fr-facts fg-facts"></div>
       <div class="fr-acts">
-        ${FG.ended?'':`<button class="endbtn" onclick="cancelRun(FG.run)">⏹ Stop</button>`}
-        <button class="endbtn" onclick="fgRerun()">↻ Run again</button>
-        <button class="endbtn" onclick="openFLW&&openFLW(FG.flow)">✎ Edit mission</button>
+        ${FG.ended?'':`<button class="endbtn" onclick="${FG.kind==='freetalk'?'freeTalkStop(FG.run)':'cancelRun(FG.run)'}">⏹ Stop</button>`}
+        ${FG.kind==='freetalk'?'':`<button class="endbtn" onclick="fgRerun()">↻ Run again</button>
+        <button class="endbtn" onclick="openFLW&&openFLW(FG.flow)">✎ Edit mission</button>`}
         <button class="endbtn" onclick="fgOpenBoardRaw()">Raw events</button></div>
       <div class="fr-runs fg-runs"></div>
     </div>
@@ -17237,10 +17378,10 @@ function renderFlowRun(body,w){
         <div id="fr-detail"></div>
         <div id="fg-artifact"></div>
         <div class="fr-h">Results</div><div class="fg-board"></div>
-        <div class="fr-h">Change it for next time</div>
+        ${FG.kind==='freetalk'?'':`<div class="fr-h">Change it for next time</div>
         <textarea id="fr-ai" rows="2" placeholder="give the researcher fetch_url too · tell the writer to be shorter"></textarea>
         <div class="row" style="gap:6px"><button class="save" style="margin:0;flex:0 0 150px"
-          onclick="frAiEdit()">✦ Open with this</button>${pInfo('The run that is going now keeps going. Your change applies from the next run.')}</div>
+          onclick="frAiEdit()">✦ Open with this</button>${pInfo('The run that is going now keeps going. Your change applies from the next run.')}</div>`}
         <details class="fr-log"><summary>Control-plane log</summary><div class="fg-log"></div></details>
       </div>
     </div></div>`;
@@ -17275,9 +17416,9 @@ function fgClock(){
   document.querySelectorAll('.fg-meta').forEach(el=>{if(el.textContent!==meta)el.textContent=meta});
   const who=new Set(FG.story.filter(x=>x.who||x.to).flatMap(x=>[x.who,x.to]).filter(Boolean));
   const tok=m.tokens||[...FG.nodes.values()].reduce((a,n)=>a+(n.tokens?(n.tokens.in||0)+(n.tokens.out||0):0),0);
-  const talks=FG.story.filter(x=>x.kind==='talk'&&x.phase==='ask').length;
+  const talks=FG.story.filter(x=>x.kind==='talk'&&(x.phase==='ask'||x.phase==='say')).length;
   const tools=FG.story.filter(x=>x.kind==='tool').reduce((a,x)=>a+x.tools.length,0);
-  const facts=[[who.size,'agent','agents'],[tools,'tool call','tool calls'],[talks,'question between agents','questions between agents']]
+  const facts=[[who.size,'agent','agents'],[tools,'tool call','tool calls'],[talks,FG.kind==='freetalk'?'message':'question between agents',FG.kind==='freetalk'?'messages':'questions between agents']]
     .filter(f=>f[0]).map(f=>`<span><b>${f[0]}</b> ${f[0]===1?f[1]:f[2]}</span>`)
     .concat(tok?[`<span><b>${tok>=1000?(tok/1000).toFixed(1)+'k':tok}</b> tokens</span>`]:[]).join('');
   document.querySelectorAll('.fg-facts').forEach(el=>{if(el.innerHTML!==facts)el.innerHTML=facts});
@@ -17319,8 +17460,8 @@ function fgPaintStory(box){
       case 'tool':return `<div class="fr-ev tl">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> used ${
         e.tools.map(x=>`<code class="${x.ok===false?'bad':''}">${esc(x.name)}${x.ok===false?' ✗':''}</code>`).join(' ')}</div></div></div>`;
       case 'talk':return `<div class="fr-ev talk ${e.phase==='reply'?'reply':''}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${fgWho(e.who)}</b> ${
-        e.phase==='reply'?'answered':'asked'} <b>${fgWho(e.to)}</b>${e.provider?` <span class="mut">· ${esc(e.provider)}</span>`:''}</div>
-        <div class="fr-bubble">${esc(String(e.text||'').slice(0,700))}</div></div></div>`;
+        e.phase==='reply'?'answered':e.phase==='say'?(e.to?'said to':'said'):'asked'} ${e.to?`<b>${fgWho(e.to)}</b>`:''}${e.provider?` <span class="mut">· ${esc(e.provider)}</span>`:''}</div>
+        <div class="fr-bubble">${esc(String(e.text||'').slice(0,e.phase==='say'?3000:700))}</div></div></div>`;
       case 'done':return `<div class="fr-ev ${e.ok?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> ${
         e.ok?'finished':'stopped ('+esc(e.status||'error')+')'}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}
         ${e.handle?`<button class="fr-link" onclick="fgOpenHandle('${esc(e.handle)}')">See what came back</button>`:''}
@@ -25187,6 +25328,195 @@ function playWindowBurst(win,tool){
   b.textContent=comicWord(tool);
   win.el.appendChild(b);
   setTimeout(()=>b.remove(),1500);
+}
+/* ================= Free talk, and every time agents talked =================
+   Free talk is the person letting the team talk among themselves for a few minutes
+   (fabric.run_free_talk). It is the one time agents talk with nobody asking them
+   anything, so it is started only here, by a person, after a caution they tick, and it
+   ends on the first of its clock, its message count, a quiet room or Stop. Nothing
+   about it is hidden: every message lands in its own Chat thread as it is said, each is
+   a run, the session is a run the Run Inspector replays, and the start and end are in
+   the ledger.
+
+   The log below it is the one place that lists every time agents talked to each other
+   (free talks, huddles, one agent asking another), read from the runs they already are
+   (fabric.talk_log, `bento team log`).
+
+   Faces — GUI and SUI: Settings → Agents → Working together, and the Chat thread.
+   TUI: `bento team freetalk` starts and stops one, `bento team log` lists them.
+   `var`/function declarations only: the bundle is one script. */
+var FREETALK={talks:[],opts:null,log:null,understood:false,mode:'talk',minutes:5,messages:20,topic:'',agents:null};
+
+function ftActive(){return (FREETALK.talks||[]).find(t=>t.status==='running')}
+function ftLeft(t){const s=Math.max(0,Math.round(t.until-Date.now()/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function ftAgo(t){const s=Math.round(Date.now()/1000-t);
+  return s<45?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':new Date(t*1000).toLocaleDateString()}
+
+async function freeTalkLoad(){
+  try{const d=await apiJSON('/api/team/freetalk');FREETALK.talks=d.talks||[];FREETALK.opts=d}
+  catch(e){FREETALK.opts={error:e.message}}
+}
+async function freeTalkPaint(){
+  const box=document.getElementById('s-team-freetalk');if(!box)return;
+  if(!FREETALK.opts)await freeTalkLoad();
+  const o=FREETALK.opts||{};
+  if(o.error){box.innerHTML=`<p class="mut">${esc(o.error)}</p>`;return}
+  box.classList.remove('mut');
+  const run=ftActive();
+  if(run){
+    box.innerHTML=`<div class="ft-live"><div class="ft-faces">${run.agents.map(n=>avatarImg(n,'av-tool')).join('')}</div>
+      <div class="ft-now"><b>Your team is talking</b><span class="mut">${run.messages} of ${run.max_messages} messages · <span class="ft-clock">${ftLeft(run)}</span> left${run.topic?' · '+esc(run.topic):''}</span></div>
+      <div class="ft-acts"><button class="endbtn" onclick="freeTalkOpen('${esc(run.conversation_id)}')">Watch in Chat</button>
+      <button class="endbtn danger" onclick="freeTalkStop('${esc(run.id)}')">Stop</button></div></div>`;
+    ftTick();
+    return;
+  }
+  if(o.talk==='off'){box.innerHTML=`<p class="mut">Agents messaging each other is off. Turn it on above to let them talk.</p>`;return}
+  const names=o.agents||[];
+  if(names.length<2){box.innerHTML=`<p class="mut">You need two or more agents first. Create one under Agents above.</p>`;return}
+  if(!FREETALK.agents)FREETALK.agents=names.slice(0,o.max_agents||6);
+  const opt=(arr,cur,unit)=>arr.map(v=>`<option value="${v}" ${+cur===v?'selected':''}>${v} ${unit}</option>`).join('');
+  box.innerHTML=`<div class="ft-form">
+    <div class="ft-who">${names.map(n=>`<label class="ft-agent${FREETALK.agents.includes(n)?' on':''}">
+      <input type="checkbox" ${FREETALK.agents.includes(n)?'checked':''} onchange="freeTalkPick('${esc(n)}',this.checked)">${avatarImg(n,'av-tool')}${esc(n)}</label>`).join('')}</div>
+    <input id="ft-topic" type="text" maxlength="500" placeholder="What about? Leave empty to let them choose" value="${esc(FREETALK.topic)}" oninput="FREETALK.topic=this.value">
+    <div class="ft-limits">
+      <label>For up to <select id="ft-min" onchange="FREETALK.minutes=+this.value">${opt(o.minutes||[5,10,20],FREETALK.minutes,'min')}</select></label>
+      <label>or <select id="ft-msg" onchange="FREETALK.messages=+this.value">${opt(o.messages||[10,20,40],FREETALK.messages,'messages')}</select></label>
+      <label><select id="ft-mode" onchange="FREETALK.mode=this.value;freeTalkPaint()">
+        <option value="talk" ${FREETALK.mode==='talk'?'selected':''}>Talk only</option>
+        <option value="act" ${FREETALK.mode==='act'?'selected':''}>Talk and use their tools</option></select></label>
+    </div>
+    <div class="ft-warn" role="note"><b>Experimental, and it can cost money.</b>
+      <span>Your agents talk with nobody asking them anything, and every message is a model call on their own brain.${FREETALK.mode==='act'
+        ?' In this mode they can also use their tools. Anything that needs your permission still asks you, and your permissions and limits still apply.'
+        :' In this mode they only talk and can’t use any tools.'} Everything they say is kept in Chat, in their runs and in the ledger.</span></div>
+    <label class="ft-ok"><input type="checkbox" ${FREETALK.understood?'checked':''} onchange="FREETALK.understood=this.checked;document.getElementById('ft-go').disabled=!this.checked"> I understand. Let them talk.</label>
+    <button id="ft-go" class="save" ${FREETALK.understood?'':'disabled'} onclick="freeTalkStart(this)">Start free talk</button>
+  </div>`;
+}
+function freeTalkPick(n,on){
+  const a=FREETALK.agents||[];FREETALK.agents=on?[...new Set([...a,n])]:a.filter(x=>x!==n);
+  document.querySelectorAll('.ft-agent').forEach(l=>{const cb=l.querySelector('input');l.classList.toggle('on',cb.checked)});
+}
+async function freeTalkStart(btn){
+  if(!FREETALK.understood)return toast('tick that you understand first');
+  if((FREETALK.agents||[]).length<2)return toast('pick two or more agents');
+  btn.disabled=true;btn.textContent='Starting…';
+  try{
+    const d=await apiJSON('/api/team/freetalk',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({agents:FREETALK.agents,topic:FREETALK.topic,minutes:FREETALK.minutes,
+        messages:FREETALK.messages,mode:FREETALK.mode,understood:true})});
+    FREETALK.understood=false;
+    FREETALK.talks=[d.talk,...(FREETALK.talks||[]).filter(t=>t.id!==d.talk.id)];
+    freeTalkPaint();
+    toast('✓ Your team is talking. Watch it in Chat.',{label:'Watch',go:()=>freeTalkOpen(d.conversation_id)});
+  }catch(e){toast(e.message);btn.disabled=false;btn.textContent='Start free talk'}
+}
+async function freeTalkStop(id){
+  try{await apiJSON('/api/team/freetalk/'+encodeURIComponent(id)+'/stop',{method:'POST'});toast('Stopping them now')}
+  catch(e){toast(e.message)}
+}
+function freeTalkOpen(cid){if(!cid)return;openApp('chat');setTimeout(()=>openConv(cid),60)}
+/* The clock on the running card. It only runs while that card is on screen. */
+var FT_TIMER=0;
+function ftTick(){
+  clearTimeout(FT_TIMER);
+  const el=document.querySelector('#s-team-freetalk .ft-clock'),run=ftActive();
+  if(!el||!run)return;
+  el.textContent=ftLeft(run);
+  FT_TIMER=setTimeout(ftTick,1000);
+}
+
+/* ---- the log: every time agents talked to each other ---- */
+var FT_KIND={freetalk:['Free talk','💬'],huddle:['Huddle','🗣'],ask:['Asked a colleague','↔']};
+async function talkLogPaint(){
+  const box=document.getElementById('s-team-talklog');if(!box)return;
+  let d;
+  try{d=await apiJSON('/api/team/talklog?limit=40')}catch(e){box.innerHTML=`<p class="mut">${esc(e.message)}</p>`;return}
+  FREETALK.log=d.log||[];
+  box.classList.remove('mut');
+  if(!FREETALK.log.length){box.innerHTML='<p class="mut">Your agents haven’t talked to each other yet. Start a free talk, ask two of them something with “@one @two”, or let them ask each other while they work.</p>';return}
+  box.innerHTML=FREETALK.log.map(e=>{
+    const k=FT_KIND[e.kind]||[e.kind,'·'];
+    const who=e.kind==='ask'?`${avatarImg(e.who[0],'av-tool')}${esc(e.who[0])} → ${avatarImg(e.who[1],'av-tool')}${esc(e.who[1])}`
+      :(e.who||[]).map(n=>avatarImg(n,'av-tool')).join('')+esc((e.who||[]).join(', '));
+    return `<div class="ft-row"><div class="ft-rh"><span class="ft-k">${k[1]} ${esc(k[0])}</span><span class="ft-rw">${who}</span>
+        <span class="mut ft-when">${ftAgo(e.when)}${e.kind!=='ask'?' · '+e.messages+' message'+(e.messages===1?'':'s'):''}</span></div>
+      ${e.title?`<div class="ft-t">${esc(e.title)}</div>`:''}
+      ${e.kind==='ask'&&e.detail?`<div class="ft-a mut">${esc(e.detail)}</div>`:''}
+      <div class="ft-acts">${e.conversation_id?`<button class="endbtn" onclick="freeTalkOpen('${esc(e.conversation_id)}')">Open in Chat</button>`:''}
+        <button class="endbtn" onclick="fgWatch('${esc(e.run_id)}')">Replay the run</button></div></div>`;
+  }).join('');
+}
+
+/* ---- in Chat: a free talk is one card that grows, stored or live ---- */
+/* The header already says who a message is for, so its opening "@name," is not said twice.
+   The stored text keeps it: the record is what was said. */
+function ftShown(text,to){
+  const t=String(text||'');
+  return to?t.replace(new RegExp('^\\s*@'+to.replace(/[^\w-]/g,'')+'\\b[,:]?\\s*','i'),''):t;
+}
+function freeTalkWho(agents){
+  return (agents||[]).map(n=>avatarImg(n,'av-who')).join('')+'free talk · '+esc((agents||[]).join(', '));
+}
+function freeTalkCard(sid,meta,make){
+  if(!feed)return null;
+  let card=feed.querySelector(`.huddle[data-ft="${CSS.escape(sid)}"]`);
+  if(card||!make)return card;
+  const m=document.createElement('div');m.className='msg assistant';
+  const run=(FREETALK.talks||[]).find(t=>t.id===sid&&t.status==='running');
+  m.innerHTML=`<div class="who">${freeTalkWho(meta.agents)}</div><div class="huddle" data-kind="freetalk" data-ft="${esc(sid)}">
+    <div class="hud-head ft-head"><span>${meta.topic?esc(meta.topic):'about anything useful to you'} · up to ${esc(meta.minutes||'?')} min or ${esc(meta.messages||'?')} messages · ${meta.mode==='act'?'talk and use tools':'talk only'}</span>
+    ${run?`<button class="endbtn danger ft-stop" onclick="freeTalkStop('${esc(sid)}')">Stop</button>`:''}</div></div>`;
+  feed.appendChild(m);
+  return m.querySelector('.huddle');
+}
+/* A stored message of a free talk. True when drawn, so openConv skips its own. */
+function freeTalkRender(msg){
+  const meta=msg.meta||{},sid=meta.freetalk;
+  if(!sid||!feed)return false;
+  const card=freeTalkCard(sid,meta,true);
+  if(meta.phase==='say'){card.insertAdjacentHTML('beforeend',huddleRow({speaker:meta.speaker,to:meta.to,model:meta.model,provider:meta.provider,
+    text:ftShown(String(msg.content||'').replace(/^@[\w-]+ \([^)]*\): /,''),meta.to)}));
+    card.dataset.n=(+card.dataset.n||0)+1}
+  else if(meta.phase==='end'){card.insertAdjacentHTML('beforeend',`<div class="ft-end">${esc(String(msg.content||'').replace(/^\[|\]$/g,''))}</div>`);
+    card.querySelector('.ft-stop')?.remove()}
+  return true;
+}
+/* Live: the server's `freetalk` events. The message is already stored when it arrives. */
+function freeTalkEvent(ev){
+  if(ev.phase==='start'){
+    FREETALK.talks=[ev,...(FREETALK.talks||[]).filter(t=>t.id!==ev.id)];
+    if(typeof loadConvs==='function')loadConvs();
+  }
+  const t=(FREETALK.talks||[]).find(x=>x.id===ev.id);
+  if(ev.phase==='say'){
+    if(t)t.messages=ev.n||t.messages+1;
+    if(typeof scenePulse==='function')scenePulse('say',ev.speaker,{kind:'talk',text:ev.text,to:ev.to});
+    const here=ev.conversation_id===currentConv;
+    if(here&&typeof voiceAgentLine==='function')voiceAgentLine(ev.speaker,ev.text);
+    if(here&&feed){
+      const card=freeTalkCard(ev.id,{agents:t?t.agents:[ev.speaker],topic:t?t.topic:'',minutes:t?t.minutes:'',messages:t?t.max_messages:'',mode:t?t.mode:'talk'},true);
+      // stored before it was sent, so a thread opened in between already drew it
+      if((+card.dataset.n||0)<(ev.n||1e9)){
+        card.insertAdjacentHTML('beforeend',huddleRow({speaker:ev.speaker,to:ev.to,model:ev.model,provider:ev.provider,text:ftShown(ev.text,ev.to)}));
+        card.dataset.n=ev.n||(+card.dataset.n||0)+1;
+        if(typeof scrollDown==='function')scrollDown();
+      }
+    }
+  }
+  if(ev.phase==='end'){
+    if(t){t.status='ended';t.reason=ev.reason}
+    if(ev.conversation_id===currentConv&&feed){
+      const card=freeTalkCard(ev.id,{},false);
+      if(card){card.insertAdjacentHTML('beforeend',`<div class="ft-end">free talk ended: ${esc(ev.reason)}, ${ev.count} message${ev.count===1?'':'s'}</div>`);
+        card.querySelector('.ft-stop')?.remove()}
+    }
+    toast('Free talk ended: '+ev.reason,{label:'Read it',go:()=>freeTalkOpen(ev.conversation_id)});
+    talkLogPaint();
+  }
+  freeTalkPaint();
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

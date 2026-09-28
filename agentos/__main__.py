@@ -2689,6 +2689,14 @@ def _flow_cli(args):
                       or pay.get("status") or pay.get("message") or "")
             if not detail and pay:
                 detail = json.dumps(pay)[:90]
+            if e.get("type") == "talk" and pay.get("phase") == "say":
+                # a free talk: every message in full, because the whole point is the record
+                import textwrap
+                head = f"{pay.get('from', '?')}" + (f" to {pay['to']}" if pay.get("to") else "")
+                print(f"  {when}  {'said':16} {head} · {pay.get('provider') or pay.get('model') or ''}")
+                for ln in textwrap.wrap(str(pay.get("text", "")), 88):
+                    print(f"  {'':8}  {'':16} {ln}")
+                continue
             if e.get("type") == "talk":
                 # agents talking inside the mission: who asked whom, then what was said
                 verb = "answered" if pay.get("phase") == "reply" else "asked"
@@ -3580,6 +3588,75 @@ def _team_cli(args):
     act = args.action
     if act == "draft":
         return _team_draft(args, cfg, store, colour)
+    if act == "log":
+        # every time agents talked to each other, from the runs (fabric.talk_log): works
+        # with the server down, like `bento flow runs`
+        log = fabricmod.talk_log(store, 30)
+        if not log:
+            print("  your agents haven't talked to each other yet")
+            return
+        kinds = {"freetalk": "free talk", "huddle": "huddle", "ask": "asked"}
+        for e in log:
+            when = time.strftime("%d %b %H:%M", time.localtime(e["when"]))
+            who = (f"{e['who'][0]} → {e['who'][1]}" if e["kind"] == "ask"
+                   else ", ".join(e["who"]))
+            n = "" if e["kind"] == "ask" else f"  ({e['messages']} message{'s' if e['messages'] != 1 else ''})"
+            print(f"  {when}  {kinds.get(e['kind'], e['kind']):<9}  {who}{n}")
+            if e["title"]:
+                print(f"      {e['title'][:110]}")
+            if e["kind"] == "ask" and e["detail"]:
+                print(f"      ↳ {e['detail'][:110]}")
+            print(f"      bento flow events {e['run_id']}")
+        return
+    if act == "freetalk":
+        # the person lets the team talk among themselves; the agents run in the server,
+        # so this is the same route the Settings panel uses, and it needs a server
+        port = int(cfg.get("port", 8321))
+        what = (args.name or "").strip()
+        if what == "stop":
+            live = [t for t in (_api_call(port, "/api/team/freetalk").get("talks") or [])
+                    if t.get("status") == "running"]
+            if not live:
+                print("  nobody is talking")
+                return
+            got = _api_call(port, f"/api/team/freetalk/{live[0]['id']}/stop", "POST", {})
+            print("  stopping them now" if got.get("ok") else f"  {got.get('error', got)}")
+            return
+        if not args.yes:
+            try:
+                st = _api_call(port, "/api/team/freetalk")
+            except OSError:
+                st = {"error": "no server answered. Start one with: bento serve"}
+            live = [t for t in (st.get("talks") or []) if t.get("status") == "running"]
+            if live:
+                t = live[0]
+                print(f"  your team is talking: {', '.join(t['agents'])}, {t['messages']} of "
+                      f"{t['max_messages']} messages\n  bento team freetalk stop")
+                return
+            print("  Free talk lets your agents talk among themselves for a few minutes.\n"
+                  "  It's experimental and every message is a model call. With --act they can\n"
+                  "  also use their tools; anything that needs permission still asks you.\n"
+                  "  Everything is kept: Chat, the runs, and the ledger.\n\n"
+                  "  bento team freetalk \"what should we try next?\" --minutes 5 --messages 20 --yes\n"
+                  "  options: --agents a,b  --act  · stop it with: bento team freetalk stop"
+                  + (f"\n\n  ({st['error']})" if st.get("error") else ""))
+            return
+        body = {"topic": what, "minutes": args.minutes, "messages": args.messages,
+                "mode": "act" if args.act else "talk", "understood": True,
+                "agents": [a.strip() for a in (args.agents or "").split(",") if a.strip()]}
+        try:
+            got = _api_call(port, "/api/team/freetalk", "POST", body)
+        except OSError:
+            print("  no server answered. Free talk runs in the server: bento serve")
+            sys.exit(2)
+        if not got.get("ok"):
+            print(f"  {got.get('error') or got.get('detail') or got}")
+            sys.exit(2)
+        t = got["talk"]
+        print(f"  {', '.join(t['agents'])} are talking, for up to {t['minutes']} min or "
+              f"{t['max_messages']} messages ({'talk and act' if t['mode'] == 'act' else 'talk only'}).\n"
+              f"  Read it in Chat, or afterwards: bento team log · stop: bento team freetalk stop")
+        return
     if act == "limits":
         pairs = [x for x in [args.name, args.model, *(getattr(args, "more", None) or [])] if x]
         if pairs:
@@ -5900,17 +5977,23 @@ def main():
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",
                         choices=["list", "set", "own", "talk", "matrix", "allow", "block", "ask", "limits",
-                                 "draft"])
+                                 "draft", "freetalk", "log"])
     p_team.add_argument("name", nargs="?", default="",
                         help="set: the agent · own: on|off · talk: matrix|swarm|democracy|off · allow/block/ask: the asker "
-                             "· draft: what the new agent should do, in words")
+                             "· draft: what the new agent should do, in words "
+                             "· freetalk: what they talk about, or stop")
     p_team.add_argument("model", nargs="?", default="",
                         help="set: provider/model, or an agent CLI such as gemini-cli/gemini-2.5-pro, "
                              "codex/default or claude-code/sonnet ('' = this machine's brain) "
                              "· allow/block/ask: the one asked")
     p_team.add_argument("more", nargs="*", default=[], help="limits: more name=value pairs")
     p_team.add_argument("--user", default="", help="whose agents, on a machine with users")
-    p_team.add_argument("--yes", action="store_true", help="draft: save what was drafted without asking")
+    p_team.add_argument("--yes", action="store_true",
+                        help="draft: save what was drafted without asking · freetalk: I understand, start it")
+    p_team.add_argument("--minutes", type=int, default=5, help="freetalk: stop after this many minutes (5, 10 or 20)")
+    p_team.add_argument("--messages", type=int, default=20, help="freetalk: stop after this many messages (up to 40)")
+    p_team.add_argument("--agents", default="", help="freetalk: who talks, comma-separated (default: all)")
+    p_team.add_argument("--act", action="store_true", help="freetalk: let them use their tools too")
     p_vault = verb("vault", help="the secrets this machine keeps for you — where, how protected, "
                                   "and which; never their values")
     p_vault.add_argument("action", nargs="?", default="status", choices=["status", "list", "forget"])

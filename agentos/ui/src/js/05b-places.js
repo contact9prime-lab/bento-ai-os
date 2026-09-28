@@ -55,6 +55,7 @@ function placeMissions(tab,sub){return ()=>{
 var PLACES=[
   ['AI providers','settings','Settings → AI providers',['provider','providers','model','models','brain','api key','key','openai','anthropic','claude','gemini','ollama','openrouter','llm'],placeSettings('ai')],
   ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona','team','swarm','huddle','talk','working together'],placeSettings('agent')],
+  ['Free talk','settings','Settings → Agents → Working together',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent')],
   ['Executors','settings','Settings → Executors',['executor','executors','hands','folders','folder access','claude code','codex','gemini cli','sandbox','reach'],placeSettings('executors')],
   ['Channels','settings','Settings → Channels',['channel','channels','telegram','whatsapp','messaging','phone','bot','notify','notifications'],placeSettings('channels')],
   ['Accounts','settings','Settings → Accounts',['account','accounts','mail','email','gmail','outlook','calendar','imap','caldav','sign in','google','microsoft'],placeSettings('accounts')],

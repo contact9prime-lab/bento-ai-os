@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.8 — 2026-09-28
+
+**Free talk: let your agents talk among themselves (experimental).** In Settings → Agents →
+Working together → **Let them talk**, pick two to six of your agents, a topic if you like, and
+when it ends: 5, 10 or 20 minutes, or 10, 20 or 40 messages, whichever comes first. It also
+ends when nobody has anything new to say, or when you press Stop. **Talk only** gives them no
+tools at all; **Talk and use their tools** lets them act, and anything that needs you still
+asks. A caution says it can cost money, and you tick that you understand before it starts. No
+agent can start one: there is no tool for it, only your screen and `bento team freetalk`.
+
+Everything is kept. It gets its own thread in Chat, written message by message as they speak.
+The session and every message are runs you can replay in the Run Inspector, and the start and
+the end are rows in the audit ledger. Tried live on Claude Code: three agents talked through
+"our onboarding loses half of new users on day one", ten messages in two and a half minutes.
+The first run found that two agents who kept answering each other held the floor while the
+third never spoke, so nobody waits more than a lap of the room now.
+
+**One place to see your agents talking.** Settings → Agents → Working together →
+**Agent-to-agent talk** lists every time your agents talked to each other: free talks,
+huddles and one agent asking another, each with Open in Chat and Replay the run. In a
+terminal, `bento team log`, and `bento flow events <run>` prints a free talk in full.
+
+**A voice for each agent.** With voice on, or in Jarvis mode, huddles, free talks and one
+agent asking another are heard as well as read, each agent in its own voice (your lead keeps
+the one you chose). Lines are queued instead of cut off, so your lead's reply comes after the
+room. In Jarvis mode you can call a huddle out loud: "at researcher, at writer, should we
+launch on Friday?" reaches the chat as `@researcher @writer …`. Settings → Voice → **Each agent
+speaks in its own voice** turns it off.
+
 ## 0.6.7 — 2026-09-27
 
 **The World: your agents with feelings (experimental).** A new desktop scene (Settings →

@@ -9557,6 +9557,112 @@ async def api_team_limits():
                                       for k, (d, lo, hi, w) in fabricmod.LIMITS.items()}}
 
 
+# ---- Free talk: the team talks among itself because the person let it -------------
+#
+# The one time agents talk with nobody asking them anything, so it is the PERSON's act:
+# these routes are the only door (no agent tool reaches them), `understood` must be
+# sent (the page's caution, ticked), and it ends on the first of its clock, its message
+# count, a quiet room or Stop (fabric.run_free_talk). Everything is kept: the session
+# and every message are runs, each message is a `talk` event and a message in its own
+# Chat thread as it is said, and the start and end are ledger rows. `bento team
+# freetalk` is the terminal's door to the same routes.
+
+_FREETALK_TASKS: set = set()
+
+
+def _freetalk_public(s: dict) -> dict:
+    return {k: s.get(k) for k in ("id", "agents", "topic", "mode", "minutes", "max_messages",
+                                  "messages", "started", "until", "status", "reason",
+                                  "conversation_id", "ended")}
+
+
+@app.get("/api/team/freetalk")
+async def api_freetalk_list():
+    uid = usersmod.current() or ""
+    from .policy import team_talk
+    return {"talks": [_freetalk_public(s) for s in state["fabric"].free_talks(uid)],
+            "minutes": list(fabricmod.FREE_TALK_MINUTES),
+            "messages": list(fabricmod.FREE_TALK_MESSAGES),
+            "max_agents": fabricmod.FREE_TALK_MAX_AGENTS,
+            "talk": team_talk(state["cfg"]),
+            "agents": [d["name"] for d in state["store"].list_subagents()
+                       if d.get("enabled") is not False and "@" not in d["name"]]}
+
+
+@app.post("/api/team/freetalk")
+async def api_freetalk_start(body: dict):
+    """{agents?, topic?, minutes, messages, mode: talk|act, understood: true}. Starts at
+    once and answers with the session and its Chat thread; the talk runs on its own."""
+    b = body or {}
+    if b.get("understood") is not True:
+        return JSONResponse({"error": "Tick that you understand what free talk does first. "
+                                      "Every message is a model call, and in talk-and-act "
+                                      "mode your agents can use their tools."}, status_code=400)
+    uid = usersmod.current() or ""
+    store, fab = state["store"], state["fabric"]
+    topic = " ".join(str(b.get("topic") or "").split())[:500]
+    cid = store.create_conversation(("Free talk · " + topic)[:80] if topic else "Free talk",
+                                    origin="freetalk")
+    try:
+        s = fab.start_free_talk(b.get("agents") or [], topic, b.get("minutes", 5),
+                                b.get("messages", 20), str(b.get("mode") or "talk"),
+                                uid=uid, conversation_id=cid)
+    except ValueError as e:
+        store.delete_conversation(cid)
+        return JSONResponse({"error": str(e)}, status_code=400)
+    sid = s["id"]
+    store.add_message(cid, "assistant",
+                      f"[free talk · {', '.join(s['agents'])} · up to {s['minutes']} min or "
+                      f"{s['max_messages']} messages]",
+                      {"freetalk": sid, "phase": "start", "agents": s["agents"],
+                       "mode": s["mode"], "topic": topic, "minutes": s["minutes"],
+                       "messages": s["max_messages"]})
+
+    async def say(e):
+        # kept first, shown second: a message is in the thread before it is on a screen
+        store.add_message(cid, "assistant", f"@{e['speaker']} ({e['model']}): {e['text']}",
+                          {"freetalk": sid, "phase": "say", "speaker": e["speaker"],
+                           "to": e.get("to", ""), "model": e["model"],
+                           "provider": e.get("provider", ""), "run": e.get("run", "")})
+        await state["broadcast_user"]({"type": "freetalk", "phase": "say", "id": sid,
+                                       "conversation_id": cid, **e}, uid)
+
+    async def run():
+        try:
+            res = await fab.run_free_talk(sid, say=say)
+            end = fabricmod.TALK_ENDS.get(res["reason"], res["reason"])
+            n = len(res["transcript"])
+        except Exception as e:                        # the session records its own fault
+            end, n = f"it broke ({type(e).__name__})", 0
+        store.add_message(cid, "assistant", f"[free talk ended: {end}, {n} message"
+                                            f"{'s' if n != 1 else ''}]",
+                          {"freetalk": sid, "phase": "end", "reason": end, "count": n})
+        await state["broadcast_user"]({"type": "freetalk", "phase": "end", "id": sid,
+                                       "conversation_id": cid, "reason": end, "count": n}, uid)
+
+    # held until it ends: the event loop keeps only a weak reference to a task
+    t = asyncio.create_task(run())
+    _FREETALK_TASKS.add(t)
+    t.add_done_callback(_FREETALK_TASKS.discard)
+    await state["broadcast_user"]({"type": "freetalk", "phase": "start", "id": sid,
+                                   "conversation_id": cid, **_freetalk_public(s)}, uid)
+    return {"ok": True, "talk": _freetalk_public(s), "conversation_id": cid}
+
+
+@app.post("/api/team/freetalk/{sid}/stop")
+async def api_freetalk_stop(sid: str):
+    uid = usersmod.current() or ""
+    if not state["fabric"].stop_free_talk(sid, uid):
+        return JSONResponse({"error": "That free talk is not running."}, status_code=409)
+    return {"ok": True}
+
+
+@app.get("/api/team/talklog")
+async def api_talk_log(limit: int = 60):
+    """Every time your agents talked to each other (fabric.talk_log)."""
+    return {"log": fabricmod.talk_log(state["store"], max(1, min(200, int(limit or 60))))}
+
+
 # ---- Brains, hands and agents (agentos/hands.py, agentos/agentmap.py) ----------------
 #
 # An agent gets a BRAIN (AI providers), HANDS (an executor profile: tools, folders, web,

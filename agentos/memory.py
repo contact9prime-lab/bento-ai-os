@@ -2290,6 +2290,15 @@ class Store:
                                    "ORDER BY started_at DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
 
+    def fabric_runs_of(self, kinds: tuple, limit: int = 200) -> list[dict]:
+        """The newest runs of these kinds: what the agent-to-agent log is read from
+        (fabric.talk_log), so it has no table of its own to fall out of step."""
+        kinds = tuple(kinds) or ("",)
+        rows = self.db.execute(
+            f"SELECT * FROM fabric_runs WHERE kind IN ({','.join('?' * len(kinds))}) "
+            "ORDER BY started_at DESC LIMIT ?", (*kinds, int(limit))).fetchall()
+        return [dict(r) for r in rows]
+
     def fabric_runs_for(self, flow: str, limit: int = 50, since: float = 0) -> list[dict]:
         """A flow's own orchestrator runs, newest first — what a Missions row is
         drawn from. Children (kind='delegate') are reached through parent_run."""
