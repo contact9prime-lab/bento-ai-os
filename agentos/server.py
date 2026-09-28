@@ -9743,10 +9743,60 @@ async def api_speech_say(body: dict):
             lead=bool(b.get("lead")), engine=b.get("engine") or None,
             voice=(str(b["voice"]) if b.get("voice") else None))
     except Exception as e:
-        return JSONResponse({"error": str(e)[:300]}, status_code=400)
+        # 502: the voice engine refused or could not be reached; the sentence says which
+        return JSONResponse({"error": str(e)[:400]}, status_code=502)
     return Response(content=data, media_type=mime,
                     headers={"X-Speech-Engine": who["engine"], "X-Speech-Voice": who["voice"][:120],
                              "Cache-Control": "no-store"})
+
+
+# A line spoken while the reply is still arriving (speech.open_stream). The POST opens the
+# provider's stream and checks its answer, so a refusal comes back as a sentence; the GET
+# pipes the audio into the page's <audio>, which starts playing on the first bytes. A
+# ticket nobody collects is closed after SPEECH_LINE_TTL, and only its owner may collect it.
+_SPEECH_LINES: dict = {}
+SPEECH_LINE_TTL = 90.0
+
+
+async def _speech_sweep():
+    now = time.time()
+    for lid, t in list(_SPEECH_LINES.items()):
+        if now - t["at"] > SPEECH_LINE_TTL or len(_SPEECH_LINES) > 64:
+            _SPEECH_LINES.pop(lid, None)
+            try:
+                await t["s"]["close"]()
+            except Exception:
+                pass
+
+
+@app.post("/api/speech/line")
+async def api_speech_line(body: dict):
+    """{text, agent, lead, fast} → {id}: the stream is open and ready to play."""
+    from . import speech
+    b = body or {}
+    await _speech_sweep()
+    try:
+        st = await speech.open_stream(state["cfg"], str(b.get("text") or ""),
+                                      agent=str(b.get("agent") or ""), lead=bool(b.get("lead")),
+                                      fast=b.get("fast") is not False)
+    except Exception as e:
+        return JSONResponse({"error": str(e)[:400]}, status_code=502)
+    lid = secrets.token_urlsafe(12)
+    _SPEECH_LINES[lid] = {"s": st, "at": time.time(), "uid": usersmod.current() or ""}
+    return {"id": lid, "engine": st["who"]["engine"], "voice": st["who"]["voice"],
+            "cached": st["who"].get("cached", False)}
+
+
+@app.get("/api/speech/stream/{lid}")
+async def api_speech_stream(lid: str):
+    from fastapi.responses import StreamingResponse
+    t = _SPEECH_LINES.get(lid)
+    if not t or t["uid"] != (usersmod.current() or ""):
+        return JSONResponse({"error": "that line is gone"}, status_code=404)
+    _SPEECH_LINES.pop(lid, None)
+    return StreamingResponse(t["s"]["chunks"], media_type=t["s"]["mime"],
+                             headers={"Cache-Control": "no-store",
+                                      "X-Speech-Voice": t["s"]["who"]["voice"][:120]})
 
 
 @app.get("/api/team/talklog")

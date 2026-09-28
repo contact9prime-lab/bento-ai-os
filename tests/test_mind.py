@@ -132,3 +132,37 @@ def test_the_route_and_the_terminal():
     main = (ROOT / "agentos/__main__.py").read_text()
     assert 'verb("mind"' in main and "mindmod.snapshot(store, cfg)" in main
     assert fabric.talk_log   # the links are read from the one agent-to-agent log
+
+
+def test_what_it_remembers_is_joined_to_what_it_knows(tmp_path):
+    """From a screenshot: Memory and Knowledge sat as two clouds with nothing between
+    them. A memory or a run that names an entity is joined to it, whole words only."""
+    store = Store(tmp_path / "t.db")
+    store.save_subagent({"name": "researcher", "soul": "x"})
+    store.add_memory("Priya leads the Acme account")
+    store.add_memory("Prefers tea")                                   # names nobody
+    store.kg_add("Priya", "leads", "Acme")
+    store.kg_add("Al", "knows", "Priya")                              # too short to match
+    rid = store.fabric_run_start("delegate", "researcher", "find out when Acme renews")
+    store.fabric_run_finish(rid, "ok")
+    s = mind.snapshot(store, CFG)
+    names = {n["id"]: n["label"] for n in s["nodes"]}
+    ment = [(names[k["a"]], names[k["b"]]) for k in s["links"] if k["kind"] == "mention"]
+    assert ("Priya leads the Acme account", "Priya") in ment
+    assert ("Priya leads the Acme account", "Acme") in ment
+    assert any(b == "Acme" and a.startswith("find out") for a, b in ment), "a run names it too"
+    assert not any(b == "Al" for _, b in ment), "a two-letter name matches everything"
+    assert not any(a == "Prefers tea" for a, _ in ment)
+    assert s["stats"]["mentions"] == len(ment)
+    assert all("full" not in n for n in s["nodes"]), "the page gets the short label only"
+
+
+def test_peace_shows_only_the_mind():
+    src = (JS / "01g-mind.js").read_text()
+    css = (ROOT / "agentos/ui/src/css/26-mind.css").read_text()
+    assert "function mindPeace(" in src and "localStorage.setItem('mind.peace'" in src
+    assert "k.kind!=='mention'" in src, "the lines between clusters are drawn"
+    for sel in (".mn-left", ".mn-right", ".mn-tags", ".mn-card"):
+        assert f"#mind-ui.peace {sel}" in css, sel
+    assert "body.mind-peace" in css and "#omnibar:not(.summoned)" in css
+    assert "classList.remove('mind-peace')" in src, "leaving the scene gives the bar back"

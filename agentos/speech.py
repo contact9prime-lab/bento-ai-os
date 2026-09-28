@@ -45,6 +45,10 @@ TITLES = {"browser": "This browser", "system": "This computer", "elevenlabs": "E
           "openai": "OpenAI", "google": "Google Cloud"}
 #: the model each cloud engine is asked for (checked against each provider's docs)
 ELEVEN_MODEL = "eleven_multilingual_v2"
+#: the low-latency model, for a line spoken while the reply is still arriving
+ELEVEN_FAST_MODEL = "eleven_flash_v2_5"
+#: engines whose audio can be played while the provider is still making it
+STREAMING = ("elevenlabs", "openai")
 OPENAI_MODEL = "gpt-4o-mini-tts"
 OPENAI_VOICES = ("alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx",
                  "sage", "shimmer", "verse")
@@ -56,10 +60,22 @@ TIMEOUT = 30.0
 def conf(cfg: dict) -> dict:
     c = cfg.setdefault("speech", {})
     c.setdefault("engine", "browser")
-    c.setdefault("voice", "")               # the lead's voice on that engine
+    # The lead's voice is kept PER ENGINE (`speech.<engine>.voice`). It was one field for
+    # every engine, so a voice picked on OpenAI ("nova") or this computer ("gmw/en-US")
+    # was sent to ElevenLabs as a voice id, and ElevenLabs answered 400 "voice does not
+    # exist". A top-level `voice` from before is only a candidate, used when the engine
+    # actually lists it (`_usable`).
+    c.setdefault("voice", "")
     c.setdefault("agents", {})              # name -> voice, pinned by a person
     c.setdefault("language", "en-US")
     return c
+
+
+def lead_voice(cfg: dict, engine: str | None = None) -> str:
+    """The lead's chosen voice on this engine ('' = pick one for me)."""
+    c = conf(cfg)
+    engine = engine or c["engine"]
+    return str((c.get(engine) or {}).get("voice") or "") if isinstance(c.get(engine), dict) else ""
 
 
 def _key(cfg: dict, engine: str) -> str:
@@ -74,7 +90,7 @@ def _key(cfg: dict, engine: str) -> str:
 def public(cfg: dict) -> dict:
     """The settings as the page may see them: which keys are set, never a value."""
     c = conf(cfg)
-    return {"engine": c["engine"], "voice": c.get("voice", ""), "language": c.get("language", "en-US"),
+    return {"engine": c["engine"], "voice": lead_voice(cfg), "language": c.get("language", "en-US"),
             "agents": dict(c.get("agents") or {}),
             "keys": {e: bool(_key(cfg, e)) for e in ("elevenlabs", "openai", "google")},
             "openai_from_provider": bool(_key(cfg, "openai")) and not (c.get("openai") or {}).get("api_key")}
@@ -89,9 +105,11 @@ def save(cfg: dict, patch: dict) -> dict:
         if p["engine"] not in ENGINES:
             raise ValueError(f"engine is one of: {', '.join(ENGINES)}")
         c["engine"] = p["engine"]
-    for k in ("voice", "language"):
-        if k in p:
-            c[k] = str(p[k] or "")[:120]
+    if "language" in p:
+        c["language"] = str(p["language"] or "")[:120]
+    if "voice" in p:
+        # the voice belongs to the engine it was picked on
+        c.setdefault(c["engine"], {})["voice"] = str(p["voice"] or "")[:120]
     if isinstance(p.get("agents"), dict):
         c["agents"] = {str(n)[:60]: str(v)[:120] for n, v in p["agents"].items() if v}
     for e in ("elevenlabs", "openai", "google"):
@@ -211,6 +229,57 @@ def _system_speak(text: str, voice: str) -> tuple[bytes, str]:
 
 # ------------------------------------------------------------------ the cloud voices
 
+class VoiceMissing(RuntimeError):
+    """The provider does not have the voice it was asked for (so another one can be tried)."""
+
+
+def _detail(r) -> tuple[str, str]:
+    """(status, message) out of a provider's error body. ElevenLabs answers
+    `{"detail": {"status": "voice_not_found", "message": "…"}}`, a validation error is
+    `{"detail": [{"msg": …}]}`, OpenAI and Google say `{"error": {"message": …}}`."""
+    try:
+        js = r.json()
+    except Exception:
+        return "", " ".join(str(getattr(r, "text", "") or "").split())[:200]
+    d = js.get("detail") if isinstance(js, dict) else None
+    if isinstance(d, dict):
+        return str(d.get("status") or d.get("code") or ""), str(d.get("message") or "")
+    if isinstance(d, list) and d:
+        return "invalid_request", "; ".join(str((x or {}).get("msg") or x) for x in d[:3])
+    if isinstance(d, str):
+        return "", d
+    e = js.get("error") if isinstance(js, dict) else None
+    if isinstance(e, dict):
+        return str(e.get("status") or e.get("code") or e.get("type") or ""), str(e.get("message") or "")
+    return "", " ".join(str(js).split())[:200]
+
+
+def _refusal(engine: str, r) -> RuntimeError:
+    """The provider's refusal as a sentence a person can act on, keeping its own words."""
+    status, msg = _detail(r)
+    st, code = status.lower(), r.status_code
+    title = TITLES[engine]
+    if "voice" in st and ("not_found" in st or "not_exist" in st or "does_not" in st):
+        return VoiceMissing(f"{title} does not have that voice on this account ({msg or status}). "
+                            "Pick one of your voices in Settings → Voice.")
+    if "quota" in st or "credit" in st:
+        hint = f"This {title} account is out of credits."
+    elif "permission" in st:
+        hint = (f"The {title} key is missing a permission. Allow Text to Speech and "
+                "Voices (read) for it in your ElevenLabs API keys." if engine == "elevenlabs"
+                else f"The {title} key is missing a permission.")
+    elif code == 401 or "api_key" in st or "unauthorized" in st:
+        hint = f"{title} did not accept the key. Paste it again in Settings → Voice."
+    elif code == 402 or "payment" in st or "paid" in st or "free_user" in st:
+        hint = f"That voice needs a paid {title} plan. Pick another voice in Settings → Voice."
+    elif "unusual" in st:
+        hint = f"{title} paused free use from this network. A paid plan lifts it."
+    else:
+        hint = ""
+    said = msg or status or f"HTTP {code}"
+    return RuntimeError(f"{title} refused ({code}): {said}" + (f". {hint}" if hint else ""))
+
+
 async def cloud_voices(cfg: dict, engine: str) -> list[dict]:
     key = _key(cfg, engine)
     if engine == "openai":
@@ -220,7 +289,8 @@ async def cloud_voices(cfg: dict, engine: str) -> list[dict]:
     async with httpx.AsyncClient(timeout=TIMEOUT) as c:
         if engine == "elevenlabs":
             r = await c.get("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": key})
-            r.raise_for_status()
+            if r.status_code >= 400:
+                raise _refusal(engine, r)
             return [{"id": v["voice_id"], "name": v.get("name") or v["voice_id"],
                      "lang": ((v.get("labels") or {}).get("accent") or "")}
                     for v in r.json().get("voices", [])]
@@ -228,7 +298,8 @@ async def cloud_voices(cfg: dict, engine: str) -> list[dict]:
             lang = conf(cfg).get("language") or "en-US"
             r = await c.get("https://texttospeech.googleapis.com/v1/voices",
                             params={"key": key, "languageCode": lang})
-            r.raise_for_status()
+            if r.status_code >= 400:
+                raise _refusal(engine, r)
             return [{"id": v["name"], "name": v["name"], "lang": ",".join(v.get("languageCodes") or [])}
                     for v in r.json().get("voices", [])]
     return []
@@ -238,6 +309,11 @@ async def _cloud_speak(cfg: dict, engine: str, text: str, voice: str) -> tuple[b
     key = _key(cfg, engine)
     if not key:
         raise RuntimeError(f"{TITLES[engine]} needs an API key (Settings → Voice).")
+    if engine == "elevenlabs" and not voice:
+        # an empty id makes the URL /text-to-speech/, which ElevenLabs refuses
+        raise RuntimeError("ElevenLabs lists no voices for this key, so there is nothing to "
+                           "speak with. Add a voice in ElevenLabs, or allow the key to read "
+                           "Voices.")
     async with httpx.AsyncClient(timeout=TIMEOUT) as c:
         if engine == "elevenlabs":
             r = await c.post(f"https://api.elevenlabs.io/v1/text-to-speech/{voice}",
@@ -256,7 +332,7 @@ async def _cloud_speak(cfg: dict, engine: str, text: str, voice: str) -> tuple[b
             r = await c.post("https://texttospeech.googleapis.com/v1/text:synthesize",
                              params={"key": key}, json=body)
         if r.status_code >= 400:
-            raise RuntimeError(f"{TITLES[engine]} refused ({r.status_code}): {r.text[:200]}")
+            raise _refusal(engine, r)
         if engine == "google":
             return base64.b64decode(r.json().get("audioContent") or b""), "audio/mpeg"
         return r.content, "audio/mpeg"
@@ -322,8 +398,31 @@ async def speak(cfg: dict, text: str, agent: str = "", lead: bool = False,
     text = " ".join(str(text or "").split())[:MAX_CHARS]
     if not text:
         raise RuntimeError("nothing to say")
+    voice, ids = await _resolve(cfg, engine, agent, lead, voice)
+    try:
+        return await _say(cfg, engine, text, voice)
+    except VoiceMissing:
+        # the chosen or pinned voice is gone from the account: say it with another one
+        # it lists rather than going silent, and the next pick sees the same list
+        rest = [v for v in ids if v != voice]
+        if not rest:
+            raise
+        return await _say(cfg, engine, text, pick(agent, lead, rest, "", {}))
+
+
+async def _resolve(cfg: dict, engine: str, agent: str, lead: bool,
+                   voice: str | None) -> tuple[str, list[str]]:
+    """(the voice this speaker uses on this engine, the voices the engine lists)."""
+    c = conf(cfg)
     if voice is None:
-        vs = await voices(cfg, engine)
+        try:
+            vs = await voices(cfg, engine)
+        except RuntimeError:
+            # a key that may speak but not read the voice list still has the voice
+            # the person picked for this engine; without one, the reason stands
+            if not lead_voice(cfg, engine):
+                raise
+            vs = []
         if engine == "system":
             # found by listening: a pool of every language made the lead Afrikaans and
             # the researcher Russian, both reading English. Only voices in the chosen
@@ -333,7 +432,24 @@ async def speak(cfg: dict, text: str, agent: str = "", lead: bool = False,
             # the exact language first (en-us before en-029), so the lead's default is it
             full = (c.get("language") or "").lower()
             vs.sort(key=lambda v: str(v.get("lang", "")).lower() != full)
-        voice = pick(agent, lead, [v["id"] for v in vs], c.get("voice", ""), c.get("agents") or {})
+        ids = [v["id"] for v in vs]
+        voice = pick(agent, lead, ids, _usable(ids, lead_voice(cfg, engine), c.get("voice", "")),
+                     {n: v for n, v in (c.get("agents") or {}).items() if not ids or v in ids})
+    else:
+        ids = []
+    return voice, ids
+
+
+def _usable(ids: list[str], *choices: str) -> str:
+    """The first chosen voice this engine actually lists. With no list (it could not be
+    read) the engine's own choice is still tried; an old top-level voice is not."""
+    for i, v in enumerate(choices):
+        if v and (v in ids or (not ids and i == 0)):
+            return v
+    return ""
+
+
+async def _say(cfg: dict, engine: str, text: str, voice: str) -> tuple[bytes, str, dict]:
     mp3, wav = _cached(engine, voice, text)
     for p, mime in ((mp3, "audio/mpeg"), (wav, "audio/wav")):
         if p.exists():
@@ -350,6 +466,101 @@ async def speak(cfg: dict, text: str, agent: str = "", lead: bool = False,
     except OSError:
         pass
     return data, mime, {"engine": engine, "voice": voice, "cached": False}
+
+
+async def open_stream(cfg: dict, text: str, agent: str = "", lead: bool = False,
+                      fast: bool = True) -> dict:
+    """One line as audio that can be PLAYED WHILE IT IS MADE, for speaking a reply as it
+    arrives. The provider's stream is opened here and its answer checked before any byte
+    is handed on, so a refusal is still a sentence and not a dead audio element.
+    Returns {"mime", "who", "chunks" (async iterator of bytes), "close" (coroutine)}.
+    An engine that cannot stream (this computer, Google) or a cached line comes back
+    whole, as one chunk."""
+    c = conf(cfg)
+    engine = c["engine"]
+    text = " ".join(str(text or "").split())[:MAX_CHARS]
+
+    async def _one(data: bytes):
+        yield data
+
+    async def _nothing():
+        return None
+
+    if engine not in STREAMING:
+        data, mime, who = await speak(cfg, text, agent=agent, lead=lead)
+        return {"mime": mime, "who": who, "chunks": _one(data), "close": _nothing}
+    if not text:
+        raise RuntimeError("nothing to say")
+    voice, ids = await _resolve(cfg, engine, agent, lead, None)
+    tried = []
+    while True:
+        mp3, _wav = _cached(engine, voice, text)
+        if mp3.exists():
+            return {"mime": "audio/mpeg", "who": {"engine": engine, "voice": voice, "cached": True},
+                    "chunks": _one(mp3.read_bytes()), "close": _nothing}
+        try:
+            return await _open(cfg, engine, text, voice, fast, mp3)
+        except VoiceMissing:
+            tried.append(voice)
+            rest = [v for v in ids if v not in tried]
+            if not rest:
+                raise
+            voice = pick(agent, lead, rest, "", {})
+
+
+async def _open(cfg: dict, engine: str, text: str, voice: str, fast: bool, keep: Path) -> dict:
+    key = _key(cfg, engine)
+    if not key:
+        raise RuntimeError(f"{TITLES[engine]} needs an API key (Settings → Voice).")
+    if engine == "elevenlabs":
+        if not voice:
+            raise RuntimeError("ElevenLabs lists no voices for this key, so there is nothing to "
+                               "speak with. Add a voice in ElevenLabs, or allow the key to read "
+                               "Voices.")
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}/stream"
+        kw = {"params": {"output_format": "mp3_44100_128"},
+              "headers": {"xi-api-key": key, "Content-Type": "application/json"},
+              "json": {"text": text, "model_id": ELEVEN_FAST_MODEL if fast else ELEVEN_MODEL}}
+    else:
+        url = "https://api.openai.com/v1/audio/speech"
+        kw = {"headers": {"Authorization": f"Bearer {key}"},
+              "json": {"model": OPENAI_MODEL, "voice": voice or "alloy", "input": text,
+                       "response_format": "mp3"}}
+    client = httpx.AsyncClient(timeout=httpx.Timeout(TIMEOUT, read=60.0))
+    try:
+        r = await client.send(client.build_request("POST", url, **kw), stream=True)
+    except Exception as e:
+        await client.aclose()
+        raise RuntimeError(f"{TITLES[engine]} could not be reached: {str(e)[:160]}")
+    if r.status_code >= 400:
+        await r.aread()
+        await r.aclose()
+        await client.aclose()
+        raise _refusal(engine, r)
+
+    async def close():
+        await r.aclose()
+        await client.aclose()
+
+    async def chunks():
+        got, whole = [], False
+        try:
+            async for b in r.aiter_bytes():
+                got.append(b)
+                yield b
+            whole = True
+        finally:
+            await close()
+            if whole and got:
+                try:
+                    keep.parent.mkdir(parents=True, exist_ok=True)
+                    keep.write_bytes(b"".join(got))
+                    _trim_cache()
+                except OSError:
+                    pass
+
+    return {"mime": "audio/mpeg", "who": {"engine": engine, "voice": voice, "cached": False},
+            "chunks": chunks(), "close": close}
 
 
 def status(cfg: dict) -> dict:

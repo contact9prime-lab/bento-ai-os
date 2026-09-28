@@ -133,6 +133,16 @@ LEASE_S = 45            # the page beats every 15s; three missed beats and the w
 FLUSH_S = 10            # write the state at most this often while live (footprint rule)
 HALF_LIFE = 15 * 60     # a feeling halves every fifteen minutes
 SHOW = 0.15             # below this a feeling is not the one on show
+#: Signals that happen all day. Felt again within HABIT_S they count for less each time
+#: (1, 1/2, 1/3…), the way the tenth good reply of the afternoon is not a party. Found
+#: from a screenshot: the lead was Proud and cheering all day, because every chat reply
+#: counted as a finished task at full weight and stacked to the ceiling.
+ROUTINE = ("working", "succeeded", "huddled", "asked_help", "helped", "approved")
+HABIT_S = 30 * 60
+#: A chat reply that used tools is a small success for the lead, never a triumph; a
+#: plain answer is conversation and is not "finished a task" at all.
+CHAT_SUCCESS = 0.5
+CHAT_CAP = 0.45
 WHY_KEEP = 8
 MAX_WORLDS = 12         # custom worlds per person
 MAX_AGENTS = 40
@@ -539,6 +549,7 @@ _RUNS: dict[str, str] = {}               # run_id -> agent, only while live
 _SPEAKER: dict[str, str] = {}            # conversation -> who is talking in it
 _APPROVALS: dict[str, str] = {}          # approval id -> agent waiting on it
 _TROUBLE: set = set()                    # conversations whose current turn hit an error
+_WORKED: set = set()                     # conversations whose current turn used a tool
 _RUN_TROUBLE: set = set()                # runs that hit a refusal or a failure on the way
 
 
@@ -643,10 +654,13 @@ def _agent(st: dict, name: str) -> dict:
 
 
 def feel(uid: str, name: str, signal: str, detail: str = "", other: str = "",
-         scale: float = 1.0) -> bool:
+         scale: float = 1.0, cap: float = 1.0, grow: float = 1.0) -> bool:
     """One real event, felt by one agent in the live world. False when nothing is live
     (the whole point: out of the scene, nothing is felt). `scale` softens a feeling the
-    event only half earns: a run that finished after a refusal is not a proud one."""
+    event only half earns: a run that finished after a refusal is not a proud one. `cap`
+    is how high this kind of event may lift a feeling at all, and a ROUTINE signal felt
+    again within HABIT_S counts for less each time. Growth is the WORK, not the feeling:
+    it takes the full points unless `grow` says the event is a small one."""
     lease = _alive(uid)
     if not lease or signal not in SIGNALS or not name:
         return False
@@ -656,14 +670,21 @@ def feel(uid: str, name: str, signal: str, detail: str = "", other: str = "",
         return False
     now = time.time()
     a = _agent(st, name)
+    felt = scale
+    if signal in ROUTINE:
+        again = sum(1 for sig, _d, at in a["why"] if sig == signal and now - at < HABIT_S)
+        felt = scale / (1 + again)
     for e in w["emotions"]:
         wgt = e["triggers"].get(signal)
         if wgt:
-            a["feel"][e["id"]] = [round(min(1.0, _now_level(a["feel"].get(e["id"]), now) + wgt * scale), 3), now]
+            level = _now_level(a["feel"].get(e["id"]), now)
+            # a small event never pulls a feeling DOWN to its cap, it just adds nothing
+            lifted = max(level, min(cap, level + wgt * felt))
+            a["feel"][e["id"]] = [round(min(1.0, lifted), 3), now]
     a["why"] = ([[signal, _clean(detail, 80), round(now, 1)]] + a["why"])[:WHY_KEEP]
     if other and other != name:
         a["bonds"][other] = int(a["bonds"].get(other, 0)) + 1
-    pts = int(w["growth"]["earns"].get(signal, 0))
+    pts = int(int(w["growth"]["earns"].get(signal, 0)) * grow + 0.5)
     if pts:
         before = _level(w, a["xp"])["name"]
         a["xp"] = int(a["xp"]) + pts
@@ -852,13 +873,18 @@ def _chat(uid: str, ev: dict) -> None:
         _SPEAKER.pop(cid, None)
         if who == LEAD:
             _busy(uid, LEAD, False)
-            if cid not in _TROUBLE:
-                feel(uid, LEAD, "succeeded", "a chat")
+            # a plain answer is conversation; only a turn that did something is a task
+            if cid not in _TROUBLE and cid in _WORKED:
+                feel(uid, LEAD, "succeeded", "a chat", scale=CHAT_SUCCESS, cap=CHAT_CAP,
+                     grow=CHAT_SUCCESS)
         _TROUBLE.discard(cid)
+        _WORKED.discard(cid)
         return
     if who != LEAD:
         return          # a specialist's own run reports through fabric events; never twice
     if t == "tool_end":
+        if ev.get("ok") is not False:
+            _WORKED.add(cid)
         if ev.get("ok") is False:
             out = step_outcome(ev.get("output") or "")
             feel(uid, LEAD, _OUTCOME_SIGNAL.get(out or "error", "failed"), str(ev.get("name") or ""))

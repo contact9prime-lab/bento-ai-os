@@ -451,3 +451,29 @@ def test_the_look_draws_every_field_and_is_designed_only_by_ai():
     assert "worldLook(this)" in menu
     # described, never picked: no select boxes or swatches for the scene fields
     assert "<select" not in menu and "type=\"range\"" not in menu
+
+
+def test_the_lead_is_not_proud_of_every_reply(store):
+    """Found from a screenshot: the lead was Proud and cheering all day, because every
+    chat reply counted as a finished task at full weight and stacked to the ceiling. A
+    plain answer is conversation; a turn that used a tool is a small success, capped, and
+    the same routine signal counts for less each time it comes back within half an hour."""
+    world.enter("", store, "lantern-canal", ["researcher"])
+    obs = lambda ev: world.observe(ev, "")                               # noqa: E731
+    for i in range(6):                                                   # six plain answers
+        obs({"type": "turn_start", "conversation_id": f"p{i}"})
+        obs({"type": "turn_end", "conversation_id": f"p{i}"})
+    lead = _agent(world.view(""), world.LEAD)
+    assert lead["mood"]["name"] != "Proud"
+    assert all(w["signal"] != "succeeded" for w in lead["why"])
+    for i in range(6):                                                   # six that did work
+        obs({"type": "turn_start", "conversation_id": f"w{i}"})
+        obs({"type": "tool_end", "conversation_id": f"w{i}", "name": "fetch_url", "ok": True})
+        obs({"type": "turn_end", "conversation_id": f"w{i}"})
+    st = world._STATE[("", "lantern-canal")]
+    proud = world._now_level(st["agents"][world.LEAD]["feel"].get("proud"), time.time())
+    assert 0 < proud <= world.CHAT_CAP, proud
+    # a specialist's real run still earns the full feeling
+    for ev in _run("r9", "researcher", end="ok"):
+        obs(ev)
+    assert _agent(world.view(""), "researcher")["mood"]["name"] == "Proud"

@@ -58,6 +58,10 @@ body.has-win #world-ui *{pointer-events:none!important}
 .wd-why{margin:6px 0;color:var(--txt2);font-size:12px}
 .wd-h{margin:12px 0 6px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--txt2)}
 .wd-worlds{display:grid;gap:6px}
+.wd-wrow{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:stretch}
+.wd-wdel{width:var(--tap,36px);min-height:var(--tap,32px);border-radius:12px;cursor:pointer;font:inherit;color:var(--txt2);
+  border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);background:color-mix(in srgb,var(--bg) 60%,transparent)}
+.wd-wdel:hover,.wd-wdel:focus-visible{color:var(--err,#f87171);border-color:var(--err,#f87171)}
 .wd-w{display:grid;grid-template-columns:1fr auto;gap:2px 8px;text-align:left;padding:8px 10px;border-radius:12px;cursor:pointer;min-height:var(--tap,32px);
   border:1px solid color-mix(in srgb,var(--txt) 10%,transparent);background:color-mix(in srgb,var(--bg) 60%,transparent);color:var(--txt);font:inherit}
 .wd-w small{grid-column:1/-1;color:var(--txt2);font-size:11px}

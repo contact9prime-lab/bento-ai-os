@@ -413,9 +413,12 @@ function worldMenuHTML(){
     <p class="wd-blurb">${esc(v.world.blurb||'')}</p>
     ${WORLD.why?`<p class="wd-why">${esc(WORLD.why)}</p>`:''}
     <div class="wd-h">Worlds</div>
-    <div class="wd-worlds">${list.map(w=>`<button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${esc(w.id)}')">
+    <div class="wd-worlds">${list.map(w=>`<div class="wd-wrow"><button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${esc(w.id)}')">
         <b>${esc(w.name)}</b><span>${esc(w.emotions.slice(0,6).map(e=>e.emoji).join(' '))}</span>
-        <small>${esc(w.ladder.join(' → '))}</small></button>`).join('')||'<small>loading…</small>'}</div>
+        <small>${esc(w.ladder.join(' → '))}</small></button>${w.builtin?'':
+        /* your own worlds are deleted from their row: at the bottom of a long menu the
+           button was below the fold, and reported as "I am not able to delete the world" */
+        `<button class="wd-wdel" title="Delete ${esc(w.name)}" aria-label="Delete ${esc(w.name)}" data-id="${esc(w.id)}" data-name="${esc(w.name)}" onclick="worldDelete(this.dataset.id,this.dataset.name)">✕</button>`}</div>`).join('')||'<small>loading…</small>'}</div>
     <div class="wd-h">Design this scene</div>
     <div class="wd-build"><textarea id="wd-look" rows="2" placeholder="A snowy night with blue lanterns and no boats…">${esc(WORLD.lookWords||'')}</textarea>
       <button class="endbtn" onclick="worldLook(this)">Design it</button></div>
@@ -454,9 +457,15 @@ async function worldReset(){
   if(!confirm('Reset '+WORLD.v.world.name+'? Every feeling, friendship and step of growth here goes back to the start.'))return;
   try{WORLD.v=await worldPost('/api/world/reset',{world:WORLD.id});WORLD.moods={};worldSync();toast('The world starts fresh')}catch(e){toast(e.message)}
 }
-async function worldDelete(){
-  if(!confirm('Delete '+WORLD.v.world.name+'? The world and everything that happened in it are removed.'))return;
-  try{await worldPost('/api/world/'+encodeURIComponent(WORLD.id),null,'DELETE');await worldGo('lantern-canal');toast('World deleted')}catch(e){toast(e.message)}
+async function worldDelete(id,name){
+  id=id||WORLD.id;name=name||(WORLD.v&&WORLD.v.world.name)||id;
+  if(!confirm('Delete '+name+'? The world and everything that happened in it are removed.'))return;
+  try{
+    await worldPost('/api/world/'+encodeURIComponent(id),null,'DELETE');
+    toast('Deleted '+name);
+    if(id===WORLD.id)await worldGo('lantern-canal');
+    else{await worldListLoad()}
+  }catch(e){toast(e.message)}
 }
 async function worldDesign(btn){
   const box=document.getElementById('wd-desc');const words=(box&&box.value||'').trim();

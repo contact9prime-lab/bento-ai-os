@@ -4318,6 +4318,10 @@ body.has-win #world-ui *{pointer-events:none!important}
 .wd-why{margin:6px 0;color:var(--txt2);font-size:12px}
 .wd-h{margin:12px 0 6px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--txt2)}
 .wd-worlds{display:grid;gap:6px}
+.wd-wrow{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:stretch}
+.wd-wdel{width:var(--tap,36px);min-height:var(--tap,32px);border-radius:12px;cursor:pointer;font:inherit;color:var(--txt2);
+  border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);background:color-mix(in srgb,var(--bg) 60%,transparent)}
+.wd-wdel:hover,.wd-wdel:focus-visible{color:var(--err,#f87171);border-color:var(--err,#f87171)}
 .wd-w{display:grid;grid-template-columns:1fr auto;gap:2px 8px;text-align:left;padding:8px 10px;border-radius:12px;cursor:pointer;min-height:var(--tap,32px);
   border:1px solid color-mix(in srgb,var(--txt) 10%,transparent);background:color-mix(in srgb,var(--bg) 60%,transparent);color:var(--txt);font:inherit}
 .wd-w small{grid-column:1/-1;color:var(--txt2);font-size:11px}
@@ -4469,6 +4473,15 @@ body.dev-mobile .mn-sum,body.dev-mobile .mn-sep{display:none}
 body.dev-mobile .mn-card{left:12px;right:12px;top:auto;bottom:96px;width:auto;max-height:50vh}
 body.dev-mobile .mn-name{font-size:11px;padding:2px 8px}
 body.dev-mobile .mn-say{top:100px;font-size:14px}
+
+/* Peace: only the mind. The pill shrinks to its one button in the corner, the panels,
+   names and card leave, and the prompt bar steps aside until summoned (Ctrl+Space). */
+#mind-ui.peace .mn-left,#mind-ui.peace .mn-right,#mind-ui.peace .mn-tags,#mind-ui.peace .mn-card{display:none!important}
+#mind-ui.peace .mn-top{left:auto;right:18px;transform:none;padding:4px;gap:0;opacity:.55;transition:opacity var(--d-base,.2s)}
+#mind-ui.peace .mn-top:hover,#mind-ui.peace .mn-top:focus-within{opacity:1}
+#mind-ui.peace .mn-top>:not(.mn-peace){display:none}
+body.mind-peace:not(.has-win) #omnibar:not(.summoned):not(.pop):not(:focus-within){opacity:0;pointer-events:none}
+.mn-peace[aria-pressed="true"]{background:rgba(124,140,255,.3)}
 </style>
 </head>
 <body>
@@ -6934,9 +6947,12 @@ function worldMenuHTML(){
     <p class="wd-blurb">${esc(v.world.blurb||'')}</p>
     ${WORLD.why?`<p class="wd-why">${esc(WORLD.why)}</p>`:''}
     <div class="wd-h">Worlds</div>
-    <div class="wd-worlds">${list.map(w=>`<button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${esc(w.id)}')">
+    <div class="wd-worlds">${list.map(w=>`<div class="wd-wrow"><button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${esc(w.id)}')">
         <b>${esc(w.name)}</b><span>${esc(w.emotions.slice(0,6).map(e=>e.emoji).join(' '))}</span>
-        <small>${esc(w.ladder.join(' → '))}</small></button>`).join('')||'<small>loading…</small>'}</div>
+        <small>${esc(w.ladder.join(' → '))}</small></button>${w.builtin?'':
+        /* your own worlds are deleted from their row: at the bottom of a long menu the
+           button was below the fold, and reported as "I am not able to delete the world" */
+        `<button class="wd-wdel" title="Delete ${esc(w.name)}" aria-label="Delete ${esc(w.name)}" data-id="${esc(w.id)}" data-name="${esc(w.name)}" onclick="worldDelete(this.dataset.id,this.dataset.name)">✕</button>`}</div>`).join('')||'<small>loading…</small>'}</div>
     <div class="wd-h">Design this scene</div>
     <div class="wd-build"><textarea id="wd-look" rows="2" placeholder="A snowy night with blue lanterns and no boats…">${esc(WORLD.lookWords||'')}</textarea>
       <button class="endbtn" onclick="worldLook(this)">Design it</button></div>
@@ -6975,9 +6991,15 @@ async function worldReset(){
   if(!confirm('Reset '+WORLD.v.world.name+'? Every feeling, friendship and step of growth here goes back to the start.'))return;
   try{WORLD.v=await worldPost('/api/world/reset',{world:WORLD.id});WORLD.moods={};worldSync();toast('The world starts fresh')}catch(e){toast(e.message)}
 }
-async function worldDelete(){
-  if(!confirm('Delete '+WORLD.v.world.name+'? The world and everything that happened in it are removed.'))return;
-  try{await worldPost('/api/world/'+encodeURIComponent(WORLD.id),null,'DELETE');await worldGo('lantern-canal');toast('World deleted')}catch(e){toast(e.message)}
+async function worldDelete(id,name){
+  id=id||WORLD.id;name=name||(WORLD.v&&WORLD.v.world.name)||id;
+  if(!confirm('Delete '+name+'? The world and everything that happened in it are removed.'))return;
+  try{
+    await worldPost('/api/world/'+encodeURIComponent(id),null,'DELETE');
+    toast('Deleted '+name);
+    if(id===WORLD.id)await worldGo('lantern-canal');
+    else{await worldListLoad()}
+  }catch(e){toast(e.message)}
 }
 async function worldDesign(btn){
   const box=document.getElementById('wd-desc');const words=(box&&box.value||'').trim();
@@ -7815,7 +7837,7 @@ var WORLD_KITS={
    snapshot: the hubs, their counts and the spoken summary. The drawing itself has no
    terminal form. */
 var MIND={on:false,snap:null,host:null,ui:null,cv:null,ctx:null,raf:0,last:0,fetchT:0,pollT:0,snooze:0,
-  still:false,W:0,H:0,dpr:1,energy:.25,sparks:[],flare:{},layout:null,sprites:{},bg:null,ms:0,open:'',telling:false,t0:0};
+  still:false,peace:mindPeaceStored(),W:0,H:0,dpr:1,energy:.25,sparks:[],flare:{},layout:null,sprites:{},bg:null,ms:0,open:'',telling:false,t0:0};
 
 function mindStart(){
   if(MIND.on)return;
@@ -7835,8 +7857,24 @@ function mindStart(){
     '<div class="mn-left"></div><div class="mn-right"></div><div class="mn-card" hidden></div>';
   addEventListener('resize',mindResize);
   document.addEventListener('visibilitychange',mindKick);
+  mindPeaceApply();
   mindResize();
   mindFetch();
+}
+/* Peace: only the mind. Asked for as "too much is happening on the screen; it can just be
+   simple and show the mind". The panels, the names, the card and the prompt bar step
+   aside (Ctrl+Space still brings the bar), and one quiet button brings them back.
+   Remembered by this browser, like the scene. */
+function mindPeaceStored(){try{return localStorage.getItem('mind.peace')==='1'}catch(e){return false}}
+function mindPeaceApply(){
+  if(MIND.ui)MIND.ui.classList.toggle('peace',!!MIND.peace);
+  document.body.classList.toggle('mind-peace',!!MIND.peace&&MIND.on);
+}
+function mindPeace(on){
+  MIND.peace=typeof on==='boolean'?on:!MIND.peace;
+  try{localStorage.setItem('mind.peace',MIND.peace?'1':'0')}catch(e){}
+  if(MIND.peace&&MIND.open){MIND.open='';const c=MIND.ui&&MIND.ui.querySelector('.mn-card');if(c)c.hidden=true;MIND.ui.classList.remove('carded')}
+  mindPeaceApply();mindPaintUI();mindLayout();mindKick();
 }
 function mindStop(){
   if(!MIND.on)return;
@@ -7846,6 +7884,7 @@ function mindStop(){
   removeEventListener('resize',mindResize);
   document.removeEventListener('visibilitychange',mindKick);
   if(MIND.telling&&typeof speechStop==='function')speechStop();
+  document.body.classList.remove('mind-peace');
   if(MIND.host)MIND.host.remove();if(MIND.ui)MIND.ui.remove();
   MIND.host=MIND.ui=MIND.cv=MIND.ctx=null;MIND.snap=null;MIND.sparks=[];MIND.layout=null;MIND.bg=null;MIND.open='';MIND.telling=false;
 }
@@ -7881,10 +7920,11 @@ function mindLayout(){
   // the ring fits between what is already on the screen: the prompt bar above, the dock
   // below and the two side panels, measured rather than assumed (a phone has no panels)
   const rect=id=>{const e=document.getElementById(id);if(!e)return null;const r=e.getBoundingClientRect();return r.width&&r.height?r:null};
-  const bar=rect('omnibar'),dock=rect('dock');
+  // in Peace the panels and the bar step aside, so the ring takes the room they left
+  const bar=MIND.peace?null:rect('omnibar'),dock=rect('dock');
   const top=Math.max(phone?150:130,bar&&bar.bottom<H*.5?bar.bottom+48:0);
   const bottom=Math.min(H-(phone?80:100),dock&&dock.top>H*.5?dock.top-(phone?20:34):H);
-  const side=phone?18:W>=1000?272:24;
+  const side=phone?18:MIND.peace?60:W>=1000?272:24;
   const cx=W/2,cy=(top+bottom)/2;
   const rx=Math.max(90,Math.min(560,(W-2*side)/2-(phone?46:70))),ry=Math.max(70,(bottom-top)/2-(phone?34:48));
   const hubs={},order=S.hubs;
@@ -7985,8 +8025,9 @@ function mindDraw(t,state){
   hubs.forEach(H=>{
     const n=H.nodes.length,hue=H.h.hue,fl=MIND.flare[H.h.id]||0;
     const busy=H.h.busy?(.5+.5*Math.sin(t/420)):0;
-    const alpha=Math.min(.5,(n>80?.07:n>30?.09:.12)+busy*.12+fl*.35);
-    g.strokeStyle=`hsla(${hue},95%,62%,${alpha})`;g.lineWidth=n>80?.7:1;
+    // bright enough to read with a hundred memories (a screenshot of 83 showed a haze)
+    const alpha=Math.min(.55,(n>80?.12:n>30?.15:.2)+busy*.12+fl*.35);
+    g.strokeStyle=`hsla(${hue},95%,62%,${alpha})`;g.lineWidth=n>80?.85:1;
     g.beginPath();
     const nx=-(H.y-cy),ny=H.x-cx,nl=Math.hypot(nx,ny)||1;
     // with nothing in it yet, a cluster is still wired to the core by one strand
@@ -8006,6 +8047,17 @@ function mindDraw(t,state){
   g.strokeStyle='hsla(276,90%,72%,.28)';g.lineWidth=.8;g.beginPath();
   S.links.forEach(k=>{if(k.kind!=='fact')return;const a=at[k.a],b=at[k.b];if(a&&b){g.moveTo(a.x,a.y);g.lineTo(b.x,b.y)}});
   g.stroke();
+  // a memory or a run that names something in the graph, joined to it across the clusters
+  // (mind._mentions); one path per source cluster, bowed toward the core
+  const byHue={};
+  S.links.forEach(k=>{if(k.kind!=='mention')return;const a=at[k.a],b=at[k.b];if(!a||!b)return;
+    (byHue[a.H.h.hue]=byHue[a.H.h.hue]||[]).push([a,b])});
+  g.lineWidth=.9;
+  Object.keys(byHue).forEach(hue=>{
+    g.strokeStyle=`hsla(${hue},85%,72%,.26)`;g.beginPath();
+    byHue[hue].forEach(([a,b])=>{const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+      g.moveTo(a.x,a.y);g.quadraticCurveTo(mx+(cx-mx)*.4,my+(cy-my)*.4,b.x,b.y)});
+    g.stroke()});
   g.strokeStyle='hsla(36,95%,64%,.32)';g.lineWidth=1;g.beginPath();
   S.links.forEach(k=>{if(k.kind!=='roster')return;const a=at[k.a],B=L.hubs[k.b];
     if(a&&B){g.moveTo(a.x,a.y);g.quadraticCurveTo((a.x+B.x)/2+(cx-(a.x+B.x)/2)*.35,(a.y+B.y)/2+(cy-(a.y+B.y)/2)*.35,B.x,B.y)}});
@@ -8125,7 +8177,8 @@ function mindPaintUI(){
     `<span class="mn-dot"></span><b class="mn-state">Quiet</b><span class="mn-sep">·</span>`+
     `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}</span>`+
     `<button class="mn-btn" onclick="mindTell()">Tell me</button>`+
-    `<button class="mn-btn" onclick="mindTalk()" aria-label="Talk to ${esc(S.lead)}">🎙 Talk</button>`;
+    `<button class="mn-btn" onclick="mindTalk()" aria-label="Talk to ${esc(S.lead)}">🎙 Talk</button>`+
+    `<button class="mn-btn mn-peace" onclick="mindPeace()" aria-pressed="${MIND.peace?'true':'false'}" title="${MIND.peace?'Show the panels':'Peace: only the mind'}">${MIND.peace?'Show all':'Peace'}</button>`;
   MIND.ui.querySelector('.mn-state').dataset.s='';
   const row=(label,val,sub)=>`<div class="mn-row"><span>${label}</span><b>${val}</b>${sub?`<i>${sub}</i>`:''}</div>`;
   const need=(+b.needs_you||0)+(+b.decide||0);
@@ -11541,10 +11594,18 @@ function deckGesture(dy,now){
   deckFull(true,up?'apps':'widgets');
   return true;
 }
+/* The wheel on the bare desktop is OFF unless switched on (Automations → Hot corners).
+   Reported as "the scroll is really sensitive to the widgets and apps, it should come from
+   the hot corners": a trackpad's lightest touch added up to the 90px and flipped the whole
+   screen. The corners open both faces by default; a finger on a phone still swipes (a
+   phone has no corners to rest a pointer in). Out of an open face, a push past the end
+   still goes back to the desktop, because there it is the only way the wheel can mean it. */
+function deckScrollOn(){try{return localStorage.getItem('deck.scroll')==='1'}catch(e){return false}}
 addEventListener('wheel',e=>{
   if(e.ctrlKey||e.metaKey||e.altKey)return;                 // zoom, not a scroll
   const zone=deckWheelZone(e.target);
   if(!zone)return;
+  if(zone==='wall'&&!DECKFULL&&!deckScrollOn())return;
   const now=performance.now();
   if(now<DGEST.cool)return;
   const dy=deckWheelPx(e);
@@ -12105,13 +12166,18 @@ function voiceClean(text,n){
    browser is audio from /api/speech/say, fetched as soon as a line is queued so the
    next one is ready when this one ends, and played strictly in order. A line the
    server cannot say is said by the browser instead, and the reason is said once. */
-var SPEECH={engine:'browser',loaded:false,warned:false,gen:0,audio:null,chain:Promise.resolve()};
+var SPEECH={engine:'browser',loaded:false,warned:false,gen:0,audio:null,chain:Promise.resolve(),pending:0};
+/* Engines whose audio plays while it is made (speech.STREAMING). With "Speak as it
+   answers" on, a line goes through /api/speech/line (the provider's stream, opened and
+   checked) and /api/speech/stream/<id>, which the <audio> element plays from the first
+   bytes. Off, or on any other engine, it is the whole file from /api/speech/say. */
+var SPEECH_STREAMS=['elevenlabs','openai'];
 async function speechLoad(){
   try{const d=await (await fetch('/api/speech')).json();SPEECH.engine=(d.config||{}).engine||'browser'}catch(e){}
   SPEECH.loaded=true;
 }
 function speechStop(){
-  SPEECH.gen++;SPEECH.chain=Promise.resolve();
+  SPEECH.gen++;SPEECH.chain=Promise.resolve();SPEECH.pending=0;
   try{SPEECH.audio&&SPEECH.audio.pause()}catch(e){}
   try{window.speechSynthesis&&speechSynthesis.cancel()}catch(e){}
 }
@@ -12131,12 +12197,25 @@ function speakAs(name,text,done){
   const clean=voiceClean(text);
   if(!clean){if(done)done();return}
   if(!SPEECH.loaded){speechLoad().then(()=>speakAs(name,text,done));return}
-  if(SPEECH.engine==='browser'){browserSay(name,clean).then(()=>{if(done)done()});return}
+  SPEECH.pending++;
+  const settle=()=>{SPEECH.pending=Math.max(0,SPEECH.pending-1)};
+  if(SPEECH.engine==='browser'){
+    // queued behind whatever is still being said, like every other engine
+    const g0=SPEECH.gen;
+    SPEECH.chain=SPEECH.chain.then(()=>g0!==SPEECH.gen?null:browserSay(name,clean))
+      .then(()=>{settle();if(done&&g0===SPEECH.gen)done()});
+    return;
+  }
   const gen=SPEECH.gen,lead=!name||name==='@agent'||name===agentName();
-  const got=fetch('/api/speech/say',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text:clean,agent:lead?'':name,lead})})
-    .then(async r=>{if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'the voice engine did not answer');
-      return URL.createObjectURL(await r.blob())});
+  const live=VOICE.live!==false&&SPEECH_STREAMS.indexOf(SPEECH.engine)>=0;
+  const fail=async r=>{throw new Error((await r.json().catch(()=>({}))).error||'the voice engine did not answer')};
+  const got=(live
+    ?fetch('/api/speech/line',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({text:clean,agent:lead?'':name,lead,fast:true})})
+      .then(async r=>{if(!r.ok)await fail(r);return '/api/speech/stream/'+encodeURIComponent((await r.json()).id)})
+    :fetch('/api/speech/say',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({text:clean,agent:lead?'':name,lead})})
+      .then(async r=>{if(!r.ok)await fail(r);return URL.createObjectURL(await r.blob())}));
   got.catch(()=>{});
   SPEECH.chain=SPEECH.chain.then(()=>gen!==SPEECH.gen?null:got.then(url=>new Promise(res=>{
       if(gen!==SPEECH.gen){URL.revokeObjectURL(url);return res()}
@@ -12147,7 +12226,74 @@ function speakAs(name,text,done){
     })).catch(e=>{
       if(!SPEECH.warned){SPEECH.warned=true;toast('Voice: '+e.message+' Using this browser’s voice instead.')}
       return browserSay(name,clean);
-    })).then(()=>{if(done&&gen===SPEECH.gen)done()});
+    })).then(()=>{settle();if(done&&gen===SPEECH.gen)done()});
+}
+/* ---- Speaking as it answers ----
+   With "Speak as it answers" on (VOICE.live, on unless switched off) a reply is said a
+   sentence at a time as the socket delivers it, instead of all at once after the turn.
+   And while the turn is busy with something slow (a search, a page, a colleague), the
+   lead says what it is doing, so a person who asked out loud is not left in silence.
+   Every word of that comes from a real event: the reply's own text, or a tool that
+   actually started. Nothing is said for a tool not in SPEECH_TOOL_WORDS. */
+var SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};
+var SPEECH_TOOL_WORDS={fetch_url:'Reading that page.',WebFetch:'Reading that page.',
+  WebSearch:'Searching the web.',search_docs:'Checking the docs.',search_files:'Looking through your files.',
+  Grep:'Looking through your files.',Glob:'Looking through your files.',recall:'Checking what I remember.',
+  kg_query:'Checking what I know.',mail_search:'Looking through your mail.',mail_read:'Reading that message.',
+  calendar_events:'Checking your calendar.',run_command:'Running that now.',Bash:'Running that now.',
+  delegate:'Handing this to {agent}.',ask_agent:'Asking {agent}.',huddle:'Getting the team together.'};
+function speechLiveOk(){return VOICE.live!==false&&!!(VOICE.tts||(JARVIS.on&&JARVIS.busy))}
+function speechLiveFor(cid){if(SPEECH_LIVE.cid!==cid)SPEECH_LIVE={cid,said:0,on:false,lastAt:0};return SPEECH_LIVE}
+/* The part of a reply that can be said: a finished code block reads as "code block", and
+   an unfinished one waits for its fence to close. */
+function speechLiveText(t){
+  const s=String(t||'').replace(/```[\s\S]*?```/g,' code block. ');
+  const open=s.indexOf('```');
+  return open>=0?s.slice(0,open):s;
+}
+function speechLiveStart(L){
+  if(L.on)return;
+  L.on=true;
+  // a new reply replaces one still being read, as it always has outside Jarvis
+  if(!JARVIS.on)speechStop();
+}
+function speechLiveFeed(cid,full){
+  if(!speechLiveOk())return;
+  const L=speechLiveFor(cid),rest=speechLiveText(full).slice(L.said);
+  let end=-1,m;const re=/[.!?…](?=["')\]]?\s)|\n/g;
+  while((m=re.exec(rest)))end=m.index+m[0].length;
+  if(end<0)return;
+  const chunk=rest.slice(0,end);
+  // a sentence short enough to be "OK." waits for company, unless a line break ends it
+  if(chunk.replace(/\s+/g,' ').trim().length<24&&chunk.indexOf('\n')<0)return;
+  L.said+=end;
+  if(!chunk.trim())return;
+  speechLiveStart(L);L.lastAt=Date.now();
+  speakAs('@agent',chunk);
+}
+/* The end of a turn: what is left of the reply, then `done` once everything queued has
+   been said. False when this turn was not being spoken live (the caller speaks it whole). */
+function speechLiveEnd(cid,full,done){
+  const L=SPEECH_LIVE;
+  if(L.cid!==cid||!L.on){SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};return false}
+  const rest=speechLiveText(full).slice(L.said);
+  SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};
+  if(rest.trim())speakAs('@agent',rest);
+  const g=SPEECH.gen;
+  SPEECH.chain.then(()=>{if(done&&g===SPEECH.gen)done()});
+  return true;
+}
+function speechLiveTool(cid,ev){
+  if(!speechLiveOk()||!ev||ev.pending_approval)return;
+  let w=SPEECH_TOOL_WORDS[ev.name];if(!w)return;
+  const L=speechLiveFor(cid);
+  // one line at a time, and not more than one every eight seconds
+  if(SPEECH.pending>0||Date.now()-L.lastAt<8000)return;
+  const a=ev.args||{};
+  w=w.replace('{agent}',String(a.agent||a.to||'a colleague').replace(/@.*$/,''));
+  if(ev.name==='WebSearch'&&a.query&&String(a.query).length<70)w='Searching for '+a.query+'.';
+  speechLiveStart(L);L.lastAt=Date.now();
+  speakAs('@agent',w);
 }
 /* Speech has no "@". Said out loud, "at researcher, at writer, should we…" comes back as
    words, so the names a spoken request OPENS with become the addresses the chat reads
@@ -12740,6 +12886,7 @@ function handle(ev){
       if(_sk&&_sk.delta)_sk.delta(ev.text,_s?_s.text:'');
       if(!_cur)break;
       curText+=ev.text;
+      if(typeof speechLiveFeed==='function')speechLiveFeed(_cid,curText);   // said a sentence at a time
       WORK_MSG='';removeWorking(); // real text is flowing now — drop the "working" placeholder
       if(JARVIS.busy){const r=$('#j-reply');if(r){r.textContent=curText;r.scrollTop=r.scrollHeight}}
       if(!curBody)startAssistant();
@@ -12754,6 +12901,7 @@ function handle(ev){
       curThink.textContent+=ev.text; curThink.scrollTop=curThink.scrollHeight; scrollDown(); break;}
     case 'tool_start':{
       if(typeof movementPulse==='function')movementPulse('tool',ev.name,ev);   // a tick on the dial (Movement scene)
+      if(_cur&&typeof speechLiveTool==='function')speechLiveTool(_cid,ev);    // "Reading that page."
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
       // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
@@ -12869,8 +13017,10 @@ function handle(ev){
       if(!_cur){aiBubble();loadConvs();break}
       removeWorking();const reply=curText;
       if(curBody&&typeof fileChips==='function')fileChips(curBody);   // a file it named: Open / Download
-      if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}
-      else speak(reply);
+      // spoken as it arrived (speechLiveEnd says the rest), or whole, as before
+      if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;
+        if(!speechLiveEnd(_cid,reply,()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')}))jarvisSpeakAndListen(reply);}
+      else if(!speechLiveEnd(_cid,reply))speak(reply);
       setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}
     case 'queue_update':{
       if(ev.queue&&ev.queue.length)QUEUES[_cid]=ev.queue; else delete QUEUES[_cid];
@@ -14342,6 +14492,10 @@ function setTab(body,all){
         {desc:'Hear huddles and free talk, with a different voice for each agent.',
          more:'Works with voice on, or in Jarvis mode. Voices come from this device, so a device with few voices tells them apart by pitch.',
          f:'voice agents each own voice huddle free talk jarvis multiple speakers'}),
+      pRow('Speak as it answers',pSwitch('v-live',VOICE.live!==false),
+        {desc:'Starts talking at the first sentence instead of waiting for the whole reply.',
+         more:'With ElevenLabs or OpenAI the sound plays while it is being made. While your lead searches or reads something, it says what it is doing.',
+         f:'realtime real time live streaming tts speak as it answers low latency socket engaged'}),
       pRow('Speech rate',pText('v-rate',VOICE.rate||1,'','number'),{f:'speech rate'}),
       pRow('Mic language',pText('v-lang',VOICE.lang||'en-IN','en-IN, en-US, hi-IN…'),{desc:'The language dictation listens for.',f:'mic language dictation'}),
     ],{f:'voice tts speech microphone'}));
@@ -14713,6 +14867,7 @@ async function saveSettings(){
     VOICE.tts=on('v-tts');VOICE.voice=val('v-voice')||'';
     VOICE.rate=+val('v-rate')||1;VOICE.lang=(val('v-lang')||'').trim()||'en-IN';
     if(el('v-agents'))VOICE.agents=on('v-agents');
+    if(el('v-live'))VOICE.live=on('v-live');
     saveVoice();
   }
   const patch={};
@@ -16721,7 +16876,8 @@ function speechKey(){
 async function speechTry(btn){
   btn.disabled=true;
   if(typeof speechStop==='function')speechStop();
-  if(typeof SPEECH!=='undefined')SPEECH.loaded=false;
+  // Try it always says why when the engine refuses, even if a toast already did once
+  if(typeof SPEECH!=='undefined'){SPEECH.loaded=false;SPEECH.warned=false}
   let names=[];
   try{names=((await (await fetch('/api/subagents')).json()).subagents||[]).map(s=>s.name).slice(0,2)}catch(e){}
   speakAs('@agent','Hi, I’m '+agentName()+'. This is how I sound.');
@@ -20695,7 +20851,9 @@ function autoRunDraft(){autoKeepFields();runAutomation({name:AUTO_DRAFT.name||'d
    automations — which is the point: a corner is the fastest trigger a saved
    routine can have. Config is per-machine (localStorage), like the deck. */
 
-const HC_DEFAULTS={tl:'expose',tr:'control',bl:'deck',br:'showdesktop'};
+/* Apps bottom left and widgets bottom right: the corners are where both faces of the
+   wall come from now that the desktop's scroll gesture is off by default (06a-deck.js). */
+const HC_DEFAULTS={tl:'expose',tr:'control',bl:'deck.all',br:'deck.widgets'};
 const HC_CORNERS=[['tl','Top left'],['tr','Top right'],['bl','Bottom left'],['br','Bottom right']];
 const HC_SIZE=10;        // px of the square trigger zone in the very corner
 let HOTCORNERS={...HC_DEFAULTS,enabled:true,delay:240};
@@ -20832,6 +20990,9 @@ function hcCardHTML(){
       <span class="mut" id="hc-delayn" style="flex:0 0 54px;text-align:right">${HOTCORNERS.delay}ms</span>
       <button class="endbtn" onclick="hcReset()">Reset</button>
     </div>
+    <label class="hc-on" style="margin-top:12px;display:flex;gap:8px;align-items:center;min-height:var(--tap,32px)">
+      <input type="checkbox" id="hc-scroll"${typeof deckScrollOn==='function'&&deckScrollOn()?' checked':''}>
+      <span>Scrolling on the empty desktop also opens apps (up) and widgets (down)</span></label>
   </div>`;
 }
 function hcBind(root){
@@ -20840,6 +21001,9 @@ function hcBind(root){
   });
   const en=root.querySelector('#hc-en');
   if(en)en.onchange=()=>{HOTCORNERS.enabled=en.checked;hcSave();hcCancel()};
+  const sc=root.querySelector('#hc-scroll');
+  if(sc)sc.onchange=()=>{try{localStorage.setItem('deck.scroll',sc.checked?'1':'0')}catch(e){}
+    toast(sc.checked?'Scrolling the desktop opens apps and widgets':'Apps and widgets open from the hot corners')};
   const d=root.querySelector('#hc-delay');
   if(d)d.oninput=()=>{HOTCORNERS.delay=+d.value;root.querySelector('#hc-delayn').textContent=d.value+'ms';hcSave()};
 }

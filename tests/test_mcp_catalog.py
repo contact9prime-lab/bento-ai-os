@@ -84,8 +84,12 @@ def test_search_local_respects_the_limit_with_curated_merged(monkeypatch):
 async def test_lookup_resolves_curated_without_the_network():
     # No monkeypatching of httpx: if this reached the network the test would hang,
     # which is the assertion.
-    cand = await mcp_store.lookup("com.higgsfield/higgsfield") \
-        or await mcp_store.lookup("higgsfield")
+    # The catalogue's own registry name. It said "com.higgsfield/…", which is not in the
+    # catalogue, so the first lookup fell through to the public registry: instant where the
+    # network is blocked, a 40s ReadTimeout on CI when the registry was slow.
+    cand = await mcp_store.lookup("ai.higgsfield/higgsfield")
+    assert cand and cand["remote_url"].startswith("https://mcp.higgsfield.ai")
+    cand = await mcp_store.lookup("higgsfield")                  # and by its short key
     assert cand and cand["remote_url"].startswith("https://mcp.higgsfield.ai")
 
 

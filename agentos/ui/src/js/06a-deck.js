@@ -609,10 +609,18 @@ function deckGesture(dy,now){
   deckFull(true,up?'apps':'widgets');
   return true;
 }
+/* The wheel on the bare desktop is OFF unless switched on (Automations → Hot corners).
+   Reported as "the scroll is really sensitive to the widgets and apps, it should come from
+   the hot corners": a trackpad's lightest touch added up to the 90px and flipped the whole
+   screen. The corners open both faces by default; a finger on a phone still swipes (a
+   phone has no corners to rest a pointer in). Out of an open face, a push past the end
+   still goes back to the desktop, because there it is the only way the wheel can mean it. */
+function deckScrollOn(){try{return localStorage.getItem('deck.scroll')==='1'}catch(e){return false}}
 addEventListener('wheel',e=>{
   if(e.ctrlKey||e.metaKey||e.altKey)return;                 // zoom, not a scroll
   const zone=deckWheelZone(e.target);
   if(!zone)return;
+  if(zone==='wall'&&!DECKFULL&&!deckScrollOn())return;
   const now=performance.now();
   if(now<DGEST.cool)return;
   const dy=deckWheelPx(e);

@@ -36,6 +36,14 @@ Over each head floats a mood crystal. Its colour says how the feeling sits, from
 Feelings fade: each one halves every fifteen minutes. A run that finished after a
 refusal isn't a proud one, so its pride is muted.
 
+**Your lead is not proud of every reply.** It used to be: every chat answer counted as
+a finished task, and a lead you talk to all day sat in Proud, hopping. Now a plain answer
+is just conversation. A reply that actually did something (searched, read, ran a tool)
+is a small success that can lift pride only part way, and the same everyday thing
+(starting work, finishing, helping) counts for less each time it happens again within
+half an hour. A specialist's real task, a vote won and your pat on the back still count
+in full, and growth still counts every piece of work.
+
 While an agent works, it goes to work in the world: out on a boat in the canal, off in a
 shuttle over the moon base, or into the flower beds in the garden.
 
@@ -71,6 +79,9 @@ in, its feelings (each with an emoji, how it shows and what triggers it), its gr
 ladder and how your lead asks after you. Anything outside those sets is left out and
 named. With no brain answering, you get the closest built-in world under your name, and it
 says so.
+
+Each of your own worlds has a **✕** on its row in the menu to delete it. You don't need to
+be in it.
 
 ![A world built from "a night bakery where the bread rises at 3am": The Proving Hour, drawn in the garden setting, with feelings like Vigil, Rising and Warmth](screenshots/world-built.png)
 
