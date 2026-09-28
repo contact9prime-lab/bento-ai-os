@@ -397,6 +397,10 @@ function setTab(body,all){
         {desc:'Hear huddles and free talk, with a different voice for each agent.',
          more:'Works with voice on, or in Jarvis mode. Voices come from this device, so a device with few voices tells them apart by pitch.',
          f:'voice agents each own voice huddle free talk jarvis multiple speakers'}),
+      pRow('Speak as it answers',pSwitch('v-live',VOICE.live!==false),
+        {desc:'Starts talking at the first sentence instead of waiting for the whole reply.',
+         more:'With ElevenLabs or OpenAI the sound plays while it is being made. While your lead searches or reads something, it says what it is doing.',
+         f:'realtime real time live streaming tts speak as it answers low latency socket engaged'}),
       pRow('Speech rate',pText('v-rate',VOICE.rate||1,'','number'),{f:'speech rate'}),
       pRow('Mic language',pText('v-lang',VOICE.lang||'en-IN','en-IN, en-US, hi-IN…'),{desc:'The language dictation listens for.',f:'mic language dictation'}),
     ],{f:'voice tts speech microphone'}));
@@ -768,6 +772,7 @@ async function saveSettings(){
     VOICE.tts=on('v-tts');VOICE.voice=val('v-voice')||'';
     VOICE.rate=+val('v-rate')||1;VOICE.lang=(val('v-lang')||'').trim()||'en-IN';
     if(el('v-agents'))VOICE.agents=on('v-agents');
+    if(el('v-live'))VOICE.live=on('v-live');
     saveVoice();
   }
   const patch={};

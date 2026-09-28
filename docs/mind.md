@@ -24,6 +24,10 @@ This is that, built from what your machine actually holds.
     red.
 - **Every strand is a real connection.** One thing the core holds, drawn as a small bundle
   so the picture reads at a glance.
+- **Lines between the clusters.** A memory or a run that names a person, place or topic in
+  the knowledge graph is joined to it, so you can see what it remembers about the things it
+  knows, and which work touched them. Names are matched as whole words, and names under
+  three letters are left out because they would match everything.
 - **A bright arc between two specialists** means they talked this week (one asked the
   other, a huddle or a free talk). It is thicker the more they did.
 - **A spark only means something ran.** When your lead remembers something, a spark runs
@@ -48,6 +52,14 @@ connected entities, the missions and whether each is on, or a specialist's skill
 colleagues it talked with and its recent runs, with a button into the app that holds them.
 
 ![A card for Knowledge: twenty people, places and topics, the most connected ones listed with how many facts each has, and Open Knowledge](screenshots/mind-card.png)
+
+## Peace
+
+**Peace** in the pill takes everything else away: the panels, the names, the card and the
+prompt bar, leaving only the mind and one quiet **Show all** button in the corner. Ctrl+Space
+still brings up the prompt bar. The browser remembers it.
+
+![Peace: only the mind on screen, with a Show all button in the corner](screenshots/mind-peace.png)
 
 ## Talking to it
 

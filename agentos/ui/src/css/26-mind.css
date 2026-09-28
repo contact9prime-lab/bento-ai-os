@@ -97,3 +97,12 @@ body.dev-mobile .mn-sum,body.dev-mobile .mn-sep{display:none}
 body.dev-mobile .mn-card{left:12px;right:12px;top:auto;bottom:96px;width:auto;max-height:50vh}
 body.dev-mobile .mn-name{font-size:11px;padding:2px 8px}
 body.dev-mobile .mn-say{top:100px;font-size:14px}
+
+/* Peace: only the mind. The pill shrinks to its one button in the corner, the panels,
+   names and card leave, and the prompt bar steps aside until summoned (Ctrl+Space). */
+#mind-ui.peace .mn-left,#mind-ui.peace .mn-right,#mind-ui.peace .mn-tags,#mind-ui.peace .mn-card{display:none!important}
+#mind-ui.peace .mn-top{left:auto;right:18px;transform:none;padding:4px;gap:0;opacity:.55;transition:opacity var(--d-base,.2s)}
+#mind-ui.peace .mn-top:hover,#mind-ui.peace .mn-top:focus-within{opacity:1}
+#mind-ui.peace .mn-top>:not(.mn-peace){display:none}
+body.mind-peace:not(.has-win) #omnibar:not(.summoned):not(.pop):not(:focus-within){opacity:0;pointer-events:none}
+.mn-peace[aria-pressed="true"]{background:rgba(124,140,255,.3)}

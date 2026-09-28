@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.6.9 — 2026-09-28
+
+**ElevenLabs works.** It answered *400 Bad Request* because the lead's voice was one setting
+for every engine: a voice picked on OpenAI or on this computer was sent to ElevenLabs as a voice
+id. The voice now belongs to the engine it was picked on, a voice from elsewhere is never sent,
+a voice your account no longer has is swapped for one it lists, and a refusal reads as a
+sentence (out of credits, a key missing a permission, a key not accepted).
+
+**Speak as it answers.** Settings → Voice has a new switch, on by default. Your lead starts
+talking at the first sentence while the rest of the reply is still arriving over the socket. On
+ElevenLabs (the low-latency Flash model) and OpenAI the sound streams, so it plays while it is
+being made. While a search, a page or a colleague takes a while, your lead says what it is
+doing ("Reading that page.") so you are not left in silence.
+
+**The Mind: lines between the clusters, and Peace.** A memory or a run that names a person,
+place or topic in your knowledge graph is now joined to it, and the strands are bright enough
+to read with a hundred memories. **Peace** hides the panels, the names and the prompt bar and
+leaves only the mind.
+
+**A calmer lead in the World.** Every chat reply used to count as a finished task, so the lead
+was Proud and hopping all day. A plain answer is conversation now; a reply that did something
+is a small, capped success; and the same everyday event counts for less each time within half
+an hour. Your own worlds can be deleted from their row in the menu.
+
+**Apps and widgets come from the corners.** Scrolling the empty desktop no longer flips to All
+apps or Widgets (a trackpad's lightest touch did). The bottom-left corner opens All apps and
+the bottom-right opens Widgets; the scroll can be switched back on in Automations → Hot corners.
+
 ## 0.6.8 — 2026-09-28
 
 **Free talk: let your agents talk among themselves (experimental).** In Settings → Agents →

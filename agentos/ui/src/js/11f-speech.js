@@ -56,7 +56,8 @@ function speechKey(){
 async function speechTry(btn){
   btn.disabled=true;
   if(typeof speechStop==='function')speechStop();
-  if(typeof SPEECH!=='undefined')SPEECH.loaded=false;
+  // Try it always says why when the engine refuses, even if a toast already did once
+  if(typeof SPEECH!=='undefined'){SPEECH.loaded=false;SPEECH.warned=false}
   let names=[];
   try{names=((await (await fetch('/api/subagents')).json()).subagents||[]).map(s=>s.name).slice(0,2)}catch(e){}
   speakAs('@agent','Hi, I’m '+agentName()+'. This is how I sound.');

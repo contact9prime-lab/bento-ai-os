@@ -24,7 +24,7 @@
    snapshot: the hubs, their counts and the spoken summary. The drawing itself has no
    terminal form. */
 var MIND={on:false,snap:null,host:null,ui:null,cv:null,ctx:null,raf:0,last:0,fetchT:0,pollT:0,snooze:0,
-  still:false,W:0,H:0,dpr:1,energy:.25,sparks:[],flare:{},layout:null,sprites:{},bg:null,ms:0,open:'',telling:false,t0:0};
+  still:false,peace:mindPeaceStored(),W:0,H:0,dpr:1,energy:.25,sparks:[],flare:{},layout:null,sprites:{},bg:null,ms:0,open:'',telling:false,t0:0};
 
 function mindStart(){
   if(MIND.on)return;
@@ -44,8 +44,24 @@ function mindStart(){
     '<div class="mn-left"></div><div class="mn-right"></div><div class="mn-card" hidden></div>';
   addEventListener('resize',mindResize);
   document.addEventListener('visibilitychange',mindKick);
+  mindPeaceApply();
   mindResize();
   mindFetch();
+}
+/* Peace: only the mind. Asked for as "too much is happening on the screen; it can just be
+   simple and show the mind". The panels, the names, the card and the prompt bar step
+   aside (Ctrl+Space still brings the bar), and one quiet button brings them back.
+   Remembered by this browser, like the scene. */
+function mindPeaceStored(){try{return localStorage.getItem('mind.peace')==='1'}catch(e){return false}}
+function mindPeaceApply(){
+  if(MIND.ui)MIND.ui.classList.toggle('peace',!!MIND.peace);
+  document.body.classList.toggle('mind-peace',!!MIND.peace&&MIND.on);
+}
+function mindPeace(on){
+  MIND.peace=typeof on==='boolean'?on:!MIND.peace;
+  try{localStorage.setItem('mind.peace',MIND.peace?'1':'0')}catch(e){}
+  if(MIND.peace&&MIND.open){MIND.open='';const c=MIND.ui&&MIND.ui.querySelector('.mn-card');if(c)c.hidden=true;MIND.ui.classList.remove('carded')}
+  mindPeaceApply();mindPaintUI();mindLayout();mindKick();
 }
 function mindStop(){
   if(!MIND.on)return;
@@ -55,6 +71,7 @@ function mindStop(){
   removeEventListener('resize',mindResize);
   document.removeEventListener('visibilitychange',mindKick);
   if(MIND.telling&&typeof speechStop==='function')speechStop();
+  document.body.classList.remove('mind-peace');
   if(MIND.host)MIND.host.remove();if(MIND.ui)MIND.ui.remove();
   MIND.host=MIND.ui=MIND.cv=MIND.ctx=null;MIND.snap=null;MIND.sparks=[];MIND.layout=null;MIND.bg=null;MIND.open='';MIND.telling=false;
 }
@@ -90,10 +107,11 @@ function mindLayout(){
   // the ring fits between what is already on the screen: the prompt bar above, the dock
   // below and the two side panels, measured rather than assumed (a phone has no panels)
   const rect=id=>{const e=document.getElementById(id);if(!e)return null;const r=e.getBoundingClientRect();return r.width&&r.height?r:null};
-  const bar=rect('omnibar'),dock=rect('dock');
+  // in Peace the panels and the bar step aside, so the ring takes the room they left
+  const bar=MIND.peace?null:rect('omnibar'),dock=rect('dock');
   const top=Math.max(phone?150:130,bar&&bar.bottom<H*.5?bar.bottom+48:0);
   const bottom=Math.min(H-(phone?80:100),dock&&dock.top>H*.5?dock.top-(phone?20:34):H);
-  const side=phone?18:W>=1000?272:24;
+  const side=phone?18:MIND.peace?60:W>=1000?272:24;
   const cx=W/2,cy=(top+bottom)/2;
   const rx=Math.max(90,Math.min(560,(W-2*side)/2-(phone?46:70))),ry=Math.max(70,(bottom-top)/2-(phone?34:48));
   const hubs={},order=S.hubs;
@@ -194,8 +212,9 @@ function mindDraw(t,state){
   hubs.forEach(H=>{
     const n=H.nodes.length,hue=H.h.hue,fl=MIND.flare[H.h.id]||0;
     const busy=H.h.busy?(.5+.5*Math.sin(t/420)):0;
-    const alpha=Math.min(.5,(n>80?.07:n>30?.09:.12)+busy*.12+fl*.35);
-    g.strokeStyle=`hsla(${hue},95%,62%,${alpha})`;g.lineWidth=n>80?.7:1;
+    // bright enough to read with a hundred memories (a screenshot of 83 showed a haze)
+    const alpha=Math.min(.55,(n>80?.12:n>30?.15:.2)+busy*.12+fl*.35);
+    g.strokeStyle=`hsla(${hue},95%,62%,${alpha})`;g.lineWidth=n>80?.85:1;
     g.beginPath();
     const nx=-(H.y-cy),ny=H.x-cx,nl=Math.hypot(nx,ny)||1;
     // with nothing in it yet, a cluster is still wired to the core by one strand
@@ -215,6 +234,17 @@ function mindDraw(t,state){
   g.strokeStyle='hsla(276,90%,72%,.28)';g.lineWidth=.8;g.beginPath();
   S.links.forEach(k=>{if(k.kind!=='fact')return;const a=at[k.a],b=at[k.b];if(a&&b){g.moveTo(a.x,a.y);g.lineTo(b.x,b.y)}});
   g.stroke();
+  // a memory or a run that names something in the graph, joined to it across the clusters
+  // (mind._mentions); one path per source cluster, bowed toward the core
+  const byHue={};
+  S.links.forEach(k=>{if(k.kind!=='mention')return;const a=at[k.a],b=at[k.b];if(!a||!b)return;
+    (byHue[a.H.h.hue]=byHue[a.H.h.hue]||[]).push([a,b])});
+  g.lineWidth=.9;
+  Object.keys(byHue).forEach(hue=>{
+    g.strokeStyle=`hsla(${hue},85%,72%,.26)`;g.beginPath();
+    byHue[hue].forEach(([a,b])=>{const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+      g.moveTo(a.x,a.y);g.quadraticCurveTo(mx+(cx-mx)*.4,my+(cy-my)*.4,b.x,b.y)});
+    g.stroke()});
   g.strokeStyle='hsla(36,95%,64%,.32)';g.lineWidth=1;g.beginPath();
   S.links.forEach(k=>{if(k.kind!=='roster')return;const a=at[k.a],B=L.hubs[k.b];
     if(a&&B){g.moveTo(a.x,a.y);g.quadraticCurveTo((a.x+B.x)/2+(cx-(a.x+B.x)/2)*.35,(a.y+B.y)/2+(cy-(a.y+B.y)/2)*.35,B.x,B.y)}});
@@ -334,7 +364,8 @@ function mindPaintUI(){
     `<span class="mn-dot"></span><b class="mn-state">Quiet</b><span class="mn-sep">·</span>`+
     `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}</span>`+
     `<button class="mn-btn" onclick="mindTell()">Tell me</button>`+
-    `<button class="mn-btn" onclick="mindTalk()" aria-label="Talk to ${esc(S.lead)}">🎙 Talk</button>`;
+    `<button class="mn-btn" onclick="mindTalk()" aria-label="Talk to ${esc(S.lead)}">🎙 Talk</button>`+
+    `<button class="mn-btn mn-peace" onclick="mindPeace()" aria-pressed="${MIND.peace?'true':'false'}" title="${MIND.peace?'Show the panels':'Peace: only the mind'}">${MIND.peace?'Show all':'Peace'}</button>`;
   MIND.ui.querySelector('.mn-state').dataset.s='';
   const row=(label,val,sub)=>`<div class="mn-row"><span>${label}</span><b>${val}</b>${sub?`<i>${sub}</i>`:''}</div>`;
   const need=(+b.needs_you||0)+(+b.decide||0);

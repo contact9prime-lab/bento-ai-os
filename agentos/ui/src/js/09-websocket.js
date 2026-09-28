@@ -353,6 +353,7 @@ function handle(ev){
       if(_sk&&_sk.delta)_sk.delta(ev.text,_s?_s.text:'');
       if(!_cur)break;
       curText+=ev.text;
+      if(typeof speechLiveFeed==='function')speechLiveFeed(_cid,curText);   // said a sentence at a time
       WORK_MSG='';removeWorking(); // real text is flowing now — drop the "working" placeholder
       if(JARVIS.busy){const r=$('#j-reply');if(r){r.textContent=curText;r.scrollTop=r.scrollHeight}}
       if(!curBody)startAssistant();
@@ -367,6 +368,7 @@ function handle(ev){
       curThink.textContent+=ev.text; curThink.scrollTop=curThink.scrollHeight; scrollDown(); break;}
     case 'tool_start':{
       if(typeof movementPulse==='function')movementPulse('tool',ev.name,ev);   // a tick on the dial (Movement scene)
+      if(_cur&&typeof speechLiveTool==='function')speechLiveTool(_cid,ev);    // "Reading that page."
       // `detail` is the server's few words about what this call is on. Older
       // servers do not send it, so it is recomputed here rather than left blank.
       // remembered for the handoff: tool_end carries no args (see 10a-handoff.js)
@@ -482,8 +484,10 @@ function handle(ev){
       if(!_cur){aiBubble();loadConvs();break}
       removeWorking();const reply=curText;
       if(curBody&&typeof fileChips==='function')fileChips(curBody);   // a file it named: Open / Download
-      if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;jarvisSpeakAndListen(reply);}
-      else speak(reply);
+      // spoken as it arrived (speechLiveEnd says the rest), or whole, as before
+      if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;
+        if(!speechLiveEnd(_cid,reply,()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')}))jarvisSpeakAndListen(reply);}
+      else if(!speechLiveEnd(_cid,reply))speak(reply);
       setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}
     case 'queue_update':{
       if(ev.queue&&ev.queue.length)QUEUES[_cid]=ev.queue; else delete QUEUES[_cid];

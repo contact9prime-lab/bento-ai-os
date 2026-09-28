@@ -12,7 +12,9 @@
    automations — which is the point: a corner is the fastest trigger a saved
    routine can have. Config is per-machine (localStorage), like the deck. */
 
-const HC_DEFAULTS={tl:'expose',tr:'control',bl:'deck',br:'showdesktop'};
+/* Apps bottom left and widgets bottom right: the corners are where both faces of the
+   wall come from now that the desktop's scroll gesture is off by default (06a-deck.js). */
+const HC_DEFAULTS={tl:'expose',tr:'control',bl:'deck.all',br:'deck.widgets'};
 const HC_CORNERS=[['tl','Top left'],['tr','Top right'],['bl','Bottom left'],['br','Bottom right']];
 const HC_SIZE=10;        // px of the square trigger zone in the very corner
 let HOTCORNERS={...HC_DEFAULTS,enabled:true,delay:240};
@@ -149,6 +151,9 @@ function hcCardHTML(){
       <span class="mut" id="hc-delayn" style="flex:0 0 54px;text-align:right">${HOTCORNERS.delay}ms</span>
       <button class="endbtn" onclick="hcReset()">Reset</button>
     </div>
+    <label class="hc-on" style="margin-top:12px;display:flex;gap:8px;align-items:center;min-height:var(--tap,32px)">
+      <input type="checkbox" id="hc-scroll"${typeof deckScrollOn==='function'&&deckScrollOn()?' checked':''}>
+      <span>Scrolling on the empty desktop also opens apps (up) and widgets (down)</span></label>
   </div>`;
 }
 function hcBind(root){
@@ -157,6 +162,9 @@ function hcBind(root){
   });
   const en=root.querySelector('#hc-en');
   if(en)en.onchange=()=>{HOTCORNERS.enabled=en.checked;hcSave();hcCancel()};
+  const sc=root.querySelector('#hc-scroll');
+  if(sc)sc.onchange=()=>{try{localStorage.setItem('deck.scroll',sc.checked?'1':'0')}catch(e){}
+    toast(sc.checked?'Scrolling the desktop opens apps and widgets':'Apps and widgets open from the hot corners')};
   const d=root.querySelector('#hc-delay');
   if(d)d.oninput=()=>{HOTCORNERS.delay=+d.value;root.querySelector('#hc-delayn').textContent=d.value+'ms';hcSave()};
 }

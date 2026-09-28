@@ -433,8 +433,8 @@ an unbound corner teaches you nothing:
 |---|---|
 | Top left | **Overview** — every window on this desktop, laid out |
 | Top right | **Control Centre** — sound, brightness, network, battery |
-| Bottom left | **App deck** — the launcher |
-| Bottom right | **Show desktop** — everything out of the way, and back again |
+| Bottom left | **All apps** — the app wall |
+| Bottom right | **Widgets** — the wall's other face |
 
 Rebind any corner in **Automations → Hot corners** to a desktop action, an app,
 or one of your automations. The action list is the same table the keyboard uses,
@@ -446,6 +446,12 @@ there (240ms by default, adjustable), and it must leave the zone before it can
 fire again. A quarter-disc fills during the dwell — that's both the affordance
 and the escape hatch. Hot corners stand down mid-drag, while an automation is
 running, and on phones, which have no pointer to rest.
+
+**Scrolling the desktop is off by default.** It used to open All apps on a scroll up
+and Widgets on a scroll down, and on a trackpad the lightest touch was enough to flip
+the screen. The two bottom corners open them now. To have the scroll back, tick
+*Scrolling on the empty desktop also opens apps and widgets* on the same card. On a
+phone a swipe still does it, because there is no corner to rest a finger in.
 
 ---
 
@@ -642,7 +648,10 @@ Grant microphone permission the first time.
 | **Google Cloud** | Cloud Text-to-Speech with an API key, in the language set under Mic language. | Per character |
 
 Whatever the engine, every agent keeps its own voice, the same one each time, and your lead
-keeps the voice you pick. A key is pasted once and never shown again; the page only learns
+keeps the voice you pick. That pick belongs to the engine you picked it on: switching from
+OpenAI to ElevenLabs does not send "nova" to ElevenLabs, which used to come back as
+*400 Bad Request*. A voice your account no longer has is swapped for one it does, and a
+refusal says why in words (no credits left, a key missing a permission, a key not accepted). A key is pasted once and never shown again; the page only learns
 that one is set. Each line is kept on the server (the last 300), so replaying a thread
 costs nothing. If an engine cannot answer, the line is spoken by the browser instead and a
 toast says why, once.
@@ -650,6 +659,14 @@ toast says why, once.
 The engine is the machine's setting, because the cloud ones spend money, so only an admin
 can change it on a machine with accounts. On Linux, `espeak-ng` is offered under System Settings
 → Components (it is GPL, so it is asked for rather than shipped).
+
+**Speak as it answers** (on by default) starts talking at the first sentence instead of
+waiting for the whole reply, following the reply as it arrives over the socket. With
+ElevenLabs (on its low-latency Flash model) or OpenAI, the sound plays while it is being
+made. And while your lead is busy with something slow, it says what it is doing: "Reading
+that page.", "Checking your calendar.", "Asking researcher." Only for tools that really
+started, at most one line every eight seconds, and never over something it is already
+saying. Code in a reply is read as "code block".
 
 ![Settings → Voice: the voice engine](screenshots/voice-engine.png)
 

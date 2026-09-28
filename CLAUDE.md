@@ -1350,6 +1350,10 @@ The ground-up pass added four more things that are easy to undo by accident:
   once a minute — so it must never poll for the sake of animation. It rides inside `#wall` (the parallax carries it) with `pointer-events:none`.
   01c loads after 01b, so `applyImmersive` returns before touching `MOVEMENT` at first paint and
   01c starts itself — found because `openApp` threw "APPS before initialization" on every load.
+- **The desktop's wheel gesture is opt-in** (`deckScrollOn`, `deck.scroll` in localStorage). It
+  flipped the screen to All apps or Widgets on a trackpad's lightest touch; the bottom corners
+  open both faces by default (`HC_DEFAULTS`), a phone keeps its swipe, and a push past the end
+  of an OPEN face still closes it. `tests/test_deck_scroll.py`.
 - **The drawer's button sits above the drawer** (`z-index:4`), or it can never close it — measured:
   the open drawer intercepted every click on the button underneath. On a phone the sidebar is
   `display:none!important`; the drawer rule re-shows it only while open. The OS's own agent was asked to judge it (three rounds,
@@ -1537,6 +1541,11 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
   one `step_outcome` function) and `untrusted`, chat turns attributed to the lead (a specialist's
   chat turn is counted once, by its run). A run that finished after a refusal is muted pride
   (`scale`), found live when the refused researcher came back "Proud".
+- **A routine event habituates, and the lead's chat is routine.** Every chat reply counted as
+  "finished a task" at full weight, so the lead sat Proud and cheering all day (a screenshot).
+  A plain answer is not a task (`_WORKED` needs a tool); a working reply is `CHAT_SUCCESS`
+  capped at `CHAT_CAP`; a `ROUTINE` signal felt again within `HABIT_S` counts 1/(1+n).
+  Growth is the work, not the feeling: XP takes full points unless `grow` says small.
 - **Your "no" is never guilt.** `GENTLE` signals (`declined`, `you_low`) may only trigger
   valence ≥ 0; `validate` drops the mapping and names it, for built-in and designed worlds alike.
 - **Feelings never outrank the rules.** "Agents feel it" (`inner`, off by default) adds ONE
@@ -1607,6 +1616,11 @@ pins what follows; `docs/mind.md` is the story.
 - **The voice says the panel.** `spoken()` is built from `stats`, and the test checks every number
   it says is one the panels carry. A free talk's messages are conversation, not tasks: counting
   them made "37 tasks" out of fifteen.
+- **The lines between clusters are data too** (`_mentions`): a memory or run whose text
+  names a KG entity, whole word, names under three letters skipped, `MAX_MENTIONS`. The full
+  text is used for matching and removed before the payload.
+- **Peace** (`mindPeace`, `mind.peace` in localStorage) hides panels, tags, card and the
+  prompt bar (`body.mind-peace`), and `mindStop` must take that class off again.
 - **Tags sit at the hub, which never moves** (the World's lesson: a moving target is one a finger
   misses), always above the cluster, and two that overlap step apart vertically.
 - **The layout is measured.** The ring fits between the prompt bar, the dock and the side panels
@@ -1720,6 +1734,19 @@ speech.py (`tests/test_speech.py`):
   only on a machine with accounts), because the cloud ones cost money per character.
 - **A line costs once.** Audio is cached by (engine, voice, text) under the home, capped at
   `CACHE_FILES`, oldest out.
+- **A voice belongs to the engine it was picked on** (`speech.<engine>.voice`, `lead_voice`).
+  It was one field, so "nova" from OpenAI went to ElevenLabs as a voice id and came back
+  400 voice_not_found, reported as "bad request 400 for ElevenLabs". `_resolve` sends only
+  ids the engine lists (`_usable`), a pin from another engine is dropped, `VoiceMissing` is
+  retried once with another listed voice, and `_refusal` turns the provider's `detail` into a
+  sentence. Never guess ElevenLabs voice ids in source: their defaults are being retired.
+- **Speak as it answers is the page's, the stream is the server's.** `speechLiveFeed` (from
+  `text_delta`) says whole sentences, holds an open code fence, and `speechLiveEnd` says the
+  rest; `speechLiveTool` says one line for a slow tool that really started (`SPEECH_TOOL_WORDS`,
+  one per 8s, never over a line in progress). `POST /api/speech/line` opens the provider stream
+  (`open_stream`, ElevenLabs `/stream` on `ELEVEN_FAST_MODEL`, OpenAI chunked) and checks the
+  refusal BEFORE a byte, so the error is a sentence; `GET /api/speech/stream/<id>` pipes it
+  into `<audio>`. A ticket is its owner's only and is closed after `SPEECH_LINE_TTL`.
 
 **Agents messaging each other is the matrix, and swarm is the matrix opened — never a
 second system.** A specialist's `ask_agent` is `agent.message` (principal = asker, resource =

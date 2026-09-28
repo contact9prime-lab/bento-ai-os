@@ -157,13 +157,18 @@ function voiceClean(text,n){
    browser is audio from /api/speech/say, fetched as soon as a line is queued so the
    next one is ready when this one ends, and played strictly in order. A line the
    server cannot say is said by the browser instead, and the reason is said once. */
-var SPEECH={engine:'browser',loaded:false,warned:false,gen:0,audio:null,chain:Promise.resolve()};
+var SPEECH={engine:'browser',loaded:false,warned:false,gen:0,audio:null,chain:Promise.resolve(),pending:0};
+/* Engines whose audio plays while it is made (speech.STREAMING). With "Speak as it
+   answers" on, a line goes through /api/speech/line (the provider's stream, opened and
+   checked) and /api/speech/stream/<id>, which the <audio> element plays from the first
+   bytes. Off, or on any other engine, it is the whole file from /api/speech/say. */
+var SPEECH_STREAMS=['elevenlabs','openai'];
 async function speechLoad(){
   try{const d=await (await fetch('/api/speech')).json();SPEECH.engine=(d.config||{}).engine||'browser'}catch(e){}
   SPEECH.loaded=true;
 }
 function speechStop(){
-  SPEECH.gen++;SPEECH.chain=Promise.resolve();
+  SPEECH.gen++;SPEECH.chain=Promise.resolve();SPEECH.pending=0;
   try{SPEECH.audio&&SPEECH.audio.pause()}catch(e){}
   try{window.speechSynthesis&&speechSynthesis.cancel()}catch(e){}
 }
@@ -183,12 +188,25 @@ function speakAs(name,text,done){
   const clean=voiceClean(text);
   if(!clean){if(done)done();return}
   if(!SPEECH.loaded){speechLoad().then(()=>speakAs(name,text,done));return}
-  if(SPEECH.engine==='browser'){browserSay(name,clean).then(()=>{if(done)done()});return}
+  SPEECH.pending++;
+  const settle=()=>{SPEECH.pending=Math.max(0,SPEECH.pending-1)};
+  if(SPEECH.engine==='browser'){
+    // queued behind whatever is still being said, like every other engine
+    const g0=SPEECH.gen;
+    SPEECH.chain=SPEECH.chain.then(()=>g0!==SPEECH.gen?null:browserSay(name,clean))
+      .then(()=>{settle();if(done&&g0===SPEECH.gen)done()});
+    return;
+  }
   const gen=SPEECH.gen,lead=!name||name==='@agent'||name===agentName();
-  const got=fetch('/api/speech/say',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text:clean,agent:lead?'':name,lead})})
-    .then(async r=>{if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'the voice engine did not answer');
-      return URL.createObjectURL(await r.blob())});
+  const live=VOICE.live!==false&&SPEECH_STREAMS.indexOf(SPEECH.engine)>=0;
+  const fail=async r=>{throw new Error((await r.json().catch(()=>({}))).error||'the voice engine did not answer')};
+  const got=(live
+    ?fetch('/api/speech/line',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({text:clean,agent:lead?'':name,lead,fast:true})})
+      .then(async r=>{if(!r.ok)await fail(r);return '/api/speech/stream/'+encodeURIComponent((await r.json()).id)})
+    :fetch('/api/speech/say',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({text:clean,agent:lead?'':name,lead})})
+      .then(async r=>{if(!r.ok)await fail(r);return URL.createObjectURL(await r.blob())}));
   got.catch(()=>{});
   SPEECH.chain=SPEECH.chain.then(()=>gen!==SPEECH.gen?null:got.then(url=>new Promise(res=>{
       if(gen!==SPEECH.gen){URL.revokeObjectURL(url);return res()}
@@ -199,7 +217,74 @@ function speakAs(name,text,done){
     })).catch(e=>{
       if(!SPEECH.warned){SPEECH.warned=true;toast('Voice: '+e.message+' Using this browser’s voice instead.')}
       return browserSay(name,clean);
-    })).then(()=>{if(done&&gen===SPEECH.gen)done()});
+    })).then(()=>{settle();if(done&&gen===SPEECH.gen)done()});
+}
+/* ---- Speaking as it answers ----
+   With "Speak as it answers" on (VOICE.live, on unless switched off) a reply is said a
+   sentence at a time as the socket delivers it, instead of all at once after the turn.
+   And while the turn is busy with something slow (a search, a page, a colleague), the
+   lead says what it is doing, so a person who asked out loud is not left in silence.
+   Every word of that comes from a real event: the reply's own text, or a tool that
+   actually started. Nothing is said for a tool not in SPEECH_TOOL_WORDS. */
+var SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};
+var SPEECH_TOOL_WORDS={fetch_url:'Reading that page.',WebFetch:'Reading that page.',
+  WebSearch:'Searching the web.',search_docs:'Checking the docs.',search_files:'Looking through your files.',
+  Grep:'Looking through your files.',Glob:'Looking through your files.',recall:'Checking what I remember.',
+  kg_query:'Checking what I know.',mail_search:'Looking through your mail.',mail_read:'Reading that message.',
+  calendar_events:'Checking your calendar.',run_command:'Running that now.',Bash:'Running that now.',
+  delegate:'Handing this to {agent}.',ask_agent:'Asking {agent}.',huddle:'Getting the team together.'};
+function speechLiveOk(){return VOICE.live!==false&&!!(VOICE.tts||(JARVIS.on&&JARVIS.busy))}
+function speechLiveFor(cid){if(SPEECH_LIVE.cid!==cid)SPEECH_LIVE={cid,said:0,on:false,lastAt:0};return SPEECH_LIVE}
+/* The part of a reply that can be said: a finished code block reads as "code block", and
+   an unfinished one waits for its fence to close. */
+function speechLiveText(t){
+  const s=String(t||'').replace(/```[\s\S]*?```/g,' code block. ');
+  const open=s.indexOf('```');
+  return open>=0?s.slice(0,open):s;
+}
+function speechLiveStart(L){
+  if(L.on)return;
+  L.on=true;
+  // a new reply replaces one still being read, as it always has outside Jarvis
+  if(!JARVIS.on)speechStop();
+}
+function speechLiveFeed(cid,full){
+  if(!speechLiveOk())return;
+  const L=speechLiveFor(cid),rest=speechLiveText(full).slice(L.said);
+  let end=-1,m;const re=/[.!?…](?=["')\]]?\s)|\n/g;
+  while((m=re.exec(rest)))end=m.index+m[0].length;
+  if(end<0)return;
+  const chunk=rest.slice(0,end);
+  // a sentence short enough to be "OK." waits for company, unless a line break ends it
+  if(chunk.replace(/\s+/g,' ').trim().length<24&&chunk.indexOf('\n')<0)return;
+  L.said+=end;
+  if(!chunk.trim())return;
+  speechLiveStart(L);L.lastAt=Date.now();
+  speakAs('@agent',chunk);
+}
+/* The end of a turn: what is left of the reply, then `done` once everything queued has
+   been said. False when this turn was not being spoken live (the caller speaks it whole). */
+function speechLiveEnd(cid,full,done){
+  const L=SPEECH_LIVE;
+  if(L.cid!==cid||!L.on){SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};return false}
+  const rest=speechLiveText(full).slice(L.said);
+  SPEECH_LIVE={cid:null,said:0,on:false,lastAt:0};
+  if(rest.trim())speakAs('@agent',rest);
+  const g=SPEECH.gen;
+  SPEECH.chain.then(()=>{if(done&&g===SPEECH.gen)done()});
+  return true;
+}
+function speechLiveTool(cid,ev){
+  if(!speechLiveOk()||!ev||ev.pending_approval)return;
+  let w=SPEECH_TOOL_WORDS[ev.name];if(!w)return;
+  const L=speechLiveFor(cid);
+  // one line at a time, and not more than one every eight seconds
+  if(SPEECH.pending>0||Date.now()-L.lastAt<8000)return;
+  const a=ev.args||{};
+  w=w.replace('{agent}',String(a.agent||a.to||'a colleague').replace(/@.*$/,''));
+  if(ev.name==='WebSearch'&&a.query&&String(a.query).length<70)w='Searching for '+a.query+'.';
+  speechLiveStart(L);L.lastAt=Date.now();
+  speakAs('@agent',w);
 }
 /* Speech has no "@". Said out loud, "at researcher, at writer, should we…" comes back as
    words, so the names a spoken request OPENS with become the addresses the chat reads

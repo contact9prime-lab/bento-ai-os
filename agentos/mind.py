@@ -26,6 +26,7 @@ MAX_MEMORY = 140
 MAX_KNOWLEDGE = 160
 MAX_KG_EDGES = 260
 MAX_RUNS_PER_AGENT = 14
+MAX_MENTIONS = 320
 WEEK = 7 * 86400
 #: fixed hues for the three shared lobes; specialists take the rest of the wheel
 HUES = {"memory": 188, "knowledge": 276, "missions": 36}
@@ -62,6 +63,7 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
     mems = store.search_memories(limit=MAX_MEMORY)
     for m in mems:
         nodes.append({"id": f"m:{m['id']}", "hub": "memory", "label": _short(m.get("content")),
+                      "full": str(m.get("content") or ""),
                       "t": m.get("updated_at") or m.get("created_at") or 0,
                       "pinned": bool(m.get("pinned"))})
 
@@ -102,7 +104,14 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
         for r in per.get(d["name"], [])[:MAX_RUNS_PER_AGENT]:
             nodes.append({"id": f"r:{r['id']}", "hub": f"agent:{d['name']}",
                           "label": _short(str(r.get("input") or "").split("\n")[0], 60),
+                          "full": str(r.get("input") or "")[:2000],
                           "kind": "run", "status": r.get("status") or "", "t": r.get("started_at") or 0})
+
+    # The lines BETWEEN the clusters: a memory or a run that names a person, place or topic
+    # in the graph is joined to it. Asked for from a screenshot ("the mind has certain
+    # lines that need to be created"): Memory and Knowledge sat as two clouds with nothing
+    # between them, though half the memories were about the entities next door.
+    links.extend(_mentions(nodes, kg))
 
     # who actually talked to whom this week, from the runs they already are
     talk: dict = {}
@@ -118,6 +127,8 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
         links.append({"a": f"agent:{a}", "b": f"agent:{b}", "kind": "talk", "n": n})
 
     # a free talk's messages are conversation, not tasks; they are counted on their own
+    for n in nodes:
+        n.pop("full", None)             # matched above; the page gets the short label only
     week = [r for r in runs if r.get("kind") in ("flow", "delegate", "message", "huddle")]
     flows_run = [r for r in runs if r.get("kind") == "flow"]
     stats = {"runs": len(week),
@@ -128,6 +139,7 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
              "asks": sum(1 for r in runs if r.get("kind") == "message"),
              "free_talks": sum(1 for r in runs if r.get("kind") == "freetalk" and not r.get("parent_run")),
              "memories": len(mems), "knowledge": len(g["nodes"]), "facts": len(g["edges"]),
+             "mentions": sum(1 for k in links if k["kind"] == "mention"),
              "missions_on": sum(1 for n in nodes if n["hub"] == "missions" and n.get("on"))}
     brief = {}
     try:
@@ -146,6 +158,36 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
     out = {"lead": lead, "hubs": hubs, "nodes": nodes, "links": links, "stats": stats,
            "brief": brief, "team": team, "at": now}
     out["spoken"] = spoken(out)
+    return out
+
+
+def _mentions(nodes: list[dict], kg: list[dict]) -> list[dict]:
+    """A link from each memory or run to every graph entity its text names, as a whole
+    word and ignoring case. Names under three letters are skipped (they match anything)."""
+    import re
+    names = {}
+    for n in kg:
+        name = " ".join(str(n.get("name") or "").split())
+        if len(name) >= 3:
+            names.setdefault(name.lower(), n["id"])
+    if not names:
+        return []
+    pat = re.compile(r"(?<!\w)(" + "|".join(re.escape(k) for k in
+                                           sorted(names, key=len, reverse=True)) + r")(?!\w)",
+                     re.IGNORECASE)
+    out, seen = [], set()
+    for node in nodes:
+        if not (node["id"].startswith("m:") or node["id"].startswith("r:")):
+            continue
+        text = node.get("full") or node.get("label") or ""
+        for m in pat.finditer(text):
+            kid = names.get(m.group(1).lower())
+            key = (node["id"], kid)
+            if kid and key not in seen:
+                seen.add(key)
+                out.append({"a": node["id"], "b": f"k:{kid}", "kind": "mention"})
+                if len(out) >= MAX_MENTIONS:
+                    return out
     return out
 
 

@@ -167,3 +167,202 @@ def test_one_door_on_the_page_and_the_terminal():
     assert (JS / "11f-speech.js").exists()
     main = (ROOT / "agentos/__main__.py").read_text()
     assert 'verb("voice"' in main and "speech.speak(cfg" in main
+
+
+class _Eleven:
+    """A stand-in for ElevenLabs: lists two voices, refuses any other id with the 400
+    `voice_not_found` shape, and streams audio in chunks."""
+    VOICES = ["v-rachel", "v-adam"]
+
+    def __init__(self, calls):
+        self.calls = calls
+
+    def client(self):
+        outer = self
+
+        class Resp:
+            def __init__(self, status, body=b"", js=None):
+                self.status_code, self.content, self._js = status, body, js
+                self.text = str(js or body)
+
+            def json(self):
+                if self._js is None:
+                    raise ValueError("no json")
+                return self._js
+
+            async def aread(self):
+                return self.content
+
+            async def aclose(self):
+                pass
+
+            async def aiter_bytes(self):
+                for i in range(0, len(self.content), 3):
+                    yield self.content[i:i + 3]
+
+        def answer(url, kw):
+            outer.calls.append((url, kw))
+            if url.endswith("/v1/voices"):
+                return Resp(200, js={"voices": [{"voice_id": v, "name": v} for v in outer.VOICES]})
+            voice = url.split("/text-to-speech/", 1)[1].split("/", 1)[0]
+            if voice not in outer.VOICES:
+                return Resp(400, js={"detail": {"status": "voice_not_found",
+                                                "message": f"A voice with voice_id {voice} was not found."}})
+            return Resp(200, body=b"MP3-" + voice.encode())
+
+        class C:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def aclose(self):
+                pass
+
+            async def get(self, url, **k):
+                return answer(url, k)
+
+            async def post(self, url, **k):
+                return answer(url, k)
+
+            def build_request(self, method, url, **k):
+                return (url, k)
+
+            async def send(self, req, stream=False):
+                return answer(*req)
+        return C
+
+
+def test_a_voice_from_another_engine_is_never_sent_to_elevenlabs(monkeypatch, tmp_path):
+    """Reported as "bad request 400 for ElevenLabs": the lead's voice was one field for
+    every engine, so a voice picked on OpenAI or this computer went to ElevenLabs as an
+    id, and ElevenLabs answered 400 voice_not_found."""
+    from agentos import config as cfgmod
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    calls = []
+    monkeypatch.setattr(speech.httpx, "AsyncClient", _Eleven(calls).client())
+    cfg = {"providers": {}, "speech": {"engine": "elevenlabs", "voice": "nova",
+                                       "agents": {"writer": "gmw/en-US"},
+                                       "elevenlabs": {"api_key": "k"}}}
+    data, _, who = asyncio.run(speech.speak(cfg, "hello", lead=True))
+    assert who["voice"] in _Eleven.VOICES and data.startswith(b"MP3-")
+    _, _, who = asyncio.run(speech.speak(cfg, "hello there", agent="writer"))
+    assert who["voice"] in _Eleven.VOICES, "a pin from another engine is not an ElevenLabs id"
+    # the lead's voice now belongs to the engine it was picked on
+    speech.save(cfg, {"voice": "v-adam"})
+    assert cfg["speech"]["elevenlabs"]["voice"] == "v-adam" and speech.public(cfg)["voice"] == "v-adam"
+    speech.save(cfg, {"engine": "openai"})
+    assert speech.public(cfg)["voice"] == "", "OpenAI does not inherit ElevenLabs' voice"
+
+
+def test_a_voice_the_account_lost_is_replaced_and_a_refusal_reads(monkeypatch, tmp_path):
+    from agentos import config as cfgmod
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    calls = []
+    monkeypatch.setattr(speech.httpx, "AsyncClient", _Eleven(calls).client())
+    cfg = {"providers": {}, "speech": {"engine": "elevenlabs", "elevenlabs": {"api_key": "k"}}}
+    # asked for a voice the account does not have: the sentence, not a raw body
+    with pytest.raises(speech.VoiceMissing, match="does not have that voice"):
+        asyncio.run(speech.speak(cfg, "hi", voice="gone-voice"))
+    # a pinned voice that has gone: said with another voice the account lists
+    monkeypatch.setattr(speech, "_resolve", _pinned("gone-voice"))
+    _, _, who = asyncio.run(speech.speak(cfg, "still said", agent="writer"))
+    assert who["voice"] in _Eleven.VOICES
+
+    class R:
+        status_code = 401
+
+        def json(self):
+            return {"detail": {"status": "invalid_api_key", "message": "Invalid API key"}}
+    e = speech._refusal("elevenlabs", R())
+    assert "Invalid API key" in str(e) and "Paste it again" in str(e)
+    R.status_code = 400
+    R.json = lambda self: {"detail": {"status": "quota_exceeded", "message": "You have 3 credits left"}}
+    assert "out of credits" in str(speech._refusal("elevenlabs", R()))
+    R.json = lambda self: {"detail": {"status": "missing_permissions", "message": "needs text_to_speech"}}
+    assert "Allow Text to Speech" in str(speech._refusal("elevenlabs", R()))
+
+
+def _pinned(voice):
+    async def resolve(cfg, engine, agent, lead, v):
+        return voice, list(_Eleven.VOICES) + [voice]
+    return resolve
+
+
+def test_a_line_streams_while_it_is_made(monkeypatch, tmp_path):
+    """Speaking as it answers: the provider's stream is opened and checked first, then
+    handed on chunk by chunk, and kept so a replay costs nothing."""
+    from agentos import config as cfgmod
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    calls = []
+    monkeypatch.setattr(speech.httpx, "AsyncClient", _Eleven(calls).client())
+    cfg = {"providers": {}, "speech": {"engine": "elevenlabs", "elevenlabs": {"api_key": "k"}}}
+
+    async def take(st):
+        return [c async for c in st["chunks"]]
+    st = asyncio.run(speech.open_stream(cfg, "first sentence.", lead=True))
+    url, kw = calls[-1]
+    assert url.endswith("/stream") and kw["json"]["model_id"] == speech.ELEVEN_FAST_MODEL
+    parts = asyncio.run(take(st))
+    assert len(parts) > 1 and b"".join(parts).startswith(b"MP3-")
+    said = lambda: sum(1 for u, _ in calls if "/text-to-speech/" in u)      # noqa: E731
+    n = said()
+    again = asyncio.run(speech.open_stream(cfg, "first sentence.", lead=True))
+    assert again["who"]["cached"] and said() == n, "a replay costs nothing"
+    cfg["speech"]["elevenlabs"]["voice"] = "missing"
+    monkeypatch.setattr(speech, "voices", lambda *a, **k: _raise())
+    with pytest.raises(speech.VoiceMissing):
+        asyncio.run(speech.open_stream(cfg, "another line.", lead=True))
+
+
+async def _raise():
+    raise RuntimeError("cannot read voices")
+
+
+def test_the_page_speaks_as_it_answers():
+    v = (JS / "08-wallpaper-jarvis-voice.js").read_text()
+    door = v.split("function speakAs(", 1)[1].split("\n}", 1)[0]
+    assert "/api/speech/line" in door and "/api/speech/stream/" in door
+    ws = (JS / "09-websocket.js").read_text()
+    assert "speechLiveFeed(_cid,curText)" in ws and "speechLiveTool(_cid,ev)" in ws
+    assert "speechLiveEnd(_cid,reply" in ws
+    srv = (ROOT / "agentos/server.py").read_text()
+    assert '@app.post("/api/speech/line")' in srv and '@app.get("/api/speech/stream/{lid}")' in srv
+    stream = srv.split('@app.get("/api/speech/stream/{lid}")', 1)[1].split("\n@app.", 1)[0]
+    assert 't["uid"] != (usersmod.current()' in stream, "only its owner may collect a line"
+    settings = (JS / "11-settings.js").read_text()
+    assert "pSwitch('v-live'" in settings
+
+
+def test_live_sentences_in_node():
+    """speechLiveFeed says whole sentences only, waits for a code block to close, and
+    speechLiveEnd says what is left."""
+    import json
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    v = (JS / "08-wallpaper-jarvis-voice.js").read_text()
+    body = "\n".join(v.split("\n")[v.split("\n").index(next(l for l in v.split("\n")
+                     if l.startswith("var SPEECH_LIVE="))):])
+    body = body.split("\nvar VOICE_AGENTS=", 1)[0]
+    js = ("var said=[];var VOICE={tts:true};var JARVIS={on:false,busy:false};"
+          "var SPEECH={gen:0,pending:0,chain:Promise.resolve()};function speechStop(){}"
+          "function speakAs(n,t){said.push(t.trim())}\n" + body +
+          "\nspeechLiveFeed('c','Hello there, I found three things. The first one is");
+    js += ("');speechLiveFeed('c','Hello there, I found three things. The first one is big. ```py\\nx=1');"
+           "speechLiveFeed('c','Hello there, I found three things. The first one is big. ```py\\nx=1\\n``` Done now.');"
+           "speechLiveEnd('c','Hello there, I found three things. The first one is big. ```py\\nx=1\\n``` Done now. Bye');"
+           "console.log(JSON.stringify(said))")
+    out = subprocess.run(["node", "-e", js], capture_output=True, text=True, timeout=20)
+    assert out.returncode == 0, out.stderr
+    said = json.loads(out.stdout)
+    assert said[0] == "Hello there, I found three things."
+    # a short sentence waits for company; the code block is read as words, never as code
+    assert said[1].startswith("The first one is big.") and "code block" in said[1]
+    assert "x=1" not in " ".join(said)
+    assert said[-1].endswith("Bye")
