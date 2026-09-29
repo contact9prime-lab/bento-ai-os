@@ -767,9 +767,29 @@ def departments(cfg: dict, store) -> list[dict]:
     out = []
     for d in officemod.current(cfg)["departments"]:
         members = [live[m.lower()] for m in d["members"] if m.lower() in live]
-        out.append({**d, "members": members,
-                    "lead": d.get("lead") if d.get("lead") in members else (members[0] if members else "")})
+        named = d.get("lead") in members
+        out.append({**d, "members": members, "named": named,
+                    "lead": d.get("lead") if named else (members[0] if members else "")})
     return out
+
+
+def membership(cfg: dict, store) -> dict:
+    """Who is in which department, for the scenes that draw people (the Crew stage, the
+    Mind, the World). One answer, read from the Office's rooms, so no scene decides for
+    itself who belongs where. `head` is the named head, or the first person in a room
+    somebody filled by hand; `named` says which, so only a real head wears the star."""
+    depts, of = [], {}
+    for d in departments(cfg, store):
+        if not d["members"]:
+            continue
+        named = d["named"]
+        hexc = officemod.COLORS.get(d["color"], "#64748b")
+        depts.append({"name": d["name"], "color": d["color"], "hex": hexc, "head": d["lead"],
+                      "named": named, "members": d["members"], "desk": d.get("desk") or ""})
+        for m in d["members"]:
+            of[m] = {"dept": d["name"], "color": d["color"], "hex": hexc,
+                     "head": m == d["lead"] and named, "title": (d.get("titles") or {}).get(m, "")}
+    return {"departments": depts, "of": of}
 
 
 def _stale_s() -> int:

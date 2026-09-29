@@ -346,3 +346,86 @@ def test_the_page_shows_everyone_before_saving_and_recounts_after_every_untick()
     css = (ROOT / "agentos/ui/src/css/23-office.css").read_text()
     assert "body.dev-touch .co-card{min-height:var(--tap)}" in css
     assert ".of-bar .endbtn{flex:none;scroll-snap-align:start}" in css
+
+
+# ---- the other scenes: one membership, drawn three ways ----
+
+def _company(tmp_path, extra=("writer",)):
+    cfg, store = _world(tmp_path, names=extra)
+    plan, _ = company.normalize(company.template_plan(["finance", "sales"], "Acme"), _tools())
+    company.apply(cfg, store, plan, ALL_MAIL)
+    return cfg, store
+
+
+def test_membership_is_the_one_answer_every_scene_reads(tmp_path):
+    cfg, store = _company(tmp_path)
+    m = company.membership(cfg, store)
+    fin = next(d for d in m["departments"] if d["name"] == "Finance")
+    assert fin["head"] == "finance-lead" and fin["named"] and fin["hex"] == office.COLORS["amber"]
+    assert m["of"]["bookkeeper"] == {"dept": "Finance", "color": "amber", "hex": office.COLORS["amber"],
+                                    "head": False, "title": "Bookkeeper"}
+    assert m["of"]["finance-lead"]["head"] and "writer" not in m["of"]
+    # a room somebody filled by hand has a first person, not a head: no star
+    office.save(cfg, store, {"departments": [{"name": "Words", "members": ["writer"]}]})
+    words = company.membership(cfg, store)
+    assert words["of"]["writer"]["head"] is False and words["departments"][0]["named"] is False
+
+
+def test_the_mind_draws_a_department_as_one_cluster(tmp_path):
+    from agentos import mind
+    cfg, store = _company(tmp_path)
+    r1 = _run(store, "delegate", "bookkeeper", "ok", task="reconcile March")
+    r2 = _run(store, "delegate", "writer", "ok", task="a blog post")
+    # two in Finance talked, and Finance talked to Sales, through the runs they already are
+    ask = store.fabric_run_start("message", "fin-analyst", "is March reconciled?", parent_run=r1)
+    store.fabric_run_finish(ask, "ok", output="yes")
+    snap = mind.snapshot(store, cfg, running={"prospector"})
+    hubs = {h["id"]: h for h in snap["hubs"]}
+    assert "dept:Finance" in hubs and "dept:Sales" in hubs and "agent:writer" in hubs
+    assert "agent:bookkeeper" not in hubs, "a department's people are points inside it"
+    assert hubs["dept:Sales"]["busy"] and not hubs["dept:Finance"]["busy"]
+    assert hubs["dept:Finance"]["hue"] == mind.DEPT_HUES["amber"]
+    people = {n["label"]: n for n in snap["nodes"] if n.get("kind") == "person"}
+    assert people["finance-lead"]["head"] and people["finance-lead"]["title"] == "Head of Finance"
+    runs = {n["id"]: n["hub"] for n in snap["nodes"] if n.get("kind") == "run"}
+    assert runs[f"r:{r1}"] == "dept:Finance" and runs[f"r:{r2}"] == "agent:writer"
+    assert snap["where"]["bookkeeper"] == "dept:Finance" and snap["where"]["writer"] == "agent:writer"
+    # the desk's roster is ONE link to its department, not one per person
+    desk = [k for k in snap["links"] if k["kind"] == "roster" and k["a"] == "f:finance-desk"]
+    assert desk == [{"a": "f:finance-desk", "b": "dept:Finance", "kind": "roster"}]
+    assert not [k for k in snap["links"] if k["kind"] == "talk" and k["a"] == k["b"]], \
+        "two people in one department talking is inside the cluster"
+    assert next(t for t in snap["team"] if t["name"] == "bookkeeper")["dept"] == "Finance"
+
+
+def test_the_world_stands_a_department_as_its_head(tmp_path):
+    from fastapi.testclient import TestClient
+    from agentos import server as servermod
+    with TestClient(servermod.app) as cl:
+        plan = cl.post("/api/company/draft", json={"departments": ["finance"]}).json()["plan"]
+        assert cl.post("/api/company/apply", json={"plan": plan, "talk": False}).json()["ok"]
+        sub = cl.get("/api/subagents").json()
+        assert any(d["name"] == "Finance" for d in sub["company"]["departments"]), \
+            "the Crew stage reads the company off the roster it already fetches"
+        v = cl.post("/api/world/enter", json={}).json()
+        assert v.get("live") and v["company"]["of"]["bookkeeper"]["dept"] == "Finance"
+        shown = [a["name"] for a in v["agents"]]
+        assert shown[0] == "@agent" and "finance-lead" in shown
+        assert "bookkeeper" not in shown and "fin-analyst" not in shown, "a crowd is not a team"
+        staff = {a["name"] for a in v["staff"]["Finance"]}
+        assert staff == {"bookkeeper", "fin-analyst"}, "nobody's feelings are dropped"
+        assert all("mood" in a for a in v["staff"]["Finance"])
+        assert cl.get("/api/world/state").json()["staff"]["Finance"], "every door carries it"
+        cl.post("/api/world/leave")
+
+
+def test_the_scenes_read_the_membership_and_decide_nothing():
+    crew = _js("01d-crew.js")
+    assert "(d.company||{}).departments" in crew and "CREW_MAX_ORG" in crew
+    assert "crewDeptOf(" in crew and "departments working" in crew
+    mind_js = _js("01g-mind.js")
+    assert "MIND.snap.where" in mind_js and "h.kind==='dept'" in mind_js and "mindDept(" in mind_js
+    world_js = _js("01e-world.js")
+    assert "worldStaff(" in world_js and "WORLD.v.company" in world_js
+    # the World's page never asks /api/company: the server hands the membership over
+    assert "/api/company" not in world_js and "/api/company" not in crew and "/api/company" not in mind_js

@@ -4389,6 +4389,12 @@ body.has-win #world-ui *{pointer-events:none!important}
   color:#fff;background:rgba(10,14,28,.58);text-shadow:0 1px 2px rgba(0,0,0,.5);
   box-shadow:inset 0 -2px 0 hsl(var(--mh,200) 75% 62% / .9),0 3px 10px rgba(0,0,0,.25)}
 .wd-tag .wd-name b{font-weight:400;font-size:12px}
+/* a company's department (company.membership): its colour and name under the person's */
+.wd-tag .wd-dept{margin-top:2px;padding:1px 7px;border-radius:6px;font-size:10px;font-weight:700;white-space:nowrap;
+  color:#fff;background:color-mix(in srgb,var(--dc) 78%,#000);box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.wd-staff{list-style:none;margin:4px 0 8px;padding:0;font-size:var(--fs-sm)}
+.wd-staff li{padding:2px 0}.wd-staff small{color:var(--dim)}
+.wd-org{margin-top:3px;font-size:var(--fs-xs);font-weight:600;padding-left:8px;border-left:3px solid var(--dc)}
 .wd-tag.busy .wd-name::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--acc);box-shadow:0 0 6px var(--acc);animation:wdPulse 1.2s ease-in-out infinite}
 .wd-tag:focus-visible .wd-name{outline:2px solid var(--acc);outline-offset:2px}
 .wd-say{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:max-content;max-width:210px;
@@ -6191,13 +6197,14 @@ if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='movement')mo
    `var`, not `let`: the bundle is one script. */
 var CREW={on:false,cv:null,ctx:null,raf:0,last:0,t:0,W:0,H:0,dpr:1,font:'',static:false,
   cast:[],rosterAt:0,busy:{},tool:null,turns:0,drawn:0,drawMs:0,greeted:0,
-  arrive:{},said:{},known:null,guests:[],guestsAt:0};
+  arrive:{},said:{},known:null,guests:[],guestsAt:0,worker:{}};
 var CREW_GUESTS=4;                    // visitors from linked teams, at the stage's right edge
 var CREW_GUEST_MS=300000;             // their roster is a call to another machine: every 5 min
 var CREW_SHEETS={};                   // key → {img,v}: one sheet per character, from the server
 var CREW_WALK_MS=2600;                // a new specialist's walk in from the edge
 var CREW_SAY_MS=3800;                 // how long a bubble stays up
 var CREW_MAX=8;                       // figures beside the agent; a stage, not a census
+var CREW_MAX_ORG=10;                  // with a company, one figure per department (office.MAX_DEPTS)
 var CREW_WORK_MS=9000;                // how long a figure stays forward after its last event
 var CREW_TOOL_MS=6000;                // how long the tool it called stays named above it
 
@@ -6261,13 +6268,22 @@ async function crewRoster(force){
     const was=CREW.cast.map(c=>c.name);
     const pos=n=>{const i=was.indexOf(n);return i<0?1e9:i};
     CREW.agentBrain=(d.agent_brain&&d.agent_brain.provider_name)||'';
-    CREW.cast=(d.subagents||d.agents||[])
+    const subs=(d.subagents||d.agents||[])
       .filter(s=>s&&(s.name||s.id)&&s.enabled!==false)
       // `brain` is what the agent ANSWERS on (fabric.agent_brain), not what it is
       // pinned to — a switched-off provider sends it to the machine's brain
-      .map(s=>({name:String(s.name||s.id),brain:(s.brain&&s.brain.provider_name)||''}))
+      .map(s=>({name:String(s.name||s.id),brain:(s.brain&&s.brain.provider_name)||''}));
+    // With a company (company.membership), the stage is the org chart: one figure per
+    // department, drawn as its head in the department's colour, and anybody in no
+    // department after them. Twenty-one people do not fit a stage; ten departments do.
+    const depts=((d.company||{}).departments||[]).filter(x=>x.head&&subs.some(s=>s.name===x.head));
+    const inDept=new Set();depts.forEach(x=>x.members.forEach(m=>inDept.add(m)));
+    CREW.cast=(depts.length
+      ?depts.map(x=>({name:x.head,dept:x.name,members:x.members,named:x.named,
+          brain:(subs.find(s=>s.name===x.head)||{}).brain||''})).concat(subs.filter(s=>!inDept.has(s.name)))
+      :subs)
       .sort((a,b)=>pos(a.name)-pos(b.name))
-      .slice(0,CREW_MAX);
+      .slice(0,depts.length?CREW_MAX_ORG:CREW_MAX);
     // somebody new has no character yet until /api/avatars has generated one
     if(typeof avatarsLoad==='function'&&CREW.cast.some(c=>!AVATARS.by[c.name]))await avatarsLoad();
     // Arrivals. The first roster is who was already here — nobody walks in on a
@@ -6322,7 +6338,8 @@ function crewPulse(kind,label,ev){
   // a turn of a huddle: the one talking lights up, with its words over its head
   if(kind==='say'){const w=crewMatch(label);
     // a question to a colleague says who it is for, so the stage reads as a conversation
-    if(w){CREW.busy[w]=now;crewSay(w,(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
+    if(w){CREW.busy[w]=now;crewWorker(w,label);
+      crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
     crewKick();return}
   if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
   if(kind==='tool'&&label){
@@ -6330,8 +6347,11 @@ function crewPulse(kind,label,ev){
     crewKick();return;
   }
   const who=crewMatch(label)||crewMatch(ev&&ev.agent);
-  if(kind==='flow'){if(who)CREW.busy[who]=now;crewKick();return}
-  if(kind==='done'){if(who){delete CREW.busy[who];crewSay(who,'done \u2713')}crewKick();return}
+  const by=crewMatch(label)?label:(ev&&ev.agent)||'';
+  if(kind==='flow'){if(who){CREW.busy[who]=now;crewWorker(who,by)}crewKick();return}
+  if(kind==='done'){if(who){delete CREW.busy[who];
+    const w=CREW.worker[who];crewSay(who,(crewDeptOf(who)&&w&&w!==who?w+': ':'')+'done \u2713');delete CREW.worker[who]}
+    crewKick();return}
 }
 /* Name → a cast member, loosely: the event's spelling and the roster's rarely
    match on case or separators. Returns null when nothing matches. */
@@ -6339,8 +6359,20 @@ function crewMatch(label){
   if(!label)return null;
   const k=String(label).toLowerCase().replace(/[^a-z0-9]/g,'');
   if(!k)return null;
-  const hit=CREW.cast.find(c=>{const n=c.name.toLowerCase().replace(/[^a-z0-9]/g,'');return n&&(n===k||k.includes(n)||n.includes(k))});
+  const same=n=>{n=String(n).toLowerCase().replace(/[^a-z0-9]/g,'');return n&&(n===k||k.includes(n)||n.includes(k))};
+  // a department's figure answers for everybody in it (its head is who is drawn)
+  const hit=CREW.cast.find(c=>same(c.name))||CREW.cast.find(c=>c.members&&c.members.some(same));
   return hit?hit.name:null;
+}
+/* The department a figure stands for, or '' for a specialist in none. */
+function crewDeptOf(name){const c=CREW.cast.find(x=>x.name===name);return (c&&c.dept)||''}
+/* Who in the department is doing it: the label as the event spelled it, matched back to
+   a member so the tag above the figure names a real person. */
+function crewWorker(who,label){
+  const c=CREW.cast.find(x=>x.name===who);if(!c||!c.members||!label)return;
+  const k=String(label).toLowerCase().replace(/[^a-z0-9]/g,'');
+  const m=c.members.find(n=>n.toLowerCase().replace(/[^a-z0-9]/g,'')===k)||c.members.find(n=>k.includes(n.toLowerCase().replace(/[^a-z0-9]/g,'')));
+  if(m)CREW.worker[who]=m;
 }
 /* Who a bare tool call belongs to: the specialist that moved most recently, or
    the agent when none has. A tool call carries no principal in the stream, so
@@ -6584,8 +6616,11 @@ function crewDraw(dt){
       const q=Math.min(1,(now-C.arrive[name])/CREW_WALK_MS), from=s.x<W/2?-scale*.4:W+scale*.4;
       x=from+(s.x-from)*(1-Math.pow(1-q,3));walking=q<1;
     }
+    const d=s.c.dept;
+    const sub=d?(lit?(C.worker[name]||name).replace(/[-_]/g,' ')
+      :`${s.c.named?'\u2605 ':''}${name.replace(/[-_]/g,' ')} · ${s.c.members.length}`):s.c.brain;
     const hy=crewFigure(ctx,x,ground,scale,ink,name,hueOf[i],p,lift,
-      crewFit(name.replace(/[-_]/g,' '),step,scale),s.c.brain,lit,walking);
+      crewFit(d||name.replace(/[-_]/g,' '),step,scale),sub,lit,walking);
     heads[name]={x,y:hy,sc:scale,hue:hueOf[i]};
   });
   // Visitors from linked teams: smaller, at the right edge past the floor, each named
@@ -6621,8 +6656,10 @@ function crewDraw(dt){
   }
   // the standing line. With nobody on the roster it says so and says what to do
   // about it — an empty stage that explains itself, not an empty stage.
-  const nb=Object.keys(C.busy).length;
+  const nb=Object.keys(C.busy).length,nd=C.cast.filter(c=>c.dept).length;
   const line=n===0?'No specialists yet — ask for one and they take a place here'
+    :nd?(()=>{const w=C.cast.filter(c=>c.dept&&C.busy[c.name]).length;
+      return w?`${w} of ${nd} departments working`:`${nd} departments standing by`})()
     :nb?`${nb} of ${n} working`
     :running?`${who} is working · ${n} ${n===1?'specialist':'specialists'} standing by`
     :`${n} ${n===1?'specialist':'specialists'} standing by`;
@@ -6893,6 +6930,18 @@ function worldSay(a,text){
   WORLD.bubbles[a.name]={text,until:performance.now()+7000};worldTags();
 }
 function worldLabel(n){return n==='@agent'?(typeof agentName==='function'?agentName():'Your agent'):n}
+/* Which department somebody is in (company.membership, carried on the world's answer by
+   the server): the tag wears its colour, and a head wears the star. The heads stand in the
+   front row because the server orders the cast that way; nothing here decides it. */
+function worldOrg(n){const c=WORLD.v&&WORLD.v.company;return (c&&c.of&&c.of[n])||null}
+/* With a company, a department stands as its head and the rest of it is `staff` (the
+   server's _world_org): drawing twenty-odd people made a crowd, not a team. */
+function worldStaff(n){const o=worldOrg(n);return o&&o.head?((WORLD.v.staff||{})[o.dept]||[]):[]}
+function worldDeptLine(n){
+  const o=worldOrg(n);if(!o)return '';
+  const d=((WORLD.v.company||{}).departments||[]).find(x=>x.name===o.dept);
+  return (o.head?'\u2605 ':'')+o.dept+(o.head&&d?' · '+d.members.length:'');
+}
 /* Name tags are HTML over the canvas: crisp text, a real button a finger can hit, and
    the door to why each agent feels what it feels. */
 function worldTags(){
@@ -6907,12 +6956,13 @@ function worldTags(){
     const m=a.mood,b=WORLD.bubbles[a.name],say=b&&b.until>now?b.text:'';
     const html=(say?`<span class="wd-say">${esc(say)}</span>`:'')+
       (WORLD.flat?avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''}):'')+
-      `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`;
+      `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`+
+      (worldOrg(a.name)?`<span class="wd-dept" style="--dc:${esc(worldOrg(a.name).hex)}">${esc(worldDeptLine(a.name))}</span>`:'');
     if(el._h!==html){el.innerHTML=html;el._h=html}
     el.style.setProperty('--mh',m.hue);
     el.title=`${m.name}. Tap to see why.`;
     el.setAttribute('aria-label',`${worldLabel(a.name)} feels ${m.name}. Tap to see why.`);
-    el.className='wd-tag wx-'+m.expression+(a.busy?' busy':'');
+    el.className='wd-tag wx-'+m.expression+(a.busy||worldStaff(a.name).some(x=>x.busy)?' busy':'');
     if(WORLD.flat){el.style.left=((i+.5)/cast.length*100)+'%';el.style.top='';el.classList.add('flat')}
   });
   [...box.children].forEach(el=>{if(!have.has(el.dataset.wa))el.remove()});
@@ -7201,13 +7251,16 @@ function worldCard(name,quiet){
   card.hidden=false;card.style.setProperty('--mh',m.hue);
   card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
     <div class="wd-who">${avatarImg(name,'wd-face')}<div><b>${esc(worldLabel(name))}</b>
-      <div class="wd-feel">${esc(m.emoji)} ${esc(m.name)}${a.busy?' · at work':''}</div></div></div>
+      <div class="wd-feel">${esc(m.emoji)} ${esc(m.name)}${a.busy?' · at work':''}</div>
+      ${(o=>o?`<div class="wd-org" style="--dc:${esc(o.hex)}">${esc(o.title?o.title+' · '+o.dept:o.head?'Head of '+o.dept:o.dept)}</div>`:'')(worldOrg(name))}</div></div>
     ${a.why.length?`<div class="wd-h">Because</div><ul class="wd-because">${a.why.map(w=>
       `<li>${esc(w.words)}${w.detail?` <code>${esc(w.detail)}</code>`:''} <small>${ago(w.ago)}</small></li>`).join('')}</ul>`:
       `<p class="wd-quiet">Nothing has happened to ${esc(worldLabel(name))} here yet.</p>`}
     ${m.under&&m.under.length?`<p class="wd-under">Also: ${m.under.map(u=>esc(u.emoji+' '+u.name)).join(', ')}</p>`:''}
     <div class="wd-grow"><span>${esc(l.name)}</span>${l.next?`<i style="--p:${Math.max(4,100-l.to_next/(l.to_next+l.xp||1)*100)}%"></i><small>${l.to_next} to ${esc(l.next)}</small>`:'<small>top of the ladder</small>'}</div>
     ${a.friend?`<p class="wd-friend">Works best with ${esc(worldLabel(a.friend))}</p>`:''}
+    ${worldStaff(name).length?`<div class="wd-h">${esc(worldOrg(name).dept)}</div><ul class="wd-staff">${worldStaff(name).map(x=>
+      `<li><b>${esc(x.mood.emoji)}</b> ${esc(x.name)} <small>${esc(x.mood.name)}${x.busy?' · at work':''}</small></li>`).join('')}</ul>`:''}
     <div class="wd-acts"><button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>
       <button class="endbtn wd-calm1" onclick="worldCalm('${esc(name)}')">Calm down</button></div>`;
 }
@@ -8405,7 +8458,8 @@ function mindDraw(t,state){
     H.nodes.forEach(p=>{
       const n=p.n,bad=n.status==='error'||n.status==='timeout';
       const spr=mindSprite(bad?2:hue,bad?90:100,bad?60:62);
-      const s=(n.pinned||n.kind==='skill'||n.on?15:10+Math.min(8,(n.w||0)*1.5))*(.75+p.z*.25)*(1+p.flash*.9);
+      const s=(n.kind==='person'?(n.head?22:18)*(n.busy?1.25:1)
+        :n.pinned||n.kind==='skill'||n.on?15:10+Math.min(8,(n.w||0)*1.5))*(.75+p.z*.25)*(1+p.flash*.9);
       g.globalAlpha=Math.min(1,Math.max(.35,.8+p.z*.2)*(n.hub==='missions'&&!n.on?.45:1)+p.flash*.5);
       g.drawImage(spr,p.x-s/2,p.y-s/2,s,s);
       if(p.flash)p.flash=p.flash<.03?0:p.flash*.9;
@@ -8587,7 +8641,9 @@ function mindPulse(kind,label,ev){
     MIND.sparks.push({from,to,at:now,dur:MIND.still?1:1100});
     if(MIND.sparks.length>24)MIND.sparks.shift();
   };
-  const agentHub=n=>n&&L.hubs['agent:'+n]?'agent:'+n:'';
+  // an agent's cluster is its department's when there is a company (mind.py `where`)
+  const agentHub=n=>{if(!n)return '';const w=MIND.snap&&MIND.snap.where&&MIND.snap.where[n];
+    return w&&L.hubs[w]?w:L.hubs['agent:'+n]?'agent:'+n:''};
   if(kind==='tool'&&label){
     const name=String(label),args=(ev&&ev.args)||{};
     if(MIND_MEMORY_TOOLS.test(name))spark('core','memory');
@@ -8599,8 +8655,9 @@ function mindPulse(kind,label,ev){
     if(who)spark(ev.flow?'missions':'core',who);else if(ev.flow)spark('core','missions');
     if(ev.event==='status')mindSoon(1200);
   }else if(kind==='done'){spark('core','missions');mindSoon(1500)}
-  else if(kind==='msg'&&ev){const a=agentHub(ev.from),b=agentHub(ev.to);if(a&&b)spark(ev.phase==='ask'?a:b,ev.phase==='ask'?b:a)}
-  else if(kind==='say'&&label){const a=agentHub(label),b=agentHub(ev&&ev.to);if(a&&b)spark(a,b);else if(a)MIND.flare[a]=1}
+  else if(kind==='msg'&&ev){const a=agentHub(ev.from),b=agentHub(ev.to);
+    if(a&&b&&a===b)MIND.flare[a]=1;else if(a&&b)spark(ev.phase==='ask'?a:b,ev.phase==='ask'?b:a)}
+  else if(kind==='say'&&label){const a=agentHub(label),b=agentHub(ev&&ev.to);if(a&&b&&a!==b)spark(a,b);else if(a)MIND.flare[a]=1}
   else if(kind==='turnend')mindSoon(2000);
   mindKick();
 }
@@ -8616,10 +8673,10 @@ function mindStateText(state){
 function mindNum(n){n=+n||0;return n>=1e6?(n/1e6).toFixed(1).replace(/\.0$/,'')+'M':n>=1e4?Math.round(n/1e3)+'k':n>=1e3?(n/1e3).toFixed(1).replace(/\.0$/,'')+'k':String(n)}
 function mindPaintUI(){
   const S=MIND.snap,U=MIND.ui;if(!S||!U)return;
-  const st=S.stats,b=S.brief||{},agents=S.hubs.filter(h=>h.kind==='agent').length;
+  const st=S.stats,b=S.brief||{},agents=S.team.length,depts=S.hubs.filter(h=>h.kind==='dept');
   U.querySelector('.mn-top').innerHTML=
     `<span class="mn-dot"></span><b class="mn-state">Quiet</b><span class="mn-sep">·</span>`+
-    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}</span>`+
+    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}${depts.length?` in ${depts.length} department${depts.length===1?'':'s'}`:''}</span>`+
     `<button class="mn-btn" onclick="mindTell()">Tell me</button>`+
     `<button class="mn-btn" onclick="mindTalk()" aria-label="Talk to ${esc(S.lead)}">🎙 Talk</button>`+
     `<button class="mn-btn mn-peace" onclick="mindPeace()" aria-pressed="${MIND.peace?'true':'false'}" title="${MIND.peace?'Show the panels':'Peace: only the mind'}">${MIND.peace?'Show all':'Peace'}</button>`;
@@ -8641,7 +8698,11 @@ function mindPaintUI(){
   const busyLead=typeof RUNNING!=='undefined'&&RUNNING.size>0;
   U.querySelector('.mn-right').innerHTML=`<section class="mn-panel mn-team"><h3>Team</h3>`+
     `<div class="mn-agent lead${busyLead?' busy':''}"><span class="mn-pip"></span><b>${esc(S.lead)}</b><i>${busyLead?'working':'your lead'}</i></div>`+
-    (S.team.length?S.team.map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
+    depts.map(h=>{const ppl=S.team.filter(a=>a.dept===h.label),busy=ppl.filter(a=>a.busy).length,
+      runs=ppl.reduce((n,a)=>n+(a.runs||0),0);
+      return `<button class="mn-agent${busy?' busy':''}" data-hub="${esc(h.id)}"><span class="mn-pip" style="--mh:${h.hue}"></span>`+
+        `<b>${esc(h.label)}</b><i>${busy?busy+' working':runs?runs+' run'+(runs===1?'':'s')+' this week':'idle'} · ${ppl.length} ${ppl.length===1?'person':'people'}</i></button>`}).join('')+
+    (S.team.length?S.team.filter(a=>!a.dept).map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
       `<span class="mn-pip" style="--mh:${(S.hubs.find(h=>h.id==='agent:'+a.name)||{}).hue||200}"></span><b>${esc(a.name)}</b>`+
       `<i>${a.busy?'working':a.runs?a.runs+' run'+(a.runs===1?'':'s')+' this week':'idle'}${a.brain?' · '+esc(a.brain):''}</i></button>`).join('')
       :'<p class="mn-quiet">No specialists yet.</p>')+`</section>`;
@@ -8689,6 +8750,13 @@ function mindCard(id,refresh){
   }else if(h.kind==='missions'){
     body=nodes.length?li(nodes.map(n=>`<li>${esc(n.label)} <i>${n.on?'on':'off'}</i></li>`)):'<p>No missions yet.</p>';
     go=`<button class="endbtn" onclick="openApp('jobs')">Open Missions</button>`;
+  }else if(h.kind==='dept'){
+    const ppl=nodes.filter(n=>n.kind==='person'),runs=nodes.filter(n=>n.kind==='run');
+    const busy=ppl.filter(n=>n.busy).map(n=>n.label);
+    body=`<p>${busy.length?esc(busy.join(', '))+' working now.':runs.length?`${runs.length} run${runs.length===1?'':'s'} this week.`:'Nothing this week.'}</p>`+
+      li(ppl.map(n=>`<li>${n.head?'★ ':''}${esc(n.label)}${n.title?` <i>${esc(n.title)}</i>`:''}</li>`))+
+      li(runs.slice(0,4).map(n=>`<li>${esc(n.label)} <i>${esc(n.status||'')}</i></li>`));
+    go=`<button class="endbtn" data-dept="${esc(h.label)}">Give ${esc(h.label)} a task</button>`;
   }else{
     const name=h.label,a=S.team.find(x=>x.name===name)||{},talk=S.links.filter(k=>k.kind==='talk'&&(k.a===id||k.b===id));
     const skills=nodes.filter(n=>n.kind==='skill'),runs=nodes.filter(n=>n.kind==='run');
@@ -8700,7 +8768,13 @@ function mindCard(id,refresh){
   }
   card.innerHTML=`<div class="mn-ch"><span class="mn-pip" style="--mh:${h.hue}"></span><b>${esc(h.label)}</b>`+
     `<button class="mn-x" aria-label="Close" data-hub="${esc(id)}">✕</button></div>${body}<div class="mn-go">${go}</div>`;
+  const dg=card.querySelector('[data-dept]');if(dg)dg.onclick=()=>mindDept(dg.dataset.dept);
   card.hidden=false;U.classList.add('carded');
+}
+/* A department's card hands over to the Office's company panel, where tasks are given. */
+function mindDept(name){
+  openApp('office');
+  setTimeout(()=>{if(typeof COMPANY!=='undefined'){COMPANY.focus=name;officeCompany(true)}},500);
 }
 /* The panels, said aloud by the lead, from the same snapshot. */
 function mindTell(){

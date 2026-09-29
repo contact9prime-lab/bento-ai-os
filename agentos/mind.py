@@ -31,6 +31,10 @@ WEEK = 7 * 86400
 #: fixed hues for the three shared lobes; specialists take the rest of the wheel
 HUES = {"memory": 188, "knowledge": 276, "missions": 36}
 AGENT_HUES = (330, 140, 212, 12, 58, 300, 165, 96, 245, 350)
+#: a department's cluster takes its room's colour (office.COLORS), so Finance is the same
+#: amber in the Office and in the Mind. Amber leans gold here, away from Missions' orange.
+DEPT_HUES = {"teal": 172, "violet": 262, "amber": 48, "rose": 345, "sky": 200,
+             "lime": 88, "orange": 22, "slate": 222}
 
 
 def _short(text: str, n: int = 70) -> str:
@@ -53,12 +57,36 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
     hubs = [{"id": "memory", "kind": "memory", "label": "Memory", "hue": HUES["memory"]},
             {"id": "knowledge", "kind": "knowledge", "label": "Knowledge", "hue": HUES["knowledge"]},
             {"id": "missions", "kind": "missions", "label": "Missions", "hue": HUES["missions"]}]
-    for i, d in enumerate(agents):
+    nodes: list[dict] = []
+    links: list[dict] = []
+    # With a company (company.py), a department is ONE cluster and its people are points
+    # in it: twenty-one specialists as twenty-one clusters crowded the ring into a wall of
+    # names. Anybody in no department keeps a cluster of their own, as before.
+    from . import company as companymod
+    try:
+        org = companymod.membership(cfg, store)
+    except Exception:
+        org = {"departments": [], "of": {}}
+    names_live = {d["name"] for d in agents}
+    where: dict = {}
+    for dept in org["departments"]:
+        people = [m for m in dept["members"] if m in names_live]
+        if not people:
+            continue
+        hid = f"dept:{dept['name']}"
+        hubs.append({"id": hid, "kind": "dept", "label": dept["name"],
+                     "hue": DEPT_HUES.get(dept["color"], 200), "head": dept["head"],
+                     "members": people, "busy": any(m in running for m in people)})
+        for m in people:
+            where[m] = hid
+            nodes.append({"id": f"a:{m}", "hub": hid, "label": m, "kind": "person",
+                          "head": m == dept["head"] and dept["named"],
+                          "title": org["of"].get(m, {}).get("title", ""), "busy": m in running})
+    for i, d in enumerate(a for a in agents if a["name"] not in where):
         hubs.append({"id": f"agent:{d['name']}", "kind": "agent", "label": d["name"],
                      "hue": AGENT_HUES[i % len(AGENT_HUES)],
                      "busy": d["name"] in running})
-    nodes: list[dict] = []
-    links: list[dict] = []
+        where[d["name"]] = f"agent:{d['name']}"
 
     mems = store.search_memories(limit=MAX_MEMORY)
     for m in mems:
@@ -88,10 +116,12 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
     for f in store.list_flows():
         fid = f"f:{f['name']}"
         nodes.append({"id": fid, "hub": "missions", "label": f["name"], "on": bool(f.get("enabled"))})
+        wired = set()
         for m in (f.get("roster") or []):
             member = m.get("subagent") if isinstance(m, dict) else m
-            if member in names:
-                links.append({"a": fid, "b": f"agent:{member}", "kind": "roster"})
+            if member in names and where.get(member) not in wired:
+                wired.add(where[member])          # a desk's whole roster is one department
+                links.append({"a": fid, "b": where[member], "kind": "roster"})
 
     runs = [r for r in store.fabric_runs(limit=600) if (r.get("started_at") or 0) >= since]
     per: dict = {}
@@ -99,10 +129,10 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
         per.setdefault(r.get("ref") or "", []).append(r)
     for d in agents:
         for s in (d.get("skills") or [])[:8]:
-            nodes.append({"id": f"s:{d['name']}:{s}", "hub": f"agent:{d['name']}",
+            nodes.append({"id": f"s:{d['name']}:{s}", "hub": where[d["name"]],
                           "label": s, "kind": "skill"})
         for r in per.get(d["name"], [])[:MAX_RUNS_PER_AGENT]:
-            nodes.append({"id": f"r:{r['id']}", "hub": f"agent:{d['name']}",
+            nodes.append({"id": f"r:{r['id']}", "hub": where[d["name"]],
                           "label": _short(str(r.get("input") or "").split("\n")[0], 60),
                           "full": str(r.get("input") or "")[:2000],
                           "kind": "run", "status": r.get("status") or "", "t": r.get("started_at") or 0})
@@ -123,8 +153,15 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
             for j in range(i + 1, len(who)):
                 k = tuple(sorted((who[i], who[j])))
                 talk[k] = talk.get(k, 0) + 1
+    # between clusters: two people in one department talking is inside that cluster
+    between: dict = {}
     for (a, b), n in talk.items():
-        links.append({"a": f"agent:{a}", "b": f"agent:{b}", "kind": "talk", "n": n})
+        ha, hb = where.get(a), where.get(b)
+        if ha and hb and ha != hb:
+            k = tuple(sorted((ha, hb)))
+            between[k] = between.get(k, 0) + n
+    for (a, b), n in between.items():
+        links.append({"a": a, "b": b, "kind": "talk", "n": n})
 
     # a free talk's messages are conversation, not tasks; they are counted on their own
     for n in nodes:
@@ -152,11 +189,12 @@ def snapshot(store, cfg: dict, running: set | None = None, now: float | None = N
         mine = per.get(d["name"], [])
         last = mine[0] if mine else None
         team.append({"name": d["name"], "busy": d["name"] in running, "runs": len(mine),
+                     "dept": org["of"].get(d["name"], {}).get("dept", ""),
                      "last": _short(str(last.get("input") or "").split("\n")[0], 60) if last else "",
                      "last_status": (last or {}).get("status", ""),
                      "brain": fabricmod.agent_brain(cfg, d).get("provider_name", "")})
     out = {"lead": lead, "hubs": hubs, "nodes": nodes, "links": links, "stats": stats,
-           "brief": brief, "team": team, "at": now}
+           "brief": brief, "team": team, "at": now, "where": where}
     out["spoken"] = spoken(out)
     return out
 

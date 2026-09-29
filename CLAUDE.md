@@ -421,6 +421,24 @@ persona". Full story in `docs/company.md`; `tests/test_company.py` pins what fol
 The lead hears the org chart (`company.note`, appended after `team_note` in `agent.py`; the
 team door gets `desks=False`, because it has no `run_flow`).
 
+**Every scene draws the company from ONE answer, `company.membership()`** (who is in which
+department, its head, whether that head was NAMED, the colour's hex, each title). The Crew
+stage reads it off `/api/subagents`, the Mind off `mind.snapshot`, the World off the
+server's `_world_org`; none of the three pages asks `/api/company` or decides membership.
+- **Crew:** one figure per department (its head, in the department's shirt), up to
+  `CREW_MAX_ORG`; `crewMatch` answers for any member, so a member's work lights its
+  department's figure and `crewWorker` names who.
+- **Mind:** a department is ONE hub (`dept:<name>`, `DEPT_HUES` from the room's colour);
+  its people are `person` nodes and their runs and skills sit on that hub; `where` maps a
+  name to its hub so a spark finds it. Roster and talk links are per hub, and talk inside
+  one department is not a link. Twenty-one agent hubs was a wall of names.
+- **World:** a department stands as its HEAD; the rest is `staff`, with moods, on the head's
+  card (`_world_org`, applied to every world route including `enter`, which the page reads
+  first). Twenty-five figures on the canal was a crowd. world.py never reads the company:
+  its lease and feelings are untouched, only what is drawn is grouped.
+- A room somebody filled by hand has a FIRST person, not a head: `named` is false and no
+  star is drawn.
+
 ## The Brief: a mission delivers ITEMS a person acts on, never a message
 
 `agentos/brief.py` is how a mission's result reaches somebody, and it is the reason

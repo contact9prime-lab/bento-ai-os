@@ -405,7 +405,7 @@ def test_a_newcomer_walks_on_and_nobody_else_moves():
     assert "if(CREW.known)" in roster, "the first roster must not be an arrival"
     assert "CREW.arrive[c.name]=now" in roster and "crewSay(c.name," in roster
     assert "was.indexOf(n)" in roster and ".sort(" in roster, "places must be kept"
-    assert roster.index(".sort(") < roster.index(".slice(0,CREW_MAX)"), \
+    assert roster.index(".sort(") < roster.index(".slice(0,depts.length?CREW_MAX_ORG:CREW_MAX)"), \
         "cap AFTER ordering, or a newcomer can push an old hand off the stage"
     assert "CREW_WALK_MS" in CREW_CODE.split("function crewDraw(")[1]
 
@@ -414,9 +414,12 @@ def test_a_bubble_says_only_what_happened():
     """Three things are said on the stage: hello on arrival, done when work
     finished, and a huddle's turn in the speaker's own words. All three are events;
     none is chatter on a timer."""
-    assert "crewSay(who,'done" in CREW_CODE
+    # a department's figure says WHO in it did the thing (company.membership); a
+    # specialist in no department says it plainly, as before
+    assert "crewSay(who,(crewDeptOf(who)&&w&&w!==who?w+': ':'')+'done" in CREW_CODE
     assert "crewSay(c.name,'hello!')" in CREW_CODE
-    assert "crewSay(w,(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)" in CREW_CODE
+    assert ("crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to?'@'+ev.to+' ':'')"
+            "+String((ev&&ev.text)||''),true)") in CREW_CODE
     assert CREW_CODE.count("crewSay(") == 4, "one definition, three sayings — nothing else talks"
     step = CREW_CODE.split("function crewStep(")[1].split("\nfunction ")[0]
     assert "CREW_SAY_MS" in step, "a bubble must go away"
