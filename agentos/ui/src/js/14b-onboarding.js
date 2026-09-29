@@ -833,7 +833,8 @@ var OB_WIRE={
         <div class="mut" id="ob-crew-said" aria-live="polite"></div></div>
       <img class="ob-crew-prev" id="ob-crew-prev" alt="A preview of your office with your crew in it" src="${preview()}">
       <div class="job-go"><button class="wiz-next" id="ob-crew-go">Create my office</button>
-        <button class="wiz-back" id="ob-crew-open">Open the Office</button></div>`;
+        <button class="wiz-back" id="ob-crew-open">Open the Office</button>
+        <button class="wiz-back" id="ob-crew-co">Set up a whole company</button></div>`;
     const refresh=()=>{$('#ob-crew-prev').src=preview()};
     box.querySelectorAll('.ob-sw').forEach(b=>b.onclick=()=>{style=b.dataset.style;
       box.querySelectorAll('.ob-sw').forEach(x=>x.classList.toggle('on',x===b));refresh()});
@@ -845,6 +846,8 @@ var OB_WIRE={
       b.querySelector('img').outerHTML=avatarImg(b.dataset.key,'ob-face-img');refresh();
     });
     $('#ob-crew-open').onclick=()=>{obClose();openApp('office')};
+    // a company is departments of agents (company.py): the Office's own panel drafts it
+    $('#ob-crew-co').onclick=()=>{obClose();openApp('office');setTimeout(()=>officeCompany(true),600)};
     // the same designer as the Office's "Describe it" and Settings → Appearance; it saves,
     // so the step is done by it as well as by the button below
     const describe=async()=>{const d=await officeDescribe($('#ob-crew-ask'),$('#ob-crew-said'),$('#ob-crew-askb'));

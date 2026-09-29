@@ -65,15 +65,18 @@ function renderOffice(el,w){
     <div class="of-stage">
       <div class="of-bar"><b class="of-title">Office</b><span class="of-line" id="of-line">opening…</span>
         <span style="flex:1"></span>
+        <button class="endbtn of-co" title="Your company: its departments, their work, and a task for any of them">▦ Company</button>
         <button class="endbtn of-vz" title="Visit a linked team's office">⇄ Visit</button>
         <button class="endbtn of-snap" data-ic="camera" title="Send the office right now, as a picture, to your phone">◉ Snap</button>
         <button class="endbtn of-dz" data-ic="palette" title="Change how the office looks and who sits where">✎ Design</button>
         <button class="endbtn of-fl" title="Everything your agents made">▤ Files</button>
         <button class="endbtn of-ct" title="Talk to your agent">Chat</button></div>
       <div class="of-scroll"><canvas class="of-cv" aria-hidden="true"></canvas>
+        <div class="of-cards"></div>
         <div class="of-empty" hidden></div></div>
       <div class="of-log" role="log" aria-live="polite" aria-label="What the office is doing"></div>
       <div class="of-design" hidden></div>
+      <div class="of-company" hidden></div>
       <div class="of-visit" hidden></div>
       <div class="of-files" hidden></div>
     </div>
@@ -81,6 +84,7 @@ function renderOffice(el,w){
   </div>`;
   OFFICE.cv=el.querySelector('.of-cv');OFFICE.ctx=OFFICE.cv.getContext('2d');
   el.querySelector('.of-dz').onclick=()=>officeDesign(!OFFICE.design);
+  el.querySelector('.of-co').onclick=()=>officeCompany(!COMPANY.open);
   el.querySelector('.of-snap').onclick=officeSnap;
   el.querySelector('.of-vz').onclick=()=>officeVisit(OFFICE.visiting===undefined?'':null);
   el.querySelector('.of-fl').onclick=()=>officeFiles();
@@ -99,6 +103,7 @@ function officeClose(w){
   cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
   try{w._ofro&&w._ofro.disconnect()}catch(e){}
   OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;OFFICE.visiting=undefined;
+  COMPANY.open=false;clearTimeout(COMPANY.timer);
   setTimeout(officeSceneAttach,0);
   return true;
 }
@@ -181,6 +186,7 @@ async function officeLoad(){
     OFFICE.loaded=true;
     officeLayout();
     if(OFFICE.design)officeDesignPaint();
+    companyLoad();
   }catch(e){const l=document.getElementById('of-line');if(l)l.textContent='could not load the office — '+(e.message||e)}
 }
 /* The roster moved (a specialist made or deleted, a face changed): reload the plan. */
@@ -247,6 +253,7 @@ function officeLayout(){
   officeSeat();
   officeBg();
   officeEmpty();
+  companyCards();
   officeLine();
   // resizing a canvas clears it, so paint now rather than leave a blank frame
   // until the loop's next tick (at rest that is a sixth of a second away)
@@ -268,6 +275,7 @@ function officeSeat(){
       const col=i%r.per,line=Math.floor(i/r.per),n=Math.min(r.per,r.members.length-line*r.per);
       const x=r.x+r.w/2+(col-(n-1)/2)*slot, y=r.y+OF_WALL+78+line*112+(r.grow||0)*.4;
       seen[m]=officePerson(keep[m],m,m,r,x,y,false);
+      seen[m].head=r.lead===m;seen[m].title=(r.titles||{})[m]||'';
     });
   });
   O.people=seen;
@@ -483,6 +491,7 @@ function officeReply(asker,who,text){
    (which names a tool and no agent) lands on the right desk. */
 function officeFabric(ev){
   const O=OFFICE,e=ev.event;
+  if(e==='flow_start'||e==='flow_end'||e==='approval'||e==='parked'||(e==='status'&&ev.status!=='running'))companySoon();
   if(e==='flow_start'){O.missions[ev.flow]=performance.now();if(ev.run_id)O.flowRuns[ev.run_id]=ev.flow;
     officeLog(`mission ${ev.flow} started`);officeKick();return}
   if(e==='flow_end'){if(ev.flow)delete O.missions[ev.flow];else O.missions={};
@@ -936,7 +945,8 @@ function officeDesk(ctx,p){
   // a mug, so the desk is somebody's
   ctx.fillStyle=col;ofRR(ctx,x+W/2-(p.lead?52:20),y+2,10,11,2);ctx.fill();ofInk(ctx,1.6);
   // the nameplate on the desk front
-  ofFont(ctx,11.5,800);const nm=p.label.length>14?p.label.slice(0,13)+'…':p.label;
+  // a department's head wears a star on the nameplate (company.py); the lead agent has the blazer
+  ofFont(ctx,11.5,800);const lb=(p.head?'★ ':'')+p.label,nm=lb.length>15?lb.slice(0,14)+'…':lb;
   const tw=Math.min(W-10,ctx.measureText(nm).width+16);
   ctx.fillStyle=lit?col:'#ffffff';ofRR(ctx,x-tw/2,y+26,tw,18,4);ctx.fill();ofInk(ctx,1.8);
   ctx.fillStyle=lit?'#ffffff':OF_INK;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(nm,x,y+35.5);
@@ -1207,13 +1217,14 @@ function officeEmpty(){
   const none=!OFFICE.view.agents.length;
   el.hidden=!none;
   if(none)el.innerHTML=`<b>Your office has one person in it: ${esc(officeName('@agent'))}.</b>
-    <span>Specialists take a desk here as soon as they exist. Ask for one in the chat — “make me a researcher and an analyst, put them in a Research department”.</span>`;
+    <span>Specialists take a desk here as soon as they exist. Set up a whole company with ▦ Company, or ask for one person in the chat.</span>`;
 }
 
 /* ---------------- Design: how the office looks, and who sits where ---------------- */
 function officeDesign(open){
   const O=OFFICE,el=O.w&&O.w.el.querySelector('.of-design');if(!el)return;
   if(open&&O.visiting!==undefined)officeVisit(null);   // one panel over the office at a time
+  if(open&&COMPANY.open)officeCompany(false);
   O.design=open;el.hidden=!open;
   O.w.el.querySelector('.of-dz').classList.toggle('on',open);
   if(open)officeDesignPaint();
@@ -1255,8 +1266,10 @@ function officeDesignPaint(){
   q('.of-askb').onclick=ask;q('.of-ask').onkeydown=e=>{if(e.key==='Enter')ask()};
   qa('.of-style').forEach(b=>b.onclick=()=>officeSave({style:b.dataset.st}));
   q('.of-name').onchange=e=>officeSave({name:e.target.value});
+  // ...d first: a department's head, mandate, desk and titles (company.py) ride along,
+  // or renaming a room would quietly take its head away
   const deptsNow=()=>[...qa('.of-dept')].map(r=>{const d=depts[+r.dataset.i];
-    return {name:r.querySelector('.of-dn').value,color:r.querySelector('.of-dc').value,members:d.members}});
+    return {...d,name:r.querySelector('.of-dn').value,color:r.querySelector('.of-dc').value,members:d.members}});
   qa('.of-dn,.of-dc').forEach(x=>x.onchange=()=>officeSave({departments:deptsNow()}));
   qa('.of-drm').forEach(b=>b.onclick=()=>{const i=+b.closest('.of-dept').dataset.i;
     officeSave({departments:deptsNow().filter((_,j)=>j!==i)})});
@@ -1305,6 +1318,7 @@ async function officeVisit(label){
   const O=OFFICE,el=O.w&&O.w.el.querySelector('.of-visit');if(!el)return;
   if(label===null){el.hidden=true;O.visiting=undefined;O.w.el.querySelector('.of-vz').classList.remove('on');return}
   if(O.design)officeDesign(false);
+  if(COMPANY.open)officeCompany(false);
   el.hidden=false;O.visiting=label;O.w.el.querySelector('.of-vz').classList.add('on');
   el.innerHTML=`<div class="of-dh"><b>Visit a linked team</b><button class="of-x" aria-label="Close">✕</button></div><div class="of-vbody mut">…</div>`;
   el.querySelector('.of-x').onclick=()=>officeVisit(null);

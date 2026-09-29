@@ -63,8 +63,11 @@ COLORS: dict[str, str] = {
 DECOR = ("plants", "coffee", "whiteboard", "bookshelf", "arcade", "posters")
 PETS = ("none", "cat", "dog", "robot")
 
-MAX_DEPTS = 6          # a floor plan, not an org chart: six rooms plus the fixed ones
+MAX_DEPTS = 10         # a company's worth of rooms (company.py), plus the fixed ones
 NAME_MAX = 24
+ABOUT_MAX = 200        # a department's one-line mandate
+TITLE_MAX = 40         # "Head of Finance"
+_DESK = re.compile(r"^[A-Za-z0-9_-]{1,49}$")   # the department's desk is a flow name
 FLOOR = "Open floor"   # where a specialist nobody placed sits
 
 DEFAULT: dict = {
@@ -174,7 +177,25 @@ def clean(spec: dict, known: list[str] | None) -> tuple[dict, list[str]]:
                     continue
                 placed.add(m.lower())
                 members.append(m)
-            depts.append({"name": name, "color": color, "members": members})
+            dept = {"name": name, "color": color, "members": members}
+            # What makes a room a DEPARTMENT of a company (company.py): who heads it,
+            # what it is for, the flow that is its desk, and each person's title. All
+            # optional, so an office drawn by hand is still just rooms.
+            lead = str(d.get("lead") or "").strip().lstrip("@")
+            if lead and lead.lower() in {m.lower() for m in members}:
+                dept["lead"] = next(m for m in members if m.lower() == lead.lower())
+            about = _plain(d.get("about"), ABOUT_MAX)
+            if about:
+                dept["about"] = about
+            desk = str(d.get("desk") or "").strip()
+            if desk and _DESK.match(desk):
+                dept["desk"] = desk
+            titles = d.get("titles") if isinstance(d.get("titles"), dict) else {}
+            kept = {m: _plain(titles.get(m) or titles.get(m.lower()), TITLE_MAX) for m in members}
+            kept = {m: t for m, t in kept.items() if t}
+            if kept:
+                dept["titles"] = kept
+            depts.append(dept)
         out["departments"] = depts
     return out, dropped
 
@@ -220,7 +241,15 @@ def view(cfg: dict, store) -> dict:
     for d in office["departments"]:
         members = [live[m.lower()] for m in d["members"] if m.lower() in live and m.lower() not in placed]
         placed.update(m.lower() for m in members)
-        rooms.append({"kind": "dept", "name": d["name"], "color": d["color"], "members": members})
+        room = {"kind": "dept", "name": d["name"], "color": d["color"], "members": members}
+        for k in ("about", "desk"):
+            if d.get(k):
+                room[k] = d[k]
+        if d.get("lead") in members:
+            room["lead"] = d["lead"]
+        if d.get("titles"):
+            room["titles"] = {m: t for m, t in d["titles"].items() if m in members}
+        rooms.append(room)
     loose = [r for r in roster if r.lower() not in placed]
     if loose or not office["departments"]:
         rooms.append({"kind": "floor", "name": FLOOR, "color": "slate", "members": loose})

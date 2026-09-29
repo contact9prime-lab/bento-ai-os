@@ -713,6 +713,12 @@ class Agent:
                 mem_text += team_note(store.list_subagents(), prefix="")
             except Exception:
                 pass
+            try:
+                # and how they are organised, when the person set up a company
+                from . import company as _company
+                mem_text += _company.note(self.cfg, store)
+            except Exception:
+                pass
         if self.principal is MAIN:
             # The World scene's "agents feel it" (experimental): empty unless this
             # person's world is live AND they turned it on. world.py says why.

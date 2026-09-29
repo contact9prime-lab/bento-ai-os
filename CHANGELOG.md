@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.15 — 2026-09-29
+
+**Set up your company.** Tell Bento what your business does and it drafts the company:
+departments like Admin, HR, Finance, Supply, Sales, Tech and Marketing, each with a head
+and two or three staff, every one with a job title and a persona written for your
+business. Everything is shown before it's made, and you can untick people, drop
+departments or rewrite a persona. Open the Office and press **▦ Company**, or run
+`bento company setup "what the business does"`.
+
+**Give a department a task.** Each department has a desk. Tap its card in the Office, or
+run `bento company task Finance "…"`, and the head plans the work and hands it to the
+staff while you watch. A desk starts switched off, so any step that needs permission asks
+you first. The card over each room counts what the department is doing, what's next, what
+it finished this week and what's waiting for you, and the Tasks list shows every piece of
+work with who did it. Your own agent knows the departments too, and hands work to the
+right head.
+
+**Tidier Office bar on a phone.** The buttons scroll instead of squeezing on top of each
+other.
+
 ## 0.6.14 — 2026-09-29
 
 **A mission that asks while you sleep now waits for you.** When a mission needed a yes at

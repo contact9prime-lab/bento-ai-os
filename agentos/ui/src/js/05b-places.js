@@ -23,7 +23,7 @@
 var APP_WORDS={
   jobs:['mission','missions','job','jobs','flow','flows','workflow','workflows','fabric','orchestrator','recipe'],
   settings:['preferences','prefs','config','configuration','options'],
-  office:['crew','team','playground','floor','lounge','meeting room'],
+  office:['crew','team','playground','floor','lounge','meeting room','company','departments'],
   brief:['inbox','today','digest','summary'],
   permissions:['grants','grant','allow','deny','matrix','consent','policy','policies'],
   profile:['about me','what it knows','knowledge','memory','memories'],
@@ -51,6 +51,8 @@ function placeMissions(tab,sub){return ()=>{
   if(sub&&typeof fabTab!=='undefined')fabTab=sub;
   openApp('jobs');refreshApp('jobs');
 }}
+/* The Office's company panel (24g-company.js), opened once the window has painted. */
+function placeCompany(){return ()=>{openApp('office');setTimeout(()=>{if(typeof officeCompany==='function')officeCompany(true)},500)}}
 // [label, the app it lives in, where it is in words, words, go]
 var PLACES=[
   ['AI providers','settings','Settings → AI providers',['provider','providers','model','models','brain','api key','key','openai','anthropic','claude','gemini','ollama','openrouter','llm'],placeSettings('ai')],
@@ -67,6 +69,7 @@ var PLACES=[
   ['Run missions','jobs','Missions → Run',['mission','missions','job','jobs','recipe','recipes','daily','describe a mission','catalogue'],placeMissions('run')],
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
   ['Mission agents','jobs','Missions → Build → Agents',['roster','specialist','specialists','subagent','subagents','new agent'],placeMissions('build','agents')],
+  ['Company','office','Office → Company',['company','departments','department','org','organisation','organization','startup','business','hr','finance','sales','marketing','admin','supply','operations'],placeCompany()],
   ['Mission runs','jobs','Missions → Build → Runs',['run','runs','run history','history','what ran'],placeMissions('build','runs')],
   ['Schedule','jobs','Missions → Schedule',['scheduler','schedule','scheduled','cron','timer','task','tasks','reminder'],placeFold('tasks')],
   ['Routines','jobs','Missions → Routines',['automation','automations','routine','routines','hot corner','hot corners','macro','sequence'],placeFold('automations')],
