@@ -7,9 +7,9 @@
 const DECK_DEFAULTS=[
   ['Essentials',['brief','chat','office','teamchat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
-  ['Intelligence',['models','memory','kg','soul','profile','spaces','timeline']],
-  ['Automation',['jobs','automations','tasks','skills','mcp','telegram']],
-  ['System',['taskmgr','control','syssettings','settings','setup','users','policies','permissions','quarantine','audit','snapshots','logs','tokens']],
+  ['Intelligence',['models','profile','spaces','timeline']],
+  ['Automation',['jobs','skills','mcp','telegram']],
+  ['System',['taskmgr','control','syssettings','settings','setup','users','permissions','snapshots','logs','tokens']],
   ['Library',['docs','mission','train','about']],
 ];
 // folded until used: what these hold is empty on a machine nobody has talked to

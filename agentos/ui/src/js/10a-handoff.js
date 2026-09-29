@@ -47,9 +47,9 @@ function handoffFor(name,args){
       return {app:'fabric',label:'Open in Missions',what:nm||'the flow',
               note:args.enabled===false?'switched off':'switched on'};
     case 'save_automation':
-      return {app:'automations',label:'Open in Automations',what:nm||'the routine',note:''};
+      return {app:'automations',label:'Open in Missions',what:nm||'the routine',note:'under Routines'};
     case 'schedule_task':
-      return {app:'tasks',label:'Open in Scheduler',
+      return {app:'tasks',label:'Open in Missions',
               what:String(args.prompt||'the task').slice(0,60),note:'it runs on its own from now on'};
     default:
       return null;

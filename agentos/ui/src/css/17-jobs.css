@@ -120,6 +120,9 @@
   color:var(--acc);border:1px solid color-mix(in srgb,var(--acc) 45%,transparent);animation:jobpulse 1.6s ease-in-out infinite}
 @keyframes jobpulse{0%,100%{opacity:1}50%{opacity:.45}}
 @media (prefers-reduced-motion:reduce){.job-live{animation:none}}
+/* a mission paused on a question: a door to the Brief, still, not a pulse */
+.job-wait{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent);
+  background:none;cursor:pointer;animation:none;font-family:inherit}
 .job-row.off{opacity:.6}
 .job-row{flex-wrap:wrap}
 .job-row .grow{min-width:220px}

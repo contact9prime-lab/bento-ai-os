@@ -439,7 +439,7 @@ an unbound corner teaches you nothing:
 | Bottom left | **All apps** — the app wall |
 | Bottom right | **Widgets** — the wall's other face |
 
-Rebind any corner in **Automations → Hot corners** to a desktop action, an app,
+Rebind any corner in **Missions → Routines → Hot corners** to a desktop action, an app,
 or one of your automations. The action list is the same table the keyboard uses,
 so a corner can never do something a shortcut cannot.
 
@@ -460,13 +460,16 @@ phone a swipe still does it, because there is no corner to rest a finger in.
 
 ## Automations
 
-![The Automations app with saved routines, the hot-corner map and the step builder](screenshots/automations.png)
+![Routines, in Missions, with saved routines, the hot-corner map and the step builder](screenshots/automations.png)
+
+Routines live in **Missions → Routines** (they were an app of their own called Automations,
+and the screenshot still shows that title).
 
 
 An automation is a **named, repeatable sequence of desktop steps**. Set one up
 once, and from then on it does exactly that — every time, from anywhere.
 
-Build one in the **Automations** app, or just describe it:
+Build one in **Missions → Routines**, or just describe it:
 
 > *"Whenever I start work: open chat and the terminal, switch to the minimal
 > theme, and summarise what changed in my workspace. Call it Start work."*
@@ -496,7 +499,7 @@ no more reach than the agent has, it just skips the model. Their output surfaces
 the prompt bar, so a routine that computes something actually shows you what it found.
 
 **Ad-hoc, four ways:** type its name in the prompt bar, press **Run** in the
-Automations app, bind it to a hot corner, or ask the agent for it by name
+Routines tab, bind it to a hot corner, or ask the agent for it by name
 (`run_automation`). The agent can also build and edit them for you
 (`save_automation`, `list_automations`) — saving an existing name edits that
 automation rather than forking a second one with the same name.
@@ -605,16 +608,14 @@ See [Models & Appearance](models.md) for more.
 | **App Studio** | build and refine apps by describing them |
 | **Task Manager** | live CPU / memory / disk, processes, open windows |
 | **Model Manager** | manage local Ollama models and view GPU usage |
-| **Knowledge Graph** | what the agent knows, as a live graph |
-| **Soul** | the agent's persistent identity and personality |
-| ◈ **Memory** | long-term facts the agent remembers |
+| **Profile** | what the agent knows about you. Tabs: Overview, **Memory** (long-term facts it remembers), **Graph** (the knowledge graph, live) and **Soul** (its identity and personality) |
 | **Skills** | reusable procedures; install from git or a URL |
 | **MCP Servers** | connect external tool servers |
 | **Telegram** | control the agent from your phone |
-| **Policies** | always-allow / always-deny rules for the agent |
+| **Permissions** | what your agents may do and what they did. Tabs: the policy map, grants, review, **Quarantine**, **Rules** (always-allow / always-deny) and the **Ledger** (every decision) |
 | **Logs** | everything the system did |
 | **Token Analytics** | model token usage over time |
-| **Scheduler** | recurring background jobs |
+| **Missions** | what the machine does for you. Tabs: **Run** (your missions), **Build** (flows, agents, runs), **Schedule** (plain scheduled prompts) and **Routines** (named sequences and hot corners) |
 | **Personalize** | wallpapers and gallery |
 | **Snapshots** | restore points for the whole system |
 | **Settings** | providers, model, autonomy, appearance, voice, sandbox |

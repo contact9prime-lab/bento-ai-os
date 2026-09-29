@@ -230,6 +230,15 @@ and `job` (`flows.job`, `/api/jobs`) — an identifier rename would cost every i
 grants' `source_ref` for a word nobody sees. That is the one divergence left, and it is
 invisible: neither word is on screen.
 
+**The same rule folded eight more apps into tabs (UX review S2).** Scheduler and
+Automations are Missions → Schedule and Routines; Policies, Audit and Quarantine are
+Permissions → Rules, Ledger and Quarantine; Memory, Knowledge Graph and Soul are Profile →
+Memory, Graph and Soul. `APP_FOLD` in `04-wm.js` maps each old id to its host and tab, so
+`openApp('audit')`, a handoff, a place and an old stored deck all land on the tab. Two
+things to keep: `refreshApp` of a folded id repaints only while its tab is showing (the
+Ledger ticks every ten seconds), and the state `foldTab` reads (`PERM`, `JOBS`,
+`PROFILE_TAB`) must stay `var`, because 04-wm.js loads first. `tests/test_app_fold.py`.
+
 The older thing that was genuinely called a workflow — the fixed DAG in `workflows`,
 `run_workflow`, `/api/workflows` — is DELETED (2026-09), not hidden. It had never been run
 on any machine we could see, a flow does the same job while deciding at run time, and
@@ -412,6 +421,31 @@ have to stay true:
   (`01b`) calls `briefLoad()` before `24b-brief.js` has run; `var BRIEF={…}` there
   threw inside that early call and then wiped what it had loaded. Both sides now create
   it if it is missing and never re-create it — the bundle-order trap in a new shape.
+
+**A mission nobody answered WAITS on the Brief, and carries on when answered** (fabric.py
+`_park` / `resume_parked` / `sweep_parked`, `Agent.resume`, table `fabric_parked`;
+`docs/brief.md`, `tests/test_parked_runs.py`). The broker answers `agent.PARK` (falsy, so
+code that does not know it reads a refusal) when the card timed out and the run can wait;
+the loop saves its history ending on the unanswered tool call, and a `delegate` whose
+specialist parked parks the master too (`park_child`). Five rules:
+
+- **The answer goes back through the gate.** `resume` re-runs the call with the person's
+  decision standing in for the approver ONCE, so a deny written while it waited still
+  refuses it and the ledger row is for the moment it ran. Never execute the saved call
+  directly.
+- **Only a run whose whole chain is on the built-in loop parks**, and only with no approver
+  handed in. An agent CLI keeps its conversation inside itself; there the old refusal and
+  its "did not wait" item stay (`_unanswered_to_brief`). Do not "extend" parking to a CLI
+  without a real session resume.
+- **One answer counts once.** `park_answer` takes only a `waiting` row, `park_claim` only an
+  `answered` one. A run being resumed when the server stopped is marked interrupted, never
+  resumed twice: some of its steps may already have happened.
+- **`answer_parked` is pure database**, so `bento brief decide` records an answer with the
+  server down and `sweep_parked` resumes it at start. Every parked question has its own
+  Brief key: an upsert onto the last one would keep its `decided`.
+- **A waiting run is not over.** Status `parked`, no `finished_at`, no `flow_end`, not
+  counted as a failure in Missions, and Stop (`cancel`) ends it. A run left `running` by a
+  stop is swept to `interrupted` at boot.
 
 Kept free of HTTP and asyncio, like `jobs.py`: `bento brief` reads and acts on the same
 rows with the server down. Option labels cut at a word (`_short`) because a button that

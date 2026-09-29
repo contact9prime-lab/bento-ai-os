@@ -25,9 +25,8 @@ var APP_WORDS={
   settings:['preferences','prefs','config','configuration','options'],
   office:['crew','team','playground','floor','lounge','meeting room'],
   brief:['inbox','today','digest','summary'],
-  tasks:['cron','schedule','scheduled','timer'],
-  permissions:['grants','grant','allow','deny','matrix','consent'],
-  audit:['ledger','decisions','history of decisions'],
+  permissions:['grants','grant','allow','deny','matrix','consent','policy','policies'],
+  profile:['about me','what it knows','knowledge','memory','memories'],
   mcp:['tools','tool server','connectors'],
   telegram:['bot'],
   teamchat:['messages','linked team','people'],
@@ -37,7 +36,6 @@ var APP_WORDS={
   studio:['build an app','make an app','editor'],
   models:['ollama','gpu','local model','llm'],
   logs:['diary','events','errors'],
-  quarantine:['held','stopped','blocked','suspended'],
   tokens:['usage','cost','spend','billing'],
 };
 function placeSettings(tab){return ()=>{
@@ -46,6 +44,8 @@ function placeSettings(tab){return ()=>{
   // an open Settings window is already painted on another pane: move it
   setTimeout(()=>{if(typeof settingsGo==='function')settingsGo(tab)},60);
 }}
+/* A folded app's tab (APP_FOLD in 04-wm.js): opening the old id picks the tab. */
+function placeFold(id){return ()=>openApp(id)}
 function placeMissions(tab,sub){return ()=>{
   if(typeof JOBS!=='undefined')JOBS.tab=tab;
   if(sub&&typeof fabTab!=='undefined')fabTab=sub;
@@ -68,6 +68,14 @@ var PLACES=[
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
   ['Mission agents','jobs','Missions → Build → Agents',['roster','specialist','specialists','subagent','subagents','new agent'],placeMissions('build','agents')],
   ['Mission runs','jobs','Missions → Build → Runs',['run','runs','run history','history','what ran'],placeMissions('build','runs')],
+  ['Schedule','jobs','Missions → Schedule',['scheduler','schedule','scheduled','cron','timer','task','tasks','reminder'],placeFold('tasks')],
+  ['Routines','jobs','Missions → Routines',['automation','automations','routine','routines','hot corner','hot corners','macro','sequence'],placeFold('automations')],
+  ['Memory','profile','Profile → Memory',['memory','memories','remember','remembers','forget','pinned'],placeFold('memory')],
+  ['Knowledge graph','profile','Profile → Graph',['knowledge graph','graph','kg','entities','facts','connections'],placeFold('kg')],
+  ['Soul','profile','Profile → Soul',['soul','identity','personality','who it is'],placeFold('soul')],
+  ['Rules','permissions','Permissions → Rules',['policies','policy','rules','always allow','always deny'],placeFold('policies')],
+  ['Ledger','permissions','Permissions → Ledger',['audit','ledger','decisions','history of decisions','who did what'],placeFold('audit')],
+  ['Quarantine','permissions','Permissions → Quarantine',['quarantine','held','stopped','blocked','suspended','runaway'],placeFold('quarantine')],
 ].map(([label,app,hint,words,go])=>({label,app,hint,words,go}));
 
 /* How well `q` names a place or an app by one of its words: 2.6 a whole word, 2.2 the

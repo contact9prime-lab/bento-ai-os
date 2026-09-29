@@ -63,6 +63,48 @@ where the question was, a minute later, as *The reply*: a conversation you can
 carry on. That loop — mission → decision inbox → your one word → the next
 step — is the thing a message cannot do.
 
+## When a mission is waiting for you
+
+A mission that runs at 03:00 sometimes needs a yes: a specialist wants to fetch a
+page the mission did not declare, or write a file. The approval card goes to your
+screens first, as it always did. If nobody answers it within the approval window
+(`fabric.approval_timeout`, fifteen minutes), the mission **waits** instead of
+carrying on without the step.
+
+Waiting means it keeps its place. Its conversation, its board, the working seconds
+it has spent and the specialist's own conversation are saved in the database
+(`fabric_parked`), and the question lands on the Brief as a decision:
+
+> **daily-briefing is waiting for you: researcher wants to run fetch_url on
+> https://example.com/prices** · Allow / Deny
+
+Answer it wherever you are: the desktop, the phone, Telegram's buttons, or
+`bento brief decide <id> Allow`. The mission carries on from the call it stopped
+on. Allow runs that step, through the gate as it is now, so a permission you took
+away in the meantime still refuses it. Deny tells the specialist no in the tool's
+own result and it carries on without the step. If it needs a second permission, it
+waits again with a new question.
+
+It survives a restart. `bento brief decide` with the server stopped records the
+answer, and the server carries the mission on when it next starts. A run the server
+was stopped in the middle of is marked **interrupted** rather than left "running"
+for ever.
+
+Three limits, said plainly:
+
+- It waits for three days (`fabric.park_hours`, 72), then stops, and the question
+  closes. A newer run of the same mission asking the same thing replaces an older
+  waiting one, so a nightly mission is one question, not a stack.
+- **Stop** in the Run Inspector ends a waiting mission.
+- A mission whose master or asking specialist thinks on an agent CLI (Claude Code,
+  Gemini CLI, Codex) cannot wait: its conversation lives inside that CLI, where this
+  OS cannot save it. There the step is refused as before, and the Brief item says
+  it did not wait. A mission started from a chat that is answering its own approvals
+  does not wait either, because you are there.
+
+The Missions row shows **waiting for you** and the Run Inspector shows the run
+paused at the question, with a way to the Brief.
+
 ## What was measured
 
 Inbox triage on a real Claude Code brain against a five-message mailbox,

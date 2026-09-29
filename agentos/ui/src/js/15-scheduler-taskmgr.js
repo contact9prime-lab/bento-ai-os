@@ -6,7 +6,7 @@ async function renderTasks(body){
     <button title="toggle" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
     <button onclick="delTask('${t.id}')">✕</button></div>`).join('');
   const pb=panelShell(body,{
-    title:'Scheduler',
+    title:'Schedule',
     sub:`${d.tasks.length} task${d.tasks.length===1?'':'s'} · ${d.tasks.filter(t=>t.enabled).length} active`,
     search:{id:'task-q',placeholder:'Search tasks…'},
   });

@@ -134,8 +134,8 @@ tool calls, MCP calls, file writes, model choices, memory writes.
 | `outcome` / `detail` / `duration_ms` | stamped when the call returns, so a permission that was granted and then failed does not look like one that worked |
 | `space_id` / `conversation_id` / `run_id` | where it happened |
 
-Because the vocabulary matches, a filter in the Audit app and a grant in the Permissions
-app describe the same thing. `media.*` and `space.*` are first-class actions, and memory
+Because the vocabulary matches, a filter in the Ledger and a grant in the Permissions
+app describe the same thing (both are tabs of Permissions). `media.*` and `space.*` are first-class actions, and memory
 and KG resources are space-qualified (`memory:user@<space>`, `kg:<space>`), so *"this
 subagent may write memory in the marketing space and nowhere else"* is one grant.
 

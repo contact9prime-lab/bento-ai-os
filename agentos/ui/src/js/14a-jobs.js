@@ -25,13 +25,13 @@
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
 var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'run'};
-var JOB_TABS=['run','build'];
+var JOB_TABS=['run','build','schedule','routines'];
 /* Run = the value view (what is running for you, what it did); Build = the flows editor that used to be the Workflows app
    (13-fabric.js). One object underneath (a mission is a flow with a recipe), so the
    Build tab is where a mission a recipe made is edited, and where one is written from
    scratch. `openApp('fabric')` lands here on Build — see APP_ALIAS in 04-wm.js. */
 function jobTabs(){
-  return `<div class="job-tabs">${segTabs('job-tabs',['Run','Build'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
+  return `<div class="job-tabs">${segTabs('job-tabs',['Run','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
 }
 function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';refreshApp('jobs')}
 
@@ -312,12 +312,12 @@ function jobSummaryLine(s){
 function jobRow(j){
   const last=j.last||{};
   const st=last.status||'';
-  const cls=st==='ok'?'ok':st?'bad':'';
+  const cls=st==='ok'?'ok':st==='parked'?'':st?'bad':'';
   const lastLine=!st?'<span class="job-last mut">has not run yet</span>'
-    :`<span class="job-last ${cls}"><b>${esc(st)}</b> · ${esc(jobAgo(last.at))}${last.said?` · <q>${esc(last.said)}</q>`:''}</span>`;
+    :`<span class="job-last ${cls}"><b>${esc(st==='parked'?'waiting for you':st)}</b> · ${esc(jobAgo(last.at))}${last.said?` · <q>${esc(last.said)}</q>`:''}</span>`;
   return `<div class="item job-row${j.enabled?'':' off'}${j.running?' live':''}">
     <div class="grow">
-      <b>${esc(j.title||j.name)}</b> <span class="job-name">${esc(j.name)}</span>${j.running?'<span class="job-live">running</span>':''}
+      <b>${esc(j.title||j.name)}</b> <span class="job-name">${esc(j.name)}</span>${j.running?'<span class="job-live">running</span>':''}${j.waiting?`<button class="job-live job-wait" onclick="openApp('brief')" title="It stopped to ask you something. Answer in the Brief and it carries on.">answer in the Brief</button>`:''}
       <div class="sub">${lastLine}</div>
       <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'} · this week: ${j.runs_7d} run${j.runs_7d===1?'':'s'}, ${j.ok_7d} ok · ${(j.tokens_7d||0).toLocaleString()} tokens · holds ${j.grants} permission${j.grants===1?'':'s'}</div>
     </div>
@@ -327,6 +327,14 @@ function jobRow(j){
   </div>`;
 }
 async function renderJobs(body,w){
+  if(JOBS.tab==='schedule'||JOBS.tab==='routines'){
+    // Everything that runs without you is here: missions (Run), how they are built
+    // (Build), plain scheduled prompts (Schedule, the old Scheduler app) and named
+    // routines and hot corners (Routines, the old Automations app). APP_FOLD, 04-wm.js.
+    body.innerHTML=`<div class="fold-tabs">${jobTabs()}</div><div class="fold-body"></div>`;
+    await (JOBS.tab==='schedule'?renderTasks:renderAutomations)(body.querySelector('.fold-body'),w);
+    return;
+  }
   if(JOBS.tab==='build'){
     body.innerHTML='<div class="pad"><p class="mut">Reading…</p></div>';
     await renderFabric(body,w);

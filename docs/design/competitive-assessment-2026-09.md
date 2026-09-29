@@ -292,6 +292,17 @@ half-built thing described as finished is the failure this document was written 
   `Budget` and the agent's history are in RAM, and there is no startup sweep of orphaned
   rows — so the durable queue in the roadmap's J3 is still open, and an item claiming a
   run was waiting would be a promise this OS cannot keep. Four tests in `tests/test_brief.py`.
+
+  **Done since (0.6.14): the run parks and resumes.** A mission on the built-in loop no
+  longer ends when nobody answers. It parks: the master's and the asking specialist's
+  conversations, the board state, the delegation count and the working seconds spent
+  go into `fabric_parked`, the question is a Brief `decide` item, and answering it
+  carries the same run on from the call it stopped on, after a restart too
+  (`ControlPlane._park` / `resume_parked` / `sweep_parked`, `Agent.resume`). The
+  answer goes back through the gate, so a deny written meanwhile still refuses the
+  step. What it still does not do: a run whose master or asking specialist thinks on
+  an agent CLI cannot park (its conversation is inside the CLI), and keeps the
+  refusal above. Tests in `tests/test_parked_runs.py`.
 - **The evidence check (part of item 7).** `.github/workflows/pr-evidence.yml` plus the
   two new template sections. It reads only the PR body, through the environment rather
   than interpolated into a shell, and checks out no code from the pull request. It catches

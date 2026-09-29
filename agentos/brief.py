@@ -149,6 +149,23 @@ def act(store, bid: str, action: str, choice: str = "") -> dict:
     return store.brief_get(bid) or item
 
 
+def parked_run(item: dict) -> str:
+    """The run this item's answer carries on, or '' when it is an ordinary item.
+    A mission that stopped to wait for a person files its question with source
+    {"type": "parked", "ref": <run id>} (fabric.py `_park`), and answering it resumes
+    that run instead of starting a new turn."""
+    src = (item or {}).get("source") or {}
+    return str(src.get("ref") or "") if src.get("type") == "parked" else ""
+
+
+def allows(item: dict, choice: str) -> bool:
+    """Whether a choice on a parked question is the yes. The first option is the yes
+    ("Allow"); a typed yes counts too, and anything else is a no."""
+    c = str(choice or "").strip().lower()
+    opts = [str(o).strip().lower() for o in ((item or {}).get("options") or [])]
+    return bool(c) and ((opts and c == opts[0]) or c in ("allow", "yes", "y", "ok", "do it"))
+
+
 def decide_prompt(item: dict, choice: str) -> str:
     """The turn a decision hands back to the agent — the item is its whole context."""
     src = item.get("source") or {}

@@ -442,7 +442,7 @@ function fgLog(level,text){
 function fgApply(ev){
   if(!ev||!ev.event)return;
   const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1,thinking:1,
-                  talk:1,status:1,step:1};
+                  talk:1,status:1,step:1,parked:1,resumed:1};
   if(!graphish[ev.event])return;
   const t=ev._ts||Date.now();
   // The specialists run in runs of their own. Their tool calls reach the story through
@@ -509,6 +509,19 @@ function fgApply(ev){
             +(ev.state==='asked'&&ev.reason?' · '+ev.reason:''));
       fgStory({t,kind:'wait',who:(n&&n.depth===1?n.label:ev.ref)||'',state:ev.state,tool:ev.tool||'',text:ev.reason||''});
       break;}
+    case 'parked':{
+      /* Nobody answered, so the run stopped where it was and waits on the Brief. It has
+         not ended: no flow_end until it carries on and finishes. */
+      const n=FG.nodes.get(FG.run);if(n)n.status='parked';
+      FG.think=null;
+      fgLog('warn','⏸ waiting for you in the Brief: '+(ev.who||'')+' → '+(ev.tool||''));
+      fgStory({t,kind:'wait',who:ev.who||'',state:'parked',tool:ev.tool||'',text:''});
+      break;}
+    case 'resumed':{
+      const n=FG.nodes.get(FG.run);if(n)n.status='running';
+      fgLog('info','carried on: you said '+(ev.decision==='allow'?'allow':'deny'));
+      fgStory({t,kind:'wait',who:'',state:ev.decision==='allow'?'allowed':'denied',tool:'',text:'',resumed:1});
+      break;}
     case 'log':
       fgLog(ev.level,ev.text);
       if(ev.level==='error'||ev.level==='warn')fgStory({t,kind:'note',level:ev.level,text:ev.text||''});
@@ -543,7 +556,10 @@ async function fgLoad(runId){
     fgLoadKids((d.steps||[]).slice(0,10),runId);
     if(!FG.nodes.size)FG.nodes.set(runId,{id:runId,agent:'master',label:(d.run||{}).ref||'flow',
       status:(d.run||{}).status||'running',depth:0,t:Date.now()});
-    if((d.run||{}).status&&(d.run||{}).status!=='running')FG.ended=true;
+    // a run waiting for a person in the Brief has not ended: it carries on when answered
+    const rs=(d.run||{}).status;
+    if(rs==='parked'){const n=FG.nodes.get(FG.run);if(n)n.status='parked'}
+    else if(rs&&rs!=='running')FG.ended=true;
     FG.dirty=true;
   }catch(e){}
 }
@@ -560,7 +576,7 @@ async function fgLoadKids(kids,runId){
 function fgCol(st){
   return st==='ok'?'var(--ok,#34d399)'
     :st==='running'?'var(--acc,#5eead4)'
-    :st==='paused'?'var(--warn,#f59e0b)'
+    :(st==='paused'||st==='parked')?'var(--warn,#f59e0b)'
     :(st==='error'||st==='timeout'||st==='cancelled')?'var(--err,#f87171)'
     :st==='partial'?'var(--warn,#f59e0b)':'var(--line,#333)';
 }
@@ -1078,6 +1094,7 @@ function fgClock(){
   const m=FG.meta||{},node=FG.nodes.get(FG.run)||{},st=node.status||(FG.ended?'done':'running');
   const took=m.started?((m.finished||(FG.ended?m.started:Date.now()))-m.started):0;
   const pill=FG.ended?(st==='ok'?['ok','Finished']:st==='cancelled'?['warn','Stopped']:['err',st==='partial'?'Partly done':'Failed'])
+    :st==='parked'?['warn','Waiting for you in the Brief']
     :((FG.story.filter(x=>x.kind==='wait').pop()||{}).state==='asked'?['warn','Waiting for you']:['run','Running']);
   document.querySelectorAll('.fg-pill').forEach(el=>{el.className='fr-pill fg-pill '+pill[0];
     el.textContent=pill[1]+(took?' · '+fgWhen(took):'')});
@@ -1104,7 +1121,7 @@ async function fgRuns(){
   if(!FG.flow)return;
   const d=await fetch('/api/fabric/runs?limit=200').then(r=>r.json()).catch(()=>({runs:[]}));
   const runs=(d.runs||[]).filter(r=>r.kind==='flow'&&(r.flow||r.ref)===FG.flow).slice(0,14);
-  const col=st=>st==='ok'?'ok':st==='running'?'run':(st==='partial'||st==='cancelled')?'warn':'err';
+  const col=st=>st==='ok'?'ok':st==='running'?'run':(st==='partial'||st==='cancelled'||st==='parked')?'warn':'err';
   const html=runs.length>1?`<span class="fr-runs-l">Recent runs</span>`+runs.slice().reverse().map(r=>{
       const t=new Date((r.started_at||0)*1000),took=r.finished_at?fgWhen((r.finished_at-r.started_at)*1000):'running';
       return `<button class="fr-run ${col(r.status)}${r.id===FG.run?' on':''}" onclick="fgWatch('${esc(r.id)}')"
@@ -1137,7 +1154,11 @@ function fgPaintStory(box){
         e.ok?'finished':'stopped ('+esc(e.status||'error')+')'}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}
         ${e.handle?`<button class="fr-link" onclick="fgOpenHandle('${esc(e.handle)}')">See what came back</button>`:''}
         ${e.node?`<button class="fr-link" onclick="fgSelect('${esc(e.node)}')">Every step</button>`:''}</div></div>`;
-      case 'wait':return `<div class="fr-ev ${e.state==='asked'?'warn':e.state==='allowed'?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who||'an agent')}</b> ${
+      case 'wait':if(e.resumed)return `<div class="fr-ev sys ${e.state==='allowed'?'ok':'warn'}">${fgFace('')}<div class="fr-line">${tm}<b>Carried on</b> · you said ${e.state==='allowed'?'allow':'deny'}</div></div>`;
+        if(e.state==='parked')return `<div class="fr-ev warn">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who||'an agent')}</b> is waiting for you to allow <code>${esc(e.tool)}</code></div>
+        <div class="fr-note">Nobody answered, so the mission is paused here. Answer in the Brief and it carries on.</div>
+        <button class="fr-link" onclick="openApp('brief')">Open the Brief</button></div></div>`;
+        return `<div class="fr-ev ${e.state==='asked'?'warn':e.state==='allowed'?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who||'an agent')}</b> ${
         e.state==='asked'?'is waiting for you to allow':e.state==='allowed'?'was allowed':'was refused'} <code>${esc(e.tool)}</code></div>
         ${e.state==='asked'&&e.text?`<div class="fr-note">${esc(e.text)}</div>`:''}
         ${e.state==='asked'&&!FG.ended?`<button class="fr-link" onclick="fgReview()">Review</button>`:''}</div></div>`;

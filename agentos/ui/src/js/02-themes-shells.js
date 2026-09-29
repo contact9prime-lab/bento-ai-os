@@ -280,7 +280,7 @@ function setExperience(exp,shellHtml){
   if(exp==='jarvis')buildJarvisShell();
   else{const sh=$('#jarvis-shell');if(sh){clearInterval(sh._t);sh.innerHTML=''}}
 }
-const JS_RING=['chat','models','scheduler','kg','memory','files','logs','terminal'];
+const JS_RING=['chat','models','jobs','profile','brief','files','logs','terminal'];
 function buildJarvisShell(){
   const sh=$('#jarvis-shell');if(!sh||!APPS_READY)return;   // APPS loads later; init re-builds
   sh.innerHTML=`

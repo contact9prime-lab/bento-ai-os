@@ -1,11 +1,12 @@
 /* ================= permissions app: the policy console ================= */
-let PERM={tab:'map',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[],held:[],qhistory:[]};
+var PERM={tab:'map',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[],held:[],qhistory:[]};
 const PERM_FAMS=[['Tools','tool.'],['MCP','mcp.'],['Skills','skill.'],['Models','model.'],['Files','fs.'],['Net','net.'],['Memory','memory.','kg.'],['Agents','agent.'],['App data','app.data.']];
 function globMatch(pat,val){pat=(pat==null||pat==='')?'*':String(pat);
   return new RegExp('^'+pat.split('*').map(s=>s.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$').test(val||'')}
 function permFamOf(action){if(action==='*')return 'Full access';if(action==='legacy policy')return 'Legacy rules';
   for(const f of PERM_FAMS)for(let i=1;i<f.length;i++)if(action.startsWith(f[i]))return f[0];return 'Other'}
-async function renderPermissions(body){
+async function renderPermissions(body,w){
+  PERM.w=w||null;       // the Ledger tab ticks on the window, and sleeps with it
   try{PERM.grants=(await (await fetch('/api/grants'+(PERM.showRevoked?'?all=1':''))).json()).grants||[]}catch(e){PERM.grants=[]}
   try{PERM.opts=await (await fetch('/api/policy/options')).json()}catch(e){}
   try{PERM.apps=(await (await fetch('/api/apps')).json()).apps||[]}catch(e){PERM.apps=[]}
@@ -15,7 +16,8 @@ async function renderPermissions(body){
   const pending=PERM.apps.filter(a=>(a.manifest_status||'none')==='proposed').length;
   body.innerHTML=`<div class="apptop" style="gap:6px">
     ${[['map','Policy map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
-       ['quarantine','Quarantine'+(PERM.held.length?' ('+PERM.held.length+')':'')],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${(t==='review'&&pending)||(t==='quarantine'&&PERM.held.length)?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
+       ['quarantine','Quarantine'+(PERM.held.length?' ('+PERM.held.length+')':'')],
+       ['rules','Rules'],['ledger','Ledger'],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${(t==='review'&&pending)||(t==='quarantine'&&PERM.held.length)?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
     <input id="perm-q" placeholder="search apps, agents, rules…" style="flex:1;max-width:250px;margin-left:auto" value="${esc(PERM.q)}">
   </div>
   <div id="perm-body" style="flex:1;overflow-y:auto;padding:12px 14px"></div>`;
@@ -25,7 +27,10 @@ async function renderPermissions(body){
 }
 function permBody(){
   const box=$('#perm-body');if(!box)return;
+  // Rules (the old Policies app) and Ledger (the old Audit app) are tabs here now:
+  // one place answers "what may it do, and what did it do" (APP_FOLD in 04-wm.js)
   ({map:permMap,grants:permGrantsView,review:permReview,quarantine:permQuarantine,
+    rules:b=>renderPolicies(b),ledger:b=>renderAudit(b,PERM.w),
     attach:permAttachView}[PERM.tab]||permMap)(box);
 }
 function permPrincipals(){
@@ -40,7 +45,7 @@ function permPrincipals(){
   out.unshift({kind:'user',id:'',label:'System — main agent',system:true,
     grants:[...PERM.grants.filter(g=>!g.revoked_at&&g.principal_kind==='user'),
             ...((cfg&&cfg.policies)||[]).map((p,i)=>({id:'legacy:'+i,action:'legacy policy',
-              resource:p.match,effect:p.action==='deny'?'deny':'allow',source:'Policies app',readonly:true}))]});
+              resource:p.match,effect:p.action==='deny'?'deny':'allow',source:'Rules tab',readonly:true}))]});
   return out;
 }
 function permMap(box){
@@ -369,22 +374,6 @@ function permQuarantine(box){
    data the tab gets for free from `renderPermissions` and hands it the same box. A
    second copy of the list would drift, and the drift would be in the screen that
    explains why the OS stopped something. */
-async function renderQuarantine(body){
-  try{const q=await (await fetch('/api/quarantine?history=1')).json();
-      PERM.held=q.held||[];PERM.qhistory=(q.history||[]).filter(r=>r.released_at)}
-  catch(e){PERM.held=[];PERM.qhistory=[]}
-  const n=PERM.held.length;
-  const pb=panelShell(body,{
-    title:'Quarantine',
-    sub:n?`${n} held — nothing ${n===1?'it':'they'} ask${n===1?'s':''} for runs while held`
-        :'Nothing is held right now',
-  });
-  pb.innerHTML=`<div id="perm-body"></div>
-    <p class="mut" style="margin-top:14px">Rules and grants live in
-      <a href="#" onclick="openApp('permissions');PERM.tab='map';refreshApp('permissions');return false">Permissions</a>
-      — this is only what has been stopped.</p>`;
-  permQuarantine(pb.querySelector('#perm-body'));
-}
 async function permRelease(qid,mode){
   const q=(PERM.held||[]).find(x=>x.id===qid)||{};
   const name=q.label||q.principal_id||'it';

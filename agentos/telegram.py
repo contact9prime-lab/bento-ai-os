@@ -499,6 +499,17 @@ class TelegramBridge(usersmod.Scoped):
             parts = data.split(":", 3)
             bid, action = parts[1], parts[2] if len(parts) > 2 else ""
             choice = parts[3] if len(parts) > 3 else ""
+            fab = getattr(self.toolbox, "fabric", None)
+            run_id = (briefmod.parked_run(self.store.brief_get(bid) or {})
+                      if action == "decide" and fab is not None else "")
+            if run_id:
+                # a mission waiting for this answer: the same rule as the desktop's
+                # route, and the run carries on behind the poll loop
+                got = fab.answer_parked(run_id, briefmod.allows(self.store.brief_get(bid), choice))
+                if not got["ok"]:
+                    self.store.brief_set(bid, state="done")
+                    await self.send(f"✗ {got['why']}", cq.get("from", {}).get("id"))
+                    return
             try:
                 item = briefmod.act(self.store, bid, action, choice)
             except ValueError as e:
@@ -516,7 +527,22 @@ class TelegramBridge(usersmod.Scoped):
             # the bridge has no scheduler of its own: the toolbox carries the one the
             # server wired, and a bridge built without one (tests, CLI) just records
             scheduler = getattr(self.toolbox, "scheduler", None)
-            if action == "decide" and scheduler is not None:
+            if run_id:
+                who = cq.get("from", {}).get("id")
+
+                async def _carry_on():
+                    res = await fab.resume_parked(run_id)
+                    st = res.get("status", "")
+                    await self.send({"parked": "It carried on and stopped at another question. "
+                                               "It is in the Brief.",
+                                     "ok": "It carried on and finished."}.get(
+                                         st, f"It carried on and ended: {st}."), who)
+                    try:
+                        await self.broadcast({"type": "brief", "action": "resumed", "run_id": run_id})
+                    except Exception:
+                        pass
+                self._answer_task = asyncio.create_task(_carry_on())
+            elif action == "decide" and scheduler is not None:
                 # behind the poll loop, not in it: the answer is a whole turn, and a
                 # bot that ignores every tap for a minute reads as broken
                 who = cq.get("from", {}).get("id")

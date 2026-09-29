@@ -1283,7 +1283,9 @@ def installed(store, now: float | None = None) -> list[dict]:
             continue
         runs = store.fabric_runs_for(f["name"], limit=60)
         week = [r for r in runs if (r.get("started_at") or 0) >= since]
-        done = [r for r in week if r.get("status") not in ("running", None, "")]
+        # a run waiting for a person has not finished, so it is not yet a success or a
+        # failure; it shows as `waiting` until somebody answers the Brief
+        done = [r for r in week if r.get("status") not in ("running", "parked", None, "")]
         held = [g for g in grants if (g.get("source_ref") or "") == f"flow:{f['name']}"]
         out.append({"name": f["name"], "recipe": rid, "enabled": bool(f.get("enabled")),
                     "title": (BY_ID[rid].title if rid in BY_ID else f.get("description") or ""),
@@ -1296,7 +1298,8 @@ def installed(store, now: float | None = None) -> list[dict]:
                     "tokens_7d": sum(int(r.get("tokens_in") or 0) + int(r.get("tokens_out") or 0)
                                      for r in week),
                     "grants": len(held),
-                    "running": any(r.get("status") == "running" for r in runs[:3])})
+                    "running": any(r.get("status") == "running" for r in runs[:3]),
+                    "waiting": sum(1 for r in runs if r.get("status") == "parked")})
     return out
 
 

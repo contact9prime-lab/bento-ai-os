@@ -30,12 +30,11 @@ const APPS={
   control:{id:'control',title:'Quick Settings',icon:'',w:520,h:560,desc:'Sound, brightness, network, battery',render:renderControl},
   syssettings:{id:'syssettings',title:'System Settings',icon:'⚙',w:760,h:640,desc:'Network, bluetooth, displays, sound, power, session',render:renderSysSettings},
   models:{id:'models',title:'Model Manager',icon:'',w:620,h:560,desc:'Manage local AI models & GPU',render:renderModels},
-  memory:{id:'memory',title:'Memory',icon:'◈',w:640,h:540,desc:'User & session memory — what the agent remembers',render:renderMemory},
-  profile:{id:'profile',title:'Profile',icon:'',w:700,h:620,desc:'Everything the agent knows about you, in one place',render:renderProfile},
+  profile:{id:'profile',title:'Profile',icon:'',w:760,h:640,desc:'Everything the agent knows about you: memory, the knowledge graph and its soul',render:renderProfile,
+    onClose(w){profileStopGraph(w);return true}},
   spaces:{id:'spaces',title:'Spaces',icon:'▣',w:640,h:540,desc:'The things you are working on',render:renderSpaces},
   timeline:{id:'timeline',title:'Timeline',icon:'⌇',w:700,h:620,desc:'What happened — runs, assets, memory, apps',render:renderTimeline},
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
-  audit:{id:'audit',title:'Audit',icon:'⚖',w:860,h:620,desc:'Every capability decision, as it was decided',render:renderAudit},
   office:{id:'office',title:'Office',icon:'',w:1180,h:720,desc:'Watch your agents at work — a comic office where they get work, walk over to ask each other and huddle',
     render:renderOffice,onClose:officeClose},
   teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},
@@ -43,19 +42,12 @@ const APPS={
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
   docs:{id:'docs',title:'Docs',icon:'',w:900,h:640,desc:'The full Bento Box AI manual, right here',render:renderDocs},
-  kg:{id:'kg',title:'Knowledge Graph',icon:'',w:820,h:600,desc:'What the agent knows, as a graph',
-    render:renderKG,onClose(w){cancelAnimationFrame(w.raf);w._kgro?.disconnect();return true}},
-  soul:{id:'soul',title:'Soul',icon:'',w:640,h:580,desc:'The agent\'s persistent identity',render:renderSoul},
   mcp:{id:'mcp',title:'MCP Servers',icon:'',w:680,h:600,desc:'External tools via Model Context Protocol',render:renderMCP},
   telegram:{id:'telegram',title:'Telegram',icon:'',w:560,h:560,desc:'Chat with your machine from anywhere',render:renderTelegram},
   logs:{id:'logs',title:'Logs',icon:'',w:760,h:560,desc:'Everything the system did',
     render:renderLogs},
-  tasks:{id:'tasks',title:'Scheduler',icon:'',w:620,h:520,desc:'Recurring background tasks',render:renderTasks},
-  automations:{id:'automations',title:'Automations',icon:'',w:760,h:640,desc:'Named routines & hot corners',render:renderAutomations},
   skills:{id:'skills',title:'Skills',icon:'',w:700,h:600,desc:'Reusable procedures — install from git or URL',render:renderSkills},
-  policies:{id:'policies',title:'Policies',icon:'',w:620,h:540,desc:'Always-allow / always-deny rules',render:renderPolicies},
-  permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'Policy console — maps, grants, review & attach',render:renderPermissions},
-  quarantine:{id:'quarantine',title:'Quarantine',icon:'⛔',w:720,h:600,desc:'What the OS stopped, and why — with the evidence',render:renderQuarantine},
+  permissions:{id:'permissions',title:'Permissions',icon:'',w:940,h:680,desc:'What your agents may do and what they did: grants, rules, quarantine and the ledger',render:renderPermissions},
   store:{id:'store',title:'Store',icon:'',w:760,h:620,desc:'Install apps, extensions & skills — or build with AI',render:renderStore},
   studio:{id:'studio',title:'App Studio',icon:'',w:1080,h:680,desc:'Build & edit apps — ask the agent to make them',render:renderStudio},
   themes:{id:'themes',title:'Themes',icon:'',w:720,h:600,desc:'Switch, build & AI-design desktop themes',render:renderThemes},
@@ -106,24 +98,18 @@ const APP_CTX={
     ?`the account list (${USERS.list.length} accounts, signed in as ${(USERS.me.name||'?')})`
     :'the accounts screen — this machine has one user and has not turned accounts on',
   models:()=>'the local/cloud model manager (Ollama models, GPU/VRAM)',
-  memory:()=>`the memory browser, ${typeof memTab!=='undefined'?memTab:'user'} scope, ${Object.keys(window.__mems||{}).length||'?'} memories loaded`,
-  profile:()=>'the profile view — everything the agent knows about the user',
+  profile:()=>`the profile, "${typeof PROFILE_TAB!=='undefined'?PROFILE_TAB:'overview'}" tab: everything the agent knows about the user (memory, knowledge graph, soul)`,
   jobs:()=>`the Missions app${typeof JOBS!=='undefined'&&JOBS.tab==='build'?', Build, "'+(typeof fabTab!=='undefined'?fabTab:'flows')+'" tab':''}${
     (typeof fabTab!=='undefined'&&fabTab==='flows'&&typeof FLOW_SEL!=='undefined'&&FLOW_SEL)
       ?', flow "'+FLOW_SEL+'" selected':''}`,
   flowrun:()=>`the Run Inspector, watching flow run ${typeof FG!=='undefined'&&FG.run?FG.run.slice(0,8):'(none)'}`,
   docs:()=>'the AgentOS manual',
-  kg:()=>'the knowledge graph visualization',
-  soul:()=>'the agent soul (persistent identity) editor',
   mcp:()=>'MCP server management (connections, tools, env)',
   telegram:()=>'the Telegram bridge (chats, channels, permissions)',
   logs:()=>'the system log viewer',
-  tasks:()=>`the Scheduler (${document.querySelectorAll('#tasklist [data-f]').length||'some'} scheduled tasks & triggers listed)`,
   taskmgr:()=>{const c=$('#tm-cpu'),m=$('#tm-mem');return `Task Manager${c?` — CPU ${c.textContent}, RAM ${m?m.textContent:'?'}`:''}`},
   skills:()=>'the skills library (reusable procedures)',
-  policies:()=>'always-allow / always-deny policy rules',
-  permissions:()=>'the policy console: permission maps, grants, IO gates',
-  quarantine:()=>`what the OS has stopped for running away: ${(PERM&&PERM.held||[]).length} held`,
+  permissions:()=>`the policy console, "${typeof PERM!=='undefined'?PERM.tab:'map'}" tab: permission maps, grants, rules, quarantine, the audit ledger`,
   store:()=>'the Store: app templates, MCP discovery, build-with-AI',
   studio:()=>`App Studio${typeof STUDIO!=='undefined'&&STUDIO.sel?`, editing app "${STUDIO.sel}"`:''}${typeof STUDIO!=='undefined'&&STUDIO.building?' (a build is RUNNING)':''}`,
   themes:()=>`the theme gallery (current theme: ${typeof CURRENT_THEME!=='undefined'?CURRENT_THEME:'agentos'})`,
@@ -139,7 +125,7 @@ const APP_CTX={
 Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','office','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','kg','soul','memory','profile','skills','studio','train','mcp','telegram','policies','permissions','quarantine','logs','tokens','tasks','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','office','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','profile','skills','studio','train','mcp','telegram','permissions','logs','tokens','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
