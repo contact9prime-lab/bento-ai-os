@@ -6019,6 +6019,8 @@ SENSITIVE_FOR_APPS = (
     ("POST", "/api/apps"), ("DELETE", "/api/apps"), ("PUT", "/api/apps"),
     ("POST", "/api/grants"), ("DELETE", "/api/grants"),
     ("POST", "/api/snapshots"), ("DELETE", "/api/snapshots"),
+    # a backup is every account's data in one file, and a restore replaces the machine
+    ("POST", "/api/backup"), ("POST", "/api/restore"), ("DELETE", "/api/restore"),
     ("PUT", "/api/telegram"), ("PUT", "/api/widgets"), ("POST", "/api/skills"),
     ("DELETE", "/api/skills"), ("POST", "/api/setup/reset"), ("POST", "/api/factory-reset"),
     ("POST", "/api/power"), ("POST", "/api/store/mcp"), ("DELETE", "/api/mcp/registry"),
@@ -6690,6 +6692,141 @@ def _snap_dir():
     return d
 
 
+# ---- backup and restore (backup.py): the whole machine in one encrypted file ------
+
+def _backup_admin() -> bool:
+    return (not usersmod.enabled()) or usersmod.is_admin(usersmod.current() or "")
+
+
+def _backup_audit(action: str, detail: str) -> None:
+    try:
+        state["store"].audit_add(principal_kind="user", principal_id=usersmod.current() or "owner",
+                                 surface="desktop", action=action, resource="machine",
+                                 effect="allow", rule="person", outcome="ok", detail=detail[:300])
+        state["store"].log("system", detail)
+    except Exception:
+        pass
+
+
+@app.get("/api/backup")
+async def api_backup_info(request: Request):
+    """What Settings → System → Backup shows: what a backup would hold, whether this
+    browser may restore (the machine itself, an admin), a restore waiting for a
+    restart, and the report of the last one (shown once, then forgotten)."""
+    from . import backup as bk
+    admin = _backup_admin()
+    out = {"admin": admin, "local": remotemod.is_loopback(_client_addr(request)),
+           "min": bk.MIN_PASSPHRASE, "pending": bk.pending() if admin else {},
+           "last": bk.last_restore() if admin else {}}
+    if admin:
+        out["plan"] = await asyncio.to_thread(bk.plan)
+    return out
+
+
+@app.delete("/api/backup/last")
+async def api_backup_last_seen():
+    from . import backup as bk
+    if _backup_admin():
+        bk.last_restore(forget=True)
+    return {"ok": True}
+
+
+@app.post("/api/backup")
+async def api_backup(body: dict):
+    """Make a backup and hand it to the browser. Admin only on a machine with accounts,
+    because the file holds every account. The passphrase is never stored: it only
+    derives the key the file is sealed with."""
+    from starlette.background import BackgroundTask
+    from . import backup as bk
+    if not _backup_admin():
+        return JSONResponse({"error": "Only an admin can back up this machine: the backup "
+                                      "holds every account on it."}, status_code=403)
+    b = body or {}
+    dest = cfgmod.AGENTOS_HOME / f".backup-out-{int(time.time() * 1000)}{bk.SUFFIX}"
+    try:
+        m = await asyncio.to_thread(bk.create, dest, str(b.get("passphrase") or ""),
+                                    workspace=bool(b.get("workspace", True)),
+                                    version=_running_version())
+    except bk.BackupError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _backup_audit("backup.create", f"backup made: {m['files']} files, {m['size']} bytes, "
+                                   f"{len(m['accounts'])} account(s)")
+    return FileResponse(dest, media_type="application/octet-stream", filename=bk.default_name(),
+                        headers={"X-Bento-Files": str(m["files"])},
+                        background=BackgroundTask(lambda: dest.unlink(missing_ok=True)))
+
+
+def _restore_refusal(request: Request):
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "A restore replaces this whole machine, so it can only be "
+                                      "started on the machine itself (or with bento restore)."},
+                            status_code=403)
+    if not _backup_admin():
+        return JSONResponse({"error": "Only an admin can restore over this machine."}, status_code=403)
+    return None
+
+
+@app.post("/api/restore")
+async def api_restore_stage(request: Request):
+    """Upload a backup and check it: the whole file is decrypted and unpacked into a
+    staging folder, and nothing else changes. The swap happens on the next start
+    (`/api/restore/apply`), because a running server must not have its home replaced.
+    The passphrase comes in a header (URI-encoded), so the body can be the file."""
+    from urllib.parse import unquote
+    from . import backup as bk
+    refused = _restore_refusal(request)
+    if refused:
+        return refused
+    pw = unquote(request.headers.get("x-bento-passphrase", ""))
+    home = cfgmod.AGENTOS_HOME
+    up = home / f".restore-upload-{int(time.time() * 1000)}{bk.SUFFIX}"
+    try:
+        fd = os.open(up, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            async for chunk in request.stream():
+                f.write(chunk)
+        bk.cancel_pending()
+        m = await asyncio.to_thread(bk.stage, up, pw)
+    except bk.BackupError as e:
+        return JSONResponse({"error": str(e) + " Nothing was changed."}, status_code=400)
+    finally:
+        up.unlink(missing_ok=True)
+    bk.mark_ready(m["staging"])
+    _backup_audit("backup.restore", f"restore staged: backup from {m.get('host', '')}, "
+                                    f"{len(m.get('accounts', []))} account(s); applies on restart")
+    return {"ok": True, "pending": bk.pending(), "attention": bk._attention(m),
+            "accounts": [u.get("name", "") for u in m.get("accounts", [])],
+            "files": m.get("files", 0), "version": m.get("version", "")}
+
+
+@app.post("/api/restore/apply")
+async def api_restore_apply(body: dict, request: Request):
+    """Restart, so the staged restore is swapped in before anything opens the home."""
+    from . import backup as bk
+    from . import desktop as desktopmod
+    refused = _restore_refusal(request)
+    if refused:
+        return refused
+    if not (body or {}).get("confirm"):
+        return JSONResponse({"error": "pass {\"confirm\": true}"}, status_code=400)
+    if not bk.pending():
+        return JSONResponse({"error": "There is no checked backup waiting. Choose the file again."},
+                            status_code=400)
+    _backup_audit("backup.restore", "restore applying: restarting")
+    # after the answer has left: a restart can re-exec this very process
+    asyncio.get_running_loop().call_later(0.6, desktopmod.restart_service)
+    return {"ok": True, "restarting": True}
+
+
+@app.delete("/api/restore")
+async def api_restore_cancel(request: Request):
+    from . import backup as bk
+    refused = _restore_refusal(request)
+    if refused:
+        return refused
+    return {"ok": True, "cancelled": bk.cancel_pending()}
+
+
 @app.get("/api/snapshots")
 async def api_snapshots():
     import json as _j
@@ -6725,9 +6862,17 @@ async def api_snapshot_create(body: dict):
     src = Path(__file__).resolve().parent
     shutil.copytree(src, d / "agentos",
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    (d / "meta.json").write_text(_j.dumps({"label": body.get("label", ""), "created_at": _t.time()}))
+    (d / "meta.json").write_text(_j.dumps({"label": body.get("label", ""), "created_at": _t.time(),
+                                           "version": _running_version()}))
     state["store"].log("system", f"snapshot created: {sid} {body.get('label','')}")
     return {"ok": True, "id": sid}
+
+
+def _running_version() -> str:
+    try:
+        return (Path(__file__).resolve().parent / "VERSION").read_text().strip()
+    except OSError:
+        return ""
 
 
 @app.post("/api/snapshots/{sid}/restore")
@@ -6741,10 +6886,20 @@ async def api_snapshot_restore(sid: str):
         if (d / f).exists():
             shutil.copy2(d / f, home / f)
     src = Path(__file__).resolve().parent
-    if (d / "agentos").exists():
+    # The code comes back only into the SAME version it was taken from. Copied over a
+    # newer install, a snapshot's .py files rolled half the program back and left it
+    # running old modules against new ones; going back a version is `bento update`'s
+    # rollback, which knows every file it changed.
+    try:
+        meta = _j.loads((d / "meta.json").read_text())
+    except Exception:
+        meta = {}
+    code = (d / "agentos").exists() and meta.get("version") == _running_version()
+    if code:
         for py in (d / "agentos").glob("*.py"):
             shutil.copy2(py, src / py.name)
-    state["store"].log("system", f"snapshot restored: {sid} — restarting")
+    state["store"].log("system", f"snapshot restored: {sid}"
+                       + ("" if code else " (data only: it was taken on another version)") + " — restarting")
     from . import desktop as desktopmod
     desktopmod.restart_service()
     return {"ok": True, "restarting": True}

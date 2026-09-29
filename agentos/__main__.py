@@ -312,6 +312,17 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
         port = _resolve_running_instance(host, port, _display_url(host, port),
                                          mode, explicit_port=bool(port))
 
+    # A restore the desktop staged (backup.py), applied before anything opens the home
+    # it replaces, and only when no other server is still using that home: a second
+    # instance moved to another port (`--if-running=port`) must never swap it.
+    if kind != "taken" or mode == "restart":
+        try:
+            from . import backup as _bk
+            if _bk.apply_pending():
+                cfg = remotemod.sanitize_remote(cfgmod.load_config())
+        except Exception as e:               # never keep the machine from starting
+            print(f"  ✗ the staged restore could not be applied: {e}", file=sys.stderr)
+
     os.environ["AGENTOS_BOUND_HOST"] = host
     # The port this instance actually bound, which is not always the configured one:
     # `--port` wins, `--if-running=port` moves it, and `desktop.restart_service()`
@@ -3288,6 +3299,159 @@ def _reset_cli(args):
     print("✓ reset. Start it again and setup begins: `bento` (the desktop wizard) or `bento setup`.")
 
 
+def _backup_passphrase(args, twice: bool) -> str:
+    """The passphrase: a file or BENTO_BACKUP_PASSPHRASE for an unattended backup (a
+    cron line), otherwise asked for, and twice when it is being chosen, because a typo
+    in it is a backup nobody can open."""
+    pf = getattr(args, "passphrase_file", "")
+    if pf:
+        try:
+            return Path(pf).expanduser().read_text().strip()
+        except OSError as e:
+            print(f"✗ could not read the passphrase file: {e}", file=sys.stderr)
+            sys.exit(2)
+    env = os.environ.get("BENTO_BACKUP_PASSPHRASE", "")
+    if env:
+        return env
+    if not sys.stdin.isatty():
+        print("✗ no passphrase: run it in a terminal, or pass --passphrase-file, or set "
+              "BENTO_BACKUP_PASSPHRASE.", file=sys.stderr)
+        sys.exit(2)
+    import getpass
+    try:
+        pw = getpass.getpass("  Passphrase: ")
+        if twice and getpass.getpass("  Again: ") != pw:
+            print("✗ the two did not match. Nothing was written.", file=sys.stderr)
+            sys.exit(2)
+    except (EOFError, KeyboardInterrupt):
+        print()
+        sys.exit(1)
+    return pw
+
+
+def _size(n: int) -> str:
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "bytes" else f"{n:.1f} {unit}"
+        n /= 1024
+    return str(n)
+
+
+def _backup_cli(args):
+    """`bento backup` — the whole machine in one encrypted file (backup.py): every
+    account, the databases, the settings, the vault keys and the workspace. It runs
+    beside a running server (the databases are copied through SQLite's backup API).
+    `--inspect FILE` says what a backup holds without restoring it."""
+    from . import backup as bk
+    if getattr(args, "inspect", ""):
+        pw = _backup_passphrase(args, twice=False)
+        try:
+            m = bk.inspect(args.inspect, pw)
+        except bk.BackupError as e:
+            print(f"✗ {e}", file=sys.stderr)
+            sys.exit(1)
+        _print_manifest(m)
+        return
+    dest = Path(getattr(args, "path", "") or ".").expanduser()
+    if dest.is_dir():
+        dest = dest / bk.default_name()
+    plan = bk.plan(workspace=not args.no_workspace)
+    print(f"  Backing up {plan['files']} files ({_size(plan['bytes'])})"
+          + (f" and your workspace {plan['workspace']} ({plan['workspace_files']} files, "
+             f"{_size(plan['workspace_bytes'])})" if plan["workspace"] else "")
+          + f" to {dest}")
+    print("  The passphrase is the only way to open it. Keep it somewhere safe.")
+    pw = _backup_passphrase(args, twice=True)
+    try:
+        m = bk.create(dest, pw, workspace=not args.no_workspace)
+    except bk.BackupError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        sys.exit(1)
+    print(f"✓ backed up to {m['path']} ({_size(m['size'])}, {m['files']} files, "
+          f"{len(m['accounts']) or 'no'} account{'s' if len(m['accounts']) != 1 else ''}).")
+    if m["changed_while_reading"]:
+        print(f"  {len(m['changed_while_reading'])} file(s) changed while it was being made.")
+    print("  Restore it with `bento restore FILE`, here or on another machine.")
+
+
+def _print_manifest(m: dict) -> None:
+    import datetime as _dt
+    when = _dt.datetime.fromtimestamp(m.get("created", 0)).strftime("%Y-%m-%d %H:%M")
+    acc = [u.get("name", "") for u in m.get("accounts", [])]
+    print(f"  Made {when} on {m.get('host') or '?'} ({m.get('os', '')}), Bento {m.get('version', '')}")
+    print(f"  {m.get('files', 0)} files, {_size(int(m.get('bytes', 0)))}"
+          + (f"; accounts: {', '.join(acc)}" if acc else "; no accounts"))
+    if m.get("workspace_included"):
+        print(f"  Workspace: {m.get('workspace')}")
+
+
+def _restore_cli(args):
+    """`bento restore FILE` — replace this machine's Bento with a backup. The file is
+    checked in full before anything moves, and what was here is kept, not deleted
+    (`.before-restore-<time>` inside the home), so there is a `--yes` for a script.
+    Refused while a server runs: it would keep answering from the home being replaced."""
+    from . import backup as bk
+    from . import config as _cfgmod
+    port = getattr(args, "port", 0) or _cfgmod.load_config().get("port", 8321)
+    if _server_answers(port):
+        print(f"✗ AgentOS is running on port {port}. Stop it first, then restore:\n"
+              f"    bento service stop      (or Ctrl+C where `bento serve` is running)\n"
+              f"  From the desktop instead: Settings → System → Backup → Restore.",
+              file=sys.stderr)
+        sys.exit(1)
+    pw = _backup_passphrase(args, twice=False)
+    try:
+        m = bk.inspect(args.file, pw)
+    except bk.BackupError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        sys.exit(1)
+    _print_manifest(m)
+    print(f"  This replaces everything in {_cfgmod.AGENTOS_HOME}. What is there now is kept "
+          "aside inside it (.before-restore-<time>), not deleted.")
+    from . import users as _users
+    if _users.enabled():
+        # a machine with accounts: only its admin replaces them (the reset rule)
+        if not sys.stdin.isatty():
+            print("✗ refused: this machine has accounts, and only an admin can restore over "
+                  "them. Run it in a terminal.", file=sys.stderr)
+            sys.exit(2)
+        import getpass
+        try:
+            who = input("  An admin's name on this machine: ").strip()
+            apw = getpass.getpass("  Their password: ")
+        except (EOFError, KeyboardInterrupt):
+            who, apw = "", ""
+        u = _users.by_name(who) if who else None
+        if not (u and _users.is_admin(u["id"]) and _users.check_password(u["id"], apw)):
+            print("✗ refused: only an admin can restore over a machine with accounts. "
+                  "Nothing was changed.", file=sys.stderr)
+            sys.exit(2)
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("✗ refused: no terminal to confirm in. Pass --yes to restore anyway.",
+                  file=sys.stderr)
+            sys.exit(2)
+        try:
+            ok = input("  Restore it? [y/N] ").strip().lower() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            ok = False
+        if not ok:
+            print("  Nothing was changed.")
+            sys.exit(1)
+    try:
+        r = bk.restore(args.file, pw, keyring=not args.no_keyring)
+    except bk.BackupError as e:
+        print(f"✗ {e} Nothing was changed.", file=sys.stderr)
+        sys.exit(1)
+    print(f"✓ restored the backup from {r['from_host'] or 'another machine'}"
+          + (f", with your workspace in {r['workspace']}" if r["workspace"] else "") + ".")
+    if r.get("paths_rewritten"):
+        print(f"  {r['paths_rewritten']} folder path(s) now point at this machine.")
+    for line in r["attention"]:
+        print(f"  · {line}")
+    print("  Start it: `bento` (or `bento service start`).")
+
+
 def _files_cli(args):
     """The terminal's filing cabinet: the files your agents made lately, newest first, with
     the full path, so a headless box can say where the deck is (outputs.recent)."""
@@ -5671,6 +5835,23 @@ def main():
     p_reset = verb("reset", help="factory reset: wipe everything on this machine and start setup again")
     p_reset.add_argument("--port", type=int, default=0, help="the server's port, if not the configured one")
 
+    p_backup = verb("backup", help="save the whole machine to one encrypted file you can restore anywhere")
+    p_backup.add_argument("path", nargs="?", default="",
+                          help="where to write it: a file, or a folder (default: here)")
+    p_backup.add_argument("--no-workspace", action="store_true",
+                          help="leave the workspace folder out")
+    p_backup.add_argument("--inspect", default="", metavar="FILE",
+                          help="say what a backup holds, without restoring it")
+    p_backup.add_argument("--passphrase-file", default="",
+                          help="read the passphrase from a file (for an unattended backup)")
+    p_restore = verb("restore", help="replace this machine's Bento with a backup (what is here is kept aside)")
+    p_restore.add_argument("file", help="the .bento file")
+    p_restore.add_argument("--yes", action="store_true", help="do not ask before restoring")
+    p_restore.add_argument("--no-keyring", action="store_true",
+                           help="keep vault keys in a file even if this machine has a keyring")
+    p_restore.add_argument("--passphrase-file", default="")
+    p_restore.add_argument("--port", type=int, default=0, help="the server's port, if not the configured one")
+
     p_serve = verb("serve", help="start the AgentOS server + UI (default)")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=0)
@@ -6271,6 +6452,10 @@ def main():
         setup_tui.run(cfg, store)
     elif args.cmd == "reset":
         _reset_cli(args)
+    elif args.cmd == "backup":
+        _backup_cli(args)
+    elif args.cmd == "restore":
+        _restore_cli(args)
     elif args.cmd == "tui":
         from . import config as cfgmod
         if cfgmod.is_first_run():

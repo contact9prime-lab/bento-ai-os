@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.13 — 2026-09-28
+
+**Back up your whole machine, and move it.** Settings → System → Backup, or `bento backup`,
+makes one encrypted file with everything: every account, memories, conversations, agents,
+missions, settings, the passwords in the vault, and your workspace. Restore it on the same
+machine or a new one (the first setup screen offers it, or `bento restore FILE`). The whole
+file is checked before anything changes, what was there is kept aside rather than deleted,
+folder paths are rewritten for the new computer, and afterwards Settings says what still
+needs you (Telegram, WhatsApp, linked teams, a local model to pull again).
+
+**Snapshots no longer roll code back by accident.** Restoring a snapshot taken on an older
+version brings back its data only, not its program files.
+
 ## 0.6.12 — 2026-09-28
 
 **The Mind looks like neurons, and the core talks.** The fibres wander and splay instead of

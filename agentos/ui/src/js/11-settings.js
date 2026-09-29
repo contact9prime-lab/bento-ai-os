@@ -523,11 +523,23 @@ function setTab(body,all){
          more:'Anything you skipped is offered again. This doesn’t reset anything. Use Factory reset below for that.',
          f:'setup onboarding wizard first run walkthrough tour again restart start over run through'}),
     ],{f:'setup onboarding'}));
+    P.push(pGroup('Backup',[
+      '<div id="bk-last" class="bk-last"></div>',
+      pRow('Back up this machine','<div id="bk-make"><span class="mut">…</span></div>',
+        {desc:'One encrypted file with everything, to keep safe or to move to another machine.',
+         more:'Every account, memory, conversation, agent, mission, setting and saved password, plus your workspace folder. Only the passphrase opens it. In a terminal: bento backup.',
+         f:'backup back up export save move machine migrate portable encrypted download copy new computer'}),
+      pRow('Restore from a backup','<div id="bk-restore"></div>',
+        {desc:'Replace this machine’s Bento with a backup. What’s here now is kept aside.',
+         more:'The whole file is checked before anything changes. Then Bento restarts and swaps it in. In a terminal: bento restore FILE.',
+         f:'restore backup import move from another machine migrate new computer recover'}),
+    ],{f:'backup restore export import move migrate'}));
+    setTimeout(paintBackup,0);
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),
       pRow('Permissions','<button class="endbtn" onclick="openApp(\'permissions\')">Open</button>',{desc:'What apps and the agent are allowed to do.',f:'permissions grants'}),
-      pRow('Snapshots','<button class="endbtn" onclick="openApp(\'snapshots\')">Open</button>',{desc:'Restore points for the whole OS.',f:'snapshots restore'}),
+      pRow('Snapshots','<button class="endbtn" onclick="openApp(\'snapshots\')">Open</button>',{desc:'Quick restore points on this machine. To move machines, use Backup.',f:'snapshots restore'}),
     ],{f:'system machine'}));
     P.push(pGroup('Danger zone',[
       pRow('Factory reset','<button class="endbtn" style="border-color:var(--err);color:var(--err)" onclick="factoryReset()">Reset…</button>',
