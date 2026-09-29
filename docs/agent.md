@@ -198,7 +198,7 @@ Destructive commands (wiping the disk, `mkfs`, `shutdown`, fork bombs, …) are 
 level**, including Full.
 
 ### Policies
-The **Policies** app lets you set standing rules matched against `<tool> <command>`:
+**Permissions → Rules** (once an app of its own called Policies) lets you set standing rules matched against `<tool> <command>`:
 - **allow** rules run matching actions without asking,
 - **deny** rules block them outright (deny always wins over allow).
 
@@ -219,7 +219,7 @@ restarts.
 
 ## Memory, knowledge & soul
 
-- **Memory (◈)** — two tiers, both injected into every turn and fully manageable in the Memory app:
+- **Memory (◈)** — two tiers, both injected into every turn and fully manageable in **Profile → Memory**:
   - **User memory** — durable facts about you and your machine, shared across all conversations.
     Pin () the ones that must always be injected first; edit (✎) or delete (✕) any of them.
   - **Session memory** — the working context of one conversation (goals, decisions, constraints).
@@ -229,7 +229,7 @@ restarts.
   memories, session memories, and knowledge-graph facts, so memory and the knowledge base
   populate themselves — no `remember` call needed. It also applies **corrections**: a fact you
   contradict gets rewritten, a fact you withdraw gets deleted (pinned memories are immune).
-  Toggle it in the Memory app, or point it at a small fast model via `memory.model` in config.
+  Toggle it in Profile → Memory, or point it at a small fast model via `memory.model` in config.
 - **Semantic recall** — memories are embedded with a local Ollama embedding model
   (auto-detected; install one with `ollama pull nomic-embed-text`). When memory outgrows the
   injection budget, the most *relevant* memories for the current message are injected, and
@@ -240,7 +240,7 @@ restarts.
 - **Profile ()** — one page showing everything the agent knows about you: stats, user
   memories, graph facts, and soul, with links to manage each.
 - **Knowledge Graph ()** — structured relationships (people, projects, tools) shown as a live
-  graph; recent facts are also injected into the agent's context.
+  graph in **Profile → Graph**; recent facts are also injected into the agent's context.
 - **Soul ()** — a persistent identity/personality file injected into every conversation. You can
   edit it directly, and the agent can refine it over time as it learns about you.
 
@@ -260,7 +260,7 @@ process.
 
 ## Scheduler & jobs
 
-The **Scheduler** runs recurring background **jobs** — a prompt executed on a schedule (interval,
+**Missions → Schedule** (once an app of its own called Scheduler) runs recurring background **jobs** — a prompt executed on a schedule (interval,
 daily, or once). A job runs headless and is told to deliver its result: save a report and/or message
 you on Telegram. Create one from the app, or just ask: *"every morning at 9, summarize my calendar
 and send it to Telegram."*

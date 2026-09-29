@@ -182,7 +182,7 @@ dropped looks exactly like a folder the agent is refusing to use.
 ```
 
 Patterns use `*` wildcards and are matched against `<tool> <command-or-args>`. **Deny wins** over
-allow, and hard-blocked destructive commands stay blocked regardless. Manage these in the **Policies** app, or click **"Always allow"** on any approval prompt.
+allow, and hard-blocked destructive commands stay blocked regardless. Manage these in **Permissions → Rules**, or click **"Always allow"** on any approval prompt.
 
 ---
 

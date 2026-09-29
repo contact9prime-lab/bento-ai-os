@@ -2672,7 +2672,8 @@ def _flow_cli(args):
             when = time.strftime("%d %b %H:%M", time.localtime(r.get("started_at") or 0))
             took = ((r.get("finished_at") or 0) - (r.get("started_at") or 0))
             mark = {"ok": "✓", "error": "✗", "timeout": "⏱", "cancelled": "⊘",
-                    "denied": "⊘"}.get(r.get("status"), "▸")
+                    "denied": "⊘", "parked": "⏸", "interrupted": "✗",
+                    "expired": "⏱"}.get(r.get("status"), "▸")
             print(f"  {mark} {r['id'][:8]}  {when}  {(r.get('flow') or r.get('ref') or '')[:24]:24}"
                   f"  {r.get('status') or 'running':9} {took:5.1f}s  steps {r.get('steps') or 0}")
             if r.get("fault"):
@@ -4644,8 +4645,30 @@ def _brief_cli(args):
             print(f"✗ {json.loads(e.read() or b'{}').get('error', e)}")
             sys.exit(1)
         except OSError:
-            print("✗ AgentOS is not running here — a decision starts the agent, so start it with `bento serve`")
-            sys.exit(1)
+            item = store.brief_get(args.id) or {}
+            run_id = briefmod.parked_run(item)
+            if not run_id:
+                print("✗ AgentOS is not running here — a decision starts the agent, so start it with `bento serve`")
+                sys.exit(1)
+            # A mission waiting for this answer: the answer is kept, and the server
+            # carries the run on when it next starts (fabric.sweep_parked).
+            from .fabric import ControlPlane
+            got = ControlPlane(cfg, store, None).answer_parked(run_id, briefmod.allows(item, args.choice))
+            if not got["ok"]:
+                store.brief_set(args.id, state="done")
+                print(f"✗ {got['why']}")
+                sys.exit(1)
+            briefmod.act(store, args.id, "decide", args.choice)
+            print(f"→ {args.choice}. AgentOS is not running, so the mission carries on "
+                  f"when it starts (`bento serve`).")
+            return
+        if res.get("resumed"):
+            st = res.get("status") or ""
+            print(f"→ {args.choice}. The mission carried on"
+                  + {"parked": " and stopped at another question (bento brief).",
+                     "ok": " and finished."}.get(st, f" and ended: {st}.")
+                  + (f"\n\n{res['answer']}" if res.get("answer") else ""))
+            return
         print(f"→ {args.choice}\n\n{res.get('answer', '')}")
         return
     print("bento brief [show] | done <id> | later <id> | reopen <id> | decide <id> <choice>")

@@ -62,7 +62,25 @@ async function tidyKnowledge(){
   toast('tidying knowledge in the background — merging duplicates, rolling up idle sessions, indexing memory');}
 
 /* ================= profile app — everything the agent knows about you ================= */
-async function renderProfile(body){
+/* Profile is everything the agent knows about you, and it is the one app for it:
+   Memory, the knowledge graph and the soul are its tabs (APP_FOLD in 04-wm.js), so
+   "what it remembers", "how things connect" and "who it is" are one place. */
+var PROFILE_TAB='overview';
+var PROFILE_TABS=[['overview','Overview'],['memory','Memory'],['graph','Graph'],['soul','Soul']];
+function profileSetTab(i){PROFILE_TAB=(PROFILE_TABS[i]||PROFILE_TABS[0])[0];refreshApp('profile')}
+function profileStopGraph(w){
+  // the graph animates and watches its size; leaving its tab must stop both
+  if(!w)return;cancelAnimationFrame(w.raf);w.raf=0;try{w._kgro&&w._kgro.disconnect()}catch(e){}
+}
+async function renderProfile(body,w){
+  if(PROFILE_TAB!=='graph')profileStopGraph(w);
+  const i=Math.max(0,PROFILE_TABS.findIndex(t=>t[0]===PROFILE_TAB));
+  body.innerHTML=`<div class="fold-tabs">${segTabs('profile-tabs',PROFILE_TABS.map(t=>t[1]),i,'profileSetTab')}</div>
+    <div class="fold-body"></div>`;
+  const inner=body.querySelector('.fold-body');
+  await ({memory:renderMemory,graph:renderKG,soul:renderSoul}[PROFILE_TAB]||profileOverview)(inner,w||{});
+}
+async function profileOverview(body){
   const [ms,kg,soul,st]=await Promise.all([
     fetch('/api/memories').then(r=>r.json()),
     fetch('/api/kg').then(r=>r.json()),
@@ -86,9 +104,9 @@ async function renderProfile(body){
     <div class="ptitle" style="margin-top:14px">Soul</div>
     <pre style="white-space:pre-wrap;font-size:12px;opacity:.85;max-height:180px;overflow:auto">${esc((soul.content||'').slice(0,2500))}</pre>
     <div class="row" style="margin-top:10px">
-      <button class="endbtn" onclick="openApp('memory')">◈ Manage memory</button>
-      <button class="endbtn" onclick="openApp('kg')">Knowledge graph</button>
-      <button class="endbtn" onclick="openApp('soul')">Edit soul</button>
+      <button class="endbtn" onclick="profileSetTab(1)">◈ Manage memory</button>
+      <button class="endbtn" onclick="profileSetTab(2)">Knowledge graph</button>
+      <button class="endbtn" onclick="profileSetTab(3)">Edit soul</button>
       <button class="endbtn" onclick="tidyKnowledge()">Tidy now</button>
     </div></div>`;
 }

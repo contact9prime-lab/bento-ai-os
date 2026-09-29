@@ -23,7 +23,7 @@ async function renderAudit(body,w){
   const e=sum.effects||{};
   const RANGE=[[1,'1h'],[24,'24h'],[168,'7d'],[720,'30d'],[0,'All']];
   const pb=panelShell(body,{
-    title:'Audit',
+    title:'Ledger',
     sub:'every capability decision, as it was decided',
     search:{id:'aud-q',placeholder:'Search resource, reason or detail…'},
     actions:`<span class="seg">${RANGE.map(([h,l])=>

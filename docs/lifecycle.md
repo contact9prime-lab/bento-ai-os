@@ -9,10 +9,10 @@ with deep links into each surface.
 |---|---|---|
 | 🧬 **Train** | Fine-tune and evaluate your own models, locally | The **Train** app (TrainForge) · `train_*` agent tools |
 | 🧪 **Test** | Prove things work before they ship or go live | `tests/` suite · `run_tests` tool · the self-modification test gate |
-| ⚙ **Operate** | Keep things running unattended | **Scheduler**, **Team** (fabric observability), **Logs**, Telegram alerts |
+| ⚙ **Operate** | Keep things running unattended | **Missions** (Run, Schedule, Build), **Team** (fabric observability), **Logs**, Telegram alerts |
 | 🔨 **Build** | Make software: apps, projects, the OS itself | **App Studio**, `create_app`, `develop_agentos` |
 | 🚀 **Ship** | Version and publish what you built | `git_*` tools, `export_app_to_git`, app packages, the `.deb` |
-| 🛡 **Manage** | Govern who may do what | **Permissions** (PDP + grants), **Policies**, autonomy, **Snapshots**, sandbox |
+| 🛡 **Manage** | Govern who may do what | **Permissions** (PDP + grants, Rules, Quarantine, Ledger), autonomy, **Snapshots**, sandbox |
 
 ## Train
 
@@ -68,7 +68,7 @@ edit the soul, the system prompt, the tool set or the default model.
 
 ## Operate
 
-The mature pillar: the **Scheduler** runs headless agent jobs on intervals; the **Team** app
+The mature pillar: **Missions → Schedule** runs headless agent jobs on intervals; the **Team** app
 shows every subagent and flow run with heartbeats, faults, and token telemetry; **Logs**
 records every tool call and policy decision; Telegram delivers results and approvals anywhere.
 Mission Control surfaces the 24-hour pulse (turns, errors, running work).

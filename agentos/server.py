@@ -308,6 +308,7 @@ async def startup():
             await _resume_one(uid)
     asyncio.create_task(_resume_whatsapp_link())
     asyncio.create_task(scheduler.run_forever())
+    state["parked_task"] = asyncio.create_task(_parked_loop(time.time()))
     asyncio.create_task(mcp.start())
     asyncio.create_task(telegram.run_forever())
     # The three services that cannot be shared get built per user, on demand, the
@@ -3558,12 +3559,30 @@ async def api_brief_act(bid: str, body: dict):
     store = state["store"]
     action = str((body or {}).get("action") or "")
     choice = str((body or {}).get("choice") or "")
+    run_id = briefmod.parked_run(store.brief_get(bid) or {}) if action == "decide" else ""
+    if run_id and choice:
+        # A mission waiting for this answer: record it, then carry the run on from
+        # the call it stopped on. Checked BEFORE the item is marked decided, so a run
+        # that stopped waiting leaves the item saying why rather than "decided".
+        got = state["fabric"].answer_parked(run_id, briefmod.allows(store.brief_get(bid), choice))
+        if not got["ok"]:
+            store.brief_set(bid, state="done")
+            await state["broadcast"]({"type": "brief", "id": bid, "action": "done"})
+            return JSONResponse({"error": got["why"]}, status_code=409)
     try:
         item = briefmod.act(store, bid, action, choice)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     out = {"ok": True, "item": item}
-    if action == "decide":
+    if run_id and action == "decide":
+        out["resumed"] = run_id
+        task = _start_resume(run_id)
+        if (body or {}).get("wait"):
+            await task
+            run = store.fabric_run(run_id) or {}
+            out["status"] = run.get("status", "")
+            out["answer"] = (run.get("output") or run.get("fault") or "")[:2000]
+    elif action == "decide":
         # The answer is a whole agent turn — a minute or more on a forwarded brain —
         # so the tap returns NOW with the decision recorded, and the turn runs behind
         # it: a phone that waits on a POST for two minutes has already given up.
@@ -5782,6 +5801,59 @@ async def api_quarantine_release(qid: str, body: dict):
     return {"ok": True, "mode": mode}
 
 
+async def _sweep_parked(boot: bool = False, since: float | None = None) -> dict:
+    """Every home's waiting missions: interrupted runs marked (at boot), runs nobody
+    answered in time stopped, and runs answered while this server was not listening
+    (`bento brief decide` with the server down) carried on. Each account's inside its
+    own context, so a resumed run reads its owner's memory."""
+    total = {"interrupted": 0, "expired": 0, "resumed": 0}
+    uids = [u["id"] for u in usersmod.list_users()] if usersmod.enabled() else [""]
+    for uid in uids:
+        try:
+            with usersmod.as_user(uid):
+                got = state["fabric"].sweep_parked(boot=boot, since=since)
+                total["interrupted"] += got["interrupted"]
+                total["expired"] += got["expired"]
+                for rid in got["answered"]:
+                    _start_resume(rid)
+                    total["resumed"] += 1
+        except Exception as e:                                   # noqa: BLE001
+            with contextlib.suppress(Exception):
+                state["store"].log("error", f"parked runs ({uid or 'machine'}): "
+                                            f"{type(e).__name__}: {e}")
+    if total["interrupted"] or total["expired"]:
+        with contextlib.suppress(Exception):
+            await state["broadcast"]({"type": "fabric_defs"})
+            await state["broadcast"]({"type": "brief", "action": "changed"})
+    return total
+
+
+async def _parked_loop(booted: float):
+    """At start, then every ten minutes: waiting runs are few and the sweep is two
+    small queries per home, and ten minutes is the most an expiry can be late."""
+    await asyncio.sleep(2)
+    await _sweep_parked(boot=True, since=booted)
+    while True:
+        await asyncio.sleep(600)
+        await _sweep_parked()
+
+
+def _start_resume(run_id: str) -> asyncio.Task:
+    """Carry on an answered run behind whoever answered it, and tell every screen
+    when it is done. `create_task` copies the context, so it stays the person's."""
+    async def go():
+        res = await state["fabric"].resume_parked(run_id)
+        with contextlib.suppress(Exception):
+            await state["broadcast"]({"type": "brief", "action": "resumed", "run_id": run_id,
+                                      "status": res.get("status", "")})
+            await state["broadcast"]({"type": "fabric_defs"})
+    state["resume_tasks"] = state.get("resume_tasks") or set()
+    task = asyncio.create_task(go())
+    state["resume_tasks"].add(task)
+    task.add_done_callback(state["resume_tasks"].discard)
+    return task
+
+
 def _unanswered_to_brief(run_id: str, flow: str, name: str, args: dict, reason: str):
     """A question nobody was awake for becomes an item on tomorrow's Brief.
 
@@ -5792,15 +5864,15 @@ def _unanswered_to_brief(run_id: str, flow: str, name: str, args: dict, reason: 
     rule broken by omission — the machine knew something the person needed and let it
     expire.
 
-    What this does NOT do, and the wording on the item is careful about it: the run is
-    not parked and it is not resumed. Nothing about an in-flight run survives the
-    process (there is no paused state on `fabric_runs`, no persisted budget and no
-    saved message history), so a Brief item that claimed a run was waiting would be a
-    promise the OS cannot keep — and a waiting run that silently was not is worse than
-    a denial that said so. The run ends as it always did, with the step refused. What
-    the item carries is the QUESTION, to a person, on a surface they will actually
-    look at, with a way to act on it: answering starts an ordinary turn (`_brief_answer`
-    → `decide_prompt`) that can carry the thing out now that somebody has said yes.
+    This is the path for a run that CANNOT wait: its master or the asking specialist
+    thinks on an agent CLI (Claude Code, Gemini CLI, Codex), whose conversation lives
+    inside that CLI where this OS cannot save it, or somebody handed the run an
+    approver of their own. A run on the built-in loop parks instead (fabric.py
+    `_park`): it keeps its place and the Brief item carries it on. Here the run ends
+    as it always did, with the step refused, and the item says so in words, because a
+    waiting run that silently was not would be worse than a denial that said so.
+    Answering starts an ordinary turn (`_brief_answer` → `decide_prompt`) that can
+    carry the thing out now that somebody has said yes.
 
     Keyed on the mission plus the action, so a nightly mission asking the same thing
     every night updates ONE standing question instead of stacking thirty of them.
@@ -5834,22 +5906,35 @@ def _unanswered_to_brief(run_id: str, flow: str, name: str, args: dict, reason: 
 
 
 async def _flow_approval(run_id: str, name: str, args: dict, reason: str,
-                         offer: dict | None, origin: dict) -> bool:
+                         offer: dict | None, origin: dict, park: bool = False):
     """A paused flow, asking. It goes back where the run came from when that is a place
     a person can answer — a run started from a phone should not raise a card on a screen
     in another room — and otherwise to every open window, which in the session desktop
     means the desktop itself. When nobody answers at all, the question is not dropped:
-    it lands on the Brief (`_unanswered_to_brief`)."""
+    it lands on the Brief: as a PARK when the run can wait (`park`, fabric.py files the
+    item and keeps the run), and otherwise as a question the run did not wait for
+    (`_unanswered_to_brief`)."""
     timeout = int((state["cfg"].get("fabric") or {}).get("approval_timeout", 900))
     run = state["store"].fabric_run(run_id) or {}
     flow = run.get("flow") or ""
-    missed = _unanswered_to_brief(run_id, flow, name, args, reason)
+    filed = _unanswered_to_brief(run_id, flow, name, args, reason)
+    nobody = {"hit": False}
+
+    async def missed():
+        nobody["hit"] = True
+        if not park:
+            await filed()
     if origin.get("surface") == "telegram" and state.get("telegram") and chat_id_of(origin, run):
-        return await state["telegram"].ask_approval(int(chat_id_of(origin, run)), name, args,
-                                                    reason, offer=offer, timeout=timeout,
-                                                    unanswered=missed)
-    return await request_approval(name, args, reason, offer=offer, timeout=timeout,
-                                  run_id=run_id, flow=flow, unanswered=missed)
+        ok = await state["telegram"].ask_approval(int(chat_id_of(origin, run)), name, args,
+                                                  reason, offer=offer, timeout=timeout,
+                                                  unanswered=missed)
+    else:
+        ok = await request_approval(name, args, reason, offer=offer, timeout=timeout,
+                                    run_id=run_id, flow=flow, unanswered=missed)
+    if park and nobody["hit"] and not ok:
+        from .agent import PARK
+        return PARK
+    return ok
 
 
 async def _linked_approval(lk: dict, frm: str, agent: str, name: str, args: dict,

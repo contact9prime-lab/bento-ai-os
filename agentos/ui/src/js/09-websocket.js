@@ -616,6 +616,10 @@ function handle(ev){
     case 'brief':
       // the answer to a decision lands here, minutes after the tap that asked for it
       if(ev.action==='answered')toast('▲ '+(ev.title||'').slice(0,40)+' — the reply is in the Brief',6000);
+      // a mission stopped to wait for an answer, and later carried on because of one
+      if(ev.action==='asked')toast('▲ A mission is waiting for your answer in the Brief',{label:'Open',go:()=>openApp('brief')});
+      if(ev.action==='resumed'){toast(ev.status==='parked'?'▲ The mission carried on and has another question in the Brief'
+          :'▲ The mission carried on'+(ev.status&&ev.status!=='ok'?' and ended: '+ev.status:' and finished'));refreshApp('jobs')}
       if(typeof briefLoad==='function')briefLoad().then(()=>{refreshApp('brief');if(typeof homeRender==='function')homeRender()});break;
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is

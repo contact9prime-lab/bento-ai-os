@@ -277,6 +277,24 @@ CREATE TABLE IF NOT EXISTS fabric_events (
     payload TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_fabric_events_run ON fabric_events(run_id, ts);
+-- A mission run that stopped to wait for a person, with everything needed to carry on
+-- (fabric.py: park / resume). One row per waiting run. `record` is the master's saved
+-- history and board state, and the specialist's when the question was the
+-- specialist's. `decision` is the person's answer, written by whichever surface they
+-- used, including `bento brief` with the server down; the server resumes what it finds
+-- answered. Rows go when the run finishes or stops.
+CREATE TABLE IF NOT EXISTS fabric_parked (
+    run_id TEXT PRIMARY KEY,
+    flow TEXT DEFAULT '',
+    question TEXT DEFAULT '',    -- tool + target: a newer run asking the same replaces this one
+    state TEXT DEFAULT 'waiting',-- waiting | answered | resuming
+    decision TEXT DEFAULT '',    -- '' | allow | deny
+    brief_id TEXT DEFAULT '',
+    record TEXT DEFAULT '{}',
+    created_at REAL,
+    expires_at REAL,
+    answered_at REAL
+);
 -- A FLOW is a standing mission with a master orchestrator in front of it. Unlike a
 -- `workflow` (a DAG somebody drew ahead of time) a flow says only what it wants, who
 -- it may ask, and what it may touch — the master picks the agents and the order while
@@ -2310,6 +2328,78 @@ class Store:
     def fabric_run(self, rid: str) -> dict | None:
         row = self.db.execute("SELECT * FROM fabric_runs WHERE id=?", (rid,)).fetchone()
         return dict(row) if row else None
+
+    def fabric_run_status(self, rid: str, status: str, fault: str | None = None):
+        """Change a run's status without finishing it: `parked` while it waits for a
+        person, `running` again when it resumes. A parked run is not over, so it gets no
+        finished_at and no timeline entry."""
+        if fault is None:
+            self.db.execute("UPDATE fabric_runs SET status=? WHERE id=?", (status, rid))
+        else:
+            self.db.execute("UPDATE fabric_runs SET status=?, fault=? WHERE id=?",
+                            (status, fault[:2000], rid))
+        self.db.commit()
+
+    def fabric_runs_with_status(self, status: str) -> list[dict]:
+        rows = self.db.execute("SELECT * FROM fabric_runs WHERE status=?", (status,)).fetchall()
+        return [dict(r) for r in rows]
+
+    # -- parked runs (fabric.py park / resume) --------------------------------------
+
+    def park_save(self, run_id: str, flow: str, question: str, record: dict,
+                  brief_id: str, expires_at: float):
+        self.db.execute(
+            "INSERT INTO fabric_parked (run_id, flow, question, state, decision, brief_id, "
+            "record, created_at, expires_at, answered_at) VALUES (?,?,?,'waiting','',?,?,?,?,NULL) "
+            "ON CONFLICT(run_id) DO UPDATE SET flow=excluded.flow, question=excluded.question, "
+            "state='waiting', decision='', brief_id=excluded.brief_id, record=excluded.record, "
+            "created_at=excluded.created_at, expires_at=excluded.expires_at, answered_at=NULL",
+            (run_id, flow or "", question or "", brief_id or "", json.dumps(record),
+             time.time(), float(expires_at)))
+        self.db.commit()
+
+    def _park_row(self, row) -> dict | None:
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["record"] = json.loads(d.get("record") or "{}")
+        except Exception:
+            d["record"] = {}
+        return d
+
+    def park_get(self, run_id: str) -> dict | None:
+        return self._park_row(self.db.execute(
+            "SELECT * FROM fabric_parked WHERE run_id=?", (run_id,)).fetchone())
+
+    def parked_runs(self, state: str = "") -> list[dict]:
+        """Without the saved records: this is what lists read, and a record is a whole
+        conversation."""
+        sql = ("SELECT run_id, flow, question, state, decision, brief_id, created_at, "
+               "expires_at, answered_at FROM fabric_parked")
+        rows = (self.db.execute(sql + " WHERE state=? ORDER BY created_at", (state,))
+                if state else self.db.execute(sql + " ORDER BY created_at")).fetchall()
+        return [dict(r) for r in rows]
+
+    def park_answer(self, run_id: str, decision: str) -> bool:
+        """Record the person's answer. Only a waiting run takes one, so two taps (the
+        phone and the desk) cannot both count."""
+        cur = self.db.execute(
+            "UPDATE fabric_parked SET state='answered', decision=?, answered_at=? "
+            "WHERE run_id=? AND state='waiting'", (decision, time.time(), run_id))
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def park_claim(self, run_id: str) -> dict | None:
+        """Take an answered run to resume it. Exactly one caller wins."""
+        cur = self.db.execute("UPDATE fabric_parked SET state='resuming' "
+                              "WHERE run_id=? AND state='answered'", (run_id,))
+        self.db.commit()
+        return self.park_get(run_id) if cur.rowcount else None
+
+    def park_drop(self, run_id: str):
+        self.db.execute("DELETE FROM fabric_parked WHERE run_id=?", (run_id,))
+        self.db.commit()
 
     def fabric_event(self, run_id: str, etype: str, payload: dict | None = None):
         self.db.execute(

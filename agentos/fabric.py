@@ -25,7 +25,7 @@ import json
 import re
 import time
 
-from .agent import Agent, fence
+from .agent import Agent, PARK, fence
 from .policy import Principal
 from . import users as usersmod
 
@@ -709,6 +709,52 @@ def huddle_text(agents: list, rounds: int, transcript: list, vote: dict | None =
                      + ([vote_line(vote)] if vote else []))
 
 
+# What of a flow run's own state survives a park: its delegation count and anything
+# `finish` wrote. The rest of `state` is live objects (the agent, a closure).
+PARK_STATE_KEYS = ("delegations", "final", "final_handles", "finished")
+# How long a parked run waits for somebody before it stops (fabric.park_hours).
+PARK_HOURS = 72
+
+
+def _park_chain(rec: dict) -> list[dict]:
+    """The records from the mission's own down to the one that asked: [master] or
+    [master, specialist]. Each record's `pending` is the call it stopped on, and a
+    `delegate` that parked carries its specialist's record under pending.child.child."""
+    out, cur = [rec], rec
+    while isinstance((cur.get("pending") or {}).get("child"), dict):
+        cur = cur["pending"]["child"].get("child") or {}
+        if not cur:
+            break
+        out.append(cur)
+    return out
+
+
+def park_question(rec: dict) -> dict:
+    """Who asked, for what, and why: the innermost pending call, in the words the
+    Brief item and every surface use."""
+    chain = _park_chain(rec)
+    last = chain[-1]
+    p = last.get("pending") or {}
+    args = p.get("args") or {}
+    what = str(args.get("url") or args.get("path") or args.get("to")
+               or args.get("command") or args.get("query") or "").strip()[:80]
+    return {"who": last.get("subagent") or "the mission", "tool": p.get("name", ""),
+            "what": what, "reason": (p.get("reason") or "").strip(),
+            "key": f"{p.get('name', '')}:{what}"[:120]}
+
+
+def _takes_park(fn) -> bool:
+    """Whether an approvals broker knows the third answer. One that does not (an
+    embedding written before parking) is called as it always was, and its False is
+    a refusal, exactly as before."""
+    try:
+        import inspect
+        ps = inspect.signature(fn).parameters
+        return "park" in ps or any(p.kind == p.VAR_KEYWORD for p in ps.values())
+    except (TypeError, ValueError):
+        return False
+
+
 class Budget:
     """`max_seconds` is time spent WORKING, not wall clock.
 
@@ -794,7 +840,8 @@ class ControlPlane(usersmod.Scoped):
         self.instances: dict = {}
         # Injected in server startup so this module keeps no knowledge of Telegram or of
         # the UI — the same shape as `broadcast` above.
-        #   approvals(run_id, tool, args, reason, offer, origin) -> awaitable bool
+        #   approvals(run_id, tool, args, reason, offer, origin[, park=True]) -> awaitable
+        #       bool, or agent.PARK when park=True and nobody answered (the run waits)
         #   deliver(flow, run, origin, text) -> awaitable list[str]   (sink kinds done)
         self.approvals = None
         self.deliver = None
@@ -981,8 +1028,13 @@ class ControlPlane(usersmod.Scoped):
                 for rid, i in self.instances.items()]
 
     def cancel(self, run_id: str) -> bool:
-        """Control → data: abort a run (and any of its workflow steps)."""
+        """Control → data: abort a run (and any of its workflow steps). A run waiting
+        for a person in the Brief has nothing live to abort, so Stop ends it there: its
+        question is closed and the reason recorded."""
         hit = False
+        if self.store.park_get(run_id):
+            self._stop_parked(run_id, "cancelled", "stopped by you while it waited")
+            hit = True
         for rid, inst in list(self.instances.items()):
             if rid == run_id or inst.get("parent") == run_id:
                 inst["agent"].aborted = True
@@ -998,7 +1050,7 @@ class ControlPlane(usersmod.Scoped):
         return int((self.cfg.get("fabric") or {}).get("approval_timeout", 900))
 
     def _approver(self, run_id: str, ref: str, origin: dict, budget: Budget,
-                  eff_autonomy: str):
+                  eff_autonomy: str, can_park: bool = False):
         """The gate's last mile for an unattended run.
 
         It does NOT consult grants. It is only reached once the PDP has already returned
@@ -1021,15 +1073,22 @@ class ControlPlane(usersmod.Scoped):
                               "via": (origin or {}).get("surface") or "gui"})
             ok = False
             try:
-                ok = bool(await self.approvals(run_id, name, args, reason, offer, origin or {}))
+                # `park=True` tells the broker this run can wait past the card: when
+                # nobody answers, it answers PARK instead of False. Only passed when
+                # it applies, so a broker written before parking keeps working.
+                ans = await (self.approvals(run_id, name, args, reason, offer, origin or {},
+                                            park=True) if can_park and _takes_park(self.approvals)
+                             else self.approvals(run_id, name, args, reason, offer, origin or {}))
+                ok = PARK if ans is PARK else bool(ans)
             except Exception:
                 ok = False
             finally:
                 budget.resume()
                 inst["state"] = "running"
                 await self._emit(run_id, "approval",
-                                 {"state": "allowed" if ok else "denied", "node_id": run_id,
-                                  "ref": ref, "tool": name})
+                                 {"state": ("parked" if ok is PARK else
+                                            "allowed" if ok else "denied"),
+                                  "node_id": run_id, "ref": ref, "tool": name})
             return ok
         return ask
 
@@ -1064,8 +1123,13 @@ class ControlPlane(usersmod.Scoped):
                            flow: str = "", origin: dict | None = None,
                            escalate: bool = False, taint: list | None = None,
                            chain: list | None = None, root: str = "",
-                           no_tools: bool = False) -> dict:
-        """no_tools: the run may only answer in words (a ballot, a free-talk message in
+                           no_tools: bool = False, can_park: bool = False,
+                           resume: dict | None = None, decision=None) -> dict:
+        """can_park: an unanswered approval may PARK this run (it is inside a mission on
+        the built-in loop, whose master can wait too); the result is then `parked`,
+        carrying the record `resume` takes back. resume/decision: carry on such a run,
+        with the person's answer to the call it stopped on.
+        no_tools: the run may only answer in words (a ballot, a free-talk message in
         talk mode) — it can never act, message a colleague or start anything.
         ui_emit: optional passthrough for the agent's live events (text/tool/error) —
         set when a subagent runs inside a chat so the user watches it work inline.
@@ -1103,15 +1167,20 @@ class ControlPlane(usersmod.Scoped):
             except Exception:
                 space_id = ""
         origin = origin or {}
-        run_id = self.store.fabric_run_start(kind, defn["name"], task,
-                                             parent_run=parent_run, model=model,
-                                             space_id=space_id,
-                                             conversation_id=conversation_id, flow=flow,
-                                             origin_surface=origin.get("surface", ""),
-                                             origin_ref=str(origin.get("ref", "") or
-                                                            origin.get("chat_id", "") or ""))
+        if resume:
+            run_id = resume["run_id"]
+            self.store.fabric_run_status(run_id, "running")
+        else:
+            run_id = self.store.fabric_run_start(kind, defn["name"], task,
+                                                 parent_run=parent_run, model=model,
+                                                 space_id=space_id,
+                                                 conversation_id=conversation_id, flow=flow,
+                                                 origin_surface=origin.get("surface", ""),
+                                                 origin_ref=str(origin.get("ref", "") or
+                                                                origin.get("chat_id", "") or ""))
         await self._emit(run_id, "status", {"status": "running", "ref": defn["name"],
-                                            "model": model, "parent_run": parent_run})
+                                            "model": model, "parent_run": parent_run,
+                                            **({"resumed": True} if resume else {})})
         if cli_note:
             await self._emit(run_id, "log", {"node_id": run_id, "level": "info", "text": cli_note})
         eff_autonomy = min_autonomy(self.cfg.get("autonomy", "balanced"),
@@ -1119,9 +1188,13 @@ class ControlPlane(usersmod.Scoped):
         child_cfg = {**self.cfg, "max_steps": int(defn.get("max_steps", 12)),
                      "autonomy": eff_autonomy}
         budget = Budget(int(defn.get("max_seconds", 300)))
+        if resume:
+            # the working seconds it had already spent still count
+            budget.started = time.time() - float(resume.get("elapsed") or 0)
 
-        usage = {"in": 0, "out": 0}
-        nsteps = {"n": 0}
+        usage = {"in": int((resume or {}).get("tokens", {}).get("in", 0)),
+                 "out": int((resume or {}).get("tokens", {}).get("out", 0))}
+        nsteps = {"n": int((resume or {}).get("steps_n", 0))}
 
         async def emit(ev):  # data → control: step telemetry (+ live mirror into a chat)
             if ui_emit:
@@ -1174,7 +1247,8 @@ class ControlPlane(usersmod.Scoped):
         if approver is None and escalate:
             # inside a flow, a gated action is worth interrupting a person for — the run
             # pauses (and stops spending its budget) rather than quietly failing
-            approver = self._approver(run_id, defn["name"], origin, budget, eff_autonomy)
+            approver = self._approver(run_id, defn["name"], origin, budget, eff_autonomy,
+                                      can_park=can_park and not engine)
 
         tools = defn.get("tools") or SAFE_TOOLS
         # subagents never manage the fabric or rewrite the OS/its identity
@@ -1218,6 +1292,10 @@ class ControlPlane(usersmod.Scoped):
             # a child handed untrusted material inherits the ceiling that came with it:
             # the page does not become trustworthy by being passed along
             agent.taint.extend(taint)
+        if resume:
+            # what it had read before it parked is still in its context
+            agent.taint.extend(resume.get("taint") or [])
+            agent.steps_used = int(resume.get("steps_used") or 0)
         if agent_slot is not None:
             agent_slot["agent"] = agent
         self.instances[run_id] = {"agent": agent, "ref": defn["name"], "parent": parent_run,
@@ -1226,6 +1304,7 @@ class ControlPlane(usersmod.Scoped):
         hb = asyncio.create_task(self._heartbeat_sidecar(run_id))
         wd = asyncio.create_task(_watchdog(agent, budget))
         status, content, fault, trace = "ok", "", "", []
+        parked = None
         from . import knowledge as _k
         _k.turn_started()  # data planes are foreground work — background jobs must yield
         try:
@@ -1236,15 +1315,34 @@ class ControlPlane(usersmod.Scoped):
             # which suppresses background maintenance for the whole OS, not just itself.
             # The approval window is only added when this run can actually pause; a run
             # that cannot ask a human keeps its old, tighter ceiling.
+            if resume:
+                work = agent.resume(resume.get("messages") or [], resume.get("pending") or {},
+                                    decision=decision)
+            elif engine:
+                work = self._run_on_executor(agent, task, run_id, engine, exec_model)
+            else:
+                work = agent.run([{"role": "user", "content": task}])
             result = await asyncio.wait_for(
-                (self._run_on_executor(agent, task, run_id, engine, exec_model) if engine
-                 else agent.run([{"role": "user", "content": task}])),
-                timeout=budget.limit + (self._approval_ceiling() if escalate else 0) + 60)
+                work, timeout=budget.remaining() + (self._approval_ceiling() if escalate else 0) + 60)
             content = result.get("content") or ""
             trace = result.get("steps") or []
             tk = result.get("tokens") or {}
-            usage["in"], usage["out"] = tk.get("input", 0), tk.get("output", 0)
-            if agent.aborted and budget.remaining() <= 0:
+            usage["in"] += tk.get("input", 0)
+            usage["out"] += tk.get("output", 0)
+            if result.get("parked"):
+                status = "parked"
+                parked = {"run_id": run_id, "subagent": defn["name"], "task": task,
+                          "context": context, "parent_run": parent_run,
+                          "model_override": model_override, "kind": kind,
+                          "conversation_id": conversation_id, "space_id": space_id,
+                          "flow": flow, "origin": origin, "escalate": escalate,
+                          "chain": list(chain or []), "root": root,
+                          "taint": list(agent.taint), "elapsed": budget.elapsed(),
+                          "tokens": dict(usage), "steps_n": nsteps["n"],
+                          "steps_used": agent.steps_used,
+                          "messages": result.get("messages") or [],
+                          "pending": result["parked"]}
+            elif agent.aborted and budget.remaining() <= 0:
                 status, fault = "timeout", (f"exceeded max_seconds={int(budget.limit)} of "
                                             f"working time")
             elif agent.aborted:
@@ -1262,6 +1360,15 @@ class ControlPlane(usersmod.Scoped):
             self.instances.pop(run_id, None)
             hb.cancel()
             wd.cancel()
+        if parked is not None:
+            # not over: no finished_at, no timeline entry, nothing delivered
+            self.store.fabric_run_status(run_id, "parked")
+            await self._emit(run_id, "status",
+                             {"status": "parked", "ref": defn["name"], "parent_run": parent_run,
+                              "tool": (parked["pending"] or {}).get("name", "")})
+            return {"run_id": run_id, "status": "parked", "content": "", "fault": "",
+                    "model": model, "usage": usage, "steps": trace,
+                    "tainted": bool(agent.taint), "parked": parked}
         self.store.fabric_run_finish(run_id, status, output=content, fault=fault,
                                      tokens_in=usage["in"], tokens_out=usage["out"],
                                      steps=nsteps["n"])
@@ -2135,7 +2242,28 @@ class ControlPlane(usersmod.Scoped):
                 defn, task or flow.get("mission", ""), context=ctx, parent_run=run_id,
                 model_override=model or "", approver=approver, kind="delegate",
                 conversation_id=conversation_id, space_id=space_id, flow=flow["name"],
-                origin=origin, escalate=True, taint=(taint + inherited) or None)
+                origin=origin, escalate=True, taint=(taint + inherited) or None,
+                can_park=bool(state.get("can_park")))
+            if res["status"] == "parked":
+                # The specialist is waiting for a person, so this call waits with it:
+                # the master's own turn parks on this `delegate` (agent.call_tool reads
+                # park_child), and resuming it later finishes the specialist first.
+                await self._emit(run_id, "node_status",
+                                 {"node_id": node, "status": "parked",
+                                  "child_run": res["run_id"], "model": res["model"]})
+                if state.get("agent") is not None:
+                    state["agent"].park_child = {
+                        "subagent": sub, "task": task or "", "handles": handles,
+                        "missing": missing, "inherited": inherited, "node": node,
+                        "child": res["parked"]}
+                return ""
+            return await delegate_done(sub, task, handles, missing, inherited, node, res)
+
+        async def delegate_done(sub: str, task: str, handles: list, missing: list,
+                                inherited: list, node: str, res: dict) -> str:
+            """A specialist's work is back: onto the board, onto the graph, and a receipt
+            for the master. Shared by `delegate` and by a resumed run whose specialist
+            had parked, so both land its work the same way."""
             handle = self.store.next_handle(run_id, "a")
             self.store.artifact_add(
                 run_id, handle, res["content"] or res["fault"] or "", kind="output",
@@ -2280,6 +2408,7 @@ class ControlPlane(usersmod.Scoped):
         ]
         impls = {"delegate": t_delegate, "read_handle": t_read_handle,
                  "note": t_note, "finish": t_finish}
+        state["_delegate_done"] = delegate_done     # for resume_parked; never persisted
         return schemas, impls
 
     def _master_persona(self, flow: dict) -> str:
@@ -2323,10 +2452,15 @@ class ControlPlane(usersmod.Scoped):
     async def run_flow(self, flow: dict, input_text: str = "", origin: dict | None = None,
                        conversation_id: str = "", space_id: str = "", trigger_id: str = "",
                        tainted: bool = False, approver=None, ui_emit=None,
-                       agent_slot: dict | None = None, run_id_out=None) -> dict:
+                       agent_slot: dict | None = None, run_id_out=None,
+                       resume: dict | None = None, decision=None) -> dict:
         """One mission, one master, one blackboard. The graph the UI draws is this run's
         event stream — nodes appear as the master delegates, which is why there is no DAG
-        to author: the plan is made while it runs."""
+        to author: the plan is made while it runs.
+
+        resume/decision: carry on a run that parked (`resume_parked` passes the saved
+        record and the person's answer). The run keeps its id, its board, its
+        delegation count and the working seconds it had spent."""
         origin = origin or {}
         name = flow["name"]
         space_id = space_id or flow.get("space_id") or ""
@@ -2339,26 +2473,35 @@ class ControlPlane(usersmod.Scoped):
         engine = self._executor()
         if engine:
             model = self._executor_label(engine)
-        run_id = self.store.fabric_run_start(
-            "flow", name, input_text or flow.get("mission", ""), model=model, space_id=space_id,
-            conversation_id=conversation_id, flow=name,
-            origin_surface=origin.get("surface", ""),
-            origin_ref=str(origin.get("ref", "") or origin.get("chat_id", "") or ""))
+        if resume:
+            run_id = resume["run_id"]
+            self.store.fabric_run_status(run_id, "running")
+        else:
+            run_id = self.store.fabric_run_start(
+                "flow", name, input_text or flow.get("mission", ""), model=model, space_id=space_id,
+                conversation_id=conversation_id, flow=name,
+                origin_surface=origin.get("surface", ""),
+                origin_ref=str(origin.get("ref", "") or origin.get("chat_id", "") or ""))
         if run_id_out is not None and not run_id_out.done():
             # the caller gets the id before the work starts, so it can subscribe to this
             # run rather than guess which of the recent ones was theirs
             run_id_out.set_result(run_id)
         roster = [r["subagent"] if isinstance(r, dict) else str(r) for r in (flow.get("roster") or [])]
-        await self._emit(run_id, "flow_start",
-                         {"flow": name, "mission": (flow.get("mission") or "")[:200],
-                          "origin": {"surface": origin.get("surface", ""),
-                                     "ref": str(origin.get("ref", "") or "")},
-                          "roster": roster, "space_id": space_id,
-                          "input": (input_text or "")[:200], "tainted": bool(tainted)})
+        if resume:
+            await self._emit(run_id, "resumed",
+                             {"flow": name, "node_id": run_id,
+                              "decision": "allow" if decision else "deny"})
+        else:
+            await self._emit(run_id, "flow_start",
+                             {"flow": name, "mission": (flow.get("mission") or "")[:200],
+                              "origin": {"surface": origin.get("surface", ""),
+                                         "ref": str(origin.get("ref", "") or "")},
+                              "roster": roster, "space_id": space_id,
+                              "input": (input_text or "")[:200], "tainted": bool(tainted)})
 
         # the trigger's own payload is the first thing on the board
-        taint: list = []
-        raw = input_text or ""
+        taint: list = list((resume or {}).get("taint") or [])
+        raw = "" if resume else (input_text or "")
         if raw:
             self.store.artifact_add(run_id, "in1", raw, kind="input",
                                     agent="", task="what started this run",
@@ -2381,14 +2524,25 @@ class ControlPlane(usersmod.Scoped):
         child_cfg = {**self.cfg, "max_steps": int(flow.get("max_steps", 24)),
                      "autonomy": eff_autonomy}
         budget = Budget(int(flow.get("max_seconds", 1800)))
-        state = {"delegations": 0, "final": "", "final_handles": []}
-        master_approver = approver or self._approver(run_id, name, origin, budget, eff_autonomy)
+        if resume:
+            budget.started = time.time() - float(resume.get("elapsed") or 0)
+        # A run can wait for a person past the approval card (park) when nobody is
+        # standing by to answer it (no approver handed in: a schedule, a trigger, Run
+        # now) and its master thinks in this OS's loop. A master on an agent CLI keeps
+        # its conversation inside that CLI, which this OS cannot save and carry on.
+        can_park = approver is None and not engine
+        state = {"delegations": 0, "final": "", "final_handles": [], "can_park": can_park}
+        state.update({k: v for k, v in ((resume or {}).get("state") or {}).items()
+                      if k in PARK_STATE_KEYS})
+        master_approver = approver or self._approver(run_id, name, origin, budget, eff_autonomy,
+                                                     can_park=can_park)
         schemas, impls = self._master_tools(flow, run_id, state, origin, space_id,
                                             conversation_id, approver, taint)
         toolbox = _RunToolbox(self.toolbox, schemas, impls, MASTER_READONLY)
         tool_names = MASTER_READONLY + [s["name"] for s in schemas]
 
-        usage = {"in": 0, "out": 0}
+        usage = {"in": int((resume or {}).get("tokens", {}).get("in", 0)),
+                 "out": int((resume or {}).get("tokens", {}).get("out", 0))}
 
         async def emit(ev):
             if ui_emit:
@@ -2422,6 +2576,7 @@ class ControlPlane(usersmod.Scoped):
                       surface=origin.get("surface") or "gui", flow=name)
         agent.run_id = run_id
         agent.taint.extend(taint)
+        agent.steps_used = int((resume or {}).get("steps_used") or 0)
         state["agent"] = agent          # so `finish` can end the turn (see t_finish)
         if agent_slot is not None:
             agent_slot["agent"] = agent
@@ -2431,17 +2586,32 @@ class ControlPlane(usersmod.Scoped):
         hb = asyncio.create_task(self._heartbeat_sidecar(run_id))
         wd = asyncio.create_task(_watchdog(agent, budget))
         status, fault, content = "ok", "", ""
+        parked = None
         from . import knowledge as _k
         _k.turn_started()
         try:
+            if resume:
+                work = self._resume_master(agent, resume, decision, state)
+            elif engine:
+                work = self._run_on_executor(agent, opening, run_id, engine)
+            else:
+                work = agent.run([{"role": "user", "content": opening}])
             result = await asyncio.wait_for(
-                (self._run_on_executor(agent, opening, run_id, engine) if engine
-                 else agent.run([{"role": "user", "content": opening}])),
-                timeout=budget.limit + self._approval_ceiling() + 60)
+                work, timeout=budget.remaining() + self._approval_ceiling() + 60)
             content = state["final"] or result.get("content") or ""
             tk = result.get("tokens") or {}
-            usage["in"], usage["out"] = tk.get("input", 0), tk.get("output", 0)
-            if state.get("finished"):
+            usage["in"] += tk.get("input", 0)
+            usage["out"] += tk.get("output", 0)
+            if result.get("parked"):
+                status = "parked"
+                parked = {"run_id": run_id, "flow": name, "origin": origin,
+                          "conversation_id": conversation_id, "space_id": space_id,
+                          "taint": list(agent.taint), "elapsed": budget.elapsed(),
+                          "tokens": dict(usage), "steps_used": agent.steps_used,
+                          "state": {k: v for k, v in state.items() if k in PARK_STATE_KEYS},
+                          "messages": result.get("messages") or [],
+                          "pending": result["parked"]}
+            elif state.get("finished"):
                 status = "ok"           # it said it was done; a child's failure is folded in below
             elif any(s.get("type") == "error" for s in result.get("steps", [])):
                 status, fault = "error", next((s["message"] for s in result["steps"]
@@ -2466,6 +2636,12 @@ class ControlPlane(usersmod.Scoped):
             self.instances.pop(run_id, None)
             hb.cancel()
             wd.cancel()
+        if parked is not None:
+            brief_id = await self._park(flow, parked)
+            return {"run_id": run_id, "status": "parked", "content": "", "fault": "",
+                    "model": model, "usage": usage, "delegations": state["delegations"],
+                    "delivered": [], "brief_id": brief_id,
+                    "board": self.store.artifact_index(run_id)}
         # a flow whose children all failed did not succeed, whatever the master says
         kids = self.store.fabric_runs(parent_run=run_id)
         if status == "ok" and kids and all(k["status"] != "ok" for k in kids):
@@ -2494,6 +2670,195 @@ class ControlPlane(usersmod.Scoped):
                 "model": model, "usage": usage, "delegations": state["delegations"],
                 "delivered": delivered,
                 "board": self.store.artifact_index(run_id)}
+
+    # -- parked runs: a mission that waits for a person, past a restart ------------
+
+    async def _resume_master(self, agent, rec: dict, decision, state: dict) -> dict:
+        """Answer the call the master stopped on and carry on its turn. When that call
+        was a `delegate`, the specialist is carried on first, and its finished work is
+        the delegate's result. When the specialist parks AGAIN (a second permission),
+        the master parks again on the same call, now holding the specialist's newer
+        record, so one answer at a time moves the run forward."""
+        pending = rec.get("pending") or {}
+        messages = rec.get("messages") or []
+        ch = pending.get("child")
+        if not isinstance(ch, dict):
+            return await agent.resume(messages, pending, decision=decision)
+        cr = ch.get("child") or {}
+        defn = self.store.get_subagent(ch.get("subagent", ""))
+        if not defn:
+            self.store.fabric_run_finish(cr.get("run_id", ""), "cancelled",
+                                         fault="the specialist was deleted while it waited")
+            return await agent.resume(messages, pending, output=(
+                f"[error] {ch.get('subagent')} was deleted while this step waited for a "
+                f"person, so it did not finish"))
+        res = await self.run_subagent(
+            defn, cr.get("task", ""), context=cr.get("context", ""),
+            parent_run=cr.get("parent_run", ""), model_override=cr.get("model_override", ""),
+            kind=cr.get("kind") or "delegate", conversation_id=cr.get("conversation_id", ""),
+            space_id=cr.get("space_id", ""), flow=cr.get("flow", ""),
+            origin=cr.get("origin") or {}, escalate=bool(cr.get("escalate", True)),
+            chain=cr.get("chain") or [], root=cr.get("root", ""),
+            can_park=bool(state.get("can_park")), resume=cr, decision=decision)
+        if res["status"] == "parked":
+            agent.parked = {**pending, "child": {**ch, "child": res["parked"]}}
+            return {"content": "", "steps": [], "tokens": {"input": 0, "output": 0},
+                    "parked": agent.parked, "messages": messages}
+        output = await state["_delegate_done"](
+            ch.get("subagent", ""), ch.get("task", ""), ch.get("handles") or [],
+            ch.get("missing") or [], ch.get("inherited") or [], ch.get("node", ""), res)
+        return await agent.resume(messages, pending, output=output)
+
+    def _park_hours(self) -> float:
+        try:
+            return max(1.0, float((self.cfg.get("fabric") or {}).get("park_hours", PARK_HOURS)))
+        except (TypeError, ValueError):
+            return float(PARK_HOURS)
+
+    async def _park(self, flow: dict, rec: dict) -> str:
+        """Keep a run that is waiting for a person, and put the question on the Brief.
+
+        The item is the door back in: Allow or Deny there (desk, phone, Telegram,
+        `bento brief`) records the answer and the run carries on from the call it
+        stopped on. A newer run of the same mission asking the same thing replaces an
+        older waiting one, so a nightly mission is one question, not a stack of them."""
+        from . import brief as briefmod
+        run_id, name = rec["run_id"], flow["name"]
+        q = park_question(rec)
+        for old in self.store.parked_runs():
+            if (old["run_id"] != run_id and old["flow"] == name and old["question"] == q["key"]
+                    and old["state"] == "waiting"):
+                self._stop_parked(old["run_id"], "cancelled",
+                                  "a newer run of this mission asked the same thing")
+        until = time.time() + self._park_hours() * 3600
+        line = q["tool"] + (f" on {q['what']}" if q["what"] else "")
+        who = "it" if q["who"] == "the mission" else q["who"]
+        body = ((f"{who[0].upper() + who[1:]} asked to run {line}. "
+                 + (f"Why: {q['reason'][:400]}\n\n" if q["reason"] else "\n\n"))
+                + "The mission is paused where it stopped. Allow and it carries on from there. "
+                  "Deny and it carries on without this step. "
+                + f"If nobody answers by {time.strftime('%a %d %b %H:%M', time.localtime(until))}, "
+                  "it stops. To stop it asking every time, add the permission in Permissions.")
+        item = briefmod.add(
+            self.store, mission=name, run_id=run_id, kind="decide",
+            title=f"{name} is waiting for you: {q['who']} wants to run {line}",
+            body=body, options=["Allow", "Deny"],
+            source={"type": "parked", "ref": run_id},
+            # its own key each time: the same run parking again (a second permission)
+            # is a new question, and an upsert onto the first would keep its "decided"
+            key=f"parked:{run_id}:{time.time():.0f}",
+            space_id=rec.get("space_id") or "")
+        self.store.park_save(run_id, name, q["key"], rec, item["id"], until)
+        for r in _park_chain(rec):
+            self.store.fabric_run_status(r["run_id"], "parked")
+        self.store.log("fabric",
+                       f"mission '{name}' is waiting for a person: {q['who']} → {line}. "
+                       f"Filed on the Brief; it resumes when answered",
+                       {"run_id": run_id, "flow": name, "tool": q["tool"], "brief": item["id"]})
+        await self._emit(run_id, "parked",
+                         {"node_id": run_id, "flow": name, "who": q["who"], "tool": q["tool"],
+                          "what": q["what"], "brief_id": item["id"], "until": until})
+        if self.broadcast:
+            try:
+                await self.broadcast({"type": "brief", "action": "asked", "id": item["id"]})
+                await self.broadcast({"type": "fabric_defs"})
+            except Exception:
+                pass
+        return item["id"]
+
+    def _stop_parked(self, run_id: str, status: str, why: str) -> None:
+        """A waiting run that will not be carried on: every run in its chain gets a
+        final status and the reason, its Brief question is closed, the row goes."""
+        p = self.store.park_get(run_id)
+        if not p:
+            return
+        for r in reversed(_park_chain({**p["record"], "run_id": run_id})):
+            if r.get("run_id"):
+                self.store.fabric_run_finish(r["run_id"], status, fault=why)
+        if p.get("brief_id"):
+            self.store.brief_set(p["brief_id"], state="done")
+        self.store.park_drop(run_id)
+        self.store.log("fabric", f"mission '{p['flow']}' stopped waiting: {why}",
+                       {"run_id": run_id, "flow": p["flow"], "status": status})
+
+    def answer_parked(self, run_id: str, allow: bool) -> dict:
+        """Record a person's answer to a waiting run. Returns {"ok": True} when it was
+        taken, or {"ok": False, "why": <a sentence>} when the run is not waiting any
+        more. Pure database: `bento brief` calls it with the server down, and the
+        server resumes what it finds answered (`sweep_parked`)."""
+        p = self.store.park_get(run_id)
+        if not p:
+            return {"ok": False, "why": "That run is not waiting any more."}
+        if p["state"] != "waiting":
+            return {"ok": False, "why": "That run was already answered."}
+        if (p.get("expires_at") or 0) < time.time():
+            self._stop_parked(run_id, "expired", "nobody answered in time")
+            return {"ok": False, "why": "That run stopped waiting before the answer came, "
+                                        "so nothing was done. Run the mission again."}
+        self.store.park_answer(run_id, "allow" if allow else "deny")
+        return {"ok": True}
+
+    async def resume_parked(self, run_id: str) -> dict:
+        """Carry on an answered run. Exactly one caller resumes it (`park_claim`)."""
+        p = self.store.park_claim(run_id)
+        if not p:
+            return {"run_id": run_id, "status": "not-waiting"}
+        flow = self.store.get_flow(p["flow"])
+        why = ("the mission was deleted while it waited" if not flow else
+               "the mission was switched off while it waited" if not flow.get("enabled") else "")
+        if why:
+            # switching a mission off revokes what it held, so carrying on would only be
+            # refused step by step; stop it and say so
+            self._stop_parked(run_id, "cancelled", why)
+            return {"run_id": run_id, "status": "cancelled", "fault": why}
+        rec = {**p["record"], "run_id": run_id}
+        try:
+            res = await self.run_flow(
+                flow, origin=rec.get("origin") or {},
+                conversation_id=rec.get("conversation_id", ""),
+                space_id=rec.get("space_id", ""), resume=rec,
+                decision=p["decision"] == "allow")
+        except Exception as e:                                   # noqa: BLE001
+            self._stop_parked(run_id, "error", f"could not carry on: {type(e).__name__}: {e}")
+            return {"run_id": run_id, "status": "error", "fault": str(e)}
+        finally:
+            cur = self.store.park_get(run_id)
+            if cur and cur["state"] == "resuming":      # finished (a re-park saved it as waiting)
+                self.store.park_drop(run_id)
+        return res
+
+    def sweep_parked(self, boot: bool = False, since: float | None = None) -> dict:
+        """Housekeeping for waiting runs, for this person. Returns what it found.
+
+        boot: this server has just started, so nothing is running in it yet. A run
+        still marked `running` was cut off by the stop and never gets an answer; it
+        is marked `interrupted` rather than left spinning on every screen. A run
+        that was being RESUMED when the server stopped is stopped too, not resumed
+        again, because some of its steps may already have happened and doing them
+        twice is worse than asking again. `since` limits that to runs started
+        before this server did.
+
+        Always: a run nobody answered in time stops; an answered run is returned in
+        `answered`, for the caller to resume (this is sync, the resume is not)."""
+        out = {"interrupted": 0, "expired": 0, "answered": []}
+        if boot:
+            cutoff = since if since is not None else time.time()
+            for r in self.store.fabric_runs_with_status("running"):
+                if (r.get("started_at") or 0) < cutoff:
+                    self.store.fabric_run_finish(r["id"], "interrupted",
+                                                 fault="AgentOS stopped while this was running")
+                    out["interrupted"] += 1
+            for p in self.store.parked_runs("resuming"):
+                self._stop_parked(p["run_id"], "interrupted",
+                                  "AgentOS stopped while this was carrying on")
+                out["interrupted"] += 1
+        now = time.time()
+        for p in self.store.parked_runs("waiting"):
+            if (p.get("expires_at") or 0) < now:
+                self._stop_parked(p["run_id"], "expired", "nobody answered in time")
+                out["expired"] += 1
+        out["answered"] = [p["run_id"] for p in self.store.parked_runs("answered")]
+        return out
 
 
 def parse_huddle(store, text: str):

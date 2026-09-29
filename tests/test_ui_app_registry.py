@@ -85,21 +85,22 @@ def test_group_layouts_only_reference_real_apps(filename, marker):
 
 
 def test_quarantine_is_reachable_on_its_own():
-    """The point of the change: findable without knowing it lives under Permissions."""
-    apps = _apps_registry()
-    assert apps.get("quarantine") == "renderQuarantine"
-    assert "quarantine" in _js_list(_read("05-apps-registry.js"), "const DESKTOP_APPS=")
-    assert "renderQuarantine" in _read("20-permissions.js")
+    """Findable without knowing it lives under Permissions. It was its own app for that
+    reason; it is a Permissions tab now (APP_FOLD), and the promise is kept by the name:
+    typing "quarantine" finds it, and the old id still opens it, on its tab."""
+    wm = _read("04-wm.js")
+    assert "quarantine:{host:'permissions',tab:'quarantine'}" in wm
+    places = _read("05b-places.js")
+    assert "['Quarantine','permissions','Permissions → Quarantine'" in places
+    assert "placeFold('quarantine')" in places
 
 
-def test_quarantine_app_and_tab_share_one_renderer():
+def test_quarantine_has_one_renderer():
     """Two copies of the list would drift, and the drift would be in the screen that
     explains why the OS stopped something."""
     text = _read("20-permissions.js")
     assert text.count("function permQuarantine(") == 1
-    body = text[text.index("async function renderQuarantine("):]
-    body = body[:body.index("async function permRelease(")]
-    assert "permQuarantine(" in body, "the app must reuse the tab's renderer"
+    assert "function renderQuarantine(" not in _all_js(), "the standalone window is gone"
 
 
 def test_release_refreshes_both_surfaces():

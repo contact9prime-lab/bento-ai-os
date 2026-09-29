@@ -140,7 +140,7 @@ async function renderAutomations(body){
   await loadAutomations();
   const d=AUTO_DRAFT;
   body.innerHTML=`<div class="phead">
-      <span class="pt">Automations</span>
+      <span class="pt">Routines</span>
       <span class="ps">name a sequence once — run it the same way forever</span>
       <span class="sp"></span>
       <button class="pact" onclick="autoEdit(null)">＋ New automation</button>

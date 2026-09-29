@@ -102,8 +102,10 @@ async function briefAct(id,action,choice){
   try{
     const r=await fetch(`/api/brief/${encodeURIComponent(id)}/act`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,choice:choice||''})});
     const j=await r.json();
-    if(j.error){toast(j.error);return}
-    if(action==='decide'){toast(`→ ${choice} — ${agentName?agentName():'the agent'} is on it; the reply lands here`);}
+    // a mission that stopped waiting closes its question, so the page is read again
+    if(j.error){toast(j.error);await briefLoad();refreshApp('brief');return}
+    if(action==='decide'&&j.resumed)toast(`→ ${choice}. The mission carries on from where it stopped.`);
+    else if(action==='decide'){toast(`→ ${choice} — ${agentName?agentName():'the agent'} is on it; the reply lands here`);}
     await briefLoad();refreshApp('brief');if(typeof homeRender==='function')homeRender();
   }catch(e){toast('could not reach the server')}
   finally{BRIEF.busy=false;if(el)el.classList.remove('busy')}

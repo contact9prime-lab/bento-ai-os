@@ -10,17 +10,44 @@ function winsOf(appId){const r=[];WM.wins.forEach(w=>{if(w.id===appId)r.push(w)}
    Every door that opened Workflows — handoffs, onboarding, the deck, refreshApp on a
    fabric event — lands on the Build tab, so nothing has to remember the rename. */
 var APP_ALIAS={fabric:'jobs'};
+/* One concept, one app. These were apps of their own and are now tabs of the app the
+   concept belongs to (UX review S2: four ways to schedule, four ways to say what is
+   allowed, four views of what it knows). The id still opens the place, on its tab, so
+   every openApp('kg'), handoff, place and old stored deck lands where the thing lives.
+   The render functions are unchanged; the host draws them under its own tab row. */
+var APP_FOLD={
+  memory:{host:'profile',tab:'memory'},kg:{host:'profile',tab:'graph'},soul:{host:'profile',tab:'soul'},
+  policies:{host:'permissions',tab:'rules'},audit:{host:'permissions',tab:'ledger'},
+  quarantine:{host:'permissions',tab:'quarantine'},
+  tasks:{host:'jobs',tab:'schedule'},automations:{host:'jobs',tab:'routines'},
+};
+function foldTab(host){
+  if(host==='permissions')return typeof PERM!=='undefined'?PERM.tab:'';
+  if(host==='jobs')return typeof JOBS!=='undefined'?JOBS.tab:'';
+  if(host==='profile')return typeof PROFILE_TAB!=='undefined'?PROFILE_TAB:'';
+  return '';
+}
+function foldGo(host,tab){
+  if(host==='permissions'&&typeof PERM!=='undefined')PERM.tab=tab;
+  else if(host==='jobs'&&typeof JOBS!=='undefined')JOBS.tab=tab;
+  else if(host==='profile')PROFILE_TAB=tab;
+}
 function appAlias(id){
   if(id==='fabric'&&typeof JOBS!=='undefined')JOBS.tab='build';
+  const f=APP_FOLD[id];if(f){foldGo(f.host,f.tab);return f.host}
   return APP_ALIAS[id]||id;
 }
 function openApp(id,opts){
   opts=opts||{};
+  const asked=id;
   id=appAlias(id);
   const app=APPS[id];if(!app)return null;
   if(!(app.multi&&opts.fresh)){
     const w=WM.wins.get(id)||winsOf(id)[0];
-    if(w){ if(w.desk!==curDesk){w.desk=curDesk;applyDeskVisibility()} if(w.min)restoreWin(w); focusWin(w); return w; }
+    if(w){ if(w.desk!==curDesk){w.desk=curDesk;applyDeskVisibility()} if(w.min)restoreWin(w); focusWin(w);
+      // an open host asked for one of its folded tabs has to move to it
+      if(asked!==id)w.app.render(w.el.querySelector('.wbody'),w);
+      return w; }
   }
   dockBounce(id);
   const w=createWin(app);
@@ -397,7 +424,12 @@ function resizify(w){
     });
   });
 }
-function refreshApp(id){id=APP_ALIAS[id]||id;winsOf(id).forEach(w=>w.app.render(w.el.querySelector('.wbody'),w))}
+function refreshApp(id){
+  // a folded app repaints only while its tab is the one showing: refreshApp('audit') on
+  // a ten-second tick must not redraw the Permissions map somebody is reading
+  const f=APP_FOLD[id];
+  if(f){if(foldTab(f.host)!==f.tab)return;id=f.host}
+  id=APP_ALIAS[id]||id;winsOf(id).forEach(w=>w.app.render(w.el.querySelector('.wbody'),w))}
 
 /* ===== shared panel shell: header + search + actions + body ===== */
 const SVG_SEARCH='<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';

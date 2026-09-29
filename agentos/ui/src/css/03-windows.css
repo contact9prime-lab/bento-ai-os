@@ -55,5 +55,10 @@
 .win .tbtns:hover button{color:rgba(0,0,0,.55)}
 .win .tbtns .cls{order:0}.win .tbtns .mn{order:1}.win .tbtns .mx{order:2}
 .win .wbody{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+/* A host app's tab row over one of its folded apps (APP_FOLD in 04-wm.js). The body
+   below it is laid out like a window body, so the folded app draws exactly as it did. */
+.wbody>.fold-tabs{flex:none;padding:10px 14px 0}
+.wbody>.fold-tabs .job-tabs{margin-bottom:0}
+.wbody>.fold-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .pad{padding:16px 18px;overflow-y:auto;user-select:text}
 

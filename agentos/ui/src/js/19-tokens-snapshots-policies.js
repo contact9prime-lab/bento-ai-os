@@ -69,7 +69,7 @@ async function renderPolicies(body){
       <div class="grow" style="font-family:var(--mono);font-size:12.5px">${esc(p.match)}</div>
       <button onclick="delPolicy(${i})">✕</button></div>`).join('');
   const pb=panelShell(body,{
-    title:'Policies',
+    title:'Rules',
     sub:`${pol.length} rule${pol.length===1?'':'s'} — what the agent may do without asking`,
     search:{id:'pol-q',placeholder:'Search rules…'},
   });

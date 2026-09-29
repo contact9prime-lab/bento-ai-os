@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.14 — 2026-09-29
+
+**A mission that asks while you sleep now waits for you.** When a mission needed a yes at
+night and nobody answered, it used to carry on without the step, and the Brief said it had
+not waited. Now it pauses where it stopped and the question is in the Brief with Allow and
+Deny. Answer from the desktop, your phone, Telegram or `bento brief`, and it carries on from
+that exact point, even after a restart. It waits for three days, a newer run asking the same
+thing replaces an older one, and Stop in the Run Inspector ends it. Missions show
+**waiting for you** while it waits. A mission running on Claude Code, Gemini CLI or Codex
+can't pause this way yet, and still skips the step as before.
+
+**Runs cut off by a restart say so.** A run that was going when AgentOS stopped used to stay
+"running" for ever. It's marked interrupted now.
+
+**Fewer apps, same features.** Eight apps are now tabs of the app they belong to:
+Scheduler and Automations are in **Missions** (Schedule, Routines); Policies, Audit and
+Quarantine are in **Permissions** (Rules, Ledger, Quarantine); Memory, Knowledge Graph and
+Soul are in **Profile** (Memory, Graph, Soul). Searching for any old name still finds it,
+and anything that opened one of them opens the right tab.
+
 ## 0.6.13 — 2026-09-28
 
 **Back up your whole machine, and move it.** Settings → System → Backup, or `bento backup`,

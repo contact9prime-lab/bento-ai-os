@@ -904,3 +904,28 @@ with no UI — that nobody had run.
 ![Missions → Build: the flows editor, the agents and the runs, one tab away from Run](ux-review/after/missions-build.jpg)
 ![The Agents sub-tab under Build](ux-review/after/missions-build-agents.jpg)
 ![Missions on a phone, Build tab](ux-review/after/missions-phone-build.jpg)
+
+## Addendum: one concept, one app (29 September)
+
+S2 is done for the three groups it named. Eight apps are now tabs of the app their
+concept belongs to, and nothing was deleted: the render functions are the same, the
+routes and the TUI verbs are unchanged, and the old ids still open the place.
+
+| Was an app | Is now |
+|---|---|
+| Scheduler, Automations | Missions → Schedule, Routines |
+| Policies, Audit, Quarantine | Permissions → Rules, Ledger, Quarantine |
+| Memory, Knowledge Graph, Soul | Profile → Memory, Graph, Soul |
+
+`APP_FOLD` in `04-wm.js` maps each old id to its host and tab: `openApp('kg')` opens
+Profile on Graph, a handoff to the Scheduler lands on Missions → Schedule, and typing
+"quarantine" in any launcher finds Permissions → Quarantine (a place in `05b-places.js`).
+A folded app repaints only while its tab is showing, so the Ledger's ten-second tick
+does not redraw the policy map. The default deck lists 37 apps instead of 45. Quick
+Settings as a popover only, the other S2 row, is not done. `tests/test_app_fold.py`
+pins it.
+
+Measured in Chromium at 1440x900 and 390x844 on a fresh home: every old id opened its
+host on the right tab, no tab scrolled sideways on the phone, the graph's animation
+stopped when its tab was left, and there were no page errors.
+

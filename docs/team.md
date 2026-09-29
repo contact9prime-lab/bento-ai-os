@@ -243,7 +243,7 @@ autonomy, because you asked your agent, not a specialist.
 
 ### Everything is in the audit ledger
 
-The hash-chained audit ledger (the Audit app, `audit_verify`) records:
+The hash-chained audit ledger (Permissions → Ledger, `audit_verify`) records:
 
 - **every decision**: each message asked, allowed, refused or blocked (`agent.message`), each
   huddle (`agent.huddle`), each model pin by the agent (`agent.write`);

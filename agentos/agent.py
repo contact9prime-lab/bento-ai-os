@@ -343,6 +343,23 @@ def _council_ask(agent, name: str, args: dict) -> dict:
             "request": str(getattr(agent, "_task_text", "") or "")[:600],
             "conversation_id": agent.conversation_id or "", "space_id": agent.space_id or ""}
 
+class _Park:
+    """An approver's third answer: nobody said yes or no, and this run can wait.
+
+    The loop saves where it is and ends the turn; fabric.py keeps the saved state and
+    resumes it when a person answers on the Brief. It is falsy on purpose: code that
+    does not know about parking (`if approved:`) reads it as a refusal, which is the
+    safe way to misunderstand it."""
+    def __bool__(self):
+        return False
+
+    def __repr__(self):
+        return "PARK"
+
+
+PARK = _Park()
+
+
 class Agent:
     def __init__(self, cfg: dict, toolbox: Toolbox, model_id: str,
                  emit: Callable[[dict], Awaitable[None]],
@@ -407,6 +424,13 @@ class Agent:
         # never mentioned them — see toolscope.py.
         self._pinned_tools: set[str] = set()
         self._tool_note = ""   # what the model is NOT being shown, if anything
+        # Parking (fabric.py): `parked` is the tool call this turn stopped on, set when
+        # the approver answers PARK or when a run-scoped tool reports that the work it
+        # started parked (`park_child`, the delegate case). `steps_used` carries the
+        # step count across a park, so a resumed turn does not get a fresh max_steps.
+        self.parked: dict | None = None
+        self.park_child: dict | None = None
+        self.steps_used = 0
 
     @property
     def partial_text(self) -> str:
@@ -853,6 +877,9 @@ class Agent:
                 finally:
                     if tok is not None:
                         _NEEDS_PERSON.reset(tok)
+                if approved is PARK:
+                    return await self._park_here(name, args, call_id, dec,
+                                                 dec.reason or reason)
             if approved:
                 output = await self.toolbox.execute(name, args)
             elif verdict is not None:
@@ -876,6 +903,11 @@ class Agent:
                              "args": args, "detail": tool_detail(name, args),
                              "pending_approval": False})
             output = await self.toolbox.execute(name, args)
+        if self.park_child is not None:
+            # the tool started work that parked (a mission's `delegate` whose specialist
+            # is waiting for a person): this call waits with it
+            child, self.park_child = self.park_child, None
+            return await self._park_here(name, args, call_id, dec, "", child=child)
         if dec.effect != "allow":  # every gate decision is auditable in Logs
             self.toolbox.store.log(
                 "policy",
@@ -930,9 +962,77 @@ class Agent:
                          **({"image": image_path} if image_path else {})})
         return output, ok, image_path, untrusted
 
+    async def _park_here(self, name: str, args: dict, call_id: str, dec, reason: str,
+                         child: dict | None = None) -> tuple:
+        """Stop this turn on this tool call, with nothing lost.
+
+        The call gets no result yet: the saved history ends on the assistant's
+        tool_calls, and `resume` supplies the result when a person has answered, so
+        the model never sees a placeholder it might act on. The ledger row the gate
+        opened is closed as `parked`, which is what happened to it."""
+        self.parked = {"call_id": call_id, "name": name, "args": args,
+                       "reason": (reason or "")[:600],
+                       **({"child": child} if child is not None else {})}
+        self.aborted = True
+        if getattr(dec, "audit_id", ""):
+            self.toolbox.store.audit_finish(dec.audit_id, outcome="parked",
+                                            detail="waiting for a person", duration_ms=0)
+        if child is None:
+            self.toolbox.store.log(
+                "policy", f"parked: {self.principal.label} → {name}, waiting for a person"[:400],
+                {"principal": self.principal.label, "tool": name, "rule": dec.rule,
+                 "reason": reason, "surface": self.surface})
+        await self.emit({"type": "status",
+                         "message": "waiting for you: this carries on when you answer in the Brief"})
+        return "", False, None, False
+
+    async def resume(self, history: list[dict], pending: dict, decision=None,
+                     output: str | None = None) -> dict:
+        """Carry on a turn that parked. `history` is what `run` returned when it
+        parked: it ends on an assistant message whose tool calls are not all answered.
+
+        The call it parked on is answered here, by `output` when the caller already
+        has its result (a delegate whose specialist has now finished), or by running
+        it again through the whole gate with the person's `decision` standing in for
+        the approver ONCE. Running it through the gate again, rather than executing it
+        directly, is deliberate: a grant revoked in the meantime still refuses it, and
+        the ledger gets a row for the moment it actually ran."""
+        msgs = [dict(m) for m in history]
+        last = max((i for i, m in enumerate(msgs)
+                    if m.get("role") == "assistant" and m.get("tool_calls")), default=-1)
+        if last < 0:
+            return await self.run(msgs)
+        answered = {m.get("tool_call_id") for m in msgs[last + 1:] if m.get("role") == "tool"}
+        for tc in msgs[last]["tool_calls"]:
+            if tc["id"] in answered:
+                continue
+            if tc["id"] == pending.get("call_id") and output is not None:
+                out = output
+                await self.emit({"type": "tool_end", "call_id": tc["id"], "name": tc["name"],
+                                 "output": out[:4000], "ok": not out.startswith(("[error]", "[denied]"))})
+            else:
+                orig = self.approver
+                if tc["id"] == pending.get("call_id") and decision is not None:
+                    async def once(_n, _a, _r, _offer=None, _d=bool(decision)):
+                        return _d
+                    self.approver = once
+                try:
+                    out, _ok, _img, _untr = await self.call_tool(tc["name"], tc.get("args") or {},
+                                                                 tc["id"])
+                finally:
+                    self.approver = orig
+                if self.parked:
+                    return {"content": "", "steps": [], "tokens": {"input": 0, "output": 0},
+                            "parked": self.parked, "messages": msgs}
+            msgs.append({"role": "tool", "tool_call_id": tc["id"], "name": tc["name"],
+                         "content": out})
+        return await self.run(msgs)
+
     async def run(self, history: list[dict]) -> dict:
         """history: prior messages (user/assistant, internal format), last one the new user msg.
-        Returns {'content': final_text, 'steps': [...]} — steps are the tool trace for persistence."""
+        Returns {'content': final_text, 'steps': [...]} — steps are the tool trace for persistence.
+        When the turn parked (see `_park_here`) it also returns `parked` and `messages`,
+        the history to hand to `resume`."""
         last_user = next((m.get("content", "") for m in reversed(history)
                           if m.get("role") == "user"), "")
         self._task_text = last_user
@@ -967,9 +1067,10 @@ class Agent:
         messages = [{"role": "system",
                      "content": await self._system(last_user) + self._tool_note}] + history
 
-        for _ in range(int(self.cfg.get("max_steps", 25))):
+        for _ in range(max(1, int(self.cfg.get("max_steps", 25)) - int(self.steps_used or 0))):
             if self.aborted:
                 break
+            self.steps_used += 1
             # Step boundary — the one safe place to take on what the user said while
             # this turn was already running (never between a tool call and its result).
             if self.inbox:
@@ -1109,6 +1210,10 @@ class Agent:
                     break
                 name, args, call_id = tc["name"], tc["args"], tc["id"]
                 output, ok, image_path, untrusted = await self.call_tool(name, args, call_id)
+                if self.parked:
+                    # no result for this call, nor for any after it in the same reply:
+                    # `resume` answers them all when a person has answered
+                    break
                 steps.append({"type": "tool", "name": name, "args": args,
                               "output": output[:4000], "ok": ok,
                               **({"untrusted": True} if untrusted else {})})
@@ -1130,4 +1235,12 @@ class Agent:
             t = item.pop("_triage", None)   # and runs as its own turn anyway
             if t is not None:
                 t.cancel()
+        if self.parked:
+            # the history minus the system prompt (rebuilt on resume, so it reflects
+            # memory and skills as they are THEN), and minus inline images, which are
+            # megabytes of base64 the saved state does not need: the tool result above
+            # each one still names the file
+            saved = [{k: v for k, v in m.items() if k != "images"} for m in messages[1:]]
+            return {"content": "", "steps": steps, "tokens": tokens,
+                    "parked": self.parked, "messages": saved}
         return {"content": final_text, "steps": steps, "tokens": tokens}

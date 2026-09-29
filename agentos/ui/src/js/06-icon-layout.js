@@ -138,9 +138,9 @@ function arrangeIcons(byName){
 const BENTO_GROUPS=[
   ['Essentials',['chat','office','apps','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize']],
-  ['Intelligence',['models','memory','kg','soul','profile']],
-  ['Automation',['jobs','tasks','skills','mcp','telegram']],
-  ['System',['taskmgr','control','settings','policies','quarantine','snapshots','logs','tokens']],
+  ['Intelligence',['models','profile']],
+  ['Automation',['jobs','skills','mcp','telegram']],
+  ['System',['taskmgr','control','settings','permissions','snapshots','logs','tokens']],
   ['Library',['docs','about']],
 ];
 function arrangeBento(){
