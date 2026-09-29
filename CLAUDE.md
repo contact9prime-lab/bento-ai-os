@@ -388,6 +388,39 @@ Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the sa
 catalogue and the same install on a headless Pi, which is where a standing job earns its
 keep and where there is no wizard.
 
+## Your company: departments are the Office's rooms, desks are flows, people are specialists
+
+`agentos/company.py` + `24g-company.js` (the Office's ▦ Company panel and the card over each
+room) + `/api/company*` + `bento company`. Asked for with a screenshot of a recruitment agency
+run by agents: "the departments should spin up for the scene, and each has its profile and
+persona". Full story in `docs/company.md`; `tests/test_company.py` pins what follows.
+
+- **Nothing new is stored.** A department is an Office room (`office.py` now keeps `lead`,
+  `about`, `desk` and `titles` on it, and MAX_DEPTS is 10), its people are ordinary
+  specialists (`flows.save_specialist`), its desk is a DISABLED flow (`<dept>-desk`), and
+  "who may ask whom" is matrix rows (`fabric.set_cell`). The `company` USER_KEY holds only
+  the name and one line. A second list of departments would drift from the rooms.
+- **A draft is a closed set read field by field** (`normalize`, used for the brain's answer
+  AND the page's edited plan). Tools come from `ALLOWED_TOOLS`, an allow-list (no shell,
+  push, send, or reconfigure: the STANDING_TOOLS lesson); no blazer; one head each; names
+  unique; `MAX_PEOPLE`/`MAX_TOTAL`, because every person is a model call when they work.
+  What is dropped is named. Mail and calendar tools only when `accounts.readiness` says so.
+- **Preview and apply are one computation.** The page re-asks `/api/company/preview` after
+  every untick, so the button counts what the save makes; `apply` re-derives it. An agent or
+  a desk that exists is never overwritten, it joins as it is.
+- **A task for a department is a run of its desk** (`/api/company/task` = `/api/flows/{n}/run`
+  with the department named). Off, so each gated step asks; the flows rule again.
+- **The cards count rows.** `stats()`/`board()` read `fabric_runs`, pending approvals and the
+  desk's triggers. A hand-over inside a desk run is part of that task, not a task. `parked`
+  is waiting (answer in the Brief), `interrupted` is stopped, not failed. The screenshot asked
+  for business numbers ("applications 388"); this machine does not read those systems, so the
+  cards count work, and never a guess.
+- **The Design panel's save spreads `...d`**, or renaming a room silently took its head and
+  desk away. The cards live in the window only: the desktop scene cannot be tapped.
+
+The lead hears the org chart (`company.note`, appended after `team_note` in `agent.py`; the
+team door gets `desks=False`, because it has no `run_flow`).
+
 ## The Brief: a mission delivers ITEMS a person acts on, never a message
 
 `agentos/brief.py` is how a mission's result reaches somebody, and it is the reason

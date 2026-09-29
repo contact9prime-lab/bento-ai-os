@@ -1509,6 +1509,11 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     port = int(os.environ.get("AGENTOS_BOUND_PORT") or (cfg or {}).get("port", 8321) or 8321)
     env.team_mcp = (f"http://127.0.0.1:{port}/api/mcp/run/{token}", token)
     env.context = (env.context or "") + team_note(subs)
+    try:
+        from . import company as _company
+        env.context += _company.note(cfg, store, desks=False)
+    except Exception:
+        pass
     return token
 
 

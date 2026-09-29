@@ -538,7 +538,10 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "agent_profile",
              # how MY office playground looks and who sits in which department. Personal
              # by the character editor's argument: it costs nothing and reaches nothing.
-             "office")
+             "office",
+             # what MY company is called and what it does (company.py). The departments
+             # live in `office`; the agents in my own database.
+             "company")
 
 
 def machine_view(cfg: dict) -> dict:

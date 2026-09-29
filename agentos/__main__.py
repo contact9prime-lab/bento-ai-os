@@ -3472,6 +3472,155 @@ def _files_cli(args):
         print(f"  {f['name'][:40]:40} {outputs.size_words(f['size']):>8}  {ago:>4} ago  {f['path']}")
 
 
+def _company_cli(args):
+    """`bento company` — the company from a terminal: its departments with the same
+    counts the Office's cards show, the task board, the catalogue, setting it up from a
+    sentence, and giving a department a task.
+
+    Setup goes through the running server when one answers (it holds the config in
+    memory, and writing the file under it would be overwritten at its next save), and
+    straight to the files when none does, so a headless box can be set up before it is
+    ever started. A task needs the server: a department's work runs in its control plane."""
+    from . import company as co
+    from . import config as _cfgmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    a, rest = args.action, list(args.args or [])
+    port = int(cfg.get("port") or 8321)
+    up = _server_answers(port) and not getattr(args, "user", "")
+
+    def show_plan(pv):
+        pr = pv.get("company") or {}
+        print(f"\n  {pr.get('name') or 'Your company'}" + (f": {pr['about']}" if pr.get("about") else ""))
+        for d in pv["departments"]:
+            print(f"\n  {d['name']}  ({d.get('about') or ''})")
+            for p in d["people"]:
+                tag = "head  " if p["lead"] else "      "
+                st = "" if p["status"] == "new" else "  (already here, joins as it is)"
+                print(f"    {tag}{p['name']:<18} {p['title']}{st}")
+        print(f"\n  {pv['new']} new agents, {pv['existing']} already here, {pv['desks']} desks "
+              f"(each off until you switch it on), {pv['talk_pairs']} who-may-ask-whom cells.")
+        for n in pv.get("notes") or []:
+            print(f"  note: {n}")
+
+    if a in ("show", "list"):
+        # the server knows what is waiting for approval right now; the files do not
+        d = _api_call(port, "/api/company") if up else {}
+        if d.get("error"):
+            print(f"✗ {d['error']}")
+            sys.exit(1)
+        print(co.text(cfg, store, st=d.get("departments")))
+        b = d.get("board") or co.board(cfg, store)
+        if b["tasks"]:
+            print("\n  Tasks:")
+            for t in b["tasks"][:12]:
+                print(f"    {t['status']:<12} {t['department']:<12} {t['task'][:70]}")
+        return
+    if a == "templates":
+        for c in co.catalogue():
+            print(f"  {c['id']:<10} {c['label']:<10} {c['mandate']}")
+            print(f"  {'':<10} {', '.join(p['name'] + (' (head)' if p['lead'] else '') for p in c['people'])}")
+        return
+    if a == "setup":
+        desc = " ".join(rest).strip()
+        ids = [x.strip().lower() for x in (getattr(args, "departments", "") or "").split(",") if x.strip()]
+        bad = [x for x in ids if x not in co.DEPARTMENTS]
+        if bad:
+            print(f"✗ not in the catalogue: {', '.join(bad)} (bento company templates)")
+            sys.exit(2)
+        if len(desc) < 3 and not ids:
+            print('say what the company does:  bento company setup "a coffee subscription startup"')
+            sys.exit(2)
+        talk = not getattr(args, "no_talk", False)
+        if up:
+            d = _api_call(port, "/api/company/draft", "POST",
+                          {"description": desc, "departments": ids, "talk": talk})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+            plan, pv, how = d["plan"], d["preview"], (f"designed by {d['who']}" if d["how"] == "brain"
+                                                      else d.get("said") or "from the catalogue")
+        else:
+            import asyncio as _aio
+            from . import executors as _ex
+            from . import tools as _tools
+            names = [t["name"] for t in _tools.TOOL_SCHEMAS]
+            plan, how = {}, ""
+            if len(desc) >= 3 and not getattr(args, "words", False):
+                system, prompt = co.design_prompt(desc, names)
+                raw, who = _aio.run(_ex.ask_once(cfg, system, prompt, timeout=240))
+                plan, _ = co.read_plan(raw, names) if raw else ({}, [])
+                how = f"designed by {who}" if plan else ""
+            if not plan:
+                plan, _ = co.normalize(co.from_words(desc, ids), names)
+                how = ("filled in from the catalogue, as asked" if getattr(args, "words", False) else
+                       "nothing answered, so this was filled in from the catalogue" if _ex.has_brain(cfg)
+                       else "no brain is set up, so this was filled in from the catalogue")
+            from . import accounts as _acc
+            accts = {k: bool(v.get("ready")) for k, v in _acc.readiness(cfg).items()}
+            pv = co.preview(cfg, store, plan, accts, talk=talk)
+        print(f"  {how[0].upper() + how[1:]}." if how else "")
+        show_plan(pv)
+        if not pv["fits"]:
+            sys.exit(1)
+        if not getattr(args, "yes", False):
+            try:
+                ok = input("\n  Set this up? [y/N] ").strip().lower() in ("y", "yes")
+            except EOFError:
+                ok = False
+            if not ok:
+                print("  Nothing was changed.")
+                return
+        if up:
+            rep = _api_call(port, "/api/company/apply", "POST", {"plan": plan, "talk": talk})
+            if rep.get("error"):
+                print(f"✗ {rep['error']}")
+                sys.exit(1)
+        else:
+            try:
+                rep = co.apply(cfg, store, plan, accts, talk=talk)
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+            _cfgmod.save_config(cfg)
+            co.record(store, f"company set up from the terminal: {', '.join(rep['departments'])}")
+        print(f"\n✓ {len(rep['departments'])} departments, {len(rep['made'])} agents made"
+              + (f", {len(rep['joined'])} joined as they were" if rep["joined"] else "")
+              + f", {rep['talk_cells']} talk cells.")
+        for e in rep.get("errors") or []:
+            print(f"  ✗ {e}")
+        print("  Each department has a desk (a mission), off until you switch it on in Missions.")
+        if rep.get("try"):
+            print(f"  {rep['try']}")
+            first = rep["departments"][0] if rep["departments"] else ""
+            print(f"    bento company task {first} \"…\"")
+        return
+    if a == "task":
+        if len(rest) < 2:
+            print('bento company task DEPARTMENT "what to do"')
+            sys.exit(2)
+        if not _server_answers(port):
+            print("✗ AgentOS is not running here. A department's work runs in the server: "
+                  "start it with `bento serve`.")
+            sys.exit(1)
+        d = _api_call(port, "/api/company/task", "POST",
+                      {"department": rest[0], "task": " ".join(rest[1:]), "surface": "cli"})
+        if d.get("error"):
+            print(f"✗ {d['error']}")
+            sys.exit(1)
+        print(f"▶ {rest[0]} is on it · run {d['run_id']}\n  bento flow show {d['run_id']}")
+        return
+    if a == "name" and rest:
+        cur = dict(cfg.get("company") or {})
+        cur["name"] = " ".join(rest)[:48]
+        cfg["company"] = cur
+        _cfgmod.save_config(cfg)
+        co.record(store, f"company renamed: {cur['name']}")
+        print(f"✓ the company is called {co.profile(cfg)['name']}")
+        return
+    print("bento company [show|templates|setup|task|name]")
+    sys.exit(2)
+
+
 def _office_cli(args):
     """`bento office` — the Office playground, as a terminal can have it.
 
@@ -6290,6 +6439,16 @@ def main():
     verb("migrate")   # unlisted: what `bento update` runs in a fresh process, for every account
     p_fl = verb("files", help="what your agents made lately, newest first, with where each file is")
     p_fl.add_argument("--limit", type=int, default=20)
+    p_co = verb("company", help="your company: departments of agents, set up from a sentence, and their work")
+    p_co.add_argument("action", nargs="?", default="show",
+                      choices=["show", "list", "templates", "setup", "task", "name"])
+    p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
+                                              " · name: the company's name")
+    p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")
+    p_co.add_argument("--no-talk", action="store_true", help="setup: do not let colleagues ask each other")
+    p_co.add_argument("--words", action="store_true", help="setup: skip the brain, use the catalogue as it is")
+    p_co.add_argument("--yes", action="store_true", help="setup: do not ask before making it")
+    p_co.add_argument("--user", default="", help="whose company, on a machine with users")
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
@@ -6557,6 +6716,8 @@ def main():
         _team_cli(args)
     elif args.cmd == "avatar":
         _avatar_cli(args)
+    elif args.cmd == "company":
+        _company_cli(args)
     elif args.cmd == "office":
         _office_cli(args)
     elif args.cmd == "files":

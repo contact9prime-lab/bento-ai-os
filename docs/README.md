@@ -41,6 +41,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [The World](world.md) | An experimental scene where your agents live with feelings that come from what they really do, grow in their own world, and your lead asks how you are. It all sleeps when you leave the scene |
 | [The Mind](mind.md) | A scene that draws your lead and every specialist as one picture: what each remembers, knows and ran, how they are connected, the week in numbers, and a voice that says them |
 | [The Office](office.md) | A comic-strip office where you watch your agents work: papers to desks, agents walking over to ask each other, huddles round the meeting table, and a designer for the look |
+| [Your company](company.md) | Describe your business and get departments of agents, each with a head, staff and a persona. Give any department a task and watch the cards count the work |
 | [Agents](agents.md) | Every agent's brain (AI providers), hands (executors: tools, folders, web, MCP), permissions and skills — and the map of who reaches what |
 | [The team](team.md) | Each agent on its own brain (a provider model, or Claude Code, Gemini CLI or Codex), huddles, the matrix of who may ask whom, swarm and democracy (2 of 3 decide), and linked teams |
 | [Accounts](accounts.md) | The mailbox and the calendar the agent may read for you: Sign in with Google or Microsoft, an MCP server, or an app password; what is never touched; the missions built on them |

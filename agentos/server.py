@@ -9270,6 +9270,163 @@ async def api_office_place(body: dict):
     return {**office.view(state["cfg"], state["store"]), "ok": True}
 
 
+# ---------------------------------------------------------------- your company
+# Departments of agents set up from a sentence (agentos/company.py). The departments are
+# the Office's rooms, the people are ordinary specialists and each department's desk is
+# an ordinary flow, so these routes add a way to MAKE them and a way to READ them, and
+# no new kind of permission.
+
+def _company_waiting() -> list[dict]:
+    """The approvals waiting right now, as the run and flow they belong to: what turns a
+    department's running task into a waiting one on its card."""
+    return [{"id": aid, "run_id": e.get("run_id", ""), "flow": e.get("flow", "")}
+            for aid, e in (state.get("pending_approvals") or {}).items()
+            if not e["fut"].done()]
+
+
+def _company_accounts(cfg: dict) -> dict:
+    try:
+        return {k: bool(v.get("ready")) for k, v in accountsmod.readiness(cfg).items()}
+    except Exception:
+        return {"mail": False, "calendar": False}
+
+
+def _company_tools() -> list[str]:
+    return [t["name"] for t in tools.TOOL_SCHEMAS]
+
+
+@app.get("/api/company")
+async def api_company():
+    """The company, each department's card (every number a count of runs, approvals and
+    triggers), the task board and the catalogue the setup panel picks from."""
+    from . import company as companymod, executors as execmod
+    cfg, store = state["cfg"], state["store"]
+    waiting = _company_waiting()
+    return {"company": companymod.profile(cfg),
+            "departments": companymod.stats(cfg, store, waiting),
+            "board": companymod.board(cfg, store, waiting),
+            "catalogue": companymod.catalogue(), "brain": execmod.has_brain(cfg),
+            "accounts": _company_accounts(cfg), "max_departments": companymod.MAX_DEPTS,
+            "brain_notes": companymod.brain(store)}
+
+
+@app.put("/api/company")
+async def api_company_profile(body: dict):
+    """Rename the company or change its one line. The departments are the Office's."""
+    from . import company as companymod, teamlink
+    cfg = state["cfg"]
+    cur = dict(cfg.get("company") or {})
+    for k, n in (("name", 48), ("about", companymod.ABOUT_MAX)):
+        if k in (body or {}):
+            cur[k] = teamlink.plain((body or {}).get(k), n, newlines=False)
+    cfg["company"] = cur
+    cfgmod.save_config(cfg)
+    companymod.record(state["store"], f"company renamed: {cur.get('name', '')}")
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {"ok": True, "company": companymod.profile(cfg)}
+
+
+@app.post("/api/company/draft")
+async def api_company_draft(body: dict):
+    """Draft a company from a description and/or the ticked departments. Writes nothing:
+    the answer is the plan and exactly what applying it would do. The MACHINE's brain
+    tailors it (executors.ask_once); with nothing answering, the catalogue fills it from
+    the words and `said` says so."""
+    from . import company as companymod, executors as execmod, teamlink
+    cfg, store = state["cfg"], state["store"]
+    b = body or {}
+    desc = teamlink.plain(b.get("description"), 1200, newlines=False)
+    ids = [i for i in (b.get("departments") or []) if i in companymod.DEPARTMENTS]
+    if len(desc) < 3 and not ids:
+        return JSONResponse({"error": "say what the company does, or tick the departments "
+                                      "you want"}, status_code=400)
+    names = _company_tools()
+    plan, dropped, how, who = {}, [], "words", ""
+    if len(desc) >= 3:
+        ask = desc + ("\nThey want exactly these departments: " + ", ".join(
+            companymod.DEPARTMENTS[i]["label"] for i in ids) if ids else "")
+        system, prompt = companymod.design_prompt(ask, names)
+        raw, who = await execmod.ask_once(cfg, system, prompt, timeout=240)
+        if raw:
+            plan, dropped = companymod.read_plan(raw, names)
+            if plan and plan.get("departments"):
+                how = "brain"
+    if how != "brain":
+        plan, dropped = companymod.normalize(companymod.from_words(desc, ids), names)
+    pv = companymod.preview(cfg, store, plan, _company_accounts(cfg),
+                            talk=bool(b.get("talk", True)))
+    return {"ok": True, "plan": plan, "preview": pv, "how": how,
+            "who": who if how == "brain" else "", "dropped": dropped,
+            "said": ("" if how == "brain" else
+                     "Nothing answered, so this was filled in from the catalogue." if execmod.has_brain(cfg) else
+                     "No brain is set up, so this was filled in from the catalogue.")}
+
+
+@app.post("/api/company/preview")
+async def api_company_preview(body: dict):
+    """What applying this (possibly edited) plan would do. The page calls it after every
+    untick, so the button's count is the save's count."""
+    from . import company as companymod
+    cfg, store = state["cfg"], state["store"]
+    plan, dropped = companymod.normalize((body or {}).get("plan") or {}, _company_tools())
+    return {"ok": True, "plan": plan, "dropped": dropped,
+            "preview": companymod.preview(cfg, store, plan, _company_accounts(cfg),
+                                          talk=bool((body or {}).get("talk", True)))}
+
+
+@app.post("/api/company/apply")
+async def api_company_apply(body: dict):
+    """Make the company: the agents, the departments, a desk per department (off) and,
+    when ticked, who may ask whom. Re-derives the preview, so what the person agreed to
+    is what is written; an agent or desk that exists is kept as it is."""
+    from . import company as companymod
+    cfg, store = state["cfg"], state["store"]
+    plan, dropped = companymod.normalize((body or {}).get("plan") or {}, _company_tools())
+    talk = bool((body or {}).get("talk", True))
+    try:
+        rep = companymod.apply(cfg, store, plan, _company_accounts(cfg), talk=talk)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(cfg)
+    companymod.record(store, f"company set up: {', '.join(rep['departments'])}; "
+                             f"{len(rep['made'])} agents made, {len(rep['joined'])} joined as they were, "
+                             f"{sum(d['status'] == 'new' for d in rep['desks'])} desks (off), "
+                             f"{rep['talk_cells']} talk cells")
+    uid = usersmod.current() or ""
+    for t in ("office", "agents", "avatars"):
+        await state["broadcast_user"]({"type": t}, uid)
+    await state["broadcast"]({"type": "fabric_defs"})
+    waiting = _company_waiting()
+    return {"ok": True, **rep, "dropped": dropped, "company": companymod.profile(cfg),
+            "cards": companymod.stats(cfg, store, waiting)}
+
+
+@app.post("/api/company/task")
+async def api_company_task(body: dict, request: Request):
+    """Give a department a task: a run of its desk with the task as the input. The desk
+    is an ordinary flow, so this is `/api/flows/{name}/run` with the department named
+    instead of the flow; a desk that is still off asks before any gated step."""
+    from . import company as companymod, teamlink
+    cfg, store = state["cfg"], state["store"]
+    b = body or {}
+    task = teamlink.plain(b.get("task"), 2000)
+    if len(task.strip()) < 3:
+        return JSONResponse({"error": "say what the task is"}, status_code=400)
+    try:
+        flow = companymod.desk_for(cfg, store, str(b.get("department") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    surface = b.get("surface") or "gui"
+    dec = state["pdp"].decide(MAIN, "agent.invoke", f"agent:flow/{flow['name']}",
+                              {"surface": surface, "risk": "safe"})
+    if dec.effect == "deny":
+        return JSONResponse({"error": dec.reason or "not permitted"}, status_code=403)
+    run_id = await _start_flow(flow, task, origin={"surface": surface, "ref": _client_addr(request)},
+                               conversation_id=b.get("conversation_id", ""))
+    return {"ok": True, "run_id": run_id, "flow": flow["name"],
+            "department": str(b.get("department") or "")}
+
+
 @app.get("/api/subagents")
 async def api_subagents():
     """The roster, each with the brain it actually answers on (fabric.agent_brain) —
