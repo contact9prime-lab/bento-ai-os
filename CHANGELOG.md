@@ -33,7 +33,9 @@ keeps the agent at its desk with a thinking balloon until the reply lands. The r
 shows who is answering, name and face, from the first second. The Office's chat, the
 app agent panels and the prompt bar's card show the name and face too. The bubble in
 the bottom right only appears for work you can't already see, can be hidden with ✕,
-and no longer stretches over the message box.
+and no longer stretches over the message box. The rings that popped up in the middle
+of the desktop on every chat (they belong to the Aura theme) now show only in that
+theme, and the prompt bar no longer rises to repeat a chat you can already see.
 
 ## 0.6.17 — 2026-09-30
 

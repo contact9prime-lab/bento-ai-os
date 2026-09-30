@@ -252,8 +252,16 @@ let AIB={last:null,seen:0,snooze:new Set()};
    working row for the whole turn, and read as a toast that never goes away. */
 function turnOnScreen(cid){
   if(!cid)return false;
-  if(typeof currentConv!=='undefined'&&cid===currentConv&&winsOf('chat').some(w=>winAwake(w)))return true;
+  if(turnInWindow(cid))return true;
   for(const c of document.querySelectorAll('#omnicards .ocard'))if(c.dataset.cid===cid)return true;
+  return false;
+}
+/* Open in a window you can see: Chat on that conversation, or an app's agent panel
+   (the Office's own chat included). The prompt bar stands down for these too; its
+   own card's turns keep it up, because the card lives above it. */
+function turnInWindow(cid){
+  if(!cid)return false;
+  if(typeof currentConv!=='undefined'&&cid===currentConv&&winsOf('chat').some(w=>winAwake(w)))return true;
   for(const app in COPILOT.cids)
     if(COPILOT.cids[app]===cid&&winsOf(app).some(w=>winAwake(w)&&w.el.querySelector('.copanel.open,.of-chat')))return true;
   return false;

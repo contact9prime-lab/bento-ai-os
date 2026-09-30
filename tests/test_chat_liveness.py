@@ -47,3 +47,17 @@ def test_the_bubble_is_for_turns_you_cannot_see():
     assert 'class="ab-x"' in ws, "the bubble can be hidden until the next turn"
     css = (CSS / "14-omnibar.css").read_text()
     assert "text-overflow:ellipsis" in css[css.index("#aibubble .ab-t"):][:200]
+
+
+def test_no_rings_on_the_desktop_during_a_chat():
+    """The Aura theme's thinking rings came up mid-wallpaper on every turn, in every
+    look ("like a clock"); they belong to that one theme."""
+    j = _js("08-wallpaper-jarvis-voice.js")
+    on = j[j.index("function jarvisOn("):][:600]
+    assert "EXPERIENCE!=='jarvis')return" in on
+
+
+def test_the_prompt_bar_stays_down_for_a_turn_shown_in_a_window():
+    om = _js("28a-omnibar.js")
+    pres = om[om.index("function omniPresence("):][:900]
+    assert "turnInWindow(c)" in pres

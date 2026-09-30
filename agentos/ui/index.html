@@ -12650,6 +12650,11 @@ function clearBuiltinWallpaper(){localStorage.removeItem('wallpaper.builtin');lo
 /* ================= jarvis thinking animation ================= */
 let jrRaf=0,jrPulse=0,jrActive=false,jrTimeout=0;
 function jarvisOn(autoOffSecs){
+  // Only in the Aura (Voice OS) look, where these rings ARE the desktop. Everywhere
+  // else they came up in the middle of the wallpaper on every chat turn, half behind
+  // the Chat window ("pops up on the main desktop like a clock"); the working row,
+  // the Office and the scene already say that a turn is running.
+  if(typeof EXPERIENCE!=='undefined'&&EXPERIENCE!=='jarvis')return;
   const c=$('#jarvis');c.classList.add('on');jrActive=true;
   if(!jrRaf)jrRaf=requestAnimationFrame(jarvisDraw);
   clearTimeout(jrTimeout);
@@ -13377,8 +13382,16 @@ let AIB={last:null,seen:0,snooze:new Set()};
    working row for the whole turn, and read as a toast that never goes away. */
 function turnOnScreen(cid){
   if(!cid)return false;
-  if(typeof currentConv!=='undefined'&&cid===currentConv&&winsOf('chat').some(w=>winAwake(w)))return true;
+  if(turnInWindow(cid))return true;
   for(const c of document.querySelectorAll('#omnicards .ocard'))if(c.dataset.cid===cid)return true;
+  return false;
+}
+/* Open in a window you can see: Chat on that conversation, or an app's agent panel
+   (the Office's own chat included). The prompt bar stands down for these too; its
+   own card's turns keep it up, because the card lives above it. */
+function turnInWindow(cid){
+  if(!cid)return false;
+  if(typeof currentConv!=='undefined'&&cid===currentConv&&winsOf('chat').some(w=>winAwake(w)))return true;
   for(const app in COPILOT.cids)
     if(COPILOT.cids[app]===cid&&winsOf(app).some(w=>winAwake(w)&&w.el.querySelector('.copanel.open,.of-chat')))return true;
   return false;
@@ -29028,14 +29041,17 @@ const OMNI={cid:null,matches:[],idx:0,pop:false,imgs:[]};
 
 function omniPresence(force){
   const orb=$('#omni-orb'),inp=$('#omni-in');if(!orb)return;
-  const n=RUNNING.size;
+  // A turn already on screen in Chat or an agent panel does not raise the bar over the
+  // desktop: that was a second "Aria · reading the task" beside the window saying it.
+  const shown=[...RUNNING].filter(c=>!(typeof turnInWindow==='function'&&turnInWindow(c)));
+  const n=shown.length;
   orb.classList.toggle('busy',n>0);
   // `force`: the config just arrived (a signed-in person's agent has its own name) —
   // the bar is often focused at first paint, and the Aria it showed then would stay
   if(!inp||inp.value||(document.activeElement===inp&&!force))return;
   // The bar is the one thing always on screen, so it is often where somebody
   // looks to ask "is it stuck?" — it answers with the step, not with "working".
-  const live=n===1?actLine([...RUNNING][0]):'';
+  const live=n===1?actLine(shown[0]):'';
   const want=n>1?`${agentName()} · ${n} turns running…`
           :n?(live?`${agentName()} · ${live}`:`${agentName()} is working…`)
              :(typeof isTouch==='function'&&isTouch())?`Ask ${agentName()} anything`      // no keyboard, no key hint (D10)
