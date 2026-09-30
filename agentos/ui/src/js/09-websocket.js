@@ -179,20 +179,22 @@ function buildApprovalBox(ev,cur){
     :ev.offer.action==='team.act'?String(ev.offer.resource||'').split('|')[0]:'';
   // an offer may name itself ("Always let home have analyst do this") — the words say
   // exactly what the button writes, which "Allow & remember" does not for another team
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?(ev.offer.label?esc(ev.offer.label):'Allow &amp; remember'):'Always allow'}</button></div>`;
+  // Remember is a grant for the one agent that asked, for as long as the person picks:
+  // this chat, an hour, or until revoked. A card with no offer (a step after untrusted
+  // content, one confirmed every time) has no remember at all. It used to fall back to
+  // "Always allow", which wrote a Rule every app and specialist on the machine shared.
+  const o=ev.offer, standing=o&&o.label;
+  const rem=!o?'':standing?`<button class="deny always" data-rem="always">${esc(o.label)}</button>`
+    :`<span class="ap-rem"><span class="ap-remlbl">Remember</span>${o.conversation_id?'<button class="deny always" data-rem="chat">This chat</button>':''}<button class="deny always" data-rem="hour">1 hour</button><button class="deny always" data-rem="always">Always</button></span>`;
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
-  box.querySelector('.always').onclick=async()=>{
-    if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
-      resolveApproval(ev.id,true,true);
-      toast(ev.offer.note||('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource));
-    }else{
-      const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
-      await addPolicy('allow',pat);
-      resolveApproval(ev.id,true);
-      toast('policy added: always allow "'+pat+'"');
-    }
-  };
+  box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
+    const scope=b.dataset.rem;
+    resolveApproval(ev.id,true,scope);
+    const words={chat:'for this chat',hour:'for an hour',always:'until you revoke it'}[scope]||'';
+    toast(o.note&&standing?o.note:('✓ '+who+' may do this '+words+' (Permissions)'));
+  });
   return box;
 }
 /* The price card. A cloud model with no price is held before it runs — and that
@@ -670,7 +672,8 @@ function handle(ev){
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
 }
 function resolveApproval(id,approved,remember){
-  ws.send(JSON.stringify({type:'approval',id,approved,remember:!!remember}));
+  // remember is the scope the person chose ('chat' | 'hour' | 'always') or nothing
+  ws.send(JSON.stringify({type:'approval',id,approved,remember:remember||false}));
   // it is no longer waiting on you — whatever was held for this answer runs now
   for(const k in ACT)if(ACT[k].phase==='approve')actMove(k,approved?'tool':'after');
   const box=$('#ap-'+id); if(box){box.classList.add('resolved');

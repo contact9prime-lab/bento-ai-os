@@ -818,10 +818,13 @@ class _RunToolbox:
     def schemas(self) -> list:
         return [t for t in self._inner.schemas() if t["name"] in self._allow] + self._extra
 
-    def risk_of(self, name: str, args: dict):
+    def risk_of(self, name: str, args: dict, rules: bool = True):
         if name in self._impls:
             return "safe", ""           # the PDP still gates them: delegate → agent.invoke
-        return self._inner.risk_of(name, args)
+        return self._inner.risk_of(name, args, rules=rules)
+
+    def base_risk(self, name: str, args: dict) -> str:
+        return self.risk_of(name, args, rules=False)[0]
 
     async def execute(self, name: str, args: dict) -> str:
         if name in self._impls:

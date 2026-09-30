@@ -1353,6 +1353,38 @@ Release is a user decision with three shapes, all recorded in `quarantine.releas
 `once` (still watched), `forever` (an exemption, which is why the row is kept rather than
 deleted), `deleted`.
 
+## The gate is only as good as what it is handed: risk, rules and remembers
+
+A review in 0.6.18 found the PDP sound and its INPUTS wrong, each confirmed by running it
+(`tests/test_gate_hardening.py`). Five rules came out of it:
+
+- **Every tool has a risk of its own, and an unclassified one is risky.** `SAFE_TOOLS` names
+  the safe ones and `risk_of` has a line for each risky one. The old fall-through was
+  `safe`, so `run_python` (whose docstring claimed it passed the gate) ran unasked at every
+  autonomy level and was exempt from the untrusted-content rule. A new tool asks until
+  somebody decides; the test fails on a tool that is neither.
+- **A shell command is safe only in its read-only form.** `env`, `awk`, `sed` and
+  `printenv` left `SAFE_COMMANDS` (they run programs or leak keys); `_segment_writes` names
+  what turns `curl`, `wget`, `sort`, `ip`, `find`, `xrandr`… into a write or a run, and a
+  lone `&` is dangerous. A download in the shell taints the turn (`tools.FETCHES`).
+- **A Rule lowers risk for your agent, never for an app or for the taint ceiling.** The
+  gate gets `base_risk` (the tool's risk before any Rule) and judges untrusted content,
+  read-only channels and apps on it. A Rule or grant written for one command covers that
+  command one at a time (`policy.command_covered`): `git *` does not cover `git log; bash`.
+- **Remember is a grant for the one principal that asked, and it has a length.** The card
+  offers this chat (`source_ref` `conv:<id>`, a day at most), an hour, or always, all
+  written by `policy.write_remembered` for every surface. The fallback that wrote a
+  machine-wide Rule ("Always allow") is gone and must not come back: it widened every app
+  and specialist and switched the untrusted-content rule off for its pattern. A taint card
+  and an ALWAYS_ASK card offer no remember.
+- **An app reaches the web and a few harmless tools without a grant** (`APP_FREE_*`), and
+  nothing else. Paranoid asks for everything but reading (`PARANOID_FREE`). Approvals carry
+  the asking account's `uid` and only that account sees or answers them
+  (`server._approval_mine`). `/api/tool` strips the loop's own `_` arguments.
+
+The gate's grant cache also keys on SQLite's `data_version` (`Store.outside_writes`), so a
+grant written from a terminal (`bento grants`) is seen by a running server at once.
+
 ## Everything a principal does goes in the ledger
 
 `PDP.decide()` writes one `audit` row per decision. That is the only place it happens, and

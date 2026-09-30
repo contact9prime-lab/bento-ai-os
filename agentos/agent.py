@@ -54,6 +54,14 @@ def _untrusted_source(name: str, args: dict) -> str:
 
     if name.startswith("mcp_"):
         return f"MCP server ({name[4:].split('_')[0]})"
+    if name.startswith("ocp_"):
+        return f"OpenClaw plugin ({name[4:].split('_')[0]})"
+    if name in ("run_command", "run_python"):
+        from .tools import FETCHES
+        m = FETCHES.search(str(args.get("command") or args.get("code") or ""))
+        return f"a download in the shell ({(m.group(0).strip() if m else 'network')[:40]})"
+    if name in ("git_clone", "git_pull"):
+        return f"a git remote ({str(args.get('url') or args.get('remote') or 'origin')[:80]})"
     return name
 
 
@@ -64,8 +72,18 @@ def _untrusted_source(name: str, args: dict) -> str:
 _TAINT_MARK = '<untrusted source='
 
 
-def is_untrusted(name: str) -> bool:
-    return name in UNTRUSTED_TOOLS or name.startswith("mcp_")
+def is_untrusted(name: str, args: dict | None = None) -> bool:
+    """Is this tool's output somebody else's words? A shell command counts when it
+    fetches from outside (curl, wget, a URL, git clone): its output is a web page as
+    much as fetch_url's is, and until 0.6.18 it carried no mark at all."""
+    if name in UNTRUSTED_TOOLS or name.startswith(("mcp_", "ocp_")):
+        return True
+    if name in ("git_clone", "git_pull"):
+        return True
+    if name in ("run_command", "run_python") and args:
+        from .tools import FETCHES
+        return bool(FETCHES.search(str(args.get("command") or args.get("code") or "")))
+    return False
 
 
 def fence(source: str, content: str) -> str:
@@ -819,9 +837,10 @@ class Agent:
             # gate can see and a grant can refuse.
             args = {**args, "space_id": self.space_id}
         level, reason = self.toolbox.risk_of(name, args)
+        base = self.toolbox.base_risk(name, args) if hasattr(self.toolbox, "base_risk") else level
         if self.toolbox.pdp:
             dec = self.toolbox.pdp.decide_tool(
-                self.principal, name, args, level, reason=reason,
+                self.principal, name, args, level, reason=reason, base_risk=base,
                 autonomy=self.cfg.get("autonomy", ""), surface=self.surface,
                 space_id=self.space_id, conversation_id=self.conversation_id,
                 taint=self.taint, flow=self.flow,
@@ -844,6 +863,7 @@ class Agent:
             # power/session actions confirm EVERY time — full autonomy included;
             # only an explicit user-written grant (rule != default) skips the ask
             dec.effect = "ask"
+            dec.grant_offer = None   # confirmed every time means no "remember" either
             must_person = "confirmed every time"
         if dec.effect == "ask" and dec.rule == "taint":
             must_person = "after untrusted content"
@@ -949,7 +969,7 @@ class Agent:
         # Content this machine did not write enters here. Mark it before it
         # reaches the model, and remember it for the rest of the turn: from
         # this point on the PDP holds risky steps back for a human.
-        untrusted = ok and is_untrusted(name) and bool(output.strip())
+        untrusted = ok and is_untrusted(name, args) and bool(output.strip())
         if ok and name == "ask_agent" and output.startswith(TAINTED_REPLY):
             # the colleague read something nobody here wrote: its answer arrives as
             # what it is, and this turn inherits the ceiling

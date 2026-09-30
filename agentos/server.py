@@ -899,10 +899,35 @@ async def api_nightlight_set(body: dict):
     import subprocess
     from . import session as sessionmod
     cfg = state["cfg"]
+    # The screen's colour is the machine's setting, and these values end up on a shell
+    # command line (the session's wlsunset), so each is read as what it must be: a
+    # time is HH:MM, a temperature a number, a position a number. `from` once took
+    # `20:00;id>/tmp/x` and ran it, as the server's user, outside every account's jail.
+    refused = _require_admin()
+    if refused:
+        return refused
+    b = body or {}
+    clean = {}
+    try:
+        if "enabled" in b:
+            clean["enabled"] = bool(b["enabled"])
+        for k in ("day_temp", "night_temp"):
+            if k in b:
+                clean[k] = max(1000, min(25000, int(b[k])))
+        for k in ("from", "to"):
+            if k in b:
+                v = str(b[k] or "").strip()
+                if not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", v):
+                    return JSONResponse({"error": f"'{k}' must be a time like 20:00"},
+                                        status_code=400)
+                clean[k] = v
+        for k, lim in (("lat", 90), ("lon", 180)):
+            if k in b:
+                clean[k] = None if b[k] in (None, "") else max(-lim, min(lim, float(b[k])))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "those values are not numbers"}, status_code=400)
     nl = cfg.setdefault("nightlight", {})
-    for k in ("enabled", "day_temp", "night_temp", "from", "to", "lat", "lon"):
-        if k in (body or {}):
-            nl[k] = body[k]
+    nl.update(clean)
     cfgmod.save_config(cfg)
     # Rewrite the session config so it survives logout, and apply it right now.
     try:
@@ -2394,6 +2419,13 @@ async def api_power(body: dict, request: Request):
         return JSONResponse({"error": "denied: apps cannot control the session"},
                             status_code=403)
     action = (body.get("action") or "").strip()
+    # Locking the screen is anybody's; switching the machine off, restarting it or
+    # ending the session is the machine's, so on a machine with accounts it is an
+    # admin's (every other account's work stops with it).
+    if action != "lock":
+        refused = _require_admin()
+        if refused:
+            return refused
     if action == "agentos-restart":
         out = await state["toolbox"].restart_agentos()
         return {"ok": not out.startswith(("[error]", "[denied]")), "result": out}
@@ -2765,6 +2797,9 @@ async def api_tunnel_set(body: dict):
 async def api_executor_install(body: dict):
     """Install Claude Code, with progress. The command was shown before this ran."""
     from . import executors as execmod
+    refused = _require_admin()      # software on the machine is the machine's
+    if refused:
+        return refused
     if str((body or {}).get("id") or "claude_code") != "claude_code":
         return JSONResponse({"ok": False, "error": "unknown executor"}, status_code=400)
 
@@ -2877,6 +2912,12 @@ async def api_put_config(patch: dict):
                 {"error": "only an admin can change machine settings on this machine "
                           f"({', '.join(sorted(theirs)[:6])})"}, status_code=403)
     cfg = state["cfg"]
+    # Three of these decide what runs without asking. A change to any of them is a
+    # permission change, so it is on the record with the grants' own changes.
+    for key, what in (("autonomy", "system.autonomy"), ("policies", "policy.write"),
+                      ("sandbox", "system.sandbox")):
+        if key in patch and patch[key] != cfg.get(key):
+            _ledger(what, f"config:{key}", f"{key} → {json.dumps(patch[key])[:300]}")
     for key in ("default_model", "autonomy", "max_steps", "workspace", "agent_name",
                 "policies", "sandbox", "steer_queued_messages"):
         if key in patch:
@@ -2969,6 +3010,13 @@ async def api_put_config(patch: dict):
             # Letting the OS rewrite itself is its own decision, never implied by
             # merely turning an executor on.
             ex["allow_source"] = bool(got["allow_source"])
+        if any(k in got for k in ("tools", "allow_source", "workspace", "budget_usd", "enabled")):
+            # what Claude Code, Gemini CLI and Codex may do with their own tools: ticking
+            # Bash is the step that stops them asking, so it is on the record
+            _ledger("executor.write", "executor:envelope",
+                    f"tools: {', '.join(ex.get('tools') or []) or 'none'}; "
+                    f"folder: {ex.get('workspace') or 'default'}; "
+                    f"may edit AgentOS: {bool(ex.get('allow_source'))}")
     if isinstance(patch.get("shortcuts"), dict):
         # {action: "Ctrl+Space"} — the shell's editable keymap, also the source
         # for the compositor bindings written by /api/shortcuts/apply
@@ -5559,15 +5607,19 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
     that happened to be open when it asked."""
     aid = uuid.uuid4().hex[:8]
     fut = asyncio.get_event_loop().create_future()
-    state["pending_approvals"][aid] = {"fut": fut, "offer": offer, "ws": ws, "name": name,
-                                       "args": args, "reason": reason, "run_id": run_id,
-                                       "flow": flow, "asked_at": time.time()}
+    # Whose question this is. Without it every account on the machine saw every card
+    # (its arguments included) and any of them could answer it.
+    uid = usersmod.current() if usersmod.enabled() else ""
+    entry = {"fut": fut, "offer": offer, "ws": ws, "name": name, "uid": uid,
+             "args": args, "reason": reason, "run_id": run_id,
+             "flow": flow, "asked_at": time.time()}
+    state["pending_approvals"][aid] = entry
     ev = {"type": "approval_request", "id": aid, "name": name, "args": args,
           "reason": reason, "offer": offer, "run_id": run_id, "flow": flow}
     if evsend is not None:
         await evsend(ev)
     else:
-        await state["broadcast"](ev)
+        await _approval_send(entry, ev)
     outcome = {"approved": False, "how": "timeout"}
     try:
         outcome["approved"] = await asyncio.wait_for(fut, timeout=timeout)
@@ -5592,7 +5644,7 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
         # which is the dead control the honesty rules forbid.
         done = {"type": "approval_resolved", "id": aid, **outcome}
         with contextlib.suppress(Exception):
-            await (evsend(done) if evsend is not None else state["broadcast"](done))
+            await (evsend(done) if evsend is not None else _approval_send(entry, done))
 
 
 # How long an unanswered price card holds the turn before it runs anyway.
@@ -5789,6 +5841,7 @@ async def api_quarantine_release(qid: str, body: dict):
         store.resume_app(pid)
     with contextlib.suppress(Exception):
         state["pdp"].forget_rate(kind, pid)
+    _ledger("quarantine.release", f"{kind}:{pid}", f"released: {mode}")
     store.log("policy",
               f"{kind} '{row.get('label') or pid}' released from quarantine by the user: "
               + {"once": "allowed to run again, still watched",
@@ -6024,21 +6077,47 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
     return done
 
 
-async def resolve_approval(aid: str, approved: bool, remember: bool = False):
+def _approval_mine(entry: dict, uid) -> bool:
+    """May this account answer this approval? Its own, always; on a machine without
+    accounts everybody is the machine. `uid=None` is a caller that has already decided
+    (a channel bridge answering for the owner)."""
+    if uid is None or not usersmod.enabled():
+        return True
+    return (entry.get("uid") or "") == (uid or "")
+
+
+async def resolve_approval(aid: str, approved: bool, remember=False, uid=None) -> bool:
+    """Settle an approval. `remember` is the scope the person chose ('chat', 'hour',
+    'always', or True from an older page). Returns False when there is nothing to
+    settle, or it is another account's."""
+    from .policy import remember_scope, write_remembered
     entry = state["pending_approvals"].get(aid)
     if not entry or entry["fut"].done():
-        return
-    if approved and remember and entry.get("offer"):
+        return False
+    if not _approval_mine(entry, uid):
+        return False
+    scope = remember_scope(remember)
+    if approved and scope and entry.get("offer"):
         o = entry["offer"]
-        state["store"].add_grant(o["principal_kind"], o["principal_id"], o["action"],
-                                 o["resource"], source="user",
-                                 note=o.get("note") or "allowed & remembered from an approval prompt")
-        state["store"].log("policy", f"grant remembered: {o['action']} {o['resource']}",
-                           {"principal": f"{o['principal_kind']}:{o['principal_id']}",
-                            "action": o["action"], "resource": o["resource"],
-                            "effect": "allow", "via": "approval_prompt"})
-        await state["broadcast"]({"type": "grants"})
+        # the grant lands in the store of the account that was asked
+        with usersmod.as_user(entry.get("uid") or ""):
+            store = state["store"]
+            write_remembered(store, o, scope, via="an approval prompt")
+            store.log("policy", f"grant remembered ({scope}): {o['action']} {o['resource']}",
+                      {"principal": f"{o['principal_kind']}:{o['principal_id']}",
+                       "action": o["action"], "resource": o["resource"],
+                       "effect": "allow", "via": "approval_prompt", "scope": scope})
+        await _approval_send(entry, {"type": "grants"})
     entry["fut"].set_result(bool(approved))
+    return True
+
+
+async def _approval_send(entry: dict, ev: dict):
+    """To the account that was asked, and nobody else on the machine."""
+    if usersmod.enabled():
+        await state["broadcast_user"](ev, entry.get("uid") or "")
+    else:
+        await state["broadcast"](ev)
 
 
 # ---- Shell-control channel: server → browser-shell commands, with results --------
@@ -6469,6 +6548,7 @@ async def api_resume_app(aid: str):
     state["store"].resume_app(aid)
     with contextlib.suppress(Exception):
         state["pdp"].forget_rate("app", aid)
+    _ledger("app.resume", f"app:{aid}", "started again by the person")
     state["store"].log("policy", f"app {aid} started again by the user", {"app": aid})
     await state["broadcast"]({"type": "apps"})
     return {"ok": True}
@@ -6498,14 +6578,23 @@ async def api_run_tool(body: dict, request: Request):
                                  "quarantined": True}, status_code=409)
     if name not in {t["name"] for t in toolbox.schemas()}:
         return JSONResponse({"error": f"unknown tool: {name}"}, status_code=400)
+    # Arguments starting with `_` belong to the agent loop (who is asking, which run,
+    # which mission, what taint it carries) and are injected there after the model's
+    # own. A caller of this route is not the loop: an app could otherwise file a Brief
+    # item under any mission, or speak in a message chain as somebody it is not.
+    if not isinstance(args, dict):
+        return JSONResponse({"error": "args must be an object"}, status_code=400)
+    args = {k: v for k, v in args.items() if not str(k).startswith("_")}
     level, reason = toolbox.risk_of(name, args)
     # apps render inside the desktop, so their calls arrive via the GUI gate
     surface = "gui" if principal.kind == "app" else "api"
     dec = state["pdp"].decide_tool(principal, name, args, level, reason=reason,
                                    autonomy=state["cfg"].get("autonomy", ""),
-                                   surface=surface)
-    if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule == "default":
+                                   surface=surface,
+                                   base_risk=toolbox.base_risk(name, args))
+    if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
         dec.effect = "ask"   # power/session actions confirm every time, autonomy aside
+        dec.grant_offer = None
 
     def _plog(outcome: str, approved=None):
         state["store"].log("policy",
@@ -6564,10 +6653,17 @@ async def api_add_grant(body: dict):
     pid = (body.get("principal_id") or "").strip()
     resource = (body.get("resource") or "*").strip()
     effect = body.get("effect", "allow")
+    if effect not in ("allow", "deny"):
+        return JSONResponse({"error": "effect is allow or deny"}, status_code=400)
     surfaces = (body.get("surfaces") or "*").strip() or "*"
+    try:
+        hours = float(body.get("hours") or 0)
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "hours is a number"}, status_code=400)
     gid = state["store"].add_grant(kind, pid, action, resource, effect=effect,
                                    source="user", note=body.get("note", ""),
-                                   surfaces=surfaces)
+                                   surfaces=surfaces,
+                                   expires_at=(time.time() + hours * 3600) if hours > 0 else None)
     state["store"].log("policy", f"grant attached: {effect} {kind}:{pid} → {action} {resource}"
                                  + (f" [{surfaces}]" if surfaces != "*" else ""),
                        {"principal": f"{kind}:{pid}", "action": action, "resource": resource,
@@ -8050,10 +8146,31 @@ def _me() -> dict:
             "multiuser": usersmod.enabled()}
 
 
+# The surfaces a browser or a terminal may say it is. telegram, whatsapp, task and
+# webhook are the server's own: a channel's posture is set for the channel, and a desk
+# client claiming to be Telegram would take Telegram's autonomy with it.
+CLIENT_SURFACES = ("gui", "tui", "api")
+
+
+def _client_surface(v) -> str:
+    return v if v in CLIENT_SURFACES else "gui"
+
+
 def _require_admin():
     if not usersmod.is_admin(usersmod.current()):
         return JSONResponse({"error": "only an admin can do that"}, status_code=403)
     return None
+
+
+def _ledger(action: str, resource: str, reason: str = "", surface: str = "gui"):
+    """A person's decision about permissions, on the record like the gate's own. For
+    the changes that are not grants (grants audit themselves): letting something out of
+    quarantine, resuming an app, changing what an executor may use."""
+    with contextlib.suppress(Exception):
+        state["store"].audit_add(uid=usersmod.current() or "", principal_kind="user",
+                                 principal_id="", surface=surface, action=action,
+                                 resource=resource, effect="allow", rule="person",
+                                 reason=reason[:400], outcome="ok")
 
 
 @app.get("/api/users/who")
@@ -9318,9 +9435,10 @@ async def api_office_place(body: dict):
 def _company_waiting() -> list[dict]:
     """The approvals waiting right now, as the run and flow they belong to: what turns a
     department's running task into a waiting one on its card."""
+    me = usersmod.current() if usersmod.enabled() else ""
     return [{"id": aid, "run_id": e.get("run_id", ""), "flow": e.get("flow", "")}
             for aid, e in (state.get("pending_approvals") or {}).items()
-            if not e["fut"].done()]
+            if not e["fut"].done() and _approval_mine(e, me)]
 
 
 def _company_accounts(cfg: dict) -> dict:
@@ -9468,7 +9586,7 @@ async def api_company_task(body: dict, request: Request):
         flow = companymod.desk_for(cfg, store, str(b.get("department") or ""))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    surface = b.get("surface") or "gui"
+    surface = _client_surface(b.get("surface"))
     dec = state["pdp"].decide(MAIN, "agent.invoke", f"agent:flow/{flow['name']}",
                               {"surface": surface, "risk": "safe"})
     if dec.effect == "deny":
@@ -10791,7 +10909,7 @@ async def api_run_flow(name: str, body: dict, request: Request):
     # the disabled state is safe — it holds no grants, so every gated step stops and asks
     # you, and no trigger can start it while you are not looking. What "disabled" forbids
     # is running by itself, not being tried.
-    surface = (body or {}).get("surface") or "gui"
+    surface = _client_surface((body or {}).get("surface"))
     # Who started it goes in the ledger. A flow is an agent invocation like any other,
     # and "it just ran" is not an answer to "who asked for this?".
     dec = state["pdp"].decide(MAIN, "agent.invoke", f"agent:flow/{name}",
@@ -11070,8 +11188,9 @@ async def api_fabric_approvals():
     a terminal could only be watched failing.
     """
     out = []
+    me = usersmod.current() if usersmod.enabled() else ""
     for aid, entry in (state.get("pending_approvals") or {}).items():
-        if entry["fut"].done():
+        if entry["fut"].done() or not _approval_mine(entry, me):
             continue
         out.append({"id": aid, "name": entry.get("name", ""), "args": entry.get("args", {}),
                     "reason": entry.get("reason", ""), "offer": entry.get("offer"),
@@ -11082,8 +11201,12 @@ async def api_fabric_approvals():
 
 @app.post("/api/fabric/approvals/{aid}")
 async def api_fabric_approve(aid: str, body: dict):
-    await resolve_approval(aid, bool((body or {}).get("approved")),
-                           bool((body or {}).get("remember")))
+    b = body or {}
+    ok = await resolve_approval(aid, bool(b.get("approved")), b.get("remember") or False,
+                                uid=usersmod.current() if usersmod.enabled() else "")
+    if not ok:
+        return JSONResponse({"error": "nothing of yours is waiting under that id"},
+                            status_code=404)
     return {"ok": True}
 
 
@@ -11932,7 +12055,7 @@ async def _run_chat(cid: str, data: dict):
             # hand-over passes the same gate as a built-in turn's — and a note naming
             # who does what (execmod.team_note). Closed in `finally` below.
             from . import spaces as _spacemod
-            _surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
             team_token = execmod.open_team_door(
                 env, cfg, toolbox, store, evsend, approver, conversation_id=cid, surface=_surface,
                 space_id=_spacemod.active_for(cfg, _surface, store, cid), text=text)
@@ -12059,7 +12182,7 @@ async def _run_chat(cid: str, data: dict):
             # referencing it raised UnboundLocalError on every turn that failed
             # before this line — and that exception ate the persistence of the
             # error message itself, leaving an empty bubble instead of the reason.
-            surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
             # Copilot/omnibar turns ride the normal chat path with per-surface
             # context appended to the system prompt (the app's live state, the
             # embedded-panel preamble). Sanitized and capped — it is UI-supplied.
@@ -12135,7 +12258,7 @@ async def _run_chat(cid: str, data: dict):
             # runs on the failure paths too, and a turn that died after spending
             # tokens has still spent them.
             from . import spaces as _spacemod
-            _surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
             usagemod.record(store, cfg, model, tk, surface=_surface, conversation_id=cid,
                             space_id=_spacemod.active_for(cfg, _surface, store, cid))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
@@ -13104,9 +13227,8 @@ async def ws_endpoint(ws: WebSocket):
                     # stays there. Reopening it next month must not silently move it
                     # to whatever project was clicked last — see spaces.py.
                     from . import spaces as spacemod
-                    from .policy import SURFACES as _SURFACES
                     _surface = (data.get("surface")
-                                if data.get("surface") in _SURFACES else "gui")
+                                if data.get("surface") in CLIENT_SURFACES else "gui")
                     _space = str(data.get("space_id") or "") or spacemod.active_for(
                         state["cfg"], _surface)
                     cid = state["store"].create_conversation(title, origin=origin,
@@ -13133,7 +13255,8 @@ async def ws_endpoint(ws: WebSocket):
                     asyncio.create_task(_force_cancel(build["task"], grace=15.0))
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
-                                       remember=bool(data.get("remember")))
+                                       remember=data.get("remember") or False,
+                                       uid=ws_uid if usersmod.enabled() else "")
             elif t == "price":
                 await resolve_price(data.get("id", ""), str(data.get("action") or "cancel"),
                                     float(data.get("in") or 0), float(data.get("out") or 0))
@@ -13173,7 +13296,9 @@ async def ws_endpoint(ws: WebSocket):
                     if build.get("task") and not build["task"].done():
                         asyncio.create_task(_force_cancel(build["task"], grace=15.0))
                     for entry in state["pending_approvals"].values():
-                        if not entry["fut"].done():
+                        # this person's questions only: a Stop on one account's desk
+                        # must not refuse what another account is being asked
+                        if not entry["fut"].done() and _approval_mine(entry, ws_uid):
                             entry["fut"].set_result(False)
     except (WebSocketDisconnect, json.JSONDecodeError, OSError):
         pass

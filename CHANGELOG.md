@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.6.18 — 2026-09-30
+
+**Permissions: the holes a review found are closed.** Each was confirmed by running it.
+- A tool with no risk level of its own used to run without asking. Now it asks until it
+  has one. That covers `run_python`, deleting a skill or a picture, and messaging another
+  WhatsApp number or Telegram chat.
+- Shell commands that looked read-only but weren't now ask first. Examples: `env rm …`,
+  `curl` uploading a file, `wget` saving one, `awk` or `sed` running a command, and
+  `sort -o`. A download in the shell now counts as outside content, like a web page.
+- An app from the store reaches only the web and a few harmless tools without asking.
+  Before, it could run shell commands and Python and read your files.
+- The approval card has Allow once, Deny, and Remember for this chat, for an hour, or
+  always. Each one is a permission for the one agent that asked. The old "Always allow"
+  button wrote a rule every app and agent shared, and switched off the check that follows
+  reading a web page. It's gone. Telegram gets a "1 hour" button too.
+- After reading a web page, saving a memory, a fact, a skill or an automation asks first.
+  Otherwise one line from a page could steer every later chat.
+- Paranoid now means it. Anything but reading waits for you. It used to behave exactly
+  like Balanced.
+- On a machine with accounts, you see and answer only your own approvals. Switching the
+  machine off or restarting it, changing the night light and installing Claude Code are
+  for admins. The night light's times can no longer carry a shell command.
+- `bento grants` lists, adds and revokes permissions from a terminal, and a running
+  desktop sees the change at once. `bento audit --verify` and the Ledger's **Check the
+  chain** confirm nobody edited the record. Releasing something from quarantine,
+  resuming an app and changing what Claude Code may do are now in the ledger too.
+
 ## 0.6.17 — 2026-09-30
 
 **An independent auditor checks every department's work.** When a department finishes a

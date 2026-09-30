@@ -771,7 +771,10 @@ body.act-approving #working,body.act-approving .mf-working{cursor:pointer}
 .approval .atitle{color:var(--warn);font-weight:700;font-size:var(--fs-md);margin-bottom:6px}
 .approval .acmd{font-family:var(--mono);font-size:var(--fs-sm);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;margin:8px 0;white-space:pre-wrap;word-break:break-all}
 .approval .areason{color:var(--dim);font-size:var(--fs-sm)}
-.approval .btns{display:flex;gap:8px;margin-top:11px}
+.approval .btns{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap;align-items:center}
+.approval .ap-rem{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.approval .ap-remlbl{color:var(--dim);font-size:var(--fs-sm)}
+.approval .ap-rem .always{padding:7px 12px}
 .approval .allow{background:var(--warn);color:#1c1503;font-weight:700;padding:7px 18px;border-radius:var(--r-md)}
 .approval .deny{border:1px solid var(--line);color:var(--dim);padding:7px 18px;border-radius:var(--r-md)}
 .approval .deny:hover{color:var(--err);border-color:var(--err)}
@@ -2208,7 +2211,8 @@ body.dev-touch .win input:not([type=checkbox]):not([type=radio]):not([type=range
 body.dev-touch #startmenu button,body.dev-touch #ccpop button,
 body.dev-touch #notifpanel button,body.dev-touch #powermenu button,
 body.dev-touch .ob-body button,body.dev-touch .ob-foot button,
-body.dev-touch #palbox button,body.dev-touch #swbox button{
+body.dev-touch #palbox button,body.dev-touch #swbox button,
+body.dev-touch .approval button{
   min-height:var(--tap);min-width:var(--tap)}
 /* Text inputs want the height and not the width — a min-width on a field that is
    meant to sit in a row makes it wrap for no reason. */
@@ -13283,20 +13287,22 @@ function buildApprovalBox(ev,cur){
     :ev.offer.action==='team.act'?String(ev.offer.resource||'').split('|')[0]:'';
   // an offer may name itself ("Always let home have analyst do this") — the words say
   // exactly what the button writes, which "Allow & remember" does not for another team
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?(ev.offer.label?esc(ev.offer.label):'Allow &amp; remember'):'Always allow'}</button></div>`;
+  // Remember is a grant for the one agent that asked, for as long as the person picks:
+  // this chat, an hour, or until revoked. A card with no offer (a step after untrusted
+  // content, one confirmed every time) has no remember at all. It used to fall back to
+  // "Always allow", which wrote a Rule every app and specialist on the machine shared.
+  const o=ev.offer, standing=o&&o.label;
+  const rem=!o?'':standing?`<button class="deny always" data-rem="always">${esc(o.label)}</button>`
+    :`<span class="ap-rem"><span class="ap-remlbl">Remember</span>${o.conversation_id?'<button class="deny always" data-rem="chat">This chat</button>':''}<button class="deny always" data-rem="hour">1 hour</button><button class="deny always" data-rem="always">Always</button></span>`;
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
-  box.querySelector('.always').onclick=async()=>{
-    if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
-      resolveApproval(ev.id,true,true);
-      toast(ev.offer.note||('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource));
-    }else{
-      const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
-      await addPolicy('allow',pat);
-      resolveApproval(ev.id,true);
-      toast('policy added: always allow "'+pat+'"');
-    }
-  };
+  box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
+    const scope=b.dataset.rem;
+    resolveApproval(ev.id,true,scope);
+    const words={chat:'for this chat',hour:'for an hour',always:'until you revoke it'}[scope]||'';
+    toast(o.note&&standing?o.note:('✓ '+who+' may do this '+words+' (Permissions)'));
+  });
   return box;
 }
 /* The price card. A cloud model with no price is held before it runs — and that
@@ -13774,7 +13780,8 @@ function handle(ev){
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
 }
 function resolveApproval(id,approved,remember){
-  ws.send(JSON.stringify({type:'approval',id,approved,remember:!!remember}));
+  // remember is the scope the person chose ('chat' | 'hour' | 'always') or nothing
+  ws.send(JSON.stringify({type:'approval',id,approved,remember:remember||false}));
   // it is no longer waiting on you — whatever was held for this answer runs now
   for(const k in ACT)if(ACT[k].phase==='approve')actMove(k,approved?'tool':'after');
   const box=$('#ap-'+id); if(box){box.classList.add('resolved');
@@ -18038,7 +18045,7 @@ async function sawAi(){
    than a select, and Save on every step once it has a name — a drafted agent is often
    ready as it arrives. One editor for Missions → Build and Settings → Agents. */
 var SAW_STEPS=[['Who it is','Who'],['What it can use','Tools'],['Limits & trust','Limits']];
-var SAW_CAPS=[['paranoid','Asks first','Every action waits for you.'],
+var SAW_CAPS=[['paranoid','Asks first','Anything but reading waits for you.'],
   ['balanced','Careful','Safe steps run; risky ones ask you, and are refused when nobody is watching.'],
   ['full','Trusted','Acts freely, within what it is granted. Never above this machine\'s own level.']];
 function sawFace(d){
@@ -19781,7 +19788,7 @@ function wizChips(step){
     return el;
   }
   if(step==='autonomy')defs=[
-    ['Paranoid','asks before every action',()=>WIZ.autonomy='paranoid',false],
+    ['Paranoid','asks before anything but reading',()=>WIZ.autonomy='paranoid',false],
     ['Balanced','acts freely, asks for risky things',()=>WIZ.autonomy='balanced',true],
     ['Full','never asks',()=>WIZ.autonomy='full',false]];
   else if(step==='autostart')defs=[
@@ -22736,6 +22743,17 @@ async function delPolicy(i){
    `var`, not `let` — see the note at the top of 25a-gallery.js. */
 var audFilter={effect:'',action:'',principal_kind:'',surface:'',q:'',since:24};
 
+/* The ledger is hash-chained (memory.audit_verify); this asks the server to walk it.
+   Admin-only on a machine with accounts, and the refusal says so. */
+async function audVerify(btn){
+  if(btn)btn.disabled=true;
+  try{
+    const v=await apiJSON('/api/audit/verify');
+    if(v.ok)toast('✓ the ledger is intact: '+(v.checked||0)+' rows, each chained to the last');
+    else toast('✗ the ledger was changed: '+(v.reason||'a row does not match')+(v.at_seq?' at row '+v.at_seq:''),{kind:'err'});
+  }catch(e){toast('could not check the ledger: '+(e.message||e))}
+  finally{if(btn)btn.disabled=false}
+}
 async function renderAudit(body,w){
   const qs=new URLSearchParams();
   Object.entries(audFilter).forEach(([k,v])=>{
@@ -22764,14 +22782,15 @@ async function renderAudit(body,w){
       </select>
       <select onchange="audSet('principal_kind',this.value)" style="flex:0 0 auto">
         <option value="">anyone</option>
-        ${['user','app','subagent','workflow','system'].map(k=>
+        ${['user','app','subagent','flow','team','peer','council','system'].map(k=>
           `<option value="${k}" ${audFilter.principal_kind===k?'selected':''}>${k}</option>`).join('')}
       </select>
       <select onchange="audSet('surface',this.value)" style="flex:0 0 auto">
         <option value="">any way in</option>
-        ${['gui','tui','telegram','api','task'].map(k=>
+        ${['gui','tui','telegram','whatsapp','api','task','webhook','team'].map(k=>
           `<option value="${k}" ${audFilter.surface===k?'selected':''}>${k}</option>`).join('')}
-      </select>`,
+      </select>
+      <button class="endbtn" onclick="audVerify(this)" title="Every row is chained to the one before it, so an edited or deleted row shows up here">Check the chain</button>`,
   });
   const q=$('#aud-q');
   if(q){q.value=audFilter.q;q.oninput=audSearch}
@@ -22936,6 +22955,14 @@ function permChartInto(el,p){
     }).join('');
   });
 }
+/* How long a remembered grant lasts: one chat, until a time, or (no badge) until revoked. */
+function permLasts(g){
+  if(String(g.source_ref||'').startsWith('conv:'))return '<span class="badge" title="applies inside one conversation">one chat</span>';
+  if(!g.expires_at)return '';
+  const t=new Date(g.expires_at*1000);
+  if(g.expires_at*1000<Date.now())return '<span class="badge err">expired</span>';
+  return `<span class="badge" title="${esc(t.toLocaleString())}">until ${esc(t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</span>`;
+}
 function permGrantsView(box){
   const q=PERM.q.toLowerCase();
   const gs=PERM.grants.filter(g=>{
@@ -22952,7 +22979,7 @@ function permGrantsView(box){
       <div class="grow" style="min-width:0"><b style="font-size:12.5px">${esc(lbl)}</b>
         <div style="font-family:var(--mono);font-size:12px;word-break:break-all">${esc(g.action)} · ${esc(g.resource)}</div>
         ${g.note?`<div class="mut" style="font-size:11px">${esc(g.note)}</div>`:''}</div>
-      <span class="badge">${esc(g.source||'user')}</span>
+      ${permLasts(g)}<span class="badge">${esc(g.source||'user')}</span>
       ${dead?'<span class="badge err">revoked</span>'
         :`${permSurfBadge(g)}
          <button class="badge ${g.effect==='deny'?'err':'ok'}" style="cursor:pointer" title="flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')">${g.effect}</button>
@@ -23042,11 +23069,11 @@ async function permToggle(gid,effect){
 /* IO gates: a grant can be scoped to the surfaces a call arrives on (import/export gates).
    Permitted on all three (GUI, TUI, channels)? it flows everywhere; scoped, it only flows
    there — anywhere else the call is denied and logged as an IO error. */
-const PERM_SURFACES=['gui','tui','telegram','api','task'];
+const PERM_SURFACES=['gui','tui','telegram','whatsapp','api','task','webhook'];
 function permSurfBadge(g){
   const scoped=g.surfaces&&g.surfaces!=='*';
   return `<button class="endbtn" style="font-size:10px;${scoped?'color:var(--acc2,#22d3ee);border-color:var(--acc2,#22d3ee)':''}"
-    title="IO gates — which surfaces this rule applies on (GUI, TUI, Telegram, API, tasks). Click to change."
+    title="IO gates — which ways in this rule applies on (desktop, terminal, Telegram, WhatsApp, API, tasks, webhooks). Click to change."
     onclick="permSurfaces('${g.id}','${esc(g.surfaces||'*')}')">⛩ ${scoped?esc(g.surfaces):'all'}</button>`;
 }
 async function permSurfaces(gid,cur){

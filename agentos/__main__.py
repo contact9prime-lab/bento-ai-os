@@ -376,6 +376,11 @@ def ask(prompt: str, model: str | None, full: bool):
         cfg["autonomy"] = "full"
     store = Store(cfgmod.DB_PATH)
     toolbox = Toolbox(cfg, store)
+    # The same gate as every other door: grants, built-in denies, hands, the untrusted-
+    # content rule and the ledger. Before 0.6.18 this verb ran with no gate at all and
+    # decided on autonomy alone, so `--full` ran anything unasked and nothing was recorded.
+    from .policy import PDP
+    toolbox.pdp = PDP(cfg, store)
 
     async def emit(ev):
         if ev["type"] == "text_delta":
@@ -392,9 +397,18 @@ def ask(prompt: str, model: str | None, full: bool):
         elif ev["type"] == "error":
             print(f"\033[31merror: {ev['message']}\033[0m")
 
-    async def approver(name, args, reason) -> bool:
+    async def approver(name, args, reason, offer=None) -> bool:
+        # the agent loop passes the grant it would remember; `a` writes it for an hour
         print(f"\n\033[33m⚠ approval needed: {name} {json.dumps(args)[:200]}\n  {reason}\033[0m")
-        ans = input("  allow? [y/N] ").strip().lower()
+        from .policy import needs_person, write_remembered
+        q = "  allow? [y/N" + ("/h = for an hour" if offer and not needs_person() else "") + "] "
+        try:
+            ans = input(q).strip().lower()
+        except EOFError:
+            return False               # no terminal to ask: nobody said yes
+        if ans in ("h", "hour") and offer and not needs_person():
+            write_remembered(store, offer, "hour", via="the terminal")
+            return True
         return ans in ("y", "yes")
 
     async def main_async():
@@ -406,7 +420,7 @@ def ask(prompt: str, model: str | None, full: bool):
                 print("No models available. Start Ollama or add an API key via the UI (`agentos`).")
                 return
             model_id = models[0]["id"]
-        agent = Agent(cfg, toolbox, model_id, emit, approver)
+        agent = Agent(cfg, toolbox, model_id, emit, approver, surface="tui")
         await agent.run([{"role": "user", "content": prompt}])
         print()
 
@@ -2482,12 +2496,17 @@ def _ai_scan(desc: str, html: str) -> dict:
         if ev.get("type") == "text_delta":
             chunks.append(ev.get("text") or "")
 
-    async def approver(name, a, reason):
+    async def approver(name, a, reason, offer=None):
         return False                       # an audit READS; it never needs a tool grant
 
     async def go():
         model = cfg.get("default_model", "")
-        agent = Agent(cfg, Toolbox(cfg, store), model, emit, approver)
+        # No tools at all: it is reading a stranger's HTML, and a page written to talk
+        # to the scanner could otherwise have it fetch, remember or run the safe tools.
+        tb = Toolbox(cfg, store)
+        from .policy import PDP
+        tb.pdp = PDP(cfg, store)
+        agent = Agent(cfg, tb, model, emit, approver, tool_filter=[], surface="tui")
         await agent.run([{"role": "user",
                           "content": AI_SCAN_PROMPT.format(desc=desc[:300],
                                                            html=html[:60_000])}])
@@ -2800,12 +2819,14 @@ def _flow_cli(args):
         for a in rows:
             print(f"\n  {a['id']}  {a['name']}  {json.dumps(a.get('args') or {})[:80]}")
             print(f"      {a.get('flow') or a.get('run_id', '')[:8]} · {a.get('reason', '')[:120]}")
-        print("\n  agentos flow allow <id> [--always]   |   agentos flow deny <id>")
+        print("\n  agentos flow allow <id> [--hour | --always]   |   agentos flow deny <id>")
         return
 
     if act in ("allow", "deny"):
         res = call(f"/api/fabric/approvals/{args.name}",
-                   {"approved": act == "allow", "remember": bool(args.always)})
+                   {"approved": act == "allow",
+                    "remember": "always" if args.always else "hour" if getattr(args, "hour", False)
+                    else False})
         print("✓ answered" if not res.get("error") else f"✗ {res['error']}")
         return
 
@@ -5967,8 +5988,74 @@ def _assets_cli(args):
               f"(offered in Settings → Components, licence in view)")
 
 
+def _grants_cli(args):
+    """`bento grants` — the Permissions app's grants, from a terminal.
+
+    Straight to the database, so it works with the server down; a running server sees
+    the change at once (the gate's cache watches for writes from other processes).
+    Every change is a ledger row, written by the store itself like the desktop's."""
+    _, store = _open_store(getattr(args, "user", ""))
+    act = args.action
+
+    def who(g):
+        return g["principal_kind"] + (f":{g['principal_id']}" if g["principal_id"] else "")
+    if act == "list":
+        kind, _, pid = (args.who or "").partition(":")
+        rows = store.list_grants(kind, pid, include_revoked=bool(args.all))
+        if not rows:
+            print("no grants" + (" for " + args.who if args.who else ""))
+            return
+        now = time.time()
+        for g in rows:
+            exp = g.get("expires_at")
+            when = ("" if not exp else
+                    " · expired" if exp <= now else
+                    f" · until {time.strftime('%d %b %H:%M', time.localtime(exp))}")
+            gone = " · revoked" if g.get("revoked_at") else ""
+            scope = f" · on {g['surfaces']}" if (g.get("surfaces") or "*") != "*" else ""
+            ref = str(g.get("source_ref") or "")
+            chat = " · one chat" if ref.startswith("conv:") else ""
+            print(f"  {g['id']}  {g['effect']:<5} {who(g):<24} {g['action']:<14} "
+                  f"{g['resource'][:48]}{scope}{when}{chat}{gone}  ({g.get('source') or 'user'})")
+        print("\n  bento grants revoke <id>   ·   bento grants allow|deny <who> <action> <resource>")
+        return
+    if act == "revoke":
+        if not args.who:
+            print("say which: bento grants revoke <id>")
+            sys.exit(2)
+        ok = store.revoke_grant(args.who)
+        print("✓ revoked" if ok else f"✗ no live grant with id {args.who}")
+        if not ok:
+            sys.exit(1)
+        return
+    if act in ("allow", "deny"):
+        if not (args.who and args.what and args.resource):
+            print(f"say who, what and on what: bento grants {act} subagent:researcher "
+                  f"fs.write 'fs:~/reports/*'")
+            sys.exit(2)
+        kind, _, pid = args.who.partition(":")
+        if kind not in ("user", "app", "subagent", "flow", "team", "peer", "*"):
+            print(f"✗ '{kind}' is not a kind of principal (user, app, subagent, flow, team, peer)")
+            sys.exit(2)
+        exp = time.time() + float(args.hours) * 3600 if args.hours else None
+        gid = store.add_grant(kind, pid, args.what, args.resource, effect=act, source="user",
+                              note=f"written from a terminal", expires_at=exp,
+                              surfaces=args.surfaces or "*")
+        print(f"✓ {act} {args.who} {args.what} {args.resource}"
+              + (f" for {args.hours:g}h" if args.hours else "") + f"  ({gid})")
+        return
+
+
 def _audit_cli(args):
     _, store = _open_store(getattr(args, "user", ""))
+    if getattr(args, "verify", False):
+        # the ledger is hash-chained: an edited or deleted row breaks the chain here
+        v = store.audit_verify()
+        if v.get("ok"):
+            print(f"✓ the ledger is intact: {v.get('checked', 0)} rows, each chained to the last")
+            return
+        print(f"✗ the ledger was changed: {v.get('reason')} at row {v.get('at_seq')}")
+        sys.exit(1)
     since = _since_secs(args.since)
     ts = (time.time() - since) if since else 0.0
     summary = store.audit_summary(since=ts)
@@ -6335,9 +6422,23 @@ def main():
     p_audit = verb("audit", help="the access ledger — who was allowed to do what")
     p_audit.add_argument("--since", default="24h", help="e.g. 1h, 24h, 7d (default 24h)")
     p_audit.add_argument("--effect", default="", choices=["", "allow", "deny", "ask"])
-    p_audit.add_argument("--who", default="", help="user | app | subagent | workflow | system")
-    p_audit.add_argument("--surface", default="", help="gui | tui | telegram | api | task")
+    p_audit.add_argument("--who", default="", help="user | app | subagent | flow | team | peer")
+    p_audit.add_argument("--surface", default="",
+                         help="gui | tui | telegram | whatsapp | api | task | webhook")
     p_audit.add_argument("--limit", type=int, default=50)
+    p_audit.add_argument("--verify", action="store_true",
+                         help="check the ledger's hash chain for edited or deleted rows")
+
+    p_grants = verb("grants", help="who may do what without asking — list, add, revoke")
+    p_grants.add_argument("action", nargs="?", default="list",
+                          choices=["list", "allow", "deny", "revoke"])
+    p_grants.add_argument("who", nargs="?", default="",
+                          help="kind:id (subagent:researcher, app:<id>, user), or a grant id to revoke")
+    p_grants.add_argument("what", nargs="?", default="", help="the action (fs.write, net.fetch, tool.use…)")
+    p_grants.add_argument("resource", nargs="?", default="", help="what it applies to (fs:~/reports/*)")
+    p_grants.add_argument("--hours", type=float, default=0, help="with allow/deny: expire after this long")
+    p_grants.add_argument("--surfaces", default="", help="only on these ways in (gui,telegram…)")
+    p_grants.add_argument("--all", action="store_true", help="with list: revoked ones too")
 
     p_reg = verb("registry", help="the app registry — package, scan, sign and verify apps")
     p_reg.add_argument("action", nargs="?", default="verify",
@@ -6433,6 +6534,8 @@ def main():
     p_flow.add_argument("--wait", action="store_true", help="stay attached until it finishes")
     p_flow.add_argument("--always", action="store_true",
                         help="with `allow`: remember it as a grant, not just this once")
+    p_flow.add_argument("--hour", action="store_true",
+                        help="with `allow`: remember it for an hour")
     # authoring, so a headless machine can create what it can already run
     p_flow.add_argument("--mission", default="", help="with `add`: what the flow is for")
     p_flow.add_argument("--agents", default="",
@@ -6771,6 +6874,8 @@ def main():
         _assets_cli(args)
     elif args.cmd == "audit":
         _audit_cli(args)
+    elif args.cmd == "grants":
+        _grants_cli(args)
     elif args.cmd == "registry":
         _registry_cli(args)
     elif args.cmd == "flow":

@@ -230,7 +230,10 @@ body.act-approving #working,body.act-approving .mf-working{cursor:pointer}
 .approval .atitle{color:var(--warn);font-weight:700;font-size:var(--fs-md);margin-bottom:6px}
 .approval .acmd{font-family:var(--mono);font-size:var(--fs-sm);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;margin:8px 0;white-space:pre-wrap;word-break:break-all}
 .approval .areason{color:var(--dim);font-size:var(--fs-sm)}
-.approval .btns{display:flex;gap:8px;margin-top:11px}
+.approval .btns{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap;align-items:center}
+.approval .ap-rem{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.approval .ap-remlbl{color:var(--dim);font-size:var(--fs-sm)}
+.approval .ap-rem .always{padding:7px 12px}
 .approval .allow{background:var(--warn);color:#1c1503;font-weight:700;padding:7px 18px;border-radius:var(--r-md)}
 .approval .deny{border:1px solid var(--line);color:var(--dim);padding:7px 18px;border-radius:var(--r-md)}
 .approval .deny:hover{color:var(--err);border-color:var(--err)}

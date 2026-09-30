@@ -128,15 +128,31 @@ class Console:
         if pdp is None:                     # policy off: the console is off with it
             return False, "policy is not available on this machine right now"
         from .policy import MAIN
-        risk, why = self.tg.toolbox.risk_of(tool, args)
+        from .tools import ALWAYS_ASK
+        tb = self.tg.toolbox
+        risk, why = tb.risk_of(tool, args)
         dec = pdp.decide_tool(MAIN, tool, args, risk, reason=reason or why,
-                              surface="telegram")
+                              surface="telegram",
+                              base_risk=tb.base_risk(tool, args) if hasattr(tb, "base_risk") else risk)
+        if tool in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
+            dec.effect, dec.grant_offer = "ask", None   # confirmed every time, as at the desk
+
+        def close(outcome: str, detail: str = ""):
+            # the ledger row says what happened, like every other gated call
+            if getattr(dec, "audit_id", "") and hasattr(tb.store, "audit_finish"):
+                try:
+                    tb.store.audit_finish(dec.audit_id, outcome=outcome, detail=detail)
+                except Exception:
+                    pass
         if dec.effect == "allow":
+            close("ok")
             return True, ""
         if dec.effect == "deny":
+            close("denied", dec.reason or "")
             return False, f"refused: {dec.reason or 'policy'}"
         ok = await self.tg.ask_approval(chat_id, tool, args, dec.reason or reason or why,
                                         offer=dec.grant_offer)
+        close("ok" if ok else "denied", "" if ok else "not approved")
         return (True, "") if ok else (False, "not approved")
 
     # ------------------------------------------------------------- dispatch

@@ -2052,12 +2052,25 @@ class Store:
         next save of that flow silently revokes somebody's deliberate decision."""
         surfaces = (surfaces or "*").strip() or "*"
         row = self.db.execute(
-            "SELECT id, surfaces FROM grants WHERE principal_kind=? AND principal_id=? AND action=? "
-            "AND resource=? AND effect=? AND COALESCE(source_ref,'')=? AND revoked_at IS NULL",
-            (principal_kind, principal_id, action, resource, effect, source_ref or "")).fetchone()
+            "SELECT id, surfaces, expires_at FROM grants WHERE principal_kind=? AND principal_id=? "
+            "AND action=? AND resource=? AND effect=? AND COALESCE(source_ref,'')=? "
+            "AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
+            (principal_kind, principal_id, action, resource, effect, source_ref or "",
+             time.time())).fetchone()
         if row:
+            changed = False
             if (row["surfaces"] or "*") != surfaces:
                 self.db.execute("UPDATE grants SET surfaces=? WHERE id=?", (surfaces, row["id"]))
+                changed = True
+            # The same rule granted again for longer lasts the longer of the two: "for an
+            # hour" on top of "always" stays always, and "always" on top of "for an hour"
+            # becomes always. It used to keep the first expiry whatever was asked next.
+            old = row["expires_at"]
+            new = None if (old is None or expires_at is None) else max(old, expires_at)
+            if new != old:
+                self.db.execute("UPDATE grants SET expires_at=? WHERE id=?", (new, row["id"]))
+                changed = True
+            if changed:
                 self.db.commit()
                 self.grants_version += 1
             return row["id"]
@@ -2083,6 +2096,16 @@ class Store:
             self.grants_version += 1
             self._audit_grant("change", self._grant_row(gid), detail=f"surfaces now {surfaces}")
         return bool(cur.rowcount)
+
+    def outside_writes(self) -> int:
+        """SQLite's data_version: it moves when ANOTHER connection commits. The grant
+        cache keys on it too, so a grant written from a terminal (`bento grants`, `bento
+        link let`) is seen by a running server at once. The in-memory counter above only
+        ever saw this process's own writes."""
+        try:
+            return int(self.db.execute("PRAGMA data_version").fetchone()[0])
+        except Exception:
+            return 0
 
     def grants_live(self) -> list[dict]:
         rows = self.db.execute("SELECT * FROM grants WHERE revoked_at IS NULL "

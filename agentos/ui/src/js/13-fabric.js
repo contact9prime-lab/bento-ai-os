@@ -158,7 +158,7 @@ async function sawAi(){
    than a select, and Save on every step once it has a name — a drafted agent is often
    ready as it arrives. One editor for Missions → Build and Settings → Agents. */
 var SAW_STEPS=[['Who it is','Who'],['What it can use','Tools'],['Limits & trust','Limits']];
-var SAW_CAPS=[['paranoid','Asks first','Every action waits for you.'],
+var SAW_CAPS=[['paranoid','Asks first','Anything but reading waits for you.'],
   ['balanced','Careful','Safe steps run; risky ones ask you, and are refused when nobody is watching.'],
   ['full','Trusted','Acts freely, within what it is granted. Never above this machine\'s own level.']];
 function sawFace(d){

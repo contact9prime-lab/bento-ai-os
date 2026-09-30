@@ -115,6 +115,17 @@ So AgentOS does not try to detect the attack. It bounds the blast radius:
   deny rows, so an explicit deny still wins, and `strict` still refuses.
   `tests/test_team_standing.py` holds each of these; the full story is in
   [team.md](team.md#standing-permissions-saying-yes-ahead-of-time).
+- **It is judged on the tool's own risk, and it covers the writes that outlive the turn.**
+  Until 0.6.18 a Rule could switch it off: tapping "Always allow" on a card wrote a Rule like
+  `write_file *`, the tool then read as safe, and the ceiling (which only looks at steps
+  that are not safe) never saw it again. The ceiling now reads `base_risk`, the risk before
+  any Rule, and that card button is gone. Five tools that are safe on their own but write
+  something an agent reads back later (memory, the graph, a skill, an automation) count as
+  risky here (`policy.TAINT_WATCH`), because a page that gets one line into a skill speaks
+  in every later turn. A shell command that downloads (`curl`, `wget`, a URL, `git clone`),
+  a hosted plugin's tool and a git clone or pull now taint the turn like `fetch_url` does.
+  A chat forwarded to Claude Code or Gemini CLI that reads the web with its own tools marks
+  the team door, so a specialist it starts after that is held too.
 - Taint survives a turn boundary: a conversation whose history contains fenced content starts
   its next turn tainted. "Fetch this page" … "ok, go ahead" is the obvious way around a
   per-turn rule.
@@ -138,9 +149,10 @@ that leaves, and closing it needs provenance on the file rather than on the tool
   bind. Any process already running as your user can drive AgentOS (including its PTY
   terminal). If your threat model includes hostile local processes, you have bigger problems,
   but know the boundary.
-- **Approval fatigue is real:** if you find yourself clicking Allow reflexively, move the
-  decision into policy instead — "Allow & remember" writes a scoped, revocable grant, and the
-  Permissions app is where consent actually lives. Prefer narrowing the sandbox + grants over
+- **Approval fatigue is real:** if you find yourself clicking Allow reflexively, remember the
+  decision instead. The card's Remember writes a grant for that one agent, for this chat, an
+  hour or always, and the Permissions app is where consent lives (`bento grants` from a
+  terminal). Prefer narrowing the sandbox + grants over
   running at `full` autonomy.
 - **Plaintext config:** `config.json` stores keys in plaintext under your user (a secrets
   vault is on the roadmap). File permissions are your last line there.
