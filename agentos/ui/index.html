@@ -2742,6 +2742,22 @@ body.glass-off .win{background:var(--bg)!important}
 .job-ai-out .err{color:var(--err,#f87171)}
 body.dev-mobile .job-ai-row{flex-direction:column;align-items:stretch}
 body.dev-touch .job-ai-btns button,body.dev-touch #job-ai-go{min-height:var(--tap)}
+
+/* ---- Missions → History (14c-history.js) and the Schedule rows' run line ---- */
+.job-hchips{margin:6px 0 10px}
+.job-hlist{display:flex;flex-direction:column;gap:6px}
+.job-hrow{align-items:flex-start}
+.job-hhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.job-hhead b{overflow-wrap:anywhere}
+.job-hst{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:1px 8px;
+  border-radius:var(--r-full);background:var(--bg3);color:var(--dim);white-space:nowrap}
+.job-hst.ok{color:var(--ok,#22c55e)}.job-hst.running{color:var(--acc)}.job-hst.failed{color:var(--err,#ef4444)}
+.job-hst.waiting,.job-hst.partial{color:var(--warn,#f59e0b)}
+.job-hkind{font-size:var(--fs-2xs);padding:1px 7px;border-radius:var(--r-full);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.job-hsaid{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.task-last.ok{color:var(--ok,#22c55e)}.task-last.failed{color:var(--err,#ef4444)}.task-last.skipped{color:var(--warn,#f59e0b)}
+body.dev-touch .job-hchips .of-chip,body.dev-touch .job-hrow .endbtn,body.dev-touch .task-row button{min-height:var(--tap)}
+@media (max-width:600px){.job-hrow{flex-wrap:wrap}.job-hrow .endbtn{margin-left:auto}}
 /* ================= onboarding =================
    Two columns: a rail you can move around in freely, and one pane at a time. The
    rail is the point — a linear wizard hides how much is left and gives you nowhere
@@ -11185,7 +11201,7 @@ var PLACES=[
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
   ['Mission agents','jobs','Missions → Build → Agents',['roster','specialist','specialists','subagent','subagents','new agent'],placeMissions('build','agents')],
   ['Company','office','Office → Company',['company','departments','department','org','organisation','organization','startup','business','hr','finance','sales','marketing','admin','supply','operations'],placeCompany()],
-  ['Mission runs','jobs','Missions → Build → Runs',['run','runs','run history','history','what ran'],placeMissions('build','runs')],
+  ['History','jobs','Missions → History',['run','runs','run history','history','what ran','last run','scheduled runs','schedule runs','did it run'],placeMissions('history')],
   ['Schedule','jobs','Missions → Schedule',['scheduler','schedule','scheduled','cron','timer','task','tasks','reminder'],placeFold('tasks')],
   ['Routines','jobs','Missions → Routines',['automation','automations','routine','routines','hot corner','hot corners','macro','sequence'],placeFold('automations')],
   ['Memory','profile','Profile → Memory',['memory','memories','remember','remembers','forget','pinned'],placeFold('memory')],
@@ -19908,14 +19924,15 @@ document.addEventListener('click', e => {
 
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
-var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'run'};
-var JOB_TABS=['run','build','schedule','routines'];
-/* Run = the value view (what is running for you, what it did); Build = the flows editor that used to be the Workflows app
+var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'run',hist:null,histShow:'all'};
+var JOB_TABS=['run','history','build','schedule','routines'];
+/* Run = the value view (what is running for you, what it did); History = every run that
+   happened on its own, schedules included (14c-history.js); Build = the flows editor that used to be the Workflows app
    (13-fabric.js). One object underneath (a mission is a flow with a recipe), so the
    Build tab is where a mission a recipe made is edited, and where one is written from
    scratch. `openApp('fabric')` lands here on Build — see APP_ALIAS in 04-wm.js. */
 function jobTabs(){
-  return `<div class="job-tabs">${segTabs('job-tabs',['Run','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
+  return `<div class="job-tabs">${segTabs('job-tabs',['Run','History','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
 }
 function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';refreshApp('jobs')}
 
@@ -20206,11 +20223,12 @@ function jobRow(j){
       <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'} · this week: ${j.runs_7d} run${j.runs_7d===1?'':'s'}, ${j.ok_7d} ok · ${(j.tokens_7d||0).toLocaleString()} tokens · holds ${j.grants} permission${j.grants===1?'':'s'}</div>
     </div>
     <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
-    ${last.run_id?`<button class="endbtn" onclick="fgWatch('${esc(last.run_id)}')">Last run</button>`:''}
+    ${last.run_id?`<button class="endbtn" onclick="jobHistoryFor({mission:'${esc(j.name)}'})">Runs</button>`:''}
     <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
   </div>`;
 }
 async function renderJobs(body,w){
+  if(JOBS.tab==='history')return renderJobHistory(body);
   if(JOBS.tab==='schedule'||JOBS.tab==='routines'){
     // Everything that runs without you is here: missions (Run), how they are built
     // (Build), plain scheduled prompts (Schedule, the old Scheduler app) and named
@@ -21240,13 +21258,90 @@ async function obRestart(){
   try{await fetch('/api/onboarding/restart',{method:'POST'})}catch(e){}
   obShow({});
 }
+/* ================= Missions → History (agentos/runlog.py) =================
+   "I can't find the runs of the schedules in the mission." A scheduled prompt's answer
+   was a chat nobody could trace back to its schedule, the Schedule tab showed only the
+   last result, and a mission's runs were three tabs deep under Build → Runs. So one
+   list: everything that ran on its own, newest first, each saying what started it, how
+   it went and how long it took, with the door to what it produced (the Run inspector
+   for a mission, the conversation in Chat for a scheduled prompt).
+
+   The rows are /api/missions/history, one computation (runlog.history) that `bento job
+   history` prints too. A Runs button on a Schedule row or a mission row opens this tab
+   filtered to that one (JOBS.hist).
+   Faces: GUI and SUI are this page; TUI is `bento job history`. */
+function jobHistoryFor(f){
+  if(typeof JOBS==='undefined')return;
+  JOBS.hist=f||null;JOBS.histShow='all';JOBS.tab='history';
+  openApp('jobs');refreshApp('jobs');
+}
+function jobHistWhen(ts){
+  if(!ts)return '';
+  const d=new Date(ts*1000),today=new Date();
+  const same=d.toDateString()===today.toDateString();
+  return (same?'today ':d.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'})+' ')
+    +d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
+function jobHistTook(s){
+  if(s==null)return '';
+  if(s<60)return s+'s';
+  if(s<3600)return Math.round(s/60)+' min';
+  return (s/3600).toFixed(1)+' h';
+}
+var JOB_HIST_WORD={running:'running',ok:'done',partial:'partly done',failed:'failed',waiting:'waiting for you',
+  stopped:'stopped',skipped:'skipped'};
+function jobHistRow(r){
+  const door=r.run_id?`<button class="endbtn" data-open-run="${esc(r.run_id)}">Open run</button>`
+    :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
+  return `<div class="item job-hrow ${esc(r.status)}">
+    <div class="grow">
+      <div class="job-hhead"><span class="job-hst ${esc(r.status)}">${esc(JOB_HIST_WORD[r.status]||r.status)}</span>
+        <b>${esc(r.title)}</b>${r.kind==='prompt'?'<span class="job-hkind">scheduled prompt</span>':''}</div>
+      <div class="sub">${esc(jobHistWhen(r.started_at))}${r.seconds!=null&&r.status!=='skipped'?' · took '+esc(jobHistTook(r.seconds)):''} · ${esc(r.started_by)}${
+        r.tokens?' · '+r.tokens.toLocaleString()+' tokens':''}</div>
+      ${r.said?`<div class="sub job-hsaid">${esc(r.said)}</div>`:''}
+    </div>${door}</div>`;
+}
+async function renderJobHistory(body){
+  const f=JOBS.hist||{};
+  const q=new URLSearchParams();if(f.task_id)q.set('task',f.task_id);if(f.mission)q.set('mission',f.mission);
+  body.innerHTML=`<div class="pad job-app">${jobTabs()}<p class="mut">Reading…</p></div>`;
+  let d;
+  try{d=await apiJSON('/api/missions/history'+(q.toString()?'?'+q:''))}
+  catch(e){body.innerHTML=`<div class="pad job-app">${jobTabs()}<p class="mut">${esc(e.message||String(e))}</p></div>`;return}
+  const show=JOBS.histShow||'all',c=d.counts||{};
+  const rows=(d.runs||[]).filter(r=>show==='all'||(show==='scheduled'&&r.scheduled)||(show==='failed'&&r.status==='failed')
+    ||(show==='prompts'&&r.kind==='prompt'));
+  const chip=(k,l,n)=>`<button class="of-chip${show===k?' on':''}" data-show="${k}" aria-pressed="${show===k}">${l}${n?' '+n:''}</button>`;
+  const title=(d.filter||{}).title;
+  body.innerHTML=`<div class="pad job-app">${jobTabs()}
+    <h3>${title?'Runs of '+esc(title):'Everything that ran on its own'}</h3>
+    ${title?`<p class="mut"><button class="co-link" data-all>Show every run</button></p>`
+      :`<p class="mut">Missions and scheduled prompts, newest first. ${c.week||0} this week${c.failed?`, <b class="job-bad">${c.failed} failed</b>`:''}.</p>`}
+    <div class="of-chips job-hchips">${chip('all','All')}${chip('scheduled','On a schedule',c.scheduled)}${chip('prompts','Scheduled prompts')}${chip('failed','Failed',c.failed)}</div>
+    <div class="job-hlist">${rows.map(jobHistRow).join('')||`<p class="mut">${title?'This has not run yet.':'Nothing has run on its own yet. A mission you switch on, or a prompt you schedule, shows here each time it runs.'}</p>`}</div></div>`;
+  body.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{JOBS.histShow=b.dataset.show;renderJobHistory(body)});
+  const all=body.querySelector('[data-all]');if(all)all.onclick=()=>{JOBS.hist=null;renderJobHistory(body)};
+  body.querySelectorAll('[data-open-run]').forEach(b=>b.onclick=()=>fgWatch(b.dataset.openRun));
+  body.querySelectorAll('[data-open-conv]').forEach(b=>b.onclick=()=>{openApp('chat');setTimeout(()=>openConv(b.dataset.openConv),150)});
+}
 /* ================= scheduler app ================= */
 async function renderTasks(body){
   const r=await fetch('/api/tasks');const d=await r.json();
-  const fmt=t=>t.schedule_type==='interval'?`every ${Math.round((t.interval_seconds||0)/60)} min`:t.schedule_type==='daily'?`daily at ${t.at_time}`:t.schedule_type==='weekly'?`every ${WEEKDAY_NAMES[t.weekday||0]} at ${t.at_time}`:'once';
-  const items=d.tasks.map(t=>`<div class="item" data-f="${esc(t.prompt)}"><div class="grow">${esc(t.prompt)}<div class="sub">${fmt(t)} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'running/done'):'disabled'}${t.last_result?' · last: '+esc(t.last_result.slice(0,90)):''}</div></div>
-    <button title="toggle" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
-    <button onclick="delTask('${t.id}')">✕</button></div>`).join('');
+  /* Each schedule says what it did (runlog.schedules): how many runs this week, how the
+     last one went, and Runs opens Missions → History on just this schedule. A mission's
+     schedule is named by its mission, not the prompt it carries. */
+  const st={ok:'done',failed:'failed',skipped:'skipped',running:'running',stopped:'stopped',waiting:'waiting for you',partial:'partly done'};
+  const items=d.tasks.map(t=>{
+    const last=t.last_status?`last run ${st[t.last_status]||t.last_status}${t.last_at?' '+jobAgo(t.last_at):''}`:'has not run yet';
+    return `<div class="item task-row" data-f="${esc(t.title||t.prompt)}"><div class="grow">
+      ${t.flow?`<span class="job-hkind">mission</span> `:''}${esc(t.title||t.prompt)}
+      <div class="sub">${esc(t.words||'')} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'waiting for its event'):'switched off'}</div>
+      <div class="sub"><span class="task-last ${esc(t.last_status||'')}">${esc(last)}</span>${t.runs_7d?` · ${t.runs_7d} run${t.runs_7d===1?'':'s'} this week`:''}${t.failed_7d?` · <b class="job-bad">${t.failed_7d} failed</b>`:''}</div>
+      ${t.last_said?`<div class="sub job-hsaid">${esc(t.last_said)}</div>`:''}</div>
+    <button class="endbtn" onclick="jobHistoryFor({task_id:'${esc(t.id)}'})">Runs</button>
+    <button title="${t.enabled?'Pause':'Resume'}" aria-label="${t.enabled?'Pause':'Resume'}" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
+    <button title="Delete" aria-label="Delete" onclick="delTask('${t.id}')">✕</button></div>`}).join('');
   const pb=panelShell(body,{
     title:'Schedule',
     sub:`${d.tasks.length} task${d.tasks.length===1?'':'s'} · ${d.tasks.filter(t=>t.enabled).length} active`,

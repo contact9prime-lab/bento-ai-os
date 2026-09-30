@@ -12,6 +12,14 @@ Inspector. Anything it flags goes to your Brief. It's on by default. Switch it o
 the task board, or with `bento company audit off`, and check any finished task with
 **Check it** or `bento company check RUN`.
 
+**See every run of your schedules.** Missions has a new **History** tab listing
+everything that ran on its own, newest first: missions, and prompts you scheduled.
+Each run says what started it, whether it worked, how long it took and what it said,
+with a button to open it (the Run Inspector for a mission, the chat for a scheduled
+prompt). Every row in the Schedule tab now shows how its last run went and has a
+**Runs** button, and so does each mission on the Run tab. A mission its schedule
+couldn't start shows as skipped, with the reason. In a terminal: `bento job history`.
+
 ## 0.6.16 — 2026-09-29
 
 **Your company in every scene.** The Crew stage shows one figure per department, and it

@@ -2887,6 +2887,21 @@ def _job_cli(args):
         print(f"✓ {args.name} — `bento job recipes` now opens on your missions")
         return
 
+    if act == "history":
+        # what ran on its own, schedules included: the Missions app's History tab.
+        # Read from the database, so it works with the server down.
+        from . import runlog
+        task_id = (getattr(args, "task", "") or "").strip()
+        if task_id and not any(t["id"] == task_id for t in store.list_tasks()):
+            known = [t for t in runlog.schedules(store)]
+            print(f"✗ no schedule with id {task_id}. Schedules here:")
+            for t in known[:20]:
+                print(f"  {t['id']}  {t['words']:<22} {t['title'][:60]}")
+            sys.exit(1)
+        print(runlog.text(runlog.history(store, task_id=task_id, mission=args.name or "",
+                                         limit=40)))
+        return
+
     if act == "list":
         rows = jobsmod.installed(store)
         rd = jobsmod.readiness(cfg)
@@ -2913,6 +2928,7 @@ def _job_cli(args):
             print(f"    this week: {j['runs_7d']} runs, {j['ok_7d']} ok, "
                   f"{j['tokens_7d']:,} tokens · holds {j['grants']} permissions")
             print(f"    next: {j['next']}")
+        print("\n  bento job history [MISSION]   every run, schedules included")
         return
 
     if act == "recipes":
@@ -6439,9 +6455,11 @@ def main():
     p_job = verb("job", help="give this machine a standing mission — the terminal "
                                        "half of the Missions app and the first-run screen")
     p_job.add_argument("action", nargs="?", default="list",
-                       choices=["list", "recipes", "add", "run", "persona"])
+                       choices=["list", "recipes", "add", "run", "persona", "history"])
     p_job.add_argument("name", nargs="?", default="",
-                       help="recipe id for `add`, mission name for `run`, founder|coder|consultant for `persona`")
+                       help="recipe id for `add`, mission name for `run` or `history`, "
+                            "founder|coder|consultant for `persona`")
+    p_job.add_argument("--task", default="", help="history: only the runs of this schedule (its id)")
     p_job.add_argument("--for", dest="for_", default="",
                        help="recipes: founder | coder | consultant | everyone — theirs first")
     p_job.add_argument("--topics", default="", help="morning-brief: what to keep an eye on")

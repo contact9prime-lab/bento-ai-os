@@ -78,6 +78,32 @@ want to dig in.
 
 ![The Run Inspector: a morning brief started on its schedule, the researcher handed a task, its tool calls, the researcher asking the validator a question and the answer, and the whole run's time, agents and tokens at the top](screenshots/run-inspector.png)
 
+### History: every run, schedules included
+
+**History** is the second tab. It lists everything that ran on its own, newest first:
+missions, and prompts you scheduled in the Schedule tab. Each run says what started it
+("on its schedule, daily at 08:00", "started by you", "started by a webhook"), whether it
+worked, how long it took and the first lines of what it said. **Open run** replays a
+mission in the Run Inspector. **Open in Chat** opens the conversation a scheduled prompt
+produced. The chips narrow it to runs on a schedule, scheduled prompts, or failures.
+
+![Missions → History: a skipped mission, a mission started by its schedule, a scheduled prompt with its chat, and two runs started by hand](screenshots/missions-history.png)
+
+Each row in the Schedule tab now says how its last run went, how many times it ran this
+week, and what it said. **Runs** opens History on just that schedule, and a mission's
+**Runs** button on the Run tab does the same for the mission. A mission that a schedule
+could not start, because it was switched off or deleted, shows as **skipped** with the
+reason, so a schedule that quietly did nothing still leaves a line.
+
+![The Schedule tab: each schedule with its last run, its runs this week, and a Runs button](screenshots/missions-schedule-runs.png)
+
+A run still marked running hours after it started shows as **stopped**: the machine was
+probably restarted under it.
+
+On a phone the same list reads top to bottom, and the tabs scroll sideways.
+
+![Missions → History on a phone](screenshots/missions-history-phone.png)
+
 ## Can it run here?
 
 A mission's consent block is a promise about every step, so a mission only runs
@@ -143,6 +169,9 @@ bento job add competitor-watch --urls 'https://acme.com/pricing,https://acme.com
 bento job add client-report --client Acme --folder ~/Clients/Acme --day friday --at 15:00
 bento job list                               # what runs, what it last said, what it holds
 bento job run standup-code                   # now, while you watch
+bento job history                            # every run, schedules included
+bento job history standup-code               # the runs of one mission
+bento job history --task 66c6d87145a9        # the runs of one schedule
 ```
 
 ## Missions that read your mail and calendar

@@ -24,14 +24,15 @@
 
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
-var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'run'};
-var JOB_TABS=['run','build','schedule','routines'];
-/* Run = the value view (what is running for you, what it did); Build = the flows editor that used to be the Workflows app
+var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'run',hist:null,histShow:'all'};
+var JOB_TABS=['run','history','build','schedule','routines'];
+/* Run = the value view (what is running for you, what it did); History = every run that
+   happened on its own, schedules included (14c-history.js); Build = the flows editor that used to be the Workflows app
    (13-fabric.js). One object underneath (a mission is a flow with a recipe), so the
    Build tab is where a mission a recipe made is edited, and where one is written from
    scratch. `openApp('fabric')` lands here on Build — see APP_ALIAS in 04-wm.js. */
 function jobTabs(){
-  return `<div class="job-tabs">${segTabs('job-tabs',['Run','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
+  return `<div class="job-tabs">${segTabs('job-tabs',['Run','History','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
 }
 function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';refreshApp('jobs')}
 
@@ -322,11 +323,12 @@ function jobRow(j){
       <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'} · this week: ${j.runs_7d} run${j.runs_7d===1?'':'s'}, ${j.ok_7d} ok · ${(j.tokens_7d||0).toLocaleString()} tokens · holds ${j.grants} permission${j.grants===1?'':'s'}</div>
     </div>
     <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
-    ${last.run_id?`<button class="endbtn" onclick="fgWatch('${esc(last.run_id)}')">Last run</button>`:''}
+    ${last.run_id?`<button class="endbtn" onclick="jobHistoryFor({mission:'${esc(j.name)}'})">Runs</button>`:''}
     <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
   </div>`;
 }
 async function renderJobs(body,w){
+  if(JOBS.tab==='history')return renderJobHistory(body);
   if(JOBS.tab==='schedule'||JOBS.tab==='routines'){
     // Everything that runs without you is here: missions (Run), how they are built
     // (Build), plain scheduled prompts (Schedule, the old Scheduler app) and named

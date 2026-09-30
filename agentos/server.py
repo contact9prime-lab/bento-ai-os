@@ -11198,7 +11198,20 @@ async def api_knowledge_status():
 
 @app.get("/api/tasks")
 async def api_tasks():
-    return {"tasks": state["store"].list_tasks()}
+    """Every schedule, each with what it has done lately (runlog.schedules): the
+    Schedule tab's rows. Same shape as before, with the run fields added."""
+    from . import runlog
+    return {"tasks": runlog.schedules(state["store"])}
+
+
+@app.get("/api/missions/history")
+async def api_missions_history(task: str = "", mission: str = "", limit: int = 80):
+    """What ran on its own and what started each run: missions and scheduled prompts,
+    newest first, for the Missions app's History tab and its Runs buttons. One
+    computation (runlog.history), shared with `bento job history`."""
+    from . import runlog
+    return runlog.history(state["store"], task_id=task, mission=mission,
+                          limit=max(1, min(int(limit or 80), 300)))
 
 
 @app.post("/api/tasks")

@@ -181,3 +181,19 @@
 .job-ai-out .err{color:var(--err,#f87171)}
 body.dev-mobile .job-ai-row{flex-direction:column;align-items:stretch}
 body.dev-touch .job-ai-btns button,body.dev-touch #job-ai-go{min-height:var(--tap)}
+
+/* ---- Missions → History (14c-history.js) and the Schedule rows' run line ---- */
+.job-hchips{margin:6px 0 10px}
+.job-hlist{display:flex;flex-direction:column;gap:6px}
+.job-hrow{align-items:flex-start}
+.job-hhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.job-hhead b{overflow-wrap:anywhere}
+.job-hst{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:1px 8px;
+  border-radius:var(--r-full);background:var(--bg3);color:var(--dim);white-space:nowrap}
+.job-hst.ok{color:var(--ok,#22c55e)}.job-hst.running{color:var(--acc)}.job-hst.failed{color:var(--err,#ef4444)}
+.job-hst.waiting,.job-hst.partial{color:var(--warn,#f59e0b)}
+.job-hkind{font-size:var(--fs-2xs);padding:1px 7px;border-radius:var(--r-full);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.job-hsaid{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.task-last.ok{color:var(--ok,#22c55e)}.task-last.failed{color:var(--err,#ef4444)}.task-last.skipped{color:var(--warn,#f59e0b)}
+body.dev-touch .job-hchips .of-chip,body.dev-touch .job-hrow .endbtn,body.dev-touch .task-row button{min-height:var(--tap)}
+@media (max-width:600px){.job-hrow{flex-wrap:wrap}.job-hrow .endbtn{margin-left:auto}}

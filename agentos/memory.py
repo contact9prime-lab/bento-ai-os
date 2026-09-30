@@ -437,6 +437,24 @@ CREATE TABLE IF NOT EXISTS tasks (
     last_fired REAL,
     space_id TEXT DEFAULT ''     -- the space a scheduled turn runs inside
 );
+-- One row each time a scheduled task fired: what it was asked, how it went, and the
+-- door to what it produced (a conversation for a prompt, a flow run for a mission).
+-- Without it a scheduled prompt's answer was a chat nobody could trace back to its
+-- schedule, and the Schedule tab showed only the last result. Kept after the task is
+-- deleted, like any history; pruned with usage (prune()).
+CREATE TABLE IF NOT EXISTS task_runs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT,
+    prompt TEXT DEFAULT '',       -- what the task asked, kept in case the task goes
+    flow TEXT DEFAULT '',         -- the mission it started, when it names one
+    started_at REAL,
+    finished_at REAL,
+    status TEXT DEFAULT 'running',-- running | ok | failed | skipped
+    result TEXT DEFAULT '',
+    conversation_id TEXT DEFAULT '',
+    run_id TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs(task_id, started_at);
 CREATE TABLE IF NOT EXISTS proactive_items (
     id TEXT PRIMARY KEY,
     kind TEXT,                   -- 'digest' (notification triage) | 'suggestion' (knowledge loop)
@@ -1047,6 +1065,7 @@ class Store:
 
         cut("logs", "created_at", logs_days)
         cut("usage", "ts", usage_days)
+        cut("task_runs", "started_at", usage_days)   # a year of what the schedules did
         # Events belong to a run: they are the step-by-step trace, by far the
         # biggest writer here, and the run row itself is kept so the history of
         # WHAT ran is intact even once the trace has aged out.
@@ -2832,6 +2851,36 @@ class Store:
         cols = ", ".join(f"{k}=?" for k in fields)
         self.db.execute(f"UPDATE tasks SET {cols} WHERE id=?", (*fields.values(), tid))
         self.db.commit()
+
+    # -- the history of what the scheduler started (runlog.py reads it) -------------
+
+    def task_run_start(self, task: dict) -> str:
+        rid = uuid.uuid4().hex[:12]
+        self.db.execute(
+            "INSERT INTO task_runs (id, task_id, prompt, flow, started_at, status) "
+            "VALUES (?,?,?,?,?,'running')",
+            (rid, task.get("id") or "", (task.get("prompt") or "")[:2000],
+             task.get("flow") or "", time.time()))
+        self.db.commit()
+        return rid
+
+    def task_run_finish(self, rid: str, status: str, result: str = "",
+                        conversation_id: str = "", run_id: str = ""):
+        self.db.execute(
+            "UPDATE task_runs SET status=?, result=?, conversation_id=?, run_id=?, "
+            "finished_at=? WHERE id=?",
+            (status, (result or "")[:4000], conversation_id or "", run_id or "",
+             time.time(), rid))
+        self.db.commit()
+
+    def task_runs(self, task_id: str = "", limit: int = 200, since: float = 0) -> list[dict]:
+        sql, args = "SELECT * FROM task_runs WHERE started_at>?", [float(since or 0)]
+        if task_id:
+            sql += " AND task_id=?"
+            args.append(task_id)
+        rows = self.db.execute(sql + " ORDER BY started_at DESC LIMIT ?",
+                               (*args, int(limit))).fetchall()
+        return [dict(r) for r in rows]
 
     def delete_task(self, tid: str):
         self.db.execute("DELETE FROM tasks WHERE id=?", (tid,))

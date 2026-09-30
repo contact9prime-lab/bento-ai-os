@@ -388,6 +388,25 @@ Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the sa
 catalogue and the same install on a headless Pi, which is where a standing job earns its
 keep and where there is no wizard.
 
+**Every run that happened on its own is in Missions → History, and a schedule's runs are
+one tap from its row** (`agentos/runlog.py`, `14c-history.js`, `/api/missions/history`,
+`bento job history`; `tests/test_mission_history.py`). Reported as "I can't find the runs
+of the schedules in the mission": a scheduled prompt's answer was a chat with no link back
+to its schedule, the Schedule tab showed only `last_result`, and mission runs were under
+Build → Runs. Three things keep it one answer:
+- **Every firing is a `task_runs` row** (`Scheduler._run_task`, start and finish), with the
+  door: a conversation for a prompt, a `run_id` for a mission. A mission run is ONE row in
+  the history, its flow run (`origin_surface='task'`, `origin_ref`=task id names the
+  schedule); a task_runs row with a `run_id` is never listed a second time. A mission the
+  schedule could not start is `skipped` with the reason, so a schedule that did nothing
+  still leaves a line.
+- **`runlog.history` is the only reader** for the tab, the Runs buttons (a schedule row
+  filters by `task_id`, a mission row by `mission`), the route and the CLI. `_status` maps
+  the recorded word to the six the page draws; a run still `running` past `STALE_S` reads
+  as stopped, never as working.
+- `task_runs` is pruned with `usage` (a year), and kept after its task is deleted: it is
+  history.
+
 ## Your company: departments are the Office's rooms, desks are flows, people are specialists
 
 `agentos/company.py` + `24g-company.js` (the Office's ▦ Company panel and the card over each

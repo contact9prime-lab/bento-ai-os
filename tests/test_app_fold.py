@@ -61,7 +61,7 @@ def test_each_host_draws_the_tab():
     assert "rules:b=>renderPolicies(b),ledger:b=>renderAudit(b,PERM.w)" in perm
     assert "['memory','Memory'],['graph','Graph'],['soul','Soul']" in profile
     assert "{memory:renderMemory,graph:renderKG,soul:renderSoul}" in profile
-    assert "var JOB_TABS=['run','build','schedule','routines'];" in jobs
+    assert "var JOB_TABS=['run','history','build','schedule','routines'];" in jobs
     assert "JOBS.tab==='schedule'?renderTasks:renderAutomations" in jobs
 
 

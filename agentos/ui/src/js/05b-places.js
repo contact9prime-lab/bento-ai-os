@@ -70,7 +70,7 @@ var PLACES=[
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
   ['Mission agents','jobs','Missions → Build → Agents',['roster','specialist','specialists','subagent','subagents','new agent'],placeMissions('build','agents')],
   ['Company','office','Office → Company',['company','departments','department','org','organisation','organization','startup','business','hr','finance','sales','marketing','admin','supply','operations'],placeCompany()],
-  ['Mission runs','jobs','Missions → Build → Runs',['run','runs','run history','history','what ran'],placeMissions('build','runs')],
+  ['History','jobs','Missions → History',['run','runs','run history','history','what ran','last run','scheduled runs','schedule runs','did it run'],placeMissions('history')],
   ['Schedule','jobs','Missions → Schedule',['scheduler','schedule','scheduled','cron','timer','task','tasks','reminder'],placeFold('tasks')],
   ['Routines','jobs','Missions → Routines',['automation','automations','routine','routines','hot corner','hot corners','macro','sequence'],placeFold('automations')],
   ['Memory','profile','Profile → Memory',['memory','memories','remember','remembers','forget','pinned'],placeFold('memory')],
