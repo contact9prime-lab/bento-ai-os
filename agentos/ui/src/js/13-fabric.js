@@ -442,7 +442,7 @@ function fgLog(level,text){
 function fgApply(ev){
   if(!ev||!ev.event)return;
   const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1,thinking:1,
-                  talk:1,status:1,step:1,parked:1,resumed:1};
+                  talk:1,status:1,step:1,parked:1,resumed:1,audit:1};
   if(!graphish[ev.event])return;
   const t=ev._ts||Date.now();
   // The specialists run in runs of their own. Their tool calls reach the story through
@@ -521,6 +521,17 @@ function fgApply(ev){
       const n=FG.nodes.get(FG.run);if(n)n.status='running';
       fgLog('info','carried on: you said '+(ev.decision==='allow'?'allow':'deny'));
       fgStory({t,kind:'wait',who:'',state:ev.decision==='allow'?'allowed':'denied',tool:'',text:'',resumed:1});
+      break;}
+    case 'audit':{
+      /* The independent auditor, started by the control plane once the work is done
+         (company.py): not a delegation, so it is its own line in the story. */
+      if(ev.phase==='start'){fgStory({t,kind:'audit',who:ev.auditor||'auditor',phase:'start',dept:ev.department||''});break}
+      // the "checking" line gives way to the verdict, told when it came: after the
+      // auditor's own reads, so the story keeps the order things happened in
+      const at=FG.story.map(x=>x.kind==='audit'&&x.phase==='start').lastIndexOf(true);
+      if(at>=0)FG.story.splice(at,1);
+      fgStory({t,kind:'audit',who:ev.auditor||'auditor',phase:'done',verdict:ev.verdict,findings:ev.findings||[],why:ev.why||'',line:ev.line||''});
+      fgLog(ev.verdict==='pass'?'info':'warn','auditor · '+(ev.line||ev.verdict||''));
       break;}
     case 'log':
       fgLog(ev.level,ev.text);
@@ -1162,6 +1173,12 @@ function fgPaintStory(box){
         e.state==='asked'?'is waiting for you to allow':e.state==='allowed'?'was allowed':'was refused'} <code>${esc(e.tool)}</code></div>
         ${e.state==='asked'&&e.text?`<div class="fr-note">${esc(e.text)}</div>`:''}
         ${e.state==='asked'&&!FG.ended?`<button class="fr-link" onclick="fgReview()">Review</button>`:''}</div></div>`;
+      case 'audit':{
+        if(e.phase==='start')return `<div class="fr-ev">${fgFace(e.who)}<div class="fr-line">${tm}<b>${esc(e.who)}</b> is checking the work${e.dept?' for '+esc(e.dept):''}. Nobody who did it chose to be checked.</div></div>`;
+        const cls=e.verdict==='pass'?'ok':e.verdict==='fail'?'err':'warn';
+        return `<div class="fr-ev ${cls}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> ${
+          e.verdict==='pass'?'found nothing wrong':e.verdict==='concerns'?'has concerns':e.verdict==='fail'?'failed the work':'could not check it'}</div>
+          ${(e.findings||[]).length?`<div class="fr-say">${(e.findings||[]).map(f=>esc(f)).join('<br>')}</div>`:e.why?`<div class="fr-note">${esc(e.why)}</div>`:''}</div></div>`;}
       case 'note':return `<div class="fr-ev ${e.level==='error'?'err':'warn'} sys"><span class="fr-glyph">!</span><div class="fr-line">${tm}${esc(e.text)}</div></div>`;
       case 'end':return `<div class="fr-ev sys ${e.ok?'ok':'err'}">${fgFace('')}<div><div class="fr-line">${tm}<b>${e.ok?'Done':'It stopped'}</b>${
         e.delivered&&e.delivered.length?' · delivered to '+esc(e.delivered.join(', ')):''}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}</div></div>`;

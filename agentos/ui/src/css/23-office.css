@@ -84,6 +84,7 @@ body.dev-touch .of-files .endbtn{min-height:var(--tap)}
 .co-card .co-k{display:flex;flex-direction:column;align-items:center;font-weight:800}
 .co-card .co-k i{font-style:normal;font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:.06em;opacity:.7}
 .co-card .co-w,.co-line .co-w{color:#fbbf24;font-weight:800}
+.co-card .co-fl,.co-line .co-fl{color:#fb7185;font-weight:800}
 .co-card.wait{border-color:#f59e0b;box-shadow:0 0 0 2px color-mix(in srgb,#f59e0b 45%,transparent),0 2px 0 #191827}
 .co-card.busy .co-k:first-of-type{color:#86efac}
 .co-card.compact .co-n small,.co-card.compact .co-k i{display:none}
@@ -135,11 +136,18 @@ body.dev-touch .of-files .endbtn{min-height:var(--tap)}
 .co-tm,.co-said{font-size:var(--fs-xs);overflow-wrap:anywhere}
 .co-review{align-self:flex-start;margin-top:3px;font-size:var(--fs-xs);font-weight:700;color:#f59e0b;text-decoration:underline}
 body.dev-touch .co-review{min-height:var(--tap);display:inline-flex;align-items:center}
+.co-au{display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);margin-top:2px;overflow-wrap:anywhere}
+.co-au .co-av{width:16px;height:16px;border-radius:4px;flex:none;image-rendering:pixelated}
+.co-au.pass{color:var(--ok,#22c55e)}.co-au.concerns{color:#f59e0b}.co-au.fail{color:var(--err,#ef4444)}
+.co-au.none,.co-au.checking{color:var(--dim)}
+.co-check{color:var(--acc)}
+.co-audit{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);margin:2px 0 8px}
 .co-said{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 body.dev-touch .co-card{min-height:var(--tap)}
 body.dev-touch .of-company .endbtn,body.dev-touch .of-company .of-chip,body.dev-touch .of-company select,
 body.dev-touch .of-company input,body.dev-touch .co-lh,body.dev-touch .co-task-row,body.dev-touch .co-link,
-body.dev-touch .co-ph,body.dev-touch .co-more summary,body.dev-touch .co-talk{min-height:var(--tap)}
+body.dev-touch .co-ph,body.dev-touch .co-more summary,body.dev-touch .co-talk,body.dev-touch .co-audit{min-height:var(--tap)}
+body.dev-touch .co-audit input{width:22px;height:22px}
 body.dev-touch .co-ph input,body.dev-touch .co-dh input,body.dev-touch .co-talk input{width:22px;height:22px}
 body.dev-touch .co-more summary{display:flex;align-items:center}
 

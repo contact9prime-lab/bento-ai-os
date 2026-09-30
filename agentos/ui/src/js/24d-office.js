@@ -491,7 +491,7 @@ function officeReply(asker,who,text){
    (which names a tool and no agent) lands on the right desk. */
 function officeFabric(ev){
   const O=OFFICE,e=ev.event;
-  if(e==='flow_start'||e==='flow_end'||e==='approval'||e==='parked'||(e==='status'&&ev.status!=='running'))companySoon();
+  if(e==='flow_start'||e==='flow_end'||e==='approval'||e==='parked'||e==='audit'||(e==='status'&&ev.status!=='running'))companySoon();
   if(e==='flow_start'){O.missions[ev.flow]=performance.now();if(ev.run_id)O.flowRuns[ev.run_id]=ev.flow;
     officeLog(`mission ${ev.flow} started`);officeKick();return}
   if(e==='flow_end'){if(ev.flow)delete O.missions[ev.flow];else O.missions={};

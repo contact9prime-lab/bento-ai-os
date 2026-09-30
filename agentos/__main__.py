@@ -3513,7 +3513,60 @@ def _company_cli(args):
         if b["tasks"]:
             print("\n  Tasks:")
             for t in b["tasks"][:12]:
-                print(f"    {t['status']:<12} {t['department']:<12} {t['task'][:70]}")
+                au = t.get("audit") or {}
+                mark = ({"pass": "✓ checked", "concerns": "⚑ concerns", "fail": "✗ failed the check",
+                         "skipped": "– not checked", "unchecked": "– not checked"}.get(au.get("verdict"))
+                        or ("… checking" if au.get("state") == "checking" else ""))
+                print(f"    {t['status']:<12} {t['department']:<12} {t['task'][:56]:<56} "
+                      f"{mark}  {t.get('run_id') or ''}".rstrip())
+                if au.get("verdict") in ("concerns", "fail") and au.get("findings"):
+                    print(f"    {'':<12} {'':<12} auditor: {au['findings'][0][:90]}")
+                elif au.get("verdict") in ("skipped", "unchecked") and au.get("why"):
+                    print(f"    {'':<12} {'':<12} {au['why'][:100]}")
+            if any(t.get("can_check") and not (t.get("audit") or {}).get("verdict")
+                   for t in b["tasks"][:12]):
+                print("\n  Check a finished task:  bento company check RUN")
+        return
+    if a == "audit":
+        # the independent auditor: on by default, and a person's to switch off
+        if not rest or rest[0] not in ("on", "off"):
+            print(f"The independent auditor is {'on' if co.audit_on(cfg) else 'off'}: "
+                  + ("every finished department task is checked by an agent that did none of "
+                     "the work." if co.audit_on(cfg) else "finished tasks are not checked."))
+            print("  bento company audit on|off")
+            return
+        want = rest[0] == "on"
+        if up:
+            d = _api_call(port, "/api/company", "PUT", {"audit": want})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            was = co.audit_on(cfg)
+            cfg["company"] = {**(cfg.get("company") or {}), "audit": want}
+            _cfgmod.save_config(cfg)
+            if want != was:
+                if want:
+                    co.ensure_auditor(store)
+                co.record(store, "the independent auditor switched " + rest[0] + " from the terminal",
+                          action="company.audit")
+        print("✓ the independent auditor is " + ("on: every finished department task is checked."
+                                                 if want else "off: finished tasks are not checked."))
+        return
+    if a == "check":
+        if not rest:
+            print("bento company check RUN   (the run id from `bento company`)")
+            sys.exit(2)
+        if not _server_answers(port):
+            print("✗ AgentOS is not running here. The auditor works in the server: "
+                  "start it with `bento serve`.")
+            sys.exit(1)
+        d = _api_call(port, "/api/company/audit", "POST", {"run_id": rest[0]})
+        if d.get("error"):
+            print(f"✗ {d['error']}")
+            sys.exit(1)
+        print(f"▶ the auditor is checking {d['department']}'s task · run {d['run_id']}\n"
+              f"  bento company   shows the verdict when it is done")
         return
     if a == "templates":
         for c in co.catalogue():
@@ -3617,7 +3670,7 @@ def _company_cli(args):
         co.record(store, f"company renamed: {cur['name']}")
         print(f"✓ the company is called {co.profile(cfg)['name']}")
         return
-    print("bento company [show|templates|setup|task|name]")
+    print("bento company [show|templates|setup|task|name|audit|check]")
     sys.exit(2)
 
 
@@ -6448,9 +6501,10 @@ def main():
     p_fl.add_argument("--limit", type=int, default=20)
     p_co = verb("company", help="your company: departments of agents, set up from a sentence, and their work")
     p_co.add_argument("action", nargs="?", default="show",
-                      choices=["show", "list", "templates", "setup", "task", "name"])
+                      choices=["show", "list", "templates", "setup", "task", "name", "audit", "check"])
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
-                                              " · name: the company's name")
+                                              " · name: the company's name · audit: on|off"
+                                              " · check: RUN")
     p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")
     p_co.add_argument("--no-talk", action="store_true", help="setup: do not let colleagues ask each other")
     p_co.add_argument("--words", action="store_true", help="setup: skip the brain, use the catalogue as it is")

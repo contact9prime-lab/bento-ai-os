@@ -9355,12 +9355,25 @@ async def api_company_profile(body: dict):
     from . import company as companymod, teamlink
     cfg = state["cfg"]
     cur = dict(cfg.get("company") or {})
+    renamed = False
     for k, n in (("name", 48), ("about", companymod.ABOUT_MAX)):
         if k in (body or {}):
             cur[k] = teamlink.plain((body or {}).get(k), n, newlines=False)
+            renamed = True
+    was = companymod.audit_on(cfg)
+    if "audit" in (body or {}):
+        # switching off the independent check is a decision somebody should be able to
+        # find later, so it is a ledger row of its own
+        cur["audit"] = bool((body or {}).get("audit"))
     cfg["company"] = cur
     cfgmod.save_config(cfg)
-    companymod.record(state["store"], f"company renamed: {cur.get('name', '')}")
+    if renamed:
+        companymod.record(state["store"], f"company renamed: {cur.get('name', '')}")
+    if "audit" in (body or {}) and cur["audit"] != was:
+        if cur["audit"]:
+            companymod.ensure_auditor(state["store"])
+        companymod.record(state["store"], "the independent auditor switched "
+                          + ("on" if cur["audit"] else "off"), action="company.audit")
     await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
     return {"ok": True, "company": companymod.profile(cfg)}
 
@@ -9464,6 +9477,33 @@ async def api_company_task(body: dict, request: Request):
                                conversation_id=b.get("conversation_id", ""))
     return {"ok": True, "run_id": run_id, "flow": flow["name"],
             "department": str(b.get("department") or "")}
+
+
+@app.post("/api/company/audit")
+async def api_company_audit(body: dict):
+    """Check a department's finished task again, or for the first time (one that
+    finished while the auditor was off). Answers at once; the verdict arrives as the
+    run's `audit` event and on the task board."""
+    from . import company as companymod
+    cfg, store = state["cfg"], state["store"]
+    rid = str((body or {}).get("run_id") or "")
+    run = store.fabric_run(rid) if rid else None
+    if not run or run.get("kind") != "flow":
+        return JSONResponse({"error": "no department task with that id"}, status_code=404)
+    flow = store.get_flow(run.get("flow") or run.get("ref") or "")
+    if not flow or not companymod.audit_scope(cfg, store, flow["name"]):
+        return JSONResponse({"error": "that run is not a department's task"}, status_code=400)
+    if run.get("status") not in companymod.AUDITED:
+        return JSONResponse({"error": f"that task {run.get('status') or 'has not finished'}, "
+                                      f"so there is nothing to check"}, status_code=400)
+    uid = usersmod.current() or ""
+
+    async def go():
+        with usersmod.as_user(uid):
+            await state["fabric"].audit(flow, rid, force=True)
+            await state["broadcast_user"]({"type": "office"}, uid)
+    asyncio.create_task(go())
+    return {"ok": True, "run_id": rid, "department": companymod.audit_scope(cfg, store, flow["name"])["name"]}
 
 
 @app.get("/api/subagents")

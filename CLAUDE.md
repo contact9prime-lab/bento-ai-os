@@ -421,6 +421,33 @@ persona". Full story in `docs/company.md`; `tests/test_company.py` pins what fol
 The lead hears the org chart (`company.note`, appended after `team_note` in `agent.py`; the
 team door gets `desks=False`, because it has no `run_flow`).
 
+**An independent auditor checks every finished department task, by default**
+(`ControlPlane.audit`, called at the end of `run_flow` before delivery; `company.AUDITOR`,
+`audit_task`, `read_verdict`, `audit_state`; `tests/test_company_audit.py`). Asked for as
+"validation should happen once any department completes a job, by an auditor independent
+of the main agent". Five rules keep it independent:
+- **The control plane starts it, never the master.** It is on no roster, so `delegate` is
+  refused by the roster rule; `normalize` drops a person named `auditor` from any plan;
+  and an auditor that sits in the department, or on the desk's roster, gives `skipped` with
+  the reason rather than checking itself.
+- **Read-only whatever its definition says.** `kind="audit"` in `run_subagent` filters to
+  `AUDIT_TOOLS` after every automatic addition (remember, brief_item, ask_agent), so an
+  edited auditor still cannot write, file or message. It is told what the run filed in the
+  Brief, because it has no tool to read the Brief, and the first live run was unable to
+  confirm one.
+- **The verdict is read strictly.** The first word must be PASS, CONCERNS or FAIL;
+  anything else is `unchecked`, never a pass. Handles that read untrusted content are
+  fenced, and the rubric comes last.
+- **The audit run is the record.** A child of the desk run with kind `audit` (status
+  `skipped` with the reason when it could not be independent); `_task_rows` reads the
+  verdict back from that row, so the board, the card's ⚑ and `bento company` cannot
+  disagree. Also a `company.audit` ledger row, and a Brief item (`audit-<run>`) when it is
+  flagged or could not run. The deliverable is never rewritten: the verdict line goes
+  after it in what is delivered.
+- **On unless the person says otherwise** (`company.audit`, a USER_KEY, so `apply` must
+  merge `cfg["company"]` rather than replace it). The switch is a ledger row. `force=True`
+  (the page's Check it, `bento company check`) checks a task the switch skipped.
+
 **Every scene draws the company from ONE answer, `company.membership()`** (who is in which
 department, its head, whether that head was NAMED, the colour's hex, each title). The Crew
 stage reads it off `/api/subagents`, the Mind off `mind.snapshot`, the World off the

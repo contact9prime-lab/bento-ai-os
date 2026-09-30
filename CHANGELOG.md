@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.17 — 2026-09-30
+
+**An independent auditor checks every department's work.** When a department finishes a
+task, an agent called auditor checks it before the answer reaches you. It did none of the
+work, it sits in no department, and nobody whose work it checks can skip it. It reads what
+was asked, what came back, the work behind it and what was put in your Brief. Then it
+says pass, concerns or fail, and lists what it found. The verdict shows under the task,
+on the department's card (⚑), with the result in chat or on your phone, and in the Run
+Inspector. Anything it flags goes to your Brief. It's on by default. Switch it off above
+the task board, or with `bento company audit off`, and check any finished task with
+**Check it** or `bento company check RUN`.
+
 ## 0.6.16 — 2026-09-29
 
 **Your company in every scene.** The Crew stage shows one figure per department, and it
