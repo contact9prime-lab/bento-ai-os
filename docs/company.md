@@ -94,6 +94,34 @@ to open it in the Run Inspector.
 
 ![The Office with a company: each department's room, its head, and its card](screenshots/company-office.png)
 
+## In every scene
+
+The desktop's scenes (Settings → Appearance → Scene) show the company too. Each reads
+the same answer about who is in which department, so they never disagree.
+
+- **Crew:** one figure per department, drawn as its head in the department's colour,
+  with the department's name and size under it. When anybody in the department works,
+  its figure steps forward and says who. Anybody in no department stands beside them.
+
+  ![The Crew stage with a company: one figure per department](screenshots/company-crew.png)
+
+- **Mind:** each department is one cluster in its colour, with its people as the brighter
+  points in it and their runs around them. Tap a department for its head, its people and
+  a button to give it a task. Two people in one department talking stays inside the
+  cluster; departments talking to each other is a strand between them.
+
+  ![The Mind with a company: a cluster per department, and one department's card](screenshots/company-mind.png)
+
+- **World:** a department stands as its head, with a tag like "★ Finance · 3". Tap the
+  head to see how everybody in the department feels. Drawing twenty people at once made a
+  crowd, so the rest of the department is on that card instead.
+
+  ![The World with a company: the heads, their departments, and a head's card](screenshots/company-world.png)
+
+- **Office:** the rooms, as above.
+
+`bento mind` groups by department in a terminal as well.
+
 ## Changing it later
 
 - **Add departments:** ▦ Company → **＋ Add departments**. Existing departments and
@@ -110,6 +138,6 @@ to open it in the Run Inspector.
   panel is a sheet and the cards shrink to fit the room.
 - **TUI:** `bento company` shows, `setup` plans and makes, `task` hands out work. A task
   needs the server running, because that is where the work runs.
-- **SUI:** the same page. The desktop scene (Office behind your windows) shows the
-  departments and people but not the cards, because nothing under the windows can be
-  tapped.
+- **SUI:** the same page. The desktop scenes (Office, Crew, Mind, World) show the
+  departments. The Office scene shows no cards, because nothing under the windows can be
+  tapped; the Mind's and the World's tags can be.

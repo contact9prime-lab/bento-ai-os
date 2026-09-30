@@ -4706,6 +4706,13 @@ def _mind_cli(args):
             extra = ("working now" if t.get("busy") else
                      f"{t.get('runs', 0)} run{'s' if t.get('runs', 0) != 1 else ''} this week")
             extra += f" · {t['brain']}" if t.get("brain") else ""
+        elif h["kind"] == "dept":
+            ppl = [x for x in snap["team"] if x.get("dept") == h["label"]]
+            busy = [x["name"] for x in ppl if x.get("busy")]
+            runs = sum(x.get("runs", 0) for x in ppl)
+            extra = (f"{len(ppl)} {'person' if len(ppl) == 1 else 'people'}, head {h.get('head') or '-'} · "
+                     + (f"{', '.join(busy)} working now" if busy else
+                        f"{runs} run{'s' if runs != 1 else ''} this week"))
         elif h["kind"] == "knowledge":
             extra = f"{snap['stats']['facts']} facts between them"
         elif h["kind"] == "missions":

@@ -325,7 +325,8 @@ function mindDraw(t,state){
     H.nodes.forEach(p=>{
       const n=p.n,bad=n.status==='error'||n.status==='timeout';
       const spr=mindSprite(bad?2:hue,bad?90:100,bad?60:62);
-      const s=(n.pinned||n.kind==='skill'||n.on?15:10+Math.min(8,(n.w||0)*1.5))*(.75+p.z*.25)*(1+p.flash*.9);
+      const s=(n.kind==='person'?(n.head?22:18)*(n.busy?1.25:1)
+        :n.pinned||n.kind==='skill'||n.on?15:10+Math.min(8,(n.w||0)*1.5))*(.75+p.z*.25)*(1+p.flash*.9);
       g.globalAlpha=Math.min(1,Math.max(.35,.8+p.z*.2)*(n.hub==='missions'&&!n.on?.45:1)+p.flash*.5);
       g.drawImage(spr,p.x-s/2,p.y-s/2,s,s);
       if(p.flash)p.flash=p.flash<.03?0:p.flash*.9;
@@ -507,7 +508,9 @@ function mindPulse(kind,label,ev){
     MIND.sparks.push({from,to,at:now,dur:MIND.still?1:1100});
     if(MIND.sparks.length>24)MIND.sparks.shift();
   };
-  const agentHub=n=>n&&L.hubs['agent:'+n]?'agent:'+n:'';
+  // an agent's cluster is its department's when there is a company (mind.py `where`)
+  const agentHub=n=>{if(!n)return '';const w=MIND.snap&&MIND.snap.where&&MIND.snap.where[n];
+    return w&&L.hubs[w]?w:L.hubs['agent:'+n]?'agent:'+n:''};
   if(kind==='tool'&&label){
     const name=String(label),args=(ev&&ev.args)||{};
     if(MIND_MEMORY_TOOLS.test(name))spark('core','memory');
@@ -519,8 +522,9 @@ function mindPulse(kind,label,ev){
     if(who)spark(ev.flow?'missions':'core',who);else if(ev.flow)spark('core','missions');
     if(ev.event==='status')mindSoon(1200);
   }else if(kind==='done'){spark('core','missions');mindSoon(1500)}
-  else if(kind==='msg'&&ev){const a=agentHub(ev.from),b=agentHub(ev.to);if(a&&b)spark(ev.phase==='ask'?a:b,ev.phase==='ask'?b:a)}
-  else if(kind==='say'&&label){const a=agentHub(label),b=agentHub(ev&&ev.to);if(a&&b)spark(a,b);else if(a)MIND.flare[a]=1}
+  else if(kind==='msg'&&ev){const a=agentHub(ev.from),b=agentHub(ev.to);
+    if(a&&b&&a===b)MIND.flare[a]=1;else if(a&&b)spark(ev.phase==='ask'?a:b,ev.phase==='ask'?b:a)}
+  else if(kind==='say'&&label){const a=agentHub(label),b=agentHub(ev&&ev.to);if(a&&b&&a!==b)spark(a,b);else if(a)MIND.flare[a]=1}
   else if(kind==='turnend')mindSoon(2000);
   mindKick();
 }
@@ -536,10 +540,10 @@ function mindStateText(state){
 function mindNum(n){n=+n||0;return n>=1e6?(n/1e6).toFixed(1).replace(/\.0$/,'')+'M':n>=1e4?Math.round(n/1e3)+'k':n>=1e3?(n/1e3).toFixed(1).replace(/\.0$/,'')+'k':String(n)}
 function mindPaintUI(){
   const S=MIND.snap,U=MIND.ui;if(!S||!U)return;
-  const st=S.stats,b=S.brief||{},agents=S.hubs.filter(h=>h.kind==='agent').length;
+  const st=S.stats,b=S.brief||{},agents=S.team.length,depts=S.hubs.filter(h=>h.kind==='dept');
   U.querySelector('.mn-top').innerHTML=
     `<span class="mn-dot"></span><b class="mn-state">Quiet</b><span class="mn-sep">·</span>`+
-    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}</span>`+
+    `<span class="mn-sum">${esc(S.lead)} and ${agents} specialist${agents===1?'':'s'}${depts.length?` in ${depts.length} department${depts.length===1?'':'s'}`:''}</span>`+
     `<button class="mn-btn" onclick="mindTell()">Tell me</button>`+
     `<button class="mn-btn" onclick="mindTalk()" aria-label="Talk to ${esc(S.lead)}">🎙 Talk</button>`+
     `<button class="mn-btn mn-peace" onclick="mindPeace()" aria-pressed="${MIND.peace?'true':'false'}" title="${MIND.peace?'Show the panels':'Peace: only the mind'}">${MIND.peace?'Show all':'Peace'}</button>`;
@@ -561,7 +565,11 @@ function mindPaintUI(){
   const busyLead=typeof RUNNING!=='undefined'&&RUNNING.size>0;
   U.querySelector('.mn-right').innerHTML=`<section class="mn-panel mn-team"><h3>Team</h3>`+
     `<div class="mn-agent lead${busyLead?' busy':''}"><span class="mn-pip"></span><b>${esc(S.lead)}</b><i>${busyLead?'working':'your lead'}</i></div>`+
-    (S.team.length?S.team.map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
+    depts.map(h=>{const ppl=S.team.filter(a=>a.dept===h.label),busy=ppl.filter(a=>a.busy).length,
+      runs=ppl.reduce((n,a)=>n+(a.runs||0),0);
+      return `<button class="mn-agent${busy?' busy':''}" data-hub="${esc(h.id)}"><span class="mn-pip" style="--mh:${h.hue}"></span>`+
+        `<b>${esc(h.label)}</b><i>${busy?busy+' working':runs?runs+' run'+(runs===1?'':'s')+' this week':'idle'} · ${ppl.length} ${ppl.length===1?'person':'people'}</i></button>`}).join('')+
+    (S.team.length?S.team.filter(a=>!a.dept).map(a=>`<button class="mn-agent${a.busy?' busy':''}" data-hub="agent:${esc(a.name)}">`+
       `<span class="mn-pip" style="--mh:${(S.hubs.find(h=>h.id==='agent:'+a.name)||{}).hue||200}"></span><b>${esc(a.name)}</b>`+
       `<i>${a.busy?'working':a.runs?a.runs+' run'+(a.runs===1?'':'s')+' this week':'idle'}${a.brain?' · '+esc(a.brain):''}</i></button>`).join('')
       :'<p class="mn-quiet">No specialists yet.</p>')+`</section>`;
@@ -609,6 +617,13 @@ function mindCard(id,refresh){
   }else if(h.kind==='missions'){
     body=nodes.length?li(nodes.map(n=>`<li>${esc(n.label)} <i>${n.on?'on':'off'}</i></li>`)):'<p>No missions yet.</p>';
     go=`<button class="endbtn" onclick="openApp('jobs')">Open Missions</button>`;
+  }else if(h.kind==='dept'){
+    const ppl=nodes.filter(n=>n.kind==='person'),runs=nodes.filter(n=>n.kind==='run');
+    const busy=ppl.filter(n=>n.busy).map(n=>n.label);
+    body=`<p>${busy.length?esc(busy.join(', '))+' working now.':runs.length?`${runs.length} run${runs.length===1?'':'s'} this week.`:'Nothing this week.'}</p>`+
+      li(ppl.map(n=>`<li>${n.head?'★ ':''}${esc(n.label)}${n.title?` <i>${esc(n.title)}</i>`:''}</li>`))+
+      li(runs.slice(0,4).map(n=>`<li>${esc(n.label)} <i>${esc(n.status||'')}</i></li>`));
+    go=`<button class="endbtn" data-dept="${esc(h.label)}">Give ${esc(h.label)} a task</button>`;
   }else{
     const name=h.label,a=S.team.find(x=>x.name===name)||{},talk=S.links.filter(k=>k.kind==='talk'&&(k.a===id||k.b===id));
     const skills=nodes.filter(n=>n.kind==='skill'),runs=nodes.filter(n=>n.kind==='run');
@@ -620,7 +635,13 @@ function mindCard(id,refresh){
   }
   card.innerHTML=`<div class="mn-ch"><span class="mn-pip" style="--mh:${h.hue}"></span><b>${esc(h.label)}</b>`+
     `<button class="mn-x" aria-label="Close" data-hub="${esc(id)}">✕</button></div>${body}<div class="mn-go">${go}</div>`;
+  const dg=card.querySelector('[data-dept]');if(dg)dg.onclick=()=>mindDept(dg.dataset.dept);
   card.hidden=false;U.classList.add('carded');
+}
+/* A department's card hands over to the Office's company panel, where tasks are given. */
+function mindDept(name){
+  openApp('office');
+  setTimeout(()=>{if(typeof COMPANY!=='undefined'){COMPANY.focus=name;officeCompany(true)}},500);
 }
 /* The panels, said aloud by the lead, from the same snapshot. */
 function mindTell(){

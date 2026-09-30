@@ -28,6 +28,12 @@ body.has-win #world-ui *{pointer-events:none!important}
   color:#fff;background:rgba(10,14,28,.58);text-shadow:0 1px 2px rgba(0,0,0,.5);
   box-shadow:inset 0 -2px 0 hsl(var(--mh,200) 75% 62% / .9),0 3px 10px rgba(0,0,0,.25)}
 .wd-tag .wd-name b{font-weight:400;font-size:12px}
+/* a company's department (company.membership): its colour and name under the person's */
+.wd-tag .wd-dept{margin-top:2px;padding:1px 7px;border-radius:6px;font-size:10px;font-weight:700;white-space:nowrap;
+  color:#fff;background:color-mix(in srgb,var(--dc) 78%,#000);box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.wd-staff{list-style:none;margin:4px 0 8px;padding:0;font-size:var(--fs-sm)}
+.wd-staff li{padding:2px 0}.wd-staff small{color:var(--dim)}
+.wd-org{margin-top:3px;font-size:var(--fs-xs);font-weight:600;padding-left:8px;border-left:3px solid var(--dc)}
 .wd-tag.busy .wd-name::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--acc);box-shadow:0 0 6px var(--acc);animation:wdPulse 1.2s ease-in-out infinite}
 .wd-tag:focus-visible .wd-name{outline:2px solid var(--acc);outline-offset:2px}
 .wd-say{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:max-content;max-width:210px;

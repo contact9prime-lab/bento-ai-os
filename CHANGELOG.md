@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.16 — 2026-09-29
+
+**Your company in every scene.** The Crew stage shows one figure per department, and it
+steps forward when anyone in that department is working. The Mind draws each department
+as one cluster in its colour, with a card for its head, its people and a task button.
+The World shows each department as its head, tagged "★ Finance · 3", and the head's card
+shows how everyone in the department feels.
+
 ## 0.6.15 — 2026-09-29
 
 **Set up your company.** Tell Bento what your business does and it drafts the company:

@@ -54,13 +54,14 @@
    `var`, not `let`: the bundle is one script. */
 var CREW={on:false,cv:null,ctx:null,raf:0,last:0,t:0,W:0,H:0,dpr:1,font:'',static:false,
   cast:[],rosterAt:0,busy:{},tool:null,turns:0,drawn:0,drawMs:0,greeted:0,
-  arrive:{},said:{},known:null,guests:[],guestsAt:0};
+  arrive:{},said:{},known:null,guests:[],guestsAt:0,worker:{}};
 var CREW_GUESTS=4;                    // visitors from linked teams, at the stage's right edge
 var CREW_GUEST_MS=300000;             // their roster is a call to another machine: every 5 min
 var CREW_SHEETS={};                   // key → {img,v}: one sheet per character, from the server
 var CREW_WALK_MS=2600;                // a new specialist's walk in from the edge
 var CREW_SAY_MS=3800;                 // how long a bubble stays up
 var CREW_MAX=8;                       // figures beside the agent; a stage, not a census
+var CREW_MAX_ORG=10;                  // with a company, one figure per department (office.MAX_DEPTS)
 var CREW_WORK_MS=9000;                // how long a figure stays forward after its last event
 var CREW_TOOL_MS=6000;                // how long the tool it called stays named above it
 
@@ -124,13 +125,22 @@ async function crewRoster(force){
     const was=CREW.cast.map(c=>c.name);
     const pos=n=>{const i=was.indexOf(n);return i<0?1e9:i};
     CREW.agentBrain=(d.agent_brain&&d.agent_brain.provider_name)||'';
-    CREW.cast=(d.subagents||d.agents||[])
+    const subs=(d.subagents||d.agents||[])
       .filter(s=>s&&(s.name||s.id)&&s.enabled!==false)
       // `brain` is what the agent ANSWERS on (fabric.agent_brain), not what it is
       // pinned to — a switched-off provider sends it to the machine's brain
-      .map(s=>({name:String(s.name||s.id),brain:(s.brain&&s.brain.provider_name)||''}))
+      .map(s=>({name:String(s.name||s.id),brain:(s.brain&&s.brain.provider_name)||''}));
+    // With a company (company.membership), the stage is the org chart: one figure per
+    // department, drawn as its head in the department's colour, and anybody in no
+    // department after them. Twenty-one people do not fit a stage; ten departments do.
+    const depts=((d.company||{}).departments||[]).filter(x=>x.head&&subs.some(s=>s.name===x.head));
+    const inDept=new Set();depts.forEach(x=>x.members.forEach(m=>inDept.add(m)));
+    CREW.cast=(depts.length
+      ?depts.map(x=>({name:x.head,dept:x.name,members:x.members,named:x.named,
+          brain:(subs.find(s=>s.name===x.head)||{}).brain||''})).concat(subs.filter(s=>!inDept.has(s.name)))
+      :subs)
       .sort((a,b)=>pos(a.name)-pos(b.name))
-      .slice(0,CREW_MAX);
+      .slice(0,depts.length?CREW_MAX_ORG:CREW_MAX);
     // somebody new has no character yet until /api/avatars has generated one
     if(typeof avatarsLoad==='function'&&CREW.cast.some(c=>!AVATARS.by[c.name]))await avatarsLoad();
     // Arrivals. The first roster is who was already here — nobody walks in on a
@@ -185,7 +195,8 @@ function crewPulse(kind,label,ev){
   // a turn of a huddle: the one talking lights up, with its words over its head
   if(kind==='say'){const w=crewMatch(label);
     // a question to a colleague says who it is for, so the stage reads as a conversation
-    if(w){CREW.busy[w]=now;crewSay(w,(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
+    if(w){CREW.busy[w]=now;crewWorker(w,label);
+      crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
     crewKick();return}
   if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
   if(kind==='tool'&&label){
@@ -193,8 +204,11 @@ function crewPulse(kind,label,ev){
     crewKick();return;
   }
   const who=crewMatch(label)||crewMatch(ev&&ev.agent);
-  if(kind==='flow'){if(who)CREW.busy[who]=now;crewKick();return}
-  if(kind==='done'){if(who){delete CREW.busy[who];crewSay(who,'done \u2713')}crewKick();return}
+  const by=crewMatch(label)?label:(ev&&ev.agent)||'';
+  if(kind==='flow'){if(who){CREW.busy[who]=now;crewWorker(who,by)}crewKick();return}
+  if(kind==='done'){if(who){delete CREW.busy[who];
+    const w=CREW.worker[who];crewSay(who,(crewDeptOf(who)&&w&&w!==who?w+': ':'')+'done \u2713');delete CREW.worker[who]}
+    crewKick();return}
 }
 /* Name → a cast member, loosely: the event's spelling and the roster's rarely
    match on case or separators. Returns null when nothing matches. */
@@ -202,8 +216,20 @@ function crewMatch(label){
   if(!label)return null;
   const k=String(label).toLowerCase().replace(/[^a-z0-9]/g,'');
   if(!k)return null;
-  const hit=CREW.cast.find(c=>{const n=c.name.toLowerCase().replace(/[^a-z0-9]/g,'');return n&&(n===k||k.includes(n)||n.includes(k))});
+  const same=n=>{n=String(n).toLowerCase().replace(/[^a-z0-9]/g,'');return n&&(n===k||k.includes(n)||n.includes(k))};
+  // a department's figure answers for everybody in it (its head is who is drawn)
+  const hit=CREW.cast.find(c=>same(c.name))||CREW.cast.find(c=>c.members&&c.members.some(same));
   return hit?hit.name:null;
+}
+/* The department a figure stands for, or '' for a specialist in none. */
+function crewDeptOf(name){const c=CREW.cast.find(x=>x.name===name);return (c&&c.dept)||''}
+/* Who in the department is doing it: the label as the event spelled it, matched back to
+   a member so the tag above the figure names a real person. */
+function crewWorker(who,label){
+  const c=CREW.cast.find(x=>x.name===who);if(!c||!c.members||!label)return;
+  const k=String(label).toLowerCase().replace(/[^a-z0-9]/g,'');
+  const m=c.members.find(n=>n.toLowerCase().replace(/[^a-z0-9]/g,'')===k)||c.members.find(n=>k.includes(n.toLowerCase().replace(/[^a-z0-9]/g,'')));
+  if(m)CREW.worker[who]=m;
 }
 /* Who a bare tool call belongs to: the specialist that moved most recently, or
    the agent when none has. A tool call carries no principal in the stream, so
@@ -447,8 +473,11 @@ function crewDraw(dt){
       const q=Math.min(1,(now-C.arrive[name])/CREW_WALK_MS), from=s.x<W/2?-scale*.4:W+scale*.4;
       x=from+(s.x-from)*(1-Math.pow(1-q,3));walking=q<1;
     }
+    const d=s.c.dept;
+    const sub=d?(lit?(C.worker[name]||name).replace(/[-_]/g,' ')
+      :`${s.c.named?'\u2605 ':''}${name.replace(/[-_]/g,' ')} · ${s.c.members.length}`):s.c.brain;
     const hy=crewFigure(ctx,x,ground,scale,ink,name,hueOf[i],p,lift,
-      crewFit(name.replace(/[-_]/g,' '),step,scale),s.c.brain,lit,walking);
+      crewFit(d||name.replace(/[-_]/g,' '),step,scale),sub,lit,walking);
     heads[name]={x,y:hy,sc:scale,hue:hueOf[i]};
   });
   // Visitors from linked teams: smaller, at the right edge past the floor, each named
@@ -484,8 +513,10 @@ function crewDraw(dt){
   }
   // the standing line. With nobody on the roster it says so and says what to do
   // about it — an empty stage that explains itself, not an empty stage.
-  const nb=Object.keys(C.busy).length;
+  const nb=Object.keys(C.busy).length,nd=C.cast.filter(c=>c.dept).length;
   const line=n===0?'No specialists yet — ask for one and they take a place here'
+    :nd?(()=>{const w=C.cast.filter(c=>c.dept&&C.busy[c.name]).length;
+      return w?`${w} of ${nd} departments working`:`${nd} departments standing by`})()
     :nb?`${nb} of ${n} working`
     :running?`${who} is working · ${n} ${n===1?'specialist':'specialists'} standing by`
     :`${n} ${n===1?'specialist':'specialists'} standing by`;

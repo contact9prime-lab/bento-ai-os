@@ -260,6 +260,18 @@ function worldSay(a,text){
   WORLD.bubbles[a.name]={text,until:performance.now()+7000};worldTags();
 }
 function worldLabel(n){return n==='@agent'?(typeof agentName==='function'?agentName():'Your agent'):n}
+/* Which department somebody is in (company.membership, carried on the world's answer by
+   the server): the tag wears its colour, and a head wears the star. The heads stand in the
+   front row because the server orders the cast that way; nothing here decides it. */
+function worldOrg(n){const c=WORLD.v&&WORLD.v.company;return (c&&c.of&&c.of[n])||null}
+/* With a company, a department stands as its head and the rest of it is `staff` (the
+   server's _world_org): drawing twenty-odd people made a crowd, not a team. */
+function worldStaff(n){const o=worldOrg(n);return o&&o.head?((WORLD.v.staff||{})[o.dept]||[]):[]}
+function worldDeptLine(n){
+  const o=worldOrg(n);if(!o)return '';
+  const d=((WORLD.v.company||{}).departments||[]).find(x=>x.name===o.dept);
+  return (o.head?'\u2605 ':'')+o.dept+(o.head&&d?' · '+d.members.length:'');
+}
 /* Name tags are HTML over the canvas: crisp text, a real button a finger can hit, and
    the door to why each agent feels what it feels. */
 function worldTags(){
@@ -274,12 +286,13 @@ function worldTags(){
     const m=a.mood,b=WORLD.bubbles[a.name],say=b&&b.until>now?b.text:'';
     const html=(say?`<span class="wd-say">${esc(say)}</span>`:'')+
       (WORLD.flat?avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''}):'')+
-      `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`;
+      `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`+
+      (worldOrg(a.name)?`<span class="wd-dept" style="--dc:${esc(worldOrg(a.name).hex)}">${esc(worldDeptLine(a.name))}</span>`:'');
     if(el._h!==html){el.innerHTML=html;el._h=html}
     el.style.setProperty('--mh',m.hue);
     el.title=`${m.name}. Tap to see why.`;
     el.setAttribute('aria-label',`${worldLabel(a.name)} feels ${m.name}. Tap to see why.`);
-    el.className='wd-tag wx-'+m.expression+(a.busy?' busy':'');
+    el.className='wd-tag wx-'+m.expression+(a.busy||worldStaff(a.name).some(x=>x.busy)?' busy':'');
     if(WORLD.flat){el.style.left=((i+.5)/cast.length*100)+'%';el.style.top='';el.classList.add('flat')}
   });
   [...box.children].forEach(el=>{if(!have.has(el.dataset.wa))el.remove()});
@@ -568,13 +581,16 @@ function worldCard(name,quiet){
   card.hidden=false;card.style.setProperty('--mh',m.hue);
   card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
     <div class="wd-who">${avatarImg(name,'wd-face')}<div><b>${esc(worldLabel(name))}</b>
-      <div class="wd-feel">${esc(m.emoji)} ${esc(m.name)}${a.busy?' · at work':''}</div></div></div>
+      <div class="wd-feel">${esc(m.emoji)} ${esc(m.name)}${a.busy?' · at work':''}</div>
+      ${(o=>o?`<div class="wd-org" style="--dc:${esc(o.hex)}">${esc(o.title?o.title+' · '+o.dept:o.head?'Head of '+o.dept:o.dept)}</div>`:'')(worldOrg(name))}</div></div>
     ${a.why.length?`<div class="wd-h">Because</div><ul class="wd-because">${a.why.map(w=>
       `<li>${esc(w.words)}${w.detail?` <code>${esc(w.detail)}</code>`:''} <small>${ago(w.ago)}</small></li>`).join('')}</ul>`:
       `<p class="wd-quiet">Nothing has happened to ${esc(worldLabel(name))} here yet.</p>`}
     ${m.under&&m.under.length?`<p class="wd-under">Also: ${m.under.map(u=>esc(u.emoji+' '+u.name)).join(', ')}</p>`:''}
     <div class="wd-grow"><span>${esc(l.name)}</span>${l.next?`<i style="--p:${Math.max(4,100-l.to_next/(l.to_next+l.xp||1)*100)}%"></i><small>${l.to_next} to ${esc(l.next)}</small>`:'<small>top of the ladder</small>'}</div>
     ${a.friend?`<p class="wd-friend">Works best with ${esc(worldLabel(a.friend))}</p>`:''}
+    ${worldStaff(name).length?`<div class="wd-h">${esc(worldOrg(name).dept)}</div><ul class="wd-staff">${worldStaff(name).map(x=>
+      `<li><b>${esc(x.mood.emoji)}</b> ${esc(x.name)} <small>${esc(x.mood.name)}${x.busy?' · at work':''}</small></li>`).join('')}</ul>`:''}
     <div class="wd-acts"><button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>
       <button class="endbtn wd-calm1" onclick="worldCalm('${esc(name)}')">Calm down</button></div>`;
 }

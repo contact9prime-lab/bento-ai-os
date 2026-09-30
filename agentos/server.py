@@ -8971,6 +8971,45 @@ async def api_office_design(body: dict):
 # page that is not showing the scene has nothing to read. No capability is granted or
 # checked here: a feeling is not an action, and the gate is never consulted differently.
 
+def _world_view(uid: str) -> dict:
+    return _world_org(worldmod.view(uid))
+
+
+def _world_org(v: dict) -> dict:
+    """The live world, with who is in which department (company.membership). With a
+    company the place would hold twenty-odd people shoulder to shoulder, which read as a
+    crowd rather than a team (a screenshot of 25). So a department stands as its HEAD,
+    tagged with the department and its size, and the rest of it is `staff`, listed with
+    their own feelings on the head's card. Your agent comes first, then the heads, then
+    anybody in no department. world.py keeps its own lease and never reads the company;
+    this route is where the two meet, and nobody's feelings are dropped, only drawn
+    inside their head's card."""
+    if not v.get("live"):
+        return v
+    from . import company as companymod
+    m = companymod.membership(state["cfg"], state["store"])
+    v["company"] = m
+    if not m["departments"]:
+        return v
+    of, order = m["of"], {d["name"]: i for i, d in enumerate(m["departments"])}
+    heads = {d["head"] for d in m["departments"]}
+    shown, staff = [], {}
+    for a in v.get("agents") or []:
+        o = of.get(a.get("name"))
+        if o and a.get("name") not in heads:
+            staff.setdefault(o["dept"], []).append(a)
+        else:
+            shown.append(a)
+
+    def rank(a):
+        n = a.get("name")
+        o = of.get(n)
+        return (0, 0) if n == "@agent" else (1, order.get(o["dept"], 99)) if o else (2, 0)
+    v["agents"] = sorted(shown, key=rank)
+    v["staff"] = staff
+    return v
+
+
 def _world_cast(store) -> list[str]:
     return [d["name"] for d in store.list_subagents() if d.get("enabled", 1)]
 
@@ -8990,8 +9029,8 @@ async def api_worlds():
 async def api_world_enter(body: dict):
     store = state["store"]
     try:
-        return worldmod.enter(usersmod.current() or "", store, str((body or {}).get("world") or
-                                                                   worldmod.DEFAULT), _world_cast(store))
+        return _world_org(worldmod.enter(usersmod.current() or "", store, str((body or {}).get("world") or
+                                                                              worldmod.DEFAULT), _world_cast(store)))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
@@ -9009,7 +9048,7 @@ async def api_world_leave():
 
 @app.get("/api/world/state")
 async def api_world_state():
-    return worldmod.view(usersmod.current() or "")
+    return _world_view(usersmod.current() or "")
 
 
 @app.post("/api/world/pat")
@@ -9017,7 +9056,7 @@ async def api_world_pat(body: dict):
     uid = usersmod.current() or ""
     if not worldmod.praise(uid, str((body or {}).get("agent") or "")):
         return JSONResponse({"error": "the world is asleep"}, status_code=409)
-    return worldmod.view(uid)
+    return _world_view(uid)
 
 
 @app.post("/api/world/calm")
@@ -9027,7 +9066,7 @@ async def api_world_calm(body: dict):
     if worldmod.live_world(uid) == "":
         return JSONResponse({"error": "the world is asleep"}, status_code=409)
     worldmod.calm(uid, str((body or {}).get("agent") or ""))
-    return worldmod.view(uid)
+    return _world_view(uid)
 
 
 @app.post("/api/world/inner")
@@ -9035,7 +9074,7 @@ async def api_world_inner(body: dict):
     uid = usersmod.current() or ""
     if not worldmod.set_inner(uid, bool((body or {}).get("on"))):
         return JSONResponse({"error": "the world is asleep"}, status_code=409)
-    return worldmod.view(uid)
+    return _world_view(uid)
 
 
 @app.post("/api/world/checkin")
@@ -9052,15 +9091,15 @@ async def api_world_checkin(body: dict):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=409 if "asleep" in str(e) else 400)
     if you.get("skipped"):
-        return worldmod.view(uid)
-    v = worldmod.view(uid)
+        return _world_view(uid)
+    v = _world_view(uid)
     w = v["world"]
     system, prompt = worldmod.reply_prompt(w, cfg.get("agent_name") or "Aria", you)
     raw, who = await execmod.ask_once(cfg, system, prompt, timeout=60)
     reply = " ".join(str(raw or "").split())[:400]
     how = "brain" if reply else "words"
     worldmod.set_reply(uid, reply or worldmod.reply_fallback(w, int(you.get("valence") or 0)), how)
-    return worldmod.view(uid)
+    return _world_view(uid)
 
 
 @app.delete("/api/world/checkin")
@@ -9068,7 +9107,7 @@ async def api_world_forget_checkin():
     uid = usersmod.current() or ""
     if not worldmod.forget_you(uid):
         return JSONResponse({"error": "the world is asleep"}, status_code=409)
-    return worldmod.view(uid)
+    return _world_view(uid)
 
 
 @app.post("/api/world/reset")
@@ -9078,7 +9117,7 @@ async def api_world_reset(body: dict):
     if not worldmod.world(state["store"], wid):
         return JSONResponse({"error": f"no world called {wid!r}"}, status_code=404)
     worldmod.reset(uid, state["store"], wid)
-    return worldmod.view(uid)
+    return _world_view(uid)
 
 
 @app.post("/api/world/design")
@@ -9172,7 +9211,7 @@ async def api_world_scene(body: dict):
             "No brain is set up, so this matched the words you used.")
     return {"ok": True, "world": new, "previous": None if was_original else previous, "how": how,
             "who": who if how == "brain" else "", "dropped": dropped, "said": said,
-            "state": worldmod.view(uid)}
+            "state": _world_view(uid)}
 
 
 @app.delete("/api/world/{wid}")
@@ -9436,9 +9475,13 @@ async def api_subagents():
     subs = state["store"].list_subagents()
     for s in subs:
         s["brain"] = fabricmod.agent_brain(cfg, s)
+    from . import company as companymod
     return {"subagents": subs, "agent_brain": fabricmod.agent_brain(cfg, None),
             "own_brains": bool((cfg.get("team") or {}).get("own_brains", True)),
-            "talk": team_talk(cfg)}
+            "talk": team_talk(cfg),
+            # who is in which department: the Crew stage draws one figure per department
+            # from this, and every scene reads the same answer (company.membership)
+            "company": companymod.membership(cfg, state["store"])}
 
 
 @app.get("/api/team/links")
