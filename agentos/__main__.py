@@ -316,9 +316,20 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
     # it replaces, and only when no other server is still using that home: a second
     # instance moved to another port (`--if-running=port`) must never swap it.
     if kind != "taken" or mode == "restart":
+        # Cloud standby (standby.py): if the cloud took over while this machine was off,
+        # its work comes back HERE, before the scheduler or a channel can act on the
+        # old copy. A cloud that does not answer holds nothing up.
+        try:
+            from . import standby as _sb
+            _sb.boot(echo=print)
+        except Exception as e:
+            print(f"  ✗ could not bring the work back from the cloud: {e}", file=sys.stderr)
         try:
             from . import backup as _bk
-            if _bk.apply_pending():
+            from . import standby as _sb
+            rep = _bk.apply_pending()
+            if rep:
+                _sb.after_swap(rep)          # this machine's own door stays its own
                 cfg = remotemod.sanitize_remote(cfgmod.load_config())
         except Exception as e:               # never keep the machine from starting
             print(f"  ✗ the staged restore could not be applied: {e}", file=sys.stderr)
@@ -3375,6 +3386,101 @@ def _size(n: int) -> str:
     return str(n)
 
 
+def _standby_cli(args):
+    """`bento standby`: the cloud standby from a terminal. Everything but `copy`, `move`
+    and `back` works with the server down; those talk to the other machine directly."""
+    from . import standby as sb
+    act = args.action
+    say = print
+    try:
+        if act == "status":
+            s = sb.status()
+            if not s["role"]:
+                say("  Not paired.")
+                say("  On the cloud machine:  bento standby wait      (shows a pairing code)")
+                say("  Then on this machine:  bento standby pair https://<cloud> <code>")
+                if s.get("waiting_code"):
+                    say("  This machine is waiting to be paired.")
+                return
+            if s["role"] == "primary":
+                say(f"  This is the main machine. Standby: {s['peer_host']} at {s['url']}")
+                say(f"  {'Working here.' if s['active'] else 'Handed over: your agent is working in the cloud.'}")
+                say(f"  Heard back {sb.ago(s['last_contact'])} · last copy {sb.ago(s['last_push'])}"
+                    + (f", {sb.size(s['last_push_bytes'])}" if s.get("last_push_bytes") else ""))
+                if s.get("last_error"):
+                    say(f"  ! {s['last_error']}")
+                if s.get("workspace_note"):
+                    say(f"  · {s['workspace_note']}")
+                if s.get("split"):
+                    say(f"  ! Both machines worked while apart. The cloud's copy: {s['split'].get('path')}")
+                    say("    bento standby adopt  (use it)   ·   bento standby keep  (drop it)")
+            else:
+                say(f"  This machine stands by for {s['peer_host']}.")
+                if s["active"]:
+                    say(f"  It is the one WORKING now, since {sb.ago(s.get('since', 0))}: {s.get('reason', '')}")
+                else:
+                    say(f"  Heard from it {sb.ago(s.get('last_beat', 0))} · newest copy "
+                        f"{sb.ago(s.get('copy_at', 0))}"
+                        + (f", {sb.size(s['copy_bytes'])}" if s.get("copy_bytes") else ""))
+                    say(f"  Takes over after {max(1, round(s['grace'] / 60))} min of silence"
+                        + ("" if s["auto"] else " (only when told: --manual is on)"))
+                for n in s.get("notes", []):
+                    say(f"  · {n}")
+            if s.get("version_note"):
+                say(f"  ! {s['version_note']}")
+        elif act == "wait":
+            o = sb.offer()
+            say(f"\n  Pairing code for {o['host']}:   {o['code']}\n")
+            say("  On your own machine run:")
+            say(f"    bento standby pair https://<this machine's address> {o['code']}")
+            say("  or Settings → System → Cloud standby. The code works once, for ten minutes.")
+        elif act == "pair":
+            if len(args.rest) != 2:
+                raise SystemExit("usage: bento standby pair URL CODE")
+            s = sb.pair(args.rest[0], args.rest[1])
+            say(f"  ✓ Paired. {s['peer_host']} now stands by for this machine.")
+            say("  Restart Bento here (or keep it running: a running server starts copying within a minute).")
+        elif act == "copy":
+            r = sb.push(force=True)
+            say(f"  ✓ Sent a copy ({sb.size(r.get('bytes', 0))})." if r.get("sent") else f"  {r.get('why')}")
+        elif act == "takeover":
+            r = sb.takeover("You asked this machine to take over (bento standby takeover).")
+            say(f"  ✓ The copy from {r['host'] or 'your machine'} checked out.")
+            say("  Restart Bento on this machine to finish (for Docker: docker restart <container>).")
+        elif act == "move":
+            r = sb.move()
+            say(f"  ✓ Handed over. Your agent now works at {r['url']}.")
+            say("  Restart Bento here: it stands down until `bento standby back`.")
+        elif act == "back":
+            r = sb.back(echo=say)
+            say(f"  ✓ {r.get('message', 'Done.')}")
+            if r.get("restart"):
+                say("  Restart Bento here to load it.")
+        elif act == "adopt":
+            sb.adopt()
+            say("  ✓ The cloud's copy checked out. Restart Bento here to switch to it.")
+        elif act == "keep":
+            sb.dismiss_split()
+            say("  ✓ Kept this machine's work; the cloud's copy is deleted.")
+        elif act == "off":
+            r = sb.unpair()
+            say("  ✓ Unpaired." + (" The other machine was told." if r.get("told") else ""))
+        elif act == "set":
+            body = {}
+            if args.grace:
+                body["grace"] = args.grace * 60
+            if args.auto is not None:
+                body["auto"] = args.auto
+            if args.workspace is not None:
+                body["workspace"] = args.workspace
+            if not body:
+                raise SystemExit("usage: bento standby set [--grace MIN] [--auto|--manual] [--workspace|--no-workspace]")
+            sb.settings(body)
+            say("  ✓ Saved.")
+    except sb.StandbyError as e:
+        raise SystemExit(f"  ✗ {e}")
+
+
 def _backup_cli(args):
     """`bento backup` — the whole machine in one encrypted file (backup.py): every
     account, the databases, the settings, the vault keys and the workspace. It runs
@@ -6179,6 +6285,22 @@ def main():
                           help="say what a backup holds, without restoring it")
     p_backup.add_argument("--passphrase-file", default="",
                           help="read the passphrase from a file (for an unattended backup)")
+    p_sb = verb("standby", help="a cloud machine that takes over only while this one is away")
+    p_sb.add_argument("action", nargs="?", default="status",
+                      choices=["status", "wait", "pair", "copy", "takeover", "move", "back",
+                               "adopt", "keep", "off", "set"],
+                      metavar="ACTION",
+                      help="status | wait (on the cloud: show a pairing code) | pair URL CODE | "
+                           "copy | takeover | move | back | adopt | keep | off | set")
+    p_sb.add_argument("rest", nargs="*", help="for pair: the cloud's address and its code")
+    p_sb.add_argument("--grace", type=int, default=0, help="set: minutes of silence before taking over")
+    p_sb.add_argument("--auto", dest="auto", action="store_true", default=None,
+                      help="set: take over by itself")
+    p_sb.add_argument("--manual", dest="auto", action="store_false",
+                      help="set: take over only when told to")
+    p_sb.add_argument("--workspace", dest="workspace", action="store_true", default=None,
+                      help="set: include the workspace folder in the copies")
+    p_sb.add_argument("--no-workspace", dest="workspace", action="store_false")
     p_restore = verb("restore", help="replace this machine's Bento with a backup (what is here is kept aside)")
     p_restore.add_argument("file", help="the .bento file")
     p_restore.add_argument("--yes", action="store_true", help="do not ask before restoring")
@@ -6820,6 +6942,8 @@ def main():
         _backup_cli(args)
     elif args.cmd == "restore":
         _restore_cli(args)
+    elif args.cmd == "standby":
+        _standby_cli(args)
     elif args.cmd == "tui":
         from . import config as cfgmod
         if cfgmod.is_first_run():

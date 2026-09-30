@@ -78,7 +78,9 @@ SKIP_NAMES = {"__pycache__", "node_modules", ".DS_Store"}
 SKIP_SUFFIX = (".db-wal", ".db-shm", ".db-journal", ".pyc", ".tmp", ".part")
 #: This module's own working names inside the home, never backed up and never moved.
 PRIVATE = (".restoring-", ".before-restore-", ".restore-ready", ".backup-out-",
-           ".restore-upload-", ".backup-tmp")
+           ".restore-upload-", ".backup-tmp",
+           # the cloud standby's pairing, copies and state (standby.py): this machine's own
+           ".standby")
 READY = ".restore-ready"
 LAST = "last-restore.json"
 
@@ -544,6 +546,25 @@ def inspect(path, passphrase: str) -> dict:
             return json.loads(tar.extractfile(m).read())
 
 
+def verify(path, passphrase: str) -> dict:
+    """Read a backup to its last record without writing anything: every record's seal
+    checked, every name checked. Returns the manifest. Cheaper than `stage` in disk, the
+    same in trust: the cloud standby checks each copy it is sent with this."""
+    path = Path(path).expanduser()
+    manifest = None
+    with open(path, "rb") as f:
+        op = _Opener(f, passphrase)
+        with tarfile.open(fileobj=io.BufferedReader(op, CHUNK), mode="r|gz") as tar:
+            for m in tar:
+                _safe(m.name)
+                if m.name == "manifest.json":
+                    manifest = json.loads(tar.extractfile(m).read())
+        op.drain()
+    if not manifest or manifest.get("format") != FORMAT:
+        raise BackupError("This backup has no manifest; it cannot be restored.")
+    return manifest
+
+
 def _safe(name: str) -> PurePosixPath:
     p = PurePosixPath(name)
     if p.is_absolute() or ".." in p.parts or not p.parts or "\\" in name or "\0" in name:
@@ -878,7 +899,9 @@ def _attention(m: dict) -> list[str]:
     dm = m.get("default_model") or ""
     if dm.startswith("ollama/"):
         out.append(f"Local models are not in the backup. Pull {dm[7:]} again in Ollama.")
-    if m.get("workspace_setting") and not m.get("workspace_included"):
+    ws, home = m.get("workspace_setting") or "", (m.get("home") or "").rstrip("/\\")
+    inside = bool(home) and (ws == home or ws.startswith(home + "/") or ws.startswith(home + "\\"))
+    if ws and not m.get("workspace_included") and not inside:
         out.append("Your workspace folder was not in this backup; copy it across yourself.")
     if m.get("changed_while_reading"):
         out.append(f"{len(m['changed_while_reading'])} file(s) changed while the backup was being "

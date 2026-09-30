@@ -37,6 +37,20 @@ and no longer stretches over the message box. The rings that popped up in the mi
 of the desktop on every chat (they belong to the Aura theme) now show only in that
 theme, and the prompt bar no longer rises to repeat a chat you can already see.
 
+**Cloud standby: a cloud machine that takes over only while yours is away.** Pair a
+second Bento on a cloud machine (Settings → System → Cloud standby, or `bento standby`).
+Your machine keeps working as before and sends the cloud a heartbeat every half minute
+and a sealed copy of its whole home when something changed. The cloud does nothing with
+it. If your machine goes quiet for five minutes, the cloud swaps the newest copy in and
+carries on with your missions, schedules and channels. When your machine is back, it
+takes the work back before starting anything, and the cloud goes quiet again. If both
+kept working while they couldn't reach each other, your machine keeps its own and the
+cloud's copy waits beside it for you to choose. **Move to the cloud now** hands over on
+purpose, and **Bring it back here** undoes it. Measured with two servers on one machine:
+a copy of a small home was 20 KB and took 0.6 s, moving over took 1.0 s and coming back
+0.7 s, the cloud took over 84 s after the laptop froze (90 s setting), and a laptop woken
+from sleep had the cloud's work back 7 s later.
+
 ## 0.6.17 — 2026-09-30
 
 **An independent auditor checks every department's work.** When a department finishes a

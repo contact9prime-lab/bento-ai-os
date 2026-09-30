@@ -535,6 +535,13 @@ function setTab(body,all){
          f:'restore backup import move from another machine migrate new computer recover'}),
     ],{f:'backup restore export import move migrate'}));
     setTimeout(paintBackup,0);
+    P.push(pGroup('Cloud standby',[
+      pRow('A cloud machine that takes over','<div id="sb-box"><span class="mut">…</span></div>',
+        {desc:'It runs your agent only while this machine is away, then hands the work back.',
+         more:'This machine sends a sealed copy when something changes and a heartbeat every half minute. After a few quiet minutes the cloud takes over. In a terminal: bento standby.',
+         f:'cloud standby failover offload take over hand back away server vps move jack lambda always on'}),
+    ],{f:'cloud standby failover'}));
+    setTimeout(paintStandby,0);
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),

@@ -368,6 +368,11 @@ class Scheduler(usersmod.Scoped):
                 # reason the seam is a contextvar and not a parameter.
                 with usersmod.as_user(uid):
                     try:
+                        # A main machine that has just woken up waits for one
+                        # heartbeat first: the cloud may be the one working (standby.py).
+                        from . import standby as _sb
+                        if not _sb.may_act():
+                            continue
                         for task in self.store.due_tasks(time.time()):
                             # claim it immediately so a slow run can't double-fire
                             self.store.update_task(task["id"], next_run=None)

@@ -43,6 +43,7 @@ from . import signin as signinmod
 from . import mail as mailmod
 from . import calendars as calendarsmod
 from . import usage as usagemod
+from . import standby as standbymod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
 from .memory import Store
@@ -256,11 +257,17 @@ async def startup():
                                         # user typed while a turn was running (see _queue_add)
                  build={"agent": None, "task": None, "cancel_requested": False,
                         "timed_out": False})  # App Studio build slot (global, one at a time)
+    # Cloud standby (standby.py): a side that is paired and NOT the one working starts
+    # nothing that acts on somebody's behalf. The other side is doing that; two
+    # schedulers, two Telegram pollers or two listeners over one person's data is the
+    # thing this whole feature exists to avoid.
+    idle = standbymod.passive()
     # Linked teams: the mTLS door, when a person switched it on (it opens a port).
-    if (cfg.get("team") or {}).get("listen"):
+    if (cfg.get("team") or {}).get("listen") and not idle:
         with contextlib.suppress(Exception):
             await _team_listen(True)
-    state["team_chat_task"] = asyncio.create_task(_team_chat_sweep())
+    if not idle:
+        state["team_chat_task"] = asyncio.create_task(_team_chat_sweep())
     # An OAuth server asks for consent from inside its own connection attempt, which
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
@@ -306,21 +313,24 @@ async def startup():
         uids = [u["id"] for u in usersmod.list_users()] if usersmod.enabled() else [""]
         for uid in uids:
             await _resume_one(uid)
-    asyncio.create_task(_resume_whatsapp_link())
-    asyncio.create_task(scheduler.run_forever())
-    state["parked_task"] = asyncio.create_task(_parked_loop(time.time()))
-    asyncio.create_task(mcp.start())
-    asyncio.create_task(telegram.run_forever())
+    if not idle:
+        asyncio.create_task(_resume_whatsapp_link())
+        asyncio.create_task(scheduler.run_forever())
+        state["parked_task"] = asyncio.create_task(_parked_loop(time.time()))
+        asyncio.create_task(mcp.start())
+        asyncio.create_task(telegram.run_forever())
     # The three services that cannot be shared get built per user, on demand, the
     # first time somebody's request or scheduled job reaches for one.
     usersmod.set_service_factory(
         lambda uid: _build_user_services(uid, toolbox, broadcast))
-    asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))
-    # attention engine: notification triage (importance + "For you" digest),
-    # batch-gated and model-idle-deferred — a no-op without a daemon or model
     from . import attention
-    asyncio.create_task(attention.attention_loop(cfg, store,
-                                                 lambda: state.get("notifd"), broadcast))
+    if not idle:
+        asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))
+        # attention engine: notification triage (importance + "For you" digest),
+        # batch-gated and model-idle-deferred — a no-op without a daemon or model
+        asyncio.create_task(attention.attention_loop(cfg, store,
+                                                     lambda: state.get("notifd"), broadcast))
+    _standby_start()
     # Is there a newer version? Checking is automatic; installing never is.
     from . import updates as updmod
     asyncio.create_task(updmod.watch(cfg, store, broadcast, cfgmod.save_config))
@@ -430,7 +440,7 @@ async def startup():
         toolbox.notifd = notifd   # the agent can read the center (list_notifications)
         notifd.on_notification = scheduler.offer_notification  # feeds notification triggers
         asyncio.create_task(notifd.start())
-    if runmode.resolve(cfg)[0] in (runmode.DE, runmode.KIOSK):
+    if runmode.resolve(cfg)[0] in (runmode.DE, runmode.KIOSK) and not idle:
         # session start ≈ login: fire login triggers + the "while you were away"
         # briefing (and, best-effort, re-brief on logind session unlock)
         asyncio.create_task(attention.session_start(cfg, store,
@@ -6328,6 +6338,26 @@ async def app_privilege_guard(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def standby_gate(request: Request, call_next):
+    """A side that is paired and not the one working serves its standing-by page and
+    refuses the API, so nothing reads or changes a home that is not the live one.
+    Registered here, before the remote gate, so it runs AFTER it: the page is only for
+    somebody who may be here."""
+    if not standbymod.passive():
+        return await call_next(request)
+    path = request.url.path
+    if path.startswith(STANDBY_OPEN):
+        return await call_next(request)
+    if path.startswith("/api/") or path.startswith("/ws"):
+        st = standbymod.status()
+        msg = (f"This machine is standing by for {st.get('peer_host') or 'another machine'}."
+               if st["role"] == "standby" else
+               f"Your agent is working on {st.get('peer_host') or 'the cloud'} right now.")
+        return JSONResponse({"error": msg, "standby": True}, status_code=503, headers=NO_STORE)
+    return HTMLResponse(_standby_page(), headers=NO_STORE)
+
+
 # ---------------------------------------------------------------------------
 # Remote access gate.
 #
@@ -6372,7 +6402,12 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # headless box, opened on a laptop); the single-use `state`
                      # is the defence, and the identity completed is the one
                      # recorded at start — see api_signin_callback.
-                     "/api/accounts/oauth/callback/")
+                     "/api/accounts/oauth/callback/",
+                     # The cloud standby's machine-to-machine door (standby.py). The
+                     # caller is the paired machine, with no cookie; every route under
+                     # it checks the pairing's Bearer token in constant time behind a
+                     # per-address guess ceiling, or (pairing itself) the one-time code.
+                     "/api/standby/peer/")
 
 
 def _client_addr(request: Request) -> str:
@@ -7006,6 +7041,431 @@ async def api_restore_cancel(request: Request):
     if refused:
         return refused
     return {"ok": True, "cancelled": bk.cancel_pending()}
+
+
+# ---------------------------------------------------------------------------
+# Cloud standby (standby.py, docs/standby.md). Your machine works; a paired cloud
+# machine stands by with a sealed copy and takes over only while yours is gone.
+#
+# Two doors. `/api/standby/peer/*` is machine to machine: open past the remote gate,
+# each route checks the pairing's Bearer token (or, for pairing, the one-time code)
+# behind a per-address ceiling. `/api/standby` and the rest are the person's, behind
+# the normal gate and admin-only, because they move the whole machine.
+#
+# Faces: GUI and SUI are Settings → System → Cloud standby and, on a side that is not
+# the one working, the standing-by page this gate serves in place of the desktop. The
+# TUI is `bento standby`, which pairs and reads with the server down.
+# ---------------------------------------------------------------------------
+
+STANDBY_OPEN = ("/api/standby", "/login", "/api/remote/login", "/api/users/", "/api/session/unlock",
+                "/assets/", "/favicon.ico", "/manifest.webmanifest", "/apple-touch-icon.png",
+                "/api/update")
+
+
+def _standby_restart(delay: float = 0.8) -> None:
+    from . import desktop as desktopmod
+    asyncio.get_running_loop().call_later(delay, desktopmod.restart_service)
+
+
+def _standby_note(text: str, kind: str = "info") -> None:
+    with contextlib.suppress(Exception):
+        state["store"].log("standby", text)
+    with contextlib.suppress(Exception):
+        asyncio.get_running_loop().create_task(state["broadcast"]({"type": "toast", "text": text, "kind": kind}))
+
+
+def _standby_start() -> None:
+    """The loop this side needs: the main machine's heartbeat and copies, or the
+    standby's watch for silence. A side that is not paired runs neither."""
+    st = standbymod.load()
+    if st.get("role") == "primary" and st.get("active"):
+        state["standby_task"] = asyncio.get_running_loop().create_task(_standby_primary_loop())
+    elif st.get("role") == "standby" and not st.get("active"):
+        state["standby_task"] = asyncio.get_running_loop().create_task(_standby_watch_loop())
+
+
+async def _standby_primary_loop():
+    first = True
+    while True:
+        st = standbymod.load()
+        if st.get("role") != "primary" or not st.get("active"):
+            return
+        try:
+            ans = await asyncio.to_thread(standbymod.beat)
+        except standbymod.StandbyError:
+            ans = None
+        if ans and (ans.get("active") or ans.get("holds_work")):
+            try:
+                r = await asyncio.to_thread(standbymod.come_back)
+            except standbymod.StandbyError as e:
+                _standby_note(f"Could not bring the work back from the cloud: {e}", "err")
+                await asyncio.sleep(st.get("interval", standbymod.BEAT_S))
+                continue
+            if r.get("split"):
+                _standby_split_brief(r)
+                _standby_note(r["message"], "warn")
+                continue
+            _standby_note(r["message"] + " Restarting to load it.")
+            _standby_restart()
+            return
+        if ans is not None:
+            due = time.time() - st.get("last_push", 0) >= st.get("push_every", standbymod.PUSH_S)
+            if first or due:
+                try:
+                    await asyncio.to_thread(standbymod.push)
+                except standbymod.StandbyError as e:
+                    with contextlib.suppress(Exception):
+                        standbymod._update(last_error=str(e))
+                except Exception as e:                                  # noqa: BLE001
+                    with contextlib.suppress(Exception):
+                        state["store"].log("error", f"standby copy: {type(e).__name__}: {e}")
+                first = False
+        await asyncio.sleep(st.get("interval", standbymod.BEAT_S))
+
+
+def _standby_split_brief(r: dict) -> None:
+    with contextlib.suppress(Exception):
+        st = standbymod.load()
+        sp = st.get("split") or {}
+        state["store"].brief_upsert(briefmod.today(), "standby", f"split-{int(sp.get('at', 0))}", {
+            "kind": "needs_you", "title": "Both machines worked while they were apart",
+            "body": r["message"], "who": sp.get("host", "")})
+
+
+async def _standby_watch_loop():
+    while True:
+        st = standbymod.load()
+        if st.get("role") != "standby" or st.get("active"):
+            return
+        why = standbymod.due_takeover()
+        if why:
+            try:
+                await asyncio.to_thread(standbymod.takeover, why)
+            except standbymod.StandbyError as e:
+                with contextlib.suppress(Exception):
+                    state["store"].log("standby", f"could not take over: {e}")
+                await asyncio.sleep(60)
+                continue
+            with contextlib.suppress(Exception):
+                state["store"].log("standby", f"taking over: {why}")
+            _standby_restart(0.2)
+            return
+        await asyncio.sleep(10)
+
+
+def _standby_admin(request: Request):
+    if not _backup_admin():
+        return JSONResponse({"error": "Only an admin can change the cloud standby, because it moves "
+                                      "the whole machine."}, status_code=403)
+    return None
+
+
+def _standby_audit(action: str, detail: str) -> None:
+    _backup_audit(action, detail)
+
+
+def _standby_page() -> str:
+    """What a side that is not the one working shows instead of the desktop."""
+    s = standbymod.status()
+    e = html_mod.escape
+    if s["role"] == "standby":
+        who = e(s.get("peer_host") or "your machine")
+        head = f"Standing by for {who}"
+        lines = [f"Last heard from {who} {standbymod.ago(s.get('last_beat', 0))}."]
+        if s.get("copy_at"):
+            lines.append(f"Newest copy {standbymod.ago(s['copy_at'])}, {standbymod.size(s.get('copy_bytes', 0))}.")
+        else:
+            lines.append("No copy has arrived yet, so there is nothing to take over with.")
+        if s.get("holds_work"):
+            lines.append(f"Handing your work back to {who}.")
+        elif s.get("auto"):
+            m = max(1, round(int(s.get("grace", 300)) / 60))
+            lines.append(f"If {who} is quiet for {m} minute{'' if m == 1 else 's'}, this machine takes over by itself.")
+        else:
+            lines.append("It takes over only when you say so.")
+        lines += s.get("notes", [])
+        btn = ('<button onclick="go(\'/api/standby/takeover\',this)">Take over now</button>'
+               if s.get("copy_at") and not s.get("holds_work") else "")
+    else:
+        who = e(s.get("peer_host") or "the cloud")
+        url = e(s.get("url", ""))
+        head = f"Your agent is working on {who}"
+        lines = [f"You handed over to {who}. It carries on with your missions and channels there."]
+        btn = (f'<a class="b" href="{url}" target="_blank" rel="noopener">Open it</a> '
+               '<button onclick="go(\'/api/standby/back\',this)">Bring it back here</button>')
+    if s.get("version_note"):
+        lines.append(s["version_note"])
+    body = "".join(f"<p>{e(x)}</p>" for x in lines)
+    return f"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Bento standby</title>
+<style>
+:root{{--bg:#0d0f1a;--card:#161a2b;--txt:#e8eaf6;--mut:#9aa0bd;--acc:#8b7cff}}
+@media (prefers-color-scheme:light){{:root:not([data-theme="dark"]){{--bg:#f4f5fb;--card:#fff;--txt:#1b1d2a;--mut:#5d6180;--acc:#5b4ee0}}}}
+body{{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--txt);
+font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;padding:16px;box-sizing:border-box}}
+main{{background:var(--card);border-radius:16px;padding:28px;max-width:520px;width:100%;box-sizing:border-box}}
+h1{{font-size:21px;margin:0 0 12px}} p{{color:var(--mut);margin:6px 0}}
+.row{{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap}}
+button,.b{{min-height:44px;padding:0 18px;border-radius:10px;border:0;background:var(--acc);color:#fff;
+font:inherit;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}}
+#m{{margin-top:12px;color:var(--mut)}}
+</style></head><body><main><h1>▲ {e(head)}</h1>{body}
+<div class="row">{btn}</div><div id="m"></div></main>
+<script>
+async function go(u,b){{b.disabled=true;const m=document.getElementById('m');m.textContent='Working…';
+try{{const r=await fetch(u,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:'{{}}'}});
+const d=await r.json().catch(()=>({{}}));if(!r.ok)throw new Error(d.error||('HTTP '+r.status));
+m.textContent=(d.message||'Done.')+' Restarting…';setTimeout(()=>location.reload(),9000)}}
+catch(e){{m.textContent=e.message;b.disabled=false}}}}
+setTimeout(()=>location.reload(),60000);
+</script></body></html>"""
+
+
+def _peer_auth(request: Request):
+    addr = _client_addr(request)
+    if standbymod.too_many_bad(addr):
+        return JSONResponse({"error": "too many wrong keys; wait a few minutes"}, status_code=429)
+    auth = request.headers.get("authorization", "")
+    tok = auth[7:] if auth.lower().startswith("bearer ") else ""
+    if not standbymod.token_ok(tok):
+        standbymod.note_bad(addr)
+        return JSONResponse({"error": "not paired with this machine"}, status_code=401)
+    return None
+
+
+@app.post("/api/standby/peer/pair")
+async def api_standby_peer_pair(request: Request):
+    addr = _client_addr(request)
+    if standbymod.too_many_bad(addr):
+        return JSONResponse({"error": "too many wrong codes; wait a few minutes"}, status_code=429)
+    try:
+        body = await request.json()
+        out = standbymod.accept(body if isinstance(body, dict) else {})
+    except standbymod.StandbyError as e:
+        standbymod.note_bad(addr)
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except ValueError:
+        return JSONResponse({"error": "send JSON"}, status_code=400)
+    with contextlib.suppress(Exception):
+        state["store"].log("standby", f"paired as the standby for {standbymod.load().get('peer_host')}")
+    _standby_restart()                    # from here on this side stands by
+    return out
+
+
+@app.post("/api/standby/peer/beat")
+async def api_standby_peer_beat(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    return standbymod.heard(body if isinstance(body, dict) else {})
+
+
+@app.get("/api/standby/peer/state")
+async def api_standby_peer_state(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    return standbymod.answer()
+
+
+@app.post("/api/standby/peer/push")
+async def api_standby_peer_push(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    import queue
+    import threading
+    q: queue.Queue = queue.Queue(maxsize=8)
+    result: dict = {}
+
+    def consume():
+        def chunks():
+            while True:
+                b = q.get()
+                if b is None:
+                    return
+                yield b
+        try:
+            result["ok"] = standbymod.receive(chunks())
+        except Exception as e:                                        # noqa: BLE001
+            result["err"] = e
+            while q.get() is not None:        # drain so the producer never blocks
+                pass
+    t = threading.Thread(target=consume, daemon=True)
+    t.start()
+    try:
+        async for b in request.stream():
+            if b:
+                await asyncio.to_thread(q.put, b)
+    finally:
+        await asyncio.to_thread(q.put, None)
+    await asyncio.to_thread(t.join)
+    if "err" in result:
+        e = result["err"]
+        msg = str(e) if isinstance(e, standbymod.StandbyError) else f"{type(e).__name__}: {e}"
+        return JSONResponse({"error": msg}, status_code=400)
+    out = result["ok"]
+    return JSONResponse(out, status_code=200 if out.get("ok") else 409)
+
+
+@app.post("/api/standby/peer/release")
+async def api_standby_peer_release(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    try:
+        out = await asyncio.to_thread(standbymod.release)
+    except standbymod.StandbyError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    with contextlib.suppress(Exception):
+        state["store"].log("standby", "handing the work back to the main machine")
+    if out.pop("restart", False):
+        _standby_restart(0.5)
+    return out
+
+
+@app.get("/api/standby/peer/outgoing")
+async def api_standby_peer_outgoing(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    p = standbymod.outgoing()
+    if not p:
+        return JSONResponse({"error": "nothing to hand back"}, status_code=404)
+    return FileResponse(p, media_type="application/octet-stream", headers=NO_STORE)
+
+
+@app.post("/api/standby/peer/done")
+async def api_standby_peer_done(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    return standbymod.done(body if isinstance(body, dict) else {})
+
+
+@app.post("/api/standby/peer/takeover")
+async def api_standby_peer_takeover(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    try:
+        out = await asyncio.to_thread(standbymod.peer_takeover, {})
+    except standbymod.StandbyError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    _standby_restart()
+    return out
+
+
+@app.post("/api/standby/peer/unpair")
+async def api_standby_peer_unpair(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    was_passive = standbymod.passive()
+    standbymod.forget_peer()
+    with contextlib.suppress(Exception):
+        state["store"].log("standby", "the main machine unpaired")
+    if was_passive:
+        _standby_restart()
+    return {"ok": True}
+
+
+# ---- the person's side --------------------------------------------------------------
+
+@app.get("/api/standby")
+async def api_standby_status(request: Request):
+    out = standbymod.status()
+    out["admin"] = _backup_admin()
+    out["local"] = remotemod.is_loopback(_client_addr(request))
+    return out
+
+
+async def _standby_do(request: Request, fn, action: str, *args, restart_key: str = "restart"):
+    if (no := _standby_admin(request)):
+        return no
+    try:
+        out = await asyncio.to_thread(fn, *args)
+    except standbymod.StandbyError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _standby_audit(action, json.dumps({k: v for k, v in out.items() if k in ("message", "split", "reason")})[:300])
+    if out.get(restart_key):
+        _standby_restart()
+    return out
+
+
+@app.post("/api/standby/offer")
+async def api_standby_offer(request: Request):
+    return await _standby_do(request, standbymod.offer, "standby.offer")
+
+
+@app.post("/api/standby/pair")
+async def api_standby_pair(body: dict, request: Request):
+    b = body or {}
+    out = await _standby_do(request, standbymod.pair, "standby.pair",
+                            str(b.get("url", "")), str(b.get("code", "")))
+    if isinstance(out, dict) and out.get("role") == "primary":
+        _standby_start()
+    return out
+
+
+@app.post("/api/standby/copy")
+async def api_standby_copy(request: Request):
+    return await _standby_do(request, lambda: standbymod.push(force=True), "standby.copy")
+
+
+@app.post("/api/standby/takeover")
+async def api_standby_takeover(request: Request):
+    def go():
+        out = standbymod.takeover("You asked this machine to take over.")
+        out["restart"] = True
+        out["message"] = "Taking over."
+        return out
+    return await _standby_do(request, go, "standby.takeover")
+
+
+@app.post("/api/standby/move")
+async def api_standby_move(request: Request):
+    def go():
+        out = standbymod.move()
+        out["message"] = f"Handed over to {standbymod.load().get('peer_host')}."
+        return out
+    return await _standby_do(request, go, "standby.move")
+
+
+@app.post("/api/standby/back")
+async def api_standby_back(request: Request):
+    return await _standby_do(request, standbymod.back, "standby.back")
+
+
+@app.post("/api/standby/adopt")
+async def api_standby_adopt(request: Request):
+    def go():
+        out = standbymod.adopt()
+        out["message"] = "Switching to the cloud's copy."
+        return out
+    return await _standby_do(request, go, "standby.adopt")
+
+
+@app.post("/api/standby/keep")
+async def api_standby_keep(request: Request):
+    return await _standby_do(request, standbymod.dismiss_split, "standby.keep")
+
+
+@app.post("/api/standby/settings")
+async def api_standby_settings(body: dict, request: Request):
+    return await _standby_do(request, standbymod.settings, "standby.settings", body or {})
+
+
+@app.post("/api/standby/off")
+async def api_standby_off(request: Request):
+    was_passive = standbymod.passive()
+
+    def go():
+        out = standbymod.unpair()
+        out["restart"] = was_passive
+        out["message"] = "Unpaired."
+        return out
+    return await _standby_do(request, go, "standby.off")
 
 
 @app.get("/api/snapshots")
@@ -11525,6 +11985,12 @@ async def _ws_reject(ws) -> bool:
     if not _ws_authed(ws):
         with contextlib.suppress(Exception):
             await ws.close(code=4401)
+        return True
+    if standbymod.passive():
+        # the standby gate is HTTP middleware and never sees a socket: the side that
+        # is not working has no live desktop to stream
+        with contextlib.suppress(Exception):
+            await ws.close(code=4503)
         return True
     return False
 

@@ -614,6 +614,40 @@ what follows. Kept free of HTTP and asyncio, so both verbs work with the server 
 - **The shipped bundle must parse** (`test_the_shipped_bundle_parses`, with Node): one
   dropped `pRow(` in Settings killed every app while every other test passed.
 
+## Cloud standby: one side acts, the other holds a sealed copy
+
+`agentos/standby.py` + `/api/standby*` + `bento standby` + Settings → System → Cloud
+standby (`11h-standby.js`). Asked for as "run it first on my machine and then jack it to a
+cloud … it only runs on the cloud when my local is not available". Full story in
+`docs/standby.md`; `tests/test_standby.py` pins what follows.
+
+- **One side acts.** `standby.passive()` is read at startup and none of the acting runners
+  start (scheduler, Telegram, WhatsApp resume, parked runs, team listener and chat sweep,
+  attention, knowledge maintenance, session triggers). `standby_gate` serves the
+  standing-by page and 503s the API; `_ws_reject` refuses sockets, because middleware
+  never sees one. The gate is registered BEFORE `remote_access_gate`, so it runs after it.
+- **The copy is a backup** (`backup.create`/`verify`/`stage`/`apply_pending`), sealed with
+  the pair's secret. `.standby` is in `backup.PRIVATE`: the pairing never travels and a
+  swap never moves it. The standby checks every copy in full and keeps the one before.
+- **`last_contact` is the last time the standby was heard QUIET.** A beat that finds it
+  working must not move it, because `come_back` counts this machine's work since then
+  (`worked_since`: people's messages, runs, scheduled firings). Stamping it on that beat
+  made the window empty and the cloud's copy replaced ours; found live, kept aside.
+  Both worked means SPLIT: ours stays, theirs is saved (`adopt` / `dismiss_split`).
+- **The machine's own door never travels** (`LOCAL_KEYS`, `keep_door` before a stage,
+  `after_swap` after `apply_pending` in `serve`). The cloud keeps the lock that made it
+  reachable. `after_swap` also keeps only the newest `KEEP_ASIDE` swaps' asides.
+- **A woken laptop waits for a heartbeat** (`may_act`, checked by the scheduler): the
+  last attempt is older than three intervals, so nothing fires until the next beat says
+  whether the cloud is working. A cloud that can't be reached does not hold it up.
+- **The peer door** is `/api/standby/peer/`, in `REMOTE_OPEN_PATHS`; each route checks the
+  Bearer token (hashed on the standby) behind `too_many_bad`, and `pair` checks the
+  one-time code instead. Person routes are admin-only. Pairing wants HTTPS off a private
+  network (`url_problem`).
+- **`serve` brings the work back before the home opens** (`standby.boot` before
+  `apply_pending`), and a release is two steps (`release` then `done`) so a main machine
+  that dies mid-fetch asks again and gets the same file.
+
 ## Sign in with Google / Microsoft: the door that asks for nothing to type
 
 `agentos/signin.py` runs OAuth 2.0 + PKCE itself (no SDK: the flow is ten lines and the
