@@ -102,9 +102,16 @@ function mfPaint(){
   });
 }
 /* ---- miniFeed: renders one conversation's live events into a container ---- */
+/* Who is answering, at the top of each reply in a small feed: the same face and name
+   Chat puts on its messages. The Office's own chat panel and the prompt bar's card had
+   none, live or from history. */
+function mfWho(speaker){
+  return `<div class="mf-who">${chatWho(speaker?speaker:'@agent',
+    esc(speaker?'@'+speaker.replace(/^@/,''):agentName()))}</div>`;
+}
 function miniFeed(box,opts){
   opts=opts||{};
-  let body=null,text='',think=null,working=null,hud=null;
+  let body=null,text='',think=null,working=null,hud=null,who=null;
   const scroll=()=>{const sc=opts.scrollEl||box;sc.scrollTop=sc.scrollHeight};
   const clearWorking=()=>{if(working){working.remove();working=null}};
   const ensureBody=()=>{
@@ -123,6 +130,9 @@ function miniFeed(box,opts){
     start(ev){
       if(working&&working.isConnected){
         bind(ev);
+        // the server says who answers (`@researcher …` is the researcher)
+        if(ev&&ev.speaker&&who&&who.isConnected){const h=document.createElement('div');
+          h.innerHTML=mfWho(ev.speaker);const nw=h.firstElementChild;who.replaceWith(nw);who=nw}
         // `ev` means the send really happened — a row that had been marked
         // queued stops saying so here, or it would still read "queued" while
         // the answer streamed underneath it.
@@ -134,6 +144,8 @@ function miniFeed(box,opts){
         mfPaint();return}
       text='';body=null;think=null;clearWorking();
       if(opts.onStart)opts.onStart();
+      if(opts.who!==false){const h=document.createElement('div');h.innerHTML=mfWho(ev&&ev.speaker);
+        who=h.firstElementChild;box.appendChild(who)}
       working=document.createElement('div');working.className='mf-working';
       working.dataset.t0=Date.now();
       working.innerHTML='<span class="mfo"></span><span class="mft">sent — waking the agent</span><span class="mfc"></span>';
@@ -355,7 +367,7 @@ async function initCopilot(w,panel){
         ?`<div class="mf-user">${esc(m.content)}</div>`
         :m.role==='assistant'?(/^\[huddle ·/.test(m.content||'')&&typeof huddleCard==='function'
           ?huddleCard(huddleParse(m.content),null,false,'huddle')
-          :`<div class="mf-body body">${md(m.content||'')}</div>`):'').join('');
+          :mfWho(((m.meta||{}).speaker)||'')+`<div class="mf-body body">${md(m.content||'')}</div>`):'').join('');
       if(typeof fileChips==='function')fileChips(feedEl);
       feedEl.scrollTop=feedEl.scrollHeight;
     }catch(e){}

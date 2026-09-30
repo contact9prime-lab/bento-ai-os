@@ -27,6 +27,14 @@
   chain** confirm nobody edited the record. Releasing something from quarantine,
   resuming an app and changing what Claude Code may do are now in the ledger too.
 
+**Chatting looks alive while the answer is on its way.** Claude Code sends its whole
+answer at the end, so the screen used to sit still for up to a minute. Now the Office
+keeps the agent at its desk with a thinking balloon until the reply lands. The reply
+shows who is answering, name and face, from the first second. The Office's chat, the
+app agent panels and the prompt bar's card show the name and face too. The bubble in
+the bottom right only appears for work you can't already see, can be hidden with ✕,
+and no longer stretches over the message box.
+
 ## 0.6.17 — 2026-09-30
 
 **An independent auditor checks every department's work.** When a department finishes a

@@ -373,6 +373,14 @@ function officeBoardPoint(){
 function officeHead(p){return p.mode==='seat'?{x:p.x,y:p.y-50}:{x:p.x,y:p.y-80}}
 function officeName(k){return k==='@agent'?(typeof agentName==='function'?agentName():'your agent'):k}
 
+/* Is this person answering a conversation that is still running? A turn open in chat
+   is work, even when nothing has arrived for a while (a forwarded brain streams its
+   answer only at the end), so their desk stays lit until turn_end. */
+function officeLive(p){
+  const O=OFFICE;if(!p||typeof RUNNING==='undefined')return false;
+  for(const c in O.convWho)if(O.convWho[c]===p.key&&RUNNING.has(c))return true;
+  return false;
+}
 function officePulse(kind,label,ev){
   const O=OFFICE;if(!O.w||!O.L)return;
   ev=ev||{};
@@ -380,13 +388,16 @@ function officePulse(kind,label,ev){
     const who=ev.speaker?officeMatch(ev.speaker):O.people['@agent'];
     if(label)O.convWho[label]=who?who.key:'@agent';
     if(ev.huddle&&ev.huddle.length)officeHuddle(ev.huddle,label);
-    else if(who){officeWork(who,true);officePop(who,'!')}
+    // a thinking balloon for as long as the turn is open: Claude Code says nothing until
+    // its answer is done (measured: 50 silent seconds), and a desk that went dark after
+    // 12 of them read as the Office not noticing the chat at all
+    else if(who){officeWork(who,true);officePop(who,'!');officeSay(who,'…','think',600000)}
     return;
   }
   if(kind==='turnend'){
     const who=O.people[O.convWho[label]||'@agent'];
     if(O.huddle&&O.huddle.cid===label)officeHuddleEnd();
-    if(who)officeWork(who,false);
+    if(who){officeWork(who,false);if(who.say&&who.say.kind==='think')who.say=null}
     delete O.convWho[label];return;
   }
   if(kind==='tool'){
@@ -651,7 +662,7 @@ function officeStep(dt){
       }
       if(!p.path.length)officeArrive(p);
     }
-    if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand)p.busy=0;
+    if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand&&!officeLive(p))p.busy=0;
     // an unanswered question says how long it has waited
     if(p.hand&&p.waitSince&&p.say&&p.say.kind==='shout'){const m=Math.floor((now-p.waitSince)/60000);
       const t='? needs you: '+p.waitTool+(m?` · ${m} min`:'');if(p.say.text!==t)p.say.text=t}

@@ -1745,6 +1745,9 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
   border:1px solid color-mix(in srgb,var(--acc) 25%,transparent);
   padding:6px 11px;border-radius:var(--r-lg) 4px var(--r-lg) var(--r-lg);font-size:var(--fs-md);max-width:88%;margin:4px 0}
 .mf-body{font-size:var(--fs-md);line-height:1.5;margin:4px 0;user-select:text}
+.mf-who{display:flex;align-items:center;gap:7px;margin:8px 0 2px;font-size:var(--fs-sm);
+  font-weight:600;color:var(--dim)}
+.mf-who img.av-who{width:22px;height:22px;border-radius:7px;flex:0 0 22px}
 .mf-think{max-height:76px;overflow-y:auto;opacity:.75;font-size:var(--fs-xs)}
 .mf-working{display:flex;align-items:center;gap:8px;padding:6px 2px;color:var(--dim);font-size:var(--fs-sm)}
 .mf-working.quiet{display:none}
@@ -1981,7 +1984,8 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 #aibubble .ab-orb{width:14px;height:14px;flex:none;border-radius:var(--r-full);
   background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%)}
 #aibubble.busy .ab-orb{animation:obusy 1s ease-in-out infinite}
-#aibubble .ab-t{font-size:var(--fs-sm);font-weight:600;white-space:nowrap}
+#aibubble .ab-t{font-size:var(--fs-sm);font-weight:600;white-space:nowrap;
+  max-width:min(46vw,380px);overflow:hidden;text-overflow:ellipsis}
 #aibubble .ab-n{min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-full);background:var(--acc);color:#06211d;
   font-size:var(--fs-2xs);font-weight:800;display:flex;align-items:center;justify-content:center}
 
@@ -2083,8 +2087,9 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .bchoice select{flex:1;min-width:0}
 
 /* stop controls: visible the moment something is running */
-#aibubble .ab-stop{width:22px;height:22px;border-radius:var(--r-full);flex:none;font-size:var(--fs-2xs);
+#aibubble .ab-stop,#aibubble .ab-x{width:22px;height:22px;border-radius:var(--r-full);flex:none;font-size:var(--fs-2xs);
   background:var(--bg3);border:1px solid var(--line);color:var(--dim);display:flex;align-items:center;justify-content:center}
+#aibubble:not(.busy) .ab-x{display:none}
 #aibubble .ab-stop:hover{color:var(--err);border-color:var(--err)}
 .cp-send.stop{background:var(--err);color:#2b0606}
 .ocard .oc-tools .oc-stopnow{margin-right:auto;color:var(--err);
@@ -2212,7 +2217,7 @@ body.dev-touch #startmenu button,body.dev-touch #ccpop button,
 body.dev-touch #notifpanel button,body.dev-touch #powermenu button,
 body.dev-touch .ob-body button,body.dev-touch .ob-foot button,
 body.dev-touch #palbox button,body.dev-touch #swbox button,
-body.dev-touch .approval button{
+body.dev-touch .approval button,body.dev-touch #aibubble button{
   min-height:var(--tap);min-width:var(--tap)}
 /* Text inputs want the height and not the width — a min-width on a field that is
    meant to sit in a row makes it wrap for no reason. */
@@ -10014,9 +10019,16 @@ function mfPaint(){
   });
 }
 /* ---- miniFeed: renders one conversation's live events into a container ---- */
+/* Who is answering, at the top of each reply in a small feed: the same face and name
+   Chat puts on its messages. The Office's own chat panel and the prompt bar's card had
+   none, live or from history. */
+function mfWho(speaker){
+  return `<div class="mf-who">${chatWho(speaker?speaker:'@agent',
+    esc(speaker?'@'+speaker.replace(/^@/,''):agentName()))}</div>`;
+}
 function miniFeed(box,opts){
   opts=opts||{};
-  let body=null,text='',think=null,working=null,hud=null;
+  let body=null,text='',think=null,working=null,hud=null,who=null;
   const scroll=()=>{const sc=opts.scrollEl||box;sc.scrollTop=sc.scrollHeight};
   const clearWorking=()=>{if(working){working.remove();working=null}};
   const ensureBody=()=>{
@@ -10035,6 +10047,9 @@ function miniFeed(box,opts){
     start(ev){
       if(working&&working.isConnected){
         bind(ev);
+        // the server says who answers (`@researcher …` is the researcher)
+        if(ev&&ev.speaker&&who&&who.isConnected){const h=document.createElement('div');
+          h.innerHTML=mfWho(ev.speaker);const nw=h.firstElementChild;who.replaceWith(nw);who=nw}
         // `ev` means the send really happened — a row that had been marked
         // queued stops saying so here, or it would still read "queued" while
         // the answer streamed underneath it.
@@ -10046,6 +10061,8 @@ function miniFeed(box,opts){
         mfPaint();return}
       text='';body=null;think=null;clearWorking();
       if(opts.onStart)opts.onStart();
+      if(opts.who!==false){const h=document.createElement('div');h.innerHTML=mfWho(ev&&ev.speaker);
+        who=h.firstElementChild;box.appendChild(who)}
       working=document.createElement('div');working.className='mf-working';
       working.dataset.t0=Date.now();
       working.innerHTML='<span class="mfo"></span><span class="mft">sent — waking the agent</span><span class="mfc"></span>';
@@ -10267,7 +10284,7 @@ async function initCopilot(w,panel){
         ?`<div class="mf-user">${esc(m.content)}</div>`
         :m.role==='assistant'?(/^\[huddle ·/.test(m.content||'')&&typeof huddleCard==='function'
           ?huddleCard(huddleParse(m.content),null,false,'huddle')
-          :`<div class="mf-body body">${md(m.content||'')}</div>`):'').join('');
+          :mfWho(((m.meta||{}).speaker)||'')+`<div class="mf-body body">${md(m.content||'')}</div>`):'').join('');
       if(typeof fileChips==='function')fileChips(feedEl);
       feedEl.scrollTop=feedEl.scrollHeight;
     }catch(e){}
@@ -13353,29 +13370,47 @@ function updateSpin(){
 /* ---- the AI presence bubble (bottom-right): wherever a turn is running — a
    copilot panel, the omnibar, a background task — it shows here, and one click
    opens that conversation in Agent Chat. ---- */
-let AIB={last:null,seen:0};
+let AIB={last:null,seen:0,snooze:new Set()};
+/* Is this turn already on screen? Chat open on it, the prompt bar's card for it, or an
+   app's agent panel (or the Office's own chat) showing it. The bubble is for turns you
+   cannot see: it counted every turn, so it sat over the Chat composer repeating the
+   working row for the whole turn, and read as a toast that never goes away. */
+function turnOnScreen(cid){
+  if(!cid)return false;
+  if(typeof currentConv!=='undefined'&&cid===currentConv&&winsOf('chat').some(w=>winAwake(w)))return true;
+  for(const c of document.querySelectorAll('#omnicards .ocard'))if(c.dataset.cid===cid)return true;
+  for(const app in COPILOT.cids)
+    if(COPILOT.cids[app]===cid&&winsOf(app).some(w=>winAwake(w)&&w.el.querySelector('.copanel.open,.of-chat')))return true;
+  return false;
+}
 function aiBubble(){
   let b=$('#aibubble');
   if(!b){
     b=document.createElement('div');b.id='aibubble';
     b.innerHTML='<span class="ab-orb"></span><span class="ab-t"></span><span class="ab-n"></span>'
-      +'<button class="ab-stop" title="Stop the agent (Ctrl+.)">◼</button>';
+      +'<button class="ab-stop" title="Stop the agent (Ctrl+.)">◼</button>'
+      +'<button class="ab-x" title="Hide this until the next turn" aria-label="Hide">✕</button>';
     document.body.appendChild(b);
     b.querySelector('.ab-stop').onclick=e=>{e.stopPropagation();stopAllAgents()};
+    // Hide is a person's choice about this turn, not about turns to come: the ones
+    // running now stay hidden, and the next one shows again. Stop is still ◼.
+    b.querySelector('.ab-x').onclick=e=>{e.stopPropagation();
+      RUNNING.forEach(c=>AIB.snooze.add(c));AIB.seen=0;aiBubble()};
     b.onclick=()=>{
-      const cid=[...RUNNING][0]||AIB.last||currentConv;
+      const cid=[...RUNNING].find(c=>!turnOnScreen(c))||AIB.last||currentConv;
       openApp('chat');if(cid)openConv(cid);
       AIB.seen=0;aiBubble();
       // "waiting for you to approve …" is a question: tapping it shows the card
       if(Object.keys(APPROVALS).length)setTimeout(()=>approvalReveal(),300);
     };
   }
-  const n=RUNNING.size;
-  if(n)AIB.last=[...RUNNING][0];
+  AIB.snooze.forEach(c=>{if(!RUNNING.has(c))AIB.snooze.delete(c)});
+  const off=[...RUNNING].filter(c=>!turnOnScreen(c)&&!AIB.snooze.has(c)),n=off.length;
+  if(n)AIB.last=off[0];
   // The bubble is often the only thing on screen saying a turn exists — on the
   // desktop, with Chat closed. "is working" for four minutes is not a report,
   // so it carries the live step and its age like every other waiting surface.
-  const live=n===1?actLine([...RUNNING][0]):'';
+  const live=n===1?actLine(off[0]):'';
   const label=n?(n>1?`${agentName()} · ${n} turns`
                     :(live?`${agentName()} · ${live}`:`${agentName()} is working`))
                :(AIB.seen?`${agentName()} replied`:'');
@@ -13436,7 +13471,8 @@ function handle(ev){
       if(typeof paintForwardChip==='function')paintForwardChip();
       if(_cur){
         CUR_ENGINE={engine:ev.engine||'',model:ev.model||''};
-        const who=feed&&feed.querySelector('.msg.assistant:last-child .who');
+        // the reply being written, wherever the working row sits after it
+        const who=curBody&&curBody.parentNode.querySelector('.who');
         if(who)who.innerHTML=curWho();
       }
       break;}
@@ -13452,6 +13488,10 @@ function handle(ev){
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
         if(ev.huddle)actMove(_cid,'think',{msg:'huddle · '+ev.huddle[0]+' opens'});}
       if(_cur)setRunning(true);
+      // Who is answering shows from the first second: the name and face go up now, with
+      // the working row under them. It waited for the first word, and Claude Code sends
+      // its whole answer at the end (measured: 50 seconds with nobody's name on screen).
+      if(_cur&&feed&&!curBody){const t0=WORK_T0;startAssistant();WORK_T0=t0;showWorking();scrollDown()}
       // the play strip (24e) goes at the top of this reply, once there is something to show
       if(_cur&&_cid&&typeof playHost==='function')playHost(_cid,()=>chatPlayHost(_cid));
       updateSpin();
@@ -25861,6 +25901,14 @@ function officeBoardPoint(){
 function officeHead(p){return p.mode==='seat'?{x:p.x,y:p.y-50}:{x:p.x,y:p.y-80}}
 function officeName(k){return k==='@agent'?(typeof agentName==='function'?agentName():'your agent'):k}
 
+/* Is this person answering a conversation that is still running? A turn open in chat
+   is work, even when nothing has arrived for a while (a forwarded brain streams its
+   answer only at the end), so their desk stays lit until turn_end. */
+function officeLive(p){
+  const O=OFFICE;if(!p||typeof RUNNING==='undefined')return false;
+  for(const c in O.convWho)if(O.convWho[c]===p.key&&RUNNING.has(c))return true;
+  return false;
+}
 function officePulse(kind,label,ev){
   const O=OFFICE;if(!O.w||!O.L)return;
   ev=ev||{};
@@ -25868,13 +25916,16 @@ function officePulse(kind,label,ev){
     const who=ev.speaker?officeMatch(ev.speaker):O.people['@agent'];
     if(label)O.convWho[label]=who?who.key:'@agent';
     if(ev.huddle&&ev.huddle.length)officeHuddle(ev.huddle,label);
-    else if(who){officeWork(who,true);officePop(who,'!')}
+    // a thinking balloon for as long as the turn is open: Claude Code says nothing until
+    // its answer is done (measured: 50 silent seconds), and a desk that went dark after
+    // 12 of them read as the Office not noticing the chat at all
+    else if(who){officeWork(who,true);officePop(who,'!');officeSay(who,'…','think',600000)}
     return;
   }
   if(kind==='turnend'){
     const who=O.people[O.convWho[label]||'@agent'];
     if(O.huddle&&O.huddle.cid===label)officeHuddleEnd();
-    if(who)officeWork(who,false);
+    if(who){officeWork(who,false);if(who.say&&who.say.kind==='think')who.say=null}
     delete O.convWho[label];return;
   }
   if(kind==='tool'){
@@ -26139,7 +26190,7 @@ function officeStep(dt){
       }
       if(!p.path.length)officeArrive(p);
     }
-    if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand)p.busy=0;
+    if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand&&!officeLive(p))p.busy=0;
     // an unanswered question says how long it has waited
     if(p.hand&&p.waitSince&&p.say&&p.say.kind==='shout'){const m=Math.floor((now-p.waitSince)/60000);
       const t='? needs you: '+p.waitTool+(m?` · ${m} min`:'');if(p.say.text!==t)p.say.text=t}
@@ -29936,7 +29987,7 @@ async function updateWaitingCheck(){
     const d=await (await fetch('/api/update')).json();
     if(!d.pending_restart)return;
     toast(`An update (build ${d.pending_restart}) is installed but not running yet — this is still build ${d.build}.`,
-      {kind:'warn',ms:60000,label:'Restart now',go:async()=>{
+      {kind:'warn',ms:15000,label:'Restart now',go:async()=>{
         const r=await fetch('/api/update/restart',{method:'POST'});
         const j=await r.json().catch(()=>({}));
         toast(r.ok?'restarting into the update — this page reloads by itself':(j.error||'could not restart'),r.ok?{}:{kind:'err'});

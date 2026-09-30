@@ -1675,6 +1675,11 @@ things keep it true:
 - **The plan is office.py's closed set and the cast is the real one**: an unknown member is
   dropped and NAMED, one desk each, a deleted specialist leaves no named chair. `office` is a
   USER_KEY; a person's change is an `office.write` audit row, the agent's is its own action.
+- **A running chat is work until turn_end** (`officeLive`, the "…" balloon). A forwarded
+  brain sends its answer only at the end (measured: 50 silent seconds), and a desk that
+  went dark after `OF_WORK_MS` read as the Office ignoring the chat. The same silence is
+  why Chat draws the reply's name and face at `turn_start`, and why the presence bubble
+  counts only turns not already on screen (`turnOnScreen`). `tests/test_chat_liveness.py`.
 - **The chat is the window's own agent panel moved into the layout** (`initCopilot(w, .of-chat)`),
   and the window's ✦ is hidden — a second copy of the same thread would be two chats. A
   huddle asked there is drawn there: `agent_say` reaches the panel's `miniFeed.say` as well as
