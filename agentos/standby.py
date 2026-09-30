@@ -40,6 +40,7 @@ import ipaddress
 import json
 import os
 import platform
+import re
 import secrets
 import shutil
 import sqlite3
@@ -121,9 +122,22 @@ def _update(home=None, **kw) -> dict:
 _PASSIVE_CACHE: dict = {}
 
 
+def switching(home=None) -> bool:
+    """A swap is staged and not yet in: the home here is about to be replaced."""
+    from . import backup as bk
+    return (_home(home) / bk.READY).exists()
+
+
 def passive(home=None) -> bool:
-    """Is this side paired and NOT the one acting? Read per request by the server's
-    gate, so it is cached on the state file's mtime."""
+    """Is this side paired and NOT the one acting, or about to swap its home? Read per
+    request by the server's gate, so the state file is cached on its mtime.
+
+    A staged swap counts: a takeover writes "active" and THEN restarts to swap the
+    copy in, and for that second the cloud answered as you from its own empty home
+    (found by the end-to-end run, which read that home). A request in that window
+    could read or write a home that is about to be moved aside."""
+    if switching(home) and load(home).get("role"):
+        return True
     p = _home(home) / DIR / STATE
     try:
         m = p.stat().st_mtime_ns
@@ -311,13 +325,23 @@ def pair(url: str, code: str, home=None) -> dict:
     if r.status_code != 200 or not ans.get("ok"):
         raise StandbyError(ans.get("error") or f"{base} answered {r.status_code}; is it a Bento?")
     st = {"role": "primary", "active": True, "epoch": 0, "url": base, "token": token,
-          "secret": secret, "peer_host": _clean(ans.get("host", ""), 64) or "the cloud",
+          "secret": secret, "peer_host": _display_host(ans.get("host", ""), base),
           "peer_version": _clean(ans.get("version", ""), 24), "paired_at": time.time(),
           "interval": BEAT_S, "push_every": PUSH_S, "workspace": True,
           "last_contact": time.time(), "last_attempt": time.time(), "last_push": 0,
           "last_fp": "", "last_error": ""}
     save(st, home)
     return status(home)
+
+
+def _display_host(host: str, url: str) -> str:
+    """What to call the cloud on screen. A container's hostname is its id (twelve hex
+    characters, `993d597ede9b` in the test run), which names nothing a person
+    recognises; the address they paired with does."""
+    host = _clean(host, 64)
+    if not host or re.fullmatch(r"[0-9a-f]{12}", host):
+        return urlparse(url).hostname or "the cloud"
+    return host
 
 
 def unpair(home=None) -> dict:
@@ -494,7 +518,10 @@ def beat(home=None) -> dict:
         r = _call(st, "POST", "beat", timeout=10,
                   json={"epoch": st.get("epoch", 0), "host": _host(), "version": _version(), "at": now})
     except StandbyError as e:
-        _update(home, last_error=str(e))
+        # the other side restarts for a few seconds after every hand-over; a miss then
+        # is expected, and a red line in Settings for it would be a false alarm
+        if time.time() - max(st.get("came_back", 0), st.get("moved_at", 0), st.get("paired_at", 0)) > 60:
+            _update(home, last_error=str(e))
         raise
     ans = r.json()
     rec = {"last_error": "", "peer_version": _clean(ans.get("version", ""), 24),
@@ -849,9 +876,10 @@ def after_swap(report: dict, home=None) -> dict:
             shutil.rmtree(a, ignore_errors=True)
     keep = swaps[-KEEP_ASIDE:]
     # the one-machine-answers warnings are this module's job, and the asides are pruned
-    skip = ("Telegram:", "WhatsApp:", "Linked teams", "What was here before")
+    skip = ("Telegram:", "WhatsApp:", "Linked teams", "What was here before", "Your workspace is back")
     notes = [n for n in report.get("attention", []) if not n.startswith(skip)]
-    st.update(asides=keep, last_swap={"at": time.time(), "from": report.get("from_host", ""),
+    st.update(asides=keep, last_swap={"at": time.time(),
+                                      "from": st.get("peer_host") or report.get("from_host", ""),
                                       "notes": notes[:6]})
     save(st, home)
     return st["last_swap"]

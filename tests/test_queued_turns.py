@@ -309,6 +309,12 @@ def test_ws_second_message_is_queued_then_runs_as_the_next_turn(monkeypatch):
         # (the first turn_start was consumed while opening the chat)
         assert kinds.count("turn_start") == 1, "a second, separate turn must start"
         assert kinds.index("turn_end") < kinds.index("turn_start"), "…after this one ends"
+        # `turn_start` is sent BEFORE the model is called, so read on to the second
+        # turn's end before asking what the model saw. Stopping at turn_start read the
+        # first turn's request on a slow runner (CI, Python 3.10).
+        for _ in range(20):
+            if ws.receive_json()["type"] == "turn_end":
+                break
         assert "also check the weather" in turns[-1][-1]["content"]
         assert not server.state["queues"].get(cid), "the queue empties as it drains"
     finally:

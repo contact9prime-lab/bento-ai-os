@@ -55,6 +55,7 @@ import io
 import json
 import os
 import platform
+import re
 import shutil
 import sqlite3
 import tarfile
@@ -681,7 +682,20 @@ def apply(staging, *, home=None, keyring: bool = True) -> dict:
                 report["attention"].append(f"Your workspace was restored to {target}, because the "
                                            "folder already there could not be moved aside.")
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(ws_src), str(target))
+        # An EMPTY folder already there (a fresh install makes ~/AgentOS on its first
+        # start) is filled, never nested into: shutil.move into an existing folder puts
+        # the source INSIDE it, and the workspace landed at ~/AgentOS/workspace while the
+        # config pointed at ~/AgentOS. Found moving a laptop to a fresh cloud container.
+        if target.is_dir() and not any(target.iterdir()):
+            try:
+                target.rmdir()
+            except OSError:
+                pass                     # a mount point: it stays, and is filled below
+        if target.is_dir():
+            for e in sorted(ws_src.iterdir()):
+                shutil.move(str(e), str(target / e.name))
+        else:
+            shutil.move(str(ws_src), str(target))
         report["workspace"] = str(target)
     if report["workspace_previous"]:
         report["attention"].append(f"Your workspace is back in {report['workspace']}. The folder "
@@ -808,6 +822,47 @@ def _remap_json(obj, manifest: dict, home: Path, count: list):
     return obj
 
 
+#: Database columns that hold a folder the machine will use: a mission's watched folder
+#: (its trigger, the task it made and the text it runs with) and the folder grant that
+#: lets it read there. Missed at first: after a move, a folder-watch mission kept
+#: watching the old machine's path and was silently dead. Never `audit` (hash-chained
+#: history) and never messages or memories (what was said, not where things are).
+DB_PATH_COLUMNS = (("flows", "mission"), ("flows", "permissions"), ("flow_triggers", "config"),
+                   ("grants", "resource"), ("tasks", "prompt"), ("tasks", "trigger_config"))
+
+
+def _remap_text(value: str, manifest: dict, home: Path) -> str:
+    """Every old folder inside a piece of text, where it lives on this machine. One pass,
+    longest prefix first, and only a whole folder (followed by a separator, a quote, a
+    space, a glob or the end), so a path already rewritten is never rewritten again."""
+    if not isinstance(value, str) or not value:
+        return value
+    pairs = []
+    for old, new in ((manifest.get("home") or "", str(home)), (manifest.get("user_home") or "", str(Path.home()))):
+        old = old.rstrip("/\\")
+        if old and old != new.rstrip("/\\") and old in value:
+            pairs.append((old, new.rstrip("/\\")))
+    if not pairs:
+        return value
+    pairs.sort(key=lambda p: -len(p[0]))
+    table = dict(pairs)
+    pat = re.compile("(" + "|".join(re.escape(o) for o, _ in pairs) + r")(?=[/\\\s\"'*,;)\]}]|$)")
+    return pat.sub(lambda m: table[m.group(1)], value)
+
+
+def _remap_databases(con, manifest: dict, home: Path, count: list) -> None:
+    for table, col in DB_PATH_COLUMNS:
+        try:
+            rows = con.execute(f'SELECT rowid, "{col}" FROM "{table}"').fetchall()
+        except sqlite3.Error:
+            continue
+        for rid, val in rows:
+            nv = _remap_text(val, manifest, home)
+            if nv != val:
+                con.execute(f'UPDATE "{table}" SET "{col}"=? WHERE rowid=?', (nv, rid))
+                count[0] += 1
+
+
 def _remap_everywhere(home: Path, manifest: dict) -> int:
     """Every config and every agent's folder rules, in every home."""
     count = [0]
@@ -839,6 +894,7 @@ def _remap_everywhere(home: Path, manifest: dict) -> int:
                     if ns != s:
                         con.execute("UPDATE executor_profiles SET spec=? WHERE name=?",
                                     (json.dumps(ns), name))
+                _remap_databases(con, manifest, home, count)
                 con.commit()
                 con.close()
             except sqlite3.Error:

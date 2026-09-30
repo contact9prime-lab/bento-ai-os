@@ -224,8 +224,9 @@ def test_the_cloud_takes_over_after_the_silence_and_hands_the_work_back(pair):
     why = standby.due_takeover(cloud.home)
     assert "has not been heard from for 5 minutes" in why
     standby.takeover(why, cloud.home)
-    assert not standby.passive(cloud.home)
+    assert standby.passive(cloud.home), "quiet until the copy is swapped in"
     cloud.restart()
+    assert not standby.passive(cloud.home)
     assert "written on the laptop" in _titles(cloud.home)
     assert (cloud.home / "workspace" / "deck.md").read_text() == "laptop deck"
     cfg = json.loads((cloud.home / "config.json").read_text())
@@ -385,3 +386,25 @@ def test_the_start_brings_the_work_back_before_anything_opens():
     for route in ("/api/standby/pair", "/api/standby/offer", "/api/standby/move",
                   "/api/standby/adopt", "/api/standby/keep", "/api/standby/settings"):
         assert route in js, route
+
+
+def test_a_container_is_called_by_its_address():
+    """A container's hostname is its id; the pane said "993d597ede9b stands by"."""
+    assert standby._display_host("993d597ede9b", "https://bento.example.com:8443") == "bento.example.com"
+    assert standby._display_host("cloudbox", "https://bento.example.com") == "cloudbox"
+    assert standby._display_host("", "http://100.64.1.2:8321") == "100.64.1.2"
+
+
+def test_a_side_about_to_swap_stays_quiet(pair):
+    """A takeover writes "active" and then restarts to swap the copy in; in between,
+    the cloud answered as you from its own empty home."""
+    laptop, cloud = pair
+    standby.push(laptop)
+    st = standby.load(cloud.home)
+    st["last_beat"] = 1
+    standby.save(st, cloud.home)
+    standby.takeover("quiet", cloud.home)
+    assert standby.load(cloud.home)["active"] and standby.switching(cloud.home)
+    assert standby.passive(cloud.home), "active on paper, but the swap is not in yet"
+    cloud.restart()
+    assert not standby.switching(cloud.home) and not standby.passive(cloud.home)

@@ -608,7 +608,13 @@ what follows. Kept free of HTTP and asyncio, so both verbs work with the server 
   vault opens; the report says the protection got weaker. Never mint a new key here.
 - **Paths follow the machine** (`_remap`): values under the old `AGENTOS_HOME` or user home
   are rewritten in every `config.json` and every `executor_profiles` spec. A prefix is a
-  whole folder (`/home/adam` is not under `/home/ada`).
+  whole folder (`/home/adam` is not under `/home/ada`). The database columns that name a
+  folder a mission uses are `DB_PATH_COLUMNS` (`_remap_text`, one pass, so a rewritten
+  path is never rewritten again): without them a folder-watch mission kept watching the
+  old machine's path, found moving a laptop to a cloud container. Never `audit`.
+- **An empty workspace folder is filled, never nested into.** A fresh install makes
+  `~/AgentOS` on its first start, and `shutil.move` into an existing folder put the
+  workspace at `~/AgentOS/workspace` while the config said `~/AgentOS`.
 - **A snapshot restores code only into the version it was taken on** (`meta.version`).
   Copying its `.py` files over a newer install rolled half the program back.
 - **The shipped bundle must parse** (`test_the_shipped_bundle_parses`, with Node): one
@@ -647,6 +653,12 @@ cloud … it only runs on the cloud when my local is not available". Full story 
 - **`serve` brings the work back before the home opens** (`standby.boot` before
   `apply_pending`), and a release is two steps (`release` then `done`) so a main machine
   that dies mid-fetch asks again and gets the same file.
+- **A staged swap is quiet** (`switching()` inside `passive()`): a takeover writes
+  "active" and THEN restarts to swap the copy in; in between the cloud answered as you
+  from its own empty home. Found by the end-to-end run (`docs/standby.md` → Tested).
+- **The container is the cloud that was tested.** The end-to-end run pairs a laptop
+  process with the real image (entrypoint, `/data`, passphrase) and a fake provider and
+  Telegram, and compares every table of every database after each hand-over.
 
 ## Sign in with Google / Microsoft: the door that asks for nothing to type
 
@@ -1452,6 +1464,11 @@ most likely to quietly break. Full audit and rationale in `docs/design/tenant-is
   never runs for a socket; `_ws_user` reads the account from the signed cookie and every
   turn/build enters `users.as_user(uid)` before the first `state["store"]` read. A turn that
   read the store first and set the user second would act as the machine, not the person.
+  The `/ws` handler also sets `users._current` for its own task right after `_ws_user`,
+  because its receive loop reads the store itself: a NEW chat's conversation row was
+  created in the machine's database while its messages went into the person's, so on a
+  machine with accounts the chat never reached its owner's list and every account's titles
+  piled up in one shared file. `tests/test_ws_account.py`.
 
 - **A WebSocket has no HTTP middleware, so it checks its ORIGIN by hand too.** The same
   reason `csrf_origin_guard` cannot see it. A browser attaches the site's cookies to a

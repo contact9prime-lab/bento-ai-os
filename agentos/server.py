@@ -6351,7 +6351,8 @@ async def standby_gate(request: Request, call_next):
         return await call_next(request)
     if path.startswith("/api/") or path.startswith("/ws"):
         st = standbymod.status()
-        msg = (f"This machine is standing by for {st.get('peer_host') or 'another machine'}."
+        msg = ("Switching over. Back in a moment." if standbymod.switching() else
+               f"This machine is standing by for {st.get('peer_host') or 'another machine'}."
                if st["role"] == "standby" else
                f"Your agent is working on {st.get('peer_host') or 'the cloud'} right now.")
         return JSONResponse({"error": msg, "standby": True}, status_code=503, headers=NO_STORE)
@@ -7168,6 +7169,12 @@ def _standby_page() -> str:
     """What a side that is not the one working shows instead of the desktop."""
     s = standbymod.status()
     e = html_mod.escape
+    if standbymod.switching():
+        return ("<!doctype html><meta charset='utf-8'><meta http-equiv='refresh' content='4'>"
+                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                "<title>Bento</title><body style='font:16px system-ui;display:grid;place-items:center;"
+                "min-height:100vh;margin:0;background:#0d0f1a;color:#e8eaf6'>Switching over. "
+                "Back in a moment.</body>")
     if s["role"] == "standby":
         who = e(s.get("peer_host") or "your machine")
         head = f"Standing by for {who}"
@@ -13631,6 +13638,15 @@ async def ws_endpoint(ws: WebSocket):
     # its owner's sessions (see `broadcast_user`). Registered here rather than at
     # `.add()` above because the uid is not known until the cookie is resolved.
     state["client_uids"][ws] = ws_uid
+    # And the rest of this handler runs AS that account, as an HTTP request does
+    # after `resolve_user`. The loop below reads `state["store"]` and `state["cfg"]`
+    # itself before any turn starts: a new chat's conversation row (titled with the
+    # first message) was created in the MACHINE's database while its messages went
+    # into the person's, so on a machine with accounts a new chat never appeared in
+    # its owner's list and every account's titles piled up in one shared file. Found
+    # by the cloud-standby end-to-end run. Each connection is its own task, so this
+    # contextvar is this socket's alone.
+    _uid_token = usersmod._current.set(ws_uid)
 
     async def send(event: dict):
         with contextlib.suppress(Exception):
@@ -13774,3 +13790,5 @@ async def ws_endpoint(ws: WebSocket):
         # registration is cleaned up
         state["clients"].discard(ws)
         state["client_uids"].pop(ws, None)
+        with contextlib.suppress(ValueError, LookupError):
+            usersmod._current.reset(_uid_token)

@@ -83,6 +83,34 @@ differ. Update the cloud when you update your machine.
   from the two newest standby swaps are kept and older ones are removed, since the other
   machine holds the same work.
 
+## Reaching it from your phone
+
+While the cloud is working, your agent lives at the cloud's address, not your machine's.
+Telegram and WhatsApp follow it without you doing anything. A browser or the phone app
+needs the cloud's address, so keep both saved. One address that always finds whichever is
+working (Tailscale, or a DNS name you move) is not something Bento sets up for you yet.
+
+## How it was tested
+
+`packaging/dev/standby-e2e/run.sh` pairs a laptop (a process with its own home) with the
+real Docker image, and uses a fake AI provider and a fake Telegram so every answer has a
+record of which machine gave it. After each hand-over it compares every table of every
+database. The last full run:
+
+| What happened | Result |
+|---|---|
+| Pairing | 0.2 s; the first copy (27 KB) arrived 4.7 s later |
+| Cloud before takeover, from the network | Login page only; API refused; no Telegram polling |
+| Laptop switched off | Cloud working 85 s later (90 s setting). Every table the same, vault secret readable, workspace in place, the mission's folder rewritten for the cloud |
+| On the cloud | Chat answered, Telegram answered by the cloud only, the one-minute schedule fired, the cloud's own passphrase still the lock |
+| Laptop back on | Started in 2.6 s with the cloud's chats and files; the cloud went quiet |
+| Move to the cloud, and back | 0.8 s to press, about 5 s until the other side is working |
+| Lid closed past the grace | Cloud took over at 95 s; 5.2 s after waking the laptop had its work, with no false split |
+| Network split, both worked | Laptop kept its own, cloud's copy saved, Brief item filed, "use the cloud's copy" took 4.4 s |
+| Container restarted while working | Back in 3.5 s, still working, same data |
+| Laptop started with the cloud off | 2.5 s (refused) or 7.2 s (no answer at all) |
+| Two accounts | Both sign in on the cloud with their own passwords and see only their own chats; only an admin can pair, move or bring it back |
+
 ## From a terminal
 
 ```

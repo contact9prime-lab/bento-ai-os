@@ -51,6 +51,22 @@ a copy of a small home was 20 KB and took 0.6 s, moving over took 1.0 s and comi
 0.7 s, the cloud took over 84 s after the laptop froze (90 s setting), and a laptop woken
 from sleep had the cloud's work back 7 s later.
 
+**Moving to the cloud, tested end to end, and five bugs it found.** A laptop and the real
+Docker image were paired and put through every way the work changes hands (switched off,
+lid closed, moved on purpose, network split, container restart, two accounts), with every
+table of every database compared after each one. What it found, all fixed:
+- A new chat on a machine with accounts was filed in the machine's shared database, not
+  the person's, so it never showed in their list. Chats now land in their owner's home.
+- Restoring a backup onto a fresh machine put the workspace one folder too deep
+  (`~/AgentOS/workspace`), because a fresh install had already made an empty `~/AgentOS`.
+- After a move, a mission that watches a folder kept watching the old machine's path.
+  Mission folders and their permissions now follow the machine, in backups too.
+- For the second between taking over and swapping your copy in, the cloud answered from its
+  own empty home. It now stays quiet until the copy is in.
+- The cloud was named by its container id. It is now named by the address you paired with.
+- The Dockerfile's `curl … | sh` hid a failed download until two steps later; it now stops
+  at the download with curl's own error.
+
 ## 0.6.17 — 2026-09-30
 
 **An independent auditor checks every department's work.** When a department finishes a
