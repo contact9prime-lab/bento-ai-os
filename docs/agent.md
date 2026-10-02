@@ -191,8 +191,9 @@ AgentOS is designed to give the agent real power without letting it surprise you
 ### Autonomy levels
 | Level | Behavior |
 |---|---|
-| Paranoid / Balanced | read-only actions run automatically; anything that modifies the system asks for one-click approval |
-| Full | everything runs without prompting |
+| Paranoid | only reading runs on its own; everything else asks, even a remember or a shell `ls` |
+| Balanced | safe actions run; anything that modifies the system asks for one-click approval |
+| Full | everything runs without prompting, except the few steps confirmed every time |
 
 Destructive commands (wiping the disk, `mkfs`, `shutdown`, fork bombs, …) are **hard-blocked at every
 level**, including Full.

@@ -62,7 +62,7 @@ def test_deleting_a_row_leaves_a_detectable_gap(pdp):
 def test_stamping_an_outcome_does_not_break_the_chain(pdp):
     """The outcome is written after the decision, on purpose, so it is outside the
     hash. audit_finish must not look like tampering."""
-    aid = pdp.decide(APP, "tool.use", "tool:fetch_url", {"risk": "safe", "surface": "gui"}).audit_id
+    aid = pdp.decide(APP, "net.fetch", "net:https://example.com/", {"risk": "safe", "surface": "gui"}).audit_id
     pdp.store.audit_finish(aid, "ok", "done", 12)
     assert pdp.store.audit_verify()["ok"]
 
@@ -114,7 +114,7 @@ def test_fail_closed_refuses_an_allow_that_cannot_be_logged(tmp_path, monkeypatc
     pdp = PDP({"autonomy": "balanced", "security": {"audit_fail_closed": True}},
               Store(tmp_path / "t.db"))
     monkeypatch.setattr(pdp.store, "audit_add", lambda *a, **k: "")   # ledger wedged
-    dec = pdp.decide(APP, "tool.use", "tool:fetch_url", {"risk": "safe", "surface": "gui"})
+    dec = pdp.decide(APP, "net.fetch", "net:https://example.com/", {"risk": "safe", "surface": "gui"})
     assert dec.effect == "deny" and dec.rule == "audit-unavailable"
 
 
@@ -122,7 +122,7 @@ def test_fail_open_is_the_default(tmp_path, monkeypatch):
     """A home machine would rather keep working than stop when its disk is full."""
     pdp = PDP({"autonomy": "balanced"}, Store(tmp_path / "t.db"))
     monkeypatch.setattr(pdp.store, "audit_add", lambda *a, **k: "")
-    dec = pdp.decide(APP, "tool.use", "tool:fetch_url", {"risk": "safe", "surface": "gui"})
+    dec = pdp.decide(APP, "net.fetch", "net:https://example.com/", {"risk": "safe", "surface": "gui"})
     assert dec.effect == "allow"
 
 
@@ -132,7 +132,7 @@ def test_a_probe_is_not_subject_to_fail_closed(tmp_path, monkeypatch):
     pdp = PDP({"autonomy": "balanced", "security": {"audit_fail_closed": True}},
               Store(tmp_path / "t.db"))
     monkeypatch.setattr(pdp.store, "audit_add", lambda *a, **k: "")
-    dec = pdp.decide(APP, "tool.use", "tool:fetch_url",
+    dec = pdp.decide(APP, "net.fetch", "net:https://example.com/",
                      {"risk": "safe", "surface": "gui", "audit": False})
     assert dec.effect == "allow"
 

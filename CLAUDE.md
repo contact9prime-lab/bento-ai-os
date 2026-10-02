@@ -388,6 +388,25 @@ Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the sa
 catalogue and the same install on a headless Pi, which is where a standing job earns its
 keep and where there is no wizard.
 
+**Every run that happened on its own is in Missions → History, and a schedule's runs are
+one tap from its row** (`agentos/runlog.py`, `14c-history.js`, `/api/missions/history`,
+`bento job history`; `tests/test_mission_history.py`). Reported as "I can't find the runs
+of the schedules in the mission": a scheduled prompt's answer was a chat with no link back
+to its schedule, the Schedule tab showed only `last_result`, and mission runs were under
+Build → Runs. Three things keep it one answer:
+- **Every firing is a `task_runs` row** (`Scheduler._run_task`, start and finish), with the
+  door: a conversation for a prompt, a `run_id` for a mission. A mission run is ONE row in
+  the history, its flow run (`origin_surface='task'`, `origin_ref`=task id names the
+  schedule); a task_runs row with a `run_id` is never listed a second time. A mission the
+  schedule could not start is `skipped` with the reason, so a schedule that did nothing
+  still leaves a line.
+- **`runlog.history` is the only reader** for the tab, the Runs buttons (a schedule row
+  filters by `task_id`, a mission row by `mission`), the route and the CLI. `_status` maps
+  the recorded word to the six the page draws; a run still `running` past `STALE_S` reads
+  as stopped, never as working.
+- `task_runs` is pruned with `usage` (a year), and kept after its task is deleted: it is
+  history.
+
 ## Your company: departments are the Office's rooms, desks are flows, people are specialists
 
 `agentos/company.py` + `24g-company.js` (the Office's ▦ Company panel and the card over each
@@ -420,6 +439,33 @@ persona". Full story in `docs/company.md`; `tests/test_company.py` pins what fol
 
 The lead hears the org chart (`company.note`, appended after `team_note` in `agent.py`; the
 team door gets `desks=False`, because it has no `run_flow`).
+
+**An independent auditor checks every finished department task, by default**
+(`ControlPlane.audit`, called at the end of `run_flow` before delivery; `company.AUDITOR`,
+`audit_task`, `read_verdict`, `audit_state`; `tests/test_company_audit.py`). Asked for as
+"validation should happen once any department completes a job, by an auditor independent
+of the main agent". Five rules keep it independent:
+- **The control plane starts it, never the master.** It is on no roster, so `delegate` is
+  refused by the roster rule; `normalize` drops a person named `auditor` from any plan;
+  and an auditor that sits in the department, or on the desk's roster, gives `skipped` with
+  the reason rather than checking itself.
+- **Read-only whatever its definition says.** `kind="audit"` in `run_subagent` filters to
+  `AUDIT_TOOLS` after every automatic addition (remember, brief_item, ask_agent), so an
+  edited auditor still cannot write, file or message. It is told what the run filed in the
+  Brief, because it has no tool to read the Brief, and the first live run was unable to
+  confirm one.
+- **The verdict is read strictly.** The first word must be PASS, CONCERNS or FAIL;
+  anything else is `unchecked`, never a pass. Handles that read untrusted content are
+  fenced, and the rubric comes last.
+- **The audit run is the record.** A child of the desk run with kind `audit` (status
+  `skipped` with the reason when it could not be independent); `_task_rows` reads the
+  verdict back from that row, so the board, the card's ⚑ and `bento company` cannot
+  disagree. Also a `company.audit` ledger row, and a Brief item (`audit-<run>`) when it is
+  flagged or could not run. The deliverable is never rewritten: the verdict line goes
+  after it in what is delivered.
+- **On unless the person says otherwise** (`company.audit`, a USER_KEY, so `apply` must
+  merge `cfg["company"]` rather than replace it). The switch is a ledger row. `force=True`
+  (the page's Check it, `bento company check`) checks a task the switch skipped.
 
 **Every scene draws the company from ONE answer, `company.membership()`** (who is in which
 department, its head, whether that head was NAMED, the colour's hex, each title). The Crew
@@ -562,11 +608,83 @@ what follows. Kept free of HTTP and asyncio, so both verbs work with the server 
   vault opens; the report says the protection got weaker. Never mint a new key here.
 - **Paths follow the machine** (`_remap`): values under the old `AGENTOS_HOME` or user home
   are rewritten in every `config.json` and every `executor_profiles` spec. A prefix is a
-  whole folder (`/home/adam` is not under `/home/ada`).
+  whole folder (`/home/adam` is not under `/home/ada`). The database columns that name a
+  folder a mission uses are `DB_PATH_COLUMNS` (`_remap_text`, one pass, so a rewritten
+  path is never rewritten again): without them a folder-watch mission kept watching the
+  old machine's path, found moving a laptop to a cloud container. Never `audit`.
+- **An empty workspace folder is filled, never nested into.** A fresh install makes
+  `~/AgentOS` on its first start, and `shutil.move` into an existing folder put the
+  workspace at `~/AgentOS/workspace` while the config said `~/AgentOS`.
 - **A snapshot restores code only into the version it was taken on** (`meta.version`).
   Copying its `.py` files over a newer install rolled half the program back.
 - **The shipped bundle must parse** (`test_the_shipped_bundle_parses`, with Node): one
   dropped `pRow(` in Settings killed every app while every other test passed.
+
+## Cloud standby: one side acts, the other holds a sealed copy
+
+`agentos/standby.py` + `/api/standby*` + `bento standby` + Settings → System → Cloud
+standby (`11h-standby.js`). Asked for as "run it first on my machine and then jack it to a
+cloud … it only runs on the cloud when my local is not available". Full story in
+`docs/standby.md`; `tests/test_standby.py` pins what follows.
+
+- **One side acts.** `standby.passive()` is read at startup and none of the acting runners
+  start (scheduler, Telegram, WhatsApp resume, parked runs, team listener and chat sweep,
+  attention, knowledge maintenance, session triggers). `standby_gate` serves the
+  standing-by page and 503s the API; `_ws_reject` refuses sockets, because middleware
+  never sees one. The gate is registered BEFORE `remote_access_gate`, so it runs after it.
+- **The copy is a backup** (`backup.create`/`verify`/`stage`/`apply_pending`), sealed with
+  the pair's secret. `.standby` is in `backup.PRIVATE`: the pairing never travels and a
+  swap never moves it. The standby checks every copy in full and keeps the one before.
+- **`last_contact` is the last time the standby was heard QUIET.** A beat that finds it
+  working must not move it, because `come_back` counts this machine's work since then
+  (`worked_since`: people's messages, runs, scheduled firings). Stamping it on that beat
+  made the window empty and the cloud's copy replaced ours; found live, kept aside.
+  Both worked means SPLIT: ours stays, theirs is saved (`adopt` / `dismiss_split`).
+- **The machine's own door never travels** (`LOCAL_KEYS`, `keep_door` before a stage,
+  `after_swap` after `apply_pending` in `serve`). The cloud keeps the lock that made it
+  reachable. `after_swap` also keeps only the newest `KEEP_ASIDE` swaps' asides.
+- **A woken laptop waits for a heartbeat** (`may_act`, checked by the scheduler): the
+  last attempt is older than three intervals, so nothing fires until the next beat says
+  whether the cloud is working. A cloud that can't be reached does not hold it up.
+- **The peer door** is `/api/standby/peer/`, in `REMOTE_OPEN_PATHS`; each route checks the
+  Bearer token (hashed on the standby) behind `too_many_bad`, and `pair` checks the
+  one-time code instead. Person routes are admin-only. Pairing wants HTTPS off a private
+  network (`url_problem`).
+- **`serve` brings the work back before the home opens** (`standby.boot` before
+  `apply_pending`), and a release is two steps (`release` then `done`) so a main machine
+  that dies mid-fetch asks again and gets the same file.
+- **A staged swap is quiet** (`switching()` inside `passive()`): a takeover writes
+  "active" and THEN restarts to swap the copy in; in between the cloud answered as you
+  from its own empty home. Found by the end-to-end run (`docs/standby.md` → Tested).
+- **The container is the cloud that was tested.** The end-to-end run pairs a laptop
+  process with the real image (entrypoint, `/data`, passphrase) and a fake provider and
+  Telegram, and compares every table of every database after each hand-over.
+
+**Active sync is a journal and small sealed updates, never a merge** (`agentos/standbysync.py`,
+`standby.sync`/`receive_update`, `/api/standby/peer/update`, `_standby_sync_loop`,
+`bento standby set --active`; `tests/test_standby_sync.py`, live run
+`packaging/dev/standby-e2e/active_sync.py`). Asked for as "before every chat it is sending the
+chat, context and relevant information … and did we change the system anywhere". Six rules:
+- **Rows are caught by triggers into `_bento_sync`**, on every table of every database
+  (`ensure`), because ~250 call sites write and no hook through them would stay complete.
+  ONLY a working main machine with active sync keeps them: `_standby_start` calls `ensure`
+  on every side at start, `replay` drops them from a staged takeover, turning it off drops
+  them. A home restored anywhere else must never journal for nobody.
+- **An update carries each row's CURRENT value**, read at send time (`_db_changes`), so
+  replay is idempotent and converges. The journal's AUTOINCREMENT high-water travels inside
+  every full copy (it is in the database); `replay` skips entries at or below it. That is
+  what makes a copy and the updates around it fit without a lock.
+- **An update builds on a named copy** (`X-Bento-Copy`, `copy_id`/`update_n` on the standby).
+  Anything the standby cannot place (another copy, a gap) is a 409 and the main machine sends
+  a full copy. Never apply an update to a copy it was not built on.
+- **A new vault goes in a full copy**, because a vault's key travels only there; so does a
+  change of more than `MAX_ROWS` rows. A file over `FILE_CAP` waits for the next copy.
+- **The machine's own facts are `meta`** (version, brain, installed agent CLIs), diffed into
+  words (`meta_changes`) and shown by the standby (`feed`, `carry_notes`). They are reported,
+  never installed: nothing here installs software on the other machine.
+- **A clean shutdown flushes** (`_standby_flush`, first thing in `shutdown`), bounded, and is
+  skipped while a swap is staged (`bk.pending()`): flushing then would send the home that is
+  about to be replaced over the cloud's newer copy.
 
 ## Sign in with Google / Microsoft: the door that asks for nothing to type
 
@@ -1307,6 +1425,38 @@ Release is a user decision with three shapes, all recorded in `quarantine.releas
 `once` (still watched), `forever` (an exemption, which is why the row is kept rather than
 deleted), `deleted`.
 
+## The gate is only as good as what it is handed: risk, rules and remembers
+
+A review in 0.6.18 found the PDP sound and its INPUTS wrong, each confirmed by running it
+(`tests/test_gate_hardening.py`). Five rules came out of it:
+
+- **Every tool has a risk of its own, and an unclassified one is risky.** `SAFE_TOOLS` names
+  the safe ones and `risk_of` has a line for each risky one. The old fall-through was
+  `safe`, so `run_python` (whose docstring claimed it passed the gate) ran unasked at every
+  autonomy level and was exempt from the untrusted-content rule. A new tool asks until
+  somebody decides; the test fails on a tool that is neither.
+- **A shell command is safe only in its read-only form.** `env`, `awk`, `sed` and
+  `printenv` left `SAFE_COMMANDS` (they run programs or leak keys); `_segment_writes` names
+  what turns `curl`, `wget`, `sort`, `ip`, `find`, `xrandr`… into a write or a run, and a
+  lone `&` is dangerous. A download in the shell taints the turn (`tools.FETCHES`).
+- **A Rule lowers risk for your agent, never for an app or for the taint ceiling.** The
+  gate gets `base_risk` (the tool's risk before any Rule) and judges untrusted content,
+  read-only channels and apps on it. A Rule or grant written for one command covers that
+  command one at a time (`policy.command_covered`): `git *` does not cover `git log; bash`.
+- **Remember is a grant for the one principal that asked, and it has a length.** The card
+  offers this chat (`source_ref` `conv:<id>`, a day at most), an hour, or always, all
+  written by `policy.write_remembered` for every surface. The fallback that wrote a
+  machine-wide Rule ("Always allow") is gone and must not come back: it widened every app
+  and specialist and switched the untrusted-content rule off for its pattern. A taint card
+  and an ALWAYS_ASK card offer no remember.
+- **An app reaches the web and a few harmless tools without a grant** (`APP_FREE_*`), and
+  nothing else. Paranoid asks for everything but reading (`PARANOID_FREE`). Approvals carry
+  the asking account's `uid` and only that account sees or answers them
+  (`server._approval_mine`). `/api/tool` strips the loop's own `_` arguments.
+
+The gate's grant cache also keys on SQLite's `data_version` (`Store.outside_writes`), so a
+grant written from a terminal (`bento grants`) is seen by a running server at once.
+
 ## Everything a principal does goes in the ledger
 
 `PDP.decide()` writes one `audit` row per decision. That is the only place it happens, and
@@ -1340,6 +1490,11 @@ most likely to quietly break. Full audit and rationale in `docs/design/tenant-is
   never runs for a socket; `_ws_user` reads the account from the signed cookie and every
   turn/build enters `users.as_user(uid)` before the first `state["store"]` read. A turn that
   read the store first and set the user second would act as the machine, not the person.
+  The `/ws` handler also sets `users._current` for its own task right after `_ws_user`,
+  because its receive loop reads the store itself: a NEW chat's conversation row was
+  created in the machine's database while its messages went into the person's, so on a
+  machine with accounts the chat never reached its owner's list and every account's titles
+  piled up in one shared file. `tests/test_ws_account.py`.
 
 - **A WebSocket has no HTTP middleware, so it checks its ORIGIN by hand too.** The same
   reason `csrf_origin_guard` cannot see it. A browser attaches the site's cookies to a
@@ -1597,6 +1752,11 @@ things keep it true:
 - **The plan is office.py's closed set and the cast is the real one**: an unknown member is
   dropped and NAMED, one desk each, a deleted specialist leaves no named chair. `office` is a
   USER_KEY; a person's change is an `office.write` audit row, the agent's is its own action.
+- **A running chat is work until turn_end** (`officeLive`, the "…" balloon). A forwarded
+  brain sends its answer only at the end (measured: 50 silent seconds), and a desk that
+  went dark after `OF_WORK_MS` read as the Office ignoring the chat. The same silence is
+  why Chat draws the reply's name and face at `turn_start`, and why the presence bubble
+  counts only turns not already on screen (`turnOnScreen`). `tests/test_chat_liveness.py`.
 - **The chat is the window's own agent panel moved into the layout** (`initCopilot(w, .of-chat)`),
   and the window's ✦ is hidden — a second copy of the same thread would be two chats. A
   huddle asked there is drawn there: `agent_say` reaches the panel's `miniFeed.say` as well as

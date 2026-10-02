@@ -248,7 +248,7 @@ function wizChips(step){
     return el;
   }
   if(step==='autonomy')defs=[
-    ['Paranoid','asks before every action',()=>WIZ.autonomy='paranoid',false],
+    ['Paranoid','asks before anything but reading',()=>WIZ.autonomy='paranoid',false],
     ['Balanced','acts freely, asks for risky things',()=>WIZ.autonomy='balanced',true],
     ['Full','never asks',()=>WIZ.autonomy='full',false]];
   else if(step==='autostart')defs=[

@@ -332,7 +332,8 @@ def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code"
 async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                   emit=None, session_id: str = "",
                   context: str = "", team: dict | None = None,
-                  prior: list | None = None) -> tuple[str, "Run | None"]:
+                  prior: list | None = None,
+                  tools: tuple | None = None) -> tuple[str, "Run | None"]:
     """Send one turn to another agent and return what it said.
 
     Used by the surfaces that have no event stream of their own (Telegram, the
@@ -357,6 +358,8 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
         return (f"[error] {title} is installed, but AgentOS cannot run a turn on it yet — "
                 f"choose another brain in Settings → AI providers"), None
     env = envelope_from(cfg, workspace_default, engine)
+    if tools is not None:
+        env.tools = tuple(t for t in tools if t in KNOWN_TOOLS)   # narrower, never wider
     env.session_id = session_id if engine in RESUMES else ""
     if prior is not None:
         # the conversation's stored messages before this one: what the session has
@@ -452,7 +455,7 @@ async def ask_brain(cfg: dict, system: str, prompt: str, timeout: float = 180,
             from . import config as _cfgmod
             reply, _run = await asyncio.wait_for(
                 forward(engine, system + "\n\n" + prompt, cfg,
-                        default_workspace(cfg)), timeout)
+                        default_workspace(cfg), tools=()), timeout)
             reply = reply or ""
             if reply.startswith("[error]"):
                 return "", engine, f"{engine} could not answer: {reply[7:].strip()}"
@@ -2213,6 +2216,32 @@ async def _reap(proc) -> None:
             continue
 
 
+# The executor's own tools that bring somebody else's words into the turn. Claude Code
+# names them WebFetch / WebSearch; Gemini CLI web_fetch / google_web_search.
+NATIVE_UNTRUSTED = {"WebFetch", "WebSearch", "web_fetch", "google_web_search", "web_search"}
+
+
+def _taint_door(env: "Envelope", emit):
+    """A forwarded chat turn that read a web page with its own tools hands work to the
+    team as what it is: the team door's Agent is marked, so a specialist it starts
+    after that is held by the untrusted-content rule like any other turn. Before, the
+    door's Agent began every turn clean whatever the CLI had read."""
+    if not env.team_mcp:
+        return emit
+
+    async def wrapped(ev: dict):
+        if ev.get("type") == "tool_start" and ev.get("name") in NATIVE_UNTRUSTED:
+            from . import mcpbridge
+            sess = mcpbridge.SESSIONS.get(env.team_mcp[1])
+            agent = getattr(sess, "agent", None)
+            if agent is not None and hasattr(agent, "taint"):
+                args = ev.get("args") or {}
+                src = str(args.get("url") or args.get("query") or ev.get("name"))[:120]
+                agent.taint.append({"tool": ev.get("name"), "source": src})
+        await emit(ev)
+    return wrapped
+
+
 async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Run:
     """Delegate a task and stream it back through `emit`.
 
@@ -2224,6 +2253,7 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     run = run or Run()
     run.engine = env.engine
     Path(env.workspace).mkdir(parents=True, exist_ok=True)
+    emit = _taint_door(env, emit)
 
     # Say what the silence is. An external CLI executor spends its first stretch
     # spawning node and connecting every MCP server before it emits a single

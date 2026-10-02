@@ -437,6 +437,12 @@ mot de passe fonctionnent depuis un téléphone. [Utilisateurs →](../users.md)
 
 ![L'app Users : deux comptes, un administrateur et un avec le rôle Executor](../screenshots/users-two-accounts.png)
 
+### Sauvegardes et une machine de secours dans le cloud
+
+`bento backup` met toute la machine dans un seul fichier scellé : chaque compte, le coffre et l'espace de travail. `bento restore` la remet en place sur cette machine ou sur une nouvelle. [Sauvegarde →](../backup.md)
+
+Associez un second Bento sur une machine dans le cloud : il reste en attente avec une copie scellée. Si votre machine se tait, le cloud poursuit vos missions et vos canaux, puis vous rend le travail à son retour. Activez la synchronisation active et chaque changement, chaque message de chat compris, arrive dans le cloud en quelques secondes. [Secours dans le cloud →](../standby.md)
+
 ### Partagez votre agent, forkez celui de quelqu'un d'autre
 
 Partagez l'agent que vous avez façonné sous la forme d'un seul fichier : ses compétences, ses

@@ -59,7 +59,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # uv brings its own Python, which is the whole reason it is the bootstrap here:
 # no system python3, no venv module, no version skew with the base image.
 ENV PATH=/root/.local/bin:$PATH
-RUN curl -fsSL https://astral.sh/uv/install.sh | sh
+# Downloaded to a file first, not piped: `curl … | sh` has no pipefail in /bin/sh, so a
+# failed download (a TLS-intercepting proxy, an outage) ran `sh` on nothing, "succeeded",
+# and the build broke two steps later with `uv: not found`. Found building this image
+# behind such a proxy.
+RUN curl -fsSL https://astral.sh/uv/install.sh -o /tmp/uv-install.sh \
+    && sh /tmp/uv-install.sh && rm /tmp/uv-install.sh && uv --version
 
 
 # --- where the source comes from -------------------------------------------

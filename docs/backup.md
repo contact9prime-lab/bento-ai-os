@@ -77,7 +77,9 @@ way is renamed to `<folder>.before-restore-<date-time>`. Delete them once you're
 A few things can't move by themselves. After a restore, Settings says which apply:
 
 - **Folders.** Paths under your old home (`/home/ada/…`) are rewritten for the new one
-  (`/Users/ada/…`), in every setting and in every agent's folder rules.
+  (`/Users/ada/…`), in every setting, in every agent's folder rules, and in the folders
+  your missions watch and may read. Your workspace lands where the new machine keeps
+  it, even when a fresh install has already made an empty one there.
 - **The vault.** If the old machine kept the vault's key in its keyring, the key goes into
   the new machine's keyring. A machine with no keyring (a headless Pi) keeps it in a file
   only you can read, and Settings says so.

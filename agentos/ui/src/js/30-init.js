@@ -119,7 +119,7 @@ async function updateWaitingCheck(){
     const d=await (await fetch('/api/update')).json();
     if(!d.pending_restart)return;
     toast(`An update (build ${d.pending_restart}) is installed but not running yet — this is still build ${d.build}.`,
-      {kind:'warn',ms:60000,label:'Restart now',go:async()=>{
+      {kind:'warn',ms:15000,label:'Restart now',go:async()=>{
         const r=await fetch('/api/update/restart',{method:'POST'});
         const j=await r.json().catch(()=>({}));
         toast(r.ok?'restarting into the update — this page reloads by itself':(j.error||'could not restart'),r.ok?{}:{kind:'err'});

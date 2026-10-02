@@ -1,0 +1,30 @@
+# ruff: noqa  -- a test script: `from h import *` and one-line steps on purpose
+"""Phase 1: pair, and the cloud's quiet mode as seen from the network."""
+import re
+from h import *
+print(lget("/api/standby").json()["role"] or "laptop not paired")
+lpost if True else None
+httpx.put(LURL + "/api/telegram/chats/777", json={"allowed": True})
+say("telegram (laptop):", tg_wait_reply(tg_inject("are you there? (1)") and "are you there? (1)"))
+out = cexec("/opt/agentos/.venv/bin/python", "-m", "agentos", "standby", "wait")
+code = re.search(r"[A-Z0-9]{4}-[A-Z0-9]{4}", out).group(0)
+say("cloud code:", code)
+t = time.time()
+r = lpost("/api/standby/pair", json={"url": CURL, "code": code})
+say("pair:", r.status_code, r.json().get("peer_host"), f"{time.time()-t:.2f}s")
+st, took = wait_for(lambda: Cloud().get("/api/standby").json().get("copy_at"), 60, 2, "first copy")
+say(f"first copy arrived {took:.1f}s after pairing")
+anon = httpx.Client(base_url=CURL, timeout=20)
+p = anon.get("/")
+say("cloud / not signed in:", p.status_code, "login page" if "passphrase" in p.text.lower() or "sign in" in p.text.lower() else p.text[:80], "| leaks standby page:", "Standing by" in p.text)
+say("cloud /api/standby not signed in:", anon.get("/api/standby").status_code)
+say("cloud takeover not signed in:", anon.post("/api/standby/takeover", json={}).status_code)
+say("peer beat, no token:", anon.post("/api/standby/peer/beat", json={}).status_code)
+say("peer pair, used code:", anon.post("/api/standby/peer/pair", json={"code": code, "token": "t"*40, "secret": "s"*40}).status_code)
+c = Cloud()
+page = c.get("/")
+say("cloud / signed in:", "Standing by for" in page.text, re.findall(r"<p>([^<]*)</p>", page.text)[:3])
+say("cloud API signed in:", c.get("/api/config").status_code, c.get("/api/config").json().get("error"))
+say("telegram polls in last 8s:", (time.sleep(8), polls_since(8))[1])
+st = c.get("/api/standby").json()
+say("cloud status:", {k: st.get(k) for k in ("role", "active", "copy_bytes", "grace", "notes", "version_note")})

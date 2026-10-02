@@ -40,22 +40,36 @@ def _base(port):
 
 
 class ApprovalScreen(ModalScreen):
-    """A yes/no modal for a risky action the agent wants to run."""
-    def __init__(self, name, detail, reason):
+    """The approval card, in the terminal. With a grant on offer it has the same
+    remember choices as the desktop's card: this chat, an hour, or always. Answers with
+    (approved, remember) where remember is '' or one of those scopes."""
+    def __init__(self, name, detail, reason, offer=None):
         super().__init__()
         self._name, self._detail, self._reason = name, detail, reason
+        self._offer = offer or None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="ap-box"):
             yield Label("⚠  Approval needed", id="ap-title")
-            yield Static(f"[b]{self._name}[/b]  {self._detail}", id="ap-cmd")
-            yield Static(self._reason or "", id="ap-reason")
+            yield Static(f"[b]{_esc(self._name)}[/b]  {_esc(self._detail)}", id="ap-cmd")
+            yield Static(_esc(self._reason or ""), id="ap-reason")
             with Horizontal(id="ap-btns"):
-                yield Button("Allow", variant="success", id="ap-allow")
+                yield Button("Allow once" if self._offer else "Allow", variant="success",
+                             id="ap-allow")
                 yield Button("Deny", variant="error", id="ap-deny")
+                if self._offer:
+                    if self._offer.get("conversation_id"):
+                        yield Button("This chat", id="ap-chat")
+                    yield Button("1 hour", id="ap-hour")
+                    yield Button("Always", id="ap-always")
 
     def on_button_pressed(self, e: Button.Pressed):
-        self.dismiss(e.button.id == "ap-allow")
+        bid = e.button.id or ""
+        if bid == "ap-deny":
+            self.dismiss((False, ""))
+        else:
+            self.dismiss((True, {"ap-chat": "chat", "ap-hour": "hour",
+                                 "ap-always": "always"}.get(bid, "")))
 
 
 class SignInScreen(ModalScreen):
@@ -887,8 +901,10 @@ class AgentTUI(App):
                                   f"[grey58]bento link requests · bento link approve {_esc(ev.get('id', ''))}[/]")
                     elif t == "approval_request":
                         detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
-                        ok = await self.push_screen_wait(ApprovalScreen(ev["name"], detail, ev.get("reason", "")))
-                        await ws.send(json.dumps({"type": "approval", "id": ev["id"], "approved": bool(ok)}))
+                        ok, rem = await self.push_screen_wait(ApprovalScreen(
+                            ev["name"], detail, ev.get("reason", ""), ev.get("offer")))
+                        await ws.send(json.dumps({"type": "approval", "id": ev["id"],
+                                                  "approved": bool(ok), "remember": rem or False}))
                     elif t == "error":
                         log.write(f"[red]error: {ev.get('message','')}[/]")
                     elif t == "turn_end":

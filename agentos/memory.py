@@ -437,6 +437,24 @@ CREATE TABLE IF NOT EXISTS tasks (
     last_fired REAL,
     space_id TEXT DEFAULT ''     -- the space a scheduled turn runs inside
 );
+-- One row each time a scheduled task fired: what it was asked, how it went, and the
+-- door to what it produced (a conversation for a prompt, a flow run for a mission).
+-- Without it a scheduled prompt's answer was a chat nobody could trace back to its
+-- schedule, and the Schedule tab showed only the last result. Kept after the task is
+-- deleted, like any history; pruned with usage (prune()).
+CREATE TABLE IF NOT EXISTS task_runs (
+    id TEXT PRIMARY KEY,
+    task_id TEXT,
+    prompt TEXT DEFAULT '',       -- what the task asked, kept in case the task goes
+    flow TEXT DEFAULT '',         -- the mission it started, when it names one
+    started_at REAL,
+    finished_at REAL,
+    status TEXT DEFAULT 'running',-- running | ok | failed | skipped
+    result TEXT DEFAULT '',
+    conversation_id TEXT DEFAULT '',
+    run_id TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs(task_id, started_at);
 CREATE TABLE IF NOT EXISTS proactive_items (
     id TEXT PRIMARY KEY,
     kind TEXT,                   -- 'digest' (notification triage) | 'suggestion' (knowledge loop)
@@ -1047,6 +1065,7 @@ class Store:
 
         cut("logs", "created_at", logs_days)
         cut("usage", "ts", usage_days)
+        cut("task_runs", "started_at", usage_days)   # a year of what the schedules did
         # Events belong to a run: they are the step-by-step trace, by far the
         # biggest writer here, and the run row itself is kept so the history of
         # WHAT ran is intact even once the trace has aged out.
@@ -2033,12 +2052,25 @@ class Store:
         next save of that flow silently revokes somebody's deliberate decision."""
         surfaces = (surfaces or "*").strip() or "*"
         row = self.db.execute(
-            "SELECT id, surfaces FROM grants WHERE principal_kind=? AND principal_id=? AND action=? "
-            "AND resource=? AND effect=? AND COALESCE(source_ref,'')=? AND revoked_at IS NULL",
-            (principal_kind, principal_id, action, resource, effect, source_ref or "")).fetchone()
+            "SELECT id, surfaces, expires_at FROM grants WHERE principal_kind=? AND principal_id=? "
+            "AND action=? AND resource=? AND effect=? AND COALESCE(source_ref,'')=? "
+            "AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)",
+            (principal_kind, principal_id, action, resource, effect, source_ref or "",
+             time.time())).fetchone()
         if row:
+            changed = False
             if (row["surfaces"] or "*") != surfaces:
                 self.db.execute("UPDATE grants SET surfaces=? WHERE id=?", (surfaces, row["id"]))
+                changed = True
+            # The same rule granted again for longer lasts the longer of the two: "for an
+            # hour" on top of "always" stays always, and "always" on top of "for an hour"
+            # becomes always. It used to keep the first expiry whatever was asked next.
+            old = row["expires_at"]
+            new = None if (old is None or expires_at is None) else max(old, expires_at)
+            if new != old:
+                self.db.execute("UPDATE grants SET expires_at=? WHERE id=?", (new, row["id"]))
+                changed = True
+            if changed:
                 self.db.commit()
                 self.grants_version += 1
             return row["id"]
@@ -2064,6 +2096,16 @@ class Store:
             self.grants_version += 1
             self._audit_grant("change", self._grant_row(gid), detail=f"surfaces now {surfaces}")
         return bool(cur.rowcount)
+
+    def outside_writes(self) -> int:
+        """SQLite's data_version: it moves when ANOTHER connection commits. The grant
+        cache keys on it too, so a grant written from a terminal (`bento grants`, `bento
+        link let`) is seen by a running server at once. The in-memory counter above only
+        ever saw this process's own writes."""
+        try:
+            return int(self.db.execute("PRAGMA data_version").fetchone()[0])
+        except Exception:
+            return 0
 
     def grants_live(self) -> list[dict]:
         rows = self.db.execute("SELECT * FROM grants WHERE revoked_at IS NULL "
@@ -2832,6 +2874,36 @@ class Store:
         cols = ", ".join(f"{k}=?" for k in fields)
         self.db.execute(f"UPDATE tasks SET {cols} WHERE id=?", (*fields.values(), tid))
         self.db.commit()
+
+    # -- the history of what the scheduler started (runlog.py reads it) -------------
+
+    def task_run_start(self, task: dict) -> str:
+        rid = uuid.uuid4().hex[:12]
+        self.db.execute(
+            "INSERT INTO task_runs (id, task_id, prompt, flow, started_at, status) "
+            "VALUES (?,?,?,?,?,'running')",
+            (rid, task.get("id") or "", (task.get("prompt") or "")[:2000],
+             task.get("flow") or "", time.time()))
+        self.db.commit()
+        return rid
+
+    def task_run_finish(self, rid: str, status: str, result: str = "",
+                        conversation_id: str = "", run_id: str = ""):
+        self.db.execute(
+            "UPDATE task_runs SET status=?, result=?, conversation_id=?, run_id=?, "
+            "finished_at=? WHERE id=?",
+            (status, (result or "")[:4000], conversation_id or "", run_id or "",
+             time.time(), rid))
+        self.db.commit()
+
+    def task_runs(self, task_id: str = "", limit: int = 200, since: float = 0) -> list[dict]:
+        sql, args = "SELECT * FROM task_runs WHERE started_at>?", [float(since or 0)]
+        if task_id:
+            sql += " AND task_id=?"
+            args.append(task_id)
+        rows = self.db.execute(sql + " ORDER BY started_at DESC LIMIT ?",
+                               (*args, int(limit))).fetchall()
+        return [dict(r) for r in rows]
 
     def delete_task(self, tid: str):
         self.db.execute("DELETE FROM tasks WHERE id=?", (tid,))

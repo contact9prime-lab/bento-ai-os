@@ -136,7 +136,8 @@ Also in the chat toolbar (and Settings):
 
 | Level | Behavior |
 |---|---|
-| **Paranoid** / **Balanced** | read-only actions run automatically; anything that changes the system asks for approval first |
+| **Paranoid** | only reading runs on its own; everything else asks first |
+| **Balanced** | safe actions run; anything that changes the system asks for approval first |
 | **Full** | everything runs without prompting (destructive commands stay blocked either way) |
 
 Start on **Balanced**. You approve risky actions with one click when they come up. See

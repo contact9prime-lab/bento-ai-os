@@ -225,6 +225,66 @@ def test_paths_are_rewritten_in_configs_and_agent_folders(tmp_path, monkeypatch)
     assert json.loads(spec)["folders"][0]["path"] == str(new_user / "AgentOS" / "notes")
 
 
+def test_a_workspace_fills_an_empty_folder_instead_of_nesting_in_it(tmp_path, monkeypatch):
+    """A fresh install makes an empty ~/AgentOS on its first start. shutil.move into an
+    existing folder puts the source INSIDE it, so the workspace landed at
+    ~/AgentOS/workspace while the config said ~/AgentOS. Found moving a laptop to a
+    fresh cloud container."""
+    home, ws, con = _machine(tmp_path)
+    con.close()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "old"))
+    backup.create(tmp_path / "b.bento", PW, home=home)
+    new_user = tmp_path / "fresh"
+    (new_user / "AgentOS").mkdir(parents=True)          # what a first start leaves
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: new_user))
+    r = backup.restore(tmp_path / "b.bento", PW, home=new_user / ".agentos")
+    assert r["workspace"] == str(new_user / "AgentOS")
+    assert (new_user / "AgentOS" / "deck.md").read_text() == "# the deck"
+    assert not (new_user / "AgentOS" / "workspace").exists()
+    assert not r["workspace_previous"], "an empty folder is not a previous workspace"
+
+
+def test_a_mission_keeps_watching_its_folder_on_the_new_machine(tmp_path, monkeypatch):
+    """A folder-watch mission names its folder in five places in the database: the
+    flow's text and permissions, its trigger, the task it made and the folder grant.
+    Only config and agent folders were rewritten, so after a move the mission watched
+    the old machine's path and was silently dead. The ledger is history: never touched."""
+    home, ws, con = _machine(tmp_path)
+    inbox = str(tmp_path / "old" / "AgentOS" / "inbox")
+    con.executescript(f"""
+      create table flows(name text, mission text, permissions text);
+      create table flow_triggers(id text, config text);
+      create table grants(id text, resource text);
+      create table tasks(id text, prompt text, trigger_config text);
+      create table audit(id text, resource text);
+      insert into flows values ('fw', 'Something new appeared in {inbox}. Work out what it is.',
+                                '{{"folders": ["{inbox}"]}}');
+      insert into flow_triggers values ('t1', '{{"path": "{inbox}", "glob": "*"}}');
+      insert into grants values ('g1', 'fs:{inbox}/*');
+      insert into tasks values ('k1', 'Something new appeared in {inbox}.', '{{"path": "{inbox}"}}');
+      insert into audit values ('a1', 'fs:{inbox}/x');""")
+    con.commit()
+    con.close()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "old"))
+    backup.create(tmp_path / "b.bento", PW, home=home, workspace=False)
+    new_user = tmp_path / "other"
+    new_user.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: new_user))
+    new = new_user / ".agentos"
+    backup.restore(tmp_path / "b.bento", PW, home=new)
+    now = str(new_user / "AgentOS" / "inbox")
+    db = sqlite3.connect(new / "agentos.db")
+    assert db.execute("select mission from flows").fetchone()[0] == f"Something new appeared in {now}. Work out what it is."
+    assert json.loads(db.execute("select permissions from flows").fetchone()[0]) == {"folders": [now]}
+    assert json.loads(db.execute("select config from flow_triggers").fetchone()[0])["path"] == now
+    assert db.execute("select resource from grants").fetchone()[0] == f"fs:{now}/*"
+    assert json.loads(db.execute("select trigger_config from tasks").fetchone()[0])["path"] == now
+    assert db.execute("select resource from audit").fetchone()[0] == f"fs:{inbox}/x", "the ledger is history"
+    m = {"home": "/home/ada/.agentos", "user_home": "/home/ada"}
+    assert backup._remap_text("see /home/adam/x and /home/ada/y", m, Path("/n")) == \
+        f"see /home/adam/x and {Path.home()}/y"
+
+
 def test_the_desktop_stages_and_the_next_start_applies(tmp_path):
     home, _ = _sealed(tmp_path)
     target = tmp_path / "t"

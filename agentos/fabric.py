@@ -818,10 +818,13 @@ class _RunToolbox:
     def schemas(self) -> list:
         return [t for t in self._inner.schemas() if t["name"] in self._allow] + self._extra
 
-    def risk_of(self, name: str, args: dict):
+    def risk_of(self, name: str, args: dict, rules: bool = True):
         if name in self._impls:
             return "safe", ""           # the PDP still gates them: delegate → agent.invoke
-        return self._inner.risk_of(name, args)
+        return self._inner.risk_of(name, args, rules=rules)
+
+    def base_risk(self, name: str, args: dict) -> str:
+        return self.risk_of(name, args, rules=False)[0]
 
     async def execute(self, name: str, args: dict) -> str:
         if name in self._impls:
@@ -1265,7 +1268,7 @@ class ControlPlane(usersmod.Scoped):
         # that mission's grants there), and never inside a huddle turn, which is already
         # a conversation.
         from .policy import team_talk
-        talks = team_talk(self.cfg) != "off" and kind not in ("huddle", "vote", "freetalk")
+        talks = team_talk(self.cfg) != "off" and kind not in ("huddle", "vote", "audit", "freetalk")
         if talks and flow:
             # inside a mission only if the mission declared it — its consent screen said so
             try:
@@ -1274,6 +1277,11 @@ class ControlPlane(usersmod.Scoped):
                 talks = False
         if talks and "ask_agent" not in tools:
             tools.append("ask_agent")
+        if kind == "audit":
+            # the auditor reads and reports: whatever its definition was edited to hold,
+            # an audit run can remember nothing, file nothing and change nothing
+            from .company import AUDIT_TOOLS
+            tools = [t for t in tools if t in AUDIT_TOOLS]
         if kind == "vote" or no_tools:
             # a ballot is an opinion, not work: no tools, so a vote can never act,
             # message a colleague or start another vote (free talk in talk mode too)
@@ -2653,11 +2661,21 @@ class ControlPlane(usersmod.Scoped):
         self.store.fabric_run_finish(run_id, status, output=content, fault=fault,
                                      tokens_in=usage["in"], tokens_out=usage["out"],
                                      steps=state["delegations"])
+        # A department's finished work is checked before it is handed over, by an agent
+        # that did none of it and that the master could not call or skip (company.py).
+        audit = None
+        try:
+            audit = await self.audit(flow, run_id, status=status, content=content,
+                                     fault=fault, origin=origin)
+        except Exception as e:
+            await self._emit(run_id, "log", {"node_id": run_id, "level": "error",
+                                             "text": f"the auditor could not run: {e}"[:240]})
         delivered: list = []
         if self.deliver and content:
             try:
+                said = content + (f"\n\n{audit['line']}" if audit else "")
                 delivered = await self.deliver(flow, self.store.fabric_run(run_id) or {},
-                                               origin, content) or []
+                                               origin, said) or []
             except Exception as e:
                 await self._emit(run_id, "log", {"node_id": run_id, "level": "error",
                                                  "text": f"delivery failed: {e}"[:240]})
@@ -2665,11 +2683,115 @@ class ControlPlane(usersmod.Scoped):
                          {"status": status, "ref": name, "flow": name,
                           "tokens": usage, "steps": state["delegations"],
                           "preview": content[:400], "delivered": delivered,
-                          "fault": fault[:300]})
+                          "fault": fault[:300],
+                          **({"audit": {k: audit.get(k) for k in ("verdict", "line")}}
+                             if audit else {})})
         return {"run_id": run_id, "status": status, "content": content, "fault": fault,
                 "model": model, "usage": usage, "delegations": state["delegations"],
-                "delivered": delivered,
+                "delivered": delivered, "audit": audit,
                 "board": self.store.artifact_index(run_id)}
+
+    # -- the independent auditor: a department's finished work, checked -----------
+
+    async def audit(self, flow: dict, run_id: str, status: str = "", content: str = "",
+                    fault: str = "", origin: dict | None = None,
+                    force: bool = False) -> dict | None:
+        """Check a department's finished task. Called by `run_flow` once the master is
+        done, and by a person asking to check a task again (`force`, which also works
+        with the switch off). None when there is nothing to check: not a department's
+        desk, the check is off, or the run did not finish.
+
+        The auditor is started HERE, by the control plane, never by the master: a
+        master that could choose whether to be checked, or what the checker sees, is
+        checking itself. It gets the task, the deliverable and the board; its run is a
+        child of this one with kind `audit` and read-only tools (run_subagent), and
+        that row is the record the task board reads the verdict from."""
+        from . import company as companymod, brief as briefmod
+        run = self.store.fabric_run(run_id) or {}
+        status = status or run.get("status") or ""
+        if not force and not companymod.audit_on(self.cfg):
+            return None
+        if status not in companymod.AUDITED:
+            return None
+        dept = companymod.audit_scope(self.cfg, self.store, flow["name"])
+        if not dept:
+            return None
+        content = content or run.get("output") or ""
+        fault = fault or run.get("fault") or ""
+        task = run.get("input") or ""
+        if task.startswith("You run the "):
+            task = ""                     # a hand-started desk run carries its mission
+        why = companymod.audit_conflict(dept, flow)
+        await self._emit(run_id, "audit", {"phase": "start", "department": dept["name"],
+                                           "auditor": companymod.AUDITOR, "node_id": run_id})
+        defn = None
+        if not why:
+            companymod.ensure_auditor(self.store)
+            defn = self.store.get_subagent(companymod.AUDITOR)
+            if not defn or defn.get("enabled") is False:
+                why = "the auditor was switched off in Settings → Agents"
+        if why:
+            rid = self.store.fabric_run_start("audit", companymod.AUDITOR, "", parent_run=run_id,
+                                              flow="", space_id=run.get("space_id") or "",
+                                              conversation_id=run.get("conversation_id") or "")
+            self.store.fabric_run_finish(rid, "skipped", output=why)
+            result = {"verdict": "skipped", "why": why, "findings": [], "run_id": rid}
+        else:
+            board = []
+            for a in self.store.artifact_index(run_id):
+                full = self.store.artifact_get(run_id, a["handle"]) or {}
+                board.append({**a, "content": full.get("content") or ""})
+            # what the work filed in the Brief, which the auditor has no tool to read: a
+            # deliverable that says "three items are in your Brief" is checkable only so
+            ids = {run_id} | {k["id"] for k in self.store.fabric_runs(parent_run=run_id)
+                              if k.get("kind") != "audit"}
+            briefed = [b for b in self.store.brief_items(limit=1000)
+                       if b.get("run_id") in ids and not str(b.get("key") or "").startswith("audit-")]
+            prompt = companymod.audit_task(dept, task, content, status, fault, board, briefed)
+            res = await self.run_subagent(defn, prompt, parent_run=run_id, kind="audit",
+                                          conversation_id=run.get("conversation_id") or "",
+                                          space_id=run.get("space_id") or "",
+                                          origin=origin or {})
+            state = companymod.audit_state(self.store.fabric_run(res["run_id"]))
+            result = {"verdict": state.get("verdict") or "unchecked",
+                      "findings": state.get("findings") or [], "why": state.get("why") or "",
+                      "run_id": res["run_id"], "model": res.get("model") or ""}
+        result["line"] = companymod.audit_line(result)
+        result["department"] = dept["name"]
+        await self._emit(run_id, "audit", {"phase": "done", "node_id": run_id,
+                                           "department": dept["name"],
+                                           "auditor": companymod.AUDITOR,
+                                           **{k: result.get(k) for k in
+                                              ("verdict", "findings", "why", "line", "model")}})
+        v = result["verdict"]
+        try:
+            self.store.audit_add(uid=usersmod.current() or "", principal_kind="subagent",
+                                 principal_id=companymod.AUDITOR, action="company.audit",
+                                 resource=f"run:{run_id}", effect="allow", rule="auditor",
+                                 outcome=v, detail=f"{dept['name']}: {result['line']} "
+                                 + " · ".join(result["findings"])[:800])
+        except Exception:
+            pass
+        if v in ("concerns", "fail", "unchecked", "skipped"):
+            title = {"concerns": f"The auditor has concerns about {dept['name']}'s task",
+                     "fail": f"The auditor failed {dept['name']}'s task",
+                     }.get(v, f"{dept['name']}'s task was not checked")
+            try:
+                briefmod.add(self.store, flow["name"], run_id,
+                             "needs_you" if v in ("concerns", "fail") else "fyi", title,
+                             body="\n".join(result["findings"]) or result.get("why") or "",
+                             who=companymod.AUDITOR, key=f"audit-{run_id}",
+                             source={"run_id": run_id, "flow": flow["name"],
+                                     "audit_run": result.get("run_id") or ""},
+                             space_id=run.get("space_id") or "")
+            except Exception:
+                pass
+            if self.broadcast:
+                try:
+                    await self.broadcast({"type": "brief", "action": "changed"})
+                except Exception:
+                    pass
+        return result
 
     # -- parked runs: a mission that waits for a person, past a restart ------------
 

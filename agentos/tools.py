@@ -38,11 +38,99 @@ SAFE_COMMANDS = {
     "ls", "cat", "head", "tail", "grep", "rg", "find", "wc", "sort", "uniq", "cut",
     "echo", "pwd", "whoami", "id", "date", "cal", "uptime", "uname", "hostname",
     "df", "du", "free", "ps", "top", "lscpu", "lsblk", "lsusb", "lspci", "ip",
-    "which", "whereis", "type", "file", "stat", "env", "printenv", "history",
+    "which", "whereis", "type", "file", "stat", "history",
     "diff", "md5sum", "sha256sum", "basename", "dirname", "realpath",
     "xrandr", "sensors", "nvidia-smi", "acpi", "ping", "dig", "nslookup", "host",
-    "curl", "wget", "tree", "less", "more", "awk", "sed", "jq", "column", "nl",
+    "curl", "wget", "tree", "less", "more", "jq", "column", "nl",
 }
+# Not in the list above, on purpose: `env` and `awk` run other programs (`env rm -rf ~`,
+# `awk 'BEGIN{system(…)}'`), `sed` does too (`sed -n '1e id'`) and writes files (`w`),
+# and `printenv` hands the model every key in the server's environment. Each one was
+# classed safe until 0.6.18, which let a web page's instructions run them unasked.
+#
+# The rest are read-only only in their usual form. Each entry below says what turns
+# one into a write, a run or a change to the machine, and classify_command asks then.
+_VALUE_FLAGS = {  # flags that take the next word as their value
+    "curl": {"-m", "--max-time", "--connect-timeout", "-A", "--user-agent", "-H", "--header",
+             "-w", "--write-out", "--retry", "--retry-delay", "--retry-max-time", "-e",
+             "--referer", "--resolve", "--interface"},
+    "wget": {"-T", "--timeout", "-t", "--tries", "--max-redirect", "-U", "--user-agent",
+             "--header", "-O", "--output-document"},
+}
+_CURL_READ_FLAGS = {"-s", "--silent", "-S", "--show-error", "-L", "--location", "-I", "--head",
+                    "-i", "--include", "-f", "--fail", "--fail-with-body", "--compressed",
+                    "-v", "--verbose", "-G", "--get", "-4", "-6", "-k", "--insecure",
+                    "--http1.1", "--http2", "-N", "--no-buffer", "-sS", "-sL", "-fsSL",
+                    "-sSL", "-Ls", "-sI", "-Is", "-sf", "-fs", "-fsS", "-sSf", "-ks", "-sk"}
+_WGET_READ_FLAGS = {"-q", "--quiet", "-S", "--server-response", "--spider", "-nv",
+                    "--no-verbose", "--no-check-certificate", "-qO-", "-O-"}
+
+
+def _flags_ok(base: str, parts: list[str], allowed: set) -> bool:
+    """Every flag is one that only reads; a value flag's value is skipped."""
+    vals = _VALUE_FLAGS.get(base, set())
+    i = 1
+    while i < len(parts):
+        p = parts[i]
+        if p.startswith("-"):
+            name = p.split("=", 1)[0]
+            if name in vals:
+                i += 1 if "=" in p else 2
+                continue
+            if p not in allowed:
+                return False
+        i += 1
+    return True
+
+
+def _segment_writes(base: str, parts: list[str], seg: str) -> bool:
+    """Does this otherwise read-only command write, run something or change the
+    machine in the form it was written?"""
+    args = parts[1:]
+    flags = {a.split("=", 1)[0] for a in args if a.startswith("-")}
+    words = [a for a in args if not a.startswith("-")]
+    if base == "find":
+        return bool(flags & {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint",
+                             "-fprint0", "-fprintf", "-fls"})
+    if base == "curl":
+        # anything that sends data, saves a file, reads a config or changes the method
+        return not _flags_ok("curl", parts, _CURL_READ_FLAGS)
+    if base == "wget":
+        # wget SAVES what it fetches unless told to print it or only check it
+        to_stdout = ("-O" in args and args[args.index("-O") + 1:args.index("-O") + 2] == ["-"]) \
+            or any(a in ("-qO-", "-O-", "--output-document=-", "--spider") for a in args)
+        return not to_stdout or not _flags_ok("wget", parts, _WGET_READ_FLAGS)
+    if base == "sort":
+        return bool(flags & {"-o", "--output", "--compress-program"})
+    if base == "uniq":
+        return len(words) > 1                      # `uniq in out` writes out
+    if base == "tree":
+        return "-o" in flags
+    if base == "date":
+        return bool(flags & {"-s", "--set"})
+    if base == "hostname":
+        return bool(words) or bool(flags & {"-F", "--file", "-b", "--boot"})
+    if base == "history":
+        return bool(args)                          # -c clears, -w writes
+    if base == "ip":
+        return bool({"add", "del", "delete", "set", "flush", "change", "replace", "append",
+                     "prepend", "exec", "up", "down"} & set(words))
+    if base == "xrandr":
+        return any(a not in ("-q", "--query", "--listmonitors", "--listactivemonitors",
+                             "--current", "--verbose", "--prop", "--properties")
+                   for a in args)
+    if base == "nvidia-smi":
+        return bool(flags & {"-pl", "--power-limit", "-r", "--gpu-reset", "-pm",
+                             "--persistence-mode", "-c", "--compute-mode", "-ac",
+                             "--applications-clocks", "-rac", "-lgc", "-rgc", "-e",
+                             "--ecc-config", "-am", "-mig", "-lmc", "-rmc"})
+    if base == "sensors":
+        return bool(flags & {"-s", "--set"})
+    if base == "rg":
+        return bool(flags & {"--pre"})             # runs a preprocessor on every file
+    if base == "git":
+        return False
+    return False
 # git is NOT blanket-safe: `git push`/`reset --hard`/`clean -fdx` mutate and publish.
 # Only these read-only subcommands auto-run; everything else asks (or use the
 # structured git_* tools, which carry their own risk levels).
@@ -58,6 +146,13 @@ BLOCKED_PATTERNS = [
 ]
 DANGEROUS_META = re.compile(r"[><`$\n]")  # redirects, substitution, multiline
 CONNECTORS = re.compile(r"\s*(?:\|\||&&|;|\|)\s*")
+# A single `&` starts the rest of the line as a second command in the background. It is
+# not a connector the classifier splits on, so `ls & rm -rf ~/x` read as one `ls`.
+BACKGROUND = re.compile(r"(?<!&)&(?!&)")
+# What a shell command fetches from outside this machine, and so what taints the turn
+# (agent.is_untrusted): its output is somebody else's words, like fetch_url's.
+FETCHES = re.compile(r"(^|[\s;&|(])(curl|wget|http|lynx|w3m|links|aria2c|nc|ncat|ssh|scp|rsync|"
+                     r"git\s+(clone|pull|fetch))\b|https?://")
 
 # Stock theme ids the desktop ships (keys of THEMES in ui/src/js/02-themes-shells.js);
 # custom themes from the Themes store merge in at call time (list_themes).
@@ -82,6 +177,34 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               "mail_send"}
 
 
+# Tools that change nothing outside this OS's own records, named one by one. risk_of
+# answers "safe" for these and "risky" for anything it has no line for: a new tool asks
+# until somebody decides otherwise. The old default was "safe", and run_python,
+# delete_skill and whatsapp_send to any number all ran unasked because of it.
+# tests/test_gate_hardening.py fails if a tool in TOOL_SCHEMAS is neither here nor
+# given its own line in risk_of.
+SAFE_TOOLS = {
+    # reading
+    "read_file", "list_dir", "search_files", "read_source", "search_docs", "system_info",
+    "fetch_url", "recall", "kg_query", "timeline", "list_spaces", "list_flows",
+    "list_assets", "get_asset", "list_automations", "read_app_data", "mail_search",
+    "mail_read", "calendar_events", "find_tools", "openclaw_report",
+    "port_openclaw_plugin", "verify_openclaw_port",
+    # the team: each of these is its own action, decided by the gate (agent.invoke,
+    # agent.message, agent.huddle, skill.use)
+    "delegate", "huddle", "ask_agent", "run_flow", "use_skill",
+    # this OS's own records and looks. The ones that write something an agent reads
+    # back later (memory, the graph, skills, automations) are held for a person after
+    # untrusted content: see policy.TAINT_WATCH.
+    "remember", "forget", "kg_add", "save_skill", "save_automation", "run_automation",
+    "brief_item", "notify", "save_report", "create_space", "snapshot_os",
+    "set_avatar", "set_office", "set_wallpaper", "save_asset",
+    "generate_image", "generate_wallpaper", "llm_generate",
+    # to the owner's own chat; another chat or number is risky (see risk_of)
+    "telegram_send", "whatsapp_send",
+}
+
+
 def classify_command(command: str) -> str:
     """Return 'safe', 'risky', or 'blocked' for a shell command.
 
@@ -91,7 +214,7 @@ def classify_command(command: str) -> str:
     for pat in BLOCKED_PATTERNS:
         if re.search(pat, command):
             return "blocked"
-    if DANGEROUS_META.search(command):
+    if DANGEROUS_META.search(command) or BACKGROUND.search(command):
         return "risky"
     segments = [s for s in CONNECTORS.split(command.strip()) if s.strip()]
     if not segments:
@@ -103,6 +226,8 @@ def classify_command(command: str) -> str:
             sub = next((p for p in parts[1:] if not p.startswith("-")), "")
             if sub not in GIT_SAFE_SUBCOMMANDS:
                 return "risky"
+            if any(p.startswith(("--output", "--ext-diff", "--exec")) or p == "-c" for p in parts):
+                return "risky"  # writes a file, or runs a configured program
             if sub == "config":
                 # `git config <key>` reads; `git config <key> <value>` writes
                 args = [p for p in parts[2:] if not p.startswith("-")]
@@ -117,8 +242,8 @@ def classify_command(command: str) -> str:
             continue
         if base not in SAFE_COMMANDS:
             return "risky"
-        if base in ("sed", "awk", "find") and re.search(r"(^|\s)-i\b|\s-delete\b|\s-exec\b", seg):
-            return "risky"  # in-place edits / find -delete / find -exec can write
+        if _segment_writes(base, parts, seg):
+            return "risky"
     return "safe"
 
 
@@ -2442,17 +2567,31 @@ class Toolbox(usersmod.Scoped):
             if fnmatch.fnmatchcase(desc, pat):
                 if p.get("action") == "deny":
                     return "deny"
+                # An allow rule for a command covers that command, one command at a
+                # time: `run_command git *` must not cover `git log; bash -c …`.
+                if p.get("action") == "allow" and name == "run_command":
+                    from .policy import command_covered
+                    body = pat.lstrip("*")
+                    body = (body[len("run_command"):] if body.startswith("run_command")
+                            else body).lstrip() or "*"
+                    if not command_covered(body, args.get("command", "")):
+                        continue
                 matched = p.get("action")
         return matched
 
-    def risk_of(self, name: str, args: dict) -> tuple[str, str]:
+    def base_risk(self, name: str, args: dict) -> str:
+        """The tool's own risk, before any Rule in Permissions → Rules lowered it. The
+        gate judges untrusted content and apps on this (policy: base_risk)."""
+        return self.risk_of(name, args, rules=False)[0]
+
+    def risk_of(self, name: str, args: dict, rules: bool = True) -> tuple[str, str]:
         """Return (level, reason). level: safe | risky | blocked."""
         # hard blocks are checked before user policies and cannot be overridden
         if name == "run_command":
             level = classify_command(args.get("command", ""))
             if level == "blocked":
                 return "blocked", "This command is blocked (destructive to the system)."
-        action = self._policy(name, args)
+        action = self._policy(name, args) if rules else None
         if action == "deny":
             return "blocked", "Blocked by one of your deny policies (see the Policies app)."
         if action == "allow":
@@ -2620,7 +2759,25 @@ class Toolbox(usersmod.Scoped):
             return "risky", "Captures the screen (it may show sensitive content)."
         if name.startswith("mcp_"):
             return "risky", "Calls a tool on an external MCP server."
-        return "safe", ""
+        if name.startswith("ocp_"):
+            return "risky", "Calls a tool an OpenClaw plugin brought (third-party code)."
+        if name == "run_python":
+            # Code, so it can do anything a shell can. It runs through the shell's jail,
+            # but the jail is not an approval: this is the same question run_command asks.
+            return "risky", "Runs Python code on this machine."
+        if name == "delete_skill":
+            return "risky", f"Deletes the skill '{args.get('name', '?')}'."
+        if name == "delete_asset":
+            return "risky", "Deletes a file from your gallery."
+        if name == "telegram_send" and int(args.get("chat_id") or 0):
+            return "risky", "Sends a Telegram message to a chat other than yours."
+        if name == "whatsapp_send" and str(args.get("wa_id") or "").strip():
+            return "risky", f"Sends a WhatsApp message to {args.get('wa_id')}."
+        if name in SAFE_TOOLS:
+            return "safe", ""
+        # A tool nobody classified is risky until somebody does. The old default was
+        # "safe", which is how run_python ran unasked at every autonomy level.
+        return "risky", f"'{name}' has no risk level of its own yet, so it asks."
 
     # ---- git (Ship pillar) -------------------------------------------------
     # Structured tools instead of shell strings: each carries its own risk level

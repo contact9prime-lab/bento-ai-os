@@ -1,10 +1,20 @@
 /* ================= scheduler app ================= */
 async function renderTasks(body){
   const r=await fetch('/api/tasks');const d=await r.json();
-  const fmt=t=>t.schedule_type==='interval'?`every ${Math.round((t.interval_seconds||0)/60)} min`:t.schedule_type==='daily'?`daily at ${t.at_time}`:t.schedule_type==='weekly'?`every ${WEEKDAY_NAMES[t.weekday||0]} at ${t.at_time}`:'once';
-  const items=d.tasks.map(t=>`<div class="item" data-f="${esc(t.prompt)}"><div class="grow">${esc(t.prompt)}<div class="sub">${fmt(t)} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'running/done'):'disabled'}${t.last_result?' · last: '+esc(t.last_result.slice(0,90)):''}</div></div>
-    <button title="toggle" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
-    <button onclick="delTask('${t.id}')">✕</button></div>`).join('');
+  /* Each schedule says what it did (runlog.schedules): how many runs this week, how the
+     last one went, and Runs opens Missions → History on just this schedule. A mission's
+     schedule is named by its mission, not the prompt it carries. */
+  const st={ok:'done',failed:'failed',skipped:'skipped',running:'running',stopped:'stopped',waiting:'waiting for you',partial:'partly done'};
+  const items=d.tasks.map(t=>{
+    const last=t.last_status?`last run ${st[t.last_status]||t.last_status}${t.last_at?' '+jobAgo(t.last_at):''}`:'has not run yet';
+    return `<div class="item task-row" data-f="${esc(t.title||t.prompt)}"><div class="grow">
+      ${t.flow?`<span class="job-hkind">mission</span> `:''}${esc(t.title||t.prompt)}
+      <div class="sub">${esc(t.words||'')} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'waiting for its event'):'switched off'}</div>
+      <div class="sub"><span class="task-last ${esc(t.last_status||'')}">${esc(last)}</span>${t.runs_7d?` · ${t.runs_7d} run${t.runs_7d===1?'':'s'} this week`:''}${t.failed_7d?` · <b class="job-bad">${t.failed_7d} failed</b>`:''}</div>
+      ${t.last_said?`<div class="sub job-hsaid">${esc(t.last_said)}</div>`:''}</div>
+    <button class="endbtn" onclick="jobHistoryFor({task_id:'${esc(t.id)}'})">Runs</button>
+    <button title="${t.enabled?'Pause':'Resume'}" aria-label="${t.enabled?'Pause':'Resume'}" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
+    <button title="Delete" aria-label="Delete" onclick="delTask('${t.id}')">✕</button></div>`}).join('');
   const pb=panelShell(body,{
     title:'Schedule',
     sub:`${d.tasks.length} task${d.tasks.length===1?'':'s'} · ${d.tasks.filter(t=>t.enabled).length} active`,

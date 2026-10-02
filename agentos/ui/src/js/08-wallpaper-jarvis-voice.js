@@ -49,6 +49,11 @@ function clearBuiltinWallpaper(){localStorage.removeItem('wallpaper.builtin');lo
 /* ================= jarvis thinking animation ================= */
 let jrRaf=0,jrPulse=0,jrActive=false,jrTimeout=0;
 function jarvisOn(autoOffSecs){
+  // Only in the Aura (Voice OS) look, where these rings ARE the desktop. Everywhere
+  // else they came up in the middle of the wallpaper on every chat turn, half behind
+  // the Chat window ("pops up on the main desktop like a clock"); the working row,
+  // the Office and the scene already say that a turn is running.
+  if(typeof EXPERIENCE!=='undefined'&&EXPERIENCE!=='jarvis')return;
   const c=$('#jarvis');c.classList.add('on');jrActive=true;
   if(!jrRaf)jrRaf=requestAnimationFrame(jarvisDraw);
   clearTimeout(jrTimeout);

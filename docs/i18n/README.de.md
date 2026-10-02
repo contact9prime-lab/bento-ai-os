@@ -433,6 +433,12 @@ Handy aus. [Benutzer →](../users.md)
 
 ![Die Users-App: zwei Konten, ein Admin und eines mit der Rolle Executor](../screenshots/users-two-accounts.png)
 
+### Backups und ein Ersatzrechner in der Cloud
+
+`bento backup` packt den ganzen Rechner in eine versiegelte Datei: jedes Konto, den Tresor und den Arbeitsordner. `bento restore` stellt sie auf diesem oder einem neuen Rechner wieder her. [Backup →](../backup.md)
+
+Koppeln Sie ein zweites Bento auf einem Cloud-Rechner, und es hält sich mit einer versiegelten Kopie bereit. Wird Ihr Rechner still, macht die Cloud mit Ihren Missionen und Kanälen weiter und gibt die Arbeit zurück, sobald Ihr Rechner wieder da ist. Mit aktivem Sync erreicht jede Änderung die Cloud binnen Sekunden, auch jede Chat-Nachricht. [Cloud-Bereitschaft →](../standby.md)
+
 ### Ihren Agenten teilen, den eines anderen forken
 
 Teilen Sie den Agenten, den Sie geformt haben, als eine Datei: seine Skills, Spezialisten, Missionen,

@@ -1,0 +1,28 @@
+# ruff: noqa  -- a test script: `from h import *` and one-line steps on purpose
+"""Phase 4: move to the cloud on purpose, and back."""
+from h import *
+lpost("/api/standby/copy")
+chat(LURL, "before the move")
+t = time.time()
+r = lpost("/api/standby/move")
+say("move:", r.status_code, r.json().get("message"), f"{time.time()-t:.2f}s")
+_, took = wait_for(lambda: Cloud().get("/api/config").status_code == 200, 90, 1, "cloud working")
+say(f"cloud working {time.time()-t:.1f}s after pressing Move")
+_, took = wait_for(lambda: lget("/api/config").status_code == 503, 60, 1, "laptop quiet")
+page = lget("/").text
+say("laptop page:", "Your agent is working on" in page, "| API:", lget("/api/config").status_code)
+c = Cloud()
+say("cloud has the move-era chat:", "before the move" in conv_titles_cloud())
+say("chat on cloud:", chat(CURL, "working from the cloud", cookies=dict(c.c.cookies))[1])
+time.sleep(6)
+say("telegram polls last 6s:", polls_since(6))
+say("telegram:", tg_wait_reply(tg_inject("moved? (4)") and "moved? (4)"))
+say("laptop scheduler held:", lget("/api/standby").json().get("active") is False)
+t = time.time()
+r = lpost("/api/standby/back")
+say("back:", r.status_code, r.json().get("message"), f"{time.time()-t:.2f}s")
+_, took = wait_for(lambda: lget("/api/config").status_code == 200, 90, 1, "laptop working")
+say(f"laptop working {time.time()-t:.1f}s after pressing Bring it back")
+say("laptop has the cloud chat:", "working from the cloud" in conv_titles_local())
+time.sleep(6)
+say("cloud API:", Cloud().get("/api/config").status_code, "| telegram polls last 6s:", polls_since(6))

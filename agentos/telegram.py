@@ -443,7 +443,8 @@ class TelegramBridge(usersmod.Scoped):
         row = [{"text": "✅ Allow once", "callback_data": f"ap:{aid}:1"},
                {"text": "⛔ Deny", "callback_data": f"ap:{aid}:0"}]
         if offer:
-            row.insert(1, {"text": "♾ Always", "callback_data": f"ap:{aid}:2"})
+            row.insert(1, {"text": "⏱ 1 hour", "callback_data": f"ap:{aid}:3"})
+            row.insert(2, {"text": "♾ Always", "callback_data": f"ap:{aid}:2"})
         fut = asyncio.get_event_loop().create_future()
         self._pending[aid] = fut
         try:
@@ -470,10 +471,10 @@ class TelegramBridge(usersmod.Scoped):
             return False
         finally:
             self._pending.pop(aid, None)
-        if val == "2" and offer:
-            self.store.add_grant(offer["principal_kind"], offer["principal_id"],
-                                 offer["action"], offer["resource"], source="user",
-                                 note="allowed & remembered from a Telegram approval")
+        if val in ("2", "3") and offer:
+            from .policy import write_remembered
+            write_remembered(self.store, offer, "always" if val == "2" else "hour",
+                             via="a Telegram approval")
             self.store.log("policy", f"grant remembered: {offer['action']} {offer['resource']}",
                            {"principal": f"{offer['principal_kind']}:{offer['principal_id']}",
                             "action": offer["action"], "resource": offer["resource"],
@@ -482,7 +483,7 @@ class TelegramBridge(usersmod.Scoped):
                 await self.broadcast({"type": "grants"})
             except Exception:
                 pass
-        return val in ("1", "2")
+        return val in ("1", "2", "3")
 
     async def _handle_callback(self, cq: dict):
         if cq.get("from", {}).get("id") != (self._t().get("owner_chat_id") or 0):
@@ -575,7 +576,8 @@ class TelegramBridge(usersmod.Scoped):
         # reflect the decision on the message
         msg = cq.get("message", {})
         if msg:
-            said = {"1": "✅ Allowed", "2": "♾ Allowed & remembered"}.get(val, "⛔ Denied")
+            said = {"1": "✅ Allowed", "2": "♾ Allowed & remembered",
+                    "3": "⏱ Allowed for an hour"}.get(val, "⛔ Denied")
             try:
                 await self._api("editMessageText", chat_id=msg["chat"]["id"],
                                 message_id=msg["message_id"],

@@ -427,6 +427,12 @@ la máquina, y el mismo usuario y contraseña funcionan desde un teléfono. [Usu
 
 ![La app Users: dos cuentas, una de administrador y otra con el rol Executor](../screenshots/users-two-accounts.png)
 
+### Copias de seguridad y una máquina de reserva en la nube
+
+`bento backup` guarda la máquina entera en un solo archivo sellado: todas las cuentas, la bóveda y el espacio de trabajo. `bento restore` la recupera en esta máquina o en una nueva. [Copias de seguridad →](../backup.md)
+
+Empareja un segundo Bento en una máquina en la nube y quedará de reserva con una copia sellada. Si tu máquina deja de responder, la nube sigue con tus misiones y canales, y te devuelve el trabajo cuando vuelve. Activa la sincronización activa y cada cambio, incluido cada mensaje de chat, llega a la nube en segundos. [Reserva en la nube →](../standby.md)
+
 ### Comparte tu agente, haz un fork del de otra persona
 
 Comparte el agente que has ido moldeando como un solo archivo: sus habilidades, especialistas,

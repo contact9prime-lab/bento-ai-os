@@ -8,6 +8,17 @@
    `var`, not `let` — see the note at the top of 25a-gallery.js. */
 var audFilter={effect:'',action:'',principal_kind:'',surface:'',q:'',since:24};
 
+/* The ledger is hash-chained (memory.audit_verify); this asks the server to walk it.
+   Admin-only on a machine with accounts, and the refusal says so. */
+async function audVerify(btn){
+  if(btn)btn.disabled=true;
+  try{
+    const v=await apiJSON('/api/audit/verify');
+    if(v.ok)toast('✓ the ledger is intact: '+(v.checked||0)+' rows, each chained to the last');
+    else toast('✗ the ledger was changed: '+(v.reason||'a row does not match')+(v.at_seq?' at row '+v.at_seq:''),{kind:'err'});
+  }catch(e){toast('could not check the ledger: '+(e.message||e))}
+  finally{if(btn)btn.disabled=false}
+}
 async function renderAudit(body,w){
   const qs=new URLSearchParams();
   Object.entries(audFilter).forEach(([k,v])=>{
@@ -36,14 +47,15 @@ async function renderAudit(body,w){
       </select>
       <select onchange="audSet('principal_kind',this.value)" style="flex:0 0 auto">
         <option value="">anyone</option>
-        ${['user','app','subagent','workflow','system'].map(k=>
+        ${['user','app','subagent','flow','team','peer','council','system'].map(k=>
           `<option value="${k}" ${audFilter.principal_kind===k?'selected':''}>${k}</option>`).join('')}
       </select>
       <select onchange="audSet('surface',this.value)" style="flex:0 0 auto">
         <option value="">any way in</option>
-        ${['gui','tui','telegram','api','task'].map(k=>
+        ${['gui','tui','telegram','whatsapp','api','task','webhook','team'].map(k=>
           `<option value="${k}" ${audFilter.surface===k?'selected':''}>${k}</option>`).join('')}
-      </select>`,
+      </select>
+      <button class="endbtn" onclick="audVerify(this)" title="Every row is chained to the one before it, so an edited or deleted row shows up here">Check the chain</button>`,
   });
   const q=$('#aud-q');
   if(q){q.value=audFilter.q;q.oninput=audSearch}
