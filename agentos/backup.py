@@ -49,6 +49,7 @@ answering from a database that is no longer there.
 from __future__ import annotations
 
 import base64
+import functools
 import hashlib
 import hmac
 import io
@@ -135,7 +136,10 @@ def check_passphrase(pw: str) -> None:
 # by every record, the order by the counter, and the end by the one record whose flag
 # says so.
 
+@functools.lru_cache(maxsize=8)
 def _kdf(passphrase: str, salt: bytes, n: int, r: int, p: int) -> bytes:
+    # cached: the standby's active sync seals and opens an update every few seconds
+    # with one salt per process (standbysync._salt), and scrypt is meant to be slow
     return hashlib.scrypt(passphrase.encode(), salt=salt, n=n, r=r, p=p,
                           maxmem=256 * 1024 * 1024, dklen=32)
 
@@ -155,9 +159,9 @@ def _aead(key: bytes):
 class _Sealer(io.RawIOBase):
     """A write-only file that encrypts what tarfile streams into it."""
 
-    def __init__(self, out, passphrase: str):
+    def __init__(self, out, passphrase: str, salt: bytes | None = None):
         super().__init__()
-        salt, self.prefix = os.urandom(16), os.urandom(8)
+        salt, self.prefix = salt or os.urandom(16), os.urandom(8)
         cost = dict(SCRYPT)
         key = _kdf(passphrase, salt, **cost)
         head = json.dumps({"format": FORMAT, "kdf": "scrypt", **cost,

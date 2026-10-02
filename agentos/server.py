@@ -674,6 +674,8 @@ async def _team_listen(on: bool) -> dict:
 
 @app.on_event("shutdown")
 async def shutdown():
+    with contextlib.suppress(Exception):
+        await _standby_flush()
     if state.get("notifd"):
         state["notifd"].stop()
     if state.get("team_listener"):
@@ -7076,11 +7078,18 @@ def _standby_note(text: str, kind: str = "info") -> None:
 
 
 def _standby_start() -> None:
-    """The loop this side needs: the main machine's heartbeat and copies, or the
-    standby's watch for silence. A side that is not paired runs neither."""
+    """The loop this side needs: the main machine's heartbeat and copies (and, with active
+    sync, its updates), or the standby's watch for silence. A side that is not paired runs
+    neither. Every side settles the sync journal first: only a working main machine with
+    active sync on keeps one, so a home restored anywhere else stops journaling."""
+    from . import standbysync as ss
     st = standbymod.load()
+    with contextlib.suppress(Exception):
+        ss.ensure(on=standbymod.active_sync(st) and bool(st.get("active")))
     if st.get("role") == "primary" and st.get("active"):
         state["standby_task"] = asyncio.get_running_loop().create_task(_standby_primary_loop())
+        if not state.get("standby_sync_task") or state["standby_sync_task"].done():
+            state["standby_sync_task"] = asyncio.get_running_loop().create_task(_standby_sync_loop())
     elif st.get("role") == "standby" and not st.get("active"):
         state["standby_task"] = asyncio.get_running_loop().create_task(_standby_watch_loop())
 
@@ -7109,7 +7118,7 @@ async def _standby_primary_loop():
             _standby_note(r["message"] + " Restarting to load it.")
             _standby_restart()
             return
-        if ans is not None:
+        if ans is not None and not standbymod.active_sync(st):
             due = time.time() - st.get("last_push", 0) >= st.get("push_every", standbymod.PUSH_S)
             if first or due:
                 try:
@@ -7122,6 +7131,65 @@ async def _standby_primary_loop():
                         state["store"].log("error", f"standby copy: {type(e).__name__}: {e}")
                 first = False
         await asyncio.sleep(st.get("interval", standbymod.BEAT_S))
+
+
+async def _standby_sync_loop():
+    """Active sync: look for a change every couple of seconds and send it as a small
+    sealed update (standbysync.py). Turned off, the journal is dropped at once, so a
+    machine that stopped syncing stops paying for it."""
+    from . import standbysync as ss
+    was_on = None
+    while True:
+        st = standbymod.load()
+        if st.get("role") != "primary" or not st.get("active"):
+            return
+        on = standbymod.active_sync(st)
+        if on != was_on and was_on is not None and not on:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(ss.ensure, None, False)
+        was_on = on
+        if not on:
+            await asyncio.sleep(5)
+            continue
+        try:
+            due = await asyncio.to_thread(standbymod.sync_due)
+            if due.get("due"):
+                r = await asyncio.to_thread(standbymod.sync, None, due.get("files", True), due.get("ws", True))
+                if r.get("peer", {}).get("active") or r.get("peer", {}).get("holds_work"):
+                    await asyncio.sleep(st.get("interval", standbymod.BEAT_S))
+                    continue
+        except standbymod.StandbyError as e:
+            with contextlib.suppress(Exception):
+                standbymod._update(sync_error=str(e))
+            await asyncio.sleep(10)
+            continue
+        except Exception as e:                                          # noqa: BLE001
+            with contextlib.suppress(Exception):
+                standbymod._update(sync_error=f"{type(e).__name__}: {e}")
+                state["store"].log("error", f"standby sync: {type(e).__name__}: {e}")
+            await asyncio.sleep(10)
+            continue
+        await asyncio.sleep(ss.POLL_S)
+
+
+async def _standby_flush() -> None:
+    """On a clean shutdown, send the cloud what changed since the last copy or update, so
+    turning your machine off loses nothing. Bounded: a machine being shut down must not
+    hang on a slow network. Skipped while a swap is staged (the home here is about to be
+    replaced, and sending it would overwrite the cloud's newer copy) and on a side that is
+    not the one working."""
+    from . import backup as bk
+    st = standbymod.load()
+    if st.get("role") != "primary" or not st.get("active") or bk.pending():
+        return
+    try:
+        if standbymod.active_sync(st):
+            await asyncio.wait_for(asyncio.to_thread(standbymod.sync), 15)
+        else:
+            await asyncio.wait_for(asyncio.to_thread(standbymod.push), 25)
+    except Exception as e:                                              # noqa: BLE001
+        with contextlib.suppress(Exception):
+            standbymod._update(last_error=f"The last copy before shutting down did not go: {e}")
 
 
 def _standby_split_brief(r: dict) -> None:
@@ -7181,6 +7249,11 @@ def _standby_page() -> str:
         lines = [f"Last heard from {who} {standbymod.ago(s.get('last_beat', 0))}."]
         if s.get("copy_at"):
             lines.append(f"Newest copy {standbymod.ago(s['copy_at'])}, {standbymod.size(s.get('copy_bytes', 0))}.")
+            if s.get("update_at"):
+                feed = s.get("feed") or []
+                what = ", ".join(feed[0].get("changes") or []) if feed else ""
+                lines.append(f"Changes arrive as they happen: the last one {standbymod.ago(s['update_at'])}"
+                             + (f" ({what})." if what else "."))
         else:
             lines.append("No copy has arrived yet, so there is nothing to take over with.")
         if s.get("holds_work"):
@@ -7277,10 +7350,8 @@ async def api_standby_peer_state(request: Request):
     return standbymod.answer()
 
 
-@app.post("/api/standby/peer/push")
-async def api_standby_peer_push(request: Request):
-    if (no := _peer_auth(request)):
-        return no
+async def _peer_stream(request: Request, fn):
+    """Hand a streamed body to `fn(chunks)` in a thread, without holding it in memory."""
     import queue
     import threading
     q: queue.Queue = queue.Queue(maxsize=8)
@@ -7294,7 +7365,7 @@ async def api_standby_peer_push(request: Request):
                     return
                 yield b
         try:
-            result["ok"] = standbymod.receive(chunks())
+            result["ok"] = fn(chunks())
         except Exception as e:                                        # noqa: BLE001
             result["err"] = e
             while q.get() is not None:        # drain so the producer never blocks
@@ -7314,6 +7385,27 @@ async def api_standby_peer_push(request: Request):
         return JSONResponse({"error": msg}, status_code=400)
     out = result["ok"]
     return JSONResponse(out, status_code=200 if out.get("ok") else 409)
+
+
+@app.post("/api/standby/peer/push")
+async def api_standby_peer_push(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    cid = request.headers.get("x-bento-copy", "")
+    return await _peer_stream(request, lambda chunks: standbymod.receive(chunks, copy_id=cid))
+
+
+@app.post("/api/standby/peer/update")
+async def api_standby_peer_update(request: Request):
+    """Active sync: one small sealed update, built on the copy named in X-Bento-Copy."""
+    if (no := _peer_auth(request)):
+        return no
+    cid = request.headers.get("x-bento-copy", "")
+    try:
+        n = int(request.headers.get("x-bento-update", "0"))
+    except ValueError:
+        n = 0
+    return await _peer_stream(request, lambda chunks: standbymod.receive_update(chunks, cid, n))
 
 
 @app.post("/api/standby/peer/release")

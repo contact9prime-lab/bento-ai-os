@@ -24,7 +24,7 @@ cloud shows a page that says who it is standing by for, and does nothing else.
 
 ![Settings → System → Cloud standby on your machine](screenshots/standby-settings.png)
 
-![The cloud machine's page while it stands by: when it last heard from your machine, how fresh its copy is, and Take over now](screenshots/standby-page.png)
+![The cloud machine's page while it stands by: when it last heard from your machine, how fresh its copy is, the last change that arrived, and Take over now](screenshots/standby-page.png)
 
 ## What happens
 
@@ -32,11 +32,52 @@ cloud shows a page that says who it is standing by for, and does nothing else.
 |---|---|---|
 | Every 30 seconds | Says it is here | Notes the time |
 | Something changed, at most every 10 minutes | Sends a sealed copy of its whole home | Checks the copy in full and keeps it, plus the one before |
-| Quiet for 5 minutes (you can choose 2, 5, 15 or 60) | | Takes over: swaps the newest copy in and restarts as you |
+| With active sync on, within seconds of any change | Sends a small sealed update with just what changed | Checks it and keeps it beside the copy it builds on |
+| You shut your machine down normally | Sends what changed since the last copy or update, then stops | Keeps it |
+| Quiet for 5 minutes (you can choose 2, 5, 15 or 60) | | Takes over: swaps the newest copy in, adds the updates since, and restarts as you |
 | Back on | Before it starts anything, asks for the work | Seals what it did, hands it over, goes quiet |
 
 While the cloud is working, it runs your missions, schedules, Telegram and WhatsApp, and
 you sign in to it at its own address. Only one of the two ever acts at a time.
+
+## Active sync: the cloud a few seconds behind
+
+Without it, the cloud gets a whole copy at most every 10 minutes, so it can be up to 10
+minutes behind when it takes over. Turn on **Active sync** (Settings → System → Cloud
+standby, or `bento standby set --active`) and every change goes to the cloud as it happens:
+
+- **Your chats**, each message as it is written, with the conversation it belongs to.
+- **What your agent knows**: memories, the knowledge graph, the Brief, skills, agents,
+  missions, schedules and permissions.
+- **Settings and files**: the settings file, saved passwords (still sealed), your agent's
+  soul, and files in your workspace.
+- **The machine itself**: when Bento is updated, the brain changes, or Claude Code, Gemini
+  CLI or Codex is installed or removed. The cloud lists these as they arrive and says what it
+  would be missing, like "Gemini CLI is installed on your machine but not here".
+
+Both machines show the latest: your machine says "Synced 3s ago: 2 chat messages", and the
+cloud lists the last few changes it received. Measured between two real servers, a chat
+message reached the cloud in about 2 seconds, a memory in 2, a settings change in 4 and a
+workspace file in 6.
+
+Each update is sealed with the same secret as the copies. The cloud keeps them beside the
+copy they build on, and a takeover adds them to that copy in order. A whole copy still goes
+every hour, so a takeover never has to add a long list.
+
+What it costs: your machine records each database change in a small table and looks for
+changes every 2 seconds. Measured idle, that was the same CPU as copies mode (well under 1%
+of one core). Turn active sync off and the table is removed.
+
+## Switching your machine off
+
+- **Shut down normally** (power off, restart, `systemctl stop`, Ctrl+C): your machine sends
+  what changed first, so nothing is left behind. It waits at most 15 to 25 seconds for that.
+- **Close the lid, lose power or lose the network**: nothing more can be sent. With active
+  sync the cloud is a few seconds behind; without it, up to 10 minutes.
+- **Move to the cloud now** always sends a fresh copy before handing over.
+
+Anything newer that stayed on your machine is not lost: the cloud's work comes back to it
+when it returns. If both worked in the gap, you choose (next section).
 
 ## If both worked while they were apart
 
@@ -111,6 +152,16 @@ database. The last full run:
 | Laptop started with the cloud off | 2.5 s (refused) or 7.2 s (no answer at all) |
 | Two accounts | Both sign in on the cloud with their own passwords and see only their own chats; only an admin can pair, move or bring it back |
 
+Active sync has its own run, with two real servers on one machine and no Docker
+(`packaging/dev/standby-e2e/active_sync.py`):
+
+| What happened | Result |
+|---|---|
+| A chat message, a memory, a settings change, a workspace file, a new brain | On the cloud after 2.2, 2.0, 4.0, 5.9 and 6.2 s |
+| A minute idle | No updates sent; CPU the same as copies mode |
+| Laptop killed (SIGKILL) 3 s after a chat | The cloud took over with that chat, every table the same as the laptop's |
+| Laptop shut down normally, in each mode | The last copy or update reached the cloud; it stopped in 0.7 s |
+
 ## From a terminal
 
 ```
@@ -123,6 +174,7 @@ bento standby back            # bring it back
 bento standby takeover        # on the cloud: take over now
 bento standby adopt | keep    # after a split
 bento standby set --grace 15 --manual --no-workspace
+bento standby set --active    # active sync (--copies to turn it off)
 bento standby off             # unpair
 ```
 

@@ -3407,6 +3407,11 @@ def _standby_cli(args):
                 say(f"  {'Working here.' if s['active'] else 'Handed over: your agent is working in the cloud.'}")
                 say(f"  Heard back {sb.ago(s['last_contact'])} · last copy {sb.ago(s['last_push'])}"
                     + (f", {sb.size(s['last_push_bytes'])}" if s.get("last_push_bytes") else ""))
+                if s.get("sync") == "active":
+                    ch = ", ".join(s.get("sync_changes") or [])
+                    say(f"  Active sync is on: last update {sb.ago(s.get('sync_at', 0))}" + (f" ({ch})" if ch else ""))
+                else:
+                    say("  Copies every 10 minutes at most. `bento standby set --active` sends every change as it happens.")
                 if s.get("last_error"):
                     say(f"  ! {s['last_error']}")
                 if s.get("workspace_note"):
@@ -3424,6 +3429,10 @@ def _standby_cli(args):
                         + (f", {sb.size(s['copy_bytes'])}" if s.get("copy_bytes") else ""))
                     say(f"  Takes over after {max(1, round(s['grace'] / 60))} min of silence"
                         + ("" if s["auto"] else " (only when told: --manual is on)"))
+                    if s.get("update_at"):
+                        say(f"  Changes arrive as they happen: last {sb.ago(s['update_at'])}")
+                        for f in s.get("feed", [])[:5]:
+                            say(f"    {sb.ago(f.get('at', 0)):>12}  {', '.join(f.get('changes') or [])}")
                 for n in s.get("notes", []):
                     say(f"  · {n}")
             if s.get("version_note"):
@@ -3473,8 +3482,11 @@ def _standby_cli(args):
                 body["auto"] = args.auto
             if args.workspace is not None:
                 body["workspace"] = args.workspace
+            if args.sync is not None:
+                body["sync"] = args.sync
             if not body:
-                raise SystemExit("usage: bento standby set [--grace MIN] [--auto|--manual] [--workspace|--no-workspace]")
+                raise SystemExit("usage: bento standby set [--grace MIN] [--auto|--manual] "
+                                 "[--workspace|--no-workspace] [--active|--copies]")
             sb.settings(body)
             say("  ✓ Saved.")
     except sb.StandbyError as e:
@@ -6301,6 +6313,10 @@ def main():
     p_sb.add_argument("--workspace", dest="workspace", action="store_true", default=None,
                       help="set: include the workspace folder in the copies")
     p_sb.add_argument("--no-workspace", dest="workspace", action="store_false")
+    p_sb.add_argument("--active", dest="sync", action="store_const", const="active", default=None,
+                      help="set: active sync, every change sent to the cloud within seconds")
+    p_sb.add_argument("--copies", dest="sync", action="store_const", const="copies",
+                      help="set: whole copies only, at most every 10 minutes")
     p_restore = verb("restore", help="replace this machine's Bento with a backup (what is here is kept aside)")
     p_restore.add_argument("file", help="the .bento file")
     p_restore.add_argument("--yes", action="store_true", help="do not ask before restoring")

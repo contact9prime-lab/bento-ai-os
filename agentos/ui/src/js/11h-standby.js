@@ -35,6 +35,8 @@ async function paintStandby(){
       <span><b>${esc(d.peer_host)}</b> stands by at <code>${esc(d.url)}</code></span>
       <span class="mut">Heard back ${sbAgo(d.last_contact)} · last copy ${sbAgo(d.last_push)}${d.last_push_bytes?`, ${bkSize(d.last_push_bytes)}`:''}</span>
       ${d.last_error?`<p class="bk-bad">${esc(d.last_error)}</p>`:''}${d.workspace_note?`<span class="mut">${esc(d.workspace_note)}</span>`:''}${vn}${sw}
+      ${sbSyncLine(d)}
+      <label class="bk-ws"><input type="checkbox" id="sb-sync" ${d.sync==='active'?'checked':''} onchange="standbySet({sync:this.checked?'active':'copies'})"> Active sync: send every change within seconds ${pInfo('Each chat message, memory, setting and file goes to the cloud as a small sealed update, so a takeover picks up from your last change. Off, the cloud gets a whole copy at most every 10 minutes.')}</label>
       <label class="bk-ws"><input type="checkbox" id="sb-ws" ${d.workspace?'checked':''} onchange="standbySet({workspace:this.checked})"> Include your workspace folder in the copies</label>
       <div><button class="endbtn" onclick="standbyAct('/api/standby/copy',this)">Copy now</button>
       <button class="endbtn" onclick="standbyAct('/api/standby/move',this,'Hand over to ${esc(d.peer_host)} now? It carries on with your missions and channels, and this machine waits until you bring it back.')">Move to the cloud now</button>
@@ -45,12 +47,21 @@ async function paintStandby(){
   el.innerHTML=`<div class="bk-box">
     <span>This machine stands by for <b>${esc(d.peer_host)}</b>.</span>
     ${d.active?`<span>It is the one working now, since ${sbAgo(d.since)}. ${esc(d.reason||'')} It hands the work back when ${esc(d.peer_host)} returns.</span>`:
-      `<span class="mut">Heard from it ${sbAgo(d.last_beat)} · newest copy ${sbAgo(d.copy_at)}</span>`}
+      `<span class="mut">Heard from it ${sbAgo(d.last_beat)} · newest copy ${sbAgo(d.copy_at)}${d.update_at?` · last change ${sbAgo(d.update_at)}`:''}</span>${sbFeed(d.feed)}`}
     ${(d.notes||[]).map(n=>`<span class="mut">${esc(n)}</span>`).join('')}${vn}
     <label class="bk-ws">Take over after <select id="sb-grace" onchange="standbySet({grace:this.value*60})">${[2,5,15,60].map(m=>`<option value="${m}" ${m===g?'selected':''}>${m} min</option>`).join('')}</select> of silence</label>
     <label class="bk-ws"><input type="checkbox" ${d.auto?'checked':''} onchange="standbySet({auto:this.checked})"> Take over by itself</label>
     <div><button class="endbtn" onclick="standbyAct('/api/standby/off',this,'Unpair? This machine forgets the copies it holds.')">Unpair</button></div></div>`;
 }
+// what the last update carried, on your machine: "Synced 3s ago: 2 chat messages, settings"
+function sbSyncLine(d){
+  if(d.sync!=='active')return '';
+  const ch=(d.sync_changes||[]).join(', ');
+  return `<span class="mut">Synced ${sbAgo(d.sync_at)}${ch?': '+esc(ch):''}</span>${d.sync_note?`<span class="mut">${esc('Last time a full copy went instead: '+d.sync_note+'.')}</span>`:''}`}
+// what arrived lately, on the cloud
+function sbFeed(f){
+  if(!f||!f.length)return '';
+  return `<div class="sb-feed">${f.slice(0,5).map(x=>`<span class="mut">${sbAgo(x.at)} · ${esc((x.changes||[]).join(', '))}</span>`).join('')}</div>`}
 async function standbyPost(url,body){
   const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
   const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'HTTP '+r.status);return d}

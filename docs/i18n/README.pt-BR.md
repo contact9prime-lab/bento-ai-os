@@ -422,6 +422,12 @@ e o mesmo usuário e senha funcionam no celular. [Usuários →](../users.md)
 
 ![O app Users: duas contas, uma admin e outra com o papel Executor](../screenshots/users-two-accounts.png)
 
+### Backups e uma máquina reserva na nuvem
+
+`bento backup` coloca a máquina inteira em um só arquivo lacrado: todas as contas, o cofre e o espaço de trabalho. `bento restore` traz tudo de volta nesta máquina ou em uma nova. [Backup →](../backup.md)
+
+Pareie um segundo Bento em uma máquina na nuvem e ele fica de reserva com uma cópia lacrada. Se a sua máquina parar de responder, a nuvem continua com suas missões e canais e devolve o trabalho quando ela voltar. Ligue a sincronização ativa e toda mudança, cada mensagem de chat inclusive, chega à nuvem em segundos. [Reserva na nuvem →](../standby.md)
+
 ### Compartilhe seu agente, faça um fork do de outra pessoa
 
 Compartilhe o agente que você moldou como um único arquivo: as habilidades, os especialistas, as

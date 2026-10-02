@@ -400,6 +400,16 @@ work from a phone. [Users →](docs/users.md)
 
 ![The Users app: two accounts, one admin and one with the Executor role](docs/screenshots/users-two-accounts.png)
 
+### Backups and a cloud standby
+
+`bento backup` puts the whole machine in one sealed file: every account, the vault and the
+workspace. `bento restore` brings it back on this machine or a new one. [Backup →](docs/backup.md)
+
+Pair a second Bento on a cloud machine and it stands by with a sealed copy. If your machine goes
+quiet, the cloud carries on with your missions and channels, and hands the work back when yours
+returns. Turn on active sync and every change, each chat message included, reaches the cloud
+within seconds. [Cloud standby →](docs/standby.md)
+
 ### Share your agent, fork somebody else's
 
 Share the agent you shaped as one file: its skills, specialists, missions, chosen apps and MCP

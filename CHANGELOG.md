@@ -51,6 +51,24 @@ a copy of a small home was 20 KB and took 0.6 s, moving over took 1.0 s and comi
 0.7 s, the cloud took over 84 s after the laptop froze (90 s setting), and a laptop woken
 from sleep had the cloud's work back 7 s later.
 
+**Active sync: the cloud a few seconds behind, not ten minutes.** A new switch in
+Settings → System → Cloud standby (or `bento standby set --active`). With it on, every change
+goes to the cloud as a small sealed update within seconds: each chat message, memories and
+facts, missions, agents, permissions, settings, saved passwords and workspace files. A
+takeover adds those updates to the last full copy, so the cloud carries on from your last
+change. Changes to the machine itself travel too: a Bento update, a new brain, or Claude
+Code, Gemini CLI or Codex installed or removed. The cloud lists what arrived and says what
+it would be missing. Measured between two real servers: a chat message reached the cloud in
+2.2 s, a memory in 2.0 s, a settings change in 4.0 s, a workspace file in 5.9 s. A laptop
+killed 3 s after a chat left the cloud with that chat and every table the same. Idle, it
+sent nothing and used the same CPU as before (under 1% of one core).
+
+**Shutting down sends the last changes.** A normal shutdown (power off, restart, Ctrl+C)
+now sends what changed since the last copy or update before it stops, in either mode. It
+waits at most 15 to 25 seconds. Measured: both modes stopped in 0.7 s with the last chat
+on the cloud. Closing the lid or losing power still can't send anything, and the guide now
+says so.
+
 **Moving to the cloud, tested end to end, and five bugs it found.** A laptop and the real
 Docker image were paired and put through every way the work changes hands (switched off,
 lid closed, moved on purpose, network split, container restart, two accounts), with every

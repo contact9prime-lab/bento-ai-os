@@ -115,7 +115,12 @@ class _Cloud:
             if path == "state":
                 return _Resp(200, standby.answer(self.home))
             if path == "push":
-                out = standby.receive(content, self.home)
+                out = standby.receive(content, self.home, copy_id=(headers or {}).get("X-Bento-Copy", ""))
+                return _Resp(200 if out.get("ok") else 409, out)
+            if path == "update":
+                h = headers or {}
+                out = standby.receive_update([content], h.get("X-Bento-Copy", ""),
+                                             int(h.get("X-Bento-Update", "0")), self.home)
                 return _Resp(200 if out.get("ok") else 409, out)
             if path == "release":
                 return _Resp(200, standby.release(self.home))

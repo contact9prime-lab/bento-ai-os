@@ -660,6 +660,32 @@ cloud … it only runs on the cloud when my local is not available". Full story 
   process with the real image (entrypoint, `/data`, passphrase) and a fake provider and
   Telegram, and compares every table of every database after each hand-over.
 
+**Active sync is a journal and small sealed updates, never a merge** (`agentos/standbysync.py`,
+`standby.sync`/`receive_update`, `/api/standby/peer/update`, `_standby_sync_loop`,
+`bento standby set --active`; `tests/test_standby_sync.py`, live run
+`packaging/dev/standby-e2e/active_sync.py`). Asked for as "before every chat it is sending the
+chat, context and relevant information … and did we change the system anywhere". Six rules:
+- **Rows are caught by triggers into `_bento_sync`**, on every table of every database
+  (`ensure`), because ~250 call sites write and no hook through them would stay complete.
+  ONLY a working main machine with active sync keeps them: `_standby_start` calls `ensure`
+  on every side at start, `replay` drops them from a staged takeover, turning it off drops
+  them. A home restored anywhere else must never journal for nobody.
+- **An update carries each row's CURRENT value**, read at send time (`_db_changes`), so
+  replay is idempotent and converges. The journal's AUTOINCREMENT high-water travels inside
+  every full copy (it is in the database); `replay` skips entries at or below it. That is
+  what makes a copy and the updates around it fit without a lock.
+- **An update builds on a named copy** (`X-Bento-Copy`, `copy_id`/`update_n` on the standby).
+  Anything the standby cannot place (another copy, a gap) is a 409 and the main machine sends
+  a full copy. Never apply an update to a copy it was not built on.
+- **A new vault goes in a full copy**, because a vault's key travels only there; so does a
+  change of more than `MAX_ROWS` rows. A file over `FILE_CAP` waits for the next copy.
+- **The machine's own facts are `meta`** (version, brain, installed agent CLIs), diffed into
+  words (`meta_changes`) and shown by the standby (`feed`, `carry_notes`). They are reported,
+  never installed: nothing here installs software on the other machine.
+- **A clean shutdown flushes** (`_standby_flush`, first thing in `shutdown`), bounded, and is
+  skipped while a swap is staged (`bk.pending()`): flushing then would send the home that is
+  about to be replaced over the cloud's newer copy.
+
 ## Sign in with Google / Microsoft: the door that asks for nothing to type
 
 `agentos/signin.py` runs OAuth 2.0 + PKCE itself (no SDK: the flow is ten lines and the

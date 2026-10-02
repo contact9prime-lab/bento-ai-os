@@ -44,6 +44,7 @@ import re
 import secrets
 import shutil
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -55,6 +56,8 @@ DOOR = "door.json"
 LATEST = "latest.bento"
 PREVIOUS = "previous.bento"
 OUTGOING = "outgoing.bento"
+DELTAS = "updates"                 # active sync: .standby/updates/<copy id>/<n>.update
+SYNC_FILES = "sync-files.json"     # what the standby was last given, file by file
 BEAT_S = 30                        # heartbeat
 PUSH_S = 600                       # a copy at most this often, and only when something changed
 GRACE_S = 300                      # silence before the standby takes over
@@ -68,6 +71,7 @@ LOCAL_KEYS = ("remote", "port")    # the machine's own door, never carried
 BAD_LIMIT = 20                     # wrong tokens per address per window
 BAD_WINDOW = 600
 _ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+_COPY_ID = re.compile(r"[0-9a-f]{16,64}\Z")
 
 
 class StandbyError(Exception):
@@ -327,7 +331,7 @@ def pair(url: str, code: str, home=None) -> dict:
     st = {"role": "primary", "active": True, "epoch": 0, "url": base, "token": token,
           "secret": secret, "peer_host": _display_host(ans.get("host", ""), base),
           "peer_version": _clean(ans.get("version", ""), 24), "paired_at": time.time(),
-          "interval": BEAT_S, "push_every": PUSH_S, "workspace": True,
+          "interval": BEAT_S, "push_every": PUSH_S, "workspace": True, "sync": "copies",
           "last_contact": time.time(), "last_attempt": time.time(), "last_push": 0,
           "last_fp": "", "last_error": ""}
     save(st, home)
@@ -355,9 +359,16 @@ def unpair(home=None) -> dict:
         except StandbyError:
             pass
     d = _home(home) / DIR
-    for n in (STATE, OFFER, LATEST, PREVIOUS, OUTGOING, DOOR):
+    for n in (STATE, OFFER, LATEST, PREVIOUS, OUTGOING, DOOR, SYNC_FILES):
         (d / n).unlink(missing_ok=True)
+    shutil.rmtree(d / DELTAS, ignore_errors=True)
     _PASSIVE_CACHE.clear()
+    if st.get("role") == "primary":
+        from . import standbysync as ss
+        try:
+            ss.ensure(home, on=False)
+        except Exception:
+            pass
     return {"ok": True, "was": st.get("role", ""), "told": told}
 
 
@@ -411,10 +422,27 @@ def _with_workspace(st: dict, home) -> tuple[bool, str]:
     return True, ""
 
 
+_SEND = threading.Lock()           # one copy or update on the wire at a time
+
+
+def active_sync(st: dict) -> bool:
+    return st.get("role") == "primary" and st.get("sync") == "active"
+
+
 def push(home=None, force: bool = False) -> dict:
     """Make a sealed copy of this home and send it to the standby, when something changed
-    (or `force`). Returns what happened, in the state it also records."""
+    (or `force`). Returns what happened, in the state it also records.
+
+    With active sync on, a copy is also the BASE the small updates build on: it gets an
+    id, and the journal's high-water marks read just before it is made say which journal
+    entries it already holds (standbysync's module doc)."""
+    with _SEND:
+        return _push(home, force)
+
+
+def _push(home=None, force: bool = False) -> dict:
     from . import backup as bk
+    from . import standbysync as ss
     home = _home(home)
     st = load(home)
     if st.get("role") != "primary" or not st.get("active"):
@@ -423,13 +451,19 @@ def push(home=None, force: bool = False) -> dict:
     fp = fingerprint(home, ws)
     if not force and fp == st.get("last_fp") and st.get("last_push"):
         return {"sent": False, "why": "nothing changed"}
+    sync = active_sync(st)
+    if sync:
+        ss.ensure(home, on=True)
+    hw = ss.marks(home) if sync else {}
+    files = ss.file_state(home, ws) if sync else {}
+    copy_id = secrets.token_hex(16)
     out = _dir(home) / f".backup-out-standby-{os.getpid()}.bento"
     t0 = time.time()
     try:
         m = bk.create(out, st["secret"], home=home, workspace=ws)
         size = out.stat().st_size
         with open(out, "rb") as f:
-            r = _push_file(st, f)
+            r = _push_file(st, f, copy_id)
         ans = r.json()
     finally:
         out.unlink(missing_ok=True)
@@ -438,8 +472,191 @@ def push(home=None, force: bool = False) -> dict:
     rec = {"last_push": time.time(), "last_fp": fp, "last_push_bytes": size,
            "last_push_s": round(time.time() - t0, 1), "workspace_note": note,
            "last_push_files": m.get("files", 0), "last_error": ""}
+    if sync:
+        rec["sync_base"] = {"copy_id": copy_id, "n": 0, "hw": hw, "at": time.time()}
+        rec["sync_meta"] = ss.meta(home)
+        rec["sync_at"] = time.time()
+        rec["sync_error"] = ""
+        _write(_dir(home) / SYNC_FILES, files)
+        ss.prune(home, hw)
+    else:
+        rec["sync_base"] = {}
     _update(home, **rec)
     return {"sent": True, "bytes": size, "seconds": rec["last_push_s"]}
+
+
+# ---- active sync (standbysync.py) ---------------------------------------------------
+
+_LOOK: dict[str, float] = {}
+
+
+def sync_due(home=None) -> dict:
+    """Anything for the cloud since the last copy or update? Called every couple of
+    seconds while active sync is on; reads one number per database, and walks the files
+    only every few seconds (the workspace less often)."""
+    from . import standbysync as ss
+    st = load(home)
+    if not active_sync(st) or not st.get("active"):
+        return {"due": False}
+    base = st.get("sync_base") or {}
+    if not base.get("copy_id"):
+        return {"due": True, "copy": "no copy to build on yet"}
+    home = _home(home)
+    now = time.time()
+    key = str(home)
+    look_files = now - _LOOK.get(key + "f", 0) >= ss.FILES_S
+    ws_ok, _ = _with_workspace(st, home) if look_files else (False, "")
+    look_ws = ws_ok and now - _LOOK.get(key + "w", 0) >= ss.WORKSPACE_S
+    if look_files:
+        _LOOK[key + "f"] = now
+        ss.ensure(home, on=True)          # a new account's database, a new table
+    if look_ws:
+        _LOOK[key + "w"] = now
+    known = _read(_dir(home) / SYNC_FILES)
+    if look_files and not look_ws:
+        # compare the home's files only; the workspace part of what is known stays as is
+        known_cmp = {k: v for k, v in known.items() if k.startswith("home/")}
+        p = ss.pending(home, base, known_cmp, True, False)
+    else:
+        p = ss.pending(home, base, known, look_ws, True)
+    meta_now = now - _LOOK.get(key + "m", 0) >= 60
+    if meta_now:
+        _LOOK[key + "m"] = now
+    return {"due": bool(p["rows"] or p["files"] or meta_now), "files": look_files, "ws": look_ws}
+
+
+def sync(home=None, files: bool = True, ws: bool = True) -> dict:
+    """Send what changed since the last copy or update, as one small sealed update. Falls
+    back to a full copy when there is nothing to build on, when the base is old, or when
+    only a full copy can carry the change."""
+    with _SEND:
+        return _sync(home, files, ws)
+
+
+def _sync(home, files: bool, ws: bool) -> dict:
+    from . import standbysync as ss
+    home = _home(home)
+    st = load(home)
+    if not active_sync(st) or not st.get("active"):
+        return {"sent": False, "why": "active sync is off"}
+    base = st.get("sync_base") or {}
+    if not base.get("copy_id") or time.time() - base.get("at", 0) > ss.SNAP_EVERY:
+        return _push(home, force=True) | {"kind": "copy"}
+    ws_ok, _ = _with_workspace(st, home)
+    known = _read(_dir(home) / SYNC_FILES)
+    now_files = None
+    if files:
+        now_files = ss.file_state(home, ws_ok and ws)
+        if not (ws_ok and ws):
+            # keep what is known about the workspace; it was not looked at this time
+            now_files.update({k: v for k, v in known.items() if k.startswith("ws/")})
+    n = int(base.get("n", 0)) + 1
+    out = _dir(home) / f".backup-out-update-{os.getpid()}.update"
+    t0 = time.time()
+    try:
+        b = ss.build(out, st["secret"], home=home, base=base, files_known=known, files_now=now_files,
+                     last_meta=st.get("sync_meta") or {}, n=n)
+        if b.get("want_copy"):
+            _update(home, sync_note=b["want_copy"])
+            return _push(home, force=True) | {"kind": "copy", "why": b["want_copy"]}
+        if b.get("empty"):
+            _update(home, sync_meta=ss.meta(home))
+            return {"sent": False, "why": "nothing changed"}
+        with open(out, "rb") as f:
+            r = _send_update(st, f, base["copy_id"], n)
+        ans = r.json()
+    finally:
+        out.unlink(missing_ok=True)
+    if r.status_code == 409:
+        if ans.get("active") or ans.get("holds_work"):
+            return {"sent": False, "why": "the cloud is the one working", "peer": ans}
+        # the cloud does not hold the copy this builds on (it restarted from another one,
+        # or an update went missing): start again from a fresh copy
+        return _push(home, force=True) | {"kind": "copy", "why": ans.get("error", "")}
+    base = dict(base, n=n, hw=b["hw"])
+    _write(_dir(home) / SYNC_FILES, b["files"])
+    ss.prune(home, b["hw"])
+    _update(home, sync_base=base, sync_meta=b["meta"], sync_at=time.time(), sync_error="",
+            sync_changes=b["changes"][:8], sync_bytes=b["bytes"], sync_s=round(time.time() - t0, 2),
+            sync_skipped=len(b.get("skipped") or []), last_error="")
+    return {"sent": True, "kind": "update", "n": n, "bytes": b["bytes"], "changes": b["changes"]}
+
+
+def _send_update(st: dict, f, copy_id: str, n: int):
+    import httpx
+    url = st["url"].rstrip("/") + "/api/standby/peer/update"
+    try:
+        with _client(120) as c:
+            r = c.post(url, content=f.read(),
+                       headers={"Authorization": f"Bearer {st['token']}",
+                                "Content-Type": "application/octet-stream",
+                                "X-Bento-Copy": copy_id, "X-Bento-Update": str(n)})
+    except httpx.HTTPError as e:
+        raise StandbyError(f"Could not send the update to {st.get('peer_host')}: {type(e).__name__}.")
+    if r.status_code == 401:
+        raise StandbyError("The cloud machine no longer knows this one. Pair them again.")
+    if r.status_code >= 400 and r.status_code != 409:
+        try:
+            msg = r.json().get("error", "")
+        except ValueError:
+            msg = ""
+        raise StandbyError(msg or f"The cloud machine refused the update ({r.status_code}).")
+    return r
+
+
+def receive_update(chunks, copy_id: str, n: int, home=None) -> dict:
+    """The standby's half of an update: checked in full with the shared secret, and kept
+    beside the copy it builds on. Refused (409) when this side does not hold that copy or
+    an update before it is missing; the main machine then sends a fresh copy."""
+    from . import backup as bk
+    from . import standbysync as ss
+    st = load(home)
+    if st.get("role") != "standby":
+        raise StandbyError("This machine is not a standby.")
+    if st.get("active") or st.get("holds_work"):
+        return {"ok": False, "active": bool(st.get("active")), "holds_work": True}
+    if not _COPY_ID.match(copy_id or "") or copy_id != st.get("copy_id"):
+        return {"ok": False, "error": "This machine does not hold the copy that update builds on."}
+    have = int(st.get("update_n", 0) or 0)
+    if n not in (have, have + 1) or n < 1:
+        return {"ok": False, "error": f"An update is missing (have {have}, got {n})."}
+    d = _dir(home) / DELTAS / copy_id
+    d.mkdir(parents=True, exist_ok=True)
+    part = d / ".incoming.part"
+    fd = os.open(part, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    size = 0
+    try:
+        with os.fdopen(fd, "wb") as w:
+            for b in chunks:
+                size += len(b)
+                w.write(b)
+        head = ss.read_head(part, st["secret"])
+    except bk.BackupError as e:
+        part.unlink(missing_ok=True)
+        raise StandbyError(f"The update did not check out: {e}")
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
+    if head.get("copy_id") != copy_id or int(head.get("n", 0)) != n:
+        part.unlink(missing_ok=True)
+        raise StandbyError("The update's label does not match what it holds.")
+    os.replace(part, d / f"{n:08d}.update")
+    m = head.get("meta") or {}
+    feed = list(st.get("feed") or [])
+    if head.get("changes"):
+        feed.append({"at": head.get("created", time.time()), "changes": head["changes"][:8]})
+    _update(home, update_n=n, update_at=time.time(), update_bytes=size, feed=feed[-ss.FEED:],
+            peer_meta=m, copy_engine=m.get("engine", st.get("copy_engine", "")),
+            copy_model=m.get("model", st.get("copy_model", "")),
+            peer_version=_clean(m.get("version", ""), 24) or st.get("peer_version", ""))
+    return {"ok": True, "bytes": size, "n": n}
+
+
+def updates_for(copy_id: str, home=None) -> list[Path]:
+    if not _COPY_ID.match(copy_id or ""):
+        return []
+    d = _home(home) / DIR / DELTAS / copy_id
+    return sorted(d.glob("*.update")) if d.is_dir() else []
 
 
 def _chunks(f):
@@ -450,14 +667,15 @@ def _chunks(f):
         yield b
 
 
-def _push_file(st: dict, f):
+def _push_file(st: dict, f, copy_id: str = ""):
     import httpx
     url = st["url"].rstrip("/") + "/api/standby/peer/push"
     try:
         with _client(600) as c:
             r = c.post(url, content=_chunks(f),
                        headers={"Authorization": f"Bearer {st['token']}",
-                                "Content-Type": "application/octet-stream"})
+                                "Content-Type": "application/octet-stream",
+                                "X-Bento-Copy": copy_id})
     except httpx.HTTPError as e:
         raise StandbyError(f"Could not send the copy to {st.get('peer_host')}: {type(e).__name__}.")
     if r.status_code == 401:
@@ -471,7 +689,7 @@ def _push_file(st: dict, f):
     return r
 
 
-def receive(chunks, home=None) -> dict:
+def receive(chunks, home=None, copy_id: str = "") -> dict:
     """The standby's half of a copy: written beside itself, checked in full with the
     shared secret, then made the newest (the one before it is kept as a fallback)."""
     from . import backup as bk
@@ -499,7 +717,15 @@ def receive(chunks, home=None) -> dict:
     if (d / LATEST).exists():
         os.replace(d / LATEST, d / PREVIOUS)
     os.replace(part, d / LATEST)
-    _update(home, copy_at=time.time(), copy_bytes=size, copy_created=m.get("created", 0),
+    cid = copy_id if _COPY_ID.match(copy_id or "") else ""
+    prev_id = st.get("copy_id", "")
+    # updates are kept for the newest copy and the one before it, and no others
+    keep = {cid, prev_id} - {""}
+    for sub in (d / DELTAS).glob("*") if (d / DELTAS).is_dir() else []:
+        if sub.name not in keep:
+            shutil.rmtree(sub, ignore_errors=True)
+    _update(home, copy_id=cid, previous_copy_id=prev_id, update_n=0, previous_update_n=st.get("update_n", 0),
+            copy_at=time.time(), copy_bytes=size, copy_created=m.get("created", 0),
             copy_engine=m.get("engine", ""), copy_model=m.get("default_model", ""),
             copy_accounts=len(m.get("accounts", [])), copy_telegram=bool(m.get("telegram")),
             copy_whatsapp=bool(m.get("whatsapp_linked")), copy_version=m.get("version", ""),
@@ -595,9 +821,10 @@ def takeover(reason: str, home=None) -> dict:
         raise StandbyError("This machine is not a standby.")
     if st.get("active"):
         raise StandbyError("This machine is already the one working.")
+    from . import standbysync as ss
     d = _dir(home)
     last_err = "there is no copy yet"
-    for name in (LATEST, PREVIOUS):
+    for name, cid in ((LATEST, st.get("copy_id", "")), (PREVIOUS, st.get("previous_copy_id", ""))):
         f = d / name
         if not f.exists():
             continue
@@ -608,13 +835,20 @@ def takeover(reason: str, home=None) -> dict:
             last_err = str(e)
     else:
         raise StandbyError(f"Cannot take over: {last_err}.")
+    # active sync: the small updates since that copy, in order. Always run, even with
+    # none, because it also drops the journal from the staged databases: the side that
+    # takes over works, it does not journal for a machine that is gone.
+    rep = ss.replay(m["staging"], updates_for(cid, home), st["secret"])
     keep_door(home)
     bk.mark_ready(m["staging"], home)
     st.update(active=True, holds_work=True, epoch=st.get("epoch", 0) + 1, since=time.time(),
-              reason=reason, took_over=time.time(), copy_used=m.get("created", 0))
+              reason=reason, took_over=time.time(), copy_used=m.get("created", 0),
+              replayed={"updates": rep["applied"], "rows": rep["rows"], "upto": rep["last_at"] or m.get("created", 0),
+                        "error": rep["error"]})
     save(st, home)
     return {"ok": True, "reason": reason, "copy_created": m.get("created", 0),
-            "host": m.get("host", "")}
+            "host": m.get("host", ""), "updates": rep["applied"], "upto": rep["last_at"] or m.get("created", 0),
+            "replay_error": rep["error"]}
 
 
 def release(home=None) -> dict:
@@ -761,7 +995,7 @@ def come_back(home=None, echo=None, check_work: bool = True) -> dict:
     _call(st, "POST", "done", json={"epoch": epoch}, timeout=15)
     dest.unlink(missing_ok=True)
     _update(home, active=True, moved=False, epoch=epoch, last_contact=time.time(),
-            last_attempt=time.time(), came_back=time.time(), last_fp="")
+            last_attempt=time.time(), came_back=time.time(), last_fp="", sync_base={})
     return {"ok": True, "split": False, "restart": True,
             "message": f"The work {st.get('peer_host')} did is back on this machine."}
 
@@ -780,6 +1014,7 @@ def adopt(home=None) -> dict:
     bk.mark_ready(m["staging"], home)
     st.pop("split", None)
     st["last_fp"] = ""
+    st["sync_base"] = {}
     save(st, home)
     p.unlink(missing_ok=True)
     return {"ok": True, "restart": True}
@@ -909,6 +1144,19 @@ def carry_notes(st: dict) -> list[str]:
                      "this one is working.")
     if st.get("copy_whatsapp"):
         notes.append("A WhatsApp link may ask to be scanned again from a new address.")
+    # active sync tells this side what is installed over there; say what is missing here
+    titles = {"claude-code": "Claude Code", "gemini-cli": "Gemini CLI", "codex": "Codex"}
+    for eid, there in ((st.get("peer_meta") or {}).get("clis") or {}).items():
+        if not there or eid == eng:
+            continue
+        try:
+            from . import executors as ex
+            here = bool(ex.probe(eid).get("installed"))
+        except Exception:
+            here = False
+        if not here:
+            notes.append(f"{titles.get(eid, eid)} is installed on your machine but not here. "
+                         "Agents pinned to it would use the machine's brain instead.")
     return notes
 
 
@@ -930,7 +1178,11 @@ def status(home=None) -> dict:
                    last_push_s=st.get("last_push_s", 0), last_error=st.get("last_error", ""),
                    workspace=bool(st.get("workspace", True)), workspace_note=st.get("workspace_note", ""),
                    interval=st.get("interval", BEAT_S), push_every=st.get("push_every", PUSH_S),
-                   split=st.get("split") or {}, last_swap=st.get("last_swap") or {})
+                   split=st.get("split") or {}, last_swap=st.get("last_swap") or {},
+                   sync=st.get("sync", "copies"), sync_at=st.get("sync_at", 0),
+                   sync_changes=st.get("sync_changes") or [], sync_bytes=st.get("sync_bytes", 0),
+                   sync_note=st.get("sync_note", ""),
+                   sync_skipped=st.get("sync_skipped", 0))
     elif st.get("role") == "standby":
         out.update(last_beat=st.get("last_beat", 0), grace=st.get("grace", GRACE_S),
                    auto=bool(st.get("auto", True)), holds_work=bool(st.get("holds_work")),
@@ -938,7 +1190,9 @@ def status(home=None) -> dict:
                    copy_created=st.get("copy_created", 0), copy_version=st.get("copy_version", ""),
                    copy_workspace=bool(st.get("copy_workspace")), since=st.get("since", 0),
                    reason=st.get("reason", ""), due=due_takeover(home),
-                   notes=carry_notes(st), last_swap=st.get("last_swap") or {})
+                   notes=carry_notes(st), last_swap=st.get("last_swap") or {},
+                   update_at=st.get("update_at", 0), update_n=st.get("update_n", 0),
+                   feed=list(reversed(st.get("feed") or []))[:8], replayed=st.get("replayed") or {})
     if out["peer_version"] and out["peer_version"] != out["version"]:
         out["version_note"] = (f"This machine runs {out['version']} and {out['peer_host']} runs "
                                f"{out['peer_version']}. Keep them on the same version.")
@@ -958,6 +1212,13 @@ def settings(body: dict, home=None) -> dict:
         if "workspace" in body:
             st["workspace"] = bool(body["workspace"])
             st["last_fp"] = ""
+            st["sync_base"] = {}
+        if "sync" in body:
+            mode = "active" if body["sync"] in (True, "active", "on") else "copies"
+            if mode != st.get("sync"):
+                st["sync"] = mode
+                st["sync_base"] = {}          # the next send is a full copy to build on
+                st["last_fp"] = ""
     else:
         raise StandbyError("This machine is not paired.")
     save(st, home)

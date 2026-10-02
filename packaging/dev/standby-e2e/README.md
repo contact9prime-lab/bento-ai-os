@@ -22,3 +22,14 @@ bugs, each now pinned by a test: the workspace nested inside an empty folder on 
 mission's folder not rewritten for the new machine, the cloud answering from its empty home
 for the second before its swap, a new chat's row landing in the machine's database on a
 machine with accounts, and the container id shown as the cloud's name.
+
+## Active sync, without Docker
+
+`active_sync.py` runs both sides as local processes (the cloud on port 8973 with its own
+`$HOME`) and the fake provider from `fakes.py`. It measures how long a chat message, a memory,
+a settings change, a workspace file and a brain change take to reach the cloud; what an idle
+laptop sends; a takeover after SIGKILL three seconds after a chat, with every table compared;
+and a clean shutdown in each mode. `ONLY_SHUTDOWN=1` runs the last part alone.
+
+    .venv/bin/python packaging/dev/standby-e2e/fakes.py &
+    .venv/bin/python packaging/dev/standby-e2e/active_sync.py
