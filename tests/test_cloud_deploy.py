@@ -15,9 +15,9 @@ import json
 import os
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,6 +60,9 @@ def test_the_render_blueprint_keeps_the_home_and_asks_for_the_password():
 
 
 def test_the_fly_config_keeps_the_home_and_stays_awake():
+    # tomllib is 3.11+; on 3.10 (still supported) this one check is skipped rather than
+    # stopping the whole file from being collected, which is what failed CI.
+    tomllib = pytest.importorskip("tomllib")
     fly = tomllib.loads((ROOT / "fly.toml").read_text())
     assert fly["mounts"]["destination"] == _image_home()
     hs = fly["http_service"]
