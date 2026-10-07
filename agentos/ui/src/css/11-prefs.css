@@ -150,3 +150,9 @@ body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical
 .bk-last{padding:0 16px}
 .bk-last .bk-done{margin:12px 0 4px}
 .bk-last li{word-break:break-word}
+.cd-step{display:flex;flex-direction:column;gap:6px;width:100%}
+.cd-here{margin-bottom:14px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.cd-here.cd-ok{background:color-mix(in srgb,var(--ok,#3c9) 12%,transparent)}
+.cd-here.cd-warn{background:color-mix(in srgb,var(--warn,#e6a23c) 14%,transparent)}
+.cd-here.cd-err{background:color-mix(in srgb,var(--err,#e5484d) 14%,transparent)}
+.cd-here>div{display:flex;flex-wrap:wrap;gap:6px}

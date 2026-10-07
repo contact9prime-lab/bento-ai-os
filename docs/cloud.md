@@ -1,16 +1,20 @@
 # Put Bento in the cloud
 
-Your own Bento at an https address, running while your computer is off. The quickest way
-takes about five minutes and no terminal:
+Your own Bento at an https address, running while your computer is off, for free. It takes
+about five minutes and no terminal:
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
 
-1. Press the button and sign in to Render with GitHub, GitLab or Google.
-2. Render shows one box, **AGENTOS_PASSPHRASE**. Type a password there. It's the lock on
-   your cloud Bento, so make it long. Settings → System → Put Bento in the cloud suggests one
-   you can copy.
-3. Press **Deploy Blueprint**. The first build takes about five minutes.
-4. Open the address Render gives you (`https://bento-….onrender.com`) and sign in with that
+1. **Make a GitHub key for its memory.** Open
+   [this link](https://github.com/settings/tokens/new?scopes=gist&description=Bento%20cloud%20memory)
+   (it ticks only the **gist** box and names the key), set **Expiration** to **No expiration**,
+   press **Generate token** and copy it. The key can do one thing: write gists.
+2. **Press the button** and sign in to Render with GitHub (or GitLab or Google). No card.
+3. Render shows two boxes. Type a password in **AGENTOS_PASSPHRASE**; it's the lock on your
+   cloud Bento, so make it long (Settings → System → Put Bento in the cloud suggests one). Paste
+   the key in **BENTO_KEEP_GITHUB_TOKEN**.
+4. Press **Deploy Blueprint**. The first build takes about five minutes.
+5. Open the address Render gives you (`https://bento-….onrender.com`) and sign in with that
    password. Setup starts as it does on a new computer.
 
 The same choices are in Settings → System → **Put Bento in the cloud**, and in a terminal:
@@ -19,21 +23,73 @@ The same choices are in Settings → System → **Put Bento in the cloud**, and 
 bento cloud
 ```
 
-![Settings → System → Put Bento in the cloud: a suggested password, Deploy on Render, and the other ways](screenshots/cloud-deploy.png)
+![Settings → System → Put Bento in the cloud: a GitHub key, a suggested password, Deploy on Render, and the other ways](screenshots/cloud-deploy.png)
+
+## How it stays working on a free plan
+
+Render's free plan has no card and no bill, and two catches. Bento handles both:
+
+- **The disk is wiped on every restart** (Render restarts free services when it likes, and on
+  every deploy). So Bento keeps its home, sealed with your password, in a **secret gist on your
+  own GitHub**: it saves within a couple of minutes of a change, and once more when Render stops
+  it. On the next start it finds an empty disk, brings the home back from GitHub, and carries on.
+  A secret gist is unlisted rather than private, so the sealing is what protects it: without your
+  password the file is noise.
+- **It sleeps after 15 minutes with no visitors.** Missions, schedules and Telegram need it awake,
+  so the free blueprint has it visit its own address every ten minutes. One service uses about 744
+  of Render's 750 free hours a month. If you run other free services on Render, set
+  `BENTO_KEEP_AWAKE` to `0` and it will sleep when idle and wake (in about a minute) when you open it.
+
+Settings → System → Put Bento in the cloud shows, on the cloud machine itself, where its memory is
+kept and when it was last saved, with **Save now**. `bento keep` says the same in a terminal.
+
+![The free cloud Bento's Settings: memory kept on GitHub, saved a moment ago](screenshots/free-cloud-kept.png)
 
 ## What you get
 
-- **A disk.** Everything Bento keeps (memory, chats, missions, accounts, saved passwords) lives
-  under `/data`, and `/data` is a disk that survives restarts and redeploys.
 - **HTTPS**, from Render. Your password and your session never cross the internet in the clear.
 - **A lock from the first second.** The password is asked for on Render's page and never written
   in any file, so there is no moment when the machine is open.
+- **Your memory across restarts**, kept on your own GitHub as above.
+- **A small machine**: 512 MB and a tenth of a processor. Bento idles at about 100 MB; a chat turn
+  waits on the model, not on the machine.
 - **No local model.** A cloud server has no graphics card, so add a key in Settings → AI providers
-  (Anthropic, OpenAI, Google or OpenRouter) when setup asks for a brain.
+  when setup asks for a brain. Google's Gemini API has a free tier (a key from Google AI Studio,
+  signed in with Google), and OpenRouter lists free models.
 
-It costs about $7 a month for Render's Starter server, plus about $0.25 a month for the 1 GB disk
-(their prices as of October 2026). The free server is not used because it has no disk: it would
-forget everything on every restart.
+### Tested the way Render runs it
+
+The image was run here with Render Free's limits: 0.1 CPU, 512 MB, Render's `PORT`, and no volume
+at all, so every start is an empty disk. GitHub and the model were stand-ins
+(`packaging/dev/free-cloud/`): the model calls Bento's real `remember` tool, and answers only from
+what Bento puts in its prompt. Render itself and GitHub could not be reached from the test machine.
+
+| Step | Result |
+|---|---|
+| First start on an empty disk | Answered after 59 s (slow processor); nothing kept yet, so it starts fresh |
+| "Remember that my favourite colour is teal" | Called the `remember` tool, then "From what I remember: my favourite colour is teal" on the next question |
+| First save to GitHub | 21 KB sealed, on GitHub within a few seconds of the change |
+| Render stops it (SIGTERM) | Stopped in 2.8 s; the last save carried something said 3 s before the stop |
+| A new container on an empty disk | Answered after 56 s; restored 21 KB from GitHub in 2.0 s; the sign-in from before still worked |
+| "What do you remember about me?" | "From what I remember: the launch is on the 14th; my favourite colour is teal", and all four chats were there |
+| Memory in use | About 100 MB of the 512 MB |
+
+<img src="screenshots/free-cloud-signin.png" alt="The free cloud Bento's sign-in page on a phone" width="260"> <img src="screenshots/free-cloud-after-restart-phone.png" alt="On a new container with an empty disk, it still remembers" width="260">
+
+Before the restart, on the first container:
+
+![Chat on the first container: it remembers within the same machine](screenshots/free-cloud-first-chat.png)
+
+After it, on a new container whose disk started empty:
+
+![Chat on the new container: it still knows](screenshots/free-cloud-after-restart.png)
+
+### Paying instead
+
+For a machine that never sleeps and keeps its own disk: deploy the same way, then in Render open
+the service → Settings → **Instance Type** → Starter, and **Disks** → add 1 GB at `/data`. It costs
+about $7 a month plus about $0.25 a month for the disk (Render's prices as of October 2026). You can
+then remove `BENTO_KEEP_GITHUB_TOKEN`, `BENTO_EPHEMERAL` and `BENTO_KEEP_AWAKE`.
 
 ## Once it's up
 
@@ -81,31 +137,51 @@ you use it over the internet. [Remote access →](remote-access.md)
 
 | Host | Why not |
 |---|---|
-| Railway | Its deploy button can't add a disk. It works if you add one at `/data` by hand. |
-| DigitalOcean App Platform | No disk, so every restart forgets everything. |
+| Railway | No free plan, only a trial, and its deploy button can't add a disk. |
+| Koyeb | Its free machine sleeps after an hour without visitors, and it now asks for a card. |
+| Hugging Face Spaces | Free machines sleep after two days, and Docker apps there may need a paid plan. |
+| DigitalOcean App Platform | No free plan for a server, and no disk. |
 | Google Cloud Run | No disk, so every restart forgets everything. |
+
+Free virtual machines with a real disk exist (Google Cloud's e2-micro, Oracle's Always Free). They
+cost nothing but ask for a card to sign up and are not one click; the "your own server" line above
+works on them.
 
 ## When something goes wrong
 
-- **The deploy says it failed its health check.** The first build is slow. Render checks `/login`,
-  which answers once the server is up; give it the full five minutes before retrying.
+- **The deploy says it failed its health check.** The first build is slow, and the free machine
+  takes about a minute to start. Render checks `/login`, which answers once the server is up; give
+  it the full five minutes before retrying.
+- **"Memory not saved: GitHub refused the key."** The key expired or was deleted. Make a new one
+  (Settings → System → Put Bento in the cloud → Make a GitHub key), then in Render open the service
+  → Environment, replace `BENTO_KEEP_GITHUB_TOKEN` and save.
+- **It started fresh and says the kept copy is sealed with another password.** You changed
+  `AGENTOS_PASSPHRASE`. The old copy on GitHub is left exactly as it is; put the old password back
+  and restart to use it. Until then this machine saves to a new gist.
+- **It says it forgets everything when it restarts.** There is no GitHub key. Add
+  `BENTO_KEEP_GITHUB_TOKEN` in Render's Environment.
 - **Forgot the password.** In Render, open the service → Environment, change `AGENTOS_PASSPHRASE`
-  and save. Bento restarts with the new one and every device signs in again. Restarting with the
-  same password keeps everyone signed in.
+  and save. On the free plan that means the kept copy can no longer be opened (see above); on a plan
+  with a disk, Bento restarts with the new password and every device signs in again. Restarting with
+  the same password keeps everyone signed in.
 - **Render says the repository has no render.yaml.** The button reads `render.yaml` from the
   repository's default branch. A fork deploys itself: Settings and `bento cloud` point the button
   at the repository this machine updates from.
 
 ## How it works
 
-`render.yaml` (the button's blueprint) and `fly.toml` describe the same thing: the Dockerfile in
-this repository, a disk at `/data`, the password from the host's secret store, and `/login` as the
-health check, because it answers without a session. The container's entrypoint listens on the
-`PORT` the host hands it (Render uses 10000), turns remote access on with the password, and
-starts the server. `agentos/clouddeploy.py` is the one list of options that Settings, `bento cloud`
-and this page describe. `tests/test_cloud_deploy.py` checks the blueprint against the image.
+`render.yaml` (the button's blueprint) describes the free service: the Dockerfile in this
+repository, the password and the GitHub key from Render's secret store, `BENTO_EPHEMERAL` and
+`BENTO_KEEP_AWAKE`, and `/login` as the health check, because it answers without a session.
+`fly.toml` is the same with a disk at `/data` instead of the GitHub copy. The container's entrypoint
+brings the memory back from GitHub (`bento keep restore`, only into an empty home), listens on the
+`PORT` the host hands it (Render uses 10000), turns remote access on with the password, and starts
+the server, which saves to GitHub when something changes and once more when it is stopped
+(`agentos/keep.py`). `agentos/clouddeploy.py` is the one list of options that Settings,
+`bento cloud` and this page describe. `tests/test_cloud_deploy.py` and `tests/test_keep.py` check
+the blueprint and the copy; `packaging/dev/free-cloud/run.py` is the run in the table above.
 
-Tested by running the image the way Render does (`PORT=10000`, the password in the environment,
-a volume at `/data`, a proxy's `X-Forwarded-Proto: https`): `/login` answers 200 and the API 401
-without a session, a signed-in save works through the cross-origin guard, and a restart keeps both
-the data and the session. Idle, it uses about 100 MB of memory and 2 MB of disk.
+Also tested with a disk the way Render's paid plan runs it (`PORT=10000`, a volume at `/data`, a
+proxy's `X-Forwarded-Proto: https`): `/login` answers 200 and the API 401 without a session, a
+signed-in save works through the cross-origin guard, and a restart keeps both the data and the
+session.

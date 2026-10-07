@@ -4,12 +4,13 @@ Asked for as "deploy it quickly to the cloud … really quick and noob for anyon
 and done". Cloud standby (standby.py) already knew what to do WITH a cloud machine, and
 its docs began "You need Bento running on a cloud machine" with no word on how to get one.
 
-The one-click road is Render, and it is chosen for three reasons, each a requirement
-rather than a preference:
+The one-click road is Render's FREE plan (asked for next: "deploy the agent in the cloud
+free and make it work"), and it is chosen for three reasons:
 
-  * It keeps a DISK. Everything Bento is lives under /data (memory, chats, accounts, the
-    vault). A host that rebuilds the filesystem on every deploy forgets all of it, which is
-    why DigitalOcean App Platform and Cloud Run are not offered at all.
+  * Its free plan needs no card, and it keeps running if something visits it. Its disk is
+    wiped on every restart, so the home is kept sealed in a secret gist on the person's own
+    GitHub (keep.py), and a visit every ten minutes keeps it awake. A host with no free
+    plan, or one whose free machine sleeps for good, is not the one-click road.
   * Its button reads a file in the repo (`render.yaml`), so the disk, the health check and
     the password prompt are declared once, here, and nobody fills in a form of ten fields.
   * Sign-in is GitHub, GitLab or Google, and the password is asked for ON the deploy page
@@ -25,6 +26,8 @@ server down, and the Settings card and docs read the same words.
 from __future__ import annotations
 
 import secrets
+
+from . import keep
 
 #: The image's own entrypoint reads these. Kept here so the docs, the card and the
 #: blueprint name one variable.
@@ -61,13 +64,27 @@ def options(cfg: dict | None = None) -> list[dict]:
     return [
         {"id": "render", "title": "Render", "kind": "button", "recommended": True,
          "url": f"https://render.com/deploy?repo={gh}",
-         "how": "Sign in with GitHub or Google, choose a password, press Deploy.",
-         "steps": ["Press Deploy on Render and sign in (GitHub, GitLab or Google).",
-                   f"Type a password in the {PASSPHRASE_ENV} box. Use the one suggested here if you like.",
+         "how": "Free. Sign in with GitHub, choose a password, press Deploy.",
+         "key_url": keep.token_link(),
+         "steps": ["Make a GitHub key for its memory: open the key link, set Expiration to "
+                   "No expiration, press Generate token and copy it. It can only write gists.",
+                   "Press Deploy on Render and sign in with GitHub (or GitLab or Google).",
+                   f"Type a password in {PASSPHRASE_ENV} and paste the key in {keep.ENV_TOKEN}.",
                    "Press Deploy Blueprint and wait about five minutes for the first build.",
                    "Open the address Render gives you (https://bento-….onrender.com) and sign in with that password."],
+         "costs": "Free. Render's free plan has 512 MB and a slow processor, which is enough. Its "
+                  "disk is wiped on every restart, so the memory is kept sealed in a secret gist "
+                  "on your GitHub, and a visit every ten minutes keeps it awake.",
+         "keeps": True, "https": True, "free": True},
+        {"id": "render-paid", "title": "Render with its own disk", "kind": "steps", "recommended": False,
+         "url": "",
+         "how": "The same deploy, moved to a paid plan that never sleeps and has its own disk.",
+         "steps": ["Deploy with the button above.",
+                   "In Render, open the service → Settings → Instance Type and choose Starter.",
+                   "Open Disks → Add Disk, mount path /data, 1 GB.",
+                   f"Remove {keep.ENV_TOKEN}, {keep.ENV_EPHEMERAL} and {keep.ENV_AWAKE} if you no longer want the GitHub copy."],
          "costs": "About $7 a month for the server, plus about $0.25 a month for the 1 GB disk.",
-         "keeps": True, "https": True},
+         "keeps": True, "https": True, "free": False},
         {"id": "fly", "title": "Fly.io", "kind": "commands", "recommended": False,
          "url": "https://fly.io/docs/flyctl/install/",
          "how": "Four commands in a terminal, with HTTPS and a disk.",
@@ -76,7 +93,7 @@ def options(cfg: dict | None = None) -> list[dict]:
                    f"fly secrets set {PASSPHRASE_ENV}='<your password>'",
                    "fly deploy --volume-initial-size 1"],
          "costs": "About $3 a month for a 512 MB machine, plus $0.15 a month per GB of disk.",
-         "keeps": True, "https": True},
+         "keeps": True, "https": True, "free": False},
         {"id": "server", "title": "Your own server", "kind": "commands", "recommended": False,
          "url": "",
          "how": "Any Linux server you can reach (Hetzner, DigitalOcean, Lightsail).",
@@ -84,18 +101,20 @@ def options(cfg: dict | None = None) -> list[dict]:
                    "sh -s -- --yes --passphrase='<your password>'",
                    "Put HTTPS in front before you use it over the internet: Caddy, a "
                    "Cloudflare Tunnel or Tailscale."],
-         "costs": "Whatever the server costs, often $4 to $6 a month.",
-         "keeps": True, "https": False},
+         "costs": "Whatever the server costs, often $4 to $6 a month. Google Cloud's e2-micro and "
+                  "Oracle's Always Free machines cost nothing but ask for a card to sign up.",
+         "keeps": True, "https": False, "free": False},
     ]
 
 
 #: Hosts people ask about that are deliberately not offered, and why. Said out loud so
 #: the absence reads as a decision, not an oversight.
 NOT_OFFERED = {
-    "Railway": "its deploy button cannot add a disk, so you would add one by hand at /data. "
-               "Works, but not in one click.",
-    "DigitalOcean App Platform": "it has no disk, so every restart forgets everything.",
-    "Google Cloud Run": "it has no disk, so every restart forgets everything.",
+    "Railway": "no free plan, only a trial, and its deploy button cannot add a disk.",
+    "Koyeb": "its free machine sleeps after an hour without visitors, and now asks for a card.",
+    "Hugging Face Spaces": "free machines sleep after two days and their Docker apps may need a paid plan.",
+    "DigitalOcean App Platform": "no free plan for a server, and no disk.",
+    "Google Cloud Run": "no disk, so every restart forgets everything.",
 }
 
 
@@ -115,6 +134,8 @@ def text(cfg: dict | None = None) -> str:
         out.append(f"{i}. {o['title']}{tag}: {o['how']}")
         if o["kind"] == "button":
             out.append(f"   Open: {o['url']}")
+        if o.get("key_url"):
+            out.append(f"   GitHub key: {o['key_url']}")
         for s in o["steps"]:
             out.append(f"   - {s}")
         out.append(f"   Cost: {o['costs']}")

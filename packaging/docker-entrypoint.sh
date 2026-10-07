@@ -31,6 +31,14 @@ if [ -n "${AGENTOS_PASSPHRASE_FILE:-}" ]; then
   AGENTOS_PASSPHRASE="$(cat "$AGENTOS_PASSPHRASE_FILE")"
 fi
 
+# A host that forgets its disk (Render Free and friends): bring the memory back from the
+# person's own GitHub before anything else touches the home. keep.py restores only into an
+# empty home, so a disk that survived is never rolled back. A failure says why and goes on:
+# a machine that starts fresh is better than one that does not start.
+if [ -n "${BENTO_KEEP_GITHUB_TOKEN:-}" ]; then
+  uv run bento keep restore || say "starting without the kept memory (see the line above)"
+fi
+
 # Already configured on the volume — a restart must not need the secret again, and
 # must not silently reset it either.
 already=$(uv run python -c 'from agentos import config as c; print("1" if (c.load_config().get("remote") or {}).get("enabled") else "")' 2>/dev/null || true)

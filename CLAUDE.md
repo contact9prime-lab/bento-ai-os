@@ -708,15 +708,23 @@ chat, context and relevant information … and did we change the system anywhere
   skipped while a swap is staged (`bk.pending()`): flushing then would send the home that is
   about to be replaced over the cloud's newer copy.
 
-## Put Bento in the cloud: one click, and only hosts that keep a disk
+## Put Bento in the cloud: one click, free, and the memory survives
 
 `agentos/clouddeploy.py` (the one list) + `render.yaml` + `fly.toml` + Settings → System → Put
 Bento in the cloud (`11i-clouddeploy.js`) + `/api/cloud/deploy` + `bento cloud`; `docs/cloud.md`,
 `tests/test_cloud_deploy.py`. Asked for as "deploy it quickly to the cloud … noob for anyone,
 so sso and done". Five things keep it honest:
-- **Only a host with a disk is offered.** Everything is under `/data`; a host that rebuilds the
-  filesystem forgets it on the first restart. That is why the Render plan is not `free`, and why
-  App Platform and Cloud Run are in `NOT_OFFERED` with the reason rather than missing.
+- **The one-click road is Render's FREE plan, and its disk is wiped on every restart**, so the
+  home is kept sealed in a secret gist on the person's own GitHub (`agentos/keep.py`; asked for as
+  "deploy the agent in the cloud free and make it work"). Three rules: restore only into an EMPTY
+  home (a host that kept its disk is never rolled back); a gist sealed with another password is
+  never overwritten (the machine starts fresh and saves to a NEW gist); the token stays in the
+  environment (`BENTO_KEEP_GITHUB_TOKEN`), never in config or the sealed home. The save runs on a
+  change at most every `MIN_GAP_S`, and once more on shutdown (`_keep_flush`, FIRST in `shutdown`:
+  the host gives ~30 s). `.keep` is in `backup.PRIVATE`. The keep-awake visit (`BENTO_KEEP_AWAKE`,
+  through `RENDER_EXTERNAL_URL`, every `AWAKE_S`) is set by the blueprint and said in the docs:
+  one service is ~744 of Render's 750 free hours. Hosts with no free plan or no way to keep the
+  home are in `NOT_OFFERED` with the reason. `tests/test_keep.py`, `packaging/dev/free-cloud/`.
 - **The password is asked for on the host's page** (`sync: false` in the blueprint, `fly secrets`),
   never written in a file, so the machine is locked from its first second. The card suggests one
   (`suggest_passphrase`, fresh per answer, never stored).
@@ -729,7 +737,9 @@ so sso and done". Five things keep it honest:
   lock reads 401 to the host and the deploy is marked failed. The test ties the two together.
 The button reads `render.yaml` from the default branch of `updates.repo_of(cfg)`, so a fork
 deploys itself. Nothing here deploys anything; it opens the host's page. Tested by running the
-image as Render does (`PORT=10000`, a proxy's `X-Forwarded-Proto`), ~100 MB idle.
+image as Render does (`PORT=10000`, a proxy's `X-Forwarded-Proto`), ~100 MB idle; the free path
+by `packaging/dev/free-cloud/run.py` (0.1 CPU, 512 MB, no volume, stand-in GitHub and model). A
+stand-in model needs a price set before its first turn, or the turn waits on the price card.
 
 ## Sign in with Google / Microsoft: the door that asks for nothing to type
 

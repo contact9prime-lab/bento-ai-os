@@ -6309,6 +6309,9 @@ def main():
                           help="say what a backup holds, without restoring it")
     p_backup.add_argument("--passphrase-file", default="",
                           help="read the passphrase from a file (for an unattended backup)")
+    p_keep = verb("keep", help="a free cloud machine's memory, kept sealed on your own GitHub")
+    p_keep.add_argument("action", nargs="?", default="status", choices=["status", "save", "restore"],
+                        help="status | save (now) | restore (into an empty home; the container does this)")
     p_cloud = verb("cloud", help="put Bento in the cloud: one-click Render, Fly.io or your own server")
     p_cloud.add_argument("--json", action="store_true", help="the options as JSON")
     p_sb = verb("standby", help="a cloud machine that takes over only while this one is away")
@@ -6972,6 +6975,31 @@ def main():
         _backup_cli(args)
     elif args.cmd == "restore":
         _restore_cli(args)
+    elif args.cmd == "keep":
+        # Where a cloud machine on a host that forgets its disk keeps its home (keep.py).
+        # Run by the container's entrypoint before the server starts, and by a person.
+        from . import keep
+        try:
+            if args.action == "restore":
+                r = keep.restore()
+                if not r.get("restored"):
+                    print(f"  nothing restored: {r.get('why')}")
+            elif args.action == "save":
+                r = keep.save(force=True)
+                print(f"  saved to GitHub ({keep._size(r['bytes'])}, {r['seconds']}s): {r.get('url', '')}"
+                      if r.get("saved") else f"  not saved: {r.get('why')}")
+            else:
+                st = keep.status()
+                print(f"  {st['line'] or 'This machine keeps its own disk; nothing is kept on GitHub.'}")
+                if st["url"]:
+                    print(f"  kept at {st['url']}")
+                if st["restore_note"]:
+                    print(f"  {st['restore_note']}")
+                if not st["enabled"]:
+                    print(f"  make a key (gist only): {st['token_link']}")
+        except keep.KeepError as e:
+            print(f"  ✗ {e}")
+            sys.exit(1)
     elif args.cmd == "cloud":
         # The terminal face of Settings → System → Put Bento in the cloud: the same
         # options, read from clouddeploy.py with the server down.

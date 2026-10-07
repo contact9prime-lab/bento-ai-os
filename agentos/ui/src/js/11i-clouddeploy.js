@@ -18,14 +18,30 @@ async function paintCloudDeploy(){
   CLOUDDEP.url=top.url;
   const steps=o=>`<ol class="cd-steps">${(o.steps||[]).map(s=>`<li>${o.kind==='commands'
       ?`<code>${esc(s)}</code>`:esc(s)}</li>`).join('')}</ol>`;
-  el.innerHTML=`<div class="bk-box">
-      <span><b>${esc(top.title)}</b> <span class="mut">· easiest</span></span>
+  /* This machine, when it is a cloud machine whose host forgets its disk (keep.py):
+     where its memory is kept, or the plain fact that it forgets. */
+  const h=d.here||{};
+  const here=h.line?`<div class="bk-box cd-here cd-${esc(h.kind||'')}">
+      <span><b>This machine</b></span>
+      <span>${esc(h.line)}</span>
+      ${h.saved_at?`<span class="mut">Saved ${sbAgo(h.saved_at)}${h.saved_bytes?`, ${bkSize(h.saved_bytes)}`:''}${h.restored_at?` · brought back ${sbAgo(h.restored_at)}`:''}</span>`:''}
+      ${h.restore_note&&!h.saved_at?`<span class="mut">${esc(h.restore_note)}</span>`:''}
+      <div>${h.enabled?`<button class="endbtn" onclick="cloudKeepSave(this)">Save now</button>`:''}
+        ${h.url?`<button class="endbtn" onclick="cloudDeployOpen(${JSON.stringify(h.url).replace(/"/g,'&quot;')})">Open on GitHub</button>`:''}
+        ${!h.enabled&&h.token_link?`<button class="endbtn" onclick="cloudDeployOpen(${JSON.stringify(h.token_link).replace(/"/g,'&quot;')})">Make a GitHub key</button>`:''}</div>
+    </div>`:'';
+  CLOUDDEP.key=top.key_url||'';
+  el.innerHTML=`${here}<div class="bk-box">
+      <span><b>${esc(top.title)}</b> <span class="mut">· ${top.free?'free':'easiest'}</span></span>
       <span class="mut">${esc(top.how)}</span>
-      <div class="cd-pass"><span class="mut">A password you could use</span>
+      ${top.key_url?`<div class="cd-step"><span class="mut">1. A GitHub key for its memory. Choose No expiration, then Generate token.</span>
+        <div><button class="endbtn" onclick="cloudDeployOpen(CLOUDDEP.key)">Make a GitHub key</button></div></div>`:''}
+      <div class="cd-pass"><span class="mut">${top.key_url?'2. ':''}A password you could use</span>
         <span class="cd-pass-row"><input id="cd-pw" readonly value="${esc(d.passphrase)}" spellcheck="false">
           <button class="endbtn" onclick="cloudDeployCopy()">Copy</button>
           <button class="endbtn" title="Another one" onclick="paintCloudDeploy()">↻</button></span></div>
-      <div><button class="save cd-go" onclick="cloudDeployOpen(CLOUDDEP.url)">Deploy on ${esc(top.title)}</button></div>
+      <div class="cd-step">${top.key_url?'<span class="mut">3. Paste both on Render\u2019s page.</span>':''}
+        <div><button class="save cd-go" onclick="cloudDeployOpen(CLOUDDEP.url)">Deploy on ${esc(top.title)}</button></div></div>
       <span class="mut">${esc(top.costs)} ${pInfo((top.steps||[]).join(' '))}</span>
     </div>
     <details class="cd-more"><summary>Other ways</summary>
@@ -53,6 +69,15 @@ function cloudDeployCopy(){
   const done=()=>toast('password copied');
   if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(i.value).then(done,()=>{});return}
   i.focus();i.select();try{document.execCommand('copy');done()}catch(e){toast('select it and copy it yourself')}
+}
+
+async function cloudKeepSave(b){
+  b.disabled=true;b.textContent='Saving…';
+  try{const r=await fetch('/api/keep/save',{method:'POST'});const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'could not save');
+    toast(d.saved?`Saved to GitHub (${bkSize(d.bytes)})`:'Nothing changed since the last save.');
+  }catch(e){toast(e.message)}
+  paintCloudDeploy();
 }
 
 function cloudDeployGo(id){

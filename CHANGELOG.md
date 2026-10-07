@@ -2,13 +2,17 @@
 
 ## 0.6.18 — 2026-09-30
 
-**Put Bento in the cloud in one click.** Settings → System → Put Bento in the cloud (or
-`bento cloud`, or the button in the README) opens Render with everything filled in: sign in
-with GitHub or Google, type a password, press Deploy. About five minutes later there is a
-Bento at an https address with a disk, so it keeps everything across restarts. It costs about
-$7 a month. Fly.io and your own server are listed beside it with their commands and costs,
-and the hosts that would forget everything on a restart are named with the reason. Once it's
-up, the same card takes you to pairing it as your standby or moving this machine there.
+**Put Bento in the cloud in one click, for free.** Settings → System → Put Bento in the cloud
+(or `bento cloud`, or the button in the README) opens Render's free plan with everything filled
+in: make a GitHub key (one prefilled page), sign in to Render with GitHub, type a password,
+paste the key, press Deploy. No card. Render's free plan wipes its disk on every restart, so
+Bento keeps its home sealed with your password in a secret gist on your own GitHub: it saves
+within two minutes of a change and once more when Render stops it, and brings everything back
+on the next start (`bento keep`). It also visits its own address every ten minutes so missions
+and Telegram keep running. A paid plan with a disk, Fly.io and your own server are listed beside
+it with their steps and costs, and the hosts that would forget everything are named with the
+reason. Once it's up, the same card takes you to pairing it as your standby or moving this
+machine there.
 - The container now listens on the `PORT` a host gives it, which Render, Fly and others use.
 - Restarting a container no longer signs everybody out. The entrypoint sets the password on
   every start, and the same password used to get a fresh salt and so a new session key. A new

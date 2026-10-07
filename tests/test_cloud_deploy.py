@@ -39,15 +39,18 @@ def _open_paths():
     return server.REMOTE_OPEN_PATHS
 
 
-def test_the_render_blueprint_keeps_the_home_on_a_disk_and_asks_for_the_password():
+def test_the_render_blueprint_keeps_the_home_and_asks_for_the_password():
     bp = yaml.safe_load((ROOT / "render.yaml").read_text())
     (svc,) = bp["services"]
     assert svc["type"] == "web" and svc["runtime"] == "docker"
     assert (ROOT / svc["dockerfilePath"]).is_file()
-    # a disk needs a paid instance; the free one forgets the home on every restart
-    assert svc["plan"] != "free"
-    assert svc["disk"]["mountPath"] == _image_home()
     env = {e["key"]: e for e in svc["envVars"]}
+    # The free plan has no disk, so the home must be kept elsewhere (keep.py); a paid
+    # plan keeps it on a disk at the image's home.
+    if svc["plan"] == "free":
+        assert "disk" not in svc and env["BENTO_KEEP_GITHUB_TOKEN"].get("sync") is False
+    else:
+        assert svc["disk"]["mountPath"] == _image_home()
     pw = env[clouddeploy.PASSPHRASE_ENV]
     assert pw.get("sync") is False and "value" not in pw, \
         "the password is asked for on the deploy page and never written in the file"
@@ -77,7 +80,8 @@ def test_the_entrypoint_listens_on_the_port_the_host_hands_it():
 
 def test_the_options_put_the_one_click_road_first_and_all_keep_your_data():
     opts = clouddeploy.options({})
-    assert opts[0]["id"] == "render" and opts[0]["recommended"]
+    assert opts[0]["id"] == "render" and opts[0]["recommended"] and opts[0]["free"]
+    assert opts[0]["key_url"].startswith("https://github.com/settings/tokens/new?scopes=gist")
     assert opts[0]["url"] == "https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os"
     assert all(o["keeps"] for o in opts), "an option that forgets everything is not offered"
     assert not {o["title"] for o in opts} & set(clouddeploy.NOT_OFFERED)

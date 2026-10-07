@@ -332,6 +332,7 @@ async def startup():
         asyncio.create_task(attention.attention_loop(cfg, store,
                                                      lambda: state.get("notifd"), broadcast))
     _standby_start()
+    _keep_start(idle)
     # Is there a newer version? Checking is automatic; installing never is.
     from . import updates as updmod
     asyncio.create_task(updmod.watch(cfg, store, broadcast, cfgmod.save_config))
@@ -675,6 +676,10 @@ async def _team_listen(on: bool) -> dict:
 
 @app.on_event("shutdown")
 async def shutdown():
+    # Kept first: on a free host this is the only copy of the home, and the host gives a
+    # stopping service about 30 seconds.
+    with contextlib.suppress(Exception):
+        await _keep_flush()
     with contextlib.suppress(Exception):
         await _standby_flush()
     if state.get("notifd"):
@@ -7099,6 +7104,90 @@ def _standby_restart(delay: float = 0.8) -> None:
     asyncio.get_running_loop().call_later(delay, desktopmod.restart_service)
 
 
+# ---- a free cloud machine's memory, kept on GitHub (keep.py) -------------------------
+
+def _keep_start(passive: bool) -> None:
+    """On a host that forgets its disk: save the home to GitHub whenever it changed, and,
+    when the blueprint asked for it, visit our own front door so the host keeps us awake.
+    A passive standby saves nothing: its home is a copy of somebody else's."""
+    from . import keep
+    loop = asyncio.get_running_loop()
+    if keep.awake_url():
+        state["keep_awake_task"] = loop.create_task(_keep_awake_loop(keep.awake_url()))
+    if keep.enabled() and not passive:
+        state["keep_task"] = loop.create_task(_keep_loop())
+
+
+async def _keep_loop():
+    from . import keep
+    await asyncio.sleep(15)                  # let the first start settle
+    told = ""
+    while True:
+        try:
+            r = await asyncio.to_thread(keep.save)
+            if r.get("saved"):
+                told = ""
+                with contextlib.suppress(Exception):
+                    state["store"].log("keep", f"memory saved to GitHub ({keep._size(r['bytes'])}, {r['seconds']}s)")
+        except keep.KeepError as e:
+            if str(e) != told:               # once per new problem, not every half minute
+                told = str(e)
+                with contextlib.suppress(Exception):
+                    state["store"].log("error", f"keep: {e}")
+                    await state["broadcast"]({"type": "toast", "text": f"Memory not saved: {e}", "kind": "err"})
+        except Exception as e:                                          # noqa: BLE001
+            with contextlib.suppress(Exception):
+                state["store"].log("error", f"keep: {type(e).__name__}: {e}")
+        await asyncio.sleep(keep.CHECK_S)
+
+
+async def _keep_awake_loop(url: str):
+    """A visit through the host's front door every ten minutes: the inbound traffic its
+    free tier counts, so missions, schedules and Telegram keep running."""
+    import httpx
+    from . import keep
+    while True:
+        await asyncio.sleep(keep.AWAKE_S)
+        with contextlib.suppress(Exception):
+            async with httpx.AsyncClient(timeout=20) as c:
+                await c.get(url)
+
+
+async def _keep_flush() -> None:
+    """The last save before the host stops us (a spin-down, a redeploy, a restart)."""
+    from . import backup as bk
+    from . import keep
+    if not keep.enabled() or bk.pending() or standbymod.passive():
+        return
+    try:
+        await asyncio.wait_for(asyncio.to_thread(keep.save, None, False, True), 20)
+    except Exception as e:                                              # noqa: BLE001
+        with contextlib.suppress(Exception):
+            keep._update(error=f"The last save before stopping did not finish: {e}")
+
+
+@app.get("/api/keep")
+async def api_keep():
+    """Where this machine's memory is kept, for the cloud card. The gist's address is an
+    admin's to see: it is the whole machine, sealed."""
+    from . import keep
+    st = keep.status()
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        st = {k: st[k] for k in ("enabled", "ephemeral", "line", "kind")}
+    return st
+
+
+@app.post("/api/keep/save")
+async def api_keep_save():
+    from . import keep
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can save this machine"}, status_code=403)
+    try:
+        return await asyncio.to_thread(keep.save, None, True)
+    except keep.KeepError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
 def _standby_note(text: str, kind: str = "info") -> None:
     with contextlib.suppress(Exception):
         state["store"].log("standby", text)
@@ -7506,7 +7595,8 @@ async def api_cloud_deploy():
     Nothing here deploys anything: it is links and steps, and a password suggestion
     made fresh for this answer and never stored."""
     from . import clouddeploy
-    return {"options": clouddeploy.options(state["cfg"]),
+    here = await api_keep()
+    return {"options": clouddeploy.options(state["cfg"]), "here": here,
             "not_offered": clouddeploy.NOT_OFFERED, "after": clouddeploy.after(),
             "passphrase": clouddeploy.suggest_passphrase(),
             "env": clouddeploy.PASSPHRASE_ENV}

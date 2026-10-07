@@ -1,29 +1,41 @@
-# Bento on Render, in one click:
+# Bento on Render, free, in one click:
 #   https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os
 #
-# Sign in (GitHub, GitLab or Google), type a password in the AGENTOS_PASSPHRASE box,
-# press Deploy Blueprint. Full story: docs/cloud.md. The same list is in
-# Settings → System → Put Bento in the cloud, and `bento cloud`.
+# Make a GitHub key first (gist only, No expiration):
+#   https://github.com/settings/tokens/new?scopes=gist&description=Bento%20cloud%20memory
+# Then sign in to Render, type a password in AGENTOS_PASSPHRASE, paste the key in
+# BENTO_KEEP_GITHUB_TOKEN, press Deploy Blueprint. Full story: docs/cloud.md. The same
+# list is in Settings → System → Put Bento in the cloud, and `bento cloud`.
 #
 # Why each line is here:
-#   plan: starter   a disk needs a paid instance; the free one forgets /data on restart.
-#   disk at /data   AGENTOS_HOME in the image. Memory, chats, accounts and the vault live here.
-#   sync: false     Render asks for the value on the deploy page, so the password is never
-#                   in this file and the new machine starts locked.
-#   /login          answers 200 without signing in (REMOTE_OPEN_PATHS), so the health check
-#                   does not need a session. The entrypoint listens on Render's PORT.
+#   plan: free         no card. Its disk is wiped on every restart and it sleeps after 15
+#                      minutes with no visitors (Render's free plan, docs/cloud.md).
+#   KEEP_GITHUB_TOKEN  so the home is kept sealed in a secret gist on your GitHub and comes
+#                      back on every start (agentos/keep.py). Without it, it forgets.
+#   EPHEMERAL          tells Bento this host forgets, so Settings says so when there is no key.
+#   KEEP_AWAKE         a visit to its own address every ten minutes, so missions, schedules
+#                      and Telegram keep running. One service uses ~744 of Render's 750 free
+#                      hours a month; set it to 0 if you run other free services there.
+#   sync: false        Render asks for the value on the deploy page; it is never in a file.
+#   /login             answers 200 without signing in (REMOTE_OPEN_PATHS), so the health
+#                      check needs no session. The entrypoint listens on Render's PORT.
+#
+# Paid instead (never sleeps, keeps its own disk): choose Starter under Instance Type and
+# add a 1 GB disk at /data in the service's settings. docs/cloud.md has the steps.
 services:
   - type: web
     name: bento
     runtime: docker
-    plan: starter
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /login
-    disk:
-      name: bento-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: AGENTOS_PASSPHRASE
         sync: false
+      - key: BENTO_KEEP_GITHUB_TOKEN
+        sync: false
+      - key: BENTO_EPHEMERAL
+        value: "1"
+      - key: BENTO_KEEP_AWAKE
+        value: "1"

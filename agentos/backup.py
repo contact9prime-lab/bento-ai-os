@@ -82,7 +82,9 @@ SKIP_SUFFIX = (".db-wal", ".db-shm", ".db-journal", ".pyc", ".tmp", ".part")
 PRIVATE = (".restoring-", ".before-restore-", ".restore-ready", ".backup-out-",
            ".restore-upload-", ".backup-tmp",
            # the cloud standby's pairing, copies and state (standby.py): this machine's own
-           ".standby")
+           ".standby",
+           # where this machine keeps its home on GitHub (keep.py): this machine's own
+           ".keep")
 READY = ".restore-ready"
 LAST = "last-restore.json"
 
