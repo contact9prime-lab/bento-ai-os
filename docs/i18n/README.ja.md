@@ -42,6 +42,8 @@ Telegram、WhatsApp に届きます。どのエージェントのどの操作も
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 あとは **http://127.0.0.1:8321** を開くだけです。自分で[リモートアクセス](../remote-access.md)を
 オンにするまでは localhost でしか待ち受けません。作成するアカウントもテレメトリもなく、キーを追加しない限り
 クラウドも使いません。

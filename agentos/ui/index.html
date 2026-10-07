@@ -1013,6 +1013,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .apptop input{flex:1;min-width:90px}
 .stepnum{display:inline-flex;width:20px;height:20px;border-radius:50%;background:var(--bg4);color:var(--acc);font-size:var(--fs-xs);font-weight:800;align-items:center;justify-content:center;margin-right:8px;flex:none}
 .fcrumb{cursor:pointer;color:var(--dim)}.fcrumb:hover{color:var(--acc)}.fsep{color:var(--dim2);margin:0 4px}
+.f-place{flex:0 1 auto;max-width:42%;min-height:var(--tap,30px);padding:4px 8px;border-radius:var(--r-sm,8px);border:1px solid var(--line);background:var(--bg3);color:var(--txt);font-size:var(--fs-sm)}
 .fitem{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-md);cursor:pointer;font-size:var(--fs-md)}
 .fitem:hover{background:var(--bg3)}
 .fitem .fi{font-size:var(--fs-lg);flex:none}.fitem .fn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1418,6 +1419,18 @@ body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical
 .bk-ws code{word-break:break-all}
 .sb-feed{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
 .bk-box input[type=file]{max-width:100%;min-height:var(--tap,32px)}
+.cd-pass{display:flex;flex-direction:column;gap:4px;width:100%}
+.cd-pass-row{display:flex;gap:6px;width:100%}
+#cd-box{min-width:0;max-width:100%}
+.cd-pass-row input{flex:1 1 120px;width:100%;min-width:0;font-family:var(--mono,ui-monospace,monospace)}
+.cd-pass-row button,.cd-after button,.cd-go{min-height:var(--tap,32px)}
+.cd-more{margin-top:12px;width:100%}
+.cd-more summary{cursor:pointer;min-height:var(--tap,28px);display:flex;align-items:center;color:var(--dim)}
+.cd-way{display:flex;flex-direction:column;gap:4px;margin:10px 0}
+.cd-steps{margin:2px 0 2px 18px;padding:0;display:flex;flex-direction:column;gap:4px}
+.cd-steps code{white-space:pre-wrap;word-break:break-all;user-select:all}
+.cd-after{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.cd-after>div{display:flex;flex-wrap:wrap;gap:6px}
 .bk-done{padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--ok,#3c9) 12%,transparent);margin:4px 0 8px}
 .bk-done ul{margin:6px 0 6px 18px;padding:0}
 .bk-done li{margin:3px 0}
@@ -11219,6 +11232,7 @@ var PLACES=[
   ['Voice','settings','Settings → Voice',['voice','speech','speak','tts','microphone','mic','wake word','dictation'],placeSettings('voice')],
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','remote','remote access','passphrase','lock','autonomy','light mode','profile','security'],placeSettings('system')],
+  ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click'],placeSettings('system')],
   ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],
   ['Run missions','jobs','Missions → Run',['mission','missions','job','jobs','recipe','recipes','daily','describe a mission','catalogue'],placeMissions('run')],
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
@@ -15267,6 +15281,13 @@ function setTab(body,all){
          f:'restore backup import move from another machine migrate new computer recover'}),
     ],{f:'backup restore export import move migrate'}));
     setTimeout(paintBackup,0);
+    P.push(pGroup('Put Bento in the cloud',[
+      pRow('A cloud Bento in a few minutes','<div id="cd-box"><span class="mut">…</span></div>',
+        {desc:'Sign in with GitHub or Google, choose a password, press Deploy. It keeps working while your computer is off.',
+         more:'Render runs it with a disk, so nothing is lost on a restart. Fly.io and your own server are under Other ways. In a terminal: bento cloud.',
+         f:'cloud deploy render fly host hosting server vps online internet always on one click sso quick put move'}),
+    ],{f:'cloud deploy hosting'}));
+    setTimeout(paintCloudDeploy,0);
     P.push(pGroup('Cloud standby',[
       pRow('A cloud machine that takes over','<div id="sb-box"><span class="mut">…</span></div>',
         {desc:'It runs your agent only while this machine is away, then hands the work back.',
@@ -17753,6 +17774,67 @@ async function standbyAct(url,btn,ask){
     if(d.restart){toast((d.message||'Done.')+' Bento is restarting.');setTimeout(()=>location.reload(),9000);return}
     toast(d.message||(d.sent?`Copy sent (${bkSize(d.bytes)})`:(d.why?'No copy needed: '+d.why:'Done.')));paintStandby()}
   catch(e){toast(e.message,{kind:'err'})}finally{btn.disabled=false;btn.textContent=label}
+}
+/* ================= Settings → System → Put Bento in the cloud (agentos/clouddeploy.py) =================
+   Asked for as "deploy it quickly to the cloud, really quick and noob for anyone, so sso and
+   done". The card is the Render button (sign in with GitHub or Google, type a password on
+   their page, press Deploy) with a password suggestion beside it, the other ways folded under
+   it, and the two things to do once it is up, which are the panes right below this one.
+   Nothing here deploys: it opens the host's page.
+   Faces: GUI and SUI are this card (a link opens in the host's browser at the machine and in
+   this browser from a phone, the fileOpen rule). The TUI is `bento cloud`, the same list. */
+var CLOUDDEP=CLOUDDEP||{d:null};
+
+async function paintCloudDeploy(){
+  const el=document.getElementById('cd-box');if(!el)return;
+  let d;try{d=await apiJSON('/api/cloud/deploy')}catch(e){el.innerHTML=`<span class="mut">${esc(e.message)}</span>`;return}
+  CLOUDDEP.d=d;
+  const opts=d.options||[];
+  const top=opts.find(o=>o.recommended)||opts[0];
+  const rest=opts.filter(o=>o!==top);
+  CLOUDDEP.url=top.url;
+  const steps=o=>`<ol class="cd-steps">${(o.steps||[]).map(s=>`<li>${o.kind==='commands'
+      ?`<code>${esc(s)}</code>`:esc(s)}</li>`).join('')}</ol>`;
+  el.innerHTML=`<div class="bk-box">
+      <span><b>${esc(top.title)}</b> <span class="mut">· easiest</span></span>
+      <span class="mut">${esc(top.how)}</span>
+      <div class="cd-pass"><span class="mut">A password you could use</span>
+        <span class="cd-pass-row"><input id="cd-pw" readonly value="${esc(d.passphrase)}" spellcheck="false">
+          <button class="endbtn" onclick="cloudDeployCopy()">Copy</button>
+          <button class="endbtn" title="Another one" onclick="paintCloudDeploy()">↻</button></span></div>
+      <div><button class="save cd-go" onclick="cloudDeployOpen(CLOUDDEP.url)">Deploy on ${esc(top.title)}</button></div>
+      <span class="mut">${esc(top.costs)} ${pInfo((top.steps||[]).join(' '))}</span>
+    </div>
+    <details class="cd-more"><summary>Other ways</summary>
+      ${rest.map(o=>`<div class="cd-way"><b>${esc(o.title)}</b> <span class="mut">${esc(o.how)}</span>
+        ${steps(o)}<span class="mut">${esc(o.costs)}${o.https?'':' No HTTPS of its own.'}</span></div>`).join('')}
+      <div class="cd-way"><b>Not offered</b>${Object.entries(d.not_offered||{}).map(([k,v])=>
+        `<span class="mut">${esc(k)}: ${esc(v)}</span>`).join('')}</div>
+    </details>
+    <div class="cd-after"><span class="mut">Once it's up</span>
+      <div><button class="endbtn" onclick="cloudDeployGo('sb-box')">Pair it as your standby</button>
+        <button class="endbtn" onclick="cloudDeployGo('bk-make')">Move this machine there</button></div></div>`;
+}
+
+/* At the machine the host's own browser opens it; from a phone, this browser does,
+   because the host's would open in another room. */
+function cloudDeployOpen(url){
+  if(typeof remoteClient==='function'&&remoteClient()){window.open(url,'_blank','noopener');return}
+  openHost({url});
+}
+
+/* navigator.clipboard exists only on HTTPS or localhost; a phone on the LAN over plain
+   HTTP has none, so fall back to selecting the text and the old copy command. */
+function cloudDeployCopy(){
+  const i=document.getElementById('cd-pw');if(!i)return;
+  const done=()=>toast('password copied');
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(i.value).then(done,()=>{});return}
+  i.focus();i.select();try{document.execCommand('copy');done()}catch(e){toast('select it and copy it yourself')}
+}
+
+function cloudDeployGo(id){
+  const el=document.getElementById(id);
+  if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
 }
 /* ================= memory app ================= */
 let memTab='user';
@@ -24588,8 +24670,10 @@ function usersShareBox(){
 function usersFolderBox(){
   const F=USERS.folders||{folders:[],problems:[],users:[],admin:true};
   const accounts=F.users||[];
+  /* a share stores account ids; show the names people know each other by */
+  const nameOf=u=>{const a=accounts.find(x=>x.id===u||x.name===u);return a?a.display:u};
   const who=s=>(s.users&&s.users.length)
-    ? s.users.map(u=>esc(u)).join(', ')
+    ? s.users.map(u=>esc(nameOf(u))).join(', ')
     : '<em>everyone</em>';
   const rows=(F.folders||[]).map((s,i)=>`
     <div class="usr-share${s.risk?' warn':''}" data-f="${esc(s.path)}">
@@ -27786,7 +27870,7 @@ async function companyReview(ids){
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
-  w.path=w.path||'';
+  w.path=w.path||'';w.place=w.place||'';
   const FCOLORS={html:'#38BDF8',htm:'#38BDF8',md:'#a5b4fc',txt:'#8a94a6',json:'#fbbf24',csv:'#4ade80',
     log:'#8a94a6',pdf:'#f87171',sh:'#94a3b8',py:'#60a5fa'};
   const IMG_EXT=new Set(['png','jpg','jpeg','gif','webp','svg']);
@@ -27798,18 +27882,32 @@ async function renderFiles(body,w){
     return `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="${s}"><path d="M6.5 4h7l4 4v12h-11Z"/><path d="M13.5 4v4h4"/></svg>`;
   };
   const fmt=n=>n<1024?n+' B':n<1e6?(n/1024).toFixed(0)+' KB':(n/1e6).toFixed(1)+' MB';
-  let d;try{d=await (await fetch('/api/files?path='+encodeURIComponent(w.path))).json()}catch(e){body.innerHTML='<p class="mut" style="padding:16px">could not read files</p>';return}
+  const q='/api/files?path='+encodeURIComponent(w.path)+(w.place?'&root='+encodeURIComponent(w.place):'');
+  let d;try{
+    const r=await fetch(q);d=await r.json();
+    /* a share that was removed while this window was open: back to the workspace */
+    if(!r.ok&&w.place){w.place='';w.path='';return renderFiles(body,w)}
+  }catch(e){body.innerHTML='<p class="mut" style="padding:16px">could not read files</p>';return}
   w.path=d.path;
-  const crumbs=['<span class="fcrumb" data-p="">workspace</span>'];
+  /* Shared folders (Users → Shared folders) are places of their own, beside the
+     workspace. A select and not tabs: it stays one control on a phone however many
+     folders are shared. */
+  const places=d.places||[];
+  const here=places.find(p=>p.root===w.place)||{label:'Workspace',mode:'rw'};
+  const picker=places.length>1?`<select class="f-place" title="Shared folders">${places.map(p=>
+    `<option value="${esc(p.root)}"${p.root===w.place?' selected':''}>${esc(p.label)}</option>`).join('')}</select>`:'';
+  const crumbs=[`<span class="fcrumb" data-p="">${esc(w.place?here.label:'workspace')}</span>`];
   let acc='';d.path.split('/').filter(Boolean).forEach(seg=>{acc=acc?acc+'/'+seg:seg;crumbs.push('<span class="fsep">/</span><span class="fcrumb" data-p="'+esc(acc)+'">'+esc(seg)+'</span>')});
   body.innerHTML=`<div class="apptop">
+      ${picker}
       ${w.path?'<button class="endbtn f-up">Up</button>':''}
-      <div style="flex:1;font-size:var(--fs-sm)" class="f-crumbs">${crumbs.join('')}</div>
+      <div style="flex:1;font-size:var(--fs-sm)" class="f-crumbs">${crumbs.join('')}${here.mode==='ro'?'<span class="dim"> · read only</span>':''}</div>
       <span class="psearch" style="flex:0 0 220px">${SVG_SEARCH}<input class="f-search" placeholder="Search by meaning…" autocomplete="off"></span>
       <button class="endbtn" onclick="refreshApp('files')">⟳</button>
     </div>
     <div class="f-list" style="flex:1;overflow-y:auto;padding:6px 8px;user-select:text">
-      ${d.entries.length?d.entries.map(e=>`<div class="fitem" data-rel="${esc(e.rel)}" data-dir="${e.dir?1:0}" data-ext="${esc(e.ext)}">
+      ${d.error?`<p class="mut" style="padding:14px">${esc(d.error)}</p>`:''}
+      ${d.entries.length?d.entries.map(e=>`<div class="fitem" data-rel="${esc(e.rel)}" data-full="${esc(e.full||'')}" data-dir="${e.dir?1:0}" data-ext="${esc(e.ext)}">
         <span class="fi">${icon(e)}</span><span class="fn">${esc(e.name)}</span>
         <span class="fmeta">${e.dir?'':fmt(e.size)+' · '+new Date(e.mtime*1000).toLocaleDateString()}</span>
       </div>`).join(''):'<p class="mut" style="padding:14px">empty folder</p>'}
@@ -27817,9 +27915,13 @@ async function renderFiles(body,w){
   // scoped lookups — Files is multi-instance, so no bare $('#…') in here
   body.querySelector('.f-crumbs').querySelectorAll('.fcrumb').forEach(c=>c.onclick=()=>{w.path=c.dataset.p;renderFiles(body,w)});
   const up=body.querySelector('.f-up');if(up)up.onclick=()=>{w.path=w.path.split('/').slice(0,-1).join('/');renderFiles(body,w)};
+  const pick=body.querySelector('.f-place');if(pick)pick.onchange=()=>{w.place=pick.value;w.path='';renderFiles(body,w)};
   const wire=()=>body.querySelectorAll('.fitem').forEach(it=>it.onclick=()=>{
     const rel=it.dataset.rel;
     if(it.dataset.dir==='1'){w.path=rel;renderFiles(body,w)}
+    /* a shared folder's file goes by its full path, through the same door as a
+       chat's file chip (shown here on a phone, opened on the host at the machine) */
+    else if(w.place&&it.dataset.full)fileOpen(it.dataset.full,it.dataset.ext);
     else openFile(rel,it.dataset.ext);
   });
   wire();

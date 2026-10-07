@@ -14,7 +14,11 @@
 # can open yet.
 set -e
 
-PORT="${AGENTOS_PORT:-8321}"
+# AGENTOS_PORT wins; otherwise the PORT a host hands every container (Render,
+# Railway, Fly, Koyeb and Cloud Run all set one and route only to it); otherwise
+# 8321. Without the middle step a one-click deploy listened on a port nobody sent
+# traffic to, and the host marked it failed.
+PORT="${AGENTOS_PORT:-${PORT:-8321}}"
 
 say()  { printf '\033[36m▲ %s\033[0m\n' "$*"; }
 die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }

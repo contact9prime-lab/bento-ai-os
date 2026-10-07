@@ -10,8 +10,10 @@ here** takes it back.
 
 ## Setting it up
 
-You need Bento running on a cloud machine that your machine can reach. The
-[Docker image](../Dockerfile) is the quickest way, with a passphrase so it can listen on
+You need Bento running on a cloud machine that your machine can reach. The quickest way
+is one click: [Put Bento in the cloud](cloud.md) (Settings → System, or `bento cloud`)
+gives you one on Render with HTTPS and a disk in about five minutes. The
+[Docker image](../Dockerfile) runs anywhere else, with a passphrase so it can listen on
 a port. Put it behind HTTPS, or reach it over Tailscale or your LAN.
 
 1. **On the cloud machine**, open Settings → System → Cloud standby and press

@@ -43,6 +43,8 @@ OpenRouter या कोई भी OpenAI-compatible endpoint), या कोई
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 फिर **http://127.0.0.1:8321** खोलें। जब तक आप खुद [remote access](../remote-access.md) चालू नहीं
 करते, यह सिर्फ़ localhost पर सुनता है। न कोई अकाउंट बनाना है, न कोई telemetry है, और जब तक आप कोई
 key नहीं जोड़ते तब तक कोई क्लाउड भी नहीं।

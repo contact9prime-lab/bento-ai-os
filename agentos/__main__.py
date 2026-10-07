@@ -718,8 +718,9 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
         shares = folder_shares(cfg)
         if not shares:
             print("  no shared folders — the agent works in the workspace only")
+        from .tools import share_label
         for sh in shares:
-            who = ", ".join(sh["users"]) if sh["users"] else "everyone"
+            who = share_label(sh["users"])
             print(f"  {sh['mode']:<3} {sh['path']:<44} {who}")
             # The caution belongs in the LIST as well as at the moment of adding:
             # whoever reviews what this machine has opened up is usually not the
@@ -745,12 +746,17 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
             print(f"  refused: {why}"); return
         if mode not in FOLDER_MODES:
             print(f"  mode is one of {', '.join(FOLDER_MODES)}"); return
-        who = [u.strip() for u in (users or "").replace(",", " ").split() if u.strip()]
+        from .tools import share_users
+        named = [u.strip() for u in (users or "").replace(",", " ").split() if u.strip()]
+        ids, unknown = share_users(named)
+        if unknown:
+            print(f"  no account called {', '.join(unknown)} (bento user list shows them)"); return
+        who = ids
         raw = [r for r in raw if _folder_path_of(r) != p]      # replace, never duplicate
         raw.append({"path": p, "mode": mode, "users": who})
         cfg.setdefault("sandbox", {})["folders"] = raw
         cfgmod.save_config(cfg)
-        print(f"  shared {p} ({mode}) with {', '.join(who) if who else 'everyone'}")
+        print(f"  shared {p} ({mode}) with {', '.join(named) if named else 'everyone'}")
         if (risk := folder_risk(p, mode)):
             print(f"  ⚠ {risk}")
         return
@@ -1008,6 +1014,7 @@ def delegate(prompt: str, workdir: str | None, tools: str | None,
         model=model or conf.get("model", ""),
         budget_usd=budget if budget is not None
                    else float(conf.get("budget_usd", execmod.DEFAULT_BUDGET_USD)),
+        shares=execmod.shares_of(cfg),
     ).sanitized()
     print(f"→ {env.describe()}\n")
 
@@ -1238,9 +1245,9 @@ def doctor(fix: bool = False, session: bool = False):
     # Safe folders, and — the point of saying anything here — the ones that are
     # configured but not being used. A folder silently dropped for a typo looks
     # exactly like one the agent is refusing to touch.
-    from .tools import folder_problems, folder_risk, folder_shares
+    from .tools import folder_problems, folder_risk, folder_shares, share_label
     for sh in folder_shares(cfg):
-        who = ", ".join(sh["users"]) if sh["users"] else "everyone"
+        who = share_label(sh["users"])
         if (risk := folder_risk(sh["path"], sh["mode"])):
             warn(f"safe folder {sh['mode']}: {sh['path']} ({who}) — {risk}")
         else:
@@ -5357,7 +5364,12 @@ def _remote_cli(args):
         if problem:
             print(f"passphrase: {problem}")
             sys.exit(1)
-        r["pass_hash"], r["pass_salt"] = remotemod.hash_passphrase(pw)
+        # The same passphrase keeps its hash. Sessions are signed with it, and the
+        # container entrypoint sets the passphrase on EVERY start, so a fresh salt
+        # here signed everybody out on each restart (each cloud redeploy). A new
+        # passphrase still rotates the hash and signs every device out.
+        if not remotemod.check_passphrase({"remote": r}, pw):
+            r["pass_hash"], r["pass_salt"] = remotemod.hash_passphrase(pw)
     if args.bind:
         r["bind"] = args.bind
     if args.on:
@@ -6297,6 +6309,8 @@ def main():
                           help="say what a backup holds, without restoring it")
     p_backup.add_argument("--passphrase-file", default="",
                           help="read the passphrase from a file (for an unattended backup)")
+    p_cloud = verb("cloud", help="put Bento in the cloud: one-click Render, Fly.io or your own server")
+    p_cloud.add_argument("--json", action="store_true", help="the options as JSON")
     p_sb = verb("standby", help="a cloud machine that takes over only while this one is away")
     p_sb.add_argument("action", nargs="?", default="status",
                       choices=["status", "wait", "pair", "copy", "takeover", "move", "back",
@@ -6958,6 +6972,17 @@ def main():
         _backup_cli(args)
     elif args.cmd == "restore":
         _restore_cli(args)
+    elif args.cmd == "cloud":
+        # The terminal face of Settings → System → Put Bento in the cloud: the same
+        # options, read from clouddeploy.py with the server down.
+        from . import clouddeploy
+        from . import config as cfgmod
+        if args.json:
+            print(json.dumps({"options": clouddeploy.options(cfgmod.load_config()),
+                              "not_offered": clouddeploy.NOT_OFFERED,
+                              "after": clouddeploy.after()}, indent=2))
+        else:
+            print(clouddeploy.text(cfgmod.load_config()))
     elif args.cmd == "standby":
         _standby_cli(args)
     elif args.cmd == "tui":

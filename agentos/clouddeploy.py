@@ -1,0 +1,131 @@
+"""Put Bento in the cloud: the ways to get a cloud machine, in the order a beginner should try them.
+
+Asked for as "deploy it quickly to the cloud … really quick and noob for anyone, so sso
+and done". Cloud standby (standby.py) already knew what to do WITH a cloud machine, and
+its docs began "You need Bento running on a cloud machine" with no word on how to get one.
+
+The one-click road is Render, and it is chosen for three reasons, each a requirement
+rather than a preference:
+
+  * It keeps a DISK. Everything Bento is lives under /data (memory, chats, accounts, the
+    vault). A host that rebuilds the filesystem on every deploy forgets all of it, which is
+    why DigitalOcean App Platform and Cloud Run are not offered at all.
+  * Its button reads a file in the repo (`render.yaml`), so the disk, the health check and
+    the password prompt are declared once, here, and nobody fills in a form of ten fields.
+  * Sign-in is GitHub, GitLab or Google, and the password is asked for ON the deploy page
+    (`sync: false`), so the first thing on the new machine is a lock that is already set.
+
+Everything else is a few commands for people who have a terminal open anyway. Each option
+says what it costs and whether it keeps your data, because "free" that forgets everything
+on the first restart is the most expensive kind.
+
+Kept free of HTTP and asyncio, like jobs.py: `bento cloud` prints the same list with the
+server down, and the Settings card and docs read the same words.
+"""
+from __future__ import annotations
+
+import secrets
+
+#: The image's own entrypoint reads these. Kept here so the docs, the card and the
+#: blueprint name one variable.
+PASSPHRASE_ENV = "AGENTOS_PASSPHRASE"
+#: The open path a host can poll without signing in (REMOTE_OPEN_PATHS has it).
+HEALTH_PATH = "/login"
+
+_WORDS = ("amber", "basil", "cedar", "delta", "ember", "fjord", "garnet", "harbor",
+          "indigo", "juniper", "kelp", "lumen", "maple", "nectar", "onyx", "pepper",
+          "quartz", "raven", "saffron", "tundra", "umber", "velvet", "willow", "zephyr")
+
+
+def repo(cfg: dict | None = None) -> str:
+    """owner/name of the repository this machine updates from (a fork deploys itself)."""
+    try:
+        from . import updates
+        return updates.repo_of(cfg or {})
+    except Exception:
+        return "contact9prime-lab/bento-ai-os"
+
+
+def suggest_passphrase() -> str:
+    """Four words and two digits: long enough to be safe on the internet, short enough
+    to type on a phone. Made fresh each time and never stored."""
+    pick = [secrets.choice(_WORDS) for _ in range(4)]
+    return "-".join(pick) + f"-{secrets.randbelow(90) + 10}"
+
+
+def options(cfg: dict | None = None) -> list[dict]:
+    """Every way to get a cloud Bento, easiest first. Each has a one-line `how`, the
+    `steps`, what it `costs` and whether it `keeps` your data across restarts."""
+    r = repo(cfg)
+    gh = f"https://github.com/{r}"
+    return [
+        {"id": "render", "title": "Render", "kind": "button", "recommended": True,
+         "url": f"https://render.com/deploy?repo={gh}",
+         "how": "Sign in with GitHub or Google, choose a password, press Deploy.",
+         "steps": ["Press Deploy on Render and sign in (GitHub, GitLab or Google).",
+                   f"Type a password in the {PASSPHRASE_ENV} box. Use the one suggested here if you like.",
+                   "Press Deploy Blueprint and wait about five minutes for the first build.",
+                   "Open the address Render gives you (https://bento-….onrender.com) and sign in with that password."],
+         "costs": "About $7 a month for the server, plus about $0.25 a month for the 1 GB disk.",
+         "keeps": True, "https": True},
+        {"id": "fly", "title": "Fly.io", "kind": "commands", "recommended": False,
+         "url": "https://fly.io/docs/flyctl/install/",
+         "how": "Four commands in a terminal, with HTTPS and a disk.",
+         "steps": [f"git clone {gh}.git && cd {r.split('/')[-1]}",
+                   "fly launch --copy-config --no-deploy",
+                   f"fly secrets set {PASSPHRASE_ENV}='<your password>'",
+                   "fly deploy --volume-initial-size 1"],
+         "costs": "About $3 a month for a 512 MB machine, plus $0.15 a month per GB of disk.",
+         "keeps": True, "https": True},
+        {"id": "server", "title": "Your own server", "kind": "commands", "recommended": False,
+         "url": "",
+         "how": "Any Linux server you can reach (Hetzner, DigitalOcean, Lightsail).",
+         "steps": [f"curl -fsSL https://raw.githubusercontent.com/{r}/master/install.sh | "
+                   "sh -s -- --yes --passphrase='<your password>'",
+                   "Put HTTPS in front before you use it over the internet: Caddy, a "
+                   "Cloudflare Tunnel or Tailscale."],
+         "costs": "Whatever the server costs, often $4 to $6 a month.",
+         "keeps": True, "https": False},
+    ]
+
+
+#: Hosts people ask about that are deliberately not offered, and why. Said out loud so
+#: the absence reads as a decision, not an oversight.
+NOT_OFFERED = {
+    "Railway": "its deploy button cannot add a disk, so you would add one by hand at /data. "
+               "Works, but not in one click.",
+    "DigitalOcean App Platform": "it has no disk, so every restart forgets everything.",
+    "Google Cloud Run": "it has no disk, so every restart forgets everything.",
+}
+
+
+def after() -> list[str]:
+    """What to do once the cloud Bento is up: the two moves this OS already has."""
+    return ["Use it as a standby: on the cloud Bento press Show a code under Settings → "
+            "System → Cloud standby, then pair from this machine.",
+            "Or move this machine there: Settings → System → Backup here, then Restore "
+            "from a backup on the cloud Bento."]
+
+
+def text(cfg: dict | None = None) -> str:
+    """The whole list for a terminal (`bento cloud`)."""
+    out = ["Put Bento in the cloud", ""]
+    for i, o in enumerate(options(cfg), 1):
+        tag = " (easiest)" if o["recommended"] else ""
+        out.append(f"{i}. {o['title']}{tag}: {o['how']}")
+        if o["kind"] == "button":
+            out.append(f"   Open: {o['url']}")
+        for s in o["steps"]:
+            out.append(f"   - {s}")
+        out.append(f"   Cost: {o['costs']}")
+        if not o["https"]:
+            out.append("   No HTTPS of its own.")
+        out.append("")
+    out.append("Not offered:")
+    out += [f"  {k}: {v}" for k, v in NOT_OFFERED.items()]
+    out.append("")
+    out.append("Once it is up:")
+    out += [f"  {s}" for s in after()]
+    out.append("")
+    out.append(f"A password you could use: {suggest_passphrase()}")
+    return "\n".join(out)

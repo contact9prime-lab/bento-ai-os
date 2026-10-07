@@ -535,6 +535,13 @@ function setTab(body,all){
          f:'restore backup import move from another machine migrate new computer recover'}),
     ],{f:'backup restore export import move migrate'}));
     setTimeout(paintBackup,0);
+    P.push(pGroup('Put Bento in the cloud',[
+      pRow('A cloud Bento in a few minutes','<div id="cd-box"><span class="mut">…</span></div>',
+        {desc:'Sign in with GitHub or Google, choose a password, press Deploy. It keeps working while your computer is off.',
+         more:'Render runs it with a disk, so nothing is lost on a restart. Fly.io and your own server are under Other ways. In a terminal: bento cloud.',
+         f:'cloud deploy render fly host hosting server vps online internet always on one click sso quick put move'}),
+    ],{f:'cloud deploy hosting'}));
+    setTimeout(paintCloudDeploy,0);
     P.push(pGroup('Cloud standby',[
       pRow('A cloud machine that takes over','<div id="sb-box"><span class="mut">…</span></div>',
         {desc:'It runs your agent only while this machine is away, then hands the work back.',

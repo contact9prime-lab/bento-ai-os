@@ -190,6 +190,28 @@ Three things will bite whoever touches this next:
   strips the personal keys before an admin's save reaches it — leaving a Telegram token
   there hands it to the next person who signs up.
 
+**A shared folder is one computation, and every agent and app reads it** (`tools.shares_for`;
+`tests/test_shared_folders_reach.py`). Reported as "I allow certain folders and it doesn't
+detect them", and it was five gaps, so check all five when you touch sharing:
+- **An admin's machine save must reach the server's own machine dict.** `machine_changed`
+  updated every account's cached view but not `state.machine_cfg()`, which `/api/folders`
+  and the Terminal's jail read: the share saved, then vanished from the Users app.
+  `users.bind_machine` registers that dict at start; it covers every machine key, not only
+  `sandbox`.
+- **A share names an account by id or by name; both match.** Ids are random hex, and
+  `bento folders add --users ada` stored the name, which matched nobody. Writes go through
+  `share_users` (names become ids, an unknown name is refused); `share_label` shows names.
+- **A forwarded turn gets the shares in its own CLI's words** (`Envelope.shares`, filled by
+  `envelope_from`). Claude Code: `--add-dir` each, and `--disallowedTools Edit(//path/**)` for
+  a read-only one when the run can write (an Edit rule covers Write). Codex reads the disk
+  already; `--add-dir` only for a read-write one when it writes. Gemini CLI has no per-folder
+  mode, so a writing run gets only the read-write shares and `shares_note` says which it
+  lacks. Never hand Gemini a read-only share on a run that can write.
+- The built-in agent's prompt lists them (`_system`), `outputs.roots` includes them (chips,
+  downloads, Telegram/WhatsApp `send_files`, the Office cabinet), and the Files app browses
+  them (`/api/files?root=`, refused unless it is one of `_file_places()`).
+- `list_folders` shows a non-admin only their own shares: the list names other accounts.
+
 **A passphrase is not a user, and the two locks are alternatives.** `remote.lock_kind`
 is the whole rule: accounts win, and a shared passphrase in front of them is one more
 secret held in common by people this OS otherwise keeps in separate directories. Every
@@ -685,6 +707,29 @@ chat, context and relevant information … and did we change the system anywhere
 - **A clean shutdown flushes** (`_standby_flush`, first thing in `shutdown`), bounded, and is
   skipped while a swap is staged (`bk.pending()`): flushing then would send the home that is
   about to be replaced over the cloud's newer copy.
+
+## Put Bento in the cloud: one click, and only hosts that keep a disk
+
+`agentos/clouddeploy.py` (the one list) + `render.yaml` + `fly.toml` + Settings → System → Put
+Bento in the cloud (`11i-clouddeploy.js`) + `/api/cloud/deploy` + `bento cloud`; `docs/cloud.md`,
+`tests/test_cloud_deploy.py`. Asked for as "deploy it quickly to the cloud … noob for anyone,
+so sso and done". Five things keep it honest:
+- **Only a host with a disk is offered.** Everything is under `/data`; a host that rebuilds the
+  filesystem forgets it on the first restart. That is why the Render plan is not `free`, and why
+  App Platform and Cloud Run are in `NOT_OFFERED` with the reason rather than missing.
+- **The password is asked for on the host's page** (`sync: false` in the blueprint, `fly secrets`),
+  never written in a file, so the machine is locked from its first second. The card suggests one
+  (`suggest_passphrase`, fresh per answer, never stored).
+- **The entrypoint listens on the host's `PORT`** (`AGENTOS_PORT` wins, then `PORT`, then 8321).
+  Render routes only to its own port; reading only `AGENTOS_PORT` was a deploy that never came up.
+- **Setting the same passphrase again keeps its hash.** The entrypoint runs `bento remote --on
+  --passphrase` on every start, and sessions are signed with the hash; a fresh salt each time
+  signed everybody out on every redeploy. A different passphrase still rotates it.
+- **The health check is `/login`**, because it is in `REMOTE_OPEN_PATHS`; a path behind the
+  lock reads 401 to the host and the deploy is marked failed. The test ties the two together.
+The button reads `render.yaml` from the default branch of `updates.repo_of(cfg)`, so a fork
+deploys itself. Nothing here deploys anything; it opens the host's page. Tested by running the
+image as Render does (`PORT=10000`, a proxy's `X-Forwarded-Proto`), ~100 MB idle.
 
 ## Sign in with Google / Microsoft: the door that asks for nothing to type
 

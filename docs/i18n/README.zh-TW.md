@@ -39,6 +39,8 @@ Bento 是一套自我託管的 AI 桌面，跑在你自己的硬體上。它有�
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 然後打開 **http://127.0.0.1:8321**。在你自己開啟[遠端存取](../remote-access.md)之前，它只會監聽 localhost。
 不用註冊帳號、沒有遙測，除非你加上金鑰，否則也不會用到雲端。
 

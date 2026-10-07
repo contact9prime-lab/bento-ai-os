@@ -41,6 +41,8 @@ WhatsApp으로 당신에게 연락합니다. 어떤 에이전트가 무엇을 �
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 그다음 **http://127.0.0.1:8321** 을 여세요. [원격 접속](../remote-access.md)을 직접 켜기 전까지는
 localhost에서만 대기합니다. 만들어야 할 계정도, 텔레메트리도 없고, 키를 넣지 않는 한 클라우드도
 쓰지 않습니다.

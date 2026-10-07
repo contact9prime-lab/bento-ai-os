@@ -567,6 +567,15 @@ def save_user_cfg(uid: str, cfg: dict) -> None:
     os.chmod(p, 0o600)          # it holds their channel tokens and credentials
 
 
+#: The server's own machine config, the live dict `state.machine_cfg()` returns.
+#: Registered at start by `bind_machine`, so an admin's save reaches it too.
+_machine: list = [None]
+
+
+def bind_machine(cfg: dict) -> None:
+    _machine[0] = cfg
+
+
 def machine_changed(machine: dict) -> None:
     """An admin changed something machine-wide — push it into the live views.
 
@@ -574,7 +583,17 @@ def machine_changed(machine: dict) -> None:
     over the machine's. Without this, an admin adding a provider key would reach
     nobody else until the next restart, and the bug would read as "the model does
     not work for me".
+
+    The server's machine dict is one of the live views. It was missed for a long
+    time: an admin shared a folder, the save worked, and `/api/folders` (which
+    reads the machine's copy) listed nothing, so the Users app showed the folder
+    gone and the Terminal's jail never bound it.
     """
+    live = _machine[0]
+    if live is not None:
+        for k, v in machine.items():
+            if k not in USER_KEYS and k != "_uid":
+                live[k] = v
     for uid, c in _cfgs.items():
         for k, v in machine.items():
             if k not in USER_KEYS:

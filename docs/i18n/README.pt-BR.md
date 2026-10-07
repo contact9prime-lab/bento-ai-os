@@ -44,6 +44,8 @@ de adulteração.
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 Depois abra **http://127.0.0.1:8321**. Ele só escuta em localhost até você mesmo ligar o
 [acesso remoto](../remote-access.md). Não tem conta para criar, não tem telemetria e não tem nuvem,
 a menos que você adicione uma chave.

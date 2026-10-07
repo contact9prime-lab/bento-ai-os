@@ -464,7 +464,47 @@ def shares_for(cfg: dict, uid: str | None = None) -> list[dict]:
     `current()` is '' and there is nobody to distinguish.
     """
     who = usersmod.current() if uid is None else uid
-    return [s for s in folder_shares(cfg) if not s["users"] or who in s["users"]]
+    # A share names an account by its id (what the Users app writes) or by its
+    # name (what `bento folders add --users ada` wrote, and what a hand edit says).
+    # Ids are random hex, so matching only the id left every share made by name
+    # reaching nobody, with nothing on screen saying why.
+    me = {str(who or "").lower()}
+    if who:
+        u = usersmod.get(who)
+        if u and u.get("name"):
+            me.add(str(u["name"]).lower())
+    return [s for s in folder_shares(cfg)
+            if not s["users"] or me & {str(x).lower() for x in s["users"]}]
+
+
+def share_label(users) -> str:
+    """Who a share is for, in names a person reads: "ada, bob" or "everyone"."""
+    if not users:
+        return "everyone"
+    out = []
+    for x in users:
+        u = usersmod.get(x) or usersmod.by_name(x)
+        out.append(u["name"] if u else f"{x} (no such account)")
+    return ", ".join(out)
+
+
+def share_users(names) -> tuple[list[str], list[str]]:
+    """(account ids, entries that name nobody) for a share's `users` list.
+
+    Saved as ids, so renaming an account cannot move a share to somebody else; an
+    entry that matches no account is returned so the caller can say so instead of
+    storing a share that reaches nobody."""
+    ids, unknown = [], []
+    for raw in names or []:
+        n = str(raw or "").strip()
+        if not n:
+            continue
+        u = usersmod.get(n) or usersmod.by_name(n)
+        if u is None:
+            unknown.append(n)
+        elif u["id"] not in ids:
+            ids.append(u["id"])
+    return ids, unknown
 
 
 def safe_folders(cfg: dict, uid: str | None = None, write: bool = False) -> list[str]:
@@ -1639,12 +1679,14 @@ class Toolbox(usersmod.Scoped):
 
     async def list_folders(self) -> str:
         """Which folders the agent may work in besides its workspace, and who for."""
-        shares = folder_shares(self.cfg)
+        # An admin sees every share and who has it; anybody else sees only what is
+        # shared with them, since the list names other accounts.
+        admin = usersmod.is_admin(usersmod.current())
+        shares = folder_shares(self.cfg) if admin else shares_for(self.cfg)
         if not shares:
             return "No shared folders — the agent works in its workspace only."
-        out = [f"{s['mode']}  {s['path']}  ({', '.join(s['users']) if s['users'] else 'everyone'})"
-               for s in shares]
-        for entry, why in folder_problems(self.cfg):
+        out = [f"{s['mode']}  {s['path']}  ({share_label(s['users'])})" for s in shares]
+        for entry, why in (folder_problems(self.cfg) if admin else []):
             out.append(f"!   {entry} — not in use: {why}")
         return "\n".join(out)
 

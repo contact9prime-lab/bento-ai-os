@@ -1,0 +1,29 @@
+# Bento on Render, in one click:
+#   https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os
+#
+# Sign in (GitHub, GitLab or Google), type a password in the AGENTOS_PASSPHRASE box,
+# press Deploy Blueprint. Full story: docs/cloud.md. The same list is in
+# Settings → System → Put Bento in the cloud, and `bento cloud`.
+#
+# Why each line is here:
+#   plan: starter   a disk needs a paid instance; the free one forgets /data on restart.
+#   disk at /data   AGENTOS_HOME in the image. Memory, chats, accounts and the vault live here.
+#   sync: false     Render asks for the value on the deploy page, so the password is never
+#                   in this file and the new machine starts locked.
+#   /login          answers 200 without signing in (REMOTE_OPEN_PATHS), so the health check
+#                   does not need a session. The entrypoint listens on Render's PORT.
+services:
+  - type: web
+    name: bento
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /login
+    disk:
+      name: bento-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: AGENTOS_PASSPHRASE
+        sync: false

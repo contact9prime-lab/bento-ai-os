@@ -39,6 +39,8 @@ WhatsApp 上找到你。任何智能体迈出的每一步都要经过同一道�
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 然后打开 **http://127.0.0.1:8321**。在你亲自开启[远程访问](../remote-access.md)之前，它只监听 localhost。
 不用注册账号，没有遥测，除非你添加密钥，否则也不连云端。
 

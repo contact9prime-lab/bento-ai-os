@@ -43,6 +43,8 @@ Bento — это самостоятельно размещаемый AI-рабо
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 Затем откройте **http://127.0.0.1:8321**. Пока вы сами не включите
 [удалённый доступ](../remote-access.md), сервер слушает только localhost. Никаких аккаунтов создавать
 не нужно, телеметрии нет, и никакого облака, пока вы не добавите ключ.

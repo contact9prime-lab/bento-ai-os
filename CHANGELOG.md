@@ -2,6 +2,34 @@
 
 ## 0.6.18 — 2026-09-30
 
+**Put Bento in the cloud in one click.** Settings → System → Put Bento in the cloud (or
+`bento cloud`, or the button in the README) opens Render with everything filled in: sign in
+with GitHub or Google, type a password, press Deploy. About five minutes later there is a
+Bento at an https address with a disk, so it keeps everything across restarts. It costs about
+$7 a month. Fly.io and your own server are listed beside it with their commands and costs,
+and the hosts that would forget everything on a restart are named with the reason. Once it's
+up, the same card takes you to pairing it as your standby or moving this machine there.
+- The container now listens on the `PORT` a host gives it, which Render, Fly and others use.
+- Restarting a container no longer signs everybody out. The entrypoint sets the password on
+  every start, and the same password used to get a fresh salt and so a new session key. A new
+  password still signs every device out.
+
+**Shared folders reach every agent and every app.** Reported as "I allow certain folders
+and it doesn't detect them". Five things were wrong:
+- On a machine with accounts, an admin's share saved fine and then vanished from the Users
+  app, because the server's own copy of the machine settings never heard about the save. The
+  Terminal read the same stale copy. Every machine setting an admin saves now reaches it.
+- A share made with `bento folders add --users ada` reached nobody: accounts are stored by id
+  and only ids matched. Names match now, and new shares are saved by id. An unknown name is
+  refused rather than saved.
+- Claude Code, Gemini CLI and Codex were never told about shared folders and couldn't open
+  them. They're now handed each one in their own flags, read-only ones kept read-only where
+  the CLI can do that, and told which folders they have.
+- The built-in agent's instructions said to work inside the workspace and named no share.
+  They list each shared folder and its mode now.
+- The Files app, Chat's file chips, downloads and Telegram's file sending knew only the
+  workspace. The Files app has a picker for each shared folder, and the rest reach them too.
+
 **Permissions: the holes a review found are closed.** Each was confirmed by running it.
 - A tool with no risk level of its own used to run without asking. Now it asks until it
   has one. That covers `run_python`, deleting a skill or a picture, and messaging another

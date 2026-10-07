@@ -209,8 +209,10 @@ function usersShareBox(){
 function usersFolderBox(){
   const F=USERS.folders||{folders:[],problems:[],users:[],admin:true};
   const accounts=F.users||[];
+  /* a share stores account ids; show the names people know each other by */
+  const nameOf=u=>{const a=accounts.find(x=>x.id===u||x.name===u);return a?a.display:u};
   const who=s=>(s.users&&s.users.length)
-    ? s.users.map(u=>esc(u)).join(', ')
+    ? s.users.map(u=>esc(nameOf(u))).join(', ')
     : '<em>everyone</em>';
   const rows=(F.folders||[]).map((s,i)=>`
     <div class="usr-share${s.risk?' warn':''}" data-f="${esc(s.path)}">

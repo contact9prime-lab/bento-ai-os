@@ -44,6 +44,8 @@ Protokoll, in dem jede Manipulation auffällt.
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 Öffnen Sie dann **http://127.0.0.1:8321**. Bento lauscht nur auf localhost, bis Sie selbst den
 [Fernzugriff](../remote-access.md) einschalten. Es gibt kein Konto anzulegen, keine Telemetrie und
 keine Cloud, solange Sie keinen Schlüssel hinzufügen.

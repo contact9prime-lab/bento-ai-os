@@ -43,6 +43,8 @@
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 ثم افتح **http://127.0.0.1:8321**. يستمع على localhost فقط إلى أن تفعّل
 [الوصول عن بُعد](../remote-access.md) بنفسك. لا حساب تنشئه، ولا قياس عن بُعد (telemetry)، ولا سحابة
 إلا إذا أضفت مفتاحًا.

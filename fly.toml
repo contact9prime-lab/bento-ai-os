@@ -1,0 +1,42 @@
+# Bento on Fly.io. From a clone of this repository:
+#
+#   fly launch --copy-config --no-deploy        # asks for a name and a region
+#   fly secrets set AGENTOS_PASSPHRASE='<your password>'
+#   fly deploy --volume-initial-size 1          # the first deploy creates the disk
+#
+# Full story: docs/cloud.md. The machine never stops on its own (auto_stop_machines =
+# "off"): missions, schedules and Telegram need it awake, and a machine woken by the
+# next web request would have missed them.
+app = "bento"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  AGENTOS_PORT = "8321"
+
+# AGENTOS_HOME in the image: memory, chats, accounts and the vault.
+[mounts]
+  source = "bento_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8321
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # /login answers without signing in, so the check needs no session.
+  [[http_service.checks]]
+    grace_period = "60s"
+    interval = "30s"
+    method = "GET"
+    path = "/login"
+    timeout = "5s"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

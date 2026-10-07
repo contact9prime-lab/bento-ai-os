@@ -44,6 +44,8 @@ registre infalsifiable.
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 Ouvrez ensuite **http://127.0.0.1:8321**. Il n'écoute que sur localhost tant que vous n'avez pas
 activé vous-même l'[accès à distance](../remote-access.md). Pas de compte à créer, pas de
 télémétrie, et pas de cloud sauf si vous ajoutez une clé.

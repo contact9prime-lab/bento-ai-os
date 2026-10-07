@@ -241,6 +241,7 @@ async def startup():
     toolbox.shell = shell_command  # the parity law: shell actions are tools too
     fabricmod.seed_builtins(cfg, store)
     flowsmod.seed_builtin(store)
+    usersmod.bind_machine(cfg)   # an admin's save updates this dict in place
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
                  mcp=mcp, telegram=telegram, whatsapp=whatsapp,
                  clients=clients, client_uids=client_uids,
@@ -1398,28 +1399,56 @@ async def api_intent(body: dict):
         return {"action": "chat"}
 
 
+def _file_places() -> list[dict]:
+    """Where the Files app may look: the workspace, then each folder shared with
+    this account (Users → Shared folders). One list, so the app cannot offer a
+    folder the agent could not reach, or miss one it can."""
+    from .tools import shares_for
+    out = [{"root": "", "label": "Workspace", "mode": "rw"}]
+    for s in shares_for(state["cfg"]):
+        out.append({"root": s["path"], "label": Path(s["path"]).name or s["path"],
+                    "mode": s["mode"]})
+    return out
+
+
 @app.get("/api/files")
-async def api_files(path: str = ""):
-    import time as _t
-    root = _files_root()
-    root.mkdir(parents=True, exist_ok=True)
-    p = _safe_file(path)
+async def api_files(path: str = "", root: str = ""):
+    places = _file_places()
+    place = next((pl for pl in places if pl["root"] == root), None)
+    if place is None:
+        return JSONResponse({"error": "that folder is not shared with you"}, status_code=404)
+    if root:
+        base = Path(root).resolve()
+        p = (base / path).resolve() if path else base
+        if not (p == base or base in p.parents):
+            p = base
+    else:
+        base = _files_root()
+        base.mkdir(parents=True, exist_ok=True)
+        p = _safe_file(path)
+    root_p = base.resolve()
     if p is None or not p.exists():
-        p = root
+        p = root_p
     if p.is_file():
         p = p.parent
-    rel = str(p.relative_to(root)) if p != root else ""
+    rel = str(p.relative_to(root_p)) if p != root_p else ""
     entries = []
-    for e in sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name.lower())):
+    try:
+        listing = sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name.lower()))
+    except OSError as e:
+        return {"root": str(root_p), "path": rel, "entries": [], "places": places,
+                "place": root, "mode": place["mode"], "error": f"could not read it: {e.strerror}"}
+    for e in listing:
         try:
             st = e.stat()
         except OSError:
             continue
         entries.append({"name": e.name, "dir": e.is_dir(),
-                        "rel": str(e.relative_to(root)),
+                        "rel": str(e.relative_to(root_p)), "full": str(e),
                         "size": st.st_size, "mtime": st.st_mtime,
                         "ext": e.suffix.lower().lstrip(".")})
-    return {"root": str(root), "path": rel, "entries": entries}
+    return {"root": str(root_p), "path": rel, "entries": entries, "places": places,
+            "place": root, "mode": place["mode"]}
 
 
 @app.post("/api/open")
@@ -7471,6 +7500,18 @@ async def api_standby_peer_unpair(request: Request):
 
 # ---- the person's side --------------------------------------------------------------
 
+@app.get("/api/cloud/deploy")
+async def api_cloud_deploy():
+    """The ways to put Bento in the cloud (clouddeploy.py), for Settings → System.
+    Nothing here deploys anything: it is links and steps, and a password suggestion
+    made fresh for this answer and never stored."""
+    from . import clouddeploy
+    return {"options": clouddeploy.options(state["cfg"]),
+            "not_offered": clouddeploy.NOT_OFFERED, "after": clouddeploy.after(),
+            "passphrase": clouddeploy.suggest_passphrase(),
+            "env": clouddeploy.PASSPHRASE_ENV}
+
+
 @app.get("/api/standby")
 async def api_standby_status(request: Request):
     out = standbymod.status()
@@ -8873,7 +8914,8 @@ async def api_folders():
     shares = [{**s, "risk": folder_risk(s["path"], s["mode"])} for s in folder_shares(cfg)]
     return {"folders": shares,
             "problems": [{"entry": e, "why": w} for e, w in folder_problems(cfg)],
-            "users": [{"id": u["id"], "display": u.get("display") or u["id"]}
+            "users": [{"id": u["id"], "name": u.get("name") or "",
+                       "display": u.get("display") or u["id"]}
                       for u in usersmod.list_users()],
             "admin": usersmod.is_admin(usersmod.current()),
             "multiuser": usersmod.enabled()}
@@ -8884,7 +8926,7 @@ async def api_folders_put(body: dict):
     """Replace the share list. Admin only, and refused rather than silently
     dropped — `sandbox` is a machine key, so a non-admin saving here would
     otherwise appear to work and change nothing."""
-    from .tools import check_safe_folder, folder_risk
+    from .tools import check_safe_folder, folder_risk, share_users
     if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
         return JSONResponse({"error": "only an admin can share folders on this machine"},
                             status_code=403)
@@ -8900,7 +8942,11 @@ async def api_folders_put(body: dict):
             refused.append({"entry": path, "why": why})
             continue
         mode = "ro" if str(raw.get("mode") or "rw").lower() != "rw" else "rw"
-        users = [str(u).strip() for u in (raw.get("users") or []) if str(u).strip()]
+        users, unknown = share_users(raw.get("users") or [])
+        if unknown:
+            # Saved as "everyone" would widen it; saved as given would reach nobody.
+            refused.append({"entry": path, "why": "no account called " + ", ".join(unknown)})
+            continue
         if not any(o["path"] == p for o in out):
             out.append({"path": p, "mode": mode, "users": users})
     cfg = state["cfg"]

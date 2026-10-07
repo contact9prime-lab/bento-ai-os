@@ -764,11 +764,20 @@ class Agent:
                         lines.append(f"    usage notes: {s['instructions'][:400]}")
                 mem_text += ("\n\nConnected MCP servers — prefer their tools (mcp_<server>_<tool>) whenever "
                              "a task touches their domain:\n" + "\n".join(lines))
-        from .tools import sandbox_conf
+        from .tools import sandbox_conf, shares_for
         sb_on, sb_root = sandbox_conf(self.cfg)
+        shared = shares_for(self.cfg)
         sb_text = (f"SANDBOX: you are confined to {sb_root} — commands run jailed there, the rest of the "
-                   f"filesystem is read-only and other home files are hidden. Work inside that folder."
+                   f"filesystem is read-only and other home files are hidden. Work inside that folder"
+                   f"{' and the shared folders below' if shared else ''}."
                    if sb_on else "")
+        # Named here because the agent never looked: a person shared /data/reports,
+        # asked about it, and was told the agent could only see its workspace.
+        if shared:
+            sb_text = (sb_text + "\n" if sb_text else "") + (
+                "SHARED FOLDERS (shared with you by the person; use them like the workspace):\n"
+                + "\n".join(f"- {s['path']} ({'read and write' if s['mode'] == 'rw' else 'read only'})"
+                             for s in shared))
         base = SYSTEM_PROMPT.format(
             name=self.cfg.get("agent_name") or "Aria",
             now=localeinfo.now_string(self.cfg),
