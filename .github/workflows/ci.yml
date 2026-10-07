@@ -79,7 +79,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Bounded and retried: on 2026-10-07 this step hung for hours on a mirror (run
+      # 37679380010) and the job would only have ended at GitHub's 6-hour limit.
       - name: Package archive
-        run: sudo apt-get update
+        timeout-minutes: 10
+        run: |
+          for i in 1 2 3; do
+            sudo timeout 180 apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && exit 0
+            echo "apt-get update failed or stalled (try $i of 3)"; sleep 10
+          done
+          exit 1
       - name: Audit
         run: ./packaging/audit-licenses.sh
