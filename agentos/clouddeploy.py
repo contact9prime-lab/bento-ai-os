@@ -8,9 +8,10 @@ The one-click road is Render's FREE plan (asked for next: "deploy the agent in t
 free and make it work"), and it is chosen for three reasons:
 
   * Its free plan needs no card, and it keeps running if something visits it. Its disk is
-    wiped on every restart, so the home is kept sealed in a secret gist on the person's own
-    GitHub (keep.py), and a visit every ten minutes keeps it awake. A host with no free
-    plan, or one whose free machine sleeps for good, is not the one-click road.
+    wiped on every restart, so the home is kept sealed in a storage bucket the person owns
+    (keep.py: Backblaze B2's 10 GB free, or any S3-compatible storage), and a visit every
+    ten minutes keeps it awake. A host with no free plan, or one whose free machine sleeps
+    for good, is not the one-click road.
   * Its button reads a file in the repo (`render.yaml`), so the disk, the health check and
     the password prompt are declared once, here, and nobody fills in a form of ten fields.
   * Sign-in is GitHub, GitLab or Google, and the password is asked for ON the deploy page
@@ -64,17 +65,18 @@ def options(cfg: dict | None = None) -> list[dict]:
     return [
         {"id": "render", "title": "Render", "kind": "button", "recommended": True,
          "url": f"https://render.com/deploy?repo={gh}",
-         "how": "Free. Sign in with GitHub, choose a password, press Deploy.",
-         "key_url": keep.token_link(),
-         "steps": ["Make a GitHub key for its memory: open the key link, set Expiration to "
-                   "No expiration, press Generate token and copy it. It can only write gists.",
-                   "Press Deploy on Render and sign in with GitHub (or GitLab or Google).",
-                   f"Type a password in {PASSPHRASE_ENV} and paste the key in {keep.ENV_TOKEN}.",
+         "how": "Free. Make a free storage bucket, sign in to Render, choose a password, press Deploy.",
+         "storage": keep.PROVIDERS,
+         "steps": ["Make a free storage bucket for its memory: Backblaze B2 gives 10 GB free with "
+                   "no card. Make a private bucket and a key that can read and write only that bucket.",
+                   "Press Deploy on Render and sign in with GitHub, GitLab or Google.",
+                   f"Type a password in {PASSPHRASE_ENV}. Fill in {keep.ENV_ENDPOINT}, {keep.ENV_BUCKET}, "
+                   f"{keep.ENV_KEY_ID} and {keep.ENV_SECRET} from your bucket.",
                    "Press Deploy Blueprint and wait about five minutes for the first build.",
                    "Open the address Render gives you (https://bento-….onrender.com) and sign in with that password."],
          "costs": "Free. Render's free plan has 512 MB and a slow processor, which is enough. Its "
-                  "disk is wiped on every restart, so the memory is kept sealed in a secret gist "
-                  "on your GitHub, and a visit every ten minutes keeps it awake.",
+                  "disk is wiped on every restart, so the memory is kept sealed with your password "
+                  "in your own storage bucket, and a visit every ten minutes keeps it awake.",
          "keeps": True, "https": True, "free": True},
         {"id": "render-paid", "title": "Render with its own disk", "kind": "steps", "recommended": False,
          "url": "",
@@ -82,7 +84,8 @@ def options(cfg: dict | None = None) -> list[dict]:
          "steps": ["Deploy with the button above.",
                    "In Render, open the service → Settings → Instance Type and choose Starter.",
                    "Open Disks → Add Disk, mount path /data, 1 GB.",
-                   f"Remove {keep.ENV_TOKEN}, {keep.ENV_EPHEMERAL} and {keep.ENV_AWAKE} if you no longer want the GitHub copy."],
+                   f"Remove the four BENTO_STORAGE_ settings, {keep.ENV_EPHEMERAL} and {keep.ENV_AWAKE} "
+                   "if you no longer want the copy in your bucket."],
          "costs": "About $7 a month for the server, plus about $0.25 a month for the 1 GB disk.",
          "keeps": True, "https": True, "free": False},
         {"id": "fly", "title": "Fly.io", "kind": "commands", "recommended": False,
@@ -134,8 +137,11 @@ def text(cfg: dict | None = None) -> str:
         out.append(f"{i}. {o['title']}{tag}: {o['how']}")
         if o["kind"] == "button":
             out.append(f"   Open: {o['url']}")
-        if o.get("key_url"):
-            out.append(f"   GitHub key: {o['key_url']}")
+        if o.get("storage"):
+            out.append("   Storage for its memory (any S3-compatible service works):")
+            for p in o["storage"]:
+                if p.get("signup"):
+                    out.append(f"     {p['name']}: {p['free']}. {p['card']} {p['signup']}")
         for s in o["steps"]:
             out.append(f"   - {s}")
         out.append(f"   Cost: {o['costs']}")

@@ -715,16 +715,21 @@ Bento in the cloud (`11i-clouddeploy.js`) + `/api/cloud/deploy` + `bento cloud`;
 `tests/test_cloud_deploy.py`. Asked for as "deploy it quickly to the cloud … noob for anyone,
 so sso and done". Five things keep it honest:
 - **The one-click road is Render's FREE plan, and its disk is wiped on every restart**, so the
-  home is kept sealed in a secret gist on the person's own GitHub (`agentos/keep.py`; asked for as
-  "deploy the agent in the cloud free and make it work"). Three rules: restore only into an EMPTY
-  home (a host that kept its disk is never rolled back); a gist sealed with another password is
-  never overwritten (the machine starts fresh and saves to a NEW gist); the token stays in the
-  environment (`BENTO_KEEP_GITHUB_TOKEN`), never in config or the sealed home. The save runs on a
-  change at most every `MIN_GAP_S`, and once more on shutdown (`_keep_flush`, FIRST in `shutdown`:
-  the host gives ~30 s). `.keep` is in `backup.PRIVATE`. The keep-awake visit (`BENTO_KEEP_AWAKE`,
-  through `RENDER_EXTERNAL_URL`, every `AWAKE_S`) is set by the blueprint and said in the docs:
-  one service is ~744 of Render's 750 free hours. Hosts with no free plan or no way to keep the
-  home are in `NOT_OFFERED` with the reason. `tests/test_keep.py`, `packaging/dev/free-cloud/`.
+  home is kept sealed in a storage bucket the person owns (`agentos/keep.py`; asked for as "deploy
+  the agent in the cloud free and make it work"). It is S3-compatible storage, Backblaze B2 first
+  (10 GB free, no card), and NOT GitHub: the first cut used a secret gist and the owner's answer was
+  "you can't be storing memories on GitHub". The S3 client is ours (`_sign`, SigV4, path-style,
+  checked against botocore and AWS's published example, which the test pins), so there is no boto3.
+  Four rules: restore only into an EMPTY home (a host that kept its disk is never rolled back); a
+  save writes the slot that is not current and THEN the index, so the copy before stays whole; a
+  copy sealed with another password is never overwritten (the machine starts fresh and saves under
+  a new prefix); the key stays in the environment (`BENTO_STORAGE_*`), never in config or the sealed
+  home. The save runs on a change at most every `MIN_GAP_S`, and once more on shutdown
+  (`_keep_flush`, FIRST in `shutdown`: the host gives ~30 s). `.keep` is in `backup.PRIVATE`. The
+  keep-awake visit (`BENTO_KEEP_AWAKE`, through `RENDER_EXTERNAL_URL`, every `AWAKE_S`) is set by
+  the blueprint and said in the docs: one service is ~744 of Render's 750 free hours. Hosts with no
+  free plan or no way to keep the home are in `NOT_OFFERED` with the reason. `tests/test_keep.py`
+  runs against `packaging/dev/free-cloud/fake_s3.py`, which checks every signature itself.
 - **The password is asked for on the host's page** (`sync: false` in the blueprint, `fly secrets`),
   never written in a file, so the machine is locked from its first second. The card suggests one
   (`suggest_passphrase`, fresh per answer, never stored).
@@ -738,7 +743,7 @@ so sso and done". Five things keep it honest:
 The button reads `render.yaml` from the default branch of `updates.repo_of(cfg)`, so a fork
 deploys itself. Nothing here deploys anything; it opens the host's page. Tested by running the
 image as Render does (`PORT=10000`, a proxy's `X-Forwarded-Proto`), ~100 MB idle; the free path
-by `packaging/dev/free-cloud/run.py` (0.1 CPU, 512 MB, no volume, stand-in GitHub and model). A
+by `packaging/dev/free-cloud/run.py` (0.1 CPU, 512 MB, no volume, stand-in S3 storage and model). A
 stand-in model needs a price set before its first turn, or the turn waits on the price card.
 
 ## Sign in with Google / Microsoft: the door that asks for nothing to type

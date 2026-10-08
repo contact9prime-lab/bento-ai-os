@@ -7104,17 +7104,17 @@ def _standby_restart(delay: float = 0.8) -> None:
     asyncio.get_running_loop().call_later(delay, desktopmod.restart_service)
 
 
-# ---- a free cloud machine's memory, kept on GitHub (keep.py) -------------------------
+# ---- a free cloud machine's memory, kept in its own storage bucket (keep.py) --------
 
 def _keep_start(passive: bool) -> None:
-    """On a host that forgets its disk: save the home to GitHub whenever it changed, and,
+    """On a host that forgets its disk: save the home to its bucket whenever it changed, and,
     when the blueprint asked for it, visit our own front door so the host keeps us awake.
     A passive standby saves nothing: its home is a copy of somebody else's."""
     from . import keep
     loop = asyncio.get_running_loop()
     if keep.awake_url():
         state["keep_awake_task"] = loop.create_task(_keep_awake_loop(keep.awake_url()))
-    if keep.enabled() and not passive:
+    if (keep.enabled() or keep.started()) and not passive:
         state["keep_task"] = loop.create_task(_keep_loop())
 
 
@@ -7128,7 +7128,7 @@ async def _keep_loop():
             if r.get("saved"):
                 told = ""
                 with contextlib.suppress(Exception):
-                    state["store"].log("keep", f"memory saved to GitHub ({keep._size(r['bytes'])}, {r['seconds']}s)")
+                    state["store"].log("keep", f"memory saved to {r['where']} ({keep._size(r['bytes'])}, {r['seconds']}s)")
         except keep.KeepError as e:
             if str(e) != told:               # once per new problem, not every half minute
                 told = str(e)
@@ -7168,8 +7168,8 @@ async def _keep_flush() -> None:
 
 @app.get("/api/keep")
 async def api_keep():
-    """Where this machine's memory is kept, for the cloud card. The gist's address is an
-    admin's to see: it is the whole machine, sealed."""
+    """Where this machine's memory is kept, for the cloud card. Which bucket is an admin's
+    to see: it holds the whole machine, sealed."""
     from . import keep
     st = keep.status()
     if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):

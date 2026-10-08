@@ -1,17 +1,19 @@
 # Bento on Render, free, in one click:
 #   https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os
 #
-# Make a GitHub key first (gist only, No expiration):
-#   https://github.com/settings/tokens/new?scopes=gist&description=Bento%20cloud%20memory
-# Then sign in to Render, type a password in AGENTOS_PASSPHRASE, paste the key in
-# BENTO_KEEP_GITHUB_TOKEN, press Deploy Blueprint. Full story: docs/cloud.md. The same
-# list is in Settings → System → Put Bento in the cloud, and `bento cloud`.
+# Make a free storage bucket first, for its memory (Backblaze B2: 10 GB free, no card):
+#   https://www.backblaze.com/sign-up/cloud-storage
+# a private bucket, and a key that can read and write only that bucket. Then sign in to
+# Render, type a password in AGENTOS_PASSPHRASE, fill in the four BENTO_STORAGE_ boxes,
+# press Deploy Blueprint. Full story: docs/cloud.md. The same steps are in Settings →
+# System → Put Bento in the cloud, and `bento cloud`.
 #
 # Why each line is here:
 #   plan: free         no card. Its disk is wiped on every restart and it sleeps after 15
 #                      minutes with no visitors (Render's free plan, docs/cloud.md).
-#   KEEP_GITHUB_TOKEN  so the home is kept sealed in a secret gist on your GitHub and comes
-#                      back on every start (agentos/keep.py). Without it, it forgets.
+#   BENTO_STORAGE_*    your bucket (any S3-compatible storage): the home is kept there,
+#                      sealed with your password, and comes back on every start
+#                      (agentos/keep.py). Without it, it forgets.
 #   EPHEMERAL          tells Bento this host forgets, so Settings says so when there is no key.
 #   KEEP_AWAKE         a visit to its own address every ten minutes, so missions, schedules
 #                      and Telegram keep running. One service uses ~744 of Render's 750 free
@@ -33,7 +35,13 @@ services:
     envVars:
       - key: AGENTOS_PASSPHRASE
         sync: false
-      - key: BENTO_KEEP_GITHUB_TOKEN
+      - key: BENTO_STORAGE_ENDPOINT
+        sync: false
+      - key: BENTO_STORAGE_BUCKET
+        sync: false
+      - key: BENTO_STORAGE_KEY_ID
+        sync: false
+      - key: BENTO_STORAGE_SECRET
         sync: false
       - key: BENTO_EPHEMERAL
         value: "1"

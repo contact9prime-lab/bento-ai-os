@@ -3,11 +3,12 @@
 
 Render Free gives a container 0.1 of a CPU and 512 MB, hands it a PORT, and wipes its disk
 on every restart. This runs the image exactly that way (no volume at all) with the two
-things the free blueprint adds: a GitHub key (here, fake_github.py) and the keep-awake
-visit. A stand-in model (fake_model.py) calls Bento's real `remember` tool and answers
+things the free blueprint adds: a storage bucket (here, fake_s3.py, which checks every
+request's signature as Backblaze or Cloudflare would) and the keep-awake visit. A stand-in model (fake_model.py) calls Bento's real `remember` tool and answers
 from what Bento puts in its prompt. Then it stops the container the way Render does
 (SIGTERM), starts a NEW one on an empty disk, and asks again.
 
+    python fake_s3.py 9303 & python fake_model.py 9304 &
     python run.py IMAGE SHOTS_DIR          # docker must be running; ports 9303/9304/10000
 """
 import asyncio, json, os, subprocess, sys, time
@@ -40,7 +41,8 @@ def start(label):
     t = time.time()
     sh("docker", "run", "-d", "--name", NAME, "--cpus", "0.1", "--memory", "512m",
        "-p", "10000:10000", "-e", "PORT=10000", "-e", f"AGENTOS_PASSPHRASE={PW}",
-       "-e", "BENTO_KEEP_GITHUB_TOKEN=good-token", "-e", f"AGENTOS_GITHUB_API=http://{HOSTIP}:9303",
+       "-e", f"BENTO_STORAGE_ENDPOINT=http://{HOSTIP}:9303", "-e", "BENTO_STORAGE_BUCKET=bento-test",
+       "-e", "BENTO_STORAGE_KEY_ID=test-key-id", "-e", "BENTO_STORAGE_SECRET=test-secret/with+odd=chars",
        "-e", "BENTO_EPHEMERAL=1", "-e", "BENTO_KEEP_AWAKE=1", "-e", f"RENDER_EXTERNAL_URL={URL}",
        "-e", f"NO_PROXY={HOSTIP}", "-e", f"no_proxy={HOSTIP}", IMAGE)
     while time.time() - t < 600:
@@ -113,8 +115,8 @@ async def sign_in(pg):
             pass
 
 
-def gist_log():
-    return httpx.get(f"http://{HOSTIP}:9303/log", timeout=10).json()
+def s3_log():
+    return httpx.get(f"http://{HOSTIP}:9303/__log", timeout=10).json()
 
 
 def mem_mb():
@@ -157,7 +159,8 @@ while time.time() - t < 240:
         break
     time.sleep(3)
 RESULTS["first_save_after_s"] = round(time.time() - t, 1)
-say("kept:", json.dumps({k: st.get(k) for k in ("line", "saved_bytes", "url")}))
+say("kept:", json.dumps({k: st.get(k) for k in ("line", "saved_bytes", "prefix")}))
+say("bucket:", s3_log()["objects"])
 
 
 async def s_chat(pg):
@@ -183,8 +186,8 @@ say("chat 3 (just before the stop):", ans3)
 t = time.time()
 sh("docker", "stop", "-t", "30", NAME)
 RESULTS["stop_s"] = round(time.time() - t, 1)
-say(f"stopped with SIGTERM in {RESULTS['stop_s']}s; gist calls:",
-    [(e["m"], e["p"]) for e in gist_log()["log"] if e["m"] != "GET"][-3:])
+say(f"stopped with SIGTERM in {RESULTS['stop_s']}s; last writes to the bucket:",
+    [(e["m"], e["p"], e["bytes"]) for e in s3_log()["log"] if e["m"] == "PUT"][-2:])
 
 # ---- 3. a NEW container on an empty disk ---------------------------------------------
 start("second start")

@@ -32,10 +32,10 @@ if [ -n "${AGENTOS_PASSPHRASE_FILE:-}" ]; then
 fi
 
 # A host that forgets its disk (Render Free and friends): bring the memory back from the
-# person's own GitHub before anything else touches the home. keep.py restores only into an
+# person's own storage bucket before anything else touches the home. keep.py restores only into an
 # empty home, so a disk that survived is never rolled back. A failure says why and goes on:
 # a machine that starts fresh is better than one that does not start.
-if [ -n "${BENTO_KEEP_GITHUB_TOKEN:-}" ]; then
+if [ -n "${BENTO_STORAGE_ENDPOINT:-}${BENTO_STORAGE_BUCKET:-}${BENTO_STORAGE_KEY_ID:-}" ]; then
   uv run bento keep restore || say "starting without the kept memory (see the line above)"
 fi
 

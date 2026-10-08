@@ -6309,7 +6309,7 @@ def main():
                           help="say what a backup holds, without restoring it")
     p_backup.add_argument("--passphrase-file", default="",
                           help="read the passphrase from a file (for an unattended backup)")
-    p_keep = verb("keep", help="a free cloud machine's memory, kept sealed on your own GitHub")
+    p_keep = verb("keep", help="a free cloud machine's memory, kept sealed in your own storage bucket")
     p_keep.add_argument("action", nargs="?", default="status", choices=["status", "save", "restore"],
                         help="status | save (now) | restore (into an empty home; the container does this)")
     p_cloud = verb("cloud", help="put Bento in the cloud: one-click Render, Fly.io or your own server")
@@ -6986,17 +6986,19 @@ def main():
                     print(f"  nothing restored: {r.get('why')}")
             elif args.action == "save":
                 r = keep.save(force=True)
-                print(f"  saved to GitHub ({keep._size(r['bytes'])}, {r['seconds']}s): {r.get('url', '')}"
+                print(f"  saved to {r['where']} ({keep._size(r['bytes'])}, {r['seconds']}s)"
                       if r.get("saved") else f"  not saved: {r.get('why')}")
             else:
                 st = keep.status()
-                print(f"  {st['line'] or 'This machine keeps its own disk; nothing is kept on GitHub.'}")
-                if st["url"]:
-                    print(f"  kept at {st['url']}")
+                print(f"  {st['line'] or 'This machine keeps its own disk; nothing is kept in storage.'}")
+                if st["prefix"] and st["enabled"]:
+                    print(f"  under {st['prefix']}/ in the bucket")
                 if st["restore_note"]:
                     print(f"  {st['restore_note']}")
                 if not st["enabled"]:
-                    print(f"  make a key (gist only): {st['token_link']}")
+                    print("  To keep it, set " + ", ".join(keep.ENVS) + " (any S3-compatible storage).")
+                    p = keep.PROVIDERS[0]
+                    print(f"  {p['name']}: {p['free']}. {p['card']} {p['signup']}")
         except keep.KeepError as e:
             print(f"  ✗ {e}")
             sys.exit(1)

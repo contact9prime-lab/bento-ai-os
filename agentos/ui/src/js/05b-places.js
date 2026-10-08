@@ -66,7 +66,7 @@ var PLACES=[
   ['Voice','settings','Settings → Voice',['voice','speech','speak','tts','microphone','mic','wake word','dictation'],placeSettings('voice')],
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','remote','remote access','passphrase','lock','autonomy','light mode','profile','security'],placeSettings('system')],
-  ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click'],placeSettings('system')],
+  ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
   ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],
   ['Run missions','jobs','Missions → Run',['mission','missions','job','jobs','recipe','recipes','daily','describe a mission','catalogue'],placeMissions('run')],
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],

@@ -46,7 +46,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [The team](team.md) | Each agent on its own brain (a provider model, or Claude Code, Gemini CLI or Codex), huddles, the matrix of who may ask whom, swarm and democracy (2 of 3 decide), and linked teams |
 | [Accounts](accounts.md) | The mailbox and the calendar the agent may read for you: Sign in with Google or Microsoft, an MCP server, or an app password; what is never touched; the missions built on them |
 | [Backup and moving machines](backup.md) | One encrypted file with the whole machine: every account, the vault's keys and the workspace. Restore it here or on a new computer, and see what needs you after |
-| [Put Bento in the cloud](cloud.md) | Free, in one click on Render: its memory is kept sealed on your own GitHub, so a restart loses nothing. Or a paid plan, Fly.io, or your own server, with what each costs |
+| [Put Bento in the cloud](cloud.md) | Free, in one click on Render: its memory is kept sealed in your own free storage bucket, so a restart loses nothing. Or a paid plan, Fly.io, or your own server, with what each costs |
 | [Cloud standby](standby.md) | Pair a cloud machine that takes over only while yours is away, and hands the work back when it returns. Active sync keeps it seconds behind. Or move to it on purpose |
 | [The vault](vault.md) | Where every account secret lives: encrypted, keyed by the keyring where there is one, read only by the system for its job and written down each time, never printed |
 | [The Brief](brief.md) | How a mission delivers: things to act on, not a message — one living page a day, on the desktop, the phone, Telegram and out loud, where a decision is one tap and the reply comes back to the item |

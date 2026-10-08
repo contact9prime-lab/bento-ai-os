@@ -75,10 +75,10 @@ curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/maste
 
 Then open **http://127.0.0.1:8321**, or run `bento setup` to do the same setup in a terminal.
 
-**Or put it in the cloud, free.** Make a GitHub key for its memory, press the button, sign in with
-GitHub, choose a password and press Deploy. About five minutes later you have your own Bento at an
-https address on Render's free plan, keeping its memory sealed on your own GitHub so a restart
-loses nothing. A paid plan, Fly.io and your own server work too. [Cloud →](docs/cloud.md)
+**Or put it in the cloud, free.** Make a free storage bucket for its memory (Backblaze B2 gives
+10 GB with no card), press the button, sign in with GitHub or Google, choose a password and press
+Deploy. About five minutes later you have your own Bento at an https address on Render's free plan,
+keeping its memory sealed in your bucket so a restart loses nothing. A paid plan, Fly.io and your own server work too. [Cloud →](docs/cloud.md)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
 
