@@ -2,6 +2,37 @@
 
 ## 0.6.18 — 2026-09-30
 
+**A community of machines.** A few small computers can now work as one. One machine leads:
+it holds the keys, lends its brain and splits bigger jobs. Small machines like a Raspberry Pi
+join it over a linked team (*Settings → Agents → Community*, or `bento pool`), and the
+leader's admin lets each one in.
+- A Pi with no key of its own thinks with the leader's brain. Each call goes through the
+  leader's permissions and lands in its ledger and Usage. Revoke the one permission letting a
+  machine in and it stops.
+- Agents share facts with every machine (`remember` with `community`, read with
+  `community_recall`). Notes reach every member within a heartbeat or two. Reading them counts
+  as outside content, like a web page.
+- On the leader, the agent splits a bigger job across the members (`pool_task`). Each piece
+  runs on that machine's worker, with its own tools and permissions.
+- If the leader stops answering for a minute, the next machine whose admin agreed to lead
+  takes over, and the others follow it. A leader that comes back steps down. Measured with
+  three real servers on one box: the takeover came 60 seconds after the leader was killed,
+  and the old leader stepped down 16 seconds after it was started again.
+
+**One agent on screen, and the kiosk.** *Settings → Appearance → On this screen*, or `bento
+face`.
+- **One agent on screen** draws only your agent in the Office and the Crew scene. Your
+  specialists still work, and their work lights your agent's desk. It's on by itself in Light
+  mode, so a Raspberry Pi gets it without being told.
+- **The kiosk** turns the machine's own screen into the Office, full screen, with the mic on.
+  Say your agent's name and what you need, and the answer is shown and spoken while the agents
+  work. Only the screen plugged into the machine shows it; a phone keeps its desktop.
+- Speech is understood on the machine, because a Pi's browser can't do it: with whisper.cpp
+  if it's installed, so nothing leaves the machine, or with your OpenAI key. With neither, the
+  kiosk says what to add.
+- When AgentOS is the whole session, the microphone works now. The session's browser refused
+  every microphone request, so voice input never worked there.
+
 **Put Bento in the cloud in one click, for free.** Settings → System → Put Bento in the cloud
 (or `bento cloud`, or the button in the README) opens Render's free plan with everything filled
 in: make a free storage bucket (Backblaze B2 gives 10 GB with no card; Cloudflare R2, Tigris or

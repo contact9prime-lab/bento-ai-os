@@ -35,6 +35,8 @@ function suiSend(cmd, args){ if(suiActive()) window.suiCall(cmd, args) }
    layout changes the dock band, and a phone has different numbers again.
    Measuring means the struts are right for whatever is actually on screen. */
 function suiChrome(){
+  // the kiosk face hides the menu bar and the dock, so it reserves no band at all
+  if(document.body.classList.contains('kiosk')) return {top: 0, bottom: 0};
   const h = innerHeight || 900;
   const mb = document.getElementById('menubar');
   const top = mb && mb.offsetHeight ? Math.round(mb.getBoundingClientRect().bottom) : 30;

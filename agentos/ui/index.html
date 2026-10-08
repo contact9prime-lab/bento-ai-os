@@ -4646,6 +4646,56 @@ body.dev-mobile .mn-say{top:100px;font-size:14px}
 #mind-ui.peace .mn-top>:not(.mn-peace){display:none}
 body.mind-peace:not(.has-win) #omnibar:not(.summoned):not(.pop):not(:focus-within){opacity:0;pointer-events:none}
 .mn-peace[aria-pressed="true"]{background:rgba(124,140,255,.3)}
+/* The kiosk face (24h-kiosk.js): this machine's own screen is the Office, with a band
+   at the bottom saying who is listening, what was heard and the answer. Everything a
+   pointer would need is hidden; an approval card (.ap-float) and toasts still show,
+   because a turn asked from here is gated like any other. */
+body.kiosk #menubar,body.kiosk #taskbar,body.kiosk #icons,body.kiosk #home,body.kiosk #deck,
+body.kiosk #widgets,body.kiosk #barwidgets,body.kiosk #omnibar,body.kiosk #omnicards,
+body.kiosk #jarvis-shell,body.kiosk #custom-shell,body.kiosk #shell-exit,body.kiosk #jarvis,
+body.kiosk .win{display:none!important}
+body.kiosk #wall{background:var(--bg)}
+body.kiosk #office-scene{position:absolute;left:0;right:0;top:0;bottom:var(--kiosk-hud,128px);
+  display:flex;justify-content:center;align-items:center;pointer-events:none}
+body.kiosk #office-scene .of-scroll{width:100vw;height:100%;display:flex;align-items:center;
+  justify-content:center;overflow:hidden}
+body.kiosk #office-scene canvas{display:block}
+#kiosk-hud{position:fixed;left:16px;right:16px;bottom:16px;z-index:9600;display:grid;
+  grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;gap:6px 16px;align-items:center;
+  padding:12px 16px;border-radius:var(--r-lg,14px);background:color-mix(in srgb,var(--bg2) 94%,transparent);
+  border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);color:var(--txt);
+  box-shadow:0 10px 30px color-mix(in srgb,var(--bg) 70%,transparent);max-height:40vh}
+#kiosk-hud .kh-who{display:flex;align-items:center;gap:12px;grid-row:1/3}
+#kiosk-hud .kh-face{width:56px;height:56px;image-rendering:pixelated;border-radius:12px}
+#kiosk-hud .kh-txt{display:flex;flex-direction:column;min-width:0}
+#kiosk-hud .kh-name{font-size:var(--fs-lg,18px)}
+#kiosk-hud .kh-line{color:var(--txt2,var(--txt));opacity:.85;font-size:var(--fs-md,15px)}
+#kiosk-hud .kh-heard{grid-column:2;font-style:italic;opacity:.8;font-size:var(--fs-md,15px);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#kiosk-hud .kh-reply{grid-column:2;font-size:var(--fs-lg,18px);line-height:1.35;overflow:auto;max-height:22vh}
+#kiosk-hud .kh-acts{grid-column:3;grid-row:1/3;display:flex;gap:8px}
+#kiosk-hud button{min-height:var(--tap,44px);min-width:var(--tap,44px);padding:0 16px;border-radius:999px;
+  border:1px solid color-mix(in srgb,var(--txt) 18%,transparent);background:var(--bg3);color:var(--txt);
+  font:inherit;cursor:pointer}
+#kiosk-hud .kh-mic{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
+#kiosk-hud .kh-mic.off{background:var(--bg3);color:var(--txt)}
+#kiosk-hud .kh-mic.live{box-shadow:0 0 0 4px color-mix(in srgb,var(--acc) 40%,transparent)}
+#kiosk-hud[data-phase="deaf"] .kh-line{color:var(--warn,#e8b04b);opacity:1}
+@media (max-width:640px){
+  #kiosk-hud{grid-template-columns:1fr auto;left:16px;right:16px}
+  #kiosk-hud .kh-who{grid-row:auto}
+  #kiosk-hud .kh-heard,#kiosk-hud .kh-reply{grid-column:1/3}
+  #kiosk-hud .kh-acts{grid-column:2;grid-row:1}
+}
+@media (prefers-reduced-motion:reduce){#kiosk-hud .kh-mic.live{box-shadow:none;outline:2px solid var(--acc)}}
+/* Settings → Agents → Community (24i-pool.js) */
+.pool-list{display:flex;flex-direction:column;gap:6px;width:100%}
+.pool-m{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:var(--r-md,10px);
+  background:color-mix(in srgb,var(--txt) 4%,transparent);border-left:3px solid color-mix(in srgb,var(--txt) 20%,transparent)}
+.pool-m.up{border-left-color:var(--acc)}
+.pool-m .mut{flex:1 1 220px;min-width:0}
+.pool-notes{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.pool-n{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -5000,6 +5050,8 @@ function suiSend(cmd, args){ if(suiActive()) window.suiCall(cmd, args) }
    layout changes the dock band, and a phone has different numbers again.
    Measuring means the struts are right for whatever is actually on screen. */
 function suiChrome(){
+  // the kiosk face hides the menu bar and the dock, so it reserves no band at all
+  if(document.body.classList.contains('kiosk')) return {top: 0, bottom: 0};
   const h = innerHeight || 900;
   const mb = document.getElementById('menubar');
   const top = mb && mb.offsetHeight ? Math.round(mb.getBoundingClientRect().bottom) : 30;
@@ -5742,7 +5794,8 @@ function applyImmersive(){
   if(typeof MOVEMENT!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop()}
   if(typeof CREW!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();else crewStop()}
   // the Office scene (24d) loads later still; it starts itself on first paint
-  if(typeof OFFICE_SCENE!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();else officeSceneStop()}
+  if(typeof OFFICE_SCENE!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();
+    else if(!document.body.classList.contains('kiosk'))officeSceneStop()}   // the kiosk keeps its office
   // the World (01e, experimental): leaving this scene is what puts the world to sleep
   if(typeof WORLD!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='world')worldStart();else worldStop()}
   // the Mind (01g): your agents and what they know, as one picture
@@ -6301,6 +6354,7 @@ function crewKick(){
 function crewCovered(){
   if(document.hidden)return true;
   const b=document.body.classList;
+  if(b.contains('kiosk'))return false;      // the kiosk face hides every window: the scene IS the screen
   if(b.contains('has-fullwin'))return true;
   if(typeof WM!=='undefined'&&[...WM.wins.values()].some(w=>w.max&&!w.min))return true;
   if(b.contains('dev-mobile')&&b.contains('has-win'))return true;
@@ -6337,6 +6391,9 @@ async function crewRoster(force){
       :subs)
       .sort((a,b)=>pos(a.name)-pos(b.name))
       .slice(0,depts.length?CREW_MAX_ORG:CREW_MAX);
+    // One agent on screen (face.buddy, Light mode by default): the stage is the lead
+    // alone, and a specialist's work lights the lead (crewMatch). Nobody walks on.
+    if(faceBuddy())CREW.cast=[];
     // somebody new has no character yet until /api/avatars has generated one
     if(typeof avatarsLoad==='function'&&CREW.cast.some(c=>!AVATARS.by[c.name]))await avatarsLoad();
     // Arrivals. The first roster is who was already here — nobody walks in on a
@@ -6347,6 +6404,7 @@ async function crewRoster(force){
     CREW.known=new Set(CREW.cast.map(c=>c.name));
     crewKick();
   }catch(e){}
+  if(faceBuddy()){CREW.guests=[];return}
   crewGuests();
 }
 /* Linked teams' people, standing at the edge of the stage as visitors: only the ones
@@ -6415,6 +6473,7 @@ function crewMatch(label){
   const same=n=>{n=String(n).toLowerCase().replace(/[^a-z0-9]/g,'');return n&&(n===k||k.includes(n)||n.includes(k))};
   // a department's figure answers for everybody in it (its head is who is drawn)
   const hit=CREW.cast.find(c=>same(c.name))||CREW.cast.find(c=>c.members&&c.members.some(same));
+  if(!hit&&faceBuddy())return '@agent';     // only the lead is drawn: its desk lights
   return hit?hit.name:null;
 }
 /* The department a figure stands for, or '' for a specialist in none. */
@@ -6615,7 +6674,7 @@ function crewDraw(dt){
   const C=CREW,ctx=C.ctx;if(!ctx)return;
   const W=C.W,H=C.H,ink=crewInk(),now=performance.now();
   ctx.setTransform(C.dpr,0,0,C.dpr,0,0);ctx.clearRect(0,0,W,H);
-  const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0;
+  const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0||!!C.busy['@agent'];
   const who=(typeof agentName==='function')?agentName():'Aria';
   const portrait=H>W;
   // the stage: a shallow line across the lower third, with the work line above it
@@ -6710,7 +6769,8 @@ function crewDraw(dt){
   // the standing line. With nobody on the roster it says so and says what to do
   // about it — an empty stage that explains itself, not an empty stage.
   const nb=Object.keys(C.busy).length,nd=C.cast.filter(c=>c.dept).length;
-  const line=n===0?'No specialists yet — ask for one and they take a place here'
+  const line=n===0&&faceBuddy()?(running?`${who} is working`:`${who} is here`)
+    :n===0?'No specialists yet — ask for one and they take a place here'
     :nd?(()=>{const w=C.cast.filter(c=>c.dept&&C.busy[c.name]).length;
       return w?`${w} of ${nd} departments working`:`${nd} departments standing by`})()
     :nb?`${nb} of ${n} working`
@@ -11239,6 +11299,8 @@ var PLACES=[
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','remote','remote access','passphrase','lock','autonomy','light mode','profile','security'],placeSettings('system')],
   ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
+  ['Community','settings','Settings → Agents → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('agent')],
+  ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','mic','microphone','listen','wake word','speech to text','whisper','small screen'],placeSettings('look')],
   ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],
   ['Run missions','jobs','Missions → Run',['mission','missions','job','jobs','recipe','recipes','daily','describe a mission','catalogue'],placeMissions('run')],
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
@@ -13740,6 +13802,17 @@ function handle(ev){
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged();
       if(typeof officeReload==='function')officeReload(); break;   // a new specialist takes a desk
     case 'office': refreshApp('office'); break;   // the office's look or its seating changed
+    // the community of machines changed, or somebody asks to join it (pool.py)
+    case 'pool': if(typeof poolPaint==='function')poolPaint();
+      if(ev.kind==='pool_request')toast((ev.name||'A machine')+' asks to join your community',
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
+          setTimeout(()=>document.getElementById('s-pool')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+      break;
+    // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
+    case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
+      if(typeof officeReload==='function')officeReload();
+      if(typeof crewRoster==='function')crewRoster(true);
+      if(typeof kioskApply==='function')kioskApply()}); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{
@@ -15105,6 +15178,11 @@ function setTab(body,all){
          more:'Both screens show the same six digits when you link. Nothing gets through until you choose which of your agents they can ask, and their answers are treated as untrusted.',
          f:'team linked teams remote machine mtls pair invite account handshake federation link request approve'}),
     ],{f:'team agents providers huddle'}));
+    /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
+       One machine leads and lends its brain; small machines join, share notes and take
+       pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
+    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
@@ -15200,6 +15278,9 @@ function setTab(body,all){
        Office's own Design panel and the setup step). Departments and who sits where
        stay in the Office, where you can see the desks. Terminal: `bento office`. */
     P.push(`<div class="pgroup" data-f="office scene crew playground design style pet name describe"><h3>Office</h3><div id="s-office"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    /* This machine's own screen: one agent drawn (buddy) and the kiosk face, both the
+       machine's (face.py), painted from /api/face by 24h-kiosk.js. Terminal: `bento face`. */
+    P.push(`<div class="pgroup" data-f="on this screen buddy one agent kiosk mic listening raspberry pi light mode speech whisper"><h3>On this screen</h3><div id="s-face"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     /* A look laid over the theme, not a theme: it is a switch here rather than
        a card in the gallery so that it composes with whichever theme is on.
        Applied the moment it is flipped, like the theme select above — Save is
@@ -15335,6 +15416,7 @@ function setTab(body,all){
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
   if(main.querySelector('#s-office'))officeSettingsPaint();
+  if(main.querySelector('#s-face'))faceSettingsPaint();
   if(main.querySelector('#v-voice'))settingsVoices();
   if(main.querySelector('#v-engine-box'))speechPaint();
   const bm=main.querySelector('#s-build-model');
@@ -25926,6 +26008,8 @@ function officeSceneAttach(){
 }
 function officeSceneFit(){
   const S=OFFICE_SCENE,home=document.getElementById('home');if(!S.host)return false;
+  if(document.body.classList.contains('kiosk')){       // the kiosk face: the whole screen
+    if(S.top===0)return false;S.top=0;S.host.style.top='0px';return true}
   let top=Math.round(innerHeight*.42);
   if(home&&!home.hidden)[...home.children].forEach(c=>{const r=c.getBoundingClientRect();if(r.height)top=Math.max(top,Math.round(r.bottom)+14)});
   top=Math.min(top,innerHeight-96-160);          // never less than a strip of office
@@ -25974,7 +26058,11 @@ function officeLayout(){
   const O=OFFICE,v=O.view;if(!O.cv||!v)return;
   const sc=O.cv.parentElement;let cw=Math.max(280,sc.clientWidth);
   const phone=cw<640;
-  O.s=phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
+  // The kiosk face (24h-kiosk.js) is the whole screen of a small machine: people are
+  // drawn bigger, to be read from across a room, and the rooms take the height there is
+  const kiosk=!!(O.w&&O.w.scene&&document.body.classList.contains('kiosk'));
+  O.s=kiosk?Math.max(.9,Math.min(1.8,cw/720,sc.clientHeight/300))
+    :phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
   const W=cw/O.s, x0=OF_M+OF_SPINE, avail=W-x0-OF_M;
   // each room's natural width: a desk slot per member, and never narrower than a room
   const want=r=>r.kind==='lead'?300:r.kind==='meeting'?280:r.kind==='lounge'?250
@@ -25998,7 +26086,8 @@ function officeLayout(){
   // a short office on a tall window: the rooms get more floor rather than leaving a
   // dark band under them (capped, so one row of rooms does not become a ballroom)
   const natural=OF_M*2+plan.reduce((a,r)=>a+r.h+OF_HALL,0)-OF_HALL*.5, room=sc.clientHeight/O.s;
-  const grow=(phone||O.fit)?0:Math.max(0,Math.min(140,(room-natural)/plan.length));
+  const grow=kiosk?Math.max(0,Math.min(400,(room-natural)/plan.length))
+    :(phone||O.fit)?0:Math.max(0,Math.min(140,(room-natural)/plan.length));
   const rooms=[];let y=OF_M;
   plan.forEach((row,ri)=>{
     const h=row.h+grow;let x=x0;
@@ -26111,7 +26200,17 @@ function officeMatch(label){
   const k=String(label).toLowerCase().replace(/[^a-z0-9@]/g,'');
   if(k==='@agent'||k==='agent')return OFFICE.people['@agent']||null;
   for(const n in OFFICE.people){const q=n.toLowerCase().replace(/[^a-z0-9@]/g,'');if(q&&q===k)return OFFICE.people[n]}
+  // One agent on screen (buddy): a specialist's work lights the lead's desk, since the
+  // lead is the only one drawn. Nothing else is invented: no label, no second figure.
+  if(faceBuddy())return OFFICE.people['@agent']||null;
   return null;
+}
+/* Is only the lead drawn? The office route answers for the window (face.buddy on the
+   server), /api/platform for the desktop scene before the Office was ever opened. */
+function faceBuddy(){
+  if(typeof OFFICE!=='undefined'&&OFFICE.view&&OFFICE.view.buddy!==undefined)return !!OFFICE.view.buddy;
+  // PLATFORM is a `let` in 22-quicksettings.js: read before that file ran it throws
+  try{return !!(PLATFORM&&PLATFORM.face&&PLATFORM.face.buddy)}catch(e){return false}
 }
 function officeSay(p,text,kind,ms){
   if(!p)return;
@@ -26450,7 +26549,9 @@ function officeLine(){
   const el=OFFICE.w&&OFFICE.w.el.querySelector('#of-line');if(!el||!OFFICE.view)return;
   const ps=Object.values(OFFICE.people), n=ps.length-1, busy=ps.filter(p=>p.busy).length;
   const talk=ps.filter(p=>p.visit&&!p.visit.meet).length, jobs=Object.keys(OFFICE.missions).length+Object.keys(OFFICE.convWho).length;
-  const txt=`${OFFICE.view.office.name} · ${busy?busy+' working':'all quiet'}${jobs>1?' on '+jobs+' things':''}${talk?' · '+talk+' on the move':''} · ${n} ${n===1?'specialist':'specialists'}`;
+  // one agent on screen: the specialists still exist and still work, so say how many
+  const k=faceBuddy()?(OFFICE.view.agents||[]).length:n;
+  const txt=`${OFFICE.view.office.name} · ${busy?busy+' working':'all quiet'}${jobs>1?' on '+jobs+' things':''}${talk?' · '+talk+' on the move':''} · ${k} ${k===1?'specialist':'specialists'}${faceBuddy()&&k?' behind your agent':''}`;
   if(el.textContent!==txt)el.textContent=txt;
   const t=OFFICE.w.el.querySelector('.of-title');if(t)t.textContent=OFFICE.view.style.label;
 }
@@ -26995,7 +27096,7 @@ function officeGreet(p){
 function officeEmpty(){
   const el=OFFICE.w&&OFFICE.w.el.querySelector('.of-empty');if(!el)return;
   const none=!OFFICE.view.agents.length;
-  el.hidden=!none;
+  el.hidden=!none||faceBuddy();     // one agent on screen is a choice, not an empty office
   if(none)el.innerHTML=`<b>Your office has one person in it: ${esc(officeName('@agent'))}.</b>
     <span>Specialists take a desk here as soon as they exist. Set up a whole company with ▦ Company, or ask for one person in the chat.</span>`;
 }
@@ -27909,6 +28010,429 @@ async function companyReview(ids){
     if(typeof approvalWatch==='function')approvalWatch();
     approvalReveal(hit[0].id);
   }catch(e){toast(e.message||String(e))}
+}
+/* ================= the kiosk face =================
+   This machine's own screen as the Office, full screen, with the mic on: say the
+   agent's name and what you want, and the answer is spoken while the office shows
+   the agents doing the work. Asked for as "a kiosk mode as well where mic would be
+   on and agents would be working in the office", for a Raspberry Pi with a screen.
+
+   What decides it is agentos/face.py (`face.kiosk`, `face.wake`), read from
+   /api/platform. Three rules:
+   - Only the screen plugged into the machine gets it (not a remote browser), or a
+     page opened with #kiosk. A phone looking at the same box keeps its desktop.
+   - Hearing is the SERVER's (agentos/hearing.py): Chromium on a Pi has no key for
+     the browser's own recogniser. The page records one utterance at a time (16 kHz
+     WAV, cut at the pause) and posts it to /api/speech/hear. When nothing on the
+     machine can understand speech, the kiosk says so and shows no live mic.
+   - A turn here is an ordinary chat turn in its own thread (origin `kiosk`), so the
+     gate, the approvals and the ledger are the ones every other turn gets. An
+     approval card still floats over the kiosk.
+   TUI: not applicable, a terminal has no office to show; `bento face` sets it.
+   SUI: the chrome is hidden, so suiChrome() gives the bands back (00-sui.js). */
+var KIOSK={on:false,cid:'',phase:'',line:'',heard:'',reply:'',follow:0,speaking:false,busy:false,
+  stream:null,ctx:null,src:null,node:null,rec:null,chunks:[],pre:[],talking:false,quiet:0,started:0,
+  floor:0.004,sending:false,muted:false};
+var KIOSK_RATE=16000;          // what whisper.cpp and the OpenAI endpoint both want
+var KIOSK_FOLLOW_MS=20000;     // after an answer, no name needed for a follow-up
+var KIOSK_SILENCE_MS=900;      // a pause this long ends an utterance
+var KIOSK_MIN_MS=450;          // shorter is a cough or a door
+var KIOSK_MAX_MS=15000;        // longer is cut and sent (hearing.MAX_BYTES holds ~2 min)
+var KIOSK_PRE_MS=300;          // kept from before the voice started, so the first word is whole
+
+function kioskFace(){try{return (PLATFORM&&PLATFORM.face)||{}}catch(e){return {}}}
+/* Is this the screen the kiosk face is for? */
+function kioskWanted(){
+  if(location.hash==='#kiosk')return true;
+  const f=kioskFace();if(!f.kiosk)return false;
+  try{if(sessionStorage.getItem('kiosk.left')==='1')return false}catch(e){}
+  return !(typeof remoteClient==='function'&&remoteClient());
+}
+function kioskApply(){
+  const want=kioskWanted();
+  if(want&&!KIOSK.on)kioskStart();
+  else if(!want&&KIOSK.on)kioskStop();
+  else if(KIOSK.on)kioskPaint();
+}
+function kioskStart(){
+  KIOSK.on=true;
+  document.body.classList.add('kiosk');
+  let hud=document.getElementById('kiosk-hud');
+  if(!hud){hud=document.createElement('div');hud.id='kiosk-hud';document.body.appendChild(hud)}
+  hud.innerHTML=`<div class="kh-who">${typeof avatarImg==='function'?avatarImg('@agent','kh-face'):''}
+      <div class="kh-txt"><b class="kh-name"></b><span class="kh-line"></span></div></div>
+    <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
+    <div class="kh-acts"><button class="kh-mic" aria-label="Microphone"></button>
+      <button class="kh-leave" aria-label="Leave the kiosk">Leave</button></div>`;
+  hud.querySelector('.kh-mic').onclick=()=>kioskMicTap();
+  hud.querySelector('.kh-leave').onclick=()=>kioskLeave();
+  // one drawer of the office state at a time (officeSceneAttach): an open Office
+  // window would keep the scene empty behind it, and windows are hidden here
+  if(typeof OFFICE!=='undefined'&&OFFICE.w&&!OFFICE.w.scene&&typeof closeWin==='function')closeWin(OFFICE.w);
+  if(typeof officeSceneStart==='function'){
+    if(typeof OFFICE_SCENE!=='undefined'&&OFFICE_SCENE.on)officeSceneResize();else officeSceneStart();
+  }
+  if(typeof suiSyncStruts==='function')suiSyncStruts();
+  kioskPaint();
+  kioskListen();
+}
+function kioskStop(){
+  KIOSK.on=false;
+  kioskMicOff();
+  document.body.classList.remove('kiosk');
+  document.body.style.removeProperty('--kiosk-hud');KIOSK.hudH=0;
+  const hud=document.getElementById('kiosk-hud');if(hud)hud.remove();
+  if(KIOSK.cid&&typeof sinkOff==='function')sinkOff(KIOSK.cid);
+  // the office scene stays only if the immersive look asked for it
+  if(typeof officeSceneStop==='function'&&!(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='office'))officeSceneStop();
+  else if(typeof officeSceneResize==='function')officeSceneResize();
+  if(typeof suiSyncStruts==='function')suiSyncStruts();
+}
+/* Leave for this session. The setting stays on, so the screen comes back as a kiosk
+   after a restart; turning it off for good is Settings → Appearance or `bento face`. */
+function kioskLeave(){
+  try{sessionStorage.setItem('kiosk.left','1')}catch(e){}
+  if(location.hash==='#kiosk')history.replaceState(null,'',location.pathname+location.search);
+  kioskStop();
+}
+function kioskSay(line,phase){KIOSK.line=line||'';if(phase)KIOSK.phase=phase;kioskPaint()}
+function kioskPaint(){
+  const hud=document.getElementById('kiosk-hud');if(!hud)return;
+  const name=agentName(),f=kioskFace(),hear=f.hear||{};
+  hud.querySelector('.kh-name').textContent=name;
+  const waiting=KIOSK.phase==='listening'?(kioskFollowing()?'Listening. Go ahead.'
+      :(f.wake==='always'?'Listening.':`Say “${name}” and what you need.`)):'';
+  hud.querySelector('.kh-line').textContent=KIOSK.line||waiting;
+  const h=hud.querySelector('.kh-heard'),r=hud.querySelector('.kh-reply');
+  h.hidden=!KIOSK.heard;h.textContent=KIOSK.heard?'“'+KIOSK.heard+'”':'';
+  r.hidden=!KIOSK.reply;r.textContent=KIOSK.reply.slice(-600);
+  const mic=hud.querySelector('.kh-mic');
+  const can=!!hear.engine;
+  mic.hidden=!can;
+  mic.className='kh-mic'+(KIOSK.muted?' off':'')+(KIOSK.talking?' live':'');
+  mic.textContent=KIOSK.muted?'Mic off':(KIOSK.talking?'Hearing you':'Mic on');
+  hud.dataset.phase=KIOSK.phase||'';
+  // the office ends where this band begins: measured, because the answer grows it
+  const band=Math.ceil(hud.getBoundingClientRect().height)+24;
+  if(KIOSK.hudH!==band){KIOSK.hudH=band;document.body.style.setProperty('--kiosk-hud',band+'px');
+    if(typeof officeSceneResize==='function')officeSceneResize()}
+}
+function kioskFollowing(){return KIOSK.follow&&Date.now()<KIOSK.follow}
+
+/* ---------------- hearing ---------------- */
+async function kioskListen(){
+  if(!KIOSK.on||KIOSK.muted)return;
+  const hear=kioskFace().hear||{};
+  if(!hear.engine){kioskSay(hear.line||'Nothing on this machine can understand speech yet.','deaf');return}
+  if(hear.engine==='browser')return kioskBrowserListen();
+  if(KIOSK.stream){kioskSay('','listening');return}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    kioskSay('This browser cannot use a microphone.','deaf');return}
+  try{
+    KIOSK.stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
+  }catch(e){kioskSay('The microphone was not allowed. Allow it for this page, then tap Mic on.','deaf');return}
+  const AC=window.AudioContext||window.webkitAudioContext;
+  KIOSK.ctx=new AC();
+  KIOSK.src=KIOSK.ctx.createMediaStreamSource(KIOSK.stream);
+  // ScriptProcessor rather than an AudioWorklet: a worklet is a module file of its own,
+  // and the page is one bundle. 4096 frames is ~90 ms at 44.1 kHz, plenty for a pause.
+  KIOSK.node=KIOSK.ctx.createScriptProcessor(4096,1,1);
+  KIOSK.node.onaudioprocess=e=>kioskFrame(e.inputBuffer.getChannelData(0));
+  KIOSK.src.connect(KIOSK.node);KIOSK.node.connect(KIOSK.ctx.destination);
+  if(KIOSK.ctx.state==='suspended'){
+    // a page may not start audio by itself until somebody touched it
+    kioskSay('Tap anywhere to start listening.','asleep');
+    const wake=()=>{document.removeEventListener('pointerdown',wake,true);
+      KIOSK.ctx&&KIOSK.ctx.resume().then(()=>kioskSay('','listening'))};
+    document.addEventListener('pointerdown',wake,true);
+    return;
+  }
+  kioskSay('','listening');
+}
+function kioskMicOff(){
+  try{KIOSK.node&&KIOSK.node.disconnect();KIOSK.src&&KIOSK.src.disconnect()}catch(e){}
+  try{KIOSK.stream&&KIOSK.stream.getTracks().forEach(t=>t.stop())}catch(e){}
+  try{KIOSK.ctx&&KIOSK.ctx.close()}catch(e){}
+  try{KIOSK.rec&&KIOSK.rec.abort()}catch(e){}
+  KIOSK.stream=KIOSK.ctx=KIOSK.src=KIOSK.node=KIOSK.rec=null;KIOSK.chunks=[];KIOSK.pre=[];KIOSK.talking=false;
+}
+function kioskMicTap(){
+  KIOSK.muted=!KIOSK.muted;
+  if(KIOSK.muted){kioskMicOff();kioskSay('The microphone is off.','muted')}
+  else{KIOSK.line='';kioskListen()}
+  kioskPaint();
+}
+/* One frame of audio: a voice starts when the level rises well over the room's own
+   noise, and ends after a pause. Nothing is kept while the agent is speaking, so it
+   never answers itself. */
+function kioskFrame(data){
+  if(!KIOSK.on||KIOSK.muted||KIOSK.speaking||KIOSK.sending)return;
+  let sum=0;for(let i=0;i<data.length;i++)sum+=data[i]*data[i];
+  const rms=Math.sqrt(sum/data.length),now=performance.now();
+  const frame=new Float32Array(data);
+  const on=rms>Math.max(0.012,KIOSK.floor*3.2);
+  if(!KIOSK.talking){
+    KIOSK.floor=KIOSK.floor*0.95+rms*0.05;
+    KIOSK.pre.push(frame);
+    const keep=Math.ceil(KIOSK_PRE_MS/1000*KIOSK.ctx.sampleRate/data.length);
+    while(KIOSK.pre.length>keep)KIOSK.pre.shift();
+    if(on){KIOSK.talking=true;KIOSK.started=now;KIOSK.quiet=0;KIOSK.chunks=KIOSK.pre.slice();KIOSK.pre=[];kioskPaint()}
+    return;
+  }
+  KIOSK.chunks.push(frame);
+  KIOSK.quiet=on?0:(KIOSK.quiet||now);
+  const long=now-KIOSK.started;
+  if((KIOSK.quiet&&now-KIOSK.quiet>KIOSK_SILENCE_MS)||long>KIOSK_MAX_MS){
+    const chunks=KIOSK.chunks;KIOSK.chunks=[];KIOSK.talking=false;kioskPaint();
+    if(long-(KIOSK.quiet?now-KIOSK.quiet:0)<KIOSK_MIN_MS)return;
+    kioskSend(kioskWav(chunks,KIOSK.ctx.sampleRate));
+  }
+}
+/* Float frames at the device's rate → 16 kHz mono 16-bit WAV. */
+function kioskWav(chunks,rate){
+  let n=0;chunks.forEach(c=>n+=c.length);
+  const all=new Float32Array(n);let o=0;chunks.forEach(c=>{all.set(c,o);o+=c.length});
+  const step=rate/KIOSK_RATE,len=Math.floor(n/step),pcm=new Int16Array(len);
+  for(let i=0;i<len;i++){
+    const a=Math.floor(i*step),b=Math.min(n,Math.floor((i+1)*step));
+    let s=0;for(let j=a;j<b;j++)s+=all[j];
+    const v=Math.max(-1,Math.min(1,s/Math.max(1,b-a)));pcm[i]=v<0?v*0x8000:v*0x7fff;
+  }
+  const buf=new ArrayBuffer(44+pcm.length*2),dv=new DataView(buf);
+  const str=(p,s)=>{for(let i=0;i<s.length;i++)dv.setUint8(p+i,s.charCodeAt(i))};
+  str(0,'RIFF');dv.setUint32(4,36+pcm.length*2,true);str(8,'WAVE');str(12,'fmt ');
+  dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);
+  dv.setUint32(24,KIOSK_RATE,true);dv.setUint32(28,KIOSK_RATE*2,true);dv.setUint16(32,2,true);dv.setUint16(34,16,true);
+  str(36,'data');dv.setUint32(40,pcm.length*2,true);
+  new Int16Array(buf,44).set(pcm);
+  return new Blob([buf],{type:'audio/wav'});
+}
+async function kioskSend(wav){
+  KIOSK.sending=true;kioskSay('Understanding…','hearing');
+  let text='';
+  try{
+    const lang=String((typeof VOICE!=='undefined'&&VOICE.lang)||'').slice(0,5);
+    const r=await fetch('/api/speech/hear?lang='+encodeURIComponent(lang),
+      {method:'POST',headers:{'Content-Type':'audio/wav'},body:wav});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){KIOSK.sending=false;kioskSay(d.error||('could not understand that ('+r.status+')'),'listening');return}
+    text=String(d.text||'').trim();
+  }catch(e){KIOSK.sending=false;kioskSay('The machine could not be reached.','listening');return}
+  KIOSK.sending=false;
+  kioskHeard(text);
+}
+/* The browser's own recogniser, for a machine whose browser has one that works. */
+function kioskBrowserListen(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){kioskSay('This browser has no speech recogniser. Choose whisper.cpp or OpenAI in Settings.','deaf');return}
+  const rec=new SR();KIOSK.rec=rec;
+  rec.lang=(typeof VOICE!=='undefined'&&VOICE.lang)||'en-IN';rec.continuous=false;rec.interimResults=false;
+  rec.onresult=e=>{const t=[...e.results].map(r=>r[0].transcript).join(' ');kioskHeard(t)};
+  rec.onerror=e=>{if(e.error==='network'||e.error==='not-allowed')
+    kioskSay(e.error==='network'?'This browser cannot reach its speech service. Choose whisper.cpp or OpenAI in Settings.'
+      :'The microphone was not allowed.','deaf')};
+  rec.onend=()=>{KIOSK.rec=null;if(KIOSK.on&&!KIOSK.muted&&!KIOSK.speaking&&KIOSK.phase!=='deaf')setTimeout(kioskListen,400)};
+  try{rec.start();kioskSay('','listening')}catch(e){}
+}
+
+/* ---------------- what was said ---------------- */
+/* The words after the agent's name, or '' when the name was not said. "Hey Aria,
+   what's on today" → "what's on today". Whole words, so "Ariadne" is not "Aria". */
+function kioskAddressed(text,name){
+  const norm=s=>String(s).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g,'');
+  const t=norm(text),n=norm(name).trim();if(!n)return null;
+  const re=new RegExp('(^|[^\\p{L}\\p{N}])'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?=$|[^\\p{L}\\p{N}])','u');
+  const m=re.exec(t);if(!m)return null;
+  return String(text).slice(m.index+m[0].length).replace(/^[\s,.:;!?-]+/,'').trim();
+}
+function kioskHeard(text){
+  text=String(text||'').trim();
+  if(!text){kioskSay('','listening');return}
+  const f=kioskFace(),name=agentName();
+  let ask=text;
+  if(f.wake!=='always'&&!kioskFollowing()){
+    const after=kioskAddressed(text,name);
+    if(after===null){kioskSay('','listening');return}         // not for us: nothing is kept
+    if(!after){KIOSK.heard=text;KIOSK.follow=Date.now()+KIOSK_FOLLOW_MS;
+      kioskSpeak('Yes?');return}
+    ask=after;
+  }
+  KIOSK.heard=text;KIOSK.reply='';
+  kioskAsk(ask);
+}
+async function kioskThread(){
+  if(KIOSK.cid)return KIOSK.cid;
+  const day=new Date().toISOString().slice(0,10);
+  try{const s=JSON.parse(localStorage.getItem('kiosk.thread')||'{}');if(s.day===day&&s.cid)KIOSK.cid=s.cid}catch(e){}
+  if(!KIOSK.cid){
+    try{
+      const d=await (await fetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({origin:'kiosk',title:'At the screen · '+day,surface:'gui'})})).json();
+      KIOSK.cid=d.id||'';
+      try{localStorage.setItem('kiosk.thread',JSON.stringify({day,cid:KIOSK.cid}))}catch(e){}
+    }catch(e){}
+  }
+  return KIOSK.cid;
+}
+async function kioskAsk(text){
+  if(typeof ws==='undefined'||!ws||ws.readyState!==1){kioskSay('Not connected to the machine.','listening');return}
+  const cid=await kioskThread();
+  if(!cid){kioskSay('Could not start a conversation.','listening');return}
+  KIOSK.busy=true;kioskSay(agentName()+' is working…','working');
+  sinkOn(cid,{
+    delta:(t,all)=>{KIOSK.reply=all||((KIOSK.reply||'')+t);kioskPaint()},
+    error:ev=>{KIOSK.busy=false;KIOSK.reply='';kioskSay(String(ev.message||'something went wrong'),'listening')},
+    end:()=>{KIOSK.busy=false;const said=KIOSK.reply;
+      if(said.trim())kioskSpeak(said);else kioskSay('','listening')},
+  });
+  if(typeof voiceAddress==='function')text=voiceAddress(text);
+  ws.send(JSON.stringify({type:'chat',text,conversation_id:cid,model:''}));
+  if(typeof setRunning==='function')setRunning(true);
+}
+/* Spoken through the one door every voice uses (speakAs), with the mic deaf until it
+   is finished, then a short window where no name is needed. */
+function kioskSpeak(text){
+  const clean=String(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'').slice(0,900);
+  KIOSK.speaking=true;KIOSK.chunks=[];KIOSK.talking=false;
+  kioskSay(agentName()+' is speaking…','speaking');
+  const done=()=>{KIOSK.speaking=false;KIOSK.follow=Date.now()+KIOSK_FOLLOW_MS;kioskSay('','listening');
+    if(kioskFace().hear&&kioskFace().hear.engine==='browser'&&!KIOSK.rec)kioskListen()};
+  if(typeof speakAs==='function')speakAs('@agent',clean,done);else done();
+}
+
+/* ---------------- Settings → Appearance → On this screen ---------------- */
+/* One agent, the kiosk, what it listens for, and what understands speech, from
+   /api/face (admin only on a machine with accounts: a screen is the machine's). */
+async function faceSettingsPaint(){
+  const box=document.getElementById('s-face');if(!box)return;
+  let d;try{d=await apiJSON('/api/face')}catch(e){box.innerHTML=`<div class="prow"><div class="pl"><small>${esc(String(e.message||e))}</small></div></div>`;return}
+  const hear=d.hear||{};
+  box.innerHTML=[
+    pRow('One agent on screen',pSelect('s-face-buddy',[['auto','Auto: in Light mode'],['on','On'],['off','Off']],d.buddy_setting||'auto'),
+      {desc:'Draws only your agent in the Office and on the desktop.',
+       more:'Specialists still work. Their work lights your agent instead. Auto turns it on in Light mode, which a Raspberry Pi gets by itself.',
+       f:'buddy one agent single light mode raspberry pi office crew'}),
+    pRow('Kiosk',pSwitch('s-face-kiosk',!!d.kiosk),
+      {desc:'This machine’s own screen shows the Office and listens.',
+       more:'Only the screen plugged into this machine. A phone or another browser keeps the desktop. Add #kiosk to the address to try it anywhere.',
+       f:'kiosk mic microphone always listening screen office raspberry pi wake word'}),
+    pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Your agent’s name'],['always','Everything it hears']],d.wake||'name'),
+      {desc:'With a name, anything else said in the room is ignored.',f:'wake word name always listening'}),
+    pRow('Understanding speech',pSelect('s-face-hear',[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']],hear.setting||'auto'),
+      {desc:esc(hear.line||''),
+       more:'whisper.cpp keeps your voice on this machine. Install it and a model yourself; Bento uses it when it finds it.',
+       f:'speech to text whisper openai transcribe hearing stt'}),
+  ].join('');
+  const put=async body=>{
+    const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error){toast(j.error||'could not save that');faceSettingsPaint();return}
+    toast('✓ '+(j.description||'saved'));
+    try{sessionStorage.removeItem('kiosk.left')}catch(e){}
+    if(typeof loadPlatform==='function')await loadPlatform();
+    faceSettingsPaint();
+  };
+  box.querySelector('#s-face-buddy').onchange=e=>put({buddy:e.target.value});
+  box.querySelector('#s-face-kiosk').onchange=e=>put({kiosk:e.target.checked});
+  box.querySelector('#s-face-wake').onchange=e=>put({wake:e.target.value});
+  box.querySelector('#s-face-hear').onchange=e=>put({hear:e.target.value});
+}
+addEventListener('hashchange',()=>{if(location.hash==='#kiosk')try{sessionStorage.removeItem('kiosk.left')}catch(e){}
+  if(typeof kioskApply==='function')kioskApply()});
+/* ================= a community of machines =================
+   Settings → Agents → Working together → Community. pool.py is the whole design; this
+   draws /api/pool and changes it. One machine LEADS (holds the keys, lends its brain,
+   splits bigger work); small machines JOIN over a linked team, share notes and take
+   pieces of work. Who leads next is decided by rank among machines whose own admin
+   said they may lead. TUI: `bento pool`. SUI: this page, nothing touches the compositor. */
+var POOL={v:null};
+async function poolPaint(){
+  const box=document.getElementById('s-pool');if(!box)return;
+  let v;try{v=await apiJSON('/api/pool')}catch(e){box.innerHTML=`<div class="prow"><div class="pl"><small>${esc(String(e.message||e))}</small></div></div>`;return}
+  POOL.v=v;
+  const can=v.can_change,rows=[];
+  const btn=(label,act,extra)=>`<button class="endbtn" data-pool="${act}"${extra||''}${can?'':' disabled'}>${esc(label)}</button>`;
+  if(!v.pool){
+    const linked=v.linked||[];
+    rows.push(pRow('This machine',`<span class="mut">${esc(v.line)}</span>`,
+      {desc:'Machines that share one brain, one set of notes, and bigger jobs.',
+       more:'One machine leads and pays for the thinking. Small machines like a Raspberry Pi join it, share what they learn and each take a piece of a bigger task.',
+       f:'community pool status'}));
+    rows.push(pRow('Start a community',`<input id="pool-name" placeholder="Home" maxlength="40" style="max-width:160px"${can?'':' disabled'}>`+btn('Start','create'),
+      {desc:v.has_brain?'This machine leads. Others ask to join it.':'Needs a brain of its own first, under AI providers.',
+       f:'community start create lead'}));
+    rows.push(pRow('Join a community',linked.length
+        ?pSelect('pool-join-to',linked.map(l=>[l.label,l.name]),linked[0].label)+btn('Ask to join','join')
+        :'<span class="mut">Link with the leader first, above.</span>',
+      {desc:'Ask a linked machine that leads a community to let this one in.',
+       more:'Its admin approves you. Joining lets the community hand this machine work; you can revoke that in Permissions.',
+       f:'community join member raspberry pi'}));
+  }else{
+    rows.push(pRow(v.pool.name,`<span class="mut">${esc(v.line)}</span>`,
+      {desc:v.role==='leader'?'This machine leads. It lends its brain and splits bigger work.':v.role==='pending'?'Waiting for the leader to let you in.':'A member. It shares notes and takes work.',
+       more:'The leader is chosen by rank among machines whose admin said they may lead: the one you pin first, then the most capable. If the leader stops answering for a minute, the next one takes over.',
+       f:'community status leader member term'}));
+    const ms=(v.machines||[]);
+    rows.push(pRow('Machines',`<div class="pool-list">${ms.map(m=>{
+        const c=m.cap||{},st=m.here?'this machine':m.state==='pending'?'asking to join':m.alive?'up':m.seen!=null?`last heard ${poolAgo(m.seen)}`:'not heard yet';
+        const acts=v.role==='leader'&&!m.here&&can?(m.state==='pending'
+          ?`<button class="endbtn" data-pool="approve" data-who="${esc(m.fp)}">Let in</button><button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Turn away</button>`
+          :`<button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Remove</button>`):'';
+        return `<div class="pool-m${m.alive||m.here?' up':''}"><b>${m.role==='leader'?'★ ':''}${esc(m.name)}</b>
+          <span class="mut">${esc(st)} · ${c.ram_mb||0} MB · ${c.cores||0} cores${c.board?' · '+esc(c.board):''}${m.eligible?' · may lead':''}${m.busy?' · working':''}</span>${acts}</div>`}).join('')||'<span class="mut">Nobody yet.</span>'}</div>`,
+      {stack:true,desc:'Every machine in the community and when it was last heard.',f:'community machines members roster'}));
+    const next=ms.filter(m=>!m.here&&m.eligible&&m.state==='member');
+    if(v.role==='leader')rows.push(pRow('Who takes over first',next.length
+        ?pSelect('pool-pin',[['','The most capable'],...next.map(m=>[m.fp,m.name])],v.pin||'')
+        :'<span class="mut">No other machine may lead yet.</span>',
+      {desc:'If this machine goes away, this one leads next.',
+       more:'Only machines whose own admin switched on This machine may lead are listed.',
+       f:'community pin next leader failover'}));
+    rows.push(pRow('This machine may lead',pSwitch('pool-lead',!!v.lead_ok),
+      {desc:'If the leader goes away, this machine can take over and pay for the thinking.',
+       more:'It needs a brain of its own. Leading spends this machine’s model budget on every member’s calls.',
+       f:'community lead elect take over failover'}));
+    if(v.role==='member')rows.push(pRow('Think with the leader’s brain',pSwitch('pool-brain',!!v.using_brain),
+      {desc:'Model calls go to the leader. This machine needs no key of its own.',f:'community brain model leader thinks'}));
+    rows.push(pRow('Shared notes',`<span class="mut">${v.notes} note${v.notes===1?'':'s'}</span><button class="endbtn" data-pool="notes">Show</button>`,
+      {desc:'What the machines’ agents chose to share with each other.',
+       more:'Agents read them with community_recall and treat them as untrusted, because another machine wrote them.',
+       f:'community shared memory notes'}));
+    rows.push(pRow('Leave',btn('Leave the community','leave'),{desc:'This machine stops sharing and taking work.',f:'community leave'}));
+    if(v.note)rows.push(pRow('Last problem',`<span class="mut">${esc(v.note)}</span>`,{f:'community problem'}));
+  }
+  box.innerHTML=rows.join('')+'<div id="pool-notes"></div>';
+  box.querySelectorAll('[data-pool]').forEach(b=>b.onclick=()=>poolAct(b.dataset.pool,b.dataset.who||''));
+  const ld=box.querySelector('#pool-lead');if(ld){ld.disabled=!can;ld.onchange=()=>poolPut({lead_ok:ld.checked})}
+  const pn=box.querySelector('#pool-pin');if(pn){pn.disabled=!can;pn.onchange=()=>poolPut({pin:pn.value})}
+  const br=box.querySelector('#pool-brain');if(br){br.disabled=!can;br.onchange=()=>poolPut({use_brain:br.checked})}
+}
+function poolAgo(s){return s<90?s+'s ago':s<5400?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago'}
+async function poolPut(body){
+  const r=await fetch('/api/pool',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)toast(d.error||'could not change that');else toast('✓ saved');
+  poolPaint();
+}
+async function poolAct(act,who){
+  if(act==='notes')return poolNotes();
+  if(act==='leave'&&!confirm('Leave the community? This machine stops sharing notes and taking work.'))return;
+  const body=act==='create'?{name:(document.getElementById('pool-name')||{}).value||''}
+    :act==='join'?{label:(document.getElementById('pool-join-to')||{}).value||''}:{who};
+  const r=await fetch('/api/pool/'+act,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){toast(d.error||'could not do that');return}
+  toast({create:'✓ community started',join:'✓ asked to join',approve:'✓ let in',remove:'✓ removed',leave:'✓ left the community'}[act]||'✓ done');
+  poolPaint();
+}
+async function poolNotes(){
+  const el=document.getElementById('pool-notes');if(!el)return;
+  if(el.innerHTML){el.innerHTML='';return}
+  let d;try{d=await apiJSON('/api/pool/notes')}catch(e){el.textContent=String(e.message||e);return}
+  el.innerHTML=`<div class="pool-notes">${(d.notes||[]).map(n=>`<div class="pool-n"><span class="mut">${esc(n.machine||'?')}</span> ${esc(n.content)}
+    <button class="endbtn" data-forget="${esc(n.id)}" aria-label="Forget this note">Forget</button></div>`).join('')||'<span class="mut">No notes yet.</span>'}</div>`;
+  el.querySelectorAll('[data-forget]').forEach(b=>b.onclick=async()=>{
+    await fetch('/api/pool/notes/'+encodeURIComponent(b.dataset.forget),{method:'DELETE'});el.innerHTML='';poolNotes()});
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
@@ -30232,6 +30756,8 @@ connect();
   setTimeout(()=>{
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
     if($('#setup-wiz'))return;      // a first run has no desktop to bring back
+    // the kiosk face (24h-kiosk.js): this machine's own screen as the Office, listening
+    try{if(typeof kioskApply==='function')kioskApply()}catch(e){}
     // Bring back the desktop this page had before it reloaded. After the splash,
     // so eight windows do not animate in behind it, and never during setup.
     try{if(typeof sessionRestore==='function')sessionRestore()}catch(e){}

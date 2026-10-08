@@ -114,6 +114,11 @@ BUILTIN_DENY = {
     # granted cell by cell — and `_default` refuses everything else before any model
     # default. These rows are belt on top of braces, as for a peer.
     "team": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
+    # A machine of this machine's community (pool.py): on a leader, a member that thinks
+    # with the leader's brain (model.use, granted at admission); on a member, the
+    # community handing it work (pool.work, granted at joining). `_default` refuses a
+    # pool principal everything else; these rows are the belt on top, as for a peer.
+    "pool": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -188,6 +193,12 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "fs.write", f"fs:{args.get('path', '') or '*'}"
     if name == "fetch_url":
         return "net.fetch", f"net:{args.get('url', '') or '*'}"
+    if name == "community_recall" or (name == "remember" and args.get("community")):
+        # the community's notes are their own resource: "may share with my community"
+        # is grantable, and deniable, apart from this machine's own memory
+        return ("memory.read" if name == "community_recall" else "memory.write"), "memory:community"
+    if name == "pool_task":
+        return "pool.task", f"pool:{str(args.get('machine') or '').strip() or '*'}"
     if name in _MEM:
         action = _MEM[name][0]
         # Space-qualified so a grant can say "this subagent may write memory in the
@@ -430,7 +441,8 @@ APP_FREE_TOOLS = {"system_info", "notify", "search_docs", "list_themes", "deskto
 # for; six fetches is a page refreshing. Counting them together would either quarantine
 # every working app or catch no runaway at all.
 LLM_TOOLS = {"llm_generate", "generate_image", "appLLM.stream", "app→appLLM.stream",
-             "generate_wallpaper", "create_theme", "create_app"}
+             "generate_wallpaper", "create_theme", "create_app",
+             "pool_llm"}          # a community member thinking with this machine's brain
 
 
 def call_class(tool: str) -> str:
@@ -449,6 +461,9 @@ RATE_DEFAULTS = {
     "app":      {"llm": (6, 60), "tool": (60, 20)},
     # a linked team's agent: questions, not work — a handful a minute is a conversation
     "team":     {"llm": (6, 60), "tool": (20, 60)},
+    # a member thinking with the leader's brain: one turn is several model calls, and a
+    # small machine running a mission makes a few turns a minute at most
+    "pool":     {"llm": (40, 60), "tool": (20, 60)},
     "subagent": {"llm": (20, 60), "tool": (120, 20)},
     "flow":     {"llm": (20, 60), "tool": (120, 20)},
 }
@@ -462,6 +477,7 @@ RATE_DEFAULTS = {
 SUSTAIN_DEFAULTS = {
     "app":      {"llm": (30, 600), "tool": (300, 300)},
     "team":     {"llm": (30, 600), "tool": (60, 600)},
+    "pool":     {"llm": (240, 600), "tool": (60, 600)},
     "subagent": {"llm": (60, 600), "tool": (600, 300)},
     "flow":     {"llm": (60, 600), "tool": (600, 300)},
 }
@@ -839,7 +855,7 @@ class PDP(usersmod.Scoped):
         else is metered per class of call, and going over puts it in quarantine: this is the
         one ceiling that decides, by itself, that something should stop.
         """
-        if principal.kind not in ("app", "subagent", "flow"):
+        if principal.kind not in ("app", "subagent", "flow", "pool"):
             return None
         held = self._held(principal)
         if held:
@@ -1325,6 +1341,14 @@ class PDP(usersmod.Scoped):
                                    f"{to} answers on its own model with its own permissions. "
                                    f"'Allow & remember' fills this cell of the team's matrix.",
                             rule="default", grant_offer=offer)
+        if principal.kind == "pool":
+            # Like a peer: a machine on the network, so never asked and never given a
+            # default. Admission wrote model.use (on the leader); joining wrote pool.work
+            # (on the member). Revoking either in Permissions is what stops it.
+            return Decision("deny",
+                            f"a machine of your community reaches only what joining granted — "
+                            f"'{action}' was not part of that",
+                            rule="pool-default")
         if principal.kind == "peer":
             # Checked before every other default, model.use included: a peer is
             # not a person at this machine, and "safe" calls are not free for a

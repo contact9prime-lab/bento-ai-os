@@ -40,6 +40,7 @@ UNTRUSTED_TOOLS = {
     "mail_search",        # anyone can send you a message; its text is not yours
     "mail_read",
     "calendar_events",    # an invitation's description is written by the inviter
+    "community_recall",   # notes other machines' agents shared (pool.py)
 }
 
 
@@ -735,6 +736,13 @@ class Agent:
                 # and how they are organised, when the person set up a company
                 from . import company as _company
                 mem_text += _company.note(self.cfg, store)
+            except Exception:
+                pass
+            try:
+                # and the community of machines this one belongs to (pool.py): one line,
+                # never its notes, which are other machines' words (community_recall)
+                from . import pool as _pool
+                mem_text += _pool.note()
             except Exception:
                 pass
         if self.principal is MAIN:

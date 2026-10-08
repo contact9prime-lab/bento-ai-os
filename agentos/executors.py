@@ -1320,7 +1320,9 @@ def brains(cfg: dict, models: list[dict], engine: str = "") -> dict:
     for pid, mods in sorted(by_prov.items()):
         if not pid:
             continue
-        out.append({"id": pid, "name": pid, "what": "", "kind": "provider",
+        out.append({"id": pid, "name": "Your community's leader" if pid == "pool" else pid,
+                    "what": "The brain of the machine that leads your community" if pid == "pool" else "",
+                    "kind": "provider",
                     "engine": "aria", "provider": pid, "available": True,
                     "reason": "", "detail": f"{len(mods)} models", "licence": "",
                     "install_cmd": "", "install_note": "", "docs": "",

@@ -2360,6 +2360,77 @@ Full story in `docs/team.md`. Four rules:
   name; `team.my_name` exists only where there are no accounts (`PUT /api/team/me` refuses
   otherwise) — a name somebody can type is not an identity.
 
+## A community of machines: the leader holds the keys, and leading is consented to
+
+`agentos/pool.py` + `bento pool` + Settings → Agents → Community (`24i-pool.js`) + `/api/pool*`;
+`docs/pool.md`, `tests/test_pool.py` (three machines in one process over real mTLS), live run
+`packaging/dev/pool-e2e/run.py` (three `bento serve`s, the leader killed and brought back).
+Asked for as "a pool mode where multiple small computers make a bigger task … they elect a
+leader and the leader has all the creds". Seven things keep it honest:
+- **It rides linked teams, never beside them.** A member and its leader are a machine link a
+  person approved with six digits; every community request is a `teamlink.POOL_OPS` op on that
+  door, answered by `Listener.on_pool` as the MACHINE (`users.as_user("")`). Members reach each
+  other for a failover through `kind="pool"` links written from the leader's roster: pinned to
+  the fingerprint like any link (`_by_fp`, `_server_ctx` trust them), hidden from `links()`
+  views, and refused every op that is not a community op. Never widen that refusal.
+- **Admission is ONE grant on each side.** Approve writes `pool:<16-hex fp>` `model.use
+  model:*` on the leader (`source="pool"`); joining writes `pool:<pool id>` `pool.work
+  agent:subagent/worker` on the member. `PDP._default` refuses a `pool` principal everything
+  else (`pool-default`, never ask: nobody is at a network call's end) and `BUILTIN_DENY["pool"]`
+  is the belt. Removing or leaving revokes them; Permissions can revoke either directly.
+- **The leader thinks for members through its own gate.** `pool/<model>` on a member is
+  `providers.chat` → `pool.chat` → op `pool_llm`; the leader runs it on its own provider after
+  `PDP.decide(pool, model.use)` with `tool="pool_llm"` (in `LLM_TOOLS`, so the rate ceiling and
+  quarantine meter it), and records usage as `surface="pool"`. `usage.price_state` is `pool` on
+  the member: it pays nothing, so it must never wait on a price card. A member's keys never move.
+- **Leading is consented to, and the election needs no vote over the network.** Only a machine
+  whose own admin set `lead_ok` and that `has_brain` (a PROVIDER model; an agent CLI cannot
+  answer a member's messages-and-tools call) is `eligible`. `successors()` is a pure ranking
+  every member computes from the same roster (pin, then capability, then fingerprint). The next
+  machine promotes on `pool_elect` only after failing to reach the old leader ITSELF. Terms
+  order everything: a claim with a higher term from an eligible roster machine is followed; a
+  leader that hears a higher term steps down and drops the grants it wrote. A leader asks once
+  after it starts (`_asked`): it may have been replaced while it was off.
+- **Notes are other machines' words.** `community_recall` is in `agent.UNTRUSTED_TOOLS` and
+  `SAFE_TOOLS`; notes are never injected into a prompt (the lead gets one line, `pool.note()`).
+  `remember(community=true)` writes them; the action is `memory.write memory:community`. The
+  leader numbers notes (`seq`); a member's note is `pending` until the leader takes it, keyed by
+  id so a resend is taken once. Forgetting is a tombstone with a new seq.
+- **Work from the community runs tainted, on the member's worker.** `pool_task` (leader only,
+  risky, action `pool.task`) hands pieces out at once; `_pool_work` checks the sender is the
+  CURRENT leader and the `pool.work` grant, then `run_subagent(worker, kind="pool",
+  taint=[community])`, so a risky step needs a person at that machine and is refused without one.
+- **A pinned peer's line may be bigger, a stranger's never.** `POOL_LINE` (4 MiB) is set on the
+  reader only after the certificate matched a link (`_handle`); a model call carries a whole
+  conversation. `call(limit=)` matches it on the way back.
+
+## This machine's screen: one agent, and the kiosk that listens
+
+`agentos/face.py` (settings) + `agentos/hearing.py` (speech to text) + `24h-kiosk.js` +
+`27-kiosk.css` + Settings → Appearance → On this screen + `/api/face`, `/api/speech/hear` +
+`bento face`; `docs/small-screens.md`, `tests/test_face.py`. Asked for as "a single buddy /
+agent ui interface option for Light mode … there will be a kiosk mode as well where mic would
+be on and agents would be working in the office". Five rules:
+- **Both are the MACHINE's** (`face` is not a USER_KEY): a screen belongs to the box it is
+  plugged into. Admin-only to change on a machine with accounts; a `face.write` ledger row.
+- **One agent hides people, never work.** `office.view` keeps only the lead and lounge rooms
+  and still returns every agent; `officeMatch`/`crewMatch` send an unknown label to the lead, so
+  a specialist's work lights the lead's desk. `faceBuddy()` reads `OFFICE.view.buddy` first and
+  `PLATFORM.face` second, in a try, because `PLATFORM` is a `let` in a later file.
+- **The kiosk is for the attached screen only** (`kioskWanted`: not `remoteClient()`, or
+  `#kiosk`). It hides the chrome but never `.ap-float` or toasts: a kiosk turn is an ordinary
+  chat (`origin:'kiosk'`, `sinkOn`), gated like any other. `suiChrome()` returns zero bands
+  while it is on; `crewCovered()` is false (the scene IS the screen); `applyImmersive` must not
+  stop the office scene under it.
+- **Hearing is the server's.** Chromium on a Pi has no key for the browser recogniser, so the
+  page records one utterance (RMS against the room's own floor, cut at a 900 ms pause, 16 kHz
+  WAV, deaf while the agent speaks) and posts it; `hearing.status()` is the one answer to "can
+  this screen listen?" (whisper.cpp first, then the OpenAI key), and with neither the kiosk
+  shows that sentence and no mic. whisper.cpp is used if present and never installed for you.
+- **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
+  `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
+  it to video or another origin.
+
 ## Window chrome: the rules that keep a stack readable
 
 - **A window opens where you left it.** Geometry is remembered per app and clamped into

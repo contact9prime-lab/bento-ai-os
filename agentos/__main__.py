@@ -3836,6 +3836,172 @@ def _company_cli(args):
     sys.exit(2)
 
 
+def _face_cli(args):
+    """`bento face` — this machine's own screen: one agent drawn, and the kiosk face.
+
+    The settings are the machine's (face.py), so this writes the machine's config
+    directly and works with the server down. What a terminal cannot have is the face
+    itself: the kiosk is a page on the attached screen, and this says so.
+    """
+    from . import config as _cfgmod
+    from . import face as facemod
+    from . import hearing
+    cfg = _cfgmod.load_config()
+    a, rest = args.action, [x.lower() for x in (args.args or [])]
+    val = rest[0] if rest else ""
+    if a in ("show", "status"):
+        print("  " + facemod.describe(cfg))
+        print("  " + hearing.status(cfg)["line"])
+        print("  The kiosk face shows on the screen plugged into this machine. A terminal has no office"
+              "\n  to draw, so here you only set it.")
+        return
+    if a == "hear":
+        if val not in hearing.ENGINES:
+            sys.exit("  speech is understood by one of " + ", ".join(hearing.ENGINES))
+        cfg.setdefault("speech", {}).setdefault("hear", {})["engine"] = val
+        ok, msg = True, hearing.status(cfg)["line"]
+    elif a == "buddy":
+        ok, msg = facemod.set_face(cfg, buddy=val or "?")
+    elif a == "kiosk":
+        if val not in ("on", "off"):
+            sys.exit("  bento face kiosk on | off")
+        ok, msg = facemod.set_face(cfg, kiosk=val == "on")
+    elif a == "wake":
+        ok, msg = facemod.set_face(cfg, wake=val or "?")
+    else:
+        sys.exit("  bento face [show | buddy auto|on|off | kiosk on|off | wake name|always | hear ENGINE]")
+    if not ok:
+        sys.exit("  " + msg)
+    _cfgmod.save_config(cfg)
+    try:
+        from .memory import Store
+        facemod.record(Store(), f"{a} {val} (terminal)")
+    except Exception:
+        pass
+    print("  " + msg)
+    print("  A running server picks this up when it restarts. Settings → Appearance changes it live.")
+
+
+def _pool_cli(args):
+    """`bento pool` — this machine's community of machines (pool.py), in a terminal.
+
+    Everything the Settings group does, with the server up or down: the community is two
+    files under the teamlink home, and joining or handing out work is a call over a link
+    this machine already holds. A running server reads the files fresh, so it sees a
+    change at once; only "think with the leader's brain" edits the config, which a
+    running server picks up when it restarts.
+    """
+    from . import config as _cfgmod
+    from . import pool as poolmod
+    from .memory import Store
+    cfg = _cfgmod.load_config()
+    a, rest = args.action, list(args.args or [])
+    val = " ".join(rest).strip()
+
+    def show():
+        v = poolmod.view(cfg)
+        print("  " + v["line"])
+        if v["pool"]:
+            print(f"  term {v['term']} · {v['notes']} shared note{'' if v['notes'] == 1 else 's'}"
+                  + (" · this machine may lead" if v["lead_ok"] else " · this machine may not lead"))
+            for m in v["machines"]:
+                cap = m.get("cap") or {}
+                seen = ("here" if m.get("here") else "up" if m.get("alive") else
+                        f"last heard {m['seen']}s ago" if m.get("seen") is not None else "not heard yet")
+                print(f"    {'★' if m.get('role') == 'leader' else '·'} {m['name']:<18} {m.get('state', ''):<8} "
+                      f"{seen:<22} {cap.get('ram_mb', 0)} MB, {cap.get('cores', 0)} cores"
+                      + (f", {cap.get('board')}" if cap.get("board") else ""))
+        if v.get("note"):
+            print("  last problem: " + v["note"])
+
+    def run(coro):
+        return asyncio.run(coro)
+
+    try:
+        if a in ("show", "status"):
+            return show()
+        if a == "create":
+            poolmod.create(cfg, val)
+            return show()
+        if a == "join":
+            if not rest:
+                sys.exit("  bento pool join LINKED-MACHINE   (link the two machines first: bento link request)")
+            run(poolmod.join(cfg, rest[0]))
+            d = poolmod.load()
+            store = Store()
+            poolmod.grant_work(store, d["pool"]["id"], d["pool"]["name"])
+            poolmod.ensure_worker(store)
+            if getattr(args, "brain", False) or not poolmod.has_brain(cfg):
+                poolmod.set_use_brain(cfg, True)
+                _cfgmod.save_config(cfg)
+                print("  This machine will think with the leader's brain (restart the server to use it now).")
+            return show()
+        if a in ("approve", "remove"):
+            if not val:
+                sys.exit(f"  bento pool {a} MACHINE")
+            e = (poolmod.approve if a == "approve" else poolmod.remove)(Store(), val)
+            print(f"  {e.get('name')} {'is in' if a == 'approve' else 'was removed'}.")
+            return show()
+        if a == "leave":
+            d = poolmod.load()
+            store = Store()
+            if d.get("pool"):
+                store.revoke_grants_for("pool", d["pool"]["id"], source="pool")
+            if d.get("role") == "leader":
+                poolmod.drop_leader_grants(store, d)
+            r = run(poolmod.leave(cfg))
+            _cfgmod.save_config(cfg)
+            print("  Left the community." if r["left"] else "  This machine was not in a community.")
+            return
+        if a in ("lead", "brain"):
+            if val not in ("on", "off"):
+                sys.exit(f"  bento pool {a} on | off")
+            if a == "lead":
+                if val == "on" and not poolmod.has_brain(cfg):
+                    sys.exit("  to lead, this machine needs a brain of its own (a model with a key, or a local model)")
+                poolmod.set_lead_ok(val == "on")
+            else:
+                if val == "on" and poolmod.load().get("role") != "member":
+                    sys.exit("  only a member thinks with its leader's brain")
+                poolmod.set_use_brain(cfg, val == "on")
+                _cfgmod.save_config(cfg)
+            return show()
+        if a == "pin":
+            d = poolmod.load()
+            if d.get("role") != "leader":
+                sys.exit("  only the leader chooses who leads next")
+            e = poolmod._find_member(d, val) if val and val != "auto" else None
+            if val and val != "auto" and not (e and poolmod.eligible(e)):
+                sys.exit("  that machine may not lead (it needs a brain and its own admin's yes)")
+            d["pin"] = e["fp"] if e else ""
+            poolmod.save(d)
+            print(f"  {e['name']} leads next." if e else "  The most capable machine leads next.")
+            return
+        if a == "notes":
+            for r in poolmod.notes_search(val, limit=50):
+                print(f"  [{r['id']}] ({r.get('machine') or '?'}) {r['content']}")
+            return
+        if a == "share":
+            from . import teamlink
+            got = poolmod.note_add(val, machine=teamlink.machine_name(cfg), agent="you")
+            print(f"  shared (note {got['id']})" + ("" if got["shared"] else ", sent on the next heartbeat"))
+            return
+        if a == "forget":
+            print("  forgotten" if poolmod.note_forget(val) else "  no such note")
+            return
+        if a == "task":
+            if not rest:
+                sys.exit('  bento pool task "first piece" "second piece" ...')
+            res = run(poolmod.Pool(cfg=lambda: cfg, store=Store, pdp=lambda: None).hand_out(rest))
+            for r in res:
+                print(f"\n  ## {r['machine']}{'' if r['ok'] else ' (could not)'}\n  {r['text']}")
+            return
+    except ValueError as e:
+        sys.exit("  " + str(e))
+    sys.exit("  bento pool [status | create NAME | join MACHINE [--brain] | approve M | remove M | leave"
+             " | lead on|off | brain on|off | pin MACHINE|auto | notes [Q] | share TEXT | forget ID | task PIECE...]")
+
+
 def _office_cli(args):
     """`bento office` — the Office playground, as a terminal can have it.
 
@@ -6786,6 +6952,19 @@ def main():
     p_co.add_argument("--words", action="store_true", help="setup: skip the brain, use the catalogue as it is")
     p_co.add_argument("--yes", action="store_true", help="setup: do not ask before making it")
     p_co.add_argument("--user", default="", help="whose company, on a machine with users")
+    p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")
+    p_pool.add_argument("action", nargs="?", default="status",
+                        choices=["status", "show", "create", "join", "approve", "remove", "leave",
+                                 "lead", "brain", "pin", "notes", "share", "forget", "task"], metavar="ACTION",
+                        help="status | create NAME | join MACHINE | approve M | remove M | leave | "
+                             "lead on|off | brain on|off | pin M|auto | notes [Q] | share TEXT | forget ID | task PIECE...")
+    p_pool.add_argument("args", nargs="*", help="the value")
+    p_pool.add_argument("--brain", action="store_true", help="join: think with the leader's brain")
+    p_face = verb("face", help="this machine's screen: one agent drawn, and the kiosk that listens")
+    p_face.add_argument("action", nargs="?", default="show",
+                        choices=["show", "status", "buddy", "kiosk", "wake", "hear"], metavar="ACTION",
+                        help="show | buddy auto|on|off | kiosk on|off | wake name|always | hear ENGINE")
+    p_face.add_argument("args", nargs="*", help="the value")
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
@@ -7097,6 +7276,10 @@ def main():
         _avatar_cli(args)
     elif args.cmd == "company":
         _company_cli(args)
+    elif args.cmd == "pool":
+        _pool_cli(args)
+    elif args.cmd == "face":
+        _face_cli(args)
     elif args.cmd == "office":
         _office_cli(args)
     elif args.cmd == "files":

@@ -588,6 +588,17 @@ function handle(ev){
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged();
       if(typeof officeReload==='function')officeReload(); break;   // a new specialist takes a desk
     case 'office': refreshApp('office'); break;   // the office's look or its seating changed
+    // the community of machines changed, or somebody asks to join it (pool.py)
+    case 'pool': if(typeof poolPaint==='function')poolPaint();
+      if(ev.kind==='pool_request')toast((ev.name||'A machine')+' asks to join your community',
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
+          setTimeout(()=>document.getElementById('s-pool')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+      break;
+    // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
+    case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
+      if(typeof officeReload==='function')officeReload();
+      if(typeof crewRoster==='function')crewRoster(true);
+      if(typeof kioskApply==='function')kioskApply()}); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{

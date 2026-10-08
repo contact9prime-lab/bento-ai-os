@@ -1,0 +1,76 @@
+# One agent on screen, and the kiosk
+
+Two ways to make a small machine's own screen, like a Raspberry Pi with a 7-inch display,
+easy to read and easy to talk to. Both are in *Settings → Appearance → On this screen*, or
+`bento face` in a terminal.
+
+![Settings → Appearance → On this screen: one agent, the kiosk, what it listens for, and what understands speech](screenshots/face-settings.png)
+
+## One agent on screen
+
+The Office and the desktop's Crew scene draw only your agent. Your specialists still exist
+and still work. When one of them is busy, your agent's desk lights up instead, and the
+Office's header says how many work behind it.
+
+![The Office in one-agent mode](screenshots/buddy-office.png)
+
+It is **Auto** by default, which turns it on in Light mode. A Raspberry Pi gets Light mode by
+itself, so it gets one agent on screen without being told. Choose **On** or **Off** to decide
+for yourself.
+
+## The kiosk
+
+The machine's own screen becomes the Office, full screen, with the microphone on. Say your
+agent's name and what you need: *"Aria, what's on today?"*. The agents work in the Office
+while the answer is shown and spoken. For twenty seconds after an answer you can follow up
+without the name. Anything else said in the room is ignored and nothing is kept. If you'd
+rather it listened to everything, choose *Everything it hears*.
+
+![The kiosk on a 7-inch screen](screenshots/kiosk-answer.png)
+
+- **Only the screen plugged into the machine** shows the kiosk. A phone or another browser
+  looking at the same machine keeps its desktop. To try it anywhere, open the address with
+  `#kiosk` on the end.
+- **Leave** returns to the desktop until the browser is restarted. Turning the kiosk off for good is
+  the switch in Settings, or `bento face kiosk off`.
+- **A request from the kiosk is an ordinary chat**, in a thread called *At the screen*, with
+  the same permissions as any other. An approval card still appears over the kiosk.
+- A browser needs a tap before it may start the microphone and the voice. If it hasn't had
+  one, the kiosk says *Tap anywhere to start listening*.
+
+### Understanding speech
+
+A browser's own speech recogniser sends the audio to Google, and the Chromium on a Raspberry
+Pi has no key for that, so it fails on the first word. The kiosk records what you say itself
+and this machine turns it into text, with one of:
+
+- **whisper.cpp**, on this machine. Nothing leaves it. Install `whisper-cli` and a model
+  file (a small one such as `ggml-base.en.bin`); Bento finds it in `~/.cache/whisper`,
+  `~/whisper.cpp/models` or `/usr/share/whisper.cpp/models`, or you can name the file in
+  `speech.hear.whisper_model`.
+- **OpenAI**, with the key already under AI providers. It costs a little per minute of audio.
+- **This browser**, where its own recogniser works.
+
+**Auto** uses whisper.cpp when it is installed and OpenAI otherwise. With neither, the kiosk
+shows the sentence that says what to add, and no microphone.
+
+![With nothing that can understand speech](screenshots/kiosk-deaf.png)
+
+### When AgentOS is the whole session
+
+In the session mode, the screen is drawn by WebKitGTK. It used to refuse every microphone
+request, because nothing answered WebKit's permission question, so voice input never
+worked there. The session host now grants the microphone, and only the microphone, to this
+machine's own page.
+
+## In a terminal
+
+```sh
+bento face                      # what is on, and what can understand speech
+bento face buddy on|off|auto
+bento face kiosk on|off
+bento face wake name|always
+bento face hear auto|whisper.cpp|openai|browser
+```
+
+A terminal has no office to draw, so here you only set it.

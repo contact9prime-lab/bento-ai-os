@@ -239,6 +239,13 @@ async def startup():
     trainforge = TrainForge(cfg, store, broadcast)
     toolbox.trainforge = trainforge
     toolbox.shell = shell_command  # the parity law: shell actions are tools too
+    # A community of machines (pool.py). Machine-level: it reads the machine's config,
+    # store and gate whoever is signed in, because a community is joined by the machine.
+    from . import pool as poolmod
+    toolbox.pool = poolmod.Pool(cfg=lambda: state.machine_cfg(),
+                                store=lambda: dict.__getitem__(state, "store"),
+                                pdp=lambda: dict.__getitem__(state, "pdp"),
+                                chat=providers.chat, work=_pool_work, event=_pool_event)
     fabricmod.seed_builtins(cfg, store)
     flowsmod.seed_builtin(store)
     usersmod.bind_machine(cfg)   # an admin's save updates this dict in place
@@ -246,7 +253,7 @@ async def startup():
                  mcp=mcp, telegram=telegram, whatsapp=whatsapp,
                  clients=clients, client_uids=client_uids,
                  broadcast=broadcast, broadcast_user=broadcast_user,
-                 fabric=control, pdp=pdp, trainforge=trainforge,
+                 fabric=control, pdp=pdp, trainforge=trainforge, pool=toolbox.pool,
                  wayvnc=None,           # the interactive-control server, when running
                  pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
                  shell_pending={},      # cmd id -> Future — shell-control channel (see below)
@@ -269,6 +276,8 @@ async def startup():
             await _team_listen(True)
     if not idle:
         state["team_chat_task"] = asyncio.create_task(_team_chat_sweep())
+        # the community's heartbeat: nothing at all happens unless this machine is in one
+        state["pool_task"] = asyncio.create_task(_pool_loop())
     # An OAuth server asks for consent from inside its own connection attempt, which
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
@@ -667,11 +676,63 @@ async def _team_listen(on: bool) -> dict:
         state["team_listener"] = None
     if on and not state.get("team_listener"):
         lst = teamlink.Listener(state["cfg"], on_ask=_team_on_ask, on_event=_team_on_event,
-                                identity=_team_identity)
+                                identity=_team_identity, on_pool=_pool_on_op)
         await lst.start()
         state["team_listener"] = lst
     lst = state.get("team_listener")
     return {"listening": bool(lst), "port": lst.port if lst else teamlink.team_port(state["cfg"])}
+
+
+async def _pool_on_op(lk: dict, req: dict) -> dict:
+    """A community request on the link door. The community is the MACHINE's, so it is
+    answered as the machine whoever owns the link it came over."""
+    with usersmod.as_user(""):
+        return await state["pool"].on_op(lk, req)
+
+
+async def _pool_event(kind: str, data: dict):
+    """Somebody asked to join (a toast with Review for whoever can let them in), or the
+    community changed (every Settings page repaints)."""
+    ev = {"type": "pool", "kind": kind, **{k: v for k, v in (data or {}).items() if k in ("name",)}}
+    if not usersmod.enabled():
+        await state["broadcast"](ev)
+        return
+    for u in usersmod.list_users():
+        if usersmod.is_admin(u["id"]):
+            await state["broadcast_user"](ev, u["id"])
+
+
+async def _pool_work(task: str, frm: str, pool_id: str) -> dict:
+    """A piece of the community's work, run here by this machine's worker, under this
+    machine's gate. It came from another machine, so it runs tainted: a risky step needs
+    a person here, and with nobody here it is refused at once."""
+    from . import pool as poolmod
+    with usersmod.as_user(""):          # the gate's pool.work decision was made in pool.py
+        store = state["store"]
+        poolmod.ensure_worker(store)
+        d = store.get_subagent("worker")
+        if not d:
+            return {"ok": False, "error": "this machine has no worker"}
+        res = await state["fabric"].run_subagent(
+            d, f"{frm}, the leader of your community, hands you this piece of work:\n\n{task}",
+            kind="pool", taint=[{"tool": "community", "source": frm}])
+        text = (res.get("content") or res.get("fault") or "(no answer)").strip()
+        return {"ok": True, "text": text[:6000], "machine": teamlinkmod_name()}
+
+
+def teamlinkmod_name() -> str:
+    from . import teamlink
+    return teamlink.machine_name(state.machine_cfg())
+
+
+async def _pool_loop():
+    from . import pool as poolmod
+    while True:
+        await asyncio.sleep(poolmod.BEAT_S)
+        with contextlib.suppress(Exception):
+            if poolmod.load().get("role"):
+                with usersmod.as_user(""):
+                    await state["pool"].tick()
 
 
 @app.on_event("shutdown")
@@ -1898,6 +1959,11 @@ async def api_platform(request: Request):
     from . import flows as flowsmod
     state_["os_events"] = {ev: flowsmod.os_event_problem(ev, state_.get("mode"))
                            for ev in flowsmod.OS_EVENTS}
+    # How THIS screen should look (face.py): one agent or the whole crew, and whether the
+    # machine's own screen is the kiosk. A remote browser reads it too, but only the
+    # screen attached to the machine (or a page opened with #kiosk) turns into the kiosk.
+    from . import face as facemod
+    state_["face"] = facemod.state(state.machine_cfg())
     return state_
 
 
@@ -2711,6 +2777,63 @@ async def api_models():
             "engines": engines,
             # which engine this machine forwards to ("" = it answers itself)
             "engine": execmod.resolve_engine(cfg)}
+
+
+@app.get("/api/face")
+async def api_face():
+    """One agent on screen, and the kiosk face (face.py): one answer for every face."""
+    from . import face as facemod
+    cfg = state.machine_cfg()
+    return {**facemod.state(cfg), "description": facemod.describe(cfg)}
+
+
+@app.put("/api/face")
+async def api_face_put(body: dict):
+    """The machine's screen is the machine's: an admin's decision on a machine with
+    accounts, and a ledger row like every other change to the machine."""
+    from . import face as facemod
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can change how this machine's screen looks"},
+                            status_code=403)
+    b = body or {}
+    cfg = state["cfg"]
+    ok, msg = facemod.set_face(cfg, buddy=b.get("buddy"), kiosk=b.get("kiosk") if "kiosk" in b else None,
+                               wake=b.get("wake"))
+    if not ok:
+        return JSONResponse({"error": msg}, status_code=400)
+    if "hear" in b and isinstance(b["hear"], str):
+        from . import hearing
+        if b["hear"] not in hearing.ENGINES:
+            return JSONResponse({"error": "speech is understood by one of " + ", ".join(hearing.ENGINES)},
+                                status_code=400)
+        cfg.setdefault("speech", {}).setdefault("hear", {})["engine"] = b["hear"]
+    cfgmod.save_config(cfg)
+    if cfg is not state.machine_cfg():
+        state.machine_cfg()["face"] = dict(cfg["face"])
+        if "hear" in b:
+            state.machine_cfg().setdefault("speech", {})["hear"] = dict(cfg["speech"]["hear"])
+    facemod.record(state["store"], msg)
+    await state["broadcast"]({"type": "face"})
+    return {**facemod.state(state.machine_cfg()), "description": msg}
+
+
+@app.post("/api/speech/hear")
+async def api_speech_hear(request: Request, lang: str = ""):
+    """One spoken utterance (16 kHz mono WAV from the kiosk face) to text, on whatever
+    this machine has (hearing.py). The browser's own recogniser is not used for this
+    because Chromium on a Raspberry Pi has no key for Google's speech service."""
+    from . import hearing
+    wav = bytearray()
+    async for part in request.stream():     # read to the cap and no further
+        wav += part
+        if len(wav) > hearing.MAX_BYTES:
+            return JSONResponse({"error": "That was too long to understand in one go."}, status_code=413)
+    wav = bytes(wav)
+    try:
+        text = await hearing.transcribe(state.machine_cfg(), wav, lang)
+    except hearing.HearError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"text": text}
 
 
 @app.get("/api/profile")
@@ -10335,6 +10458,182 @@ async def api_subagents():
             # who is in which department: the Crew stage draws one figure per department
             # from this, and every scene reads the same answer (company.membership)
             "company": companymod.membership(cfg, state["store"])}
+
+
+# ---- a community of machines (pool.py) -----------------------------------------------
+# The machine's, so admin-only to change on a machine with accounts; everyone may look.
+
+def _pool_view() -> dict:
+    from . import pool as poolmod
+    from . import teamlink
+    cfg = state.machine_cfg()
+    v = poolmod.view(cfg)
+    v["can_change"] = usersmod.is_admin(usersmod.current())
+    v["listening"] = bool(state.get("team_listener"))
+    v["has_brain"] = poolmod.has_brain(cfg)
+    v["using_brain"] = str(cfg.get("default_model") or "").startswith("pool/")
+    v["linked"] = [{"label": lk["label"], "name": lk.get("peer_name") or lk["label"]}
+                   for lk in teamlink.links(None) if lk.get("kind") == "machine" and lk.get("url")]
+    return v
+
+
+async def _pool_changed(what: str):
+    _ledger("pool.write", "pool:community", what)
+    await _pool_event("pool", {})
+
+
+def _pool_save_cfg(cfg: dict):
+    cfgmod.save_config(cfg)
+    providers.forget_models()
+
+
+@app.get("/api/pool")
+async def api_pool():
+    return _pool_view()
+
+
+@app.post("/api/pool/create")
+async def api_pool_create(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    try:
+        poolmod.create(state.machine_cfg(), str((body or {}).get("name") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _pool_changed("started a community")
+    return _pool_view()
+
+
+@app.post("/api/pool/join")
+async def api_pool_join(body: dict):
+    """Ask a linked machine to let this one into its community. Joining is this
+    machine's consent that the community may hand it work (one grant, revocable)."""
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    b = body or {}
+    cfg = state.machine_cfg()
+    try:
+        await poolmod.join(cfg, str(b.get("label") or ""), owner=usersmod.current() or "")
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    d = poolmod.load()
+    with usersmod.as_user(""):
+        poolmod.grant_work(state["store"], d["pool"]["id"], d["pool"]["name"])
+        poolmod.ensure_worker(state["store"])
+    if b.get("use_brain") or (b.get("use_brain") is None and not poolmod.has_brain(cfg)):
+        poolmod.set_use_brain(cfg, True)
+        _pool_save_cfg(cfg)
+    await _pool_changed(f"asked to join '{d['pool']['name']}'")
+    return _pool_view()
+
+
+@app.post("/api/pool/approve")
+async def api_pool_approve(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    try:
+        with usersmod.as_user(""):
+            e = poolmod.approve(state["store"], str((body or {}).get("who") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _pool_changed(f"let {e.get('name')} into the community")
+    return _pool_view()
+
+
+@app.post("/api/pool/remove")
+async def api_pool_remove(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    try:
+        with usersmod.as_user(""):
+            e = poolmod.remove(state["store"], str((body or {}).get("who") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _pool_changed(f"removed {e.get('name')} from the community")
+    return _pool_view()
+
+
+@app.post("/api/pool/leave")
+async def api_pool_leave():
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    cfg = state.machine_cfg()
+    d = poolmod.load()
+    with usersmod.as_user(""):
+        if d.get("pool"):
+            state["store"].revoke_grants_for("pool", d["pool"]["id"], source="pool")
+        if d.get("role") == "leader":
+            poolmod.drop_leader_grants(state["store"], d)
+    await poolmod.leave(cfg)
+    _pool_save_cfg(cfg)
+    await _pool_changed("left the community")
+    return _pool_view()
+
+
+@app.put("/api/pool")
+async def api_pool_put(body: dict):
+    """This machine's part: may it lead (and pay for everybody's thinking), does it think
+    with the leader's brain, and (on the leader) which machine leads next."""
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    b = body or {}
+    cfg = state.machine_cfg()
+    said = []
+    if "lead_ok" in b:
+        if b["lead_ok"] and not poolmod.has_brain(cfg):
+            return JSONResponse({"error": "to lead, this machine needs a brain of its own: a model "
+                                          "with a key or a local model under AI providers"}, status_code=400)
+        poolmod.set_lead_ok(bool(b["lead_ok"]))
+        said.append("may lead" if b["lead_ok"] else "may not lead")
+    if "use_brain" in b:
+        if b["use_brain"] and poolmod.load().get("role") != "member":
+            return JSONResponse({"error": "only a member thinks with its leader's brain"}, status_code=400)
+        poolmod.set_use_brain(cfg, bool(b["use_brain"]))
+        _pool_save_cfg(cfg)
+        said.append("thinks with the leader's brain" if b["use_brain"] else "thinks with its own brain")
+    if "pin" in b:
+        d = poolmod.load()
+        if d.get("role") != "leader":
+            return JSONResponse({"error": "only the leader chooses who leads next"}, status_code=400)
+        e = poolmod._find_member(d, str(b["pin"] or "")) if b["pin"] else None
+        if b["pin"] and not (e and poolmod.eligible(e)):
+            return JSONResponse({"error": "that machine may not lead (it needs a brain and its own "
+                                          "admin's yes)"}, status_code=400)
+        d["pin"] = e["fp"] if e else ""
+        poolmod.save(d)
+        said.append(f"{e.get('name')} leads next" if e else "the most capable machine leads next")
+    await _pool_changed("; ".join(said) or "no change")
+    return _pool_view()
+
+
+@app.get("/api/pool/notes")
+async def api_pool_notes(q: str = ""):
+    from . import pool as poolmod
+    return {"notes": poolmod.notes_search(q, limit=100), "count": poolmod.notes_count()}
+
+
+@app.post("/api/pool/notes")
+async def api_pool_note_add(body: dict):
+    from . import pool as poolmod
+    from . import teamlink
+    try:
+        got = poolmod.note_add(str((body or {}).get("content") or ""),
+                               machine=teamlink.machine_name(state.machine_cfg()), agent="you")
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return got
+
+
+@app.delete("/api/pool/notes/{nid}")
+async def api_pool_note_forget(nid: str):
+    from . import pool as poolmod
+    return {"ok": poolmod.note_forget(nid)}
 
 
 @app.get("/api/team/links")

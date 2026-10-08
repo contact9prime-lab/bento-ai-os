@@ -257,7 +257,13 @@ def view(cfg: dict, store) -> dict:
         rooms.append({"kind": "meeting", "name": "Meeting room", "color": "amber", "members": []})
     if office["lounge"]:
         rooms.append({"kind": "lounge", "name": "Lounge", "color": "lime", "members": []})
-    return {"office": office, "rooms": rooms, "agents": roster,
+    # Buddy (face.py): only the lead is drawn. Specialists still exist and still work,
+    # and the page lights the lead's desk for their work; the editor keeps the full plan.
+    from . import face as facemod
+    one = facemod.buddy(cfg)
+    if one:
+        rooms = [r for r in rooms if r["kind"] in ("lead", "lounge")]
+    return {"office": office, "rooms": rooms, "agents": roster, "buddy": one,
             "style": STYLES[office["style"]], "styles": STYLES, "colors": COLORS,
             "decor": list(DECOR), "pets": list(PETS), "max_departments": MAX_DEPTS}
 

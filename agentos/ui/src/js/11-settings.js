@@ -353,6 +353,11 @@ function setTab(body,all){
          more:'Both screens show the same six digits when you link. Nothing gets through until you choose which of your agents they can ask, and their answers are treated as untrusted.',
          f:'team linked teams remote machine mtls pair invite account handshake federation link request approve'}),
     ],{f:'team agents providers huddle'}));
+    /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
+       One machine leads and lends its brain; small machines join, share notes and take
+       pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
+    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
@@ -448,6 +453,9 @@ function setTab(body,all){
        Office's own Design panel and the setup step). Departments and who sits where
        stay in the Office, where you can see the desks. Terminal: `bento office`. */
     P.push(`<div class="pgroup" data-f="office scene crew playground design style pet name describe"><h3>Office</h3><div id="s-office"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    /* This machine's own screen: one agent drawn (buddy) and the kiosk face, both the
+       machine's (face.py), painted from /api/face by 24h-kiosk.js. Terminal: `bento face`. */
+    P.push(`<div class="pgroup" data-f="on this screen buddy one agent kiosk mic listening raspberry pi light mode speech whisper"><h3>On this screen</h3><div id="s-face"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     /* A look laid over the theme, not a theme: it is a switch here rather than
        a card in the gallery so that it composes with whichever theme is on.
        Applied the moment it is flipped, like the theme select above — Save is
@@ -583,6 +591,7 @@ function setTab(body,all){
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
   if(main.querySelector('#s-office'))officeSettingsPaint();
+  if(main.querySelector('#s-face'))faceSettingsPaint();
   if(main.querySelector('#v-voice'))settingsVoices();
   if(main.querySelector('#v-engine-box'))speechPaint();
   const bm=main.querySelector('#s-build-model');

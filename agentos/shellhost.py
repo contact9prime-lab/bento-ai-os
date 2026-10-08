@@ -280,6 +280,25 @@ def main(argv: list[str] | None = None) -> int:
     # The desktop must never show a browser's error page; we retry instead.
     view.connect("load-failed", lambda *_: True)
 
+    # The microphone. WebKitGTK DENIES a permission request nobody handles, so
+    # `set_enable_media_stream` alone gave the page a getUserMedia that always failed:
+    # voice input and the kiosk face (which listens) were dead on the one face that is
+    # most often a screen with nobody at a keyboard. Granted only for audio, and only
+    # to this host's own page; anything else (a camera, a location, a page that is not
+    # ours) keeps WebKit's default, which is no.
+    def on_permission(_v, req):
+        try:
+            ours = (_v.get_uri() or "").startswith(url.rstrip("/"))
+            if (ours and isinstance(req, WebKit2.UserMediaPermissionRequest)
+                    and req.get_property("is-for-audio-device")
+                    and not req.get_property("is-for-video-device")):
+                req.allow()
+                return True
+        except Exception:
+            pass
+        return False
+    view.connect("permission-request", on_permission)
+
     # ---- proving the desktop actually appeared -------------------------------
     # This is the difference between a fallback that works and a black screen you
     # have to power-cycle. Importing the libraries proves nothing about whether
