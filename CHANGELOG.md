@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.20 — 2026-10-09
+
+**Settings has a Permissions tab and a Team & Communications tab.**
+- **Team & Communications** holds everything about your agents working together, which used
+  to be half of the Agents page:
+  - each agent's own provider;
+  - how agents message each other (ask me, swarm, democracy or off);
+  - free talk and the log of every agent-to-agent conversation;
+  - the limits, and who may ask whom;
+  - linked teams, and messages with the people on them;
+  - the community of machines, new machines and devices without Bento.
+- **Permissions** brings the permission settings together:
+  - autonomy, applied right away;
+  - how content from a web page or an MCP server is treated;
+  - a count of what is allowed right now by where it came from, and what waits for your
+    review or sits in quarantine, each opening the Permissions app on that tab;
+  - the ledger: a new switch that refuses an action whose ledger row could not be written,
+    and a check that no row was changed.
+- The Agents page keeps your agents: the lead, the specialists, the map, conversation
+  history and sharing.
+- The toasts for a new machine or a community request open the new tab, and the launcher
+  finds both tabs by their words ("autonomy", "ledger", "linked teams", "community").
+
 ## 0.6.19 — 2026-10-09
 
 **New machines are noticed, and set up from the one that leads.** A fresh Raspberry Pi with

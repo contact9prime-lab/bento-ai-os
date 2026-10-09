@@ -204,9 +204,30 @@ chosen in AI providers. Below it, **Your agents** shows each specialist on one c
   team that may ask it.
 
 **Edit** opens the agent editor (soul, tools, skills, autonomy). **＋ New agent** creates
-one. **Working together** holds the team settings: each agent's own provider, whether agents
-may message each other (ask me / swarm / off), the limits, who may ask whom, and linked
-teams.
+one.
+
+Two tabs sit beside Agents:
+
+- **Team & Communications** has everything about agents working together:
+  - each agent's own provider;
+  - whether agents may message each other (ask me, swarm, democracy or off);
+  - free talk and the log of every agent-to-agent conversation;
+  - the limits, and who may ask whom;
+  - linked teams, and messages with the people on them;
+  - the community of machines, new machines, and devices without Bento.
+- **Permissions** has what your agents may do on their own:
+  - autonomy, and how content from a web page or an MCP server is treated;
+  - a count of what is allowed right now, by where it came from (you, missions, the matrix,
+    linked teams, the community, apps), and what waits for your review or sits in
+    quarantine;
+  - the ledger: whether an action that can't be recorded is refused, a check that no row was
+    changed, and a door into it.
+
+  Each count opens the Permissions app on the matching tab.
+
+![Settings → Permissions: what is allowed now by source, waiting for review, and the ledger check](screenshots/settings-permissions.png)
+
+![Settings → Team & Communications: each agent's provider, messaging mode and free talk](screenshots/settings-team.png)
 
 ![The same page on a 390px phone](screenshots/settings-agents-phone.png)
 

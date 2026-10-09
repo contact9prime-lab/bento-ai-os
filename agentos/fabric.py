@@ -89,7 +89,7 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
         pid = pinned.split("/", 1)[0]
         title = executors.EXECUTORS_BY_ID.get(pid, {}).get("title", pid)
         if not own_ok:
-            note = "every agent uses this machine's brain (Agents → Working together)"
+            note = "every agent uses this machine's brain (Team & Communications)"
         elif pid not in executors.MCP_ENGINES:
             note = f"{title} cannot be handed this OS's tools yet"
         elif not executors.probe(pid).get("installed"):
@@ -101,7 +101,7 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
         conf = (cfg.get("providers") or {}).get(pid)
         label = names.get(pid, pid)
         if not own_ok:
-            note = "every agent uses this machine's brain (Agents → Working together)"
+            note = "every agent uses this machine's brain (Team & Communications)"
         elif conf is None:
             note = f"'{pid}' is not a provider on this machine"
         elif not conf.get("enabled"):
@@ -1884,8 +1884,8 @@ class ControlPlane(usersmod.Scoped):
         ledger row written here and every message after it point at one id."""
         from .policy import team_talk
         if team_talk(self.cfg) == "off":
-            raise ValueError("Agents messaging each other is off in Settings → Agents → "
-                             "Working together. Turn it on to let them talk.")
+            raise ValueError("Agents messaging each other is off in Settings → Team & "
+                             "Communications. Turn it on to let them talk.")
         if mode not in FREE_TALK_MODES:
             raise ValueError(f"mode is one of: {', '.join(FREE_TALK_MODES)}")
         if any(s["uid"] == uid and s["status"] == "running" for s in self._free_talks().values()):

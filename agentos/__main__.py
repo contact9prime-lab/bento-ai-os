@@ -4572,7 +4572,7 @@ def _team_draft(args, cfg, store, colour):
 def _team_cli(args):
     """`bento team` — who answers on which AI provider, in a terminal.
 
-    The TUI face of Settings → Agents → Working together. `list` prints each agent with
+    The TUI face of Settings → Team & Communications. `list` prints each agent with
     the brain it answers on RIGHT NOW (fabric.agent_brain — the same answer the Crew
     stage's tag and the chat's chip show) and why, if that is not its pin. `set`
     pins one agent through the same door the page and the agent's tool use

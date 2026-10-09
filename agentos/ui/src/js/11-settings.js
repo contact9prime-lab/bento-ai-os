@@ -116,6 +116,8 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
   ['agent','◈','Agents','agent'],
+  ['team','⚇','Team & Communications','team'],
+  ['permissions','⛨','Permissions','shield'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
   ['accounts','✉','Accounts','accounts'],
@@ -138,7 +140,7 @@ async function renderSettings(body){
       </div>
       <div class="prefs">
         <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label,ico])=>
-          `<button data-t="${id}" class="${SETTAB===id?'on':''}"><span class="psi"><i>${ic}</i>${uiIcon(ico,14)}</span>${esc(label)}</button>`).join('')}</div>
+          `<button data-t="${id}" class="${SETTAB===id?'on':''}${label.length>16?' lng':''}"><span class="psi"><i>${ic}</i>${uiIcon(ico,14)}</span><span class="pst">${esc(label)}</span></button>`).join('')}</div>
         <div class="prefs-main" id="prefs-main"></div>
       </div>
     </div>`;
@@ -293,6 +295,29 @@ function setTab(body,all){
     ],{f:'agent identity name workspace lead'}));
     P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
     setTimeout(renderAgentsList,0);
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    setTimeout(renderAgentsGraph,0);
+
+    P.push(pGroup('Conversations',[
+      pRow('Conversation history',pSelect('s-hist-compact',[
+        ['on','Summarise older turns when the thread outgrows the model'],
+        ['off','Drop them instead']],(cfg.history&&cfg.history.compact===false)?'off':'on'),
+        {desc:'What happens when a long thread no longer fits the model.',more:'Either way, the conversation tells you when it happens.',
+         f:'history compaction summary context window long thread'}),
+    ],{f:'history compaction context'}));
+    /* Sharing the agent belongs on the page that answers "who is my agent" —
+       11c-agentshare.js renders it, agentbundle.py decides everything. */
+    P.push(`<div id="agent-share-box" class="pgroup" data-f="share fork agent bundle export import publish"><h3>Share this agent</h3><p class="mut">checking…</p></div>`);
+    setTimeout(renderAgentShare,0);
+  }
+  if(want('team')){
+    /* Team & Communications: everything about your agents working with each other,
+       with other teams and with other machines, and the people on those teams. It
+       used to be half of the Agents page; Agents now answers only "who are my agents".
+       Each piece keeps its own painter (paintTeamBrains, paintTeamMatrix, paintTeamLinks,
+       freeTalkPaint, talkLogPaint, poolPaint, provPaint). TUI: `bento team`, `bento link`,
+       `bento pool`. SUI: this page; nothing here touches the compositor. */
+    P.push(`<h2>Team &amp; Communications</h2><p class="lead">How your agents work together, and with other teams and machines. ${pInfo('Asking each other, huddles and free talk, linked teams on other machines or accounts, messages with the people on them, and a community of small machines.')}</p>`);
     /* The team: each specialist may answer on its OWN provider — a researcher on a
        local model, a validator on Claude, a writer on GPT — and they can hand work to
        each other and talk it through in a huddle. One switch turns that off (one
@@ -364,10 +389,27 @@ function setTab(body,all){
     setTimeout(paintTeamLimits,0);
     setTimeout(freeTalkPaint,0);
     setTimeout(talkLogPaint,0);
-    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
-    setTimeout(renderAgentsGraph,0);
-
-    P.push(pGroup('Content from outside',[
+    P.push(pGroup('Messages',[
+      pRow('People on linked teams','<button class="endbtn" onclick="openApp(\'teamchat\')">Open Team Chat</button> <button class="endbtn" onclick="tcRename()">Your name…</button>',
+        {desc:'Write to the people on your linked teams. Your agents never read these.',
+         more:'You can refuse messages from one team in Team Chat. On a machine with accounts your name is your account’s name.',
+         f:'team chat messages people linked teams write talk name mute'}),
+      pRow('Reach your agent','<button class="endbtn" onclick="settingsGo(\'channels\')">Channels</button>',
+        {desc:'Telegram, WhatsApp and the other ways to talk to your agent.',f:'channels telegram whatsapp reach phone'}),
+    ],{f:'messages communications team chat channels'}));
+  }
+  if(want('permissions')){
+    /* Permissions: what your agents may do on their own, how outside content is
+       treated, and the ledger that records every decision. The detail (every grant,
+       review, quarantine, rules, the ledger itself) is the Permissions app; this tab
+       counts it and opens the right part (permGo). TUI: `bento grants`, `bento audit`. */
+    P.push(`<h2>Permissions</h2><p class="lead">What your agents may do on their own, and the record of what they did. ${pInfo('Every decision is a row in the ledger. Each permission can be reviewed and revoked in the Permissions app.')}</p>`);
+    P.push(pGroup('On their own',[
+      pRow('Autonomy',pSelect('s-autonomy',[['paranoid','Paranoid: ask for everything but reading'],
+          ['balanced','Balanced: ask before anything risky'],['full','Full: act, and ask only when it must']],cfg.autonomy||'balanced'),
+        {desc:'How much your agent does before it asks you.',
+         more:'Some steps always ask a person, like sending mail or acting on what a web page said. Applies right away.',
+         f:'autonomy paranoid balanced full ask approve risky level'}),
       pRow('After reading a web page or an MCP reply',pSelect('s-taint',[
         ['ask','Ask before anything that changes something'],
         ['strict','Refuse to change anything for the rest of the turn'],
@@ -375,16 +417,28 @@ function setTab(body,all){
         {desc:'Web pages and outside servers can hide instructions meant to trick your agent.',
          more:'This applies for the rest of that turn, even at Full autonomy, which trusts your instructions and nobody else’s.',
          f:'taint injection untrusted prompt security web page mcp'}),
-      pRow('Conversation history',pSelect('s-hist-compact',[
-        ['on','Summarise older turns when the thread outgrows the model'],
-        ['off','Drop them instead']],(cfg.history&&cfg.history.compact===false)?'off':'on'),
-        {desc:'What happens when a long thread no longer fits the model.',more:'Either way, the conversation tells you when it happens.',
-         f:'history compaction summary context window long thread'}),
-    ],{f:'security untrusted injection history'}));
-    /* Sharing the agent belongs on the page that answers "who is my agent" —
-       11c-agentshare.js renders it, agentbundle.py decides everything. */
-    P.push(`<div id="agent-share-box" class="pgroup" data-f="share fork agent bundle export import publish"><h3>Share this agent</h3><p class="mut">checking…</p></div>`);
-    setTimeout(renderAgentShare,0);
+    ],{f:'autonomy security untrusted injection'}));
+    P.push(`<div class="pgroup" data-f="grants permissions allowed remembered missions matrix linked community apps review quarantine held"><h3>What's allowed right now</h3><div id="s-perm-sum"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(permSummaryPaint,0);
+    P.push(pGroup('The ledger',[
+      pRow('Stop what can’t be recorded',pSwitch('s-audit-strict',!!(cfg.security&&cfg.security.audit_fail_closed)),
+        {desc:'Refuse an action if its ledger row could not be written.',
+         more:'Off, the action still runs and the failure is logged. On, nothing happens without a record.',
+         f:'ledger audit fail closed record strict'}),
+      pRow('Check the ledger','<button class="endbtn" id="s-audit-verify" onclick="permVerifyLedger(this)">Check it</button>',
+        {desc:'Make sure no row was changed or deleted.',more:'Each row is chained to the one before it. Admin only.',
+         f:'ledger audit verify tamper chain check'}),
+      pRow('Read it','<button class="endbtn" onclick="permGo(\'ledger\')">Open the ledger</button>',
+        {desc:'Every decision, with who asked, what for, and the answer.',f:'ledger audit log history decisions'}),
+    ],{f:'ledger audit'}));
+    P.push(pGroup('Elsewhere',[
+      pRow('What each agent can reach','<button class="endbtn" onclick="settingsGo(\'executors\')">Executors</button>',
+        {desc:'Tools, folders, web and MCP servers. A limit no permission goes past.',f:'executors hands reach folders tools limit jail'}),
+      pRow('Who may ask whom','<button class="endbtn" onclick="settingsGo(\'team\')">Team &amp; Communications</button>',
+        {desc:'Which of your agents may ask which, and what linked teams may ask.',f:'matrix who may ask whom linked team standing'}),
+      pRow('Per channel','<button class="endbtn" onclick="settingsGo(\'channels\')">Channels</button>',
+        {desc:'How much Telegram, WhatsApp and the others are trusted.',f:'channel permissions trust telegram whatsapp'}),
+    ],{f:'permissions elsewhere'}));
   }
   if(want('locale')){
     P.push(`<h2>Locale</h2><p class="lead">Where and when you are, so news, weather, prices and holidays fit where you live. ${pInfo('The desktop session also takes your timezone and language from here.')}</p>`);
@@ -560,7 +614,7 @@ function setTab(body,all){
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),
-      pRow('Permissions','<button class="endbtn" onclick="openApp(\'permissions\')">Open</button>',{desc:'What apps and the agent are allowed to do.',f:'permissions grants'}),
+      pRow('Permissions','<button class="endbtn" onclick="settingsGo(\'permissions\')">Open</button>',{desc:'What apps and the agent are allowed to do.',f:'permissions grants'}),
       pRow('Snapshots','<button class="endbtn" onclick="openApp(\'snapshots\')">Open</button>',{desc:'Quick restore points on this machine. To move machines, use Backup.',f:'snapshots restore'}),
     ],{f:'system machine'}));
     P.push(pGroup('Danger zone',[
@@ -590,6 +644,14 @@ function setTab(body,all){
   if(sc)sc.onchange=()=>setImmersiveScene(sc.value);
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
+  // autonomy applies on the spot, like the chat header's selector it mirrors
+  const au=main.querySelector('#s-autonomy');
+  if(au)au.onchange=async()=>{
+    const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({autonomy:au.value})});
+    if(!r.ok)return toast('could not change autonomy');
+    cfg.autonomy=au.value;const cs=document.getElementById('autosel');if(cs)cs.value=au.value;
+    toast('✓ Autonomy: '+au.options[au.selectedIndex].text.split(':')[0]);
+  };
   if(main.querySelector('#s-office'))officeSettingsPaint();
   if(main.querySelector('#s-face'))faceSettingsPaint();
   if(main.querySelector('#v-voice'))settingsVoices();
@@ -829,7 +891,11 @@ async function saveSettings(){
   /* NOT folders: this page no longer edits them, and sending the key at all
      would send an empty list and silently unshare everything. */
   if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
-  if(val('s-taint')!==undefined)patch.security={taint:val('s-taint')};
+  if(val('s-taint')!==undefined||on('s-audit-strict')!==undefined){
+    patch.security={};
+    if(val('s-taint')!==undefined)patch.security.taint=val('s-taint');
+    if(on('s-audit-strict')!==undefined)patch.security.audit_fail_closed=on('s-audit-strict');
+  }
   if(val('s-hist-compact')!==undefined)patch.history={compact:val('s-hist-compact')!=='off'};
   const providers={};
   const add=(k,v)=>{if(v)providers[k]=v};
@@ -1330,7 +1396,7 @@ function openLinkedTeams(){
   SETTAB='ai';try{localStorage.setItem('settab','ai')}catch(e){}
   openApp('settings');
   setTimeout(()=>{
-    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="agent"]')?.click();
+    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="team"]')?.click();
     setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
   },250);
 }
@@ -1507,3 +1573,53 @@ async function teamLinkCheck(label,btn){
     :(r.agents||[]).length?'Reachable. Your agents can ask '+r.agents.map(a=>a.name+' ('+a.provider+')').join(', ')+', as name@'+label+'.'
     :'Reachable. They haven’t let your team ask any of their agents yet. That’s up to them.';
 }
+
+/* ---------------- Settings → Permissions: the counts, and doors into the app ----------------
+   The Permissions app holds the detail; this card counts what is allowed now, by where it
+   came from, and what waits for you, and opens the app on the matching tab (permGo). */
+function permGo(tab){
+  if(typeof PERM!=='undefined')PERM.tab=tab;
+  const had=typeof winsOf==='function'&&winsOf('permissions').length;
+  openApp('permissions');
+  if(had)refreshApp('permissions');
+}
+var PERM_SOURCES=[['user','You allowed','Allow and remember, or a grant you wrote'],
+  ['definition','Missions','What each enabled mission was given'],
+  ['matrix','Who may ask whom','Agents asking each other'],
+  ['link','Linked teams','Standing permissions for another team'],
+  ['pool','Community','Machines in your community'],
+  ['manifest','Apps','What installed apps were approved for']];
+async function permSummaryPaint(){
+  const box=document.getElementById('s-perm-sum');if(!box)return;
+  let gs=[],held=[],apps=[];
+  try{gs=(await apiJSON('/api/grants')).grants||[]}catch(e){box.innerHTML=`<p class="mut pad">${esc(e.message||e)}</p>`;return}
+  try{held=(await apiJSON('/api/quarantine')).held||[]}catch(e){}
+  try{apps=((await apiJSON('/api/apps')).apps||[]).filter(a=>(a.manifest_status||'none')==='proposed')}catch(e){}
+  const now=Date.now()/1000,live=gs.filter(g=>!g.revoked_at&&!(g.expires_at&&g.expires_at<now));
+  const known=new Set(PERM_SOURCES.map(x=>x[0]));
+  const rows=PERM_SOURCES.map(([src,label,desc])=>{
+    const mine=live.filter(g=>(g.source||'user')===src||(src==='manifest'&&g.principal_kind==='app'&&!known.has(g.source||'')));
+    if(!mine.length)return '';
+    const deny=mine.filter(g=>g.effect==='deny').length;
+    return pRow(label,`<span class="perm-n">${mine.length}${deny?` <small class="mut">(${deny} blocked)</small>`:''}</span>`,{desc,f:'permissions '+label.toLowerCase()});
+  }).join('');
+  const other=live.filter(g=>!known.has(g.source||'user')&&g.principal_kind!=='app').length;
+  box.innerHTML=(rows||pRow('Nothing yet','<span class="mut">0</span>',{desc:'No agent or app holds a permission beyond what autonomy gives it.'}))
+    +(other?pRow('Other',`<span class="perm-n">${other}</span>`,{desc:'Written some other way.'}):'')
+    +pRow('Waiting for you',`<button class="endbtn" onclick="permGo('review')">Review${apps.length?' ('+apps.length+')':''}</button>`
+      +` <button class="endbtn" onclick="permGo('quarantine')">Quarantine${held.length?' ('+held.length+')':''}</button>`,
+      {desc:apps.length||held.length?`${apps.length} app${apps.length==1?'':'s'} to review, ${held.length} held.`:'Nothing is waiting.',
+       more:'An app asking for more, or anything held for running too often, waits here until you decide.',f:'review quarantine held waiting'})
+    +pRow('Every permission',`<button class="endbtn" onclick="permGo('map')">Policy map</button> <button class="endbtn" onclick="permGo('grants')">All grants</button> <button class="endbtn" onclick="permGo('rules')">Rules</button>`,
+      {desc:'See, change or revoke any of them.',f:'policy map all grants rules revoke'});
+  if(typeof pTidy==='function')pTidy(box);
+}
+async function permVerifyLedger(b){
+  b.disabled=true;b.textContent='Checking…';
+  let d;try{d=await apiJSON('/api/audit/verify')}catch(e){d={ok:false,reason:String(e.message||e)}}
+  b.disabled=false;b.textContent='Check it';
+  const small=b.closest('.prow')&&b.closest('.prow').querySelector('small');
+  const line=d.ok?`✓ Intact: ${d.checked||0} rows checked.`:`✗ ${d.reason||d.error||'could not check'}${d.seq?' (row '+d.seq+')':''}`;
+  if(small)small.textContent=line;toast(line);
+}
+

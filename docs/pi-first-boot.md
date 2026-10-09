@@ -66,7 +66,7 @@ and the router's cooperation, so Bento doesn't try. What it does use:
 ### 1. Bento on the card: nothing to press (trixie)
 
 Write the card with Raspberry Pi Imager as usual, setting a user, Wi-Fi and SSH. Keep the card
-plugged into the machine that leads your community, then go to *Settings → Agents → Community →
+plugged into the machine that leads your community, then go to *Settings → Team & Communications → Community →
 Set up an SD card*, press **Add Bento to a card** and give the path of the boot partition.
 From a terminal:
 
@@ -103,7 +103,7 @@ installed from the leader:
    on every address of this machine's own network.
 2. Every machine that answers is listed with its name, its maker (from the MAC), its SSH banner
    and an OS hint. Pis are marked.
-3. Press **Install Bento** on one, under *Settings → Agents → Community → Devices without Bento*. Type the user and password that Imager set, or leave the
+3. Press **Install Bento** on one, under *Settings → Team & Communications → Devices without Bento*. Type the user and password that Imager set, or leave the
    password empty if the card already carries the leader's key. **Check it** logs in, reads what
    the machine is (processor, board, free space, memory) and changes nothing. It shows the exact
    command that will run there and the fingerprint of that machine's SSH key.
@@ -147,8 +147,8 @@ it waits to be set up and you enable it with its code or a key. See
 - **What will run is shown before it runs**, and the install runs the same `install.sh` you
   would run yourself, from this machine's own update source.
 - **A card's key is on the card in clear.** Anyone holding the card holds that key. It is made
-  for one machine and spent when that machine is set up. Revoke an unused one in *Settings →
-  Agents → Community*.
+  for one machine and spent when that machine is set up. Revoke an unused one in *Settings → Team &
+  Communications → Community*.
 - **The system's `ssh`.** Bento uses OpenSSH, which every Pi and nearly every Linux and Mac
   already has, because the Python SSH libraries are not permissively licensed.
 

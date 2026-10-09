@@ -40,7 +40,7 @@ body.kiosk #office-scene canvas{display:block}
   #kiosk-hud .kh-acts{grid-column:2;grid-row:1}
 }
 @media (prefers-reduced-motion:reduce){#kiosk-hud .kh-mic.live{box-shadow:none;outline:2px solid var(--acc)}}
-/* Settings → Agents → Community (24i-pool.js) */
+/* Settings → Team & Communications → Community (24i-pool.js) */
 .pool-list{display:flex;flex-direction:column;gap:6px;width:100%}
 .pool-m{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:var(--r-md,10px);
   background:color-mix(in srgb,var(--txt) 4%,transparent);border-left:3px solid color-mix(in srgb,var(--txt) 20%,transparent)}
