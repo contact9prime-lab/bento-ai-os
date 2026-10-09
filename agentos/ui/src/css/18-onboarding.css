@@ -165,3 +165,10 @@
 #ob-crew-said{margin-top:6px;font-size:var(--fs-sm)}
 .ob-crew-prev{display:block;width:100%;max-width:640px;margin:8px 0 4px;border-radius:10px;border:2px solid #191827;image-rendering:pixelated;background:#1b2233}
 body.dev-touch .ob-face,body.dev-touch .ob-crew-name input,body.dev-touch #ob-crew-askb{min-height:var(--tap)}
+/* the voice step: what to say, and a meter that moves when the microphone hears you */
+.ob-voice-try{margin-top:12px;padding:12px 14px;border-radius:12px;background:color-mix(in srgb,var(--bg3) 70%,transparent)}
+.ob-voice-try p{margin:4px 0}
+.ob-meter{height:8px;border-radius:4px;background:color-mix(in srgb,var(--txt) 12%,transparent);overflow:hidden;margin:8px 0}
+.ob-meter i{display:block;height:100%;width:0;background:var(--acc-grad,var(--acc));transition:width .08s linear}
+#ob-voice-out.ok,#s-face-test+small.ok{color:var(--ok,#4ade80)}
+#ob-voice-out.warn{color:var(--warn,#f59e0b)}

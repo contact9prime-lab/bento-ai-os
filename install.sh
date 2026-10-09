@@ -39,6 +39,12 @@
 #                             catalogue is fetched while you search and deleted
 #                             when you stop, and telemetry is kept 7 days rather
 #                             than 30. `bento profile` shows or changes it later.
+#   --enroll=KEY              this machine is set up by the Bento that leads your
+#                             community: it carries that community's enrolment key
+#                             (`bento pool key` there) and is set up the moment the
+#                             leader hears it. Same as bento-enroll.txt on a Pi's SD card.
+#   --wait                    wait to be set up by another Bento on this network,
+#                             showing a code to type there (a fresh Pi does this anyway)
 #   --no-service              do not install the launcher/login service (containers, CI)
 #   --no-verify               skip the "prove it works" step
 #
@@ -95,6 +101,9 @@ PORT_WANTED="${AGENTOS_PORT:-}"
 # Empty means "let the machine decide" — the profile resolves from RAM on first
 # run and writes down what it chose.
 PROFILE="${AGENTOS_PROFILE:-}"
+# Set up by another Bento (provision.py): a key to carry, or just "wait and show a code".
+ENROLL="${AGENTOS_ENROLL:-}"
+WAIT_SETUP=""
 
 for a in "$@"; do
   case "$a" in
@@ -106,7 +115,9 @@ for a in "$@"; do
     --port=*) PORT_WANTED="${a#--port=}" ;;
     --lite) PROFILE=lite ;;
     --full) PROFILE=full ;;
-    -h|--help) sed -n '2,43p' "$0"; exit 0 ;;
+    --enroll=*) ENROLL="${a#--enroll=}" ;;
+    --wait) WAIT_SETUP=1 ;;
+    -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
     -*) printf 'unknown flag: %s  (try --help)\n' "$a" >&2; exit 2 ;;
   esac
 done
@@ -961,6 +972,22 @@ if [ -n "$PROFILE" ]; then
     warn "could not set the profile — the machine will decide on first run"
     gap "set it yourself:  bento profile $PROFILE"
   fi
+fi
+
+# Set up by the Bento that leads your community, rather than here: the key makes it
+# zero-touch, --wait shows a code to type there. Either way nothing is granted until
+# that machine's admin (or their automatic key) enables this one.
+if [ -n "$ENROLL" ]; then
+  say "carrying your community's enrolment key"
+  if uv run bento pool enroll "$ENROLL" >/dev/null 2>&1; then
+    ok "this machine is set up by your community's leader as soon as it hears it"
+  else
+    warn "that is not an enrolment key (it starts with bento-enroll-1.)"
+    gap "carry it yourself:  bento pool enroll <key>"
+  fi
+elif [ -n "$WAIT_SETUP" ]; then
+  uv run bento pool wait on >/dev/null 2>&1 && \
+    ok "waiting to be set up by another Bento on this network — \`bento pool wait\` shows the code"
 fi
 
 # ---------------------------------------------------------------------------

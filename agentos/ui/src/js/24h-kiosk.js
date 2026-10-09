@@ -88,7 +88,7 @@ function kioskPaint(){
   const name=agentName(),f=kioskFace(),hear=f.hear||{};
   hud.querySelector('.kh-name').textContent=name;
   const waiting=KIOSK.phase==='listening'?(kioskFollowing()?'Listening. Go ahead.'
-      :(f.wake==='always'?'Listening.':`Say “${name}” and what you need.`)):'';
+      :(f.wake==='always'?'Listening.':`Say “${kioskWakeWords()[0]||name}” and what you need.`)):'';
   hud.querySelector('.kh-line').textContent=KIOSK.line||waiting;
   const h=hud.querySelector('.kh-heard'),r=hud.querySelector('.kh-reply');
   h.hidden=!KIOSK.heard;h.textContent=KIOSK.heard?'“'+KIOSK.heard+'”':'';
@@ -232,13 +232,30 @@ function kioskAddressed(text,name){
   const m=re.exec(t);if(!m)return null;
   return String(text).slice(m.index+m[0].length).replace(/^[\s,.:;!?-]+/,'').trim();
 }
+/* Everything this screen answers to (face.wake_words): the person's own wake word
+   first, then the agent's name, which always works. */
+function kioskWakeWords(){
+  const w=(kioskFace().wake_words||[]).filter(Boolean);
+  const n=agentName();
+  return w.length?w:(n?[n]:[]);
+}
+/* The words after whichever wake word was said first, or null. */
+function kioskAddressedAny(text){
+  let best=null;
+  for(const w of kioskWakeWords()){
+    const after=kioskAddressed(text,w);if(after===null)continue;
+    const at=String(text).toLowerCase().indexOf(String(w).toLowerCase());
+    if(!best||(at>=0&&at<best.at))best={at:at<0?1e9:at,after};
+  }
+  return best?best.after:null;
+}
 function kioskHeard(text){
   text=String(text||'').trim();
   if(!text){kioskSay('','listening');return}
   const f=kioskFace(),name=agentName();
   let ask=text;
   if(f.wake!=='always'&&!kioskFollowing()){
-    const after=kioskAddressed(text,name);
+    const after=kioskAddressedAny(text);
     if(after===null){kioskSay('','listening');return}         // not for us: nothing is kept
     if(!after){KIOSK.heard=text;KIOSK.follow=Date.now()+KIOSK_FOLLOW_MS;
       kioskSpeak('Yes?');return}
@@ -287,6 +304,87 @@ function kioskSpeak(text){
   if(typeof speakAs==='function')speakAs('@agent',clean,done);else done();
 }
 
+/* ---------------- one utterance, for the voice step ----------------
+   The kiosk's own recorder, once: the same level rule, the same 900 ms pause and the
+   same 16 kHz WAV, so what the voice step proves is what the kiosk will do. It
+   resolves with the WAV, or rejects with a sentence: no microphone, not allowed, or
+   nothing said. `onLevel(0..1)` drives a meter so the person can see it hears them. */
+function micOnce(opts){
+  opts=opts||{};
+  const maxWait=opts.wait||9000,onLevel=opts.onLevel||(()=>{});
+  return new Promise(async(resolve,reject)=>{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return reject(new Error('This browser cannot use a microphone.'));
+    let stream;
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}})}
+    catch(e){return reject(new Error('The microphone was not allowed. Allow it for this page and try again.'))}
+    const AC=window.AudioContext||window.webkitAudioContext,ctx=new AC();
+    try{if(ctx.state==='suspended')await ctx.resume()}catch(e){}
+    const src=ctx.createMediaStreamSource(stream),node=ctx.createScriptProcessor(4096,1,1);
+    let floor=0.004,talking=false,chunks=[],pre=[],quiet=0,started=0,done=false;
+    const t0=performance.now();
+    const stop=()=>{done=true;try{node.disconnect();src.disconnect()}catch(e){}
+      try{stream.getTracks().forEach(t=>t.stop())}catch(e){}try{ctx.close()}catch(e){}};
+    node.onaudioprocess=e=>{
+      if(done)return;
+      const data=e.inputBuffer.getChannelData(0);let sum=0;
+      for(let i=0;i<data.length;i++)sum+=data[i]*data[i];
+      const rms=Math.sqrt(sum/data.length),now=performance.now(),frame=new Float32Array(data);
+      onLevel(Math.min(1,rms*12));
+      const on=rms>Math.max(0.012,floor*3.2);
+      if(!talking){
+        floor=floor*0.95+rms*0.05;pre.push(frame);
+        const keep=Math.ceil(KIOSK_PRE_MS/1000*ctx.sampleRate/data.length);
+        while(pre.length>keep)pre.shift();
+        if(on){talking=true;started=now;quiet=0;chunks=pre.slice();pre=[]}
+        else if(now-t0>maxWait){stop();reject(new Error('I did not hear anything. Is the microphone plugged in and not muted?'))}
+        return;
+      }
+      chunks.push(frame);quiet=on?0:(quiet||now);
+      if((quiet&&now-quiet>KIOSK_SILENCE_MS)||now-started>KIOSK_MAX_MS){
+        const rate=ctx.sampleRate;stop();onLevel(0);
+        if(now-started-(quiet?now-quiet:0)<KIOSK_MIN_MS)return reject(new Error('That was too short. Say the name and a few words.'));
+        resolve(kioskWav(chunks,rate));
+      }
+    };
+    src.connect(node);node.connect(ctx.destination);
+  });
+}
+/* Record one utterance and ask this machine whether it heard its wake word.
+   Shared by the voice step and Settings' Test button, so both prove the same thing. */
+async function voiceWakeTest(out,meter){
+  const say=(t,c)=>{if(out){out.textContent=t;out.className='mut '+(c||'')}};
+  const f=kioskFace(),hear=f.hear||{};
+  if(!hear.engine){say(hear.line||'Nothing on this machine can understand speech yet.','warn');return null}
+  let body,headers;
+  if(hear.engine==='browser'){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){say('This browser has no speech recogniser. Choose whisper.cpp or OpenAI below.','warn');return null}
+    say('Listening…');
+    const text=await new Promise(res=>{const r=new SR();r.lang=(typeof VOICE!=='undefined'&&VOICE.lang)||'en-IN';
+      r.onresult=e=>res([...e.results].map(x=>x[0].transcript).join(' '));r.onerror=()=>res('');r.onend=()=>res('');
+      try{r.start()}catch(e){res('')}});
+    body=JSON.stringify({text});headers={'Content-Type':'application/json'};
+  }else{
+    say('Listening… say it now.');
+    let wav;
+    try{wav=await micOnce({onLevel:v=>{if(meter)meter.style.width=Math.round(v*100)+'%'}})}
+    catch(e){say(String(e.message||e),'warn');return null}
+    say('Understanding…');
+    body=wav;headers={'Content-Type':'audio/wav'};
+  }
+  const lang=String((typeof VOICE!=='undefined'&&VOICE.lang)||'').slice(0,5);
+  let d;
+  try{const r=await fetch('/api/face/wake-test?lang='+encodeURIComponent(lang),{method:'POST',headers,body});
+    d=await r.json().catch(()=>({}));if(!r.ok){say(d.error||('could not test that ('+r.status+')'),'warn');return null}}
+  catch(e){say('The machine could not be reached.','warn');return null}
+  if(!d.text){say('I heard sound but no words. Try again a little closer.','warn');return d}
+  if(!d.matched){say(`I heard “${d.text}”, but not ${d.words.map(w=>'“'+w+'”').join(' or ')}. Try again.`,'warn');return d}
+  say(`✓ I heard “${d.text}”.`,'ok');
+  if(typeof speakAs==='function')speakAs('@agent',d.after?`Yes, I heard you. You said: ${d.after}`:'Yes, I heard you.');
+  if(typeof loadPlatform==='function')loadPlatform();
+  return d;
+}
+
 /* ---------------- Settings → Appearance → On this screen ---------------- */
 /* One agent, the kiosk, what it listens for, and what understands speech, from
    /api/face (admin only on a machine with accounts: a screen is the machine's). */
@@ -303,8 +401,14 @@ async function faceSettingsPaint(){
       {desc:'This machine’s own screen shows the Office and listens.',
        more:'Only the screen plugged into this machine. A phone or another browser keeps the desktop. Add #kiosk to the address to try it anywhere.',
        f:'kiosk mic microphone always listening screen office raspberry pi wake word'}),
-    pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Your agent’s name'],['always','Everything it hears']],d.wake||'name'),
-      {desc:'With a name, anything else said in the room is ignored.',f:'wake word name always listening'}),
+    pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Its wake word'],['always','Everything it hears']],d.wake||'name'),
+      {desc:'With a wake word, anything else said in the room is ignored.',f:'wake word name always listening'}),
+    pRow('Wake word',`<input id="s-face-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(d.wake_word||'')}">`,
+      {desc:'Your agent’s name always works. Add one of your own if you like.',
+       more:'A few words said in one breath, like “Hey Bento”.',f:'wake word hey phrase custom name'}),
+    pRow('Test the wake word',`<button class="endbtn" id="s-face-test">Test it</button>`,
+      {desc:esc(d.heard&&d.heard.at?`Last heard: “${d.heard.text||d.heard.word}”`:'Say the wake word and a question.'),
+       f:'test microphone mic wake word voice hear check'}),
     pRow('Understanding speech',pSelect('s-face-hear',[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']],hear.setting||'auto'),
       {desc:esc(hear.line||''),
        more:'whisper.cpp keeps your voice on this machine. Install it and a model yourself; Bento uses it when it finds it.',
@@ -323,6 +427,11 @@ async function faceSettingsPaint(){
   box.querySelector('#s-face-kiosk').onchange=e=>put({kiosk:e.target.checked});
   box.querySelector('#s-face-wake').onchange=e=>put({wake:e.target.value});
   box.querySelector('#s-face-hear').onchange=e=>put({hear:e.target.value});
+  box.querySelector('#s-face-word').onchange=e=>put({wake_word:e.target.value.trim()});
+  box.querySelector('#s-face-test').onclick=async e=>{
+    const b=e.target,row=b.closest('.prow'),out=row&&row.querySelector('small');
+    b.disabled=true;await voiceWakeTest(out);b.disabled=false;
+  };
 }
 addEventListener('hashchange',()=>{if(location.hash==='#kiosk')try{sessionStorage.removeItem('kiosk.left')}catch(e){}
   if(typeof kioskApply==='function')kioskApply()});

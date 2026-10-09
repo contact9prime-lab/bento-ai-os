@@ -155,3 +155,51 @@ async def _openai_run(cfg: dict, wav: bytes, lang: str) -> str:
         return str(r.json().get("text") or "").strip()
     except Exception as e:
         raise HearError("OpenAI answered with something that was not a transcript.") from e
+
+
+# ---- a microphone from a terminal ---------------------------------------------------------
+#
+# `bento face test` and `bento setup`'s voice step, on a Pi over SSH with a USB microphone:
+# the same evidence the page gathers (a recording understood here, checked for the wake
+# word), recorded by whichever recorder the machine already has. Raspberry Pi OS ships
+# `arecord` (alsa-utils); sox's `rec` and PulseAudio's `parecord` are the others. None is
+# installed for you.
+
+RECORDERS = (
+    ("arecord", lambda secs, out: ["arecord", "-q", "-f", "S16_LE", "-r", "16000", "-c", "1",
+                                   "-d", str(secs), out]),
+    ("rec", lambda secs, out: ["rec", "-q", "-r", "16000", "-c", "1", "-b", "16", out,
+                               "trim", "0", str(secs)]),
+    ("parecord", lambda secs, out: ["timeout", str(secs), "parecord", "--rate=16000",
+                                    "--channels=1", "--format=s16le", "--file-format=wav", out]),
+)
+
+
+def recorder() -> str:
+    """The recorder this machine has, or ''."""
+    return next((name for name, _ in RECORDERS if shutil.which(name)), "")
+
+
+def record(seconds: int = 5) -> bytes:
+    """`seconds` of 16 kHz mono WAV from the default microphone. Raises HearError with
+    the sentence to show: no recorder, no microphone, or a recording that is silent."""
+    name = recorder()
+    if not name:
+        raise HearError("There is no recorder here (arecord, rec or parecord). On a Raspberry Pi: "
+                        "sudo apt install alsa-utils")
+    build = dict(RECORDERS)[name]
+    with tempfile.TemporaryDirectory() as d:
+        out = str(Path(d) / "say.wav")
+        try:
+            r = subprocess.run(build(int(seconds), out), capture_output=True, text=True,
+                               timeout=int(seconds) + 10)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise HearError(f"{name} could not record: {e}") from e
+        try:
+            wav = Path(out).read_bytes()
+        except OSError:
+            wav = b""
+        if not wav or len(wav) <= 44:
+            err = (r.stderr or "").strip().splitlines()[-1:] or ["no sound came in"]
+            raise HearError(f"{name} recorded nothing ({err[0][:120]}). Is a microphone plugged in?")
+        return wav

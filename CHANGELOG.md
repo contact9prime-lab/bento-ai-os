@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.6.19 — 2026-10-09
+
+**New machines are noticed, and set up from the one that leads.** A fresh Raspberry Pi with
+Bento waits to be set up: it says so on the network when it starts and shows a six-digit code
+on its own screen. The machine that leads your community (or could lead one) hears it and
+asks: *A new machine turned on: pi-kitchen (Raspberry Pi 5). Set it up?* In *Settings → Agents
+→ Community → New machines*, tick one or several, type each one's code, choose what they
+become (kiosk, one agent on screen, the agent's name) and press **Enable with an agent**.
+Each one finishes its setup, joins the community and thinks with the leader's brain.
+- **Zero touch:** make an enrolment key (`bento pool key`), put it on the SD card as
+  `bento-enroll.txt` (or install with `--enroll=KEY`), and a Pi carrying it needs no code. Mark
+  the key automatic and the Pi is set up the moment it is heard.
+- A claim is proven, never assumed: by the code on the new machine's screen or by the key,
+  bound to both machines' certificates. Five wrong codes change the code; three changes close
+  the door for ten minutes. A keyed machine proves it holds the key too.
+- From a terminal: `bento pool discover`, `bento pool enable NAME --code 123456`, `bento pool
+  key`, and on the new machine `bento pool wait` (shows the code) or `bento pool enroll KEY`.
+- Measured with a leader and three stand-in Pis on one box: all three heard within 4.5
+  seconds of starting; the keyed one set up with nobody pressing anything; two enabled
+  together in 0.02 seconds; all three members a second later; about 97 MB each.
+
+**Setup asks about the screen and checks the wake word.** Two new steps in the setup arc,
+right after the office:
+- **Choose what this screen shows:** the desktop, or a kiosk that listens; and whether only
+  your agent is drawn.
+- **Wake it with your voice:** press Listen, say "Aria, what time is it?", and this machine
+  records you, understands you with its own speech-to-text and checks it heard its wake word.
+  The step is ticked only when that really happened. A wake word of your own ("Hey Bento")
+  works alongside the agent's name.
+- Settings → Appearance → On this screen has the wake word and a **Test it** button, and from
+  a terminal `bento face test` records with the microphone (arecord) and checks the same way.
+  `bento setup` asks both questions too.
+
 ## 0.6.18 — 2026-09-30
 
 **A community of machines.** A few small computers can now work as one. One machine leads:

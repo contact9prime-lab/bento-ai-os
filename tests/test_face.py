@@ -245,3 +245,94 @@ def test_the_session_host_grants_the_microphone_and_nothing_else():
     h = src[src.index("def on_permission"):src.index('view.connect("permission-request"')]
     assert "UserMediaPermissionRequest" in h and "is-for-audio-device" in h
     assert "not req.get_property(\"is-for-video-device\")" in h and "ours" in h
+
+
+# ---------------- onboarding: the screen and the wake command ----------------
+#
+# Asked for as "Kiosk Mode has to be checked at the time of onboarding, also we need to do
+# the onboarding of Audio on wake up command". Two steps in the one arc (onboarding.py),
+# each ticked on evidence: a decision written down, and a wake word really heard.
+
+def test_python_and_the_page_agree_on_what_wakes_it():
+    cases = [("Hey Aria, what is on today", "Aria"), ("aria", "Aria"), ("Ariadne is here", "Aria"),
+             ("ok ARIA turn the lights off", "Aria"), ("nothing to do with you", "Aria"),
+             ("hey bento, lights", "Hey Bento")]
+    src = (JS / "24h-kiosk.js").read_text()
+    fn = src[src.index("function kioskAddressed"):src.index("function kioskWakeWords")]
+    r = _node(fn + f"console.log(JSON.stringify({json.dumps(cases)}.map(([t,n])=>kioskAddressed(t,n))));")
+    assert r.returncode == 0, r.stderr
+    page = json.loads(r.stdout)
+    server = [(face.addressed(t, [n]) or (None, None))[1] for t, n in cases]
+    assert page == server == ["what is on today", "", None, "turn the lights off", None, "lights"]
+
+
+def test_a_wake_word_of_your_own_and_the_name_both_wake_it():
+    cfg = {"agent_name": "Pip"}
+    ok, msg = face.set_face(cfg, wake_word="  Hey   Bento ", kiosk=True)
+    assert ok and face.wake_words(cfg) == ["Hey Bento", "Pip"] and "“Hey Bento” or “Pip”" in msg
+    assert face.addressed("pip, what time is it", face.wake_words(cfg)) == ("Pip", "what time is it")
+    assert face.addressed("so hey bento play music", face.wake_words(cfg)) == ("Hey Bento", "play music")
+    for bad in ("a whole long sentence that goes on", "1234", "<script>"):
+        ok, msg = face.set_face(cfg, wake_word=bad)
+        assert not ok and "wake word" in msg
+    assert face.set_face(cfg, wake_word="")[0] and face.wake_words(cfg) == ["Pip"]
+
+
+def test_the_screen_step_is_a_decision_either_way():
+    from agentos import onboarding as ob
+    st = lambda c: {s["id"]: s for s in ob.state(c)["steps"]}       # noqa: E731
+    assert st({})["screen"]["status"] == "todo"
+    assert st({"face": {"kiosk": False}})["screen"]["detail"] == "desktop", "the desktop is an answer too"
+    assert st({"face": {"kiosk": True, "buddy": "on"}})["screen"]["detail"] == "kiosk · one agent"
+    assert [s.id for s in ob.STEPS].index("screen") == [s.id for s in ob.STEPS].index("crew") + 1, \
+        "the kiosk IS the office, so it is chosen right after the office"
+
+
+def test_the_voice_step_ticks_only_when_the_wake_word_was_really_heard(client, monkeypatch):
+    cl, servermod = client
+    from agentos import onboarding as ob
+    servermod.state.machine_cfg().get("face", {}).pop("heard", None)
+    r = cl.post("/api/face/wake-test", json={"text": "turn on the lights"})
+    assert r.status_code == 200 and r.json()["matched"] is False
+    assert not face.heard(servermod.state.machine_cfg()), "words without the wake word prove nothing"
+    # the audio road: this machine's speech-to-text understands the recording
+    async def fake(cfg, wav, lang=""):
+        assert wav.startswith(b"RIFF")
+        return "Aria, what time is it?"
+    monkeypatch.setattr(hearing, "transcribe", fake)
+    monkeypatch.setattr(hearing, "status", lambda cfg: {"engine": "openai", "line": "", "setting": "auto", "have": {}})
+    r = cl.post("/api/face/wake-test", content=b"RIFF....WAVEfmt ", headers={"Content-Type": "audio/wav"})
+    d = r.json()
+    assert d["matched"] and d["word"] == "Aria" and d["after"] == "what time is it?" and d["engine"] == "openai"
+    h = face.heard(servermod.state.machine_cfg())
+    assert h["word"] == "Aria" and h["engine"] == "openai"
+    steps = {s["id"]: s for s in ob.state(servermod.state.machine_cfg())["steps"]}
+    assert steps["voice"]["status"] == "done"
+    assert servermod.state["store"].audit_list(action="face.write"), "hearing it is a ledger row"
+    servermod.state.machine_cfg()["face"].pop("heard", None)
+
+
+def test_the_terminal_voice_step_records_understands_and_checks(tmp_path, monkeypatch):
+    from agentos import setup_tui
+    cfg = {"agent_name": "Aria", "providers": {"openai": {"api_key": "k"}}}
+    store = Store(tmp_path / "a.db")
+    answers = iter(["", "y"])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+    monkeypatch.setattr(setup_tui, "_save", lambda c: None)
+    monkeypatch.setattr(hearing, "recorder", lambda: "arecord")
+    monkeypatch.setattr(hearing, "record", lambda secs=5: b"RIFFxxxxWAVE")
+
+    async def fake(c, wav, lang=""):
+        return "Aria what time is it"
+    monkeypatch.setattr(hearing, "transcribe", fake)
+    setup_tui._step_voice(cfg, store)
+    assert face.heard(cfg)["word"] == "Aria" and face.heard(cfg)["engine"] == "openai"
+    assert "screen" in setup_tui.HANDLERS and "voice" in setup_tui.HANDLERS
+
+
+def test_the_kiosk_answers_to_every_wake_word():
+    src = (JS / "24h-kiosk.js").read_text()
+    heard = src[src.index("function kioskHeard"):src.index("async function kioskThread")]
+    assert "kioskAddressedAny(text)" in heard and "kioskAddressed(text,name)" not in heard
+    one = (JS / "14b-onboarding.js").read_text()
+    assert "voiceWakeTest(" in one and "/api/face/wake-test" in src, "the step and Settings prove the same thing"

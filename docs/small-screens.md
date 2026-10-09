@@ -6,6 +6,27 @@ easy to read and easy to talk to. Both are in *Settings → Appearance → On th
 
 ![Settings → Appearance → On this screen: one agent, the kiosk, what it listens for, and what understands speech](screenshots/face-settings.png)
 
+## Chosen during setup
+
+Setup asks both questions, right after the office, so a Pi with a 7-inch screen is set up
+once and never needs Settings:
+
+- **Choose what this screen shows:** the desktop, or a kiosk that listens; and who is drawn.
+
+![Setup: choosing the desktop or a kiosk](screenshots/onboarding-screen.png)
+
+- **Wake it with your voice:** choose a wake word if you like, press **Listen now** and say
+  *"Aria, what time is it?"*. The meter moves while it hears you, this machine turns what it
+  heard into text, checks that it starts with a wake word, and answers out loud. The step is
+  ticked only when that really happened, so a kiosk nobody could wake never looks finished.
+
+![Setup: the wake word heard and understood on this machine](screenshots/onboarding-voice.png)
+
+On a Pi over SSH, `bento setup` asks the same two things, and `bento face test` records five
+seconds from the microphone (with `arecord`, which Raspberry Pi OS has) and checks the same way.
+A Pi that was set up from your community's leader (see [New machines](pool.md#new-machines-on-the-network))
+gets its screen chosen there and skips these.
+
 ## One agent on screen
 
 The Office and the desktop's Crew scene draw only your agent. Your specialists still exist
@@ -21,7 +42,7 @@ for yourself.
 ## The kiosk
 
 The machine's own screen becomes the Office, full screen, with the microphone on. Say your
-agent's name and what you need: *"Aria, what's on today?"*. The agents work in the Office
+agent's name, or a wake word of your own, and what you need: *"Aria, what's on today?"*. The agents work in the Office
 while the answer is shown and spoken. For twenty seconds after an answer you can follow up
 without the name. Anything else said in the room is ignored and nothing is kept. If you'd
 rather it listened to everything, choose *Everything it hears*.
@@ -70,6 +91,8 @@ bento face                      # what is on, and what can understand speech
 bento face buddy on|off|auto
 bento face kiosk on|off
 bento face wake name|always
+bento face word Hey Bento             # a wake word of your own; the name still works
+bento face test                       # record, understand, check the wake word
 bento face hear auto|whisper.cpp|openai|browser
 ```
 

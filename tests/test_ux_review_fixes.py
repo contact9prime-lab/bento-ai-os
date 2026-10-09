@@ -230,7 +230,8 @@ def test_the_sign_in_page_is_the_same_product():
 def test_the_docs_step_count_matches_the_wizard():
     from agentos import onboarding
     n = len(onboarding.STEPS)
-    words = {9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen"}
+    words = {9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen",
+             15: "fifteen"}
     word = words[n]
     readme = (ROOT / "README.md").read_text()
     started = (ROOT / "docs" / "getting-started.md").read_text()

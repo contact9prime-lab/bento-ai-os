@@ -356,8 +356,8 @@ function setTab(body,all){
     /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
        One machine leads and lends its brain; small machines join, share notes and take
        pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
-    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
-    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
+    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join provision new machines discover enrolment key"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div><div id="s-prov"></div></div>`);
+    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint();if(typeof provPaint==='function')provPaint()},0);
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);

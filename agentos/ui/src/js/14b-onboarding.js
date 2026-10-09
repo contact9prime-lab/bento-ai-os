@@ -350,6 +350,20 @@ var OB_PANES={
       pick the office they work in. All of it changes later in the Office's Design.</p>
     <div id="ob-crew"><p class="mut">Drawing your crew…</p></div>`,
 
+  /* The kiosk is asked here, at setup, because a Pi with a 7-inch screen is set up
+     once. Both answers write face.kiosk, so "desktop" is a real decision the probe
+     can see, not a step left todo for somebody who did not want a kiosk. */
+  screen:s=>`<p class="mut">How this machine's own screen looks. A phone or another
+      browser looking at it keeps the desktop either way.</p>
+    <div id="ob-screen"><p class="mut">Reading this screen…</p></div>`,
+
+  /* The wake command, proven: recorded here, understood by this machine, checked
+     for the wake word on the server. The tick comes from face.heard, which only the
+     server writes, and only when the words started with a wake word. */
+  voice:s=>`<p class="mut">The kiosk wakes when it hears its name. Say it now with a
+      question, the way you will in the room, and this machine checks it can hear you.</p>
+    <div id="ob-voice"><p class="mut">Checking what can understand speech here…</p></div>`,
+
   look:s=>`<p class="mut">The parts that make it feel like your machine rather than a
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
@@ -867,6 +881,75 @@ var OB_WIRE={
     };
   },
 
+  async screen(){
+    const box=$('#ob-screen');if(!box)return;
+    let f;try{f=await apiJSON('/api/face')}catch(e){box.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`;return}
+    const remote=typeof remoteClient==='function'&&remoteClient();
+    const kiosk=f.kiosk_chosen?!!f.kiosk:false;
+    box.innerHTML=`<div class="job-ways">
+        <label class="job-way"><input type="radio" name="ob-face" value="desktop" ${kiosk?'':'checked'}>
+          <b>The desktop</b><em>Windows, apps and the dock. Best with a keyboard and a bigger screen.</em></label>
+        <label class="job-way"><input type="radio" name="ob-face" value="kiosk" ${kiosk?'checked':''}>
+          <b>A kiosk that listens</b><em>The Office full screen, the microphone on. Say “${esc(agentName())}”
+            and what you need, and the answer is spoken. Made for a small screen on a wall or a shelf.</em></label>
+      </div>
+      <label class="job-q" style="margin-top:10px"><span>Who is drawn</span>
+        <select id="ob-buddy">
+          <option value="auto" ${f.buddy_setting==='auto'?'selected':''}>Auto: only your agent in Light mode</option>
+          <option value="on" ${f.buddy_setting==='on'?'selected':''}>Only your agent</option>
+          <option value="off" ${f.buddy_setting==='off'?'selected':''}>The whole crew</option></select>
+        <em>On a small screen one agent reads better. Specialists still work behind it.</em></label>
+      ${remote?`<p class="mut">You are looking at this machine from another device. The kiosk only shows on
+        the screen plugged into it.</p>`:''}
+      <div class="job-go"><button class="wiz-next" id="ob-screen-go">Use this</button></div>`;
+    $('#ob-screen-go').onclick=async()=>{
+      const want=(box.querySelector('input[name=ob-face]:checked')||{}).value==='kiosk';
+      obMsg('saving…');
+      const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({kiosk:want,buddy:$('#ob-buddy').value})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||d.error)return obMsg(d.error||'could not save that','warn');
+      obMsg('✓ '+(d.description||'saved'),'ok');
+      if(typeof loadPlatform==='function')await loadPlatform();
+      obRefresh(true);
+    };
+  },
+  async voice(){
+    const box=$('#ob-voice');if(!box)return;
+    let f;try{f=await apiJSON('/api/face')}catch(e){box.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`;return}
+    const hear=f.hear||{},words=(f.wake_words||[]).filter(Boolean);
+    const first=words[0]||agentName();
+    box.innerHTML=`<label class="job-q"><span>Wake word</span>
+        <input id="ob-wake-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(f.wake_word||'')}">
+        <em>Its name always works. Add one of your own, like “Hey Bento”, if you like.</em></label>
+      <label class="job-q" style="margin-top:10px"><span>What understands speech</span>
+        <select id="ob-hear">${[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']]
+          .map(([v,l])=>`<option value="${v}" ${(hear.setting||'auto')===v?'selected':''}>${esc(l)}</option>`).join('')}</select>
+        <em id="ob-hear-line">${esc(hear.line||'')}</em></label>
+      <div class="ob-voice-try">
+        <p>Press the button and say: <b id="ob-voice-say">“${esc(first)}, what time is it?”</b></p>
+        <div class="ob-meter"><i id="ob-voice-meter"></i></div>
+        <p class="mut" id="ob-voice-out" aria-live="polite">${f.heard&&f.heard.at?`Last heard: “${esc(f.heard.text||'')}”`:''}</p>
+      </div>
+      <div class="job-go"><button class="wiz-next" id="ob-voice-go" ${hear.engine?'':'disabled'}>Listen now</button></div>`;
+    const put=async body=>{
+      const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||d.error){obMsg(d.error||'could not save that','warn');return null}
+      if(typeof loadPlatform==='function')await loadPlatform();
+      return d;
+    };
+    $('#ob-wake-word').onchange=async e=>{const d=await put({wake_word:e.target.value.trim()});
+      if(d){const w=(d.wake_words||[])[0]||agentName();$('#ob-voice-say').textContent=`“${w}, what time is it?”`;obMsg('✓ saved','ok')}};
+    $('#ob-hear').onchange=async e=>{const d=await put({hear:e.target.value});
+      if(d){$('#ob-hear-line').textContent=(d.hear||{}).line||'';$('#ob-voice-go').disabled=!(d.hear||{}).engine}};
+    $('#ob-voice-go').onclick=async()=>{
+      const b=$('#ob-voice-go');b.disabled=true;
+      const d=await voiceWakeTest($('#ob-voice-out'),$('#ob-voice-meter'));
+      b.disabled=false;
+      if(d&&d.matched)setTimeout(()=>obRefresh(true),2200);
+    };
+  },
   async look(){
     const box=$('#ob-look');if(!box)return;
     const names=typeof allThemes==='function'?allThemes():{};

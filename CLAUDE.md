@@ -2404,6 +2404,39 @@ leader and the leader has all the creds". Seven things keep it honest:
   reader only after the certificate matched a link (`_handle`); a model call carries a whole
   conversation. `call(limit=)` matches it on the way back.
 
+## New machines on the network: heard, asked about, set up from the leader
+
+`agentos/provision.py` + `24j-provision.js` (Settings → Agents → Community → New machines, and
+the waiting machine's own card) + `/api/provision*` + `bento pool discover|enable|key|wait|
+enroll` + `install.sh --enroll/--wait`; `docs/pool.md`, `tests/test_provision.py`, live run
+`packaging/dev/provision-e2e/run.py` (a leader and three stand-in Pis). Asked for as "provision
+multiple pi agents … more like POAP" and "whenever a new machine is turned on and discovered on
+the network, we should be able to check if we need to provision it". Six rules:
+- **Only a waiting machine opens a door** (`waiting()`: a fresh Pi, a key, or `wait on`; never
+  a set-up, joined or `wait off` machine). It announces on UDP 8620 and takes ONE claim on TCP
+  8620 (`Door`); the claim closes it for good. A leader, or a machine that could lead, LISTENS
+  (`Watch`, `watching()`), and a machine heard waiting for the first time is ONE toast to the
+  admins (`note_seen` returns new once per machine). Neither binds anything otherwise.
+- **A claim is proven, never assumed.** `proof()` is an HMAC over both certificate
+  fingerprints and a fresh nonce, keyed by the code on the new machine's screen or by the
+  enrolment key; the code and the secret never travel. `check_claim` counts wrong codes
+  (PIN_TRIES, PIN_ROUNDS, LOCK_S). A keyed claim is proven BOTH ways (`proof_back`): an
+  automatic key must never enable a device that only copied a key id out of a broadcast.
+- **The leader pins what it heard** (`enable` refuses a different certificate at the address)
+  and the code path's limit is said in the docs: compare the machine id on both screens, use a
+  key on a network you do not trust.
+- **A beacon is a stranger's words** (`clean_beacon`: closed set, `teamlink.plain`, bounded,
+  MAX_SEEN). Nothing is enabled because a beacon said so, except a machine that proves the key.
+- **A claim writes a closed set** (`clean_profile`: name, agent name, kiosk, buddy, lite, wake
+  word) plus a machine link to the leader, `setup_complete`, and `team.listen`. Then the new
+  machine joins over that link and the leader lets it in at once (`was_enabled_here` in
+  `Pool._pool_join`), so after that it is an ordinary member with pool.py's one grant each way.
+  A machine that could not reach its leader asks again every heartbeat (`_provision_rejoin`).
+- **No agent tool, admin only, a ledger row each side** (`provision.seen/enable/failed/key`
+  on the leader, `provision.claimed/refused/joined` on the new machine). Enabling a machine
+  spends this one's model budget on it. `AGENTOS_PI_MODEL`, `AGENTOS_DISCOVER_UDP/PORT/TARGETS`
+  stand in for a board and a LAN in tests, the `AGENTOS_SIGNIN_BASE` idea.
+
 ## This machine's screen: one agent, and the kiosk that listens
 
 `agentos/face.py` (settings) + `agentos/hearing.py` (speech to text) + `24h-kiosk.js` +
@@ -2430,6 +2463,14 @@ be on and agents would be working in the office". Five rules:
 - **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
   `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
   it to video or another origin.
+- **Setup asks both, and the wake word is PROVEN** (onboarding steps `screen` and `voice`, right
+  after `crew`). `screen` is done when `face.kiosk` is written either way (the desktop is an
+  answer). `voice` is done only by `face.heard`, which `/api/face/wake-test` writes after THIS
+  machine's speech-to-text understood a recording that starts with a wake word
+  (`face.addressed`, the same rule as the page's `kioskAddressed`; a test runs both on one
+  list). The wizard, Settings' Test it and `bento face test` (arecord) all use that one route
+  or `_step_voice`. A wake word of the person's own (`face.wake_word`) never replaces the
+  agent's name.
 
 ## Window chrome: the rules that keep a stack readable
 

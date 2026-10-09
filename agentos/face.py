@@ -21,8 +21,13 @@ with the server down.
 """
 from __future__ import annotations
 
+import re
+import time
+import unicodedata
+
 BUDDY = ("auto", "on", "off")
 WAKE = ("name", "always")
+WAKE_WORD_MAX = 32          # "Hey Bento" is a wake word; a sentence is not
 
 
 def _face(cfg: dict) -> dict:
@@ -53,16 +58,86 @@ def wake(cfg: dict) -> str:
     return v if v in WAKE else "name"
 
 
+def wake_word(cfg: dict) -> str:
+    """A wake word of the person's own ("Hey Bento"), or '' for the agent's name alone."""
+    return str(_face(cfg).get("wake_word") or "").strip()
+
+
+def wake_words(cfg: dict) -> list[str]:
+    """Everything the kiosk answers to: the person's own wake word, then the agent's name.
+    The name always works, so renaming the agent never leaves a screen nobody can wake."""
+    out = []
+    for w in (wake_word(cfg), str((cfg or {}).get("agent_name") or "Aria")):
+        if w and w.lower() not in (x.lower() for x in out):
+            out.append(w)
+    return out
+
+
+def _norm(s: str) -> str:
+    s = unicodedata.normalize("NFKD", str(s or "").lower())
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def addressed(text: str, words: list[str]) -> tuple[str, str] | None:
+    """(the wake word heard, the words after it), or None when none was said. Whole words,
+    so "Ariadne" is not "Aria", and the first one said wins. The page's kioskAddressed
+    is the same rule; tests/test_face.py holds the two to the same cases."""
+    t = _norm(text)
+    best = None
+    for w in words:
+        n = _norm(w).strip()
+        if not n:
+            continue
+        m = re.search(r"(^|[^\w])" + re.escape(n) + r"(?=$|[^\w])", t)
+        if m and (best is None or m.start() < best[0]):
+            best = (m.start(), w, m.end())
+    if not best:
+        return None
+    # the original text, cut where the normalised match ended (NFKD keeps positions for
+    # the scripts a wake word is said in; a mismatch only trims a little more or less)
+    after = str(text)[best[2]:] if len(_norm(text)) == len(str(text)) else t[best[2]:]
+    return best[1], after.lstrip(" \t,.:;!?-").strip()
+
+
+def heard(cfg: dict) -> dict:
+    """When this machine last heard its wake word, understood: the voice step's evidence."""
+    h = _face(cfg).get("heard")
+    return h if isinstance(h, dict) and h.get("at") else {}
+
+
+def mark_heard(cfg: dict, text: str, word: str, engine: str) -> dict:
+    """Record a wake word that was really heard. Mutates `cfg`; the caller saves."""
+    f = dict(_face(cfg))
+    f["heard"] = {"at": time.time(), "text": str(text)[:200], "word": str(word)[:WAKE_WORD_MAX],
+                  "engine": str(engine)[:20]}
+    cfg["face"] = f
+    return f["heard"]
+
+
 def state(cfg: dict) -> dict:
     """What the page and the CLI read: one answer for both."""
     from . import hearing
     return {"buddy": buddy(cfg), "buddy_setting": buddy_setting(cfg),
-            "kiosk": kiosk(cfg), "wake": wake(cfg),
+            "kiosk": kiosk(cfg), "kiosk_chosen": "kiosk" in _face(cfg), "wake": wake(cfg),
+            "wake_word": wake_word(cfg), "wake_words": wake_words(cfg), "heard": heard(cfg),
             "hear": hearing.status(cfg)}
 
 
+def wake_word_problem(w: str) -> str:
+    """'' when `w` can be a wake word. Letters, digits, spaces and an apostrophe, at most
+    four words: a wake word somebody says in one breath."""
+    w = str(w or "").strip()
+    if not w:
+        return ""
+    if len(w) > WAKE_WORD_MAX or len(w.split()) > 4:
+        return f"a wake word is a few words, at most {WAKE_WORD_MAX} letters"
+    if not re.fullmatch(r"[\w' ]+", w) or w.replace("'", "").replace(" ", "").isdigit():
+        return "a wake word is made of letters"
+    return ""
+
+
 def set_face(cfg: dict, buddy: str | None = None, kiosk: bool | None = None,
-             wake: str | None = None) -> tuple[bool, str]:
+             wake: str | None = None, wake_word: str | None = None) -> tuple[bool, str]:
     """Change the face. Mutates `cfg`; the caller saves. Refuses an unknown value by
     naming the choices, so a typo is a sentence and not a silently ignored setting."""
     f = dict(_face(cfg))
@@ -78,6 +153,11 @@ def set_face(cfg: dict, buddy: str | None = None, kiosk: bool | None = None,
         if w not in WAKE:
             return False, f"the kiosk listens for one of {', '.join(WAKE)}"
         f["wake"] = w
+    if wake_word is not None:
+        problem = wake_word_problem(wake_word)
+        if problem:
+            return False, problem
+        f["wake_word"] = " ".join(str(wake_word).split())
     cfg["face"] = f
     return True, describe(cfg)
 
@@ -88,8 +168,9 @@ def describe(cfg: dict) -> str:
     one = ("Only your agent is drawn in the Office and on the desktop"
            if buddy(cfg) else "Every agent is drawn in the Office and on the desktop")
     why = " (Light mode)" if s == "auto" and buddy(cfg) else ""
+    names = " or ".join(f"“{w}”" for w in wake_words(cfg))
     kio = ("The kiosk face is on: this machine's screen shows the Office and listens "
-           + ("for everything." if wake(cfg) == "always" else "for your agent's name.")
+           + ("for everything." if wake(cfg) == "always" else f"for {names}.")
            if kiosk(cfg) else "The kiosk face is off.")
     return f"{one}{why}. {kio}"
 

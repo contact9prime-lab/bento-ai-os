@@ -2954,6 +2954,13 @@ body.dev-touch .job-hchips .of-chip,body.dev-touch .job-hrow .endbtn,body.dev-to
 #ob-crew-said{margin-top:6px;font-size:var(--fs-sm)}
 .ob-crew-prev{display:block;width:100%;max-width:640px;margin:8px 0 4px;border-radius:10px;border:2px solid #191827;image-rendering:pixelated;background:#1b2233}
 body.dev-touch .ob-face,body.dev-touch .ob-crew-name input,body.dev-touch #ob-crew-askb{min-height:var(--tap)}
+/* the voice step: what to say, and a meter that moves when the microphone hears you */
+.ob-voice-try{margin-top:12px;padding:12px 14px;border-radius:12px;background:color-mix(in srgb,var(--bg3) 70%,transparent)}
+.ob-voice-try p{margin:4px 0}
+.ob-meter{height:8px;border-radius:4px;background:color-mix(in srgb,var(--txt) 12%,transparent);overflow:hidden;margin:8px 0}
+.ob-meter i{display:block;height:100%;width:0;background:var(--acc-grad,var(--acc));transition:width .08s linear}
+#ob-voice-out.ok,#s-face-test+small.ok{color:var(--ok,#4ade80)}
+#ob-voice-out.warn{color:var(--warn,#f59e0b)}
 /* ================= users =================
    Two shapes: an offer (prose, because the decision is consequential and needs
    reading) and a roster (rows, because it is a list). They share the form.
@@ -4696,6 +4703,32 @@ body.kiosk #office-scene canvas{display:block}
 .pool-m .mut{flex:1 1 220px;min-width:0}
 .pool-notes{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .pool-n{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---- new machines (24j-provision.js) ---- */
+.prov-list{display:flex;flex-direction:column;gap:6px;margin:6px 0 10px}
+.prov-m{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:10px;
+  background:color-mix(in srgb,var(--bg3) 60%,transparent)}
+.prov-m.done{opacity:.6}
+.prov-m .mut{flex:1 1 220px;font-size:var(--fs-sm,12px)}
+.prov-pick{display:flex;align-items:center;gap:6px;min-height:var(--tap,32px)}
+.prov-name{width:120px}
+.prov-code{width:88px;font-variant-numeric:tabular-nums;letter-spacing:.08em}
+.prov-key{font-size:var(--fs-sm,12px);color:var(--ok,#4ade80)}
+.prov-opt{display:inline-flex;align-items:center;gap:6px;margin-right:8px}
+.prov-k{display:inline-flex;align-items:center;gap:6px;margin:0 10px 4px 0}
+.prov-empty{margin:4px 0 10px}
+.prov-keytext{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:10px;margin:6px 0;
+  background:color-mix(in srgb,var(--bg3) 70%,transparent)}
+.prov-keytext code{word-break:break-all;user-select:all}
+#prov-out .ok{color:var(--ok,#4ade80)}#prov-out .warn{color:var(--warn,#f59e0b)}
+/* the waiting machine's own card: above the setup wizard, readable across a room */
+#prov-wait{position:fixed;right:16px;bottom:16px;z-index:100000;max-width:min(340px,calc(100vw - 32px));
+  padding:14px 16px;border-radius:14px;background:var(--bg2);color:var(--txt);
+  border:1px solid color-mix(in srgb,var(--acc) 50%,transparent);box-shadow:0 10px 40px rgba(0,0,0,.35)}
+#prov-wait p{margin:6px 0}
+#prov-wait .prov-pin{font-size:40px;font-weight:700;letter-spacing:.12em;font-variant-numeric:tabular-nums;margin:6px 0}
+#prov-wait button{min-height:var(--tap,32px)}
+@media (max-width:600px){.prov-name,.prov-code{flex:1 1 40%;min-height:var(--tap,40px)}}
 </style>
 </head>
 <body>
@@ -11299,6 +11332,7 @@ var PLACES=[
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','remote','remote access','passphrase','lock','autonomy','light mode','profile','security'],placeSettings('system')],
   ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
+  ['New machines','settings','Settings → Agents → Community → New machines',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch'],placeSettings('agent')],
   ['Community','settings','Settings → Agents → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('agent')],
   ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','mic','microphone','listen','wake word','speech to text','whisper','small screen'],placeSettings('look')],
   ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],
@@ -13809,6 +13843,16 @@ function handle(ev){
           setTimeout(()=>document.getElementById('s-pool')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       break;
     // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
+    // new machines (provision.py): one heard waiting is asked about, here, at once
+    case 'provision': if(typeof provPaint==='function')provPaint();
+      if(typeof provWaitCheck==='function')provWaitCheck();
+      if(ev.kind==='new')toast(`A new machine turned on: ${ev.name||'a machine'}${ev.board?' ('+ev.board+')':''}. Set it up?`,
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
+          setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+      else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up`);
+      else if(ev.kind==='failed')toast(`${ev.name||'A machine'} could not be set up: ${ev.error||'it refused'}`);
+      else if(ev.kind==='claimed')setTimeout(()=>location.reload(),1500);   // this machine was just set up
+      break;
     case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
       if(typeof officeReload==='function')officeReload();
       if(typeof crewRoster==='function')crewRoster(true);
@@ -15181,8 +15225,8 @@ function setTab(body,all){
     /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
        One machine leads and lends its brain; small machines join, share notes and take
        pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
-    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
-    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
+    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join provision new machines discover enrolment key"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div><div id="s-prov"></div></div>`);
+    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint();if(typeof provPaint==='function')provPaint()},0);
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
@@ -21063,6 +21107,20 @@ var OB_PANES={
       pick the office they work in. All of it changes later in the Office's Design.</p>
     <div id="ob-crew"><p class="mut">Drawing your crew…</p></div>`,
 
+  /* The kiosk is asked here, at setup, because a Pi with a 7-inch screen is set up
+     once. Both answers write face.kiosk, so "desktop" is a real decision the probe
+     can see, not a step left todo for somebody who did not want a kiosk. */
+  screen:s=>`<p class="mut">How this machine's own screen looks. A phone or another
+      browser looking at it keeps the desktop either way.</p>
+    <div id="ob-screen"><p class="mut">Reading this screen…</p></div>`,
+
+  /* The wake command, proven: recorded here, understood by this machine, checked
+     for the wake word on the server. The tick comes from face.heard, which only the
+     server writes, and only when the words started with a wake word. */
+  voice:s=>`<p class="mut">The kiosk wakes when it hears its name. Say it now with a
+      question, the way you will in the room, and this machine checks it can hear you.</p>
+    <div id="ob-voice"><p class="mut">Checking what can understand speech here…</p></div>`,
+
   look:s=>`<p class="mut">The parts that make it feel like your machine rather than a
       demo. All of it is changeable later in Settings → Appearance.</p>
     <div id="ob-look"><p class="mut">Reading the themes…</p></div>`,
@@ -21580,6 +21638,75 @@ var OB_WIRE={
     };
   },
 
+  async screen(){
+    const box=$('#ob-screen');if(!box)return;
+    let f;try{f=await apiJSON('/api/face')}catch(e){box.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`;return}
+    const remote=typeof remoteClient==='function'&&remoteClient();
+    const kiosk=f.kiosk_chosen?!!f.kiosk:false;
+    box.innerHTML=`<div class="job-ways">
+        <label class="job-way"><input type="radio" name="ob-face" value="desktop" ${kiosk?'':'checked'}>
+          <b>The desktop</b><em>Windows, apps and the dock. Best with a keyboard and a bigger screen.</em></label>
+        <label class="job-way"><input type="radio" name="ob-face" value="kiosk" ${kiosk?'checked':''}>
+          <b>A kiosk that listens</b><em>The Office full screen, the microphone on. Say “${esc(agentName())}”
+            and what you need, and the answer is spoken. Made for a small screen on a wall or a shelf.</em></label>
+      </div>
+      <label class="job-q" style="margin-top:10px"><span>Who is drawn</span>
+        <select id="ob-buddy">
+          <option value="auto" ${f.buddy_setting==='auto'?'selected':''}>Auto: only your agent in Light mode</option>
+          <option value="on" ${f.buddy_setting==='on'?'selected':''}>Only your agent</option>
+          <option value="off" ${f.buddy_setting==='off'?'selected':''}>The whole crew</option></select>
+        <em>On a small screen one agent reads better. Specialists still work behind it.</em></label>
+      ${remote?`<p class="mut">You are looking at this machine from another device. The kiosk only shows on
+        the screen plugged into it.</p>`:''}
+      <div class="job-go"><button class="wiz-next" id="ob-screen-go">Use this</button></div>`;
+    $('#ob-screen-go').onclick=async()=>{
+      const want=(box.querySelector('input[name=ob-face]:checked')||{}).value==='kiosk';
+      obMsg('saving…');
+      const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({kiosk:want,buddy:$('#ob-buddy').value})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||d.error)return obMsg(d.error||'could not save that','warn');
+      obMsg('✓ '+(d.description||'saved'),'ok');
+      if(typeof loadPlatform==='function')await loadPlatform();
+      obRefresh(true);
+    };
+  },
+  async voice(){
+    const box=$('#ob-voice');if(!box)return;
+    let f;try{f=await apiJSON('/api/face')}catch(e){box.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`;return}
+    const hear=f.hear||{},words=(f.wake_words||[]).filter(Boolean);
+    const first=words[0]||agentName();
+    box.innerHTML=`<label class="job-q"><span>Wake word</span>
+        <input id="ob-wake-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(f.wake_word||'')}">
+        <em>Its name always works. Add one of your own, like “Hey Bento”, if you like.</em></label>
+      <label class="job-q" style="margin-top:10px"><span>What understands speech</span>
+        <select id="ob-hear">${[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']]
+          .map(([v,l])=>`<option value="${v}" ${(hear.setting||'auto')===v?'selected':''}>${esc(l)}</option>`).join('')}</select>
+        <em id="ob-hear-line">${esc(hear.line||'')}</em></label>
+      <div class="ob-voice-try">
+        <p>Press the button and say: <b id="ob-voice-say">“${esc(first)}, what time is it?”</b></p>
+        <div class="ob-meter"><i id="ob-voice-meter"></i></div>
+        <p class="mut" id="ob-voice-out" aria-live="polite">${f.heard&&f.heard.at?`Last heard: “${esc(f.heard.text||'')}”`:''}</p>
+      </div>
+      <div class="job-go"><button class="wiz-next" id="ob-voice-go" ${hear.engine?'':'disabled'}>Listen now</button></div>`;
+    const put=async body=>{
+      const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||d.error){obMsg(d.error||'could not save that','warn');return null}
+      if(typeof loadPlatform==='function')await loadPlatform();
+      return d;
+    };
+    $('#ob-wake-word').onchange=async e=>{const d=await put({wake_word:e.target.value.trim()});
+      if(d){const w=(d.wake_words||[])[0]||agentName();$('#ob-voice-say').textContent=`“${w}, what time is it?”`;obMsg('✓ saved','ok')}};
+    $('#ob-hear').onchange=async e=>{const d=await put({hear:e.target.value});
+      if(d){$('#ob-hear-line').textContent=(d.hear||{}).line||'';$('#ob-voice-go').disabled=!(d.hear||{}).engine}};
+    $('#ob-voice-go').onclick=async()=>{
+      const b=$('#ob-voice-go');b.disabled=true;
+      const d=await voiceWakeTest($('#ob-voice-out'),$('#ob-voice-meter'));
+      b.disabled=false;
+      if(d&&d.matched)setTimeout(()=>obRefresh(true),2200);
+    };
+  },
   async look(){
     const box=$('#ob-look');if(!box)return;
     const names=typeof allThemes==='function'?allThemes():{};
@@ -28101,7 +28228,7 @@ function kioskPaint(){
   const name=agentName(),f=kioskFace(),hear=f.hear||{};
   hud.querySelector('.kh-name').textContent=name;
   const waiting=KIOSK.phase==='listening'?(kioskFollowing()?'Listening. Go ahead.'
-      :(f.wake==='always'?'Listening.':`Say “${name}” and what you need.`)):'';
+      :(f.wake==='always'?'Listening.':`Say “${kioskWakeWords()[0]||name}” and what you need.`)):'';
   hud.querySelector('.kh-line').textContent=KIOSK.line||waiting;
   const h=hud.querySelector('.kh-heard'),r=hud.querySelector('.kh-reply');
   h.hidden=!KIOSK.heard;h.textContent=KIOSK.heard?'“'+KIOSK.heard+'”':'';
@@ -28245,13 +28372,30 @@ function kioskAddressed(text,name){
   const m=re.exec(t);if(!m)return null;
   return String(text).slice(m.index+m[0].length).replace(/^[\s,.:;!?-]+/,'').trim();
 }
+/* Everything this screen answers to (face.wake_words): the person's own wake word
+   first, then the agent's name, which always works. */
+function kioskWakeWords(){
+  const w=(kioskFace().wake_words||[]).filter(Boolean);
+  const n=agentName();
+  return w.length?w:(n?[n]:[]);
+}
+/* The words after whichever wake word was said first, or null. */
+function kioskAddressedAny(text){
+  let best=null;
+  for(const w of kioskWakeWords()){
+    const after=kioskAddressed(text,w);if(after===null)continue;
+    const at=String(text).toLowerCase().indexOf(String(w).toLowerCase());
+    if(!best||(at>=0&&at<best.at))best={at:at<0?1e9:at,after};
+  }
+  return best?best.after:null;
+}
 function kioskHeard(text){
   text=String(text||'').trim();
   if(!text){kioskSay('','listening');return}
   const f=kioskFace(),name=agentName();
   let ask=text;
   if(f.wake!=='always'&&!kioskFollowing()){
-    const after=kioskAddressed(text,name);
+    const after=kioskAddressedAny(text);
     if(after===null){kioskSay('','listening');return}         // not for us: nothing is kept
     if(!after){KIOSK.heard=text;KIOSK.follow=Date.now()+KIOSK_FOLLOW_MS;
       kioskSpeak('Yes?');return}
@@ -28300,6 +28444,87 @@ function kioskSpeak(text){
   if(typeof speakAs==='function')speakAs('@agent',clean,done);else done();
 }
 
+/* ---------------- one utterance, for the voice step ----------------
+   The kiosk's own recorder, once: the same level rule, the same 900 ms pause and the
+   same 16 kHz WAV, so what the voice step proves is what the kiosk will do. It
+   resolves with the WAV, or rejects with a sentence: no microphone, not allowed, or
+   nothing said. `onLevel(0..1)` drives a meter so the person can see it hears them. */
+function micOnce(opts){
+  opts=opts||{};
+  const maxWait=opts.wait||9000,onLevel=opts.onLevel||(()=>{});
+  return new Promise(async(resolve,reject)=>{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return reject(new Error('This browser cannot use a microphone.'));
+    let stream;
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}})}
+    catch(e){return reject(new Error('The microphone was not allowed. Allow it for this page and try again.'))}
+    const AC=window.AudioContext||window.webkitAudioContext,ctx=new AC();
+    try{if(ctx.state==='suspended')await ctx.resume()}catch(e){}
+    const src=ctx.createMediaStreamSource(stream),node=ctx.createScriptProcessor(4096,1,1);
+    let floor=0.004,talking=false,chunks=[],pre=[],quiet=0,started=0,done=false;
+    const t0=performance.now();
+    const stop=()=>{done=true;try{node.disconnect();src.disconnect()}catch(e){}
+      try{stream.getTracks().forEach(t=>t.stop())}catch(e){}try{ctx.close()}catch(e){}};
+    node.onaudioprocess=e=>{
+      if(done)return;
+      const data=e.inputBuffer.getChannelData(0);let sum=0;
+      for(let i=0;i<data.length;i++)sum+=data[i]*data[i];
+      const rms=Math.sqrt(sum/data.length),now=performance.now(),frame=new Float32Array(data);
+      onLevel(Math.min(1,rms*12));
+      const on=rms>Math.max(0.012,floor*3.2);
+      if(!talking){
+        floor=floor*0.95+rms*0.05;pre.push(frame);
+        const keep=Math.ceil(KIOSK_PRE_MS/1000*ctx.sampleRate/data.length);
+        while(pre.length>keep)pre.shift();
+        if(on){talking=true;started=now;quiet=0;chunks=pre.slice();pre=[]}
+        else if(now-t0>maxWait){stop();reject(new Error('I did not hear anything. Is the microphone plugged in and not muted?'))}
+        return;
+      }
+      chunks.push(frame);quiet=on?0:(quiet||now);
+      if((quiet&&now-quiet>KIOSK_SILENCE_MS)||now-started>KIOSK_MAX_MS){
+        const rate=ctx.sampleRate;stop();onLevel(0);
+        if(now-started-(quiet?now-quiet:0)<KIOSK_MIN_MS)return reject(new Error('That was too short. Say the name and a few words.'));
+        resolve(kioskWav(chunks,rate));
+      }
+    };
+    src.connect(node);node.connect(ctx.destination);
+  });
+}
+/* Record one utterance and ask this machine whether it heard its wake word.
+   Shared by the voice step and Settings' Test button, so both prove the same thing. */
+async function voiceWakeTest(out,meter){
+  const say=(t,c)=>{if(out){out.textContent=t;out.className='mut '+(c||'')}};
+  const f=kioskFace(),hear=f.hear||{};
+  if(!hear.engine){say(hear.line||'Nothing on this machine can understand speech yet.','warn');return null}
+  let body,headers;
+  if(hear.engine==='browser'){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){say('This browser has no speech recogniser. Choose whisper.cpp or OpenAI below.','warn');return null}
+    say('Listening…');
+    const text=await new Promise(res=>{const r=new SR();r.lang=(typeof VOICE!=='undefined'&&VOICE.lang)||'en-IN';
+      r.onresult=e=>res([...e.results].map(x=>x[0].transcript).join(' '));r.onerror=()=>res('');r.onend=()=>res('');
+      try{r.start()}catch(e){res('')}});
+    body=JSON.stringify({text});headers={'Content-Type':'application/json'};
+  }else{
+    say('Listening… say it now.');
+    let wav;
+    try{wav=await micOnce({onLevel:v=>{if(meter)meter.style.width=Math.round(v*100)+'%'}})}
+    catch(e){say(String(e.message||e),'warn');return null}
+    say('Understanding…');
+    body=wav;headers={'Content-Type':'audio/wav'};
+  }
+  const lang=String((typeof VOICE!=='undefined'&&VOICE.lang)||'').slice(0,5);
+  let d;
+  try{const r=await fetch('/api/face/wake-test?lang='+encodeURIComponent(lang),{method:'POST',headers,body});
+    d=await r.json().catch(()=>({}));if(!r.ok){say(d.error||('could not test that ('+r.status+')'),'warn');return null}}
+  catch(e){say('The machine could not be reached.','warn');return null}
+  if(!d.text){say('I heard sound but no words. Try again a little closer.','warn');return d}
+  if(!d.matched){say(`I heard “${d.text}”, but not ${d.words.map(w=>'“'+w+'”').join(' or ')}. Try again.`,'warn');return d}
+  say(`✓ I heard “${d.text}”.`,'ok');
+  if(typeof speakAs==='function')speakAs('@agent',d.after?`Yes, I heard you. You said: ${d.after}`:'Yes, I heard you.');
+  if(typeof loadPlatform==='function')loadPlatform();
+  return d;
+}
+
 /* ---------------- Settings → Appearance → On this screen ---------------- */
 /* One agent, the kiosk, what it listens for, and what understands speech, from
    /api/face (admin only on a machine with accounts: a screen is the machine's). */
@@ -28316,8 +28541,14 @@ async function faceSettingsPaint(){
       {desc:'This machine’s own screen shows the Office and listens.',
        more:'Only the screen plugged into this machine. A phone or another browser keeps the desktop. Add #kiosk to the address to try it anywhere.',
        f:'kiosk mic microphone always listening screen office raspberry pi wake word'}),
-    pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Your agent’s name'],['always','Everything it hears']],d.wake||'name'),
-      {desc:'With a name, anything else said in the room is ignored.',f:'wake word name always listening'}),
+    pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Its wake word'],['always','Everything it hears']],d.wake||'name'),
+      {desc:'With a wake word, anything else said in the room is ignored.',f:'wake word name always listening'}),
+    pRow('Wake word',`<input id="s-face-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(d.wake_word||'')}">`,
+      {desc:'Your agent’s name always works. Add one of your own if you like.',
+       more:'A few words said in one breath, like “Hey Bento”.',f:'wake word hey phrase custom name'}),
+    pRow('Test the wake word',`<button class="endbtn" id="s-face-test">Test it</button>`,
+      {desc:esc(d.heard&&d.heard.at?`Last heard: “${d.heard.text||d.heard.word}”`:'Say the wake word and a question.'),
+       f:'test microphone mic wake word voice hear check'}),
     pRow('Understanding speech',pSelect('s-face-hear',[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']],hear.setting||'auto'),
       {desc:esc(hear.line||''),
        more:'whisper.cpp keeps your voice on this machine. Install it and a model yourself; Bento uses it when it finds it.',
@@ -28336,6 +28567,11 @@ async function faceSettingsPaint(){
   box.querySelector('#s-face-kiosk').onchange=e=>put({kiosk:e.target.checked});
   box.querySelector('#s-face-wake').onchange=e=>put({wake:e.target.value});
   box.querySelector('#s-face-hear').onchange=e=>put({hear:e.target.value});
+  box.querySelector('#s-face-word').onchange=e=>put({wake_word:e.target.value.trim()});
+  box.querySelector('#s-face-test').onclick=async e=>{
+    const b=e.target,row=b.closest('.prow'),out=row&&row.querySelector('small');
+    b.disabled=true;await voiceWakeTest(out);b.disabled=false;
+  };
 }
 addEventListener('hashchange',()=>{if(location.hash==='#kiosk')try{sessionStorage.removeItem('kiosk.left')}catch(e){}
   if(typeof kioskApply==='function')kioskApply()});
@@ -28433,6 +28669,162 @@ async function poolNotes(){
     <button class="endbtn" data-forget="${esc(n.id)}" aria-label="Forget this note">Forget</button></div>`).join('')||'<span class="mut">No notes yet.</span>'}</div>`;
   el.querySelectorAll('[data-forget]').forEach(b=>b.onclick=async()=>{
     await fetch('/api/pool/notes/'+encodeURIComponent(b.dataset.forget),{method:'DELETE'});el.innerHTML='';poolNotes()});
+}
+/* ================= new machines on the network =================
+   provision.py is the whole design; this draws /api/provision. Two faces of it:
+
+   - On a machine that leads (or could): Settings → Agents → Community → New machines.
+     Every machine heard waiting is a row (its board, memory, the id to compare with its
+     own screen); tick several, type each one's code (or let the community's enrolment
+     key prove it), choose what they become (kiosk, one agent, the agent's name) and
+     Enable. A machine heard for the first time is also a toast with Review, from
+     09-websocket.js, because "whenever a new machine is turned on … we should be able to
+     check if we need to provision it".
+   - On a machine that is WAITING: a card in the corner of its own screen with the code
+     and the id to read out, and "Set it up here instead".
+
+   TUI: `bento pool discover | enable | key | wait`. SUI: identical, a page; nothing here
+   touches the compositor. */
+var PROV={v:null,sel:{}};
+
+async function provPaint(){
+  const box=document.getElementById('s-prov');if(!box)return;
+  let v;try{v=await apiJSON('/api/provision')}catch(e){box.innerHTML='';return}
+  PROV.v=v;provWaitCard(v);
+  const can=v.can_change,rows=[];
+  // a waiting machine sets nothing up; its own card says what to do
+  if(v.this&&v.this.waiting){
+    rows.push(pRow('Waiting to be set up',`<span class="mut">code ${esc(v.this.pin||'(enrolment key)')} · id ${esc(v.this.id)}</span>`
+      +`<button class="endbtn" data-prov="nowait"${can?'':' disabled'}>Set it up here instead</button>`,
+      {desc:'Another Bento on your network can set this machine up.',
+       more:'On the machine that leads your community, choose this one in New machines and type the code.',f:'provision waiting set up code'}));
+    box.innerHTML=rows.join('');provWire(box);return;
+  }
+  if(!(v.role==='leader'||v.has_brain||(v.seen||[]).length)){box.innerHTML='';return}
+  const seen=(v.seen||[]).filter(m=>m.state!=='ignored');
+  rows.push(pRow('New machines',`<button class="endbtn" data-prov="scan"${can?'':' disabled'}>Look now</button>`,
+    {desc:v.watching?'Machines that turn on waiting to be set up show here, and you get a toast.':'This machine is not listening for new ones.',
+     more:'A fresh Raspberry Pi with Bento waits by itself. Any other machine waits after bento pool wait on.',
+     f:'provision new machines discover raspberry pi poap enable set up scan'}));
+  if(seen.length){
+    rows.push(`<div class="prov-list">${seen.map(m=>{
+      const hw=m.hw||{},on=PROV.sel[m.fp]!==undefined;
+      const state=m.state==='enabled'?'set up':m.age<90?'waiting':'waiting · heard '+poolAgo(m.age);
+      const proof=m.our_key?`<span class="prov-key">your key${m.auto?', automatic':''}</span>`
+        :`<input class="prov-code" data-code="${esc(m.fp)}" inputmode="numeric" maxlength="7" placeholder="code" aria-label="Code on ${esc(m.name)}'s screen"${m.state==='enabled'?' disabled':''}>`;
+      return `<div class="prov-m${m.state==='enabled'?' done':''}">
+        <label class="prov-pick"><input type="checkbox" data-pick="${esc(m.fp)}" ${on?'checked':''}${m.state==='enabled'||!can?' disabled':''}>
+          <b>${esc(m.name)}</b></label>
+        <span class="mut">${esc(hw.board||hw.arch||'a machine')} · ${hw.ram_mb||0} MB · id ${esc(m.id)} · ${esc(state)}</span>
+        <input class="prov-name" data-name="${esc(m.fp)}" maxlength="32" placeholder="${esc(m.name)}" aria-label="Name for ${esc(m.name)}"${m.state==='enabled'?' disabled':''}>
+        ${proof}
+        ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Not this one</button>`:''}</div>`}).join('')}</div>`);
+    const f=PROV.form||{kiosk:false,buddy:'auto',agent:''};
+    rows.push(pRow('Set them up as',`<label class="prov-opt">${pSwitch('prov-kiosk',!!f.kiosk)} Kiosk</label>
+        ${pSelect('prov-buddy',[['auto','Auto'],['on','Only the agent'],['off','The whole crew']],f.buddy)}
+        <input id="prov-agent" maxlength="32" placeholder="Agent's name" value="${esc(f.agent||'')}" style="max-width:140px">`,
+      {desc:'Each one joins this community and thinks with this machine’s brain.',
+       more:'Light mode is on for each, and they get their own agent with that name. You can change any of it on the machine later.',
+       f:'provision profile kiosk buddy agent name'}));
+    rows.push(pRow('Enable',`<button class="wiz-next" data-prov="enable"${can?'':' disabled'}>Enable with an agent</button>`,
+      {desc:'Type the code shown on each machine’s screen, unless it carries your key.',f:'provision enable'}));
+  }else{
+    rows.push(`<p class="mut prov-empty">No machine is waiting right now. Turn one on, or press Look now.</p>`);
+  }
+  const ks=v.keys||[];
+  rows.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
+      <label class="prov-opt">${pSwitch('prov-auto-'+k.id,!!k.auto)} automatic</label>
+      <button class="endbtn" data-prov="dropkey" data-kid="${esc(k.id)}">Revoke</button></span>`).join('')}
+      <button class="endbtn" data-prov="key"${can?'':' disabled'}>Make a key</button>`,
+    {desc:'Put a key on a new machine and nobody has to read a code off its screen.',
+     more:'Save it as bento-enroll.txt on the SD card’s boot partition, or install with --enroll. Automatic sets the machine up the moment it is heard.',
+     f:'provision enrolment key zero touch sd card automatic'}));
+  rows.push('<div id="prov-out" aria-live="polite"></div>');
+  box.innerHTML=rows.join('');
+  provWire(box);
+}
+function provWire(box){
+  box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b));
+  box.querySelectorAll('[data-pick]').forEach(c=>c.onchange=()=>{if(c.checked)PROV.sel[c.dataset.pick]=1;else delete PROV.sel[c.dataset.pick]});
+  // a typed code ticks its machine, so nobody types six digits and forgets the box
+  box.querySelectorAll('[data-code]').forEach(i=>i.oninput=()=>{const c=box.querySelector(`[data-pick="${CSS.escape(i.dataset.code)}"]`);
+    if(c&&i.value.replace(/\D/g,'').length===6&&!c.checked){c.checked=true;PROV.sel[i.dataset.code]=1}});
+  (PROV.v.keys||[]).forEach(k=>{const s=box.querySelector('#prov-auto-'+k.id);if(s)s.onchange=async()=>{
+    const r=await fetch('/api/provision/key/'+encodeURIComponent(k.id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto:s.checked})});
+    if(!r.ok)toast('could not change that');provPaint()}});
+  const save=()=>{PROV.form={kiosk:!!(box.querySelector('#prov-kiosk')||{}).checked,
+    buddy:(box.querySelector('#prov-buddy')||{}).value||'auto',agent:((box.querySelector('#prov-agent')||{}).value||'').trim()}};
+  ['#prov-kiosk','#prov-buddy','#prov-agent'].forEach(q=>{const e=box.querySelector(q);if(e)e.onchange=save});
+}
+async function provAct(act,b){
+  const box=document.getElementById('s-prov'),out=document.getElementById('prov-out');
+  const post=async(url,body,method)=>{const r=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+    const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('could not do that ('+r.status+')'));return d};
+  try{
+    if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/provision/scan');
+      toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
+    if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
+    if(act==='nowait'){await post('/api/provision',{wait:false},'PUT');toast('✓ This machine is set up here');return provPaint()}
+    if(act==='dropkey'){if(!confirm('Revoke this key? Machines that carry it can no longer be set up with it.'))return;
+      await fetch('/api/provision/key/'+encodeURIComponent(b.dataset.kid),{method:'DELETE'});return provPaint()}
+    if(act==='key'){
+      const label=prompt('A name for this key, like “kitchen Pis”','Pis');if(label===null)return;
+      const d=await post('/api/provision/key',{label});
+      provPaint().then(()=>{const o=document.getElementById('prov-out');if(!o)return;
+        o.innerHTML=`<div class="prov-keytext"><b>Your enrolment key</b> (shown once)
+          <code>${esc(d.key.text)}</code>
+          <span class="mut">Save it as <code>bento-enroll.txt</code> on the SD card’s boot partition, or run
+          <code>bento pool enroll …</code> on the new machine.</span>
+          <button class="endbtn" id="prov-copy">Copy</button></div>`;
+        const c=document.getElementById('prov-copy');if(c)c.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(d.key.text);toast('✓ copied')}});
+      return;
+    }
+    if(act==='enable'){
+      const fps=Object.keys(PROV.sel);if(!fps.length){toast('Tick the machines to set up first');return}
+      const f=PROV.form||{},prof={kiosk:!!(box.querySelector('#prov-kiosk')||{}).checked,
+        buddy:(box.querySelector('#prov-buddy')||{}).value||'auto',lite:true};
+      const an=((box.querySelector('#prov-agent')||{}).value||f.agent||'').trim();if(an)prof.agent_name=an;
+      const machines=fps.map(fp=>({fp,code:((box.querySelector(`[data-code="${CSS.escape(fp)}"]`)||{}).value||'').replace(/\D/g,''),
+        name:((box.querySelector(`[data-name="${CSS.escape(fp)}"]`)||{}).value||'').trim()}));
+      b.disabled=true;b.textContent='Setting up…';
+      const d=await post('/api/provision/enable',{machines,profile:prof});
+      const ok=(d.results||[]).filter(r=>r.ok),bad=(d.results||[]).filter(r=>!r.ok);
+      PROV.sel={};
+      await provPaint();
+      const o=document.getElementById('prov-out');
+      if(o)o.innerHTML=(ok.length?`<p class="ok">✓ ${ok.map(r=>esc(r.name)).join(', ')} ${ok.length===1?'is':'are'} set up and joining “${esc(d.pool.name)}”.</p>`:'')
+        +bad.map(r=>`<p class="warn">${esc(r.name||'A machine')}: ${esc(r.error)}</p>`).join('');
+      if(typeof poolPaint==='function')poolPaint();
+      return;
+    }
+  }catch(e){toast(String(e.message||e));provPaint()}
+}
+
+/* ---------------- the waiting machine's own screen ---------------- */
+/* A card in the corner, above the setup wizard: the code and the id to read out to
+   whoever is at the leader. Not on a remote browser: the code is for somebody standing
+   at THIS screen, and a phone looking at the machine is not that. */
+function provWaitCard(v){
+  let el=document.getElementById('prov-wait');
+  const t=(v&&v.this)||{};
+  const show=t.waiting&&!(typeof remoteClient==='function'&&remoteClient());
+  if(!show){if(el)el.remove();return}
+  if(!el){el=document.createElement('div');el.id='prov-wait';el.setAttribute('role','status');document.body.appendChild(el)}
+  const hw=t.hw||{};
+  el.innerHTML=`<b>Waiting to be set up</b>
+    <p>${t.locked?`Too many wrong codes. Try again in ${Math.ceil(t.locked/60)} minutes.`
+      :t.pin?`On the Bento that leads your community, open Settings → Agents → Community, choose this machine and type`
+      :`This machine carries an enrolment key. On the Bento that leads your community, choose it and press Enable.`}</p>
+    ${t.pin&&!t.locked?`<div class="prov-pin">${esc(t.pin.slice(0,3))} ${esc(t.pin.slice(3))}</div>`:''}
+    <p class="mut">${esc(hw.board||hw.host||'This machine')} · id ${esc(t.id)}</p>
+    <button class="endbtn" id="prov-here">Set it up here instead</button>`;
+  el.querySelector('#prov-here').onclick=async()=>{
+    await fetch('/api/provision',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({wait:false})});
+    el.remove();
+  };
+}
+async function provWaitCheck(){
+  try{const v=await apiJSON('/api/provision');PROV.v=v;provWaitCard(v)}catch(e){}
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
@@ -30758,6 +31150,7 @@ connect();
     if($('#setup-wiz'))return;      // a first run has no desktop to bring back
     // the kiosk face (24h-kiosk.js): this machine's own screen as the Office, listening
     try{if(typeof kioskApply==='function')kioskApply()}catch(e){}
+    try{if(typeof provWaitCheck==='function')provWaitCheck()}catch(e){}
     // Bring back the desktop this page had before it reloaded. After the splash,
     // so eight windows do not animate in behind it, and never during setup.
     try{if(typeof sessionRestore==='function')sessionRestore()}catch(e){}

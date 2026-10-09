@@ -11,7 +11,7 @@ uv run agentos
 ```
 
 The desktop opens at **http://127.0.0.1:8321**, and on a fresh install it opens onto
-**setup** — twelve steps down the left, one at a time on the right.
+**setup** — fourteen steps down the left, one at a time on the right.
 
 ![The first-run setup screen: the rail of setup steps down the left with the first one selected, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply" above the field](screenshots/onboarding-1-name.png)
 
@@ -26,6 +26,8 @@ anything:
 | Watch it answer | a real reply, from your model, in front of you |
 | Build a specialist | an agent you can call by name with `@` |
 | Meet your crew and set up the office | everyone's pixel-art character and an office they work in — see [The Office](office.md) |
+| Choose what this screen shows | the desktop, or a kiosk that listens; one agent drawn or the crew — see [Small screens](small-screens.md) |
+| Wake it with your voice | a wake word this machine has really heard and understood, and a voice that answers |
 | Give it a mission | a flow you can run, and watch run |
 | Let it run without you | something on the clock, with a next run time |
 | Reach it from your phone | a paired chat that answers as your agent |

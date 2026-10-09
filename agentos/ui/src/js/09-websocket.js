@@ -595,6 +595,16 @@ function handle(ev){
           setTimeout(()=>document.getElementById('s-pool')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       break;
     // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
+    // new machines (provision.py): one heard waiting is asked about, here, at once
+    case 'provision': if(typeof provPaint==='function')provPaint();
+      if(typeof provWaitCheck==='function')provWaitCheck();
+      if(ev.kind==='new')toast(`A new machine turned on: ${ev.name||'a machine'}${ev.board?' ('+ev.board+')':''}. Set it up?`,
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
+          setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+      else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up`);
+      else if(ev.kind==='failed')toast(`${ev.name||'A machine'} could not be set up: ${ev.error||'it refused'}`);
+      else if(ev.kind==='claimed')setTimeout(()=>location.reload(),1500);   // this machine was just set up
+      break;
     case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
       if(typeof officeReload==='function')officeReload();
       if(typeof crewRoster==='function')crewRoster(true);

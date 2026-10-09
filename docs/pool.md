@@ -38,6 +38,80 @@ the leader's brain.
 
 ![A member's view after a failover: pi-garage leads now, and big-box is a member](screenshots/pool-settings-member.png)
 
+## New machines on the network
+
+You don't have to link each Pi by hand. A fresh Raspberry Pi with Bento **waits to be set
+up**: it tells the network it is there when it starts, and its own screen shows a six-digit
+code and its machine id.
+
+![A fresh Pi waiting to be set up, with its code on screen](screenshots/provision-waiting.png)
+
+The machine that leads your community hears it and asks you. A machine that could lead (it
+has a brain of its own) listens too, so the first Pi you plug in is noticed before there is a
+community at all.
+
+![The leader's toast when a new machine turns on](screenshots/provision-toast.png)
+
+Press **Review**, or open *Settings → Agents → Community → New machines*. Every machine heard
+is listed with its board, its memory and its id. Tick the ones to set up, type the code shown
+on each one's screen, choose what they become, and press **Enable with an agent**.
+
+![New machines: two Pis waiting, their codes typed, kiosk on](screenshots/provision-new-machines.png)
+
+Each one then:
+- links to this machine, the same kind of link the six digits make between two teams,
+- takes the profile you chose: its name, its agent's name, kiosk or desktop, one agent on
+  screen, Light mode,
+- finishes its setup, joins the community straight away (you already said yes), and thinks
+  with the leader's brain.
+
+If there was no community yet, enabling the first machine starts one on this machine.
+
+### Without typing codes: enrolment keys
+
+For Pis nobody will stand in front of, make an **enrolment key** (*Make a key* in the same
+place, or `bento pool key "kitchen Pis"`). Put the key on the new Pi before its first boot:
+
+- save it as `bento-enroll.txt` on the SD card's boot partition, or
+- install with `install.sh --enroll=KEY`, or run `bento pool enroll KEY` on it.
+
+A Pi carrying your key needs no code. Mark the key **automatic** and the Pi is set up the
+moment it is heard, with the profile you gave the key. You still get a toast saying so.
+
+### From a terminal
+
+```sh
+bento pool discover                          # on the leader: who is waiting
+bento pool enable pi-kitchen --code 482913   # set one up (add --kiosk, --agent-name Pip)
+bento pool key "kitchen Pis" --auto          # make an enrolment key
+bento pool wait                              # on the new machine: its code and id
+bento pool wait on                           # make any machine wait, not only a fresh Pi
+bento pool enroll bento-enroll-1.…           # carry a key
+```
+
+### What keeps it safe
+
+- **Only a waiting machine listens for a claim.** A machine that was set up, joined a
+  community or was told `bento pool wait off` answers nothing. A claim closes it for good.
+- **A claim is proven.** The code or the key is never sent; each side proves it with a
+  keyed hash over both machines' certificates and a fresh number, so it can't be replayed.
+  Five wrong codes change the code, and after three changes the machine takes no claim for ten
+  minutes. A machine claiming to carry your key must prove it too, so an automatic key never
+  enables a device that only copied a key's name out of the air.
+- **Check the id.** The code is read off the new machine's screen by you. Compare the machine
+  id it shows with the one in the leader's list: if somebody on your network were in the
+  middle, the two would differ. On a network you don't trust, use an enrolment key, whose
+  secret never travels.
+- **Enabling is a person's act.** There is no agent tool for it, because each machine you
+  enable spends the leader's model budget. Every step is a ledger row on both machines.
+- Waiting and listening use UDP and TCP port 8620 on the local network. A network that drops
+  broadcasts between its parts can be told where to look with `AGENTOS_DISCOVER_TARGETS`.
+
+Measured with a leader and three stand-in Pis on one box (`packaging/dev/provision-e2e/run.py`):
+the leader heard all three within 4.5 seconds of them starting, set up the one carrying its
+automatic key with nobody pressing anything, enabled the other two together in 0.02 seconds,
+and all three were members a second later, at about 97 MB each.
+
 ## What a community does
 
 **The leader thinks for the members.** A member on `pool/default` (shown as *Your community's
