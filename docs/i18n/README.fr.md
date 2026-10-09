@@ -44,6 +44,8 @@ registre infalsifiable.
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 Ouvrez ensuite **http://127.0.0.1:8321**. Il n'écoute que sur localhost tant que vous n'avez pas
 activé vous-même l'[accès à distance](../remote-access.md). Pas de compte à créer, pas de
 télémétrie, et pas de cloud sauf si vous ajoutez une clé.
@@ -436,6 +438,12 @@ quelqu'un. Les administrateurs gèrent aussi la machine, et le même nom d'utili
 mot de passe fonctionnent depuis un téléphone. [Utilisateurs →](../users.md)
 
 ![L'app Users : deux comptes, un administrateur et un avec le rôle Executor](../screenshots/users-two-accounts.png)
+
+### Sauvegardes et une machine de secours dans le cloud
+
+`bento backup` met toute la machine dans un seul fichier scellé : chaque compte, le coffre et l'espace de travail. `bento restore` la remet en place sur cette machine ou sur une nouvelle. [Sauvegarde →](../backup.md)
+
+Associez un second Bento sur une machine dans le cloud : il reste en attente avec une copie scellée. Si votre machine se tait, le cloud poursuit vos missions et vos canaux, puis vous rend le travail à son retour. Activez la synchronisation active et chaque changement, chaque message de chat compris, arrive dans le cloud en quelques secondes. [Secours dans le cloud →](../standby.md)
 
 ### Partagez votre agent, forkez celui de quelqu'un d'autre
 

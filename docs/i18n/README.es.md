@@ -44,6 +44,8 @@ manipulaciones.
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 Luego abre **http://127.0.0.1:8321**. Solo escucha en localhost hasta que tú mismo actives el
 [acceso remoto](../remote-access.md). No hay que crear ninguna cuenta, no hay telemetría y no hay
 nube a menos que añadas una clave.
@@ -426,6 +428,12 @@ cláusula `WHERE` olvidada no puede filtrar la memoria de nadie. Los administrad
 la máquina, y el mismo usuario y contraseña funcionan desde un teléfono. [Usuarios →](../users.md)
 
 ![La app Users: dos cuentas, una de administrador y otra con el rol Executor](../screenshots/users-two-accounts.png)
+
+### Copias de seguridad y una máquina de reserva en la nube
+
+`bento backup` guarda la máquina entera en un solo archivo sellado: todas las cuentas, la bóveda y el espacio de trabajo. `bento restore` la recupera en esta máquina o en una nueva. [Copias de seguridad →](../backup.md)
+
+Empareja un segundo Bento en una máquina en la nube y quedará de reserva con una copia sellada. Si tu máquina deja de responder, la nube sigue con tus misiones y canales, y te devuelve el trabajo cuando vuelve. Activa la sincronización activa y cada cambio, incluido cada mensaje de chat, llega a la nube en segundos. [Reserva en la nube →](../standby.md)
 
 ### Comparte tu agente, haz un fork del de otra persona
 

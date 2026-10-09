@@ -771,7 +771,10 @@ body.act-approving #working,body.act-approving .mf-working{cursor:pointer}
 .approval .atitle{color:var(--warn);font-weight:700;font-size:var(--fs-md);margin-bottom:6px}
 .approval .acmd{font-family:var(--mono);font-size:var(--fs-sm);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;margin:8px 0;white-space:pre-wrap;word-break:break-all}
 .approval .areason{color:var(--dim);font-size:var(--fs-sm)}
-.approval .btns{display:flex;gap:8px;margin-top:11px}
+.approval .btns{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap;align-items:center}
+.approval .ap-rem{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.approval .ap-remlbl{color:var(--dim);font-size:var(--fs-sm)}
+.approval .ap-rem .always{padding:7px 12px}
 .approval .allow{background:var(--warn);color:#1c1503;font-weight:700;padding:7px 18px;border-radius:var(--r-md)}
 .approval .deny{border:1px solid var(--line);color:var(--dim);padding:7px 18px;border-radius:var(--r-md)}
 .approval .deny:hover{color:var(--err);border-color:var(--err)}
@@ -1010,6 +1013,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .apptop input{flex:1;min-width:90px}
 .stepnum{display:inline-flex;width:20px;height:20px;border-radius:50%;background:var(--bg4);color:var(--acc);font-size:var(--fs-xs);font-weight:800;align-items:center;justify-content:center;margin-right:8px;flex:none}
 .fcrumb{cursor:pointer;color:var(--dim)}.fcrumb:hover{color:var(--acc)}.fsep{color:var(--dim2);margin:0 4px}
+.f-place{flex:0 1 auto;max-width:42%;min-height:var(--tap,30px);padding:4px 8px;border-radius:var(--r-sm,8px);border:1px solid var(--line);background:var(--bg3);color:var(--txt);font-size:var(--fs-sm)}
 .fitem{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-md);cursor:pointer;font-size:var(--fs-md)}
 .fitem:hover{background:var(--bg3)}
 .fitem .fi{font-size:var(--fs-lg);flex:none}.fitem .fn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1413,7 +1417,20 @@ body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical
 .bk-pws input{flex:1 1 180px;min-width:0}
 .bk-ws{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-sm)}
 .bk-ws code{word-break:break-all}
+.sb-feed{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
 .bk-box input[type=file]{max-width:100%;min-height:var(--tap,32px)}
+.cd-pass{display:flex;flex-direction:column;gap:4px;width:100%}
+.cd-pass-row{display:flex;gap:6px;width:100%}
+#cd-box{min-width:0;max-width:100%}
+.cd-pass-row input{flex:1 1 120px;width:100%;min-width:0;font-family:var(--mono,ui-monospace,monospace)}
+.cd-pass-row button,.cd-after button,.cd-go{min-height:var(--tap,32px)}
+.cd-more{margin-top:12px;width:100%}
+.cd-more summary{cursor:pointer;min-height:var(--tap,28px);display:flex;align-items:center;color:var(--dim)}
+.cd-way{display:flex;flex-direction:column;gap:4px;margin:10px 0}
+.cd-steps{margin:2px 0 2px 18px;padding:0;display:flex;flex-direction:column;gap:4px}
+.cd-steps code{white-space:pre-wrap;word-break:break-all;user-select:all}
+.cd-after{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.cd-after>div{display:flex;flex-wrap:wrap;gap:6px}
 .bk-done{padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--ok,#3c9) 12%,transparent);margin:4px 0 8px}
 .bk-done ul{margin:6px 0 6px 18px;padding:0}
 .bk-done li{margin:3px 0}
@@ -1422,6 +1439,12 @@ body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical
 .bk-last{padding:0 16px}
 .bk-last .bk-done{margin:12px 0 4px}
 .bk-last li{word-break:break-word}
+.cd-step{display:flex;flex-direction:column;gap:6px;width:100%}
+.cd-here{margin-bottom:14px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.cd-here.cd-ok{background:color-mix(in srgb,var(--ok,#3c9) 12%,transparent)}
+.cd-here.cd-warn{background:color-mix(in srgb,var(--warn,#e6a23c) 14%,transparent)}
+.cd-here.cd-err{background:color-mix(in srgb,var(--err,#e5484d) 14%,transparent)}
+.cd-here>div{display:flex;flex-wrap:wrap;gap:6px}
 /* ================= window switcher (Ctrl+Tab) ================= */
 #switcher{position:fixed;inset:0;z-index:9720;display:none;align-items:center;justify-content:center;background:rgba(5,7,10,.4);backdrop-filter:blur(4px)}
 #switcher.show{display:flex}
@@ -1742,6 +1765,9 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
   border:1px solid color-mix(in srgb,var(--acc) 25%,transparent);
   padding:6px 11px;border-radius:var(--r-lg) 4px var(--r-lg) var(--r-lg);font-size:var(--fs-md);max-width:88%;margin:4px 0}
 .mf-body{font-size:var(--fs-md);line-height:1.5;margin:4px 0;user-select:text}
+.mf-who{display:flex;align-items:center;gap:7px;margin:8px 0 2px;font-size:var(--fs-sm);
+  font-weight:600;color:var(--dim)}
+.mf-who img.av-who{width:22px;height:22px;border-radius:7px;flex:0 0 22px}
 .mf-think{max-height:76px;overflow-y:auto;opacity:.75;font-size:var(--fs-xs)}
 .mf-working{display:flex;align-items:center;gap:8px;padding:6px 2px;color:var(--dim);font-size:var(--fs-sm)}
 .mf-working.quiet{display:none}
@@ -1978,7 +2004,8 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 #aibubble .ab-orb{width:14px;height:14px;flex:none;border-radius:var(--r-full);
   background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%)}
 #aibubble.busy .ab-orb{animation:obusy 1s ease-in-out infinite}
-#aibubble .ab-t{font-size:var(--fs-sm);font-weight:600;white-space:nowrap}
+#aibubble .ab-t{font-size:var(--fs-sm);font-weight:600;white-space:nowrap;
+  max-width:min(46vw,380px);overflow:hidden;text-overflow:ellipsis}
 #aibubble .ab-n{min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-full);background:var(--acc);color:#06211d;
   font-size:var(--fs-2xs);font-weight:800;display:flex;align-items:center;justify-content:center}
 
@@ -2080,8 +2107,9 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .bchoice select{flex:1;min-width:0}
 
 /* stop controls: visible the moment something is running */
-#aibubble .ab-stop{width:22px;height:22px;border-radius:var(--r-full);flex:none;font-size:var(--fs-2xs);
+#aibubble .ab-stop,#aibubble .ab-x{width:22px;height:22px;border-radius:var(--r-full);flex:none;font-size:var(--fs-2xs);
   background:var(--bg3);border:1px solid var(--line);color:var(--dim);display:flex;align-items:center;justify-content:center}
+#aibubble:not(.busy) .ab-x{display:none}
 #aibubble .ab-stop:hover{color:var(--err);border-color:var(--err)}
 .cp-send.stop{background:var(--err);color:#2b0606}
 .ocard .oc-tools .oc-stopnow{margin-right:auto;color:var(--err);
@@ -2208,7 +2236,8 @@ body.dev-touch .win input:not([type=checkbox]):not([type=radio]):not([type=range
 body.dev-touch #startmenu button,body.dev-touch #ccpop button,
 body.dev-touch #notifpanel button,body.dev-touch #powermenu button,
 body.dev-touch .ob-body button,body.dev-touch .ob-foot button,
-body.dev-touch #palbox button,body.dev-touch #swbox button{
+body.dev-touch #palbox button,body.dev-touch #swbox button,
+body.dev-touch .approval button,body.dev-touch #aibubble button{
   min-height:var(--tap);min-width:var(--tap)}
 /* Text inputs want the height and not the width — a min-width on a field that is
    meant to sit in a row makes it wrap for no reason. */
@@ -2742,6 +2771,22 @@ body.glass-off .win{background:var(--bg)!important}
 .job-ai-out .err{color:var(--err,#f87171)}
 body.dev-mobile .job-ai-row{flex-direction:column;align-items:stretch}
 body.dev-touch .job-ai-btns button,body.dev-touch #job-ai-go{min-height:var(--tap)}
+
+/* ---- Missions → History (14c-history.js) and the Schedule rows' run line ---- */
+.job-hchips{margin:6px 0 10px}
+.job-hlist{display:flex;flex-direction:column;gap:6px}
+.job-hrow{align-items:flex-start}
+.job-hhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.job-hhead b{overflow-wrap:anywhere}
+.job-hst{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:1px 8px;
+  border-radius:var(--r-full);background:var(--bg3);color:var(--dim);white-space:nowrap}
+.job-hst.ok{color:var(--ok,#22c55e)}.job-hst.running{color:var(--acc)}.job-hst.failed{color:var(--err,#ef4444)}
+.job-hst.waiting,.job-hst.partial{color:var(--warn,#f59e0b)}
+.job-hkind{font-size:var(--fs-2xs);padding:1px 7px;border-radius:var(--r-full);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.job-hsaid{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.task-last.ok{color:var(--ok,#22c55e)}.task-last.failed{color:var(--err,#ef4444)}.task-last.skipped{color:var(--warn,#f59e0b)}
+body.dev-touch .job-hchips .of-chip,body.dev-touch .job-hrow .endbtn,body.dev-touch .task-row button{min-height:var(--tap)}
+@media (max-width:600px){.job-hrow{flex-wrap:wrap}.job-hrow .endbtn{margin-left:auto}}
 /* ================= onboarding =================
    Two columns: a rail you can move around in freely, and one pane at a time. The
    rail is the point — a linear wizard hides how much is left and gives you nowhere
@@ -4127,6 +4172,7 @@ body.dev-touch .of-files .endbtn{min-height:var(--tap)}
 .co-card .co-k{display:flex;flex-direction:column;align-items:center;font-weight:800}
 .co-card .co-k i{font-style:normal;font-weight:600;font-size:9px;text-transform:uppercase;letter-spacing:.06em;opacity:.7}
 .co-card .co-w,.co-line .co-w{color:#fbbf24;font-weight:800}
+.co-card .co-fl,.co-line .co-fl{color:#fb7185;font-weight:800}
 .co-card.wait{border-color:#f59e0b;box-shadow:0 0 0 2px color-mix(in srgb,#f59e0b 45%,transparent),0 2px 0 #191827}
 .co-card.busy .co-k:first-of-type{color:#86efac}
 .co-card.compact .co-n small,.co-card.compact .co-k i{display:none}
@@ -4178,11 +4224,18 @@ body.dev-touch .of-files .endbtn{min-height:var(--tap)}
 .co-tm,.co-said{font-size:var(--fs-xs);overflow-wrap:anywhere}
 .co-review{align-self:flex-start;margin-top:3px;font-size:var(--fs-xs);font-weight:700;color:#f59e0b;text-decoration:underline}
 body.dev-touch .co-review{min-height:var(--tap);display:inline-flex;align-items:center}
+.co-au{display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);margin-top:2px;overflow-wrap:anywhere}
+.co-au .co-av{width:16px;height:16px;border-radius:4px;flex:none;image-rendering:pixelated}
+.co-au.pass{color:var(--ok,#22c55e)}.co-au.concerns{color:#f59e0b}.co-au.fail{color:var(--err,#ef4444)}
+.co-au.none,.co-au.checking{color:var(--dim)}
+.co-check{color:var(--acc)}
+.co-audit{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);margin:2px 0 8px}
 .co-said{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 body.dev-touch .co-card{min-height:var(--tap)}
 body.dev-touch .of-company .endbtn,body.dev-touch .of-company .of-chip,body.dev-touch .of-company select,
 body.dev-touch .of-company input,body.dev-touch .co-lh,body.dev-touch .co-task-row,body.dev-touch .co-link,
-body.dev-touch .co-ph,body.dev-touch .co-more summary,body.dev-touch .co-talk{min-height:var(--tap)}
+body.dev-touch .co-ph,body.dev-touch .co-more summary,body.dev-touch .co-talk,body.dev-touch .co-audit{min-height:var(--tap)}
+body.dev-touch .co-audit input{width:22px;height:22px}
 body.dev-touch .co-ph input,body.dev-touch .co-dh input,body.dev-touch .co-talk input{width:22px;height:22px}
 body.dev-touch .co-more summary{display:flex;align-items:center}
 
@@ -4593,6 +4646,56 @@ body.dev-mobile .mn-say{top:100px;font-size:14px}
 #mind-ui.peace .mn-top>:not(.mn-peace){display:none}
 body.mind-peace:not(.has-win) #omnibar:not(.summoned):not(.pop):not(:focus-within){opacity:0;pointer-events:none}
 .mn-peace[aria-pressed="true"]{background:rgba(124,140,255,.3)}
+/* The kiosk face (24h-kiosk.js): this machine's own screen is the Office, with a band
+   at the bottom saying who is listening, what was heard and the answer. Everything a
+   pointer would need is hidden; an approval card (.ap-float) and toasts still show,
+   because a turn asked from here is gated like any other. */
+body.kiosk #menubar,body.kiosk #taskbar,body.kiosk #icons,body.kiosk #home,body.kiosk #deck,
+body.kiosk #widgets,body.kiosk #barwidgets,body.kiosk #omnibar,body.kiosk #omnicards,
+body.kiosk #jarvis-shell,body.kiosk #custom-shell,body.kiosk #shell-exit,body.kiosk #jarvis,
+body.kiosk .win{display:none!important}
+body.kiosk #wall{background:var(--bg)}
+body.kiosk #office-scene{position:absolute;left:0;right:0;top:0;bottom:var(--kiosk-hud,128px);
+  display:flex;justify-content:center;align-items:center;pointer-events:none}
+body.kiosk #office-scene .of-scroll{width:100vw;height:100%;display:flex;align-items:center;
+  justify-content:center;overflow:hidden}
+body.kiosk #office-scene canvas{display:block}
+#kiosk-hud{position:fixed;left:16px;right:16px;bottom:16px;z-index:9600;display:grid;
+  grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;gap:6px 16px;align-items:center;
+  padding:12px 16px;border-radius:var(--r-lg,14px);background:color-mix(in srgb,var(--bg2) 94%,transparent);
+  border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);color:var(--txt);
+  box-shadow:0 10px 30px color-mix(in srgb,var(--bg) 70%,transparent);max-height:40vh}
+#kiosk-hud .kh-who{display:flex;align-items:center;gap:12px;grid-row:1/3}
+#kiosk-hud .kh-face{width:56px;height:56px;image-rendering:pixelated;border-radius:12px}
+#kiosk-hud .kh-txt{display:flex;flex-direction:column;min-width:0}
+#kiosk-hud .kh-name{font-size:var(--fs-lg,18px)}
+#kiosk-hud .kh-line{color:var(--txt2,var(--txt));opacity:.85;font-size:var(--fs-md,15px)}
+#kiosk-hud .kh-heard{grid-column:2;font-style:italic;opacity:.8;font-size:var(--fs-md,15px);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#kiosk-hud .kh-reply{grid-column:2;font-size:var(--fs-lg,18px);line-height:1.35;overflow:auto;max-height:22vh}
+#kiosk-hud .kh-acts{grid-column:3;grid-row:1/3;display:flex;gap:8px}
+#kiosk-hud button{min-height:var(--tap,44px);min-width:var(--tap,44px);padding:0 16px;border-radius:999px;
+  border:1px solid color-mix(in srgb,var(--txt) 18%,transparent);background:var(--bg3);color:var(--txt);
+  font:inherit;cursor:pointer}
+#kiosk-hud .kh-mic{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
+#kiosk-hud .kh-mic.off{background:var(--bg3);color:var(--txt)}
+#kiosk-hud .kh-mic.live{box-shadow:0 0 0 4px color-mix(in srgb,var(--acc) 40%,transparent)}
+#kiosk-hud[data-phase="deaf"] .kh-line{color:var(--warn,#e8b04b);opacity:1}
+@media (max-width:640px){
+  #kiosk-hud{grid-template-columns:1fr auto;left:16px;right:16px}
+  #kiosk-hud .kh-who{grid-row:auto}
+  #kiosk-hud .kh-heard,#kiosk-hud .kh-reply{grid-column:1/3}
+  #kiosk-hud .kh-acts{grid-column:2;grid-row:1}
+}
+@media (prefers-reduced-motion:reduce){#kiosk-hud .kh-mic.live{box-shadow:none;outline:2px solid var(--acc)}}
+/* Settings → Agents → Community (24i-pool.js) */
+.pool-list{display:flex;flex-direction:column;gap:6px;width:100%}
+.pool-m{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:var(--r-md,10px);
+  background:color-mix(in srgb,var(--txt) 4%,transparent);border-left:3px solid color-mix(in srgb,var(--txt) 20%,transparent)}
+.pool-m.up{border-left-color:var(--acc)}
+.pool-m .mut{flex:1 1 220px;min-width:0}
+.pool-notes{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.pool-n{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -4947,6 +5050,8 @@ function suiSend(cmd, args){ if(suiActive()) window.suiCall(cmd, args) }
    layout changes the dock band, and a phone has different numbers again.
    Measuring means the struts are right for whatever is actually on screen. */
 function suiChrome(){
+  // the kiosk face hides the menu bar and the dock, so it reserves no band at all
+  if(document.body.classList.contains('kiosk')) return {top: 0, bottom: 0};
   const h = innerHeight || 900;
   const mb = document.getElementById('menubar');
   const top = mb && mb.offsetHeight ? Math.round(mb.getBoundingClientRect().bottom) : 30;
@@ -5689,7 +5794,8 @@ function applyImmersive(){
   if(typeof MOVEMENT!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop()}
   if(typeof CREW!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();else crewStop()}
   // the Office scene (24d) loads later still; it starts itself on first paint
-  if(typeof OFFICE_SCENE!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();else officeSceneStop()}
+  if(typeof OFFICE_SCENE!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();
+    else if(!document.body.classList.contains('kiosk'))officeSceneStop()}   // the kiosk keeps its office
   // the World (01e, experimental): leaving this scene is what puts the world to sleep
   if(typeof WORLD!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='world')worldStart();else worldStop()}
   // the Mind (01g): your agents and what they know, as one picture
@@ -6248,6 +6354,7 @@ function crewKick(){
 function crewCovered(){
   if(document.hidden)return true;
   const b=document.body.classList;
+  if(b.contains('kiosk'))return false;      // the kiosk face hides every window: the scene IS the screen
   if(b.contains('has-fullwin'))return true;
   if(typeof WM!=='undefined'&&[...WM.wins.values()].some(w=>w.max&&!w.min))return true;
   if(b.contains('dev-mobile')&&b.contains('has-win'))return true;
@@ -6284,6 +6391,9 @@ async function crewRoster(force){
       :subs)
       .sort((a,b)=>pos(a.name)-pos(b.name))
       .slice(0,depts.length?CREW_MAX_ORG:CREW_MAX);
+    // One agent on screen (face.buddy, Light mode by default): the stage is the lead
+    // alone, and a specialist's work lights the lead (crewMatch). Nobody walks on.
+    if(faceBuddy())CREW.cast=[];
     // somebody new has no character yet until /api/avatars has generated one
     if(typeof avatarsLoad==='function'&&CREW.cast.some(c=>!AVATARS.by[c.name]))await avatarsLoad();
     // Arrivals. The first roster is who was already here — nobody walks in on a
@@ -6294,6 +6404,7 @@ async function crewRoster(force){
     CREW.known=new Set(CREW.cast.map(c=>c.name));
     crewKick();
   }catch(e){}
+  if(faceBuddy()){CREW.guests=[];return}
   crewGuests();
 }
 /* Linked teams' people, standing at the edge of the stage as visitors: only the ones
@@ -6362,6 +6473,7 @@ function crewMatch(label){
   const same=n=>{n=String(n).toLowerCase().replace(/[^a-z0-9]/g,'');return n&&(n===k||k.includes(n)||n.includes(k))};
   // a department's figure answers for everybody in it (its head is who is drawn)
   const hit=CREW.cast.find(c=>same(c.name))||CREW.cast.find(c=>c.members&&c.members.some(same));
+  if(!hit&&faceBuddy())return '@agent';     // only the lead is drawn: its desk lights
   return hit?hit.name:null;
 }
 /* The department a figure stands for, or '' for a specialist in none. */
@@ -6562,7 +6674,7 @@ function crewDraw(dt){
   const C=CREW,ctx=C.ctx;if(!ctx)return;
   const W=C.W,H=C.H,ink=crewInk(),now=performance.now();
   ctx.setTransform(C.dpr,0,0,C.dpr,0,0);ctx.clearRect(0,0,W,H);
-  const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0;
+  const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0||!!C.busy['@agent'];
   const who=(typeof agentName==='function')?agentName():'Aria';
   const portrait=H>W;
   // the stage: a shallow line across the lower third, with the work line above it
@@ -6657,7 +6769,8 @@ function crewDraw(dt){
   // the standing line. With nobody on the roster it says so and says what to do
   // about it — an empty stage that explains itself, not an empty stage.
   const nb=Object.keys(C.busy).length,nd=C.cast.filter(c=>c.dept).length;
-  const line=n===0?'No specialists yet — ask for one and they take a place here'
+  const line=n===0&&faceBuddy()?(running?`${who} is working`:`${who} is here`)
+    :n===0?'No specialists yet — ask for one and they take a place here'
     :nd?(()=>{const w=C.cast.filter(c=>c.dept&&C.busy[c.name]).length;
       return w?`${w} of ${nd} departments working`:`${nd} departments standing by`})()
     :nb?`${nb} of ${n} working`
@@ -9986,9 +10099,16 @@ function mfPaint(){
   });
 }
 /* ---- miniFeed: renders one conversation's live events into a container ---- */
+/* Who is answering, at the top of each reply in a small feed: the same face and name
+   Chat puts on its messages. The Office's own chat panel and the prompt bar's card had
+   none, live or from history. */
+function mfWho(speaker){
+  return `<div class="mf-who">${chatWho(speaker?speaker:'@agent',
+    esc(speaker?'@'+speaker.replace(/^@/,''):agentName()))}</div>`;
+}
 function miniFeed(box,opts){
   opts=opts||{};
-  let body=null,text='',think=null,working=null,hud=null;
+  let body=null,text='',think=null,working=null,hud=null,who=null;
   const scroll=()=>{const sc=opts.scrollEl||box;sc.scrollTop=sc.scrollHeight};
   const clearWorking=()=>{if(working){working.remove();working=null}};
   const ensureBody=()=>{
@@ -10007,6 +10127,9 @@ function miniFeed(box,opts){
     start(ev){
       if(working&&working.isConnected){
         bind(ev);
+        // the server says who answers (`@researcher …` is the researcher)
+        if(ev&&ev.speaker&&who&&who.isConnected){const h=document.createElement('div');
+          h.innerHTML=mfWho(ev.speaker);const nw=h.firstElementChild;who.replaceWith(nw);who=nw}
         // `ev` means the send really happened — a row that had been marked
         // queued stops saying so here, or it would still read "queued" while
         // the answer streamed underneath it.
@@ -10018,6 +10141,8 @@ function miniFeed(box,opts){
         mfPaint();return}
       text='';body=null;think=null;clearWorking();
       if(opts.onStart)opts.onStart();
+      if(opts.who!==false){const h=document.createElement('div');h.innerHTML=mfWho(ev&&ev.speaker);
+        who=h.firstElementChild;box.appendChild(who)}
       working=document.createElement('div');working.className='mf-working';
       working.dataset.t0=Date.now();
       working.innerHTML='<span class="mfo"></span><span class="mft">sent — waking the agent</span><span class="mfc"></span>';
@@ -10239,7 +10364,7 @@ async function initCopilot(w,panel){
         ?`<div class="mf-user">${esc(m.content)}</div>`
         :m.role==='assistant'?(/^\[huddle ·/.test(m.content||'')&&typeof huddleCard==='function'
           ?huddleCard(huddleParse(m.content),null,false,'huddle')
-          :`<div class="mf-body body">${md(m.content||'')}</div>`):'').join('');
+          :mfWho(((m.meta||{}).speaker)||'')+`<div class="mf-body body">${md(m.content||'')}</div>`):'').join('');
       if(typeof fileChips==='function')fileChips(feedEl);
       feedEl.scrollTop=feedEl.scrollHeight;
     }catch(e){}
@@ -11173,11 +11298,15 @@ var PLACES=[
   ['Voice','settings','Settings → Voice',['voice','speech','speak','tts','microphone','mic','wake word','dictation'],placeSettings('voice')],
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','remote','remote access','passphrase','lock','autonomy','light mode','profile','security'],placeSettings('system')],
+  ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
+  ['Community','settings','Settings → Agents → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('agent')],
+  ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','mic','microphone','listen','wake word','speech to text','whisper','small screen'],placeSettings('look')],
+  ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],
   ['Run missions','jobs','Missions → Run',['mission','missions','job','jobs','recipe','recipes','daily','describe a mission','catalogue'],placeMissions('run')],
   ['Flows','jobs','Missions → Build → Flows',['flow','flows','workflow','workflows','trigger','triggers','webhook','cron','schedule','orchestrator','fabric','automation'],placeMissions('build','flows')],
   ['Mission agents','jobs','Missions → Build → Agents',['roster','specialist','specialists','subagent','subagents','new agent'],placeMissions('build','agents')],
   ['Company','office','Office → Company',['company','departments','department','org','organisation','organization','startup','business','hr','finance','sales','marketing','admin','supply','operations'],placeCompany()],
-  ['Mission runs','jobs','Missions → Build → Runs',['run','runs','run history','history','what ran'],placeMissions('build','runs')],
+  ['History','jobs','Missions → History',['run','runs','run history','history','what ran','last run','scheduled runs','schedule runs','did it run'],placeMissions('history')],
   ['Schedule','jobs','Missions → Schedule',['scheduler','schedule','scheduled','cron','timer','task','tasks','reminder'],placeFold('tasks')],
   ['Routines','jobs','Missions → Routines',['automation','automations','routine','routines','hot corner','hot corners','macro','sequence'],placeFold('automations')],
   ['Memory','profile','Profile → Memory',['memory','memories','remember','remembers','forget','pinned'],placeFold('memory')],
@@ -12605,6 +12734,11 @@ function clearBuiltinWallpaper(){localStorage.removeItem('wallpaper.builtin');lo
 /* ================= jarvis thinking animation ================= */
 let jrRaf=0,jrPulse=0,jrActive=false,jrTimeout=0;
 function jarvisOn(autoOffSecs){
+  // Only in the Aura (Voice OS) look, where these rings ARE the desktop. Everywhere
+  // else they came up in the middle of the wallpaper on every chat turn, half behind
+  // the Chat window ("pops up on the main desktop like a clock"); the working row,
+  // the Office and the scene already say that a turn is running.
+  if(typeof EXPERIENCE!=='undefined'&&EXPERIENCE!=='jarvis')return;
   const c=$('#jarvis');c.classList.add('on');jrActive=true;
   if(!jrRaf)jrRaf=requestAnimationFrame(jarvisDraw);
   clearTimeout(jrTimeout);
@@ -13259,20 +13393,22 @@ function buildApprovalBox(ev,cur){
     :ev.offer.action==='team.act'?String(ev.offer.resource||'').split('|')[0]:'';
   // an offer may name itself ("Always let home have analyst do this") — the words say
   // exactly what the button writes, which "Allow & remember" does not for another team
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?(ev.offer.label?esc(ev.offer.label):'Allow &amp; remember'):'Always allow'}</button></div>`;
+  // Remember is a grant for the one agent that asked, for as long as the person picks:
+  // this chat, an hour, or until revoked. A card with no offer (a step after untrusted
+  // content, one confirmed every time) has no remember at all. It used to fall back to
+  // "Always allow", which wrote a Rule every app and specialist on the machine shared.
+  const o=ev.offer, standing=o&&o.label;
+  const rem=!o?'':standing?`<button class="deny always" data-rem="always">${esc(o.label)}</button>`
+    :`<span class="ap-rem"><span class="ap-remlbl">Remember</span>${o.conversation_id?'<button class="deny always" data-rem="chat">This chat</button>':''}<button class="deny always" data-rem="hour">1 hour</button><button class="deny always" data-rem="always">Always</button></span>`;
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
-  box.querySelector('.always').onclick=async()=>{
-    if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
-      resolveApproval(ev.id,true,true);
-      toast(ev.offer.note||('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource));
-    }else{
-      const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
-      await addPolicy('allow',pat);
-      resolveApproval(ev.id,true);
-      toast('policy added: always allow "'+pat+'"');
-    }
-  };
+  box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
+    const scope=b.dataset.rem;
+    resolveApproval(ev.id,true,scope);
+    const words={chat:'for this chat',hour:'for an hour',always:'until you revoke it'}[scope]||'';
+    toast(o.note&&standing?o.note:('✓ '+who+' may do this '+words+' (Permissions)'));
+  });
   return box;
 }
 /* The price card. A cloud model with no price is held before it runs — and that
@@ -13323,29 +13459,55 @@ function updateSpin(){
 /* ---- the AI presence bubble (bottom-right): wherever a turn is running — a
    copilot panel, the omnibar, a background task — it shows here, and one click
    opens that conversation in Agent Chat. ---- */
-let AIB={last:null,seen:0};
+let AIB={last:null,seen:0,snooze:new Set()};
+/* Is this turn already on screen? Chat open on it, the prompt bar's card for it, or an
+   app's agent panel (or the Office's own chat) showing it. The bubble is for turns you
+   cannot see: it counted every turn, so it sat over the Chat composer repeating the
+   working row for the whole turn, and read as a toast that never goes away. */
+function turnOnScreen(cid){
+  if(!cid)return false;
+  if(turnInWindow(cid))return true;
+  for(const c of document.querySelectorAll('#omnicards .ocard'))if(c.dataset.cid===cid)return true;
+  return false;
+}
+/* Open in a window you can see: Chat on that conversation, or an app's agent panel
+   (the Office's own chat included). The prompt bar stands down for these too; its
+   own card's turns keep it up, because the card lives above it. */
+function turnInWindow(cid){
+  if(!cid)return false;
+  if(typeof currentConv!=='undefined'&&cid===currentConv&&winsOf('chat').some(w=>winAwake(w)))return true;
+  for(const app in COPILOT.cids)
+    if(COPILOT.cids[app]===cid&&winsOf(app).some(w=>winAwake(w)&&w.el.querySelector('.copanel.open,.of-chat')))return true;
+  return false;
+}
 function aiBubble(){
   let b=$('#aibubble');
   if(!b){
     b=document.createElement('div');b.id='aibubble';
     b.innerHTML='<span class="ab-orb"></span><span class="ab-t"></span><span class="ab-n"></span>'
-      +'<button class="ab-stop" title="Stop the agent (Ctrl+.)">◼</button>';
+      +'<button class="ab-stop" title="Stop the agent (Ctrl+.)">◼</button>'
+      +'<button class="ab-x" title="Hide this until the next turn" aria-label="Hide">✕</button>';
     document.body.appendChild(b);
     b.querySelector('.ab-stop').onclick=e=>{e.stopPropagation();stopAllAgents()};
+    // Hide is a person's choice about this turn, not about turns to come: the ones
+    // running now stay hidden, and the next one shows again. Stop is still ◼.
+    b.querySelector('.ab-x').onclick=e=>{e.stopPropagation();
+      RUNNING.forEach(c=>AIB.snooze.add(c));AIB.seen=0;aiBubble()};
     b.onclick=()=>{
-      const cid=[...RUNNING][0]||AIB.last||currentConv;
+      const cid=[...RUNNING].find(c=>!turnOnScreen(c))||AIB.last||currentConv;
       openApp('chat');if(cid)openConv(cid);
       AIB.seen=0;aiBubble();
       // "waiting for you to approve …" is a question: tapping it shows the card
       if(Object.keys(APPROVALS).length)setTimeout(()=>approvalReveal(),300);
     };
   }
-  const n=RUNNING.size;
-  if(n)AIB.last=[...RUNNING][0];
+  AIB.snooze.forEach(c=>{if(!RUNNING.has(c))AIB.snooze.delete(c)});
+  const off=[...RUNNING].filter(c=>!turnOnScreen(c)&&!AIB.snooze.has(c)),n=off.length;
+  if(n)AIB.last=off[0];
   // The bubble is often the only thing on screen saying a turn exists — on the
   // desktop, with Chat closed. "is working" for four minutes is not a report,
   // so it carries the live step and its age like every other waiting surface.
-  const live=n===1?actLine([...RUNNING][0]):'';
+  const live=n===1?actLine(off[0]):'';
   const label=n?(n>1?`${agentName()} · ${n} turns`
                     :(live?`${agentName()} · ${live}`:`${agentName()} is working`))
                :(AIB.seen?`${agentName()} replied`:'');
@@ -13406,7 +13568,8 @@ function handle(ev){
       if(typeof paintForwardChip==='function')paintForwardChip();
       if(_cur){
         CUR_ENGINE={engine:ev.engine||'',model:ev.model||''};
-        const who=feed&&feed.querySelector('.msg.assistant:last-child .who');
+        // the reply being written, wherever the working row sits after it
+        const who=curBody&&curBody.parentNode.querySelector('.who');
         if(who)who.innerHTML=curWho();
       }
       break;}
@@ -13422,6 +13585,10 @@ function handle(ev){
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
         if(ev.huddle)actMove(_cid,'think',{msg:'huddle · '+ev.huddle[0]+' opens'});}
       if(_cur)setRunning(true);
+      // Who is answering shows from the first second: the name and face go up now, with
+      // the working row under them. It waited for the first word, and Claude Code sends
+      // its whole answer at the end (measured: 50 seconds with nobody's name on screen).
+      if(_cur&&feed&&!curBody){const t0=WORK_T0;startAssistant();WORK_T0=t0;showWorking();scrollDown()}
       // the play strip (24e) goes at the top of this reply, once there is something to show
       if(_cur&&_cid&&typeof playHost==='function')playHost(_cid,()=>chatPlayHost(_cid));
       updateSpin();
@@ -13635,6 +13802,17 @@ function handle(ev){
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged();
       if(typeof officeReload==='function')officeReload(); break;   // a new specialist takes a desk
     case 'office': refreshApp('office'); break;   // the office's look or its seating changed
+    // the community of machines changed, or somebody asks to join it (pool.py)
+    case 'pool': if(typeof poolPaint==='function')poolPaint();
+      if(ev.kind==='pool_request')toast((ev.name||'A machine')+' asks to join your community',
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
+          setTimeout(()=>document.getElementById('s-pool')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+      break;
+    // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
+    case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
+      if(typeof officeReload==='function')officeReload();
+      if(typeof crewRoster==='function')crewRoster(true);
+      if(typeof kioskApply==='function')kioskApply()}); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{
@@ -13750,7 +13928,8 @@ function handle(ev){
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
 }
 function resolveApproval(id,approved,remember){
-  ws.send(JSON.stringify({type:'approval',id,approved,remember:!!remember}));
+  // remember is the scope the person chose ('chat' | 'hour' | 'always') or nothing
+  ws.send(JSON.stringify({type:'approval',id,approved,remember:remember||false}));
   // it is no longer waiting on you — whatever was held for this answer runs now
   for(const k in ACT)if(ACT[k].phase==='approve')actMove(k,approved?'tool':'after');
   const box=$('#ap-'+id); if(box){box.classList.add('resolved');
@@ -14999,6 +15178,11 @@ function setTab(body,all){
          more:'Both screens show the same six digits when you link. Nothing gets through until you choose which of your agents they can ask, and their answers are treated as untrusted.',
          f:'team linked teams remote machine mtls pair invite account handshake federation link request approve'}),
     ],{f:'team agents providers huddle'}));
+    /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
+       One machine leads and lends its brain; small machines join, share notes and take
+       pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
+    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
@@ -15094,6 +15278,9 @@ function setTab(body,all){
        Office's own Design panel and the setup step). Departments and who sits where
        stay in the Office, where you can see the desks. Terminal: `bento office`. */
     P.push(`<div class="pgroup" data-f="office scene crew playground design style pet name describe"><h3>Office</h3><div id="s-office"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    /* This machine's own screen: one agent drawn (buddy) and the kiosk face, both the
+       machine's (face.py), painted from /api/face by 24h-kiosk.js. Terminal: `bento face`. */
+    P.push(`<div class="pgroup" data-f="on this screen buddy one agent kiosk mic listening raspberry pi light mode speech whisper"><h3>On this screen</h3><div id="s-face"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     /* A look laid over the theme, not a theme: it is a switch here rather than
        a card in the gallery so that it composes with whichever theme is on.
        Applied the moment it is flipped, like the theme select above — Save is
@@ -15181,6 +15368,20 @@ function setTab(body,all){
          f:'restore backup import move from another machine migrate new computer recover'}),
     ],{f:'backup restore export import move migrate'}));
     setTimeout(paintBackup,0);
+    P.push(pGroup('Put Bento in the cloud',[
+      pRow('A cloud Bento in a few minutes','<div id="cd-box"><span class="mut">…</span></div>',
+        {desc:'Sign in with GitHub or Google, choose a password, press Deploy. It keeps working while your computer is off.',
+         more:'Render runs it with a disk, so nothing is lost on a restart. Fly.io and your own server are under Other ways. In a terminal: bento cloud.',
+         f:'cloud deploy render fly host hosting server vps online internet always on one click sso quick put move'}),
+    ],{f:'cloud deploy hosting'}));
+    setTimeout(paintCloudDeploy,0);
+    P.push(pGroup('Cloud standby',[
+      pRow('A cloud machine that takes over','<div id="sb-box"><span class="mut">…</span></div>',
+        {desc:'It runs your agent only while this machine is away, then hands the work back.',
+         more:'This machine sends a sealed copy when something changes and a heartbeat every half minute. After a few quiet minutes the cloud takes over. In a terminal: bento standby.',
+         f:'cloud standby failover offload take over hand back away server vps move jack lambda always on'}),
+    ],{f:'cloud standby failover'}));
+    setTimeout(paintStandby,0);
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),
@@ -15215,6 +15416,7 @@ function setTab(body,all){
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
   if(main.querySelector('#s-office'))officeSettingsPaint();
+  if(main.querySelector('#s-face'))faceSettingsPaint();
   if(main.querySelector('#v-voice'))settingsVoices();
   if(main.querySelector('#v-engine-box'))speechPaint();
   const bm=main.querySelector('#s-build-model');
@@ -17568,6 +17770,196 @@ async function backupSeen(){
   try{await fetch('/api/backup/last',{method:'DELETE'})}catch(e){}
   const l=document.getElementById('bk-last');if(l)l.innerHTML='';
 }
+/* ================= Settings → System → Cloud standby (agentos/standby.py) =================
+   Your machine works; a paired cloud machine keeps a sealed copy and takes over only while
+   yours can't be reached, then hands the work back. This pane pairs the two, shows how
+   fresh the copy is, and has the deliberate moves (Move to the cloud, Bring it back).
+   Faces: GUI and SUI are this pane plus the standing-by page the server shows in place of
+   the desktop on whichever side is not working. The TUI is `bento standby`, which pairs
+   and reads with the server down. */
+var STANDBY=STANDBY||{d:null};
+function sbAgo(t){if(!t)return 'never';const s=Math.max(0,Math.round(Date.now()/1000-t));
+  return s<60?s+'s ago':s<3600?Math.floor(s/60)+' min ago':s<86400?Math.floor(s/3600)+' h ago':Math.floor(s/86400)+' days ago'}
+async function paintStandby(){
+  const el=document.getElementById('sb-box');if(!el)return;
+  let d;try{d=await apiJSON('/api/standby')}catch(e){el.innerHTML=`<span class="mut">${esc(e.message)}</span>`;return}
+  STANDBY.d=d;
+  if(!d.admin){el.innerHTML='<span class="mut">Only an admin can set this up, because it moves the whole machine.</span>';return}
+  const vn=d.version_note?`<p class="bk-bad">${esc(d.version_note)}</p>`:'';
+  if(!d.role){
+    el.innerHTML=`<div class="bk-box">
+      <b>Pair with a cloud machine</b>
+      <span class="mut">On the cloud machine, open this pane and press Show a code, or run <code>bento standby wait</code>.</span>
+      <div class="bk-pws"><input id="sb-url" placeholder="https://your-cloud-bento" autocomplete="off" spellcheck="false">
+        <input id="sb-code" placeholder="Code, like K7QM-4XPD" autocomplete="off" spellcheck="false" style="text-transform:uppercase"></div>
+      <div><button class="endbtn" onclick="standbyPair(this)">Pair</button></div></div>
+    <div class="bk-box" style="margin-top:14px">
+      <b>Or make this machine the standby</b>
+      <div id="sb-offer"><button class="endbtn" onclick="standbyOffer(this)">Show a code</button></div></div>`;
+    return}
+  if(d.role==='primary'){
+    const sp=d.split&&d.split.path?`<div class="bk-done" style="background:color-mix(in srgb,var(--warn,#e6a23c) 14%,transparent)">
+      <b>Both machines worked while they were apart.</b> This machine kept its own. The cloud's copy from ${sbAgo(d.split.at)} is saved.
+      <div style="margin-top:6px"><button class="endbtn" onclick="standbyAct('/api/standby/adopt',this,'Switch to the cloud\\u2019s copy? What is here now is kept aside.')">Use the cloud's copy</button>
+      <button class="endbtn" onclick="standbyAct('/api/standby/keep',this)">Keep mine</button></div></div>`:'';
+    const sw=d.last_swap&&d.last_swap.at&&Date.now()/1000-d.last_swap.at<86400?`<p class="mut">Brought the work back from ${esc(d.last_swap.from||d.peer_host)} ${sbAgo(d.last_swap.at)}.${(d.last_swap.notes||[]).map(n=>' '+esc(n)).join('')}</p>`:'';
+    el.innerHTML=`<div class="bk-box">${sp}
+      <span><b>${esc(d.peer_host)}</b> stands by at <code>${esc(d.url)}</code></span>
+      <span class="mut">Heard back ${sbAgo(d.last_contact)} · last copy ${sbAgo(d.last_push)}${d.last_push_bytes?`, ${bkSize(d.last_push_bytes)}`:''}</span>
+      ${d.last_error?`<p class="bk-bad">${esc(d.last_error)}</p>`:''}${d.workspace_note?`<span class="mut">${esc(d.workspace_note)}</span>`:''}${vn}${sw}
+      ${sbSyncLine(d)}
+      <label class="bk-ws"><input type="checkbox" id="sb-sync" ${d.sync==='active'?'checked':''} onchange="standbySet({sync:this.checked?'active':'copies'})"> Active sync: send every change within seconds ${pInfo('Each chat message, memory, setting and file goes to the cloud as a small sealed update, so a takeover picks up from your last change. Off, the cloud gets a whole copy at most every 10 minutes.')}</label>
+      <label class="bk-ws"><input type="checkbox" id="sb-ws" ${d.workspace?'checked':''} onchange="standbySet({workspace:this.checked})"> Include your workspace folder in the copies</label>
+      <div><button class="endbtn" onclick="standbyAct('/api/standby/copy',this)">Copy now</button>
+      <button class="endbtn" onclick="standbyAct('/api/standby/move',this,'Hand over to ${esc(d.peer_host)} now? It carries on with your missions and channels, and this machine waits until you bring it back.')">Move to the cloud now</button>
+      <button class="endbtn" onclick="standbyAct('/api/standby/off',this,'Unpair the two machines? The cloud forgets its copies.')">Unpair</button></div></div>`;
+    return}
+  // the standby, while it is the one working (a quiet standby shows its own page instead)
+  const g=Math.round((d.grace||300)/60);
+  el.innerHTML=`<div class="bk-box">
+    <span>This machine stands by for <b>${esc(d.peer_host)}</b>.</span>
+    ${d.active?`<span>It is the one working now, since ${sbAgo(d.since)}. ${esc(d.reason||'')} It hands the work back when ${esc(d.peer_host)} returns.</span>`:
+      `<span class="mut">Heard from it ${sbAgo(d.last_beat)} · newest copy ${sbAgo(d.copy_at)}${d.update_at?` · last change ${sbAgo(d.update_at)}`:''}</span>${sbFeed(d.feed)}`}
+    ${(d.notes||[]).map(n=>`<span class="mut">${esc(n)}</span>`).join('')}${vn}
+    <label class="bk-ws">Take over after <select id="sb-grace" onchange="standbySet({grace:this.value*60})">${[2,5,15,60].map(m=>`<option value="${m}" ${m===g?'selected':''}>${m} min</option>`).join('')}</select> of silence</label>
+    <label class="bk-ws"><input type="checkbox" ${d.auto?'checked':''} onchange="standbySet({auto:this.checked})"> Take over by itself</label>
+    <div><button class="endbtn" onclick="standbyAct('/api/standby/off',this,'Unpair? This machine forgets the copies it holds.')">Unpair</button></div></div>`;
+}
+// what the last update carried, on your machine: "Synced 3s ago: 2 chat messages, settings"
+function sbSyncLine(d){
+  if(d.sync!=='active')return '';
+  const ch=(d.sync_changes||[]).join(', ');
+  return `<span class="mut">Synced ${sbAgo(d.sync_at)}${ch?': '+esc(ch):''}</span>${d.sync_note?`<span class="mut">${esc('Last time a full copy went instead: '+d.sync_note+'.')}</span>`:''}`}
+// what arrived lately, on the cloud
+function sbFeed(f){
+  if(!f||!f.length)return '';
+  return `<div class="sb-feed">${f.slice(0,5).map(x=>`<span class="mut">${sbAgo(x.at)} · ${esc((x.changes||[]).join(', '))}</span>`).join('')}</div>`}
+async function standbyPost(url,body){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'HTTP '+r.status);return d}
+async function standbyPair(btn){
+  const url=document.getElementById('sb-url').value.trim(),code=document.getElementById('sb-code').value.trim();
+  if(!url||!code)return toast('Give the cloud machine’s address and its code',{kind:'warn'});
+  btn.disabled=true;btn.textContent='Pairing…';
+  try{const d=await standbyPost('/api/standby/pair',{url,code});toast(`Paired. ${d.peer_host} now stands by for this machine.`);paintStandby()}
+  catch(e){toast('Not paired: '+e.message,{kind:'err'})}finally{btn.disabled=false;btn.textContent='Pair'}
+}
+async function standbyOffer(btn){
+  btn.disabled=true;
+  try{const d=await standbyPost('/api/standby/offer');
+    document.getElementById('sb-offer').innerHTML=`<div class="bk-done"><b style="font-size:20px;letter-spacing:2px">${esc(d.code)}</b>
+      <p class="mut">Type it on your own machine with this machine's address. It works once, for ten minutes.</p></div>`}
+  catch(e){btn.disabled=false;toast(e.message,{kind:'err'})}
+}
+async function standbySet(body){
+  try{await standbyPost('/api/standby/settings',body);toast('Saved')}catch(e){toast('Not saved: '+e.message,{kind:'err'})}
+  paintStandby();
+}
+async function standbyAct(url,btn,ask){
+  if(ask&&!await osConfirm(ask,'',{confirmText:btn.textContent}))return;
+  const label=btn.textContent;btn.disabled=true;btn.textContent='Working…';
+  try{const d=await standbyPost(url);
+    if(d.restart){toast((d.message||'Done.')+' Bento is restarting.');setTimeout(()=>location.reload(),9000);return}
+    toast(d.message||(d.sent?`Copy sent (${bkSize(d.bytes)})`:(d.why?'No copy needed: '+d.why:'Done.')));paintStandby()}
+  catch(e){toast(e.message,{kind:'err'})}finally{btn.disabled=false;btn.textContent=label}
+}
+/* ================= Settings → System → Put Bento in the cloud (agentos/clouddeploy.py) =================
+   Asked for as "deploy it quickly to the cloud, really quick and noob for anyone, so sso and
+   done". The card is three steps: a free storage bucket for its memory (Backblaze B2 first,
+   the others folded under it), a suggested password, and the Render button (sign in with
+   GitHub or Google, fill in the boxes on their page, press Deploy). The other ways are folded
+   under it, and the two things to do once it is up are the panes right below this one.
+   Nothing here deploys: it opens the host's page.
+   Faces: GUI and SUI are this card (a link opens in the host's browser at the machine and in
+   this browser from a phone, the fileOpen rule). The TUI is `bento cloud`, the same list. */
+var CLOUDDEP=CLOUDDEP||{d:null};
+
+async function paintCloudDeploy(){
+  const el=document.getElementById('cd-box');if(!el)return;
+  let d;try{d=await apiJSON('/api/cloud/deploy')}catch(e){el.innerHTML=`<span class="mut">${esc(e.message)}</span>`;return}
+  CLOUDDEP.d=d;
+  const opts=d.options||[];
+  const top=opts.find(o=>o.recommended)||opts[0];
+  const rest=opts.filter(o=>o!==top);
+  CLOUDDEP.url=top.url;
+  const steps=o=>`<ol class="cd-steps">${(o.steps||[]).map(s=>`<li>${o.kind==='commands'
+      ?`<code>${esc(s)}</code>`:esc(s)}</li>`).join('')}</ol>`;
+  /* This machine, when it is a cloud machine whose host forgets its disk (keep.py):
+     where its memory is kept, or the plain fact that it forgets. */
+  const h=d.here||{};
+  const here=h.line?`<div class="bk-box cd-here cd-${esc(h.kind||'')}">
+      <span><b>This machine</b></span>
+      <span>${esc(h.line)}</span>
+      ${h.saved_at?`<span class="mut">Saved ${sbAgo(h.saved_at)}${h.saved_bytes?`, ${bkSize(h.saved_bytes)}`:''}${h.restored_at?` · brought back ${sbAgo(h.restored_at)}`:''}</span>`:''}
+      ${h.restore_note&&!h.saved_at?`<span class="mut">${esc(h.restore_note)}</span>`:''}
+      ${h.enabled?`<div><button class="endbtn" onclick="cloudKeepSave(this)">Save now</button></div>`:''}
+    </div>`:'';
+  el.innerHTML=`${here}<div class="bk-box">
+      <span><b>${esc(top.title)}</b> <span class="mut">· ${top.free?'free':'easiest'}</span></span>
+      <span class="mut">${esc(top.how)}</span>
+      ${top.storage?cloudStorageStep(top.storage):''}
+      <div class="cd-pass"><span class="mut">${top.storage?'2. ':''}A password you could use</span>
+        <span class="cd-pass-row"><input id="cd-pw" readonly value="${esc(d.passphrase)}" spellcheck="false">
+          <button class="endbtn" onclick="cloudDeployCopy()">Copy</button>
+          <button class="endbtn" title="Another one" onclick="paintCloudDeploy()">↻</button></span></div>
+      <div class="cd-step">${top.storage?'<span class="mut">3. Fill in the password and the bucket on Render\u2019s page.</span>':''}
+        <div><button class="save cd-go" onclick="cloudDeployOpen(CLOUDDEP.url)">Deploy on ${esc(top.title)}</button></div></div>
+      <span class="mut">${esc(top.costs)} ${pInfo((top.steps||[]).join(' '))}</span>
+    </div>
+    <details class="cd-more"><summary>Other ways</summary>
+      ${rest.map(o=>`<div class="cd-way"><b>${esc(o.title)}</b> <span class="mut">${esc(o.how)}</span>
+        ${steps(o)}<span class="mut">${esc(o.costs)}${o.https?'':' No HTTPS of its own.'}</span></div>`).join('')}
+      <div class="cd-way"><b>Not offered</b>${Object.entries(d.not_offered||{}).map(([k,v])=>
+        `<span class="mut">${esc(k)}: ${esc(v)}</span>`).join('')}</div>
+    </details>
+    <div class="cd-after"><span class="mut">Once it's up</span>
+      <div><button class="endbtn" onclick="cloudDeployGo('sb-box')">Pair it as your standby</button>
+        <button class="endbtn" onclick="cloudDeployGo('bk-make')">Move this machine there</button></div></div>`;
+}
+
+/* Step 1: where its memory is kept. The recommended service is a button; the others, and
+   the steps for each, are folded under it so the card stays three lines tall. */
+function cloudStorageStep(list){
+  const top=list.find(p=>p.recommended)||list[0];
+  CLOUDDEP.signup=top.signup;
+  const how=p=>`<div class="cd-way"><b>${esc(p.name)}</b>${p.free?` <span class="mut">${esc(p.free)}. ${esc(p.card)}</span>`:''}
+      <ol class="cd-steps">${p.steps.map(x=>`<li>${esc(x)}</li>`).join('')}<li>Endpoint: ${esc(p.endpoint)}</li></ol>
+      ${p.signup?`<div><button class="endbtn" onclick="cloudDeployOpen(${JSON.stringify(p.signup).replace(/"/g,'&quot;')})">Open ${esc(p.name)}</button></div>`:''}</div>`;
+  return `<div class="cd-step"><span class="mut">1. A free storage bucket for its memory. ${esc(top.name)}: ${esc(top.free)}. ${esc(top.card)}</span>
+      <div><button class="endbtn" onclick="cloudDeployOpen(CLOUDDEP.signup)">Make a ${esc(top.name.split(' ')[0])} bucket</button>
+        ${pInfo('Your password seals everything before it leaves the machine, so the storage only ever holds noise.')}</div>
+      <details class="cd-more cd-how"><summary>How, and other storage</summary>${list.map(how).join('')}</details></div>`;
+}
+
+/* At the machine the host's own browser opens it; from a phone, this browser does,
+   because the host's would open in another room. */
+function cloudDeployOpen(url){
+  if(typeof remoteClient==='function'&&remoteClient()){window.open(url,'_blank','noopener');return}
+  openHost({url});
+}
+
+/* navigator.clipboard exists only on HTTPS or localhost; a phone on the LAN over plain
+   HTTP has none, so fall back to selecting the text and the old copy command. */
+function cloudDeployCopy(){
+  const i=document.getElementById('cd-pw');if(!i)return;
+  const done=()=>toast('password copied');
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(i.value).then(done,()=>{});return}
+  i.focus();i.select();try{document.execCommand('copy');done()}catch(e){toast('select it and copy it yourself')}
+}
+
+async function cloudKeepSave(b){
+  b.disabled=true;b.textContent='Saving…';
+  try{const r=await fetch('/api/keep/save',{method:'POST'});const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'could not save');
+    toast(d.saved?`Saved to ${d.where} (${bkSize(d.bytes)})`:'Nothing changed since the last save.');
+  }catch(e){toast(e.message)}
+  paintCloudDeploy();
+}
+
+function cloudDeployGo(id){
+  const el=document.getElementById(id);
+  if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
+}
 /* ================= memory app ================= */
 let memTab='user';
 async function renderMemory(body){
@@ -18014,7 +18406,7 @@ async function sawAi(){
    than a select, and Save on every step once it has a name — a drafted agent is often
    ready as it arrives. One editor for Missions → Build and Settings → Agents. */
 var SAW_STEPS=[['Who it is','Who'],['What it can use','Tools'],['Limits & trust','Limits']];
-var SAW_CAPS=[['paranoid','Asks first','Every action waits for you.'],
+var SAW_CAPS=[['paranoid','Asks first','Anything but reading waits for you.'],
   ['balanced','Careful','Safe steps run; risky ones ask you, and are refused when nobody is watching.'],
   ['full','Trusted','Acts freely, within what it is granted. Never above this machine\'s own level.']];
 function sawFace(d){
@@ -18298,7 +18690,7 @@ function fgLog(level,text){
 function fgApply(ev){
   if(!ev||!ev.event)return;
   const graphish={flow_start:1,node_add:1,node_status:1,artifact:1,approval:1,log:1,flow_end:1,thinking:1,
-                  talk:1,status:1,step:1,parked:1,resumed:1};
+                  talk:1,status:1,step:1,parked:1,resumed:1,audit:1};
   if(!graphish[ev.event])return;
   const t=ev._ts||Date.now();
   // The specialists run in runs of their own. Their tool calls reach the story through
@@ -18377,6 +18769,17 @@ function fgApply(ev){
       const n=FG.nodes.get(FG.run);if(n)n.status='running';
       fgLog('info','carried on: you said '+(ev.decision==='allow'?'allow':'deny'));
       fgStory({t,kind:'wait',who:'',state:ev.decision==='allow'?'allowed':'denied',tool:'',text:'',resumed:1});
+      break;}
+    case 'audit':{
+      /* The independent auditor, started by the control plane once the work is done
+         (company.py): not a delegation, so it is its own line in the story. */
+      if(ev.phase==='start'){fgStory({t,kind:'audit',who:ev.auditor||'auditor',phase:'start',dept:ev.department||''});break}
+      // the "checking" line gives way to the verdict, told when it came: after the
+      // auditor's own reads, so the story keeps the order things happened in
+      const at=FG.story.map(x=>x.kind==='audit'&&x.phase==='start').lastIndexOf(true);
+      if(at>=0)FG.story.splice(at,1);
+      fgStory({t,kind:'audit',who:ev.auditor||'auditor',phase:'done',verdict:ev.verdict,findings:ev.findings||[],why:ev.why||'',line:ev.line||''});
+      fgLog(ev.verdict==='pass'?'info':'warn','auditor · '+(ev.line||ev.verdict||''));
       break;}
     case 'log':
       fgLog(ev.level,ev.text);
@@ -19018,6 +19421,12 @@ function fgPaintStory(box){
         e.state==='asked'?'is waiting for you to allow':e.state==='allowed'?'was allowed':'was refused'} <code>${esc(e.tool)}</code></div>
         ${e.state==='asked'&&e.text?`<div class="fr-note">${esc(e.text)}</div>`:''}
         ${e.state==='asked'&&!FG.ended?`<button class="fr-link" onclick="fgReview()">Review</button>`:''}</div></div>`;
+      case 'audit':{
+        if(e.phase==='start')return `<div class="fr-ev">${fgFace(e.who)}<div class="fr-line">${tm}<b>${esc(e.who)}</b> is checking the work${e.dept?' for '+esc(e.dept):''}. Nobody who did it chose to be checked.</div></div>`;
+        const cls=e.verdict==='pass'?'ok':e.verdict==='fail'?'err':'warn';
+        return `<div class="fr-ev ${cls}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> ${
+          e.verdict==='pass'?'found nothing wrong':e.verdict==='concerns'?'has concerns':e.verdict==='fail'?'failed the work':'could not check it'}</div>
+          ${(e.findings||[]).length?`<div class="fr-say">${(e.findings||[]).map(f=>esc(f)).join('<br>')}</div>`:e.why?`<div class="fr-note">${esc(e.why)}</div>`:''}</div></div>`;}
       case 'note':return `<div class="fr-ev ${e.level==='error'?'err':'warn'} sys"><span class="fr-glyph">!</span><div class="fr-line">${tm}${esc(e.text)}</div></div>`;
       case 'end':return `<div class="fr-ev sys ${e.ok?'ok':'err'}">${fgFace('')}<div><div class="fr-line">${tm}<b>${e.ok?'Done':'It stopped'}</b>${
         e.delivered&&e.delivered.length?' · delivered to '+esc(e.delivered.join(', ')):''}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}</div></div>`;
@@ -19740,7 +20149,7 @@ function wizChips(step){
     return el;
   }
   if(step==='autonomy')defs=[
-    ['Paranoid','asks before every action',()=>WIZ.autonomy='paranoid',false],
+    ['Paranoid','asks before anything but reading',()=>WIZ.autonomy='paranoid',false],
     ['Balanced','acts freely, asks for risky things',()=>WIZ.autonomy='balanced',true],
     ['Full','never asks',()=>WIZ.autonomy='full',false]];
   else if(step==='autostart')defs=[
@@ -19883,14 +20292,15 @@ document.addEventListener('click', e => {
 
    `var`, not `let` — this file is concatenated into one script and 14-docs-setup
    calls jobStep() from wizFinish. See CLAUDE.md on the TDZ trap. */
-var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'run'};
-var JOB_TABS=['run','build','schedule','routines'];
-/* Run = the value view (what is running for you, what it did); Build = the flows editor that used to be the Workflows app
+var JOBS={recipes:[],personas:[],persona:'',deliveries:[],installed:[],summary:null,ready:null,accounts:{},pick:'',busy:false,tab:'run',hist:null,histShow:'all'};
+var JOB_TABS=['run','history','build','schedule','routines'];
+/* Run = the value view (what is running for you, what it did); History = every run that
+   happened on its own, schedules included (14c-history.js); Build = the flows editor that used to be the Workflows app
    (13-fabric.js). One object underneath (a mission is a flow with a recipe), so the
    Build tab is where a mission a recipe made is edited, and where one is written from
    scratch. `openApp('fabric')` lands here on Build — see APP_ALIAS in 04-wm.js. */
 function jobTabs(){
-  return `<div class="job-tabs">${segTabs('job-tabs',['Run','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
+  return `<div class="job-tabs">${segTabs('job-tabs',['Run','History','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
 }
 function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';refreshApp('jobs')}
 
@@ -20181,11 +20591,12 @@ function jobRow(j){
       <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'} · this week: ${j.runs_7d} run${j.runs_7d===1?'':'s'}, ${j.ok_7d} ok · ${(j.tokens_7d||0).toLocaleString()} tokens · holds ${j.grants} permission${j.grants===1?'':'s'}</div>
     </div>
     <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
-    ${last.run_id?`<button class="endbtn" onclick="fgWatch('${esc(last.run_id)}')">Last run</button>`:''}
+    ${last.run_id?`<button class="endbtn" onclick="jobHistoryFor({mission:'${esc(j.name)}'})">Runs</button>`:''}
     <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
   </div>`;
 }
 async function renderJobs(body,w){
+  if(JOBS.tab==='history')return renderJobHistory(body);
   if(JOBS.tab==='schedule'||JOBS.tab==='routines'){
     // Everything that runs without you is here: missions (Run), how they are built
     // (Build), plain scheduled prompts (Schedule, the old Scheduler app) and named
@@ -21215,13 +21626,90 @@ async function obRestart(){
   try{await fetch('/api/onboarding/restart',{method:'POST'})}catch(e){}
   obShow({});
 }
+/* ================= Missions → History (agentos/runlog.py) =================
+   "I can't find the runs of the schedules in the mission." A scheduled prompt's answer
+   was a chat nobody could trace back to its schedule, the Schedule tab showed only the
+   last result, and a mission's runs were three tabs deep under Build → Runs. So one
+   list: everything that ran on its own, newest first, each saying what started it, how
+   it went and how long it took, with the door to what it produced (the Run inspector
+   for a mission, the conversation in Chat for a scheduled prompt).
+
+   The rows are /api/missions/history, one computation (runlog.history) that `bento job
+   history` prints too. A Runs button on a Schedule row or a mission row opens this tab
+   filtered to that one (JOBS.hist).
+   Faces: GUI and SUI are this page; TUI is `bento job history`. */
+function jobHistoryFor(f){
+  if(typeof JOBS==='undefined')return;
+  JOBS.hist=f||null;JOBS.histShow='all';JOBS.tab='history';
+  openApp('jobs');refreshApp('jobs');
+}
+function jobHistWhen(ts){
+  if(!ts)return '';
+  const d=new Date(ts*1000),today=new Date();
+  const same=d.toDateString()===today.toDateString();
+  return (same?'today ':d.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short'})+' ')
+    +d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+}
+function jobHistTook(s){
+  if(s==null)return '';
+  if(s<60)return s+'s';
+  if(s<3600)return Math.round(s/60)+' min';
+  return (s/3600).toFixed(1)+' h';
+}
+var JOB_HIST_WORD={running:'running',ok:'done',partial:'partly done',failed:'failed',waiting:'waiting for you',
+  stopped:'stopped',skipped:'skipped'};
+function jobHistRow(r){
+  const door=r.run_id?`<button class="endbtn" data-open-run="${esc(r.run_id)}">Open run</button>`
+    :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
+  return `<div class="item job-hrow ${esc(r.status)}">
+    <div class="grow">
+      <div class="job-hhead"><span class="job-hst ${esc(r.status)}">${esc(JOB_HIST_WORD[r.status]||r.status)}</span>
+        <b>${esc(r.title)}</b>${r.kind==='prompt'?'<span class="job-hkind">scheduled prompt</span>':''}</div>
+      <div class="sub">${esc(jobHistWhen(r.started_at))}${r.seconds!=null&&r.status!=='skipped'?' · took '+esc(jobHistTook(r.seconds)):''} · ${esc(r.started_by)}${
+        r.tokens?' · '+r.tokens.toLocaleString()+' tokens':''}</div>
+      ${r.said?`<div class="sub job-hsaid">${esc(r.said)}</div>`:''}
+    </div>${door}</div>`;
+}
+async function renderJobHistory(body){
+  const f=JOBS.hist||{};
+  const q=new URLSearchParams();if(f.task_id)q.set('task',f.task_id);if(f.mission)q.set('mission',f.mission);
+  body.innerHTML=`<div class="pad job-app">${jobTabs()}<p class="mut">Reading…</p></div>`;
+  let d;
+  try{d=await apiJSON('/api/missions/history'+(q.toString()?'?'+q:''))}
+  catch(e){body.innerHTML=`<div class="pad job-app">${jobTabs()}<p class="mut">${esc(e.message||String(e))}</p></div>`;return}
+  const show=JOBS.histShow||'all',c=d.counts||{};
+  const rows=(d.runs||[]).filter(r=>show==='all'||(show==='scheduled'&&r.scheduled)||(show==='failed'&&r.status==='failed')
+    ||(show==='prompts'&&r.kind==='prompt'));
+  const chip=(k,l,n)=>`<button class="of-chip${show===k?' on':''}" data-show="${k}" aria-pressed="${show===k}">${l}${n?' '+n:''}</button>`;
+  const title=(d.filter||{}).title;
+  body.innerHTML=`<div class="pad job-app">${jobTabs()}
+    <h3>${title?'Runs of '+esc(title):'Everything that ran on its own'}</h3>
+    ${title?`<p class="mut"><button class="co-link" data-all>Show every run</button></p>`
+      :`<p class="mut">Missions and scheduled prompts, newest first. ${c.week||0} this week${c.failed?`, <b class="job-bad">${c.failed} failed</b>`:''}.</p>`}
+    <div class="of-chips job-hchips">${chip('all','All')}${chip('scheduled','On a schedule',c.scheduled)}${chip('prompts','Scheduled prompts')}${chip('failed','Failed',c.failed)}</div>
+    <div class="job-hlist">${rows.map(jobHistRow).join('')||`<p class="mut">${title?'This has not run yet.':'Nothing has run on its own yet. A mission you switch on, or a prompt you schedule, shows here each time it runs.'}</p>`}</div></div>`;
+  body.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{JOBS.histShow=b.dataset.show;renderJobHistory(body)});
+  const all=body.querySelector('[data-all]');if(all)all.onclick=()=>{JOBS.hist=null;renderJobHistory(body)};
+  body.querySelectorAll('[data-open-run]').forEach(b=>b.onclick=()=>fgWatch(b.dataset.openRun));
+  body.querySelectorAll('[data-open-conv]').forEach(b=>b.onclick=()=>{openApp('chat');setTimeout(()=>openConv(b.dataset.openConv),150)});
+}
 /* ================= scheduler app ================= */
 async function renderTasks(body){
   const r=await fetch('/api/tasks');const d=await r.json();
-  const fmt=t=>t.schedule_type==='interval'?`every ${Math.round((t.interval_seconds||0)/60)} min`:t.schedule_type==='daily'?`daily at ${t.at_time}`:t.schedule_type==='weekly'?`every ${WEEKDAY_NAMES[t.weekday||0]} at ${t.at_time}`:'once';
-  const items=d.tasks.map(t=>`<div class="item" data-f="${esc(t.prompt)}"><div class="grow">${esc(t.prompt)}<div class="sub">${fmt(t)} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'running/done'):'disabled'}${t.last_result?' · last: '+esc(t.last_result.slice(0,90)):''}</div></div>
-    <button title="toggle" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
-    <button onclick="delTask('${t.id}')">✕</button></div>`).join('');
+  /* Each schedule says what it did (runlog.schedules): how many runs this week, how the
+     last one went, and Runs opens Missions → History on just this schedule. A mission's
+     schedule is named by its mission, not the prompt it carries. */
+  const st={ok:'done',failed:'failed',skipped:'skipped',running:'running',stopped:'stopped',waiting:'waiting for you',partial:'partly done'};
+  const items=d.tasks.map(t=>{
+    const last=t.last_status?`last run ${st[t.last_status]||t.last_status}${t.last_at?' '+jobAgo(t.last_at):''}`:'has not run yet';
+    return `<div class="item task-row" data-f="${esc(t.title||t.prompt)}"><div class="grow">
+      ${t.flow?`<span class="job-hkind">mission</span> `:''}${esc(t.title||t.prompt)}
+      <div class="sub">${esc(t.words||'')} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'waiting for its event'):'switched off'}</div>
+      <div class="sub"><span class="task-last ${esc(t.last_status||'')}">${esc(last)}</span>${t.runs_7d?` · ${t.runs_7d} run${t.runs_7d===1?'':'s'} this week`:''}${t.failed_7d?` · <b class="job-bad">${t.failed_7d} failed</b>`:''}</div>
+      ${t.last_said?`<div class="sub job-hsaid">${esc(t.last_said)}</div>`:''}</div>
+    <button class="endbtn" onclick="jobHistoryFor({task_id:'${esc(t.id)}'})">Runs</button>
+    <button title="${t.enabled?'Pause':'Resume'}" aria-label="${t.enabled?'Pause':'Resume'}" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
+    <button title="Delete" aria-label="Delete" onclick="delTask('${t.id}')">✕</button></div>`}).join('');
   const pb=panelShell(body,{
     title:'Schedule',
     sub:`${d.tasks.length} task${d.tasks.length===1?'':'s'} · ${d.tasks.filter(t=>t.enabled).length} active`,
@@ -22616,6 +23104,17 @@ async function delPolicy(i){
    `var`, not `let` — see the note at the top of 25a-gallery.js. */
 var audFilter={effect:'',action:'',principal_kind:'',surface:'',q:'',since:24};
 
+/* The ledger is hash-chained (memory.audit_verify); this asks the server to walk it.
+   Admin-only on a machine with accounts, and the refusal says so. */
+async function audVerify(btn){
+  if(btn)btn.disabled=true;
+  try{
+    const v=await apiJSON('/api/audit/verify');
+    if(v.ok)toast('✓ the ledger is intact: '+(v.checked||0)+' rows, each chained to the last');
+    else toast('✗ the ledger was changed: '+(v.reason||'a row does not match')+(v.at_seq?' at row '+v.at_seq:''),{kind:'err'});
+  }catch(e){toast('could not check the ledger: '+(e.message||e))}
+  finally{if(btn)btn.disabled=false}
+}
 async function renderAudit(body,w){
   const qs=new URLSearchParams();
   Object.entries(audFilter).forEach(([k,v])=>{
@@ -22644,14 +23143,15 @@ async function renderAudit(body,w){
       </select>
       <select onchange="audSet('principal_kind',this.value)" style="flex:0 0 auto">
         <option value="">anyone</option>
-        ${['user','app','subagent','workflow','system'].map(k=>
+        ${['user','app','subagent','flow','team','peer','council','system'].map(k=>
           `<option value="${k}" ${audFilter.principal_kind===k?'selected':''}>${k}</option>`).join('')}
       </select>
       <select onchange="audSet('surface',this.value)" style="flex:0 0 auto">
         <option value="">any way in</option>
-        ${['gui','tui','telegram','api','task'].map(k=>
+        ${['gui','tui','telegram','whatsapp','api','task','webhook','team'].map(k=>
           `<option value="${k}" ${audFilter.surface===k?'selected':''}>${k}</option>`).join('')}
-      </select>`,
+      </select>
+      <button class="endbtn" onclick="audVerify(this)" title="Every row is chained to the one before it, so an edited or deleted row shows up here">Check the chain</button>`,
   });
   const q=$('#aud-q');
   if(q){q.value=audFilter.q;q.oninput=audSearch}
@@ -22816,6 +23316,14 @@ function permChartInto(el,p){
     }).join('');
   });
 }
+/* How long a remembered grant lasts: one chat, until a time, or (no badge) until revoked. */
+function permLasts(g){
+  if(String(g.source_ref||'').startsWith('conv:'))return '<span class="badge" title="applies inside one conversation">one chat</span>';
+  if(!g.expires_at)return '';
+  const t=new Date(g.expires_at*1000);
+  if(g.expires_at*1000<Date.now())return '<span class="badge err">expired</span>';
+  return `<span class="badge" title="${esc(t.toLocaleString())}">until ${esc(t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</span>`;
+}
 function permGrantsView(box){
   const q=PERM.q.toLowerCase();
   const gs=PERM.grants.filter(g=>{
@@ -22832,7 +23340,7 @@ function permGrantsView(box){
       <div class="grow" style="min-width:0"><b style="font-size:12.5px">${esc(lbl)}</b>
         <div style="font-family:var(--mono);font-size:12px;word-break:break-all">${esc(g.action)} · ${esc(g.resource)}</div>
         ${g.note?`<div class="mut" style="font-size:11px">${esc(g.note)}</div>`:''}</div>
-      <span class="badge">${esc(g.source||'user')}</span>
+      ${permLasts(g)}<span class="badge">${esc(g.source||'user')}</span>
       ${dead?'<span class="badge err">revoked</span>'
         :`${permSurfBadge(g)}
          <button class="badge ${g.effect==='deny'?'err':'ok'}" style="cursor:pointer" title="flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')">${g.effect}</button>
@@ -22922,11 +23430,11 @@ async function permToggle(gid,effect){
 /* IO gates: a grant can be scoped to the surfaces a call arrives on (import/export gates).
    Permitted on all three (GUI, TUI, channels)? it flows everywhere; scoped, it only flows
    there — anywhere else the call is denied and logged as an IO error. */
-const PERM_SURFACES=['gui','tui','telegram','api','task'];
+const PERM_SURFACES=['gui','tui','telegram','whatsapp','api','task','webhook'];
 function permSurfBadge(g){
   const scoped=g.surfaces&&g.surfaces!=='*';
   return `<button class="endbtn" style="font-size:10px;${scoped?'color:var(--acc2,#22d3ee);border-color:var(--acc2,#22d3ee)':''}"
-    title="IO gates — which surfaces this rule applies on (GUI, TUI, Telegram, API, tasks). Click to change."
+    title="IO gates — which ways in this rule applies on (desktop, terminal, Telegram, WhatsApp, API, tasks, webhooks). Click to change."
     onclick="permSurfaces('${g.id}','${esc(g.surfaces||'*')}')">⛩ ${scoped?esc(g.surfaces):'all'}</button>`;
 }
 async function permSurfaces(gid,cur){
@@ -24286,8 +24794,10 @@ function usersShareBox(){
 function usersFolderBox(){
   const F=USERS.folders||{folders:[],problems:[],users:[],admin:true};
   const accounts=F.users||[];
+  /* a share stores account ids; show the names people know each other by */
+  const nameOf=u=>{const a=accounts.find(x=>x.id===u||x.name===u);return a?a.display:u};
   const who=s=>(s.users&&s.users.length)
-    ? s.users.map(u=>esc(u)).join(', ')
+    ? s.users.map(u=>esc(nameOf(u))).join(', ')
     : '<em>everyone</em>';
   const rows=(F.folders||[]).map((s,i)=>`
     <div class="usr-share${s.risk?' warn':''}" data-f="${esc(s.path)}">
@@ -25498,6 +26008,8 @@ function officeSceneAttach(){
 }
 function officeSceneFit(){
   const S=OFFICE_SCENE,home=document.getElementById('home');if(!S.host)return false;
+  if(document.body.classList.contains('kiosk')){       // the kiosk face: the whole screen
+    if(S.top===0)return false;S.top=0;S.host.style.top='0px';return true}
   let top=Math.round(innerHeight*.42);
   if(home&&!home.hidden)[...home.children].forEach(c=>{const r=c.getBoundingClientRect();if(r.height)top=Math.max(top,Math.round(r.bottom)+14)});
   top=Math.min(top,innerHeight-96-160);          // never less than a strip of office
@@ -25546,7 +26058,11 @@ function officeLayout(){
   const O=OFFICE,v=O.view;if(!O.cv||!v)return;
   const sc=O.cv.parentElement;let cw=Math.max(280,sc.clientWidth);
   const phone=cw<640;
-  O.s=phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
+  // The kiosk face (24h-kiosk.js) is the whole screen of a small machine: people are
+  // drawn bigger, to be read from across a room, and the rooms take the height there is
+  const kiosk=!!(O.w&&O.w.scene&&document.body.classList.contains('kiosk'));
+  O.s=kiosk?Math.max(.9,Math.min(1.8,cw/720,sc.clientHeight/300))
+    :phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
   const W=cw/O.s, x0=OF_M+OF_SPINE, avail=W-x0-OF_M;
   // each room's natural width: a desk slot per member, and never narrower than a room
   const want=r=>r.kind==='lead'?300:r.kind==='meeting'?280:r.kind==='lounge'?250
@@ -25570,7 +26086,8 @@ function officeLayout(){
   // a short office on a tall window: the rooms get more floor rather than leaving a
   // dark band under them (capped, so one row of rooms does not become a ballroom)
   const natural=OF_M*2+plan.reduce((a,r)=>a+r.h+OF_HALL,0)-OF_HALL*.5, room=sc.clientHeight/O.s;
-  const grow=(phone||O.fit)?0:Math.max(0,Math.min(140,(room-natural)/plan.length));
+  const grow=kiosk?Math.max(0,Math.min(400,(room-natural)/plan.length))
+    :(phone||O.fit)?0:Math.max(0,Math.min(140,(room-natural)/plan.length));
   const rooms=[];let y=OF_M;
   plan.forEach((row,ri)=>{
     const h=row.h+grow;let x=x0;
@@ -25683,7 +26200,17 @@ function officeMatch(label){
   const k=String(label).toLowerCase().replace(/[^a-z0-9@]/g,'');
   if(k==='@agent'||k==='agent')return OFFICE.people['@agent']||null;
   for(const n in OFFICE.people){const q=n.toLowerCase().replace(/[^a-z0-9@]/g,'');if(q&&q===k)return OFFICE.people[n]}
+  // One agent on screen (buddy): a specialist's work lights the lead's desk, since the
+  // lead is the only one drawn. Nothing else is invented: no label, no second figure.
+  if(faceBuddy())return OFFICE.people['@agent']||null;
   return null;
+}
+/* Is only the lead drawn? The office route answers for the window (face.buddy on the
+   server), /api/platform for the desktop scene before the Office was ever opened. */
+function faceBuddy(){
+  if(typeof OFFICE!=='undefined'&&OFFICE.view&&OFFICE.view.buddy!==undefined)return !!OFFICE.view.buddy;
+  // PLATFORM is a `let` in 22-quicksettings.js: read before that file ran it throws
+  try{return !!(PLATFORM&&PLATFORM.face&&PLATFORM.face.buddy)}catch(e){return false}
 }
 function officeSay(p,text,kind,ms){
   if(!p)return;
@@ -25714,6 +26241,14 @@ function officeBoardPoint(){
 function officeHead(p){return p.mode==='seat'?{x:p.x,y:p.y-50}:{x:p.x,y:p.y-80}}
 function officeName(k){return k==='@agent'?(typeof agentName==='function'?agentName():'your agent'):k}
 
+/* Is this person answering a conversation that is still running? A turn open in chat
+   is work, even when nothing has arrived for a while (a forwarded brain streams its
+   answer only at the end), so their desk stays lit until turn_end. */
+function officeLive(p){
+  const O=OFFICE;if(!p||typeof RUNNING==='undefined')return false;
+  for(const c in O.convWho)if(O.convWho[c]===p.key&&RUNNING.has(c))return true;
+  return false;
+}
 function officePulse(kind,label,ev){
   const O=OFFICE;if(!O.w||!O.L)return;
   ev=ev||{};
@@ -25721,13 +26256,16 @@ function officePulse(kind,label,ev){
     const who=ev.speaker?officeMatch(ev.speaker):O.people['@agent'];
     if(label)O.convWho[label]=who?who.key:'@agent';
     if(ev.huddle&&ev.huddle.length)officeHuddle(ev.huddle,label);
-    else if(who){officeWork(who,true);officePop(who,'!')}
+    // a thinking balloon for as long as the turn is open: Claude Code says nothing until
+    // its answer is done (measured: 50 silent seconds), and a desk that went dark after
+    // 12 of them read as the Office not noticing the chat at all
+    else if(who){officeWork(who,true);officePop(who,'!');officeSay(who,'…','think',600000)}
     return;
   }
   if(kind==='turnend'){
     const who=O.people[O.convWho[label]||'@agent'];
     if(O.huddle&&O.huddle.cid===label)officeHuddleEnd();
-    if(who)officeWork(who,false);
+    if(who){officeWork(who,false);if(who.say&&who.say.kind==='think')who.say=null}
     delete O.convWho[label];return;
   }
   if(kind==='tool'){
@@ -25832,7 +26370,7 @@ function officeReply(asker,who,text){
    (which names a tool and no agent) lands on the right desk. */
 function officeFabric(ev){
   const O=OFFICE,e=ev.event;
-  if(e==='flow_start'||e==='flow_end'||e==='approval'||e==='parked'||(e==='status'&&ev.status!=='running'))companySoon();
+  if(e==='flow_start'||e==='flow_end'||e==='approval'||e==='parked'||e==='audit'||(e==='status'&&ev.status!=='running'))companySoon();
   if(e==='flow_start'){O.missions[ev.flow]=performance.now();if(ev.run_id)O.flowRuns[ev.run_id]=ev.flow;
     officeLog(`mission ${ev.flow} started`);officeKick();return}
   if(e==='flow_end'){if(ev.flow)delete O.missions[ev.flow];else O.missions={};
@@ -25992,7 +26530,7 @@ function officeStep(dt){
       }
       if(!p.path.length)officeArrive(p);
     }
-    if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand)p.busy=0;
+    if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand&&!officeLive(p))p.busy=0;
     // an unanswered question says how long it has waited
     if(p.hand&&p.waitSince&&p.say&&p.say.kind==='shout'){const m=Math.floor((now-p.waitSince)/60000);
       const t='? needs you: '+p.waitTool+(m?` · ${m} min`:'');if(p.say.text!==t)p.say.text=t}
@@ -26011,7 +26549,9 @@ function officeLine(){
   const el=OFFICE.w&&OFFICE.w.el.querySelector('#of-line');if(!el||!OFFICE.view)return;
   const ps=Object.values(OFFICE.people), n=ps.length-1, busy=ps.filter(p=>p.busy).length;
   const talk=ps.filter(p=>p.visit&&!p.visit.meet).length, jobs=Object.keys(OFFICE.missions).length+Object.keys(OFFICE.convWho).length;
-  const txt=`${OFFICE.view.office.name} · ${busy?busy+' working':'all quiet'}${jobs>1?' on '+jobs+' things':''}${talk?' · '+talk+' on the move':''} · ${n} ${n===1?'specialist':'specialists'}`;
+  // one agent on screen: the specialists still exist and still work, so say how many
+  const k=faceBuddy()?(OFFICE.view.agents||[]).length:n;
+  const txt=`${OFFICE.view.office.name} · ${busy?busy+' working':'all quiet'}${jobs>1?' on '+jobs+' things':''}${talk?' · '+talk+' on the move':''} · ${k} ${k===1?'specialist':'specialists'}${faceBuddy()&&k?' behind your agent':''}`;
   if(el.textContent!==txt)el.textContent=txt;
   const t=OFFICE.w.el.querySelector('.of-title');if(t)t.textContent=OFFICE.view.style.label;
 }
@@ -26556,7 +27096,7 @@ function officeGreet(p){
 function officeEmpty(){
   const el=OFFICE.w&&OFFICE.w.el.querySelector('.of-empty');if(!el)return;
   const none=!OFFICE.view.agents.length;
-  el.hidden=!none;
+  el.hidden=!none||faceBuddy();     // one agent on screen is a choice, not an empty office
   if(none)el.innerHTML=`<b>Your office has one person in it: ${esc(officeName('@agent'))}.</b>
     <span>Specialists take a desk here as soon as they exist. Set up a whole company with ▦ Company, or ask for one person in the chat.</span>`;
 }
@@ -27114,7 +27654,10 @@ function freeTalkEvent(ev){
      Nothing here estimates or invents a figure.
    - The cards and the panel belong to the Office WINDOW. The desktop scene is under
      every window and cannot be tapped, so it draws none of this.
-   Faces: GUI and SUI are this page. TUI is `bento company` (show, setup, task). */
+   - The auditor's verdict on a task is read from the audit run the server keeps
+     (company.audit_state); the page never decides whether work passed.
+   Faces: GUI and SUI are this page. TUI is `bento company` (show, setup, task, audit,
+   check). */
 var COMPANY={data:null,plan:null,preview:null,how:'',said:'',dropped:[],open:false,
   filter:'all',focus:'',arrival:null,timer:0,pv:0,talk:true,off:{}};
 
@@ -27145,13 +27688,15 @@ function companyCards(){
     const s=by[r.name.toLowerCase()];
     const next=s.next_at?companyWhen(s.next_at):'';
     const tip=`${s.name}: ${s.doing} doing, ${s.waiting} waiting for you, ${s.done} done this week`
-      +(s.failed?`, ${s.failed} failed`:'')+(next?`, next run ${next}`:'')+'. Tap to give it a task.';
+      +(s.failed?`, ${s.failed} failed`:'')+(s.flagged?`, ${s.flagged} flagged by the auditor`:'')
+      +(next?`, next run ${next}`:'')+'. Tap to give it a task.';
     const x=Math.round((r.x+r.w)*O.s)-8,y=Math.round((r.y+8)*O.s);
     return `<button class="co-card${s.waiting?' wait':''}${s.doing?' busy':''}" style="right:${Math.max(4,O.cw-x)}px;top:${y}px"
       data-dept="${esc(s.name)}" title="${esc(tip)}" aria-label="${esc(tip)}">
       <span class="co-n">${s.people}<small> ${s.people===1?'agent':'agents'}</small></span>
       <span class="co-k" data-s="▶"><i>doing</i>${s.doing}</span><span class="co-k" data-s="⏱"><i>next</i>${s.next}</span>
-      <span class="co-k" data-s="✓"><i>done</i>${s.done}</span>${s.waiting?`<span class="co-w">⚠ ${s.waiting}</span>`:''}</button>`;
+      <span class="co-k" data-s="✓"><i>done</i>${s.done}</span>${s.waiting?`<span class="co-w">⚠ ${s.waiting}</span>`:''}${
+      s.flagged?`<span class="co-fl">⚑ ${s.flagged}</span>`:''}</button>`;
   }).join('');
   host.querySelectorAll('.co-card').forEach(b=>b.onclick=()=>{COMPANY.focus=b.dataset.dept;officeCompany(true)});
   companyCardsFit(host);
@@ -27331,7 +27876,8 @@ function companyOverviewPaint(el){
   const d=COMPANY.data,A=COMPANY.arrival,colors=(OFFICE.view&&OFFICE.view.colors)||{};
   const focus=COMPANY.focus&&d.departments.find(x=>x.name===COMPANY.focus)?COMPANY.focus:(d.departments[0]||{}).name;
   const b=d.board||{tasks:[],counts:{}},f=COMPANY.filter;
-  const tasks=b.tasks.filter(t=>f==='all'||t.status===f||(f==='in_progress'&&t.status==='stale')||(f==='failed'&&t.status==='stopped'));
+  const tasks=b.tasks.filter(t=>f==='all'||t.status===f||(f==='in_progress'&&t.status==='stale')||(f==='failed'&&t.status==='stopped')
+    ||(f==='flagged'&&companyFlagged(t)));
   const chip=(k,l)=>`<button class="of-chip${f===k?' on':''}" data-f="${k}" aria-pressed="${f===k}">${l}${k!=='all'&&b.counts[k]?' '+b.counts[k]:''}</button>`;
   const pill={in_progress:'working',waiting:'waiting for you',done:'done',failed:'failed',scheduled:'scheduled',
     stale:'stopped answering',stopped:'stopped'};
@@ -27350,20 +27896,24 @@ function companyOverviewPaint(el){
       <button class="co-lh" data-pick="${esc(x.name)}"><i class="of-sw"></i><b>${esc(x.name)}</b>
         <span class="mut">${x.people} · head ${esc(x.lead||'-')}</span></button>
       <div class="co-lk"><span>doing ${x.doing}</span><span>next ${x.next}</span><span>done ${x.done}</span>
-        ${x.waiting?`<span class="co-w">⚠ ${x.waiting} waiting</span>`:''}${x.failed?`<span class="co-bad">${x.failed} failed</span>`:''}</div>
+        ${x.waiting?`<span class="co-w">⚠ ${x.waiting} waiting</span>`:''}${x.failed?`<span class="co-bad">${x.failed} failed</span>`:''}${
+        x.flagged?`<span class="co-fl">⚑ ${x.flagged} flagged</span>`:''}</div>
       <div class="co-desk mut">${!x.has_desk?'No desk: tasks go to its head in chat.'
         :x.desk_on?'Desk on.':'Desk off, so gated steps ask you.'}
         ${x.has_desk?`<button class="co-link" data-desk="${esc(x.desk)}">${x.desk_on?'Open in Missions':'Switch on in Missions'}</button>`:''}</div>
     </div>`).join('')}
     <div class="of-row"><button class="endbtn co-add">＋ Add departments</button></div>
     <div class="of-sec">Tasks</div>
-    <div class="of-chips co-filter">${chip('all','All')}${chip('in_progress','Working')}${chip('waiting','Waiting')}${chip('scheduled','Scheduled')}${chip('done','Done')}${chip('failed','Failed')}</div>
+    <label class="co-audit"><input type="checkbox" class="co-aud"${b.audit!==false?' checked':''}>
+      <span>An independent auditor checks every finished task</span>${typeof pInfo==='function'?pInfo('The auditor did none of the work and no department can skip it. Anything it flags goes to your Brief.'):''}</label>
+    <div class="of-chips co-filter">${chip('all','All')}${chip('in_progress','Working')}${chip('waiting','Waiting')}${chip('scheduled','Scheduled')}${chip('done','Done')}${chip('flagged','Flagged')}${chip('failed','Failed')}</div>
     <div class="co-board">${tasks.length?tasks.slice(0,40).map(t=>`<button class="co-task-row" ${t.run_id?`data-run="${esc(t.run_id)}"`:''} style="--dc:${colors[t.color]||'#888'}">
       <span class="co-st ${t.status}">${esc(pill[t.status]||t.status)}</span>
       <span class="co-tt">${esc(t.task)}</span>
       <span class="co-tm mut">${esc(t.department)}${t.who?' · '+esc(t.who):''}${t.handoffs?` · ${t.handoffs} ${t.handoffs===1?'hand-over':'hand-overs'}`:''}
         · ${esc(t.status==='scheduled'?companyWhen(t.next_at):companyAgo(t.finished_at||t.started_at))}</span>
       ${t.said&&t.status!=='in_progress'?`<span class="co-said mut">${esc(t.said)}</span>`:''}
+      ${companyAuditHTML(t)}
       ${(t.approvals||[]).length?`<span class="co-review" role="button" tabindex="0" data-ap="${esc(t.approvals.join(','))}">Review what it asks</span>`
         :t.in_brief&&t.status==='waiting'?'<span class="co-review" role="button" tabindex="0" data-brief="1">Answer it in the Brief</span>':''}</button>`).join('')
       :`<p class="mut co-small">${f==='all'?'No tasks yet. Give a department one above.':'Nothing here.'}</p>`}</div>`;
@@ -27380,11 +27930,48 @@ function companyOverviewPaint(el){
     if(typeof fabTab!=='undefined')fabTab='flows';
     openApp('fabric');refreshApp('fabric')});
   el.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{COMPANY.filter=b.dataset.f;companyPaint()});
+  q('.co-aud').onchange=e=>companyAuditSwitch(e.target);
   el.querySelectorAll('[data-run]').forEach(b=>b.onclick=e=>{
     const ap=e.target.closest('[data-ap]');if(ap)return companyReview(ap.dataset.ap.split(','));
+    const ck=e.target.closest('[data-check]');if(ck)return companyCheck(b.dataset.run,ck);
     if(e.target.closest('[data-brief]'))return openApp('brief');
     if(typeof fgWatch==='function')fgWatch(b.dataset.run)});
   q('.co-add').onclick=()=>{COMPANY.adding=true;COMPANY.arrival=null;companyPaint()};
+}
+/* ---------------- the independent auditor (company.py, fabric ControlPlane.audit) ---------------- */
+function companyFlagged(t){const v=(t.audit||{}).verdict;return v==='concerns'||v==='fail'}
+/* One line under a task: what the auditor said, or that it is still reading. A task it
+   has not checked (the switch was off, or the check could not run) offers Check it. */
+function companyAuditHTML(t){
+  const a=t.audit||{},first=(a.findings||[])[0]||'';
+  const check=t.can_check?`<span class="co-review co-check" role="button" tabindex="0" data-check="1">${a.verdict?'Check it again':'Check it'}</span>`:'';
+  if(a.state==='checking')return `<span class="co-au checking">${avatarImgSafe('auditor')} The auditor is checking this…</span>`;
+  if(a.verdict==='pass')return `<span class="co-au pass">✓ Checked by the auditor${first?': '+esc(first):''}</span>`;
+  if(a.verdict==='concerns')return `<span class="co-au concerns">⚑ The auditor has concerns: ${esc(first||'see the run')}</span>`;
+  if(a.verdict==='fail')return `<span class="co-au fail">✗ The auditor failed this: ${esc(first||'see the run')}</span>`;
+  if(a.verdict)return `<span class="co-au none">Not checked: ${esc(a.why||'the auditor gave no verdict')}</span>${check}`;
+  return t.status==='done'?check:'';
+}
+function avatarImgSafe(name){return typeof avatarImg==='function'?avatarImg(name,'co-av'):''}
+async function companyAuditSwitch(box){
+  const on=box.checked;box.disabled=true;
+  try{
+    const j=await apiJSON('/api/company',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({audit:on})});
+    if(j.error)throw new Error(j.error);
+    toast(on?'The auditor checks every finished task again':'Finished tasks are not checked now');
+    companyLoad();
+  }catch(e){box.checked=!on;toast(e.message||String(e))}
+  finally{box.disabled=false}
+}
+async function companyCheck(runId,el){
+  el.textContent='asking the auditor…';
+  try{
+    const j=await apiJSON('/api/company/audit',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({run_id:runId})});
+    if(j.error)throw new Error(j.error);
+    companySoon();
+  }catch(e){el.textContent=e.message||String(e)}
 }
 function companyHint(name){
   const t={admin:'List what is due this week and who owes it.',hr:'Draft a job description for our next hire.',
@@ -27424,9 +28011,432 @@ async function companyReview(ids){
     approvalReveal(hit[0].id);
   }catch(e){toast(e.message||String(e))}
 }
+/* ================= the kiosk face =================
+   This machine's own screen as the Office, full screen, with the mic on: say the
+   agent's name and what you want, and the answer is spoken while the office shows
+   the agents doing the work. Asked for as "a kiosk mode as well where mic would be
+   on and agents would be working in the office", for a Raspberry Pi with a screen.
+
+   What decides it is agentos/face.py (`face.kiosk`, `face.wake`), read from
+   /api/platform. Three rules:
+   - Only the screen plugged into the machine gets it (not a remote browser), or a
+     page opened with #kiosk. A phone looking at the same box keeps its desktop.
+   - Hearing is the SERVER's (agentos/hearing.py): Chromium on a Pi has no key for
+     the browser's own recogniser. The page records one utterance at a time (16 kHz
+     WAV, cut at the pause) and posts it to /api/speech/hear. When nothing on the
+     machine can understand speech, the kiosk says so and shows no live mic.
+   - A turn here is an ordinary chat turn in its own thread (origin `kiosk`), so the
+     gate, the approvals and the ledger are the ones every other turn gets. An
+     approval card still floats over the kiosk.
+   TUI: not applicable, a terminal has no office to show; `bento face` sets it.
+   SUI: the chrome is hidden, so suiChrome() gives the bands back (00-sui.js). */
+var KIOSK={on:false,cid:'',phase:'',line:'',heard:'',reply:'',follow:0,speaking:false,busy:false,
+  stream:null,ctx:null,src:null,node:null,rec:null,chunks:[],pre:[],talking:false,quiet:0,started:0,
+  floor:0.004,sending:false,muted:false};
+var KIOSK_RATE=16000;          // what whisper.cpp and the OpenAI endpoint both want
+var KIOSK_FOLLOW_MS=20000;     // after an answer, no name needed for a follow-up
+var KIOSK_SILENCE_MS=900;      // a pause this long ends an utterance
+var KIOSK_MIN_MS=450;          // shorter is a cough or a door
+var KIOSK_MAX_MS=15000;        // longer is cut and sent (hearing.MAX_BYTES holds ~2 min)
+var KIOSK_PRE_MS=300;          // kept from before the voice started, so the first word is whole
+
+function kioskFace(){try{return (PLATFORM&&PLATFORM.face)||{}}catch(e){return {}}}
+/* Is this the screen the kiosk face is for? */
+function kioskWanted(){
+  if(location.hash==='#kiosk')return true;
+  const f=kioskFace();if(!f.kiosk)return false;
+  try{if(sessionStorage.getItem('kiosk.left')==='1')return false}catch(e){}
+  return !(typeof remoteClient==='function'&&remoteClient());
+}
+function kioskApply(){
+  const want=kioskWanted();
+  if(want&&!KIOSK.on)kioskStart();
+  else if(!want&&KIOSK.on)kioskStop();
+  else if(KIOSK.on)kioskPaint();
+}
+function kioskStart(){
+  KIOSK.on=true;
+  document.body.classList.add('kiosk');
+  let hud=document.getElementById('kiosk-hud');
+  if(!hud){hud=document.createElement('div');hud.id='kiosk-hud';document.body.appendChild(hud)}
+  hud.innerHTML=`<div class="kh-who">${typeof avatarImg==='function'?avatarImg('@agent','kh-face'):''}
+      <div class="kh-txt"><b class="kh-name"></b><span class="kh-line"></span></div></div>
+    <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
+    <div class="kh-acts"><button class="kh-mic" aria-label="Microphone"></button>
+      <button class="kh-leave" aria-label="Leave the kiosk">Leave</button></div>`;
+  hud.querySelector('.kh-mic').onclick=()=>kioskMicTap();
+  hud.querySelector('.kh-leave').onclick=()=>kioskLeave();
+  // one drawer of the office state at a time (officeSceneAttach): an open Office
+  // window would keep the scene empty behind it, and windows are hidden here
+  if(typeof OFFICE!=='undefined'&&OFFICE.w&&!OFFICE.w.scene&&typeof closeWin==='function')closeWin(OFFICE.w);
+  if(typeof officeSceneStart==='function'){
+    if(typeof OFFICE_SCENE!=='undefined'&&OFFICE_SCENE.on)officeSceneResize();else officeSceneStart();
+  }
+  if(typeof suiSyncStruts==='function')suiSyncStruts();
+  kioskPaint();
+  kioskListen();
+}
+function kioskStop(){
+  KIOSK.on=false;
+  kioskMicOff();
+  document.body.classList.remove('kiosk');
+  document.body.style.removeProperty('--kiosk-hud');KIOSK.hudH=0;
+  const hud=document.getElementById('kiosk-hud');if(hud)hud.remove();
+  if(KIOSK.cid&&typeof sinkOff==='function')sinkOff(KIOSK.cid);
+  // the office scene stays only if the immersive look asked for it
+  if(typeof officeSceneStop==='function'&&!(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='office'))officeSceneStop();
+  else if(typeof officeSceneResize==='function')officeSceneResize();
+  if(typeof suiSyncStruts==='function')suiSyncStruts();
+}
+/* Leave for this session. The setting stays on, so the screen comes back as a kiosk
+   after a restart; turning it off for good is Settings → Appearance or `bento face`. */
+function kioskLeave(){
+  try{sessionStorage.setItem('kiosk.left','1')}catch(e){}
+  if(location.hash==='#kiosk')history.replaceState(null,'',location.pathname+location.search);
+  kioskStop();
+}
+function kioskSay(line,phase){KIOSK.line=line||'';if(phase)KIOSK.phase=phase;kioskPaint()}
+function kioskPaint(){
+  const hud=document.getElementById('kiosk-hud');if(!hud)return;
+  const name=agentName(),f=kioskFace(),hear=f.hear||{};
+  hud.querySelector('.kh-name').textContent=name;
+  const waiting=KIOSK.phase==='listening'?(kioskFollowing()?'Listening. Go ahead.'
+      :(f.wake==='always'?'Listening.':`Say “${name}” and what you need.`)):'';
+  hud.querySelector('.kh-line').textContent=KIOSK.line||waiting;
+  const h=hud.querySelector('.kh-heard'),r=hud.querySelector('.kh-reply');
+  h.hidden=!KIOSK.heard;h.textContent=KIOSK.heard?'“'+KIOSK.heard+'”':'';
+  r.hidden=!KIOSK.reply;r.textContent=KIOSK.reply.slice(-600);
+  const mic=hud.querySelector('.kh-mic');
+  const can=!!hear.engine;
+  mic.hidden=!can;
+  mic.className='kh-mic'+(KIOSK.muted?' off':'')+(KIOSK.talking?' live':'');
+  mic.textContent=KIOSK.muted?'Mic off':(KIOSK.talking?'Hearing you':'Mic on');
+  hud.dataset.phase=KIOSK.phase||'';
+  // the office ends where this band begins: measured, because the answer grows it
+  const band=Math.ceil(hud.getBoundingClientRect().height)+24;
+  if(KIOSK.hudH!==band){KIOSK.hudH=band;document.body.style.setProperty('--kiosk-hud',band+'px');
+    if(typeof officeSceneResize==='function')officeSceneResize()}
+}
+function kioskFollowing(){return KIOSK.follow&&Date.now()<KIOSK.follow}
+
+/* ---------------- hearing ---------------- */
+async function kioskListen(){
+  if(!KIOSK.on||KIOSK.muted)return;
+  const hear=kioskFace().hear||{};
+  if(!hear.engine){kioskSay(hear.line||'Nothing on this machine can understand speech yet.','deaf');return}
+  if(hear.engine==='browser')return kioskBrowserListen();
+  if(KIOSK.stream){kioskSay('','listening');return}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    kioskSay('This browser cannot use a microphone.','deaf');return}
+  try{
+    KIOSK.stream=await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
+  }catch(e){kioskSay('The microphone was not allowed. Allow it for this page, then tap Mic on.','deaf');return}
+  const AC=window.AudioContext||window.webkitAudioContext;
+  KIOSK.ctx=new AC();
+  KIOSK.src=KIOSK.ctx.createMediaStreamSource(KIOSK.stream);
+  // ScriptProcessor rather than an AudioWorklet: a worklet is a module file of its own,
+  // and the page is one bundle. 4096 frames is ~90 ms at 44.1 kHz, plenty for a pause.
+  KIOSK.node=KIOSK.ctx.createScriptProcessor(4096,1,1);
+  KIOSK.node.onaudioprocess=e=>kioskFrame(e.inputBuffer.getChannelData(0));
+  KIOSK.src.connect(KIOSK.node);KIOSK.node.connect(KIOSK.ctx.destination);
+  if(KIOSK.ctx.state==='suspended'){
+    // a page may not start audio by itself until somebody touched it
+    kioskSay('Tap anywhere to start listening.','asleep');
+    const wake=()=>{document.removeEventListener('pointerdown',wake,true);
+      KIOSK.ctx&&KIOSK.ctx.resume().then(()=>kioskSay('','listening'))};
+    document.addEventListener('pointerdown',wake,true);
+    return;
+  }
+  kioskSay('','listening');
+}
+function kioskMicOff(){
+  try{KIOSK.node&&KIOSK.node.disconnect();KIOSK.src&&KIOSK.src.disconnect()}catch(e){}
+  try{KIOSK.stream&&KIOSK.stream.getTracks().forEach(t=>t.stop())}catch(e){}
+  try{KIOSK.ctx&&KIOSK.ctx.close()}catch(e){}
+  try{KIOSK.rec&&KIOSK.rec.abort()}catch(e){}
+  KIOSK.stream=KIOSK.ctx=KIOSK.src=KIOSK.node=KIOSK.rec=null;KIOSK.chunks=[];KIOSK.pre=[];KIOSK.talking=false;
+}
+function kioskMicTap(){
+  KIOSK.muted=!KIOSK.muted;
+  if(KIOSK.muted){kioskMicOff();kioskSay('The microphone is off.','muted')}
+  else{KIOSK.line='';kioskListen()}
+  kioskPaint();
+}
+/* One frame of audio: a voice starts when the level rises well over the room's own
+   noise, and ends after a pause. Nothing is kept while the agent is speaking, so it
+   never answers itself. */
+function kioskFrame(data){
+  if(!KIOSK.on||KIOSK.muted||KIOSK.speaking||KIOSK.sending)return;
+  let sum=0;for(let i=0;i<data.length;i++)sum+=data[i]*data[i];
+  const rms=Math.sqrt(sum/data.length),now=performance.now();
+  const frame=new Float32Array(data);
+  const on=rms>Math.max(0.012,KIOSK.floor*3.2);
+  if(!KIOSK.talking){
+    KIOSK.floor=KIOSK.floor*0.95+rms*0.05;
+    KIOSK.pre.push(frame);
+    const keep=Math.ceil(KIOSK_PRE_MS/1000*KIOSK.ctx.sampleRate/data.length);
+    while(KIOSK.pre.length>keep)KIOSK.pre.shift();
+    if(on){KIOSK.talking=true;KIOSK.started=now;KIOSK.quiet=0;KIOSK.chunks=KIOSK.pre.slice();KIOSK.pre=[];kioskPaint()}
+    return;
+  }
+  KIOSK.chunks.push(frame);
+  KIOSK.quiet=on?0:(KIOSK.quiet||now);
+  const long=now-KIOSK.started;
+  if((KIOSK.quiet&&now-KIOSK.quiet>KIOSK_SILENCE_MS)||long>KIOSK_MAX_MS){
+    const chunks=KIOSK.chunks;KIOSK.chunks=[];KIOSK.talking=false;kioskPaint();
+    if(long-(KIOSK.quiet?now-KIOSK.quiet:0)<KIOSK_MIN_MS)return;
+    kioskSend(kioskWav(chunks,KIOSK.ctx.sampleRate));
+  }
+}
+/* Float frames at the device's rate → 16 kHz mono 16-bit WAV. */
+function kioskWav(chunks,rate){
+  let n=0;chunks.forEach(c=>n+=c.length);
+  const all=new Float32Array(n);let o=0;chunks.forEach(c=>{all.set(c,o);o+=c.length});
+  const step=rate/KIOSK_RATE,len=Math.floor(n/step),pcm=new Int16Array(len);
+  for(let i=0;i<len;i++){
+    const a=Math.floor(i*step),b=Math.min(n,Math.floor((i+1)*step));
+    let s=0;for(let j=a;j<b;j++)s+=all[j];
+    const v=Math.max(-1,Math.min(1,s/Math.max(1,b-a)));pcm[i]=v<0?v*0x8000:v*0x7fff;
+  }
+  const buf=new ArrayBuffer(44+pcm.length*2),dv=new DataView(buf);
+  const str=(p,s)=>{for(let i=0;i<s.length;i++)dv.setUint8(p+i,s.charCodeAt(i))};
+  str(0,'RIFF');dv.setUint32(4,36+pcm.length*2,true);str(8,'WAVE');str(12,'fmt ');
+  dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);
+  dv.setUint32(24,KIOSK_RATE,true);dv.setUint32(28,KIOSK_RATE*2,true);dv.setUint16(32,2,true);dv.setUint16(34,16,true);
+  str(36,'data');dv.setUint32(40,pcm.length*2,true);
+  new Int16Array(buf,44).set(pcm);
+  return new Blob([buf],{type:'audio/wav'});
+}
+async function kioskSend(wav){
+  KIOSK.sending=true;kioskSay('Understanding…','hearing');
+  let text='';
+  try{
+    const lang=String((typeof VOICE!=='undefined'&&VOICE.lang)||'').slice(0,5);
+    const r=await fetch('/api/speech/hear?lang='+encodeURIComponent(lang),
+      {method:'POST',headers:{'Content-Type':'audio/wav'},body:wav});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){KIOSK.sending=false;kioskSay(d.error||('could not understand that ('+r.status+')'),'listening');return}
+    text=String(d.text||'').trim();
+  }catch(e){KIOSK.sending=false;kioskSay('The machine could not be reached.','listening');return}
+  KIOSK.sending=false;
+  kioskHeard(text);
+}
+/* The browser's own recogniser, for a machine whose browser has one that works. */
+function kioskBrowserListen(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){kioskSay('This browser has no speech recogniser. Choose whisper.cpp or OpenAI in Settings.','deaf');return}
+  const rec=new SR();KIOSK.rec=rec;
+  rec.lang=(typeof VOICE!=='undefined'&&VOICE.lang)||'en-IN';rec.continuous=false;rec.interimResults=false;
+  rec.onresult=e=>{const t=[...e.results].map(r=>r[0].transcript).join(' ');kioskHeard(t)};
+  rec.onerror=e=>{if(e.error==='network'||e.error==='not-allowed')
+    kioskSay(e.error==='network'?'This browser cannot reach its speech service. Choose whisper.cpp or OpenAI in Settings.'
+      :'The microphone was not allowed.','deaf')};
+  rec.onend=()=>{KIOSK.rec=null;if(KIOSK.on&&!KIOSK.muted&&!KIOSK.speaking&&KIOSK.phase!=='deaf')setTimeout(kioskListen,400)};
+  try{rec.start();kioskSay('','listening')}catch(e){}
+}
+
+/* ---------------- what was said ---------------- */
+/* The words after the agent's name, or '' when the name was not said. "Hey Aria,
+   what's on today" → "what's on today". Whole words, so "Ariadne" is not "Aria". */
+function kioskAddressed(text,name){
+  const norm=s=>String(s).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g,'');
+  const t=norm(text),n=norm(name).trim();if(!n)return null;
+  const re=new RegExp('(^|[^\\p{L}\\p{N}])'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?=$|[^\\p{L}\\p{N}])','u');
+  const m=re.exec(t);if(!m)return null;
+  return String(text).slice(m.index+m[0].length).replace(/^[\s,.:;!?-]+/,'').trim();
+}
+function kioskHeard(text){
+  text=String(text||'').trim();
+  if(!text){kioskSay('','listening');return}
+  const f=kioskFace(),name=agentName();
+  let ask=text;
+  if(f.wake!=='always'&&!kioskFollowing()){
+    const after=kioskAddressed(text,name);
+    if(after===null){kioskSay('','listening');return}         // not for us: nothing is kept
+    if(!after){KIOSK.heard=text;KIOSK.follow=Date.now()+KIOSK_FOLLOW_MS;
+      kioskSpeak('Yes?');return}
+    ask=after;
+  }
+  KIOSK.heard=text;KIOSK.reply='';
+  kioskAsk(ask);
+}
+async function kioskThread(){
+  if(KIOSK.cid)return KIOSK.cid;
+  const day=new Date().toISOString().slice(0,10);
+  try{const s=JSON.parse(localStorage.getItem('kiosk.thread')||'{}');if(s.day===day&&s.cid)KIOSK.cid=s.cid}catch(e){}
+  if(!KIOSK.cid){
+    try{
+      const d=await (await fetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({origin:'kiosk',title:'At the screen · '+day,surface:'gui'})})).json();
+      KIOSK.cid=d.id||'';
+      try{localStorage.setItem('kiosk.thread',JSON.stringify({day,cid:KIOSK.cid}))}catch(e){}
+    }catch(e){}
+  }
+  return KIOSK.cid;
+}
+async function kioskAsk(text){
+  if(typeof ws==='undefined'||!ws||ws.readyState!==1){kioskSay('Not connected to the machine.','listening');return}
+  const cid=await kioskThread();
+  if(!cid){kioskSay('Could not start a conversation.','listening');return}
+  KIOSK.busy=true;kioskSay(agentName()+' is working…','working');
+  sinkOn(cid,{
+    delta:(t,all)=>{KIOSK.reply=all||((KIOSK.reply||'')+t);kioskPaint()},
+    error:ev=>{KIOSK.busy=false;KIOSK.reply='';kioskSay(String(ev.message||'something went wrong'),'listening')},
+    end:()=>{KIOSK.busy=false;const said=KIOSK.reply;
+      if(said.trim())kioskSpeak(said);else kioskSay('','listening')},
+  });
+  if(typeof voiceAddress==='function')text=voiceAddress(text);
+  ws.send(JSON.stringify({type:'chat',text,conversation_id:cid,model:''}));
+  if(typeof setRunning==='function')setRunning(true);
+}
+/* Spoken through the one door every voice uses (speakAs), with the mic deaf until it
+   is finished, then a short window where no name is needed. */
+function kioskSpeak(text){
+  const clean=String(text||'').replace(/```[\s\S]*?```/g,' code block. ').replace(/[*_#`>|]/g,'').slice(0,900);
+  KIOSK.speaking=true;KIOSK.chunks=[];KIOSK.talking=false;
+  kioskSay(agentName()+' is speaking…','speaking');
+  const done=()=>{KIOSK.speaking=false;KIOSK.follow=Date.now()+KIOSK_FOLLOW_MS;kioskSay('','listening');
+    if(kioskFace().hear&&kioskFace().hear.engine==='browser'&&!KIOSK.rec)kioskListen()};
+  if(typeof speakAs==='function')speakAs('@agent',clean,done);else done();
+}
+
+/* ---------------- Settings → Appearance → On this screen ---------------- */
+/* One agent, the kiosk, what it listens for, and what understands speech, from
+   /api/face (admin only on a machine with accounts: a screen is the machine's). */
+async function faceSettingsPaint(){
+  const box=document.getElementById('s-face');if(!box)return;
+  let d;try{d=await apiJSON('/api/face')}catch(e){box.innerHTML=`<div class="prow"><div class="pl"><small>${esc(String(e.message||e))}</small></div></div>`;return}
+  const hear=d.hear||{};
+  box.innerHTML=[
+    pRow('One agent on screen',pSelect('s-face-buddy',[['auto','Auto: in Light mode'],['on','On'],['off','Off']],d.buddy_setting||'auto'),
+      {desc:'Draws only your agent in the Office and on the desktop.',
+       more:'Specialists still work. Their work lights your agent instead. Auto turns it on in Light mode, which a Raspberry Pi gets by itself.',
+       f:'buddy one agent single light mode raspberry pi office crew'}),
+    pRow('Kiosk',pSwitch('s-face-kiosk',!!d.kiosk),
+      {desc:'This machine’s own screen shows the Office and listens.',
+       more:'Only the screen plugged into this machine. A phone or another browser keeps the desktop. Add #kiosk to the address to try it anywhere.',
+       f:'kiosk mic microphone always listening screen office raspberry pi wake word'}),
+    pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Your agent’s name'],['always','Everything it hears']],d.wake||'name'),
+      {desc:'With a name, anything else said in the room is ignored.',f:'wake word name always listening'}),
+    pRow('Understanding speech',pSelect('s-face-hear',[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']],hear.setting||'auto'),
+      {desc:esc(hear.line||''),
+       more:'whisper.cpp keeps your voice on this machine. Install it and a model yourself; Bento uses it when it finds it.',
+       f:'speech to text whisper openai transcribe hearing stt'}),
+  ].join('');
+  const put=async body=>{
+    const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error){toast(j.error||'could not save that');faceSettingsPaint();return}
+    toast('✓ '+(j.description||'saved'));
+    try{sessionStorage.removeItem('kiosk.left')}catch(e){}
+    if(typeof loadPlatform==='function')await loadPlatform();
+    faceSettingsPaint();
+  };
+  box.querySelector('#s-face-buddy').onchange=e=>put({buddy:e.target.value});
+  box.querySelector('#s-face-kiosk').onchange=e=>put({kiosk:e.target.checked});
+  box.querySelector('#s-face-wake').onchange=e=>put({wake:e.target.value});
+  box.querySelector('#s-face-hear').onchange=e=>put({hear:e.target.value});
+}
+addEventListener('hashchange',()=>{if(location.hash==='#kiosk')try{sessionStorage.removeItem('kiosk.left')}catch(e){}
+  if(typeof kioskApply==='function')kioskApply()});
+/* ================= a community of machines =================
+   Settings → Agents → Working together → Community. pool.py is the whole design; this
+   draws /api/pool and changes it. One machine LEADS (holds the keys, lends its brain,
+   splits bigger work); small machines JOIN over a linked team, share notes and take
+   pieces of work. Who leads next is decided by rank among machines whose own admin
+   said they may lead. TUI: `bento pool`. SUI: this page, nothing touches the compositor. */
+var POOL={v:null};
+async function poolPaint(){
+  const box=document.getElementById('s-pool');if(!box)return;
+  let v;try{v=await apiJSON('/api/pool')}catch(e){box.innerHTML=`<div class="prow"><div class="pl"><small>${esc(String(e.message||e))}</small></div></div>`;return}
+  POOL.v=v;
+  const can=v.can_change,rows=[];
+  const btn=(label,act,extra)=>`<button class="endbtn" data-pool="${act}"${extra||''}${can?'':' disabled'}>${esc(label)}</button>`;
+  if(!v.pool){
+    const linked=v.linked||[];
+    rows.push(pRow('This machine',`<span class="mut">${esc(v.line)}</span>`,
+      {desc:'Machines that share one brain, one set of notes, and bigger jobs.',
+       more:'One machine leads and pays for the thinking. Small machines like a Raspberry Pi join it, share what they learn and each take a piece of a bigger task.',
+       f:'community pool status'}));
+    rows.push(pRow('Start a community',`<input id="pool-name" placeholder="Home" maxlength="40" style="max-width:160px"${can?'':' disabled'}>`+btn('Start','create'),
+      {desc:v.has_brain?'This machine leads. Others ask to join it.':'Needs a brain of its own first, under AI providers.',
+       f:'community start create lead'}));
+    rows.push(pRow('Join a community',linked.length
+        ?pSelect('pool-join-to',linked.map(l=>[l.label,l.name]),linked[0].label)+btn('Ask to join','join')
+        :'<span class="mut">Link with the leader first, above.</span>',
+      {desc:'Ask a linked machine that leads a community to let this one in.',
+       more:'Its admin approves you. Joining lets the community hand this machine work; you can revoke that in Permissions.',
+       f:'community join member raspberry pi'}));
+  }else{
+    rows.push(pRow(v.pool.name,`<span class="mut">${esc(v.line)}</span>`,
+      {desc:v.role==='leader'?'This machine leads. It lends its brain and splits bigger work.':v.role==='pending'?'Waiting for the leader to let you in.':'A member. It shares notes and takes work.',
+       more:'The leader is chosen by rank among machines whose admin said they may lead: the one you pin first, then the most capable. If the leader stops answering for a minute, the next one takes over.',
+       f:'community status leader member term'}));
+    const ms=(v.machines||[]);
+    rows.push(pRow('Machines',`<div class="pool-list">${ms.map(m=>{
+        const c=m.cap||{},st=m.here?'this machine':m.state==='pending'?'asking to join':m.alive?'up':m.seen!=null?`last heard ${poolAgo(m.seen)}`:'not heard yet';
+        const acts=v.role==='leader'&&!m.here&&can?(m.state==='pending'
+          ?`<button class="endbtn" data-pool="approve" data-who="${esc(m.fp)}">Let in</button><button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Turn away</button>`
+          :`<button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Remove</button>`):'';
+        return `<div class="pool-m${m.alive||m.here?' up':''}"><b>${m.role==='leader'?'★ ':''}${esc(m.name)}</b>
+          <span class="mut">${esc(st)} · ${c.ram_mb||0} MB · ${c.cores||0} cores${c.board?' · '+esc(c.board):''}${m.eligible?' · may lead':''}${m.busy?' · working':''}</span>${acts}</div>`}).join('')||'<span class="mut">Nobody yet.</span>'}</div>`,
+      {stack:true,desc:'Every machine in the community and when it was last heard.',f:'community machines members roster'}));
+    const next=ms.filter(m=>!m.here&&m.eligible&&m.state==='member');
+    if(v.role==='leader')rows.push(pRow('Who takes over first',next.length
+        ?pSelect('pool-pin',[['','The most capable'],...next.map(m=>[m.fp,m.name])],v.pin||'')
+        :'<span class="mut">No other machine may lead yet.</span>',
+      {desc:'If this machine goes away, this one leads next.',
+       more:'Only machines whose own admin switched on This machine may lead are listed.',
+       f:'community pin next leader failover'}));
+    rows.push(pRow('This machine may lead',pSwitch('pool-lead',!!v.lead_ok),
+      {desc:'If the leader goes away, this machine can take over and pay for the thinking.',
+       more:'It needs a brain of its own. Leading spends this machine’s model budget on every member’s calls.',
+       f:'community lead elect take over failover'}));
+    if(v.role==='member')rows.push(pRow('Think with the leader’s brain',pSwitch('pool-brain',!!v.using_brain),
+      {desc:'Model calls go to the leader. This machine needs no key of its own.',f:'community brain model leader thinks'}));
+    rows.push(pRow('Shared notes',`<span class="mut">${v.notes} note${v.notes===1?'':'s'}</span><button class="endbtn" data-pool="notes">Show</button>`,
+      {desc:'What the machines’ agents chose to share with each other.',
+       more:'Agents read them with community_recall and treat them as untrusted, because another machine wrote them.',
+       f:'community shared memory notes'}));
+    rows.push(pRow('Leave',btn('Leave the community','leave'),{desc:'This machine stops sharing and taking work.',f:'community leave'}));
+    if(v.note)rows.push(pRow('Last problem',`<span class="mut">${esc(v.note)}</span>`,{f:'community problem'}));
+  }
+  box.innerHTML=rows.join('')+'<div id="pool-notes"></div>';
+  box.querySelectorAll('[data-pool]').forEach(b=>b.onclick=()=>poolAct(b.dataset.pool,b.dataset.who||''));
+  const ld=box.querySelector('#pool-lead');if(ld){ld.disabled=!can;ld.onchange=()=>poolPut({lead_ok:ld.checked})}
+  const pn=box.querySelector('#pool-pin');if(pn){pn.disabled=!can;pn.onchange=()=>poolPut({pin:pn.value})}
+  const br=box.querySelector('#pool-brain');if(br){br.disabled=!can;br.onchange=()=>poolPut({use_brain:br.checked})}
+}
+function poolAgo(s){return s<90?s+'s ago':s<5400?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago'}
+async function poolPut(body){
+  const r=await fetch('/api/pool',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)toast(d.error||'could not change that');else toast('✓ saved');
+  poolPaint();
+}
+async function poolAct(act,who){
+  if(act==='notes')return poolNotes();
+  if(act==='leave'&&!confirm('Leave the community? This machine stops sharing notes and taking work.'))return;
+  const body=act==='create'?{name:(document.getElementById('pool-name')||{}).value||''}
+    :act==='join'?{label:(document.getElementById('pool-join-to')||{}).value||''}:{who};
+  const r=await fetch('/api/pool/'+act,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){toast(d.error||'could not do that');return}
+  toast({create:'✓ community started',join:'✓ asked to join',approve:'✓ let in',remove:'✓ removed',leave:'✓ left the community'}[act]||'✓ done');
+  poolPaint();
+}
+async function poolNotes(){
+  const el=document.getElementById('pool-notes');if(!el)return;
+  if(el.innerHTML){el.innerHTML='';return}
+  let d;try{d=await apiJSON('/api/pool/notes')}catch(e){el.textContent=String(e.message||e);return}
+  el.innerHTML=`<div class="pool-notes">${(d.notes||[]).map(n=>`<div class="pool-n"><span class="mut">${esc(n.machine||'?')}</span> ${esc(n.content)}
+    <button class="endbtn" data-forget="${esc(n.id)}" aria-label="Forget this note">Forget</button></div>`).join('')||'<span class="mut">No notes yet.</span>'}</div>`;
+  el.querySelectorAll('[data-forget]').forEach(b=>b.onclick=async()=>{
+    await fetch('/api/pool/notes/'+encodeURIComponent(b.dataset.forget),{method:'DELETE'});el.innerHTML='';poolNotes()});
+}
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
-  w.path=w.path||'';
+  w.path=w.path||'';w.place=w.place||'';
   const FCOLORS={html:'#38BDF8',htm:'#38BDF8',md:'#a5b4fc',txt:'#8a94a6',json:'#fbbf24',csv:'#4ade80',
     log:'#8a94a6',pdf:'#f87171',sh:'#94a3b8',py:'#60a5fa'};
   const IMG_EXT=new Set(['png','jpg','jpeg','gif','webp','svg']);
@@ -27438,18 +28448,32 @@ async function renderFiles(body,w){
     return `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="${s}"><path d="M6.5 4h7l4 4v12h-11Z"/><path d="M13.5 4v4h4"/></svg>`;
   };
   const fmt=n=>n<1024?n+' B':n<1e6?(n/1024).toFixed(0)+' KB':(n/1e6).toFixed(1)+' MB';
-  let d;try{d=await (await fetch('/api/files?path='+encodeURIComponent(w.path))).json()}catch(e){body.innerHTML='<p class="mut" style="padding:16px">could not read files</p>';return}
+  const q='/api/files?path='+encodeURIComponent(w.path)+(w.place?'&root='+encodeURIComponent(w.place):'');
+  let d;try{
+    const r=await fetch(q);d=await r.json();
+    /* a share that was removed while this window was open: back to the workspace */
+    if(!r.ok&&w.place){w.place='';w.path='';return renderFiles(body,w)}
+  }catch(e){body.innerHTML='<p class="mut" style="padding:16px">could not read files</p>';return}
   w.path=d.path;
-  const crumbs=['<span class="fcrumb" data-p="">workspace</span>'];
+  /* Shared folders (Users → Shared folders) are places of their own, beside the
+     workspace. A select and not tabs: it stays one control on a phone however many
+     folders are shared. */
+  const places=d.places||[];
+  const here=places.find(p=>p.root===w.place)||{label:'Workspace',mode:'rw'};
+  const picker=places.length>1?`<select class="f-place" title="Shared folders">${places.map(p=>
+    `<option value="${esc(p.root)}"${p.root===w.place?' selected':''}>${esc(p.label)}</option>`).join('')}</select>`:'';
+  const crumbs=[`<span class="fcrumb" data-p="">${esc(w.place?here.label:'workspace')}</span>`];
   let acc='';d.path.split('/').filter(Boolean).forEach(seg=>{acc=acc?acc+'/'+seg:seg;crumbs.push('<span class="fsep">/</span><span class="fcrumb" data-p="'+esc(acc)+'">'+esc(seg)+'</span>')});
   body.innerHTML=`<div class="apptop">
+      ${picker}
       ${w.path?'<button class="endbtn f-up">Up</button>':''}
-      <div style="flex:1;font-size:var(--fs-sm)" class="f-crumbs">${crumbs.join('')}</div>
+      <div style="flex:1;font-size:var(--fs-sm)" class="f-crumbs">${crumbs.join('')}${here.mode==='ro'?'<span class="dim"> · read only</span>':''}</div>
       <span class="psearch" style="flex:0 0 220px">${SVG_SEARCH}<input class="f-search" placeholder="Search by meaning…" autocomplete="off"></span>
       <button class="endbtn" onclick="refreshApp('files')">⟳</button>
     </div>
     <div class="f-list" style="flex:1;overflow-y:auto;padding:6px 8px;user-select:text">
-      ${d.entries.length?d.entries.map(e=>`<div class="fitem" data-rel="${esc(e.rel)}" data-dir="${e.dir?1:0}" data-ext="${esc(e.ext)}">
+      ${d.error?`<p class="mut" style="padding:14px">${esc(d.error)}</p>`:''}
+      ${d.entries.length?d.entries.map(e=>`<div class="fitem" data-rel="${esc(e.rel)}" data-full="${esc(e.full||'')}" data-dir="${e.dir?1:0}" data-ext="${esc(e.ext)}">
         <span class="fi">${icon(e)}</span><span class="fn">${esc(e.name)}</span>
         <span class="fmeta">${e.dir?'':fmt(e.size)+' · '+new Date(e.mtime*1000).toLocaleDateString()}</span>
       </div>`).join(''):'<p class="mut" style="padding:14px">empty folder</p>'}
@@ -27457,9 +28481,13 @@ async function renderFiles(body,w){
   // scoped lookups — Files is multi-instance, so no bare $('#…') in here
   body.querySelector('.f-crumbs').querySelectorAll('.fcrumb').forEach(c=>c.onclick=()=>{w.path=c.dataset.p;renderFiles(body,w)});
   const up=body.querySelector('.f-up');if(up)up.onclick=()=>{w.path=w.path.split('/').slice(0,-1).join('/');renderFiles(body,w)};
+  const pick=body.querySelector('.f-place');if(pick)pick.onchange=()=>{w.place=pick.value;w.path='';renderFiles(body,w)};
   const wire=()=>body.querySelectorAll('.fitem').forEach(it=>it.onclick=()=>{
     const rel=it.dataset.rel;
     if(it.dataset.dir==='1'){w.path=rel;renderFiles(body,w)}
+    /* a shared folder's file goes by its full path, through the same door as a
+       chat's file chip (shown here on a phone, opened on the host at the machine) */
+    else if(w.place&&it.dataset.full)fileOpen(it.dataset.full,it.dataset.ext);
     else openFile(rel,it.dataset.ext);
   });
   wire();
@@ -28783,14 +29811,17 @@ const OMNI={cid:null,matches:[],idx:0,pop:false,imgs:[]};
 
 function omniPresence(force){
   const orb=$('#omni-orb'),inp=$('#omni-in');if(!orb)return;
-  const n=RUNNING.size;
+  // A turn already on screen in Chat or an agent panel does not raise the bar over the
+  // desktop: that was a second "Aria · reading the task" beside the window saying it.
+  const shown=[...RUNNING].filter(c=>!(typeof turnInWindow==='function'&&turnInWindow(c)));
+  const n=shown.length;
   orb.classList.toggle('busy',n>0);
   // `force`: the config just arrived (a signed-in person's agent has its own name) —
   // the bar is often focused at first paint, and the Aria it showed then would stay
   if(!inp||inp.value||(document.activeElement===inp&&!force))return;
   // The bar is the one thing always on screen, so it is often where somebody
   // looks to ask "is it stuck?" — it answers with the step, not with "working".
-  const live=n===1?actLine([...RUNNING][0]):'';
+  const live=n===1?actLine(shown[0]):'';
   const want=n>1?`${agentName()} · ${n} turns running…`
           :n?(live?`${agentName()} · ${live}`:`${agentName()} is working…`)
              :(typeof isTouch==='function'&&isTouch())?`Ask ${agentName()} anything`      // no keyboard, no key hint (D10)
@@ -29725,6 +30756,8 @@ connect();
   setTimeout(()=>{
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
     if($('#setup-wiz'))return;      // a first run has no desktop to bring back
+    // the kiosk face (24h-kiosk.js): this machine's own screen as the Office, listening
+    try{if(typeof kioskApply==='function')kioskApply()}catch(e){}
     // Bring back the desktop this page had before it reloaded. After the splash,
     // so eight windows do not animate in behind it, and never during setup.
     try{if(typeof sessionRestore==='function')sessionRestore()}catch(e){}
@@ -29742,7 +30775,7 @@ async function updateWaitingCheck(){
     const d=await (await fetch('/api/update')).json();
     if(!d.pending_restart)return;
     toast(`An update (build ${d.pending_restart}) is installed but not running yet — this is still build ${d.build}.`,
-      {kind:'warn',ms:60000,label:'Restart now',go:async()=>{
+      {kind:'warn',ms:15000,label:'Restart now',go:async()=>{
         const r=await fetch('/api/update/restart',{method:'POST'});
         const j=await r.json().catch(()=>({}));
         toast(r.ok?'restarting into the update — this page reloads by itself':(j.error||'could not restart'),r.ok?{}:{kind:'err'});

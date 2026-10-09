@@ -105,6 +105,7 @@ function crewKick(){
 function crewCovered(){
   if(document.hidden)return true;
   const b=document.body.classList;
+  if(b.contains('kiosk'))return false;      // the kiosk face hides every window: the scene IS the screen
   if(b.contains('has-fullwin'))return true;
   if(typeof WM!=='undefined'&&[...WM.wins.values()].some(w=>w.max&&!w.min))return true;
   if(b.contains('dev-mobile')&&b.contains('has-win'))return true;
@@ -141,6 +142,9 @@ async function crewRoster(force){
       :subs)
       .sort((a,b)=>pos(a.name)-pos(b.name))
       .slice(0,depts.length?CREW_MAX_ORG:CREW_MAX);
+    // One agent on screen (face.buddy, Light mode by default): the stage is the lead
+    // alone, and a specialist's work lights the lead (crewMatch). Nobody walks on.
+    if(faceBuddy())CREW.cast=[];
     // somebody new has no character yet until /api/avatars has generated one
     if(typeof avatarsLoad==='function'&&CREW.cast.some(c=>!AVATARS.by[c.name]))await avatarsLoad();
     // Arrivals. The first roster is who was already here — nobody walks in on a
@@ -151,6 +155,7 @@ async function crewRoster(force){
     CREW.known=new Set(CREW.cast.map(c=>c.name));
     crewKick();
   }catch(e){}
+  if(faceBuddy()){CREW.guests=[];return}
   crewGuests();
 }
 /* Linked teams' people, standing at the edge of the stage as visitors: only the ones
@@ -219,6 +224,7 @@ function crewMatch(label){
   const same=n=>{n=String(n).toLowerCase().replace(/[^a-z0-9]/g,'');return n&&(n===k||k.includes(n)||n.includes(k))};
   // a department's figure answers for everybody in it (its head is who is drawn)
   const hit=CREW.cast.find(c=>same(c.name))||CREW.cast.find(c=>c.members&&c.members.some(same));
+  if(!hit&&faceBuddy())return '@agent';     // only the lead is drawn: its desk lights
   return hit?hit.name:null;
 }
 /* The department a figure stands for, or '' for a specialist in none. */
@@ -419,7 +425,7 @@ function crewDraw(dt){
   const C=CREW,ctx=C.ctx;if(!ctx)return;
   const W=C.W,H=C.H,ink=crewInk(),now=performance.now();
   ctx.setTransform(C.dpr,0,0,C.dpr,0,0);ctx.clearRect(0,0,W,H);
-  const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0;
+  const running=(typeof RUNNING!=='undefined'&&RUNNING.size)>0||!!C.busy['@agent'];
   const who=(typeof agentName==='function')?agentName():'Aria';
   const portrait=H>W;
   // the stage: a shallow line across the lower third, with the work line above it
@@ -514,7 +520,8 @@ function crewDraw(dt){
   // the standing line. With nobody on the roster it says so and says what to do
   // about it — an empty stage that explains itself, not an empty stage.
   const nb=Object.keys(C.busy).length,nd=C.cast.filter(c=>c.dept).length;
-  const line=n===0?'No specialists yet — ask for one and they take a place here'
+  const line=n===0&&faceBuddy()?(running?`${who} is working`:`${who} is here`)
+    :n===0?'No specialists yet — ask for one and they take a place here'
     :nd?(()=>{const w=C.cast.filter(c=>c.dept&&C.busy[c.name]).length;
       return w?`${w} of ${nd} departments working`:`${nd} departments standing by`})()
     :nb?`${nb} of ${n} working`

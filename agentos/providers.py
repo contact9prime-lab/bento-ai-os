@@ -373,6 +373,13 @@ def parse_model_id(model_id: str) -> tuple[str, str]:
 async def chat(cfg: dict, model_id: str, messages: list, tools: list,
                options: dict | None = None) -> AsyncIterator[dict]:
     provider, model = parse_model_id(model_id)
+    if provider == "pool":
+        # The community's brain (pool.py): the call goes to the leader over the link and
+        # its events come back. This machine's keys, if it has any, never leave it.
+        from . import pool as poolmod
+        async for ev in poolmod.chat(cfg, model, messages, tools, options):
+            yield ev
+        return
     p = cfg["providers"].get(provider)
     if not p:
         raise ProviderError(f"Unknown provider: {provider}")
@@ -574,6 +581,12 @@ async def available_models(cfg: dict) -> list[dict]:
     # FETCHED one is a whole catalogue, and catalogues contain embedders, image
     # and speech models that cannot answer a turn.
     out = [m for m in out if is_chat_model(m["name"]) or m["name"] in _pinned(p) or m.get("suggested")]
+    # A member of a community can think with its leader's brain (pool.py).
+    try:
+        from . import pool as poolmod
+        out += poolmod.models()
+    except Exception:
+        pass
     _MODELS_CACHE.clear()          # one entry: the current settings
     _MODELS_CACHE[key] = (time.monotonic(), [dict(m) for m in out])
     return out

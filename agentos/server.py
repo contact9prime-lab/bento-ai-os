@@ -43,6 +43,7 @@ from . import signin as signinmod
 from . import mail as mailmod
 from . import calendars as calendarsmod
 from . import usage as usagemod
+from . import standby as standbymod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
 from .memory import Store
@@ -238,13 +239,21 @@ async def startup():
     trainforge = TrainForge(cfg, store, broadcast)
     toolbox.trainforge = trainforge
     toolbox.shell = shell_command  # the parity law: shell actions are tools too
+    # A community of machines (pool.py). Machine-level: it reads the machine's config,
+    # store and gate whoever is signed in, because a community is joined by the machine.
+    from . import pool as poolmod
+    toolbox.pool = poolmod.Pool(cfg=lambda: state.machine_cfg(),
+                                store=lambda: dict.__getitem__(state, "store"),
+                                pdp=lambda: dict.__getitem__(state, "pdp"),
+                                chat=providers.chat, work=_pool_work, event=_pool_event)
     fabricmod.seed_builtins(cfg, store)
     flowsmod.seed_builtin(store)
+    usersmod.bind_machine(cfg)   # an admin's save updates this dict in place
     state.update(cfg=cfg, store=store, toolbox=toolbox, scheduler=scheduler,
                  mcp=mcp, telegram=telegram, whatsapp=whatsapp,
                  clients=clients, client_uids=client_uids,
                  broadcast=broadcast, broadcast_user=broadcast_user,
-                 fabric=control, pdp=pdp, trainforge=trainforge,
+                 fabric=control, pdp=pdp, trainforge=trainforge, pool=toolbox.pool,
                  wayvnc=None,           # the interactive-control server, when running
                  pending_approvals={},  # aid -> {"fut","offer","ws"} — global approval broker
                  shell_pending={},      # cmd id -> Future — shell-control channel (see below)
@@ -256,11 +265,19 @@ async def startup():
                                         # user typed while a turn was running (see _queue_add)
                  build={"agent": None, "task": None, "cancel_requested": False,
                         "timed_out": False})  # App Studio build slot (global, one at a time)
+    # Cloud standby (standby.py): a side that is paired and NOT the one working starts
+    # nothing that acts on somebody's behalf. The other side is doing that; two
+    # schedulers, two Telegram pollers or two listeners over one person's data is the
+    # thing this whole feature exists to avoid.
+    idle = standbymod.passive()
     # Linked teams: the mTLS door, when a person switched it on (it opens a port).
-    if (cfg.get("team") or {}).get("listen"):
+    if (cfg.get("team") or {}).get("listen") and not idle:
         with contextlib.suppress(Exception):
             await _team_listen(True)
-    state["team_chat_task"] = asyncio.create_task(_team_chat_sweep())
+    if not idle:
+        state["team_chat_task"] = asyncio.create_task(_team_chat_sweep())
+        # the community's heartbeat: nothing at all happens unless this machine is in one
+        state["pool_task"] = asyncio.create_task(_pool_loop())
     # An OAuth server asks for consent from inside its own connection attempt, which
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
@@ -306,21 +323,25 @@ async def startup():
         uids = [u["id"] for u in usersmod.list_users()] if usersmod.enabled() else [""]
         for uid in uids:
             await _resume_one(uid)
-    asyncio.create_task(_resume_whatsapp_link())
-    asyncio.create_task(scheduler.run_forever())
-    state["parked_task"] = asyncio.create_task(_parked_loop(time.time()))
-    asyncio.create_task(mcp.start())
-    asyncio.create_task(telegram.run_forever())
+    if not idle:
+        asyncio.create_task(_resume_whatsapp_link())
+        asyncio.create_task(scheduler.run_forever())
+        state["parked_task"] = asyncio.create_task(_parked_loop(time.time()))
+        asyncio.create_task(mcp.start())
+        asyncio.create_task(telegram.run_forever())
     # The three services that cannot be shared get built per user, on demand, the
     # first time somebody's request or scheduled job reaches for one.
     usersmod.set_service_factory(
         lambda uid: _build_user_services(uid, toolbox, broadcast))
-    asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))
-    # attention engine: notification triage (importance + "For you" digest),
-    # batch-gated and model-idle-deferred — a no-op without a daemon or model
     from . import attention
-    asyncio.create_task(attention.attention_loop(cfg, store,
-                                                 lambda: state.get("notifd"), broadcast))
+    if not idle:
+        asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))
+        # attention engine: notification triage (importance + "For you" digest),
+        # batch-gated and model-idle-deferred — a no-op without a daemon or model
+        asyncio.create_task(attention.attention_loop(cfg, store,
+                                                     lambda: state.get("notifd"), broadcast))
+    _standby_start()
+    _keep_start(idle)
     # Is there a newer version? Checking is automatic; installing never is.
     from . import updates as updmod
     asyncio.create_task(updmod.watch(cfg, store, broadcast, cfgmod.save_config))
@@ -430,7 +451,7 @@ async def startup():
         toolbox.notifd = notifd   # the agent can read the center (list_notifications)
         notifd.on_notification = scheduler.offer_notification  # feeds notification triggers
         asyncio.create_task(notifd.start())
-    if runmode.resolve(cfg)[0] in (runmode.DE, runmode.KIOSK):
+    if runmode.resolve(cfg)[0] in (runmode.DE, runmode.KIOSK) and not idle:
         # session start ≈ login: fire login triggers + the "while you were away"
         # briefing (and, best-effort, re-brief on logind session unlock)
         asyncio.create_task(attention.session_start(cfg, store,
@@ -655,15 +676,73 @@ async def _team_listen(on: bool) -> dict:
         state["team_listener"] = None
     if on and not state.get("team_listener"):
         lst = teamlink.Listener(state["cfg"], on_ask=_team_on_ask, on_event=_team_on_event,
-                                identity=_team_identity)
+                                identity=_team_identity, on_pool=_pool_on_op)
         await lst.start()
         state["team_listener"] = lst
     lst = state.get("team_listener")
     return {"listening": bool(lst), "port": lst.port if lst else teamlink.team_port(state["cfg"])}
 
 
+async def _pool_on_op(lk: dict, req: dict) -> dict:
+    """A community request on the link door. The community is the MACHINE's, so it is
+    answered as the machine whoever owns the link it came over."""
+    with usersmod.as_user(""):
+        return await state["pool"].on_op(lk, req)
+
+
+async def _pool_event(kind: str, data: dict):
+    """Somebody asked to join (a toast with Review for whoever can let them in), or the
+    community changed (every Settings page repaints)."""
+    ev = {"type": "pool", "kind": kind, **{k: v for k, v in (data or {}).items() if k in ("name",)}}
+    if not usersmod.enabled():
+        await state["broadcast"](ev)
+        return
+    for u in usersmod.list_users():
+        if usersmod.is_admin(u["id"]):
+            await state["broadcast_user"](ev, u["id"])
+
+
+async def _pool_work(task: str, frm: str, pool_id: str) -> dict:
+    """A piece of the community's work, run here by this machine's worker, under this
+    machine's gate. It came from another machine, so it runs tainted: a risky step needs
+    a person here, and with nobody here it is refused at once."""
+    from . import pool as poolmod
+    with usersmod.as_user(""):          # the gate's pool.work decision was made in pool.py
+        store = state["store"]
+        poolmod.ensure_worker(store)
+        d = store.get_subagent("worker")
+        if not d:
+            return {"ok": False, "error": "this machine has no worker"}
+        res = await state["fabric"].run_subagent(
+            d, f"{frm}, the leader of your community, hands you this piece of work:\n\n{task}",
+            kind="pool", taint=[{"tool": "community", "source": frm}])
+        text = (res.get("content") or res.get("fault") or "(no answer)").strip()
+        return {"ok": True, "text": text[:6000], "machine": teamlinkmod_name()}
+
+
+def teamlinkmod_name() -> str:
+    from . import teamlink
+    return teamlink.machine_name(state.machine_cfg())
+
+
+async def _pool_loop():
+    from . import pool as poolmod
+    while True:
+        await asyncio.sleep(poolmod.BEAT_S)
+        with contextlib.suppress(Exception):
+            if poolmod.load().get("role"):
+                with usersmod.as_user(""):
+                    await state["pool"].tick()
+
+
 @app.on_event("shutdown")
 async def shutdown():
+    # Kept first: on a free host this is the only copy of the home, and the host gives a
+    # stopping service about 30 seconds.
+    with contextlib.suppress(Exception):
+        await _keep_flush()
+    with contextlib.suppress(Exception):
+        await _standby_flush()
     if state.get("notifd"):
         state["notifd"].stop()
     if state.get("team_listener"):
@@ -899,10 +978,35 @@ async def api_nightlight_set(body: dict):
     import subprocess
     from . import session as sessionmod
     cfg = state["cfg"]
+    # The screen's colour is the machine's setting, and these values end up on a shell
+    # command line (the session's wlsunset), so each is read as what it must be: a
+    # time is HH:MM, a temperature a number, a position a number. `from` once took
+    # `20:00;id>/tmp/x` and ran it, as the server's user, outside every account's jail.
+    refused = _require_admin()
+    if refused:
+        return refused
+    b = body or {}
+    clean = {}
+    try:
+        if "enabled" in b:
+            clean["enabled"] = bool(b["enabled"])
+        for k in ("day_temp", "night_temp"):
+            if k in b:
+                clean[k] = max(1000, min(25000, int(b[k])))
+        for k in ("from", "to"):
+            if k in b:
+                v = str(b[k] or "").strip()
+                if not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", v):
+                    return JSONResponse({"error": f"'{k}' must be a time like 20:00"},
+                                        status_code=400)
+                clean[k] = v
+        for k, lim in (("lat", 90), ("lon", 180)):
+            if k in b:
+                clean[k] = None if b[k] in (None, "") else max(-lim, min(lim, float(b[k])))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "those values are not numbers"}, status_code=400)
     nl = cfg.setdefault("nightlight", {})
-    for k in ("enabled", "day_temp", "night_temp", "from", "to", "lat", "lon"):
-        if k in (body or {}):
-            nl[k] = body[k]
+    nl.update(clean)
     cfgmod.save_config(cfg)
     # Rewrite the session config so it survives logout, and apply it right now.
     try:
@@ -1361,28 +1465,56 @@ async def api_intent(body: dict):
         return {"action": "chat"}
 
 
+def _file_places() -> list[dict]:
+    """Where the Files app may look: the workspace, then each folder shared with
+    this account (Users → Shared folders). One list, so the app cannot offer a
+    folder the agent could not reach, or miss one it can."""
+    from .tools import shares_for
+    out = [{"root": "", "label": "Workspace", "mode": "rw"}]
+    for s in shares_for(state["cfg"]):
+        out.append({"root": s["path"], "label": Path(s["path"]).name or s["path"],
+                    "mode": s["mode"]})
+    return out
+
+
 @app.get("/api/files")
-async def api_files(path: str = ""):
-    import time as _t
-    root = _files_root()
-    root.mkdir(parents=True, exist_ok=True)
-    p = _safe_file(path)
+async def api_files(path: str = "", root: str = ""):
+    places = _file_places()
+    place = next((pl for pl in places if pl["root"] == root), None)
+    if place is None:
+        return JSONResponse({"error": "that folder is not shared with you"}, status_code=404)
+    if root:
+        base = Path(root).resolve()
+        p = (base / path).resolve() if path else base
+        if not (p == base or base in p.parents):
+            p = base
+    else:
+        base = _files_root()
+        base.mkdir(parents=True, exist_ok=True)
+        p = _safe_file(path)
+    root_p = base.resolve()
     if p is None or not p.exists():
-        p = root
+        p = root_p
     if p.is_file():
         p = p.parent
-    rel = str(p.relative_to(root)) if p != root else ""
+    rel = str(p.relative_to(root_p)) if p != root_p else ""
     entries = []
-    for e in sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name.lower())):
+    try:
+        listing = sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name.lower()))
+    except OSError as e:
+        return {"root": str(root_p), "path": rel, "entries": [], "places": places,
+                "place": root, "mode": place["mode"], "error": f"could not read it: {e.strerror}"}
+    for e in listing:
         try:
             st = e.stat()
         except OSError:
             continue
         entries.append({"name": e.name, "dir": e.is_dir(),
-                        "rel": str(e.relative_to(root)),
+                        "rel": str(e.relative_to(root_p)), "full": str(e),
                         "size": st.st_size, "mtime": st.st_mtime,
                         "ext": e.suffix.lower().lstrip(".")})
-    return {"root": str(root), "path": rel, "entries": entries}
+    return {"root": str(root_p), "path": rel, "entries": entries, "places": places,
+            "place": root, "mode": place["mode"]}
 
 
 @app.post("/api/open")
@@ -1827,6 +1959,11 @@ async def api_platform(request: Request):
     from . import flows as flowsmod
     state_["os_events"] = {ev: flowsmod.os_event_problem(ev, state_.get("mode"))
                            for ev in flowsmod.OS_EVENTS}
+    # How THIS screen should look (face.py): one agent or the whole crew, and whether the
+    # machine's own screen is the kiosk. A remote browser reads it too, but only the
+    # screen attached to the machine (or a page opened with #kiosk) turns into the kiosk.
+    from . import face as facemod
+    state_["face"] = facemod.state(state.machine_cfg())
     return state_
 
 
@@ -2394,6 +2531,13 @@ async def api_power(body: dict, request: Request):
         return JSONResponse({"error": "denied: apps cannot control the session"},
                             status_code=403)
     action = (body.get("action") or "").strip()
+    # Locking the screen is anybody's; switching the machine off, restarting it or
+    # ending the session is the machine's, so on a machine with accounts it is an
+    # admin's (every other account's work stops with it).
+    if action != "lock":
+        refused = _require_admin()
+        if refused:
+            return refused
     if action == "agentos-restart":
         out = await state["toolbox"].restart_agentos()
         return {"ok": not out.startswith(("[error]", "[denied]")), "result": out}
@@ -2635,6 +2779,63 @@ async def api_models():
             "engine": execmod.resolve_engine(cfg)}
 
 
+@app.get("/api/face")
+async def api_face():
+    """One agent on screen, and the kiosk face (face.py): one answer for every face."""
+    from . import face as facemod
+    cfg = state.machine_cfg()
+    return {**facemod.state(cfg), "description": facemod.describe(cfg)}
+
+
+@app.put("/api/face")
+async def api_face_put(body: dict):
+    """The machine's screen is the machine's: an admin's decision on a machine with
+    accounts, and a ledger row like every other change to the machine."""
+    from . import face as facemod
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can change how this machine's screen looks"},
+                            status_code=403)
+    b = body or {}
+    cfg = state["cfg"]
+    ok, msg = facemod.set_face(cfg, buddy=b.get("buddy"), kiosk=b.get("kiosk") if "kiosk" in b else None,
+                               wake=b.get("wake"))
+    if not ok:
+        return JSONResponse({"error": msg}, status_code=400)
+    if "hear" in b and isinstance(b["hear"], str):
+        from . import hearing
+        if b["hear"] not in hearing.ENGINES:
+            return JSONResponse({"error": "speech is understood by one of " + ", ".join(hearing.ENGINES)},
+                                status_code=400)
+        cfg.setdefault("speech", {}).setdefault("hear", {})["engine"] = b["hear"]
+    cfgmod.save_config(cfg)
+    if cfg is not state.machine_cfg():
+        state.machine_cfg()["face"] = dict(cfg["face"])
+        if "hear" in b:
+            state.machine_cfg().setdefault("speech", {})["hear"] = dict(cfg["speech"]["hear"])
+    facemod.record(state["store"], msg)
+    await state["broadcast"]({"type": "face"})
+    return {**facemod.state(state.machine_cfg()), "description": msg}
+
+
+@app.post("/api/speech/hear")
+async def api_speech_hear(request: Request, lang: str = ""):
+    """One spoken utterance (16 kHz mono WAV from the kiosk face) to text, on whatever
+    this machine has (hearing.py). The browser's own recogniser is not used for this
+    because Chromium on a Raspberry Pi has no key for Google's speech service."""
+    from . import hearing
+    wav = bytearray()
+    async for part in request.stream():     # read to the cap and no further
+        wav += part
+        if len(wav) > hearing.MAX_BYTES:
+            return JSONResponse({"error": "That was too long to understand in one go."}, status_code=413)
+    wav = bytes(wav)
+    try:
+        text = await hearing.transcribe(state.machine_cfg(), wav, lang)
+    except hearing.HearError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"text": text}
+
+
 @app.get("/api/profile")
 async def api_profile():
     """What this machine has decided to keep, and what it is keeping right now."""
@@ -2765,6 +2966,9 @@ async def api_tunnel_set(body: dict):
 async def api_executor_install(body: dict):
     """Install Claude Code, with progress. The command was shown before this ran."""
     from . import executors as execmod
+    refused = _require_admin()      # software on the machine is the machine's
+    if refused:
+        return refused
     if str((body or {}).get("id") or "claude_code") != "claude_code":
         return JSONResponse({"ok": False, "error": "unknown executor"}, status_code=400)
 
@@ -2877,6 +3081,12 @@ async def api_put_config(patch: dict):
                 {"error": "only an admin can change machine settings on this machine "
                           f"({', '.join(sorted(theirs)[:6])})"}, status_code=403)
     cfg = state["cfg"]
+    # Three of these decide what runs without asking. A change to any of them is a
+    # permission change, so it is on the record with the grants' own changes.
+    for key, what in (("autonomy", "system.autonomy"), ("policies", "policy.write"),
+                      ("sandbox", "system.sandbox")):
+        if key in patch and patch[key] != cfg.get(key):
+            _ledger(what, f"config:{key}", f"{key} → {json.dumps(patch[key])[:300]}")
     for key in ("default_model", "autonomy", "max_steps", "workspace", "agent_name",
                 "policies", "sandbox", "steer_queued_messages"):
         if key in patch:
@@ -2969,6 +3179,13 @@ async def api_put_config(patch: dict):
             # Letting the OS rewrite itself is its own decision, never implied by
             # merely turning an executor on.
             ex["allow_source"] = bool(got["allow_source"])
+        if any(k in got for k in ("tools", "allow_source", "workspace", "budget_usd", "enabled")):
+            # what Claude Code, Gemini CLI and Codex may do with their own tools: ticking
+            # Bash is the step that stops them asking, so it is on the record
+            _ledger("executor.write", "executor:envelope",
+                    f"tools: {', '.join(ex.get('tools') or []) or 'none'}; "
+                    f"folder: {ex.get('workspace') or 'default'}; "
+                    f"may edit AgentOS: {bool(ex.get('allow_source'))}")
     if isinstance(patch.get("shortcuts"), dict):
         # {action: "Ctrl+Space"} — the shell's editable keymap, also the source
         # for the compositor bindings written by /api/shortcuts/apply
@@ -5559,15 +5776,19 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
     that happened to be open when it asked."""
     aid = uuid.uuid4().hex[:8]
     fut = asyncio.get_event_loop().create_future()
-    state["pending_approvals"][aid] = {"fut": fut, "offer": offer, "ws": ws, "name": name,
-                                       "args": args, "reason": reason, "run_id": run_id,
-                                       "flow": flow, "asked_at": time.time()}
+    # Whose question this is. Without it every account on the machine saw every card
+    # (its arguments included) and any of them could answer it.
+    uid = usersmod.current() if usersmod.enabled() else ""
+    entry = {"fut": fut, "offer": offer, "ws": ws, "name": name, "uid": uid,
+             "args": args, "reason": reason, "run_id": run_id,
+             "flow": flow, "asked_at": time.time()}
+    state["pending_approvals"][aid] = entry
     ev = {"type": "approval_request", "id": aid, "name": name, "args": args,
           "reason": reason, "offer": offer, "run_id": run_id, "flow": flow}
     if evsend is not None:
         await evsend(ev)
     else:
-        await state["broadcast"](ev)
+        await _approval_send(entry, ev)
     outcome = {"approved": False, "how": "timeout"}
     try:
         outcome["approved"] = await asyncio.wait_for(fut, timeout=timeout)
@@ -5592,7 +5813,7 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
         # which is the dead control the honesty rules forbid.
         done = {"type": "approval_resolved", "id": aid, **outcome}
         with contextlib.suppress(Exception):
-            await (evsend(done) if evsend is not None else state["broadcast"](done))
+            await (evsend(done) if evsend is not None else _approval_send(entry, done))
 
 
 # How long an unanswered price card holds the turn before it runs anyway.
@@ -5789,6 +6010,7 @@ async def api_quarantine_release(qid: str, body: dict):
         store.resume_app(pid)
     with contextlib.suppress(Exception):
         state["pdp"].forget_rate(kind, pid)
+    _ledger("quarantine.release", f"{kind}:{pid}", f"released: {mode}")
     store.log("policy",
               f"{kind} '{row.get('label') or pid}' released from quarantine by the user: "
               + {"once": "allowed to run again, still watched",
@@ -6024,21 +6246,47 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
     return done
 
 
-async def resolve_approval(aid: str, approved: bool, remember: bool = False):
+def _approval_mine(entry: dict, uid) -> bool:
+    """May this account answer this approval? Its own, always; on a machine without
+    accounts everybody is the machine. `uid=None` is a caller that has already decided
+    (a channel bridge answering for the owner)."""
+    if uid is None or not usersmod.enabled():
+        return True
+    return (entry.get("uid") or "") == (uid or "")
+
+
+async def resolve_approval(aid: str, approved: bool, remember=False, uid=None) -> bool:
+    """Settle an approval. `remember` is the scope the person chose ('chat', 'hour',
+    'always', or True from an older page). Returns False when there is nothing to
+    settle, or it is another account's."""
+    from .policy import remember_scope, write_remembered
     entry = state["pending_approvals"].get(aid)
     if not entry or entry["fut"].done():
-        return
-    if approved and remember and entry.get("offer"):
+        return False
+    if not _approval_mine(entry, uid):
+        return False
+    scope = remember_scope(remember)
+    if approved and scope and entry.get("offer"):
         o = entry["offer"]
-        state["store"].add_grant(o["principal_kind"], o["principal_id"], o["action"],
-                                 o["resource"], source="user",
-                                 note=o.get("note") or "allowed & remembered from an approval prompt")
-        state["store"].log("policy", f"grant remembered: {o['action']} {o['resource']}",
-                           {"principal": f"{o['principal_kind']}:{o['principal_id']}",
-                            "action": o["action"], "resource": o["resource"],
-                            "effect": "allow", "via": "approval_prompt"})
-        await state["broadcast"]({"type": "grants"})
+        # the grant lands in the store of the account that was asked
+        with usersmod.as_user(entry.get("uid") or ""):
+            store = state["store"]
+            write_remembered(store, o, scope, via="an approval prompt")
+            store.log("policy", f"grant remembered ({scope}): {o['action']} {o['resource']}",
+                      {"principal": f"{o['principal_kind']}:{o['principal_id']}",
+                       "action": o["action"], "resource": o["resource"],
+                       "effect": "allow", "via": "approval_prompt", "scope": scope})
+        await _approval_send(entry, {"type": "grants"})
     entry["fut"].set_result(bool(approved))
+    return True
+
+
+async def _approval_send(entry: dict, ev: dict):
+    """To the account that was asked, and nobody else on the machine."""
+    if usersmod.enabled():
+        await state["broadcast_user"](ev, entry.get("uid") or "")
+    else:
+        await state["broadcast"](ev)
 
 
 # ---- Shell-control channel: server → browser-shell commands, with results --------
@@ -6249,6 +6497,27 @@ async def app_privilege_guard(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def standby_gate(request: Request, call_next):
+    """A side that is paired and not the one working serves its standing-by page and
+    refuses the API, so nothing reads or changes a home that is not the live one.
+    Registered here, before the remote gate, so it runs AFTER it: the page is only for
+    somebody who may be here."""
+    if not standbymod.passive():
+        return await call_next(request)
+    path = request.url.path
+    if path.startswith(STANDBY_OPEN):
+        return await call_next(request)
+    if path.startswith("/api/") or path.startswith("/ws"):
+        st = standbymod.status()
+        msg = ("Switching over. Back in a moment." if standbymod.switching() else
+               f"This machine is standing by for {st.get('peer_host') or 'another machine'}."
+               if st["role"] == "standby" else
+               f"Your agent is working on {st.get('peer_host') or 'the cloud'} right now.")
+        return JSONResponse({"error": msg, "standby": True}, status_code=503, headers=NO_STORE)
+    return HTMLResponse(_standby_page(), headers=NO_STORE)
+
+
 # ---------------------------------------------------------------------------
 # Remote access gate.
 #
@@ -6293,7 +6562,12 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      # headless box, opened on a laptop); the single-use `state`
                      # is the defence, and the identity completed is the one
                      # recorded at start — see api_signin_callback.
-                     "/api/accounts/oauth/callback/")
+                     "/api/accounts/oauth/callback/",
+                     # The cloud standby's machine-to-machine door (standby.py). The
+                     # caller is the paired machine, with no cookie; every route under
+                     # it checks the pairing's Bearer token in constant time behind a
+                     # per-address guess ceiling, or (pairing itself) the one-time code.
+                     "/api/standby/peer/")
 
 
 def _client_addr(request: Request) -> str:
@@ -6469,6 +6743,7 @@ async def api_resume_app(aid: str):
     state["store"].resume_app(aid)
     with contextlib.suppress(Exception):
         state["pdp"].forget_rate("app", aid)
+    _ledger("app.resume", f"app:{aid}", "started again by the person")
     state["store"].log("policy", f"app {aid} started again by the user", {"app": aid})
     await state["broadcast"]({"type": "apps"})
     return {"ok": True}
@@ -6498,14 +6773,23 @@ async def api_run_tool(body: dict, request: Request):
                                  "quarantined": True}, status_code=409)
     if name not in {t["name"] for t in toolbox.schemas()}:
         return JSONResponse({"error": f"unknown tool: {name}"}, status_code=400)
+    # Arguments starting with `_` belong to the agent loop (who is asking, which run,
+    # which mission, what taint it carries) and are injected there after the model's
+    # own. A caller of this route is not the loop: an app could otherwise file a Brief
+    # item under any mission, or speak in a message chain as somebody it is not.
+    if not isinstance(args, dict):
+        return JSONResponse({"error": "args must be an object"}, status_code=400)
+    args = {k: v for k, v in args.items() if not str(k).startswith("_")}
     level, reason = toolbox.risk_of(name, args)
     # apps render inside the desktop, so their calls arrive via the GUI gate
     surface = "gui" if principal.kind == "app" else "api"
     dec = state["pdp"].decide_tool(principal, name, args, level, reason=reason,
                                    autonomy=state["cfg"].get("autonomy", ""),
-                                   surface=surface)
-    if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule == "default":
+                                   surface=surface,
+                                   base_risk=toolbox.base_risk(name, args))
+    if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
         dec.effect = "ask"   # power/session actions confirm every time, autonomy aside
+        dec.grant_offer = None
 
     def _plog(outcome: str, approved=None):
         state["store"].log("policy",
@@ -6564,10 +6848,17 @@ async def api_add_grant(body: dict):
     pid = (body.get("principal_id") or "").strip()
     resource = (body.get("resource") or "*").strip()
     effect = body.get("effect", "allow")
+    if effect not in ("allow", "deny"):
+        return JSONResponse({"error": "effect is allow or deny"}, status_code=400)
     surfaces = (body.get("surfaces") or "*").strip() or "*"
+    try:
+        hours = float(body.get("hours") or 0)
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "hours is a number"}, status_code=400)
     gid = state["store"].add_grant(kind, pid, action, resource, effect=effect,
                                    source="user", note=body.get("note", ""),
-                                   surfaces=surfaces)
+                                   surfaces=surfaces,
+                                   expires_at=(time.time() + hours * 3600) if hours > 0 else None)
     state["store"].log("policy", f"grant attached: {effect} {kind}:{pid} → {action} {resource}"
                                  + (f" [{surfaces}]" if surfaces != "*" else ""),
                        {"principal": f"{kind}:{pid}", "action": action, "resource": resource,
@@ -6910,6 +7201,624 @@ async def api_restore_cancel(request: Request):
     if refused:
         return refused
     return {"ok": True, "cancelled": bk.cancel_pending()}
+
+
+# ---------------------------------------------------------------------------
+# Cloud standby (standby.py, docs/standby.md). Your machine works; a paired cloud
+# machine stands by with a sealed copy and takes over only while yours is gone.
+#
+# Two doors. `/api/standby/peer/*` is machine to machine: open past the remote gate,
+# each route checks the pairing's Bearer token (or, for pairing, the one-time code)
+# behind a per-address ceiling. `/api/standby` and the rest are the person's, behind
+# the normal gate and admin-only, because they move the whole machine.
+#
+# Faces: GUI and SUI are Settings → System → Cloud standby and, on a side that is not
+# the one working, the standing-by page this gate serves in place of the desktop. The
+# TUI is `bento standby`, which pairs and reads with the server down.
+# ---------------------------------------------------------------------------
+
+STANDBY_OPEN = ("/api/standby", "/login", "/api/remote/login", "/api/users/", "/api/session/unlock",
+                "/assets/", "/favicon.ico", "/manifest.webmanifest", "/apple-touch-icon.png",
+                "/api/update")
+
+
+def _standby_restart(delay: float = 0.8) -> None:
+    from . import desktop as desktopmod
+    asyncio.get_running_loop().call_later(delay, desktopmod.restart_service)
+
+
+# ---- a free cloud machine's memory, kept in its own storage bucket (keep.py) --------
+
+def _keep_start(passive: bool) -> None:
+    """On a host that forgets its disk: save the home to its bucket whenever it changed, and,
+    when the blueprint asked for it, visit our own front door so the host keeps us awake.
+    A passive standby saves nothing: its home is a copy of somebody else's."""
+    from . import keep
+    loop = asyncio.get_running_loop()
+    if keep.awake_url():
+        state["keep_awake_task"] = loop.create_task(_keep_awake_loop(keep.awake_url()))
+    if (keep.enabled() or keep.started()) and not passive:
+        state["keep_task"] = loop.create_task(_keep_loop())
+
+
+async def _keep_loop():
+    from . import keep
+    await asyncio.sleep(15)                  # let the first start settle
+    told = ""
+    while True:
+        try:
+            r = await asyncio.to_thread(keep.save)
+            if r.get("saved"):
+                told = ""
+                with contextlib.suppress(Exception):
+                    state["store"].log("keep", f"memory saved to {r['where']} ({keep._size(r['bytes'])}, {r['seconds']}s)")
+        except keep.KeepError as e:
+            if str(e) != told:               # once per new problem, not every half minute
+                told = str(e)
+                with contextlib.suppress(Exception):
+                    state["store"].log("error", f"keep: {e}")
+                    await state["broadcast"]({"type": "toast", "text": f"Memory not saved: {e}", "kind": "err"})
+        except Exception as e:                                          # noqa: BLE001
+            with contextlib.suppress(Exception):
+                state["store"].log("error", f"keep: {type(e).__name__}: {e}")
+        await asyncio.sleep(keep.CHECK_S)
+
+
+async def _keep_awake_loop(url: str):
+    """A visit through the host's front door every ten minutes: the inbound traffic its
+    free tier counts, so missions, schedules and Telegram keep running."""
+    import httpx
+    from . import keep
+    while True:
+        await asyncio.sleep(keep.AWAKE_S)
+        with contextlib.suppress(Exception):
+            async with httpx.AsyncClient(timeout=20) as c:
+                await c.get(url)
+
+
+async def _keep_flush() -> None:
+    """The last save before the host stops us (a spin-down, a redeploy, a restart)."""
+    from . import backup as bk
+    from . import keep
+    if not keep.enabled() or bk.pending() or standbymod.passive():
+        return
+    try:
+        await asyncio.wait_for(asyncio.to_thread(keep.save, None, False, True), 20)
+    except Exception as e:                                              # noqa: BLE001
+        with contextlib.suppress(Exception):
+            keep._update(error=f"The last save before stopping did not finish: {e}")
+
+
+@app.get("/api/keep")
+async def api_keep():
+    """Where this machine's memory is kept, for the cloud card. Which bucket is an admin's
+    to see: it holds the whole machine, sealed."""
+    from . import keep
+    st = keep.status()
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        st = {k: st[k] for k in ("enabled", "ephemeral", "line", "kind")}
+    return st
+
+
+@app.post("/api/keep/save")
+async def api_keep_save():
+    from . import keep
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can save this machine"}, status_code=403)
+    try:
+        return await asyncio.to_thread(keep.save, None, True)
+    except keep.KeepError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+def _standby_note(text: str, kind: str = "info") -> None:
+    with contextlib.suppress(Exception):
+        state["store"].log("standby", text)
+    with contextlib.suppress(Exception):
+        asyncio.get_running_loop().create_task(state["broadcast"]({"type": "toast", "text": text, "kind": kind}))
+
+
+def _standby_start() -> None:
+    """The loop this side needs: the main machine's heartbeat and copies (and, with active
+    sync, its updates), or the standby's watch for silence. A side that is not paired runs
+    neither. Every side settles the sync journal first: only a working main machine with
+    active sync on keeps one, so a home restored anywhere else stops journaling."""
+    from . import standbysync as ss
+    st = standbymod.load()
+    with contextlib.suppress(Exception):
+        ss.ensure(on=standbymod.active_sync(st) and bool(st.get("active")))
+    if st.get("role") == "primary" and st.get("active"):
+        state["standby_task"] = asyncio.get_running_loop().create_task(_standby_primary_loop())
+        if not state.get("standby_sync_task") or state["standby_sync_task"].done():
+            state["standby_sync_task"] = asyncio.get_running_loop().create_task(_standby_sync_loop())
+    elif st.get("role") == "standby" and not st.get("active"):
+        state["standby_task"] = asyncio.get_running_loop().create_task(_standby_watch_loop())
+
+
+async def _standby_primary_loop():
+    first = True
+    while True:
+        st = standbymod.load()
+        if st.get("role") != "primary" or not st.get("active"):
+            return
+        try:
+            ans = await asyncio.to_thread(standbymod.beat)
+        except standbymod.StandbyError:
+            ans = None
+        if ans and (ans.get("active") or ans.get("holds_work")):
+            try:
+                r = await asyncio.to_thread(standbymod.come_back)
+            except standbymod.StandbyError as e:
+                _standby_note(f"Could not bring the work back from the cloud: {e}", "err")
+                await asyncio.sleep(st.get("interval", standbymod.BEAT_S))
+                continue
+            if r.get("split"):
+                _standby_split_brief(r)
+                _standby_note(r["message"], "warn")
+                continue
+            _standby_note(r["message"] + " Restarting to load it.")
+            _standby_restart()
+            return
+        if ans is not None and not standbymod.active_sync(st):
+            due = time.time() - st.get("last_push", 0) >= st.get("push_every", standbymod.PUSH_S)
+            if first or due:
+                try:
+                    await asyncio.to_thread(standbymod.push)
+                except standbymod.StandbyError as e:
+                    with contextlib.suppress(Exception):
+                        standbymod._update(last_error=str(e))
+                except Exception as e:                                  # noqa: BLE001
+                    with contextlib.suppress(Exception):
+                        state["store"].log("error", f"standby copy: {type(e).__name__}: {e}")
+                first = False
+        await asyncio.sleep(st.get("interval", standbymod.BEAT_S))
+
+
+async def _standby_sync_loop():
+    """Active sync: look for a change every couple of seconds and send it as a small
+    sealed update (standbysync.py). Turned off, the journal is dropped at once, so a
+    machine that stopped syncing stops paying for it."""
+    from . import standbysync as ss
+    was_on = None
+    while True:
+        st = standbymod.load()
+        if st.get("role") != "primary" or not st.get("active"):
+            return
+        on = standbymod.active_sync(st)
+        if on != was_on and was_on is not None and not on:
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(ss.ensure, None, False)
+        was_on = on
+        if not on:
+            await asyncio.sleep(5)
+            continue
+        try:
+            due = await asyncio.to_thread(standbymod.sync_due)
+            if due.get("due"):
+                r = await asyncio.to_thread(standbymod.sync, None, due.get("files", True), due.get("ws", True))
+                if r.get("peer", {}).get("active") or r.get("peer", {}).get("holds_work"):
+                    await asyncio.sleep(st.get("interval", standbymod.BEAT_S))
+                    continue
+        except standbymod.StandbyError as e:
+            with contextlib.suppress(Exception):
+                standbymod._update(sync_error=str(e))
+            await asyncio.sleep(10)
+            continue
+        except Exception as e:                                          # noqa: BLE001
+            with contextlib.suppress(Exception):
+                standbymod._update(sync_error=f"{type(e).__name__}: {e}")
+                state["store"].log("error", f"standby sync: {type(e).__name__}: {e}")
+            await asyncio.sleep(10)
+            continue
+        await asyncio.sleep(ss.POLL_S)
+
+
+async def _standby_flush() -> None:
+    """On a clean shutdown, send the cloud what changed since the last copy or update, so
+    turning your machine off loses nothing. Bounded: a machine being shut down must not
+    hang on a slow network. Skipped while a swap is staged (the home here is about to be
+    replaced, and sending it would overwrite the cloud's newer copy) and on a side that is
+    not the one working."""
+    from . import backup as bk
+    st = standbymod.load()
+    if st.get("role") != "primary" or not st.get("active") or bk.pending():
+        return
+    try:
+        if standbymod.active_sync(st):
+            await asyncio.wait_for(asyncio.to_thread(standbymod.sync), 15)
+        else:
+            await asyncio.wait_for(asyncio.to_thread(standbymod.push), 25)
+    except Exception as e:                                              # noqa: BLE001
+        with contextlib.suppress(Exception):
+            standbymod._update(last_error=f"The last copy before shutting down did not go: {e}")
+
+
+def _standby_split_brief(r: dict) -> None:
+    with contextlib.suppress(Exception):
+        st = standbymod.load()
+        sp = st.get("split") or {}
+        state["store"].brief_upsert(briefmod.today(), "standby", f"split-{int(sp.get('at', 0))}", {
+            "kind": "needs_you", "title": "Both machines worked while they were apart",
+            "body": r["message"], "who": sp.get("host", "")})
+
+
+async def _standby_watch_loop():
+    while True:
+        st = standbymod.load()
+        if st.get("role") != "standby" or st.get("active"):
+            return
+        why = standbymod.due_takeover()
+        if why:
+            try:
+                await asyncio.to_thread(standbymod.takeover, why)
+            except standbymod.StandbyError as e:
+                with contextlib.suppress(Exception):
+                    state["store"].log("standby", f"could not take over: {e}")
+                await asyncio.sleep(60)
+                continue
+            with contextlib.suppress(Exception):
+                state["store"].log("standby", f"taking over: {why}")
+            _standby_restart(0.2)
+            return
+        await asyncio.sleep(10)
+
+
+def _standby_admin(request: Request):
+    if not _backup_admin():
+        return JSONResponse({"error": "Only an admin can change the cloud standby, because it moves "
+                                      "the whole machine."}, status_code=403)
+    return None
+
+
+def _standby_audit(action: str, detail: str) -> None:
+    _backup_audit(action, detail)
+
+
+def _standby_page() -> str:
+    """What a side that is not the one working shows instead of the desktop."""
+    s = standbymod.status()
+    e = html_mod.escape
+    if standbymod.switching():
+        return ("<!doctype html><meta charset='utf-8'><meta http-equiv='refresh' content='4'>"
+                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                "<title>Bento</title><body style='font:16px system-ui;display:grid;place-items:center;"
+                "min-height:100vh;margin:0;background:#0d0f1a;color:#e8eaf6'>Switching over. "
+                "Back in a moment.</body>")
+    if s["role"] == "standby":
+        who = e(s.get("peer_host") or "your machine")
+        head = f"Standing by for {who}"
+        lines = [f"Last heard from {who} {standbymod.ago(s.get('last_beat', 0))}."]
+        if s.get("copy_at"):
+            lines.append(f"Newest copy {standbymod.ago(s['copy_at'])}, {standbymod.size(s.get('copy_bytes', 0))}.")
+            if s.get("update_at"):
+                feed = s.get("feed") or []
+                what = ", ".join(feed[0].get("changes") or []) if feed else ""
+                lines.append(f"Changes arrive as they happen: the last one {standbymod.ago(s['update_at'])}"
+                             + (f" ({what})." if what else "."))
+        else:
+            lines.append("No copy has arrived yet, so there is nothing to take over with.")
+        if s.get("holds_work"):
+            lines.append(f"Handing your work back to {who}.")
+        elif s.get("auto"):
+            m = max(1, round(int(s.get("grace", 300)) / 60))
+            lines.append(f"If {who} is quiet for {m} minute{'' if m == 1 else 's'}, this machine takes over by itself.")
+        else:
+            lines.append("It takes over only when you say so.")
+        lines += s.get("notes", [])
+        btn = ('<button onclick="go(\'/api/standby/takeover\',this)">Take over now</button>'
+               if s.get("copy_at") and not s.get("holds_work") else "")
+    else:
+        who = e(s.get("peer_host") or "the cloud")
+        url = e(s.get("url", ""))
+        head = f"Your agent is working on {who}"
+        lines = [f"You handed over to {who}. It carries on with your missions and channels there."]
+        btn = (f'<a class="b" href="{url}" target="_blank" rel="noopener">Open it</a> '
+               '<button onclick="go(\'/api/standby/back\',this)">Bring it back here</button>')
+    if s.get("version_note"):
+        lines.append(s["version_note"])
+    body = "".join(f"<p>{e(x)}</p>" for x in lines)
+    return f"""<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Bento standby</title>
+<style>
+:root{{--bg:#0d0f1a;--card:#161a2b;--txt:#e8eaf6;--mut:#9aa0bd;--acc:#8b7cff}}
+@media (prefers-color-scheme:light){{:root:not([data-theme="dark"]){{--bg:#f4f5fb;--card:#fff;--txt:#1b1d2a;--mut:#5d6180;--acc:#5b4ee0}}}}
+body{{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--txt);
+font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;padding:16px;box-sizing:border-box}}
+main{{background:var(--card);border-radius:16px;padding:28px;max-width:520px;width:100%;box-sizing:border-box}}
+h1{{font-size:21px;margin:0 0 12px}} p{{color:var(--mut);margin:6px 0}}
+.row{{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap}}
+button,.b{{min-height:44px;padding:0 18px;border-radius:10px;border:0;background:var(--acc);color:#fff;
+font:inherit;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}}
+#m{{margin-top:12px;color:var(--mut)}}
+</style></head><body><main><h1>▲ {e(head)}</h1>{body}
+<div class="row">{btn}</div><div id="m"></div></main>
+<script>
+async function go(u,b){{b.disabled=true;const m=document.getElementById('m');m.textContent='Working…';
+try{{const r=await fetch(u,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:'{{}}'}});
+const d=await r.json().catch(()=>({{}}));if(!r.ok)throw new Error(d.error||('HTTP '+r.status));
+m.textContent=(d.message||'Done.')+' Restarting…';setTimeout(()=>location.reload(),9000)}}
+catch(e){{m.textContent=e.message;b.disabled=false}}}}
+setTimeout(()=>location.reload(),60000);
+</script></body></html>"""
+
+
+def _peer_auth(request: Request):
+    addr = _client_addr(request)
+    if standbymod.too_many_bad(addr):
+        return JSONResponse({"error": "too many wrong keys; wait a few minutes"}, status_code=429)
+    auth = request.headers.get("authorization", "")
+    tok = auth[7:] if auth.lower().startswith("bearer ") else ""
+    if not standbymod.token_ok(tok):
+        standbymod.note_bad(addr)
+        return JSONResponse({"error": "not paired with this machine"}, status_code=401)
+    return None
+
+
+@app.post("/api/standby/peer/pair")
+async def api_standby_peer_pair(request: Request):
+    addr = _client_addr(request)
+    if standbymod.too_many_bad(addr):
+        return JSONResponse({"error": "too many wrong codes; wait a few minutes"}, status_code=429)
+    try:
+        body = await request.json()
+        out = standbymod.accept(body if isinstance(body, dict) else {})
+    except standbymod.StandbyError as e:
+        standbymod.note_bad(addr)
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except ValueError:
+        return JSONResponse({"error": "send JSON"}, status_code=400)
+    with contextlib.suppress(Exception):
+        state["store"].log("standby", f"paired as the standby for {standbymod.load().get('peer_host')}")
+    _standby_restart()                    # from here on this side stands by
+    return out
+
+
+@app.post("/api/standby/peer/beat")
+async def api_standby_peer_beat(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    return standbymod.heard(body if isinstance(body, dict) else {})
+
+
+@app.get("/api/standby/peer/state")
+async def api_standby_peer_state(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    return standbymod.answer()
+
+
+async def _peer_stream(request: Request, fn):
+    """Hand a streamed body to `fn(chunks)` in a thread, without holding it in memory."""
+    import queue
+    import threading
+    q: queue.Queue = queue.Queue(maxsize=8)
+    result: dict = {}
+
+    def consume():
+        def chunks():
+            while True:
+                b = q.get()
+                if b is None:
+                    return
+                yield b
+        try:
+            result["ok"] = fn(chunks())
+        except Exception as e:                                        # noqa: BLE001
+            result["err"] = e
+            while q.get() is not None:        # drain so the producer never blocks
+                pass
+    t = threading.Thread(target=consume, daemon=True)
+    t.start()
+    try:
+        async for b in request.stream():
+            if b:
+                await asyncio.to_thread(q.put, b)
+    finally:
+        await asyncio.to_thread(q.put, None)
+    await asyncio.to_thread(t.join)
+    if "err" in result:
+        e = result["err"]
+        msg = str(e) if isinstance(e, standbymod.StandbyError) else f"{type(e).__name__}: {e}"
+        return JSONResponse({"error": msg}, status_code=400)
+    out = result["ok"]
+    return JSONResponse(out, status_code=200 if out.get("ok") else 409)
+
+
+@app.post("/api/standby/peer/push")
+async def api_standby_peer_push(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    cid = request.headers.get("x-bento-copy", "")
+    return await _peer_stream(request, lambda chunks: standbymod.receive(chunks, copy_id=cid))
+
+
+@app.post("/api/standby/peer/update")
+async def api_standby_peer_update(request: Request):
+    """Active sync: one small sealed update, built on the copy named in X-Bento-Copy."""
+    if (no := _peer_auth(request)):
+        return no
+    cid = request.headers.get("x-bento-copy", "")
+    try:
+        n = int(request.headers.get("x-bento-update", "0"))
+    except ValueError:
+        n = 0
+    return await _peer_stream(request, lambda chunks: standbymod.receive_update(chunks, cid, n))
+
+
+@app.post("/api/standby/peer/release")
+async def api_standby_peer_release(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    try:
+        out = await asyncio.to_thread(standbymod.release)
+    except standbymod.StandbyError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    with contextlib.suppress(Exception):
+        state["store"].log("standby", "handing the work back to the main machine")
+    if out.pop("restart", False):
+        _standby_restart(0.5)
+    return out
+
+
+@app.get("/api/standby/peer/outgoing")
+async def api_standby_peer_outgoing(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    p = standbymod.outgoing()
+    if not p:
+        return JSONResponse({"error": "nothing to hand back"}, status_code=404)
+    return FileResponse(p, media_type="application/octet-stream", headers=NO_STORE)
+
+
+@app.post("/api/standby/peer/done")
+async def api_standby_peer_done(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    return standbymod.done(body if isinstance(body, dict) else {})
+
+
+@app.post("/api/standby/peer/takeover")
+async def api_standby_peer_takeover(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    try:
+        out = await asyncio.to_thread(standbymod.peer_takeover, {})
+    except standbymod.StandbyError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    _standby_restart()
+    return out
+
+
+@app.post("/api/standby/peer/unpair")
+async def api_standby_peer_unpair(request: Request):
+    if (no := _peer_auth(request)):
+        return no
+    was_passive = standbymod.passive()
+    standbymod.forget_peer()
+    with contextlib.suppress(Exception):
+        state["store"].log("standby", "the main machine unpaired")
+    if was_passive:
+        _standby_restart()
+    return {"ok": True}
+
+
+# ---- the person's side --------------------------------------------------------------
+
+@app.get("/api/cloud/deploy")
+async def api_cloud_deploy():
+    """The ways to put Bento in the cloud (clouddeploy.py), for Settings → System.
+    Nothing here deploys anything: it is links and steps, and a password suggestion
+    made fresh for this answer and never stored."""
+    from . import clouddeploy
+    here = await api_keep()
+    return {"options": clouddeploy.options(state["cfg"]), "here": here,
+            "not_offered": clouddeploy.NOT_OFFERED, "after": clouddeploy.after(),
+            "passphrase": clouddeploy.suggest_passphrase(),
+            "env": clouddeploy.PASSPHRASE_ENV}
+
+
+@app.get("/api/standby")
+async def api_standby_status(request: Request):
+    out = standbymod.status()
+    out["admin"] = _backup_admin()
+    out["local"] = remotemod.is_loopback(_client_addr(request))
+    return out
+
+
+async def _standby_do(request: Request, fn, action: str, *args, restart_key: str = "restart"):
+    if (no := _standby_admin(request)):
+        return no
+    try:
+        out = await asyncio.to_thread(fn, *args)
+    except standbymod.StandbyError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _standby_audit(action, json.dumps({k: v for k, v in out.items() if k in ("message", "split", "reason")})[:300])
+    if out.get(restart_key):
+        _standby_restart()
+    return out
+
+
+@app.post("/api/standby/offer")
+async def api_standby_offer(request: Request):
+    return await _standby_do(request, standbymod.offer, "standby.offer")
+
+
+@app.post("/api/standby/pair")
+async def api_standby_pair(body: dict, request: Request):
+    b = body or {}
+    out = await _standby_do(request, standbymod.pair, "standby.pair",
+                            str(b.get("url", "")), str(b.get("code", "")))
+    if isinstance(out, dict) and out.get("role") == "primary":
+        _standby_start()
+    return out
+
+
+@app.post("/api/standby/copy")
+async def api_standby_copy(request: Request):
+    return await _standby_do(request, lambda: standbymod.push(force=True), "standby.copy")
+
+
+@app.post("/api/standby/takeover")
+async def api_standby_takeover(request: Request):
+    def go():
+        out = standbymod.takeover("You asked this machine to take over.")
+        out["restart"] = True
+        out["message"] = "Taking over."
+        return out
+    return await _standby_do(request, go, "standby.takeover")
+
+
+@app.post("/api/standby/move")
+async def api_standby_move(request: Request):
+    def go():
+        out = standbymod.move()
+        out["message"] = f"Handed over to {standbymod.load().get('peer_host')}."
+        return out
+    return await _standby_do(request, go, "standby.move")
+
+
+@app.post("/api/standby/back")
+async def api_standby_back(request: Request):
+    return await _standby_do(request, standbymod.back, "standby.back")
+
+
+@app.post("/api/standby/adopt")
+async def api_standby_adopt(request: Request):
+    def go():
+        out = standbymod.adopt()
+        out["message"] = "Switching to the cloud's copy."
+        return out
+    return await _standby_do(request, go, "standby.adopt")
+
+
+@app.post("/api/standby/keep")
+async def api_standby_keep(request: Request):
+    return await _standby_do(request, standbymod.dismiss_split, "standby.keep")
+
+
+@app.post("/api/standby/settings")
+async def api_standby_settings(body: dict, request: Request):
+    return await _standby_do(request, standbymod.settings, "standby.settings", body or {})
+
+
+@app.post("/api/standby/off")
+async def api_standby_off(request: Request):
+    was_passive = standbymod.passive()
+
+    def go():
+        out = standbymod.unpair()
+        out["restart"] = was_passive
+        out["message"] = "Unpaired."
+        return out
+    return await _standby_do(request, go, "standby.off")
 
 
 @app.get("/api/snapshots")
@@ -8050,10 +8959,31 @@ def _me() -> dict:
             "multiuser": usersmod.enabled()}
 
 
+# The surfaces a browser or a terminal may say it is. telegram, whatsapp, task and
+# webhook are the server's own: a channel's posture is set for the channel, and a desk
+# client claiming to be Telegram would take Telegram's autonomy with it.
+CLIENT_SURFACES = ("gui", "tui", "api")
+
+
+def _client_surface(v) -> str:
+    return v if v in CLIENT_SURFACES else "gui"
+
+
 def _require_admin():
     if not usersmod.is_admin(usersmod.current()):
         return JSONResponse({"error": "only an admin can do that"}, status_code=403)
     return None
+
+
+def _ledger(action: str, resource: str, reason: str = "", surface: str = "gui"):
+    """A person's decision about permissions, on the record like the gate's own. For
+    the changes that are not grants (grants audit themselves): letting something out of
+    quarantine, resuming an app, changing what an executor may use."""
+    with contextlib.suppress(Exception):
+        state["store"].audit_add(uid=usersmod.current() or "", principal_kind="user",
+                                 principal_id="", surface=surface, action=action,
+                                 resource=resource, effect="allow", rule="person",
+                                 reason=reason[:400], outcome="ok")
 
 
 @app.get("/api/users/who")
@@ -8197,7 +9127,8 @@ async def api_folders():
     shares = [{**s, "risk": folder_risk(s["path"], s["mode"])} for s in folder_shares(cfg)]
     return {"folders": shares,
             "problems": [{"entry": e, "why": w} for e, w in folder_problems(cfg)],
-            "users": [{"id": u["id"], "display": u.get("display") or u["id"]}
+            "users": [{"id": u["id"], "name": u.get("name") or "",
+                       "display": u.get("display") or u["id"]}
                       for u in usersmod.list_users()],
             "admin": usersmod.is_admin(usersmod.current()),
             "multiuser": usersmod.enabled()}
@@ -8208,7 +9139,7 @@ async def api_folders_put(body: dict):
     """Replace the share list. Admin only, and refused rather than silently
     dropped — `sandbox` is a machine key, so a non-admin saving here would
     otherwise appear to work and change nothing."""
-    from .tools import check_safe_folder, folder_risk
+    from .tools import check_safe_folder, folder_risk, share_users
     if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
         return JSONResponse({"error": "only an admin can share folders on this machine"},
                             status_code=403)
@@ -8224,7 +9155,11 @@ async def api_folders_put(body: dict):
             refused.append({"entry": path, "why": why})
             continue
         mode = "ro" if str(raw.get("mode") or "rw").lower() != "rw" else "rw"
-        users = [str(u).strip() for u in (raw.get("users") or []) if str(u).strip()]
+        users, unknown = share_users(raw.get("users") or [])
+        if unknown:
+            # Saved as "everyone" would widen it; saved as given would reach nobody.
+            refused.append({"entry": path, "why": "no account called " + ", ".join(unknown)})
+            continue
         if not any(o["path"] == p for o in out):
             out.append({"path": p, "mode": mode, "users": users})
     cfg = state["cfg"]
@@ -9318,9 +10253,10 @@ async def api_office_place(body: dict):
 def _company_waiting() -> list[dict]:
     """The approvals waiting right now, as the run and flow they belong to: what turns a
     department's running task into a waiting one on its card."""
+    me = usersmod.current() if usersmod.enabled() else ""
     return [{"id": aid, "run_id": e.get("run_id", ""), "flow": e.get("flow", "")}
             for aid, e in (state.get("pending_approvals") or {}).items()
-            if not e["fut"].done()]
+            if not e["fut"].done() and _approval_mine(e, me)]
 
 
 def _company_accounts(cfg: dict) -> dict:
@@ -9355,12 +10291,25 @@ async def api_company_profile(body: dict):
     from . import company as companymod, teamlink
     cfg = state["cfg"]
     cur = dict(cfg.get("company") or {})
+    renamed = False
     for k, n in (("name", 48), ("about", companymod.ABOUT_MAX)):
         if k in (body or {}):
             cur[k] = teamlink.plain((body or {}).get(k), n, newlines=False)
+            renamed = True
+    was = companymod.audit_on(cfg)
+    if "audit" in (body or {}):
+        # switching off the independent check is a decision somebody should be able to
+        # find later, so it is a ledger row of its own
+        cur["audit"] = bool((body or {}).get("audit"))
     cfg["company"] = cur
     cfgmod.save_config(cfg)
-    companymod.record(state["store"], f"company renamed: {cur.get('name', '')}")
+    if renamed:
+        companymod.record(state["store"], f"company renamed: {cur.get('name', '')}")
+    if "audit" in (body or {}) and cur["audit"] != was:
+        if cur["audit"]:
+            companymod.ensure_auditor(state["store"])
+        companymod.record(state["store"], "the independent auditor switched "
+                          + ("on" if cur["audit"] else "off"), action="company.audit")
     await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
     return {"ok": True, "company": companymod.profile(cfg)}
 
@@ -9455,7 +10404,7 @@ async def api_company_task(body: dict, request: Request):
         flow = companymod.desk_for(cfg, store, str(b.get("department") or ""))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    surface = b.get("surface") or "gui"
+    surface = _client_surface(b.get("surface"))
     dec = state["pdp"].decide(MAIN, "agent.invoke", f"agent:flow/{flow['name']}",
                               {"surface": surface, "risk": "safe"})
     if dec.effect == "deny":
@@ -9464,6 +10413,33 @@ async def api_company_task(body: dict, request: Request):
                                conversation_id=b.get("conversation_id", ""))
     return {"ok": True, "run_id": run_id, "flow": flow["name"],
             "department": str(b.get("department") or "")}
+
+
+@app.post("/api/company/audit")
+async def api_company_audit(body: dict):
+    """Check a department's finished task again, or for the first time (one that
+    finished while the auditor was off). Answers at once; the verdict arrives as the
+    run's `audit` event and on the task board."""
+    from . import company as companymod
+    cfg, store = state["cfg"], state["store"]
+    rid = str((body or {}).get("run_id") or "")
+    run = store.fabric_run(rid) if rid else None
+    if not run or run.get("kind") != "flow":
+        return JSONResponse({"error": "no department task with that id"}, status_code=404)
+    flow = store.get_flow(run.get("flow") or run.get("ref") or "")
+    if not flow or not companymod.audit_scope(cfg, store, flow["name"]):
+        return JSONResponse({"error": "that run is not a department's task"}, status_code=400)
+    if run.get("status") not in companymod.AUDITED:
+        return JSONResponse({"error": f"that task {run.get('status') or 'has not finished'}, "
+                                      f"so there is nothing to check"}, status_code=400)
+    uid = usersmod.current() or ""
+
+    async def go():
+        with usersmod.as_user(uid):
+            await state["fabric"].audit(flow, rid, force=True)
+            await state["broadcast_user"]({"type": "office"}, uid)
+    asyncio.create_task(go())
+    return {"ok": True, "run_id": rid, "department": companymod.audit_scope(cfg, store, flow["name"])["name"]}
 
 
 @app.get("/api/subagents")
@@ -9482,6 +10458,182 @@ async def api_subagents():
             # who is in which department: the Crew stage draws one figure per department
             # from this, and every scene reads the same answer (company.membership)
             "company": companymod.membership(cfg, state["store"])}
+
+
+# ---- a community of machines (pool.py) -----------------------------------------------
+# The machine's, so admin-only to change on a machine with accounts; everyone may look.
+
+def _pool_view() -> dict:
+    from . import pool as poolmod
+    from . import teamlink
+    cfg = state.machine_cfg()
+    v = poolmod.view(cfg)
+    v["can_change"] = usersmod.is_admin(usersmod.current())
+    v["listening"] = bool(state.get("team_listener"))
+    v["has_brain"] = poolmod.has_brain(cfg)
+    v["using_brain"] = str(cfg.get("default_model") or "").startswith("pool/")
+    v["linked"] = [{"label": lk["label"], "name": lk.get("peer_name") or lk["label"]}
+                   for lk in teamlink.links(None) if lk.get("kind") == "machine" and lk.get("url")]
+    return v
+
+
+async def _pool_changed(what: str):
+    _ledger("pool.write", "pool:community", what)
+    await _pool_event("pool", {})
+
+
+def _pool_save_cfg(cfg: dict):
+    cfgmod.save_config(cfg)
+    providers.forget_models()
+
+
+@app.get("/api/pool")
+async def api_pool():
+    return _pool_view()
+
+
+@app.post("/api/pool/create")
+async def api_pool_create(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    try:
+        poolmod.create(state.machine_cfg(), str((body or {}).get("name") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _pool_changed("started a community")
+    return _pool_view()
+
+
+@app.post("/api/pool/join")
+async def api_pool_join(body: dict):
+    """Ask a linked machine to let this one into its community. Joining is this
+    machine's consent that the community may hand it work (one grant, revocable)."""
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    b = body or {}
+    cfg = state.machine_cfg()
+    try:
+        await poolmod.join(cfg, str(b.get("label") or ""), owner=usersmod.current() or "")
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    d = poolmod.load()
+    with usersmod.as_user(""):
+        poolmod.grant_work(state["store"], d["pool"]["id"], d["pool"]["name"])
+        poolmod.ensure_worker(state["store"])
+    if b.get("use_brain") or (b.get("use_brain") is None and not poolmod.has_brain(cfg)):
+        poolmod.set_use_brain(cfg, True)
+        _pool_save_cfg(cfg)
+    await _pool_changed(f"asked to join '{d['pool']['name']}'")
+    return _pool_view()
+
+
+@app.post("/api/pool/approve")
+async def api_pool_approve(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    try:
+        with usersmod.as_user(""):
+            e = poolmod.approve(state["store"], str((body or {}).get("who") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _pool_changed(f"let {e.get('name')} into the community")
+    return _pool_view()
+
+
+@app.post("/api/pool/remove")
+async def api_pool_remove(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    try:
+        with usersmod.as_user(""):
+            e = poolmod.remove(state["store"], str((body or {}).get("who") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _pool_changed(f"removed {e.get('name')} from the community")
+    return _pool_view()
+
+
+@app.post("/api/pool/leave")
+async def api_pool_leave():
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    cfg = state.machine_cfg()
+    d = poolmod.load()
+    with usersmod.as_user(""):
+        if d.get("pool"):
+            state["store"].revoke_grants_for("pool", d["pool"]["id"], source="pool")
+        if d.get("role") == "leader":
+            poolmod.drop_leader_grants(state["store"], d)
+    await poolmod.leave(cfg)
+    _pool_save_cfg(cfg)
+    await _pool_changed("left the community")
+    return _pool_view()
+
+
+@app.put("/api/pool")
+async def api_pool_put(body: dict):
+    """This machine's part: may it lead (and pay for everybody's thinking), does it think
+    with the leader's brain, and (on the leader) which machine leads next."""
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    b = body or {}
+    cfg = state.machine_cfg()
+    said = []
+    if "lead_ok" in b:
+        if b["lead_ok"] and not poolmod.has_brain(cfg):
+            return JSONResponse({"error": "to lead, this machine needs a brain of its own: a model "
+                                          "with a key or a local model under AI providers"}, status_code=400)
+        poolmod.set_lead_ok(bool(b["lead_ok"]))
+        said.append("may lead" if b["lead_ok"] else "may not lead")
+    if "use_brain" in b:
+        if b["use_brain"] and poolmod.load().get("role") != "member":
+            return JSONResponse({"error": "only a member thinks with its leader's brain"}, status_code=400)
+        poolmod.set_use_brain(cfg, bool(b["use_brain"]))
+        _pool_save_cfg(cfg)
+        said.append("thinks with the leader's brain" if b["use_brain"] else "thinks with its own brain")
+    if "pin" in b:
+        d = poolmod.load()
+        if d.get("role") != "leader":
+            return JSONResponse({"error": "only the leader chooses who leads next"}, status_code=400)
+        e = poolmod._find_member(d, str(b["pin"] or "")) if b["pin"] else None
+        if b["pin"] and not (e and poolmod.eligible(e)):
+            return JSONResponse({"error": "that machine may not lead (it needs a brain and its own "
+                                          "admin's yes)"}, status_code=400)
+        d["pin"] = e["fp"] if e else ""
+        poolmod.save(d)
+        said.append(f"{e.get('name')} leads next" if e else "the most capable machine leads next")
+    await _pool_changed("; ".join(said) or "no change")
+    return _pool_view()
+
+
+@app.get("/api/pool/notes")
+async def api_pool_notes(q: str = ""):
+    from . import pool as poolmod
+    return {"notes": poolmod.notes_search(q, limit=100), "count": poolmod.notes_count()}
+
+
+@app.post("/api/pool/notes")
+async def api_pool_note_add(body: dict):
+    from . import pool as poolmod
+    from . import teamlink
+    try:
+        got = poolmod.note_add(str((body or {}).get("content") or ""),
+                               machine=teamlink.machine_name(state.machine_cfg()), agent="you")
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return got
+
+
+@app.delete("/api/pool/notes/{nid}")
+async def api_pool_note_forget(nid: str):
+    from . import pool as poolmod
+    return {"ok": poolmod.note_forget(nid)}
 
 
 @app.get("/api/team/links")
@@ -10751,7 +11903,7 @@ async def api_run_flow(name: str, body: dict, request: Request):
     # the disabled state is safe — it holds no grants, so every gated step stops and asks
     # you, and no trigger can start it while you are not looking. What "disabled" forbids
     # is running by itself, not being tried.
-    surface = (body or {}).get("surface") or "gui"
+    surface = _client_surface((body or {}).get("surface"))
     # Who started it goes in the ledger. A flow is an agent invocation like any other,
     # and "it just ran" is not an answer to "who asked for this?".
     dec = state["pdp"].decide(MAIN, "agent.invoke", f"agent:flow/{name}",
@@ -11030,8 +12182,9 @@ async def api_fabric_approvals():
     a terminal could only be watched failing.
     """
     out = []
+    me = usersmod.current() if usersmod.enabled() else ""
     for aid, entry in (state.get("pending_approvals") or {}).items():
-        if entry["fut"].done():
+        if entry["fut"].done() or not _approval_mine(entry, me):
             continue
         out.append({"id": aid, "name": entry.get("name", ""), "args": entry.get("args", {}),
                     "reason": entry.get("reason", ""), "offer": entry.get("offer"),
@@ -11042,8 +12195,12 @@ async def api_fabric_approvals():
 
 @app.post("/api/fabric/approvals/{aid}")
 async def api_fabric_approve(aid: str, body: dict):
-    await resolve_approval(aid, bool((body or {}).get("approved")),
-                           bool((body or {}).get("remember")))
+    b = body or {}
+    ok = await resolve_approval(aid, bool(b.get("approved")), b.get("remember") or False,
+                                uid=usersmod.current() if usersmod.enabled() else "")
+    if not ok:
+        return JSONResponse({"error": "nothing of yours is waiting under that id"},
+                            status_code=404)
     return {"ok": True}
 
 
@@ -11158,7 +12315,20 @@ async def api_knowledge_status():
 
 @app.get("/api/tasks")
 async def api_tasks():
-    return {"tasks": state["store"].list_tasks()}
+    """Every schedule, each with what it has done lately (runlog.schedules): the
+    Schedule tab's rows. Same shape as before, with the run fields added."""
+    from . import runlog
+    return {"tasks": runlog.schedules(state["store"])}
+
+
+@app.get("/api/missions/history")
+async def api_missions_history(task: str = "", mission: str = "", limit: int = 80):
+    """What ran on its own and what started each run: missions and scheduled prompts,
+    newest first, for the Missions app's History tab and its Runs buttons. One
+    computation (runlog.history), shared with `bento job history`."""
+    from . import runlog
+    return runlog.history(state["store"], task_id=task, mission=mission,
+                          limit=max(1, min(int(limit or 80), 300)))
 
 
 @app.post("/api/tasks")
@@ -11349,6 +12519,12 @@ async def _ws_reject(ws) -> bool:
     if not _ws_authed(ws):
         with contextlib.suppress(Exception):
             await ws.close(code=4401)
+        return True
+    if standbymod.passive():
+        # the standby gate is HTTP middleware and never sees a socket: the side that
+        # is not working has no live desktop to stream
+        with contextlib.suppress(Exception):
+            await ws.close(code=4503)
         return True
     return False
 
@@ -11879,7 +13055,7 @@ async def _run_chat(cid: str, data: dict):
             # hand-over passes the same gate as a built-in turn's — and a note naming
             # who does what (execmod.team_note). Closed in `finally` below.
             from . import spaces as _spacemod
-            _surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
             team_token = execmod.open_team_door(
                 env, cfg, toolbox, store, evsend, approver, conversation_id=cid, surface=_surface,
                 space_id=_spacemod.active_for(cfg, _surface, store, cid), text=text)
@@ -12006,7 +13182,7 @@ async def _run_chat(cid: str, data: dict):
             # referencing it raised UnboundLocalError on every turn that failed
             # before this line — and that exception ate the persistence of the
             # error message itself, leaving an empty bubble instead of the reason.
-            surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
             # Copilot/omnibar turns ride the normal chat path with per-surface
             # context appended to the system prompt (the app's live state, the
             # embedded-panel preamble). Sanitized and capped — it is UI-supplied.
@@ -12082,7 +13258,7 @@ async def _run_chat(cid: str, data: dict):
             # runs on the failure paths too, and a turn that died after spending
             # tokens has still spent them.
             from . import spaces as _spacemod
-            _surface = data.get("surface") if data.get("surface") in SURFACES else "gui"
+            _surface = data.get("surface") if data.get("surface") in CLIENT_SURFACES else "gui"
             usagemod.record(store, cfg, model, tk, surface=_surface, conversation_id=cid,
                             space_id=_spacemod.active_for(cfg, _surface, store, cid))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
@@ -12989,6 +14165,15 @@ async def ws_endpoint(ws: WebSocket):
     # its owner's sessions (see `broadcast_user`). Registered here rather than at
     # `.add()` above because the uid is not known until the cookie is resolved.
     state["client_uids"][ws] = ws_uid
+    # And the rest of this handler runs AS that account, as an HTTP request does
+    # after `resolve_user`. The loop below reads `state["store"]` and `state["cfg"]`
+    # itself before any turn starts: a new chat's conversation row (titled with the
+    # first message) was created in the MACHINE's database while its messages went
+    # into the person's, so on a machine with accounts a new chat never appeared in
+    # its owner's list and every account's titles piled up in one shared file. Found
+    # by the cloud-standby end-to-end run. Each connection is its own task, so this
+    # contextvar is this socket's alone.
+    _uid_token = usersmod._current.set(ws_uid)
 
     async def send(event: dict):
         with contextlib.suppress(Exception):
@@ -13051,9 +14236,8 @@ async def ws_endpoint(ws: WebSocket):
                     # stays there. Reopening it next month must not silently move it
                     # to whatever project was clicked last — see spaces.py.
                     from . import spaces as spacemod
-                    from .policy import SURFACES as _SURFACES
                     _surface = (data.get("surface")
-                                if data.get("surface") in _SURFACES else "gui")
+                                if data.get("surface") in CLIENT_SURFACES else "gui")
                     _space = str(data.get("space_id") or "") or spacemod.active_for(
                         state["cfg"], _surface)
                     cid = state["store"].create_conversation(title, origin=origin,
@@ -13080,7 +14264,8 @@ async def ws_endpoint(ws: WebSocket):
                     asyncio.create_task(_force_cancel(build["task"], grace=15.0))
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
-                                       remember=bool(data.get("remember")))
+                                       remember=data.get("remember") or False,
+                                       uid=ws_uid if usersmod.enabled() else "")
             elif t == "price":
                 await resolve_price(data.get("id", ""), str(data.get("action") or "cancel"),
                                     float(data.get("in") or 0), float(data.get("out") or 0))
@@ -13120,7 +14305,9 @@ async def ws_endpoint(ws: WebSocket):
                     if build.get("task") and not build["task"].done():
                         asyncio.create_task(_force_cancel(build["task"], grace=15.0))
                     for entry in state["pending_approvals"].values():
-                        if not entry["fut"].done():
+                        # this person's questions only: a Stop on one account's desk
+                        # must not refuse what another account is being asked
+                        if not entry["fut"].done() and _approval_mine(entry, ws_uid):
                             entry["fut"].set_result(False)
     except (WebSocketDisconnect, json.JSONDecodeError, OSError):
         pass
@@ -13130,3 +14317,5 @@ async def ws_endpoint(ws: WebSocket):
         # registration is cleaned up
         state["clients"].discard(ws)
         state["client_uids"].pop(ws, None)
+        with contextlib.suppress(ValueError, LookupError):
+            usersmod._current.reset(_uid_token)

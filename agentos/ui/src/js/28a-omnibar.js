@@ -8,14 +8,17 @@ const OMNI={cid:null,matches:[],idx:0,pop:false,imgs:[]};
 
 function omniPresence(force){
   const orb=$('#omni-orb'),inp=$('#omni-in');if(!orb)return;
-  const n=RUNNING.size;
+  // A turn already on screen in Chat or an agent panel does not raise the bar over the
+  // desktop: that was a second "Aria · reading the task" beside the window saying it.
+  const shown=[...RUNNING].filter(c=>!(typeof turnInWindow==='function'&&turnInWindow(c)));
+  const n=shown.length;
   orb.classList.toggle('busy',n>0);
   // `force`: the config just arrived (a signed-in person's agent has its own name) —
   // the bar is often focused at first paint, and the Aria it showed then would stay
   if(!inp||inp.value||(document.activeElement===inp&&!force))return;
   // The bar is the one thing always on screen, so it is often where somebody
   // looks to ask "is it stuck?" — it answers with the step, not with "working".
-  const live=n===1?actLine([...RUNNING][0]):'';
+  const live=n===1?actLine(shown[0]):'';
   const want=n>1?`${agentName()} · ${n} turns running…`
           :n?(live?`${agentName()} · ${live}`:`${agentName()} is working…`)
              :(typeof isTouch==='function'&&isTouch())?`Ask ${agentName()} anything`      // no keyboard, no key hint (D10)

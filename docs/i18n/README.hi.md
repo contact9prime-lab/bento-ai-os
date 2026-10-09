@@ -43,6 +43,8 @@ OpenRouter या कोई भी OpenAI-compatible endpoint), या कोई
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 फिर **http://127.0.0.1:8321** खोलें। जब तक आप खुद [remote access](../remote-access.md) चालू नहीं
 करते, यह सिर्फ़ localhost पर सुनता है। न कोई अकाउंट बनाना है, न कोई telemetry है, और जब तक आप कोई
 key नहीं जोड़ते तब तक कोई क्लाउड भी नहीं।
@@ -410,6 +412,12 @@ Remote Desktop मशीन की असली स्क्रीन, native �
 [Users →](../users.md)
 
 ![Users ऐप: दो accounts, एक admin और एक Executor भूमिका वाला](../screenshots/users-two-accounts.png)
+
+### बैकअप और क्लाउड में एक स्टैंडबाय मशीन
+
+`bento backup` पूरी मशीन को एक सील की हुई फ़ाइल में रखता है: हर अकाउंट, vault और workspace। `bento restore` इसे इसी मशीन पर या किसी नई मशीन पर वापस ले आता है। [बैकअप →](../backup.md)
+
+क्लाउड मशीन पर दूसरा Bento जोड़ें, तो वह एक सील की हुई कॉपी के साथ तैयार रहता है। अगर आपकी मशीन चुप हो जाए, तो क्लाउड आपके missions और channels जारी रखता है, और आपकी मशीन लौटने पर काम वापस दे देता है। active sync चालू करें, तो हर बदलाव, हर chat message समेत, कुछ ही सेकंड में क्लाउड तक पहुँचता है। [क्लाउड स्टैंडबाय →](../standby.md)
 
 ### अपना एजेंट शेयर करें, किसी और का fork करें
 

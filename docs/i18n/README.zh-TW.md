@@ -39,6 +39,8 @@ Bento 是一套自我託管的 AI 桌面，跑在你自己的硬體上。它有�
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 然後打開 **http://127.0.0.1:8321**。在你自己開啟[遠端存取](../remote-access.md)之前，它只會監聽 localhost。
 不用註冊帳號、沒有遙測，除非你加上金鑰，否則也不會用到雲端。
 
@@ -370,6 +372,12 @@ VNC 伺服器從不離開 `127.0.0.1`。[工作階段介面 →](../session-ui.m
 同一組使用者名稱和密碼在手機上也能用。[使用者 →](../users.md)
 
 ![Users 應用程式：兩個帳號，一個是管理員，另一個是 Executor 角色](../screenshots/users-two-accounts.png)
+
+### 備份與雲端備用機
+
+`bento backup` 把整台機器裝進一個密封檔案：每個帳戶、保險庫和工作區都在裡面。`bento restore` 可以在這台機器或新機器上把它還原回來。[備份 →](../backup.md)
+
+在雲端機器上配對第二個 Bento，它會帶著一份密封副本待命。你的機器一旦沒有回應，雲端就接著執行你的任務和頻道，等你的機器回來再把工作交還。開啟主動同步後，每一處變更，包括每則聊天訊息，都會在幾秒內抵達雲端。[雲端備用 →](../standby.md)
 
 ### 分享你的代理，分叉別人的
 

@@ -43,6 +43,8 @@
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 ثم افتح **http://127.0.0.1:8321**. يستمع على localhost فقط إلى أن تفعّل
 [الوصول عن بُعد](../remote-access.md) بنفسك. لا حساب تنشئه، ولا قياس عن بُعد (telemetry)، ولا سحابة
 إلا إذا أضفت مفتاحًا.
@@ -392,6 +394,12 @@ Chat وفي لوحة كل تطبيق، و`bento office` في الطرفية. و�
 [Users ←](../users.md)
 
 ![تطبيق Users: حسابان، أحدهما مسؤول والآخر بدور Executor](../screenshots/users-two-accounts.png)
+
+### النسخ الاحتياطي وجهاز احتياطي في السحابة
+
+يضع `bento backup` الجهاز كله في ملف واحد مختوم: كل الحسابات والخزنة ومساحة العمل. ويعيده `bento restore` على هذا الجهاز أو على جهاز جديد. [النسخ الاحتياطي ←](../backup.md)
+
+اربط Bento ثانيًا على جهاز في السحابة فيبقى في وضع الاستعداد ومعه نسخة مختومة. إذا توقف جهازك عن الاستجابة، تتابع السحابة مهامك وقنواتك، ثم تعيد العمل إليه عندما يعود. فعّل المزامنة الفورية فيصل كل تغيير إلى السحابة خلال ثوانٍ، بما في ذلك كل رسالة دردشة. [الجهاز الاحتياطي في السحابة ←](../standby.md)
 
 ### شارك وكيلك، وانسخ وكيل غيرك
 

@@ -1,6 +1,6 @@
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
-  w.path=w.path||'';
+  w.path=w.path||'';w.place=w.place||'';
   const FCOLORS={html:'#38BDF8',htm:'#38BDF8',md:'#a5b4fc',txt:'#8a94a6',json:'#fbbf24',csv:'#4ade80',
     log:'#8a94a6',pdf:'#f87171',sh:'#94a3b8',py:'#60a5fa'};
   const IMG_EXT=new Set(['png','jpg','jpeg','gif','webp','svg']);
@@ -12,18 +12,32 @@ async function renderFiles(body,w){
     return `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="${s}"><path d="M6.5 4h7l4 4v12h-11Z"/><path d="M13.5 4v4h4"/></svg>`;
   };
   const fmt=n=>n<1024?n+' B':n<1e6?(n/1024).toFixed(0)+' KB':(n/1e6).toFixed(1)+' MB';
-  let d;try{d=await (await fetch('/api/files?path='+encodeURIComponent(w.path))).json()}catch(e){body.innerHTML='<p class="mut" style="padding:16px">could not read files</p>';return}
+  const q='/api/files?path='+encodeURIComponent(w.path)+(w.place?'&root='+encodeURIComponent(w.place):'');
+  let d;try{
+    const r=await fetch(q);d=await r.json();
+    /* a share that was removed while this window was open: back to the workspace */
+    if(!r.ok&&w.place){w.place='';w.path='';return renderFiles(body,w)}
+  }catch(e){body.innerHTML='<p class="mut" style="padding:16px">could not read files</p>';return}
   w.path=d.path;
-  const crumbs=['<span class="fcrumb" data-p="">workspace</span>'];
+  /* Shared folders (Users → Shared folders) are places of their own, beside the
+     workspace. A select and not tabs: it stays one control on a phone however many
+     folders are shared. */
+  const places=d.places||[];
+  const here=places.find(p=>p.root===w.place)||{label:'Workspace',mode:'rw'};
+  const picker=places.length>1?`<select class="f-place" title="Shared folders">${places.map(p=>
+    `<option value="${esc(p.root)}"${p.root===w.place?' selected':''}>${esc(p.label)}</option>`).join('')}</select>`:'';
+  const crumbs=[`<span class="fcrumb" data-p="">${esc(w.place?here.label:'workspace')}</span>`];
   let acc='';d.path.split('/').filter(Boolean).forEach(seg=>{acc=acc?acc+'/'+seg:seg;crumbs.push('<span class="fsep">/</span><span class="fcrumb" data-p="'+esc(acc)+'">'+esc(seg)+'</span>')});
   body.innerHTML=`<div class="apptop">
+      ${picker}
       ${w.path?'<button class="endbtn f-up">Up</button>':''}
-      <div style="flex:1;font-size:var(--fs-sm)" class="f-crumbs">${crumbs.join('')}</div>
+      <div style="flex:1;font-size:var(--fs-sm)" class="f-crumbs">${crumbs.join('')}${here.mode==='ro'?'<span class="dim"> · read only</span>':''}</div>
       <span class="psearch" style="flex:0 0 220px">${SVG_SEARCH}<input class="f-search" placeholder="Search by meaning…" autocomplete="off"></span>
       <button class="endbtn" onclick="refreshApp('files')">⟳</button>
     </div>
     <div class="f-list" style="flex:1;overflow-y:auto;padding:6px 8px;user-select:text">
-      ${d.entries.length?d.entries.map(e=>`<div class="fitem" data-rel="${esc(e.rel)}" data-dir="${e.dir?1:0}" data-ext="${esc(e.ext)}">
+      ${d.error?`<p class="mut" style="padding:14px">${esc(d.error)}</p>`:''}
+      ${d.entries.length?d.entries.map(e=>`<div class="fitem" data-rel="${esc(e.rel)}" data-full="${esc(e.full||'')}" data-dir="${e.dir?1:0}" data-ext="${esc(e.ext)}">
         <span class="fi">${icon(e)}</span><span class="fn">${esc(e.name)}</span>
         <span class="fmeta">${e.dir?'':fmt(e.size)+' · '+new Date(e.mtime*1000).toLocaleDateString()}</span>
       </div>`).join(''):'<p class="mut" style="padding:14px">empty folder</p>'}
@@ -31,9 +45,13 @@ async function renderFiles(body,w){
   // scoped lookups — Files is multi-instance, so no bare $('#…') in here
   body.querySelector('.f-crumbs').querySelectorAll('.fcrumb').forEach(c=>c.onclick=()=>{w.path=c.dataset.p;renderFiles(body,w)});
   const up=body.querySelector('.f-up');if(up)up.onclick=()=>{w.path=w.path.split('/').slice(0,-1).join('/');renderFiles(body,w)};
+  const pick=body.querySelector('.f-place');if(pick)pick.onchange=()=>{w.place=pick.value;w.path='';renderFiles(body,w)};
   const wire=()=>body.querySelectorAll('.fitem').forEach(it=>it.onclick=()=>{
     const rel=it.dataset.rel;
     if(it.dataset.dir==='1'){w.path=rel;renderFiles(body,w)}
+    /* a shared folder's file goes by its full path, through the same door as a
+       chat's file chip (shown here on a phone, opened on the host at the machine) */
+    else if(w.place&&it.dataset.full)fileOpen(it.dataset.full,it.dataset.ext);
     else openFile(rel,it.dataset.ext);
   });
   wire();

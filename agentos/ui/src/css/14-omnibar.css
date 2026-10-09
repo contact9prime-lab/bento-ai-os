@@ -75,6 +75,9 @@ body.has-fullwin #omnibar.summoned,body.has-fullwin #omnicards.raised{opacity:1;
   border:1px solid color-mix(in srgb,var(--acc) 25%,transparent);
   padding:6px 11px;border-radius:var(--r-lg) 4px var(--r-lg) var(--r-lg);font-size:var(--fs-md);max-width:88%;margin:4px 0}
 .mf-body{font-size:var(--fs-md);line-height:1.5;margin:4px 0;user-select:text}
+.mf-who{display:flex;align-items:center;gap:7px;margin:8px 0 2px;font-size:var(--fs-sm);
+  font-weight:600;color:var(--dim)}
+.mf-who img.av-who{width:22px;height:22px;border-radius:7px;flex:0 0 22px}
 .mf-think{max-height:76px;overflow-y:auto;opacity:.75;font-size:var(--fs-xs)}
 .mf-working{display:flex;align-items:center;gap:8px;padding:6px 2px;color:var(--dim);font-size:var(--fs-sm)}
 .mf-working.quiet{display:none}
@@ -311,7 +314,8 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 #aibubble .ab-orb{width:14px;height:14px;flex:none;border-radius:var(--r-full);
   background:radial-gradient(circle at 32% 30%,var(--acc),var(--acc2) 75%)}
 #aibubble.busy .ab-orb{animation:obusy 1s ease-in-out infinite}
-#aibubble .ab-t{font-size:var(--fs-sm);font-weight:600;white-space:nowrap}
+#aibubble .ab-t{font-size:var(--fs-sm);font-weight:600;white-space:nowrap;
+  max-width:min(46vw,380px);overflow:hidden;text-overflow:ellipsis}
 #aibubble .ab-n{min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-full);background:var(--acc);color:#06211d;
   font-size:var(--fs-2xs);font-weight:800;display:flex;align-items:center;justify-content:center}
 
@@ -413,8 +417,9 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .bchoice select{flex:1;min-width:0}
 
 /* stop controls: visible the moment something is running */
-#aibubble .ab-stop{width:22px;height:22px;border-radius:var(--r-full);flex:none;font-size:var(--fs-2xs);
+#aibubble .ab-stop,#aibubble .ab-x{width:22px;height:22px;border-radius:var(--r-full);flex:none;font-size:var(--fs-2xs);
   background:var(--bg3);border:1px solid var(--line);color:var(--dim);display:flex;align-items:center;justify-content:center}
+#aibubble:not(.busy) .ab-x{display:none}
 #aibubble .ab-stop:hover{color:var(--err);border-color:var(--err)}
 .cp-send.stop{background:var(--err);color:#2b0606}
 .ocard .oc-tools .oc-stopnow{margin-right:auto;color:var(--err);

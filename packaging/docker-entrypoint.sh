@@ -14,7 +14,11 @@
 # can open yet.
 set -e
 
-PORT="${AGENTOS_PORT:-8321}"
+# AGENTOS_PORT wins; otherwise the PORT a host hands every container (Render,
+# Railway, Fly, Koyeb and Cloud Run all set one and route only to it); otherwise
+# 8321. Without the middle step a one-click deploy listened on a port nobody sent
+# traffic to, and the host marked it failed.
+PORT="${AGENTOS_PORT:-${PORT:-8321}}"
 
 say()  { printf '\033[36m▲ %s\033[0m\n' "$*"; }
 die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
@@ -25,6 +29,14 @@ die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 if [ -n "${AGENTOS_PASSPHRASE_FILE:-}" ]; then
   [ -r "$AGENTOS_PASSPHRASE_FILE" ] || die "AGENTOS_PASSPHRASE_FILE is set but not readable: $AGENTOS_PASSPHRASE_FILE"
   AGENTOS_PASSPHRASE="$(cat "$AGENTOS_PASSPHRASE_FILE")"
+fi
+
+# A host that forgets its disk (Render Free and friends): bring the memory back from the
+# person's own storage bucket before anything else touches the home. keep.py restores only into an
+# empty home, so a disk that survived is never rolled back. A failure says why and goes on:
+# a machine that starts fresh is better than one that does not start.
+if [ -n "${BENTO_STORAGE_ENDPOINT:-}${BENTO_STORAGE_BUCKET:-}${BENTO_STORAGE_KEY_ID:-}" ]; then
+  uv run bento keep restore || say "starting without the kept memory (see the line above)"
 fi
 
 # Already configured on the volume — a restart must not need the secret again, and

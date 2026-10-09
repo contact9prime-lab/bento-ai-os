@@ -188,8 +188,8 @@ allow, and hard-blocked destructive commands stay blocked regardless. Manage the
 
 ## Autonomy & steps
 
-- `autonomy` controls whether risky actions ask first (`paranoid`/`balanced`) or run automatically
-  (`full`). Destructive commands are always blocked.
+- `autonomy` controls what asks first: `paranoid` asks for everything but reading, `balanced`
+  for risky actions, `full` runs them. Destructive commands are always blocked.
 - `max_steps` caps how many tool steps the agent takes per turn (a safety limit against loops).
 
 - **Starting another agent asks once per agent**, at `paranoid` and `balanced`, whatever the

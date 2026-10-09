@@ -179,20 +179,22 @@ function buildApprovalBox(ev,cur){
     :ev.offer.action==='team.act'?String(ev.offer.resource||'').split('|')[0]:'';
   // an offer may name itself ("Always let home have analyst do this") — the words say
   // exactly what the button writes, which "Allow & remember" does not for another team
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">Allow</button><button class="deny">Deny</button><button class="deny always">${ev.offer?(ev.offer.label?esc(ev.offer.label):'Allow &amp; remember'):'Always allow'}</button></div>`;
+  // Remember is a grant for the one agent that asked, for as long as the person picks:
+  // this chat, an hour, or until revoked. A card with no offer (a step after untrusted
+  // content, one confirmed every time) has no remember at all. It used to fall back to
+  // "Always allow", which wrote a Rule every app and specialist on the machine shared.
+  const o=ev.offer, standing=o&&o.label;
+  const rem=!o?'':standing?`<button class="deny always" data-rem="always">${esc(o.label)}</button>`
+    :`<span class="ap-rem"><span class="ap-remlbl">Remember</span>${o.conversation_id?'<button class="deny always" data-rem="chat">This chat</button>':''}<button class="deny always" data-rem="hour">1 hour</button><button class="deny always" data-rem="always">Always</button></span>`;
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
-  box.querySelector('.always').onclick=async()=>{
-    if(ev.offer){ // principal-scoped grant, written server-side; revocable in Permissions
-      resolveApproval(ev.id,true,true);
-      toast(ev.offer.note||('granted to '+who+': '+ev.offer.action+' '+ev.offer.resource));
-    }else{
-      const pat=ev.name==='run_command'?('run_command '+((ev.args.command||'').trim().split(/\s+/)[0]||'')+' *'):(ev.name+' *');
-      await addPolicy('allow',pat);
-      resolveApproval(ev.id,true);
-      toast('policy added: always allow "'+pat+'"');
-    }
-  };
+  box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
+    const scope=b.dataset.rem;
+    resolveApproval(ev.id,true,scope);
+    const words={chat:'for this chat',hour:'for an hour',always:'until you revoke it'}[scope]||'';
+    toast(o.note&&standing?o.note:('✓ '+who+' may do this '+words+' (Permissions)'));
+  });
   return box;
 }
 /* The price card. A cloud model with no price is held before it runs — and that
@@ -243,29 +245,55 @@ function updateSpin(){
 /* ---- the AI presence bubble (bottom-right): wherever a turn is running — a
    copilot panel, the omnibar, a background task — it shows here, and one click
    opens that conversation in Agent Chat. ---- */
-let AIB={last:null,seen:0};
+let AIB={last:null,seen:0,snooze:new Set()};
+/* Is this turn already on screen? Chat open on it, the prompt bar's card for it, or an
+   app's agent panel (or the Office's own chat) showing it. The bubble is for turns you
+   cannot see: it counted every turn, so it sat over the Chat composer repeating the
+   working row for the whole turn, and read as a toast that never goes away. */
+function turnOnScreen(cid){
+  if(!cid)return false;
+  if(turnInWindow(cid))return true;
+  for(const c of document.querySelectorAll('#omnicards .ocard'))if(c.dataset.cid===cid)return true;
+  return false;
+}
+/* Open in a window you can see: Chat on that conversation, or an app's agent panel
+   (the Office's own chat included). The prompt bar stands down for these too; its
+   own card's turns keep it up, because the card lives above it. */
+function turnInWindow(cid){
+  if(!cid)return false;
+  if(typeof currentConv!=='undefined'&&cid===currentConv&&winsOf('chat').some(w=>winAwake(w)))return true;
+  for(const app in COPILOT.cids)
+    if(COPILOT.cids[app]===cid&&winsOf(app).some(w=>winAwake(w)&&w.el.querySelector('.copanel.open,.of-chat')))return true;
+  return false;
+}
 function aiBubble(){
   let b=$('#aibubble');
   if(!b){
     b=document.createElement('div');b.id='aibubble';
     b.innerHTML='<span class="ab-orb"></span><span class="ab-t"></span><span class="ab-n"></span>'
-      +'<button class="ab-stop" title="Stop the agent (Ctrl+.)">◼</button>';
+      +'<button class="ab-stop" title="Stop the agent (Ctrl+.)">◼</button>'
+      +'<button class="ab-x" title="Hide this until the next turn" aria-label="Hide">✕</button>';
     document.body.appendChild(b);
     b.querySelector('.ab-stop').onclick=e=>{e.stopPropagation();stopAllAgents()};
+    // Hide is a person's choice about this turn, not about turns to come: the ones
+    // running now stay hidden, and the next one shows again. Stop is still ◼.
+    b.querySelector('.ab-x').onclick=e=>{e.stopPropagation();
+      RUNNING.forEach(c=>AIB.snooze.add(c));AIB.seen=0;aiBubble()};
     b.onclick=()=>{
-      const cid=[...RUNNING][0]||AIB.last||currentConv;
+      const cid=[...RUNNING].find(c=>!turnOnScreen(c))||AIB.last||currentConv;
       openApp('chat');if(cid)openConv(cid);
       AIB.seen=0;aiBubble();
       // "waiting for you to approve …" is a question: tapping it shows the card
       if(Object.keys(APPROVALS).length)setTimeout(()=>approvalReveal(),300);
     };
   }
-  const n=RUNNING.size;
-  if(n)AIB.last=[...RUNNING][0];
+  AIB.snooze.forEach(c=>{if(!RUNNING.has(c))AIB.snooze.delete(c)});
+  const off=[...RUNNING].filter(c=>!turnOnScreen(c)&&!AIB.snooze.has(c)),n=off.length;
+  if(n)AIB.last=off[0];
   // The bubble is often the only thing on screen saying a turn exists — on the
   // desktop, with Chat closed. "is working" for four minutes is not a report,
   // so it carries the live step and its age like every other waiting surface.
-  const live=n===1?actLine([...RUNNING][0]):'';
+  const live=n===1?actLine(off[0]):'';
   const label=n?(n>1?`${agentName()} · ${n} turns`
                     :(live?`${agentName()} · ${live}`:`${agentName()} is working`))
                :(AIB.seen?`${agentName()} replied`:'');
@@ -326,7 +354,8 @@ function handle(ev){
       if(typeof paintForwardChip==='function')paintForwardChip();
       if(_cur){
         CUR_ENGINE={engine:ev.engine||'',model:ev.model||''};
-        const who=feed&&feed.querySelector('.msg.assistant:last-child .who');
+        // the reply being written, wherever the working row sits after it
+        const who=curBody&&curBody.parentNode.querySelector('.who');
         if(who)who.innerHTML=curWho();
       }
       break;}
@@ -342,6 +371,10 @@ function handle(ev){
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
         if(ev.huddle)actMove(_cid,'think',{msg:'huddle · '+ev.huddle[0]+' opens'});}
       if(_cur)setRunning(true);
+      // Who is answering shows from the first second: the name and face go up now, with
+      // the working row under them. It waited for the first word, and Claude Code sends
+      // its whole answer at the end (measured: 50 seconds with nobody's name on screen).
+      if(_cur&&feed&&!curBody){const t0=WORK_T0;startAssistant();WORK_T0=t0;showWorking();scrollDown()}
       // the play strip (24e) goes at the top of this reply, once there is something to show
       if(_cur&&_cid&&typeof playHost==='function')playHost(_cid,()=>chatPlayHost(_cid));
       updateSpin();
@@ -555,6 +588,17 @@ function handle(ev){
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged();
       if(typeof officeReload==='function')officeReload(); break;   // a new specialist takes a desk
     case 'office': refreshApp('office'); break;   // the office's look or its seating changed
+    // the community of machines changed, or somebody asks to join it (pool.py)
+    case 'pool': if(typeof poolPaint==='function')poolPaint();
+      if(ev.kind==='pool_request')toast((ev.name||'A machine')+' asks to join your community',
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
+          setTimeout(()=>document.getElementById('s-pool')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+      break;
+    // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
+    case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
+      if(typeof officeReload==='function')officeReload();
+      if(typeof crewRoster==='function')crewRoster(true);
+      if(typeof kioskApply==='function')kioskApply()}); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{
@@ -670,7 +714,8 @@ function handle(ev){
   if(ev.type==='thinking_delta')jrPulse=Math.min(1.6,jrPulse+.12);
 }
 function resolveApproval(id,approved,remember){
-  ws.send(JSON.stringify({type:'approval',id,approved,remember:!!remember}));
+  // remember is the scope the person chose ('chat' | 'hour' | 'always') or nothing
+  ws.send(JSON.stringify({type:'approval',id,approved,remember:remember||false}));
   // it is no longer waiting on you — whatever was held for this answer runs now
   for(const k in ACT)if(ACT[k].phase==='approve')actMove(k,approved?'tool':'after');
   const box=$('#ap-'+id); if(box){box.classList.add('resolved');

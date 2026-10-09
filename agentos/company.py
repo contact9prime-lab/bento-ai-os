@@ -72,6 +72,11 @@ MAX_TOTAL = 32            # every person is a model call when they work
 SOUL_MAX = 1600
 ABOUT_MAX = officemod.ABOUT_MAX
 DESK_SUFFIX = "-desk"
+#: The independent auditor. It checks every finished department task, sits in no
+#: department and on no desk's roster, and is started by the control plane rather than
+#: by anybody whose work it checks (see `audit_task` and `ControlPlane.audit`).
+AUDITOR = "auditor"
+AUDIT_TOOLS = ("read_file", "list_dir", "search_files", "recall", "kg_query")
 _NAME = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 #: Every department starts from what every colleague needs: memory, the Brief, reports.
@@ -446,6 +451,10 @@ def normalize(plan: dict, tools: list[str] | None = None) -> tuple[dict, list[st
             if nm in seen_people:
                 dropped.append(f"{nm} in {name} (already in another department)")
                 continue
+            if nm == AUDITOR:
+                dropped.append(f"{nm} in {name} (the auditor checks every department, so it "
+                               f"sits in none)")
+                continue
             if len(people) >= MAX_PEOPLE:
                 dropped.append(f"{nm} in {name} (at most {MAX_PEOPLE} people a department)")
                 continue
@@ -647,6 +656,7 @@ def preview(cfg: dict, store, plan: dict, accounts: dict | None = None,
     return {"company": plan.get("company") or {}, "departments": depts,
             "new": new, "existing": reuse, "desks": len(depts), "kept_departments": kept,
             "talk_pairs": len(pairs), "fits": len(kept) + len(depts) <= MAX_DEPTS,
+            "auditor": {"on": audit_on(cfg), "exists": bool(store.get_subagent(AUDITOR))},
             "notes": notes}
 
 
@@ -726,11 +736,15 @@ def apply(cfg: dict, store, plan: dict, accounts: dict | None = None,
                 cells += 1
             except (KeyError, ValueError):
                 pass
-    cfg["company"] = {"name": company.get("name") or "", "about": company.get("about") or "",
+    # the independent auditor comes with every company, outside all of its departments
+    auditor = ensure_auditor(store) if audit_on(cfg) else False
+    cfg["company"] = {**(cfg.get("company") or {}),
+                      "name": company.get("name") or "", "about": company.get("about") or "",
                       "set_up_at": time.time()}
     first = new_depts[0] if new_depts else None
     return {"made": made, "joined": joined, "departments": [d["name"] for d in new_depts],
             "desks": desks, "talk_cells": cells, "errors": errors, "notes": pv["notes"],
+            "auditor": "new" if auditor else ("exists" if store.get_subagent(AUDITOR) else "off"),
             "try": (f"Give {first['name']} its first task, for example: "
                     f"\"{_first_task(first)}\"") if first else ""}
 
@@ -853,6 +867,8 @@ def _task_rows(cfg: dict, store, waiting: list | None, now: float) -> list[dict]
             text = "Run the desk"          # a hand-started run with no task keeps the mission
         out = " ".join(str(r.get("output") or r.get("fault") or "").split())
         who = [c.get("ref") for c in ch if c.get("kind") == "delegate" and c.get("ref")]
+        # the newest check of this task (a person may ask for it again); the list is newest first
+        audit = audit_state(next((c for c in ch if c.get("kind") == "audit"), None))
         ids = asks.get(r["id"], []) + [a for c in ch for a in asks.get(c["id"], [])]
         if r.get("kind") == "flow":
             ids += asks.get("flow:" + str(r.get("flow") or ""), [])
@@ -864,7 +880,9 @@ def _task_rows(cfg: dict, store, waiting: list | None, now: float) -> list[dict]
                      "finished_at": r.get("finished_at"), "said": out[:200],
                      "approvals": ids if st == "waiting" else [],
                      "in_brief": (r.get("status") == "parked"
-                                  or any(c.get("status") == "parked" for c in ch))})
+                                  or any(c.get("status") == "parked" for c in ch)),
+                     "audit": audit,
+                     "can_check": r.get("kind") == "flow" and r.get("status") in AUDITED})
     return rows
 
 
@@ -896,7 +914,11 @@ def stats(cfg: dict, store, waiting: list | None = None, now: float | None = Non
                     "waiting": sum(r["status"] == "waiting" for r in mine),
                     "next": scheduled, "next_at": nxt,
                     "done": sum(r["status"] == "done" for r in week),
-                    "failed": sum(r["status"] == "failed" for r in week)})
+                    "failed": sum(r["status"] == "failed" for r in week),
+                    # what the independent auditor found in this week's finished work
+                    "checked": sum(bool((r.get("audit") or {}).get("verdict")) for r in week),
+                    "flagged": sum((r.get("audit") or {}).get("verdict") in ("concerns", "fail")
+                                   for r in week)})
     return out
 
 
@@ -915,7 +937,9 @@ def board(cfg: dict, store, waiting: list | None = None, now: float | None = Non
     counts = {k: sum(r["status"] == k for r in rows) for k in
               ("in_progress", "waiting", "done", "failed", "stale", "stopped")}
     counts["scheduled"] = len(sched)
-    return {"tasks": sched + rows, "counts": counts}
+    counts["flagged"] = sum((r.get("audit") or {}).get("verdict") in ("concerns", "fail")
+                            for r in rows)
+    return {"tasks": sched + rows, "counts": counts, "audit": audit_on(cfg)}
 
 
 def brain(store) -> dict:
@@ -948,6 +972,168 @@ def desk_for(cfg: dict, store, department: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# The independent auditor: every finished task is checked by an agent that did none
+# of the work and is started by nobody who did
+# ---------------------------------------------------------------------------
+
+AUDITED = ("ok", "partial")          # a finished task; a failed one has nothing to check
+VERDICTS = ("pass", "concerns", "fail")
+AUDIT_BOARD_CHARS = 14000            # what the auditor reads of the work, all handles together
+AUDIT_SPEC = {
+    "name": AUDITOR,
+    "soul": ("You are the independent auditor. You did none of the work you are shown and "
+             "you answer to nobody who did. Check it against what was asked: every claim "
+             "backed by the work on the board, every number, name, date and source traceable, "
+             "every file it names really there (read it), nothing asked for missing, nothing "
+             "unsafe advised. Report what you find in a line each, quoting the handle or file. "
+             "Never redo the work, never soften a finding, and never pass something you could "
+             "not check: say you could not check it."),
+    "tools": list(AUDIT_TOOLS), "max_steps": 10, "max_seconds": 300,
+    "look": {"glasses": True},       # the one who reads the small print
+}
+
+
+def audit_on(cfg: dict) -> bool:
+    """On unless the person switched it off. `company` is a USER_KEY, so it is theirs."""
+    return (cfg.get("company") or {}).get("audit", True) is not False
+
+
+def ensure_auditor(store) -> bool:
+    """Create the auditor if it is not here. Never overwritten: a person who edited its
+    persona or pinned its brain keeps that. Returns whether it was made."""
+    if store.get_subagent(AUDITOR):
+        return False
+    spec = {k: v for k, v in AUDIT_SPEC.items() if k != "look"}
+    store.save_subagent({**spec, "builtin": 1, "model": ""})
+    try:
+        from . import avatars as _av
+        if not store.avatar_get(AUDITOR):
+            store.avatar_put(AUDITOR, {**_av.recipe_for(store, AUDITOR),
+                                       **_av.validate(AUDIT_SPEC["look"])})
+    except Exception:
+        pass
+    return True
+
+
+def audit_scope(cfg: dict, store, flow_name: str) -> dict | None:
+    """The department whose desk this flow is, or None: only a department's work is
+    audited by default, because that is where a head plans and checks its own staff."""
+    for d in departments(cfg, store):
+        if d.get("desk") and d["desk"] == flow_name:
+            return d
+    return None
+
+
+def audit_conflict(dept: dict, flow: dict) -> str:
+    """Why the auditor cannot check this work independently, or ''. An auditor that
+    did part of the work, or sits in the department, would be checking itself."""
+    if AUDITOR in [m.lower() for m in dept.get("members") or []]:
+        return (f"the auditor works in {dept['name']}, so it would be checking its own "
+                f"department. Move it to the open floor in the Office.")
+    roster = [(r.get("subagent") if isinstance(r, dict) else str(r)).lower()
+              for r in (flow.get("roster") or [])]
+    if AUDITOR in roster:
+        return (f"the auditor is on the {flow['name']} roster, so it may have done some of "
+                f"this work. Take it off the roster in Missions → Build.")
+    return ""
+
+
+def audit_task(dept: dict, task: str, deliverable: str, status: str, fault: str,
+               board: list[dict], briefed: list[dict] | None = None) -> str:
+    """What the auditor is handed: the task, the deliverable and the work behind it. A
+    handle that read something from outside this machine is fenced as data."""
+    from .agent import fence
+    parts = [f"Check the work the {dept['name']} department just finished.",
+             "=== what they were asked ===\n" + (" ".join(str(task or "").split())[:2000]
+                                               or "(no task was given: the desk ran on its own)"),
+             f"=== what they handed back (the run ended {status}"
+             + (f": {fault}" if fault else "") + ") ===\n"
+             + (str(deliverable or "").strip()[:6000] or "(nothing)")]
+    left = AUDIT_BOARD_CHARS
+    rows = []
+    for b in board:
+        body = str(b.get("content") or b.get("preview") or "")
+        if left <= 0:
+            rows.append(f"[{b.get('handle')}] {b.get('agent') or b.get('kind')}: (not shown, "
+                        f"over the size limit)")
+            continue
+        body = body[:left]
+        left -= len(body)
+        head = (f"[{b.get('handle')}] {b.get('agent') or b.get('kind')} · {b.get('status')}"
+                + (f" · asked: {' '.join(str(b.get('task') or '').split())[:200]}" if b.get("task") else ""))
+        rows.append(head + "\n" + (fence(f"{b.get('handle')}, which read content from outside "
+                                         f"this machine", body) if b.get("tainted") else body))
+    parts.append("=== the work on the board ===\n" + ("\n\n".join(rows) or "(nothing was delegated)"))
+    parts.append("=== what the work put in the person's Brief ===\n" + ("\n".join(
+        f"- {b.get('kind')}: {' '.join(str(b.get('title') or '').split())[:160]}"
+        + (f" ({' '.join(str(b.get('body') or '').split())[:200]})" if b.get("body") else "")
+        for b in (briefed or [])[:12]) or "(nothing)"))
+    parts.append("Reply with PASS, CONCERNS or FAIL alone on the first line. PASS: it does what "
+                 "was asked and what it says holds up. CONCERNS: usable, but something is "
+                 "unsupported, missing or needs a person to look. FAIL: it does not do what was "
+                 "asked, or it states things the work does not back. Then at most six lines, "
+                 "one finding each, naming the handle or file. Nothing else.")
+    return "\n\n".join(parts)
+
+
+_VERDICT = re.compile(r"^\W*(?:verdict\W*)?(pass(?:ed)?|concerns?|fail(?:ed)?)\b", re.I)
+
+
+def read_verdict(text: str) -> tuple[str, list[str]]:
+    """The auditor's answer as (verdict, findings). Strict on the verdict: an answer
+    that does not start with PASS, CONCERNS or FAIL is '' (unread), which is never
+    counted as a pass."""
+    lines = [ln.strip() for ln in str(text or "").strip().splitlines() if ln.strip()]
+    if not lines:
+        return "", []
+    m = _VERDICT.match(lines[0])
+    if not m:
+        return "", [" ".join(" ".join(lines).split())[:300]]
+    word = m.group(1).lower()
+    verdict = "pass" if word.startswith("pass") else "fail" if word.startswith("fail") else "concerns"
+    rest = lines[0][m.end():].strip(" :-–—*")
+    findings = ([rest] if rest else []) + lines[1:]
+    findings = [re.sub(r"^(?:[-*•]|\d+[.)])\s*", "", f)[:300] for f in findings]
+    return verdict, [f for f in findings if f][:6]
+
+
+def audit_line(result: dict) -> str:
+    """One sentence for wherever the task's answer is read: chat, a channel, the card."""
+    v = result.get("verdict") or ""
+    first = (result.get("findings") or [""])[0]
+    if v == "pass":
+        return "Checked by the independent auditor: nothing wrong found."
+    if v == "concerns":
+        return "The independent auditor has concerns: " + (first or "see the task board.")
+    if v == "fail":
+        return "The independent auditor failed this work: " + (first or "see the task board.")
+    if v == "skipped":
+        return "Not checked: " + (result.get("why") or "the auditor could not be independent.")
+    return "Not checked: " + (result.get("why") or "the auditor did not give a verdict.")
+
+
+def audit_state(row: dict | None) -> dict:
+    """An audit run's row, as the task board reads it. The run is the record: the
+    verdict is read back out of what the auditor said, never kept a second time."""
+    if not row:
+        return {}
+    st = row.get("status") or ""
+    out = {"run_id": row.get("id"), "model": row.get("model") or ""}
+    if st == "running":
+        return {**out, "state": "checking", "verdict": ""}
+    if st == "skipped":
+        return {**out, "state": "done", "verdict": "skipped", "why": row.get("output") or ""}
+    if st == "ok":
+        v, f = read_verdict(row.get("output") or "")
+        if v:
+            return {**out, "state": "done", "verdict": v, "findings": f}
+        return {**out, "state": "done", "verdict": "unchecked",
+                "why": "the auditor did not give a verdict"}
+    return {**out, "state": "done", "verdict": "unchecked",
+            "why": (row.get("fault") or st or "the auditor stopped")[:200]}
+
+
+# ---------------------------------------------------------------------------
 # Words: the lead's context and the terminal
 # ---------------------------------------------------------------------------
 
@@ -968,7 +1154,10 @@ def note(cfg: dict, store, desks: bool = True) -> str:
             + ". The specialists are organised in departments:\n" + "\n".join(lines)
             + ("\nWork for a department goes to its head, or to its desk with run_flow and the "
                "task as the input." if desks else "\nWork for a department goes to its head.")
-            + " Work that spans departments goes to each head.")
+            + " Work that spans departments goes to each head."
+            + (" When a department's desk finishes a task, an independent auditor checks it "
+               "and the verdict comes back with the result; you do not need to ask for that "
+               "check, and you cannot skip it." if audit_on(cfg) and desks else ""))
 
 
 def text(cfg: dict, store, waiting: list | None = None, st: list | None = None) -> str:
@@ -981,12 +1170,16 @@ def text(cfg: dict, store, waiting: list | None = None, st: list | None = None) 
     lines = [head + (f": {pr['about']}" if pr["about"] else ""), ""]
     for s in st:
         extra = (f" · ⚠ {s['waiting']} waiting" if s["waiting"] else "") + \
-                (f" · {s['failed']} failed" if s["failed"] else "")
+                (f" · {s['failed']} failed" if s["failed"] else "") + \
+                (f" · ⚑ {s['flagged']} flagged by the auditor" if s.get("flagged") else "")
         lines.append(f"  {s['name']:<14} {s['people']} people · doing {s['doing']} · "
                      f"next {s['next']} · done {s['done']} this week{extra}")
         lines.append(f"  {'':<14} head {s['lead'] or '-'}; "
                      f"{', '.join(m for m in s['members'] if m != s['lead']) or 'nobody else'}"
                      + ("" if s["has_desk"] else "; no desk"))
+    lines += ["", ("The independent auditor checks every finished task." if audit_on(cfg) else
+                   "The independent auditor is off: finished tasks are not checked. "
+                   "Turn it on with: bento company audit on")]
     return "\n".join(lines)
 
 

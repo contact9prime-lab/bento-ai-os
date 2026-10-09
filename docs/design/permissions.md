@@ -26,28 +26,41 @@ route through the same decision.
 
 ## Decision order (first hit wins) — `PDP.decide()`
 
-1. **Hard blocks** — `BLOCKED_PATTERNS` and legacy deny policies (folded into
-   `risk == "blocked"` by `Toolbox.risk_of`). Never overridable.
-2. **Built-in denies** — apps/subagents may never self-modify the OS
-   (`configure_agentos`, `update_soul`, `develop_agentos`, `restart_agentos`,
-   `snapshot_os`); subagents/workflows may never re-delegate (`agent.invoke`).
-   Not revocable, not grantable — same spirit as the hard blocks.
-3. **Deny grants** — deny wins over allow.
-4. **Allow grants** — an explicit grant *satisfies the approval requirement*:
-   consent already happened when the grant was written, so no re-prompt.
-5. **Defaults by principal kind** —
-   - `user`: today's autonomy semantics, byte-for-byte (safe runs; risky asks
-     unless autonomy is `full`; the legacy `cfg["policies"]` fnmatch rules keep
-     working through `risk_of`, as global rules for every principal).
-   - `app`: safe/read-only actions run; anything else → `ask` (a consent card
-     with **Allow & remember**, which writes a principal-scoped grant).
-   - `subagent`/`workflow`: autonomy semantics with the *effective* (capped)
-     autonomy; headless runs resolve `ask` to deny unless effective autonomy is
-     `full` (the pre-existing `headless_approver` behavior).
-   - `model.use` defaults to allow for everyone; restrict per principal with
-     deny grants (e.g. `deny model.use model:anthropic/*` for a subagent).
+1. **Hard blocks.** `BLOCKED_PATTERNS` and deny Rules (Permissions → Rules), folded into
+   `risk == "blocked"` by `Toolbox.risk_of`. Never overridable.
+2. **Built-in denies.** Apps, specialists, missions, peers and linked teams may never
+   change the OS itself, define flows or agents, or convene a huddle; specialists may
+   never delegate further (which keeps the tree two deep).
+3. **Hands.** The agent's executor profile (`agentos/hands.py`) says which tools,
+   folders, web addresses and MCP servers it can reach. A ceiling, so no grant passes it.
+4. **Channel ceiling.** A way in set to read-only refuses anything that is not safe.
+5. **Untrusted content.** After a web page, a mail, an MCP result, a plugin tool or a
+   download in the shell, a step that is not safe asks a person (`strict`: refused). It
+   is judged on the tool's OWN risk (`base_risk`), never on what a Rule lowered it to,
+   and the few safe tools that write something read back later (`TAINT_WATCH`: memory,
+   the graph, skills, automations) count as risky here. The card offers no remember.
+6. **Rate ceiling.** Too many calls too fast: steered once, then quarantined.
+7. **Agent messages.** Decided in full by the team matrix (`agent.message`).
+8. **Grants.** Deny wins over allow; a grant may be scoped to ways in (`surfaces`), to
+   one mission's runs (`source_ref` `flow:<name>`), to one conversation (`conv:<id>`),
+   and may expire (`expires_at`).
+9. **Defaults by principal kind.**
+   - your agent and specialists: `paranoid` asks for anything that is not reading
+     (`PARANOID_FREE`), `balanced` asks for risky steps, `full` runs them. Starting
+     another agent asks once per agent below `full`.
+   - an app: the web (`net.fetch`) and a few harmless tools run (`APP_FREE_*`);
+     everything else asks with a remember offer, or comes from its approved manifest.
+   - `model.use` defaults to allow; restrict with deny grants.
+   - the four actions confirmed every time (`ALWAYS_ASK`) ask whatever the autonomy,
+     and offer no remember.
 
-`risk_of` stays the **risk classifier**; the PDP is the **decider**.
+`risk_of` is the risk classifier and the PDP is the decider. Every tool has a risk of
+its own: `SAFE_TOOLS` names the safe ones, `risk_of` has a line for each risky one, and
+anything else is risky until somebody decides otherwise (`tests/test_gate_hardening.py`
+fails on an unclassified tool). A shell command is safe only when every command in the
+line is on the read-only list in its read-only form (`classify_command`), and a Rule or
+a grant written for one command covers that command, one at a time: `git *` does not
+cover `git log; bash -c …` (`command_covered`).
 
 ## App identity
 
@@ -66,10 +79,12 @@ iframes) — tightening that is v2 (`api:` resources on grants).
 
 ## Consent flows
 
-- **Runtime** (`server.request_approval`, a global broker): an ungranted call
-  raises the approval card; **Allow & remember** persists a sensibly-generalized
-  grant (`PDP._offer`) for that principal only. Main-agent (`user`) approvals
-  keep the old global "Always allow" policy button.
+- **Runtime** (`server.request_approval`): an ungranted call raises the approval card
+  for the account that asked, and only that account can answer it. The card offers
+  Allow once, Deny, and Remember for this chat, for an hour, or always, each a grant
+  for the one principal that asked (`PDP._offer`, written by `policy.write_remembered`
+  for every surface: the card, Telegram, the terminal UI and `bento flow allow`). The
+  old "Always allow" button, which wrote a Rule every app and specialist shared, is gone.
 - **Install-time** (`showConsent` in the UI): manifest permissions render with
   required/optional toggles; approving writes `source=manifest` grants and
   retires any legacy grant (`/api/apps/{id}/manifest/approve`).
@@ -122,8 +137,8 @@ Secrets never leave the OS: MCP prerequisites carry `env_template` /
 `POST /api/apps/import/{iid}/confirm` installs with exactly the accepted grants,
 adds opted-in MCP servers **disabled** (user fills keys in the MCP app first)
 and installs opted-in skills via the existing skill installer. `signature` is
-reserved for a future ed25519 signing scheme (checksum-only in v1: integrity,
-not authorship).
+an Ed25519 signature over the checksum (`bento registry sign`), shown on the consent
+screen as verified, unsigned or bad-signature.
 
 ## Files
 
@@ -134,5 +149,7 @@ not authorship).
 - `agentos/server.py` — approval broker, `_principal_of`, privilege guard,
   grants CRUD, manifest propose/approve, export/import, legacy migration
 - `agentos/fabric.py` — subagent principals; model restriction fallback
-- `agentos/ui/index.html` — Permissions app, `showConsent`, approval card with
-  Allow & remember, Store Import tab, Studio Export/Review
+- `agentos/ui/src/js/20-permissions.js` (Permissions app), `19a-audit.js` (Ledger,
+  with Check the chain), `09-websocket.js` (the approval card); built into
+  `agentos/ui/index.html`
+- `agentos/__main__.py` — `bento grants`, `bento audit [--verify]`, `bento quarantine`

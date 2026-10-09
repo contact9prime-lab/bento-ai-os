@@ -44,6 +44,8 @@ Protokoll, in dem jede Manipulation auffällt.
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 Öffnen Sie dann **http://127.0.0.1:8321**. Bento lauscht nur auf localhost, bis Sie selbst den
 [Fernzugriff](../remote-access.md) einschalten. Es gibt kein Konto anzulegen, keine Telemetrie und
 keine Cloud, solange Sie keinen Schlüssel hinzufügen.
@@ -432,6 +434,12 @@ Admins verwalten zusätzlich den Rechner, und derselbe Benutzername samt Passwor
 Handy aus. [Benutzer →](../users.md)
 
 ![Die Users-App: zwei Konten, ein Admin und eines mit der Rolle Executor](../screenshots/users-two-accounts.png)
+
+### Backups und ein Ersatzrechner in der Cloud
+
+`bento backup` packt den ganzen Rechner in eine versiegelte Datei: jedes Konto, den Tresor und den Arbeitsordner. `bento restore` stellt sie auf diesem oder einem neuen Rechner wieder her. [Backup →](../backup.md)
+
+Koppeln Sie ein zweites Bento auf einem Cloud-Rechner, und es hält sich mit einer versiegelten Kopie bereit. Wird Ihr Rechner still, macht die Cloud mit Ihren Missionen und Kanälen weiter und gibt die Arbeit zurück, sobald Ihr Rechner wieder da ist. Mit aktivem Sync erreicht jede Änderung die Cloud binnen Sekunden, auch jede Chat-Nachricht. [Cloud-Bereitschaft →](../standby.md)
 
 ### Ihren Agenten teilen, den eines anderen forken
 

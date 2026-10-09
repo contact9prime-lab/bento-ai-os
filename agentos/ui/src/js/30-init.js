@@ -102,6 +102,8 @@ connect();
   setTimeout(()=>{
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
     if($('#setup-wiz'))return;      // a first run has no desktop to bring back
+    // the kiosk face (24h-kiosk.js): this machine's own screen as the Office, listening
+    try{if(typeof kioskApply==='function')kioskApply()}catch(e){}
     // Bring back the desktop this page had before it reloaded. After the splash,
     // so eight windows do not animate in behind it, and never during setup.
     try{if(typeof sessionRestore==='function')sessionRestore()}catch(e){}
@@ -119,7 +121,7 @@ async function updateWaitingCheck(){
     const d=await (await fetch('/api/update')).json();
     if(!d.pending_restart)return;
     toast(`An update (build ${d.pending_restart}) is installed but not running yet — this is still build ${d.build}.`,
-      {kind:'warn',ms:60000,label:'Restart now',go:async()=>{
+      {kind:'warn',ms:15000,label:'Restart now',go:async()=>{
         const r=await fetch('/api/update/restart',{method:'POST'});
         const j=await r.json().catch(()=>({}));
         toast(r.ok?'restarting into the update — this page reloads by itself':(j.error||'could not restart'),r.ok?{}:{kind:'err'});

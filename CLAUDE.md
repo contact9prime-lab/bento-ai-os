@@ -190,6 +190,28 @@ Three things will bite whoever touches this next:
   strips the personal keys before an admin's save reaches it — leaving a Telegram token
   there hands it to the next person who signs up.
 
+**A shared folder is one computation, and every agent and app reads it** (`tools.shares_for`;
+`tests/test_shared_folders_reach.py`). Reported as "I allow certain folders and it doesn't
+detect them", and it was five gaps, so check all five when you touch sharing:
+- **An admin's machine save must reach the server's own machine dict.** `machine_changed`
+  updated every account's cached view but not `state.machine_cfg()`, which `/api/folders`
+  and the Terminal's jail read: the share saved, then vanished from the Users app.
+  `users.bind_machine` registers that dict at start; it covers every machine key, not only
+  `sandbox`.
+- **A share names an account by id or by name; both match.** Ids are random hex, and
+  `bento folders add --users ada` stored the name, which matched nobody. Writes go through
+  `share_users` (names become ids, an unknown name is refused); `share_label` shows names.
+- **A forwarded turn gets the shares in its own CLI's words** (`Envelope.shares`, filled by
+  `envelope_from`). Claude Code: `--add-dir` each, and `--disallowedTools Edit(//path/**)` for
+  a read-only one when the run can write (an Edit rule covers Write). Codex reads the disk
+  already; `--add-dir` only for a read-write one when it writes. Gemini CLI has no per-folder
+  mode, so a writing run gets only the read-write shares and `shares_note` says which it
+  lacks. Never hand Gemini a read-only share on a run that can write.
+- The built-in agent's prompt lists them (`_system`), `outputs.roots` includes them (chips,
+  downloads, Telegram/WhatsApp `send_files`, the Office cabinet), and the Files app browses
+  them (`/api/files?root=`, refused unless it is one of `_file_places()`).
+- `list_folders` shows a non-admin only their own shares: the list names other accounts.
+
 **A passphrase is not a user, and the two locks are alternatives.** `remote.lock_kind`
 is the whole rule: accounts win, and a shared passphrase in front of them is one more
 secret held in common by people this OS otherwise keeps in separate directories. Every
@@ -388,6 +410,25 @@ Keep `jobs.py` free of HTTP and asyncio. That is what lets `bento job` be the sa
 catalogue and the same install on a headless Pi, which is where a standing job earns its
 keep and where there is no wizard.
 
+**Every run that happened on its own is in Missions → History, and a schedule's runs are
+one tap from its row** (`agentos/runlog.py`, `14c-history.js`, `/api/missions/history`,
+`bento job history`; `tests/test_mission_history.py`). Reported as "I can't find the runs
+of the schedules in the mission": a scheduled prompt's answer was a chat with no link back
+to its schedule, the Schedule tab showed only `last_result`, and mission runs were under
+Build → Runs. Three things keep it one answer:
+- **Every firing is a `task_runs` row** (`Scheduler._run_task`, start and finish), with the
+  door: a conversation for a prompt, a `run_id` for a mission. A mission run is ONE row in
+  the history, its flow run (`origin_surface='task'`, `origin_ref`=task id names the
+  schedule); a task_runs row with a `run_id` is never listed a second time. A mission the
+  schedule could not start is `skipped` with the reason, so a schedule that did nothing
+  still leaves a line.
+- **`runlog.history` is the only reader** for the tab, the Runs buttons (a schedule row
+  filters by `task_id`, a mission row by `mission`), the route and the CLI. `_status` maps
+  the recorded word to the six the page draws; a run still `running` past `STALE_S` reads
+  as stopped, never as working.
+- `task_runs` is pruned with `usage` (a year), and kept after its task is deleted: it is
+  history.
+
 ## Your company: departments are the Office's rooms, desks are flows, people are specialists
 
 `agentos/company.py` + `24g-company.js` (the Office's ▦ Company panel and the card over each
@@ -420,6 +461,33 @@ persona". Full story in `docs/company.md`; `tests/test_company.py` pins what fol
 
 The lead hears the org chart (`company.note`, appended after `team_note` in `agent.py`; the
 team door gets `desks=False`, because it has no `run_flow`).
+
+**An independent auditor checks every finished department task, by default**
+(`ControlPlane.audit`, called at the end of `run_flow` before delivery; `company.AUDITOR`,
+`audit_task`, `read_verdict`, `audit_state`; `tests/test_company_audit.py`). Asked for as
+"validation should happen once any department completes a job, by an auditor independent
+of the main agent". Five rules keep it independent:
+- **The control plane starts it, never the master.** It is on no roster, so `delegate` is
+  refused by the roster rule; `normalize` drops a person named `auditor` from any plan;
+  and an auditor that sits in the department, or on the desk's roster, gives `skipped` with
+  the reason rather than checking itself.
+- **Read-only whatever its definition says.** `kind="audit"` in `run_subagent` filters to
+  `AUDIT_TOOLS` after every automatic addition (remember, brief_item, ask_agent), so an
+  edited auditor still cannot write, file or message. It is told what the run filed in the
+  Brief, because it has no tool to read the Brief, and the first live run was unable to
+  confirm one.
+- **The verdict is read strictly.** The first word must be PASS, CONCERNS or FAIL;
+  anything else is `unchecked`, never a pass. Handles that read untrusted content are
+  fenced, and the rubric comes last.
+- **The audit run is the record.** A child of the desk run with kind `audit` (status
+  `skipped` with the reason when it could not be independent); `_task_rows` reads the
+  verdict back from that row, so the board, the card's ⚑ and `bento company` cannot
+  disagree. Also a `company.audit` ledger row, and a Brief item (`audit-<run>`) when it is
+  flagged or could not run. The deliverable is never rewritten: the verdict line goes
+  after it in what is delivered.
+- **On unless the person says otherwise** (`company.audit`, a USER_KEY, so `apply` must
+  merge `cfg["company"]` rather than replace it). The switch is a ledger row. `force=True`
+  (the page's Check it, `bento company check`) checks a task the switch skipped.
 
 **Every scene draws the company from ONE answer, `company.membership()`** (who is in which
 department, its head, whether that head was NAMED, the colour's hex, each title). The Crew
@@ -562,11 +630,121 @@ what follows. Kept free of HTTP and asyncio, so both verbs work with the server 
   vault opens; the report says the protection got weaker. Never mint a new key here.
 - **Paths follow the machine** (`_remap`): values under the old `AGENTOS_HOME` or user home
   are rewritten in every `config.json` and every `executor_profiles` spec. A prefix is a
-  whole folder (`/home/adam` is not under `/home/ada`).
+  whole folder (`/home/adam` is not under `/home/ada`). The database columns that name a
+  folder a mission uses are `DB_PATH_COLUMNS` (`_remap_text`, one pass, so a rewritten
+  path is never rewritten again): without them a folder-watch mission kept watching the
+  old machine's path, found moving a laptop to a cloud container. Never `audit`.
+- **An empty workspace folder is filled, never nested into.** A fresh install makes
+  `~/AgentOS` on its first start, and `shutil.move` into an existing folder put the
+  workspace at `~/AgentOS/workspace` while the config said `~/AgentOS`.
 - **A snapshot restores code only into the version it was taken on** (`meta.version`).
   Copying its `.py` files over a newer install rolled half the program back.
 - **The shipped bundle must parse** (`test_the_shipped_bundle_parses`, with Node): one
   dropped `pRow(` in Settings killed every app while every other test passed.
+
+## Cloud standby: one side acts, the other holds a sealed copy
+
+`agentos/standby.py` + `/api/standby*` + `bento standby` + Settings → System → Cloud
+standby (`11h-standby.js`). Asked for as "run it first on my machine and then jack it to a
+cloud … it only runs on the cloud when my local is not available". Full story in
+`docs/standby.md`; `tests/test_standby.py` pins what follows.
+
+- **One side acts.** `standby.passive()` is read at startup and none of the acting runners
+  start (scheduler, Telegram, WhatsApp resume, parked runs, team listener and chat sweep,
+  attention, knowledge maintenance, session triggers). `standby_gate` serves the
+  standing-by page and 503s the API; `_ws_reject` refuses sockets, because middleware
+  never sees one. The gate is registered BEFORE `remote_access_gate`, so it runs after it.
+- **The copy is a backup** (`backup.create`/`verify`/`stage`/`apply_pending`), sealed with
+  the pair's secret. `.standby` is in `backup.PRIVATE`: the pairing never travels and a
+  swap never moves it. The standby checks every copy in full and keeps the one before.
+- **`last_contact` is the last time the standby was heard QUIET.** A beat that finds it
+  working must not move it, because `come_back` counts this machine's work since then
+  (`worked_since`: people's messages, runs, scheduled firings). Stamping it on that beat
+  made the window empty and the cloud's copy replaced ours; found live, kept aside.
+  Both worked means SPLIT: ours stays, theirs is saved (`adopt` / `dismiss_split`).
+- **The machine's own door never travels** (`LOCAL_KEYS`, `keep_door` before a stage,
+  `after_swap` after `apply_pending` in `serve`). The cloud keeps the lock that made it
+  reachable. `after_swap` also keeps only the newest `KEEP_ASIDE` swaps' asides.
+- **A woken laptop waits for a heartbeat** (`may_act`, checked by the scheduler): the
+  last attempt is older than three intervals, so nothing fires until the next beat says
+  whether the cloud is working. A cloud that can't be reached does not hold it up.
+- **The peer door** is `/api/standby/peer/`, in `REMOTE_OPEN_PATHS`; each route checks the
+  Bearer token (hashed on the standby) behind `too_many_bad`, and `pair` checks the
+  one-time code instead. Person routes are admin-only. Pairing wants HTTPS off a private
+  network (`url_problem`).
+- **`serve` brings the work back before the home opens** (`standby.boot` before
+  `apply_pending`), and a release is two steps (`release` then `done`) so a main machine
+  that dies mid-fetch asks again and gets the same file.
+- **A staged swap is quiet** (`switching()` inside `passive()`): a takeover writes
+  "active" and THEN restarts to swap the copy in; in between the cloud answered as you
+  from its own empty home. Found by the end-to-end run (`docs/standby.md` → Tested).
+- **The container is the cloud that was tested.** The end-to-end run pairs a laptop
+  process with the real image (entrypoint, `/data`, passphrase) and a fake provider and
+  Telegram, and compares every table of every database after each hand-over.
+
+**Active sync is a journal and small sealed updates, never a merge** (`agentos/standbysync.py`,
+`standby.sync`/`receive_update`, `/api/standby/peer/update`, `_standby_sync_loop`,
+`bento standby set --active`; `tests/test_standby_sync.py`, live run
+`packaging/dev/standby-e2e/active_sync.py`). Asked for as "before every chat it is sending the
+chat, context and relevant information … and did we change the system anywhere". Six rules:
+- **Rows are caught by triggers into `_bento_sync`**, on every table of every database
+  (`ensure`), because ~250 call sites write and no hook through them would stay complete.
+  ONLY a working main machine with active sync keeps them: `_standby_start` calls `ensure`
+  on every side at start, `replay` drops them from a staged takeover, turning it off drops
+  them. A home restored anywhere else must never journal for nobody.
+- **An update carries each row's CURRENT value**, read at send time (`_db_changes`), so
+  replay is idempotent and converges. The journal's AUTOINCREMENT high-water travels inside
+  every full copy (it is in the database); `replay` skips entries at or below it. That is
+  what makes a copy and the updates around it fit without a lock.
+- **An update builds on a named copy** (`X-Bento-Copy`, `copy_id`/`update_n` on the standby).
+  Anything the standby cannot place (another copy, a gap) is a 409 and the main machine sends
+  a full copy. Never apply an update to a copy it was not built on.
+- **A new vault goes in a full copy**, because a vault's key travels only there; so does a
+  change of more than `MAX_ROWS` rows. A file over `FILE_CAP` waits for the next copy.
+- **The machine's own facts are `meta`** (version, brain, installed agent CLIs), diffed into
+  words (`meta_changes`) and shown by the standby (`feed`, `carry_notes`). They are reported,
+  never installed: nothing here installs software on the other machine.
+- **A clean shutdown flushes** (`_standby_flush`, first thing in `shutdown`), bounded, and is
+  skipped while a swap is staged (`bk.pending()`): flushing then would send the home that is
+  about to be replaced over the cloud's newer copy.
+
+## Put Bento in the cloud: one click, free, and the memory survives
+
+`agentos/clouddeploy.py` (the one list) + `render.yaml` + `fly.toml` + Settings → System → Put
+Bento in the cloud (`11i-clouddeploy.js`) + `/api/cloud/deploy` + `bento cloud`; `docs/cloud.md`,
+`tests/test_cloud_deploy.py`. Asked for as "deploy it quickly to the cloud … noob for anyone,
+so sso and done". Five things keep it honest:
+- **The one-click road is Render's FREE plan, and its disk is wiped on every restart**, so the
+  home is kept sealed in a storage bucket the person owns (`agentos/keep.py`; asked for as "deploy
+  the agent in the cloud free and make it work"). It is S3-compatible storage, Backblaze B2 first
+  (10 GB free, no card), and NOT GitHub: the first cut used a secret gist and the owner's answer was
+  "you can't be storing memories on GitHub". The S3 client is ours (`_sign`, SigV4, path-style,
+  checked against botocore and AWS's published example, which the test pins), so there is no boto3.
+  Four rules: restore only into an EMPTY home (a host that kept its disk is never rolled back); a
+  save writes the slot that is not current and THEN the index, so the copy before stays whole; a
+  copy sealed with another password is never overwritten (the machine starts fresh and saves under
+  a new prefix); the key stays in the environment (`BENTO_STORAGE_*`), never in config or the sealed
+  home. The save runs on a change at most every `MIN_GAP_S`, and once more on shutdown
+  (`_keep_flush`, FIRST in `shutdown`: the host gives ~30 s). `.keep` is in `backup.PRIVATE`. The
+  keep-awake visit (`BENTO_KEEP_AWAKE`, through `RENDER_EXTERNAL_URL`, every `AWAKE_S`) is set by
+  the blueprint and said in the docs: one service is ~744 of Render's 750 free hours. Hosts with no
+  free plan or no way to keep the home are in `NOT_OFFERED` with the reason. `tests/test_keep.py`
+  runs against `packaging/dev/free-cloud/fake_s3.py`, which checks every signature itself.
+- **The password is asked for on the host's page** (`sync: false` in the blueprint, `fly secrets`),
+  never written in a file, so the machine is locked from its first second. The card suggests one
+  (`suggest_passphrase`, fresh per answer, never stored).
+- **The entrypoint listens on the host's `PORT`** (`AGENTOS_PORT` wins, then `PORT`, then 8321).
+  Render routes only to its own port; reading only `AGENTOS_PORT` was a deploy that never came up.
+- **Setting the same passphrase again keeps its hash.** The entrypoint runs `bento remote --on
+  --passphrase` on every start, and sessions are signed with the hash; a fresh salt each time
+  signed everybody out on every redeploy. A different passphrase still rotates it.
+- **The health check is `/login`**, because it is in `REMOTE_OPEN_PATHS`; a path behind the
+  lock reads 401 to the host and the deploy is marked failed. The test ties the two together.
+The button reads `render.yaml` from the default branch of `updates.repo_of(cfg)`, so a fork
+deploys itself. Nothing here deploys anything; it opens the host's page. Tested by running the
+image as Render does (`PORT=10000`, a proxy's `X-Forwarded-Proto`), ~100 MB idle; the free path
+by `packaging/dev/free-cloud/run.py` (0.1 CPU, 512 MB, no volume, stand-in S3 storage and model). A
+stand-in model needs a price set before its first turn, or the turn waits on the price card.
 
 ## Sign in with Google / Microsoft: the door that asks for nothing to type
 
@@ -1307,6 +1485,38 @@ Release is a user decision with three shapes, all recorded in `quarantine.releas
 `once` (still watched), `forever` (an exemption, which is why the row is kept rather than
 deleted), `deleted`.
 
+## The gate is only as good as what it is handed: risk, rules and remembers
+
+A review in 0.6.18 found the PDP sound and its INPUTS wrong, each confirmed by running it
+(`tests/test_gate_hardening.py`). Five rules came out of it:
+
+- **Every tool has a risk of its own, and an unclassified one is risky.** `SAFE_TOOLS` names
+  the safe ones and `risk_of` has a line for each risky one. The old fall-through was
+  `safe`, so `run_python` (whose docstring claimed it passed the gate) ran unasked at every
+  autonomy level and was exempt from the untrusted-content rule. A new tool asks until
+  somebody decides; the test fails on a tool that is neither.
+- **A shell command is safe only in its read-only form.** `env`, `awk`, `sed` and
+  `printenv` left `SAFE_COMMANDS` (they run programs or leak keys); `_segment_writes` names
+  what turns `curl`, `wget`, `sort`, `ip`, `find`, `xrandr`… into a write or a run, and a
+  lone `&` is dangerous. A download in the shell taints the turn (`tools.FETCHES`).
+- **A Rule lowers risk for your agent, never for an app or for the taint ceiling.** The
+  gate gets `base_risk` (the tool's risk before any Rule) and judges untrusted content,
+  read-only channels and apps on it. A Rule or grant written for one command covers that
+  command one at a time (`policy.command_covered`): `git *` does not cover `git log; bash`.
+- **Remember is a grant for the one principal that asked, and it has a length.** The card
+  offers this chat (`source_ref` `conv:<id>`, a day at most), an hour, or always, all
+  written by `policy.write_remembered` for every surface. The fallback that wrote a
+  machine-wide Rule ("Always allow") is gone and must not come back: it widened every app
+  and specialist and switched the untrusted-content rule off for its pattern. A taint card
+  and an ALWAYS_ASK card offer no remember.
+- **An app reaches the web and a few harmless tools without a grant** (`APP_FREE_*`), and
+  nothing else. Paranoid asks for everything but reading (`PARANOID_FREE`). Approvals carry
+  the asking account's `uid` and only that account sees or answers them
+  (`server._approval_mine`). `/api/tool` strips the loop's own `_` arguments.
+
+The gate's grant cache also keys on SQLite's `data_version` (`Store.outside_writes`), so a
+grant written from a terminal (`bento grants`) is seen by a running server at once.
+
 ## Everything a principal does goes in the ledger
 
 `PDP.decide()` writes one `audit` row per decision. That is the only place it happens, and
@@ -1340,6 +1550,11 @@ most likely to quietly break. Full audit and rationale in `docs/design/tenant-is
   never runs for a socket; `_ws_user` reads the account from the signed cookie and every
   turn/build enters `users.as_user(uid)` before the first `state["store"]` read. A turn that
   read the store first and set the user second would act as the machine, not the person.
+  The `/ws` handler also sets `users._current` for its own task right after `_ws_user`,
+  because its receive loop reads the store itself: a NEW chat's conversation row was
+  created in the machine's database while its messages went into the person's, so on a
+  machine with accounts the chat never reached its owner's list and every account's titles
+  piled up in one shared file. `tests/test_ws_account.py`.
 
 - **A WebSocket has no HTTP middleware, so it checks its ORIGIN by hand too.** The same
   reason `csrf_origin_guard` cannot see it. A browser attaches the site's cookies to a
@@ -1597,6 +1812,11 @@ things keep it true:
 - **The plan is office.py's closed set and the cast is the real one**: an unknown member is
   dropped and NAMED, one desk each, a deleted specialist leaves no named chair. `office` is a
   USER_KEY; a person's change is an `office.write` audit row, the agent's is its own action.
+- **A running chat is work until turn_end** (`officeLive`, the "…" balloon). A forwarded
+  brain sends its answer only at the end (measured: 50 silent seconds), and a desk that
+  went dark after `OF_WORK_MS` read as the Office ignoring the chat. The same silence is
+  why Chat draws the reply's name and face at `turn_start`, and why the presence bubble
+  counts only turns not already on screen (`turnOnScreen`). `tests/test_chat_liveness.py`.
 - **The chat is the window's own agent panel moved into the layout** (`initCopilot(w, .of-chat)`),
   and the window's ✦ is hidden — a second copy of the same thread would be two chats. A
   huddle asked there is drawn there: `agent_say` reaches the panel's `miniFeed.say` as well as
@@ -2139,6 +2359,77 @@ Full story in `docs/team.md`. Four rules:
 - **A person is who the server knows.** On a machine with accounts the sender is the account's
   name; `team.my_name` exists only where there are no accounts (`PUT /api/team/me` refuses
   otherwise) — a name somebody can type is not an identity.
+
+## A community of machines: the leader holds the keys, and leading is consented to
+
+`agentos/pool.py` + `bento pool` + Settings → Agents → Community (`24i-pool.js`) + `/api/pool*`;
+`docs/pool.md`, `tests/test_pool.py` (three machines in one process over real mTLS), live run
+`packaging/dev/pool-e2e/run.py` (three `bento serve`s, the leader killed and brought back).
+Asked for as "a pool mode where multiple small computers make a bigger task … they elect a
+leader and the leader has all the creds". Seven things keep it honest:
+- **It rides linked teams, never beside them.** A member and its leader are a machine link a
+  person approved with six digits; every community request is a `teamlink.POOL_OPS` op on that
+  door, answered by `Listener.on_pool` as the MACHINE (`users.as_user("")`). Members reach each
+  other for a failover through `kind="pool"` links written from the leader's roster: pinned to
+  the fingerprint like any link (`_by_fp`, `_server_ctx` trust them), hidden from `links()`
+  views, and refused every op that is not a community op. Never widen that refusal.
+- **Admission is ONE grant on each side.** Approve writes `pool:<16-hex fp>` `model.use
+  model:*` on the leader (`source="pool"`); joining writes `pool:<pool id>` `pool.work
+  agent:subagent/worker` on the member. `PDP._default` refuses a `pool` principal everything
+  else (`pool-default`, never ask: nobody is at a network call's end) and `BUILTIN_DENY["pool"]`
+  is the belt. Removing or leaving revokes them; Permissions can revoke either directly.
+- **The leader thinks for members through its own gate.** `pool/<model>` on a member is
+  `providers.chat` → `pool.chat` → op `pool_llm`; the leader runs it on its own provider after
+  `PDP.decide(pool, model.use)` with `tool="pool_llm"` (in `LLM_TOOLS`, so the rate ceiling and
+  quarantine meter it), and records usage as `surface="pool"`. `usage.price_state` is `pool` on
+  the member: it pays nothing, so it must never wait on a price card. A member's keys never move.
+- **Leading is consented to, and the election needs no vote over the network.** Only a machine
+  whose own admin set `lead_ok` and that `has_brain` (a PROVIDER model; an agent CLI cannot
+  answer a member's messages-and-tools call) is `eligible`. `successors()` is a pure ranking
+  every member computes from the same roster (pin, then capability, then fingerprint). The next
+  machine promotes on `pool_elect` only after failing to reach the old leader ITSELF. Terms
+  order everything: a claim with a higher term from an eligible roster machine is followed; a
+  leader that hears a higher term steps down and drops the grants it wrote. A leader asks once
+  after it starts (`_asked`): it may have been replaced while it was off.
+- **Notes are other machines' words.** `community_recall` is in `agent.UNTRUSTED_TOOLS` and
+  `SAFE_TOOLS`; notes are never injected into a prompt (the lead gets one line, `pool.note()`).
+  `remember(community=true)` writes them; the action is `memory.write memory:community`. The
+  leader numbers notes (`seq`); a member's note is `pending` until the leader takes it, keyed by
+  id so a resend is taken once. Forgetting is a tombstone with a new seq.
+- **Work from the community runs tainted, on the member's worker.** `pool_task` (leader only,
+  risky, action `pool.task`) hands pieces out at once; `_pool_work` checks the sender is the
+  CURRENT leader and the `pool.work` grant, then `run_subagent(worker, kind="pool",
+  taint=[community])`, so a risky step needs a person at that machine and is refused without one.
+- **A pinned peer's line may be bigger, a stranger's never.** `POOL_LINE` (4 MiB) is set on the
+  reader only after the certificate matched a link (`_handle`); a model call carries a whole
+  conversation. `call(limit=)` matches it on the way back.
+
+## This machine's screen: one agent, and the kiosk that listens
+
+`agentos/face.py` (settings) + `agentos/hearing.py` (speech to text) + `24h-kiosk.js` +
+`27-kiosk.css` + Settings → Appearance → On this screen + `/api/face`, `/api/speech/hear` +
+`bento face`; `docs/small-screens.md`, `tests/test_face.py`. Asked for as "a single buddy /
+agent ui interface option for Light mode … there will be a kiosk mode as well where mic would
+be on and agents would be working in the office". Five rules:
+- **Both are the MACHINE's** (`face` is not a USER_KEY): a screen belongs to the box it is
+  plugged into. Admin-only to change on a machine with accounts; a `face.write` ledger row.
+- **One agent hides people, never work.** `office.view` keeps only the lead and lounge rooms
+  and still returns every agent; `officeMatch`/`crewMatch` send an unknown label to the lead, so
+  a specialist's work lights the lead's desk. `faceBuddy()` reads `OFFICE.view.buddy` first and
+  `PLATFORM.face` second, in a try, because `PLATFORM` is a `let` in a later file.
+- **The kiosk is for the attached screen only** (`kioskWanted`: not `remoteClient()`, or
+  `#kiosk`). It hides the chrome but never `.ap-float` or toasts: a kiosk turn is an ordinary
+  chat (`origin:'kiosk'`, `sinkOn`), gated like any other. `suiChrome()` returns zero bands
+  while it is on; `crewCovered()` is false (the scene IS the screen); `applyImmersive` must not
+  stop the office scene under it.
+- **Hearing is the server's.** Chromium on a Pi has no key for the browser recogniser, so the
+  page records one utterance (RMS against the room's own floor, cut at a 900 ms pause, 16 kHz
+  WAV, deaf while the agent speaks) and posts it; `hearing.status()` is the one answer to "can
+  this screen listen?" (whisper.cpp first, then the OpenAI key), and with neither the kiosk
+  shows that sentence and no mic. whisper.cpp is used if present and never installed for you.
+- **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
+  `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
+  it to video or another origin.
 
 ## Window chrome: the rules that keep a stack readable
 

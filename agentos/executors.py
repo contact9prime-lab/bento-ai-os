@@ -102,6 +102,11 @@ class Envelope:
     # bridge token) and the scratch folder holding those files, removed afterwards.
     extra_env: dict = field(default_factory=dict)
     scratch: str = ""
+    # The folders an admin shared with this account (Users → Shared folders), as
+    # ((path, "ro"|"rw"), ...). The built-in agent always had them; a forwarded turn
+    # never did, so Claude Code answered "I can't see that folder" about one the
+    # person had shared. `envelope_from` fills it from `tools.shares_for`.
+    shares: tuple = ()
 
     def describe(self) -> str:
         """One sentence a person can approve or refuse."""
@@ -110,6 +115,9 @@ class Envelope:
         where = self.workspace
         if self.allow_source and self.engine != "codex":
             where += " and AgentOS's own source"
+        if self.shares:
+            n = len(self.shares)
+            where += f" and {n} shared folder{'s' if n > 1 else ''}"
         title = EXECUTORS_BY_ID.get(self.engine, {}).get("title", self.engine)
         # Only Claude Code takes a spend ceiling; saying "up to $2" of a CLI that
         # has no such flag would be a promise nothing keeps.
@@ -139,7 +147,72 @@ class Envelope:
                         engine=self.engine if self.engine in DRIVEN else "claude-code",
                         transcript=str(self.transcript or "")[-6000:],
                         fallback=str(self.fallback or "")[-6000:],
-                        extra_env=dict(self.extra_env or {}), scratch=self.scratch)
+                        extra_env=dict(self.extra_env or {}), scratch=self.scratch,
+                        shares=_clean_shares(self.shares))
+
+
+def _clean_shares(raw) -> tuple:
+    """((absolute path, "ro"|"rw"), ...) — anything else dropped, an odd mode read-only."""
+    out = []
+    for item in raw or ():
+        try:
+            path, mode = item
+        except (TypeError, ValueError):
+            continue
+        path = str(path or "")
+        if not os.path.isabs(path) or any(p == path for p, _ in out):
+            continue
+        out.append((path, "rw" if mode == "rw" else "ro"))
+    return tuple(out)
+
+
+def shares_of(cfg: dict) -> tuple:
+    """The shared folders for whoever is acting, in the envelope's shape."""
+    try:
+        from .tools import shares_for
+        return tuple((s["path"], s["mode"]) for s in shares_for(cfg or {}))
+    except Exception:
+        return ()
+
+
+def _writes(env: "Envelope") -> bool:
+    return any(t in env.tools for t in ("Write", "Edit", "Bash"))
+
+
+def reachable_shares(env: "Envelope") -> tuple:
+    """The shares this run is actually handed, which depends on the CLI.
+
+    Claude Code and Codex can keep a folder read-only, so they get every share.
+    Gemini CLI has no per-folder mode, so a run that can write gets only the
+    read-write shares; handing it a read-only one would make it writable."""
+    if env.engine == "gemini-cli" and _writes(env):
+        return tuple(s for s in env.shares if s[1] == "rw")
+    return tuple(env.shares)
+
+
+def shares_note(env: "Envelope") -> str:
+    """The lines that tell the executor which shared folders it has, and how."""
+    if not env.shares:
+        return ""
+    given = reachable_shares(env)
+    lines = ["Shared folders you can also use (the person shared these with you):"]
+    for path, mode in given:
+        lines.append(f"- {path} ({'read and write' if mode == 'rw' else 'read only'})")
+    left = [p for p, _ in env.shares if (p, "ro") not in given and (p, "rw") not in given]
+    if left:
+        lines.append("Not available in this run, because this CLI cannot keep a folder "
+                     "read only while it can write: " + ", ".join(left) + ".")
+    if _writes(env) and "Bash" in env.tools and any(m == "ro" for _, m in given):
+        lines.append("Treat the read-only folders as read only from the shell too.")
+    return "\n".join(lines)
+
+
+def with_shares_note(env: "Envelope") -> str:
+    """The run's context with the shared-folders note after it."""
+    note = shares_note(env)
+    if not note:
+        return env.context
+    return (env.context + "\n\n" + note) if env.context else note
 
 
 @dataclass
@@ -326,13 +399,15 @@ def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code"
         budget_usd=float(conf.get("budget_usd") or default_budget()),
         allow_source=bool(conf.get("allow_source")),
         engine=engine,
+        shares=shares_of(cfg),
     ).sanitized()
 
 
 async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                   emit=None, session_id: str = "",
                   context: str = "", team: dict | None = None,
-                  prior: list | None = None) -> tuple[str, "Run | None"]:
+                  prior: list | None = None,
+                  tools: tuple | None = None) -> tuple[str, "Run | None"]:
     """Send one turn to another agent and return what it said.
 
     Used by the surfaces that have no event stream of their own (Telegram, the
@@ -357,6 +432,8 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
         return (f"[error] {title} is installed, but AgentOS cannot run a turn on it yet — "
                 f"choose another brain in Settings → AI providers"), None
     env = envelope_from(cfg, workspace_default, engine)
+    if tools is not None:
+        env.tools = tuple(t for t in tools if t in KNOWN_TOOLS)   # narrower, never wider
     env.session_id = session_id if engine in RESUMES else ""
     if prior is not None:
         # the conversation's stored messages before this one: what the session has
@@ -452,7 +529,7 @@ async def ask_brain(cfg: dict, system: str, prompt: str, timeout: float = 180,
             from . import config as _cfgmod
             reply, _run = await asyncio.wait_for(
                 forward(engine, system + "\n\n" + prompt, cfg,
-                        default_workspace(cfg)), timeout)
+                        default_workspace(cfg), tools=()), timeout)
             reply = reply or ""
             if reply.startswith("[error]"):
                 return "", engine, f"{engine} could not answer: {reply[7:].strip()}"
@@ -1243,7 +1320,9 @@ def brains(cfg: dict, models: list[dict], engine: str = "") -> dict:
     for pid, mods in sorted(by_prov.items()):
         if not pid:
             continue
-        out.append({"id": pid, "name": pid, "what": "", "kind": "provider",
+        out.append({"id": pid, "name": "Your community's leader" if pid == "pool" else pid,
+                    "what": "The brain of the machine that leads your community" if pid == "pool" else "",
+                    "kind": "provider",
                     "engine": "aria", "provider": pid, "available": True,
                     "reason": "", "detail": f"{len(mods)} models", "licence": "",
                     "install_cmd": "", "install_note": "", "docs": "",
@@ -1585,8 +1664,18 @@ def build_command(task: str, env: Envelope) -> list[str]:
            "--tools", ",".join(env.tools) if env.tools else "",
            "--permission-mode", permission_mode(env),
            "--max-budget-usd", f"{env.budget_usd:.2f}"]
+    for path, _mode in env.shares:
+        cmd += ["--add-dir", path]
+    ro = [path for path, mode in env.shares if mode == "ro"]
+    if ro and _writes(env):
+        # An Edit rule covers every file-editing tool (Write included), and a deny
+        # rule holds in every permission mode. `//` is Claude Code's spelling of an
+        # absolute path in a rule; a space inside the parentheses is fine.
+        cmd += ["--disallowedTools", *(f"Edit(/{path.rstrip('/')}/**)" for path in ro)]
     if env.allow_source and env.context:
         env = Envelope(**{**env.__dict__, "context": env.context + source_note(source_root())})
+    if env.shares:
+        env = Envelope(**{**env.__dict__, "context": with_shares_note(env)})
     if env.team_mcp:
         # The person's specialists, reachable from a forwarded chat: ONE extra MCP
         # server (the bridge, bound to this turn), allowed by name so a headless
@@ -1624,8 +1713,9 @@ def _prompt_for(task: str, env: Envelope) -> str:
     so far (it cannot resume a session), then the task — each labelled, so the
     executor can tell what it is looking at from what it is being asked."""
     parts = []
-    if env.context:
-        parts.append("CONTEXT (from AgentOS, the desktop you are answering inside):\n" + env.context)
+    ctx = with_shares_note(env)
+    if ctx:
+        parts.append("CONTEXT (from AgentOS, the desktop you are answering inside):\n" + ctx)
     if env.transcript:
         parts.append("THE CONVERSATION SO FAR:\n" + env.transcript)
     parts.append(("THE REQUEST:\n" if parts else "") + as_prose(task))
@@ -1647,6 +1737,8 @@ def _gemini_command(task: str, env: Envelope) -> list[str]:
         cmd += ["--approval-mode", "auto_edit"]
     if env.allow_source:
         cmd += ["--include-directories", source_root()]
+    for path, _mode in reachable_shares(env):
+        cmd += ["--include-directories", path]
     if env.model:
         cmd += ["--model", env.model]
     if env.team_mcp:
@@ -1665,10 +1757,16 @@ def _codex_command(task: str, env: Envelope) -> list[str]:
     the workspace only. `exec` never stops to ask. `--skip-git-repo-check` because the
     workspace is a folder of AgentOS's, not a repository the person checked out."""
     exe = _find_bin(("codex",)) or "codex"
-    writes = any(t in env.tools for t in ("Write", "Edit", "Bash"))
+    writes = _writes(env)
     cmd = [exe, "exec", "--json", "--skip-git-repo-check",
            "--sandbox", "workspace-write" if writes else "read-only",
            "--cd", env.workspace]
+    if writes:
+        # Its sandbox reads the whole disk already, so a read-only share needs no
+        # flag; `--add-dir` makes a read-write one writable as well.
+        for path, mode in env.shares:
+            if mode == "rw":
+                cmd += ["--add-dir", path]
     if env.model:
         cmd += ["--model", env.model]
     if env.team_mcp:
@@ -2213,6 +2311,32 @@ async def _reap(proc) -> None:
             continue
 
 
+# The executor's own tools that bring somebody else's words into the turn. Claude Code
+# names them WebFetch / WebSearch; Gemini CLI web_fetch / google_web_search.
+NATIVE_UNTRUSTED = {"WebFetch", "WebSearch", "web_fetch", "google_web_search", "web_search"}
+
+
+def _taint_door(env: "Envelope", emit):
+    """A forwarded chat turn that read a web page with its own tools hands work to the
+    team as what it is: the team door's Agent is marked, so a specialist it starts
+    after that is held by the untrusted-content rule like any other turn. Before, the
+    door's Agent began every turn clean whatever the CLI had read."""
+    if not env.team_mcp:
+        return emit
+
+    async def wrapped(ev: dict):
+        if ev.get("type") == "tool_start" and ev.get("name") in NATIVE_UNTRUSTED:
+            from . import mcpbridge
+            sess = mcpbridge.SESSIONS.get(env.team_mcp[1])
+            agent = getattr(sess, "agent", None)
+            if agent is not None and hasattr(agent, "taint"):
+                args = ev.get("args") or {}
+                src = str(args.get("url") or args.get("query") or ev.get("name"))[:120]
+                agent.taint.append({"tool": ev.get("name"), "source": src})
+        await emit(ev)
+    return wrapped
+
+
 async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Run:
     """Delegate a task and stream it back through `emit`.
 
@@ -2224,6 +2348,7 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     run = run or Run()
     run.engine = env.engine
     Path(env.workspace).mkdir(parents=True, exist_ok=True)
+    emit = _taint_door(env, emit)
 
     # Say what the silence is. An external CLI executor spends its first stretch
     # spawning node and connecting every MCP server before it emits a single

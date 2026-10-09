@@ -203,7 +203,7 @@ def run_cli_wizard() -> None:
             print("  (no key — you can add one later in Settings)")
 
     print("\n  3/5  Autonomy — how much can the agent do without asking?")
-    print("       1. paranoid (ask for everything)  2. balanced (ask for risky)  3. full (never ask)")
+    print("       1. paranoid (ask for all but reading)  2. balanced (ask for risky)  3. full (never ask)")
     autonomy = {"1": "paranoid", "2": "balanced", "3": "full"}.get(_ask("Choice", "2"), "balanced")
 
     auto = _ask("4/5  Start AgentOS automatically at boot/login? (y/n)", "y").lower().startswith("y")

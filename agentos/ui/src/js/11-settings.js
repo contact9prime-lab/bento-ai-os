@@ -353,6 +353,11 @@ function setTab(body,all){
          more:'Both screens show the same six digits when you link. Nothing gets through until you choose which of your agents they can ask, and their answers are treated as untrusted.',
          f:'team linked teams remote machine mtls pair invite account handshake federation link request approve'}),
     ],{f:'team agents providers huddle'}));
+    /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
+       One machine leads and lends its brain; small machines join, share notes and take
+       pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
+    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
@@ -448,6 +453,9 @@ function setTab(body,all){
        Office's own Design panel and the setup step). Departments and who sits where
        stay in the Office, where you can see the desks. Terminal: `bento office`. */
     P.push(`<div class="pgroup" data-f="office scene crew playground design style pet name describe"><h3>Office</h3><div id="s-office"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    /* This machine's own screen: one agent drawn (buddy) and the kiosk face, both the
+       machine's (face.py), painted from /api/face by 24h-kiosk.js. Terminal: `bento face`. */
+    P.push(`<div class="pgroup" data-f="on this screen buddy one agent kiosk mic listening raspberry pi light mode speech whisper"><h3>On this screen</h3><div id="s-face"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     /* A look laid over the theme, not a theme: it is a switch here rather than
        a card in the gallery so that it composes with whichever theme is on.
        Applied the moment it is flipped, like the theme select above — Save is
@@ -535,6 +543,20 @@ function setTab(body,all){
          f:'restore backup import move from another machine migrate new computer recover'}),
     ],{f:'backup restore export import move migrate'}));
     setTimeout(paintBackup,0);
+    P.push(pGroup('Put Bento in the cloud',[
+      pRow('A cloud Bento in a few minutes','<div id="cd-box"><span class="mut">…</span></div>',
+        {desc:'Sign in with GitHub or Google, choose a password, press Deploy. It keeps working while your computer is off.',
+         more:'Render runs it with a disk, so nothing is lost on a restart. Fly.io and your own server are under Other ways. In a terminal: bento cloud.',
+         f:'cloud deploy render fly host hosting server vps online internet always on one click sso quick put move'}),
+    ],{f:'cloud deploy hosting'}));
+    setTimeout(paintCloudDeploy,0);
+    P.push(pGroup('Cloud standby',[
+      pRow('A cloud machine that takes over','<div id="sb-box"><span class="mut">…</span></div>',
+        {desc:'It runs your agent only while this machine is away, then hands the work back.',
+         more:'This machine sends a sealed copy when something changes and a heartbeat every half minute. After a few quiet minutes the cloud takes over. In a terminal: bento standby.',
+         f:'cloud standby failover offload take over hand back away server vps move jack lambda always on'}),
+    ],{f:'cloud standby failover'}));
+    setTimeout(paintStandby,0);
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),
@@ -569,6 +591,7 @@ function setTab(body,all){
   if(main.querySelector('#sc-list')){scLoad();scRender()}
   if(main.querySelector('#loc-box'))locRender();
   if(main.querySelector('#s-office'))officeSettingsPaint();
+  if(main.querySelector('#s-face'))faceSettingsPaint();
   if(main.querySelector('#v-voice'))settingsVoices();
   if(main.querySelector('#v-engine-box'))speechPaint();
   const bm=main.querySelector('#s-build-model');

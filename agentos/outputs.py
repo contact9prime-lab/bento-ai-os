@@ -56,6 +56,15 @@ def roots(cfg: dict, admin: bool = True) -> list[Path]:
             out.append(r)
 
     add((cfg or {}).get("workspace"))
+    # The folders an admin shared with this account. A file the agent made there
+    # is as much the person's as one in the workspace, and without this its chip,
+    # its download and Telegram's send all refused it.
+    try:
+        from .tools import shares_for
+        for s in shares_for(cfg or {}):
+            add(s["path"])
+    except Exception:
+        pass
     if admin:
         from . import config as _cfgmod
         add(_cfgmod.AGENTOS_HOME / "workspace")

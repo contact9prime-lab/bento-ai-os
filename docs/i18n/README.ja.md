@@ -42,6 +42,8 @@ Telegram、WhatsApp に届きます。どのエージェントのどの操作も
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 あとは **http://127.0.0.1:8321** を開くだけです。自分で[リモートアクセス](../remote-access.md)を
 オンにするまでは localhost でしか待ち受けません。作成するアカウントもテレメトリもなく、キーを追加しない限り
 クラウドも使いません。
@@ -404,6 +406,12 @@ Remote Desktop は、ネイティブアプリも含めたマシンの実際の�
 パスワードでスマートフォンからも使えます。[ユーザー →](../users.md)
 
 ![Users アプリ：2 つのアカウント。1 つは管理者、もう 1 つは Executor ロール](../screenshots/users-two-accounts.png)
+
+### バックアップとクラウドの待機マシン
+
+`bento backup` はマシン全体を封をした 1 つのファイルにまとめます。すべてのアカウント、保管庫、ワークスペースが入ります。`bento restore` で、このマシンにも新しいマシンにも戻せます。[バックアップ →](../backup.md)
+
+クラウドのマシンに 2 台目の Bento をペアリングすると、封をしたコピーを持って待機します。あなたのマシンが応答しなくなると、クラウドがミッションとチャネルを引き継ぎ、戻ってきたら作業を返します。アクティブ同期をオンにすると、チャットのメッセージ 1 件 1 件を含むすべての変更が数秒でクラウドに届きます。[クラウド待機 →](../standby.md)
 
 ### エージェントを共有し、誰かのエージェントをフォークする
 

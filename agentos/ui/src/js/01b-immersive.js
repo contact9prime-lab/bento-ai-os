@@ -42,7 +42,8 @@ function applyImmersive(){
   if(typeof MOVEMENT!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop()}
   if(typeof CREW!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();else crewStop()}
   // the Office scene (24d) loads later still; it starts itself on first paint
-  if(typeof OFFICE_SCENE!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();else officeSceneStop()}
+  if(typeof OFFICE_SCENE!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();
+    else if(!document.body.classList.contains('kiosk'))officeSceneStop()}   // the kiosk keeps its office
   // the World (01e, experimental): leaving this scene is what puts the world to sleep
   if(typeof WORLD!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='world')worldStart();else worldStop()}
   // the Mind (01g): your agents and what they know, as one picture

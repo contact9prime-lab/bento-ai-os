@@ -141,6 +141,10 @@ def price_state(cfg: dict, model: str) -> str:
         return "local"
     if is_executor(model):
         return "executor"
+    if (model or "").startswith("pool/"):
+        # the community's leader runs it and records it as its own usage (pool.py);
+        # this machine pays nothing for it, so asking it a price would only stall
+        return "pool"
     if model in (cfg.get("pricing_skip") or []):
         return "skipped"
     return "priced" if price_of(cfg, model) is not None else "unknown"

@@ -67,6 +67,13 @@ POLL_EVERY = 2.0                # seconds between the requester's "decided yet?"
 MAX_OPEN = 64                   # connections handled at once; more are closed at the door
 FIRST_LINE = 10.0               # seconds a connection has to say what it wants
 PEER_CALLS = 240                # calls a minute from one linked machine, of every kind
+# A community (pool.py) rides these links. Its ops are answered by the server's pool
+# callback, and a model call carries a whole conversation and its tools, which can pass
+# MAX_LINE; so a peer whose certificate is already pinned here may send up to POOL_LINE.
+# A stranger's first line stays at MAX_LINE: the bigger buffer is for people we know.
+POOL_OPS = ("pool_join", "pool_beat", "pool_llm", "pool_work", "pool_who", "pool_claim",
+            "pool_elect", "pool_leave")
+POOL_LINE = 4 * 1024 * 1024
 
 
 _ROOT: "contextvars.ContextVar[Path | None]" = contextvars.ContextVar("teamlink_root", default=None)
@@ -309,11 +316,16 @@ def _save(d: dict):
     _write_private(links_path(), json.dumps(d, indent=1).encode())
 
 
-def links(owner: str | None = None) -> list[dict]:
-    """Links, the caller's only when `owner` is given. PEMs stay out of views."""
+def links(owner: str | None = None, pool: bool = False) -> list[dict]:
+    """Links, the caller's only when `owner` is given. PEMs stay out of views.
+    A `pool` link (two members of one community that can reach each other for a
+    failover, pool.py) is plumbing, not a team somebody linked with: left out unless
+    asked for."""
     out = []
     for lk in _load()["links"]:
         if owner is not None and (lk.get("owner") or "") != (owner or ""):
+            continue
+        if lk.get("kind") == "pool" and not pool:
             continue
         out.append({k: v for k, v in lk.items() if k not in ("peer_ca",)})
     return out
@@ -327,9 +339,13 @@ def find(owner: str, label: str) -> dict | None:
 
 
 def _by_fp(fp: str) -> dict | None:
-    for lk in _load()["links"]:
-        if lk.get("kind") == "machine" and lk.get("peer_host_fp") == fp:
-            return lk
+    """The link pinned to this certificate: a linked team, or a community link (pool.py),
+    which the door then holds to community requests only."""
+    links_ = _load()["links"]
+    for kind in ("machine", "pool"):
+        for lk in links_:
+            if lk.get("kind") == kind and lk.get("peer_host_fp") == fp:
+                return lk
     return None
 
 
@@ -694,7 +710,10 @@ def _server_ctx(ident: dict) -> ssl.SSLContext:
         _set(ctx, "minimum_version", ssl.TLSVersion.TLSv1_2)
         ctx.load_cert_chain(ident["host_crt"], ident["host_key"])
         _set(ctx, "verify_mode", ssl.CERT_OPTIONAL)
-        cas = [lk["peer_ca"] for lk in _load()["links"] if lk.get("kind") == "machine" and lk.get("peer_ca")]
+        # a community link (pool.py) is pinned the same way: its CA came from a roster the
+        # leader sent over a link a person approved, and its fingerprint is still checked
+        cas = [lk["peer_ca"] for lk in _load()["links"]
+               if lk.get("kind") in ("machine", "pool") and lk.get("peer_ca")]
         if cas:
             ctx.load_verify_locations(cadata="\n".join(cas))
         return ctx
@@ -739,9 +758,10 @@ class Listener:
     `on_ask(link, payload)` answers an ask; it is the server's, so this module knows
     nothing of stores or users."""
 
-    def __init__(self, cfg: dict, on_ask=None, on_event=None, identity=None):
+    def __init__(self, cfg: dict, on_ask=None, on_event=None, identity=None, on_pool=None):
         self.cfg = cfg
         self.on_ask = on_ask
+        self.on_pool = on_pool               # the community's ops (pool.py), or None
         self.on_event = on_event
         self.identity = identity             # owner -> who answers here (name, faces)
         self.server = None
@@ -877,8 +897,11 @@ class Listener:
             return
         self._open += 1
         try:
-            req = await _read_line(reader, timeout=FIRST_LINE)
             fp = _peer_fp(writer)
+            known = bool(fp and _by_fp(fp))
+            if known:
+                reader._limit = POOL_LINE + 1    # see POOL_LINE: only a pinned peer gets it
+            req = await _read_line(reader, limit=POOL_LINE if known else MAX_LINE, timeout=FIRST_LINE)
             if fp and _by_fp(fp) and self._peer_busy(fp):
                 out = {"ok": False, "error": "too many requests from your team — slow down"}
             else:
@@ -931,6 +954,14 @@ class Listener:
             return {"ok": False, "error": "this machine does not know your certificate — pair first"}
         if isinstance(req.get("identity"), dict):
             note_identity(lk.get("owner") or "", lk["label"], req["identity"])
+        if op in POOL_OPS:
+            if not self.on_pool:
+                return {"ok": False, "error": "this machine is not taking part in a community"}
+            return await self.on_pool(lk, req)
+        if lk.get("kind") == "pool":
+            # two members of one community reach each other ONLY for the community:
+            # this link was written from a roster, not by a person linking two teams
+            return {"ok": False, "error": "a community link carries community requests only"}
         if op == "hello":
             return {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"],
                     "identity": self._ident(lk.get("owner") or "")}
@@ -942,7 +973,7 @@ class Listener:
         return {"ok": False, "error": f"unknown request '{op}'"}
 
 
-async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT) -> dict:
+async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT, limit: int = MAX_LINE) -> dict:
     """One request to a linked machine over mTLS, pinned to the certificate recorded at
     pairing. A certificate that chains to their CA but is not THE one paired with is
     refused before anything is sent."""
@@ -954,7 +985,7 @@ async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT) -> dict:
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(
             host.strip("[]"), int(port), ssl=_client_ctx(lk["peer_ca"], ident),
-            server_hostname=SNI, limit=MAX_LINE + 1), 15)
+            server_hostname=SNI, limit=limit + 1), 15)
     except (OSError, asyncio.TimeoutError, ssl.SSLError) as e:
         return {"ok": False, "error": f"could not reach {lk.get('label')} at {host}:{port} ({type(e).__name__})"}
     try:
@@ -963,7 +994,7 @@ async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT) -> dict:
                                           f"than the one paired with — refused"}
         writer.write((json.dumps(req) + "\n").encode())
         await writer.drain()
-        got = await _read_line(reader, timeout=timeout)
+        got = await _read_line(reader, limit=limit, timeout=timeout)
         if isinstance(got, dict) and isinstance(got.get("identity"), dict):
             note_identity(lk.get("owner") or "", lk.get("label") or "", got["identity"])
         return got

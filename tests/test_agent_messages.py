@@ -146,8 +146,10 @@ def test_an_empty_cell_asks_a_person_and_nobody_is_not_a_yes(tmp_path, monkeypat
     res = _run(cp, store, "researcher", approver=approver)
     assert asked and asked[0][0] == "ask_agent"
     assert "researcher wants to ask validator" in asked[0][1]
-    assert asked[0][2] == {"principal_kind": "subagent", "principal_id": "researcher",
-                           "action": "agent.message", "resource": "agent:subagent/validator"}
+    # the grant columns are exactly this cell; conversation_id only scopes "for this chat"
+    assert {k: v for k, v in asked[0][2].items() if k != "conversation_id"} == {
+        "principal_kind": "subagent", "principal_id": "researcher",
+        "action": "agent.message", "resource": "agent:subagent/validator"}
     assert "Yes, $12" in res["content"]
 
 

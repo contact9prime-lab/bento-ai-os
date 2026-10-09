@@ -114,6 +114,11 @@ BUILTIN_DENY = {
     # granted cell by cell — and `_default` refuses everything else before any model
     # default. These rows are belt on top of braces, as for a peer.
     "team": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
+    # A machine of this machine's community (pool.py): on a leader, a member that thinks
+    # with the leader's brain (model.use, granted at admission); on a member, the
+    # community handing it work (pool.work, granted at joining). `_default` refuses a
+    # pool principal everything else; these rows are the belt on top, as for a peer.
+    "pool": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -188,6 +193,12 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "fs.write", f"fs:{args.get('path', '') or '*'}"
     if name == "fetch_url":
         return "net.fetch", f"net:{args.get('url', '') or '*'}"
+    if name == "community_recall" or (name == "remember" and args.get("community")):
+        # the community's notes are their own resource: "may share with my community"
+        # is grantable, and deniable, apart from this machine's own memory
+        return ("memory.read" if name == "community_recall" else "memory.write"), "memory:community"
+    if name == "pool_task":
+        return "pool.task", f"pool:{str(args.get('machine') or '').strip() or '*'}"
     if name in _MEM:
         action = _MEM[name][0]
         # Space-qualified so a grant can say "this subagent may write memory in the
@@ -291,8 +302,66 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     return "tool.use", f"tool:{name} {desc}".strip()
 
 
+# How long "remember" lasts, as the approval card and Telegram offer it. "chat" is the
+# conversation the question came from (and a day at most); "hour" is sixty minutes;
+# "always" is until somebody revokes it in Permissions. One function writes all three,
+# for every surface, so a tap on the phone and a click at the desk mean the same thing.
+REMEMBER_SCOPES = ("chat", "hour", "always")
+
+
+def remember_scope(value) -> str:
+    """The card's answer as a scope: True (older pages) is 'always', a known word is
+    itself, anything else is no remember at all."""
+    if value is True:
+        return "always"
+    v = str(value or "").strip().lower()
+    return v if v in REMEMBER_SCOPES else ""
+
+
+def write_remembered(store, offer: dict, scope: str, via: str = "an approval") -> str:
+    """Write the grant an approval offered, for as long as the person chose."""
+    scope = remember_scope(scope) or "always"
+    conv = str(offer.get("conversation_id") or "")
+    if scope == "chat" and not conv:
+        scope = "hour"               # nothing to scope to (an app, a schedule): an hour
+    expires = {"hour": time.time() + 3600, "chat": time.time() + 86400}.get(scope)
+    words = {"chat": "for this chat", "hour": "for an hour", "always": "until revoked"}[scope]
+    return store.add_grant(offer["principal_kind"], offer["principal_id"], offer["action"],
+                           offer["resource"], source="user",
+                           note=(offer.get("note") or f"allowed {words} from {via}")[:300],
+                           expires_at=expires,
+                           source_ref=f"conv:{conv}" if scope == "chat" else "")
+
+
 def _match(pattern: str, value: str) -> bool:
     return fnmatch.fnmatchcase(value, pattern or "*")
+
+
+def command_covered(pattern: str, command: str, match=None) -> bool:
+    """Does a pattern written for one command (`git *`, `npm test*`) cover this command
+    line? Each command in a chain must match on its own, and a line that redirects,
+    substitutes or backgrounds anything is never covered by a wildcard. A glob's `*`
+    also matches `; rm -rf ~`, so `git log; bash -c …` read as covered by `git *`."""
+    from .tools import BACKGROUND, CONNECTORS, DANGEROUS_META
+    match = match or (lambda p, v: fnmatch.fnmatchcase(v, p))
+    cmd = (command or "").strip()
+    if "*" not in (pattern or "") or pattern.strip() == "*":
+        return match(pattern or "*", cmd)
+    if DANGEROUS_META.search(cmd) or BACKGROUND.search(cmd):
+        return False
+    segs = [x.strip() for x in CONNECTORS.split(cmd) if x.strip()]
+    return bool(segs) and all(match(pattern, x) for x in segs)
+
+
+def resource_match(pattern: str, resource: str) -> bool:
+    """A grant's resource pattern against a call's resource. Shell commands are matched
+    one command at a time (command_covered); everything else is a plain glob."""
+    pat = pattern or "*"
+    pre = "tool:run_command "
+    if resource.startswith(pre) and pat.startswith("tool:run_command") and pat != "tool:run_command*":
+        body = pat[len("tool:run_command"):].lstrip()
+        return command_covered(body, resource[len(pre):])
+    return _match(pat, resource)
 
 
 # The IO gates: every capability call arrives via one of these surfaces. Grants may be
@@ -322,6 +391,34 @@ POSTURES = ("inherit", "read_only", "ask", "full")
 #   strict — it is refused outright
 TAINT_MODES = ("off", "ask", "strict")
 
+# Tools that are safe to run but WRITE something an agent reads back later: a memory, a
+# fact in the graph, a skill other agents load, an automation that runs on a hot corner.
+# After untrusted content these are held for a person like a risky step, because a web
+# page that can get one line into memory or a skill is a page that speaks in every later
+# turn. Reading stays free; only the write that outlives the turn is shown.
+TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation"}
+
+# Paranoid is "ask before anything that isn't just reading". Before 0.6.18 it behaved
+# exactly like balanced, under a label that said "asks before every action".
+PARANOID_FREE = {
+    "read_file", "list_dir", "search_files", "list_folders", "read_source", "search_docs",
+    "fetch_url", "recall", "kg_query", "timeline", "list_spaces", "list_flows", "list_assets",
+    "get_asset", "list_automations", "read_app_data", "system_info", "desktop_state",
+    "list_windows", "list_themes", "list_notifications", "git_status", "git_log", "git_diff",
+    "mail_search", "mail_read", "calendar_events", "find_tools", "use_skill",
+    "discover_mcp_servers", "list_openclaw_plugins", "openclaw_report",
+    # talking to the person, and a mission's own bookkeeping: nothing outside changes
+    "notify", "brief_item", "finish", "note", "read_handle",
+}
+
+# What an app may do without a grant. An app is somebody's JavaScript, often a stranger's
+# from the shared catalogue, so its free reach is the web and a few harmless tools.
+# Files, memory, mail, the shell and every other tool ask the first time (the offer
+# remembers it) or come from the manifest the person approved. The old default let any
+# SAFE call through, and the shell's "safe" commands include `cat ~/.ssh/id_rsa`.
+APP_FREE_ACTIONS = {"net.fetch", "media.read", "flow.read", "space.read"}
+APP_FREE_TOOLS = {"system_info", "notify", "search_docs", "list_themes", "desktop_state"}
+
 
 # How fast a principal may spend what it has been granted.
 #
@@ -344,7 +441,8 @@ TAINT_MODES = ("off", "ask", "strict")
 # for; six fetches is a page refreshing. Counting them together would either quarantine
 # every working app or catch no runaway at all.
 LLM_TOOLS = {"llm_generate", "generate_image", "appLLM.stream", "app→appLLM.stream",
-             "generate_wallpaper", "create_theme", "create_app"}
+             "generate_wallpaper", "create_theme", "create_app",
+             "pool_llm"}          # a community member thinking with this machine's brain
 
 
 def call_class(tool: str) -> str:
@@ -363,6 +461,9 @@ RATE_DEFAULTS = {
     "app":      {"llm": (6, 60), "tool": (60, 20)},
     # a linked team's agent: questions, not work — a handful a minute is a conversation
     "team":     {"llm": (6, 60), "tool": (20, 60)},
+    # a member thinking with the leader's brain: one turn is several model calls, and a
+    # small machine running a mission makes a few turns a minute at most
+    "pool":     {"llm": (40, 60), "tool": (20, 60)},
     "subagent": {"llm": (20, 60), "tool": (120, 20)},
     "flow":     {"llm": (20, 60), "tool": (120, 20)},
 }
@@ -376,6 +477,7 @@ RATE_DEFAULTS = {
 SUSTAIN_DEFAULTS = {
     "app":      {"llm": (30, 600), "tool": (300, 300)},
     "team":     {"llm": (30, 600), "tool": (60, 600)},
+    "pool":     {"llm": (240, 600), "tool": (60, 600)},
     "subagent": {"llm": (60, 600), "tool": (600, 300)},
     "flow":     {"llm": (60, 600), "tool": (600, 300)},
 }
@@ -648,9 +750,11 @@ class PDP(usersmod.Scoped):
     def _grants(self) -> list[dict]:
         uid = self._who()
         ver, cached = self._cache.get(uid, (-1, []))
-        if ver != getattr(self.store, "grants_version", 0):
+        outside = getattr(self.store, "outside_writes", None)
+        now_ver = (getattr(self.store, "grants_version", 0), outside() if outside else 0)
+        if ver != now_ver:
             cached = self.store.grants_live()
-            self._cache[uid] = (self.store.grants_version, cached)
+            self._cache[uid] = (now_ver, cached)
         now = time.time()
         return [g for g in cached if not g.get("expires_at") or g["expires_at"] > now]
 
@@ -751,7 +855,7 @@ class PDP(usersmod.Scoped):
         else is metered per class of call, and going over puts it in quarantine: this is the
         one ceiling that decides, by itself, that something should stop.
         """
-        if principal.kind not in ("app", "subagent", "flow"):
+        if principal.kind not in ("app", "subagent", "flow", "pool"):
             return None
         held = self._held(principal)
         if held:
@@ -954,7 +1058,7 @@ class PDP(usersmod.Scoped):
                 "note": f"{link} may have {principal.id} {action} {scope} without asking"}
 
     def _matching(self, principal: Principal, action: str, resource: str,
-                  flow: str = "") -> list[dict]:
+                  flow: str = "", conversation: str = "") -> list[dict]:
         """The grants that apply — and, inside a flow's run, ONLY that flow's
         definition grants. A specialist is shared between flows and every flow
         writes its envelope onto the same principal, so without this the deny
@@ -970,9 +1074,12 @@ class PDP(usersmod.Scoped):
             ref = str(g.get("source_ref") or "")
             if mine and g.get("source") == "definition" and ref.startswith("flow:") and ref != mine:
                 continue
+            # "Allow for this chat" is a grant that applies inside that one conversation
+            if ref.startswith("conv:") and ref != f"conv:{conversation}":
+                continue
             if not _match(g.get("principal_id") or "*", principal.id):
                 continue
-            if _match(g.get("action") or "*", action) and _match(g.get("resource") or "*", resource):
+            if _match(g.get("action") or "*", action) and resource_match(g.get("resource") or "*", resource):
                 out.append(g)
         return out
 
@@ -1057,7 +1164,8 @@ class PDP(usersmod.Scoped):
         # and it is checked BEFORE grants on purpose: "read-only over Telegram"
         # has to mean it even when a grant says allow-everywhere. Narrowing a way
         # in should not be silently undone by a permission granted at the desk.
-        if channel_posture(self.cfg, surface) == "read_only" and risk != "safe":
+        if channel_posture(self.cfg, surface) == "read_only" and \
+                (ctx.get("base_risk") or risk) != "safe":
             return Decision("deny",
                             f"the {surface} channel is set to read-only, so it may look "
                             f"but not change anything (Settings → Channels)",
@@ -1071,11 +1179,17 @@ class PDP(usersmod.Scoped):
         taint = ctx.get("taint") or []
         mode = taint_mode(self.cfg)
         standing = None
-        if taint and risk != "safe" and mode == "ask":
+        # Judged on the tool's OWN risk, never on what a Rule lowered it to: an allow
+        # rule written at the desk ("always allow git") is consent for your agent to run
+        # git, not for a web page it read to run git through it. And the few safe tools
+        # that write something read back later count as risky here (TAINT_WATCH).
+        base = ctx.get("base_risk") or risk
+        watched = (base != "safe" or ctx.get("tool") in TAINT_WATCH) and base != "blocked"
+        if taint and watched and mode == "ask":
             standing = self._standing(principal, action, resource, taint)
         if standing:
             ctx["_standing"] = standing
-        elif taint and risk != "safe" and mode != "off":
+        elif taint and watched and mode != "off":
             where = taint_summary(taint)
             if mode == "strict":
                 return Decision("deny",
@@ -1116,7 +1230,8 @@ class PDP(usersmod.Scoped):
             # At the desk, a mission's definition grants do not count: enabling a
             # mission is not consent for its specialists to message each other outside it.
             flow = str(ctx.get("flow") or "")
-            rows = self._matching(principal, action, resource, flow=flow)
+            rows = self._matching(principal, action, resource, flow=flow,
+                                  conversation=str(ctx.get("conversation_id") or ""))
             if flow:
                 rows = [g for g in rows if g.get("source") == "definition"
                         and (g.get("source_ref") or "") == f"flow:{flow}"]
@@ -1136,7 +1251,8 @@ class PDP(usersmod.Scoped):
                                 rule="message-flow")
             return self._default(principal, action, resource, ctx)
         # 3./4. grants — deny wins; each grant only applies on the surfaces it covers
-        matched = self._matching(principal, action, resource, flow=str(ctx.get("flow") or ""))
+        matched = self._matching(principal, action, resource, flow=str(ctx.get("flow") or ""),
+                                 conversation=str(ctx.get("conversation_id") or ""))
         gated = [g for g in matched if surface_allows(g.get("surfaces"), surface)]
         for g in gated:
             if g.get("effect") == "deny":
@@ -1168,7 +1284,7 @@ class PDP(usersmod.Scoped):
                     surface: str = "", space_id: str = "",
                     conversation_id: str = "", run_id: str = "",
                     taint: list | None = None, audit: bool = True,
-                    flow: str = "") -> Decision:
+                    flow: str = "", base_risk: str = "") -> Decision:
         """The main entry for tool calls: maps the call to (action, resource) and decides.
         `surface` is the IO gate the call arrived on (gui | tui | telegram | api | task);
         the space/conversation/run are carried so the ledger entry says WHERE it happened,
@@ -1180,6 +1296,8 @@ class PDP(usersmod.Scoped):
                             "tool": name, "args": args, "surface": surface,
                             "space_id": space_id, "conversation_id": conversation_id,
                             "run_id": run_id, "taint": taint or [], "flow": flow,
+                            # the tool's own risk, before any Rule lowered it (see 2c)
+                            "base_risk": base_risk or risk_level,
                             # audit=False marks a "could this principal?" probe —
                             # filtering a tool list is one question, not ninety
                             # accesses, and the ledger is for what was done
@@ -1223,6 +1341,14 @@ class PDP(usersmod.Scoped):
                                    f"{to} answers on its own model with its own permissions. "
                                    f"'Allow & remember' fills this cell of the team's matrix.",
                             rule="default", grant_offer=offer)
+        if principal.kind == "pool":
+            # Like a peer: a machine on the network, so never asked and never given a
+            # default. Admission wrote model.use (on the leader); joining wrote pool.work
+            # (on the member). Revoking either in Permissions is what stops it.
+            return Decision("deny",
+                            f"a machine of your community reaches only what joining granted — "
+                            f"'{action}' was not part of that",
+                            rule="pool-default")
         if principal.kind == "peer":
             # Checked before every other default, model.use included: a peer is
             # not a person at this machine, and "safe" calls are not free for a
@@ -1289,9 +1415,13 @@ class PDP(usersmod.Scoped):
             # an app always owns its own data store
             if action.startswith("app.data") and resource == f"app:{principal.id}/data":
                 return Decision("allow", rule="default")
-            if risk == "safe" and action not in ("model.use", "agent.invoke", "agent.huddle",
-                                                 "app.data.read",
-                                                 "app.data.write"):
+            # Free without a grant: the web and a few harmless tools, and only in their
+            # own safe form. A Rule written for your agent does not widen an app, so its
+            # risk here is the tool's own (base_risk).
+            base = ctx.get("base_risk") or risk
+            tool = ctx.get("tool") or ""
+            if base == "safe" and (action in APP_FREE_ACTIONS or
+                                   (action == "tool.use" and tool in APP_FREE_TOOLS)):
                 return Decision("allow", rule="default")
             return Decision("ask", reason or "This app is asking to use a capability it has "
                                              "not been granted.", rule="default", grant_offer=offer)
@@ -1333,9 +1463,16 @@ class PDP(usersmod.Scoped):
         if action in ("agent.invoke", "agent.huddle") and autonomy != "full":
             return Decision("ask", reason or self._invoke_reason(resource),
                             rule="default", grant_offer=offer)
+        # The card's "remember" is a grant for THIS agent (the offer below). It used to be
+        # withheld for your own agent, and the card fell back to writing a machine-wide
+        # Rule that every app and specialist then shared.
         if risk == "risky" and autonomy != "full":
-            return Decision("ask", reason, rule="default",
-                            grant_offer=offer if principal.kind != "user" else None)
+            return Decision("ask", reason, rule="default", grant_offer=offer)
+        tool = ctx.get("tool") or ""
+        if autonomy == "paranoid" and tool and tool not in PARANOID_FREE:
+            return Decision("ask", reason or "Paranoid mode: this does more than read, so "
+                                             "it waits for you.",
+                            rule="default", grant_offer=offer)
         return Decision("allow", rule="default")
 
     def _offer(self, principal: Principal, action: str, resource: str, ctx: dict) -> dict:
@@ -1355,4 +1492,6 @@ class PDP(usersmod.Scoped):
             u = urlsplit(resource[4:])
             res = f"net:{u.scheme}://{u.netloc}/*" if u.netloc else resource
         return {"principal_kind": principal.kind, "principal_id": principal.id,
-                "action": action, "resource": res}
+                "action": action, "resource": res,
+                # not a grant column: where "Allow for this chat" scopes the grant
+                "conversation_id": str(ctx.get("conversation_id") or "")}

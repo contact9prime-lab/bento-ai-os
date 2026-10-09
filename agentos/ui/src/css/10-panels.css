@@ -68,6 +68,7 @@ table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:ta
 .apptop input{flex:1;min-width:90px}
 .stepnum{display:inline-flex;width:20px;height:20px;border-radius:50%;background:var(--bg4);color:var(--acc);font-size:var(--fs-xs);font-weight:800;align-items:center;justify-content:center;margin-right:8px;flex:none}
 .fcrumb{cursor:pointer;color:var(--dim)}.fcrumb:hover{color:var(--acc)}.fsep{color:var(--dim2);margin:0 4px}
+.f-place{flex:0 1 auto;max-width:42%;min-height:var(--tap,30px);padding:4px 8px;border-radius:var(--r-sm,8px);border:1px solid var(--line);background:var(--bg3);color:var(--txt);font-size:var(--fs-sm)}
 .fitem{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-md);cursor:pointer;font-size:var(--fs-md)}
 .fitem:hover{background:var(--bg3)}
 .fitem .fi{font-size:var(--fs-lg);flex:none}.fitem .fn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

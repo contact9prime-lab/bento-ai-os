@@ -294,7 +294,18 @@ class Scheduler(usersmod.Scoped):
         self.store.update_task(task["id"], **updates)
 
     async def _run_task(self, task: dict, origin: str = "schedule", title: str = ""):
-        await self.broadcast({"type": "task_started", "task_id": task["id"], "prompt": task["prompt"]})
+        # every firing is a row (task_runs), so the Missions app can show what each
+        # schedule did and open it, not only the last result it left on the task
+        trid = self.store.task_run_start(task)
+        try:
+            await self._run_task_inner(task, trid, origin, title)
+        except BaseException as e:
+            self.store.task_run_finish(trid, "failed", f"[error] {type(e).__name__}: {e}")
+            raise
+
+    async def _run_task_inner(self, task: dict, trid: str, origin: str, title: str):
+        await self.broadcast({"type": "task_started", "task_id": task["id"], "prompt": task["prompt"],
+                              "task_run": trid})
 
         # A task that names a flow starts that flow's master orchestrator instead of a
         # bare headless turn. The clock, the claim-on-fire and the cooldown above are the
@@ -307,6 +318,10 @@ class Scheduler(usersmod.Scoped):
                     origin={"surface": "task", "ref": task["id"]},
                     space_id=task.get("space_id") or flow.get("space_id") or "")
                 self._reschedule(task, res.get("content", ""))
+                st = res.get("status") or ""
+                self.store.task_run_finish(
+                    trid, "ok" if st in ("ok", "partial", "parked") else "failed",
+                    res.get("content") or res.get("fault") or "", run_id=res.get("run_id", ""))
                 await self.broadcast({"type": "task_finished", "task_id": task["id"],
                                       "conversation_id": "", "run_id": res.get("run_id", ""),
                                       "result": (res.get("content") or "")[:500]})
@@ -315,6 +330,11 @@ class Scheduler(usersmod.Scoped):
                            f"task {task['id']} names flow '{task['flow']}', which is gone or "
                            f"disabled — nothing ran", {"task": task["id"], "flow": task["flow"]})
             self._reschedule(task, f"[skipped] flow '{task['flow']}' is gone or disabled")
+            self.store.task_run_finish(trid, "skipped",
+                                       f"the mission {task['flow']} is switched off or was deleted, "
+                                       f"so nothing ran")
+            await self.broadcast({"type": "task_finished", "task_id": task["id"],
+                                  "conversation_id": "", "result": ""})
             return
 
         prompt = (f"[Scheduled background JOB — no user is present, do not ask questions. Work until the "
@@ -326,6 +346,8 @@ class Scheduler(usersmod.Scoped):
                                                  space_id=task.get("space_id") or "")
 
         self._reschedule(task, result_text)
+        self.store.task_run_finish(trid, "failed" if result_text.startswith("[error]") else "ok",
+                                   result_text, conversation_id=cid)
         await self.broadcast({"type": "task_finished", "task_id": task["id"],
                               "conversation_id": cid, "result": result_text[:500]})
 
@@ -346,6 +368,11 @@ class Scheduler(usersmod.Scoped):
                 # reason the seam is a contextvar and not a parameter.
                 with usersmod.as_user(uid):
                     try:
+                        # A main machine that has just woken up waits for one
+                        # heartbeat first: the cloud may be the one working (standby.py).
+                        from . import standby as _sb
+                        if not _sb.may_act():
+                            continue
                         for task in self.store.due_tasks(time.time()):
                             # claim it immediately so a slow run can't double-fire
                             self.store.update_task(task["id"], next_run=None)

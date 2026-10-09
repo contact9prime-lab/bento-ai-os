@@ -129,6 +129,14 @@ function permChartInto(el,p){
     }).join('');
   });
 }
+/* How long a remembered grant lasts: one chat, until a time, or (no badge) until revoked. */
+function permLasts(g){
+  if(String(g.source_ref||'').startsWith('conv:'))return '<span class="badge" title="applies inside one conversation">one chat</span>';
+  if(!g.expires_at)return '';
+  const t=new Date(g.expires_at*1000);
+  if(g.expires_at*1000<Date.now())return '<span class="badge err">expired</span>';
+  return `<span class="badge" title="${esc(t.toLocaleString())}">until ${esc(t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</span>`;
+}
 function permGrantsView(box){
   const q=PERM.q.toLowerCase();
   const gs=PERM.grants.filter(g=>{
@@ -145,7 +153,7 @@ function permGrantsView(box){
       <div class="grow" style="min-width:0"><b style="font-size:12.5px">${esc(lbl)}</b>
         <div style="font-family:var(--mono);font-size:12px;word-break:break-all">${esc(g.action)} · ${esc(g.resource)}</div>
         ${g.note?`<div class="mut" style="font-size:11px">${esc(g.note)}</div>`:''}</div>
-      <span class="badge">${esc(g.source||'user')}</span>
+      ${permLasts(g)}<span class="badge">${esc(g.source||'user')}</span>
       ${dead?'<span class="badge err">revoked</span>'
         :`${permSurfBadge(g)}
          <button class="badge ${g.effect==='deny'?'err':'ok'}" style="cursor:pointer" title="flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')">${g.effect}</button>
@@ -235,11 +243,11 @@ async function permToggle(gid,effect){
 /* IO gates: a grant can be scoped to the surfaces a call arrives on (import/export gates).
    Permitted on all three (GUI, TUI, channels)? it flows everywhere; scoped, it only flows
    there — anywhere else the call is denied and logged as an IO error. */
-const PERM_SURFACES=['gui','tui','telegram','api','task'];
+const PERM_SURFACES=['gui','tui','telegram','whatsapp','api','task','webhook'];
 function permSurfBadge(g){
   const scoped=g.surfaces&&g.surfaces!=='*';
   return `<button class="endbtn" style="font-size:10px;${scoped?'color:var(--acc2,#22d3ee);border-color:var(--acc2,#22d3ee)':''}"
-    title="IO gates — which surfaces this rule applies on (GUI, TUI, Telegram, API, tasks). Click to change."
+    title="IO gates — which ways in this rule applies on (desktop, terminal, Telegram, WhatsApp, API, tasks, webhooks). Click to change."
     onclick="permSurfaces('${g.id}','${esc(g.surfaces||'*')}')">⛩ ${scoped?esc(g.surfaces):'all'}</button>`;
 }
 async function permSurfaces(gid,cur){

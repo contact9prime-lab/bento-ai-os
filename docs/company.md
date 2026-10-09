@@ -3,7 +3,9 @@
 Say what your business does and Bento sets it up as a company: departments like Admin,
 HR, Finance, Supply, Sales, Tech and Marketing, each with a head and two or three staff.
 Every person has a job title and a persona written for your business. They sit in their
-department's room in the Office, and each department can be given work.
+department's room in the Office, and each department can be given work. When a
+department finishes a task, an independent auditor checks it before the answer reaches
+you.
 
 ## Set it up
 
@@ -94,6 +96,64 @@ to open it in the Run Inspector.
 
 ![The Office with a company: each department's room, its head, and its card](screenshots/company-office.png)
 
+## The independent auditor checks every finished task
+
+When a department finishes a task, an agent called **auditor** checks the work before the
+answer reaches you. It's on by default.
+
+The auditor is independent. It did none of the work, it sits in no department, and it's
+on no desk's team. Bento starts it itself once the department is done, so no department
+head and no lead agent can skip the check or choose what it sees. It gets what was asked,
+what came back, everything the department handed round while working, and anything the
+work put in your Brief. It can read files, memory and the knowledge graph to check a
+claim. It can't write, send, remember or file anything.
+
+It answers with one of three verdicts:
+
+- **Pass:** it does what was asked, and what it says holds up.
+- **Concerns:** usable, but something is unsupported, missing or needs you to look.
+- **Fail:** it doesn't do what was asked, or it states things the work doesn't back.
+
+An answer that isn't one of those counts as **not checked**, never as a pass.
+
+The verdict is shown in these places:
+
+- under the task on the task board, with the first thing it found;
+- on the department's card, which counts the week's flagged tasks (⚑);
+- with the result wherever it was sent: chat, Telegram or WhatsApp;
+- in the Run Inspector, as the auditor's own line after the work;
+- in the ledger, as a `company.audit` row;
+- in your Brief, as a **Needs you** item listing everything it found, when the verdict is
+  concerns or fail.
+
+![The task board with the auditor's verdicts, and a flagged department card](screenshots/company-audit.png)
+
+![The Run Inspector: the auditor reads the work, then gives its verdict](screenshots/company-audit-run.png)
+
+![On a phone: the auditor's concerns as an item in the Brief](screenshots/company-audit-brief.png)
+
+A few things to know:
+
+- **It doesn't redo the work** or change the answer. The department's answer arrives as
+  it was written, with the auditor's line after it.
+- **If the auditor works in the department, it won't check that department,** because it
+  would be checking itself. The same goes for a desk that has it on its team. The task
+  shows *not checked* and says why. Move it to the open floor in the Office, or take it
+  off the desk's team in Missions.
+- **It's an ordinary specialist,** so you can edit its persona or give it its own AI
+  provider in Settings → Agents. A check by a different model than the one that did the
+  work is worth having. Its tools stay read-only whatever its settings say.
+- **Switch it off** with the tick box above the task board, or `bento company audit off`.
+  A task that finished while it was off shows **Check it**, and `bento company check RUN`
+  does the same in a terminal. Switching it on or off is a row in the ledger.
+- It checks a department's desk tasks. Other missions and chat hand-overs aren't checked.
+
+```
+bento company                    # each task with the auditor's verdict
+bento company audit on|off       # the switch
+bento company check 6f39bb2d71f4 # check a finished task now
+```
+
 ## In every scene
 
 The desktop's scenes (Settings → Appearance → Scene) show the company too. Each reads
@@ -136,8 +196,9 @@ the same answer about who is in which department, so they never disagree.
 
 - **GUI:** the Office's ▦ Company panel and the cards over the rooms. On a phone the
   panel is a sheet and the cards shrink to fit the room.
-- **TUI:** `bento company` shows, `setup` plans and makes, `task` hands out work. A task
-  needs the server running, because that is where the work runs.
+- **TUI:** `bento company` shows, `setup` plans and makes, `task` hands out work,
+  `audit on|off` switches the auditor and `check` asks it to check a task. A task and a
+  check need the server running, because that is where the work runs.
 - **SUI:** the same page. The desktop scenes (Office, Crew, Mind, World) show the
   departments. The Office scene shows no cards, because nothing under the windows can be
   tapped; the Mind's and the World's tags can be.

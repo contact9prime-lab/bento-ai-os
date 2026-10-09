@@ -316,9 +316,20 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
     # it replaces, and only when no other server is still using that home: a second
     # instance moved to another port (`--if-running=port`) must never swap it.
     if kind != "taken" or mode == "restart":
+        # Cloud standby (standby.py): if the cloud took over while this machine was off,
+        # its work comes back HERE, before the scheduler or a channel can act on the
+        # old copy. A cloud that does not answer holds nothing up.
+        try:
+            from . import standby as _sb
+            _sb.boot(echo=print)
+        except Exception as e:
+            print(f"  ✗ could not bring the work back from the cloud: {e}", file=sys.stderr)
         try:
             from . import backup as _bk
-            if _bk.apply_pending():
+            from . import standby as _sb
+            rep = _bk.apply_pending()
+            if rep:
+                _sb.after_swap(rep)          # this machine's own door stays its own
                 cfg = remotemod.sanitize_remote(cfgmod.load_config())
         except Exception as e:               # never keep the machine from starting
             print(f"  ✗ the staged restore could not be applied: {e}", file=sys.stderr)
@@ -376,6 +387,11 @@ def ask(prompt: str, model: str | None, full: bool):
         cfg["autonomy"] = "full"
     store = Store(cfgmod.DB_PATH)
     toolbox = Toolbox(cfg, store)
+    # The same gate as every other door: grants, built-in denies, hands, the untrusted-
+    # content rule and the ledger. Before 0.6.18 this verb ran with no gate at all and
+    # decided on autonomy alone, so `--full` ran anything unasked and nothing was recorded.
+    from .policy import PDP
+    toolbox.pdp = PDP(cfg, store)
 
     async def emit(ev):
         if ev["type"] == "text_delta":
@@ -392,9 +408,18 @@ def ask(prompt: str, model: str | None, full: bool):
         elif ev["type"] == "error":
             print(f"\033[31merror: {ev['message']}\033[0m")
 
-    async def approver(name, args, reason) -> bool:
+    async def approver(name, args, reason, offer=None) -> bool:
+        # the agent loop passes the grant it would remember; `a` writes it for an hour
         print(f"\n\033[33m⚠ approval needed: {name} {json.dumps(args)[:200]}\n  {reason}\033[0m")
-        ans = input("  allow? [y/N] ").strip().lower()
+        from .policy import needs_person, write_remembered
+        q = "  allow? [y/N" + ("/h = for an hour" if offer and not needs_person() else "") + "] "
+        try:
+            ans = input(q).strip().lower()
+        except EOFError:
+            return False               # no terminal to ask: nobody said yes
+        if ans in ("h", "hour") and offer and not needs_person():
+            write_remembered(store, offer, "hour", via="the terminal")
+            return True
         return ans in ("y", "yes")
 
     async def main_async():
@@ -406,7 +431,7 @@ def ask(prompt: str, model: str | None, full: bool):
                 print("No models available. Start Ollama or add an API key via the UI (`agentos`).")
                 return
             model_id = models[0]["id"]
-        agent = Agent(cfg, toolbox, model_id, emit, approver)
+        agent = Agent(cfg, toolbox, model_id, emit, approver, surface="tui")
         await agent.run([{"role": "user", "content": prompt}])
         print()
 
@@ -693,8 +718,9 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
         shares = folder_shares(cfg)
         if not shares:
             print("  no shared folders — the agent works in the workspace only")
+        from .tools import share_label
         for sh in shares:
-            who = ", ".join(sh["users"]) if sh["users"] else "everyone"
+            who = share_label(sh["users"])
             print(f"  {sh['mode']:<3} {sh['path']:<44} {who}")
             # The caution belongs in the LIST as well as at the moment of adding:
             # whoever reviews what this machine has opened up is usually not the
@@ -720,12 +746,17 @@ def folders_cmd(action: str, path: str, mode: str, users: str) -> None:
             print(f"  refused: {why}"); return
         if mode not in FOLDER_MODES:
             print(f"  mode is one of {', '.join(FOLDER_MODES)}"); return
-        who = [u.strip() for u in (users or "").replace(",", " ").split() if u.strip()]
+        from .tools import share_users
+        named = [u.strip() for u in (users or "").replace(",", " ").split() if u.strip()]
+        ids, unknown = share_users(named)
+        if unknown:
+            print(f"  no account called {', '.join(unknown)} (bento user list shows them)"); return
+        who = ids
         raw = [r for r in raw if _folder_path_of(r) != p]      # replace, never duplicate
         raw.append({"path": p, "mode": mode, "users": who})
         cfg.setdefault("sandbox", {})["folders"] = raw
         cfgmod.save_config(cfg)
-        print(f"  shared {p} ({mode}) with {', '.join(who) if who else 'everyone'}")
+        print(f"  shared {p} ({mode}) with {', '.join(named) if named else 'everyone'}")
         if (risk := folder_risk(p, mode)):
             print(f"  ⚠ {risk}")
         return
@@ -983,6 +1014,7 @@ def delegate(prompt: str, workdir: str | None, tools: str | None,
         model=model or conf.get("model", ""),
         budget_usd=budget if budget is not None
                    else float(conf.get("budget_usd", execmod.DEFAULT_BUDGET_USD)),
+        shares=execmod.shares_of(cfg),
     ).sanitized()
     print(f"→ {env.describe()}\n")
 
@@ -1213,9 +1245,9 @@ def doctor(fix: bool = False, session: bool = False):
     # Safe folders, and — the point of saying anything here — the ones that are
     # configured but not being used. A folder silently dropped for a typo looks
     # exactly like one the agent is refusing to touch.
-    from .tools import folder_problems, folder_risk, folder_shares
+    from .tools import folder_problems, folder_risk, folder_shares, share_label
     for sh in folder_shares(cfg):
-        who = ", ".join(sh["users"]) if sh["users"] else "everyone"
+        who = share_label(sh["users"])
         if (risk := folder_risk(sh["path"], sh["mode"])):
             warn(f"safe folder {sh['mode']}: {sh['path']} ({who}) — {risk}")
         else:
@@ -2482,12 +2514,17 @@ def _ai_scan(desc: str, html: str) -> dict:
         if ev.get("type") == "text_delta":
             chunks.append(ev.get("text") or "")
 
-    async def approver(name, a, reason):
+    async def approver(name, a, reason, offer=None):
         return False                       # an audit READS; it never needs a tool grant
 
     async def go():
         model = cfg.get("default_model", "")
-        agent = Agent(cfg, Toolbox(cfg, store), model, emit, approver)
+        # No tools at all: it is reading a stranger's HTML, and a page written to talk
+        # to the scanner could otherwise have it fetch, remember or run the safe tools.
+        tb = Toolbox(cfg, store)
+        from .policy import PDP
+        tb.pdp = PDP(cfg, store)
+        agent = Agent(cfg, tb, model, emit, approver, tool_filter=[], surface="tui")
         await agent.run([{"role": "user",
                           "content": AI_SCAN_PROMPT.format(desc=desc[:300],
                                                            html=html[:60_000])}])
@@ -2800,12 +2837,14 @@ def _flow_cli(args):
         for a in rows:
             print(f"\n  {a['id']}  {a['name']}  {json.dumps(a.get('args') or {})[:80]}")
             print(f"      {a.get('flow') or a.get('run_id', '')[:8]} · {a.get('reason', '')[:120]}")
-        print("\n  agentos flow allow <id> [--always]   |   agentos flow deny <id>")
+        print("\n  agentos flow allow <id> [--hour | --always]   |   agentos flow deny <id>")
         return
 
     if act in ("allow", "deny"):
         res = call(f"/api/fabric/approvals/{args.name}",
-                   {"approved": act == "allow", "remember": bool(args.always)})
+                   {"approved": act == "allow",
+                    "remember": "always" if args.always else "hour" if getattr(args, "hour", False)
+                    else False})
         print("✓ answered" if not res.get("error") else f"✗ {res['error']}")
         return
 
@@ -2887,6 +2926,21 @@ def _job_cli(args):
         print(f"✓ {args.name} — `bento job recipes` now opens on your missions")
         return
 
+    if act == "history":
+        # what ran on its own, schedules included: the Missions app's History tab.
+        # Read from the database, so it works with the server down.
+        from . import runlog
+        task_id = (getattr(args, "task", "") or "").strip()
+        if task_id and not any(t["id"] == task_id for t in store.list_tasks()):
+            known = [t for t in runlog.schedules(store)]
+            print(f"✗ no schedule with id {task_id}. Schedules here:")
+            for t in known[:20]:
+                print(f"  {t['id']}  {t['words']:<22} {t['title'][:60]}")
+            sys.exit(1)
+        print(runlog.text(runlog.history(store, task_id=task_id, mission=args.name or "",
+                                         limit=40)))
+        return
+
     if act == "list":
         rows = jobsmod.installed(store)
         rd = jobsmod.readiness(cfg)
@@ -2913,6 +2967,7 @@ def _job_cli(args):
             print(f"    this week: {j['runs_7d']} runs, {j['ok_7d']} ok, "
                   f"{j['tokens_7d']:,} tokens · holds {j['grants']} permissions")
             print(f"    next: {j['next']}")
+        print("\n  bento job history [MISSION]   every run, schedules included")
         return
 
     if act == "recipes":
@@ -3338,6 +3393,113 @@ def _size(n: int) -> str:
     return str(n)
 
 
+def _standby_cli(args):
+    """`bento standby`: the cloud standby from a terminal. Everything but `copy`, `move`
+    and `back` works with the server down; those talk to the other machine directly."""
+    from . import standby as sb
+    act = args.action
+    say = print
+    try:
+        if act == "status":
+            s = sb.status()
+            if not s["role"]:
+                say("  Not paired.")
+                say("  On the cloud machine:  bento standby wait      (shows a pairing code)")
+                say("  Then on this machine:  bento standby pair https://<cloud> <code>")
+                if s.get("waiting_code"):
+                    say("  This machine is waiting to be paired.")
+                return
+            if s["role"] == "primary":
+                say(f"  This is the main machine. Standby: {s['peer_host']} at {s['url']}")
+                say(f"  {'Working here.' if s['active'] else 'Handed over: your agent is working in the cloud.'}")
+                say(f"  Heard back {sb.ago(s['last_contact'])} · last copy {sb.ago(s['last_push'])}"
+                    + (f", {sb.size(s['last_push_bytes'])}" if s.get("last_push_bytes") else ""))
+                if s.get("sync") == "active":
+                    ch = ", ".join(s.get("sync_changes") or [])
+                    say(f"  Active sync is on: last update {sb.ago(s.get('sync_at', 0))}" + (f" ({ch})" if ch else ""))
+                else:
+                    say("  Copies every 10 minutes at most. `bento standby set --active` sends every change as it happens.")
+                if s.get("last_error"):
+                    say(f"  ! {s['last_error']}")
+                if s.get("workspace_note"):
+                    say(f"  · {s['workspace_note']}")
+                if s.get("split"):
+                    say(f"  ! Both machines worked while apart. The cloud's copy: {s['split'].get('path')}")
+                    say("    bento standby adopt  (use it)   ·   bento standby keep  (drop it)")
+            else:
+                say(f"  This machine stands by for {s['peer_host']}.")
+                if s["active"]:
+                    say(f"  It is the one WORKING now, since {sb.ago(s.get('since', 0))}: {s.get('reason', '')}")
+                else:
+                    say(f"  Heard from it {sb.ago(s.get('last_beat', 0))} · newest copy "
+                        f"{sb.ago(s.get('copy_at', 0))}"
+                        + (f", {sb.size(s['copy_bytes'])}" if s.get("copy_bytes") else ""))
+                    say(f"  Takes over after {max(1, round(s['grace'] / 60))} min of silence"
+                        + ("" if s["auto"] else " (only when told: --manual is on)"))
+                    if s.get("update_at"):
+                        say(f"  Changes arrive as they happen: last {sb.ago(s['update_at'])}")
+                        for f in s.get("feed", [])[:5]:
+                            say(f"    {sb.ago(f.get('at', 0)):>12}  {', '.join(f.get('changes') or [])}")
+                for n in s.get("notes", []):
+                    say(f"  · {n}")
+            if s.get("version_note"):
+                say(f"  ! {s['version_note']}")
+        elif act == "wait":
+            o = sb.offer()
+            say(f"\n  Pairing code for {o['host']}:   {o['code']}\n")
+            say("  On your own machine run:")
+            say(f"    bento standby pair https://<this machine's address> {o['code']}")
+            say("  or Settings → System → Cloud standby. The code works once, for ten minutes.")
+        elif act == "pair":
+            if len(args.rest) != 2:
+                raise SystemExit("usage: bento standby pair URL CODE")
+            s = sb.pair(args.rest[0], args.rest[1])
+            say(f"  ✓ Paired. {s['peer_host']} now stands by for this machine.")
+            say("  Restart Bento here (or keep it running: a running server starts copying within a minute).")
+        elif act == "copy":
+            r = sb.push(force=True)
+            say(f"  ✓ Sent a copy ({sb.size(r.get('bytes', 0))})." if r.get("sent") else f"  {r.get('why')}")
+        elif act == "takeover":
+            r = sb.takeover("You asked this machine to take over (bento standby takeover).")
+            say(f"  ✓ The copy from {r['host'] or 'your machine'} checked out.")
+            say("  Restart Bento on this machine to finish (for Docker: docker restart <container>).")
+        elif act == "move":
+            r = sb.move()
+            say(f"  ✓ Handed over. Your agent now works at {r['url']}.")
+            say("  Restart Bento here: it stands down until `bento standby back`.")
+        elif act == "back":
+            r = sb.back(echo=say)
+            say(f"  ✓ {r.get('message', 'Done.')}")
+            if r.get("restart"):
+                say("  Restart Bento here to load it.")
+        elif act == "adopt":
+            sb.adopt()
+            say("  ✓ The cloud's copy checked out. Restart Bento here to switch to it.")
+        elif act == "keep":
+            sb.dismiss_split()
+            say("  ✓ Kept this machine's work; the cloud's copy is deleted.")
+        elif act == "off":
+            r = sb.unpair()
+            say("  ✓ Unpaired." + (" The other machine was told." if r.get("told") else ""))
+        elif act == "set":
+            body = {}
+            if args.grace:
+                body["grace"] = args.grace * 60
+            if args.auto is not None:
+                body["auto"] = args.auto
+            if args.workspace is not None:
+                body["workspace"] = args.workspace
+            if args.sync is not None:
+                body["sync"] = args.sync
+            if not body:
+                raise SystemExit("usage: bento standby set [--grace MIN] [--auto|--manual] "
+                                 "[--workspace|--no-workspace] [--active|--copies]")
+            sb.settings(body)
+            say("  ✓ Saved.")
+    except sb.StandbyError as e:
+        raise SystemExit(f"  ✗ {e}")
+
+
 def _backup_cli(args):
     """`bento backup` — the whole machine in one encrypted file (backup.py): every
     account, the databases, the settings, the vault keys and the workspace. It runs
@@ -3513,7 +3675,60 @@ def _company_cli(args):
         if b["tasks"]:
             print("\n  Tasks:")
             for t in b["tasks"][:12]:
-                print(f"    {t['status']:<12} {t['department']:<12} {t['task'][:70]}")
+                au = t.get("audit") or {}
+                mark = ({"pass": "✓ checked", "concerns": "⚑ concerns", "fail": "✗ failed the check",
+                         "skipped": "– not checked", "unchecked": "– not checked"}.get(au.get("verdict"))
+                        or ("… checking" if au.get("state") == "checking" else ""))
+                print(f"    {t['status']:<12} {t['department']:<12} {t['task'][:56]:<56} "
+                      f"{mark}  {t.get('run_id') or ''}".rstrip())
+                if au.get("verdict") in ("concerns", "fail") and au.get("findings"):
+                    print(f"    {'':<12} {'':<12} auditor: {au['findings'][0][:90]}")
+                elif au.get("verdict") in ("skipped", "unchecked") and au.get("why"):
+                    print(f"    {'':<12} {'':<12} {au['why'][:100]}")
+            if any(t.get("can_check") and not (t.get("audit") or {}).get("verdict")
+                   for t in b["tasks"][:12]):
+                print("\n  Check a finished task:  bento company check RUN")
+        return
+    if a == "audit":
+        # the independent auditor: on by default, and a person's to switch off
+        if not rest or rest[0] not in ("on", "off"):
+            print(f"The independent auditor is {'on' if co.audit_on(cfg) else 'off'}: "
+                  + ("every finished department task is checked by an agent that did none of "
+                     "the work." if co.audit_on(cfg) else "finished tasks are not checked."))
+            print("  bento company audit on|off")
+            return
+        want = rest[0] == "on"
+        if up:
+            d = _api_call(port, "/api/company", "PUT", {"audit": want})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            was = co.audit_on(cfg)
+            cfg["company"] = {**(cfg.get("company") or {}), "audit": want}
+            _cfgmod.save_config(cfg)
+            if want != was:
+                if want:
+                    co.ensure_auditor(store)
+                co.record(store, "the independent auditor switched " + rest[0] + " from the terminal",
+                          action="company.audit")
+        print("✓ the independent auditor is " + ("on: every finished department task is checked."
+                                                 if want else "off: finished tasks are not checked."))
+        return
+    if a == "check":
+        if not rest:
+            print("bento company check RUN   (the run id from `bento company`)")
+            sys.exit(2)
+        if not _server_answers(port):
+            print("✗ AgentOS is not running here. The auditor works in the server: "
+                  "start it with `bento serve`.")
+            sys.exit(1)
+        d = _api_call(port, "/api/company/audit", "POST", {"run_id": rest[0]})
+        if d.get("error"):
+            print(f"✗ {d['error']}")
+            sys.exit(1)
+        print(f"▶ the auditor is checking {d['department']}'s task · run {d['run_id']}\n"
+              f"  bento company   shows the verdict when it is done")
         return
     if a == "templates":
         for c in co.catalogue():
@@ -3617,8 +3832,174 @@ def _company_cli(args):
         co.record(store, f"company renamed: {cur['name']}")
         print(f"✓ the company is called {co.profile(cfg)['name']}")
         return
-    print("bento company [show|templates|setup|task|name]")
+    print("bento company [show|templates|setup|task|name|audit|check]")
     sys.exit(2)
+
+
+def _face_cli(args):
+    """`bento face` — this machine's own screen: one agent drawn, and the kiosk face.
+
+    The settings are the machine's (face.py), so this writes the machine's config
+    directly and works with the server down. What a terminal cannot have is the face
+    itself: the kiosk is a page on the attached screen, and this says so.
+    """
+    from . import config as _cfgmod
+    from . import face as facemod
+    from . import hearing
+    cfg = _cfgmod.load_config()
+    a, rest = args.action, [x.lower() for x in (args.args or [])]
+    val = rest[0] if rest else ""
+    if a in ("show", "status"):
+        print("  " + facemod.describe(cfg))
+        print("  " + hearing.status(cfg)["line"])
+        print("  The kiosk face shows on the screen plugged into this machine. A terminal has no office"
+              "\n  to draw, so here you only set it.")
+        return
+    if a == "hear":
+        if val not in hearing.ENGINES:
+            sys.exit("  speech is understood by one of " + ", ".join(hearing.ENGINES))
+        cfg.setdefault("speech", {}).setdefault("hear", {})["engine"] = val
+        ok, msg = True, hearing.status(cfg)["line"]
+    elif a == "buddy":
+        ok, msg = facemod.set_face(cfg, buddy=val or "?")
+    elif a == "kiosk":
+        if val not in ("on", "off"):
+            sys.exit("  bento face kiosk on | off")
+        ok, msg = facemod.set_face(cfg, kiosk=val == "on")
+    elif a == "wake":
+        ok, msg = facemod.set_face(cfg, wake=val or "?")
+    else:
+        sys.exit("  bento face [show | buddy auto|on|off | kiosk on|off | wake name|always | hear ENGINE]")
+    if not ok:
+        sys.exit("  " + msg)
+    _cfgmod.save_config(cfg)
+    try:
+        from .memory import Store
+        facemod.record(Store(), f"{a} {val} (terminal)")
+    except Exception:
+        pass
+    print("  " + msg)
+    print("  A running server picks this up when it restarts. Settings → Appearance changes it live.")
+
+
+def _pool_cli(args):
+    """`bento pool` — this machine's community of machines (pool.py), in a terminal.
+
+    Everything the Settings group does, with the server up or down: the community is two
+    files under the teamlink home, and joining or handing out work is a call over a link
+    this machine already holds. A running server reads the files fresh, so it sees a
+    change at once; only "think with the leader's brain" edits the config, which a
+    running server picks up when it restarts.
+    """
+    from . import config as _cfgmod
+    from . import pool as poolmod
+    from .memory import Store
+    cfg = _cfgmod.load_config()
+    a, rest = args.action, list(args.args or [])
+    val = " ".join(rest).strip()
+
+    def show():
+        v = poolmod.view(cfg)
+        print("  " + v["line"])
+        if v["pool"]:
+            print(f"  term {v['term']} · {v['notes']} shared note{'' if v['notes'] == 1 else 's'}"
+                  + (" · this machine may lead" if v["lead_ok"] else " · this machine may not lead"))
+            for m in v["machines"]:
+                cap = m.get("cap") or {}
+                seen = ("here" if m.get("here") else "up" if m.get("alive") else
+                        f"last heard {m['seen']}s ago" if m.get("seen") is not None else "not heard yet")
+                print(f"    {'★' if m.get('role') == 'leader' else '·'} {m['name']:<18} {m.get('state', ''):<8} "
+                      f"{seen:<22} {cap.get('ram_mb', 0)} MB, {cap.get('cores', 0)} cores"
+                      + (f", {cap.get('board')}" if cap.get("board") else ""))
+        if v.get("note"):
+            print("  last problem: " + v["note"])
+
+    def run(coro):
+        return asyncio.run(coro)
+
+    try:
+        if a in ("show", "status"):
+            return show()
+        if a == "create":
+            poolmod.create(cfg, val)
+            return show()
+        if a == "join":
+            if not rest:
+                sys.exit("  bento pool join LINKED-MACHINE   (link the two machines first: bento link request)")
+            run(poolmod.join(cfg, rest[0]))
+            d = poolmod.load()
+            store = Store()
+            poolmod.grant_work(store, d["pool"]["id"], d["pool"]["name"])
+            poolmod.ensure_worker(store)
+            if getattr(args, "brain", False) or not poolmod.has_brain(cfg):
+                poolmod.set_use_brain(cfg, True)
+                _cfgmod.save_config(cfg)
+                print("  This machine will think with the leader's brain (restart the server to use it now).")
+            return show()
+        if a in ("approve", "remove"):
+            if not val:
+                sys.exit(f"  bento pool {a} MACHINE")
+            e = (poolmod.approve if a == "approve" else poolmod.remove)(Store(), val)
+            print(f"  {e.get('name')} {'is in' if a == 'approve' else 'was removed'}.")
+            return show()
+        if a == "leave":
+            d = poolmod.load()
+            store = Store()
+            if d.get("pool"):
+                store.revoke_grants_for("pool", d["pool"]["id"], source="pool")
+            if d.get("role") == "leader":
+                poolmod.drop_leader_grants(store, d)
+            r = run(poolmod.leave(cfg))
+            _cfgmod.save_config(cfg)
+            print("  Left the community." if r["left"] else "  This machine was not in a community.")
+            return
+        if a in ("lead", "brain"):
+            if val not in ("on", "off"):
+                sys.exit(f"  bento pool {a} on | off")
+            if a == "lead":
+                if val == "on" and not poolmod.has_brain(cfg):
+                    sys.exit("  to lead, this machine needs a brain of its own (a model with a key, or a local model)")
+                poolmod.set_lead_ok(val == "on")
+            else:
+                if val == "on" and poolmod.load().get("role") != "member":
+                    sys.exit("  only a member thinks with its leader's brain")
+                poolmod.set_use_brain(cfg, val == "on")
+                _cfgmod.save_config(cfg)
+            return show()
+        if a == "pin":
+            d = poolmod.load()
+            if d.get("role") != "leader":
+                sys.exit("  only the leader chooses who leads next")
+            e = poolmod._find_member(d, val) if val and val != "auto" else None
+            if val and val != "auto" and not (e and poolmod.eligible(e)):
+                sys.exit("  that machine may not lead (it needs a brain and its own admin's yes)")
+            d["pin"] = e["fp"] if e else ""
+            poolmod.save(d)
+            print(f"  {e['name']} leads next." if e else "  The most capable machine leads next.")
+            return
+        if a == "notes":
+            for r in poolmod.notes_search(val, limit=50):
+                print(f"  [{r['id']}] ({r.get('machine') or '?'}) {r['content']}")
+            return
+        if a == "share":
+            from . import teamlink
+            got = poolmod.note_add(val, machine=teamlink.machine_name(cfg), agent="you")
+            print(f"  shared (note {got['id']})" + ("" if got["shared"] else ", sent on the next heartbeat"))
+            return
+        if a == "forget":
+            print("  forgotten" if poolmod.note_forget(val) else "  no such note")
+            return
+        if a == "task":
+            if not rest:
+                sys.exit('  bento pool task "first piece" "second piece" ...')
+            res = run(poolmod.Pool(cfg=lambda: cfg, store=Store, pdp=lambda: None).hand_out(rest))
+            for r in res:
+                print(f"\n  ## {r['machine']}{'' if r['ok'] else ' (could not)'}\n  {r['text']}")
+            return
+    except ValueError as e:
+        sys.exit("  " + str(e))
+    sys.exit("  bento pool [status | create NAME | join MACHINE [--brain] | approve M | remove M | leave"
+             " | lead on|off | brain on|off | pin MACHINE|auto | notes [Q] | share TEXT | forget ID | task PIECE...]")
 
 
 def _office_cli(args):
@@ -5149,7 +5530,12 @@ def _remote_cli(args):
         if problem:
             print(f"passphrase: {problem}")
             sys.exit(1)
-        r["pass_hash"], r["pass_salt"] = remotemod.hash_passphrase(pw)
+        # The same passphrase keeps its hash. Sessions are signed with it, and the
+        # container entrypoint sets the passphrase on EVERY start, so a fresh salt
+        # here signed everybody out on each restart (each cloud redeploy). A new
+        # passphrase still rotates the hash and signs every device out.
+        if not remotemod.check_passphrase({"remote": r}, pw):
+            r["pass_hash"], r["pass_salt"] = remotemod.hash_passphrase(pw)
     if args.bind:
         r["bind"] = args.bind
     if args.on:
@@ -5898,8 +6284,74 @@ def _assets_cli(args):
               f"(offered in Settings → Components, licence in view)")
 
 
+def _grants_cli(args):
+    """`bento grants` — the Permissions app's grants, from a terminal.
+
+    Straight to the database, so it works with the server down; a running server sees
+    the change at once (the gate's cache watches for writes from other processes).
+    Every change is a ledger row, written by the store itself like the desktop's."""
+    _, store = _open_store(getattr(args, "user", ""))
+    act = args.action
+
+    def who(g):
+        return g["principal_kind"] + (f":{g['principal_id']}" if g["principal_id"] else "")
+    if act == "list":
+        kind, _, pid = (args.who or "").partition(":")
+        rows = store.list_grants(kind, pid, include_revoked=bool(args.all))
+        if not rows:
+            print("no grants" + (" for " + args.who if args.who else ""))
+            return
+        now = time.time()
+        for g in rows:
+            exp = g.get("expires_at")
+            when = ("" if not exp else
+                    " · expired" if exp <= now else
+                    f" · until {time.strftime('%d %b %H:%M', time.localtime(exp))}")
+            gone = " · revoked" if g.get("revoked_at") else ""
+            scope = f" · on {g['surfaces']}" if (g.get("surfaces") or "*") != "*" else ""
+            ref = str(g.get("source_ref") or "")
+            chat = " · one chat" if ref.startswith("conv:") else ""
+            print(f"  {g['id']}  {g['effect']:<5} {who(g):<24} {g['action']:<14} "
+                  f"{g['resource'][:48]}{scope}{when}{chat}{gone}  ({g.get('source') or 'user'})")
+        print("\n  bento grants revoke <id>   ·   bento grants allow|deny <who> <action> <resource>")
+        return
+    if act == "revoke":
+        if not args.who:
+            print("say which: bento grants revoke <id>")
+            sys.exit(2)
+        ok = store.revoke_grant(args.who)
+        print("✓ revoked" if ok else f"✗ no live grant with id {args.who}")
+        if not ok:
+            sys.exit(1)
+        return
+    if act in ("allow", "deny"):
+        if not (args.who and args.what and args.resource):
+            print(f"say who, what and on what: bento grants {act} subagent:researcher "
+                  f"fs.write 'fs:~/reports/*'")
+            sys.exit(2)
+        kind, _, pid = args.who.partition(":")
+        if kind not in ("user", "app", "subagent", "flow", "team", "peer", "*"):
+            print(f"✗ '{kind}' is not a kind of principal (user, app, subagent, flow, team, peer)")
+            sys.exit(2)
+        exp = time.time() + float(args.hours) * 3600 if args.hours else None
+        gid = store.add_grant(kind, pid, args.what, args.resource, effect=act, source="user",
+                              note=f"written from a terminal", expires_at=exp,
+                              surfaces=args.surfaces or "*")
+        print(f"✓ {act} {args.who} {args.what} {args.resource}"
+              + (f" for {args.hours:g}h" if args.hours else "") + f"  ({gid})")
+        return
+
+
 def _audit_cli(args):
     _, store = _open_store(getattr(args, "user", ""))
+    if getattr(args, "verify", False):
+        # the ledger is hash-chained: an edited or deleted row breaks the chain here
+        v = store.audit_verify()
+        if v.get("ok"):
+            print(f"✓ the ledger is intact: {v.get('checked', 0)} rows, each chained to the last")
+            return
+        print(f"✗ the ledger was changed: {v.get('reason')} at row {v.get('at_seq')}")
+        sys.exit(1)
     since = _since_secs(args.since)
     ts = (time.time() - since) if since else 0.0
     summary = store.audit_summary(since=ts)
@@ -6023,6 +6475,31 @@ def main():
                           help="say what a backup holds, without restoring it")
     p_backup.add_argument("--passphrase-file", default="",
                           help="read the passphrase from a file (for an unattended backup)")
+    p_keep = verb("keep", help="a free cloud machine's memory, kept sealed in your own storage bucket")
+    p_keep.add_argument("action", nargs="?", default="status", choices=["status", "save", "restore"],
+                        help="status | save (now) | restore (into an empty home; the container does this)")
+    p_cloud = verb("cloud", help="put Bento in the cloud: one-click Render, Fly.io or your own server")
+    p_cloud.add_argument("--json", action="store_true", help="the options as JSON")
+    p_sb = verb("standby", help="a cloud machine that takes over only while this one is away")
+    p_sb.add_argument("action", nargs="?", default="status",
+                      choices=["status", "wait", "pair", "copy", "takeover", "move", "back",
+                               "adopt", "keep", "off", "set"],
+                      metavar="ACTION",
+                      help="status | wait (on the cloud: show a pairing code) | pair URL CODE | "
+                           "copy | takeover | move | back | adopt | keep | off | set")
+    p_sb.add_argument("rest", nargs="*", help="for pair: the cloud's address and its code")
+    p_sb.add_argument("--grace", type=int, default=0, help="set: minutes of silence before taking over")
+    p_sb.add_argument("--auto", dest="auto", action="store_true", default=None,
+                      help="set: take over by itself")
+    p_sb.add_argument("--manual", dest="auto", action="store_false",
+                      help="set: take over only when told to")
+    p_sb.add_argument("--workspace", dest="workspace", action="store_true", default=None,
+                      help="set: include the workspace folder in the copies")
+    p_sb.add_argument("--no-workspace", dest="workspace", action="store_false")
+    p_sb.add_argument("--active", dest="sync", action="store_const", const="active", default=None,
+                      help="set: active sync, every change sent to the cloud within seconds")
+    p_sb.add_argument("--copies", dest="sync", action="store_const", const="copies",
+                      help="set: whole copies only, at most every 10 minutes")
     p_restore = verb("restore", help="replace this machine's Bento with a backup (what is here is kept aside)")
     p_restore.add_argument("file", help="the .bento file")
     p_restore.add_argument("--yes", action="store_true", help="do not ask before restoring")
@@ -6266,9 +6743,23 @@ def main():
     p_audit = verb("audit", help="the access ledger — who was allowed to do what")
     p_audit.add_argument("--since", default="24h", help="e.g. 1h, 24h, 7d (default 24h)")
     p_audit.add_argument("--effect", default="", choices=["", "allow", "deny", "ask"])
-    p_audit.add_argument("--who", default="", help="user | app | subagent | workflow | system")
-    p_audit.add_argument("--surface", default="", help="gui | tui | telegram | api | task")
+    p_audit.add_argument("--who", default="", help="user | app | subagent | flow | team | peer")
+    p_audit.add_argument("--surface", default="",
+                         help="gui | tui | telegram | whatsapp | api | task | webhook")
     p_audit.add_argument("--limit", type=int, default=50)
+    p_audit.add_argument("--verify", action="store_true",
+                         help="check the ledger's hash chain for edited or deleted rows")
+
+    p_grants = verb("grants", help="who may do what without asking — list, add, revoke")
+    p_grants.add_argument("action", nargs="?", default="list",
+                          choices=["list", "allow", "deny", "revoke"])
+    p_grants.add_argument("who", nargs="?", default="",
+                          help="kind:id (subagent:researcher, app:<id>, user), or a grant id to revoke")
+    p_grants.add_argument("what", nargs="?", default="", help="the action (fs.write, net.fetch, tool.use…)")
+    p_grants.add_argument("resource", nargs="?", default="", help="what it applies to (fs:~/reports/*)")
+    p_grants.add_argument("--hours", type=float, default=0, help="with allow/deny: expire after this long")
+    p_grants.add_argument("--surfaces", default="", help="only on these ways in (gui,telegram…)")
+    p_grants.add_argument("--all", action="store_true", help="with list: revoked ones too")
 
     p_reg = verb("registry", help="the app registry — package, scan, sign and verify apps")
     p_reg.add_argument("action", nargs="?", default="verify",
@@ -6364,6 +6855,8 @@ def main():
     p_flow.add_argument("--wait", action="store_true", help="stay attached until it finishes")
     p_flow.add_argument("--always", action="store_true",
                         help="with `allow`: remember it as a grant, not just this once")
+    p_flow.add_argument("--hour", action="store_true",
+                        help="with `allow`: remember it for an hour")
     # authoring, so a headless machine can create what it can already run
     p_flow.add_argument("--mission", default="", help="with `add`: what the flow is for")
     p_flow.add_argument("--agents", default="",
@@ -6386,9 +6879,11 @@ def main():
     p_job = verb("job", help="give this machine a standing mission — the terminal "
                                        "half of the Missions app and the first-run screen")
     p_job.add_argument("action", nargs="?", default="list",
-                       choices=["list", "recipes", "add", "run", "persona"])
+                       choices=["list", "recipes", "add", "run", "persona", "history"])
     p_job.add_argument("name", nargs="?", default="",
-                       help="recipe id for `add`, mission name for `run`, founder|coder|consultant for `persona`")
+                       help="recipe id for `add`, mission name for `run` or `history`, "
+                            "founder|coder|consultant for `persona`")
+    p_job.add_argument("--task", default="", help="history: only the runs of this schedule (its id)")
     p_job.add_argument("--for", dest="for_", default="",
                        help="recipes: founder | coder | consultant | everyone — theirs first")
     p_job.add_argument("--topics", default="", help="morning-brief: what to keep an eye on")
@@ -6448,14 +6943,28 @@ def main():
     p_fl.add_argument("--limit", type=int, default=20)
     p_co = verb("company", help="your company: departments of agents, set up from a sentence, and their work")
     p_co.add_argument("action", nargs="?", default="show",
-                      choices=["show", "list", "templates", "setup", "task", "name"])
+                      choices=["show", "list", "templates", "setup", "task", "name", "audit", "check"])
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
-                                              " · name: the company's name")
+                                              " · name: the company's name · audit: on|off"
+                                              " · check: RUN")
     p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")
     p_co.add_argument("--no-talk", action="store_true", help="setup: do not let colleagues ask each other")
     p_co.add_argument("--words", action="store_true", help="setup: skip the brain, use the catalogue as it is")
     p_co.add_argument("--yes", action="store_true", help="setup: do not ask before making it")
     p_co.add_argument("--user", default="", help="whose company, on a machine with users")
+    p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")
+    p_pool.add_argument("action", nargs="?", default="status",
+                        choices=["status", "show", "create", "join", "approve", "remove", "leave",
+                                 "lead", "brain", "pin", "notes", "share", "forget", "task"], metavar="ACTION",
+                        help="status | create NAME | join MACHINE | approve M | remove M | leave | "
+                             "lead on|off | brain on|off | pin M|auto | notes [Q] | share TEXT | forget ID | task PIECE...")
+    p_pool.add_argument("args", nargs="*", help="the value")
+    p_pool.add_argument("--brain", action="store_true", help="join: think with the leader's brain")
+    p_face = verb("face", help="this machine's screen: one agent drawn, and the kiosk that listens")
+    p_face.add_argument("action", nargs="?", default="show",
+                        choices=["show", "status", "buddy", "kiosk", "wake", "hear"], metavar="ACTION",
+                        help="show | buddy auto|on|off | kiosk on|off | wake name|always | hear ENGINE")
+    p_face.add_argument("args", nargs="*", help="the value")
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
@@ -6645,6 +7154,46 @@ def main():
         _backup_cli(args)
     elif args.cmd == "restore":
         _restore_cli(args)
+    elif args.cmd == "keep":
+        # Where a cloud machine on a host that forgets its disk keeps its home (keep.py).
+        # Run by the container's entrypoint before the server starts, and by a person.
+        from . import keep
+        try:
+            if args.action == "restore":
+                r = keep.restore()
+                if not r.get("restored"):
+                    print(f"  nothing restored: {r.get('why')}")
+            elif args.action == "save":
+                r = keep.save(force=True)
+                print(f"  saved to {r['where']} ({keep._size(r['bytes'])}, {r['seconds']}s)"
+                      if r.get("saved") else f"  not saved: {r.get('why')}")
+            else:
+                st = keep.status()
+                print(f"  {st['line'] or 'This machine keeps its own disk; nothing is kept in storage.'}")
+                if st["prefix"] and st["enabled"]:
+                    print(f"  under {st['prefix']}/ in the bucket")
+                if st["restore_note"]:
+                    print(f"  {st['restore_note']}")
+                if not st["enabled"]:
+                    print("  To keep it, set " + ", ".join(keep.ENVS) + " (any S3-compatible storage).")
+                    p = keep.PROVIDERS[0]
+                    print(f"  {p['name']}: {p['free']}. {p['card']} {p['signup']}")
+        except keep.KeepError as e:
+            print(f"  ✗ {e}")
+            sys.exit(1)
+    elif args.cmd == "cloud":
+        # The terminal face of Settings → System → Put Bento in the cloud: the same
+        # options, read from clouddeploy.py with the server down.
+        from . import clouddeploy
+        from . import config as cfgmod
+        if args.json:
+            print(json.dumps({"options": clouddeploy.options(cfgmod.load_config()),
+                              "not_offered": clouddeploy.NOT_OFFERED,
+                              "after": clouddeploy.after()}, indent=2))
+        else:
+            print(clouddeploy.text(cfgmod.load_config()))
+    elif args.cmd == "standby":
+        _standby_cli(args)
     elif args.cmd == "tui":
         from . import config as cfgmod
         if cfgmod.is_first_run():
@@ -6699,6 +7248,8 @@ def main():
         _assets_cli(args)
     elif args.cmd == "audit":
         _audit_cli(args)
+    elif args.cmd == "grants":
+        _grants_cli(args)
     elif args.cmd == "registry":
         _registry_cli(args)
     elif args.cmd == "flow":
@@ -6725,6 +7276,10 @@ def main():
         _avatar_cli(args)
     elif args.cmd == "company":
         _company_cli(args)
+    elif args.cmd == "pool":
+        _pool_cli(args)
+    elif args.cmd == "face":
+        _face_cli(args)
     elif args.cmd == "office":
         _office_cli(args)
     elif args.cmd == "files":

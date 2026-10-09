@@ -128,7 +128,20 @@ body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical
 .bk-pws input{flex:1 1 180px;min-width:0}
 .bk-ws{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-sm)}
 .bk-ws code{word-break:break-all}
+.sb-feed{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm)}
 .bk-box input[type=file]{max-width:100%;min-height:var(--tap,32px)}
+.cd-pass{display:flex;flex-direction:column;gap:4px;width:100%}
+.cd-pass-row{display:flex;gap:6px;width:100%}
+#cd-box{min-width:0;max-width:100%}
+.cd-pass-row input{flex:1 1 120px;width:100%;min-width:0;font-family:var(--mono,ui-monospace,monospace)}
+.cd-pass-row button,.cd-after button,.cd-go{min-height:var(--tap,32px)}
+.cd-more{margin-top:12px;width:100%}
+.cd-more summary{cursor:pointer;min-height:var(--tap,28px);display:flex;align-items:center;color:var(--dim)}
+.cd-way{display:flex;flex-direction:column;gap:4px;margin:10px 0}
+.cd-steps{margin:2px 0 2px 18px;padding:0;display:flex;flex-direction:column;gap:4px}
+.cd-steps code{white-space:pre-wrap;word-break:break-all;user-select:all}
+.cd-after{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.cd-after>div{display:flex;flex-wrap:wrap;gap:6px}
 .bk-done{padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--ok,#3c9) 12%,transparent);margin:4px 0 8px}
 .bk-done ul{margin:6px 0 6px 18px;padding:0}
 .bk-done li{margin:3px 0}
@@ -137,3 +150,9 @@ body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical
 .bk-last{padding:0 16px}
 .bk-last .bk-done{margin:12px 0 4px}
 .bk-last li{word-break:break-word}
+.cd-step{display:flex;flex-direction:column;gap:6px;width:100%}
+.cd-here{margin-bottom:14px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.cd-here.cd-ok{background:color-mix(in srgb,var(--ok,#3c9) 12%,transparent)}
+.cd-here.cd-warn{background:color-mix(in srgb,var(--warn,#e6a23c) 14%,transparent)}
+.cd-here.cd-err{background:color-mix(in srgb,var(--err,#e5484d) 14%,transparent)}
+.cd-here>div{display:flex;flex-wrap:wrap;gap:6px}

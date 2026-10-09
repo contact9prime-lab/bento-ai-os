@@ -47,6 +47,13 @@ machine's shared folder (`~/.agentos/workspace`) instead, so on a machine with a
 deck could be made and still be missing from Files. If a folder is set in
 Settings → Executors, forwarded turns use that folder.
 
-Only files in folders you can reach are offered. That's your own workspace, and on a
-machine without accounts, or for an admin, also the machine's shared folder and the
-Executors folder. A reply that names a file anywhere else leaves it as plain text.
+Only files in folders you can reach are offered. That's your own workspace, the folders an
+admin shared with you (Users → Shared folders), and on a machine without accounts, or for an
+admin, also the machine's shared folder and the Executors folder. A reply that names a file
+anywhere else leaves it as plain text.
+
+The Files app shows the shared folders too: when something is shared with you, a picker
+beside the path switches between the workspace and each shared folder, and a read-only one
+says so.
+
+![The Files app in a read-only shared folder](screenshots/files-shared.png)

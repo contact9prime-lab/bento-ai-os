@@ -157,6 +157,8 @@ function officeSceneAttach(){
 }
 function officeSceneFit(){
   const S=OFFICE_SCENE,home=document.getElementById('home');if(!S.host)return false;
+  if(document.body.classList.contains('kiosk')){       // the kiosk face: the whole screen
+    if(S.top===0)return false;S.top=0;S.host.style.top='0px';return true}
   let top=Math.round(innerHeight*.42);
   if(home&&!home.hidden)[...home.children].forEach(c=>{const r=c.getBoundingClientRect();if(r.height)top=Math.max(top,Math.round(r.bottom)+14)});
   top=Math.min(top,innerHeight-96-160);          // never less than a strip of office
@@ -205,7 +207,11 @@ function officeLayout(){
   const O=OFFICE,v=O.view;if(!O.cv||!v)return;
   const sc=O.cv.parentElement;let cw=Math.max(280,sc.clientWidth);
   const phone=cw<640;
-  O.s=phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
+  // The kiosk face (24h-kiosk.js) is the whole screen of a small machine: people are
+  // drawn bigger, to be read from across a room, and the rooms take the height there is
+  const kiosk=!!(O.w&&O.w.scene&&document.body.classList.contains('kiosk'));
+  O.s=kiosk?Math.max(.9,Math.min(1.8,cw/720,sc.clientHeight/300))
+    :phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
   const W=cw/O.s, x0=OF_M+OF_SPINE, avail=W-x0-OF_M;
   // each room's natural width: a desk slot per member, and never narrower than a room
   const want=r=>r.kind==='lead'?300:r.kind==='meeting'?280:r.kind==='lounge'?250
@@ -229,7 +235,8 @@ function officeLayout(){
   // a short office on a tall window: the rooms get more floor rather than leaving a
   // dark band under them (capped, so one row of rooms does not become a ballroom)
   const natural=OF_M*2+plan.reduce((a,r)=>a+r.h+OF_HALL,0)-OF_HALL*.5, room=sc.clientHeight/O.s;
-  const grow=(phone||O.fit)?0:Math.max(0,Math.min(140,(room-natural)/plan.length));
+  const grow=kiosk?Math.max(0,Math.min(400,(room-natural)/plan.length))
+    :(phone||O.fit)?0:Math.max(0,Math.min(140,(room-natural)/plan.length));
   const rooms=[];let y=OF_M;
   plan.forEach((row,ri)=>{
     const h=row.h+grow;let x=x0;
@@ -342,7 +349,17 @@ function officeMatch(label){
   const k=String(label).toLowerCase().replace(/[^a-z0-9@]/g,'');
   if(k==='@agent'||k==='agent')return OFFICE.people['@agent']||null;
   for(const n in OFFICE.people){const q=n.toLowerCase().replace(/[^a-z0-9@]/g,'');if(q&&q===k)return OFFICE.people[n]}
+  // One agent on screen (buddy): a specialist's work lights the lead's desk, since the
+  // lead is the only one drawn. Nothing else is invented: no label, no second figure.
+  if(faceBuddy())return OFFICE.people['@agent']||null;
   return null;
+}
+/* Is only the lead drawn? The office route answers for the window (face.buddy on the
+   server), /api/platform for the desktop scene before the Office was ever opened. */
+function faceBuddy(){
+  if(typeof OFFICE!=='undefined'&&OFFICE.view&&OFFICE.view.buddy!==undefined)return !!OFFICE.view.buddy;
+  // PLATFORM is a `let` in 22-quicksettings.js: read before that file ran it throws
+  try{return !!(PLATFORM&&PLATFORM.face&&PLATFORM.face.buddy)}catch(e){return false}
 }
 function officeSay(p,text,kind,ms){
   if(!p)return;
@@ -373,6 +390,14 @@ function officeBoardPoint(){
 function officeHead(p){return p.mode==='seat'?{x:p.x,y:p.y-50}:{x:p.x,y:p.y-80}}
 function officeName(k){return k==='@agent'?(typeof agentName==='function'?agentName():'your agent'):k}
 
+/* Is this person answering a conversation that is still running? A turn open in chat
+   is work, even when nothing has arrived for a while (a forwarded brain streams its
+   answer only at the end), so their desk stays lit until turn_end. */
+function officeLive(p){
+  const O=OFFICE;if(!p||typeof RUNNING==='undefined')return false;
+  for(const c in O.convWho)if(O.convWho[c]===p.key&&RUNNING.has(c))return true;
+  return false;
+}
 function officePulse(kind,label,ev){
   const O=OFFICE;if(!O.w||!O.L)return;
   ev=ev||{};
@@ -380,13 +405,16 @@ function officePulse(kind,label,ev){
     const who=ev.speaker?officeMatch(ev.speaker):O.people['@agent'];
     if(label)O.convWho[label]=who?who.key:'@agent';
     if(ev.huddle&&ev.huddle.length)officeHuddle(ev.huddle,label);
-    else if(who){officeWork(who,true);officePop(who,'!')}
+    // a thinking balloon for as long as the turn is open: Claude Code says nothing until
+    // its answer is done (measured: 50 silent seconds), and a desk that went dark after
+    // 12 of them read as the Office not noticing the chat at all
+    else if(who){officeWork(who,true);officePop(who,'!');officeSay(who,'…','think',600000)}
     return;
   }
   if(kind==='turnend'){
     const who=O.people[O.convWho[label]||'@agent'];
     if(O.huddle&&O.huddle.cid===label)officeHuddleEnd();
-    if(who)officeWork(who,false);
+    if(who){officeWork(who,false);if(who.say&&who.say.kind==='think')who.say=null}
     delete O.convWho[label];return;
   }
   if(kind==='tool'){
@@ -491,7 +519,7 @@ function officeReply(asker,who,text){
    (which names a tool and no agent) lands on the right desk. */
 function officeFabric(ev){
   const O=OFFICE,e=ev.event;
-  if(e==='flow_start'||e==='flow_end'||e==='approval'||e==='parked'||(e==='status'&&ev.status!=='running'))companySoon();
+  if(e==='flow_start'||e==='flow_end'||e==='approval'||e==='parked'||e==='audit'||(e==='status'&&ev.status!=='running'))companySoon();
   if(e==='flow_start'){O.missions[ev.flow]=performance.now();if(ev.run_id)O.flowRuns[ev.run_id]=ev.flow;
     officeLog(`mission ${ev.flow} started`);officeKick();return}
   if(e==='flow_end'){if(ev.flow)delete O.missions[ev.flow];else O.missions={};
@@ -651,7 +679,7 @@ function officeStep(dt){
       }
       if(!p.path.length)officeArrive(p);
     }
-    if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand)p.busy=0;
+    if(p.busy&&now-p.busy>OF_WORK_MS&&!p.hand&&!officeLive(p))p.busy=0;
     // an unanswered question says how long it has waited
     if(p.hand&&p.waitSince&&p.say&&p.say.kind==='shout'){const m=Math.floor((now-p.waitSince)/60000);
       const t='? needs you: '+p.waitTool+(m?` · ${m} min`:'');if(p.say.text!==t)p.say.text=t}
@@ -670,7 +698,9 @@ function officeLine(){
   const el=OFFICE.w&&OFFICE.w.el.querySelector('#of-line');if(!el||!OFFICE.view)return;
   const ps=Object.values(OFFICE.people), n=ps.length-1, busy=ps.filter(p=>p.busy).length;
   const talk=ps.filter(p=>p.visit&&!p.visit.meet).length, jobs=Object.keys(OFFICE.missions).length+Object.keys(OFFICE.convWho).length;
-  const txt=`${OFFICE.view.office.name} · ${busy?busy+' working':'all quiet'}${jobs>1?' on '+jobs+' things':''}${talk?' · '+talk+' on the move':''} · ${n} ${n===1?'specialist':'specialists'}`;
+  // one agent on screen: the specialists still exist and still work, so say how many
+  const k=faceBuddy()?(OFFICE.view.agents||[]).length:n;
+  const txt=`${OFFICE.view.office.name} · ${busy?busy+' working':'all quiet'}${jobs>1?' on '+jobs+' things':''}${talk?' · '+talk+' on the move':''} · ${k} ${k===1?'specialist':'specialists'}${faceBuddy()&&k?' behind your agent':''}`;
   if(el.textContent!==txt)el.textContent=txt;
   const t=OFFICE.w.el.querySelector('.of-title');if(t)t.textContent=OFFICE.view.style.label;
 }
@@ -1215,7 +1245,7 @@ function officeGreet(p){
 function officeEmpty(){
   const el=OFFICE.w&&OFFICE.w.el.querySelector('.of-empty');if(!el)return;
   const none=!OFFICE.view.agents.length;
-  el.hidden=!none;
+  el.hidden=!none||faceBuddy();     // one agent on screen is a choice, not an empty office
   if(none)el.innerHTML=`<b>Your office has one person in it: ${esc(officeName('@agent'))}.</b>
     <span>Specialists take a desk here as soon as they exist. Set up a whole company with ▦ Company, or ask for one person in the chat.</span>`;
 }

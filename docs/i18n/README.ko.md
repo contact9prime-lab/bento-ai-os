@@ -41,6 +41,8 @@ WhatsApp으로 당신에게 연락합니다. 어떤 에이전트가 무엇을 �
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 그다음 **http://127.0.0.1:8321** 을 여세요. [원격 접속](../remote-access.md)을 직접 켜기 전까지는
 localhost에서만 대기합니다. 만들어야 할 계정도, 텔레메트리도 없고, 키를 넣지 않는 한 클라우드도
 쓰지 않습니다.
@@ -399,6 +401,12 @@ Remote Desktop(원격 데스크톱)은 네이티브 앱까지 포함한 컴퓨�
 [사용자 →](../users.md)
 
 ![Users 앱: 관리자 하나와 Executor 역할을 가진 계정 하나, 두 개의 계정](../screenshots/users-two-accounts.png)
+
+### 백업과 클라우드 대기 머신
+
+`bento backup`은 머신 전체를 봉인된 파일 하나에 담습니다. 모든 계정, 금고, 작업 폴더가 들어갑니다. `bento restore`로 이 머신이나 새 머신에 되살릴 수 있습니다. [백업 →](../backup.md)
+
+클라우드 머신에 두 번째 Bento를 연결하면 봉인된 사본을 들고 대기합니다. 내 머신이 응답하지 않으면 클라우드가 미션과 채널을 이어서 처리하고, 내 머신이 돌아오면 작업을 돌려줍니다. 활성 동기화를 켜면 채팅 메시지 하나하나를 포함한 모든 변경이 몇 초 안에 클라우드에 도착합니다. [클라우드 대기 →](../standby.md)
 
 ### 내 에이전트 공유하기, 남의 에이전트 포크하기
 

@@ -710,9 +710,8 @@ class WhatsAppBridge(usersmod.Scoped):
         finally:
             self._pending.pop(aid, None)
         if val == "2" and offer:
-            self.store.add_grant(offer["principal_kind"], offer["principal_id"],
-                                 offer["action"], offer["resource"], source="user",
-                                 note="allowed & remembered from a WhatsApp approval")
+            from .policy import write_remembered
+            write_remembered(self.store, offer, "always", via="a WhatsApp approval")
             self.store.log("policy",
                            f"grant remembered: {offer['action']} {offer['resource']}",
                            {"principal": f"{offer['principal_kind']}:{offer['principal_id']}",

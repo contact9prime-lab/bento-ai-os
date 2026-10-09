@@ -1,5 +1,175 @@
 # Changelog
 
+## 0.6.18 — 2026-09-30
+
+**A community of machines.** A few small computers can now work as one. One machine leads:
+it holds the keys, lends its brain and splits bigger jobs. Small machines like a Raspberry Pi
+join it over a linked team (*Settings → Agents → Community*, or `bento pool`), and the
+leader's admin lets each one in.
+- A Pi with no key of its own thinks with the leader's brain. Each call goes through the
+  leader's permissions and lands in its ledger and Usage. Revoke the one permission letting a
+  machine in and it stops.
+- Agents share facts with every machine (`remember` with `community`, read with
+  `community_recall`). Notes reach every member within a heartbeat or two. Reading them counts
+  as outside content, like a web page.
+- On the leader, the agent splits a bigger job across the members (`pool_task`). Each piece
+  runs on that machine's worker, with its own tools and permissions.
+- If the leader stops answering for a minute, the next machine whose admin agreed to lead
+  takes over, and the others follow it. A leader that comes back steps down. Measured with
+  three real servers on one box: the takeover came 60 seconds after the leader was killed,
+  and the old leader stepped down 16 seconds after it was started again.
+
+**One agent on screen, and the kiosk.** *Settings → Appearance → On this screen*, or `bento
+face`.
+- **One agent on screen** draws only your agent in the Office and the Crew scene. Your
+  specialists still work, and their work lights your agent's desk. It's on by itself in Light
+  mode, so a Raspberry Pi gets it without being told.
+- **The kiosk** turns the machine's own screen into the Office, full screen, with the mic on.
+  Say your agent's name and what you need, and the answer is shown and spoken while the agents
+  work. Only the screen plugged into the machine shows it; a phone keeps its desktop.
+- Speech is understood on the machine, because a Pi's browser can't do it: with whisper.cpp
+  if it's installed, so nothing leaves the machine, or with your OpenAI key. With neither, the
+  kiosk says what to add.
+- When AgentOS is the whole session, the microphone works now. The session's browser refused
+  every microphone request, so voice input never worked there.
+
+**Put Bento in the cloud in one click, for free.** Settings → System → Put Bento in the cloud
+(or `bento cloud`, or the button in the README) opens Render's free plan with everything filled
+in: make a free storage bucket (Backblaze B2 gives 10 GB with no card; Cloudflare R2, Tigris or
+any S3-compatible storage work too), sign in to Render with GitHub or Google, type a password,
+fill in the bucket, press Deploy. No card. Render's free plan wipes its disk on every restart,
+so Bento keeps its home in your bucket, sealed with your password before it leaves the machine:
+it saves within two minutes of a change and once more when Render stops it, and brings
+everything back on the next start (`bento keep`). Each save writes a second copy and then
+switches to it, so the copy before always stays whole. It also visits its own address every ten minutes so missions
+and Telegram keep running. A paid plan with a disk, Fly.io and your own server are listed beside
+it with their steps and costs, and the hosts that would forget everything are named with the
+reason. Once it's up, the same card takes you to pairing it as your standby or moving this
+machine there.
+- The container now listens on the `PORT` a host gives it, which Render, Fly and others use.
+- Restarting a container no longer signs everybody out. The entrypoint sets the password on
+  every start, and the same password used to get a fresh salt and so a new session key. A new
+  password still signs every device out.
+
+**Shared folders reach every agent and every app.** Reported as "I allow certain folders
+and it doesn't detect them". Five things were wrong:
+- On a machine with accounts, an admin's share saved fine and then vanished from the Users
+  app, because the server's own copy of the machine settings never heard about the save. The
+  Terminal read the same stale copy. Every machine setting an admin saves now reaches it.
+- A share made with `bento folders add --users ada` reached nobody: accounts are stored by id
+  and only ids matched. Names match now, and new shares are saved by id. An unknown name is
+  refused rather than saved.
+- Claude Code, Gemini CLI and Codex were never told about shared folders and couldn't open
+  them. They're now handed each one in their own flags, read-only ones kept read-only where
+  the CLI can do that, and told which folders they have.
+- The built-in agent's instructions said to work inside the workspace and named no share.
+  They list each shared folder and its mode now.
+- The Files app, Chat's file chips, downloads and Telegram's file sending knew only the
+  workspace. The Files app has a picker for each shared folder, and the rest reach them too.
+
+**Permissions: the holes a review found are closed.** Each was confirmed by running it.
+- A tool with no risk level of its own used to run without asking. Now it asks until it
+  has one. That covers `run_python`, deleting a skill or a picture, and messaging another
+  WhatsApp number or Telegram chat.
+- Shell commands that looked read-only but weren't now ask first. Examples: `env rm …`,
+  `curl` uploading a file, `wget` saving one, `awk` or `sed` running a command, and
+  `sort -o`. A download in the shell now counts as outside content, like a web page.
+- An app from the store reaches only the web and a few harmless tools without asking.
+  Before, it could run shell commands and Python and read your files.
+- The approval card has Allow once, Deny, and Remember for this chat, for an hour, or
+  always. Each one is a permission for the one agent that asked. The old "Always allow"
+  button wrote a rule every app and agent shared, and switched off the check that follows
+  reading a web page. It's gone. Telegram gets a "1 hour" button too.
+- After reading a web page, saving a memory, a fact, a skill or an automation asks first.
+  Otherwise one line from a page could steer every later chat.
+- Paranoid now means it. Anything but reading waits for you. It used to behave exactly
+  like Balanced.
+- On a machine with accounts, you see and answer only your own approvals. Switching the
+  machine off or restarting it, changing the night light and installing Claude Code are
+  for admins. The night light's times can no longer carry a shell command.
+- `bento grants` lists, adds and revokes permissions from a terminal, and a running
+  desktop sees the change at once. `bento audit --verify` and the Ledger's **Check the
+  chain** confirm nobody edited the record. Releasing something from quarantine,
+  resuming an app and changing what Claude Code may do are now in the ledger too.
+
+**Chatting looks alive while the answer is on its way.** Claude Code sends its whole
+answer at the end, so the screen used to sit still for up to a minute. Now the Office
+keeps the agent at its desk with a thinking balloon until the reply lands. The reply
+shows who is answering, name and face, from the first second. The Office's chat, the
+app agent panels and the prompt bar's card show the name and face too. The bubble in
+the bottom right only appears for work you can't already see, can be hidden with ✕,
+and no longer stretches over the message box. The rings that popped up in the middle
+of the desktop on every chat (they belong to the Aura theme) now show only in that
+theme, and the prompt bar no longer rises to repeat a chat you can already see.
+
+**Cloud standby: a cloud machine that takes over only while yours is away.** Pair a
+second Bento on a cloud machine (Settings → System → Cloud standby, or `bento standby`).
+Your machine keeps working as before and sends the cloud a heartbeat every half minute
+and a sealed copy of its whole home when something changed. The cloud does nothing with
+it. If your machine goes quiet for five minutes, the cloud swaps the newest copy in and
+carries on with your missions, schedules and channels. When your machine is back, it
+takes the work back before starting anything, and the cloud goes quiet again. If both
+kept working while they couldn't reach each other, your machine keeps its own and the
+cloud's copy waits beside it for you to choose. **Move to the cloud now** hands over on
+purpose, and **Bring it back here** undoes it. Measured with two servers on one machine:
+a copy of a small home was 20 KB and took 0.6 s, moving over took 1.0 s and coming back
+0.7 s, the cloud took over 84 s after the laptop froze (90 s setting), and a laptop woken
+from sleep had the cloud's work back 7 s later.
+
+**Active sync: the cloud a few seconds behind, not ten minutes.** A new switch in
+Settings → System → Cloud standby (or `bento standby set --active`). With it on, every change
+goes to the cloud as a small sealed update within seconds: each chat message, memories and
+facts, missions, agents, permissions, settings, saved passwords and workspace files. A
+takeover adds those updates to the last full copy, so the cloud carries on from your last
+change. Changes to the machine itself travel too: a Bento update, a new brain, or Claude
+Code, Gemini CLI or Codex installed or removed. The cloud lists what arrived and says what
+it would be missing. Measured between two real servers: a chat message reached the cloud in
+2.2 s, a memory in 2.0 s, a settings change in 4.0 s, a workspace file in 5.9 s. A laptop
+killed 3 s after a chat left the cloud with that chat and every table the same. Idle, it
+sent nothing and used the same CPU as before (under 1% of one core).
+
+**Shutting down sends the last changes.** A normal shutdown (power off, restart, Ctrl+C)
+now sends what changed since the last copy or update before it stops, in either mode. It
+waits at most 15 to 25 seconds. Measured: both modes stopped in 0.7 s with the last chat
+on the cloud. Closing the lid or losing power still can't send anything, and the guide now
+says so.
+
+**Moving to the cloud, tested end to end, and five bugs it found.** A laptop and the real
+Docker image were paired and put through every way the work changes hands (switched off,
+lid closed, moved on purpose, network split, container restart, two accounts), with every
+table of every database compared after each one. What it found, all fixed:
+- A new chat on a machine with accounts was filed in the machine's shared database, not
+  the person's, so it never showed in their list. Chats now land in their owner's home.
+- Restoring a backup onto a fresh machine put the workspace one folder too deep
+  (`~/AgentOS/workspace`), because a fresh install had already made an empty `~/AgentOS`.
+- After a move, a mission that watches a folder kept watching the old machine's path.
+  Mission folders and their permissions now follow the machine, in backups too.
+- For the second between taking over and swapping your copy in, the cloud answered from its
+  own empty home. It now stays quiet until the copy is in.
+- The cloud was named by its container id. It is now named by the address you paired with.
+- The Dockerfile's `curl … | sh` hid a failed download until two steps later; it now stops
+  at the download with curl's own error.
+
+## 0.6.17 — 2026-09-30
+
+**An independent auditor checks every department's work.** When a department finishes a
+task, an agent called auditor checks it before the answer reaches you. It did none of the
+work, it sits in no department, and nobody whose work it checks can skip it. It reads what
+was asked, what came back, the work behind it and what was put in your Brief. Then it
+says pass, concerns or fail, and lists what it found. The verdict shows under the task,
+on the department's card (⚑), with the result in chat or on your phone, and in the Run
+Inspector. Anything it flags goes to your Brief. It's on by default. Switch it off above
+the task board, or with `bento company audit off`, and check any finished task with
+**Check it** or `bento company check RUN`.
+
+**See every run of your schedules.** Missions has a new **History** tab listing
+everything that ran on its own, newest first: missions, and prompts you scheduled.
+Each run says what started it, whether it worked, how long it took and what it said,
+with a button to open it (the Run Inspector for a mission, the chat for a scheduled
+prompt). Every row in the Schedule tab now shows how its last run went and has a
+**Runs** button, and so does each mission on the Run tab. A mission its schedule
+couldn't start shows as skipped, with the reason. In a terminal: `bento job history`.
+
 ## 0.6.16 — 2026-09-29
 
 **Your company in every scene.** The Crew stage shows one figure per department, and it

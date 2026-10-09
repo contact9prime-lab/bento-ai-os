@@ -39,6 +39,8 @@ WhatsApp 上找到你。任何智能体迈出的每一步都要经过同一道�
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
+
 然后打开 **http://127.0.0.1:8321**。在你亲自开启[远程访问](../remote-access.md)之前，它只监听 localhost。
 不用注册账号，没有遥测，除非你添加密钥，否则也不连云端。
 
@@ -370,6 +372,12 @@ VNC 服务器从不离开 `127.0.0.1`。
 和密码在手机上也能用。[Users →](../users.md)
 
 ![Users 应用：两个账号，一个是管理员，另一个是 Executor 角色](../screenshots/users-two-accounts.png)
+
+### 备份与云端备用机
+
+`bento backup` 把整台机器装进一个密封文件：每个账户、保险库和工作区都在里面。`bento restore` 可以在这台机器或新机器上把它恢复回来。[备份 →](../backup.md)
+
+在云端机器上配对第二个 Bento，它会带着一份密封副本待命。你的机器一旦没有响应，云端就接着运行你的任务和频道，等你的机器回来再把工作交还。打开主动同步后，每一处改动，包括每条聊天消息，都会在几秒内到达云端。[云端备用 →](../standby.md)
 
 ### 分享你的智能体，派生别人的
 

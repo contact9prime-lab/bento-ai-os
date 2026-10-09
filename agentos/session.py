@@ -30,6 +30,7 @@ hosted mode; `agentos doctor` calls this out.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -184,8 +185,13 @@ def nightlight_cmd_text(nl: dict | None) -> str:
     day = int(nl.get("day_temp", 6500))
     night = int(nl.get("night_temp", 4000))
     lat, lon = nl.get("lat"), nl.get("lon")
+
+    def hhmm(v, default):
+        # a time or the default, never the text as given: it lands on a shell line
+        v = str(v or "").strip()
+        return v if re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", v) else default
     where = f" -l {float(lat):.2f} -L {float(lon):.2f}" if lat is not None and lon is not None else \
-            f" -S {nl.get('from', '20:00')} -s {nl.get('to', '06:30')}"
+            f" -S {hhmm(nl.get('from'), '20:00')} -s {hhmm(nl.get('to'), '06:30')}"
     return f"command -v wlsunset >/dev/null && wlsunset -t {night} -T {day}{where} >/dev/null 2>&1 &"
 
 
