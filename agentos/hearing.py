@@ -9,8 +9,16 @@ whatever this machine has:
   * `whisper.cpp`: a local `whisper-cli` and a model file. Nothing leaves the machine.
     It is MIT licensed and NOT shipped: the person installs it, Bento uses it (the
     OpenClaw rule for something it cannot state an install command for on every board).
-  * `openai`: the OpenAI key already set under AI providers, the same key the voices
-    reuse (speech.py). It costs a little per minute of audio, and the status says so.
+  * the VOICE SERVICE already set up under Settings → Voice (speech.py): ElevenLabs
+    (Scribe), OpenAI (also the key under AI providers) or Google Cloud (Speech-to-Text).
+    Asked for as "if the voice is configured, it should take it from there": a key that
+    makes the agents speak is the key that hears them, with no second box to fill. The
+    engine chosen for speaking is tried first. Each costs a little per minute of audio,
+    and the status says so.
+
+`auto` prefers whisper.cpp (nothing leaves the machine), then the voice service, then
+any other key that can hear. What would fix a deaf machine is named in `status()`
+(`install`: the components.py entries), so onboarding can offer to install it.
 
 `status()` is the one answer to "can this screen listen?", read by Settings, the kiosk
 face and `bento face`, so a mic is never shown that cannot be understood. Kept free of
@@ -24,7 +32,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-ENGINES = ("auto", "whisper.cpp", "openai", "browser")
+ENGINES = ("auto", "whisper.cpp", "elevenlabs", "openai", "google", "browser")
+CLOUD = ("elevenlabs", "openai", "google")
+TITLES = {"whisper.cpp": "whisper.cpp", "elevenlabs": "ElevenLabs", "openai": "OpenAI",
+          "google": "Google Cloud"}
+ELEVEN_MODELS = ("scribe_v2", "scribe_v1")     # newest first; an older account may lack one
+MODEL_DIR = Path.home() / ".local/share/whisper.cpp/models"
 MAX_BYTES = 4 << 20                 # about two minutes of 16 kHz mono 16-bit audio
 WHISPER_BINS = ("whisper-cli", "whisper-cpp", "whisper")
 OPENAI_MODEL = "whisper-1"
@@ -41,6 +54,10 @@ def _conf(cfg: dict) -> dict:
 
 
 def _openai(cfg: dict) -> tuple[str, str]:
+    """(base url, key): the key under Voice first, then the one under AI providers."""
+    own = str((((cfg or {}).get("speech") or {}).get("openai") or {}).get("api_key") or "")
+    if own and not own.startswith("vault:"):
+        return "https://api.openai.com/v1", own
     p = ((cfg or {}).get("providers") or {}).get("openai") or {}
     key = str(p.get("api_key") or "")
     if not key or key.startswith("vault:"):
@@ -50,15 +67,26 @@ def _openai(cfg: dict) -> tuple[str, str]:
     return base.rstrip("/"), key
 
 
+def _voice_key(cfg: dict, engine: str) -> str:
+    """The key saved under Settings → Voice for ElevenLabs or Google Cloud."""
+    k = str((((cfg or {}).get("speech") or {}).get(engine) or {}).get("api_key") or "")
+    return "" if k.startswith("vault:") else k
+
+
 def _whisper(cfg: dict) -> tuple[str, str]:
     """The binary and the model file, or ('', reason)."""
     c = _conf(cfg)
     exe = c.get("whisper_bin") or next((shutil.which(b) for b in WHISPER_BINS if shutil.which(b)), "")
     if not exe:
+        # what components.py's install puts in ~/.local/bin, which a service's PATH may lack
+        own = Path.home() / ".local/bin/whisper-cli"
+        exe = str(own) if own.is_file() and os.access(own, os.X_OK) else ""
+    if not exe:
         return "", "whisper.cpp is not installed"
     model = c.get("whisper_model") or os.environ.get("WHISPER_MODEL", "")
     if not model:
-        for d in (Path.home() / ".cache/whisper", Path.home() / "whisper.cpp/models",
+        for d in (MODEL_DIR, Path.home() / ".cache/whisper", Path.home() / "whisper.cpp/models",
+                  Path.home() / ".local/src/whisper.cpp/models",
                   Path("/usr/share/whisper.cpp/models"), Path("/usr/local/share/whisper.cpp/models")):
             hits = sorted(d.glob("ggml-*.bin")) if d.is_dir() else []
             if hits:
@@ -69,31 +97,47 @@ def _whisper(cfg: dict) -> tuple[str, str]:
     return exe, model
 
 
+def _order(cfg: dict, want: str) -> list[str]:
+    if want != "auto":
+        return [want]
+    spoken = str(((cfg or {}).get("speech") or {}).get("engine") or "")
+    cloud = ([spoken] if spoken in CLOUD else []) + [e for e in CLOUD if e != spoken]
+    return ["whisper.cpp"] + cloud
+
+
+def _line(e: str, cfg: dict) -> str:
+    if e == "whisper.cpp":
+        return "Speech is understood on this machine with whisper.cpp."
+    where = "AI providers" if e == "openai" and not _voice_key(cfg, "openai") else "Voice"
+    extra = " Its project needs the Speech-to-Text API turned on." if e == "google" else ""
+    return (f"Speech is understood by {TITLES[e]}, with the key under {where}. "
+            f"It costs a little per minute of audio.{extra}")
+
+
 def status(cfg: dict) -> dict:
-    """Which engine will hear, or why none can. `engine` is '' when nothing can."""
+    """Which engine will hear, or why none can. `engine` is '' when nothing can.
+    `install` names the components.py entries that would let this machine hear."""
     want = str(_conf(cfg).get("engine") or "auto").lower()
     want = want if want in ENGINES else "auto"
     exe, model_or_why = _whisper(cfg)
-    base, key = _openai(cfg)
-    have = {"whisper.cpp": bool(exe), "openai": bool(key)}
+    have = {"whisper.cpp": bool(exe), "elevenlabs": bool(_voice_key(cfg, "elevenlabs")),
+            "openai": bool(_openai(cfg)[1]), "google": bool(_voice_key(cfg, "google"))}
+    install = [] if exe else ["whisper-cpp"]
     if want == "browser":
-        return {"engine": "browser", "setting": want, "have": have,
+        return {"engine": "browser", "setting": want, "have": have, "install": [],
                 "line": "This browser's own recogniser listens. On a Raspberry Pi it usually cannot."}
-    order = ["whisper.cpp", "openai"] if want == "auto" else [want]
-    for e in order:
+    for e in _order(cfg, want):
         if have.get(e):
-            line = ("Speech is understood on this machine with whisper.cpp."
-                    if e == "whisper.cpp" else
-                    "Speech is understood with your OpenAI key. It costs a little per minute of audio.")
-            return {"engine": e, "setting": want, "have": have, "line": line}
+            return {"engine": e, "setting": want, "have": have, "install": [], "line": _line(e, cfg)}
     if want == "whisper.cpp":
         why = f"whisper.cpp cannot listen here: {model_or_why}."
-    elif want == "openai":
-        why = "OpenAI cannot listen here: there is no OpenAI key under AI providers."
+    elif want in CLOUD:
+        why = f"{TITLES[want]} cannot listen here: there is no {TITLES[want]} key under Voice."
+        install = []
     else:
-        why = (f"Nothing here can understand speech yet: {model_or_why}, and there is no OpenAI key. "
-               "Add an OpenAI key under AI providers, or install whisper.cpp.")
-    return {"engine": "", "setting": want, "have": have, "line": why}
+        why = (f"Nothing here can understand speech yet: {model_or_why}, and no voice service is set up. "
+               "Install whisper.cpp, or add an ElevenLabs, OpenAI or Google Cloud key under Voice.")
+    return {"engine": "", "setting": want, "have": have, "install": install, "line": why}
 
 
 async def transcribe(cfg: dict, wav: bytes, lang: str = "") -> str:
@@ -103,12 +147,17 @@ async def transcribe(cfg: dict, wav: bytes, lang: str = "") -> str:
     if len(wav) > MAX_BYTES:
         raise HearError("That was too long to understand in one go. Say it in shorter pieces.")
     st = status(cfg)
-    lang = (lang or "").split("-")[0].lower()[:5]
+    full = str(lang or (cfg.get("speech") or {}).get("language") or "")[:12]
+    lang = full.split("-")[0].lower()[:5]
     if st["engine"] == "whisper.cpp":
         import asyncio
         return await asyncio.to_thread(_whisper_run, cfg, wav, lang)
     if st["engine"] == "openai":
         return await _openai_run(cfg, wav, lang)
+    if st["engine"] == "elevenlabs":
+        return await _eleven_run(cfg, wav, lang)
+    if st["engine"] == "google":
+        return await _google_run(cfg, wav, full or "en-US")
     raise HearError(st["line"])
 
 
@@ -155,6 +204,76 @@ async def _openai_run(cfg: dict, wav: bytes, lang: str) -> str:
         return str(r.json().get("text") or "").strip()
     except Exception as e:
         raise HearError("OpenAI answered with something that was not a transcript.") from e
+
+
+async def _eleven_run(cfg: dict, wav: bytes, lang: str) -> str:
+    """ElevenLabs Scribe: the same key that gives the agents their voices."""
+    import httpx
+    key = _voice_key(cfg, "elevenlabs")
+    models = [_conf(cfg).get("elevenlabs_model")] if _conf(cfg).get("elevenlabs_model") else list(ELEVEN_MODELS)
+    r = None
+    for model in models:
+        data = {"model_id": model}
+        if lang:
+            data["language_code"] = lang
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT_S) as c:
+                r = await c.post("https://api.elevenlabs.io/v1/speech-to-text", headers={"xi-api-key": key},
+                                 data=data, files={"file": ("say.wav", wav, "audio/wav")})
+        except Exception as e:                                          # noqa: BLE001
+            raise HearError(f"ElevenLabs could not be reached to understand that ({type(e).__name__}).") from e
+        if r.status_code in (400, 422) and "model" in r.text.lower() and model != models[-1]:
+            continue                                # this account has the older model only
+        break
+    if r.status_code == 401:
+        raise HearError("ElevenLabs refused the key under Voice.")
+    if r.status_code >= 400:
+        raise HearError(f"ElevenLabs could not understand that ({r.status_code}{_said(r)}).")
+    try:
+        return str(r.json().get("text") or "").strip()
+    except Exception as e:
+        raise HearError("ElevenLabs answered with something that was not a transcript.") from e
+
+
+async def _google_run(cfg: dict, wav: bytes, lang: str) -> str:
+    """Google Cloud Speech-to-Text with the Google Cloud key under Voice. The encoding and
+    rate are read from the WAV header, so only the language is sent."""
+    import base64
+
+    import httpx
+    key = _voice_key(cfg, "google")
+    body = {"config": {"languageCode": lang}, "audio": {"content": base64.b64encode(wav).decode()}}
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_S) as c:
+            r = await c.post("https://speech.googleapis.com/v1/speech:recognize", params={"key": key}, json=body)
+    except Exception as e:                                              # noqa: BLE001
+        raise HearError(f"Google could not be reached to understand that ({type(e).__name__}).") from e
+    if r.status_code == 403 and ("SERVICE_DISABLED" in r.text or "has not been used" in r.text
+                                 or "disabled" in r.text.lower()):
+        raise HearError("Google refused: turn on the Cloud Speech-to-Text API for the project of the key under Voice.")
+    if r.status_code in (400, 401, 403) and "API key" in r.text:
+        raise HearError("Google refused the key under Voice.")
+    if r.status_code >= 400:
+        raise HearError(f"Google could not understand that ({r.status_code}{_said(r)}).")
+    try:
+        res = r.json().get("results") or []
+        return " ".join(str(((x.get("alternatives") or [{}])[0]).get("transcript") or "").strip()
+                        for x in res).strip()
+    except Exception as e:
+        raise HearError("Google answered with something that was not a transcript.") from e
+
+
+def _said(r) -> str:
+    """The provider's own reason, short, or ''."""
+    try:
+        j = r.json()
+        msg = j.get("detail") or j.get("error") or j.get("message") or ""
+        if isinstance(msg, dict):
+            msg = msg.get("message") or msg.get("status") or ""
+        msg = str(msg)
+    except Exception:
+        msg = ""
+    return f": {msg[:120]}" if msg else ""
 
 
 # ---- a microphone from a terminal ---------------------------------------------------------

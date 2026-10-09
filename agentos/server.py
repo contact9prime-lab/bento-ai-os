@@ -784,10 +784,55 @@ async def _provision_sync():
     if want_watch and not watch:
         with contextlib.suppress(OSError):
             state["provision_watch"] = await provmod.Watch(on_new=_provision_new).start()
+        # the ear for machines WITHOUT Bento: a Pi saying its name on the network (netscan.py)
+        from . import netscan
+        try:
+            state["device_ear"] = await netscan.MdnsEar(_device_heard).start()
+        except OSError as e:
+            state["store"].log("provision", f"cannot listen for new devices' names (mDNS): {e}")
     elif watch and not want_watch:
         with contextlib.suppress(Exception):
             await watch.stop()
         state["provision_watch"] = None
+        if state.get("device_ear"):
+            with contextlib.suppress(Exception):
+                await state["device_ear"].stop()
+            state["device_ear"] = None
+
+
+def _device_heard(name: str, ip: str):
+    """A machine said its name on the network (mDNS). Remembered; a new one that turns out
+    to be a Raspberry Pi with no Bento on it is one toast asking whether to install it."""
+    from . import netscan
+    from . import provision as provmod
+    if any(e.get("addr") == ip for e in provmod.load()["seen"].values()):
+        return                          # it runs Bento: provision.py has it
+    d = provmod.load()
+    if netscan.remember(d["devices"], {"ip": ip, "name": name}):
+        provmod.save(d)
+        asyncio.ensure_future(_device_look(ip, name))
+    # heard again: nothing written, an SD card wears out
+
+
+async def _device_look(ip: str, name: str):
+    """Knock once on a newly heard machine: does it answer SSH, and who made it."""
+    from . import netscan
+    from . import provision as provmod
+    ssh_port = netscan.ports()[0]
+    banner = await netscan._knock(ip, ssh_port, netscan.PROBE_TIMEOUT, True)
+    mac = netscan.neighbours().get(ip, "")
+    dev = {"ip": ip, "name": name, "mac": mac, "maker": netscan.maker(mac),
+           "ports": [ssh_port] if banner is not None else [],
+           "ssh": banner is not None, "banner": banner or "", "os": netscan.os_from_banner(banner or "")}
+    dev["pi"] = netscan.looks_like_pi(dev)
+    d = provmod.load()
+    netscan.remember(d["devices"], dev)
+    provmod.save(d)
+    if dev["pi"]:
+        _sys_ledger("device.seen", f"device:{ip}", f"{name or ip} ({dev['maker'] or 'a Pi'}) joined the network "
+                    f"without Bento" + (", SSH open" if dev["ssh"] else ""))
+        await _provision_admins({"type": "provision", "kind": "device", "name": name or ip, "ip": ip,
+                                 "ssh": dev["ssh"]})
 
 
 def _sys_ledger(action: str, resource: str, detail: str):
@@ -925,7 +970,30 @@ def _provision_view() -> dict:
             "door": bool(state.get("provision_door")),
             "seen": provmod.seen_list(), "keys": provmod.keys(),
             "role": poolmod.load().get("role") or "", "has_brain": poolmod.has_brain(cfg),
-            "can_change": can}
+            "can_change": can, "devices": _device_rows(), "ear": bool(state.get("device_ear")),
+            "ssh_missing": _ri().missing(), "pubkey": _ri().public_key(),
+            "installs": dict(state.get("device_installs") or {})}
+
+
+def _ri():
+    from . import remoteinstall
+    return remoteinstall
+
+
+def _device_rows() -> list:
+    """Machines heard or knocked on, newest first, each marked when it runs Bento already
+    (provision.py heard its beacon at that address) or is being installed."""
+    from . import provision as provmod
+    d = provmod.load()
+    bento = {e.get("addr"): e for e in d["seen"].values()}
+    rows = []
+    for key, e in d["devices"].items():
+        if e.get("state") == "ignored":
+            continue
+        b = bento.get(e.get("ip"))
+        rows.append({**e, "key": key, "bento": (b or {}).get("state") or "",
+                     "age": int(time.time() - e.get("last", 0))})
+    return sorted(rows, key=lambda x: -x.get("last", 0))[:64]
 
 
 @app.on_event("shutdown")
@@ -941,7 +1009,7 @@ async def shutdown():
     if state.get("team_listener"):
         with contextlib.suppress(Exception):
             await state["team_listener"].stop()
-    for k in ("provision_door", "provision_watch"):
+    for k in ("provision_door", "provision_watch", "device_ear"):
         if state.get(k):
             with contextlib.suppress(Exception):
                 await state[k].stop()
@@ -10995,6 +11063,166 @@ async def api_provision_put(body: dict):
     return _provision_view()
 
 
+@app.post("/api/devices/scan")
+async def api_devices_scan():
+    """Knock on SSH and Bento's port across this machine's own private networks, and ask
+    who runs Bento. A person's act: admin only, a ledger row, never on a timer."""
+    if (r := _require_admin()):
+        return r
+    from . import netscan
+    from . import provision as provmod
+    t0 = time.time()
+    found, bento = await asyncio.gather(netscan.scan(), provmod.scan(1.5))
+    d = provmod.load()
+    for dev in found:
+        netscan.remember(d["devices"], dev)
+    provmod.save(d)
+    nets = ", ".join(str(n) for n in netscan.local_networks()) or "none"
+    _ledger("device.scan", "network:local", f"looked at {nets}: {len(found)} answered, "
+            f"{len(bento)} waiting Bento, in {time.time() - t0:.1f}s")
+    v = _provision_view()
+    v["found"], v["networks"] = len(found), nets
+    return v
+
+
+@app.post("/api/devices/ignore")
+async def api_devices_ignore(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    d = provmod.load()
+    k = str((body or {}).get("key") or "")
+    if k not in d["devices"]:
+        return JSONResponse({"error": "no such device"}, status_code=404)
+    d["devices"][k]["state"] = "ignored"
+    provmod.save(d)
+    return _provision_view()
+
+
+@app.post("/api/devices/sshkey")
+async def api_devices_sshkey():
+    """This machine's SSH key, made once: the public half goes into Raspberry Pi Imager so
+    the leader can reach a new Pi with no password."""
+    if (r := _require_admin()):
+        return r
+    from . import remoteinstall as ri
+    from . import teamlink
+    try:
+        pk = ri.ensure_key(teamlink.machine_name(state.machine_cfg()))
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ledger("device.sshkey", "provision:ssh-key", "made this machine's SSH key")
+    return {"pubkey": pk}
+
+
+def _device_creds(b: dict) -> tuple[str, str, str, int]:
+    return (str(b.get("ip") or ""), str(b.get("user") or ""), str(b.get("password") or ""),
+            int(b.get("port") or 22))
+
+
+@app.post("/api/devices/check")
+async def api_devices_check(body: dict):
+    """Log in and read what the machine is, changing nothing. The password is used for this
+    one login and kept nowhere."""
+    if (r := _require_admin()):
+        return r
+    from . import remoteinstall as ri
+    ip, user, pw, port = _device_creds(body or {})
+    try:
+        got = await ri.check(ip, user, pw, port)
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    got["plan"] = ri.plan(state.machine_cfg(), "bento-enroll-1.…", authorize=bool((body or {}).get("authorize")))
+    return got
+
+
+@app.post("/api/devices/install")
+async def api_devices_install(body: dict):
+    """Install Bento there with a key made for that one machine, so it is set up the moment
+    it is heard. Returns at once; progress is broadcast line by line (device_install)."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, user, pw, port = _device_creds(b)
+    bad = ri.missing() or ri.valid_target(ip, user)
+    if bad:
+        return JSONResponse({"error": bad}, status_code=400)
+    runs = state.setdefault("device_installs", {})
+    if (runs.get(ip) or {}).get("state") == "running":
+        return JSONResponse({"error": "Bento is already being installed there"}, status_code=409)
+    k = provmod.make_key(f"install on {ip}", auto=True, profile=b.get("profile"), single=True)
+    runs[ip] = {"state": "running", "started": time.time(), "lines": []}
+    _ledger("device.install", f"device:{ip}", f"started installing Bento on {user}@{ip}"
+            + (" and letting this machine's key in" if b.get("authorize") else ""))
+    asyncio.ensure_future(_device_install(ip, user, pw, port, k, bool(b.get("authorize"))))
+    return {"started": True, "plan": ri.plan(state.machine_cfg(), "bento-enroll-1.…", authorize=bool(b.get("authorize")))}
+
+
+async def _device_install(ip, user, pw, port, k, authorize):
+    from . import provision as provmod
+    from . import remoteinstall as ri
+    run = state["device_installs"][ip]
+    cfg = state.machine_cfg()
+
+    async def line(ln):
+        ln = ln[:300]
+        run["lines"] = (run["lines"] + [ln])[-40:]
+        await _provision_admins({"type": "device_install", "ip": ip, "line": ln})
+    try:
+        got = await ri.install(cfg, ip, user, pw, k["text"], authorize=authorize, port=port, on_line=line)
+        run.update(state="done", finished=time.time())
+        d = provmod.load()
+        for e in d["devices"].values():
+            if e.get("ip") == ip:
+                e["state"] = "installed"
+        provmod.save(d)
+        _sys_ledger("device.installed", f"device:{ip}", f"Bento installed on {user}@{ip}; host key "
+                    f"{got.get('host_key') or 'unknown'}; it is set up when it is heard")
+        await _provision_admins({"type": "provision", "kind": "installed", "name": ip})
+    except ri.InstallError as e:
+        provmod.drop_key(k["id"])
+        run.update(state="failed", error=str(e), finished=time.time())
+        _sys_ledger("device.failed", f"device:{ip}", f"installing on {user}@{ip}: {e}")
+        await _provision_admins({"type": "provision", "kind": "install_failed", "name": ip, "error": str(e)})
+    finally:
+        pw = ""                         # noqa: F841 — the password ends with this task
+
+
+@app.post("/api/devices/sdcard")
+async def api_devices_sdcard(request: Request, body: dict):
+    """Add Bento to an SD card's boot partition mounted on THIS machine (loopback only: it
+    writes to a local path). The card then installs Bento on its first boot."""
+    if (r := _require_admin()):
+        return r
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "the SD card is written on the machine it is plugged into; "
+                                      "use this machine's own screen or `bento pool sdcard`"}, status_code=403)
+    from . import provision as provmod
+    from . import remoteinstall as ri
+    from . import sdcard
+    from . import teamlink
+    b = body or {}
+    try:
+        pk = ri.ensure_key(teamlink.machine_name(state.machine_cfg()))
+    except ri.InstallError:
+        pk = ""
+    k = provmod.make_key(f"SD card {time.strftime('%d %b %H:%M')}", auto=True,
+                         profile=b.get("profile"), single=True)
+    try:
+        got = sdcard.write(str(b.get("path") or ""), url=ri.install_url(state.machine_cfg()),
+                           key_text=k["text"], pubkey=pk, user=str(b.get("user") or ""),
+                           hostname=str(b.get("hostname") or ""), wifi=b.get("wifi") or None)
+    except sdcard.KitError as e:
+        provmod.drop_key(k["id"])
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ledger("device.sdcard", "provision:sd-card", f"added Bento to the SD card at {b.get('path')} "
+            f"({', '.join(got['written'])}) for user {got['user']}")
+    await _provision_sync()
+    return {**got, "key_label": k["label"]}
+
+
 @app.get("/api/team/links")
 async def api_team_links():
     """Who this team is linked with, what each link may do, and whether this machine
@@ -11693,6 +11921,12 @@ async def api_speech_save(body: dict):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     cfgmod.save_config(state["cfg"])
+    if state["cfg"] is not state.machine_cfg():
+        # hearing.py reads the machine's copy: the key that speaks is the key that hears
+        m = state.machine_cfg().setdefault("speech", {})
+        for k, v in state["cfg"]["speech"].items():
+            if k != "hear":
+                m[k] = json.loads(json.dumps(v))
     state["store"].log("system", f"voice engine: {got['engine']}")
     return {"ok": True, "config": got}
 

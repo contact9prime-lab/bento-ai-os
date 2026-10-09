@@ -446,10 +446,14 @@ def _step_voice(cfg, store) -> None:
     _save(cfg)
     words = facemod.wake_words(cfg)
     if not st["engine"] or st["engine"] == "browser":
+        st = _hear_fix(cfg, st)
+    if not st["engine"] or st["engine"] == "browser":
         print(_wrap("This terminal cannot check the microphone: nothing here turns speech into text "
-                    "for it. Do this step on the machine's screen, or add an OpenAI key or whisper.cpp "
-                    "and run it again."))
+                    "for it. Do this step on the machine's screen, or run it again once a voice key or "
+                    "whisper.cpp is here."))
         return
+    if not hearing.recorder() and _offer_component("alsa-utils"):
+        pass
     if not hearing.recorder():
         print(_wrap("There is no recorder here (arecord, rec or parecord). On a Raspberry Pi: "
                     "sudo apt install alsa-utils, then run this step again. Or do it on the screen."))
@@ -473,6 +477,49 @@ def _step_voice(cfg, store) -> None:
             return
         print(f"  I heard “{text or '(nothing)'}”, but not " + " or ".join(f"“{w}”" for w in words) + ".")
     print("  Three tries. `bento face test` tries again any time.")
+
+
+def _hear_fix(cfg, st) -> dict:
+    """Nothing here understands speech: offer the two fixes the screen offers. A voice key
+    (saved under Voice, so it also makes the agents speak) or whisper.cpp built here."""
+    from . import hearing, speech
+    print(_wrap("Nothing here understands speech yet. A voice service key (ElevenLabs, OpenAI or "
+                "Google Cloud) hears as well as speaks, or whisper.cpp understands it on this machine "
+                "for free."))
+    pick = _ask("1 = paste a voice key, 2 = install whisper.cpp, Enter = skip", "")
+    if pick == "1":
+        eng = {"1": "elevenlabs", "2": "openai", "3": "google"}.get(
+            _ask("Which service? 1 ElevenLabs, 2 OpenAI, 3 Google Cloud", "1"), "elevenlabs")
+        key = getpass.getpass(f"  {hearing.TITLES[eng]} API key (not shown): ").strip()
+        if key:
+            speech.save(cfg, {"engine": eng, "keys": {eng: key}})
+            _save(cfg)
+            print(f"  ✓ saved under Voice. Your agents speak with {hearing.TITLES[eng]} too.")
+    elif pick == "2":
+        _offer_component("whisper-cpp")
+    st = hearing.status(cfg)
+    print("  " + st["line"])
+    return st
+
+
+def _offer_component(cid: str) -> bool:
+    """Install one components.py entry here, licence and command in view, on a yes."""
+    from . import components
+    row = next((r for r in components.catalog() if r["id"] == cid), None)
+    if not row or row["installed"]:
+        return bool(row)
+    if not row["available"]:
+        print(_wrap(f"{row['title']} can't be installed from here: {row['reason']}"))
+        return False
+    print(_wrap(f"{row['title']} ({row['licence']}). {row['unlocks']}"))
+    if not _yes("Install it now?", True):
+        return False
+    print("  installing… this can take a few minutes")
+    res = asyncio.run(components.install(cid))
+    print("  " + ("✓ " if res.get("ok") else "") + str(res.get("message") or "")[-300:])
+    if res.get("needs_terminal") and res.get("command"):
+        print(f"    {res['command']}")
+    return bool(res.get("ok"))
 
 
 def _step_look(cfg, store) -> None:

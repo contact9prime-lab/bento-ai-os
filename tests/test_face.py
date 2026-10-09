@@ -72,7 +72,7 @@ def _no_whisper(monkeypatch):
 def test_nothing_that_can_hear_is_said_plainly(monkeypatch):
     _no_whisper(monkeypatch)
     st = hearing.status({})
-    assert st["engine"] == "" and "OpenAI key" in st["line"] and "whisper.cpp" in st["line"]
+    assert st["engine"] == "" and "key under Voice" in st["line"] and "whisper.cpp" in st["line"]
     assert "whisper.cpp cannot listen here" in hearing.status({"speech": {"hear": {"engine": "whisper.cpp"}}})["line"]
     assert hearing.status({"providers": {"openai": {"api_key": "sk-x"}}})["engine"] == "openai"
     # a key that is a vault reference is not a key this module can send
@@ -172,7 +172,7 @@ def test_the_face_routes_save_audit_and_tell_every_screen(client):
 def test_hearing_with_nothing_to_hear_with_says_what_to_do(client):
     cl, _ = client
     r = cl.post("/api/speech/hear", content=b"RIFF0000WAVE", headers={"Content-Type": "audio/wav"})
-    assert r.status_code == 400 and "OpenAI key" in r.json()["error"]
+    assert r.status_code == 400 and "key under Voice" in r.json()["error"]
     r = cl.post("/api/speech/hear", content=b"x" * (hearing.MAX_BYTES + 10), headers={"Content-Type": "audio/wav"})
     assert r.status_code == 413
 

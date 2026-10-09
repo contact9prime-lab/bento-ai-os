@@ -409,10 +409,12 @@ async function faceSettingsPaint(){
     pRow('Test the wake word',`<button class="endbtn" id="s-face-test">Test it</button>`,
       {desc:esc(d.heard&&d.heard.at?`Last heard: “${d.heard.text||d.heard.word}”`:'Say the wake word and a question.'),
        f:'test microphone mic wake word voice hear check'}),
-    pRow('Understanding speech',pSelect('s-face-hear',[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']],hear.setting||'auto'),
+    pRow('Understanding speech',pSelect('s-face-hear',hearChoices(),hear.setting||'auto'),
       {desc:esc(hear.line||''),
-       more:'whisper.cpp keeps your voice on this machine. Install it and a model yourself; Bento uses it when it finds it.',
-       f:'speech to text whisper openai transcribe hearing stt'}),
+       more:'Auto uses whisper.cpp when it is here, then the voice service set up under Voice. ElevenLabs, OpenAI and Google Cloud can all hear with the same key.',
+       f:'speech to text whisper openai elevenlabs google transcribe hearing stt'}),
+    hear.engine?'':pRow('Make it hear',hearFixHTML(hear,'s-face'),
+      {desc:'Add a voice key, or understand speech on this machine.',f:'install whisper voice key hear'}),
   ].join('');
   const put=async body=>{
     const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -428,6 +430,7 @@ async function faceSettingsPaint(){
   box.querySelector('#s-face-wake').onchange=e=>put({wake:e.target.value});
   box.querySelector('#s-face-hear').onchange=e=>put({hear:e.target.value});
   box.querySelector('#s-face-word').onchange=e=>put({wake_word:e.target.value.trim()});
+  hearFixWire(box,'s-face',faceSettingsPaint);
   box.querySelector('#s-face-test').onclick=async e=>{
     const b=e.target,row=b.closest('.prow'),out=row&&row.querySelector('small');
     b.disabled=true;await voiceWakeTest(out);b.disabled=false;
@@ -435,3 +438,26 @@ async function faceSettingsPaint(){
 }
 addEventListener('hashchange',()=>{if(location.hash==='#kiosk')try{sessionStorage.removeItem('kiosk.left')}catch(e){}
   if(typeof kioskApply==='function')kioskApply()});
+
+/* What understands speech, one list for Settings and the setup step. The voice
+   services are the ones under Settings → Voice: a key that speaks also hears. */
+function hearChoices(){
+  return [['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['elevenlabs','ElevenLabs'],
+          ['openai','OpenAI'],['google','Google Cloud'],['browser','This browser']];
+}
+/* The two fixes for a machine that cannot hear, side by side: a voice key (the Voice
+   pane, where the same key makes the agents speak) and whisper.cpp installed here
+   (components.py, with its licence and command shown before anything runs). */
+function hearFixHTML(hear,pre){
+  const inst=(hear.install||[]).includes('whisper-cpp');
+  return `<div class="sp-row"><button class="endbtn" id="${pre}-voicekey">Add a voice key</button>
+    ${inst?`<button class="endbtn" id="${pre}-whisper">Install whisper.cpp here</button>`:''}</div>`;
+}
+function hearFixWire(box,pre,after){
+  const k=box.querySelector('#'+pre+'-voicekey');
+  if(k)k.onclick=()=>{openApp('settings');setTimeout(()=>{
+    const b=document.querySelector('.prefs-side button[data-t="voice"]');if(b)b.click()},150)};
+  const w=box.querySelector('#'+pre+'-whisper');
+  if(w)w.onclick=async()=>{w.disabled=true;w.textContent='Installing… (a few minutes)';
+    try{await installComponent('whisper-cpp')}finally{if(typeof after==='function')after()}};
+}

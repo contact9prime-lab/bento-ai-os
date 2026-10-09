@@ -74,3 +74,19 @@ body.kiosk #office-scene canvas{display:block}
 #prov-wait .prov-pin{font-size:40px;font-weight:700;letter-spacing:.12em;font-variant-numeric:tabular-nums;margin:6px 0}
 #prov-wait button{min-height:var(--tap,32px)}
 @media (max-width:600px){.prov-name,.prov-code{flex:1 1 40%;min-height:var(--tap,40px)}}
+/* machines without Bento: the install form and its live log */
+.dev-m{align-items:flex-start}
+.dev-form{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end;margin-top:6px}
+.dev-form label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm,12px)}
+.dev-form label.prov-opt{flex-direction:row;align-items:center}
+.dev-form input{min-height:var(--tap,32px)}
+.dev-secret{-webkit-text-security:disc}
+.dev-acts{display:flex;gap:8px;flex:1 1 100%}
+.dev-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;flex:1 1 100%;min-height:var(--tap,32px)}
+.dev-facts{flex:1 1 100%;font-size:var(--fs-sm,12px);line-height:1.5}
+.dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}#card-out.ok{color:var(--ok,#4ade80)}
+.dev-plan,.dev-key{display:block;word-break:break-all;font-size:11px;padding:6px 8px;border-radius:8px;
+  background:color-mix(in srgb,var(--bg) 60%,transparent);margin-top:4px;user-select:all}
+.dev-key{max-width:min(420px,60vw)}
+.dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
+  background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}

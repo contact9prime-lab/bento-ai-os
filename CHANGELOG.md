@@ -21,6 +21,40 @@ Each one finishes its setup, joins the community and thinks with the leader's br
   seconds of starting; the keyed one set up with nobody pressing anything; two enabled
   together in 0.02 seconds; all three members a second later; about 97 MB each.
 
+**Machines without Bento are found, and Bento is installed on them.** Plug in a Raspberry
+Pi, it gets an address from your router, and the leader hears it say its name on the network
+(mDNS): *raspberrypi joined the network without Bento*. In *Settings → Agents → Community →
+Devices without Bento*, **Look at the network** lists every machine on your own network that
+answers SSH, with its maker (Pis are known by their MAC address) and an OS hint. **Check it**
+logs in and reads what the machine is, changing nothing, and shows the exact command it will
+run. **Install Bento there** runs the real installer over SSH with a key made for that one
+machine, so it is set up as a member with an agent the moment it starts. Tick *Let this
+machine in from now on* and later visits need no password.
+- **The SD card road, nothing to press:** on a Raspberry Pi OS trixie card written by
+  Raspberry Pi Imager, *Add Bento to a card* (or `bento pool sdcard PATH`) adds the leader's
+  SSH key and one first-boot command to Imager's cloud-init files, keeping everything Imager
+  wrote. The Pi installs Bento on its first boot and joins on its own.
+- How a Pi configures itself from boot, and which road fits which card: `docs/pi-first-boot.md`.
+- The password goes to the system's own `ssh` and is never kept; Bento pins each machine's
+  SSH key; the scan only knocks on your own private network; every step is a ledger row; there
+  is no agent tool for any of it.
+- The install doesn't pass `--yes`, which would also install every optional extra (Claude
+  Code, Codex…). Found by the live run.
+- Measured end to end on one box (`packaging/dev/provision-e2e/install_over_ssh.py`, a real
+  OpenSSH server and the real installer): heard 0.3 seconds after it announced itself,
+  installed in 39 seconds, a member 4.2 seconds after it started, then reached with the
+  leader's own key.
+
+**The voice you set up also hears you, and setup installs what hearing needs.** With
+ElevenLabs, OpenAI or Google Cloud set up under Settings → Voice, the kiosk and the wake word
+understand you with that same key: no second box to fill. Auto tries whisper.cpp first (nothing
+leaves the machine), then the service you speak with, then any other key.
+- When nothing can hear, the setup step, Settings and `bento setup` offer both fixes side by
+  side: paste a voice key (saved under Voice, so your agents speak with it too), or **Install
+  whisper.cpp here**, built in your home folder with its model (Homebrew on a Mac), licence and
+  command shown first. Built here from source in 86 seconds.
+- `bento setup` also offers the recorder (alsa-utils) it needs to check the wake word over SSH.
+
 **Setup asks about the screen and checks the wake word.** Two new steps in the setup arc,
 right after the office:
 - **Choose what this screen shows:** the desktop, or a kiosk that listens; and whether only

@@ -2437,6 +2437,42 @@ the network, we should be able to check if we need to provision it". Six rules:
   spends this one's model budget on it. `AGENTOS_PI_MODEL`, `AGENTOS_DISCOVER_UDP/PORT/TARGETS`
   stand in for a board and a LAN in tests, the `AGENTOS_SIGNIN_BASE` idea.
 
+## Machines WITHOUT Bento: heard, offered, installed over SSH or from the SD card
+
+`agentos/netscan.py` (the passive mDNS ear + a scan on request) + `agentos/remoteinstall.py`
+(the install over SSH) + `agentos/sdcard.py` (the first-boot kit) + `/api/devices/*` + the
+*Devices without Bento* rows in `24j-provision.js` + `bento pool devices|install|sshkey|sdcard`;
+`docs/pi-first-boot.md`, `tests/test_device_install.py`, live run
+`packaging/dev/provision-e2e/install_over_ssh.py` (a real sshd, the real installer). Asked for
+as "DHCP gives it an IP and Bento discovers it and asks would you like to install bento on it".
+Six rules:
+- **Listening is passive, scanning is asked for.** The ear only receives mDNS answers (avahi
+  on a booted Pi says its name), keeps a `.local` name with a private address, and starts and
+  stops with the provision Watch. The scan knocks on 22 and Bento's port across this machine's
+  OWN private networks (`allowed`, `MAX_HOSTS`) only when a person presses it. A device heard
+  by name and then knocked on by MAC is one device (`remember` folds them); a toast is once.
+- **The system's `ssh`, never a Python SSH library** (LGPL/EPL). The password reaches it
+  through `SSH_ASKPASS` in that child's environment and is never written anywhere; Bento keeps
+  its own `known_hosts` with `accept-new`, so a changed host key is refused by ssh itself.
+- **What runs is what was shown.** `plan()` is the command on the consent screen and the one
+  `install()` sends; the test reads the fake ssh's log for it. NEVER `--yes` on a remote
+  install: it answers every optional extra (Claude Code, Codex…), which nobody agreed to here.
+  Found by the live run. Installer lines pass `clean_line` (ANSI and controls stripped) before
+  any toast, and a failure says the installer's own last stderr line.
+- **A key per machine, spent on use.** The install and each SD card get a single-use automatic
+  enrolment key (`make_key(single=True)`), dropped by `enable()` once it set its machine up and
+  by the route when the install failed. "Let this machine in" adds the leader's own key
+  (`ensure_key`, `pki/ssh_ed25519`) to authorized_keys, so a later visit needs no password.
+- **The SD card is merged into, never rewritten.** `merge_user_data` keeps everything Imager
+  wrote (user, password hash, locale, its own runcmd), adds the key, `enable_ssh` and ONE
+  first-boot command (re-writing replaces ours, never duplicates). A bookworm card (`firstrun.sh`,
+  no cloud-init) and a folder that is not a boot partition are refused in a sentence. The route
+  is loopback-only: it writes a local path.
+- **Admin only, no agent tool, a ledger row per step** (`device.seen/scan/install/installed/
+  failed/sdcard`). Logging into another machine is the largest thing this OS does to anything
+  it doesn't own. `AGENTOS_SCAN_NETWORKS`/`_PORTS`, `AGENTOS_MDNS_PORT`, `AGENTOS_INSTALL_URL`
+  and `AGENTOS_REPO` stand a test's loopback network in for a LAN.
+
 ## This machine's screen: one agent, and the kiosk that listens
 
 `agentos/face.py` (settings) + `agentos/hearing.py` (speech to text) + `24h-kiosk.js` +
@@ -2458,8 +2494,19 @@ be on and agents would be working in the office". Five rules:
 - **Hearing is the server's.** Chromium on a Pi has no key for the browser recogniser, so the
   page records one utterance (RMS against the room's own floor, cut at a 900 ms pause, 16 kHz
   WAV, deaf while the agent speaks) and posts it; `hearing.status()` is the one answer to "can
-  this screen listen?" (whisper.cpp first, then the OpenAI key), and with neither the kiosk
-  shows that sentence and no mic. whisper.cpp is used if present and never installed for you.
+  this screen listen?", and with nothing the kiosk shows that sentence and no mic.
+- **The key that speaks is the key that hears.** Auto is whisper.cpp, then the engine chosen
+  under Voice, then any other key (`_order`): ElevenLabs Scribe (`scribe_v2`, then `scribe_v1`
+  on a model refusal), OpenAI (the Voice key, then the provider's), Google Cloud (rate and
+  encoding from the WAV header; a disabled API is its own sentence). Reported with a screenshot:
+  ElevenLabs under Voice and a kiosk saying nothing could hear. `PUT /api/speech` copies the
+  speech keys into the machine's config, which hearing reads.
+- **Setup installs what hearing needs, on a yes.** `status()["install"]` names the components;
+  the setup step, Settings and `bento setup` offer a voice key (saved under Voice) and
+  `whisper-cpp` (components.py: Homebrew, else built from source in `~/.local` with
+  `--target whisper-cli`, model to `hearing.MODEL_DIR` through a `.part` file, `needs_root`
+  False, no argv without git/cmake/a compiler so the button is a sentence). `alsa-utils` is
+  offered only to the terminal check. Nothing installs by default.
 - **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
   `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
   it to video or another origin.

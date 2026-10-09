@@ -604,7 +604,13 @@ function handle(ev){
       else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up`);
       else if(ev.kind==='failed')toast(`${ev.name||'A machine'} could not be set up: ${ev.error||'it refused'}`);
       else if(ev.kind==='claimed')setTimeout(()=>location.reload(),1500);   // this machine was just set up
+      else if(ev.kind==='device')toast(`A Raspberry Pi joined your network: ${ev.name||ev.ip}. Install Bento on it?`,
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
+          setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+      else if(ev.kind==='installed')toast(`✓ Bento is installed on ${ev.name}. It is set up when it starts.`);
+      else if(ev.kind==='install_failed')toast(`Could not install Bento on ${ev.name}: ${ev.error||'it stopped'}`);
       break;
+    case 'device_install': if(typeof provDevLine==='function')provDevLine(ev); break;
     case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
       if(typeof officeReload==='function')officeReload();
       if(typeof crewRoster==='function')crewRoster(true);

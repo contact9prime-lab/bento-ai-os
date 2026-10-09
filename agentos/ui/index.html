@@ -2961,6 +2961,8 @@ body.dev-touch .ob-face,body.dev-touch .ob-crew-name input,body.dev-touch #ob-cr
 .ob-meter i{display:block;height:100%;width:0;background:var(--acc-grad,var(--acc));transition:width .08s linear}
 #ob-voice-out.ok,#s-face-test+small.ok{color:var(--ok,#4ade80)}
 #ob-voice-out.warn{color:var(--warn,#f59e0b)}
+.ob-hear-fix{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.ob-hear-fix .sp-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 /* ================= users =================
    Two shapes: an offer (prose, because the decision is consequential and needs
    reading) and a roster (rows, because it is a list). They share the form.
@@ -4729,6 +4731,22 @@ body.kiosk #office-scene canvas{display:block}
 #prov-wait .prov-pin{font-size:40px;font-weight:700;letter-spacing:.12em;font-variant-numeric:tabular-nums;margin:6px 0}
 #prov-wait button{min-height:var(--tap,32px)}
 @media (max-width:600px){.prov-name,.prov-code{flex:1 1 40%;min-height:var(--tap,40px)}}
+/* machines without Bento: the install form and its live log */
+.dev-m{align-items:flex-start}
+.dev-form{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end;margin-top:6px}
+.dev-form label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm,12px)}
+.dev-form label.prov-opt{flex-direction:row;align-items:center}
+.dev-form input{min-height:var(--tap,32px)}
+.dev-secret{-webkit-text-security:disc}
+.dev-acts{display:flex;gap:8px;flex:1 1 100%}
+.dev-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;flex:1 1 100%;min-height:var(--tap,32px)}
+.dev-facts{flex:1 1 100%;font-size:var(--fs-sm,12px);line-height:1.5}
+.dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}#card-out.ok{color:var(--ok,#4ade80)}
+.dev-plan,.dev-key{display:block;word-break:break-all;font-size:11px;padding:6px 8px;border-radius:8px;
+  background:color-mix(in srgb,var(--bg) 60%,transparent);margin-top:4px;user-select:all}
+.dev-key{max-width:min(420px,60vw)}
+.dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
+  background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
 </style>
 </head>
 <body>
@@ -11333,6 +11351,7 @@ var PLACES=[
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','remote','remote access','passphrase','lock','autonomy','light mode','profile','security'],placeSettings('system')],
   ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
   ['New machines','settings','Settings → Agents → Community → New machines',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch'],placeSettings('agent')],
+  ['Devices without Bento','settings','Settings → Agents → Community → Devices without Bento',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('agent')],
   ['Community','settings','Settings → Agents → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('agent')],
   ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','mic','microphone','listen','wake word','speech to text','whisper','small screen'],placeSettings('look')],
   ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],
@@ -13852,7 +13871,13 @@ function handle(ev){
       else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up`);
       else if(ev.kind==='failed')toast(`${ev.name||'A machine'} could not be set up: ${ev.error||'it refused'}`);
       else if(ev.kind==='claimed')setTimeout(()=>location.reload(),1500);   // this machine was just set up
+      else if(ev.kind==='device')toast(`A Raspberry Pi joined your network: ${ev.name||ev.ip}. Install Bento on it?`,
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
+          setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+      else if(ev.kind==='installed')toast(`✓ Bento is installed on ${ev.name}. It is set up when it starts.`);
+      else if(ev.kind==='install_failed')toast(`Could not install Bento on ${ev.name}: ${ev.error||'it stopped'}`);
       break;
+    case 'device_install': if(typeof provDevLine==='function')provDevLine(ev); break;
     case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
       if(typeof officeReload==='function')officeReload();
       if(typeof crewRoster==='function')crewRoster(true);
@@ -21680,9 +21705,16 @@ var OB_WIRE={
         <input id="ob-wake-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(f.wake_word||'')}">
         <em>Its name always works. Add one of your own, like “Hey Bento”, if you like.</em></label>
       <label class="job-q" style="margin-top:10px"><span>What understands speech</span>
-        <select id="ob-hear">${[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']]
+        <select id="ob-hear">${hearChoices()
           .map(([v,l])=>`<option value="${v}" ${(hear.setting||'auto')===v?'selected':''}>${esc(l)}</option>`).join('')}</select>
         <em id="ob-hear-line">${esc(hear.line||'')}</em></label>
+      ${hear.engine?'':`<div class="ob-hear-fix">
+        <div class="sp-row"><select id="ob-hkey-eng">${[['elevenlabs','ElevenLabs'],['openai','OpenAI'],['google','Google Cloud']]
+          .map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('')}</select>
+          ${typeof secretField==='function'?secretField('ob-hkey','paste its API key'):'<input id="ob-hkey" placeholder="paste its API key">'}
+          <button class="endbtn" id="ob-hkey-go">Use it</button></div>
+        ${(hear.install||[]).includes('whisper-cpp')?`<div class="sp-row"><button class="endbtn" id="ob-whisper">Install whisper.cpp here</button>
+          <span class="mut">free, private, about 150 MB</span></div>`:''}</div>`}
       <div class="ob-voice-try">
         <p>Press the button and say: <b id="ob-voice-say">“${esc(first)}, what time is it?”</b></p>
         <div class="ob-meter"><i id="ob-voice-meter"></i></div>
@@ -21699,7 +21731,21 @@ var OB_WIRE={
     $('#ob-wake-word').onchange=async e=>{const d=await put({wake_word:e.target.value.trim()});
       if(d){const w=(d.wake_words||[])[0]||agentName();$('#ob-voice-say').textContent=`“${w}, what time is it?”`;obMsg('✓ saved','ok')}};
     $('#ob-hear').onchange=async e=>{const d=await put({hear:e.target.value});
-      if(d){$('#ob-hear-line').textContent=(d.hear||{}).line||'';$('#ob-voice-go').disabled=!(d.hear||{}).engine}};
+      if(d)OB_WIRE.voice()};
+    /* A key typed here is the Voice pane's key: it makes the agents speak too, and
+       the engine follows it so the step and the voice agree. */
+    const hk=$('#ob-hkey-go');
+    if(hk)hk.onclick=async()=>{
+      const eng=$('#ob-hkey-eng').value,k=($('#ob-hkey').value||'').trim();
+      if(!k)return obMsg('paste the key first','warn');
+      try{await apiJSON('/api/speech',{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({engine:eng,keys:{[eng]:k}})})}catch(e){return obMsg(e.message,'warn')}
+      if(typeof SPEECH!=='undefined'){SPEECH.loaded=false;SPEECH.warned=false}
+      obMsg('✓ saved under Voice','ok');OB_WIRE.voice();
+    };
+    const wb=$('#ob-whisper');
+    if(wb)wb.onclick=async()=>{wb.disabled=true;wb.textContent='Installing… (a few minutes)';
+      try{await installComponent('whisper-cpp')}finally{OB_WIRE.voice()}};
     $('#ob-voice-go').onclick=async()=>{
       const b=$('#ob-voice-go');b.disabled=true;
       const d=await voiceWakeTest($('#ob-voice-out'),$('#ob-voice-meter'));
@@ -28549,10 +28595,12 @@ async function faceSettingsPaint(){
     pRow('Test the wake word',`<button class="endbtn" id="s-face-test">Test it</button>`,
       {desc:esc(d.heard&&d.heard.at?`Last heard: “${d.heard.text||d.heard.word}”`:'Say the wake word and a question.'),
        f:'test microphone mic wake word voice hear check'}),
-    pRow('Understanding speech',pSelect('s-face-hear',[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']],hear.setting||'auto'),
+    pRow('Understanding speech',pSelect('s-face-hear',hearChoices(),hear.setting||'auto'),
       {desc:esc(hear.line||''),
-       more:'whisper.cpp keeps your voice on this machine. Install it and a model yourself; Bento uses it when it finds it.',
-       f:'speech to text whisper openai transcribe hearing stt'}),
+       more:'Auto uses whisper.cpp when it is here, then the voice service set up under Voice. ElevenLabs, OpenAI and Google Cloud can all hear with the same key.',
+       f:'speech to text whisper openai elevenlabs google transcribe hearing stt'}),
+    hear.engine?'':pRow('Make it hear',hearFixHTML(hear,'s-face'),
+      {desc:'Add a voice key, or understand speech on this machine.',f:'install whisper voice key hear'}),
   ].join('');
   const put=async body=>{
     const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -28568,6 +28616,7 @@ async function faceSettingsPaint(){
   box.querySelector('#s-face-wake').onchange=e=>put({wake:e.target.value});
   box.querySelector('#s-face-hear').onchange=e=>put({hear:e.target.value});
   box.querySelector('#s-face-word').onchange=e=>put({wake_word:e.target.value.trim()});
+  hearFixWire(box,'s-face',faceSettingsPaint);
   box.querySelector('#s-face-test').onclick=async e=>{
     const b=e.target,row=b.closest('.prow'),out=row&&row.querySelector('small');
     b.disabled=true;await voiceWakeTest(out);b.disabled=false;
@@ -28575,6 +28624,29 @@ async function faceSettingsPaint(){
 }
 addEventListener('hashchange',()=>{if(location.hash==='#kiosk')try{sessionStorage.removeItem('kiosk.left')}catch(e){}
   if(typeof kioskApply==='function')kioskApply()});
+
+/* What understands speech, one list for Settings and the setup step. The voice
+   services are the ones under Settings → Voice: a key that speaks also hears. */
+function hearChoices(){
+  return [['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['elevenlabs','ElevenLabs'],
+          ['openai','OpenAI'],['google','Google Cloud'],['browser','This browser']];
+}
+/* The two fixes for a machine that cannot hear, side by side: a voice key (the Voice
+   pane, where the same key makes the agents speak) and whisper.cpp installed here
+   (components.py, with its licence and command shown before anything runs). */
+function hearFixHTML(hear,pre){
+  const inst=(hear.install||[]).includes('whisper-cpp');
+  return `<div class="sp-row"><button class="endbtn" id="${pre}-voicekey">Add a voice key</button>
+    ${inst?`<button class="endbtn" id="${pre}-whisper">Install whisper.cpp here</button>`:''}</div>`;
+}
+function hearFixWire(box,pre,after){
+  const k=box.querySelector('#'+pre+'-voicekey');
+  if(k)k.onclick=()=>{openApp('settings');setTimeout(()=>{
+    const b=document.querySelector('.prefs-side button[data-t="voice"]');if(b)b.click()},150)};
+  const w=box.querySelector('#'+pre+'-whisper');
+  if(w)w.onclick=async()=>{w.disabled=true;w.textContent='Installing… (a few minutes)';
+    try{await installComponent('whisper-cpp')}finally{if(typeof after==='function')after()}};
+}
 /* ================= a community of machines =================
    Settings → Agents → Working together → Community. pool.py is the whole design; this
    draws /api/pool and changes it. One machine LEADS (holds the keys, lends its brain,
@@ -28700,7 +28772,7 @@ async function provPaint(){
        more:'On the machine that leads your community, choose this one in New machines and type the code.',f:'provision waiting set up code'}));
     box.innerHTML=rows.join('');provWire(box);return;
   }
-  if(!(v.role==='leader'||v.has_brain||(v.seen||[]).length)){box.innerHTML='';return}
+  if(!(v.role==='leader'||v.has_brain||(v.seen||[]).length||(v.devices||[]).length)){box.innerHTML='';return}
   const seen=(v.seen||[]).filter(m=>m.state!=='ignored');
   rows.push(pRow('New machines',`<button class="endbtn" data-prov="scan"${can?'':' disabled'}>Look now</button>`,
     {desc:v.watching?'Machines that turn on waiting to be set up show here, and you get a toast.':'This machine is not listening for new ones.',
@@ -28731,7 +28803,8 @@ async function provPaint(){
   }else{
     rows.push(`<p class="mut prov-empty">No machine is waiting right now. Turn one on, or press Look now.</p>`);
   }
-  const ks=v.keys||[];
+  rows.push(provDevicesHTML(v,can));
+  const ks=(v.keys||[]).filter(k=>!k.single);
   rows.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
       <label class="prov-opt">${pSwitch('prov-auto-'+k.id,!!k.auto)} automatic</label>
       <button class="endbtn" data-prov="dropkey" data-kid="${esc(k.id)}">Revoke</button></span>`).join('')}
@@ -28740,8 +28813,104 @@ async function provPaint(){
      more:'Save it as bento-enroll.txt on the SD card’s boot partition, or install with --enroll. Automatic sets the machine up the moment it is heard.',
      f:'provision enrolment key zero touch sd card automatic'}));
   rows.push('<div id="prov-out" aria-live="polite"></div>');
+  /* a repaint (any provision broadcast, the scan's own) must not drop what is being typed
+     into the install form: found in the screenshot walk, where Check it saw an empty user */
+  const kept={};['dev-user','dev-pw','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
+    if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   box.innerHTML=rows.join('');
+  Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
+    if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
   provWire(box);
+}
+/* ---------------- machines without Bento (netscan.py, remoteinstall.py, sdcard.py) ----------------
+   A Pi or any Linux box that answers SSH but runs nothing of ours: heard when it says its name
+   on the network (mDNS), or found by Look at the network. Install Bento logs in with a password
+   used once (or this machine's key), shows what the machine is and the exact command, and runs
+   the real installer with a key made for that one machine, so it is set up the moment it is
+   heard. The SD card writer is for the screen the card is plugged into. */
+var DEV={open:'',check:{},log:{}};
+function provDevicesHTML(v,can){
+  const devs=(v.devices||[]).filter(d=>!d.bento),remote=typeof remoteClient==='function'&&remoteClient();
+  const rows=[];
+  rows.push(pRow('Devices without Bento',`<button class="endbtn" data-prov="devscan"${can?'':' disabled'}>Look at the network</button>`,
+    {desc:v.ear?'A Raspberry Pi that joins your network is noticed, and you are asked.':'Look at the network to find machines you can install Bento on.',
+     more:'Only this machine’s own private network is looked at. A Pi says its name when it gets an address; anything else is found when you look.',
+     f:'devices network scan discover install raspberry pi ssh no bento'}));
+  if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
+  if(devs.length)rows.push(`<div class="prov-list">${devs.map(d=>{
+    const run=(v.installs||{})[d.ip]||{},open=DEV.open===d.ip;
+    const what=[d.maker||'',d.os||'',d.ssh?'SSH open':'no SSH'].filter(Boolean).join(' · ');
+    const st=run.state==='running'?'installing…':run.state==='done'||d.state==='installed'?'installed, starting':run.state==='failed'?'install failed':'';
+    return `<div class="prov-m dev-m${open?' open':''}" data-dev="${esc(d.ip)}">
+      <b>${esc(d.name||d.ip)}</b><span class="mut">${esc(d.ip)}${what?' · '+esc(what):''}${st?' · '+esc(st):''}</span>
+      ${can&&d.ssh&&!v.ssh_missing&&run.state!=='running'?`<button class="endbtn" data-prov="devopen" data-ip="${esc(d.ip)}">Install Bento</button>`:''}
+      ${can?`<button class="endbtn" data-prov="devignore" data-key="${esc(d.key)}">Not this one</button>`:''}
+      ${open?provDevForm(d):''}
+      ${(run.lines||[]).length||run.error?`<pre class="dev-log" id="dev-log-${esc(d.ip.replace(/\W/g,'_'))}">${esc((run.lines||[]).join('\n'))}${run.error?'\n✗ '+esc(run.error):''}</pre>`:''}
+    </div>`}).join('')}</div>`);
+  rows.push(pRow('This machine’s SSH key',v.pubkey?`<code class="dev-key">${esc(v.pubkey)}</code><button class="endbtn" data-prov="devcopykey">Copy</button>`
+      :`<button class="endbtn" data-prov="devkey"${can?'':' disabled'}>Make it</button>`,
+    {desc:'Put it in Raspberry Pi Imager and Bento can reach a new Pi with no password.',
+     more:'Imager → OS customisation → Services → Allow public-key authentication only. Paste this key there.',
+     f:'ssh key public imager raspberry pi password'}));
+  if(!remote)rows.push(pRow('Set up an SD card',`<button class="endbtn" data-prov="devcard"${can?'':' disabled'}>Add Bento to a card</button>`,
+    {desc:'A Pi with this card installs Bento on its first boot and is set up by this machine.',
+     more:'Write Raspberry Pi OS (trixie) with Raspberry Pi Imager first, then open the card’s boot partition here. Only what Bento needs is added.',
+     f:'sd card first boot cloud-init imager zero touch poap'}));
+  rows.push('<div id="dev-card"></div>');
+  return rows.join('');
+}
+function provDevForm(d){
+  const c=DEV.check[d.ip];
+  // the port SSH answered on in the scan (its first port), which is 22 on a real Pi
+  const sshPort=d.ssh&&(d.ports||[]).length?Number(d.ports[0])||22:22;
+  return `<div class="dev-form">
+    <label>User there <input id="dev-user" maxlength="32" placeholder="pi" value="${esc((c&&c.user)||'')}"></label>
+    <label>Password <input id="dev-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
+    <label class="prov-opt">${pSwitch('dev-kiosk',false)} Kiosk</label></div>
+    <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">Check it</button>
+      ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
+    ${c?`<div class="dev-facts">${esc([c.board||c.arch,c.os,c.ram_mb+' MB memory',c.free_mb+' MB free'].filter(Boolean).join(' · '))}
+      ${c.bento?'<br>Bento is already there.':''}${c.host_key?`<br><span class="mut">Its key: ${esc(c.host_key)}</span>`:''}
+      ${c.problems.map(p=>`<br><span class="warn">✗ ${esc(p)}</span>`).join('')}
+      <br><span class="mut">This runs there:</span><code class="dev-plan">${esc(c.plan||'')}</code></div>`:''}
+  </div>`;
+}
+function provDevCreds(){
+  const g=id=>(document.getElementById(id)||{});
+  return {user:(g('dev-user').value||'').trim(),password:g('dev-pw').value||'',authorize:!!g('dev-auth').checked,
+    profile:{kiosk:!!g('dev-kiosk').checked,lite:true}};
+}
+function provDevLine(ev){
+  const id='dev-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
+  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
+    el=document.createElement('pre');el.className='dev-log';el.id=id;row.appendChild(el)}
+  el.textContent=(el.textContent?el.textContent+'\n':'')+ev.line;el.scrollTop=el.scrollHeight;
+}
+function provDevCard(){
+  const el=document.getElementById('dev-card');if(!el)return;
+  if(el.innerHTML){el.innerHTML='';return}
+  el.innerHTML=`<div class="dev-form">
+    <label>The card’s boot partition <input id="card-path" placeholder="/media/you/bootfs"></label>
+    <label>User on the card <input id="card-user" maxlength="32" placeholder="as set in Imager"></label>
+    <label>Name on the network <input id="card-host" maxlength="63" placeholder="pi-kitchen"></label>
+    <label>Wi-Fi (if Imager did not) <input id="card-ssid" maxlength="32" placeholder="network name"></label>
+    <label>Wi-Fi password <input id="card-wpw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true"></label>
+    <label>Country <input id="card-cc" maxlength="2" placeholder="GB" style="max-width:60px"></label>
+    <label class="prov-opt">${pSwitch('card-kiosk',false)} Kiosk</label>
+    <div class="dev-acts"><button class="wiz-next" data-prov="devcardgo">Add Bento to this card</button></div>
+    <p class="mut" id="card-out"></p></div>`;
+  el.querySelector('[data-prov=devcardgo]').onclick=async()=>{
+    const g=id=>(document.getElementById(id)||{}).value||'';
+    const body={path:g('card-path').trim(),user:g('card-user').trim(),hostname:g('card-host').trim(),
+      profile:{kiosk:!!document.getElementById('card-kiosk').checked,lite:true}};
+    if(g('card-ssid'))body.wifi={ssid:g('card-ssid'),password:g('card-wpw'),country:g('card-cc')||'GB'};
+    const r=await fetch('/api/devices/sdcard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json().catch(()=>({}));const out=document.getElementById('card-out');
+    if(!r.ok){out.textContent=d.error||'could not write the card';out.className='warn';return}
+    out.className='ok';out.textContent=`✓ Wrote ${d.written.join(', ')} for ${d.user}. Put the card in the Pi and switch it on; this machine sets it up when it is heard.`;
+  };
 }
 function provWire(box){
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b));
@@ -28761,6 +28930,22 @@ async function provAct(act,b){
   const post=async(url,body,method)=>{const r=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
     const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('could not do that ('+r.status+')'));return d};
   try{
+    if(act==='devscan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/devices/scan');
+      toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} answered on ${d.networks}`:`Nothing answered on ${d.networks}.`);return provPaint()}
+    if(act==='devopen'){DEV.open=DEV.open===b.dataset.ip?'':b.dataset.ip;return provPaint()}
+    if(act==='devignore'){await post('/api/devices/ignore',{key:b.dataset.key});return provPaint()}
+    if(act==='devkey'){await post('/api/devices/sshkey');return provPaint()}
+    if(act==='devcopykey'){navigator.clipboard&&navigator.clipboard.writeText((PROV.v||{}).pubkey||'');toast('✓ copied');return}
+    if(act==='devcard')return provDevCard();
+    if(act==='devcheck'){const c=provDevCreds();if(!c.user){toast('Who logs in there? Type the user name.');return}
+      b.disabled=true;b.textContent='Checking…';
+      try{DEV.check[b.dataset.ip]=Object.assign(await post('/api/devices/check',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c}),{user:c.user})}
+      catch(e){delete DEV.check[b.dataset.ip];throw e}
+      finally{provPaint()}
+      return}
+    if(act==='devinstall'){const c=provDevCreds();
+      if(!await osConfirm(`Install Bento on ${b.dataset.ip}?`,`The command shown runs there as ${c.user}.`,{confirmText:'Install'}))return;
+      await post('/api/devices/install',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c});DEV.open='';toast('Installing Bento on '+b.dataset.ip+'…');return provPaint()}
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/provision/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
     if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}

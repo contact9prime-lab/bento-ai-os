@@ -67,6 +67,10 @@ Each one then:
 
 If there was no community yet, enabling the first machine starts one on this machine.
 
+A Pi that doesn't run Bento yet can be found and given it too: the leader hears it join the
+network and offers to install Bento over SSH, or you write an SD card that installs it on first
+boot. See [A new machine with no Bento](pi-first-boot.md).
+
 ### Without typing codes: enrolment keys
 
 For Pis nobody will stand in front of, make an **enrolment key** (*Make a key* in the same

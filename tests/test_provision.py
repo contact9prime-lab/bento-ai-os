@@ -211,6 +211,19 @@ def test_an_enrolment_key_sets_a_pi_up_with_no_code(lan):
     assert r["how"] == "key" and A["cfg"]["face"]["kiosk"] is True
 
 
+def test_a_key_made_for_one_machine_is_spent_on_it(lan):
+    """An SSH install and an SD card each get a key of their own, and it does nothing after."""
+    L, A, B, loop, heard = lan
+    with _at(L):
+        k = provision.make_key("install on 10.0.0.5", auto=True, single=True)
+    with _at(A):
+        provision.adopt_key(k["text"])
+    r = _enable(L, _scan(L, loop)["pi-kitchen"], loop)
+    assert r["how"] == "key"
+    with _at(L):
+        assert all(x["id"] != k["id"] for x in provision.keys()), "spent"
+
+
 def test_a_key_from_another_community_is_refused(lan, tmp_path):
     L, A, B, loop, heard = lan
     with teamlink.at(tmp_path / "other"):

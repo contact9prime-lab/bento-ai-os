@@ -923,9 +923,16 @@ var OB_WIRE={
         <input id="ob-wake-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(f.wake_word||'')}">
         <em>Its name always works. Add one of your own, like “Hey Bento”, if you like.</em></label>
       <label class="job-q" style="margin-top:10px"><span>What understands speech</span>
-        <select id="ob-hear">${[['auto','Auto'],['whisper.cpp','whisper.cpp on this machine'],['openai','OpenAI'],['browser','This browser']]
+        <select id="ob-hear">${hearChoices()
           .map(([v,l])=>`<option value="${v}" ${(hear.setting||'auto')===v?'selected':''}>${esc(l)}</option>`).join('')}</select>
         <em id="ob-hear-line">${esc(hear.line||'')}</em></label>
+      ${hear.engine?'':`<div class="ob-hear-fix">
+        <div class="sp-row"><select id="ob-hkey-eng">${[['elevenlabs','ElevenLabs'],['openai','OpenAI'],['google','Google Cloud']]
+          .map(([v,l])=>`<option value="${v}">${esc(l)}</option>`).join('')}</select>
+          ${typeof secretField==='function'?secretField('ob-hkey','paste its API key'):'<input id="ob-hkey" placeholder="paste its API key">'}
+          <button class="endbtn" id="ob-hkey-go">Use it</button></div>
+        ${(hear.install||[]).includes('whisper-cpp')?`<div class="sp-row"><button class="endbtn" id="ob-whisper">Install whisper.cpp here</button>
+          <span class="mut">free, private, about 150 MB</span></div>`:''}</div>`}
       <div class="ob-voice-try">
         <p>Press the button and say: <b id="ob-voice-say">“${esc(first)}, what time is it?”</b></p>
         <div class="ob-meter"><i id="ob-voice-meter"></i></div>
@@ -942,7 +949,21 @@ var OB_WIRE={
     $('#ob-wake-word').onchange=async e=>{const d=await put({wake_word:e.target.value.trim()});
       if(d){const w=(d.wake_words||[])[0]||agentName();$('#ob-voice-say').textContent=`“${w}, what time is it?”`;obMsg('✓ saved','ok')}};
     $('#ob-hear').onchange=async e=>{const d=await put({hear:e.target.value});
-      if(d){$('#ob-hear-line').textContent=(d.hear||{}).line||'';$('#ob-voice-go').disabled=!(d.hear||{}).engine}};
+      if(d)OB_WIRE.voice()};
+    /* A key typed here is the Voice pane's key: it makes the agents speak too, and
+       the engine follows it so the step and the voice agree. */
+    const hk=$('#ob-hkey-go');
+    if(hk)hk.onclick=async()=>{
+      const eng=$('#ob-hkey-eng').value,k=($('#ob-hkey').value||'').trim();
+      if(!k)return obMsg('paste the key first','warn');
+      try{await apiJSON('/api/speech',{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({engine:eng,keys:{[eng]:k}})})}catch(e){return obMsg(e.message,'warn')}
+      if(typeof SPEECH!=='undefined'){SPEECH.loaded=false;SPEECH.warned=false}
+      obMsg('✓ saved under Voice','ok');OB_WIRE.voice();
+    };
+    const wb=$('#ob-whisper');
+    if(wb)wb.onclick=async()=>{wb.disabled=true;wb.textContent='Installing… (a few minutes)';
+      try{await installComponent('whisper-cpp')}finally{OB_WIRE.voice()}};
     $('#ob-voice-go').onclick=async()=>{
       const b=$('#ob-voice-go');b.disabled=true;
       const d=await voiceWakeTest($('#ob-voice-out'),$('#ob-voice-meter'));

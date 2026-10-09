@@ -172,3 +172,5 @@ body.dev-touch .ob-face,body.dev-touch .ob-crew-name input,body.dev-touch #ob-cr
 .ob-meter i{display:block;height:100%;width:0;background:var(--acc-grad,var(--acc));transition:width .08s linear}
 #ob-voice-out.ok,#s-face-test+small.ok{color:var(--ok,#4ade80)}
 #ob-voice-out.warn{color:var(--warn,#f59e0b)}
+.ob-hear-fix{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.ob-hear-fix .sp-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}

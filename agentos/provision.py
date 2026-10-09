@@ -97,7 +97,8 @@ def path() -> Path:
 
 def _blank() -> dict:
     return {"wait": None, "pin": "", "pin_bad": 0, "pin_rounds": 0, "locked_until": 0.0,
-            "key": "", "claimed": {}, "watch": None, "keys": [], "seen": {}, "enabled": {}}
+            "key": "", "claimed": {}, "watch": None, "keys": [], "seen": {}, "enabled": {},
+            "devices": {}}
 
 
 def load() -> dict:
@@ -190,7 +191,8 @@ def key_text(k: dict) -> str:
     return f"{KEY_PREFIX}.{k['id']}.{k['secret']}.{k['cafp']}"
 
 
-def make_key(label: str = "", auto: bool = False, profile: dict | None = None) -> dict:
+def make_key(label: str = "", auto: bool = False, profile: dict | None = None,
+             single: bool = False) -> dict:
     """A new enrolment key for this machine's community. The secret is kept here (0600)
     because the leader has to prove the claim with it; it is shown once, to put on cards."""
     from . import teamlink
@@ -198,7 +200,8 @@ def make_key(label: str = "", auto: bool = False, profile: dict | None = None) -
     d = load()
     k = {"id": secrets.token_hex(4), "secret": secrets.token_urlsafe(24), "cafp": ident["ca_fp"][:16],
          "label": teamlink.plain(label, 40, newlines=False).strip() or "Pis",
-         "auto": bool(auto), "profile": clean_profile(profile or {}), "created": time.time()}
+         "auto": bool(auto), "profile": clean_profile(profile or {}), "created": time.time(),
+         "single": bool(single)}
     d["keys"].append(k)
     save(d)
     return {**key_view(k), "text": key_text(k)}
@@ -206,7 +209,8 @@ def make_key(label: str = "", auto: bool = False, profile: dict | None = None) -
 
 def key_view(k: dict) -> dict:
     return {"id": k["id"], "label": k.get("label", ""), "auto": bool(k.get("auto")),
-            "profile": k.get("profile") or {}, "created": k.get("created", 0)}
+            "profile": k.get("profile") or {}, "created": k.get("created", 0),
+            "single": bool(k.get("single"))}
 
 
 def keys() -> list[dict]:
@@ -932,6 +936,9 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
     teamlink._save(td)
     d = load()
     d["enabled"][fp] = {"name": name, "at": time.time(), "how": how}
+    if key and key.get("single"):
+        # a key made for one machine (an SSH install, one SD card) is spent on it
+        d["keys"] = [k for k in d["keys"] if k["id"] != key["id"]]
     if fp in d["seen"]:
         d["seen"][fp].update(state="enabled", name=name)
     save(d)

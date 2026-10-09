@@ -65,15 +65,24 @@ A browser's own speech recogniser sends the audio to Google, and the Chromium on
 Pi has no key for that, so it fails on the first word. The kiosk records what you say itself
 and this machine turns it into text, with one of:
 
-- **whisper.cpp**, on this machine. Nothing leaves it. Install `whisper-cli` and a model
-  file (a small one such as `ggml-base.en.bin`); Bento finds it in `~/.cache/whisper`,
-  `~/whisper.cpp/models` or `/usr/share/whisper.cpp/models`, or you can name the file in
-  `speech.hear.whisper_model`.
-- **OpenAI**, with the key already under AI providers. It costs a little per minute of audio.
+- **whisper.cpp**, on this machine. Nothing leaves it, and it needs no key. Setup offers to
+  install it (*Install whisper.cpp here*): on a Mac through Homebrew, elsewhere built from source
+  in your home folder, plus its base model of about 150 MB. Bento also finds one you installed
+  yourself in `~/.cache/whisper`, `~/whisper.cpp/models` or `/usr/share/whisper.cpp/models`, or the
+  model named in `speech.hear.whisper_model`.
+- **The voice service under Settings → Voice.** The key that gives your agents their voices also
+  hears you: ElevenLabs (Scribe), OpenAI (or the key under AI providers) or Google Cloud (its project
+  needs the Speech-to-Text API turned on). Each costs a little per minute of audio.
 - **This browser**, where its own recogniser works.
 
-**Auto** uses whisper.cpp when it is installed and OpenAI otherwise. With neither, the kiosk
-shows the sentence that says what to add, and no microphone.
+**Auto** uses whisper.cpp when it is here, then the service you chose for speaking, then any other
+key that can hear. With none of them, Settings and the setup step offer both fixes side by side:
+*Add a voice key* and *Install whisper.cpp here*. The kiosk shows the sentence that says what to
+add, and no microphone.
+
+![With an ElevenLabs key under Voice, the kiosk hears with it](screenshots/kiosk-hears-with-voice.png)
+
+![Setup, on a machine that can't hear yet: a voice key or whisper.cpp](screenshots/onboarding-voice-fix.png)
 
 ![With nothing that can understand speech](screenshots/kiosk-deaf.png)
 
@@ -93,7 +102,7 @@ bento face kiosk on|off
 bento face wake name|always
 bento face word Hey Bento             # a wake word of your own; the name still works
 bento face test                       # record, understand, check the wake word
-bento face hear auto|whisper.cpp|openai|browser
+bento face hear auto|whisper.cpp|elevenlabs|openai|google|browser
 ```
 
 A terminal has no office to draw, so here you only set it.
