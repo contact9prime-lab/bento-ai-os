@@ -74,7 +74,7 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .hud-text p{margin:0}
 .hud-dot{width:10px;height:10px;border-radius:50%;background:var(--acc);margin-top:6px;flex:none}
 .msg .who img.av-who+img.av-who{margin-left:-14px}
-/* Settings → Agents → Working together: one row per agent; wraps on a phone */
+/* Settings → Team & Communications: one row per agent; wraps on a phone */
 .team-list{display:flex;flex-direction:column;gap:8px;width:100%}
 .team-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .team-row>b{min-width:88px}
@@ -82,7 +82,7 @@ body.dev-touch .ave-sw,body.dev-touch .ave-chip{min-width:var(--tap);min-height:
 .team-now{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:var(--fs-xs)}
 body.dev-touch .team-row select{min-height:var(--tap)}
 .hud-to{font-weight:500;color:var(--dim)}
-/* Settings → Agents → Working together: who may ask whom. One button per cell, cycling
+/* Settings → Team & Communications: who may ask whom. One button per cell, cycling
    ask → allow → block; a real target on a phone, and the grid scrolls sideways
    rather than squeezing a cell below the tap floor. */
 .team-matrix{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}

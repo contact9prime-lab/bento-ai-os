@@ -1222,7 +1222,7 @@ class PDP(usersmod.Scoped):
         if action == "agent.message":
             if team_talk(self.cfg) == "off":
                 return Decision("deny", "agent-to-agent messages are switched off "
-                                        "(Settings → Agents → Working together)", rule="message-off")
+                                        "(Settings → Team & Communications)", rule="message-off")
             # The matrix is decided here in full, because WHICH grants count depends on
             # where the ask happens. Inside a mission only that mission's own consent
             # counts ("its specialists may consult each other", a definition grant) —
@@ -1315,7 +1315,7 @@ class PDP(usersmod.Scoped):
             to = resource.rsplit("/", 1)[-1]
             return Decision("deny",
                             f"{who or 'an agent'} on the linked team '{link}' may not ask {to} "
-                            f"here — allow it in Settings → Agents → Working together → Linked teams"
+                            f"here — allow it in Settings → Team & Communications → Linked teams"
                             if action == "agent.message" else
                             f"a linked team's agent may only ask questions — '{action}' is not "
                             f"something a link can grant", rule="team-default")

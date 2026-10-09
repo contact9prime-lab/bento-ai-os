@@ -186,6 +186,7 @@ body.immersive .apptop,body.immersive #topbar,body.immersive .phead{border-botto
    macOS System Settings' one unmistakable tell is the coloured tile beside
    each category. The rail buttons already carry data-t, so the colour is CSS. */
 body.immersive .prefs-side button{padding:6px 10px;gap:11px;border-radius:10px;font-weight:500;font-size:var(--fs-md);color:var(--txt)}
+body.immersive .prefs-side button.lng{font-size:calc(var(--fs-md) * .88);line-height:1.2}
 body.immersive .prefs-side button:hover{background:color-mix(in srgb,var(--txt) 9%,transparent)}
 body.immersive .prefs-side button.on{background:var(--acc-grad);color:var(--on-acc);font-weight:600;
   box-shadow:0 4px 14px color-mix(in srgb,var(--acc) 30%,transparent)}
@@ -195,6 +196,8 @@ body.immersive .prefs-side .psi{width:26px;height:26px;border-radius:8px;display
 body.immersive .prefs-side button.on .psi{box-shadow:inset 0 .5px 0 rgba(255,255,255,.5),0 1px 3px rgba(0,0,0,.3)}
 body.immersive .prefs-side [data-t=ai] .psi{background:linear-gradient(135deg,#a78bfa,#6d28d9)}
 body.immersive .prefs-side [data-t=agent] .psi{background:linear-gradient(135deg,#2dd4bf,#0f766e)}
+body.immersive .prefs-side [data-t=team] .psi{background:linear-gradient(135deg,#fbbf24,#b45309)}
+body.immersive .prefs-side [data-t=permissions] .psi{background:linear-gradient(135deg,#f87171,#b91c1c)}
 body.immersive .prefs-side [data-t=executors] .psi{background:linear-gradient(135deg,#60a5fa,#1d4ed8)}
 body.immersive .prefs-side [data-t=channels] .psi{background:linear-gradient(135deg,#4ade80,#15803d)}
 body.immersive .prefs-side [data-t=locale] .psi{background:linear-gradient(135deg,#fb923c,#c2410c)}

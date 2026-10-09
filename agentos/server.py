@@ -3512,6 +3512,9 @@ async def api_put_config(patch: dict):
         from .policy import TAINT_MODES
         if patch["security"].get("taint") in TAINT_MODES:
             cfg.setdefault("security", {})["taint"] = patch["security"]["taint"]
+        # Settings → Permissions → The ledger: refuse an action whose ledger row failed
+        if isinstance(patch["security"].get("audit_fail_closed"), bool):
+            cfg.setdefault("security", {})["audit_fail_closed"] = patch["security"]["audit_fail_closed"]
     if isinstance(patch.get("history"), dict):
         h = cfg.setdefault("history", {})
         for k in ("tool_trace", "compact", "model"):

@@ -1,7 +1,7 @@
 /* ================= new machines on the network =================
    provision.py is the whole design; this draws /api/provision. Two faces of it:
 
-   - On a machine that leads (or could): Settings → Agents → Community → New machines.
+   - On a machine that leads (or could): Settings → Team & Communications → New machines.
      Every machine heard waiting is a row (its board, memory, the id to compare with its
      own screen); tick several, type each one's code (or let the community's enrolment
      key prove it), choose what they become (kiosk, one agent, the agent's name) and
@@ -254,7 +254,7 @@ function provWaitCard(v){
   const hw=t.hw||{};
   el.innerHTML=`<b>Waiting to be set up</b>
     <p>${t.locked?`Too many wrong codes. Try again in ${Math.ceil(t.locked/60)} minutes.`
-      :t.pin?`On the Bento that leads your community, open Settings → Agents → Community, choose this machine and type`
+      :t.pin?`On the Bento that leads your community, open Settings → Team & Communications → Community, choose this machine and type`
       :`This machine carries an enrolment key. On the Bento that leads your community, choose it and press Enable.`}</p>
     ${t.pin&&!t.locked?`<div class="prov-pin">${esc(t.pin.slice(0,3))} ${esc(t.pin.slice(3))}</div>`:''}
     <p class="mut">${esc(hw.board||hw.host||'This machine')} · id ${esc(t.id)}</p>

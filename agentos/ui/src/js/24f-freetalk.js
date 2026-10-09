@@ -11,7 +11,7 @@
    (free talks, huddles, one agent asking another), read from the runs they already are
    (fabric.talk_log, `bento team log`).
 
-   Faces — GUI and SUI: Settings → Agents → Working together, and the Chat thread.
+   Faces — GUI and SUI: Settings → Team & Communications, and the Chat thread.
    TUI: `bento team freetalk` starts and stops one, `bento team log` lists them.
    `var`/function declarations only: the bundle is one script. */
 var FREETALK={talks:[],opts:null,log:null,understood:false,mode:'talk',minutes:5,messages:20,topic:'',agents:null};

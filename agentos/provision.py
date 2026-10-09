@@ -14,7 +14,7 @@ Two sides, one file each way:
     `bento pool wait` and in its log, unless it carries an enrolment key.
   * A machine that leads a community, or could lead one, LISTENS. A new machine heard for
     the first time is a toast with Review on its admin's screens and a row in Settings →
-    Agents → Community. Enabling it is a person's act: the code from the new machine's
+    Team & Communications → Community. Enabling it is a person's act: the code from the new machine's
     screen, or the community's enrolment key, proves the claim. Machines that carry an
     enrolment key marked automatic are enabled the moment they are heard, which is the
     zero-touch case: flash the SD card with the key on it, plug the Pi in, walk away.

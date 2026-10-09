@@ -1219,7 +1219,12 @@ OpenClaw, which moved there from the old Executors page); **Executors** are HAND
 executor profile (`agentos/hands.py`, table `executor_profiles`) says which tools, which
 folders (ro/rw), which web addresses and which MCP servers an agent can REACH; **Agents** is
 the lead agent (always there, named by the person) and the specialists, each given a brain,
-hands, permissions and skills, plus Working together (the team settings) and the map. The code
+hands, permissions and skills, plus the map. **Team & Communications** is everything about
+agents working together (providers, messaging, free talk, limits, the matrix, linked teams,
+team chat, the community and new machines), and **Permissions** is autonomy, outside content,
+a live count of grants by source with doors into the Permissions app (`permGo`), and the
+ledger (`security.audit_fail_closed`, `/api/audit/verify`). Every link into those sections
+names its tab (`data-t="team"`, `placeSettings('team')`); `tests/test_settings_tabs.py`. The code
 still says `executors.py` for the brains — the identifier rename would cost every install its
 saved engine for a word nobody sees, the Missions/`flows` argument again.
 
@@ -2048,7 +2053,7 @@ Full story in `docs/team.md`. Two features, five rules.
 
 - **`fabric.agent_brain(cfg, defn)` is the ONE answer to "which brain does this agent use".**
   The run (`run_subagent`), the roster route, the Crew stage's provider tag, the chat's chip,
-  Settings → Agents → Working together and `bento team` all read it. A pin is used only when
+  Settings → Team & Communications and `bento team` all read it. A pin is used only when
   `team.own_brains` is on, the provider is enabled, and it has the key it needs. Otherwise the
   agent is on the machine's brain and `note` says why. The badge names what ANSWERS, never the
   pin. A chip that said "Anthropic" while a switched-off provider sent the agent to the default
@@ -2362,7 +2367,7 @@ Full story in `docs/team.md`. Four rules:
 
 ## A community of machines: the leader holds the keys, and leading is consented to
 
-`agentos/pool.py` + `bento pool` + Settings → Agents → Community (`24i-pool.js`) + `/api/pool*`;
+`agentos/pool.py` + `bento pool` + Settings → Team & Communications → Community (`24i-pool.js`) + `/api/pool*`;
 `docs/pool.md`, `tests/test_pool.py` (three machines in one process over real mTLS), live run
 `packaging/dev/pool-e2e/run.py` (three `bento serve`s, the leader killed and brought back).
 Asked for as "a pool mode where multiple small computers make a bigger task … they elect a
@@ -2406,7 +2411,7 @@ leader and the leader has all the creds". Seven things keep it honest:
 
 ## New machines on the network: heard, asked about, set up from the leader
 
-`agentos/provision.py` + `24j-provision.js` (Settings → Agents → Community → New machines, and
+`agentos/provision.py` + `24j-provision.js` (Settings → Team & Communications → New machines, and
 the waiting machine's own card) + `/api/provision*` + `bento pool discover|enable|key|wait|
 enroll` + `install.sh --enroll/--wait`; `docs/pool.md`, `tests/test_provision.py`, live run
 `packaging/dev/provision-e2e/run.py` (a leader and three stand-in Pis). Asked for as "provision

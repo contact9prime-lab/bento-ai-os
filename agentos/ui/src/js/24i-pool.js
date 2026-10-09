@@ -1,5 +1,5 @@
 /* ================= a community of machines =================
-   Settings → Agents → Working together → Community. pool.py is the whole design; this
+   Settings → Team & Communications → Community. pool.py is the whole design; this
    draws /api/pool and changes it. One machine LEADS (holds the keys, lends its brain,
    splits bigger work); small machines JOIN over a linked team, share notes and take
    pieces of work. Who leads next is decided by rank among machines whose own admin

@@ -341,6 +341,10 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .prefs-side button{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:var(--r-md);
   font-size:var(--fs-md);font-weight:600;color:var(--dim);text-align:left;
   transition:background var(--d-fast) var(--ease-out),color var(--d-fast) var(--ease-out)}
+/* a long name ("Team & Communications") wraps onto two lines at a size that fits the
+   rail, bold or not; a phone's rail is one scrolling row and keeps it on one line */
+.prefs-side button .pst{min-width:0}
+.prefs-side button.lng{font-size:.88em;line-height:1.2;text-align:left}
 .prefs-side button:hover{background:color-mix(in srgb,var(--txt) 7%,transparent);color:var(--txt)}
 .prefs-side button.on{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--txt)}
 .prefs-side .psi{width:16px;text-align:center;opacity:.85;flex:none}

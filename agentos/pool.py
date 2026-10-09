@@ -1102,7 +1102,7 @@ async def join(cfg: dict, label: str, owner: str = "", call=None) -> dict:
         (x for x in teamlink._load()["links"] if x.get("label") == label and x.get("kind") == "machine"), None)
     if not lk or lk.get("kind") != "machine":
         raise ValueError(f"there is no linked machine called '{label}' — link the two machines first "
-                         f"(Settings → Agents → Working together → Linked teams)")
+                         f"(Settings → Team & Communications → Linked teams)")
     got = await (call or teamlink.call)(lk, {"op": "pool_join", "cap": capability(cfg)}, timeout=20)
     if not got.get("ok"):
         raise ValueError(got.get("error") or "the other machine refused")
