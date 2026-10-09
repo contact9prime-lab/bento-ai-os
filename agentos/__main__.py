@@ -3852,6 +3852,11 @@ def _face_cli(args):
     if a in ("show", "status"):
         print("  " + facemod.describe(cfg))
         print("  " + hearing.status(cfg)["line"])
+        h = facemod.heard(cfg)
+        if h:
+            print(f"  Last heard its wake word: “{h.get('text')}” ({h.get('engine')}). `bento face test` checks again.")
+        else:
+            print("  It has not heard its wake word yet. `bento face test` checks the microphone.")
         print("  The kiosk face shows on the screen plugged into this machine. A terminal has no office"
               "\n  to draw, so here you only set it.")
         return
@@ -3868,8 +3873,17 @@ def _face_cli(args):
         ok, msg = facemod.set_face(cfg, kiosk=val == "on")
     elif a == "wake":
         ok, msg = facemod.set_face(cfg, wake=val or "?")
+    elif a == "word":
+        ok, msg = facemod.set_face(cfg, wake_word=" ".join(args.args or []))
+    elif a == "test":
+        # the voice step on its own: record here, understand here, look for the wake word
+        from . import setup_tui
+        from .memory import Store
+        setup_tui._step_voice(cfg, Store())
+        return
     else:
-        sys.exit("  bento face [show | buddy auto|on|off | kiosk on|off | wake name|always | hear ENGINE]")
+        sys.exit("  bento face [show | buddy auto|on|off | kiosk on|off | wake name|always | "
+                 "word [WAKE WORD] | test | hear ENGINE]")
     if not ok:
         sys.exit("  " + msg)
     _cfgmod.save_config(cfg)
@@ -3996,10 +4010,244 @@ def _pool_cli(args):
             for r in res:
                 print(f"\n  ## {r['machine']}{'' if r['ok'] else ' (could not)'}\n  {r['text']}")
             return
+        if a in ("discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll"):
+            return _provision_cli(args, cfg, a, rest, val, run)
+        if a in ("devices", "install", "sshkey", "sdcard"):
+            return _devices_cli(args, cfg, a, rest, run)
     except ValueError as e:
         sys.exit("  " + str(e))
     sys.exit("  bento pool [status | create NAME | join MACHINE [--brain] | approve M | remove M | leave"
-             " | lead on|off | brain on|off | pin MACHINE|auto | notes [Q] | share TEXT | forget ID | task PIECE...]")
+             " | lead on|off | brain on|off | pin MACHINE|auto | notes [Q] | share TEXT | forget ID | task PIECE..."
+             " | discover | enable MACHINE... [--code N] | ignore M | key [LABEL] [--auto] | keys"
+             " | wait [on|off|auto] | enroll KEY]")
+
+
+def _devices_cli(args, cfg, a, rest, run):
+    """Machines on the network WITHOUT Bento (netscan.py), installing it on one over SSH
+    (remoteinstall.py), and an SD card that installs it on first boot (sdcard.py). A
+    password is read without echo (or from stdin with --password-stdin) and kept nowhere."""
+    import getpass
+    from . import netscan
+    from . import provision as prov
+    from . import remoteinstall as ri
+    from . import sdcard
+    from . import teamlink
+    from .memory import Store
+
+    def ledger(action, resource, reason):
+        try:
+            Store().audit_add(principal_kind="user", principal_id="", surface="cli", action=action,
+                              resource=resource, effect="allow", rule="person", outcome="ok", reason=reason)
+        except Exception:
+            pass
+
+    def password():
+        if getattr(args, "password_stdin", False):
+            return sys.stdin.readline().rstrip("\n")
+        if getattr(args, "key_only", False):
+            return ""
+        return getpass.getpass("  Password there (blank to use this machine's SSH key): ")
+
+    if a == "sshkey":
+        print("  " + ri.ensure_key(teamlink.machine_name(cfg)))
+        print("\n  Paste that into Raspberry Pi Imager → OS customisation → Services → \"Allow public-key"
+              "\n  authentication only\", and this machine can install Bento on that Pi with no password.")
+        return
+    if a == "devices":
+        nets = netscan.local_networks()
+        print(f"  Looking at {', '.join(map(str, nets)) or 'no private network'} …")
+        found = run(netscan.scan(nets))
+        bento = {b["addr"] for b in run(prov.scan(1.5))}
+        d = prov.load()
+        for dev in found:
+            netscan.remember(d["devices"], dev)
+        prov.save(d)
+        for dev in found:
+            what = "runs Bento" if dev["ip"] in bento else ("SSH open" if dev["ssh"] else "no SSH")
+            print(f"    {dev['ip']:<15} {(dev['name'] or '?')[:24]:<24} {dev['maker'] or '':<15} "
+                  f"{dev['os'] or '':<20} {what}")
+        if not found:
+            print("  Nothing answered.")
+        else:
+            print("  `bento pool install IP --user NAME` installs Bento on one with SSH open.")
+        ledger("device.scan", "network:local", f"{len(found)} answered")
+        return
+    if a == "install":
+        if not rest:
+            sys.exit("  bento pool install IP --user NAME [--authorize] [--kiosk] [--password-stdin]")
+        host, user = rest[0], getattr(args, "user", "") or ""
+        if not user:
+            sys.exit("  which user logs in there? --user pi")
+        pw = password()
+        print(f"  Checking {user}@{host} …")
+        try:
+            c = run(ri.check(host, user, pw))
+        except ri.InstallError as e:
+            sys.exit("  " + str(e))
+        print(f"    {c['board'] or c['arch']} · {c['os']} · {c['ram_mb']} MB memory · {c['free_mb']} MB free"
+              + (" · Bento is already there" if c["bento"] else ""))
+        print(f"    its key: {c['host_key'] or 'unknown'}")
+        for prob in c["problems"]:
+            print(f"    ✗ {prob}")
+        if c["problems"]:
+            sys.exit(1)
+        print("  This will run there:\n    " + ri.plan(cfg, "bento-enroll-1.…", authorize=getattr(args, "authorize", False)))
+        if not getattr(args, "yes", False) and input("  Install Bento there? (y/n) ").strip().lower()[:1] != "y":
+            return
+        prof = prov.clean_profile({"kiosk": bool(getattr(args, "kiosk", False)), "lite": True,
+                                   "agent_name": getattr(args, "agent_name", "") or ""})
+        k = prov.make_key(f"install on {host}", auto=True, profile=prof, single=True)
+        ledger("device.install", f"device:{host}", f"started installing Bento on {user}@{host}")
+
+        async def show(ln):
+            print("    │ " + ln[:150])
+        try:
+            got = run(ri.install(cfg, host, user, pw, k["text"], authorize=getattr(args, "authorize", False),
+                                 on_line=show))
+        except ri.InstallError as e:
+            prov.drop_key(k["id"])
+            sys.exit("  ✗ " + str(e))
+        print(f"  ✓ Bento is installed on {host}. When it starts it carries a key this machine made for it,"
+              f"\n    so a running server here sets it up as a member the moment it hears it.")
+        print(f"    its key: {got['host_key']}")
+        return
+    if a == "sdcard":
+        if not rest:
+            sys.exit("  bento pool sdcard /path/to/bootfs [--user NAME] [--hostname NAME] "
+                     "[--wifi SSID --wifi-country GB]")
+        wifi = None
+        if getattr(args, "wifi", ""):
+            wifi = {"ssid": args.wifi, "country": getattr(args, "wifi_country", "") or "GB",
+                    "password": (sys.stdin.readline().rstrip("\n") if getattr(args, "password_stdin", False)
+                                 else getpass.getpass("  Wi-Fi password: "))}
+        try:
+            pk = ri.ensure_key(teamlink.machine_name(cfg))
+        except ri.InstallError:
+            pk = ""
+        prof = prov.clean_profile({"kiosk": bool(getattr(args, "kiosk", False)), "lite": True,
+                                   "agent_name": getattr(args, "agent_name", "") or ""})
+        k = prov.make_key("SD card", auto=True, profile=prof, single=True)
+        try:
+            got = sdcard.write(rest[0], url=ri.install_url(cfg), key_text=k["text"], pubkey=pk,
+                               user=getattr(args, "user", "") or "", hostname=getattr(args, "hostname", "") or "",
+                               wifi=wifi)
+        except sdcard.KitError as e:
+            prov.drop_key(k["id"])
+            sys.exit("  " + str(e))
+        ledger("device.sdcard", "provision:sd-card", f"added Bento to the card at {rest[0]}")
+        print(f"  ✓ wrote {', '.join(got['written'])} for the user {got['user']}.")
+        print("    Put the card in the Pi and switch it on. On its first boot it joins the network,")
+        print("    installs Bento and is set up by this machine when it is heard (keep the server running).")
+        print(f"    On the Pi, {got['log']} says how the install went.")
+        return
+
+
+def _provision_cli(args, cfg, a, rest, val, run):
+    """New machines on the network (provision.py), from a terminal: the leader's half
+    (discover, enable, ignore, key, keys) and the new machine's half (wait, enroll).
+    Works with the server down; a running server sees the files at once."""
+    from . import config as _cfgmod
+    from . import pool as poolmod
+    from . import provision as prov
+    from .memory import Store
+
+    def row(m):
+        hw = m.get("hw") or {}
+        how = ("your key" + (", automatic" if m.get("auto") else "")) if m.get("our_key") else "needs its code"
+        return (f"    {m['name']:<18} {m.get('state', 'new'):<8} id {m.get('id', ''):<10} "
+                f"{hw.get('board') or hw.get('arch') or '?'}, {hw.get('ram_mb', 0)} MB · {how} · {m.get('addr')}")
+
+    if a in ("discover", "machines"):
+        if a == "discover":
+            print("  Looking for machines waiting to be set up…")
+            found = run(prov.scan(2.5))
+            print(f"  {len(found)} answered.")
+        seen = [m for m in prov.seen_list() if m.get("state") != "ignored"]
+        for m in seen:
+            print(row(m))
+        if not seen:
+            print("  None heard. A fresh Raspberry Pi with Bento waits by itself; any other machine waits"
+                  "\n  after `bento pool wait on` there. Both must be on this network.")
+        else:
+            print("  `bento pool enable NAME --code 123456` sets one up (the code is on its screen,"
+                  "\n  or in `bento pool wait` there).")
+        return
+    if a == "ignore":
+        print("  ignored" if prov.ignore(val) else "  no such machine")
+        return
+    if a == "keys":
+        for k in prov.keys():
+            print(f"    {k['id']}  {k['label']:<18} {'automatic' if k['auto'] else 'waits for you'}")
+        if not prov.keys():
+            print("  No enrolment keys. `bento pool key \"kitchen Pis\" --auto` makes one.")
+        return
+    if a == "key":
+        if rest and rest[0] == "revoke":
+            print("  revoked" if prov.drop_key(rest[1] if len(rest) > 1 else "") else "  no such key")
+            return
+        prof = {"kiosk": bool(getattr(args, "kiosk", False))} if getattr(args, "kiosk", False) else {}
+        k = prov.make_key(val, bool(getattr(args, "auto", False)), prof)
+        print(f"  Enrolment key '{k['label']}'" + (" (sets machines up the moment they are heard)" if k["auto"] else ""))
+        print(f"\n    {k['text']}\n")
+        print("  Save it as bento-enroll.txt on a new Pi's SD card (the boot partition), or run")
+        print("  `bento pool enroll KEY` there. It is shown once.")
+        return
+    if a == "enroll":
+        if not val:
+            sys.exit("  bento pool enroll bento-enroll-1.…")
+        prov.adopt_key(val)
+        print("  This machine carries the key and waits to be set up. A running server announces it now.")
+        return
+    if a == "wait":
+        if val in ("on", "off", "auto"):
+            prov.set_wait({"on": True, "off": False, "auto": None}[val])
+        st = prov.status(cfg)
+        if st["waiting"]:
+            print(f"  Waiting to be set up ({st['why']}). Machine id {st['id']}.")
+            print(f"  Code: {st['pin'][:3]} {st['pin'][3:]}" if st["pin"] else "  It carries an enrolment key.")
+            if st["locked"]:
+                print(f"  Too many wrong codes: closed for {st['locked'] // 60 + 1} more minutes.")
+        else:
+            print(f"  Not waiting to be set up{(' (' + st['why'] + ')') if st['why'] else ''}."
+                  "  `bento pool wait on` to wait.")
+        return
+    # enable
+    names = [x for x in rest if x]
+    if not names:
+        sys.exit("  bento pool enable NAME [NAME...] [--code 123456] [--kiosk] [--agent-name NAME]")
+    d = poolmod.load()
+    if d.get("role") in ("member", "pending"):
+        sys.exit("  this machine is a member; machines are set up from its leader")
+    if not d.get("role"):
+        poolmod.create(cfg, "")
+        print(f"  Started the community '{poolmod.load()['pool']['name']}' to set them up in.")
+    team = cfg.setdefault("team", {})
+    if not team.get("listen"):
+        team["listen"] = True
+        _cfgmod.save_config(cfg)
+        print("  Switched this machine's link door on (new members join over it). Restart the server to open it.")
+    d = poolmod.load()
+    prof = prov.clean_profile({"kiosk": bool(getattr(args, "kiosk", False)), "lite": True,
+                               "agent_name": getattr(args, "agent_name", "") or ""})
+    store = Store()
+    for n in names:
+        t = prov.find_seen(n)
+        if not t:
+            print(f"  {n}: not heard — `bento pool discover` first")
+            continue
+        try:
+            r = run(prov.enable(cfg, t, prof, code=getattr(args, "code", "") or "",
+                                pool_info={"id": d["pool"]["id"], "name": d["pool"]["name"]}))
+        except ValueError as e:
+            print(f"  {t['name']}: {e}")
+            continue
+        try:
+            store.audit_add(principal_kind="user", principal_id="", surface="cli", action="provision.enable",
+                            resource=f"pool:{t['fp'][:16]}", effect="allow", rule="person", outcome="ok",
+                            reason=f"set up {r['name']} ({r['how']})")
+        except Exception:
+            pass
+        print(f"  ✓ {r['name']} is set up ({r['how']}) and is joining '{d['pool']['name']}'.")
 
 
 def _office_cli(args):
@@ -6955,15 +7203,34 @@ def main():
     p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")
     p_pool.add_argument("action", nargs="?", default="status",
                         choices=["status", "show", "create", "join", "approve", "remove", "leave",
-                                 "lead", "brain", "pin", "notes", "share", "forget", "task"], metavar="ACTION",
+                                 "lead", "brain", "pin", "notes", "share", "forget", "task",
+                                 "discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll",
+                                 "devices", "install", "sshkey", "sdcard"],
+                        metavar="ACTION",
                         help="status | create NAME | join MACHINE | approve M | remove M | leave | "
-                             "lead on|off | brain on|off | pin M|auto | notes [Q] | share TEXT | forget ID | task PIECE...")
+                             "lead on|off | brain on|off | pin M|auto | notes [Q] | share TEXT | forget ID | task PIECE... | "
+                             "discover | machines | enable M... | ignore M | key [LABEL] | keys | wait [on|off|auto] | enroll KEY | "
+                             "devices | install IP --user U | sshkey | sdcard PATH")
     p_pool.add_argument("args", nargs="*", help="the value")
     p_pool.add_argument("--brain", action="store_true", help="join: think with the leader's brain")
+    p_pool.add_argument("--code", default="", help="enable: the six digits on the new machine's screen")
+    p_pool.add_argument("--kiosk", action="store_true", help="enable / key: set the new machine up as a kiosk")
+    p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
+    p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
+    p_pool.add_argument("--user", default="", help="install / sdcard: the user on the other machine")
+    p_pool.add_argument("--password-stdin", action="store_true", help="install / sdcard: read the password from stdin")
+    p_pool.add_argument("--key-only", action="store_true", help="install: log in with this machine's SSH key")
+    p_pool.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
+    p_pool.add_argument("--yes", action="store_true", help="install: do not ask before running the installer")
+    p_pool.add_argument("--hostname", default="", help="sdcard: the Pi's name on the network")
+    p_pool.add_argument("--wifi", default="", help="sdcard: the Wi-Fi network to join")
+    p_pool.add_argument("--wifi-country", default="", help="sdcard: two letters, like GB or IN")
     p_face = verb("face", help="this machine's screen: one agent drawn, and the kiosk that listens")
     p_face.add_argument("action", nargs="?", default="show",
-                        choices=["show", "status", "buddy", "kiosk", "wake", "hear"], metavar="ACTION",
-                        help="show | buddy auto|on|off | kiosk on|off | wake name|always | hear ENGINE")
+                        choices=["show", "status", "buddy", "kiosk", "wake", "word", "test", "hear"],
+                        metavar="ACTION",
+                        help="show | buddy auto|on|off | kiosk on|off | wake name|always | "
+                             "word [WAKE WORD] | test | hear ENGINE")
     p_face.add_argument("args", nargs="*", help="the value")
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",

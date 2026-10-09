@@ -48,3 +48,45 @@ body.kiosk #office-scene canvas{display:block}
 .pool-m .mut{flex:1 1 220px;min-width:0}
 .pool-notes{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .pool-n{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---- new machines (24j-provision.js) ---- */
+.prov-list{display:flex;flex-direction:column;gap:6px;margin:6px 0 10px}
+.prov-m{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:10px;
+  background:color-mix(in srgb,var(--bg3) 60%,transparent)}
+.prov-m.done{opacity:.6}
+.prov-m .mut{flex:1 1 220px;font-size:var(--fs-sm,12px)}
+.prov-pick{display:flex;align-items:center;gap:6px;min-height:var(--tap,32px)}
+.prov-name{width:120px}
+.prov-code{width:88px;font-variant-numeric:tabular-nums;letter-spacing:.08em}
+.prov-key{font-size:var(--fs-sm,12px);color:var(--ok,#4ade80)}
+.prov-opt{display:inline-flex;align-items:center;gap:6px;margin-right:8px}
+.prov-k{display:inline-flex;align-items:center;gap:6px;margin:0 10px 4px 0}
+.prov-empty{margin:4px 0 10px}
+.prov-keytext{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:10px;margin:6px 0;
+  background:color-mix(in srgb,var(--bg3) 70%,transparent)}
+.prov-keytext code{word-break:break-all;user-select:all}
+#prov-out .ok{color:var(--ok,#4ade80)}#prov-out .warn{color:var(--warn,#f59e0b)}
+/* the waiting machine's own card: above the setup wizard, readable across a room */
+#prov-wait{position:fixed;right:16px;bottom:16px;z-index:100000;max-width:min(340px,calc(100vw - 32px));
+  padding:14px 16px;border-radius:14px;background:var(--bg2);color:var(--txt);
+  border:1px solid color-mix(in srgb,var(--acc) 50%,transparent);box-shadow:0 10px 40px rgba(0,0,0,.35)}
+#prov-wait p{margin:6px 0}
+#prov-wait .prov-pin{font-size:40px;font-weight:700;letter-spacing:.12em;font-variant-numeric:tabular-nums;margin:6px 0}
+#prov-wait button{min-height:var(--tap,32px)}
+@media (max-width:600px){.prov-name,.prov-code{flex:1 1 40%;min-height:var(--tap,40px)}}
+/* machines without Bento: the install form and its live log */
+.dev-m{align-items:flex-start}
+.dev-form{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end;margin-top:6px}
+.dev-form label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm,12px)}
+.dev-form label.prov-opt{flex-direction:row;align-items:center}
+.dev-form input{min-height:var(--tap,32px)}
+.dev-secret{-webkit-text-security:disc}
+.dev-acts{display:flex;gap:8px;flex:1 1 100%}
+.dev-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;flex:1 1 100%;min-height:var(--tap,32px)}
+.dev-facts{flex:1 1 100%;font-size:var(--fs-sm,12px);line-height:1.5}
+.dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}#card-out.ok{color:var(--ok,#4ade80)}
+.dev-plan,.dev-key{display:block;word-break:break-all;font-size:11px;padding:6px 8px;border-radius:8px;
+  background:color-mix(in srgb,var(--bg) 60%,transparent);margin-top:4px;user-select:all}
+.dev-key{max-width:min(420px,60vw)}
+.dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
+  background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}

@@ -120,6 +120,25 @@ STEPS: list[Step] = [
          produces="your crew's characters and an office they work in, "
                   "on the desktop, in Chat and on your phone",
          panel="office"),
+    # Right after the office, because the kiosk IS the office, full screen. Asked for as
+    # "Kiosk Mode has to be checked at the time of onboarding": a Raspberry Pi with a
+    # 7-inch screen is set up once, and a face chosen later in Settings is a face that
+    # nobody on that machine ever finds. Evidence is a decision written down (face.kiosk
+    # present, either way), because "desktop" is as real an answer as "kiosk".
+    Step("screen", "Choose what this screen shows", icon="▣",
+         blurb="The desktop, or a kiosk: the Office full screen, listening for its name. "
+               "And whether only your agent is drawn, which suits a small screen.",
+         produces="this screen's face, chosen: desktop or kiosk, one agent or the crew",
+         panel="look"),
+    # The wake command, onboarded with the real thing: the machine records you, its own
+    # speech-to-text understands you, and it checks that what it heard starts with its
+    # wake word. Done only when that happened (face.heard), never because a box was
+    # ticked: a kiosk whose microphone nobody tested is a kiosk that ignores everybody.
+    Step("voice", "Wake it with your voice", icon="◎",
+         blurb="Say its name and a question. This machine hears you, understands you, and "
+               "answers out loud, so you know the microphone and the wake word work.",
+         produces="a wake word this machine has really heard, and a voice that answers",
+         panel="look"),
     Step("flow", "Give the specialist a mission", icon="⚙", needs=("agent",),
          blurb="A flow is a standing mission and a roster. The orchestrator decides "
                "who does what while it runs — you do not draw the steps.",
@@ -259,6 +278,17 @@ def state(cfg: dict, store=None) -> dict:
                 return "done", f"{cur['name']} · {officemod.STYLES[cur['style']]['label']}"
             except Exception:
                 return "done", "set"
+        if sid == "screen":
+            f = cfg.get("face") if isinstance(cfg.get("face"), dict) else {}
+            if "kiosk" not in f:
+                return "todo", ""
+            from . import face as facemod
+            return "done", ("kiosk" if f.get("kiosk") else "desktop") + (
+                " · one agent" if facemod.buddy(cfg) else "")
+        if sid == "voice":
+            from . import face as facemod
+            h = facemod.heard(cfg)
+            return ("done", f"heard “{h.get('word') or ''}”") if h else ("todo", "")
         if sid == "look":
             d = cfg.get("desktop") or {}
             if d.get("wallpaper_preset") or d.get("theme") or "voice_tts" in d:

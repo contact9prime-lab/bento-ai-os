@@ -640,6 +640,15 @@ class Pool:
         e = _entry_from_link(lk, clean_cap(req.get("cap")))
         d["members"][fp] = e
         save(d)
+        from . import provision
+        if provision.was_enabled_here(fp):
+            # set up from here (provision.py): the person who pressed Enable already let
+            # it in, so its request to join is the end of that act, not a new question
+            e = approve(self.store(), fp)
+            self._audit("pool.approve", f"pool:{short(fp)}",
+                        f"{e['name']} joined '{d['pool']['name']}' (set up from this machine)")
+            await self._emit("pool", {"name": e["name"]})
+            return {"ok": True, "state": "member", "pool": d["pool"], "term": d["term"]}
         self._audit("pool.request", f"pool:{short(fp)}",
                     f"{e['name']} ({lk.get('label')}) asked to join '{d['pool']['name']}'")
         await self._emit("pool_request", {"name": e["name"], "fp": fp})

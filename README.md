@@ -191,7 +191,7 @@ Codex is installed and signed in, it's offered as a brain too. Cloud keys go in 
 
 ## Setup ends by giving it a job
 
-Setup is twelve steps, and each one leaves something real behind: a model that answers,
+Setup is fourteen steps, and each one leaves something real behind: a model that answers,
 an agent with a name and a face, a crew and an office, a mission that runs. A step is ticked because
 the machine really has the thing, so it's safe to run again, and Setup is also an app you can open
 later. `bento setup` is the same steps in a terminal.

@@ -278,6 +278,13 @@ async def startup():
         state["team_chat_task"] = asyncio.create_task(_team_chat_sweep())
         # the community's heartbeat: nothing at all happens unless this machine is in one
         state["pool_task"] = asyncio.create_task(_pool_loop())
+        # new machines (provision.py): a waiting one opens its claim door and announces
+        # itself; one that leads, or could, listens. Neither binds anything otherwise.
+        with contextlib.suppress(Exception):
+            from . import provision as provmod
+            if provmod.adopt_boot_key():
+                store.log("provision", "adopted the enrolment key from the boot partition")
+            await _provision_sync()
     # An OAuth server asks for consent from inside its own connection attempt, which
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
@@ -733,6 +740,260 @@ async def _pool_loop():
             if poolmod.load().get("role"):
                 with usersmod.as_user(""):
                     await state["pool"].tick()
+        with contextlib.suppress(Exception):
+            await _provision_sync()
+        with contextlib.suppress(Exception):
+            await _provision_rejoin()
+
+
+# ---- new machines on the network (provision.py) -------------------------------------------
+
+async def _provision_rejoin():
+    """A machine that was set up but could not reach its leader to join (the leader's
+    server was down, a cable) keeps asking on every heartbeat until it is in."""
+    from . import pool as poolmod
+    from . import provision as provmod
+    c = provmod.load().get("claimed") or {}
+    if not c.get("link") or poolmod.load().get("role"):
+        return
+    await _provision_claimed({"link": c["link"], "retry": True})
+
+async def _provision_sync():
+    """Open or close the waiting door and the listening ear to match what is true now.
+    Called at start, every heartbeat, and after anything that changes either answer."""
+    from . import provision as provmod
+    cfg = state.machine_cfg()
+    want_door, _why = provmod.waiting(cfg)
+    want_watch = provmod.watching(cfg)
+    door, watch = state.get("provision_door"), state.get("provision_watch")
+    if want_door and not door:
+        try:
+            state["provision_door"] = await provmod.Door(
+                state.machine_cfg, on_claimed=_provision_claimed,
+                audit=lambda a, d: _sys_ledger(a, "provision:this-machine", d)).start()
+            st = provmod.status(cfg)
+            state["store"].log("provision", "waiting to be set up by another machine — "
+                               + (f"code {st['pin']}, " if st["pin"] else "carries an enrolment key, ")
+                               + f"machine id {st['id']}")
+        except OSError as e:
+            state["store"].log("provision", f"could not open the door for being set up: {e}")
+    elif door and not want_door:
+        with contextlib.suppress(Exception):
+            await door.stop()
+        state["provision_door"] = None
+    if want_watch and not watch:
+        with contextlib.suppress(OSError):
+            state["provision_watch"] = await provmod.Watch(on_new=_provision_new).start()
+        # the ear for machines WITHOUT Bento: a Pi saying its name on the network (netscan.py)
+        from . import netscan
+        try:
+            state["device_ear"] = await netscan.MdnsEar(_device_heard).start()
+        except OSError as e:
+            state["store"].log("provision", f"cannot listen for new devices' names (mDNS): {e}")
+    elif watch and not want_watch:
+        with contextlib.suppress(Exception):
+            await watch.stop()
+        state["provision_watch"] = None
+        if state.get("device_ear"):
+            with contextlib.suppress(Exception):
+                await state["device_ear"].stop()
+            state["device_ear"] = None
+
+
+def _device_heard(name: str, ip: str):
+    """A machine said its name on the network (mDNS). Remembered; a new one that turns out
+    to be a Raspberry Pi with no Bento on it is one toast asking whether to install it."""
+    from . import netscan
+    from . import provision as provmod
+    if any(e.get("addr") == ip for e in provmod.load()["seen"].values()):
+        return                          # it runs Bento: provision.py has it
+    d = provmod.load()
+    if netscan.remember(d["devices"], {"ip": ip, "name": name}):
+        provmod.save(d)
+        asyncio.ensure_future(_device_look(ip, name))
+    # heard again: nothing written, an SD card wears out
+
+
+async def _device_look(ip: str, name: str):
+    """Knock once on a newly heard machine: does it answer SSH, and who made it."""
+    from . import netscan
+    from . import provision as provmod
+    ssh_port = netscan.ports()[0]
+    banner = await netscan._knock(ip, ssh_port, netscan.PROBE_TIMEOUT, True)
+    mac = netscan.neighbours().get(ip, "")
+    dev = {"ip": ip, "name": name, "mac": mac, "maker": netscan.maker(mac),
+           "ports": [ssh_port] if banner is not None else [],
+           "ssh": banner is not None, "banner": banner or "", "os": netscan.os_from_banner(banner or "")}
+    dev["pi"] = netscan.looks_like_pi(dev)
+    d = provmod.load()
+    netscan.remember(d["devices"], dev)
+    provmod.save(d)
+    if dev["pi"]:
+        _sys_ledger("device.seen", f"device:{ip}", f"{name or ip} ({dev['maker'] or 'a Pi'}) joined the network "
+                    f"without Bento" + (", SSH open" if dev["ssh"] else ""))
+        await _provision_admins({"type": "provision", "kind": "device", "name": name or ip, "ip": ip,
+                                 "ssh": dev["ssh"]})
+
+
+def _sys_ledger(action: str, resource: str, detail: str):
+    with contextlib.suppress(Exception):
+        state["store"].audit_add(principal_kind="system", principal_id="provision", action=action,
+                                 resource=resource, effect="allow", rule="provision", outcome="ok",
+                                 detail=str(detail)[:1000])
+
+
+async def _provision_admins(ev: dict):
+    if not usersmod.enabled():
+        await state["broadcast"](ev)
+        return
+    for u in usersmod.list_users():
+        if usersmod.is_admin(u["id"]):
+            await state["broadcast_user"](ev, u["id"])
+
+
+async def _provision_new(b: dict):
+    """A machine turned on and said it is waiting. Ask whoever may set it up — and if it
+    carries one of this machine's keys marked automatic, set it up now (the zero-touch
+    road), which is still a ledger row and still a toast."""
+    from . import provision as provmod
+    hw = b.get("hw") or {}
+    _sys_ledger("provision.seen", f"provision:{b['fp'][:16]}",
+                f"{b['name']} ({hw.get('board') or hw.get('arch') or 'a machine'}) at {b.get('addr')} "
+                f"is waiting to be set up")
+    auto = next((k for k in provmod.load()["keys"] if k.get("auto") and k["id"] == b.get("key_id")), None)
+    if auto:
+        res = await _provision_enable([{"fp": b["fp"]}], {}, by=f"the automatic key '{auto.get('label')}'")
+        r = (res.get("results") or [{}])[0]
+        await _provision_admins({"type": "provision", "kind": "enabled" if r.get("ok") else "failed",
+                                 "name": b["name"], "error": r.get("error", "")})
+        return
+    await _provision_admins({"type": "provision", "kind": "new", "name": b["name"],
+                             "board": hw.get("board") or "", "fp": b["fp"]})
+
+
+async def _provision_claimed(got: dict):
+    """This machine was just set up by another. Save what the claim wrote, close the
+    door, open the link door, join the leader's community and give the agent a place."""
+    from . import onboarding as obmod
+    from . import pool as poolmod
+    with usersmod.as_user(""):
+        cfg = state.machine_cfg()
+        cfgmod.save_config(cfg)
+        await _provision_sync()
+        with contextlib.suppress(Exception):
+            await _team_listen(True)
+        last = ""
+        for _ in range(1 if got.get("retry") else 20):
+            try:
+                await poolmod.join(cfg, got["link"])
+                last = ""
+                break
+            except ValueError as e:
+                last = str(e)
+                await asyncio.sleep(3)
+        d = poolmod.load()
+        if d.get("pool"):
+            poolmod.grant_work(state["store"], d["pool"]["id"], d["pool"]["name"])
+            poolmod.ensure_worker(state["store"])
+            if not poolmod.has_brain(cfg):
+                poolmod.set_use_brain(cfg, True)
+        if not cfg.get("office"):
+            with contextlib.suppress(Exception):
+                obmod.crew(cfg, state["store"])
+        _pool_save_cfg(cfg)
+        if got.get("retry") and not d.get("pool"):
+            return                       # still unreachable: asked again on the next heartbeat
+        _sys_ledger("provision.joined", "pool:community",
+                    f"joined '{(d.get('pool') or {}).get('name')}' as {d.get('role')}" if d.get("pool")
+                    else f"could not join the leader's community yet: {last}")
+    await state["broadcast"]({"type": "provision", "kind": "claimed"})
+    await state["broadcast"]({"type": "face"})
+
+
+async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
+    """Set up each waiting machine in `items` ({fp, code?, name?}) from here. This machine
+    leads a community for it (started if there is none), and its link door is opened,
+    because the new members join over it."""
+    from . import pool as poolmod
+    from . import provision as provmod
+    from . import teamlink
+    cfg = state.machine_cfg()
+    with usersmod.as_user(""):
+        d = poolmod.load()
+        if d.get("role") in ("member", "pending"):
+            return {"error": "this machine is a member of a community; machines are set up from its leader"}
+        if not d.get("role"):
+            try:
+                poolmod.create(cfg, "")
+            except ValueError as e:
+                return {"error": str(e)}
+            _ledger("pool.write", "pool:community", "started a community to set new machines up")
+            d = poolmod.load()
+        if not state.get("team_listener"):
+            cfg.setdefault("team", {})["listen"] = True
+            cfgmod.save_config(cfg)
+            await _team_listen(True)
+        info = {"id": d["pool"]["id"], "name": d["pool"]["name"]}
+
+        async def one(it):
+            target = provmod.find_seen(str(it.get("fp") or ""))
+            if not target:
+                return {"ok": False, "fp": it.get("fp"), "error": "that machine has not been heard — look again"}
+            prof = dict(profile or {})
+            if it.get("name"):
+                prof["name"] = it["name"]
+            try:
+                r = await provmod.enable(cfg, target, prof, code=str(it.get("code") or ""), pool_info=info)
+            except ValueError as e:
+                _sys_ledger("provision.failed", f"provision:{target['fp'][:16]}", f"{target.get('name')}: {e}")
+                return {"ok": False, "fp": target["fp"], "name": target.get("name"), "error": str(e)}
+            _ledger("provision.enable", f"pool:{target['fp'][:16]}",
+                    f"set up {r['name']} ({target.get('hw', {}).get('board') or 'machine'}, {r['how']})"
+                    + (f" by {by}" if by else "") + f"; profile {json.dumps(r['profile'])}")
+            return {**r, "fp": target["fp"]}
+
+        results = await asyncio.gather(*[one(it) for it in items[:provmod.MAX_SEEN]])
+    await _pool_event("pool", {})
+    return {"results": list(results), "pool": info, "links": len(teamlink.links(None))}
+
+
+def _provision_view() -> dict:
+    from . import pool as poolmod
+    from . import provision as provmod
+    cfg = state.machine_cfg()
+    me = provmod.status(cfg)
+    can = usersmod.is_admin(usersmod.current())
+    if not can:
+        me["pin"] = ""            # the code sets this machine up: an admin's to read out
+    return {"this": me, "watching": provmod.watching(cfg),
+            "listening": bool(state.get("provision_watch")),
+            "door": bool(state.get("provision_door")),
+            "seen": provmod.seen_list(), "keys": provmod.keys(),
+            "role": poolmod.load().get("role") or "", "has_brain": poolmod.has_brain(cfg),
+            "can_change": can, "devices": _device_rows(), "ear": bool(state.get("device_ear")),
+            "ssh_missing": _ri().missing(), "pubkey": _ri().public_key(),
+            "installs": dict(state.get("device_installs") or {})}
+
+
+def _ri():
+    from . import remoteinstall
+    return remoteinstall
+
+
+def _device_rows() -> list:
+    """Machines heard or knocked on, newest first, each marked when it runs Bento already
+    (provision.py heard its beacon at that address) or is being installed."""
+    from . import provision as provmod
+    d = provmod.load()
+    bento = {e.get("addr"): e for e in d["seen"].values()}
+    rows = []
+    for key, e in d["devices"].items():
+        if e.get("state") == "ignored":
+            continue
+        b = bento.get(e.get("ip"))
+        rows.append({**e, "key": key, "bento": (b or {}).get("state") or "",
+                     "age": int(time.time() - e.get("last", 0))})
+    return sorted(rows, key=lambda x: -x.get("last", 0))[:64]
 
 
 @app.on_event("shutdown")
@@ -748,6 +1009,10 @@ async def shutdown():
     if state.get("team_listener"):
         with contextlib.suppress(Exception):
             await state["team_listener"].stop()
+    for k in ("provision_door", "provision_watch", "device_ear"):
+        if state.get(k):
+            with contextlib.suppress(Exception):
+                await state[k].stop()
     if "scheduler" in state:
         state["scheduler"].stop()
     if "telegram" in state:
@@ -2798,7 +3063,8 @@ async def api_face_put(body: dict):
     b = body or {}
     cfg = state["cfg"]
     ok, msg = facemod.set_face(cfg, buddy=b.get("buddy"), kiosk=b.get("kiosk") if "kiosk" in b else None,
-                               wake=b.get("wake"))
+                               wake=b.get("wake"),
+                               wake_word=b.get("wake_word") if isinstance(b.get("wake_word"), str) else None)
     if not ok:
         return JSONResponse({"error": msg}, status_code=400)
     if "hear" in b and isinstance(b["hear"], str):
@@ -2815,6 +3081,52 @@ async def api_face_put(body: dict):
     facemod.record(state["store"], msg)
     await state["broadcast"]({"type": "face"})
     return {**facemod.state(state.machine_cfg()), "description": msg}
+
+
+@app.post("/api/face/wake-test")
+async def api_face_wake_test(request: Request, lang: str = ""):
+    """The voice step: one utterance, understood HERE, checked for the wake word.
+
+    The audio is a WAV from the page (the kiosk's own recorder), turned into text by this
+    machine's speech-to-text, and only a wake word found in that text is recorded as
+    heard (`face.heard`, the onboarding step's evidence). A JSON body `{"text": …}` is for
+    the browser's own recogniser, the one engine whose text arrives already written; it
+    is recorded with engine `browser`, so the evidence says what it is."""
+    from . import face as facemod
+    from . import hearing
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can set up this machine's screen"}, status_code=403)
+    cfg = state.machine_cfg()
+    if (request.headers.get("content-type") or "").startswith("application/json"):
+        try:
+            text = str((await request.json() or {}).get("text") or "")[:500]
+        except Exception:
+            text = ""
+        engine = "browser"
+    else:
+        wav = bytearray()
+        async for part in request.stream():
+            wav += part
+            if len(wav) > hearing.MAX_BYTES:
+                return JSONResponse({"error": "That was too long. Say the name and a short question."},
+                                    status_code=413)
+        try:
+            text = await hearing.transcribe(cfg, bytes(wav), lang)
+        except hearing.HearError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        engine = hearing.status(cfg).get("engine") or ""
+    words = facemod.wake_words(cfg)
+    got = facemod.addressed(text, words) if text.strip() else None
+    out = {"text": text, "engine": engine, "words": words, "matched": bool(got),
+           "word": got[0] if got else "", "after": got[1] if got else ""}
+    if got:
+        facemod.mark_heard(cfg, text, got[0], engine)
+        cfgmod.save_config(cfg)
+        if cfg is not state["cfg"] and isinstance(state["cfg"], dict):
+            state["cfg"].setdefault("face", {})["heard"] = cfg["face"]["heard"]
+        facemod.record(state["store"], f"heard the wake word “{got[0]}” ({engine or 'no engine'})")
+        await state["broadcast"]({"type": "face"})
+    return out
 
 
 @app.post("/api/speech/hear")
@@ -10480,6 +10792,8 @@ def _pool_view() -> dict:
 async def _pool_changed(what: str):
     _ledger("pool.write", "pool:community", what)
     await _pool_event("pool", {})
+    with contextlib.suppress(Exception):
+        await _provision_sync()       # joining closes the waiting door; leading opens the ear
 
 
 def _pool_save_cfg(cfg: dict):
@@ -10634,6 +10948,279 @@ async def api_pool_note_add(body: dict):
 async def api_pool_note_forget(nid: str):
     from . import pool as poolmod
     return {"ok": poolmod.note_forget(nid)}
+
+
+@app.get("/api/provision")
+async def api_provision():
+    """New machines: this one's own waiting state, the ones heard, and the enrolment keys."""
+    return _provision_view()
+
+
+@app.post("/api/provision/scan")
+async def api_provision_scan():
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    found = await provmod.scan(2.0)
+    v = _provision_view()
+    v["found"] = len(found)
+    return v
+
+
+@app.post("/api/provision/enable")
+async def api_provision_enable(body: dict):
+    """Set up the chosen machines, each with the code from its screen unless it carries
+    this community's enrolment key. A person's act: admin only, a ledger row each."""
+    if (r := _require_admin()):
+        return r
+    b = body or {}
+    items = [x for x in (b.get("machines") or []) if isinstance(x, dict) and x.get("fp")]
+    if not items:
+        return JSONResponse({"error": "choose at least one machine"}, status_code=400)
+    from . import provision as provmod
+    out = await _provision_enable(items, provmod.clean_profile(b.get("profile")))
+    if out.get("error"):
+        return JSONResponse(out, status_code=400)
+    return {**out, **_provision_view()}
+
+
+@app.post("/api/provision/ignore")
+async def api_provision_ignore(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    if not provmod.ignore(str((body or {}).get("fp") or "")):
+        return JSONResponse({"error": "no such machine"}, status_code=404)
+    return _provision_view()
+
+
+@app.post("/api/provision/key")
+async def api_provision_key(body: dict):
+    """A new enrolment key. Its text is in this answer once, to put on SD cards; after
+    that only its label and id are shown."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    b = body or {}
+    k = provmod.make_key(str(b.get("label") or ""), bool(b.get("auto")), b.get("profile"))
+    _ledger("provision.key", f"provision:key/{k['id']}",
+            f"made an enrolment key '{k['label']}'" + (" (automatic)" if k["auto"] else ""))
+    await _provision_sync()
+    return {**_provision_view(), "key": k}
+
+
+@app.put("/api/provision/key/{kid}")
+async def api_provision_key_put(kid: str, body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    k = provmod.set_key_auto(kid, bool((body or {}).get("auto")))
+    if not k:
+        return JSONResponse({"error": "no such key"}, status_code=404)
+    _ledger("provision.key", f"provision:key/{kid}",
+            f"enrolment key '{k['label']}' " + ("sets machines up by itself" if k["auto"] else "waits for you"))
+    return _provision_view()
+
+
+@app.delete("/api/provision/key/{kid}")
+async def api_provision_key_delete(kid: str):
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    if not provmod.drop_key(kid):
+        return JSONResponse({"error": "no such key"}, status_code=404)
+    _ledger("provision.key", f"provision:key/{kid}", "revoked an enrolment key")
+    return _provision_view()
+
+
+@app.put("/api/provision")
+async def api_provision_put(body: dict):
+    """This machine's part: wait to be set up by another (on, off, or the default), listen
+    for new machines, or carry an enrolment key."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    b = body or {}
+    said = []
+    if "wait" in b:
+        provmod.set_wait(None if b["wait"] is None else bool(b["wait"]))
+        said.append({True: "waits to be set up", False: "does not wait to be set up",
+                     None: "waits to be set up only as a fresh Raspberry Pi"}[None if b["wait"] is None else bool(b["wait"])])
+    if "watch" in b:
+        d = provmod.load()
+        d["watch"] = None if b["watch"] is None else bool(b["watch"])
+        provmod.save(d)
+        said.append("listens for new machines" if b["watch"] else "does not listen for new machines")
+    if b.get("key"):
+        try:
+            provmod.adopt_key(str(b["key"]))
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        said.append("carries an enrolment key")
+    _ledger("provision.write", "provision:this-machine", "; ".join(said) or "no change")
+    await _provision_sync()
+    await state["broadcast"]({"type": "provision", "kind": "changed"})
+    return _provision_view()
+
+
+@app.post("/api/devices/scan")
+async def api_devices_scan():
+    """Knock on SSH and Bento's port across this machine's own private networks, and ask
+    who runs Bento. A person's act: admin only, a ledger row, never on a timer."""
+    if (r := _require_admin()):
+        return r
+    from . import netscan
+    from . import provision as provmod
+    t0 = time.time()
+    found, bento = await asyncio.gather(netscan.scan(), provmod.scan(1.5))
+    d = provmod.load()
+    for dev in found:
+        netscan.remember(d["devices"], dev)
+    provmod.save(d)
+    nets = ", ".join(str(n) for n in netscan.local_networks()) or "none"
+    _ledger("device.scan", "network:local", f"looked at {nets}: {len(found)} answered, "
+            f"{len(bento)} waiting Bento, in {time.time() - t0:.1f}s")
+    v = _provision_view()
+    v["found"], v["networks"] = len(found), nets
+    return v
+
+
+@app.post("/api/devices/ignore")
+async def api_devices_ignore(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    d = provmod.load()
+    k = str((body or {}).get("key") or "")
+    if k not in d["devices"]:
+        return JSONResponse({"error": "no such device"}, status_code=404)
+    d["devices"][k]["state"] = "ignored"
+    provmod.save(d)
+    return _provision_view()
+
+
+@app.post("/api/devices/sshkey")
+async def api_devices_sshkey():
+    """This machine's SSH key, made once: the public half goes into Raspberry Pi Imager so
+    the leader can reach a new Pi with no password."""
+    if (r := _require_admin()):
+        return r
+    from . import remoteinstall as ri
+    from . import teamlink
+    try:
+        pk = ri.ensure_key(teamlink.machine_name(state.machine_cfg()))
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ledger("device.sshkey", "provision:ssh-key", "made this machine's SSH key")
+    return {"pubkey": pk}
+
+
+def _device_creds(b: dict) -> tuple[str, str, str, int]:
+    return (str(b.get("ip") or ""), str(b.get("user") or ""), str(b.get("password") or ""),
+            int(b.get("port") or 22))
+
+
+@app.post("/api/devices/check")
+async def api_devices_check(body: dict):
+    """Log in and read what the machine is, changing nothing. The password is used for this
+    one login and kept nowhere."""
+    if (r := _require_admin()):
+        return r
+    from . import remoteinstall as ri
+    ip, user, pw, port = _device_creds(body or {})
+    try:
+        got = await ri.check(ip, user, pw, port)
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    got["plan"] = ri.plan(state.machine_cfg(), "bento-enroll-1.…", authorize=bool((body or {}).get("authorize")))
+    return got
+
+
+@app.post("/api/devices/install")
+async def api_devices_install(body: dict):
+    """Install Bento there with a key made for that one machine, so it is set up the moment
+    it is heard. Returns at once; progress is broadcast line by line (device_install)."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, user, pw, port = _device_creds(b)
+    bad = ri.missing() or ri.valid_target(ip, user)
+    if bad:
+        return JSONResponse({"error": bad}, status_code=400)
+    runs = state.setdefault("device_installs", {})
+    if (runs.get(ip) or {}).get("state") == "running":
+        return JSONResponse({"error": "Bento is already being installed there"}, status_code=409)
+    k = provmod.make_key(f"install on {ip}", auto=True, profile=b.get("profile"), single=True)
+    runs[ip] = {"state": "running", "started": time.time(), "lines": []}
+    _ledger("device.install", f"device:{ip}", f"started installing Bento on {user}@{ip}"
+            + (" and letting this machine's key in" if b.get("authorize") else ""))
+    asyncio.ensure_future(_device_install(ip, user, pw, port, k, bool(b.get("authorize"))))
+    return {"started": True, "plan": ri.plan(state.machine_cfg(), "bento-enroll-1.…", authorize=bool(b.get("authorize")))}
+
+
+async def _device_install(ip, user, pw, port, k, authorize):
+    from . import provision as provmod
+    from . import remoteinstall as ri
+    run = state["device_installs"][ip]
+    cfg = state.machine_cfg()
+
+    async def line(ln):
+        ln = ln[:300]
+        run["lines"] = (run["lines"] + [ln])[-40:]
+        await _provision_admins({"type": "device_install", "ip": ip, "line": ln})
+    try:
+        got = await ri.install(cfg, ip, user, pw, k["text"], authorize=authorize, port=port, on_line=line)
+        run.update(state="done", finished=time.time())
+        d = provmod.load()
+        for e in d["devices"].values():
+            if e.get("ip") == ip:
+                e["state"] = "installed"
+        provmod.save(d)
+        _sys_ledger("device.installed", f"device:{ip}", f"Bento installed on {user}@{ip}; host key "
+                    f"{got.get('host_key') or 'unknown'}; it is set up when it is heard")
+        await _provision_admins({"type": "provision", "kind": "installed", "name": ip})
+    except ri.InstallError as e:
+        provmod.drop_key(k["id"])
+        run.update(state="failed", error=str(e), finished=time.time())
+        _sys_ledger("device.failed", f"device:{ip}", f"installing on {user}@{ip}: {e}")
+        await _provision_admins({"type": "provision", "kind": "install_failed", "name": ip, "error": str(e)})
+    finally:
+        pw = ""                         # noqa: F841 — the password ends with this task
+
+
+@app.post("/api/devices/sdcard")
+async def api_devices_sdcard(request: Request, body: dict):
+    """Add Bento to an SD card's boot partition mounted on THIS machine (loopback only: it
+    writes to a local path). The card then installs Bento on its first boot."""
+    if (r := _require_admin()):
+        return r
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "the SD card is written on the machine it is plugged into; "
+                                      "use this machine's own screen or `bento pool sdcard`"}, status_code=403)
+    from . import provision as provmod
+    from . import remoteinstall as ri
+    from . import sdcard
+    from . import teamlink
+    b = body or {}
+    try:
+        pk = ri.ensure_key(teamlink.machine_name(state.machine_cfg()))
+    except ri.InstallError:
+        pk = ""
+    k = provmod.make_key(f"SD card {time.strftime('%d %b %H:%M')}", auto=True,
+                         profile=b.get("profile"), single=True)
+    try:
+        got = sdcard.write(str(b.get("path") or ""), url=ri.install_url(state.machine_cfg()),
+                           key_text=k["text"], pubkey=pk, user=str(b.get("user") or ""),
+                           hostname=str(b.get("hostname") or ""), wifi=b.get("wifi") or None)
+    except sdcard.KitError as e:
+        provmod.drop_key(k["id"])
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ledger("device.sdcard", "provision:sd-card", f"added Bento to the SD card at {b.get('path')} "
+            f"({', '.join(got['written'])}) for user {got['user']}")
+    await _provision_sync()
+    return {**got, "key_label": k["label"]}
 
 
 @app.get("/api/team/links")
@@ -11334,6 +11921,12 @@ async def api_speech_save(body: dict):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     cfgmod.save_config(state["cfg"])
+    if state["cfg"] is not state.machine_cfg():
+        # hearing.py reads the machine's copy: the key that speaks is the key that hears
+        m = state.machine_cfg().setdefault("speech", {})
+        for k, v in state["cfg"]["speech"].items():
+            if k != "hear":
+                m[k] = json.loads(json.dumps(v))
     state["store"].log("system", f"voice engine: {got['engine']}")
     return {"ok": True, "config": got}
 

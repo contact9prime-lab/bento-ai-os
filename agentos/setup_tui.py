@@ -409,6 +409,119 @@ def _step_crew(cfg, store) -> None:
     print("    Watch them work in the desktop's Office app; `bento office` shows the plan here.")
 
 
+def _step_screen(cfg, store) -> None:
+    """The screen's face, from a terminal. The desktop and the kiosk are drawn on the
+    screen plugged into the machine, so a terminal chooses it and says where it shows."""
+    from . import face as facemod
+    print("\n  What should this machine's own screen show?")
+    print("    1. The desktop        windows, apps and the dock")
+    print("    2. A kiosk            the Office full screen, listening for its name")
+    pick = _ask("Choice", "2" if facemod.kiosk(cfg) else "1")
+    kiosk = pick.strip() == "2"
+    print("\n  Who is drawn: 1. auto (only your agent in Light mode)  2. only your agent  3. the whole crew")
+    b = {"1": "auto", "2": "on", "3": "off"}.get(_ask("Choice", "1").strip(), "auto")
+    ok, msg = facemod.set_face(cfg, kiosk=kiosk, buddy=b)
+    if not ok:
+        print(f"  {msg}")
+        return
+    _save(cfg)
+    facemod.record(store, "chosen in setup (terminal): " + msg)
+    print("  ✓ " + msg)
+    print("    It shows on the screen plugged into this machine, the next time its page loads.")
+
+
+def _step_voice(cfg, store) -> None:
+    """The wake command, proven from a terminal: record here, understand here, check the
+    wake word. The same evidence the page writes (face.heard), so the step ticks for the
+    same reason in both places."""
+    from . import face as facemod
+    from . import hearing
+    st = hearing.status(cfg)
+    print("\n  " + st["line"])
+    word = _ask("Wake word of your own (blank for just its name)", facemod.wake_word(cfg))
+    ok, msg = facemod.set_face(cfg, wake_word=word)
+    if not ok:
+        print(f"  {msg}")
+        return
+    _save(cfg)
+    words = facemod.wake_words(cfg)
+    if not st["engine"] or st["engine"] == "browser":
+        st = _hear_fix(cfg, st)
+    if not st["engine"] or st["engine"] == "browser":
+        print(_wrap("This terminal cannot check the microphone: nothing here turns speech into text "
+                    "for it. Do this step on the machine's screen, or run it again once a voice key or "
+                    "whisper.cpp is here."))
+        return
+    if not hearing.recorder() and _offer_component("alsa-utils"):
+        pass
+    if not hearing.recorder():
+        print(_wrap("There is no recorder here (arecord, rec or parecord). On a Raspberry Pi: "
+                    "sudo apt install alsa-utils, then run this step again. Or do it on the screen."))
+        return
+    for _attempt in range(3):
+        if not _yes(f"Ready? Say “{words[0]}, what time is it?” right after you press Enter", True):
+            return
+        print("  ● listening for 5 seconds…")
+        try:
+            wav = hearing.record(5)
+            text = asyncio.run(hearing.transcribe(cfg, wav))
+        except hearing.HearError as e:
+            print(f"  {e}")
+            continue
+        got = facemod.addressed(text, words) if text else None
+        if got:
+            facemod.mark_heard(cfg, text, got[0], st["engine"])
+            _save(cfg)
+            facemod.record(store, f"heard the wake word “{got[0]}” ({st['engine']}, terminal)")
+            print(f"  ✓ heard “{text}”. The wake word works.")
+            return
+        print(f"  I heard “{text or '(nothing)'}”, but not " + " or ".join(f"“{w}”" for w in words) + ".")
+    print("  Three tries. `bento face test` tries again any time.")
+
+
+def _hear_fix(cfg, st) -> dict:
+    """Nothing here understands speech: offer the two fixes the screen offers. A voice key
+    (saved under Voice, so it also makes the agents speak) or whisper.cpp built here."""
+    from . import hearing, speech
+    print(_wrap("Nothing here understands speech yet. A voice service key (ElevenLabs, OpenAI or "
+                "Google Cloud) hears as well as speaks, or whisper.cpp understands it on this machine "
+                "for free."))
+    pick = _ask("1 = paste a voice key, 2 = install whisper.cpp, Enter = skip", "")
+    if pick == "1":
+        eng = {"1": "elevenlabs", "2": "openai", "3": "google"}.get(
+            _ask("Which service? 1 ElevenLabs, 2 OpenAI, 3 Google Cloud", "1"), "elevenlabs")
+        key = getpass.getpass(f"  {hearing.TITLES[eng]} API key (not shown): ").strip()
+        if key:
+            speech.save(cfg, {"engine": eng, "keys": {eng: key}})
+            _save(cfg)
+            print(f"  ✓ saved under Voice. Your agents speak with {hearing.TITLES[eng]} too.")
+    elif pick == "2":
+        _offer_component("whisper-cpp")
+    st = hearing.status(cfg)
+    print("  " + st["line"])
+    return st
+
+
+def _offer_component(cid: str) -> bool:
+    """Install one components.py entry here, licence and command in view, on a yes."""
+    from . import components
+    row = next((r for r in components.catalog() if r["id"] == cid), None)
+    if not row or row["installed"]:
+        return bool(row)
+    if not row["available"]:
+        print(_wrap(f"{row['title']} can't be installed from here: {row['reason']}"))
+        return False
+    print(_wrap(f"{row['title']} ({row['licence']}). {row['unlocks']}"))
+    if not _yes("Install it now?", True):
+        return False
+    print("  installing… this can take a few minutes")
+    res = asyncio.run(components.install(cid))
+    print("  " + ("✓ " if res.get("ok") else "") + str(res.get("message") or "")[-300:])
+    if res.get("needs_terminal") and res.get("command"):
+        print(f"    {res['command']}")
+    return bool(res.get("ok"))
+
+
 def _step_look(cfg, store) -> None:
     """A terminal can pick a theme; it cannot show you one.
 
@@ -488,7 +601,8 @@ def _step_account(cfg, store) -> None:
 HANDLERS = {
     "name": _step_name, "model": _step_model, "hello": _step_hello,
     "fork": _step_fork, "app": _step_app,
-    "agent": _step_agent, "crew": _step_crew, "flow": _step_flow, "schedule": _step_schedule,
+    "agent": _step_agent, "crew": _step_crew, "screen": _step_screen, "voice": _step_voice,
+    "flow": _step_flow, "schedule": _step_schedule,
     "channel": _step_channel, "look": _step_look, "account": _step_account,
 }
 

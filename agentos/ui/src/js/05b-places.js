@@ -67,6 +67,8 @@ var PLACES=[
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','remote','remote access','passphrase','lock','autonomy','light mode','profile','security'],placeSettings('system')],
   ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
+  ['New machines','settings','Settings → Agents → Community → New machines',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch'],placeSettings('agent')],
+  ['Devices without Bento','settings','Settings → Agents → Community → Devices without Bento',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('agent')],
   ['Community','settings','Settings → Agents → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('agent')],
   ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','mic','microphone','listen','wake word','speech to text','whisper','small screen'],placeSettings('look')],
   ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],

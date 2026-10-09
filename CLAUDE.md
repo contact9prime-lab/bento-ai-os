@@ -2404,6 +2404,75 @@ leader and the leader has all the creds". Seven things keep it honest:
   reader only after the certificate matched a link (`_handle`); a model call carries a whole
   conversation. `call(limit=)` matches it on the way back.
 
+## New machines on the network: heard, asked about, set up from the leader
+
+`agentos/provision.py` + `24j-provision.js` (Settings → Agents → Community → New machines, and
+the waiting machine's own card) + `/api/provision*` + `bento pool discover|enable|key|wait|
+enroll` + `install.sh --enroll/--wait`; `docs/pool.md`, `tests/test_provision.py`, live run
+`packaging/dev/provision-e2e/run.py` (a leader and three stand-in Pis). Asked for as "provision
+multiple pi agents … more like POAP" and "whenever a new machine is turned on and discovered on
+the network, we should be able to check if we need to provision it". Six rules:
+- **Only a waiting machine opens a door** (`waiting()`: a fresh Pi, a key, or `wait on`; never
+  a set-up, joined or `wait off` machine). It announces on UDP 8620 and takes ONE claim on TCP
+  8620 (`Door`); the claim closes it for good. A leader, or a machine that could lead, LISTENS
+  (`Watch`, `watching()`), and a machine heard waiting for the first time is ONE toast to the
+  admins (`note_seen` returns new once per machine). Neither binds anything otherwise.
+- **A claim is proven, never assumed.** `proof()` is an HMAC over both certificate
+  fingerprints and a fresh nonce, keyed by the code on the new machine's screen or by the
+  enrolment key; the code and the secret never travel. `check_claim` counts wrong codes
+  (PIN_TRIES, PIN_ROUNDS, LOCK_S). A keyed claim is proven BOTH ways (`proof_back`): an
+  automatic key must never enable a device that only copied a key id out of a broadcast.
+- **The leader pins what it heard** (`enable` refuses a different certificate at the address)
+  and the code path's limit is said in the docs: compare the machine id on both screens, use a
+  key on a network you do not trust.
+- **A beacon is a stranger's words** (`clean_beacon`: closed set, `teamlink.plain`, bounded,
+  MAX_SEEN). Nothing is enabled because a beacon said so, except a machine that proves the key.
+- **A claim writes a closed set** (`clean_profile`: name, agent name, kiosk, buddy, lite, wake
+  word) plus a machine link to the leader, `setup_complete`, and `team.listen`. Then the new
+  machine joins over that link and the leader lets it in at once (`was_enabled_here` in
+  `Pool._pool_join`), so after that it is an ordinary member with pool.py's one grant each way.
+  A machine that could not reach its leader asks again every heartbeat (`_provision_rejoin`).
+- **No agent tool, admin only, a ledger row each side** (`provision.seen/enable/failed/key`
+  on the leader, `provision.claimed/refused/joined` on the new machine). Enabling a machine
+  spends this one's model budget on it. `AGENTOS_PI_MODEL`, `AGENTOS_DISCOVER_UDP/PORT/TARGETS`
+  stand in for a board and a LAN in tests, the `AGENTOS_SIGNIN_BASE` idea.
+
+## Machines WITHOUT Bento: heard, offered, installed over SSH or from the SD card
+
+`agentos/netscan.py` (the passive mDNS ear + a scan on request) + `agentos/remoteinstall.py`
+(the install over SSH) + `agentos/sdcard.py` (the first-boot kit) + `/api/devices/*` + the
+*Devices without Bento* rows in `24j-provision.js` + `bento pool devices|install|sshkey|sdcard`;
+`docs/pi-first-boot.md`, `tests/test_device_install.py`, live run
+`packaging/dev/provision-e2e/install_over_ssh.py` (a real sshd, the real installer). Asked for
+as "DHCP gives it an IP and Bento discovers it and asks would you like to install bento on it".
+Six rules:
+- **Listening is passive, scanning is asked for.** The ear only receives mDNS answers (avahi
+  on a booted Pi says its name), keeps a `.local` name with a private address, and starts and
+  stops with the provision Watch. The scan knocks on 22 and Bento's port across this machine's
+  OWN private networks (`allowed`, `MAX_HOSTS`) only when a person presses it. A device heard
+  by name and then knocked on by MAC is one device (`remember` folds them); a toast is once.
+- **The system's `ssh`, never a Python SSH library** (LGPL/EPL). The password reaches it
+  through `SSH_ASKPASS` in that child's environment and is never written anywhere; Bento keeps
+  its own `known_hosts` with `accept-new`, so a changed host key is refused by ssh itself.
+- **What runs is what was shown.** `plan()` is the command on the consent screen and the one
+  `install()` sends; the test reads the fake ssh's log for it. NEVER `--yes` on a remote
+  install: it answers every optional extra (Claude Code, Codex…), which nobody agreed to here.
+  Found by the live run. Installer lines pass `clean_line` (ANSI and controls stripped) before
+  any toast, and a failure says the installer's own last stderr line.
+- **A key per machine, spent on use.** The install and each SD card get a single-use automatic
+  enrolment key (`make_key(single=True)`), dropped by `enable()` once it set its machine up and
+  by the route when the install failed. "Let this machine in" adds the leader's own key
+  (`ensure_key`, `pki/ssh_ed25519`) to authorized_keys, so a later visit needs no password.
+- **The SD card is merged into, never rewritten.** `merge_user_data` keeps everything Imager
+  wrote (user, password hash, locale, its own runcmd), adds the key, `enable_ssh` and ONE
+  first-boot command (re-writing replaces ours, never duplicates). A bookworm card (`firstrun.sh`,
+  no cloud-init) and a folder that is not a boot partition are refused in a sentence. The route
+  is loopback-only: it writes a local path.
+- **Admin only, no agent tool, a ledger row per step** (`device.seen/scan/install/installed/
+  failed/sdcard`). Logging into another machine is the largest thing this OS does to anything
+  it doesn't own. `AGENTOS_SCAN_NETWORKS`/`_PORTS`, `AGENTOS_MDNS_PORT`, `AGENTOS_INSTALL_URL`
+  and `AGENTOS_REPO` stand a test's loopback network in for a LAN.
+
 ## This machine's screen: one agent, and the kiosk that listens
 
 `agentos/face.py` (settings) + `agentos/hearing.py` (speech to text) + `24h-kiosk.js` +
@@ -2425,11 +2494,30 @@ be on and agents would be working in the office". Five rules:
 - **Hearing is the server's.** Chromium on a Pi has no key for the browser recogniser, so the
   page records one utterance (RMS against the room's own floor, cut at a 900 ms pause, 16 kHz
   WAV, deaf while the agent speaks) and posts it; `hearing.status()` is the one answer to "can
-  this screen listen?" (whisper.cpp first, then the OpenAI key), and with neither the kiosk
-  shows that sentence and no mic. whisper.cpp is used if present and never installed for you.
+  this screen listen?", and with nothing the kiosk shows that sentence and no mic.
+- **The key that speaks is the key that hears.** Auto is whisper.cpp, then the engine chosen
+  under Voice, then any other key (`_order`): ElevenLabs Scribe (`scribe_v2`, then `scribe_v1`
+  on a model refusal), OpenAI (the Voice key, then the provider's), Google Cloud (rate and
+  encoding from the WAV header; a disabled API is its own sentence). Reported with a screenshot:
+  ElevenLabs under Voice and a kiosk saying nothing could hear. `PUT /api/speech` copies the
+  speech keys into the machine's config, which hearing reads.
+- **Setup installs what hearing needs, on a yes.** `status()["install"]` names the components;
+  the setup step, Settings and `bento setup` offer a voice key (saved under Voice) and
+  `whisper-cpp` (components.py: Homebrew, else built from source in `~/.local` with
+  `--target whisper-cli`, model to `hearing.MODEL_DIR` through a `.part` file, `needs_root`
+  False, no argv without git/cmake/a compiler so the button is a sentence). `alsa-utils` is
+  offered only to the terminal check. Nothing installs by default.
 - **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
   `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
   it to video or another origin.
+- **Setup asks both, and the wake word is PROVEN** (onboarding steps `screen` and `voice`, right
+  after `crew`). `screen` is done when `face.kiosk` is written either way (the desktop is an
+  answer). `voice` is done only by `face.heard`, which `/api/face/wake-test` writes after THIS
+  machine's speech-to-text understood a recording that starts with a wake word
+  (`face.addressed`, the same rule as the page's `kioskAddressed`; a test runs both on one
+  list). The wizard, Settings' Test it and `bento face test` (arecord) all use that one route
+  or `_step_voice`. A wake word of the person's own (`face.wake_word`) never replaces the
+  agent's name.
 
 ## Window chrome: the rules that keep a stack readable
 

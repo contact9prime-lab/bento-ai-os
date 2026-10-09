@@ -209,6 +209,33 @@ CATALOG: dict[str, dict] = {
                    "and Windows its own speech; the cloud voices need no install.",
         "detect": lambda: bool(shutil.which("espeak-ng") or shutil.which("espeak")),
     },
+    # Speech to text on this machine: the kiosk and the wake word without sending a
+    # voice anywhere. MIT (code and the Whisper weights), so it could be shipped, but it
+    # is a native build plus a ~148 MB model, and a machine with a voice key does not
+    # need it: offered at the voice step of setup, never installed by default. Debian
+    # packages it only in unstable today, so on Linux it is built from source in the
+    # person's own home (~/.local); a Mac uses Homebrew's formula.
+    "whisper-cpp": {
+        "packages": {}, "method": "script", "licence": "MIT (whisper.cpp and the Whisper model)",
+        "group": "optional", "for_session": False, "needs_root": False,
+        "title": "Understanding speech on this machine (whisper.cpp)",
+        "unlocks": "The kiosk and the wake word understand you without sending your voice "
+                   "anywhere, and without a key. Builds whisper.cpp in your home folder (or "
+                   "uses Homebrew on a Mac) and downloads its base model, about 150 MB. On a "
+                   "Raspberry Pi the build takes a few minutes.",
+        "argv": lambda: [] if _whisper_missing() else ["sh", "-c", WHISPER_SCRIPT],
+        "detect": lambda: _whisper_ready(),
+        "why_unavailable": lambda: _whisper_missing(),
+    },
+    "alsa-utils": {
+        "packages": _same("alsa-utils"),
+        "method": "system", "licence": "GPL-2.0+",
+        "group": "optional", "for_session": False,
+        "title": "Recording from a terminal (alsa-utils)",
+        "unlocks": "Lets `bento setup` and `bento face test` record your voice over SSH to "
+                   "check the wake word. The screen records by itself and does not need it.",
+        "detect": lambda: _has_recorder(),
+    },
     "ddcutil": {
         "packages": _same("ddcutil"),
         "method": "system", "licence": "GPL-2.0+",
@@ -400,6 +427,63 @@ CATALOG: dict[str, dict] = {
 
 #: Order the installer and the settings panel present groups in.
 GROUPS = ("required", "recommended", "optional")
+
+
+# Idempotent: a second run finds the binary and the model and does nothing. The model is
+# written under a .part name and moved, so an interrupted download is never mistaken for
+# a model. Kept in step with hearing.MODEL_DIR and hearing._whisper's search.
+WHISPER_SCRIPT = r"""set -e
+M="$HOME/.local/share/whisper.cpp/models"
+mkdir -p "$M" "$HOME/.local/bin"
+if ! command -v whisper-cli >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/whisper-cli" ]; then
+  if command -v brew >/dev/null 2>&1; then
+    brew install whisper.cpp
+  else
+    S="$HOME/.local/src/whisper.cpp"
+    if [ -d "$S/.git" ]; then git -C "$S" pull -q --ff-only || true
+    else git clone -q --depth 1 https://github.com/ggml-org/whisper.cpp "$S"; fi
+    cmake -S "$S" -B "$S/build" -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF >/dev/null
+    cmake --build "$S/build" --config Release --target whisper-cli -j "$(nproc 2>/dev/null || echo 2)"
+    ln -sf "$S/build/bin/whisper-cli" "$HOME/.local/bin/whisper-cli"
+  fi
+fi
+if [ ! -s "$M/ggml-base.bin" ]; then
+  curl -fL --retry 3 -o "$M/ggml-base.bin.part"     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+  mv "$M/ggml-base.bin.part" "$M/ggml-base.bin"
+fi
+echo "whisper.cpp is ready"
+"""
+
+
+def _whisper_ready() -> bool:
+    try:
+        from . import hearing
+        return bool(hearing._whisper({})[0])
+    except Exception:
+        return False
+
+
+def _whisper_missing() -> str:
+    """'' when this machine can build or brew whisper.cpp, else what to install first."""
+    if not shutil.which("curl"):
+        return "curl is not installed, and the model is downloaded with it."
+    if shutil.which("brew"):
+        return ""
+    need = [n for n, ok in (("git", shutil.which("git")), ("cmake", shutil.which("cmake")),
+                            ("a C++ compiler", shutil.which("c++") or shutil.which("g++") or shutil.which("clang++")))
+            if not ok]
+    if need:
+        return ("Building whisper.cpp needs " + ", ".join(need) + ". On Debian or Raspberry Pi OS: "
+                "sudo apt install git cmake build-essential")
+    return ""
+
+
+def _has_recorder() -> bool:
+    try:
+        from . import hearing
+        return bool(hearing.recorder())
+    except Exception:
+        return False
 
 
 def _executor_installed(eid: str) -> bool:
