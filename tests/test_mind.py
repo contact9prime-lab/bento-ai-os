@@ -121,7 +121,7 @@ def test_the_page_draws_only_what_happened():
     assert "data-hub=" in src and "onclick=\"mindCard(" not in src
     assert "speakAs('@agent',S.spoken" in src, "Tell me says the snapshot's own sentence"
     settings = (JS / "11-settings.js").read_text()
-    assert "['mind','Mind:" in settings
+    assert "['mind','Mind']" in settings
     assert (ROOT / "agentos/ui/src/css/26-mind.css").exists()
 
 
