@@ -156,3 +156,63 @@ body.dev-touch .pinfo{width:var(--tap);height:var(--tap);font-size:13px;vertical
 .cd-here.cd-warn{background:color-mix(in srgb,var(--warn,#e6a23c) 14%,transparent)}
 .cd-here.cd-err{background:color-mix(in srgb,var(--err,#e5484d) 14%,transparent)}
 .cd-here>div{display:flex;flex-wrap:wrap;gap:6px}
+
+/* ---- The settings pass: one grammar for every card ----
+   Measured on every tab at 1440x900 and on a 390px phone before this: text painted
+   straight into a card ran into its left edge (16px short of every row), the cards
+   with a name in their heading drew it in two different sizes, checkboxes were the
+   browser's 13px squares, and the page-wide Save covered the last row of every tab. */
+/* the header says Saved when a field has saved itself (setAutoSave) */
+.set-saved{margin-left:12px;font-size:var(--fs-sm);font-weight:600;opacity:0;
+  transition:opacity var(--d-base,.2s) var(--ease-out,ease)}
+.set-saved.on{opacity:1}
+.set-saved.ok{color:var(--ok,#4ade80)}
+.set-saved.err{color:var(--err)}
+/* a section heading between groups (Cloud providers, AI agents installed here) */
+.prefs-main > h3.pgh{font-size:var(--fs-md);font-weight:700;margin:26px 0 4px;color:var(--txt)}
+.prefs-main > h3.pgh + p.mut{margin:0 0 10px}
+/* a folded card: a switched-off provider is its first row until it is switched on */
+.prefs-main:not(.searching) .pgroup.pfold:not(.open) > .prow.pmore{display:none}
+.pgroup > .prow.phead-row{border-top:none}
+.prow.phead-row .pl > b{font-size:var(--fs-md)}
+/* text a painter put straight into a card lines up with the rows */
+.pgroup > p.mut,.pgroup > .sub,.pgroup p.prov-empty,.wa-extra,.pgroup > .ags-apps{padding-left:16px;padding-right:16px}
+.pgroup > p.mut{margin:6px 0 10px}
+.pgroup > .ghint:last-child{padding-bottom:14px}
+.prow .pl > .ghint{padding:4px 0 0;font-size:var(--fs-sm)}
+.wa-extra{padding-bottom:10px}
+.ag-head{padding:12px 16px 0}
+.ag-head h3{font-size:var(--fs-xs);font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--dim2)}
+.pgroup > .ag-card{margin:10px 16px 0}
+.pgroup > .ag-card:last-child{margin-bottom:16px}
+#agents-graph{padding:10px 16px 16px}
+.acct-client > .ghint{padding:12px 16px 0;font-size:var(--fs-sm);color:var(--dim)}
+.acct-client > .ghint b{color:var(--txt)}
+.acct-why{display:block;font-size:var(--fs-sm);color:var(--dim);margin-top:2px}
+.acct-reg{margin-bottom:14px}
+.acct-reg .acct-client:first-of-type{border-top:none}
+#sc-list .sc-row{padding:7px 16px}
+.ags-apps{display:flex;flex-wrap:wrap;gap:6px 14px}
+/* a checkbox is drawn in the accent, at a size a pointer and a finger can find */
+.prefs input[type=checkbox]:not(.psw input){accent-color:var(--acc);width:17px;height:17px;flex:none;margin:0;cursor:pointer}
+.prefs label:has(> input[type=checkbox]:not(.psw input)){display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+body.dev-touch .prefs input[type=checkbox]:not(.psw input){width:20px;height:20px}
+body.dev-touch .prefs label:has(> input[type=checkbox]:not(.psw input)){min-height:var(--tap)}
+/* team limits: one line each, a small box on the right (the stacked row's
+   width:100% rule is for text fields, and it stretched these across the card) */
+.prow.stack .pc .tl-row input[type=number]{width:96px;max-width:96px;min-width:0;flex:none}
+.tl-row{padding:2px 0}
+.tl-l{display:flex;flex-direction:column;min-width:0}
+.tl-l small{font-size:var(--fs-xs)}
+/* an update source: two boxes that share the line instead of squeezing the label */
+.upd-src{width:100%}
+#ags-host > .ghint{padding:6px 16px 14px}
+#ags-host > .item{margin:6px 16px}
+.acct-hint:empty{display:none}
+.acct-adv.chsteps{margin:4px 16px 12px}
+.acct-adv.chsteps > summary{padding:8px 12px;min-height:0;display:block}
+.prow > label.endbtn{display:inline-flex;align-items:center}
+.tl-l small{font-weight:500;color:var(--dim)}
+.pgroup.pfold{margin-bottom:10px}
+.team-limits .tl-row{flex-wrap:nowrap}
+.team-limits .tl-l{flex:1 1 auto}

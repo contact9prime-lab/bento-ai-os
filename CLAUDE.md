@@ -1228,6 +1228,24 @@ names its tab (`data-t="team"`, `placeSettings('team')`); `tests/test_settings_t
 still says `executors.py` for the brains — the identifier rename would cost every install its
 saved engine for a word nobody sees, the Missions/`flows` argument again.
 
+**Settings save themselves, and a card is one grammar** (`tests/test_settings_pass.py`;
+"there are still so many issues in the settings like look and feel and better organization").
+Every tab was photographed at 1440x900 and on a 390px phone first. Four things to keep:
+- **There is no page-wide Save.** It covered only some of the pane, so some settings applied at
+  once, others waited, and a name typed and left for another tab was lost. A field
+  `saveSettings` reads saves on `change` (`setAutoSave`, matched by `SET_AUTO`); the test fails
+  when `saveSettings` reads an id the pattern misses. `saveSettings` reads the pane BEFORE its
+  first await, which is why a field committed by clicking another tab is still saved. A card
+  that talks to another service (a channel, a mail account, the locale) keeps its own Save.
+- **A switched-off provider is one line** (`pGroup` `fold`/`open`, rows `cls:'pmore'`), and
+  searching shows every row (`.searching`). `setSearchGroups` keeps a card whose ROW matched:
+  `listFilter` hides each `[data-f]` on its own words, so "api key" used to hide every card.
+- **Text inside a card lines up with its rows** (16px). Put it in a `.ghint` or a `pRow`, never
+  a bare `<p>` against the card's edge, and give a card named after a thing class `chan`: the
+  immersive rule for `.pgroup > h3` makes any other heading a 2xs grey label.
+- **Speech to text is under Voice → Listening** (`hearSettingsPaint`), the same key that
+  speaks. On this screen only says whether it can hear, with a door there.
+
 Five things will bite whoever touches this next (`tests/test_hands.py`):
 
 - **Hands are a CEILING, checked first.** `PDP._decide` step 2a (rule `reach`) runs before the
@@ -2481,7 +2499,7 @@ Six rules:
 ## This machine's screen: one agent, and the kiosk that listens
 
 `agentos/face.py` (settings) + `agentos/hearing.py` (speech to text) + `24h-kiosk.js` +
-`27-kiosk.css` + Settings → Appearance → On this screen + `/api/face`, `/api/speech/hear` +
+`27-kiosk.css` + Settings → Appearance → On this screen and Voice → Listening + `/api/face`, `/api/speech/hear` +
 `bento face`; `docs/small-screens.md`, `tests/test_face.py`. Asked for as "a single buddy /
 agent ui interface option for Light mode … there will be a kiosk mode as well where mic would
 be on and agents would be working in the office". Five rules:

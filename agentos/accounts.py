@@ -29,16 +29,17 @@ IDS = ("mail", "calendar")
 #: on the card, because "reads your mail" must be said by the thing that does it.
 ABOUT = {
     "mail": {"title": "Mail",
-             "what": "Lets the agent SEARCH and READ this mailbox — never mark, move or "
-                     "delete. Sending is a separate permission that always asks. Every "
-                     "read is a `mail.read` decision in the ledger.",
+             "what": "Lets the agent search and read this mailbox. It never marks, moves "
+                     "or deletes anything. Sending is a separate permission that always "
+                     "asks, and every read is a `mail.read` decision in the ledger.",
              "fields": [
                  {"key": "preset", "label": "Provider", "kind": "select",
                   "options": [[k, v["label"]] for k, v in mailmod.PRESETS.items()]},
                  {"key": "user", "label": "Address / user name", "kind": "text",
                   "placeholder": "you@example.com"},
                  {"key": "password", "label": "App password", "kind": "secret",
-                  "placeholder": "an app password, not your login password"},
+                  "placeholder": "app password",
+                  "help": "Not your login password. Your provider makes one for apps."},
                  {"key": "host", "label": "IMAP host", "kind": "text", "placeholder": "imap.example.com"},
                  {"key": "port", "label": "IMAP port", "kind": "number", "placeholder": "993"},
                  {"key": "smtp_host", "label": "SMTP host (only for sending)", "kind": "text",
@@ -46,14 +47,15 @@ ABOUT = {
                  {"key": "smtp_port", "label": "SMTP port", "kind": "number", "placeholder": "587"},
              ]},
     "calendar": {"title": "Calendar",
-                 "what": "Lets the agent READ the next days of this calendar — never create, "
-                         "move or delete an event. Every read is a `calendar.read` decision "
-                         "in the ledger.",
+                 "what": "Lets the agent read the next days of this calendar. It never "
+                         "creates, moves or deletes an event, and every read is a "
+                         "`calendar.read` decision in the ledger.",
                  "fields": [
                      {"key": "preset", "label": "Provider", "kind": "select",
                       "options": [[k, v["label"]] for k, v in calmod.PRESETS.items()]},
                      {"key": "url", "label": "Address", "kind": "text",
-                      "placeholder": "https://…/basic.ics  or a CalDAV URL"},
+                      "placeholder": "https://…/basic.ics",
+                      "help": "An ICS address or a CalDAV URL."},
                      {"key": "user", "label": "User name (CalDAV)", "kind": "text",
                       "placeholder": "you@example.com"},
                      {"key": "password", "label": "App password (CalDAV)", "kind": "secret",

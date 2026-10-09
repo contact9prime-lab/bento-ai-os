@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.21 — 2026-10-09
+
+**Settings, looked at tab by tab and tidied.** Every tab was photographed at desktop size and
+on a 390px phone before anything changed, and each fix below came from those pictures.
+- **Settings save themselves.** The Save at the foot of every tab covered only some of what
+  was on it, so some settings applied at once and others waited, and a name typed and then
+  left for another tab was lost. Now a field saves when you flip it, pick it or leave it, and
+  the header says Saved. Cards that talk to another service (a channel, a mail account, the
+  locale) keep their own Save.
+- **AI providers** is a third shorter. A cloud provider you haven't switched on is one line,
+  and its key and models open when you switch it on. Agents that aren't installed are one row
+  each with Install and Docs, and the command Install runs is behind the ⓘ instead of printed
+  in full.
+- **Agents** splits who your lead agent is (name, look, brain, executor) from how it works
+  (workspace, steps, long conversations, build model). Sharing is three cards: share, host
+  and fork, with switches instead of bare checkboxes.
+- **Team & Communications** is in groups: Models, Asking each other (with the matrix and the
+  limits, now small boxes), Free talk, Linked teams, Community and Messages.
+- **Channels** opens on the ones you set up (Remote, Telegram, WhatsApp). The always-on
+  built-ins come after, without a row that only said "always on". A channel's setup steps
+  open only once you switch it on.
+- **Accounts** opens on mail and calendar, with GitHub last. App registration is folded, and
+  a sign-in button that needs it says so in one line with a link.
+- **Voice** has a Listening group: what understands speech and the mic language. It used to
+  be under Appearance → On this screen, which now says in one line when nothing can hear.
+- **Appearance** puts the immersive look and its scene with the theme. **System** starts with
+  the version, and drops a link to Permissions, which is its own tab now.
+- Text that ran into a card's edge lines up with its rows, a named card keeps its name at
+  reading size in the immersive look, checkboxes are drawn in the accent at a size a finger
+  can hit, the Accounts tile has a colour, and cut-off labels are shorter.
+- Searching Settings for words inside a card ("api key") no longer hides the card.
+- Fixed: a Microsoft client id box showed a Google example, and two pointers named a
+  "Settings → Remote access" pane that lives in System Settings.
+
 ## 0.6.20 — 2026-10-09
 
 **Settings has a Permissions tab and a Team & Communications tab.**

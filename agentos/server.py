@@ -3342,7 +3342,7 @@ async def api_executors(refresh: bool = False):
     return {"executors": [{
         "id": "claude_code", "title": "Claude Code",
         "what": "Files, shell, code and research inside a directory you choose. "
-                "It has no screen or keyboard — AgentOS keeps the desktop.",
+                "It has no screen or keyboard. AgentOS keeps the desktop.",
         "enabled": bool(conf.get("enabled")),
         "config": {"workspace": env.workspace, "tools": list(env.tools),
                    "model": env.model, "budget_usd": env.budget_usd,
@@ -4466,11 +4466,11 @@ async def api_agent_host():
         "include": agentbundle.share_conf(cfg).get("include") or {},
         "peers": agentbundle.list_peers(cfg),
         "endpoint": f"/api/agent/mcp (port {port})",
-        "reachability": ("peers can reach this door from other machines"
+        "remote": remote_on,
+        "reachability": ("Other machines can reach it."
                          if remote_on else
-                         "remote access is OFF, so this door is reachable only from "
-                         "this machine — `bento remote --on` (or Settings → System) "
-                         "opens it"),
+                         "Remote access is off, so only this machine can reach it. "
+                         "Turn it on in System Settings → Remote access, or run bento remote --on."),
     }
 
 

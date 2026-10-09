@@ -388,8 +388,6 @@ body.deck-open .procard{bottom:calc(var(--tbh) + var(--deckh) + 14px)}
 .psw input:focus-visible + i{outline:2px solid var(--acc);outline-offset:2px}
 .prow.danger .pl b{color:var(--err)}
 .pgroup.danger{border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
-.prefs-main .savebar{position:sticky;bottom:-30px;margin:0 -26px -30px;padding:12px 26px;
-  background:linear-gradient(transparent,var(--bg) 34%);display:flex;justify-content:flex-end;gap:10px}
 
 /* a stored secret: shown, never re-editable until you ask to replace it */
 .psecret{display:flex;align-items:center;gap:8px}

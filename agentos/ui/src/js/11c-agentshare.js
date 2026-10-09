@@ -29,7 +29,7 @@ async function renderAgentShare(){
   if(!box) return;
   let d = null;
   try{ d = await (await fetch('/api/agent/shareables')).json() }catch(e){}
-  if(!d){ box.innerHTML = '<p class="mut">could not read what this agent has to share</p>'; return }
+  if(!d){ box.innerHTML = '<div class="pgroup"><h3>Share this agent</h3><div class="ghint mut">could not read what this agent has to share</div></div>'; return }
   const apps = (d.apps||[]).map(a =>
     `<label class="ck" style="margin-right:10px"><input type="checkbox" class="ags-app"
        value="${esc(a.name)}"> ${esc(a.icon||'')} ${esc(a.name)}</label>`).join('') ||
@@ -37,37 +37,37 @@ async function renderAgentShare(){
   const sign = d.can_sign
     ? `<label class="ck"><input type="checkbox" id="ags-sign"> sign it with this machine's key</label>`
     : `<span class="mut">unsigned, which is fine for your own shares ${pInfo('Run bento registry keygen on this machine to sign what you share.')}</span>`;
-  box.innerHTML = `<h3>Share this agent</h3>
+  /* Three cards for three intentions: send a copy, serve it live, take somebody
+     else's. They were one card with two headings inside it, and the switches were
+     bare checkboxes beside text that ran into the card's edge. */
+  box.innerHTML = `<div class="pgroup"><h3>Share this agent</h3>
     <div class="ghint">Pack ${esc(d.agent_name)}'s ${d.skills.length} skill(s), ${d.subagents.length} teammate(s),
       ${d.flows.length} flow(s) and ${d.mcp_servers.length} MCP server setup(s) into one file anyone can fork.
       ${pInfo("Your memory, conversations, knowledge graph, keys and secrets stay here. If a credential turns up in the bundle, the share stops, and there's no override.")}</div>
     <div class="prow"><input id="ags-name" placeholder="a name for it (default: ${esc(d.agent_name)})"
         autocomplete="off" class="ags-grow">
       <input id="ags-desc" placeholder="one sentence on what it is for" autocomplete="off" class="ags-grow"></div>
-    <div class="prow"><div class="pl"><small>Include apps? Check each one, since apps often hold something personal.</small><div>${apps}</div></div></div>
-    <div class="prow">
-      <label class="ck"><input type="checkbox" id="ags-soul"> include the soul${d.has_soul?'':' <span class="mut">(none written yet)</span>'}</label>
-      ${sign}
-      <span class="grow"></span>
-      <button class="endbtn" onclick="agsShare()">Build the bundle</button>
-    </div>
-    <div id="ags-report"></div>
-    <h3 style="margin-top:14px">Host it</h3>
+    ${pRow('Apps to include',`<div class="ags-apps">${apps}</div>`,{stack:true,desc:'Tick each one. Apps often hold something personal.',f:'share apps include'})}
+    ${pRow('Include the soul',pSwitch('ags-soul',false),{desc:d.has_soul?'Its persona travels with the bundle.':'None written yet.',f:'share soul'})}
+    <div class="prow"><div class="pl">${d.can_sign?sign:`<small>${sign}</small>`}</div>
+      <div class="pc"><button class="endbtn" onclick="agsShare()">Build the bundle</button></div></div>
+    <div id="ags-report"></div></div>
+    <div class="pgroup" data-f="host share agent live key peer"><h3>Host it</h3>
     <div class="ghint">Let people you give a key to take the latest version from this machine.
       ${pInfo("A published file is a copy they keep. Hosting logs every take, runs the leak scan each time, and ends when you revoke their key.")}</div>
-    <div id="ags-host"><p class="mut">checking…</p></div>
-    <h3 style="margin-top:14px">Fork a shared agent</h3>
+    <div id="ags-host"><div class="ghint mut">checking…</div></div></div>
+    <div class="pgroup" data-f="fork shared agent import"><h3>Fork a shared agent</h3>
     <div class="ghint">Paste a URL, <code>owner/repo</code> or a file, read what's inside, then fork it.
       ${pInfo(`Look for ${d.well_known} files under the GitHub topic ${d.topic}. A fork grants no permissions: flows and MCP servers arrive switched off, and nothing of yours is overwritten.`)}</div>
     <div class="prow">
       <input id="ags-src" placeholder="owner/repo · https://… · ${esc(d.well_known)}" autocomplete="off" class="ags-grow">
-      <input id="ags-key" placeholder="peer key (only for a hosted share)" autocomplete="off" class="ags-key">
+      <input id="ags-key" placeholder="peer key, if hosted" autocomplete="off" class="ags-key">
       <button class="endbtn" onclick="agsPreview()">Read it first</button>
-      <label class="endbtn" style="cursor:pointer">from a file<input type="file" accept=".json"
+      <label class="endbtn" style="cursor:pointer">From a file<input type="file" accept=".json"
         style="display:none" onchange="agsFromFile(this)"></label>
     </div>
-    <div class="sub mut">Only add a key if the agent is hosted on another machine. ${pInfo('Use its http://host:port address. You get their live version, and they can end it at any time.')}</div>
-    <div id="ags-fork"></div>`;
+    <div class="ghint mut">Only add a key if the agent is hosted on another machine. ${pInfo('Use its http://host:port address. You get their live version, and they can end it at any time.')}</div>
+    <div id="ags-fork"></div></div>`;
   renderAgsHost();
 }
 
@@ -76,7 +76,7 @@ async function renderAgsHost(){
   if(!box) return;
   let d = null;
   try{ d = await (await fetch('/api/agent/host')).json() }catch(e){}
-  if(!d){ box.innerHTML = '<p class="mut">could not read the hosting state</p>'; return }
+  if(!d){ box.innerHTML = '<div class="ghint mut">could not read the hosting state</div>'; return }
   const peers = (d.peers||[]).map(p => {
     const st = p.revoked ? '<span class="badge err">revoked</span>'
              : p.expires_at ? `<span class="badge">expires ${new Date(p.expires_at*1000).toLocaleDateString()}</span>`
@@ -88,17 +88,16 @@ async function renderAgsHost(){
     </div>`;
   }).join('');
   box.innerHTML = `
+    ${pRow('Host my share',`<label class="psw"><input type="checkbox" id="ags-host-on" ${d.enabled?'checked':''}
+        onchange="agsHostToggle(this.checked)"><i></i></label>`,
+      {desc:`At <code>${esc(d.endpoint)}</code>`,more:d.reachability,f:'host share endpoint'})}
+    ${d.enabled && d.remote===false?`<div class="ghint" style="color:var(--warn)">${esc(d.reachability)}</div>`:''}
     <div class="prow">
-      <label class="ck"><input type="checkbox" id="ags-host-on" ${d.enabled?'checked':''}
-        onchange="agsHostToggle(this.checked)"> host my share at <code>${esc(d.endpoint)}</code></label>
-    </div>
-    <div class="sub ${d.enabled && d.reachability.indexOf('OFF')>=0?'':'mut'}">${esc(d.reachability)}</div>
-    <div class="prow" style="margin-top:6px">
       <input id="ags-peer-name" placeholder="who gets a key? e.g. laptop-b, priya" autocomplete="off" class="ags-grow">
       <button class="endbtn" onclick="agsMintPeer()">Mint a key</button>
     </div>
     <div id="ags-peer-key"></div>
-    ${peers || '<p class="mut">nobody holds a key yet</p>'}`;
+    ${peers || '<div class="ghint mut">Nobody holds a key yet.</div>'}`;
 }
 
 async function agsHostToggle(on){

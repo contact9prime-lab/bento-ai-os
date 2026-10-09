@@ -200,6 +200,7 @@ body.immersive .prefs-side [data-t=team] .psi{background:linear-gradient(135deg,
 body.immersive .prefs-side [data-t=permissions] .psi{background:linear-gradient(135deg,#f87171,#b91c1c)}
 body.immersive .prefs-side [data-t=executors] .psi{background:linear-gradient(135deg,#60a5fa,#1d4ed8)}
 body.immersive .prefs-side [data-t=channels] .psi{background:linear-gradient(135deg,#4ade80,#15803d)}
+body.immersive .prefs-side [data-t=accounts] .psi{background:linear-gradient(135deg,#38bdf8,#0369a1)}
 body.immersive .prefs-side [data-t=locale] .psi{background:linear-gradient(135deg,#fb923c,#c2410c)}
 body.immersive .prefs-side [data-t=keys] .psi{background:linear-gradient(135deg,#94a3b8,#475569)}
 body.immersive .prefs-side [data-t=voice] .psi{background:linear-gradient(135deg,#f472b6,#be185d)}
@@ -290,6 +291,9 @@ body.immersive .stapp.on,body.immersive .conv.active{background:color-mix(in srg
 body.immersive label{font-size:var(--fs-sm);font-weight:600;color:var(--dim);margin:14px 0 6px}
 body.immersive .mut{font-size:var(--fs-sm);line-height:1.5}
 body.immersive .sect,body.immersive .sawgrp,body.immersive .tmsec,body.immersive .smsect,body.immersive .pgroup > h3{font-size:var(--fs-2xs);letter-spacing:.08em;color:var(--dim2)}
+/* a card named after a thing (Telegram, Mail, Claude Code) keeps its name at reading
+   size: the rule above made it a 2xs grey label with no capitals, the worst of both */
+body.immersive .pgroup.chan > h3{font-size:var(--fs-base);letter-spacing:0;color:var(--txt)}
 /* toolbars: the app's own header shares the window's material (unified toolbar) */
 body.immersive .phead,body.immersive .apptop,body.immersive #topbar,body.immersive .stcompose{background:transparent;padding:10px 16px;gap:10px;
   border-bottom:1px solid color-mix(in srgb,var(--txt) 7%,transparent)}

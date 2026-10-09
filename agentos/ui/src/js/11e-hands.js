@@ -147,7 +147,7 @@ async function renderAgentsList(){
   // the very end of a long list, against the last card, off screen when the page opened
   box.innerHTML=`<div class="pgroup"><div class="ag-head"><h3>Your agents</h3>
       <button class="pact ag-new" onclick="agentEdit('')">＋ New agent</button></div>
-    <p class="mut" style="margin:0 0 8px">${esc(cfg.agent_name||'Your agent')} hands work to these. ${pInfo('Each one has its own soul, brain, executor, permissions and skills.')}</p>
+    <div class="ghint">${esc(cfg.agent_name||'Your agent')} hands work to these. ${pInfo('Each one has its own soul, brain, executor, permissions and skills.')}</div>
     ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
       <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${esc(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
@@ -163,7 +163,7 @@ async function renderAgentsList(){
         ${a.asks.length||a.blocked.length?`<div><span class="ag-k">May ask</span>${a.asks.map(esc).join(', ')||'<span class="mut">nobody without asking you</span>'}${a.blocked.length?` <span class="mut">· blocked: ${a.blocked.map(esc).join(', ')}</span>`:''}</div>`:''}
         ${a.missions.length?`<div><span class="ag-k">Missions</span>${a.missions.map(esc).join(', ')}</div>`:''}
         ${(a.links||[]).filter(l=>l.they_may_ask||(l.their_missions||[]).length).map(l=>`<div><span class="ag-k">${esc(l.label)}</span>may ask it${l.standing?` · ${l.standing} standing permission${l.standing===1?'':'s'}`:''}${(l.their_missions||[]).length?' · their missions: '+l.their_missions.map(esc).join(', '):''}</div>`).join('')}
-      </div></div>`}).join('')||'<p class="mut">No other agents yet. Press ＋ New agent and describe one in a sentence.</p>'}</div>`;
+      </div></div>`}).join('')||'<div class="ghint mut">No other agents yet. Press ＋ New agent and describe one in a sentence.</div>'}</div>`;
 }
 async function agentEdit(name){
   // the Missions editor's wizard, borrowed: one way to define an agent, not two
