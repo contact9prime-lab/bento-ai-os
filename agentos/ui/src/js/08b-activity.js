@@ -55,6 +55,8 @@ function actDetail(name, args) {
     const p = s('file_path', 'path', 'notebook_path'); return p ? base(p) : '';
   }
   if (name === 'Bash' || name === 'run_command') return cut(s('description', 'command'), 90);
+  // an app asking the agent (appAgent / its ✦ assistant): what it asked, in its words
+  if (name === 'appAgent') return cut('ask your agent: ' + s('prompt'), 110);
   if (name === 'Glob' || name === 'Grep' || name === 'search_files') {
     const pat = s('pattern', 'query'), where = s('path', 'glob');
     return cut(pat + (where ? ' in ' + base(where) : ''), 90);

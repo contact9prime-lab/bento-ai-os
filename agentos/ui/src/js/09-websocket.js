@@ -112,7 +112,9 @@ function approvalFloat(ev){
   // one float per approval; an existing one is brought back to the top of the page
   const had=document.querySelector('[id="ap-'+ev.id+'"].ap-float');
   if(had){if(had.nextSibling)document.body.appendChild(had);return had}
-  const box=buildApprovalBox(ev,false);box.classList.add('ap-float');
+  // "another chat" only when it came from one: an app's question, or a build's, has none
+  const box=buildApprovalBox(ev,!ev.conversation_id||ev.conversation_id===(typeof currentConv!=='undefined'?currentConv:''));
+  box.classList.add('ap-float');
   document.body.appendChild(box);
   box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
   return box;

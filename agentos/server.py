@@ -5286,11 +5286,15 @@ async function _appStream(body, onDelta){
   }
   return acc;
 }
-// AI inside the app: one-shot LLM completion (no tools). Returns plain text.
+// AI inside the app: one-shot completion (no tools) from the machine's brain, the
+// same one appChat and appAgent use (a model, or Claude Code / Gemini CLI). Plain text.
 window.appLLM = async (prompt, system='') => {
-  const r = await window.appTool('llm_generate', system ? {prompt, system} : {prompt});
-  if (r && r.output !== undefined) return r.output;
-  return '[error] ' + ((r && r.error) || 'llm unavailable');
+  try{
+    const r = await (await fetch('/api/apps/llm/chat',{method:'POST',headers:_appHdrs,
+      body:JSON.stringify(system ? {prompt, system} : {prompt})})).json();
+    if (r && r.output !== undefined) return r.output;
+    return '[error] ' + ((r && r.error) || 'llm unavailable');
+  }catch(e){ return '[error] ' + e; }
 };
 // Streaming completion: resolves the full text, calling onDelta(delta, textSoFar) as it arrives.
 window.appLLM.stream = (prompt, opts) =>
@@ -5539,10 +5543,18 @@ def _scan_app_permissions(html: str) -> list[dict]:
         perms.append({"action": "tool.use", "resource": "tool:llm_generate*",
                       "reason": "uses the AI model inside the app (appLLM/appChat)",
                       "required": False})
+    # calling the agent (appAgent, and the ✦ assistant appCopilot mounts on it) is its
+    # own decision, agent.invoke agent:main: the agent's steps are then gated one by one
+    if _re.search(r"\bapp(?:Agent\s*\(|Copilot\.mount\s*\()", html or "") and \
+            ("agent.invoke", "agent:main") not in seen:
+        seen.add(("agent.invoke", "agent:main"))
+        perms.append({"action": "agent.invoke", "resource": "agent:main",
+                      "reason": "asks your agent to do things inside the app (appAgent, the ✦ assistant)",
+                      "required": False})
     if _re.search(r"appData\.(get|set)", html or ""):
         perms.append({"action": "app.data.*", "resource": "app:self/data",
                       "reason": "saves its own settings/data", "required": True})
-    if _re.search(r"fetch\(\s*[`'\"]/api/chat", html or ""):
+    if _re.search(r"fetch\(\s*[`'\"]/api/chat", html or "") and ("agent.invoke", "agent:main") not in seen:
         perms.append({"action": "agent.invoke", "resource": "agent:main",
                       "reason": "asks the AI over POST /api/chat", "required": False})
     return perms
@@ -5561,11 +5573,18 @@ def _mine_app_log_permissions(aid: str) -> list[dict]:
             continue
         name = (L.get("message") or "").replace("app→", "", 1)
         args = meta.get("args") or {}
-        action, resource = policymod.action_of(name, args, mcp=state.get("mcp"))
+        # the runtime's own AI doors log under their JS names; they are not tools, and
+        # each is one permission the consent screen already words (the source scan)
+        if name.startswith(("appLLM", "appChat")):
+            action, resource = "tool.use", "tool:llm_generate*"
+        elif name == "appAgent":
+            action, resource = "agent.invoke", "agent:main"
+        else:
+            action, resource = policymod.action_of(name, args, mcp=state.get("mcp"))
         if name == "run_command":
             base = (args.get("command") or "").split()
             resource = f"tool:run_command {base[0]}*" if base else "tool:run_command*"
-        elif action == "tool.use":
+        elif action == "tool.use" and not name.startswith(("appLLM", "appChat")):
             resource = f"tool:{name}*"
         if (action, resource) in seen:
             continue
@@ -9884,9 +9903,42 @@ def _app_principal(request) -> Principal | None:
     return p if p.kind == "app" else None
 
 
-async def _gate_app_llm(principal: Principal):
+def _app_held(principal: Principal):
+    """A quarantined app is refused before the gate, on every door it has (the /api/tool
+    rule): appLLM moved off /api/tool, and the AI doors never checked it."""
+    row = state["store"].get_app(principal.id) or {}
+    if row.get("suspended_at"):
+        why = row.get("suspended_reason") or "it was calling too fast"
+        return JSONResponse({"error": f"this app is quarantined: {why}. Let it out in "
+                                      f"Permissions → Quarantine.", "quarantined": True},
+                            status_code=409)
+    return None
+
+
+def _app_model_label(model: str = "") -> tuple[str, str, str]:
+    """(engine, model, why) for an app's AI call: the machine's brain when it can be
+    closed off from its own tools, else the provider model (executors.fenced_brain)."""
+    from . import executors as execmod
+    return execmod.fenced_brain(state["cfg"], model)
+
+
+async def _gate_app_llm(principal: Principal, model: str = ""):
     """The exact gate /api/tool applies to llm_generate: PDP decision, approval card
-    on 'ask', audit log on refusal. Returns an error response, or None when allowed."""
+    on 'ask', audit log on refusal. Returns an error response, or None when allowed.
+
+    Then WHICH brain is a decision too (`model.use model:<label>`, open by default, a
+    deny grant per app closes it), so "this app may not use Claude Code" is one row in
+    Permissions like any other, and the ledger says what each app reached."""
+    held = _app_held(principal)
+    if held is not None:
+        return held
+    engine, m, _why = _app_model_label(model)
+    label = m if engine == "aria" else engine
+    if label:
+        mdec = state["pdp"].decide(principal, "model.use", f"model:{label}", {"surface": "gui"})
+        if mdec.effect == "deny":
+            return JSONResponse({"error": f"denied: this app may not use {label} "
+                                          f"({mdec.reason or 'Permissions'})"}, status_code=403)
     toolbox = state["toolbox"]
     level, reason = toolbox.risk_of("llm_generate", {})
     dec = state["pdp"].decide_tool(principal, "llm_generate", {}, level, reason=reason,
@@ -9930,26 +9982,41 @@ async def api_app_llm_stream(body: dict, request: Request):
     principal = _app_principal(request)
     if principal is None:
         return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
-    gate = await _gate_app_llm(principal)
+    body = body or {}
+    named = str(body.get("model") or "").strip()
+    gate = await _gate_app_llm(principal, named)
     if gate is not None:
         return gate
-    body = body or {}
-    model = str(body.get("model") or "").strip() or state["cfg"].get("default_model", "")
+    from . import executors as execmod
     msgs = _app_llm_messages(body)
     state["store"].log("tool", "app→appLLM.stream",
                        {"via": "user_app", "principal": principal.label,
                         "app_id": principal.id})
+    q: asyncio.Queue = asyncio.Queue()
+
+    async def piece(text):
+        await q.put(text)
+
+    async def ask():
+        # the machine's brain, executors included, as this app (executors.ask_fenced)
+        text, _who, why = await execmod.ask_fenced(state["cfg"], state["toolbox"], msgs,
+                                                    principal=principal, sink=piece,
+                                                    model=named)
+        if why and not text:
+            await q.put(f"[error] {why}")
+        await q.put(None)
 
     async def gen():
-        if not model:
-            yield "[error] no model configured"
-            return
+        task = asyncio.create_task(ask())
         try:
-            async for ev in providers.chat(state["cfg"], model, msgs, []):
-                if ev.get("type") == "text" and ev.get("text"):
-                    yield ev["text"]
-        except Exception as e:
-            yield f"[error] llm: {type(e).__name__}: {e}"
+            while True:
+                part = await q.get()
+                if part is None:
+                    break
+                yield part
+        finally:
+            if not task.done():
+                task.cancel()
 
     return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
 
@@ -9961,24 +10028,21 @@ async def api_app_llm_chat(body: dict, request: Request):
     principal = _app_principal(request)
     if principal is None:
         return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
-    gate = await _gate_app_llm(principal)
+    body = body or {}
+    named = str(body.get("model") or "").strip()
+    gate = await _gate_app_llm(principal, named)
     if gate is not None:
         return gate
-    body = body or {}
-    model = str(body.get("model") or "").strip() or state["cfg"].get("default_model", "")
-    if not model:
-        return {"output": "[error] no model configured"}
-    parts: list[str] = []
-    try:
-        async for ev in providers.chat(state["cfg"], model, _app_llm_messages(body), []):
-            if ev.get("type") == "text" and ev.get("text"):
-                parts.append(ev["text"])
-    except Exception as e:
-        return {"output": f"[error] llm: {type(e).__name__}: {e}"}
+    from . import executors as execmod
+    text, who, why = await execmod.ask_fenced(state["cfg"], state["toolbox"],
+                                              _app_llm_messages(body), principal=principal,
+                                              model=named)
     state["store"].log("tool", "app→appChat",
                        {"via": "user_app", "principal": principal.label,
-                        "app_id": principal.id})
-    return {"output": "".join(parts) or "(empty response)"}
+                        "app_id": principal.id, "brain": who})
+    if why and not text:
+        return {"output": f"[error] {why}"}
+    return {"output": text or "(empty response)", "brain": who}
 
 
 @app.post("/api/apps/agent")
@@ -9994,9 +10058,32 @@ async def api_app_agent(body: dict, request: Request):
     prompt = str(body.get("prompt") or "").strip()
     if not prompt:
         return JSONResponse({"error": "prompt required"}, status_code=400)
-    model = str(body.get("model") or "").strip() or state["cfg"].get("default_model", "")
-    if not model:
-        return {"output": "[error] no model configured", "steps": 0}
+    held = _app_held(principal)
+    if held is not None:
+        return held
+    # Calling the agent is the app's permission too (`agent.invoke agent:main`), not
+    # only each tool the agent then uses: it was never decided, so an app with no grant
+    # could start the agent and only its steps were asked. Declared on the consent
+    # screen (appAgent / appCopilot); otherwise it asks, with Remember.
+    adec = state["pdp"].decide(principal, "agent.invoke", "agent:main", {"surface": "gui"})
+    if adec.effect == "deny":
+        return JSONResponse({"error": f"denied: {adec.reason or 'this app may not call the agent'}"},
+                            status_code=403)
+    if adec.effect == "ask":
+        why = adec.reason or "This app wants to ask your agent to do something."
+        if not state["clients"] or not await request_approval(
+                "appAgent", {"prompt": prompt[:200]}, why, offer=adec.grant_offer):
+            return JSONResponse({"error": f"not approved: {why}"}, status_code=403)
+    named = str(body.get("model") or "").strip()
+    # the machine's brain when it can run with only this OS's tools, else the provider
+    # model: either way every tool call below is the APP's, decided by the PDP
+    engine, model, why = _app_model_label(named)
+    if why:
+        return {"output": f"[error] {why}", "steps": 0}
+    label = model if engine == "aria" else engine
+    mdec = state["pdp"].decide(principal, "model.use", f"model:{label}", {"surface": "gui"})
+    if mdec.effect == "deny":
+        return JSONResponse({"error": f"denied: this app may not use {label}"}, status_code=403)
     tools = body.get("tools")
     tool_filter = [str(t) for t in tools][:24] if isinstance(tools, list) else None
 
@@ -10010,11 +10097,22 @@ async def api_app_agent(body: dict, request: Request):
 
     agent = Agent({**state["cfg"], "max_steps": 5}, state["toolbox"], model, emit, approver,
                   tool_filter=tool_filter, principal=principal, surface="gui")
-    result = await agent.run([{"role": "user", "content": prompt}])
+    if engine == "aria":
+        result = await agent.run([{"role": "user", "content": prompt}])
+    else:
+        # Claude Code or Gemini CLI thinks; its own tools are off and the app's tools
+        # (built-in and MCP, as the PDP lets THIS app see them) arrive over the run
+        # bridge, each call through Agent.call_tool: the same gate, the same ledger.
+        result = await state["toolbox"].fabric._run_on_executor(
+            agent, prompt, "", engine, surface="gui", kind="app")
+    errors = [st.get("message") for st in result.get("steps") or [] if st.get("type") == "error"]
     state["store"].log("tool", "app→appAgent",
                        {"via": "user_app", "principal": principal.label,
-                        "app_id": principal.id, "steps": len(result["steps"])})
-    return {"output": result["content"], "steps": len(result["steps"])}
+                        "app_id": principal.id, "steps": len(result["steps"]), "brain": label})
+    out = result.get("content") or ""
+    if not out.strip() and errors:
+        out = f"[error] {errors[0]}"
+    return {"output": out, "steps": len(result["steps"]), "brain": label}
 
 
 @app.get("/api/apps/context")
@@ -10027,9 +10125,13 @@ async def api_app_context(request: Request):
         return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
     a = state["store"].get_app(principal.id) or {}
     cfg = state["cfg"]
+    engine, model, why = _app_model_label()
+    # what the app's AI actually answers on: the machine's brain or the provider model,
+    # and the sentence when nothing does, so an app can say it instead of failing
     return {"app_id": principal.id, "app_name": a.get("name", ""),
             "agent_name": cfg.get("agent_name", "Aria"),
-            "model": cfg.get("default_model", ""), "theme": "dark"}
+            "model": model if engine == "aria" else engine, "brain": engine or "",
+            "ai_ready": not why, "ai_note": why, "theme": "dark"}
 
 
 # ---------------------------------------------------------------------------

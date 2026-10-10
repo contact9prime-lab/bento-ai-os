@@ -1019,7 +1019,14 @@ class Toolbox(usersmod.Scoped):
         from . import providers
         model = (model or self.cfg.get("default_model", "")).strip()
         if not model:
-            return "[error] no model configured"
+            # no provider model: the machine's brain, when it can answer with none of
+            # its own tools (Claude Code, Gemini CLI). It said "no model configured" on
+            # a Claude Code machine, to every app that called appTool('llm_generate').
+            from . import executors
+            msgs = ([{"role": "system", "content": system}] if system else []) + \
+                [{"role": "user", "content": prompt}]
+            text, _who, why = await executors.ask_fenced(self.cfg, self, msgs)
+            return _truncate(text) if text.strip() else f"[error] {why or 'no answer'}"
         try:
             out = await providers.complete(self.cfg, model, prompt, system)
         except Exception as e:

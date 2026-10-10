@@ -1360,6 +1360,29 @@ connection should be there in the chat". `tests/test_app_schedules.py`. Five thi
 The `app_data` broadcast reaches an open app as the `appdata` event (`09-websocket.js` posts into
 the app's frames; the runtime accepts it only from `parent`).
 
+## An app's AI is the machine's brain, and the app is the principal of every step
+
+`executors.fenced_brain` / `ask_fenced` + the `/api/apps/llm/*` and `/api/apps/agent` routes;
+`tests/test_app_ai_brain.py`. Asked as "the app may call the agent … and the rest follows PDP.
+PDP is the permission hub." Five things to keep:
+- **One brain door for app AI.** `fenced_brain` is the machine's brain when it can run with NONE
+  of its own tools (`runs_missions`: Claude Code, Gemini CLI), else the provider default, else a
+  sentence. Codex keeps a read-only shell, and a shell that reads the disk hands an app's prompt
+  every file on it, so it never answers apps. Every app door (appLLM, its stream, appChat,
+  appAgent, `llm_generate` without a model) goes through it; none reads `default_model` itself.
+- **A fenced ask is a bridge run with an EMPTY tool list** (`ask_fenced`): a plain `forward`
+  leaves Gemini CLI its read tools. The app's `system` replaces the CLI's prompt.
+- **appAgent on an executor is `ControlPlane._run_on_executor`** with the app's Agent (its
+  principal, its `tool_filter`), `surface="gui"`, `kind="app"`, and no run id (`_emit` files
+  nothing without one). MCP tools reach it only as the PDP shows them to that app.
+- **Three decisions, all the app's**: `tool.use tool:llm_generate` (appLLM/appChat),
+  `agent.invoke agent:main` (appAgent and the ✦ assistant; it was never decided, so an app with
+  no grant could start the agent), and `model.use model:<brain>` (open by default; a deny closes
+  one brain to one app). The source scan proposes the first two; the log miner maps the runtime's
+  JS names onto them rather than proposing `tool:appChat*`. Quarantine is checked first
+  (`_app_held`), because appLLM no longer passes `/api/tool`.
+- **The spend is the app's** (`usage.principal = app:<id>`, `kind="app"`).
+
 ## Places: the launchers find what is inside apps
 
 `05b-places.js` is one index of the places inside apps (Settings panes, the Missions tabs),

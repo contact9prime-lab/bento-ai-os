@@ -560,6 +560,129 @@ async def ask_once(cfg: dict, system: str, prompt: str, timeout: float = 120) ->
     return (text, who) if not why else ("", "")
 
 
+def fenced_brain(cfg: dict, model: str = "") -> tuple[str, str, str]:
+    """Which brain answers a call that may reach the MODEL and nothing else: an app's
+    appLLM / appChat, or an app's agent whose every tool goes through the gate.
+    Returns (engine, model, why_not).
+
+    The machine's brain when it can be closed off from its own tools (Claude Code,
+    Gemini CLI: `runs_missions`), the provider default otherwise, or the model the
+    caller named. Codex keeps a read-only shell however it is started, and a shell
+    that reads the disk would hand an app's prompt every file on it, so a Codex
+    machine answers apps on its provider model or says why it cannot."""
+    if model:
+        return "aria", model, ""
+    engine = resolve_engine(cfg)
+    dm = (cfg.get("default_model") or "").strip()
+    if engine != "aria":
+        if runs_missions(engine):
+            return engine, "", ""
+        if dm:
+            return "aria", dm, ""
+        title = EXECUTORS_BY_ID.get(engine, {}).get("title", engine)
+        return "", "", (f"{title} keeps a shell of its own, so it doesn't answer apps. "
+                        f"Choose a model in Settings → AI providers, or Claude Code or "
+                        f"Gemini CLI as the brain.")
+    if dm:
+        return "aria", dm, ""
+    return "", "", ("no brain is set up. Choose one in Settings → AI providers (a model, "
+                    "or an agent installed here such as Claude Code)")
+
+
+def split_messages(messages: list[dict]) -> tuple[str, str]:
+    """Chat messages as (system, prompt) for a CLI that takes one prompt: the system
+    messages joined, the conversation so far as a transcript, the last word last."""
+    system = "\n\n".join(m["content"] for m in messages if m.get("role") == "system")
+    talk = [m for m in messages if m.get("role") in ("user", "assistant")]
+    if not talk:
+        return system, ""
+    last = talk[-1]["content"]
+    before = "\n".join(f"{'Assistant' if m['role'] == 'assistant' else 'User'}: {m['content']}"
+                       for m in talk[:-1])
+    return system, (f"The conversation so far:\n{before}\n\nNow answer this:\n{last}"
+                    if before else last)
+
+
+async def ask_fenced(cfg: dict, toolbox, messages: list[dict], principal=None, sink=None,
+                     model: str = "", surface: str = "gui",
+                     timeout: float = 300) -> tuple[str, str, str]:
+    """One answer, no tools, from `fenced_brain`, as `principal` (an app, usually).
+    `sink(text)` gets each piece as it arrives. Returns (text, who answered, why not).
+
+    On an executor it runs over the run bridge with an EMPTY tool list, which is the
+    only way both Claude Code and Gemini CLI start with none of their own tools (a
+    plain forward leaves Gemini its read tools), and the app's system prompt replaces
+    the CLI's own. The spend lands in Usage under the principal."""
+    engine, model, why = fenced_brain(cfg, model)
+    if why:
+        return "", "", why
+    if engine == "aria":
+        from . import providers
+        parts: list[str] = []
+        try:
+            async def go():
+                async for ev in providers.chat(cfg, model, messages, []):
+                    if ev.get("type") == "text" and ev.get("text"):
+                        parts.append(ev["text"])
+                        if sink:
+                            await sink(ev["text"])
+            await asyncio.wait_for(go(), timeout)
+        except asyncio.TimeoutError:
+            return "".join(parts), model, f"{model} took longer than {int(timeout)}s"
+        except Exception as e:
+            return "".join(parts), model, f"{model} could not answer: {type(e).__name__}: {e}"
+        return "".join(parts), model, ""
+    from . import mcpbridge
+    from .agent import Agent
+
+    async def _quiet(_ev):
+        pass
+
+    async def _no(*_a, **_k):
+        return False
+    agent = Agent(cfg, toolbox, "", _quiet, _no, surface=surface, tool_filter=[],
+                  **({"principal": principal} if principal is not None else {}))
+    token = mcpbridge.open_session(agent, [], label=agent.principal.label, max_calls=1)
+    port = int(os.environ.get("AGENTOS_BOUND_PORT") or (cfg or {}).get("port", 8321) or 8321)
+    url = f"http://127.0.0.1:{port}/api/mcp/run/{token}"
+    system, prompt = split_messages(messages)
+    parts = []
+    errors: list[str] = []
+
+    async def relay(ev):
+        if ev.get("type") == "text_delta" and ev.get("text"):
+            parts.append(ev["text"])
+            if sink:
+                await sink(ev["text"])
+        elif ev.get("type") == "error":
+            errors.append(str(ev.get("message") or "").strip())
+    run = Run()
+    env = envelope_from(cfg, cfg.get("workspace", ""), engine)
+    try:
+        await asyncio.wait_for(run_on_bridge(
+            prompt, system or "Answer the request.", url, token, relay,
+            budget_usd=env.budget_usd, model=executor_model(cfg, engine),
+            cwd=env.workspace, run=run, engine=engine), timeout)
+    except asyncio.TimeoutError:
+        stop(run)
+        errors.append(f"{engine} took longer than {int(timeout)}s")
+    except Exception as e:
+        errors.append(f"{engine} could not answer: {type(e).__name__}: {e}")
+    finally:
+        mcpbridge.close_session(token)
+    who = f"{engine}/{run.model}" if run.model else engine
+    store = getattr(toolbox, "store", None)
+    if store is not None and (run.tokens_in or run.tokens_out or run.cost_usd):
+        try:
+            store.usage_add(who, int(run.tokens_in or 0), int(run.tokens_out or 0),
+                            cost_usd=run.cost_usd or None, surface=surface,
+                            principal=agent.principal.label, kind="app")
+        except Exception:
+            pass
+    text = "".join(parts)
+    return text, who, ("" if text.strip() else (errors[0] if errors else f"{engine} said nothing"))
+
+
 def builtin_app_note(app_id: str, allow_source: bool) -> str:
     """What to say about a BUILT-IN app — part of AgentOS itself, not a DB row.
 

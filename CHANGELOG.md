@@ -25,6 +25,30 @@ naming a build folder and a spending ceiling, a full rebuild, and no schedule an
   by an earlier build in a folder named after the app's old name, so a change made in Chat since
   then could be built over.
 
+**An app's AI answers on your agent's brain, and every step is the app's permission.** Asked as:
+"the app may call the agent, the agent may use executors and MCP, and the rest follows the
+permission system; the app has its own permissions too."
+- `appLLM`, `appLLM.stream`, `appChat` and `appAgent` (and the ✦ assistant built on it) asked
+  only for a provider model, so on a machine whose brain is Claude Code every one of them said
+  "no model configured". They now answer on the machine's brain: Claude Code or Gemini CLI with
+  none of their own tools switched on, or your provider model. On Codex, which keeps a shell of
+  its own, apps answer on the provider model or say why they can't.
+- `appAgent` on Claude Code or Gemini CLI thinks there and does everything through this OS: the
+  tools it can see are the ones the app may use, MCP servers included, and each call goes
+  through the same gate as a chat turn, as the app.
+- Calling the agent is now the app's own permission (`agent.invoke agent:main`). Before, an app
+  with no grant could start the agent, and only the agent's steps were asked. The consent screen
+  lists it for an app that uses `appAgent` or the ✦ assistant, and an app that never got it asks
+  once on the card, with Remember.
+- Which brain an app reaches is a decision too (`model.use model:<brain>`), open unless you deny
+  it for that app. Every one of these is in the ledger under the app, and the spend is in Usage
+  under the app.
+- A quarantined app is held on its AI doors too. `appLLM` used to be checked there only because it
+  went through `/api/tool`.
+- `appContext()` says which brain the app's AI answers on, and why not when nothing can.
+- The consent screen no longer proposes `tool:appAgent*` or `tool:appChat*` from an app's
+  activity: those are the runtime's names for the two permissions above.
+
 ## 0.6.22 — 2026-10-10
 
 **An app built in Chat shows its chat in App Studio.** Reported with two screenshots: Claude Code

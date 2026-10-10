@@ -185,6 +185,28 @@ Every AI call is authenticated as the app and gated by its permissions (`tool:ll
 the consent screen tells you which of your apps can reach the model. Give every AI feature a
 loading state and a readable fallback for when no model is configured.
 
+#### Which brain answers, and what it may do
+
+An app's AI is your agent's brain, whatever that is: a model from Settings → AI providers, or
+Claude Code or Gemini CLI. On those two, the app's question runs with none of their own tools
+switched on, and the app's own `system` text replaces theirs. Codex keeps a shell of its own, so
+on a Codex machine an app answers on your provider model, or `appContext()` says why it can't
+(`ai_ready` and `ai_note`).
+
+The app is who's asking, every time, and the permission system decides:
+
+| The app does | It needs | On the consent screen |
+|---|---|---|
+| `appLLM`, `appLLM.stream`, `appChat` | `tool.use tool:llm_generate` | uses the AI model inside the app |
+| `appAgent`, the ✦ assistant | `agent.invoke agent:main` | asks your agent to do things inside the app |
+| each tool the agent then uses, MCP tools included | that tool's own permission | asked on the card when not granted |
+| any of these, on a given brain | `model.use model:<brain>` (open unless you deny it) | |
+
+A permission the app doesn't hold asks you on the usual card, which names the app and offers
+Remember. Each decision is a row in Permissions → Ledger under the app's name, and what its AI
+spends is in Usage under the app. To stop one app reaching one brain, add a deny for
+`model.use model:claude-code` (or the model's name) to that app in Permissions.
+
 ### Run on a schedule
 `appTool('schedule_task', {prompt, schedule_type: 'interval', interval_minutes: 10})` makes a
 schedule that belongs to the app calling it. Its runs can save into the app's data with the
