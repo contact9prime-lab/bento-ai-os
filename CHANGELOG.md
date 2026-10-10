@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.23 — 2026-10-10
+
+**A schedule for an app belongs to that app, and Chat, App Studio and Missions all show it.**
+Asked with a screenshot of App Studio's Builder: *Can you update it every 10 mins* got a line
+naming a build folder and a spending ceiling, a full rebuild, and no schedule anywhere.
+- The Builder says *Claude Code is changing it. This build can spend up to $25.00.* instead of a
+  folder path, and names the brain as *Claude Code on opus*.
+- App Studio can set up a schedule for the app you are changing, on either brain. You approve it
+  on the usual card, and the Builder says *Scheduled for this app* with **Open in Missions**.
+- A new **Schedules** tab in App Studio, beside Versions and Permissions, lists what keeps the
+  app up to date. **Missions → Schedule** shows the same rows with *for <app>* and **Open app**.
+- In Chat, Claude Code, Gemini CLI and Codex can now set up a schedule too (they could only draft
+  a whole mission), and the chat offers **Open in Missions** for it, as it already did for the
+  built-in agent. Name the app and the schedule is that app's.
+- A schedule's run can save into its app's data (`update_app_data`), so *update it every 10
+  minutes* works while the app is closed. An open app hears about it and reloads. A run that
+  belongs to an app can change only that app's data.
+- An app's own `appTool('schedule_task')` is filed under that app, and asking for the same
+  schedule twice keeps one.
+- `bento job schedules [APP]` lists schedules and the app each is for. The terminal app's tasks
+  tab names the app too.
+- A change in App Studio builds from the app's current version. It used to reuse the file left
+  by an earlier build in a folder named after the app's old name, so a change made in Chat since
+  then could be built over.
+
 ## 0.6.22 — 2026-10-10
 
 **An app built in Chat shows its chat in App Studio.** Reported with two screenshots: Claude Code

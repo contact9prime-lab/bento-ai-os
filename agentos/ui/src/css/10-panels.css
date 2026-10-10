@@ -327,3 +327,18 @@ body.dev-touch .tb .seg button{min-height:var(--tap)}
 .st-msg.user{color:var(--txt)}
 .st-msg.assistant{color:var(--dim)}
 body.dev-touch .st-src .endbtn{min-height:var(--tap)}
+/* the Schedules tab: what keeps this app fresh while it is closed (tasks.app_id) */
+.st-sched{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px;border-bottom:1px solid var(--line)}
+.st-sched .grow{flex:1;min-width:0}
+.st-sched .sub{display:block;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-sched .endbtn{flex:none}
+.st-schedok{color:var(--ok)}
+.task-app .endbtn{padding:1px 8px;font-size:11px;margin-left:4px}
+body.dev-touch .st-sched .endbtn,body.dev-touch .task-app .endbtn{min-height:var(--tap)}
+/* a phone gives the Builder column ~150px: three tabs scroll and snap rather than
+   overlap, and a schedule's button goes under its words */
+body.dev-mobile .sttabs{overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+body.dev-mobile .sttabs button{flex:none;scroll-snap-align:start;min-height:var(--tap)}
+body.dev-mobile .st-sched{flex-wrap:wrap}
+body.dev-mobile .st-sched .grow{flex:1 1 100%}
+body.dev-mobile .st-sched .endbtn{max-width:100%;white-space:normal}

@@ -696,6 +696,12 @@ function handle(ev){
     case 'wake': onWake(); break;
     case 'switcher': sessionSwitcher(ev); break;   // Alt-Tab overlay, driven by sway
     case 'apps': loadUserApps(); refreshApp('studio'); toast('app library updated'); break;
+    /* A schedule saved into an app's data (update_app_data): every open frame of that
+       app hears it as an `appdata` event and reloads what it shows. */
+    case 'app_data':
+      document.querySelectorAll('iframe[src^="/api/apps/'+(ev.app_id||'-')+'/page"]').forEach(f=>{
+        try{f.contentWindow.postMessage({agentos:'app_data',key:ev.key||''},'*')}catch(_){}});
+      break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;

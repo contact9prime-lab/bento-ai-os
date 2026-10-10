@@ -407,7 +407,8 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                   emit=None, session_id: str = "",
                   context: str = "", team: dict | None = None,
                   prior: list | None = None,
-                  tools: tuple | None = None) -> tuple[str, "Run | None"]:
+                  tools: tuple | None = None,
+                  app: dict | None = None) -> tuple[str, "Run | None"]:
     """Send one turn to another agent and return what it said.
 
     Used by the surfaces that have no event stream of their own (Telegram, the
@@ -447,6 +448,11 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     token = open_team_door(env, cfg, team.get("toolbox"), team.get("store"), sink,
                            team.get("approver"), conversation_id=team.get("conversation_id", ""),
                            surface=team.get("surface", "gui"), text=text) if team else ""
+    # `app`: {toolbox, app_id, approver} from a schedule that belongs to an app. One door
+    # per run: a turn with a team already has its tools, and none of them is the app's.
+    if app and not token:
+        token = open_app_door(env, cfg, app.get("toolbox"), app.get("app_id", ""),
+                              app.get("approver"), emit=sink)
     run = Run(engine=engine)
     try:
         await run_task(text, env, sink, run)
@@ -682,7 +688,9 @@ def chat_app_note(co: dict) -> str:
         f"If this turn asks to change that app, edit THAT file in place (not an "
         f"earlier copy elsewhere): AgentOS saves it back as a new version when you "
         f"finish, and the old version stays in its history. Leave it untouched for "
-        f"anything else."
+        f"anything else. If they want it kept up to date on a clock, it refreshes itself "
+        f"while open with setInterval in that file, and while it is closed with a schedule "
+        f"for it (schedule_task with app=\"{co['name']}\", when you have that tool)."
     )
 
 
@@ -779,7 +787,7 @@ def build_dir(workspace: str, name: str) -> str:
     return str(Path(workspace).expanduser() / BUILD_DIRNAME / (safe or "app"))
 
 
-def prepare_build(workspace: str, name: str, existing_html: str = "") -> dict:
+def prepare_build(workspace: str, name: str, existing_html: str = "", key: str = "") -> dict:
     """Set up a directory an executor can actually build an app in.
 
     The built-in builder has one turn to emit a whole app in one fenced block,
@@ -791,12 +799,20 @@ def prepare_build(workspace: str, name: str, existing_html: str = "") -> dict:
     `spec` and `review` are files for the same reason the app is: a plan that
     exists only in one turn's context is gone by the turn that should have built
     against it, and a review nobody wrote down is a review nobody applied.
+
+    An existing app builds in a folder named by its id (`key`), from its CURRENT
+    version every time. Keyed on the name, a refine reused whatever an earlier build
+    left there: a chat edit since then was built over and lost, and the folder kept
+    the sentence an old app was once named after. Last time's spec and review go too,
+    or this build would be planned and reviewed against the last one's.
     """
-    d = Path(build_dir(workspace, name))
+    d = Path(build_dir(workspace, f"app-{key}" if key else name))
     d.mkdir(parents=True, exist_ok=True)
     path = d / "app.html"
-    if existing_html and not path.exists():
+    if existing_html:
         path.write_text(existing_html, encoding="utf-8")
+        for side in ("SPEC.md", "REVIEW.md"):
+            (d / side).unlink(missing_ok=True)
     elif not path.exists():
         path.write_text("", encoding="utf-8")
     return {"dir": str(d), "path": str(path),
@@ -1541,7 +1557,10 @@ async def install(note=None) -> tuple[bool, str]:
 # "watch my Downloads" answered with a launchd plist this OS could not see or stop was
 # the report. create_flow lands DISABLED (enabling is the person's grant), list_flows
 # lets it see what already runs, so it edits rather than duplicates.
-TEAM_TOOLS = ("delegate", "huddle", "create_flow", "list_flows")
+# schedule_task is the small case of the same thing: "check it every 10 minutes" asked in
+# Chat on Claude Code had no way to become a schedule this OS could see, so it became a
+# setInterval in an app or a sentence. It is risky, so the person approves it on the card.
+TEAM_TOOLS = ("delegate", "huddle", "create_flow", "list_flows", "schedule_task")
 
 
 def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
@@ -1559,7 +1578,13 @@ def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
                 f"tell the person to switch it on in Missions → Build. It lands off because "
                 f"switching it on is what grants it. NEVER set it up yourself as a cron job, "
                 f"launchd agent, background loop or script: this OS could not see it, stop it "
-                f"or show what it did. {prefix}list_flows shows what already runs.")
+                f"or show what it did. {prefix}list_flows shows what already runs."
+                f"\n\nSCHEDULES. Something that should simply run on a clock (every 10 minutes, "
+                f"every morning at 8) is {prefix}schedule_task: the person approves it, and it is "
+                f"listed in Missions → Schedule. When it keeps one of their apps up to date, pass "
+                f"app=<the app's name>: it is shown with that app, and each run can save into the "
+                f"app's data. An app refreshing itself only while it is open is a setInterval in "
+                f"the app instead. Say which one you set up.")
     rows = []
     for sa in subagents or []:
         if sa.get("enabled") is False or not sa.get("name"):
@@ -1650,6 +1675,39 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         env.context += _company.note(cfg, store, desks=False)
     except Exception:
         pass
+    return token
+
+
+APP_DOOR_TOOLS = ("read_app_data", "update_app_data")
+
+
+def open_app_door(env: "Envelope", cfg: dict, toolbox, app_id: str, approver, emit=None,
+                  tools: tuple = APP_DOOR_TOOLS, surface: str = "task",
+                  conversation_id: str = "", label: str = "app door") -> str:
+    """A forwarded run that works FOR one app gets exactly the tools that app needs,
+    over the run bridge, through this OS's gate, with that app injected (`_app`).
+
+    Two callers: a schedule that keeps an app fresh (read and update its data; it was
+    forwarded with no way to save anything, so "update it every 10 minutes" could only
+    ever be a message), and App Studio changing an app (schedule_task, so a schedule
+    asked for while building is set up for that app and shown in Missions). Returns the
+    token to close, or '' when this executor has no door or the gate hides the tools."""
+    if toolbox is None or not app_id or env.engine not in MCP_ENGINES:
+        return ""
+    from . import mcpbridge
+    from .agent import Agent
+
+    async def _quiet(_ev):
+        pass
+    agent = Agent(cfg, toolbox, "", emit or _quiet, approver, conversation_id=conversation_id,
+                  surface=surface, tool_filter=list(tools))
+    agent.app_id = app_id
+    schemas = [t for t in agent._tools() if t["name"] in tools]
+    if not schemas:
+        return ""
+    token = mcpbridge.open_session(agent, schemas, label=label, max_calls=12)
+    port = int(os.environ.get("AGENTOS_BOUND_PORT") or (cfg or {}).get("port", 8321) or 8321)
+    env.team_mcp = (f"http://127.0.0.1:{port}/api/mcp/run/{token}", token)
     return token
 
 

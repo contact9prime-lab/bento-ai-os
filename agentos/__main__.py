@@ -2941,6 +2941,12 @@ def _job_cli(args):
                                          limit=40)))
         return
 
+    if act == "schedules":
+        # the Schedule tab, with the app each one is for: `bento job schedules [APP]`
+        from . import runlog
+        print(runlog.schedules_text(runlog.schedules(store), app=args.name or ""))
+        return
+
     if act == "list":
         rows = jobsmod.installed(store)
         rd = jobsmod.readiness(cfg)
@@ -7127,9 +7133,11 @@ def main():
     p_job = verb("job", help="give this machine a standing mission — the terminal "
                                        "half of the Missions app and the first-run screen")
     p_job.add_argument("action", nargs="?", default="list",
-                       choices=["list", "recipes", "add", "run", "persona", "history"])
+                       choices=["list", "recipes", "add", "run", "persona", "history",
+                                "schedules"])
     p_job.add_argument("name", nargs="?", default="",
                        help="recipe id for `add`, mission name for `run` or `history`, "
+                            "an app's name for `schedules`, "
                             "founder|coder|consultant for `persona`")
     p_job.add_argument("--task", default="", help="history: only the runs of this schedule (its id)")
     p_job.add_argument("--for", dest="for_", default="",

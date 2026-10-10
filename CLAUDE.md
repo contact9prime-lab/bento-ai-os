@@ -1333,6 +1333,33 @@ should have the chat message as well". Four things to keep (`tests/test_chat_app
 - **`app_saved` is the executor's door** (`handoffApp`), because no `create_app` tool_end exists
   for a CLI to hang the chip on.
 
+## A schedule for an app belongs to the app
+
+`tasks.app_id` names the app a schedule keeps fresh or watches; Missions → Schedule
+(`runlog.schedules` → `app_name`/`app_gone`), App Studio's Schedules tab, the chat chip,
+`bento job schedules` and the TUI all read it. Asked as "if I ask to set up the schedule, that
+connection should be there in the chat". `tests/test_app_schedules.py`. Five things to keep:
+- **The app is the caller's, never the model's.** `APP_BOUND_TOOLS` (`schedule_task`,
+  `create_trigger`, `update_app_data`) get `_app` injected: by `/api/tool` for an app principal
+  (after the `_` strip), by the agent loop from `Agent.app_id` (App Studio's builder, a scheduled
+  run). A chat names an app with `app`, checked against the apps that exist.
+- **A run that belongs to an app writes only that app's data.** `update_app_data` is SAFE on
+  purpose (the app's own JSON store, read by a sandboxed page): as risky, every refresh that
+  fetched a page was held by the taint ceiling for a person nobody is.
+- **A forwarded run gets a door with exactly what it needs** (`executors.open_app_door`): a
+  scheduled run for an app gets `read_app_data` + `update_app_data`; App Studio changing an app
+  gets `schedule_task`, asked on the card (`bapprove`). The Studio drops the CLI's own copy of a
+  `mcp__bento__*` tool event, as chat does. Chat's team door now has `schedule_task` too.
+  The Studio's card carries the build's `conversation_id`: with none, the page drew it inside
+  whatever chat was open (the "no id = the open one" rule), found by the live run.
+- **The same schedule asked twice is one row** (`Scheduler._same`): a Studio build has four stages
+  and an app may ask every time it opens.
+- **An existing app builds in `builds/app-<id>`, from its current version** (`prepare_build(key=)`),
+  with last time's SPEC/REVIEW removed. Keyed on the name, a refine built over a chat edit.
+
+The `app_data` broadcast reaches an open app as the `appdata` event (`09-websocket.js` posts into
+the app's frames; the runtime accepts it only from `parent`).
+
 ## Places: the launchers find what is inside apps
 
 `05b-places.js` is one index of the places inside apps (Settings panes, the Missions tabs),

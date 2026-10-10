@@ -183,6 +183,9 @@ def schedules(store, now: float | None = None) -> list[dict]:
     by_task: dict[str, list] = {}
     for r in store.task_runs(limit=2000, since=now - 30 * 86400):
         by_task.setdefault(r.get("task_id") or "", []).append(r)
+    # the app a schedule is for, by name, so Missions, App Studio and the terminal say it;
+    # one whose app was deleted keeps running and says that instead of naming nothing
+    apps = {a["id"]: a["name"] for a in store.list_apps()}
     for t in store.list_tasks():
         runs = by_task.get(t["id"], [])
         last = runs[0] if runs else None
@@ -195,8 +198,30 @@ def schedules(store, now: float | None = None) -> list[dict]:
                     "last_at": (last.get("finished_at") or last.get("started_at")) if last else None,
                     "last_said": _said((last or {}).get("result"), 160),
                     "last_run_id": (last or {}).get("run_id") or "",
-                    "last_conversation": (last or {}).get("conversation_id") or ""})
+                    "last_conversation": (last or {}).get("conversation_id") or "",
+                    "app_id": t.get("app_id") or "",
+                    "app_name": apps.get(t.get("app_id") or "", ""),
+                    "app_gone": bool(t.get("app_id")) and (t.get("app_id") not in apps)})
     return out
+
+
+def schedules_text(rows: list[dict], app: str = "") -> str:
+    """The Schedule tab for a terminal: one line a schedule, the app it is for under it."""
+    if app:
+        want = app.strip().lower()
+        rows = [r for r in rows if (r.get("app_name") or "").lower() == want or r.get("app_id") == app]
+    if not rows:
+        return ("nothing is scheduled for that app." if app else
+                "nothing is scheduled. Ask in Chat, or add one in Missions → Schedule.")
+    out = []
+    for r in rows:
+        state = "" if r.get("enabled") else "  (off)"
+        out.append(f"{r['id']}  {r.get('words') or '':<24} {(r.get('title') or '')[:70]}{state}")
+        if r.get("app_gone"):
+            out.append("      for an app that was deleted")
+        elif r.get("app_name"):
+            out.append(f"      for the app {r['app_name']}")
+    return "\n".join(out)
 
 
 def text(h: dict) -> str:

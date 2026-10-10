@@ -156,6 +156,16 @@ Daily at a time, weekly on a day at a time, every N minutes, or when a folder
 changes. `weekly` is new with this catalogue and is a flow trigger like any
 other: `{"kind":"cron","config":{"type":"weekly","day":"friday","at":"16:00"}}`.
 
+A plain schedule is the small case: *every 10 minutes, check the prices*. Ask for one in Chat,
+whichever brain answers (on Claude Code, Gemini CLI or Codex it goes through the same door as a
+hand-over), and it lands in **Missions → Schedule** after you approve it, with **Open in
+Missions** in the chat. A schedule that keeps one of your apps up to date belongs to that app: its
+row says *for Volume Compression Tracker* with **Open app**, App Studio lists it under the app's
+**Schedules** tab, and each run can save into the app's data. See
+[Building Apps](building-apps.md#keep-it-up-to-date-on-a-schedule).
+
+![Missions → Schedule with a schedule set up for an app, and its Open app button](screenshots/missions-schedule-app.png)
+
 ## From a terminal
 
 The same catalogue, the same install, no wizard — which is where a standing
@@ -172,6 +182,8 @@ bento job run standup-code                   # now, while you watch
 bento job history                            # every run, schedules included
 bento job history standup-code               # the runs of one mission
 bento job history --task 66c6d87145a9        # the runs of one schedule
+bento job schedules                          # every schedule, and the app each one is for
+bento job schedules "Volume Compression Tracker"   # one app's
 ```
 
 ## Missions that read your mail and calendar

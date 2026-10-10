@@ -5376,6 +5376,12 @@ window.appCopilot.mount = (opts) => {
   inp.addEventListener('keydown', e => { if(e.key==='Enter') go(); });
   fab.onclick = () => { pan.classList.toggle('on'); if(pan.classList.contains('on')) inp.focus(); };
 };
+// a schedule saved something into this app's data (update_app_data): say so to the app,
+// which reloads what it shows. Only the desktop that drew this frame may say it.
+window.addEventListener('message', e => {
+  if (e.source !== parent || !e.data || e.data.agentos !== 'app_data') return;
+  try{ window.dispatchEvent(new CustomEvent('appdata', {detail: {key: e.data.key || ''}})); }catch(_){}
+});
 // surface runtime errors to the host (App Studio shows them with a one-click fix)
 window.addEventListener('error', e => {
   try{ parent.postMessage({agentos:'app_error', app_id:window.APP_ID,
@@ -6034,6 +6040,14 @@ ALERTS & CHANNELS — bake delivery in; the user should not have to keep the win
 - For anything the user wants tracked/monitored, ALSO wire background checking:
   appTool('schedule_task',{prompt:'check <thing>; if <condition>, send the user a telegram_send alert',
   schedule_type:'interval', interval_minutes:N}) — this keeps working with the app closed.
+  A schedule the app creates is linked to it: it is listed with the app in Missions → Schedule
+  and in App Studio, and asking twice for the same schedule keeps one.
+- To keep the app's NUMBERS fresh while it is closed, the schedule's prompt saves them into the
+  app's data: 'fetch <data>; save it with update_app_data key "<key>"'. The app reads that key
+  with appData.get() when it opens, and window.addEventListener('appdata', e => reload()) fires
+  while it is open when a schedule saved something (e.detail.key names what changed).
+- "Refresh every N minutes" while the app is open is setInterval in the app; while it is closed
+  it is a schedule. Do both when the user wants it kept up to date.
 - Give such apps a small "Alerts" card in the UI: a threshold/condition input and an on/off toggle that
   creates or removes the scheduled task, and show when the last check ran.
 
@@ -7142,6 +7156,10 @@ async def api_run_tool(body: dict, request: Request):
                                 status_code=403)
     # An app parses this in JS, so the model's context budget does not apply —
     # clipping at MAX_OUTPUT would hand it a half-written JSON body.
+    if principal.kind == "app" and name in tools.APP_BOUND_TOOLS:
+        # the app asking is the app it is for: a schedule it makes is listed with it,
+        # and the data it may change is its own. Injected after the `_` strip above.
+        args = {**args, "_app": principal.id}
     tok = tools.output_limit.set(tools.APP_MAX_OUTPUT)
     try:
         out = await toolbox.execute(name, args)
@@ -14385,7 +14403,17 @@ async def _run_build(data: dict):
                 "ollama_think": False}
         build_timeout = int(cfg.get("build_timeout", 600))
 
+        # what this build set up to run on its own: said in the build's closing message,
+        # which is what the Builder shows once the live log is re-read from the chat
+        build_scheds: list[str] = []
+
+        def sched_note() -> str:
+            return "".join(f"\nScheduled for this app: {re.sub(r'^(already )?scheduled task [0-9a-f]+( for this app)?: ?', '', o)} "
+                           f"(Missions → Schedule)." for o in build_scheds)
+
         async def bemit(ev):
+            if ev.get("type") == "tool_end" and ev.get("name") == "schedule_task" and ev.get("ok"):
+                build_scheds.append(str(ev.get("output") or "")[:200])
             m = {"text_delta": "build_text", "thinking_delta": "build_thinking",
                  "tool_start": "build_tool", "tool_end": "build_tool_end",
                  "error": "build_error_note", "status": "build_status"}
@@ -14393,7 +14421,36 @@ async def _run_build(data: dict):
                 await bcast({**ev, "type": m[ev["type"]]})
 
         async def bapprove(name, args, reason, offer=None):
-            return True if name == "create_app" else (cfg.get("autonomy") == "full")
+            if name == "create_app":
+                return True
+            if cfg.get("autonomy") == "full":
+                return True
+            if name == "schedule_task":
+                # a schedule outlives the build and runs on its own: the person says yes
+                # on the card, as they would in Chat. The card names the build's own
+                # conversation: with none, the page took it for the chat that happened to
+                # be open and drew it inside that unrelated conversation.
+                uid = usersmod.current() if usersmod.enabled() else ""
+
+                async def to_studio(ev):
+                    await _approval_send({"uid": uid}, {**ev, "conversation_id": cid})
+                return bool(await request_approval(name, args, reason, offer=offer,
+                                                   evsend=to_studio))
+            return False
+
+        # The app being changed, so a schedule asked for here ("update it every 10
+        # minutes") is set up FOR it: listed with the app in Missions → Schedule and in
+        # the Studio, and its runs may save into the app's data. A new app has no id yet;
+        # its own appTool('schedule_task') links itself when it runs.
+        build_app_id = (existing or {}).get("id", "")
+        SCHEDULE_NOTE = (
+            "\n=== SCHEDULES FOR THIS APP ===\nIf the person asks for something to happen on a "
+            "clock while the app is closed (refresh it every 10 minutes, check a price every "
+            "hour), set it up ONCE with {tool}: it belongs to this app, is listed with it in "
+            "Missions → Schedule, and each run can save into the app's data with "
+            "update_app_data, which the app reads on open (and hears as the `appdata` event "
+            "while open). Write the app to read that key. Refreshing while it is open is "
+            "setInterval in the app. Say in one line which of the two you set up.\n")
 
         def persona_for(use_model: str) -> str:
             """Full API registry for capable cloud models; trimmed for local ones —
@@ -14418,6 +14475,9 @@ async def _run_build(data: dict):
             local = use_model.startswith("ollama/")
             extra = persona_for(use_model)
             tf = ["create_app", "read_file", "list_dir", "fetch_url", "system_info"]
+            if build_app_id:
+                tf.append("schedule_task")
+                extra += SCHEDULE_NOTE.format(tool="schedule_task")
             if local:
                 tf = []
                 # small models anchor on the FIRST instruction they read — the output
@@ -14431,6 +14491,7 @@ async def _run_build(data: dict):
                           "announce the app — OUTPUT it.\n\n") + extra)
             agent = Agent(bcfg, toolbox, use_model, bemit, bapprove,
                           extra_system=extra, tool_filter=tf)
+            agent.app_id = build_app_id
             agent.nudge_unfinished = False   # the build path owns its own retries
             build["agent"] = agent
             knowledge.turn_started()
@@ -14498,16 +14559,24 @@ async def _run_build(data: dict):
             # the user typed wins over one derived from their sentence.
             app_name = (existing or {}).get("name") or want_name or (prompt[:40] or "New app")
             co = execmod.prepare_build(env.workspace, app_name,
-                                       (existing or {}).get("html", ""))
+                                       (existing or {}).get("html", ""),
+                                       key=(existing or {}).get("id", ""))
             env.context = execmod.context_for("")
             run = execmod.Run()
             build["executor"] = run
+            # Said as a person would. It printed the build folder and the ceiling as
+            # "(building with Claude Code in /Users/…/builds/Make-an-application-that-
+            # tracks-the-stoc — up to $25.00)", under the lead's name, and was asked
+            # about with a screenshot. The folder is in the log for whoever needs it.
+            store.log("system", f"app build in {co['dir']}", {"app": app_name})
             await bcast({"type": "build_text",
-                         "text": f"\n(building with Claude Code in {co['dir']} — "
-                                 f"up to ${env.budget_usd:.2f})\n"})
+                         "text": (f"\nClaude Code is {'changing' if existing else 'building'} "
+                                  f"it. This build can spend up to ${env.budget_usd:.2f}.\n")})
 
             async def erelay(ev: dict):
                 t = ev.get("type")
+                if t in ("tool_start", "tool_end") and str(ev.get("name") or "").startswith("mcp__bento__"):
+                    return   # the door's own gate already said it, once and by its name
                 if t == "text_delta":
                     await bcast({"type": "build_text", "text": ev.get("text", "")})
                 elif t == "tool_start":
@@ -14544,6 +14613,13 @@ async def _run_build(data: dict):
             pulse = asyncio.create_task(epulse())
             relay_failed = ""
             bpersona = persona_for("claude-code")
+            # the same schedule tool the built-in builder has, over the run bridge, so the
+            # gate asks the person and the schedule is this app's
+            door = execmod.open_app_door(env, cfg, toolbox, build_app_id, bapprove,
+                                         emit=bemit, tools=("schedule_task",), surface="gui",
+                                         conversation_id=cid, label="studio door")
+            if door:
+                bpersona += SCHEDULE_NOTE.format(tool="mcp__bento__schedule_task")
 
             async def stage(label: str, task: str) -> str:
                 """One executor turn. Returns '' or the relay failure.
@@ -14612,6 +14688,9 @@ async def _run_build(data: dict):
                     await pulse
                 execmod.stop(run)
                 build["executor"] = None
+                if door:
+                    from . import mcpbridge
+                    mcpbridge.close_session(door)
             html, problem = execmod.read_build(co)
             if problem:
                 await terminal({"type": "build_error",
@@ -14636,7 +14715,7 @@ async def _run_build(data: dict):
                 store.rename_app(built["id"], name=want_name if not existing else "",
                                  icon=want_icon)
             store.add_message(cid, "assistant",
-                              f"Built with Claude Code (${run.cost_usd:.2f}).",
+                              f"Built with Claude Code (${run.cost_usd:.2f})." + sched_note(),
                               {"engine": "claude-code", "engine_model": run.model})
             if not existing:
                 store.touch_conversation(cid, f"build: {built['name']}")
@@ -14740,7 +14819,8 @@ async def _run_build(data: dict):
                 if fixed:
                     built, result = fixed, fix_res
 
-        store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
+        store.add_message(cid, "assistant", (result["content"] or "") + sched_note(),
+                          {"steps": result["steps"]})
         if built and not existing and (want_name or want_icon is not None):
             # the model named it after the request; the user already said what it
             # is called. Re-read it, because the name is what everything shows.
