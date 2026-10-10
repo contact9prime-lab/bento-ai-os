@@ -1819,13 +1819,16 @@ class Toolbox(usersmod.Scoped):
         return "updated: " + ", ".join(applied) + note
 
     async def create_app(self, name: str, icon: str = "", description: str = "",
-                         html: str = "", permissions: str = "") -> str:
+                         html: str = "", permissions: str = "", _conv: str = "") -> str:
         """Create/update a UI app that appears on the AgentOS desktop (rendered in a window).
         `permissions` (JSON list of {action, resource, reason, required}) declares what the
         app needs at runtime — it becomes the manifest the user consents to."""
         if len(html.strip()) < 20:
             return "[error] html too short — pass the full app markup (HTML/CSS/JS)"
-        aid = self.store.save_app(name, icon or "", description, html, note="agent build")
+        # `_conv` is the conversation this ran in, injected by the agent loop (never the
+        # model's), so App Studio can show the chat that built the app
+        aid = self.store.save_app(name, icon or "", description, html, note="agent build",
+                                  conversation_id=_conv or "")
         perms = []
         if permissions:
             try:
@@ -3765,7 +3768,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name == "create_app" else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
             return await fn(**{k: v for k, v in args.items() if not k.startswith("_") or k in keep})

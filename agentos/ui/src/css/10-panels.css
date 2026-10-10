@@ -315,3 +315,15 @@ body.auto-running #omni-orb{animation:obusy .9s ease-in-out infinite}
 body.dev-touch .tb input[type=color],body.dev-touch .tb select,body.dev-touch .tb button,body.dev-touch .tb .tb-sec>summary{min-height:var(--tap)}
 body.dev-touch .tb input[type=color]{min-width:var(--tap)}
 body.dev-touch .tb .seg button{min-height:var(--tap)}
+/* App Studio's Builder: the chat or Studio session an app was built in (studioLoadHistory) */
+.st-src{display:flex;align-items:center;gap:8px;margin:10px 0 6px;padding-top:8px;border-top:1px solid var(--line);
+  font-size:var(--fs-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim2)}
+.st-src:first-child{border-top:none;padding-top:0;margin-top:2px}
+.st-src span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-src .endbtn{flex:none;text-transform:none;letter-spacing:0}
+.st-msg{margin:6px 0;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.st-msg b{display:block;font-size:var(--fs-xs);color:var(--dim);margin-bottom:1px}
+.st-msg.user b{color:var(--acc)}
+.st-msg.user{color:var(--txt)}
+.st-msg.assistant{color:var(--dim)}
+body.dev-touch .st-src .endbtn{min-height:var(--tap)}

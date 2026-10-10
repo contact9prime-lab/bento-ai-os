@@ -29,7 +29,12 @@ let STUDIO={apps:[],sel:'',building:false,log:null,preview:null,logs:{},surface:
   tools:{},_toolN:0};
 async function renderStudio(body,w){
   // preserve the builder session log across re-renders and app switches
-  if(STUDIO.log&&STUDIO.log.isConnected&&STUDIO._logKey)STUDIO.logs[STUDIO._logKey]=STUDIO.log.innerHTML;
+  // A log that is only the stored history (.st-src) is re-read from the server instead,
+  // so a follow-up in Chat shows here the next time the Studio is drawn.
+  if(STUDIO.log&&STUDIO.log.isConnected&&STUDIO._logKey){
+    if(!STUDIO.building&&STUDIO.log.querySelector('.st-src'))delete STUDIO.logs[STUDIO._logKey];
+    else STUDIO.logs[STUDIO._logKey]=STUDIO.log.innerHTML;
+  }
   const r=await fetch('/api/apps?html=1');const d=await r.json();STUDIO.apps=d.apps;
   if(STUDIO.sel&&!d.apps.find(a=>a.id===STUDIO.sel))STUDIO.sel='';
   STUDIO._logKey=STUDIO.sel||'new';
@@ -94,7 +99,7 @@ async function renderStudio(body,w){
     </div>`;
   STUDIO.log=$('#st-log');STUDIO.preview=$('#st-prev');
   const cachedLog=STUDIO.logs[STUDIO._logKey];
-  if(cachedLog){STUDIO.log.innerHTML=cachedLog;STUDIO.log.scrollTop=STUDIO.log.scrollHeight}
+  if(cachedLog){STUDIO.log.innerHTML=cachedLog;studioWireHistory();STUDIO.log.scrollTop=STUDIO.log.scrollHeight}
   else if(STUDIO.sel)studioLoadHistory(STUDIO.sel);   // restore this app's build session from the server
   $('#st-prompt').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();studioBuild()}});
   // a name typed for a NEW app has nowhere to be saved yet — keep it in hand
@@ -214,28 +219,52 @@ async function studioLoadModels(){
   sel.onchange=()=>{STUDIO.model=sel.value;localStorage.setItem('studioModel',sel.value);
     toast(sel.value==='auto'?'builds pick the best available model':'builds will use '+sel.value)};
 }
+/* The Builder pane shows how this app came to be: the chat or App Studio sessions
+   that built it, as recorded on its versions (/api/apps/{id}/conversations). An app
+   built in Chat used to open on the intro text, because the history was found only by
+   a "build: <name>" title that a chat turn never had. Older builds without a recorded
+   conversation still fall back to that title. */
 async function studioLoadHistory(sel){
-  // each app has ONE persistent build conversation ("build: <name>") — show it so
-  // picking the app back up continues the same session instead of a blank slate
   try{
     const app=STUDIO.apps.find(a=>a.id===sel);if(!app)return;
-    const convs=(await (await fetch('/api/conversations')).json()).conversations||[];
-    const c=convs.find(x=>x.title==='build: '+app.name);if(!c)return;
-    const msgs=(await (await fetch('/api/conversations/'+c.id)).json()).messages||[];
+    let convs=((await (await fetch('/api/apps/'+sel+'/conversations')).json()).conversations)||[];
+    if(!convs.length){
+      const all=(await (await fetch('/api/conversations')).json()).conversations||[];
+      const c=all.find(x=>x.title==='build: '+app.name);
+      if(c)convs=[{id:c.id,title:c.title,origin:'studio'}];
+    }
+    if(!convs.length)return;
+    // oldest first, so it reads as the story of the app; the last three are plenty
+    convs=convs.slice(0,3).reverse();
+    const parts=[];
+    for(const c of convs){
+      const msgs=(await (await fetch('/api/conversations/'+c.id)).json()).messages||[];
+      const studio=String(c.title||'').startsWith('build: ');
+      const lines=msgs.map(m=>{
+        if(m.role!=='user'&&m.role!=='assistant')return'';
+        let t=(m.content||'').replace(/```[\s\S]*?(```|$)/g,'(code)').trim();
+        if(!t)return'';
+        if(t.length>600)t=t.slice(0,600)+'…';
+        return `<div class="st-msg ${m.role}">${m.role==='user'
+          ?`<b>You</b>${esc(t)}`
+          :`<b>${esc(agentName())}</b>${esc(t)}`}</div>`;
+      }).filter(Boolean).join('');
+      if(!lines)continue;
+      parts.push(`<div class="st-src"><span>${studio?'Built in App Studio':'Built in Chat'}${studio?'':` · ${esc(c.title||'')}`}</span>`
+        +(studio?'':`<button class="endbtn" data-open-chat="${esc(c.id)}">Open in Chat</button>`)+`</div>`+lines);
+    }
     if(STUDIO.sel!==sel||!STUDIO.log||!STUDIO.log.isConnected||STUDIO.log.children.length)return;
-    const lines=msgs.map(m=>{
-      let t=(m.content||'').replace(/```[\s\S]*?(```|$)/g,'(code)').trim();
-      if(!t)return'';
-      if(t.length>280)t=t.slice(0,280)+'…';
-      return `<div style="margin:4px 0">${m.role==='user'
-        ?`<b style="color:var(--acc2)">You:</b> ${esc(t)}`
-        :`<b>▲ ${esc(agentName())}:</b> ${esc(t)}`}</div>`;
-    }).filter(Boolean).join('');
-    if(!lines)return;
-    STUDIO.log.innerHTML=`<div class="mut" style="margin:4px 0;font-size:11px">— session so far —</div>`+lines;
-    STUDIO.logs[sel]=STUDIO.log.innerHTML;
+    if(!parts.length)return;
+    STUDIO.log.innerHTML=parts.join('');
+    studioWireHistory();
     STUDIO.log.scrollTop=STUDIO.log.scrollHeight;
   }catch(e){}
+}
+/* "Open in Chat" from the Builder: carry on there, where the app was made */
+function studioWireHistory(){
+  if(!STUDIO.log)return;
+  STUDIO.log.querySelectorAll('[data-open-chat]').forEach(b=>b.onclick=()=>{
+    openApp('chat');setTimeout(()=>{if(typeof openConv==='function')openConv(b.dataset.openChat)},150)});
 }
 /* built apps postMessage their runtime JS errors here — surface them with a one-click fix */
 window.addEventListener('message',ev=>{

@@ -5417,6 +5417,14 @@ async def api_app_versions(aid: str):
     return {"versions": state["store"].app_versions(aid)}
 
 
+@app.get("/api/apps/{aid}/conversations")
+async def api_app_conversations(aid: str):
+    """The chats and App Studio sessions that built this app, newest first. App Studio
+    shows them in its Builder pane, so an app made in Chat keeps the conversation that
+    made it (memory.app_conversations)."""
+    return {"conversations": state["store"].app_conversations(aid)}
+
+
 @app.get("/api/apps/{aid}/versions/{version}")
 async def api_app_version(aid: str, version: int):
     v = state["store"].get_app_version(aid, version)
@@ -13620,6 +13628,7 @@ async def _run_chat(cid: str, data: dict):
             # the Settings window that "apps live in the database, use App Studio"
             # was both false and a dead end, so the kind is resolved here.
             checkout = None
+            chat_app = None
             origin = str(data.get("origin") or "")
             if origin.startswith("copilot:"):
                 app_id = origin.split(":", 1)[1]
@@ -13639,10 +13648,25 @@ async def _run_chat(cid: str, data: dict):
                 # conditional and the file starts EMPTY, so a turn that was not an
                 # app build installs nothing.
                 try:
-                    checkout = execmod.new_app_checkout(env.workspace, text[:60])
+                    checkout = execmod.new_app_checkout(env.workspace, _default_app_name(text))
                     env.context += execmod.new_app_note(checkout)
                 except Exception:
                     checkout = None
+                # A follow-up in the chat that built an app is usually about THAT app
+                # ("make the table sortable"), so it is checked out too, and a change
+                # to it lands as its next version instead of a second app.
+                try:
+                    prev = store.app_for_conversation(cid)
+                    if prev:
+                        chat_app = execmod.checkout_app(store, prev["id"], env.workspace)
+                        if chat_app:
+                            env.context += execmod.chat_app_note(chat_app)
+                except Exception:
+                    chat_app = None
+            # every version a turn saves records this chat (App Studio shows it)
+            for _co in (checkout, chat_app):
+                if _co:
+                    _co["conversation_id"] = cid
             # The team door. A forwarded turn has Claude Code's own tools and knew
             # nothing of the person's specialists, so "build me a tool" was built by
             # Claude Code while the toolsmith made for it sat idle. With specialists
@@ -13684,10 +13708,24 @@ async def _run_chat(cid: str, data: dict):
                     return
                 await evsend(ev)
 
+            turn_done = False
+            commits: list[tuple[bool, str]] = []
             try:
                 await execmod.run_task(text, env, _relay, run)
+                turn_done = True
             finally:
                 execmod.stop(run)          # a cancelled turn must not leave it running
+                # Write the app back here, in `finally`: a turn stopped after the app
+                # was written (it was busy with a README) used to install nothing, and
+                # the file sat in builds/ where nothing ever looks again. commit_app
+                # refuses a file that does not read as a whole document.
+                for _co in (chat_app, checkout):
+                    if _co:
+                        # the version says what was asked, as a Studio build's does
+                        commits.append(execmod.commit_app(store, _co, note=f"in Chat: {text[:110]}",
+                                                          finished=turn_done))
+                if any(ok for ok, _ in commits) and not turn_done:
+                    asyncio.ensure_future(state["broadcast"]({"type": "apps"}))
                 if team_token:
                     from . import mcpbridge as _bridge
                     _bridge.close_session(team_token)
@@ -13698,15 +13736,16 @@ async def _run_chat(cid: str, data: dict):
                     # turn resume an older one that never saw it.
                     store.set_exec_session(cid, run.session_id)
                     exec_sid = run.session_id
-            if checkout:
-                # Write the edit back as a new app version, and SAY so — a change
-                # that appears without a word is indistinguishable from a bug.
-                saved, why = execmod.commit_app(store, checkout)
+            # Say what was saved — a change that appears without a word is
+            # indistinguishable from a bug — and offer the door to it in App Studio.
+            for _co, (saved, why) in zip([c for c in (chat_app, checkout) if c], commits):
+                if why:
+                    await evsend({"type": "status", "message": why})
                 if saved:
-                    await evsend({"type": "status", "message": why})
-                    await state["broadcast"]({"type": "apps"})
-                elif why:
-                    await evsend({"type": "status", "message": why})
+                    await evsend({"type": "app_saved", "name": _co["name"],
+                                  "new": not _co.get("app_id"), "conversation_id": cid})
+            if any(ok for ok, _ in commits):
+                await state["broadcast"]({"type": "apps"})
             header = ""
             result = {"content": "".join(collected),
                       "steps": [{"type": "executor", "name": model,
@@ -14421,11 +14460,13 @@ async def _run_build(data: dict):
                 # never install a truncated half-app as a "success"
                 if html and not _validate_app_html(html):
                     if existing:
-                        store.save_app(existing["name"], existing["icon"], existing["description"], html, note=prompt[:120])
+                        store.save_app(existing["name"], existing["icon"], existing["description"], html,
+                                       note=prompt[:120], conversation_id=cid)
                     else:
                         meta_name, meta_desc = _extract_app_meta(res["content"])
                         nm = meta_name or _default_app_name(prompt)
-                        store.save_app(nm, "", meta_desc or prompt[:80], html, note=prompt[:120])
+                        store.save_app(nm, "", meta_desc or prompt[:80], html, note=prompt[:120],
+                                       conversation_id=cid)
                     new = changed_apps()
             return (new[0] if new else None), res
 
@@ -14582,7 +14623,7 @@ async def _run_build(data: dict):
                                         f"installing the app it had already written"})
             out = await toolbox.create_app(app_name, want_icon or (existing or {}).get("icon", ""),
                                            (existing or {}).get("description") or prompt[:160],
-                                           html)
+                                           html, _conv=cid)
             if str(out).startswith("[error]"):
                 await terminal({"type": "build_error", "message": str(out)})
                 return

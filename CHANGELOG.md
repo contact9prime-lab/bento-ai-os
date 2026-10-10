@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.22 — 2026-10-10
+
+**An app built in Chat shows its chat in App Studio.** Reported with two screenshots: Claude Code
+built a stock tracker in Chat, and App Studio's Builder pane showed only its intro text.
+- Every app version now records the conversation it was made in. App Studio's Builder shows that
+  chat for an app built in Chat, with **Open in Chat**, and the Studio's own builds the same way.
+- A follow-up in the same chat (*make the table sortable*) changes that app as its next version,
+  instead of building a second one.
+- The app names itself from its `<title>` (*Volume Compression Tracker*), not the first 60
+  characters of the message. A new app whose name is taken gets a number instead of quietly
+  becoming a new version of somebody else's app.
+- The chat offers **Open in App Studio** when Claude Code, Gemini CLI or Codex builds an app, as it
+  already did for the built-in agent. Version notes say what was asked (*in Chat: …*).
+- A turn stopped after the app was written still installs it. One stopped halfway through writing
+  the file installs nothing, and the chat says where the unfinished file is.
+
 ## 0.6.21 — 2026-10-09
 
 **Settings, looked at tab by tab and tidied.** Every tab was photographed at desktop size and

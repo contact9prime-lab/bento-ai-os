@@ -38,6 +38,25 @@ A build is not a spinner. The Builder panel shows, as it happens:
 Cancel any time with the same button that started the build. If you close and reopen the window
 mid-build, the Studio re-attaches to the run that is still going.
 
+### Built in Chat
+
+You don't have to open App Studio to build an app. Ask for one in Chat and the agent builds it
+there, whichever brain answers: the built-in agent, Claude Code, Gemini CLI or Codex. When the turn
+ends, the app is on your desktop and in App Studio, and the chat offers **Open in App Studio**.
+
+- The app takes its name from its own title (*Volume Compression Tracker*), not from the first
+  words of your message. A name that is taken gets a number.
+- App Studio's Builder pane shows the chat it was built in, with **Open in Chat** to carry on
+  there. Builds made in App Studio show there too, so an app that went back and forth shows both.
+- Ask for a change in the same chat (*make the table sortable*) and it changes that app, as its
+  next version, rather than building a second one.
+- Every version says where it came from (*in Chat: make the table sortable*), and any of them can
+  be restored.
+- If you stop the turn after the app was written, it is still installed. If you stop it halfway
+  through writing the file, nothing is installed, and the chat says where the unfinished file is.
+
+![App Studio showing the chat an app was built in, with Open in Chat](screenshots/studio-built-in-chat.png)
+
 ### Name and icon
 
 The **name** and **icon** fields sit above the prompt and are yours, not the model's. Type a name

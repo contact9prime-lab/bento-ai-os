@@ -430,6 +430,12 @@ function handle(ev){
       card.innerHTML=`<div class="head">${ev.name==='delegate'?avatarImg((ev.args||{}).subagent,'av-tool'):''}<span class="tname2">${esc(ev.name)}</span><span class="targ" title="${esc(argFull)}">${esc(argStr)}</span><span class="tstat run"${ev.pending_approval?'':` data-t0="${Date.now()}"`}>${ev.pending_approval?'awaiting approval':'running'}</span></div><div class="out"></div>`;
       card.querySelector('.head').onclick=()=>card.classList.toggle('open');
       curBody.parentNode.insertBefore(card,curBody); scrollDown(); break;}
+    case 'app_saved':{
+      // An agent CLI wrote an app into its checkout and the server installed it. No
+      // create_app tool ran, so no tool_end offers the door: this event does, through
+      // the same chip (handoffApp), in whichever surface shows the turn.
+      if(typeof handoffApp==='function')handoffApp(ev,_cid,_sk,_cur);
+      break;}
     case 'tool_end':{
       // the model is about to think about this result: the wait moves phase here,
       // not at the next event, or the gap after a tool reads as a frozen "running"
