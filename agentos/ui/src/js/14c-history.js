@@ -33,14 +33,16 @@ var JOB_HIST_WORD={running:'running',ok:'done',partial:'partly done',failed:'fai
 function jobHistRow(r){
   const door=r.run_id?`<button class="endbtn" data-open-run="${esc(r.run_id)}">Open run</button>`
     :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
+  // a run that refreshed an app is read in the app itself
+  const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${esc(r.app_id)}')">Open app</button>`:'';
   return `<div class="item job-hrow ${esc(r.status)}">
     <div class="grow">
       <div class="job-hhead"><span class="job-hst ${esc(r.status)}">${esc(JOB_HIST_WORD[r.status]||r.status)}</span>
-        <b>${esc(r.title)}</b>${r.kind==='prompt'?'<span class="job-hkind">scheduled prompt</span>':''}</div>
+        <b>${esc(r.title)}</b>${r.kind==='prompt'?`<span class="job-hkind">${r.app_name?'for '+esc(r.app_name):'scheduled prompt'}</span>`:''}</div>
       <div class="sub">${esc(jobHistWhen(r.started_at))}${r.seconds!=null&&r.status!=='skipped'?' · took '+esc(jobHistTook(r.seconds)):''} · ${esc(r.started_by)}${
         r.tokens?' · '+r.tokens.toLocaleString()+' tokens':''}</div>
       ${r.said?`<div class="sub job-hsaid">${esc(r.said)}</div>`:''}
-    </div>${door}</div>`;
+    </div>${app}${door}</div>`;
 }
 async function renderJobHistory(body){
   const f=JOBS.hist||{};

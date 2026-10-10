@@ -50,7 +50,9 @@ function handoffFor(name,args){
       return {app:'automations',label:'Open in Missions',what:nm||'the routine',note:'under Routines'};
     case 'schedule_task':
       return {app:'tasks',label:'Open in Missions',
-              what:String(args.prompt||'the task').slice(0,60),note:'it runs on its own from now on'};
+              what:String(args.prompt||'the task').slice(0,60),
+              note:args.app?'for '+String(args.app).slice(0,40)+', it runs on its own from now on'
+                :'it runs on its own from now on'};
     default:
       return null;
   }

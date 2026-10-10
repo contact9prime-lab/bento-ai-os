@@ -106,6 +106,7 @@ def history(store, task_id: str = "", mission: str = "", limit: int = 80,
     now = now if now is not None else time.time()
     tasks = {t["id"]: t for t in store.list_tasks()}
     flows = {f["name"]: f for f in store.list_flows()}
+    apps = {a["id"]: a["name"] for a in store.list_apps()}
     rows: list[dict] = []
     task = tasks.get(task_id) if task_id else None
 
@@ -146,6 +147,8 @@ def history(store, task_id: str = "", mission: str = "", limit: int = 80,
             continue
         if mission and (r.get("flow") or "") != mission:
             continue
+        # a schedule that keeps an app fresh says which app, here as on the Schedule tab
+        app_id = (tasks.get(r.get("task_id") or "") or {}).get("app_id") or ""
         rows.append({"kind": "mission" if r.get("flow") else "prompt", "id": r["id"],
                      "mission": r.get("flow") or "",
                      "title": r.get("flow") or _said(r.get("prompt"), 90) or "(a scheduled prompt)",
@@ -156,6 +159,7 @@ def history(store, task_id: str = "", mission: str = "", limit: int = 80,
                      "seconds": _secs(r.get("started_at"), r.get("finished_at")),
                      "status": _status(r.get("status"), r.get("started_at"), now),
                      "said": _said(r.get("result")), "tokens": 0,
+                     "app_id": app_id, "app_name": apps.get(app_id, ""),
                      "run_id": "", "conversation_id": r.get("conversation_id") or ""})
 
     rows.sort(key=lambda x: float(x.get("started_at") or 0), reverse=True)
@@ -183,6 +187,9 @@ def schedules(store, now: float | None = None) -> list[dict]:
     by_task: dict[str, list] = {}
     for r in store.task_runs(limit=2000, since=now - 30 * 86400):
         by_task.setdefault(r.get("task_id") or "", []).append(r)
+    # the app a schedule is for, by name, so Missions, App Studio and the terminal say it;
+    # one whose app was deleted keeps running and says that instead of naming nothing
+    apps = {a["id"]: a["name"] for a in store.list_apps()}
     for t in store.list_tasks():
         runs = by_task.get(t["id"], [])
         last = runs[0] if runs else None
@@ -195,8 +202,30 @@ def schedules(store, now: float | None = None) -> list[dict]:
                     "last_at": (last.get("finished_at") or last.get("started_at")) if last else None,
                     "last_said": _said((last or {}).get("result"), 160),
                     "last_run_id": (last or {}).get("run_id") or "",
-                    "last_conversation": (last or {}).get("conversation_id") or ""})
+                    "last_conversation": (last or {}).get("conversation_id") or "",
+                    "app_id": t.get("app_id") or "",
+                    "app_name": apps.get(t.get("app_id") or "", ""),
+                    "app_gone": bool(t.get("app_id")) and (t.get("app_id") not in apps)})
     return out
+
+
+def schedules_text(rows: list[dict], app: str = "") -> str:
+    """The Schedule tab for a terminal: one line a schedule, the app it is for under it."""
+    if app:
+        want = app.strip().lower()
+        rows = [r for r in rows if (r.get("app_name") or "").lower() == want or r.get("app_id") == app]
+    if not rows:
+        return ("nothing is scheduled for that app." if app else
+                "nothing is scheduled. Ask in Chat, or add one in Missions → Schedule.")
+    out = []
+    for r in rows:
+        state = "" if r.get("enabled") else "  (off)"
+        out.append(f"{r['id']}  {r.get('words') or '':<24} {(r.get('title') or '')[:70]}{state}")
+        if r.get("app_gone"):
+            out.append("      for an app that was deleted")
+        elif r.get("app_name"):
+            out.append(f"      for the app {r['app_name']}")
+    return "\n".join(out)
 
 
 def text(h: dict) -> str:

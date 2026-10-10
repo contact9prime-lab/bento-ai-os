@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.6.23 — 2026-10-10
+
+**A schedule for an app belongs to that app, and Chat, App Studio and Missions all show it.**
+Asked with a screenshot of App Studio's Builder: *Can you update it every 10 mins* got a line
+naming a build folder and a spending ceiling, a full rebuild, and no schedule anywhere.
+- The Builder says *Claude Code is changing it. This build can spend up to $25.00.* instead of a
+  folder path, and names the brain as *Claude Code on opus*.
+- App Studio can set up a schedule for the app you are changing, on either brain. You approve it
+  on the usual card, and the Builder says *Scheduled for this app* with **Open in Missions**.
+- A new **Schedules** tab in App Studio, beside Versions and Permissions, lists what keeps the
+  app up to date. **Missions → Schedule** shows the same rows with *for <app>* and **Open app**.
+- In Chat, Claude Code, Gemini CLI and Codex can now set up a schedule too (they could only draft
+  a whole mission), and the chat offers **Open in Missions** for it, as it already did for the
+  built-in agent. Name the app and the schedule is that app's.
+- A schedule's run can save into its app's data (`update_app_data`), so *update it every 10
+  minutes* works while the app is closed. An open app hears about it and reloads. A run that
+  belongs to an app can change only that app's data.
+- An app's own `appTool('schedule_task')` is filed under that app, and asking for the same
+  schedule twice keeps one.
+- `bento job schedules [APP]` lists schedules and the app each is for. The terminal app's tasks
+  tab names the app too.
+- A change in App Studio builds from the app's current version. It used to reuse the file left
+  by an earlier build in a folder named after the app's old name, so a change made in Chat since
+  then could be built over.
+
+**An app's AI answers on your agent's brain, and every step is the app's permission.** Asked as:
+"the app may call the agent, the agent may use executors and MCP, and the rest follows the
+permission system; the app has its own permissions too."
+- `appLLM`, `appLLM.stream`, `appChat` and `appAgent` (and the ✦ assistant built on it) asked
+  only for a provider model, so on a machine whose brain is Claude Code every one of them said
+  "no model configured". They now answer on the machine's brain: Claude Code or Gemini CLI with
+  none of their own tools switched on, or your provider model. On Codex, which keeps a shell of
+  its own, apps answer on the provider model or say why they can't.
+- `appAgent` on Claude Code or Gemini CLI thinks there and does everything through this OS: the
+  tools it can see are the ones the app may use, MCP servers included, and each call goes
+  through the same gate as a chat turn, as the app.
+- Calling the agent is now the app's own permission (`agent.invoke agent:main`). Before, an app
+  with no grant could start the agent, and only the agent's steps were asked. The consent screen
+  lists it for an app that uses `appAgent` or the ✦ assistant, and an app that never got it asks
+  once on the card, with Remember.
+- Which brain an app reaches is a decision too (`model.use model:<brain>`), open unless you deny
+  it for that app. Every one of these is in the ledger under the app, and the spend is in Usage
+  under the app.
+- A quarantined app is held on its AI doors too. `appLLM` used to be checked there only because it
+  went through `/api/tool`.
+- `appContext()` says which brain the app's AI answers on, and why not when nothing can.
+- The consent screen no longer proposes `tool:appAgent*` or `tool:appChat*` from an app's
+  activity: those are the runtime's names for the two permissions above.
+
+**Found by walking the whole thing through in a browser** (a stand-in for Claude Code, the real
+server and page):
+- A new app built in App Studio is named by its `<title>`, as one built in Chat already was. It
+  was named after the first 40 characters of the request.
+- The App Studio approval card says *App Studio, for Volume Tracker* instead of *another chat*.
+- The *approval needed* toast goes away once the card is answered. Its Review button stayed up
+  and opened nothing.
+- Missions → History names the app a scheduled run refreshed, with **Open app**, where it said
+  *scheduled prompt*.
+- The activity line for a schedule reads *every 10 min: …* instead of the raw arguments.
+
 ## 0.6.22 — 2026-10-10
 
 **An app built in Chat shows its chat in App Studio.** Reported with two screenshots: Claude Code

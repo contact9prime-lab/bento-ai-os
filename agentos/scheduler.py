@@ -71,31 +71,54 @@ class Scheduler(usersmod.Scoped):
         self._file_state: dict = {}   # trigger task id -> {path: mtime} snapshot
         self._idle_fired: dict = {}   # trigger task id -> last-turn ts it fired against
 
+    def _same(self, prompt: str, kind: str, app_id: str, **when) -> dict | None:
+        """A schedule that already does exactly this. A Studio build runs in stages and
+        an app can call appTool('schedule_task') every time it opens, so the same
+        request arrives more than once; it should be one row in Missions, not five."""
+        for t in self.store.list_tasks():
+            if (t.get("prompt") == prompt and t.get("schedule_type") == kind
+                    and (t.get("app_id") or "") == (app_id or "") and not t.get("flow")
+                    and all(t.get(k) == v for k, v in when.items())):
+                return t
+        return None
+
     def create_task(self, prompt: str, schedule_type: str, interval_minutes: int = 0,
-                    at_time: str = "", delay_minutes: int = 0, weekday: int = -1) -> str:
+                    at_time: str = "", delay_minutes: int = 0, weekday: int = -1,
+                    app_id: str = "") -> str:
         now = time.time()
+        for_app = " for this app" if app_id else ""
         if schedule_type == "weekly":
             at_time = at_time or "09:00"
             wd = int(weekday) % 7 if weekday is not None and int(weekday) >= 0 else 0
-            tid = self.store.add_task(prompt, "weekly", None, at_time,
-                                      _next_weekly(at_time, wd, now), weekday=wd)
-            return f"scheduled task {tid}: every {WEEKDAYS[wd].capitalize()} at {at_time}"
+            old = self._same(prompt, "weekly", app_id, at_time=at_time, weekday=wd)
+            tid = old["id"] if old else self.store.add_task(
+                prompt, "weekly", None, at_time, _next_weekly(at_time, wd, now), weekday=wd,
+                app_id=app_id)
+            return (f"{'already scheduled' if old else 'scheduled'} task {tid}{for_app}: "
+                    f"every {WEEKDAYS[wd].capitalize()} at {at_time}")
         if schedule_type == "interval":
             interval = max(1, int(interval_minutes)) * 60
-            tid = self.store.add_task(prompt, "interval", interval, None, now + interval)
-            return f"scheduled task {tid}: every {interval // 60} min"
+            old = self._same(prompt, "interval", app_id, interval_seconds=interval)
+            tid = old["id"] if old else self.store.add_task(
+                prompt, "interval", interval, None, now + interval, app_id=app_id)
+            return (f"{'already scheduled' if old else 'scheduled'} task {tid}{for_app}: "
+                    f"every {interval // 60} min")
         if schedule_type == "daily":
             at_time = at_time or "09:00"
-            tid = self.store.add_task(prompt, "daily", None, at_time, _next_daily(at_time, now))
-            return f"scheduled task {tid}: daily at {at_time}"
+            old = self._same(prompt, "daily", app_id, at_time=at_time)
+            tid = old["id"] if old else self.store.add_task(
+                prompt, "daily", None, at_time, _next_daily(at_time, now), app_id=app_id)
+            return (f"{'already scheduled' if old else 'scheduled'} task {tid}{for_app}: "
+                    f"daily at {at_time}")
         delay = max(0, int(delay_minutes)) * 60
-        tid = self.store.add_task(prompt, "once", None, None, now + delay)
-        return f"scheduled task {tid}: once, in {delay // 60} min"
+        tid = self.store.add_task(prompt, "once", None, None, now + delay, app_id=app_id)
+        return f"scheduled task {tid}{for_app}: once, in {delay // 60} min"
 
     # ---- triggers (event-driven tasks) --------------------------------------
 
     def create_trigger(self, trigger: str, prompt: str, match: str = "", path: str = "",
-                       glob: str = "", minutes: float = 30, cooldown_secs: int = 300) -> str:
+                       glob: str = "", minutes: float = 30, cooldown_secs: int = 300,
+                       app_id: str = "") -> str:
         trigger = (trigger or "").strip()
         if trigger not in TRIGGER_KINDS:
             return f"[error] trigger must be one of {', '.join(TRIGGER_KINDS)}"
@@ -116,7 +139,7 @@ class Scheduler(usersmod.Scoped):
             conf["minutes"] = max(1, float(minutes or 30))
         tid = self.store.add_task(prompt, "trigger", None, None, None, trigger=trigger,
                                   trigger_config=json.dumps(conf),
-                                  cooldown_secs=max(0, int(cooldown_secs)))
+                                  cooldown_secs=max(0, int(cooldown_secs)), app_id=app_id)
         detail = conf.get("match") or conf.get("path") or \
             (f"{conf['minutes']:g} min" if trigger == "idle" else "session start")
         return f"trigger {tid}: on {trigger} ({detail}), cooldown {int(cooldown_secs)}s"
@@ -219,7 +242,8 @@ class Scheduler(usersmod.Scoped):
     # ---- execution ----------------------------------------------------------
 
     async def run_prompt(self, prompt: str, origin: str = "schedule",
-                         title: str = "", space_id: str = "") -> tuple[str, str]:
+                         title: str = "", space_id: str = "",
+                         app_id: str = "") -> tuple[str, str]:
         """The background-chat path: one headless agent turn, persisted as a
         conversation tagged with its origin so OS-initiated turns are countable.
         A job that belongs to a project runs inside it, so what it learns and
@@ -248,12 +272,15 @@ class Scheduler(usersmod.Scoped):
                 # do, so a forwarder forwards them too — otherwise "forward
                 # everything" would quietly exclude everything that runs unattended.
                 result_text, _run = await execmod.forward(
-                    engine, prompt, self.cfg, execmod.default_workspace(self.cfg))
+                    engine, prompt, self.cfg, execmod.default_workspace(self.cfg),
+                    app={"toolbox": self.toolbox, "app_id": app_id,
+                         "approver": approver} if app_id else None)
                 result_text = result_text or "(no output)"
                 steps = 1
             else:
                 agent = Agent(self.cfg, self.toolbox, model, emit, approver,
                               surface="task", space_id=space_id)
+                agent.app_id = app_id
                 result = await agent.run([{"role": "user", "content": prompt}])
                 result_text = result["content"] or "(no output)"
                 tokens = result.get("tokens") or tokens
@@ -341,9 +368,16 @@ class Scheduler(usersmod.Scoped):
                   f"deliverable exists. If it produces findings, call `save_report` to save an HTML report "
                   f"(and set to_telegram=true to deliver it), or use `telegram_send`/`notify` to alert the "
                   f"user. Don't stop after only gathering data.]\n\n{task['prompt']}")
+        app = self.store.get_app(task.get("app_id") or "") if task.get("app_id") else None
+        if app:
+            prompt += (f"\n\n[This schedule belongs to the app \"{app['name']}\". To keep it "
+                       f"up to date, save what you found with update_app_data (name "
+                       f"\"{app['name']}\", a key and the value); the app shows it the next "
+                       f"time it is opened. read_app_data shows what it holds now.]")
         cid, result_text = await self.run_prompt(prompt, origin=origin,
                                                  title=title or f"⏱ {task['prompt'][:40]}",
-                                                 space_id=task.get("space_id") or "")
+                                                 space_id=task.get("space_id") or "",
+                                                 **({"app_id": app["id"]} if app else {}))
 
         self._reschedule(task, result_text)
         self.store.task_run_finish(trid, "failed" if result_text.startswith("[error]") else "ok",

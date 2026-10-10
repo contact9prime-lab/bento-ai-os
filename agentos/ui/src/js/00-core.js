@@ -165,6 +165,7 @@ function toast(t,act){
   while(box.children.length>5)box.lastChild.remove();   // never stack unbounded
   if(typeof Motion!=='undefined')Motion.run(d,[{transform:'translateX(40px)',opacity:0},{transform:'none',opacity:1}],{duration:220,easing:'cubic-bezier(.22,1,.36,1)'});
   h=setTimeout(leave,ms);
+  return d;
 }
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
 

@@ -57,6 +57,30 @@ ends, the app is on your desktop and in App Studio, and the chat offers **Open i
 
 ![App Studio showing the chat an app was built in, with Open in Chat](screenshots/studio-built-in-chat.png)
 
+### Keep it up to date on a schedule
+
+*Update it every 10 minutes* can mean two things, and an app can do both:
+
+- **While it is open**, the app refreshes itself. That is part of the app's own code.
+- **While it is closed**, a schedule runs on its own and saves what it found into the app's data.
+  The app shows it the next time it opens, and an open app hears it at once.
+
+A schedule for an app belongs to that app. Ask for one in App Studio's Builder, in the chat that
+built the app, or let the app make it itself, and it is the same schedule in three places:
+
+- App Studio has a **Schedules** tab beside Versions and Permissions, with each schedule's last run.
+- **Missions → Schedule** lists it with *for Volume Compression Tracker* and an **Open app** button.
+- The chat and the Builder say *Scheduled for this app* with **Open in Missions**.
+
+A schedule always asks you first, on the usual approval card, because it keeps running after the
+chat or the build has ended. Asking for the same schedule twice keeps one. A schedule whose app
+you later delete keeps running and says *for an app that was deleted*, so you can remove it.
+
+In the terminal, `bento job schedules` lists them, and `bento job schedules "Volume Compression
+Tracker"` lists one app's.
+
+![App Studio's Schedules tab for an app, after asking it to update every 10 minutes](screenshots/studio-schedules.png)
+
 ### Name and icon
 
 The **name** and **icon** fields sit above the prompt and are yours, not the model's. Type a name
@@ -160,6 +184,40 @@ redesign that would break any regex.
 Every AI call is authenticated as the app and gated by its permissions (`tool:llm_generate`), so
 the consent screen tells you which of your apps can reach the model. Give every AI feature a
 loading state and a readable fallback for when no model is configured.
+
+#### Which brain answers, and what it may do
+
+An app's AI is your agent's brain, whatever that is: a model from Settings → AI providers, or
+Claude Code or Gemini CLI. On those two, the app's question runs with none of their own tools
+switched on, and the app's own `system` text replaces theirs. Codex keeps a shell of its own, so
+on a Codex machine an app answers on your provider model, or `appContext()` says why it can't
+(`ai_ready` and `ai_note`).
+
+The app is who's asking, every time, and the permission system decides:
+
+| The app does | It needs | On the consent screen |
+|---|---|---|
+| `appLLM`, `appLLM.stream`, `appChat` | `tool.use tool:llm_generate` | uses the AI model inside the app |
+| `appAgent`, the ✦ assistant | `agent.invoke agent:main` | asks your agent to do things inside the app |
+| each tool the agent then uses, MCP tools included | that tool's own permission | asked on the card when not granted |
+| any of these, on a given brain | `model.use model:<brain>` (open unless you deny it) | |
+
+A permission the app doesn't hold asks you on the usual card, which names the app and offers
+Remember. Each decision is a row in Permissions → Ledger under the app's name, and what its AI
+spends is in Usage under the app. To stop one app reaching one brain, add a deny for
+`model.use model:claude-code` (or the model's name) to that app in Permissions.
+
+### Run on a schedule
+`appTool('schedule_task', {prompt, schedule_type: 'interval', interval_minutes: 10})` makes a
+schedule that belongs to the app calling it. Its runs can save into the app's data with the
+`update_app_data` tool (one key at a time, the rest kept), which the app reads with
+`appData.get()`. While the app is open it also gets an event when that happens:
+
+```js
+window.addEventListener('appdata', e => reload());   // e.detail.key names what changed
+```
+
+A schedule's run can change only its own app's data. Changing another app's needs a grant.
 
 ### Use the REST API and real-time streams
 Apps can also call the [REST API](api-reference.md) directly (`/api/system`, `/api/chat`, …), poll on
