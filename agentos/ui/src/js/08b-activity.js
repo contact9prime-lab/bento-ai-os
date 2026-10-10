@@ -57,6 +57,14 @@ function actDetail(name, args) {
   if (name === 'Bash' || name === 'run_command') return cut(s('description', 'command'), 90);
   // an app asking the agent (appAgent / its ✦ assistant): what it asked, in its words
   if (name === 'appAgent') return cut('ask your agent: ' + s('prompt'), 110);
+  // a schedule, in words: how often and what it will do
+  if (name === 'schedule_task') {
+    const every = args.schedule_type === 'interval' && args.interval_minutes ? 'every ' + args.interval_minutes + ' min'
+      : args.schedule_type === 'daily' ? 'daily at ' + (args.at_time || '09:00')
+      : args.schedule_type === 'weekly' ? 'weekly at ' + (args.at_time || '09:00')
+      : args.schedule_type === 'once' ? 'once, in ' + (args.delay_minutes || 0) + ' min' : s('schedule_type');
+    return cut(every + ': ' + s('prompt'), 120);
+  }
   if (name === 'Glob' || name === 'Grep' || name === 'search_files') {
     const pat = s('pattern', 'query'), where = s('path', 'glob');
     return cut(pat + (where ? ' in ' + base(where) : ''), 90);

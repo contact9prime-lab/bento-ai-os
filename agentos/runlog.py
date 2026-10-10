@@ -106,6 +106,7 @@ def history(store, task_id: str = "", mission: str = "", limit: int = 80,
     now = now if now is not None else time.time()
     tasks = {t["id"]: t for t in store.list_tasks()}
     flows = {f["name"]: f for f in store.list_flows()}
+    apps = {a["id"]: a["name"] for a in store.list_apps()}
     rows: list[dict] = []
     task = tasks.get(task_id) if task_id else None
 
@@ -146,6 +147,8 @@ def history(store, task_id: str = "", mission: str = "", limit: int = 80,
             continue
         if mission and (r.get("flow") or "") != mission:
             continue
+        # a schedule that keeps an app fresh says which app, here as on the Schedule tab
+        app_id = (tasks.get(r.get("task_id") or "") or {}).get("app_id") or ""
         rows.append({"kind": "mission" if r.get("flow") else "prompt", "id": r["id"],
                      "mission": r.get("flow") or "",
                      "title": r.get("flow") or _said(r.get("prompt"), 90) or "(a scheduled prompt)",
@@ -156,6 +159,7 @@ def history(store, task_id: str = "", mission: str = "", limit: int = 80,
                      "seconds": _secs(r.get("started_at"), r.get("finished_at")),
                      "status": _status(r.get("status"), r.get("started_at"), now),
                      "said": _said(r.get("result")), "tokens": 0,
+                     "app_id": app_id, "app_name": apps.get(app_id, ""),
                      "run_id": "", "conversation_id": r.get("conversation_id") or ""})
 
     rows.sort(key=lambda x: float(x.get("started_at") or 0), reverse=True)

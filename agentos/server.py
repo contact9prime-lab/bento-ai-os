@@ -14534,8 +14534,13 @@ async def _run_build(data: dict):
                 # be open and drew it inside that unrelated conversation.
                 uid = usersmod.current() if usersmod.enabled() else ""
 
+                # and says where it came from: a card that read "another chat" sent the
+                # person looking for a chat that was App Studio's build
+                where = (f"App Studio, for {existing['name']}" if existing else "App Studio")
+
                 async def to_studio(ev):
-                    await _approval_send({"uid": uid}, {**ev, "conversation_id": cid})
+                    await _approval_send({"uid": uid}, {**ev, "conversation_id": cid,
+                                                        "where": where})
                 return bool(await request_approval(name, args, reason, offer=offer,
                                                    evsend=to_studio))
             return False
@@ -14802,6 +14807,13 @@ async def _run_build(data: dict):
                 await bcast({"type": "build_error_note",
                              "message": f"lost contact with the executor ({relay_failed}) — "
                                         f"installing the app it had already written"})
+            if not existing and not want_name:
+                # a new app is named by its own <title>, as one built in Chat is: the first
+                # 40 characters of the request named it "Build a volume tracker for INFY
+                # and AAPL" in the live run. A name already taken gets a number.
+                titled = execmod._title_of(html)
+                if titled:
+                    app_name = execmod._unique_app_name(store, titled)
             out = await toolbox.create_app(app_name, want_icon or (existing or {}).get("icon", ""),
                                            (existing or {}).get("description") or prompt[:160],
                                            html, _conv=cid)

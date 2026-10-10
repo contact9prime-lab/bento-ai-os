@@ -5157,6 +5157,7 @@ function toast(t,act){
   while(box.children.length>5)box.lastChild.remove();   // never stack unbounded
   if(typeof Motion!=='undefined')Motion.run(d,[{transform:'translateX(40px)',opacity:0},{transform:'none',opacity:1}],{duration:220,easing:'cubic-bezier(.22,1,.36,1)'});
   h=setTimeout(leave,ms);
+  return d;
 }
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
 
@@ -13215,6 +13216,14 @@ function actDetail(name, args) {
   if (name === 'Bash' || name === 'run_command') return cut(s('description', 'command'), 90);
   // an app asking the agent (appAgent / its ✦ assistant): what it asked, in its words
   if (name === 'appAgent') return cut('ask your agent: ' + s('prompt'), 110);
+  // a schedule, in words: how often and what it will do
+  if (name === 'schedule_task') {
+    const every = args.schedule_type === 'interval' && args.interval_minutes ? 'every ' + args.interval_minutes + ' min'
+      : args.schedule_type === 'daily' ? 'daily at ' + (args.at_time || '09:00')
+      : args.schedule_type === 'weekly' ? 'weekly at ' + (args.at_time || '09:00')
+      : args.schedule_type === 'once' ? 'once, in ' + (args.delay_minutes || 0) + ' min' : s('schedule_type');
+    return cut(every + ': ' + s('prompt'), 120);
+  }
   if (name === 'Glob' || name === 'Grep' || name === 'search_files') {
     const pat = s('pattern', 'query'), where = s('path', 'glob');
     return cut(pat + (where ? ' in ' + base(where) : ''), 90);
@@ -13557,7 +13566,9 @@ function buildApprovalBox(ev,cur){
   const o=ev.offer, standing=o&&o.label;
   const rem=!o?'':standing?`<button class="deny always" data-rem="always">${esc(o.label)}</button>`
     :`<span class="ap-rem"><span class="ap-remlbl">Remember</span>${o.conversation_id?'<button class="deny always" data-rem="chat">This chat</button>':''}<button class="deny always" data-rem="hour">1 hour</button><button class="deny always" data-rem="always">Always</button></span>`;
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
+  // where it came from: App Studio says so (ev.where); a chat you aren't looking at says that
+  const from=ev.where?' · '+esc(ev.where):cur?'':' · another chat';
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${from}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
@@ -13870,7 +13881,8 @@ function handle(ev){
       // to the toolsmith that waited five minutes on a question nobody could see.
       requestAnimationFrame(()=>{if(APPROVALS[ev.id])approvalHome(ev.id)});
       approvalWatch();
-      toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
+      { const tt=toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
+        if(tt)tt.dataset.approval=ev.id; }
       scrollDown(); break;}
     case 'error':{
       ERRED[ev.conversation_id||_cid||'']=1;   // this turn is not a reply, whatever ends it
@@ -13996,6 +14008,8 @@ function handle(ev){
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{
       delete APPROVALS[ev.id];
+      // its "approval needed" toast goes too: a Review that opens nothing is a dead button
+      document.querySelectorAll('#toasts .toast').forEach(t=>{if(t.dataset.approval===String(ev.id))t.remove()});
       // answered somewhere else (or nobody answered): this screen's copy says so and
       // stops offering buttons — a floating one leaves after a moment
       // one page can draw the same card twice (Chat and a floating copy), so all of them
@@ -22149,14 +22163,16 @@ var JOB_HIST_WORD={running:'running',ok:'done',partial:'partly done',failed:'fai
 function jobHistRow(r){
   const door=r.run_id?`<button class="endbtn" data-open-run="${esc(r.run_id)}">Open run</button>`
     :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
+  // a run that refreshed an app is read in the app itself
+  const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${esc(r.app_id)}')">Open app</button>`:'';
   return `<div class="item job-hrow ${esc(r.status)}">
     <div class="grow">
       <div class="job-hhead"><span class="job-hst ${esc(r.status)}">${esc(JOB_HIST_WORD[r.status]||r.status)}</span>
-        <b>${esc(r.title)}</b>${r.kind==='prompt'?'<span class="job-hkind">scheduled prompt</span>':''}</div>
+        <b>${esc(r.title)}</b>${r.kind==='prompt'?`<span class="job-hkind">${r.app_name?'for '+esc(r.app_name):'scheduled prompt'}</span>`:''}</div>
       <div class="sub">${esc(jobHistWhen(r.started_at))}${r.seconds!=null&&r.status!=='skipped'?' · took '+esc(jobHistTook(r.seconds)):''} · ${esc(r.started_by)}${
         r.tokens?' · '+r.tokens.toLocaleString()+' tokens':''}</div>
       ${r.said?`<div class="sub job-hsaid">${esc(r.said)}</div>`:''}
-    </div>${door}</div>`;
+    </div>${app}${door}</div>`;
 }
 async function renderJobHistory(body){
   const f=JOBS.hist||{};

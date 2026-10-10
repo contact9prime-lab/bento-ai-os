@@ -49,6 +49,17 @@ permission system; the app has its own permissions too."
 - The consent screen no longer proposes `tool:appAgent*` or `tool:appChat*` from an app's
   activity: those are the runtime's names for the two permissions above.
 
+**Found by walking the whole thing through in a browser** (a stand-in for Claude Code, the real
+server and page):
+- A new app built in App Studio is named by its `<title>`, as one built in Chat already was. It
+  was named after the first 40 characters of the request.
+- The App Studio approval card says *App Studio, for Volume Tracker* instead of *another chat*.
+- The *approval needed* toast goes away once the card is answered. Its Review button stayed up
+  and opened nothing.
+- Missions → History names the app a scheduled run refreshed, with **Open app**, where it said
+  *scheduled prompt*.
+- The activity line for a schedule reads *every 10 min: …* instead of the raw arguments.
+
 ## 0.6.22 — 2026-10-10
 
 **An app built in Chat shows its chat in App Studio.** Reported with two screenshots: Claude Code

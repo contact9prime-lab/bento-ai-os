@@ -198,6 +198,29 @@ def test_missions_the_studio_and_the_terminal_show_the_app(tmp_path):
     assert "args.app?'for '" in hand
 
 
+def test_the_history_says_which_app_a_run_refreshed(tmp_path):
+    """Missions → History said "scheduled prompt" for a run that refreshed an app, so the
+    run and the app it fed were two places with nothing between them."""
+    _, store, tb, _ = _world(tmp_path)
+    aid = store.save_app("Volume Tracker", "", "", APP.format("Volume Tracker"))
+    tb.scheduler.create_task("fetch today's volumes", "interval", 10, app_id=aid)
+    t = next(x for x in store.list_tasks() if x["app_id"] == aid)
+    store.task_run_finish(store.task_run_start(t), "ok", "saved 'latest'")
+    row = runlog.history(store)["runs"][0]
+    assert (row["app_id"], row["app_name"]) == (aid, "Volume Tracker")
+    hist = (JS / "14c-history.js").read_text()
+    assert "r.app_name?'for '+esc(r.app_name)" in hist and "taskOpenApp('${esc(r.app_id)}')" in hist
+
+
+def test_an_answered_approval_takes_its_toast_with_it():
+    """The toast's Review stayed up after the card was answered, opening nothing."""
+    ws = (JS / "09-websocket.js").read_text()
+    assert "tt.dataset.approval=ev.id" in ws
+    res = ws[ws.index("case 'approval_resolved':"):][:400]
+    assert "t.dataset.approval===String(ev.id)" in res
+    core = (JS / "00-core.js").read_text()
+    assert "  return d;\n}" in core[core.index("function toast(t,act)"):][:3200]
+
 def test_an_open_app_hears_that_its_data_changed():
     assert "e.data.agentos !== 'app_data'" in SERVER and "e.source !== parent" in SERVER
     assert "new CustomEvent('appdata'" in SERVER
@@ -219,7 +242,14 @@ def test_app_studio_sets_up_a_schedule_for_the_app_it_is_changing():
     assert 'if name == "schedule_task":' in build and "await request_approval(name, args" in build, \
         "a schedule outlives the build: the person says yes"
     # found live: with no conversation the card was drawn inside whatever chat was open
-    assert '{**ev, "conversation_id": cid}' in build and "evsend=to_studio" in build
+    assert '"conversation_id": cid' in build and "evsend=to_studio" in build
+    assert '"where": where' in build and 'f"App Studio, for {existing[\'name\']}"' in build
+    ws = (ROOT / "agentos/ui/src/js/09-websocket.js").read_text()
+    assert "ev.where?' · '+esc(ev.where)" in ws
+    act = (ROOT / "agentos/ui/src/js/08b-activity.js").read_text()
+    assert "name === 'schedule_task'" in act
+    # a new app built in App Studio is named by its <title>, as one built in Chat is
+    assert "titled = execmod._title_of(html)" in build and "execmod._unique_app_name(store, titled)" in build
     assert 'build_app_id = (existing or {}).get("id", "")' in build
     assert 'tf.append("schedule_task")' in build and "agent.app_id = build_app_id" in build
     assert 'tools=("schedule_task",)' in build and "mcpbridge.close_session(door)" in build
