@@ -157,7 +157,7 @@
 .acct-uses label{display:inline-flex;align-items:center;gap:6px;min-height:var(--tap,32px);cursor:pointer}
 .acct-uses input{width:18px;height:18px}
 .acct-adv{margin:6px 0 4px}
-.acct-adv>summary{cursor:pointer;color:var(--mut);padding:8px 0;min-height:var(--tap,32px);display:flex;align-items:center}
+.acct-adv>summary{cursor:pointer;color:var(--mut);padding:8px 16px;min-height:var(--tap,32px);display:flex;align-items:center}
 .acct-uri{font-size:var(--fs-sm);word-break:break-all;user-select:all}
 .acct-client{margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
 .acct-why a{color:var(--acc)}

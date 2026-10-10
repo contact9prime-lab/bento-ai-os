@@ -21,15 +21,21 @@ brain, hands or permission is a row in the ledger (Logs, or `bento audit`).
 
 ## AI providers: the brains
 
-![Settings → AI providers: the lead agent's brain, then every provider with its key and models, and the AI agents installed on this machine](screenshots/settings-brains.png)
+![Settings → AI providers: the lead agent's brain, then the cloud providers as one line each until you switch one on](screenshots/settings-brains.png)
 
 The first row is the lead agent's brain. Below it are all the brains this machine has:
 
-- **Cloud providers**, each with its key: Anthropic, OpenAI, OpenRouter, Google (Gemini)
-  and any OpenAI-compatible server.
 - **Local models** through Ollama.
-- **AI agents installed here**: Claude Code, Gemini CLI, Codex, Hermes and OpenClaw, each
-  with its install offer and what it can do. Pick one as the lead agent's brain.
+- **Cloud providers**: Anthropic, OpenAI, OpenRouter, Google (Gemini) and any
+  OpenAI-compatible server. One you haven't switched on is a single line. Switch it on and
+  its key and model list open under it.
+- **AI agents installed here**: the ones on this machine with their settings, then one row
+  for each one that isn't, with **Install** and **Docs**. The ⓘ on the row shows the exact
+  command Install runs. Pick one as the lead agent's brain.
+
+Settings save themselves. Flip a switch, pick from a list or leave a box, and the header says
+**Saved**. Cards that talk to another service, like a channel or a mail account, keep their
+own **Save** and **Test**.
 
 ### Claude Code, Gemini CLI and Codex
 
@@ -187,7 +193,9 @@ relative path taken from the workspace, and `..` and symlinks resolved. A folder
 ![Settings → Agents: each specialist with its brain, hands, permissions, skills, who it may ask and its missions](screenshots/settings-agents.png)
 
 The **Lead agent** group names your agent, sets its **look** and its hands; its brain is
-chosen in AI providers. Below it, **Your agents** shows each specialist on one card:
+chosen in AI providers. **How it works** holds the rest: the workspace, the most steps a turn
+may take, what happens to a conversation that outgrows the model, and the model App Studio
+builds with. Below them, **Your agents** shows each specialist on one card:
 
 - **Look**: its character, the same one in Chat, the Office and the Crew stage. **Change…**
   opens the editor, **✦ Describe it** opens it on the box where you say what you want in
@@ -208,13 +216,13 @@ one.
 
 Two tabs sit beside Agents:
 
-- **Team & Communications** has everything about agents working together:
-  - each agent's own provider;
-  - whether agents may message each other (ask me, swarm, democracy or off);
-  - free talk and the log of every agent-to-agent conversation;
-  - the limits, and who may ask whom;
-  - linked teams, and messages with the people on them;
-  - the community of machines, new machines, and devices without Bento.
+- **Team & Communications** has everything about agents working together, in this order:
+  - **Models**: each agent's own provider;
+  - **Asking each other**: ask me, swarm, democracy or off, who may ask whom, and the limits;
+  - **Free talk**, and the log of every agent-to-agent conversation;
+  - **Linked teams**;
+  - **Community**: the community of machines, new machines, and devices without Bento;
+  - **Messages** with the people on linked teams.
 - **Permissions** has what your agents may do on their own:
   - autonomy, and how content from a web page or an MCP server is treated;
   - a count of what is allowed right now, by where it came from (you, missions, the matrix,

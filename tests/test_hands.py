@@ -187,7 +187,7 @@ def test_settings_has_three_clear_places():
     assert "['agent','◈','Agents','agent']" in js
     assert "Every model this machine can think with" in js and 'id="exec-list"' in js, "installed agents are listed with the brains"
     assert 'id="hands-list"' in js and "An executor is what an agent can reach" in js
-    assert 'id="agents-list"' in js and 'id="agents-graph"' in js and "Working together" in js
+    assert 'id="agents-list"' in js and 'id="agents-graph"' in js and "Asking each other" in js
     ui = (ROOT / "agentos/ui/src/js/11e-hands.js").read_text()
     assert "/api/agents/graph" in ui and "/api/hands/" in ui
 

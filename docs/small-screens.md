@@ -4,7 +4,13 @@ Two ways to make a small machine's own screen, like a Raspberry Pi with a 7-inch
 easy to read and easy to talk to. Both are in *Settings → Appearance → On this screen*, or
 `bento face` in a terminal.
 
-![Settings → Appearance → On this screen: one agent, the kiosk, what it listens for, and what understands speech](screenshots/face-settings.png)
+![Settings → Appearance → On this screen: one agent, the kiosk, what it listens for, and the wake-word test](screenshots/face-settings.png)
+
+What understands speech is set under *Settings → Voice → Listening*, beside the voice the
+agents speak with, because the same key does both. When nothing here can hear, *On this
+screen* says so in one line, with a button that takes you there.
+
+![Settings → Voice: the voices it speaks with, and under Listening what understands speech](screenshots/settings-voice.png)
 
 ## Chosen during setup
 
@@ -76,7 +82,7 @@ and this machine turns it into text, with one of:
 - **This browser**, where its own recogniser works.
 
 **Auto** uses whisper.cpp when it is here, then the service you chose for speaking, then any other
-key that can hear. With none of them, Settings and the setup step offer both fixes side by side:
+key that can hear. You choose it in *Settings → Voice → Listening*. With none of them, Settings and the setup step offer both fixes side by side:
 *Add a voice key* and *Install whisper.cpp here*. The kiosk shows the sentence that says what to
 add, and no microphone.
 

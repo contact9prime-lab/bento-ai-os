@@ -120,36 +120,36 @@ class Channel:
 CATALOGUE: list[Channel] = [
     Channel(
         id="gui", title="This window", gate="gui", builtin=True,
-        what="AgentOS in a browser window on this machine — Chat, the prompt bar, "
-             "the copilot panel in every app.",
+        what="AgentOS in a browser window on this machine: Chat, the prompt bar, "
+             "and the agent panel in every app.",
         reach="Whoever is signed in to this computer.",
     ),
     Channel(
         id="sui", title="The session", gate="gui", builtin=True,
         what="AgentOS as the desktop itself, when you log in to it as your session.",
         reach="Whoever logs in to this machine.",
-        note="Shares the 'gui' gate with the browser window — it is the same page "
-             "and the same conversation, drawn as the desktop instead of inside one.",
+        note="It follows the browser window's permissions. It's the same page and "
+             "the same conversation, drawn as the desktop instead of inside one.",
     ),
     Channel(
         id="tui", title="Terminal", gate="tui", builtin=True,
-        what="The text interface — `agentos tui` at the console or over SSH, on a "
+        what="The text interface, `bento tui`, at the console or over SSH on a "
              "machine with no screen.",
         reach="Anyone with a shell on this machine, which usually means anyone who "
               "can SSH to it.",
     ),
     Channel(
         id="remote", title="Remote browser", gate="gui",
-        what="The same interface from another device — your phone, a laptop in "
-             "another room — over the network.",
+        what="The same interface from another device over the network, like your "
+             "phone or a laptop in another room.",
         reach="Anyone with the passphrase, from the addresses you allow.",
-        reach_panel="System → Remote access",
+        reach_panel="System Settings → Remote access",
         note="Native app windows are not in the page, so a remote browser cannot "
              "see them; it is told when something opened here instead.",
     ),
     Channel(
         id="api", title="API", gate="api", builtin=True,
-        what="Programs talking to AgentOS over HTTP — scripts, other machines, "
+        what="Programs talking to AgentOS over HTTP: scripts, other machines, "
              "anything holding a token.",
         # Served whenever AgentOS is running, so there is no switch here; what
         # controls it is who holds a token, which lives in the Tokens app.
@@ -158,16 +158,16 @@ CATALOGUE: list[Channel] = [
     ),
     Channel(
         id="task", title="Scheduled", gate="task", builtin=True,
-        what="Turns this machine starts by itself — scheduled tasks, reminders, "
-             "the things it does while you are away.",
+        what="Turns this machine starts by itself: scheduled tasks, reminders, "
+             "and what it does while you're away.",
         reach="Nobody: these start from the schedule you set.",
         note="Nothing is watching a scheduled turn, so 'Ask me first' means it "
              "stops and waits rather than acts.",
     ),
     Channel(
         id="webhook", title="Webhooks", gate="webhook", builtin=True,
-        what="Other services calling in over HTTP to start a flow — a form submission, "
-             "a CI job, a device, a monitor that noticed something.",
+        what="Other services calling in over HTTP to start a flow, like a form, "
+             "a CI job, a device or a monitor that noticed something.",
         reach="Whoever holds a flow's hook secret. Each trigger has its own; rotating it "
               "in Missions → Build revokes every caller at once.",
         reach_panel="Missions → Build",
@@ -181,18 +181,18 @@ CATALOGUE: list[Channel] = [
         reach="Only the chats you have paired or named below. The first /start "
               "pairs you; everyone else is refused, and every refusal is logged.",
         setup=[
-            "Open Telegram (phone or desktop) and search for **@BotFather** — it is "
+            "Open Telegram (phone or desktop) and search for **@BotFather**. It is "
             "Telegram's own account for making bots, with a blue tick.",
             "Send it **/newbot**. It asks for a display name (anything, e.g. Aria), "
-            "then a username, which must be unique and end in **bot** — "
+            "then a username, which must be unique and end in **bot**, "
             "e.g. `aria_home_bot`.",
             # Named for both faces. These lines are read in Settings AND by
             # `bento channels` over SSH, where "paste it below" refers to nothing.
             "It replies with a token that looks like `123456789:AAH...`. Copy the "
-            "whole line into **Bot token** and Save — or, in a terminal: "
+            "whole line into **Bot token** and Save, or in a terminal run "
             "`bento channels telegram --set bot_token=… --on`.",
             "Open a chat with YOUR new bot and send **/start**. That first /start is "
-            "what pairs you — after it, nobody else's messages are answered.",
+            "what pairs you. After it, nobody else's messages are answered.",
         ],
         fields=[Field("bot_token", "Bot token",
                       "The whole string from BotFather, digits and letters either "
@@ -200,15 +200,15 @@ CATALOGUE: list[Channel] = [
                       secret=True, placeholder="123456:ABC-DEF…"),
                 Field("allow", "Also allow",
                       "Anyone you name here may talk to the bot without waiting to "
-                      "be let in — @usernames or numeric chat ids, comma "
+                      "be let in. Use @usernames or numeric chat ids, comma "
                       "separated. Everybody else is still refused, and every "
                       "refusal is written to the log.",
                       required=False, placeholder="@bob, @sam")],
     ),
     Channel(
         id="whatsapp", title="WhatsApp", gate="whatsapp",
-        what="The same conversation on WhatsApp — your agent, your memory, your "
-             "tools, answering on the app you already have open.",
+        what="The same conversation on WhatsApp, with your agent, memory and "
+             "tools, on the app you already have open.",
         reach="Only the number you have paired or named below. The first message "
               "pairs you; everyone else is told this machine is not theirs, and "
               "every refusal is logged.",
@@ -217,24 +217,24 @@ CATALOGUE: list[Channel] = [
              "link needs nothing but a QR scan from your phone, but it is "
              "unofficial. The Business (Cloud) API is official and needs a Meta "
              "developer account and a public HTTPS address for the webhook, and it "
-             "only allows free-form replies within 24 hours of your last message — "
+             "only allows free-form replies within 24 hours of your last message, "
              "so a scheduled job cannot speak first to a silent chat.",
         setup=[
-            "**The short way — skip everything below.** *Scan a QR code instead* in "
+            "**The short way skips everything below.** *Scan a QR code instead* in "
             "Settings → Channels, or `bento channels whatsapp --pair` in a terminal. "
             "It links this machine as a WhatsApp Web device: no Meta account, no "
             "webhook, no fields. It is unofficial, so prefer a spare number.",
             "**The official way starts here.** Create a Meta developer account at "
             "developers.facebook.com, then a new app of type *Business*, and add the "
             "**WhatsApp** product to it.",
-            "That page gives you a test number and its **Phone number ID** — copy it "
+            "That page gives you a test number and its **Phone number ID**. Copy it "
             "below. The temporary token beside it expires in 24 hours, so create a "
             "System User in Business Settings and generate a **permanent** access "
             "token with `whatsapp_business_messaging`.",
             "**App secret** is under App settings → Basic. Invent any string for "
-            "**Verify token** — you will paste the same one into Meta in a moment.",
+            "**Verify token**. You'll paste the same one into Meta in a moment.",
             "Meta has to be able to reach this machine, so turn on a public tunnel "
-            "in Settings → Remote access. This card then shows the exact callback "
+            "in System Settings → Remote access. This card then shows the exact callback "
             "URL to paste into WhatsApp → Configuration, with your verify token.",
             "Finally, message the number from your phone once. That first message "
             "pairs you; everyone else is told this machine is not theirs.",
@@ -247,7 +247,7 @@ CATALOGUE: list[Channel] = [
                   "in, comma separated. Spaces, dashes and a leading + are all "
                   "fine. Everybody else is still refused, and every refusal is "
                   "written to the log.",
-                  required=False, placeholder="+44 7700 900123, +1 555 0100"),
+                  required=False, placeholder="+44 7700 900123"),
             Field("phone_number_id", "Phone number ID",
                   "Business API only. From the WhatsApp product page on "
                   "developers.facebook.com.",
@@ -258,7 +258,7 @@ CATALOGUE: list[Channel] = [
                   secret=True),
             Field("app_secret", "App secret",
                   "Used to verify that a webhook delivery really came from Meta. "
-                  "Without it the webhook is refused — it is a public URL.",
+                  "Without it the webhook is refused, because it is a public URL.",
                   secret=True),
             Field("verify_token", "Verify token",
                   "Any string you invent. Paste the same one into Meta's console "
@@ -438,11 +438,11 @@ def state(cfg: dict, store=None) -> list[dict]:
         elif chan.id == "remote":
             enabled = bool((cfg.get("remote") or {}).get("enabled"))
             status = "on" if enabled else "off"
-            detail = "reachable from other devices" if enabled else "off — only this machine"
+            detail = "reachable from other devices" if enabled else "off, only this machine"
         else:
             enabled = bool(conf.get("enabled"))
             status = "on" if enabled else "off"
-            detail = "connected" if enabled else "ready — switch it on to use it"
+            detail = "connected" if enabled else "ready, switch it on to use it"
 
         d = chan.as_dict()
         d.update({
@@ -494,7 +494,7 @@ def save(cfg: dict, channel_id: str, patch: dict) -> tuple[bool, str]:
             owner = BY_ID.get(chan.gate)
             return False, (f"{chan.title} arrives through the same gate as "
                            f"{owner.title if owner else chan.gate}, so it follows that "
-                           f"channel's permissions — set it there")
+                           f"channel's permissions. Set it there.")
         conf["posture"] = p
 
     if "mode" in patch and channel_id == "whatsapp":
@@ -508,7 +508,7 @@ def save(cfg: dict, channel_id: str, patch: dict) -> tuple[bool, str]:
         if chan.builtin:
             # Refusing here rather than pretending: switching off the window you
             # are reading this in is not a setting, it is a lockout.
-            return False, f"{chan.title} is how you reach this machine — it cannot be switched off"
+            return False, f"{chan.title} is how you reach this machine, so it cannot be switched off"
         conf["enabled"] = bool(patch["enabled"])
 
     for f in chan.fields:

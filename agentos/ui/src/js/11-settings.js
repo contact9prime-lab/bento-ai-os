@@ -2,14 +2,14 @@
 /* ---- preference primitives: every row is label+description left, control right ---- */
 function pGroup(title,rows,o){
   o=o||{};
-  return `<div class="pgroup${o.danger?' danger':''}" data-f="${esc(o.f||title)}">
+  return `<div class="pgroup${o.danger?' danger':''}${o.cls?' '+o.cls:''}${o.fold?' pfold':''}${o.fold&&o.open?' open':''}"${o.id?` id="${o.id}"`:''} data-f="${esc(o.f||title)}">
     ${title?`<h3>${esc(title)}</h3>`:''}${o.hint?`<div class="ghint">${o.hint}</div>`:''}
     ${rows.join('')}</div>`;
 }
 function pRow(label,control,o){
   o=o||{};
   const [d,m]=o.more!=null?[o.desc||'',o.more]:pSplit(o.desc);
-  return `<div class="prow${o.stack?' stack':''}${o.danger?' danger':''}" data-f="${esc(o.f||label)} ${esc(pPlain(m))}">
+  return `<div class="prow${o.stack?' stack':''}${o.danger?' danger':''}${o.cls?' '+o.cls:''}" data-f="${esc(o.f||label)} ${esc(pPlain(m))}">
     <div class="pl"><b>${esc(label)}</b>${m?pInfo(m):''}${d?`<small>${d}</small>`:''}</div>
     <div class="pc">${control}</div></div>`;
 }
@@ -132,11 +132,8 @@ let SETTAB=localStorage.getItem('settab')||'ai';
 async function renderSettings(body){
   await loadConfig();
   body.innerHTML=`<div class="pshell">
-      <div class="phead"><span class="pt">Settings</span><span class="sp"></span>
+      <div class="phead"><span class="pt">Settings</span><span class="set-saved" id="set-saved" role="status" aria-live="polite"></span><span class="sp"></span>
         <span class="psearch">${SVG_SEARCH}<input id="set-q" type="search" name="settings-find" placeholder="Find a setting…" autocomplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"></span>
-        ${/* One Save per page. The sticky bar at the foot is always reachable
-              while you scroll; a second copy in the header meant two controls for
-              one act, and neither said which settings it covered. */''}
       </div>
       <div class="prefs">
         <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label,ico])=>
@@ -153,16 +150,35 @@ async function renderSettings(body){
   const q=body.querySelector('#set-q');
   let t;q.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{
     const v=q.value.trim();
-    if(v){setTab(body,true);listFilter(body.querySelector('#prefs-main'),v)}
+    if(v){setTab(body,true);const pm=body.querySelector('#prefs-main');listFilter(pm,v);setSearchGroups(pm,v)}
     else setTab(body);
   },140)};
   // every pane is painted in pieces (a provider list arrives later than the page),
   // so the tidy runs on whatever lands in the pane, not once after the first paint
   pTipBind();
   const pm=body.querySelector('#prefs-main');
+  pm.addEventListener('change',e=>{
+    // switching a folded card on opens the fields under it (a provider's key and models)
+    const g=e.target&&e.target.closest&&e.target.closest('.pfold');
+    if(g&&e.target.checked&&e.target.closest('.phead-row'))g.classList.add('open');
+    setAutoSave(e);
+  });
   if(typeof MutationObserver!=='undefined'){let q=0;
     new MutationObserver(()=>{if(q)return;q=1;queueMicrotask(()=>{q=0;pTidy(pm)})}).observe(pm,{childList:true,subtree:true})}
   setTab(body);
+}
+/* listFilter hides each [data-f] on its own words, and a card is one of them: a search
+   for "api key" hid every provider card, because the card's words are its name while
+   the matching row was inside it. So a card with a matching row stays, and a card that
+   matches by its own words shows all of its rows. */
+function setSearchGroups(pm,v){
+  const q=String(v||'').toLowerCase();
+  pm.querySelectorAll('.pgroup').forEach(g=>{
+    const own=(g.getAttribute('data-f')||'').toLowerCase().includes(q);
+    const rows=[...g.querySelectorAll('[data-f]')];
+    if(own)rows.forEach(r=>r.style.display='');
+    else if(rows.some(r=>r.style.display!=='none'))g.style.display='';
+  });
 }
 function setTab(body,all){
   const main=(body||document).querySelector('#prefs-main');if(!main)return;
@@ -199,22 +215,26 @@ function setTab(body,all){
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Models running on this machine. Private and free.',f:'ollama local base url'}),
     ],{f:'ollama local'}));
-    const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup(name,[
-      pRow('Enabled',pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' enable'}),
+    /* A provider you have not switched on is one line: its name, what it is, and the
+       switch. The key and the model list open under it when you switch it on, so the
+       page lists what you can add before it lists the fields you have not filled. */
+    const prov=(key,name,idOn,idKey,idModels,ph,desc,obj)=>pGroup('',[
+      pRow(name,pSwitch(idOn,obj&&obj.enabled),{desc,f:key+' '+name+' enable',cls:'phead-row'}),
       pRow('API key',pSecret(idKey,obj&&obj._has_key,(obj&&obj.api_key)||'',ph),
-        {f:key+' api key',desc:(obj&&obj._has_key)?'Saved on this machine and never shown again.':'Paste it once. It stays hidden after that.'}),
-      pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{stack:true,f:key+' models'}),
-    ],{f:key+' '+name});
+        {cls:'pmore',f:key+' api key',desc:(obj&&obj._has_key)?'Saved on this machine and never shown again.':'Paste it once. It stays hidden after that.'}),
+      pRow('Models',pText(idModels,((obj&&obj.models)||[]).join(', '),'comma-separated'),{cls:'pmore',stack:true,f:key+' models'}),
+    ],{f:key+' '+name,fold:true,open:!!(obj&&(obj.enabled||obj._has_key))});
+    P.push(`<h3 class="pgh">Cloud providers</h3>`);
     P.push(prov('anthropic','Anthropic','s-ant-on','s-ant-key','s-ant-models','sk-ant-…','Claude models.',p.anthropic));
     P.push(prov('openai','OpenAI','s-oai-on','s-oai-key','s-oai-models','sk-…','GPT models.',p.openai));
     P.push(prov('openrouter','OpenRouter','s-or-on','s-or-key','s-or-models','sk-or-…','One key, hundreds of models.',p.openrouter));
     P.push(prov('google','Google (Gemini)','s-goo-on','s-goo-key','s-goo-models','AIza…','Gemini chat and images. Get a free key at aistudio.google.com.',p.google||{}));
-    P.push(pGroup('Custom (OpenAI-compatible)',[
-      pRow('Enabled',pSwitch('s-cus-on',p.custom.enabled),{desc:'Anything that speaks the OpenAI API, like LM Studio, vLLM or Groq.',f:'custom enable'}),
-      pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{f:'custom base url'}),
-      pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{f:'custom key'}),
-      pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{stack:true,f:'custom models'}),
-    ],{f:'custom openai compatible endpoint lm studio'}));
+    P.push(pGroup('',[
+      pRow('Custom server',pSwitch('s-cus-on',p.custom.enabled),{desc:'Anything that speaks the OpenAI API, like LM Studio, vLLM or Groq.',f:'custom enable',cls:'phead-row'}),
+      pRow('Base URL',pText('s-cus-url',p.custom.base_url||'','http://localhost:1234/v1'),{cls:'pmore',f:'custom base url'}),
+      pRow('API key',pSecret('s-cus-key',p.custom._has_key,p.custom.api_key||'','optional'),{cls:'pmore',f:'custom key'}),
+      pRow('Models',pText('s-cus-models',(p.custom.models||[]).join(', '),'comma-separated'),{cls:'pmore',stack:true,f:'custom models'}),
+    ],{f:'custom openai compatible endpoint lm studio',fold:true,open:!!(p.custom.enabled||p.custom.base_url)}));
     /* Other AI agents installed on this machine are BRAINS too — Claude Code thinks
        with its own model and can answer a turn or run a mission through the bridge.
        They lived under "Executors" when that word meant "who runs the turn"; it now
@@ -223,15 +243,15 @@ function setTab(body,all){
        renaming the identifier would cost every install its saved engine for a word
        nobody sees. */
     P.push(`<h3 class="pgh">AI agents installed here</h3><p class="mut" style="margin:0 0 8px">Another agent can be the brain. Pick it above, or give it to one of your agents. ${pInfo('AgentOS keeps control of the desktop and permissions. An installed agent only reaches the folder you choose.')}</p>`);
-    P.push(`<div id="exec-list" class="pgroup" data-f="executors claude code hermes openclaw installed agents brain"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
+    P.push(`<div id="exec-list" class="pgroup chan" data-f="executors claude code hermes openclaw installed agents brain"><h3>Claude Code</h3><p class="mut">checking…</p></div>`);
     P.push(`<div id="exec-offers"></div>`);
-    P.push(`<div id="ocp-list" class="pgroup" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
+    P.push(`<div id="ocp-list" class="pgroup chan" data-f="openclaw plugins extensions clawhub"><h3>OpenClaw plugins</h3><p class="mut">checking…</p></div>`);
     setTimeout(renderExecutors,0);
     setTimeout(renderOcPlugins,0);
     P.push(pGroup('Image generation',[
       pRow('Provider',pSelect('s-img-prov',[['auto','auto'],['google','google'],['openai','openai'],['pollinations','pollinations']],(cfg.image&&cfg.image.provider)||'auto'),
         {desc:'Auto tries Google, then OpenAI, then the free pollinations.ai.',f:'image provider'}),
-      pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','gemini-2.5-flash-image / gpt-image-1'),{f:'image model'}),
+      pRow('Model',pText('s-img-model',(cfg.image&&cfg.image.model)||'','the provider’s default'),{f:'image model'}),
     ],{f:'image generation wallpaper'}));
   }
   if(want('executors')){
@@ -260,15 +280,15 @@ function setTab(body,all){
     setTimeout(renderChannels,0);   // live state, not part of cfg
   }
   if(want('accounts')){
-    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and calendar your agent can read for you. ${pInfo('Sign in with Google or Microsoft, or use an app password for anything else. Passwords are kept in the vault, and every read is logged.')}</p>`);
+    P.push(`<h2>Accounts</h2><p class="lead">The mailbox and calendar your agent reads for you, and the GitHub account it pushes to. ${pInfo('Sign in with Google or Microsoft, or use an app password for anything else. Passwords are kept in the vault, and every read is logged.')}</p>`);
+    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
+    setTimeout(renderAccounts,0);
     P.push(pGroup('GitHub',[
       pRow('Personal access token',pSecret('s-gh-token',cfg.github&&cfg.github._has_token,(cfg.github&&cfg.github.token)||'','github_pat_… / ghp_…'),
         {desc:(cfg.github&&cfg.github._has_token)?'A token is saved. Fine-grained tokens work best.':'Lets the agent create repos and push what it builds.',
          more:(cfg.github&&cfg.github._has_token)?'':'The token never shows up in commands or logs.',f:'github token push'}),
       pRow('Username',pText('s-gh-user',(cfg.github&&cfg.github.username)||'','optional'),{f:'github username'}),
-    ],{f:'github git ship publish'}));
-    P.push(`<div id="acct-list" data-f="accounts mail calendar sign in google microsoft oauth imap caldav ics gmail outlook icloud fastmail app password vault mcp"><p class="mut">checking…</p></div>`);
-    setTimeout(renderAccounts,0);
+    ],{f:'github git ship publish',cls:'chan'}));
   }
   if(want('agent')){
     /* Agents: the lead agent (always here) and the agents it works with. Each gets a
@@ -288,26 +308,29 @@ function setTab(body,all){
         {desc:'What your lead agent thinks with. You choose it in AI providers.',f:'lead agent brain model provider'}),
       pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
         {desc:'What it can reach: tools, folders, web and MCP.',more:'Set up in Executors. Changes apply right away.',f:'lead agent hands executor profile reach tools folders'}),
+    ],{f:'agent identity name look brain executor lead'}));
+    /* Who it is above, how it works here: these four are about a turn, not about the
+       agent, and they used to sit under its name and face as one long list, with the
+       conversation setting in a group of its own further down. */
+    P.push(pGroup('How it works',[
       pRow('Workspace',pText('s-workspace',cfg.workspace),{desc:'Where it saves files, reports and projects.',f:'workspace directory'}),
       pRow('Max steps per turn',pText('s-steps',cfg.max_steps,'','number'),{desc:'How many tool steps one turn can take before it stops.',f:'max steps'}),
+      pRow('Long conversations',pSelect('s-hist-compact',[
+        ['on','Summarise older turns'],
+        ['off','Drop older turns']],(cfg.history&&cfg.history.compact===false)?'off':'on'),
+        {desc:'What happens when a thread no longer fits the model.',more:'Either way, the conversation tells you when it happens.',
+         f:'history compaction summary context window long thread conversation'}),
       pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
         {desc:'The model App Studio builds apps with.',more:'AgentOS won’t switch to another model on its own.',f:'build model app studio'}),
-    ],{f:'agent identity name workspace lead'}));
+    ],{f:'agent workspace steps history build'}));
     P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
     setTimeout(renderAgentsList,0);
-    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><p class="mut" style="margin:0 0 8px">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</p><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><div class="ghint">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</div><div id="agents-graph" class="agraph mut">loading…</div></div>`);
     setTimeout(renderAgentsGraph,0);
 
-    P.push(pGroup('Conversations',[
-      pRow('Conversation history',pSelect('s-hist-compact',[
-        ['on','Summarise older turns when the thread outgrows the model'],
-        ['off','Drop them instead']],(cfg.history&&cfg.history.compact===false)?'off':'on'),
-        {desc:'What happens when a long thread no longer fits the model.',more:'Either way, the conversation tells you when it happens.',
-         f:'history compaction summary context window long thread'}),
-    ],{f:'history compaction context'}));
     /* Sharing the agent belongs on the page that answers "who is my agent" —
        11c-agentshare.js renders it, agentbundle.py decides everything. */
-    P.push(`<div id="agent-share-box" class="pgroup" data-f="share fork agent bundle export import publish"><h3>Share this agent</h3><p class="mut">checking…</p></div>`);
+    P.push(`<div id="agent-share-box" data-f="share fork agent bundle export import publish host"><div class="pgroup"><h3>Share this agent</h3><div class="ghint mut">checking…</div></div></div>`);
     setTimeout(renderAgentShare,0);
   }
   if(want('team')){
@@ -324,7 +347,7 @@ function setTab(body,all){
        bill, one provider), and each row pins one agent. Both apply on the spot, like
        the brain above. The badge each agent wears on the Crew stage and in chat is
        the same answer these rows show (fabric.agent_brain). Terminal: `bento team`. */
-    P.push(pGroup('Working together',[
+    P.push(pGroup('Models',[
       pRow('Agents answer on their own providers',pSwitch('s-team-own',!cfg.team||cfg.team.own_brains!==false),
         {desc:'Let each agent use the model you pin for it.',
          more:'Agents on different providers can then work together and talk it through in a huddle. When off, every agent uses the brain above.',
@@ -333,6 +356,8 @@ function setTab(body,all){
         {stack:true,desc:'Pick a model for any agent.',
          more:'If its provider is off or has no key, the agent uses the brain above until that’s fixed.',
          f:'team agent model pin provider per agent'}),
+    ],{f:'team agents providers models'}));
+    P.push(pGroup('Asking each other',[
       /* Agents messaging each other mid-task (ask_agent). Matrix: each pair is a
          permission, and an empty cell asks you — "Allow & remember" fills it. Swarm:
          every cell you have not blocked is open, so they recruit each other freely,
@@ -346,6 +371,18 @@ function setTab(body,all){
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
          more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy those same steps go to a vote of three of your agents, on different brains where they can be, and a majority decides. Huddles end with a vote too. Loops are refused and each task has a question limit.',
          f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
+      pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
+        {stack:true,desc:'Rows ask, columns answer. Tap a cell to switch between ask me, allow and block.',
+         more:'Allow and block are normal permissions, so you can also review them in the Permissions app.',
+         f:'team matrix who may ask whom agents grid permission'}),
+      /* The limits: how far a question travels, how many one task may send, how often a
+         colleague may ask back, and a huddle's size. Defaults are conservative; each has a
+         ceiling no setting passes, because every one multiplies model calls. */
+      pRow('Limits','<div id="s-team-limits" class="team-limits mut">loading…</div>',
+        {stack:true,desc:'How far agents can go when they ask each other.',more:'Limits count per task and apply from the next question.',
+         f:'team limits hops budget clarify ask back huddle rounds agents swarm'}),
+    ],{f:'team agents message ask each other matrix limits swarm democracy'}));
+    P.push(pGroup('Free talk',[
       /* Free talk (24f-freetalk.js): the one time agents talk with nobody asking them
          anything, so it is started here by the person, after a caution they tick, and it
          ends on its clock or its message count. And the one place that lists every time
@@ -358,26 +395,18 @@ function setTab(body,all){
         {stack:true,desc:'Every time your agents talked to each other.',
          more:'Free talks, huddles and one agent asking another. Open one in Chat, or replay its run with every step.',
          f:'agent to agent chat talk log history conversation huddle ask transcript record'}),
-      /* The limits: how far a question travels, how many one task may send, how often a
-         colleague may ask back, and a huddle's size. Defaults are conservative; each has a
-         ceiling no setting passes, because every one multiplies model calls. */
-      pRow('Limits','<div id="s-team-limits" class="team-limits mut">loading…</div>',
-        {stack:true,desc:'How far agents can go when they ask each other.',more:'Limits count per task and apply from the next question.',
-         f:'team limits hops budget clarify ask back huddle rounds agents swarm'}),
-      pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
-        {stack:true,desc:'Rows ask, columns answer. Tap a cell to switch between ask me, allow and block.',
-         more:'Allow and block are normal permissions, so you can also review them in the Permissions app.',
-         f:'team matrix who may ask whom agents grid permission'}),
+    ],{f:'team free talk agents talk log'}));
+    P.push(pGroup('Linked teams',[
       /* Linked teams: another Bento (mutual TLS) or another account here. The way in is
          Ask → Approve with six digits on both screens (the OAuth device flow); an invite
          code is folded away for headless machines. A link grants nothing: what their
          agents may ask yours is chosen per agent, and never opened by swarm. `bento
          link` is the terminal's face; SUI is this page, nothing touches the compositor. */
-      pRow('Linked teams','<div id="s-team-links" class="team-links mut">loading…</div>',
+      pRow('Link with another team','<div id="s-team-links" class="team-links mut">loading…</div>',
         {stack:true,desc:'Let your agents work with another team, on another machine or another account here.',
          more:'Both screens show the same six digits when you link. Nothing gets through until you choose which of your agents they can ask, and their answers are treated as untrusted.',
          f:'team linked teams remote machine mtls pair invite account handshake federation link request approve'}),
-    ],{f:'team agents providers huddle'}));
+    ],{f:'team linked teams link remote'}));
     /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
        One machine leads and lends its brain; small machines join, share notes and take
        pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
@@ -411,11 +440,11 @@ function setTab(body,all){
          more:'Some steps always ask a person, like sending mail or acting on what a web page said. Applies right away.',
          f:'autonomy paranoid balanced full ask approve risky level'}),
       pRow('After reading a web page or an MCP reply',pSelect('s-taint',[
-        ['ask','Ask before anything that changes something'],
-        ['strict','Refuse to change anything for the rest of the turn'],
+        ['ask','Ask before changing anything'],
+        ['strict','Refuse to change anything'],
         ['off','No extra caution']],(cfg.security&&cfg.security.taint)||'ask'),
         {desc:'Web pages and outside servers can hide instructions meant to trick your agent.',
-         more:'This applies for the rest of that turn, even at Full autonomy, which trusts your instructions and nobody else’s.',
+         more:'Either way it lasts for the rest of that turn, even at Full autonomy, which trusts your instructions and nobody else’s.',
          f:'taint injection untrusted prompt security web page mcp'}),
     ],{f:'autonomy security untrusted injection'}));
     P.push(`<div class="pgroup" data-f="grants permissions allowed remembered missions matrix linked community apps review quarantine held"><h3>What's allowed right now</h3><div id="s-perm-sum"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
@@ -442,18 +471,18 @@ function setTab(body,all){
   }
   if(want('locale')){
     P.push(`<h2>Locale</h2><p class="lead">Where and when you are, so news, weather, prices and holidays fit where you live. ${pInfo('The desktop session also takes your timezone and language from here.')}</p>`);
-    P.push(`<div class="pgroup" data-f="locale region country timezone language units clock"><div id="loc-box"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    P.push(`<div class="pgroup" data-f="locale region country timezone language units clock"><h3>Where and when</h3><div id="loc-box"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
   }
   if(want('keys')){
     P.push(`<h2>Shortcuts</h2><p class="lead">Click a shortcut, then press the keys you want. ${pInfo('Shortcuts marked session keep working even while a native app has the keyboard.')}</p>`);
-    P.push(`<div class="pgroup" data-f="shortcuts keyboard keys bindings hotkeys"><div id="sc-list"></div></div>`);
-    P.push(pGroup('',[
+    P.push(`<div class="pgroup" data-f="shortcuts keyboard keys bindings hotkeys"><h3>Keys</h3><div id="sc-list"></div></div>`);
+    P.push(pGroup('Reset',[
       pRow('Restore defaults','<button class="endbtn" onclick="scReset()">Restore</button>',{desc:'Put every shortcut back the way it was.',f:'shortcuts reset'}),
       pRow('Re-apply to session','<button class="endbtn" onclick="scApplySession()">Apply</button>',{desc:'Send these shortcuts to the desktop session again.',f:'shortcuts session apply'}),
     ],{f:'shortcuts actions'}));
   }
   if(want('voice')){
-    P.push(`<h2>Voice</h2><p class="lead">Dictate with the mic in the prompt bar or chat, and have replies read aloud.</p>`);
+    P.push(`<h2>Voice</h2><p class="lead">Replies read aloud, and what understands you when you speak.</p>`);
     P.push(pGroup('Speech',[
       pRow('Speak replies aloud',pSwitch('v-tts',VOICE.tts),{desc:'Read every answer out loud.',f:'tts speak voice'}),
       /* Which engine turns text into speech (agentos/speech.py, 11f-speech.js). The
@@ -472,19 +501,39 @@ function setTab(body,all){
         {desc:'Starts talking at the first sentence instead of waiting for the whole reply.',
          more:'With ElevenLabs or OpenAI the sound plays while it is being made. While your lead searches or reads something, it says what it is doing.',
          f:'realtime real time live streaming tts speak as it answers low latency socket engaged'}),
-      pRow('Speech rate',pText('v-rate',VOICE.rate||1,'','number'),{f:'speech rate'}),
+      pRow('Speech rate',pText('v-rate',VOICE.rate||1,'','number'),{desc:'1 is normal speed.',f:'speech rate'}),
+    ],{f:'voice tts speech'}));
+    /* Listening: the other direction. Speech to text for the kiosk and the wake word
+       (24h-kiosk.js hearSettingsPaint) and the language the mic dictates in. */
+    P.push(pGroup('Listening',[
+      `<div id="s-hear" data-f="speech to text whisper hear listening understanding stt"><div class="prow"><div class="pl"><small>…</small></div></div></div>`,
       pRow('Mic language',pText('v-lang',VOICE.lang||'en-IN','en-IN, en-US, hi-IN…'),{desc:'The language dictation listens for.',f:'mic language dictation'}),
-    ],{f:'voice tts speech microphone'}));
+    ],{f:'voice listening microphone speech to text'}));
   }
   if(want('look')){
     P.push(`<h2>Appearance</h2><p class="lead">How the desktop looks. Themes can change colours, fonts and even the whole shell.</p>`);
-    P.push(pGroup('Theme',[
+    /* A look laid over the theme, not a theme: it is a switch here rather than
+       a card in the gallery so that it composes with whichever theme is on.
+       Applied the moment it is flipped, like the theme select above — Save is
+       for the machine's settings, and this one lives in this browser. */
+    P.push(pGroup('Look',[
       pRow('Desktop theme',pSelect('s-theme',Object.entries(allThemes()).map(([k,t])=>[k,(t.label||t.name||k)+(t.custom?' ·':'')]),CURRENT_THEME)
         +`<button class="endbtn" onclick="openApp('themes')">Gallery</button>`,{f:'theme appearance'}),
+      pRow('Immersive experience',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
+        {desc:'Adds depth, glass and richer colour on top of your theme.',
+         more:'On by default and remembered by this browser. Themes → Effects tones it down on a slow machine. The TUI has no wallpaper or glass, so it has no switch.',
+         f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
+      /* The second scene draws the machine's own moving parts. Its cost is
+         stated in the row, and so is the terminal's answer: none. */
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['world','World (experimental)'],['mind','Mind']],
+          (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
+        {desc:'What the wallpaper shows behind your windows.',
+         more:'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs.',
+         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections'}),
       pRow('Wallpaper','<button class="endbtn" onclick="openApp(\'personalize\')">Personalize</button><button class="endbtn" onclick="wpSystem()">Use system</button>',
         {desc:'Make one with AI, pick one from the gallery, or use your system’s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
-    ],{f:'appearance theme wallpaper'}));
+    ],{f:'appearance theme wallpaper immersive scene'}));
     /* The characters are not part of the immersive look: a face beside a message
        helps in the standard desktop too, so they have their own group, and their
        own switch for somebody who would rather read text. The faces shown here are
@@ -510,32 +559,32 @@ function setTab(body,all){
     /* This machine's own screen: one agent drawn (buddy) and the kiosk face, both the
        machine's (face.py), painted from /api/face by 24h-kiosk.js. Terminal: `bento face`. */
     P.push(`<div class="pgroup" data-f="on this screen buddy one agent kiosk mic listening raspberry pi light mode speech whisper"><h3>On this screen</h3><div id="s-face"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
-    /* A look laid over the theme, not a theme: it is a switch here rather than
-       a card in the gallery so that it composes with whichever theme is on.
-       Applied the moment it is flipped, like the theme select above — Save is
-       for the machine's settings, and this one lives in this browser. */
-    P.push(pGroup('Immersive experience',[
-      pRow('Immersive experience',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
-        {desc:'Adds depth, glass and richer colour on top of your theme.',
-         more:'On by default and remembered by this browser. Themes → Effects tones it down on a slow machine. The TUI has no wallpaper or glass, so it has no switch.',
-         f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
-      /* The second scene draws the machine's own moving parts. Its cost is
-         stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora: a sky that follows the day'],['movement','Movement: one slow dial of everything'],['crew','Crew: your specialists at work'],['office','Office: the whole office behind your windows'],['world','World: your agents with feelings (experimental)'],['mind','Mind: your agents and what they know, connected']],
-          (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
-        {desc:'What the wallpaper shows behind your windows.',
-         more:'Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs.',
-         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections'}),
-
-    ],{f:'immersive experience beta look scene movement'}));
   }
   if(want('system')){
     P.push(`<h2>System</h2><p class="lead">The machine itself. Network, displays, sound and the session are in System Settings.</p>`);
+    P.push(pGroup('Version',[
+      pRow('This build','<span id="s-ver" class="mut">checking…</span>',
+        {desc:'AgentOS checks for updates and asks before installing one.',
+         more:'An update is tested before it’s applied. Then the service restarts and this page reloads.',
+         f:'version update upgrade check for updates auto-update'}),
+      pRow('Check automatically',pSwitch('s-upd-on',true),
+        {desc:'Only the check is automatic. Nothing installs without your OK.',f:'automatic update check'}),
+      // Where updates come from is a setting, so a fork under test is followed
+      // here, by the background check and by `bento update` alike.
+      pRow('Update source',`<span class="row upd-src" style="gap:6px;flex-wrap:wrap">
+          <input id="s-upd-repo" placeholder="owner/name" style="flex:1 1 180px;min-width:0" title="GitHub repository: owner/name or a github.com URL">
+          <input id="s-upd-branch" placeholder="master" style="flex:0 1 140px;min-width:0" title="branch">
+        </span><span id="s-upd-src" class="mut" style="display:block;margin-top:4px"></span>`,
+        {desc:'The repository and branch updates come from.',
+         more:'Point it at a fork to test one. Run bento update --official to go back.',
+         f:'update source repository fork branch remote'}),
+    ],{f:'version updates'}));
+    setTimeout(paintVersion,0);      // live, and it makes a network call
     /* Accounts are a machine-level fact and this is where somebody looks for one,
        so the row belongs here — but the app stays the single place they are
        managed. A second roster in Settings would be two lists to keep true, and
        the one nobody demos is the one that drifts. */
-    P.push(pGroup('Accounts',[
+    P.push(pGroup('People',[
       pRow('People on this machine','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
         {desc:'Who can sign in, their roles, and what they share.',
          more:'AgentOS stays single-user until you add the first account. After that it asks who you are, at the keyboard and from a phone.',
@@ -548,33 +597,15 @@ function setTab(body,all){
     P.push(pGroup('Footprint',[
       pRow('Profile',pSelect('s-profile',[
           ['auto','Auto: decide from this machine'],
-          ['full','Full: keep the MCP catalogue and refresh it daily'],
-          ['lite','Light: keep only what this machine uses']],cfg.profile||'auto'),
+          ['full','Full: keep everything'],
+          ['lite','Light: keep only what’s used']],cfg.profile||'auto'),
         {desc:'Light suits a small machine like a Raspberry Pi.',
-         more:'It downloads the MCP catalogue only while you search, and keeps telemetry for 7 days instead of 30.',
+         more:'Full keeps the MCP catalogue on disk and refreshes it daily. Light downloads it only while you search, and keeps telemetry for 7 days instead of 30.',
          f:'profile lite light footprint raspberry pi memory disk mcp catalogue small machine'}),
       pRow('Now','<span id="s-profile-now" class="mut">…</span>',
         {desc:'What this machine is using and keeping right now.',f:'profile current'}),
     ],{f:'footprint profile lite pi'}));
     setTimeout(paintProfile,0);
-    P.push(pGroup('Version',[
-      pRow('This build','<span id="s-ver" class="mut">checking…</span>',
-        {desc:'AgentOS checks for updates and asks before installing one.',
-         more:'An update is tested before it’s applied. Then the service restarts and this page reloads.',
-         f:'version update upgrade check for updates auto-update'}),
-      pRow('Check automatically',pSwitch('s-upd-on',true),
-        {desc:'Only the check is automatic. Nothing installs without your OK.',f:'automatic update check'}),
-      // Where updates come from is a setting, so a fork under test is followed
-      // here, by the background check and by `bento update` alike.
-      pRow('Update source',`<span class="row" style="gap:6px;flex-wrap:wrap">
-          <input id="s-upd-repo" placeholder="owner/name" style="flex:1 1 180px;min-width:0" title="GitHub repository: owner/name or a github.com URL">
-          <input id="s-upd-branch" placeholder="master" style="flex:0 1 140px;min-width:0" title="branch">
-        </span><span id="s-upd-src" class="mut" style="display:block;margin-top:4px"></span>`,
-        {desc:'The repository and branch updates come from.',
-         more:'Point it at a fork to test one. Run bento update --official to go back.',
-         f:'update source repository fork branch remote'}),
-    ],{f:'version updates'}));
-    setTimeout(paintVersion,0);      // live, and it makes a network call
     P.push(pGroup('Setup',[
       pRow('Open Setup','<button class="endbtn" onclick="openApp(\'setup\')">Open the app</button>',
         {desc:'The setup steps in a normal window you can open any time.',
@@ -588,25 +619,25 @@ function setTab(body,all){
     P.push(pGroup('Backup',[
       '<div id="bk-last" class="bk-last"></div>',
       pRow('Back up this machine','<div id="bk-make"><span class="mut">…</span></div>',
-        {desc:'One encrypted file with everything, to keep safe or to move to another machine.',
+        {stack:true,desc:'One encrypted file with everything, to keep safe or to move to another machine.',
          more:'Every account, memory, conversation, agent, mission, setting and saved password, plus your workspace folder. Only the passphrase opens it. In a terminal: bento backup.',
          f:'backup back up export save move machine migrate portable encrypted download copy new computer'}),
       pRow('Restore from a backup','<div id="bk-restore"></div>',
-        {desc:'Replace this machine’s Bento with a backup. What’s here now is kept aside.',
+        {stack:true,desc:'Replace this machine’s Bento with a backup. What’s here now is kept aside.',
          more:'The whole file is checked before anything changes. Then Bento restarts and swaps it in. In a terminal: bento restore FILE.',
          f:'restore backup import move from another machine migrate new computer recover'}),
     ],{f:'backup restore export import move migrate'}));
     setTimeout(paintBackup,0);
     P.push(pGroup('Put Bento in the cloud',[
       pRow('A cloud Bento in a few minutes','<div id="cd-box"><span class="mut">…</span></div>',
-        {desc:'Sign in with GitHub or Google, choose a password, press Deploy. It keeps working while your computer is off.',
+        {stack:true,desc:'Sign in with GitHub or Google, choose a password, press Deploy. It keeps working while your computer is off.',
          more:'Render runs it with a disk, so nothing is lost on a restart. Fly.io and your own server are under Other ways. In a terminal: bento cloud.',
          f:'cloud deploy render fly host hosting server vps online internet always on one click sso quick put move'}),
     ],{f:'cloud deploy hosting'}));
     setTimeout(paintCloudDeploy,0);
     P.push(pGroup('Cloud standby',[
       pRow('A cloud machine that takes over','<div id="sb-box"><span class="mut">…</span></div>',
-        {desc:'It runs your agent only while this machine is away, then hands the work back.',
+        {stack:true,desc:'It runs your agent only while this machine is away, then hands the work back.',
          more:'This machine sends a sealed copy when something changes and a heartbeat every half minute. After a few quiet minutes the cloud takes over. In a terminal: bento standby.',
          f:'cloud standby failover offload take over hand back away server vps move jack lambda always on'}),
     ],{f:'cloud standby failover'}));
@@ -614,7 +645,6 @@ function setTab(body,all){
     P.push(pGroup('Machine',[
       pRow('System Settings','<button class="endbtn" onclick="openApp(\'syssettings\')">Open</button>',
         {desc:'Network, Bluetooth, displays, sound, power, session and optional components.',f:'system settings network displays'}),
-      pRow('Permissions','<button class="endbtn" onclick="settingsGo(\'permissions\')">Open</button>',{desc:'What apps and the agent are allowed to do.',f:'permissions grants'}),
       pRow('Snapshots','<button class="endbtn" onclick="openApp(\'snapshots\')">Open</button>',{desc:'Quick restore points on this machine. To move machines, use Backup.',f:'snapshots restore'}),
     ],{f:'system machine'}));
     P.push(pGroup('Danger zone',[
@@ -623,7 +653,8 @@ function setTab(body,all){
          more:'Memory, knowledge, conversations, apps, agents, settings and accounts are all deleted. Only an admin can do it, on the machine itself or with bento reset. Take a Snapshot first.',f:'factory reset wipe danger environment start over clean onboarding again everything'}),
     ],{danger:true,f:'danger zone factory reset'}));
   }
-  main.innerHTML=P.join('')+`<div class="savebar"><button class="pact" onclick="saveSettings()">Save</button></div>`;
+  main.classList.toggle('searching',!!all);
+  main.innerHTML=P.join('');
   const th=main.querySelector('#s-theme');
   if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
   const im=main.querySelector('#s-imm');
@@ -654,6 +685,7 @@ function setTab(body,all){
   };
   if(main.querySelector('#s-office'))officeSettingsPaint();
   if(main.querySelector('#s-face'))faceSettingsPaint();
+  if(main.querySelector('#s-hear'))hearSettingsPaint();
   if(main.querySelector('#v-voice'))settingsVoices();
   if(main.querySelector('#v-engine-box'))speechPaint();
   const bm=main.querySelector('#s-build-model');
@@ -932,9 +964,32 @@ async function saveSettings(){
       allow_source:on('s-exec-src'),
     }};
   }
-  if(!Object.keys(patch).length){toast('nothing to save on this page');return}
-  await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
-  toast('settings saved');loadModels();loadConfig();
+  if(!Object.keys(patch).length){if(el('v-tts'))setSavedMark(true);return}
+  let ok=false;
+  try{ok=(await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)})).ok}catch(e){}
+  setSavedMark(ok);
+  if(!ok){toast('could not save that setting');return}
+  loadModels();loadConfig();
+}
+/* Settings save themselves. There used to be one Save at the foot of every tab, and
+   it covered only some of what was on screen: autonomy, the brain, the theme and the
+   team switches applied at once, channels and accounts had a Save of their own, and a
+   name typed and then left for another tab was silently lost. Now a field that
+   saveSettings reads saves when it is committed (a switch flipped, a list picked, a box
+   left), and the header says Saved. saveSettings reads the whole pane synchronously
+   before its first await, so a field committed by clicking another tab is still in the
+   page when it is read. Cards with a form of their own (a channel, a mail account, the
+   locale) keep their own button: those talk to another service and can be refused. */
+var SET_AUTO=/^(s-(workspace|steps|name|sb-on|sb-root|taint|audit-strict|hist-compact|ollama-url|ant-|oai-|or-|cus-|goo-|build-model|img-|gh-|upd-on|upd-repo|upd-branch|exec-)|v-(tts|voice|rate|lang|agents|live)$)/;
+function setAutoSave(e){
+  const t=e&&e.target;if(!t)return;
+  if(!(t.dataset&&t.dataset.tool)&&!SET_AUTO.test(t.id||''))return;
+  saveSettings();
+}
+function setSavedMark(ok){
+  const m=document.getElementById('set-saved');if(!m)return;
+  m.textContent=ok?'✓ Saved':'Not saved';m.className='set-saved on '+(ok?'ok':'err');
+  clearTimeout(m._t);m._t=setTimeout(()=>m.classList.remove('on'),ok?1600:5000);
 }
 
 
@@ -1018,7 +1073,7 @@ async function locRender(){
     pRow('Clock',pSelect('loc-clock',[['24h','24-hour'],['12h','12-hour']],lo.clock),{f:'clock 12 24 hour'}),
     pRow('Detected on this machine',
       `<button class="endbtn" onclick="locUseDetected()">Use detected</button>`,
-      {desc:`${esc(det.country||'?')} · ${esc(det.timezone||'?')} · ${esc(det.language||'?')}`,f:'detected locale'}),
+      {desc:[det.country,det.timezone,det.language].filter(Boolean).map(esc).join(' · ')||'Nothing detected.',f:'detected locale'}),
     pRow('Apply',`<button class="pact" onclick="locSave()">Save locale</button>`,
       {desc:esc(LOCALE.describe.split('.')[0])+'.',f:'save locale apply session'}),
   ].join('');
@@ -1054,25 +1109,23 @@ async function renderExecutors(){
   /* A card per executor that is NOT installed, with its licence and the exact
      command. Rendered before the Claude Code detail below so the offers are not
      buried under one executor's tool checkboxes. */
-  const offers=((d&&d.roster)||[]).filter(r=>!r.builtin&&!r.installed).map(r=>{
+  /* One row per agent that is not installed: its name, one line on what it is, and
+     Install with the exact command behind the ⓘ (and in the button's title), so the
+     command is still read before anything runs. They were a card each, with the whole
+     install script printed in it, and four of them buried the one that is installed. */
+  const first=t=>{const m=String(t||'').match(/^.*?[.!?](\s|$)/);return (m?m[0]:String(t||'')).trim()};
+  const offerRows=((d&&d.roster)||[]).filter(r=>!r.builtin&&!r.installed).map(r=>{
     const off=r.install||{};
-    /* Same card shape as a channel: a heading that reads as a name, the licence
-       as a chip, and the prose in `.ghint` — bare <p>s collided with the
-       small-caps group heading and the three lines overlapped. */
-    return `<div class="pgroup chan" data-f="install executor ${esc(r.id)}">
-      <h3>${esc(r.title)} <span class="chdot">${esc(r.licence||'licence unknown')}</span></h3>
-      <div class="ghint">${esc(r.what||'')}</div>
-      <div class="ghint mut">${esc(r.why_not||'not installed')}</div>
-      ${off.command?pRow('Install it',
-          `<button class="endbtn" onclick="execInstallComponent('${esc(r.id)}',this)">Install ${esc(r.title)}</button>`,
-          {desc:`Runs <code>${esc(off.command)}</code>${off.licence?' · '+esc(off.licence):''}${
-             off.available?'':'. '+esc(off.reason||'not available here')}`,
-           f:'install '+esc(r.id)})
-        :`<div class="ghint mut">There’s no installer for this one here. Install it yourself
-            and it will show up.</div>`}
-      ${r.docs?`<div class="ghint"><button class="endbtn" onclick="openInBrowser('${esc(r.docs)}')">Read the docs</button></div>`:''}
-    </div>`;
-  }).join('');
+    const rest=String(r.what||'').slice(first(r.what).length).trim();
+    const how=off.command?`Install runs ${off.command}${off.available?'':'. '+(off.reason||'It is not available here')}`
+      :'There is no installer for it here. Install it yourself and it shows up.';
+    const more=[rest,r.why_not&&r.why_not!=='not installed'?r.why_not:'',how,'Licence: '+(r.licence||'unknown')].filter(Boolean).join(' ');
+    const btns=(off.command?`<button class="endbtn" title="${esc(off.command)}" onclick="execInstallComponent('${esc(r.id)}',this)">Install</button>`:'')
+      +(r.docs?`<button class="endbtn" onclick="openInBrowser('${esc(r.docs)}')">Docs</button>`:'');
+    return pRow(r.title,btns||'<span class="mut">install it yourself</span>',
+      {desc:esc(first(r.what))+` <span class="chdot">${esc(r.licence||'licence unknown')}</span>`,more,f:'install executor '+r.id+' '+r.title});
+  });
+  const offers=offerRows.length?pGroup('Not installed here',offerRows,{f:'install executors agents not installed'}):'';
   /* Into their own container, replaced rather than appended: `insertAdjacentHTML`
      on the panel put a second copy of every offer on screen each time this
      re-ran (and it re-runs after an install, which is exactly when somebody is
@@ -1106,7 +1159,7 @@ async function renderExecutors(){
   const bill=b.detail?`<div class="ghint bill ${esc(b.mode||'')}">${
     {subscription:'◆',api:'$',none:'!'}[b.mode]||'·'} ${esc(b.detail)}${
     (b.stripped||[]).length?` <span class="mut">(${esc(b.stripped.join(', '))} is set in the environment but is not passed to it)</span>`:''}</div>`:'';
-  box.innerHTML=`<h3>Claude Code <span class="mut">${esc(ex.version||'')}</span></h3>
+  box.innerHTML=`<h3>Claude Code <span class="mut">${esc(String(ex.version||'').replace(/\s*\(Claude Code\)\s*$/i,''))}</span></h3>
     <div class="ghint">${esc(ex.what||'')}</div>${bill}
     ${pRow('Use as an engine',pSwitch('s-exec-on',ex.enabled),
       {desc:'Adds Claude Code to the model picker in Chat, so it can answer your turns.',f:'enable claude code executor'})}
@@ -1233,8 +1286,12 @@ async function renderChannels(){
   try{d=await (await fetch('/api/channels')).json()}catch(e){}
   if(!d||!d.channels){box.innerHTML='<p class="mut">could not read channels</p>';return}
   CHAN_POSTURES=d.postures||[];
-  var html=`<h3 class="chsec">Channels that reach this agent</h3>`
-    +d.channels.map(chanCard).join('');
+  /* The ones you set up first (Telegram, WhatsApp, Remote): they were below five
+     built-in cards that are always on and have nothing to fill in, so the page opened
+     on the part nobody came for. */
+  const own=d.channels.filter(c=>!c.builtin),built=d.channels.filter(c=>c.builtin);
+  var html=(own.length?`<h3 class="chsec">Ways to reach it</h3>`+own.map(chanCard).join(''):'')
+    +(built.length?`<h3 class="chsec">Built in <span class="mut">always on</span></h3>`+built.map(chanCard).join(''):'');
   box.innerHTML=html;
   if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
 }
@@ -1254,9 +1311,8 @@ function chanCard(c){
     : pRow('Permissions',`<span class="mut">follows ${esc(c.posture_from||'another channel')}</span>`,
         {desc:`Same rules as that channel: ${esc(c.posture_label)}.`,
          f:c.id+' permissions'});
-  const onoff=c.builtin
-    ? pRow('Available',`<span class="mut">always on</span>`,
-        {desc:'This is how you reach the machine, so it can’t be switched off here.',f:c.id+' always on'})
+  // a built-in channel is always on, and its heading's chip already says so
+  const onoff=c.builtin?''
     : pRow('Switched on',pSwitch(`ch-${c.id}-on`,c.enabled),{f:c.id+' enable'});
   /* The walkthrough, open exactly when it is needed. "Create a bot with @BotFather
      and paste its token" is a fine label for the BOX; it is not instructions, and it
@@ -1264,7 +1320,9 @@ function chanCard(c){
      exists, and that pairing afterwards is a separate act nobody mentioned.
      `status==='needs'` is the honest trigger: unfilled channels teach, a working one
      folds itself away rather than nagging. */
-  const steps=(c.setup||[]).length?`<details class="chsteps" ${c.status==='needs'?'open':''}>
+  // open only for a channel you switched on that still needs something: a channel
+  // nobody has turned on is not waiting for anything, and six steps open read as a wall
+  const steps=(c.setup||[]).length?`<details class="chsteps" ${c.status==='needs'&&c.enabled?'open':''}>
       <summary>How to set this up (${(c.setup||[]).length} steps)</summary>
       ${/* md() rather than a second inline-markdown pass: it escapes first, and it
             is what renders **bold** and `code` everywhere else in the OS. The <p>
@@ -1375,8 +1433,10 @@ async function paintTeamLimits(){
   const label={hops:'Hops a question may travel',budget:'Questions per task',clarify:'Times a colleague may ask back',
     huddle_agents:'Agents in a huddle',huddle_rounds:'Rounds in a huddle'};
   box.classList.remove('mut');
-  box.innerHTML=Object.keys(R).map(k=>`<label class="tl-row"><span>${esc(label[k]||k)}<small class="mut"> · ${esc(R[k].what)} (${R[k].min}–${R[k].max}, default ${R[k].default})</small></span>
-    <input type="number" data-lim="${esc(k)}" min="${R[k].min}" max="${R[k].max}" value="${L[k]}"></label>`).join('');
+  // one line each, a small number box on the right: the label already says what the
+  // limit is, so the server's own sentence for it is the box's title
+  box.innerHTML=Object.keys(R).map(k=>`<label class="tl-row" title="${esc(R[k].what)}"><span class="tl-l">${esc(label[k]||k)}<small class="mut">${R[k].min} to ${R[k].max}, default ${R[k].default}</small></span>
+    <input type="number" data-lim="${esc(k)}" min="${R[k].min}" max="${R[k].max}" value="${L[k]}" aria-label="${esc(label[k]||k)}"></label>`).join('');
   box.querySelectorAll('input[data-lim]').forEach(inp=>inp.onchange=async()=>{
     const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({team:{limits:{[inp.dataset.lim]:+inp.value}}})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
@@ -1393,7 +1453,7 @@ async function paintTeamLimits(){
    screen to approve on. Everything is a call to /api/team/links*. */
 var TEAM_INVITE=null;
 function openLinkedTeams(){
-  SETTAB='ai';try{localStorage.setItem('settab','ai')}catch(e){}
+  SETTAB='team';try{localStorage.setItem('settab','team')}catch(e){}
   openApp('settings');
   setTimeout(()=>{
     if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="team"]')?.click();

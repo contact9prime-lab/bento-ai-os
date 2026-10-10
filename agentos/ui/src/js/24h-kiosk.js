@@ -409,12 +409,10 @@ async function faceSettingsPaint(){
     pRow('Test the wake word',`<button class="endbtn" id="s-face-test">Test it</button>`,
       {desc:esc(d.heard&&d.heard.at?`Last heard: “${d.heard.text||d.heard.word}”`:'Say the wake word and a question.'),
        f:'test microphone mic wake word voice hear check'}),
-    pRow('Understanding speech',pSelect('s-face-hear',hearChoices(),hear.setting||'auto'),
-      {desc:esc(hear.line||''),
-       more:'Auto uses whisper.cpp when it is here, then the voice service set up under Voice. ElevenLabs, OpenAI and Google Cloud can all hear with the same key.',
-       f:'speech to text whisper openai elevenlabs google transcribe hearing stt'}),
-    hear.engine?'':pRow('Make it hear',hearFixHTML(hear,'s-face'),
-      {desc:'Add a voice key, or understand speech on this machine.',f:'install whisper voice key hear'}),
+    // what understands speech is set under Voice (hearSettingsPaint); the kiosk
+    // only says whether it can hear, and where to fix it when it cannot
+    hear.engine?'':pRow('Hearing',`<button class="endbtn" id="s-face-voiceset">Voice settings</button>`,
+      {desc:esc(hear.line||'Nothing here can understand speech yet.'),f:'kiosk hear speech to text voice'}),
   ].join('');
   const put=async body=>{
     const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -428,13 +426,36 @@ async function faceSettingsPaint(){
   box.querySelector('#s-face-buddy').onchange=e=>put({buddy:e.target.value});
   box.querySelector('#s-face-kiosk').onchange=e=>put({kiosk:e.target.checked});
   box.querySelector('#s-face-wake').onchange=e=>put({wake:e.target.value});
-  box.querySelector('#s-face-hear').onchange=e=>put({hear:e.target.value});
   box.querySelector('#s-face-word').onchange=e=>put({wake_word:e.target.value.trim()});
-  hearFixWire(box,'s-face',faceSettingsPaint);
+  const hb=box.querySelector('#s-face-voiceset');if(hb)hb.onclick=()=>settingsGo('voice');
   box.querySelector('#s-face-test').onclick=async e=>{
     const b=e.target,row=b.closest('.prow'),out=row&&row.querySelector('small');
     b.disabled=true;await voiceWakeTest(out);b.disabled=false;
   };
+}
+/* Settings → Voice → Listening: what understands speech on this machine, for the
+   kiosk, the wake-word test and the mic. It lived under Appearance → On this screen,
+   which is not where anybody looks for speech to text. Saved through /api/face, the
+   same setting as before (face.py `hear`). */
+async function hearSettingsPaint(){
+  const box=document.getElementById('s-hear');if(!box)return;
+  let d;try{d=await apiJSON('/api/face')}catch(e){box.innerHTML=`<div class="prow"><div class="pl"><small>${esc(String(e.message||e))}</small></div></div>`;return}
+  const hear=d.hear||{};
+  box.innerHTML=[
+    pRow('Understanding speech',pSelect('s-face-hear',hearChoices(),hear.setting||'auto'),
+      {desc:esc(hear.line||''),
+       more:'Auto uses whisper.cpp when it is here, then the voice service above. ElevenLabs, OpenAI and Google Cloud can all hear with the same key.',
+       f:'speech to text whisper openai elevenlabs google transcribe hearing stt'}),
+    hear.engine?'':pRow('Make it hear',hearFixHTML(hear,'s-hear'),
+      {desc:'Add a voice key above, or understand speech on this machine.',f:'install whisper voice key hear'}),
+  ].join('');
+  box.querySelector('#s-face-hear').onchange=async e=>{
+    const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hear:e.target.value})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.error)toast(j.error||'could not save that');else setSavedMark(true);
+    hearSettingsPaint();
+  };
+  hearFixWire(box,'s-hear',hearSettingsPaint);
 }
 addEventListener('hashchange',()=>{if(location.hash==='#kiosk')try{sessionStorage.removeItem('kiosk.left')}catch(e){}
   if(typeof kioskApply==='function')kioskApply()});
@@ -455,7 +476,11 @@ function hearFixHTML(hear,pre){
 }
 function hearFixWire(box,pre,after){
   const k=box.querySelector('#'+pre+'-voicekey');
-  if(k)k.onclick=()=>{openApp('settings');setTimeout(()=>{
+  if(k)k.onclick=()=>{
+    // already on Voice: the key box is just above, so go to it
+    const eng=document.getElementById('v-engine-box');
+    if(eng){eng.scrollIntoView({block:'center',behavior:'smooth'});return}
+    openApp('settings');setTimeout(()=>{
     const b=document.querySelector('.prefs-side button[data-t="voice"]');if(b)b.click()},150)};
   const w=box.querySelector('#'+pre+'-whisper');
   if(w)w.onclick=async()=>{w.disabled=true;w.textContent='Installing… (a few minutes)';

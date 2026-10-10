@@ -1910,19 +1910,19 @@ def billing() -> dict:
     if acct.get("emailAddress") or acct.get("accountUuid"):
         plan = {"claude_max": "Claude Max", "claude_pro": "Claude Pro"}.get(org, org or "Claude")
         return {"mode": "subscription", "plan": plan,
-                "detail": f"signed in to {plan} — delegated runs come out of that "
-                          f"plan, not an API bill",
+                "detail": f"Signed in to {plan}. Runs it does for you come out of that "
+                          f"plan, not an API bill.",
                 # If a key were present the CLI would prefer it; AgentOS removes
                 # them from the child, so say so rather than leaving it ambiguous.
                 "stripped": forced}
     if forced:
         return {"mode": "api", "plan": "",
-                "detail": "no Claude subscription is signed in, and AgentOS does not "
-                          "pass API keys to it — run `claude` once and sign in",
+                "detail": "No Claude subscription is signed in, and AgentOS does not "
+                          "pass API keys to it. Run `claude` once and sign in.",
                 "stripped": forced}
     return {"mode": "none", "plan": "",
-            "detail": "nobody is signed in to Claude Code — run `claude` once in a "
-                      "terminal to sign in", "stripped": []}
+            "detail": "Nobody is signed in to Claude Code yet. Run `claude` once in a "
+                      "terminal to sign in.", "stripped": []}
 
 
 def _why(event: dict, run: Run) -> str:

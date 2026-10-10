@@ -1410,24 +1410,28 @@ async function officeSnap(){
    editor; this is the part that belongs with the look. */
 async function officeSettingsPaint(){
   const box=document.getElementById('s-office');if(!box)return;
-  let v;try{v=await apiJSON('/api/office')}catch(e){box.innerHTML='<p class="mut">could not load the office — '+esc(e.message)+'</p>';return}
+  let v;try{v=await apiJSON('/api/office')}catch(e){box.innerHTML='<div class="ghint mut">Could not load the office. '+esc(e.message)+'</div>';return}
   OFFICE.view=OFFICE.view||v;
   const of=v.office,opt=(val,label,sel)=>`<option value="${esc(val)}"${sel?' selected':''}>${esc(label)}</option>`;
-  box.innerHTML=`<div class="prow"><div class="pl">Style<small id="s-of-blurb">${esc((v.styles[of.style]||{}).blurb||'')}</small></div>
-      <div class="pc"><select id="s-of-style" aria-label="Office style">${Object.entries(v.styles).map(([k,st])=>opt(k,st.label,k===of.style)).join('')}</select></div></div>
-    <div class="prow"><div class="pl">Name on the door</div><div class="pc"><input id="s-of-name" maxlength="24" value="${esc(of.name)}"></div></div>
-    <div class="prow"><div class="pl">Office pet</div><div class="pc"><select id="s-of-pet" aria-label="Office pet">${v.pets.map(p=>opt(p,p,p===of.pet)).join('')}</select></div></div>
-    <div class="prow"><div class="pl">Describe it<small>Your agent chooses a style, name, rooms, decor and pet from what you write; with no brain set up, the words are matched instead, and it says so.</small></div>
-      <div class="pc"><input id="s-of-ask" maxlength="300" placeholder="a cosy space station with a research wing"><button class="endbtn" id="s-of-askb">Design it</button></div></div>
-    <div class="prow"><div class="pl"><span class="mut" id="s-of-said" aria-live="polite"></span></div>
-      <div class="pc"><button class="endbtn" onclick="openApp('office')">Open the Office</button></div></div>`;
+  // the same rows as the rest of Settings (pRow): the labels were plain text beside
+  // every other bold one, and the describe line ran to two lines with a semicolon
+  const cap=t=>{t=String(t||'');return t.charAt(0).toUpperCase()+t.slice(1)};
+  box.innerHTML=[
+    pRow('Style',`<select id="s-of-style" aria-label="Office style">${Object.entries(v.styles).map(([k,st])=>opt(k,st.label,k===of.style)).join('')}</select>`,
+      {desc:`<span id="s-of-blurb">${esc(cap((v.styles[of.style]||{}).blurb))}</span>`,f:'office style'}),
+    pRow('Name on the door',`<input id="s-of-name" maxlength="24" value="${esc(of.name)}">`,{f:'office name door'}),
+    pRow('Office pet',`<select id="s-of-pet" aria-label="Office pet">${v.pets.map(p=>opt(p,p,p===of.pet)).join('')}</select>`,{f:'office pet'}),
+    pRow('Describe it',`<input id="s-of-ask" maxlength="300" placeholder="a cosy space station"><button class="endbtn" id="s-of-askb">Design it</button>`,
+      {desc:'Your agent picks a style, name, rooms and pet from your words.',more:'With no brain set up, the words are matched to the choices instead, and it says so.',f:'office describe design'}),
+    `<div class="prow"><div class="pl"><small class="mut" id="s-of-said" aria-live="polite"></small></div>
+      <div class="pc"><button class="endbtn" onclick="openApp('office')">Open the Office</button></div></div>`].join('');
   const put=async patch=>{await officeSave(patch);officeSettingsPaint()};
   box.querySelector('#s-of-style').onchange=e=>put({style:e.target.value});
   box.querySelector('#s-of-name').onchange=e=>put({name:e.target.value});
   box.querySelector('#s-of-pet').onchange=e=>put({pet:e.target.value});
   const ask=async()=>{const d=await officeDescribe(box.querySelector('#s-of-ask'),box.querySelector('#s-of-said'),box.querySelector('#s-of-askb'));
     if(!d)return;box.querySelector('#s-of-style').value=d.office.style;
-    box.querySelector('#s-of-blurb').textContent=(d.styles[d.office.style]||{}).blurb||'';box.querySelector('#s-of-name').value=d.office.name;
+    box.querySelector('#s-of-blurb').textContent=cap((d.styles[d.office.style]||{}).blurb);box.querySelector('#s-of-name').value=d.office.name;
     box.querySelector('#s-of-pet').value=d.office.pet};
   box.querySelector('#s-of-askb').onclick=ask;box.querySelector('#s-of-ask').onkeydown=e=>{if(e.key==='Enter')ask()};
 }
