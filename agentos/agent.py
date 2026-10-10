@@ -822,6 +822,11 @@ class Agent:
             # session scope flows through: saves attach to this conversation and
             # delegated subagents inherit its session memory
             args = {**args, "conversation_id": self.conversation_id}
+        if name == "create_app":
+            # the chat that built it, the agent's and never the model's: a model that
+            # could name a conversation could file an app under somebody else's chat
+            args = {**{k: v for k, v in args.items() if k != "_conv"},
+                    "_conv": self.conversation_id or ""}
         if name.startswith("mcp_"):
             # Where this call is happening, so anything the server hands
             # back (an image, a clip) is filed against this conversation

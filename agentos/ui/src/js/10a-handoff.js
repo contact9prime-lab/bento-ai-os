@@ -58,9 +58,12 @@ function handoffFor(name,args){
 /* Opening it means SHOWING the thing, not the app that contains it. A button
    that lands you in App Studio with nothing selected is a redirection, not a
    handoff. */
-function handoffOpen(h){
+async function handoffOpen(h){
   if(h.app==='studio'){
-    const hit=(typeof USERAPPS!=='undefined'?USERAPPS:[]).find(a=>a.name===h.what);
+    const find=()=>(typeof USERAPPS!=='undefined'?USERAPPS:[]).find(a=>a.name===h.what);
+    // the chip can be tapped before the `apps` broadcast has reloaded the list
+    let hit=find();
+    if(!hit&&typeof loadUserApps==='function'){try{await loadUserApps()}catch(e){}hit=find()}
     if(hit&&typeof STUDIO!=='undefined')STUDIO.sel=hit.id;
     openApp('studio');refreshApp('studio');return;
   }
@@ -82,6 +85,18 @@ function handoffChip(h){
   b.textContent=h.label;
   b.onclick=()=>handoffOpen(h);
   return el;
+}
+/* The same door for an app an agent CLI wrote (the `app_saved` event): there was no
+   create_app call to hang it on. */
+function handoffApp(ev,cid,sink,inChat){
+  const h={app:'studio',label:'Open in App Studio',what:ev.name||'the app',
+    note:ev.new?'built here — its build is in App Studio with this chat':'saved as a new version'};
+  const key=h.app+':'+h.what;
+  if(HANDOFF_SEEN[cid||'']===key)return;
+  HANDOFF_SEEN[cid||'']=key;
+  if(sink&&sink.handoff)sink.handoff(h);
+  if(inChat&&typeof feed!=='undefined'&&feed&&typeof curBody!=='undefined'&&curBody)
+    curBody.parentNode.insertBefore(handoffChip(h),curBody);
 }
 /* Called from the tool_end handler for every surface. `cid` dedupes: a flow that
    is written and then enabled in the same turn is one thing, and two chips for

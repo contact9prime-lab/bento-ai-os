@@ -166,7 +166,8 @@ CREATE TABLE IF NOT EXISTS app_versions (
     version INTEGER,             -- 1, 2, 3… per app
     html TEXT,
     note TEXT DEFAULT '',        -- what changed (builder prompt, "restored v2", …)
-    created_at REAL
+    created_at REAL,
+    conversation_id TEXT DEFAULT ''  -- the chat or build session that made this version
 );
 CREATE INDEX IF NOT EXISTS idx_app_versions ON app_versions(app_id, version);
 CREATE TABLE IF NOT EXISTS themes (
@@ -650,6 +651,9 @@ class Store:
                          ("widget_size", "TEXT DEFAULT 'm'")):         # s | m | l — the app's widget mode
             if col not in acols:
                 self.db.execute(f"ALTER TABLE user_apps ADD COLUMN {col} {ddl}")
+        vcols = {r["name"] for r in self.db.execute("PRAGMA table_info(app_versions)").fetchall()}
+        if "conversation_id" not in vcols:   # which chat built a version (App Studio shows it)
+            self.db.execute("ALTER TABLE app_versions ADD COLUMN conversation_id TEXT DEFAULT ''")
         gcols = {r["name"] for r in self.db.execute("PRAGMA table_info(grants)").fetchall()}
         if "surfaces" not in gcols:  # IO gates: pre-surface grants apply everywhere
             self.db.execute("ALTER TABLE grants ADD COLUMN surfaces TEXT DEFAULT '*'")
@@ -1613,7 +1617,7 @@ class Store:
     # -- user apps (AI-built UI tools) ------------------------------------------
 
     def save_app(self, name: str, icon: str, description: str, html: str,
-                 note: str = "") -> str:
+                 note: str = "", conversation_id: str = "") -> str:
         name = name.strip()
         now = time.time()
         row = self.db.execute("SELECT id, html FROM user_apps WHERE name=? COLLATE NOCASE", (name,)).fetchone()
@@ -1622,14 +1626,14 @@ class Store:
             self.db.execute("UPDATE user_apps SET icon=?, description=?, html=?, updated_at=? WHERE id=?",
                             (icon, description, html, now, row["id"]))
             if changed:
-                self._record_app_version(row["id"], html, note)
+                self._record_app_version(row["id"], html, note, conversation_id)
             self.db.commit()
             return row["id"]
         aid = uuid.uuid4().hex[:12]
         self.db.execute(
             "INSERT INTO user_apps (id, name, icon, description, html, created_at, updated_at) "
             "VALUES (?,?,?,?,?,?,?)", (aid, name, icon or "", description, html, now, now))
-        self._record_app_version(aid, html, note or "initial version")
+        self._record_app_version(aid, html, note or "initial version", conversation_id)
         self.db.commit()
         return aid
 
@@ -1677,12 +1681,14 @@ class Store:
 
     # -- app versions (every save with changed html = a new restorable version) --
 
-    def _record_app_version(self, aid: str, html: str, note: str = ""):
+    def _record_app_version(self, aid: str, html: str, note: str = "", conversation_id: str = ""):
         last = self.db.execute(
             "SELECT MAX(version) v FROM app_versions WHERE app_id=?", (aid,)).fetchone()
         self.db.execute(
-            "INSERT INTO app_versions (id, app_id, version, html, note, created_at) VALUES (?,?,?,?,?,?)",
-            (uuid.uuid4().hex[:12], aid, (last["v"] or 0) + 1, html, note[:300], time.time()))
+            "INSERT INTO app_versions (id, app_id, version, html, note, created_at, conversation_id) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (uuid.uuid4().hex[:12], aid, (last["v"] or 0) + 1, html, note[:300], time.time(),
+             conversation_id or ""))
         # keep history bounded: the newest 30 versions per app
         self.db.execute(
             "DELETE FROM app_versions WHERE app_id=? AND version <= "
@@ -1690,9 +1696,35 @@ class Store:
 
     def app_versions(self, aid: str) -> list[dict]:
         rows = self.db.execute(
-            "SELECT id, app_id, version, note, created_at, length(html) AS size "
+            "SELECT id, app_id, version, note, created_at, length(html) AS size, conversation_id "
             "FROM app_versions WHERE app_id=? ORDER BY version DESC", (aid,)).fetchall()
         return [dict(r) for r in rows]
+
+    # An app and the conversations that built it. A version records the chat (or the
+    # App Studio session) it was made in, so the Studio can show how an app built from
+    # Chat came to be, and a follow-up in that chat can edit the same app. It was a
+    # title convention ("build: <name>") that a chat turn never met.
+
+    def app_conversations(self, aid: str) -> list[dict]:
+        """The conversations that made this app's versions, newest first, with their
+        titles and origins. A conversation since deleted is left out."""
+        rows = self.db.execute(
+            "SELECT v.conversation_id AS id, MIN(v.version) AS first_version, "
+            "MAX(v.version) AS last_version, MAX(v.created_at) AS at, c.title, c.origin "
+            "FROM app_versions v JOIN conversations c ON c.id = v.conversation_id "
+            "WHERE v.app_id=? AND v.conversation_id != '' "
+            "GROUP BY v.conversation_id ORDER BY MAX(v.version) DESC", (aid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def app_for_conversation(self, conversation_id: str) -> dict | None:
+        """The app this conversation built or last changed, if it still exists."""
+        if not conversation_id:
+            return None
+        row = self.db.execute(
+            "SELECT a.id FROM app_versions v JOIN user_apps a ON a.id = v.app_id "
+            "WHERE v.conversation_id=? ORDER BY v.created_at DESC LIMIT 1",
+            (conversation_id,)).fetchone()
+        return self.get_app(row["id"]) if row else None
 
     def get_app_version(self, aid: str, version: int) -> dict | None:
         row = self.db.execute(

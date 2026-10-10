@@ -149,7 +149,7 @@ def test_every_surface_that_forwards_a_thread_carries_it():
     assert "execmod.carry_over(" in srv and '"exec_session": exec_sid' in srv
     # the save happens in `finally`, so a stopped turn is not forgotten
     body = srv[srv.index("await execmod.run_task(text, env, _relay, run)"):]
-    fin = body[body.index("finally:"):body.index("if checkout:")]
+    fin = body[body.index("finally:"):body.index("# Say what was saved")]
     assert "set_exec_session" in fin
     for f in ("telegram.py", "whatsapp.py"):
         src = (ROOT / "agentos" / f).read_text()

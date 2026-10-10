@@ -657,14 +657,56 @@ def new_app_note(co: dict) -> str:
     question answered with a file nobody wanted.
     """
     return (
-        f"\n\nIf — and only if — this turn asks you to build or change an AgentOS "
+        f"\n\nIf — and only if — this turn asks you to build a NEW AgentOS "
         f"desktop app, write the complete app to:\n  {co['path']}\n"
         f"One self-contained HTML file: markup, CSS and JavaScript together, no "
-        f"build step and no external assets. AgentOS installs it as an app when "
-        f"you finish, and says so in the chat. Leave the file empty for any other "
-        f"kind of request — an empty file means 'this was not an app build', and "
-        f"nothing is installed."
+        f"build step and no external assets. Give it a short name in its <title> "
+        f"(two or three words): that is the name it gets on the desktop and in App "
+        f"Studio. AgentOS installs it as an app when you finish, and says so in the "
+        f"chat. Leave the file empty for any other kind of request — an empty file "
+        f"means 'this was not an app build', and nothing is installed."
     )
+
+
+def chat_app_note(co: dict) -> str:
+    """Told to the executor when THIS chat already built an app.
+
+    A follow-up like "make the table sortable" is about that app, and a fresh empty
+    file would have built a second one. The earlier turn's own build folder is not
+    reused (the session may remember it), so the note names the one file that is
+    saved back, and says it out loud.
+    """
+    return (
+        f"\n\nEarlier in this chat you built the AgentOS app \"{co['name']}\". Its "
+        f"current version is at:\n  {co['path']}\n"
+        f"If this turn asks to change that app, edit THAT file in place (not an "
+        f"earlier copy elsewhere): AgentOS saves it back as a new version when you "
+        f"finish, and the old version stays in its history. Leave it untouched for "
+        f"anything else."
+    )
+
+
+def _title_of(html: str) -> str:
+    """The name an app gave itself in its <title>, if it is a usable one."""
+    import re
+    m = re.search(r"<title[^>]*>(.*?)</title>", html or "", re.IGNORECASE | re.DOTALL)
+    t = re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+    return t[:40].strip() if 2 <= len(t) else ""
+
+
+def _unique_app_name(store, name: str) -> str:
+    """A new app never lands on an existing one. `save_app` upserts by name, so a
+    second "Pomodoro Timer" would have become version 2 of somebody's first one."""
+    try:
+        taken = {str(a.get("name", "")).lower() for a in store.list_apps()}
+    except Exception:
+        return name
+    if name.lower() not in taken:
+        return name
+    n = 2
+    while f"{name} {n}".lower() in taken:
+        n += 1
+    return f"{name} {n}"
 
 
 def app_checkout_note(co: dict, tools: tuple[str, ...]) -> str:
@@ -682,8 +724,14 @@ def app_checkout_note(co: dict, tools: tuple[str, ...]) -> str:
             "changing it, keep it self-contained, and change only what was asked.")
 
 
-def commit_app(store, co: dict, note: str = "") -> tuple[bool, str]:
-    """Save an edited checkout back to the app it came from."""
+def commit_app(store, co: dict, note: str = "", finished: bool = True) -> tuple[bool, str]:
+    """Save an edited checkout back to the app it came from.
+
+    `finished` is False for a turn that was stopped or failed. The app may still be
+    complete (a stop while it wrote a README after the app worked), so it is saved
+    when the file reads as a whole document, and left on disk when it does not:
+    half an app installed as a success is worse than none.
+    """
     try:
         after = Path(co["path"]).read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
@@ -696,9 +744,18 @@ def commit_app(store, co: dict, note: str = "") -> tuple[bool, str]:
         return False, "the app file was emptied — refusing to save that"
     if len(after) > MAX_APP_HTML:
         return False, f"the edited app is {len(after) // 1000}KB, past the limit — not saved"
+    if not finished and "</html>" not in after.lower():
+        return False, (f"the turn stopped before the app was finished, so it was not "
+                       f"installed. What was written is in {co['path']}")
+    name = co["name"]
+    if not co.get("app_id"):
+        name = _unique_app_name(store, _title_of(after) or name)
+        co["name"] = name
+    # which chat made this version, so App Studio can show it (memory.app_conversations)
+    kw = {"conversation_id": co["conversation_id"]} if co.get("conversation_id") else {}
     try:
-        store.save_app(co["name"], co["icon"], co["description"], after,
-                       note or "edited by Claude Code")
+        store.save_app(name, co["icon"], co["description"], after,
+                       note or "edited by Claude Code", **kw)
     except Exception as exc:
         return False, f"could not save the app: {exc}"
     # "a new version" is true for a checkout of an existing app and false for one

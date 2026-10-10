@@ -1313,6 +1313,26 @@ sense" when it was missing:
   copilot panel — gets it from one place. A tool that is not in that map
   deliberately gets NO handoff: an invented door is worse than no door.
 
+## An app knows the chat that built it
+
+`app_versions.conversation_id` records the conversation each version was made in: a chat turn
+on an agent CLI (`_run_chat`, the checkout's `conversation_id`), the built-in agent's
+`create_app` (`_conv`, injected by the agent loop after the model's args, like `brief_item`'s
+run) and App Studio's own builds. `memory.app_conversations` / `app_for_conversation` read it
+back; `/api/apps/{id}/conversations` feeds the Studio's Builder (`studioLoadHistory`), which
+fell back to a `build: <name>` title that a chat turn never had. Reported as "the app studio
+should have the chat message as well". Four things to keep (`tests/test_chat_app_in_studio.py`):
+- **A follow-up edits the chat's own app.** `_run_chat` checks out `app_for_conversation(cid)`
+  beside the empty new-app file, with a conditional note (`chat_app_note`) naming the one file
+  that is saved back. Without it "make it sortable" built a second app.
+- **A new app names itself from its `<title>`** (`_title_of`), and `_unique_app_name` numbers a
+  taken name: `save_app` upserts by name, so a second "Pomodoro" became version 2 of the first.
+- **The commit runs in `finally`**, with `finished=turn_done`: a stop after the app was written
+  (Claude Code busy with a README) installed nothing before. An unfinished file (no `</html>`) is
+  left on disk and the chat says where.
+- **`app_saved` is the executor's door** (`handoffApp`), because no `create_app` tool_end exists
+  for a CLI to hang the chip on.
+
 ## Places: the launchers find what is inside apps
 
 `05b-places.js` is one index of the places inside apps (Settings panes, the Missions tabs),
