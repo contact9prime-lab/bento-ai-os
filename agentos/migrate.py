@@ -56,6 +56,14 @@ def everyone(log=None) -> list[dict]:
                 out.append(_one(label, usersmod.cfg_for(u["id"]), usersmod.store_for(u["id"])))
         except Exception as e:
             out.append({"home": label, "ok": False, "error": f"{type(e).__name__}: {e}"})
+    for u in people:
+        # the first account's workspace is the machine's, outside its home; a share
+        # keeps it reachable by that account's own agent (users.share_own_workspace)
+        try:
+            if usersmod.share_own_workspace(u["id"]):
+                say(f"✓ {u.get('name') or u['id']}'s workspace is shared with them, so their agent can use it")
+        except Exception as e:
+            say(f"✗ sharing {u.get('name') or u['id']}'s workspace: {type(e).__name__}: {e}")
     for r in out:
         say(f"{'✓' if r['ok'] else '✗'} {r['home']}: "
             + (f"up to date ({r['characters']} characters)" if r["ok"] else r["error"]))

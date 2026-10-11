@@ -5400,7 +5400,7 @@ window.addEventListener('unhandledrejection', e => {
 
 
 @app.get("/api/apps/{aid}/page")
-async def api_app_page(aid: str, surface: str = "", size: str = ""):
+async def api_app_page(aid: str, request: Request, surface: str = "", size: str = ""):
     from fastapi.responses import HTMLResponse
     a = state["store"].get_app(aid)
     if not a:
@@ -5409,7 +5409,11 @@ async def api_app_page(aid: str, surface: str = "", size: str = ""):
     # since the PDP reads live grants — the token only says WHO is calling)
     tok = secrets.token_urlsafe(24)
     now = time.time()
-    state["app_tokens"][tok] = {"app_id": aid, "issued": now}
+    # and WHOSE app it is: the sandboxed frame sends no cookie, so on a machine with
+    # accounts (or a remote browser) the token is the only thing its calls carry, and
+    # the gate admits them as the account that opened the page (`_app_token_admits`)
+    state["app_tokens"][tok] = {"app_id": aid, "issued": now, "uid": usersmod.current(),
+                                "sid": _session_jti(request)}
     for k, v in list(state["app_tokens"].items()):
         if now - v["issued"] > 86400:
             state["app_tokens"].pop(k, None)
@@ -6783,6 +6787,48 @@ def _same_origin(request: Request):
     return urlsplit(o).netloc == request.headers.get("host", "")
 
 
+def _session_jti(request: Request) -> str:
+    """The id of this browser's session cookie, '' with none."""
+    claims = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE, ""))
+    return str((claims or {}).get("jti") or "")
+
+
+def _app_token_entry(request: Request) -> dict | None:
+    tok = request.headers.get("x-app-token", "")
+    return state.get("app_tokens", {}).get(tok) if tok else None
+
+
+def _app_token_admits(request: Request) -> bool:
+    """An app's runtime call, let through the sign-in gate on its token alone.
+
+    An app is a sandboxed opaque-origin frame, so its fetches carry no cookie. On a
+    machine with accounts (or from a remote browser) the gate refused every one of
+    them as "sign in required", before the token was looked at: every app built
+    there had no tools, no AI and no data. Found by the end-to-end walk. The token is
+    minted only for a page served to a signed-in session, records that account, is
+    unguessable and held server-side, so it is a credential the server issued and
+    not a claim the caller makes. It admits only the app runtime routes (never the
+    page itself, which a navigation loads with the cookie), never a locked session's
+    apps, and never an account that has been deleted. The CORS preflight carries no
+    headers at all, so it is admitted on the runtime paths and answered with 204."""
+    path = request.url.path
+    if not _is_app_runtime(path) or path.endswith("/page"):
+        return False
+    if request.method == "OPTIONS":
+        return True
+    e = _app_token_entry(request)
+    if not e or e.get("locked"):
+        return False
+    if usersmod.enabled():
+        uid = str(e.get("uid") or "")
+        return bool(uid) and usersmod.get(uid) is not None
+    return True
+
+
+def _app_tokens_of_session(sid: str) -> list[dict]:
+    return [e for e in state.get("app_tokens", {}).values() if sid and e.get("sid") == sid]
+
+
 def _valid_app_token(request: Request) -> bool:
     tok = request.headers.get("x-app-token", "")
     return bool(tok) and tok in state.get("app_tokens", {})
@@ -6968,6 +7014,12 @@ async def resolve_user(request: Request, call_next):
                                      request.cookies.get(remotemod.COOKIE, "")) or ""
         if uid and not usersmod.get(uid):
             uid = ""                     # the account was deleted mid-session
+        # An app's own call carries no cookie (a sandboxed frame), so it acts as the
+        # account its token was minted for. That is a server-issued credential, not a
+        # header the caller chose: an unknown or locked token resolves to nobody.
+        if not uid and _app_token_admits(request):
+            e = _app_token_entry(request) or {}
+            uid = str(e.get("uid") or "")
         # A LOCKED cookie still resolves to its owner, deliberately. Locking is not
         # signing out: the unlock route has to know whose password to check, and the
         # lock screen has to be able to say whose desktop this is. Nothing else runs
@@ -6981,7 +7033,7 @@ async def resolve_user(request: Request, call_next):
 
 @app.middleware("http")
 async def remote_access_gate(request: Request, call_next):
-    if _authed(request):
+    if _authed(request) or _app_token_admits(request):
         return await call_next(request)
     path = request.url.path
     if path.startswith(REMOTE_OPEN_PATHS):
@@ -8684,7 +8736,13 @@ async def api_session_lock(request: Request):
              "lock": ""}, status_code=400)
     uid = usersmod.current()
     resp = JSONResponse({"ok": True, "lock": kind})
-    _set_session_cookie(resp, request, remotemod.issue_session(cfg, uid, locked=True))
+    locked = remotemod.issue_session(cfg, uid, locked=True)
+    _set_session_cookie(resp, request, locked)
+    # the apps open in this browser stop with it: their calls carry the token, not
+    # the cookie, so the lock has to reach the token as well
+    new_sid = str((remotemod.session_claims(cfg, locked) or {}).get("jti") or "")
+    for e in _app_tokens_of_session(_session_jti(request)):
+        e["locked"], e["sid"] = True, new_sid
     state["store"].log("system", "desktop locked")
     return resp
 
@@ -8724,7 +8782,11 @@ async def api_session_unlock(body: dict, request: Request):
         return JSONResponse({"error": "that password does not match"}, status_code=401)
     remotemod.note_success(addr)
     resp = JSONResponse({"ok": True})
-    _set_session_cookie(resp, request, remotemod.issue_session(cfg, uid))
+    opened = remotemod.issue_session(cfg, uid)
+    _set_session_cookie(resp, request, opened)
+    new_sid = str((remotemod.session_claims(cfg, opened) or {}).get("jti") or "")
+    for e in _app_tokens_of_session(str(claims.get("jti") or "")):
+        e["locked"], e["sid"] = False, new_sid
     with contextlib.suppress(Exception):
         usersmod.store_for(uid).log("system", "desktop unlocked")
     return resp
@@ -9393,7 +9455,12 @@ async def api_users_login(body: dict, request: Request):
 
 
 @app.post("/api/users/logout")
-async def api_users_logout():
+async def api_users_logout(request: Request):
+    # the apps this browser opened stop with the session: their tokens are dropped
+    sid = _session_jti(request)
+    for k, e in list(state.get("app_tokens", {}).items()):
+        if sid and e.get("sid") == sid:
+            state["app_tokens"].pop(k, None)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(remotemod.COOKIE, path="/")
     return resp

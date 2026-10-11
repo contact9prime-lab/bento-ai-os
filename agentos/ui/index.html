@@ -9985,6 +9985,10 @@ function closeWin(w){
   stopWinTicks(w);                       // whatever the app registered dies with the window
   if(w.fs)document.body.classList.remove('has-fullwin');
   WM.wins.delete(w.key);w.tb.remove();
+  // The window stays on the page for its closing animation, and its ids must not:
+  // reopening an app inside that time found the OLD #feed and #input through $('#…'),
+  // so a reopened Chat took your typing and sent nothing. Found by the end-to-end walk.
+  w.el.querySelectorAll('[id]').forEach(e=>e.removeAttribute('id'));w.el.inert=true;
   zoomWin(w.el,w.id,-1).then(()=>w.el.remove());
   let top=null;WM.wins.forEach(o=>{if(!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
   if(top)focusWin(top);else{setMenubarApp('');updateDockHide();applyWindowActivity()}
@@ -13239,6 +13243,8 @@ function actDetail(name, args) {
   if (name === 'Bash' || name === 'run_command') return cut(s('description', 'command'), 90);
   // an app asking the agent (appAgent / its ✦ assistant): what it asked, in its words
   if (name === 'appAgent') return cut('ask your agent: ' + s('prompt'), 110);
+  // an app's appLLM / appChat: its card read "llm_generate {}" (the walk's screenshot)
+  if (name === 'llm_generate') return cut('use the AI' + (s('prompt') ? ': ' + s('prompt') : ''), 110);
   // a schedule, in words: how often and what it will do
   if (name === 'schedule_task') {
     const every = args.schedule_type === 'interval' && args.interval_minutes ? 'every ' + args.interval_minutes + ' min'
@@ -23708,11 +23714,13 @@ async function renderAudit(body,w){
   if(q){q.value=audFilter.q;q.oninput=audSearch}
   const stat=(n,l,cls)=>`<div class="stat" style="text-align:center"><div class="val ${cls||''}">${n||0}</div><div class="lbl">${l}</div></div>`;
   const rows=(d.entries||[]).map(a=>{
-    const cls=a.effect==='deny'?'audden':a.effect==='ask'?'audask':'audok';
+    // a permission change records the rule it wrote; it is not a decision allowed or refused
+    const change=String(a.action||'').startsWith('grant.');
+    const cls=change?'':a.effect==='deny'?'audden':a.effect==='ask'?'audask':'audok';
     const who=a.principal_id?`${a.principal_kind}:${a.principal_id}`:a.principal_kind;
     const out=a.outcome&&a.outcome!=='ok'?`<span class="badge">${esc(a.outcome)}</span>`:'';
     return `<div class="item">
-      <span class="audpill ${cls}">${esc(a.effect||'?')}</span>
+      <span class="audpill ${cls}"${change?` title="a ${esc(a.effect||'')} rule was ${a.action==='grant.revoke'?'removed':'written'}"`:''}>${change?'changed':esc(a.effect||'?')}</span>
       <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out}
         <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · rule ${esc(a.rule||'default')}
           ${a.duration_ms?' · '+a.duration_ms+'ms':''} · ${new Date(a.ts*1000).toLocaleString()}

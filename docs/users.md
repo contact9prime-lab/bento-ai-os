@@ -155,6 +155,13 @@ This is the consequential moment, and the UI says so before the button:
 3. **The first account is an admin**, whatever was asked for. A machine whose only
    account cannot administer it is a machine nobody can administer, and there is
    no second account to fix it from.
+4. **Your workspace stays yours to work in.** The machine's workspace (`~/AgentOS` by
+   default) becomes the first account's, and it sits outside that account's home.
+   It's shared with that one account, read-write, the same way an admin shares any
+   folder. Without that, your agent was refused your own files even after you said
+   yes, with "this belongs to another account on this machine". A machine that got
+   accounts before the fix gets the share on its next `bento migrate`, which runs on
+   every update and every start.
 
 The person who creates the first account is signed in by the same request. They
 proved they were the machine's owner by being able to make it; bouncing them to a
@@ -335,6 +342,11 @@ A machine with **no key** refuses to lock, in a sentence naming both ways to get
 shut somebody out of their own desktop for good, so it is the one thing this must not
 quietly become. `POST /api/session/lock` is in `SENSITIVE_FOR_APPS` for the mirror
 reason: an app that could lock the desktop could hold its owner out on a loop.
+
+The apps you have open in that browser stop with it. An app runs in a sandboxed frame
+that sends no cookie, so its calls carry the token it was given when it opened, and
+the token belongs to the session that opened it: a lock pauses it, unlocking resumes
+it, and signing out drops it.
 
 There is nothing to lock from the **TUI**. The lock is a property of a browser
 session, and the terminal client has no cookie — a headless machine's lock is the one

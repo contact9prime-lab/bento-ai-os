@@ -1267,17 +1267,24 @@ class Store:
     def audit_summary(self, since: float = 0.0) -> dict:
         """Counts for the Audit app's header: what was allowed, denied and asked,
         and which resources were refused most. Cheap enough to poll."""
+        # A permission CHANGE (grant.write / grant.revoke) is a row in the ledger too,
+        # and its effect is the effect of the rule it wrote. Counted with the decisions,
+        # a mission writing its "may not remember" deny rows read as the most refused
+        # thing on the machine when nothing had been refused. Found by the walk.
         where, params = ("WHERE ts>=?", [since]) if since else ("", [])
+        dec = where + (" AND" if where else "WHERE") + " action NOT LIKE 'grant.%'"
         effects = {r["effect"]: r["n"] for r in self.db.execute(
-            f"SELECT effect, COUNT(*) n FROM audit {where} GROUP BY effect", params).fetchall()}
+            f"SELECT effect, COUNT(*) n FROM audit {dec} GROUP BY effect", params).fetchall()}
+        changes = self.db.execute(
+            f"SELECT COUNT(*) FROM audit {where + (' AND' if where else 'WHERE')} action LIKE 'grant.%'",
+            params).fetchone()[0]
         top_denied = [dict(r) for r in self.db.execute(
-            f"SELECT resource, action, COUNT(*) n FROM audit "
-            f"{where + (' AND' if where else 'WHERE')} effect='deny' "
+            f"SELECT resource, action, COUNT(*) n FROM audit {dec} AND effect='deny' "
             f"GROUP BY resource, action ORDER BY n DESC LIMIT 10", params).fetchall()]
         by_surface = {r["surface"] or "unknown": r["n"] for r in self.db.execute(
             f"SELECT surface, COUNT(*) n FROM audit {where} GROUP BY surface", params).fetchall()}
         return {"effects": effects, "top_denied": top_denied, "by_surface": by_surface,
-                "total": sum(effects.values())}
+                "total": sum(effects.values()), "changes": changes}
 
     # -- knowledge graph ------------------------------------------------------
 

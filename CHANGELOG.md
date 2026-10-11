@@ -14,6 +14,28 @@ started on a task but not that she was at work.
   ready* all through a build.
 - Your agent's card says *started on a task in App Studio* or *in chat* instead of *an app*.
 
+**Chat, agents, permissions, apps and missions, walked end to end on a machine with accounts.**
+Asked as "check end to end if the experience is stitched". One person, a stand-in brain that calls
+the real tools, and a browser: a file write approved in chat, a hand-over to the researcher, an app
+built from chat and opened from its chip, the app calling the OS, a schedule for the app, and a
+mission drafted, enabled and run into the Brief. Five things were broken and are fixed:
+- **Apps on a machine with accounts could not reach the OS at all.** Every `appTool`, `appLLM` and
+  `appData` call came back "sign in required", because the app's sandboxed frame sends no cookie.
+  The app's own token now gets it through, as the person who opened it, on the app's routes only.
+  Locking the screen pauses it and signing out ends it. The same fix covers apps opened from a
+  remote browser.
+- **The first account's agent could not save into its own workspace,** even after you said yes
+  ("this belongs to another account on this machine"). That workspace is now shared with that
+  account, and `bento migrate` (run on every update and start) fixes machines that already have
+  accounts.
+- **Reopening Chat right after closing it left a chat that sent nothing.** A closing window now
+  gives up its place at once.
+- **The Permissions ledger counted permission changes as refusals.** A mission writing its own
+  rules showed up as "Most refused" and in the denied count. Those rows are now counted as changes.
+- **An app asking for the AI read "llm_generate {}"** on the approval card. It now says *use the AI*.
+
+`packaging/dev/stitch-e2e/walk.py` runs the whole walk again and prints what it finds.
+
 ## 0.6.24 — 2026-10-11
 
 **Your agents show when they work, and their faces show where they talk.** Reported with

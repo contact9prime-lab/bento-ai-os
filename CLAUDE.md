@@ -211,6 +211,11 @@ detect them", and it was five gaps, so check all five when you touch sharing:
   downloads, Telegram/WhatsApp `send_files`, the Office cabinet), and the Files app browses
   them (`/api/files?root=`, refused unless it is one of `_file_places()`).
 - `list_folders` shows a non-admin only their own shares: the list names other accounts.
+- **The first account's workspace is shared with it** (`users.share_own_workspace`, at
+  `create` and in `migrate.everyone`). `adopt` hands it the machine's workspace, `~/AgentOS`
+  by default and outside its home, so the tenant boundary refused that person's agent its own
+  files after they approved the write. Only an admin's workspace is shared: a non-admin
+  choosing a workspace must never be a way to reach a folder.
 
 **A passphrase is not a user, and the two locks are alternatives.** `remote.lock_kind`
 is the whole rule: accounts win, and a shared passphrase in front of them is one more
@@ -1279,6 +1284,14 @@ Five things will bite whoever touches this next (`tests/test_hands.py`):
 
 ## The three surfaces are stitched: bar → chat → Studio / Missions
 
+**Walk it, on a machine with accounts.** `packaging/dev/stitch-e2e/walk.py` runs one person
+through chat → approval → hand-over → an app built, opened and calling the OS → a schedule
+for it → a mission drafted, enabled and run into the Brief, with a stand-in brain that calls
+the real tools (`fake_brain.py`), and prints `FINDINGS` (empty when it is stitched). Its
+first run found five seams that every test passed through; they are in the security,
+ledger, users and window sections below and pinned by `tests/test_stitched_walk.py`. Run it
+after any change to the gate, the app runtime, accounts or the window manager.
+
 The prompt bar asks, the chat answers, and what the answer BUILT lives in
 another app. Those seams are code, and each one was reported as "this makes no
 sense" when it was missing:
@@ -1617,6 +1630,12 @@ it is why every capability call in the OS must keep funnelling through the PDP r
 checking autonomy inline. `logs` remains the free-text operator diary; `audit` is the
 structured record (principal, surface, action, resource, effect, rule, outcome).
 
+**A permission change is a ledger row and not a decision.** `grant.write`/`grant.revoke`
+rows carry the effect of the rule they wrote, so `audit_summary` counts them as `changes`
+and keeps them out of the allowed/denied totals and "Most refused"; the Ledger draws them
+as `changed`. Counted with the decisions, a mission writing its own deny rows was the most
+refused thing on a machine where nothing had been refused.
+
 New capabilities get their own **action**, not another `tool.use` string — `media.read`,
 `media.generate` and `space.write` exist because "may look at the gallery but may not bill
 my image provider" has to be expressible as one grant.
@@ -1638,6 +1657,17 @@ most likely to quietly break. Full audit and rationale in `docs/design/tenant-is
   boundary** — `tests/test_app_origin.py` fails if you do. Do not "simplify" the guard to a
   token plumbed through the desktop's fetches: the point is that no desktop call has to
   remember anything, because the browser stamps Origin for free.
+  **The frame sends no cookie, so the token is how an app gets past the sign-in gate**
+  (`_app_token_admits`, checked by `remote_access_gate`; `resolve_user` then enters the
+  token's `uid`). On a machine with accounts, or from a remote browser, every app call was
+  refused "sign in required" before the token was read, so no app built there had tools, AI
+  or data. Found by the stitched walk. The token is minted only for a page served to a
+  signed-in session and records its `uid` and the session's `sid` (the cookie's `jti`). It
+  admits only the runtime routes (never `/page`, and never anything else), the CORS
+  preflight is admitted on those paths with no headers, a lock marks the session's tokens
+  `locked` and unlock clears them, sign-out drops them. This is the one place a request is
+  resolved to a user by something other than the cookie, and it is a credential the server
+  issued, never a header the caller chose. `tests/test_stitched_walk.py`.
 
 - **A WebSocket has no HTTP middleware, so it resolves the user by hand.** `resolve_user`
   never runs for a socket; `_ws_user` reads the account from the signed cookie and every
@@ -2628,6 +2658,9 @@ be on and agents would be working in the office". Five rules:
 
 ## Window chrome: the rules that keep a stack readable
 
+- **A closing window gives up its ids at once** (`closeWin`, then `inert`). It stays on
+  the page for its animation, and an app that looks itself up with `$('#…')` and is reopened
+  inside that time bound the dying copy: a reopened Chat took your typing and sent nothing.
 - **A window opens where you left it.** Geometry is remembered per app and clamped into
   the current screen. A maximised or snapped window never overwrites it — otherwise
   maximising once loses the shape somebody chose.
