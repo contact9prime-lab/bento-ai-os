@@ -35,6 +35,11 @@ A build is not a spinner. The Builder panel shows, as it happens:
 - **a heartbeat between calls** (`Bash · npm test · 2m 10s · $1.20`), so the gaps are accounted
   for too.
 
+Your agent's messages carry its face, as they do in Chat, and a build is your agent at work in
+the [World](world.md) and the Office while it runs.
+
+![App Studio's Builder: Aria's face beside the builder's message, "Claude Code is building it", and the Volume Tracker in the preview](screenshots/studio-agent-face.png)
+
 Cancel any time with the same button that started the build. If you close and reopen the window
 mid-build, the Studio re-attaches to the run that is still going.
 

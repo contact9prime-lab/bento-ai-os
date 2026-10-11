@@ -80,6 +80,8 @@ builds an app in App Studio. A build counts like any other task: your agent goes
 when it starts and is proud of the app when it is done. Stopping a build yourself is not
 counted as a failure.
 
+![The canal during an App Studio build: Aria out on the water in the work boat, at work, while the team waits on the bank](screenshots/world-build-at-work.png)
+
 ### What they wear
 
 Each setting dresses the team: yukata by the canal, spacesuits on the moon base, overalls
