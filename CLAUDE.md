@@ -1821,6 +1821,8 @@ Missions roster, the home line, Settings and the Crew stage all show those — t
 the page, `avatarImg()` in `00e-avatars.js`. Full story in `docs/desktop.md` → Characters. Four
 things keep it true:
 
+- **Faces on or off is per ACCOUNT** (`avatarsOffKey(uid)`, the uid from `/api/avatars`). One
+  browser key made one person's "off" every account's, menu-bar face included.
 - **There is no second painter.** The Crew scene drew its own people for four passes and was
   deleted down to a blitter over the server's sheet, because two painters are two definitions of a
   face and the stage and the chat would drift apart on the first edit. `tests/test_immersive.py`
@@ -1984,7 +1986,10 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
   two broadcasts (`worldmod.observe(event, uid)`), fabric's step events carrying `outcome` (the
   one `step_outcome` function) and `untrusted`, chat turns attributed to the lead (a specialist's
   chat turn is counted once, by its run). A run that finished after a refusal is muted pride
-  (`scale`), found live when the refused researcher came back "Proud".
+  (`scale`), found live when the refused researcher came back "Proud". An App Studio build is
+  the lead's work too (`_build`; the page's `buildPulse` feeds the same build events to every
+  scene): build events used to stop at the Studio, and the World stood idle through a build.
+  A build you cancel is not the agent failing.
 - **A routine event habituates, and the lead's chat is routine.** Every chat reply counted as
   "finished a task" at full weight, so the lead sat Proud and cheering all day (a screenshot).
   A plain answer is not a task (`_WORKED` needs a tool); a working reply is `CHAT_SUCCESS`

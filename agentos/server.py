@@ -10145,7 +10145,10 @@ async def api_avatars():
     """Everybody who has a face, with their character, generating any that are new —
     so a specialist created by any door has one the first time anything looks."""
     return {"avatars": avatarsmod.ensure(state["store"], state["cfg"]),
-            "palette": avatarsmod.palette()}
+            "palette": avatarsmod.palette(),
+            # whose faces these are: the page keeps "faces on/off" per account, because
+            # one browser can be signed in as several people in turn
+            "uid": usersmod.current()}
 
 
 @app.get("/api/avatar.png")

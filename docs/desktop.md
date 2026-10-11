@@ -383,7 +383,8 @@ glance instead of reading names.
   Both are asked for with the picture and never saved, so everywhere else they are as you made them.
 - **Only people get faces.** A flow, an app or the system is not a person, and its log lines stay
   plain. **Faces beside messages** (Settings → Appearance) turns them off in Chat, Logs and
-  approvals if you would rather read text.
+  approvals if you would rather read text. It is remembered for your account, so somebody
+  else turning faces off on the same browser does not turn them off for you.
 
 ![The character editor: a large animated figure beside skin, hair, style, shirt and trouser choices](screenshots/characters-editor.png)
 

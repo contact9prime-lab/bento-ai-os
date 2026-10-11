@@ -886,6 +886,8 @@ def observe(event: dict, uid: str = "") -> None:
                 feel(uid, frm, "helped", f"answered {to}", other=to)
         elif t == "agent_say":
             _say(uid, event)
+        elif t in ("build_start", "build_tool_end", "build_done", "build_error"):
+            _build(uid, event)
     except Exception:
         pass            # a feeling must never break a broadcast
 
@@ -978,6 +980,38 @@ def _chat(uid: str, ev: dict) -> None:
         if name:
             ok = ev.get("approved", ev.get("allowed"))
             feel(uid, name, "approved" if ok else "declined", "")
+
+
+_BUILD = "build"         # an App Studio build is one piece of the lead's work at a time
+
+
+def _build(uid: str, ev: dict) -> None:
+    """An App Studio build is the lead at work, the same as a chat turn that did
+    something. Its events never carried a conversation, so the scene stood idle
+    through a build ("the agents are quiet too")."""
+    t = ev.get("type")
+    if t == "build_start":
+        _busy(uid, LEAD, True)
+        feel(uid, LEAD, "working", "an app")
+    elif t == "build_tool_end":
+        if ev.get("ok") is False:
+            _TROUBLE.add(_BUILD)
+        else:
+            _WORKED.add(_BUILD)
+    elif t == "build_done":
+        _busy(uid, LEAD, False)
+        rough = _BUILD in _TROUBLE
+        feel(uid, LEAD, "succeeded", "built " + str(ev.get("name") or "an app"),
+             scale=.3 if rough else 1.0)
+        _TROUBLE.discard(_BUILD)
+        _WORKED.discard(_BUILD)
+    elif t == "build_error":
+        _busy(uid, LEAD, False)
+        _TROUBLE.discard(_BUILD)
+        _WORKED.discard(_BUILD)
+        msg = str(ev.get("message") or "")
+        if "cancel" not in msg.lower():     # you stopping it is not a failure of theirs
+            feel(uid, LEAD, "rate_limited" if _RATE.search(msg) else "failed", msg[:80])
 
 
 def _say(uid: str, ev: dict) -> None:

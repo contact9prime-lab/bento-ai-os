@@ -20,13 +20,22 @@
    colleagues look like.
 
    Loaded before 01d (the Crew scene reads AVATARS). `var`, not `let`. */
-var AVATARS={list:[],by:{},pal:null,loaded:false,pending:null,
-  off:(()=>{try{return localStorage.getItem('avatars.off')==='1'}catch(e){return false}})()};
+var AVATARS={list:[],by:{},pal:null,loaded:false,pending:null,uid:'',off:avatarsOffStored('')};
+/* "Faces beside messages" is a choice per ACCOUNT. One browser can be signed in as
+   several people in turn, and a plain localStorage key made one person's "off" every
+   account's: reported as "agents are not shown in the chat" by somebody who never
+   switched it. On a machine with no accounts the key is the old one, unchanged. */
+function avatarsOffKey(uid){return 'avatars.off'+(uid?':'+uid:'')}
+function avatarsOffStored(uid){try{return localStorage.getItem(avatarsOffKey(uid))==='1'}catch(e){return false}}
 
 function avatarsLoad(){
   if(AVATARS.pending)return AVATARS.pending;
   AVATARS.pending=fetch('/api/avatars').then(r=>r.json()).then(d=>{
     AVATARS.list=d.avatars||[];AVATARS.pal=d.palette||null;
+    // the account is known now, so read its own choice; a change redraws the faces
+    const uid=String(d.uid||''),off=avatarsOffStored(uid),changed=off!==AVATARS.off;
+    AVATARS.uid=uid;AVATARS.off=off;
+    if(changed&&typeof refreshApp==='function')setTimeout(()=>{refreshApp('chat');refreshApp('logs')},0);
     AVATARS.by=Object.fromEntries(AVATARS.list.map(a=>[a.key,a]));
     AVATARS.loaded=true;
   }).catch(()=>{}).finally(()=>{AVATARS.pending=null});
@@ -91,7 +100,7 @@ function avatarsRepaint(){
 }
 function avatarsChanged(){return avatarsLoad().then(avatarsRepaint)}
 function setAvatarsOff(off){
-  AVATARS.off=!!off;try{localStorage.setItem('avatars.off',off?'1':'0')}catch(e){}
+  AVATARS.off=!!off;try{localStorage.setItem(avatarsOffKey(AVATARS.uid),off?'1':'0')}catch(e){}
   if(typeof paintLogo==='function')paintLogo();
   if(typeof refreshApp==='function'){refreshApp('chat');refreshApp('logs');refreshApp('settings')}
 }

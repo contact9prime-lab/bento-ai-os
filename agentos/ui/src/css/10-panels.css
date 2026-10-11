@@ -326,6 +326,9 @@ body.dev-touch .tb .seg button{min-height:var(--tap)}
 .st-msg.user b{color:var(--acc)}
 .st-msg.user{color:var(--txt)}
 .st-msg.assistant{color:var(--dim)}
+/* who said it: the same face as in Chat (chatWho), sized for the builder's log */
+.st-who{display:flex!important;align-items:center;gap:6px}
+.st-who img.av-who{width:20px;height:20px;border-radius:6px;flex:0 0 20px}
 body.dev-touch .st-src .endbtn{min-height:var(--tap)}
 /* the Schedules tab: what keeps this app fresh while it is closed (tasks.app_id) */
 .st-sched{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px;border-bottom:1px solid var(--line)}
