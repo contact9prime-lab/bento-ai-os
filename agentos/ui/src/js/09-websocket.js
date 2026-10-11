@@ -244,6 +244,7 @@ function updateSpin(){
   s.title=RUNNING.size>1?RUNNING.size+' agent turns running'
          :(one?agentName()+' — '+one:'agent is working');
   if(typeof omniPresence==='function')omniPresence();
+  if(typeof homeRender==='function')homeRender();   // the line under the prompt bar says who is working
   if(typeof aiBubble==='function')aiBubble();
 }
 /* ---- the AI presence bubble (bottom-right): wherever a turn is running — a
@@ -316,6 +317,8 @@ function aiBubble(){
    build events went to the Studio and nowhere else. */
 function buildPulse(ev){
   if(typeof WORLD!=='undefined'&&WORLD.on)worldHear(ev);
+  if(ev.type==='build_start'||ev.type==='build_done'||ev.type==='build_error'){
+    BUILD_LIVE=ev.type==='build_start';if(typeof homeRender==='function')homeRender()}
   if(typeof movementPulse!=='function')return;
   if(ev.type==='build_start')movementPulse('turn','build',{type:'turn_start'});
   else if(ev.type==='build_tool')movementPulse('tool',ev.name||'tool',ev);
@@ -335,6 +338,7 @@ function handle(ev){
         // re-attached to a turn that started before this socket: the clock
         // restarts here, which is honest — we do not know when it began
         if(!ACT[c])actBegin(c)});
+      BUILD_LIVE=!!ev.build_mine;
       for(const k in QUEUES)delete QUEUES[k];
       Object.assign(QUEUES,ev.queues||{});      // the backlog survives a reload too
       renderQueue();

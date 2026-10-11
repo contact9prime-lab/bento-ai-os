@@ -629,6 +629,26 @@ _WORKED: set = set()                     # conversations whose current turn used
 _RUN_TROUBLE: set = set()                # runs that hit a refusal or a failure on the way
 
 
+_WORKING: list = [None]                  # (uid, store) -> names at work now; the server's
+
+
+def bind_working(fn) -> None:
+    """The server says who is actually at work (running chat turns, a build, open runs).
+    Busy is that answer OR what the events said: events alone forgot a build when the
+    lease lapsed mid-build, and one chat ending cleared the lead while a build ran."""
+    _WORKING[0] = fn
+
+
+def _at_work(uid: str, store) -> set:
+    fn = _WORKING[0]
+    if fn is None:
+        return set()
+    try:
+        return {str(n).lower() for n in fn(uid, store)}
+    except Exception:
+        return set()
+
+
 def _fresh() -> dict:
     return {"agents": {}, "you": {}, "inner": False, "since": time.time(), "saved": 0.0,
             "dirty": False, "busy": {}, "events": []}
@@ -688,6 +708,17 @@ def beat(uid: str, wid: str) -> bool:
     lease["until"] = time.time() + LEASE_S
     _flush(uid)
     return True
+
+
+def busy_now(uid: str) -> list:
+    """Who in the cast is at work, for the heartbeat: the page redraws when this differs
+    from what it shows, so a scene that missed every event still catches up."""
+    lease = _alive(uid)
+    st = _STATE.get((uid, lease["world"])) if lease else None
+    if st is None:
+        return []
+    working = _at_work(uid, lease["store"])
+    return sorted(n for n in lease["cast"] if st["busy"].get(n) or n.lower() in working)
 
 
 def leave(uid: str) -> None:
@@ -810,12 +841,13 @@ def view(uid: str) -> dict:
     if not w or st is None:
         return {"live": False}
     now = time.time()
+    working = _at_work(uid, lease["store"])
     agents = []
     for name in lease["cast"]:
         a = st["agents"].get(name) or {"feel": {}, "why": [], "xp": 0, "bonds": {}}
         m = mood(w, a, now)
         friend = max((a.get("bonds") or {}).items(), key=lambda kv: kv[1], default=("", 0))
-        agents.append({"name": name, "mood": m, "busy": bool(st["busy"].get(name)),
+        agents.append({"name": name, "mood": m, "busy": bool(st["busy"].get(name)) or name.lower() in working,
                        "why": [{"signal": s, "words": SIGNALS.get(s, s), "detail": d,
                                 "ago": int(now - at)} for s, d, at in (a.get("why") or [])][:5],
                        "level": _level(w, int(a.get("xp", 0))),
@@ -944,7 +976,7 @@ def _chat(uid: str, ev: dict) -> None:
         _SPEAKER[cid] = who
         if who == LEAD:
             _busy(uid, LEAD, True)
-            feel(uid, LEAD, "working", "a chat")
+            feel(uid, LEAD, "working", "in chat")
         return
     who = _SPEAKER.get(cid, LEAD)
     if t == "turn_end":
@@ -953,7 +985,7 @@ def _chat(uid: str, ev: dict) -> None:
             _busy(uid, LEAD, False)
             # a plain answer is conversation; only a turn that did something is a task
             if cid not in _TROUBLE and cid in _WORKED:
-                feel(uid, LEAD, "succeeded", "a chat", scale=CHAT_SUCCESS, cap=CHAT_CAP,
+                feel(uid, LEAD, "succeeded", "in chat", scale=CHAT_SUCCESS, cap=CHAT_CAP,
                      grow=CHAT_SUCCESS)
         _TROUBLE.discard(cid)
         _WORKED.discard(cid)
@@ -992,7 +1024,7 @@ def _build(uid: str, ev: dict) -> None:
     t = ev.get("type")
     if t == "build_start":
         _busy(uid, LEAD, True)
-        feel(uid, LEAD, "working", "an app")
+        feel(uid, LEAD, "working", "in App Studio")
     elif t == "build_tool_end":
         if ev.get("ok") is False:
             _TROUBLE.add(_BUILD)
@@ -1001,7 +1033,7 @@ def _build(uid: str, ev: dict) -> None:
     elif t == "build_done":
         _busy(uid, LEAD, False)
         rough = _BUILD in _TROUBLE
-        feel(uid, LEAD, "succeeded", "built " + str(ev.get("name") or "an app"),
+        feel(uid, LEAD, "succeeded", str(ev.get("name") or "in App Studio"),
              scale=.3 if rough else 1.0)
         _TROUBLE.discard(_BUILD)
         _WORKED.discard(_BUILD)

@@ -1990,6 +1990,15 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
   the lead's work too (`_build`; the page's `buildPulse` feeds the same build events to every
   scene): build events used to stop at the Studio, and the World stood idle through a build.
   A build you cancel is not the agent failing.
+- **"At work" is read from what is RUNNING, never only remembered.** `view()` ORs the event
+  flag with `server._world_working` (bound by `bind_working`): the account's turns in
+  `state["turns"]` (the lead, or the `speaker` of an @mention), a build whose `build["uid"]` is
+  theirs, and runs open in `fabric_runs`. Remembered alone, it was lost when the lease lapsed
+  mid-build (a hidden tab beats once a minute, and re-entering loads a fresh state) and cleared
+  by any chat ending while a build ran: Aria stood idle through a Claude Code build. The beat
+  carries `busy_now`, and the page refreshes when it differs from what it draws. The line under
+  the prompt bar counts a build too (`BUILD_LIVE`, set by `buildPulse` and `state_sync`'s
+  `build_mine`), and follows `updateSpin` rather than the minute timer.
 - **A routine event habituates, and the lead's chat is routine.** Every chat reply counted as
   "finished a task" at full weight, so the lead sat Proud and cheering all day (a screenshot).
   A plain answer is not a task (`_WORKED` needs a tool); a working reply is `CHAT_SUCCESS`

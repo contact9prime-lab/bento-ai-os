@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.25 — 2026-10-11
+
+**Your agent shows as working for the whole of a build, wherever you look.** Reported with a
+screenshot of Claude Code mid-build and Aria standing idle in the World, her card saying she had
+started on a task but not that she was at work.
+- The World checks who is working against what is actually running: your chats, an App Studio
+  build and every open run. Before, it only remembered the moment a build started. Coming back to
+  the World after the tab had been in the background, or a chat finishing during the build, sent
+  your agent back to the bank while the build went on.
+- The line under the prompt bar says *Aria is working on an app in App Studio* during a build,
+  and changes as soon as a chat starts or ends rather than once a minute. It used to say *Aria is
+  ready* all through a build.
+- Your agent's card says *started on a task in App Studio* or *in chat* instead of *an app*.
+
 ## 0.6.24 — 2026-10-11
 
 **Your agents show when they work, and their faces show where they talk.** Reported with

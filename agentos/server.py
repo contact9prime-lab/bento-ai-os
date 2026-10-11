@@ -10391,6 +10391,38 @@ def _world_org(v: dict) -> dict:
     return v
 
 
+def _world_working(uid: str, store) -> set:
+    """Who is at work for this account RIGHT NOW, read from what is running rather than
+    remembered from events: a chat turn (the lead, or the specialist it was addressed
+    to), an App Studio build (the lead) and every run open in fabric_runs. Reported
+    with a screenshot: Claude Code was building in the Studio while Aria stood idle in
+    the World. The scene's lease had lapsed mid-build (a hidden tab beats once a
+    minute), so the build_start was forgotten on re-entry; and any chat ending cleared
+    the lead's one busy flag while the build was still going."""
+    names: set = set()
+    for t in list((state.get("turns") or {}).values()):
+        task = t.get("task")
+        if str(t.get("uid", "") or "") != uid or (task is not None and task.done()):
+            continue
+        who = t.get("speaker") or worldmod.LEAD
+        if who != "huddle":          # a huddle's speakers are runs, counted below
+            names.add(who)
+    b = state.get("build") or {}
+    if b.get("task") and not b["task"].done() and str(b.get("uid", "") or "") == uid:
+        names.add(worldmod.LEAD)
+    try:
+        rows = store.db.execute(
+            "SELECT ref FROM fabric_runs WHERE status='running' AND started_at>?",
+            (time.time() - playgroundmod.STALE_S,)).fetchall()
+        names |= {str(r[0]) for r in rows if r[0]}
+    except Exception:
+        pass
+    return names
+
+
+worldmod.bind_working(_world_working)
+
+
 def _world_cast(store) -> list[str]:
     return [d["name"] for d in store.list_subagents() if d.get("enabled", 1)]
 
@@ -10418,7 +10450,9 @@ async def api_world_enter(body: dict):
 
 @app.post("/api/world/beat")
 async def api_world_beat(body: dict):
-    return {"live": worldmod.beat(usersmod.current() or "", str((body or {}).get("world") or ""))}
+    uid = usersmod.current() or ""
+    live = worldmod.beat(uid, str((body or {}).get("world") or ""))
+    return {"live": live, "busy": worldmod.busy_now(uid) if live else []}
 
 
 @app.post("/api/world/leave")
@@ -13904,7 +13938,7 @@ async def _run_chat(cid: str, data: dict):
         elif huddle_hit:
             names, topic = huddle_hit
             turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": "huddle",
-                          "uid": owner}
+                          "uid": owner, "speaker": "huddle"}
             knowledge.turn_started()
             started = True
             await evsend({"type": "turn_start", "model": "huddle", "huddle": names})
@@ -13919,7 +13953,7 @@ async def _run_chat(cid: str, data: dict):
             defn, task = mention
             model = state["fabric"].resolve_model(defn)
             turns[cid] = {"agent": None, "task": asyncio.current_task(),
-                          "model": model, "uid": owner}
+                          "model": model, "uid": owner, "speaker": defn["name"]}
             knowledge.turn_started()
             started = True
             await evsend({"type": "turn_start", "model": model, "speaker": defn["name"]})
@@ -15022,7 +15056,9 @@ async def ws_endpoint(ws: WebSocket):
                 "running": [c for c, t in turns.items() if t.get("uid", "") == ws_uid],
                 "queues": {c: _queue_public(c) for c in state["queues"]
                            if turns.get(c, {}).get("uid", "") == ws_uid},
-                "build_running": bool(build.get("task") and not build["task"].done())})
+                "build_running": bool(build.get("task") and not build["task"].done()),
+                "build_mine": bool(build.get("task") and not build["task"].done()
+                                   and str(build.get("uid", "") or "") == ws_uid)})
 
     def _stop(tinfo: dict):
         """Cooperative abort first; hard-cancel after a grace period — a model that
@@ -15088,6 +15124,7 @@ async def ws_endpoint(ws: WebSocket):
                     await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
                     data["uid"] = ws_uid
+                    build["uid"] = ws_uid   # whose build it is, for the World's "at work"
                     build["task"] = asyncio.create_task(run_build(data))
             elif t == "build_abort":
                 build["cancel_requested"] = True

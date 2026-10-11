@@ -5935,6 +5935,8 @@ var WEEKDAY_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'
    off stays byte-for-byte the standard desktop. A storage that throws (a private
    window) gets the default. */
 function immersiveStored(){try{return localStorage.getItem('immersive')}catch(e){return null}}
+// a Studio build running for this person; set by buildPulse and state_sync (09-websocket)
+var BUILD_LIVE=false;
 var IMMERSIVE={on:immersiveStored()!=='0',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
@@ -6084,11 +6086,13 @@ function homeRender(){
   const br=(typeof BRIEF!=='undefined'&&BRIEF.page&&BRIEF.page.open)?BRIEF.page.headline:'';
   // the agent's face on its own line: the one on the stage and beside every reply.
   // Rewritten only when the words change, so the image is not refetched every minute.
-  const said=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
+  // a build is work too: the line said "is ready" through a whole App Studio build
+  const work=[n?`${n} ${n===1?'turn':'turns'}`:'',BUILD_LIVE?'an app in App Studio':''].filter(Boolean).join(' and ');
+  const said=work?`${who} is working on ${work}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
   const html=(typeof avatarImg==='function'?avatarImg('@agent','av-home'):'')+esc(said);
   if(line.dataset.said!==html){line.dataset.said=html;line.innerHTML=html}
-  line.classList.toggle('br-open',!n&&!!br);
-  line.onclick=(!n&&br)?()=>openApp('brief'):null;
+  line.classList.toggle('br-open',!work&&!!br);
+  line.onclick=(!work&&br)?()=>openApp('brief'):null;
   // the playground's front door: the crew's own faces, one tap to the Office. The same
   // characters as everywhere else (avatarImg); nothing here says anyone is busy unless
   // a turn is running, because the Office itself is where that is shown.
@@ -6096,7 +6100,7 @@ function homeRender(){
   if(play){
     const crew=(typeof AVATARS!=='undefined'&&AVATARS.list||[]).filter(p=>p.key!=='@me').slice(0,5);
     const ph=crew.map(p=>avatarImg(p.key,'av-play')).join('')
-      +`<span>${n?'See them at work in the Office':'Your office'}</span>`;
+      +`<span>${work?'See them at work in the Office':'Your office'}</span>`;
     if(play.dataset.h!==ph){play.dataset.h=ph;play.innerHTML=ph}
     play.hidden=!crew.length;
   }
@@ -7027,6 +7031,13 @@ async function worldBeat(){
     const r=await fetch('/api/world/beat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({world:WORLD.id})});
     const d=await r.json();
     if(!d.live&&WORLD.on){await worldEnter(WORLD.id);worldSync()}
+    // who is at work is read from what is running; a scene that missed the events
+    // (a hidden tab, a lapsed lease) catches up here instead of standing idle
+    else if(d.live&&WORLD.v&&Array.isArray(d.busy)){
+      const shown=WORLD.v.agents||[],names=shown.map(a=>a.name);
+      if(shown.filter(a=>a.busy).map(a=>a.name).sort().join('|')!==
+         d.busy.filter(n=>names.indexOf(n)>=0).join('|'))worldRefresh();
+    }
   }catch(e){}
   if(WORLD.on)WORLD.beatT=setTimeout(worldBeat,15000);
 }
@@ -13634,6 +13645,7 @@ function updateSpin(){
   s.title=RUNNING.size>1?RUNNING.size+' agent turns running'
          :(one?agentName()+' — '+one:'agent is working');
   if(typeof omniPresence==='function')omniPresence();
+  if(typeof homeRender==='function')homeRender();   // the line under the prompt bar says who is working
   if(typeof aiBubble==='function')aiBubble();
 }
 /* ---- the AI presence bubble (bottom-right): wherever a turn is running — a
@@ -13706,6 +13718,8 @@ function aiBubble(){
    build events went to the Studio and nowhere else. */
 function buildPulse(ev){
   if(typeof WORLD!=='undefined'&&WORLD.on)worldHear(ev);
+  if(ev.type==='build_start'||ev.type==='build_done'||ev.type==='build_error'){
+    BUILD_LIVE=ev.type==='build_start';if(typeof homeRender==='function')homeRender()}
   if(typeof movementPulse!=='function')return;
   if(ev.type==='build_start')movementPulse('turn','build',{type:'turn_start'});
   else if(ev.type==='build_tool')movementPulse('tool',ev.name||'tool',ev);
@@ -13725,6 +13739,7 @@ function handle(ev){
         // re-attached to a turn that started before this socket: the clock
         // restarts here, which is honest — we do not know when it began
         if(!ACT[c])actBegin(c)});
+      BUILD_LIVE=!!ev.build_mine;
       for(const k in QUEUES)delete QUEUES[k];
       Object.assign(QUEUES,ev.queues||{});      // the backlog survives a reload too
       renderQueue();

@@ -83,6 +83,13 @@ async function worldBeat(){
     const r=await fetch('/api/world/beat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({world:WORLD.id})});
     const d=await r.json();
     if(!d.live&&WORLD.on){await worldEnter(WORLD.id);worldSync()}
+    // who is at work is read from what is running; a scene that missed the events
+    // (a hidden tab, a lapsed lease) catches up here instead of standing idle
+    else if(d.live&&WORLD.v&&Array.isArray(d.busy)){
+      const shown=WORLD.v.agents||[],names=shown.map(a=>a.name);
+      if(shown.filter(a=>a.busy).map(a=>a.name).sort().join('|')!==
+         d.busy.filter(n=>names.indexOf(n)>=0).join('|'))worldRefresh();
+    }
   }catch(e){}
   if(WORLD.on)WORLD.beatT=setTimeout(worldBeat,15000);
 }

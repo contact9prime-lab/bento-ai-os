@@ -93,3 +93,83 @@ def test_faces_on_or_off_is_per_account():
     assert "avatarsOffKey(AVATARS.uid)" in off
     route = SERVER[SERVER.index('@app.get("/api/avatars")'):][:600]
     assert '"uid": usersmod.current()' in route
+
+
+# "If Aria is working on something, why is it not showing on the desktop?" — a
+# screenshot of a Claude Code build in progress, and Aria standing idle in the World
+# with "started on a task" on her card but no "at work". Busy was remembered from
+# events only, so it was lost when the scene's lease lapsed mid-build (a hidden tab
+# beats once a minute) and when any chat turn ended while the build was running.
+
+def test_busy_is_read_from_what_is_running(tmp_path):
+    store = Store(tmp_path / "t.db")
+    uid = "build-u3"
+    running = {"@agent"}
+    world.bind_working(lambda u, s: running if u == uid else set())
+    try:
+        world.enter(uid, store, "lantern-canal", ["researcher"])
+        # entered mid-build: no build_start was ever heard, and the lead is at work
+        assert _lead(world.view(uid))["busy"]
+        # a chat turn ends while the build is still going
+        world.observe({"type": "turn_start", "conversation_id": "c1"}, uid)
+        world.observe({"type": "turn_end", "conversation_id": "c1"}, uid)
+        assert _lead(world.view(uid))["busy"]
+        assert world.busy_now(uid) == ["@agent"]
+        running.clear()
+        running.add("Researcher")              # a run's ref, matched without case
+        v = world.view(uid)
+        assert not _lead(v)["busy"]
+        assert next(a for a in v["agents"] if a["name"] == "researcher")["busy"]
+    finally:
+        world.leave(uid)
+        world.bind_working(None)
+
+
+def test_the_server_says_who_is_working_and_the_heartbeat_carries_it(tmp_path):
+    from agentos import server as servermod
+    import asyncio
+    store = Store(tmp_path / "t.db")
+    loop = asyncio.new_event_loop()
+    try:
+        pending = loop.create_future()
+        st = servermod.state
+        saved = {k: st.get(k) for k in ("turns", "build")}
+        st["turns"], st["build"] = {}, {}
+        turns = st["turns"]
+        turns["cw1"] = {"task": pending, "uid": "ada"}
+        turns["cw2"] = {"task": pending, "uid": "ada", "speaker": "researcher"}
+        turns["cw3"] = {"task": pending, "uid": "bob"}
+        assert servermod._world_working("ada", store) == {"@agent", "researcher"}
+        turns.pop("cw1"), turns.pop("cw2")
+        st["build"].update(task=pending, uid="ada")
+        assert servermod._world_working("ada", store) == {"@agent"}
+        assert servermod._world_working("bob", store) == {"@agent"}
+        turns.pop("cw3")
+        assert servermod._world_working("bob", store) == set()
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                st.pop(k, None)
+            else:
+                st[k] = v
+        loop.close()
+    assert "build[\"uid\"] = ws_uid" in SERVER
+    beat = SERVER[SERVER.index('@app.post("/api/world/beat")'):][:400]
+    assert "worldmod.busy_now(uid)" in beat
+    page = (JS / "01e-world.js").read_text()
+    page = page[page.index("async function worldBeat()"):][:1200]
+    assert "d.busy" in page and "worldRefresh()" in page
+
+
+def test_the_line_under_the_prompt_bar_counts_a_build():
+    home = (JS / "01b-immersive.js").read_text()
+    assert "var BUILD_LIVE=false;" in home
+    fn = home[home.index("function homeRender(){"):][:3000]
+    assert "BUILD_LIVE?'an app in App Studio'" in fn
+    ws = (JS / "09-websocket.js").read_text()
+    pulse = ws[ws.index("function buildPulse(ev)"):][:700]
+    assert "BUILD_LIVE=ev.type==='build_start'" in pulse
+    assert "BUILD_LIVE=!!ev.build_mine" in ws
+    spin = ws[ws.index("function updateSpin(){"):][:600]
+    assert "homeRender()" in spin, "the line follows a turn starting, not the minute timer"
+    assert '"build_mine"' in SERVER
