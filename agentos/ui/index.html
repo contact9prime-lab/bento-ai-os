@@ -1272,6 +1272,21 @@ body.dev-touch .tb .seg button{min-height:var(--tap)}
 .st-msg.user{color:var(--txt)}
 .st-msg.assistant{color:var(--dim)}
 body.dev-touch .st-src .endbtn{min-height:var(--tap)}
+/* the Schedules tab: what keeps this app fresh while it is closed (tasks.app_id) */
+.st-sched{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px;border-bottom:1px solid var(--line)}
+.st-sched .grow{flex:1;min-width:0}
+.st-sched .sub{display:block;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-sched .endbtn{flex:none}
+.st-schedok{color:var(--ok)}
+.task-app .endbtn{padding:1px 8px;font-size:11px;margin-left:4px}
+body.dev-touch .st-sched .endbtn,body.dev-touch .task-app .endbtn{min-height:var(--tap)}
+/* a phone gives the Builder column ~150px: three tabs scroll and snap rather than
+   overlap, and a schedule's button goes under its words */
+body.dev-mobile .sttabs{overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+body.dev-mobile .sttabs button{flex:none;scroll-snap-align:start;min-height:var(--tap)}
+body.dev-mobile .st-sched{flex-wrap:wrap}
+body.dev-mobile .st-sched .grow{flex:1 1 100%}
+body.dev-mobile .st-sched .endbtn{max-width:100%;white-space:normal}
 /* ================= jarvis voice mode ================= */
 #jarvis-ov{position:fixed;inset:0;z-index:9750;display:none;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 42%,rgba(11,20,26,.86),rgba(6,8,11,.96));backdrop-filter:blur(8px)}
@@ -5142,6 +5157,7 @@ function toast(t,act){
   while(box.children.length>5)box.lastChild.remove();   // never stack unbounded
   if(typeof Motion!=='undefined')Motion.run(d,[{transform:'translateX(40px)',opacity:0},{transform:'none',opacity:1}],{duration:220,easing:'cubic-bezier(.22,1,.36,1)'});
   h=setTimeout(leave,ms);
+  return d;
 }
 const fmtBytes=b=>b>=1e12?(b/1e12).toFixed(2)+' TB':b>=1e9?(b/1e9).toFixed(1)+' GB':(b/1e6).toFixed(0)+' MB';
 
@@ -13198,6 +13214,16 @@ function actDetail(name, args) {
     const p = s('file_path', 'path', 'notebook_path'); return p ? base(p) : '';
   }
   if (name === 'Bash' || name === 'run_command') return cut(s('description', 'command'), 90);
+  // an app asking the agent (appAgent / its ✦ assistant): what it asked, in its words
+  if (name === 'appAgent') return cut('ask your agent: ' + s('prompt'), 110);
+  // a schedule, in words: how often and what it will do
+  if (name === 'schedule_task') {
+    const every = args.schedule_type === 'interval' && args.interval_minutes ? 'every ' + args.interval_minutes + ' min'
+      : args.schedule_type === 'daily' ? 'daily at ' + (args.at_time || '09:00')
+      : args.schedule_type === 'weekly' ? 'weekly at ' + (args.at_time || '09:00')
+      : args.schedule_type === 'once' ? 'once, in ' + (args.delay_minutes || 0) + ' min' : s('schedule_type');
+    return cut(every + ': ' + s('prompt'), 120);
+  }
   if (name === 'Glob' || name === 'Grep' || name === 'search_files') {
     const pat = s('pattern', 'query'), where = s('path', 'glob');
     return cut(pat + (where ? ' in ' + base(where) : ''), 90);
@@ -13464,7 +13490,9 @@ function approvalFloat(ev){
   // one float per approval; an existing one is brought back to the top of the page
   const had=document.querySelector('[id="ap-'+ev.id+'"].ap-float');
   if(had){if(had.nextSibling)document.body.appendChild(had);return had}
-  const box=buildApprovalBox(ev,false);box.classList.add('ap-float');
+  // "another chat" only when it came from one: an app's question, or a build's, has none
+  const box=buildApprovalBox(ev,!ev.conversation_id||ev.conversation_id===(typeof currentConv!=='undefined'?currentConv:''));
+  box.classList.add('ap-float');
   document.body.appendChild(box);
   box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
   return box;
@@ -13538,7 +13566,9 @@ function buildApprovalBox(ev,cur){
   const o=ev.offer, standing=o&&o.label;
   const rem=!o?'':standing?`<button class="deny always" data-rem="always">${esc(o.label)}</button>`
     :`<span class="ap-rem"><span class="ap-remlbl">Remember</span>${o.conversation_id?'<button class="deny always" data-rem="chat">This chat</button>':''}<button class="deny always" data-rem="hour">1 hour</button><button class="deny always" data-rem="always">Always</button></span>`;
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
+  // where it came from: App Studio says so (ev.where); a chat you aren't looking at says that
+  const from=ev.where?' · '+esc(ev.where):cur?'':' · another chat';
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${from}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
@@ -13851,7 +13881,8 @@ function handle(ev){
       // to the toolsmith that waited five minutes on a question nobody could see.
       requestAnimationFrame(()=>{if(APPROVALS[ev.id])approvalHome(ev.id)});
       approvalWatch();
-      toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
+      { const tt=toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
+        if(tt)tt.dataset.approval=ev.id; }
       scrollDown(); break;}
     case 'error':{
       ERRED[ev.conversation_id||_cid||'']=1;   // this turn is not a reply, whatever ends it
@@ -13977,6 +14008,8 @@ function handle(ev){
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{
       delete APPROVALS[ev.id];
+      // its "approval needed" toast goes too: a Review that opens nothing is a dead button
+      document.querySelectorAll('#toasts .toast').forEach(t=>{if(t.dataset.approval===String(ev.id))t.remove()});
       // answered somewhere else (or nobody answered): this screen's copy says so and
       // stops offering buttons — a floating one leaves after a moment
       // one page can draw the same card twice (Chat and a floating copy), so all of them
@@ -14048,6 +14081,12 @@ function handle(ev){
     case 'wake': onWake(); break;
     case 'switcher': sessionSwitcher(ev); break;   // Alt-Tab overlay, driven by sway
     case 'apps': loadUserApps(); refreshApp('studio'); toast('app library updated'); break;
+    /* A schedule saved into an app's data (update_app_data): every open frame of that
+       app hears it as an `appdata` event and reloads what it shows. */
+    case 'app_data':
+      document.querySelectorAll('iframe[src^="/api/apps/'+(ev.app_id||'-')+'/page"]').forEach(f=>{
+        try{f.contentWindow.postMessage({agentos:'app_data',key:ev.key||''},'*')}catch(_){}});
+      break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;
@@ -14727,7 +14766,9 @@ function handoffFor(name,args){
       return {app:'automations',label:'Open in Missions',what:nm||'the routine',note:'under Routines'};
     case 'schedule_task':
       return {app:'tasks',label:'Open in Missions',
-              what:String(args.prompt||'the task').slice(0,60),note:'it runs on its own from now on'};
+              what:String(args.prompt||'the task').slice(0,60),
+              note:args.app?'for '+String(args.app).slice(0,40)+', it runs on its own from now on'
+                :'it runs on its own from now on'};
     default:
       return null;
   }
@@ -22122,14 +22163,16 @@ var JOB_HIST_WORD={running:'running',ok:'done',partial:'partly done',failed:'fai
 function jobHistRow(r){
   const door=r.run_id?`<button class="endbtn" data-open-run="${esc(r.run_id)}">Open run</button>`
     :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
+  // a run that refreshed an app is read in the app itself
+  const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${esc(r.app_id)}')">Open app</button>`:'';
   return `<div class="item job-hrow ${esc(r.status)}">
     <div class="grow">
       <div class="job-hhead"><span class="job-hst ${esc(r.status)}">${esc(JOB_HIST_WORD[r.status]||r.status)}</span>
-        <b>${esc(r.title)}</b>${r.kind==='prompt'?'<span class="job-hkind">scheduled prompt</span>':''}</div>
+        <b>${esc(r.title)}</b>${r.kind==='prompt'?`<span class="job-hkind">${r.app_name?'for '+esc(r.app_name):'scheduled prompt'}</span>`:''}</div>
       <div class="sub">${esc(jobHistWhen(r.started_at))}${r.seconds!=null&&r.status!=='skipped'?' · took '+esc(jobHistTook(r.seconds)):''} · ${esc(r.started_by)}${
         r.tokens?' · '+r.tokens.toLocaleString()+' tokens':''}</div>
       ${r.said?`<div class="sub job-hsaid">${esc(r.said)}</div>`:''}
-    </div>${door}</div>`;
+    </div>${app}${door}</div>`;
 }
 async function renderJobHistory(body){
   const f=JOBS.hist||{};
@@ -22165,6 +22208,8 @@ async function renderTasks(body){
     const last=t.last_status?`last run ${st[t.last_status]||t.last_status}${t.last_at?' '+jobAgo(t.last_at):''}`:'has not run yet';
     return `<div class="item task-row" data-f="${esc(t.title||t.prompt)}"><div class="grow">
       ${t.flow?`<span class="job-hkind">mission</span> `:''}${esc(t.title||t.prompt)}
+      ${t.app_name?`<div class="sub task-app">for <b>${esc(t.app_name)}</b> <button class="endbtn" onclick="taskOpenApp('${esc(t.app_id)}')">Open app</button></div>`
+        :t.app_gone?'<div class="sub">for an app that was deleted</div>':''}
       <div class="sub">${esc(t.words||'')} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'waiting for its event'):'switched off'}</div>
       <div class="sub"><span class="task-last ${esc(t.last_status||'')}">${esc(last)}</span>${t.runs_7d?` · ${t.runs_7d} run${t.runs_7d===1?'':'s'} this week`:''}${t.failed_7d?` · <b class="job-bad">${t.failed_7d} failed</b>`:''}</div>
       ${t.last_said?`<div class="sub job-hsaid">${esc(t.last_said)}</div>`:''}</div>
@@ -22187,6 +22232,12 @@ async function renderTasks(body){
       <button class="pact" style="flex:0 0 90px" onclick="addTask()">Add</button>
     </div>
     <p class="mut" style="margin-top:10px">Background tasks take risky actions only when autonomy is <b>Full</b>; otherwise they stay read-only.</p>`;
+}
+/* A schedule set up for an app (tasks.app_id) opens that app in App Studio, where
+   the same schedule is listed under it. */
+function taskOpenApp(id){
+  if(typeof STUDIO!=='undefined')STUDIO.sel=id;
+  openApp('studio');refreshApp('studio');
 }
 function taskTypeHint(){
   const t=$('#task-type').value,w=$('#task-when');if(!w)return;
@@ -29892,6 +29943,7 @@ async function renderStudio(body,w){
             <div class="sttabs">
               <button data-t="versions" class="${STUDIO.tab==='versions'?'on':''}" onclick="studioTab('versions')">Versions</button>
               <button data-t="perms" class="${STUDIO.tab==='perms'?'on':''}" onclick="studioTab('perms')">Permissions <span id="st-permdot"></span></button>
+              <button data-t="sched" class="${STUDIO.tab==='sched'?'on':''}" onclick="studioTab('sched')">Schedules <span id="st-scheddot"></span></button>
             </div>
             <div id="st-panel" style="flex:0 0 auto;max-height:200px;overflow-y:auto;border-top:1px solid var(--line);padding:8px 12px 10px"></div>
           </div>
@@ -30141,8 +30193,40 @@ function studioShowPreview(){
 }
 /* ---- bottom panel: versions | permissions --------------------------------- */
 function studioPanel(){
-  if(STUDIO.tab==='perms')studioPerms();else studioVersions();
+  if(STUDIO.tab==='perms')studioPerms();else if(STUDIO.tab==='sched')studioSchedules();else studioVersions();
+  studioSchedCount();
+  // on a phone the tab row scrolls: the chosen tab is the one in view
+  const on=document.querySelector('.sttabs button.on');if(on)on.scrollIntoView({block:'nearest',inline:'nearest'});
 }
+/* The schedules that keep this app fresh or watch for it (tasks.app_id), the same rows
+   Missions → Schedule lists. Asked for as "if I ask to set up the schedule, that
+   connection should be there": a schedule set up for an app, from the app itself, from
+   Chat or from here, is one row in both places. */
+async function studioSchedRows(){
+  if(!STUDIO.sel)return [];
+  const d=await fetch('/api/tasks').then(r=>r.json()).catch(()=>({tasks:[]}));
+  return (d.tasks||[]).filter(t=>t.app_id===STUDIO.sel);
+}
+async function studioSchedCount(){
+  const dot=$('#st-scheddot');if(!dot)return;
+  const n=(await studioSchedRows()).length;
+  if(dot.isConnected)dot.textContent=n?'· '+n:'';
+}
+async function studioSchedules(){
+  const box=$('#st-panel');if(!box)return;
+  if(!STUDIO.sel){box.innerHTML='<p class="mut" style="font-size:12px">An app can keep itself up to date on a schedule, even while it is closed. Build it first, then ask here, for example <i>refresh the prices every 10 minutes</i>.</p>';return}
+  const rows=await studioSchedRows();
+  if(STUDIO.tab!=='sched'||!box.isConnected)return;
+  const st={ok:'done',failed:'failed',skipped:'skipped',running:'running',stopped:'stopped'};
+  box.innerHTML=rows.map(t=>`<div class="st-sched">
+      <span class="grow"><b>${esc(t.words||'')}</b>${t.enabled?'':' · <span class="mut">paused</span>'}
+        <span class="sub">${esc(t.title||t.prompt||'')}</span>
+        <span class="sub">${t.last_status?'last run '+esc(st[t.last_status]||t.last_status)+(t.last_at&&typeof jobAgo==='function'?' '+esc(jobAgo(t.last_at)):''):'has not run yet'}</span></span>
+      <button class="endbtn" onclick="studioOpenSchedules()">Open in Missions</button></div>`).join('')
+    ||`<p class="mut" style="font-size:12px">Nothing runs for this app on its own yet. Ask above, for example
+       <i>check the prices every 10 minutes</i>, and it is set up here and in Missions → Schedule.</p>`;
+}
+function studioOpenSchedules(){openApp('tasks');refreshApp('tasks')}   // Missions → Schedule
 async function studioVersions(){
   const box=$('#st-panel'),live=$('#st-live');
   if(!box)return;
@@ -30306,7 +30390,7 @@ function studioBuildEnded(){
 }
 function studioBuildEvent(ev){
   switch(ev.type){
-    case 'build_start': break;
+    case 'build_start': STUDIO._engShown=false;break;
     // Thinking is shown, but as ONE self-replacing line rather than a growing
     // wall: a delegated build can reason for a minute before its first tool
     // call, and "working… 45s" with nothing else reads exactly like a hang.
@@ -30319,9 +30403,10 @@ function studioBuildEvent(ev){
       el.textContent='… '+el._t.replace(/\s+/g,' ').trim();
       if(STUDIO._status&&STUDIO._status.isConnected)STUDIO.log.appendChild(STUDIO._status);
       STUDIO.log.scrollTop=STUDIO.log.scrollHeight;break;}
-    case 'build_engine':
-      studioLog(`<span class="mut">▲ ${esc(ev.engine||'executor')}${ev.model?' · '+esc(ev.model):''}`
-        +`${(ev.tools||[]).length?' · '+ev.tools.length+' tools':''}</span>`);break;
+    case 'build_engine':   // who is building, in its own name ("claude-code · 12 tools" was a log line)
+      if(STUDIO._engShown)break;STUDIO._engShown=true;   // once a build, not once a stage
+      studioLog(`<span class="mut">◈ ${esc(EXEC_TITLES[ev.engine]||ev.engine||'executor')}`
+        +`${ev.model?' on '+esc(ev.model):''}</span>`);break;
     case 'build_text':
       studioSay(ev.text||'');
       break;
@@ -30338,6 +30423,12 @@ function studioBuildEvent(ev){
       break;}
     case 'build_tool_end':{ // failed tool calls must be VISIBLE — a silent retry loop looks like a hang
       const ok=ev.ok!==false;
+      if(ok&&ev.name==='schedule_task'){
+        // set up for this app: the same door Chat's chip gives, and the tab here counts it
+        const what=String(ev.output||'').replace(/^scheduled task \w+( for this app)?: ?/,'');
+        setTimeout(()=>{studioLog(`<span class="st-schedok">⏱ Scheduled for this app${what?' · '+esc(what):''}</span>`
+          +` <button class="endbtn" onclick="studioOpenSchedules()">Open in Missions</button>`);studioSchedCount()},0);
+      }
       const el=STUDIO.tools[ev.call_id];
       if(el&&el.isConnected){
         delete STUDIO.tools[ev.call_id];

@@ -5286,11 +5286,15 @@ async function _appStream(body, onDelta){
   }
   return acc;
 }
-// AI inside the app: one-shot LLM completion (no tools). Returns plain text.
+// AI inside the app: one-shot completion (no tools) from the machine's brain, the
+// same one appChat and appAgent use (a model, or Claude Code / Gemini CLI). Plain text.
 window.appLLM = async (prompt, system='') => {
-  const r = await window.appTool('llm_generate', system ? {prompt, system} : {prompt});
-  if (r && r.output !== undefined) return r.output;
-  return '[error] ' + ((r && r.error) || 'llm unavailable');
+  try{
+    const r = await (await fetch('/api/apps/llm/chat',{method:'POST',headers:_appHdrs,
+      body:JSON.stringify(system ? {prompt, system} : {prompt})})).json();
+    if (r && r.output !== undefined) return r.output;
+    return '[error] ' + ((r && r.error) || 'llm unavailable');
+  }catch(e){ return '[error] ' + e; }
 };
 // Streaming completion: resolves the full text, calling onDelta(delta, textSoFar) as it arrives.
 window.appLLM.stream = (prompt, opts) =>
@@ -5376,6 +5380,12 @@ window.appCopilot.mount = (opts) => {
   inp.addEventListener('keydown', e => { if(e.key==='Enter') go(); });
   fab.onclick = () => { pan.classList.toggle('on'); if(pan.classList.contains('on')) inp.focus(); };
 };
+// a schedule saved something into this app's data (update_app_data): say so to the app,
+// which reloads what it shows. Only the desktop that drew this frame may say it.
+window.addEventListener('message', e => {
+  if (e.source !== parent || !e.data || e.data.agentos !== 'app_data') return;
+  try{ window.dispatchEvent(new CustomEvent('appdata', {detail: {key: e.data.key || ''}})); }catch(_){}
+});
 // surface runtime errors to the host (App Studio shows them with a one-click fix)
 window.addEventListener('error', e => {
   try{ parent.postMessage({agentos:'app_error', app_id:window.APP_ID,
@@ -5533,10 +5543,18 @@ def _scan_app_permissions(html: str) -> list[dict]:
         perms.append({"action": "tool.use", "resource": "tool:llm_generate*",
                       "reason": "uses the AI model inside the app (appLLM/appChat)",
                       "required": False})
+    # calling the agent (appAgent, and the ✦ assistant appCopilot mounts on it) is its
+    # own decision, agent.invoke agent:main: the agent's steps are then gated one by one
+    if _re.search(r"\bapp(?:Agent\s*\(|Copilot\.mount\s*\()", html or "") and \
+            ("agent.invoke", "agent:main") not in seen:
+        seen.add(("agent.invoke", "agent:main"))
+        perms.append({"action": "agent.invoke", "resource": "agent:main",
+                      "reason": "asks your agent to do things inside the app (appAgent, the ✦ assistant)",
+                      "required": False})
     if _re.search(r"appData\.(get|set)", html or ""):
         perms.append({"action": "app.data.*", "resource": "app:self/data",
                       "reason": "saves its own settings/data", "required": True})
-    if _re.search(r"fetch\(\s*[`'\"]/api/chat", html or ""):
+    if _re.search(r"fetch\(\s*[`'\"]/api/chat", html or "") and ("agent.invoke", "agent:main") not in seen:
         perms.append({"action": "agent.invoke", "resource": "agent:main",
                       "reason": "asks the AI over POST /api/chat", "required": False})
     return perms
@@ -5555,11 +5573,18 @@ def _mine_app_log_permissions(aid: str) -> list[dict]:
             continue
         name = (L.get("message") or "").replace("app→", "", 1)
         args = meta.get("args") or {}
-        action, resource = policymod.action_of(name, args, mcp=state.get("mcp"))
+        # the runtime's own AI doors log under their JS names; they are not tools, and
+        # each is one permission the consent screen already words (the source scan)
+        if name.startswith(("appLLM", "appChat")):
+            action, resource = "tool.use", "tool:llm_generate*"
+        elif name == "appAgent":
+            action, resource = "agent.invoke", "agent:main"
+        else:
+            action, resource = policymod.action_of(name, args, mcp=state.get("mcp"))
         if name == "run_command":
             base = (args.get("command") or "").split()
             resource = f"tool:run_command {base[0]}*" if base else "tool:run_command*"
-        elif action == "tool.use":
+        elif action == "tool.use" and not name.startswith(("appLLM", "appChat")):
             resource = f"tool:{name}*"
         if (action, resource) in seen:
             continue
@@ -6034,6 +6059,14 @@ ALERTS & CHANNELS — bake delivery in; the user should not have to keep the win
 - For anything the user wants tracked/monitored, ALSO wire background checking:
   appTool('schedule_task',{prompt:'check <thing>; if <condition>, send the user a telegram_send alert',
   schedule_type:'interval', interval_minutes:N}) — this keeps working with the app closed.
+  A schedule the app creates is linked to it: it is listed with the app in Missions → Schedule
+  and in App Studio, and asking twice for the same schedule keeps one.
+- To keep the app's NUMBERS fresh while it is closed, the schedule's prompt saves them into the
+  app's data: 'fetch <data>; save it with update_app_data key "<key>"'. The app reads that key
+  with appData.get() when it opens, and window.addEventListener('appdata', e => reload()) fires
+  while it is open when a schedule saved something (e.detail.key names what changed).
+- "Refresh every N minutes" while the app is open is setInterval in the app; while it is closed
+  it is a schedule. Do both when the user wants it kept up to date.
 - Give such apps a small "Alerts" card in the UI: a threshold/condition input and an on/off toggle that
   creates or removes the scheduled task, and show when the last check ran.
 
@@ -7142,6 +7175,10 @@ async def api_run_tool(body: dict, request: Request):
                                 status_code=403)
     # An app parses this in JS, so the model's context budget does not apply —
     # clipping at MAX_OUTPUT would hand it a half-written JSON body.
+    if principal.kind == "app" and name in tools.APP_BOUND_TOOLS:
+        # the app asking is the app it is for: a schedule it makes is listed with it,
+        # and the data it may change is its own. Injected after the `_` strip above.
+        args = {**args, "_app": principal.id}
     tok = tools.output_limit.set(tools.APP_MAX_OUTPUT)
     try:
         out = await toolbox.execute(name, args)
@@ -9866,9 +9903,42 @@ def _app_principal(request) -> Principal | None:
     return p if p.kind == "app" else None
 
 
-async def _gate_app_llm(principal: Principal):
+def _app_held(principal: Principal):
+    """A quarantined app is refused before the gate, on every door it has (the /api/tool
+    rule): appLLM moved off /api/tool, and the AI doors never checked it."""
+    row = state["store"].get_app(principal.id) or {}
+    if row.get("suspended_at"):
+        why = row.get("suspended_reason") or "it was calling too fast"
+        return JSONResponse({"error": f"this app is quarantined: {why}. Let it out in "
+                                      f"Permissions → Quarantine.", "quarantined": True},
+                            status_code=409)
+    return None
+
+
+def _app_model_label(model: str = "") -> tuple[str, str, str]:
+    """(engine, model, why) for an app's AI call: the machine's brain when it can be
+    closed off from its own tools, else the provider model (executors.fenced_brain)."""
+    from . import executors as execmod
+    return execmod.fenced_brain(state["cfg"], model)
+
+
+async def _gate_app_llm(principal: Principal, model: str = ""):
     """The exact gate /api/tool applies to llm_generate: PDP decision, approval card
-    on 'ask', audit log on refusal. Returns an error response, or None when allowed."""
+    on 'ask', audit log on refusal. Returns an error response, or None when allowed.
+
+    Then WHICH brain is a decision too (`model.use model:<label>`, open by default, a
+    deny grant per app closes it), so "this app may not use Claude Code" is one row in
+    Permissions like any other, and the ledger says what each app reached."""
+    held = _app_held(principal)
+    if held is not None:
+        return held
+    engine, m, _why = _app_model_label(model)
+    label = m if engine == "aria" else engine
+    if label:
+        mdec = state["pdp"].decide(principal, "model.use", f"model:{label}", {"surface": "gui"})
+        if mdec.effect == "deny":
+            return JSONResponse({"error": f"denied: this app may not use {label} "
+                                          f"({mdec.reason or 'Permissions'})"}, status_code=403)
     toolbox = state["toolbox"]
     level, reason = toolbox.risk_of("llm_generate", {})
     dec = state["pdp"].decide_tool(principal, "llm_generate", {}, level, reason=reason,
@@ -9912,26 +9982,41 @@ async def api_app_llm_stream(body: dict, request: Request):
     principal = _app_principal(request)
     if principal is None:
         return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
-    gate = await _gate_app_llm(principal)
+    body = body or {}
+    named = str(body.get("model") or "").strip()
+    gate = await _gate_app_llm(principal, named)
     if gate is not None:
         return gate
-    body = body or {}
-    model = str(body.get("model") or "").strip() or state["cfg"].get("default_model", "")
+    from . import executors as execmod
     msgs = _app_llm_messages(body)
     state["store"].log("tool", "app→appLLM.stream",
                        {"via": "user_app", "principal": principal.label,
                         "app_id": principal.id})
+    q: asyncio.Queue = asyncio.Queue()
+
+    async def piece(text):
+        await q.put(text)
+
+    async def ask():
+        # the machine's brain, executors included, as this app (executors.ask_fenced)
+        text, _who, why = await execmod.ask_fenced(state["cfg"], state["toolbox"], msgs,
+                                                    principal=principal, sink=piece,
+                                                    model=named)
+        if why and not text:
+            await q.put(f"[error] {why}")
+        await q.put(None)
 
     async def gen():
-        if not model:
-            yield "[error] no model configured"
-            return
+        task = asyncio.create_task(ask())
         try:
-            async for ev in providers.chat(state["cfg"], model, msgs, []):
-                if ev.get("type") == "text" and ev.get("text"):
-                    yield ev["text"]
-        except Exception as e:
-            yield f"[error] llm: {type(e).__name__}: {e}"
+            while True:
+                part = await q.get()
+                if part is None:
+                    break
+                yield part
+        finally:
+            if not task.done():
+                task.cancel()
 
     return StreamingResponse(gen(), media_type="text/plain; charset=utf-8")
 
@@ -9943,24 +10028,21 @@ async def api_app_llm_chat(body: dict, request: Request):
     principal = _app_principal(request)
     if principal is None:
         return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
-    gate = await _gate_app_llm(principal)
+    body = body or {}
+    named = str(body.get("model") or "").strip()
+    gate = await _gate_app_llm(principal, named)
     if gate is not None:
         return gate
-    body = body or {}
-    model = str(body.get("model") or "").strip() or state["cfg"].get("default_model", "")
-    if not model:
-        return {"output": "[error] no model configured"}
-    parts: list[str] = []
-    try:
-        async for ev in providers.chat(state["cfg"], model, _app_llm_messages(body), []):
-            if ev.get("type") == "text" and ev.get("text"):
-                parts.append(ev["text"])
-    except Exception as e:
-        return {"output": f"[error] llm: {type(e).__name__}: {e}"}
+    from . import executors as execmod
+    text, who, why = await execmod.ask_fenced(state["cfg"], state["toolbox"],
+                                              _app_llm_messages(body), principal=principal,
+                                              model=named)
     state["store"].log("tool", "app→appChat",
                        {"via": "user_app", "principal": principal.label,
-                        "app_id": principal.id})
-    return {"output": "".join(parts) or "(empty response)"}
+                        "app_id": principal.id, "brain": who})
+    if why and not text:
+        return {"output": f"[error] {why}"}
+    return {"output": text or "(empty response)", "brain": who}
 
 
 @app.post("/api/apps/agent")
@@ -9976,9 +10058,32 @@ async def api_app_agent(body: dict, request: Request):
     prompt = str(body.get("prompt") or "").strip()
     if not prompt:
         return JSONResponse({"error": "prompt required"}, status_code=400)
-    model = str(body.get("model") or "").strip() or state["cfg"].get("default_model", "")
-    if not model:
-        return {"output": "[error] no model configured", "steps": 0}
+    held = _app_held(principal)
+    if held is not None:
+        return held
+    # Calling the agent is the app's permission too (`agent.invoke agent:main`), not
+    # only each tool the agent then uses: it was never decided, so an app with no grant
+    # could start the agent and only its steps were asked. Declared on the consent
+    # screen (appAgent / appCopilot); otherwise it asks, with Remember.
+    adec = state["pdp"].decide(principal, "agent.invoke", "agent:main", {"surface": "gui"})
+    if adec.effect == "deny":
+        return JSONResponse({"error": f"denied: {adec.reason or 'this app may not call the agent'}"},
+                            status_code=403)
+    if adec.effect == "ask":
+        why = adec.reason or "This app wants to ask your agent to do something."
+        if not state["clients"] or not await request_approval(
+                "appAgent", {"prompt": prompt[:200]}, why, offer=adec.grant_offer):
+            return JSONResponse({"error": f"not approved: {why}"}, status_code=403)
+    named = str(body.get("model") or "").strip()
+    # the machine's brain when it can run with only this OS's tools, else the provider
+    # model: either way every tool call below is the APP's, decided by the PDP
+    engine, model, why = _app_model_label(named)
+    if why:
+        return {"output": f"[error] {why}", "steps": 0}
+    label = model if engine == "aria" else engine
+    mdec = state["pdp"].decide(principal, "model.use", f"model:{label}", {"surface": "gui"})
+    if mdec.effect == "deny":
+        return JSONResponse({"error": f"denied: this app may not use {label}"}, status_code=403)
     tools = body.get("tools")
     tool_filter = [str(t) for t in tools][:24] if isinstance(tools, list) else None
 
@@ -9992,11 +10097,22 @@ async def api_app_agent(body: dict, request: Request):
 
     agent = Agent({**state["cfg"], "max_steps": 5}, state["toolbox"], model, emit, approver,
                   tool_filter=tool_filter, principal=principal, surface="gui")
-    result = await agent.run([{"role": "user", "content": prompt}])
+    if engine == "aria":
+        result = await agent.run([{"role": "user", "content": prompt}])
+    else:
+        # Claude Code or Gemini CLI thinks; its own tools are off and the app's tools
+        # (built-in and MCP, as the PDP lets THIS app see them) arrive over the run
+        # bridge, each call through Agent.call_tool: the same gate, the same ledger.
+        result = await state["toolbox"].fabric._run_on_executor(
+            agent, prompt, "", engine, surface="gui", kind="app")
+    errors = [st.get("message") for st in result.get("steps") or [] if st.get("type") == "error"]
     state["store"].log("tool", "app→appAgent",
                        {"via": "user_app", "principal": principal.label,
-                        "app_id": principal.id, "steps": len(result["steps"])})
-    return {"output": result["content"], "steps": len(result["steps"])}
+                        "app_id": principal.id, "steps": len(result["steps"]), "brain": label})
+    out = result.get("content") or ""
+    if not out.strip() and errors:
+        out = f"[error] {errors[0]}"
+    return {"output": out, "steps": len(result["steps"]), "brain": label}
 
 
 @app.get("/api/apps/context")
@@ -10009,9 +10125,13 @@ async def api_app_context(request: Request):
         return JSONResponse({"error": "app token required (X-App-Token)"}, status_code=401)
     a = state["store"].get_app(principal.id) or {}
     cfg = state["cfg"]
+    engine, model, why = _app_model_label()
+    # what the app's AI actually answers on: the machine's brain or the provider model,
+    # and the sentence when nothing does, so an app can say it instead of failing
     return {"app_id": principal.id, "app_name": a.get("name", ""),
             "agent_name": cfg.get("agent_name", "Aria"),
-            "model": cfg.get("default_model", ""), "theme": "dark"}
+            "model": model if engine == "aria" else engine, "brain": engine or "",
+            "ai_ready": not why, "ai_note": why, "theme": "dark"}
 
 
 # ---------------------------------------------------------------------------
@@ -14385,7 +14505,17 @@ async def _run_build(data: dict):
                 "ollama_think": False}
         build_timeout = int(cfg.get("build_timeout", 600))
 
+        # what this build set up to run on its own: said in the build's closing message,
+        # which is what the Builder shows once the live log is re-read from the chat
+        build_scheds: list[str] = []
+
+        def sched_note() -> str:
+            return "".join(f"\nScheduled for this app: {re.sub(r'^(already )?scheduled task [0-9a-f]+( for this app)?: ?', '', o)} "
+                           f"(Missions → Schedule)." for o in build_scheds)
+
         async def bemit(ev):
+            if ev.get("type") == "tool_end" and ev.get("name") == "schedule_task" and ev.get("ok"):
+                build_scheds.append(str(ev.get("output") or "")[:200])
             m = {"text_delta": "build_text", "thinking_delta": "build_thinking",
                  "tool_start": "build_tool", "tool_end": "build_tool_end",
                  "error": "build_error_note", "status": "build_status"}
@@ -14393,7 +14523,41 @@ async def _run_build(data: dict):
                 await bcast({**ev, "type": m[ev["type"]]})
 
         async def bapprove(name, args, reason, offer=None):
-            return True if name == "create_app" else (cfg.get("autonomy") == "full")
+            if name == "create_app":
+                return True
+            if cfg.get("autonomy") == "full":
+                return True
+            if name == "schedule_task":
+                # a schedule outlives the build and runs on its own: the person says yes
+                # on the card, as they would in Chat. The card names the build's own
+                # conversation: with none, the page took it for the chat that happened to
+                # be open and drew it inside that unrelated conversation.
+                uid = usersmod.current() if usersmod.enabled() else ""
+
+                # and says where it came from: a card that read "another chat" sent the
+                # person looking for a chat that was App Studio's build
+                where = (f"App Studio, for {existing['name']}" if existing else "App Studio")
+
+                async def to_studio(ev):
+                    await _approval_send({"uid": uid}, {**ev, "conversation_id": cid,
+                                                        "where": where})
+                return bool(await request_approval(name, args, reason, offer=offer,
+                                                   evsend=to_studio))
+            return False
+
+        # The app being changed, so a schedule asked for here ("update it every 10
+        # minutes") is set up FOR it: listed with the app in Missions → Schedule and in
+        # the Studio, and its runs may save into the app's data. A new app has no id yet;
+        # its own appTool('schedule_task') links itself when it runs.
+        build_app_id = (existing or {}).get("id", "")
+        SCHEDULE_NOTE = (
+            "\n=== SCHEDULES FOR THIS APP ===\nIf the person asks for something to happen on a "
+            "clock while the app is closed (refresh it every 10 minutes, check a price every "
+            "hour), set it up ONCE with {tool}: it belongs to this app, is listed with it in "
+            "Missions → Schedule, and each run can save into the app's data with "
+            "update_app_data, which the app reads on open (and hears as the `appdata` event "
+            "while open). Write the app to read that key. Refreshing while it is open is "
+            "setInterval in the app. Say in one line which of the two you set up.\n")
 
         def persona_for(use_model: str) -> str:
             """Full API registry for capable cloud models; trimmed for local ones —
@@ -14418,6 +14582,9 @@ async def _run_build(data: dict):
             local = use_model.startswith("ollama/")
             extra = persona_for(use_model)
             tf = ["create_app", "read_file", "list_dir", "fetch_url", "system_info"]
+            if build_app_id:
+                tf.append("schedule_task")
+                extra += SCHEDULE_NOTE.format(tool="schedule_task")
             if local:
                 tf = []
                 # small models anchor on the FIRST instruction they read — the output
@@ -14431,6 +14598,7 @@ async def _run_build(data: dict):
                           "announce the app — OUTPUT it.\n\n") + extra)
             agent = Agent(bcfg, toolbox, use_model, bemit, bapprove,
                           extra_system=extra, tool_filter=tf)
+            agent.app_id = build_app_id
             agent.nudge_unfinished = False   # the build path owns its own retries
             build["agent"] = agent
             knowledge.turn_started()
@@ -14498,16 +14666,24 @@ async def _run_build(data: dict):
             # the user typed wins over one derived from their sentence.
             app_name = (existing or {}).get("name") or want_name or (prompt[:40] or "New app")
             co = execmod.prepare_build(env.workspace, app_name,
-                                       (existing or {}).get("html", ""))
+                                       (existing or {}).get("html", ""),
+                                       key=(existing or {}).get("id", ""))
             env.context = execmod.context_for("")
             run = execmod.Run()
             build["executor"] = run
+            # Said as a person would. It printed the build folder and the ceiling as
+            # "(building with Claude Code in /Users/…/builds/Make-an-application-that-
+            # tracks-the-stoc — up to $25.00)", under the lead's name, and was asked
+            # about with a screenshot. The folder is in the log for whoever needs it.
+            store.log("system", f"app build in {co['dir']}", {"app": app_name})
             await bcast({"type": "build_text",
-                         "text": f"\n(building with Claude Code in {co['dir']} — "
-                                 f"up to ${env.budget_usd:.2f})\n"})
+                         "text": (f"\nClaude Code is {'changing' if existing else 'building'} "
+                                  f"it. This build can spend up to ${env.budget_usd:.2f}.\n")})
 
             async def erelay(ev: dict):
                 t = ev.get("type")
+                if t in ("tool_start", "tool_end") and str(ev.get("name") or "").startswith("mcp__bento__"):
+                    return   # the door's own gate already said it, once and by its name
                 if t == "text_delta":
                     await bcast({"type": "build_text", "text": ev.get("text", "")})
                 elif t == "tool_start":
@@ -14544,6 +14720,13 @@ async def _run_build(data: dict):
             pulse = asyncio.create_task(epulse())
             relay_failed = ""
             bpersona = persona_for("claude-code")
+            # the same schedule tool the built-in builder has, over the run bridge, so the
+            # gate asks the person and the schedule is this app's
+            door = execmod.open_app_door(env, cfg, toolbox, build_app_id, bapprove,
+                                         emit=bemit, tools=("schedule_task",), surface="gui",
+                                         conversation_id=cid, label="studio door")
+            if door:
+                bpersona += SCHEDULE_NOTE.format(tool="mcp__bento__schedule_task")
 
             async def stage(label: str, task: str) -> str:
                 """One executor turn. Returns '' or the relay failure.
@@ -14612,6 +14795,9 @@ async def _run_build(data: dict):
                     await pulse
                 execmod.stop(run)
                 build["executor"] = None
+                if door:
+                    from . import mcpbridge
+                    mcpbridge.close_session(door)
             html, problem = execmod.read_build(co)
             if problem:
                 await terminal({"type": "build_error",
@@ -14621,6 +14807,13 @@ async def _run_build(data: dict):
                 await bcast({"type": "build_error_note",
                              "message": f"lost contact with the executor ({relay_failed}) — "
                                         f"installing the app it had already written"})
+            if not existing and not want_name:
+                # a new app is named by its own <title>, as one built in Chat is: the first
+                # 40 characters of the request named it "Build a volume tracker for INFY
+                # and AAPL" in the live run. A name already taken gets a number.
+                titled = execmod._title_of(html)
+                if titled:
+                    app_name = execmod._unique_app_name(store, titled)
             out = await toolbox.create_app(app_name, want_icon or (existing or {}).get("icon", ""),
                                            (existing or {}).get("description") or prompt[:160],
                                            html, _conv=cid)
@@ -14636,7 +14829,7 @@ async def _run_build(data: dict):
                 store.rename_app(built["id"], name=want_name if not existing else "",
                                  icon=want_icon)
             store.add_message(cid, "assistant",
-                              f"Built with Claude Code (${run.cost_usd:.2f}).",
+                              f"Built with Claude Code (${run.cost_usd:.2f})." + sched_note(),
                               {"engine": "claude-code", "engine_model": run.model})
             if not existing:
                 store.touch_conversation(cid, f"build: {built['name']}")
@@ -14740,7 +14933,8 @@ async def _run_build(data: dict):
                 if fixed:
                     built, result = fixed, fix_res
 
-        store.add_message(cid, "assistant", result["content"], {"steps": result["steps"]})
+        store.add_message(cid, "assistant", (result["content"] or "") + sched_note(),
+                          {"steps": result["steps"]})
         if built and not existing and (want_name or want_icon is not None):
             # the model named it after the request; the user already said what it
             # is called. Re-read it, because the name is what everything shows.

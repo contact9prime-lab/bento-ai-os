@@ -83,6 +83,7 @@ async function renderStudio(body,w){
             <div class="sttabs">
               <button data-t="versions" class="${STUDIO.tab==='versions'?'on':''}" onclick="studioTab('versions')">Versions</button>
               <button data-t="perms" class="${STUDIO.tab==='perms'?'on':''}" onclick="studioTab('perms')">Permissions <span id="st-permdot"></span></button>
+              <button data-t="sched" class="${STUDIO.tab==='sched'?'on':''}" onclick="studioTab('sched')">Schedules <span id="st-scheddot"></span></button>
             </div>
             <div id="st-panel" style="flex:0 0 auto;max-height:200px;overflow-y:auto;border-top:1px solid var(--line);padding:8px 12px 10px"></div>
           </div>
@@ -332,8 +333,40 @@ function studioShowPreview(){
 }
 /* ---- bottom panel: versions | permissions --------------------------------- */
 function studioPanel(){
-  if(STUDIO.tab==='perms')studioPerms();else studioVersions();
+  if(STUDIO.tab==='perms')studioPerms();else if(STUDIO.tab==='sched')studioSchedules();else studioVersions();
+  studioSchedCount();
+  // on a phone the tab row scrolls: the chosen tab is the one in view
+  const on=document.querySelector('.sttabs button.on');if(on)on.scrollIntoView({block:'nearest',inline:'nearest'});
 }
+/* The schedules that keep this app fresh or watch for it (tasks.app_id), the same rows
+   Missions → Schedule lists. Asked for as "if I ask to set up the schedule, that
+   connection should be there": a schedule set up for an app, from the app itself, from
+   Chat or from here, is one row in both places. */
+async function studioSchedRows(){
+  if(!STUDIO.sel)return [];
+  const d=await fetch('/api/tasks').then(r=>r.json()).catch(()=>({tasks:[]}));
+  return (d.tasks||[]).filter(t=>t.app_id===STUDIO.sel);
+}
+async function studioSchedCount(){
+  const dot=$('#st-scheddot');if(!dot)return;
+  const n=(await studioSchedRows()).length;
+  if(dot.isConnected)dot.textContent=n?'· '+n:'';
+}
+async function studioSchedules(){
+  const box=$('#st-panel');if(!box)return;
+  if(!STUDIO.sel){box.innerHTML='<p class="mut" style="font-size:12px">An app can keep itself up to date on a schedule, even while it is closed. Build it first, then ask here, for example <i>refresh the prices every 10 minutes</i>.</p>';return}
+  const rows=await studioSchedRows();
+  if(STUDIO.tab!=='sched'||!box.isConnected)return;
+  const st={ok:'done',failed:'failed',skipped:'skipped',running:'running',stopped:'stopped'};
+  box.innerHTML=rows.map(t=>`<div class="st-sched">
+      <span class="grow"><b>${esc(t.words||'')}</b>${t.enabled?'':' · <span class="mut">paused</span>'}
+        <span class="sub">${esc(t.title||t.prompt||'')}</span>
+        <span class="sub">${t.last_status?'last run '+esc(st[t.last_status]||t.last_status)+(t.last_at&&typeof jobAgo==='function'?' '+esc(jobAgo(t.last_at)):''):'has not run yet'}</span></span>
+      <button class="endbtn" onclick="studioOpenSchedules()">Open in Missions</button></div>`).join('')
+    ||`<p class="mut" style="font-size:12px">Nothing runs for this app on its own yet. Ask above, for example
+       <i>check the prices every 10 minutes</i>, and it is set up here and in Missions → Schedule.</p>`;
+}
+function studioOpenSchedules(){openApp('tasks');refreshApp('tasks')}   // Missions → Schedule
 async function studioVersions(){
   const box=$('#st-panel'),live=$('#st-live');
   if(!box)return;
@@ -497,7 +530,7 @@ function studioBuildEnded(){
 }
 function studioBuildEvent(ev){
   switch(ev.type){
-    case 'build_start': break;
+    case 'build_start': STUDIO._engShown=false;break;
     // Thinking is shown, but as ONE self-replacing line rather than a growing
     // wall: a delegated build can reason for a minute before its first tool
     // call, and "working… 45s" with nothing else reads exactly like a hang.
@@ -510,9 +543,10 @@ function studioBuildEvent(ev){
       el.textContent='… '+el._t.replace(/\s+/g,' ').trim();
       if(STUDIO._status&&STUDIO._status.isConnected)STUDIO.log.appendChild(STUDIO._status);
       STUDIO.log.scrollTop=STUDIO.log.scrollHeight;break;}
-    case 'build_engine':
-      studioLog(`<span class="mut">▲ ${esc(ev.engine||'executor')}${ev.model?' · '+esc(ev.model):''}`
-        +`${(ev.tools||[]).length?' · '+ev.tools.length+' tools':''}</span>`);break;
+    case 'build_engine':   // who is building, in its own name ("claude-code · 12 tools" was a log line)
+      if(STUDIO._engShown)break;STUDIO._engShown=true;   // once a build, not once a stage
+      studioLog(`<span class="mut">◈ ${esc(EXEC_TITLES[ev.engine]||ev.engine||'executor')}`
+        +`${ev.model?' on '+esc(ev.model):''}</span>`);break;
     case 'build_text':
       studioSay(ev.text||'');
       break;
@@ -529,6 +563,12 @@ function studioBuildEvent(ev){
       break;}
     case 'build_tool_end':{ // failed tool calls must be VISIBLE — a silent retry loop looks like a hang
       const ok=ev.ok!==false;
+      if(ok&&ev.name==='schedule_task'){
+        // set up for this app: the same door Chat's chip gives, and the tab here counts it
+        const what=String(ev.output||'').replace(/^scheduled task \w+( for this app)?: ?/,'');
+        setTimeout(()=>{studioLog(`<span class="st-schedok">⏱ Scheduled for this app${what?' · '+esc(what):''}</span>`
+          +` <button class="endbtn" onclick="studioOpenSchedules()">Open in Missions</button>`);studioSchedCount()},0);
+      }
       const el=STUDIO.tools[ev.call_id];
       if(el&&el.isConnected){
         delete STUDIO.tools[ev.call_id];

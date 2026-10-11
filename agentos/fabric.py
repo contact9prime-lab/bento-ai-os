@@ -868,7 +868,8 @@ class ControlPlane(usersmod.Scoped):
         return f"{engine}/{executors.executor_model(self.cfg, engine) or 'default'}"
 
     async def _run_on_executor(self, agent, task: str, run_id: str, engine: str,
-                               model: str | None = None) -> dict:
+                               model: str | None = None, surface: str = "task",
+                               kind: str = "subagent") -> dict:
         """One agent turn — master or specialist — on the executor, through the bridge.
 
         The Agent is built exactly as for the built-in loop (its principal, its
@@ -971,8 +972,8 @@ class ControlPlane(usersmod.Scoped):
             # The spend lands in Usage like any other turn's — the mission row
             # counts tokens, Usage prices them.
             self.store.usage_add(label, tokens["input"], tokens["output"],
-                                 cost_usd=run.cost_usd or None, surface="task",
-                                 principal=agent.principal.label, kind="subagent",
+                                 cost_usd=run.cost_usd or None, surface=surface,
+                                 principal=agent.principal.label, kind=kind,
                                  conversation_id=agent.conversation_id or "",
                                  space_id=agent.space_id or "")
         steps = [{"type": "error", "message": e} for e in errors if e]
@@ -1000,6 +1001,8 @@ class ControlPlane(usersmod.Scoped):
     # -- telemetry --------------------------------------------------------------
 
     async def _emit(self, run_id: str, etype: str, payload: dict, persist: bool = True):
+        if not run_id:
+            return   # an app's agent on an executor is not a run: nothing to file under
         if persist:
             self.store.fabric_event(run_id, etype, payload)
         if self.broadcast:

@@ -689,6 +689,10 @@ class Store:
             # A weekly schedule: which day (0=Monday … 6=Sunday) a "weekly" task fires on,
             # beside the at_time it already had. -1 for every other schedule type.
             ("tasks", (("weekday", "INTEGER DEFAULT -1"),)),
+            # The app a schedule keeps fresh or watches for ('' = none). Set by the app
+            # itself (appTool), by a chat naming it, or by App Studio while it builds
+            # that app; Missions and the Studio read it so the two show one schedule.
+            ("tasks", (("app_id", "TEXT DEFAULT ''"),)),
             ("grants", (("source_ref", "TEXT DEFAULT ''"),)),
             ("subagents", (("memory_scope", "TEXT DEFAULT 'inherit'"),
                            ("skills_locked", "INTEGER DEFAULT 1"),
@@ -2877,15 +2881,15 @@ class Store:
     def add_task(self, prompt: str, schedule_type: str, interval_seconds: int | None,
                  at_time: str | None, next_run: float | None, trigger: str = "",
                  trigger_config: str = "{}", cooldown_secs: int = 300,
-                 flow: str = "", space_id: str = "", weekday: int = -1) -> str:
+                 flow: str = "", space_id: str = "", weekday: int = -1, app_id: str = "") -> str:
         tid = uuid.uuid4().hex[:12]
         self.db.execute(
             'INSERT INTO tasks (id, prompt, schedule_type, interval_seconds, at_time, next_run, '
-            'created_at, "trigger", trigger_config, cooldown_secs, flow, space_id, weekday) '
-            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            'created_at, "trigger", trigger_config, cooldown_secs, flow, space_id, weekday, app_id) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             (tid, prompt, schedule_type, interval_seconds, at_time, next_run, time.time(),
              trigger, trigger_config or "{}", int(cooldown_secs), flow or "", space_id or "",
-             int(weekday if weekday is not None else -1)),
+             int(weekday if weekday is not None else -1), app_id or ""),
         )
         self.db.commit()
         return tid

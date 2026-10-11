@@ -684,7 +684,9 @@ class AgentTUI(App):
         for tk in d.get("tasks", []):
             sch = (tk.get("schedule_type") or "")
             when = tk.get("last_result", "") or ("enabled" if tk.get("enabled") else "disabled")
-            t.add_row(tk.get("prompt", "")[:44], sch, str(when)[:30])
+            app = tk.get("app_name") or ("deleted app" if tk.get("app_gone") else "")
+            what = (f"{app}: " if app else "") + (tk.get("title") or tk.get("prompt") or "")
+            t.add_row(what[:44], sch, str(when)[:30])
 
     # ---- logs ----
     @work(exclusive=True, group="logs")

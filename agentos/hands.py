@@ -64,7 +64,7 @@ GROUPS = {
                 "create_theme", "list_themes", "pin_widget", "list_notifications", "system_info",
                 "system_control", "wifi", "bluetooth", "set_brightness", "audio", "power_profile",
                 "lock_screen", "power_action"],
-    "Apps & missions": ["create_app", "read_app_data", "create_flow", "enable_flow", "list_flows",
+    "Apps & missions": ["create_app", "read_app_data", "update_app_data", "create_flow", "enable_flow", "list_flows",
                         "run_flow", "schedule_task", "create_trigger", "list_automations",
                         "run_automation", "save_automation"],
     "Team": ["delegate", "huddle", "ask_agent", "create_subagent", "set_agent_brain", "set_avatar", "set_office"],

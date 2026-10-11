@@ -21,7 +21,7 @@ from . import toolscope
 # package, so this direction cannot cycle.)
 from .executors import tool_detail
 from .policy import MAIN, Principal
-from .tools import ALWAYS_ASK, SPACE_SCOPED_TOOLS, Toolbox
+from .tools import ALWAYS_ASK, APP_BOUND_TOOLS, SPACE_SCOPED_TOOLS, Toolbox
 
 TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"   # = fabric.TAINTED_REPLY
 
@@ -410,6 +410,9 @@ class Agent:
         self.extra_system = extra_system
         self.tool_filter = tool_filter
         self.conversation_id = conversation_id
+        # The app this run works for, set by its caller (App Studio, an app's schedule)
+        # and injected into APP_BOUND_TOOLS; '' for every other run.
+        self.app_id = ""
         self.principal = principal
         self.surface = surface
         self.space_id = space_id or ""
@@ -827,6 +830,13 @@ class Agent:
             # could name a conversation could file an app under somebody else's chat
             args = {**{k: v for k, v in args.items() if k != "_conv"},
                     "_conv": self.conversation_id or ""}
+        if name in APP_BOUND_TOOLS:
+            # the app this run works for (App Studio building it, a schedule that belongs
+            # to it): the agent's and never the model's, or a model could write another
+            # app's data or file a schedule under it
+            args = {k: v for k, v in args.items() if k != "_app"}
+            if self.app_id:
+                args["_app"] = self.app_id
         if name.startswith("mcp_"):
             # Where this call is happening, so anything the server hands
             # back (an image, a clip) is filed against this conversation

@@ -183,11 +183,16 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
 # delete_skill and whatsapp_send to any number all ran unasked because of it.
 # tests/test_gate_hardening.py fails if a tool in TOOL_SCHEMAS is neither here nor
 # given its own line in risk_of.
+# Tools that act for ONE app when the caller is that app (its appTool) or is building
+# it (App Studio): the agent loop and /api/tool inject `_app`, never the model or the page.
+APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data")
+
 SAFE_TOOLS = {
     # reading
     "read_file", "list_dir", "search_files", "read_source", "search_docs", "system_info",
     "fetch_url", "recall", "kg_query", "timeline", "list_spaces", "list_flows",
-    "list_assets", "get_asset", "list_automations", "read_app_data", "mail_search",
+    "list_assets", "get_asset", "list_automations", "read_app_data", "update_app_data",
+    "mail_search",
     "mail_read", "calendar_events", "find_tools", "openclaw_report",
     "port_openclaw_plugin", "verify_openclaw_port",
     # the team: each of these is its own action, decided by the gate (agent.invoke,
@@ -1014,7 +1019,14 @@ class Toolbox(usersmod.Scoped):
         from . import providers
         model = (model or self.cfg.get("default_model", "")).strip()
         if not model:
-            return "[error] no model configured"
+            # no provider model: the machine's brain, when it can answer with none of
+            # its own tools (Claude Code, Gemini CLI). It said "no model configured" on
+            # a Claude Code machine, to every app that called appTool('llm_generate').
+            from . import executors
+            msgs = ([{"role": "system", "content": system}] if system else []) + \
+                [{"role": "user", "content": prompt}]
+            text, _who, why = await executors.ask_fenced(self.cfg, self, msgs)
+            return _truncate(text) if text.strip() else f"[error] {why or 'no answer'}"
         try:
             out = await providers.complete(self.cfg, model, prompt, system)
         except Exception as e:
@@ -2294,6 +2306,47 @@ class Toolbox(usersmod.Scoped):
         data = self.store.get_app_data(app["id"])
         return f"data for '{app['name']}':\n{data}" if data and data != "{}" else f"'{app['name']}' has no stored data yet"
 
+    async def update_app_data(self, name: str = "", key: str = "", value=None,
+                              _app: str = "") -> str:
+        """Set one top-level key in an app's saved data, keeping the rest. How a schedule
+        keeps an app fresh while it is closed: the app reads the key when it opens.
+
+        A run that belongs to an app (`_app`, injected) writes that app's data and no
+        other. Safe in risk_of on purpose: it writes into the app's own JSON store and
+        nothing outside it, and the app reading it runs sandboxed; as risky, every
+        scheduled refresh that fetched a page would be held for a person nobody is."""
+        app = self.store.get_app(_app) if _app else self._app_named(name)
+        if not app:
+            return f"[error] no app named '{name}'"
+        if _app and name and name.strip().lower() != app["name"].lower():
+            return (f"[error] this run belongs to '{app['name']}' and can change only its "
+                    f"data, not '{name}'")
+        key = str(key or "").strip()
+        if not key or len(key) > 80:
+            return "[error] key must be a name of 1 to 80 characters"
+        try:
+            data = json.loads(self.store.get_app_data(app["id"]) or "{}")
+        except Exception:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)        # a JSON string is stored as what it says
+            except Exception:
+                pass
+        data[key] = value
+        out = json.dumps(data)
+        if len(out) > 200_000:
+            return "[error] that would make the app's data larger than 200 KB; store less"
+        self.store.set_app_data(app["id"], out)
+        if self.broadcast:
+            try:
+                await self.broadcast({"type": "app_data", "app_id": app["id"], "key": key})
+            except Exception:
+                pass
+        return f"saved '{key}' in {app['name']}'s data"
+
     async def find_tools(self, need: str) -> str:
         """The way back from a narrowed tool set (see toolscope.py).
 
@@ -2624,22 +2677,49 @@ class Toolbox(usersmod.Scoped):
             return "[error] WhatsApp bridge not running"
         return await self.whatsapp.send(message, (wa_id or "").strip() or None)
 
+    def _app_named(self, name: str) -> dict | None:
+        want = str(name or "").strip().lower()
+        return next((a for a in self.store.list_apps() if a["name"].lower() == want), None) \
+            if want else None
+
+    def _schedule_app(self, app: str, _app: str) -> tuple[str, str]:
+        """Which app a schedule is for: (app_id, error). `_app` is the caller's own app,
+        injected (an app's appTool, App Studio building it), and wins; `app` is a name a
+        chat gave, checked against the apps that exist so a typo never links to nothing."""
+        if _app:
+            return (_app, "") if self.store.get_app(_app) else ("", "")
+        if not str(app or "").strip():
+            return "", ""
+        found = self._app_named(app)
+        if not found:
+            names = ", ".join(a["name"] for a in self.store.list_apps()[:12]) or "none yet"
+            return "", f"[error] no app named '{app}' (apps: {names})"
+        return found["id"], ""
+
     async def schedule_task(self, prompt: str, schedule_type: str,
                             interval_minutes: int = 0, at_time: str = "",
-                            delay_minutes: int = 0, weekday: int = -1) -> str:
+                            delay_minutes: int = 0, weekday: int = -1,
+                            app: str = "", _app: str = "") -> str:
         if self.scheduler is None:
             return "[error] scheduler not running"
+        app_id, err = self._schedule_app(app, _app)
+        if err:
+            return err
         return self.scheduler.create_task(prompt, schedule_type, interval_minutes, at_time,
-                                          delay_minutes, weekday=weekday)
+                                          delay_minutes, weekday=weekday, app_id=app_id)
 
     async def create_trigger(self, kind: str, match_or_path: str = "", prompt: str = "",
-                             cooldown_secs: int = 300, minutes: float = 30) -> str:
+                             cooldown_secs: int = 300, minutes: float = 30,
+                             app: str = "", _app: str = "") -> str:
         if self.scheduler is None:
             return "[error] scheduler not running"
+        app_id, err = self._schedule_app(app, _app)
+        if err:
+            return err
         kw = {"match": match_or_path} if kind == "notification" else \
              {"path": match_or_path} if kind == "file_change" else {}
         return self.scheduler.create_trigger(kind, prompt, minutes=minutes,
-                                             cooldown_secs=cooldown_secs, **kw)
+                                             cooldown_secs=cooldown_secs, app_id=app_id, **kw)
 
     # -- registry ------------------------------------------------------------
 
@@ -3769,6 +3849,7 @@ class Toolbox(usersmod.Scoped):
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
             keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name == "create_app" else
+                    {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
             return await fn(**{k: v for k, v in args.items() if not k.startswith("_") or k in keep})
@@ -4457,6 +4538,18 @@ TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "The app's name as shown on the desktop."}}, "required": ["name"]},
     },
     {
+        "name": "update_app_data",
+        "description": "Save one value in a built app's data, by app name, keeping the rest. "
+                       "Use it in a schedule that keeps an app fresh while it is closed (prices, "
+                       "a checked page, a count): the app reads that key when it opens, with "
+                       "appData.get().",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "The app's name as shown on the desktop."},
+            "key": {"type": "string", "description": "The top-level key in the app's data to set."},
+            "value": {"description": "What to store: any JSON value."}},
+            "required": ["name", "key", "value"]},
+    },
+    {
         "name": "find_tools",
         "description": "Find tools you cannot currently see. When a request needs a capability "
                        "that is not in your tool list, describe what you need in plain words "
@@ -4708,6 +4801,9 @@ TOOL_SCHEMAS = [
                 "interval_minutes": {"type": "integer", "description": "For 'interval': run every N minutes."},
                 "at_time": {"type": "string", "description": "For 'daily': time of day as 'HH:MM' (24h)."},
                 "delay_minutes": {"type": "integer", "description": "For 'once': run after N minutes from now."},
+                "app": {"type": "string", "description": "The app this schedule keeps fresh or "
+                        "watches, by its name, when it is for one. It is shown with the app in "
+                        "Missions and App Studio, and the run can update that app's data."},
             },
             "required": ["prompt", "schedule_type"],
         },
@@ -5085,6 +5181,8 @@ PROACTIVITY_TOOL_SCHEMAS = [
                                   "description": "Minimum seconds between firings (default 300)."},
                 "minutes": {"type": "number", "description": "For 'idle': fire after this many "
                                                              "minutes of no chat activity (default 30)."},
+                "app": {"type": "string", "description": "The app this trigger is for, by its "
+                        "name, when it is for one."},
             },
             "required": ["kind", "prompt"],
         },

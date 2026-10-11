@@ -112,7 +112,9 @@ function approvalFloat(ev){
   // one float per approval; an existing one is brought back to the top of the page
   const had=document.querySelector('[id="ap-'+ev.id+'"].ap-float');
   if(had){if(had.nextSibling)document.body.appendChild(had);return had}
-  const box=buildApprovalBox(ev,false);box.classList.add('ap-float');
+  // "another chat" only when it came from one: an app's question, or a build's, has none
+  const box=buildApprovalBox(ev,!ev.conversation_id||ev.conversation_id===(typeof currentConv!=='undefined'?currentConv:''));
+  box.classList.add('ap-float');
   document.body.appendChild(box);
   box.addEventListener('click',()=>setTimeout(()=>{if(box.classList.contains('resolved'))box.remove()},1000));
   return box;
@@ -186,7 +188,9 @@ function buildApprovalBox(ev,cur){
   const o=ev.offer, standing=o&&o.label;
   const rem=!o?'':standing?`<button class="deny always" data-rem="always">${esc(o.label)}</button>`
     :`<span class="ap-rem"><span class="ap-remlbl">Remember</span>${o.conversation_id?'<button class="deny always" data-rem="chat">This chat</button>':''}<button class="deny always" data-rem="hour">1 hour</button><button class="deny always" data-rem="always">Always</button></span>`;
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${cur?'':' · another chat'}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
+  // where it came from: App Studio says so (ev.where); a chat you aren't looking at says that
+  const from=ev.where?' · '+esc(ev.where):cur?'':' · another chat';
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${from}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
@@ -499,7 +503,8 @@ function handle(ev){
       // to the toolsmith that waited five minutes on a question nobody could see.
       requestAnimationFrame(()=>{if(APPROVALS[ev.id])approvalHome(ev.id)});
       approvalWatch();
-      toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
+      { const tt=toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
+        if(tt)tt.dataset.approval=ev.id; }
       scrollDown(); break;}
     case 'error':{
       ERRED[ev.conversation_id||_cid||'']=1;   // this turn is not a reply, whatever ends it
@@ -625,6 +630,8 @@ function handle(ev){
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{
       delete APPROVALS[ev.id];
+      // its "approval needed" toast goes too: a Review that opens nothing is a dead button
+      document.querySelectorAll('#toasts .toast').forEach(t=>{if(t.dataset.approval===String(ev.id))t.remove()});
       // answered somewhere else (or nobody answered): this screen's copy says so and
       // stops offering buttons — a floating one leaves after a moment
       // one page can draw the same card twice (Chat and a floating copy), so all of them
@@ -696,6 +703,12 @@ function handle(ev){
     case 'wake': onWake(); break;
     case 'switcher': sessionSwitcher(ev); break;   // Alt-Tab overlay, driven by sway
     case 'apps': loadUserApps(); refreshApp('studio'); toast('app library updated'); break;
+    /* A schedule saved into an app's data (update_app_data): every open frame of that
+       app hears it as an `appdata` event and reloads what it shows. */
+    case 'app_data':
+      document.querySelectorAll('iframe[src^="/api/apps/'+(ev.app_id||'-')+'/page"]').forEach(f=>{
+        try{f.contentWindow.postMessage({agentos:'app_data',key:ev.key||''},'*')}catch(_){}});
+      break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'snapshots': refreshApp('snapshots'); break;
