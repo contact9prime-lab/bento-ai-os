@@ -28,6 +28,7 @@ def _machine_with_workspace(tmp_path):
     from agentos import config as cfgmod
     cfg = cfgmod.load_config()
     cfg["workspace"] = str(tmp_path / "AgentOS")
+    (tmp_path / "AgentOS").mkdir(exist_ok=True)      # a machine that was used has it
     cfgmod.save_config(cfg)
     return cfg["workspace"]
 
@@ -51,6 +52,19 @@ def test_the_first_accounts_workspace_stays_reachable(tmp_path):
     with users.as_user(bob["id"]):
         tb = tools.Toolbox(users.cfg_for(bob["id"]), users.store_for(bob["id"]))
         assert "another account" in asyncio.run(tb.write_file(os.path.join(ws, "x.md"), "no"))
+
+
+def test_a_workspace_that_is_not_there_is_not_created_or_shared(tmp_path):
+    """CI runs unprivileged: a first account whose workspace is /home/somebody must still
+    be created, with nothing made on disk and nothing shared."""
+    from agentos import config as cfgmod, users, tools
+    cfg = cfgmod.load_config()
+    cfg["workspace"] = str(tmp_path / "nowhere" / "Projects")
+    cfgmod.save_config(cfg)
+    u = users.create("ada", "ada-password-1", role="admin")
+    assert users.cfg_for(u["id"])["workspace"].endswith("nowhere/Projects")
+    assert not (tmp_path / "nowhere").exists()
+    assert tools.folder_shares(cfgmod.load_config()) == []
 
 
 def test_migrate_shares_an_adopted_workspace_once(tmp_path):

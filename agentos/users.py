@@ -267,7 +267,10 @@ def create(name: str, password: str, role: str = "executor",
     provision(uid)
     reset_caches()   # `enabled()` has just flipped: every cached view is now wrong
     if first:
-        share_own_workspace(uid)
+        try:
+            share_own_workspace(uid)
+        except Exception:
+            pass   # sharing a folder must never be why an account could not be made
     return {k: v for k, v in (get(uid) or {}).items() if k not in ("pass_hash", "salt")}
 
 
@@ -329,7 +332,10 @@ def share_own_workspace(uid: str) -> bool:
     home = os.path.realpath(str(home_for(uid)))
     if p == home or p.startswith(home + os.sep):
         return False
-    os.makedirs(p, exist_ok=True)
+    # an existing folder only: creating one is not ours to do (it may be somebody's
+    # home we cannot write), and `bento migrate` asks again once it exists
+    if not os.path.isdir(p):
+        return False
     from .tools import check_safe_folder, folder_shares
     ok, _why = check_safe_folder(p)
     if not ok:
