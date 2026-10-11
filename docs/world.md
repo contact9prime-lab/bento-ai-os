@@ -75,6 +75,13 @@ Agents grow by finishing tasks, helping colleagues, winning votes and being than
 garden the flowers grow with the whole team. In the kitchen, whoever is working goes behind
 the counter to the range.
 
+Your agent is at work whenever it answers a chat that does something, runs a mission, or
+builds an app in App Studio. A build counts like any other task: your agent goes to work
+when it starts and is proud of the app when it is done. Stopping a build yourself is not
+counted as a failure.
+
+![The canal during an App Studio build: Aria out on the water in the work boat, at work, while the team waits on the bank](screenshots/world-build-at-work.png)
+
 ### What they wear
 
 Each setting dresses the team: yukata by the canal, spacesuits on the moon base, overalls

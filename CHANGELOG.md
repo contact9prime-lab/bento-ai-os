@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.24 — 2026-10-11
+
+**Your agents show when they work, and their faces show where they talk.** Reported with
+three screenshots: Claude Code building an app in App Studio while the World stood idle, the
+Studio labelling the builder "▲ Aria", and Chat drawing a plain dot where Aria's face goes.
+- An App Studio build is your agent at work. In the World your agent goes to work when a build
+  starts and feels it when the build finishes or fails. The Office, the Crew stage, the Mind and
+  the dial see each build and its tools too. Before, build events went to App Studio and nowhere
+  else.
+- App Studio shows your agent's face beside its messages, and yours beside your own, as Chat does.
+- **Faces beside messages** is remembered for each account. It was one setting per browser, so
+  turning faces off while signed in as one person turned them off for everyone who signed in on
+  that browser after, including the face in the menu bar and the dock.
+
 ## 0.6.23 — 2026-10-10
 
 **A schedule for an app belongs to that app, and Chat, App Studio and Missions all show it.**

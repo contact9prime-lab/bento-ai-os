@@ -310,8 +310,20 @@ function aiBubble(){
   badge.style.display=AIB.seen>1?'':'none';
 }
 
+/* An App Studio build is your agent working, the same as a chat turn: the scenes
+   (Office, Crew, Mind, the dial, the World) see it begin, see each tool, and see it
+   end. Reported as "I gave the agent an instruction and the agents stayed quiet":
+   build events went to the Studio and nowhere else. */
+function buildPulse(ev){
+  if(typeof WORLD!=='undefined'&&WORLD.on)worldHear(ev);
+  if(typeof movementPulse!=='function')return;
+  if(ev.type==='build_start')movementPulse('turn','build',{type:'turn_start'});
+  else if(ev.type==='build_tool')movementPulse('tool',ev.name||'tool',ev);
+  else if(ev.type==='build_done'||ev.type==='build_error')movementPulse('turnend','build');
+}
 function handle(ev){
-  if(ev.type&&ev.type.startsWith('build_')){studioBuildEvent(ev);if(ev.type==='build_thinking')jrPulse=Math.min(1.6,jrPulse+.12);return;}
+  if(ev.type&&ev.type.startsWith('build_')){studioBuildEvent(ev);if(ev.type==='build_thinking')jrPulse=Math.min(1.6,jrPulse+.12);
+    buildPulse(ev);return;}
   const _cid=ev.conversation_id, _cur=!_cid||_cid===currentConv, _s=_cid?STREAMS[_cid]:null;
   const _sk=_cid?CHAT_SINKS.get(_cid):null;
   if(typeof WORLD!=='undefined'&&WORLD.on)worldHear(ev);   // the World scene, only while it is on

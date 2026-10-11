@@ -247,8 +247,8 @@ async function studioLoadHistory(sel){
         if(!t)return'';
         if(t.length>600)t=t.slice(0,600)+'…';
         return `<div class="st-msg ${m.role}">${m.role==='user'
-          ?`<b>You</b>${esc(t)}`
-          :`<b>${esc(agentName())}</b>${esc(t)}`}</div>`;
+          ?`<b class="st-who">${chatWho('@me','You')}</b>${esc(t)}`
+          :`<b class="st-who">${chatWho('@agent',esc(agentName()))}</b>${esc(t)}`}</div>`;
       }).filter(Boolean).join('');
       if(!lines)continue;
       parts.push(`<div class="st-src"><span>${studio?'Built in App Studio':'Built in Chat'}${studio?'':` · ${esc(c.title||'')}`}</span>`
@@ -469,7 +469,7 @@ function studioSay(text){
   }
   STUDIO._cur._t=(STUDIO._cur._t||'')+text;
   const body=STUDIO._cur._t.trim();
-  STUDIO._cur.innerHTML=(STUDIO._cur===STUDIO._first?'<b>▲ '+esc(agentName())+'</b>':'')+md(body);
+  STUDIO._cur.innerHTML=(STUDIO._cur===STUDIO._first?'<b class="st-who">'+chatWho('@agent',esc(agentName()))+'</b>':'')+md(body);
   if(STUDIO._status&&STUDIO._status.isConnected)STUDIO.log.appendChild(STUDIO._status);
   STUDIO.log.scrollTop=STUDIO.log.scrollHeight;
 }

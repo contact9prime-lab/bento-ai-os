@@ -1271,6 +1271,9 @@ body.dev-touch .tb .seg button{min-height:var(--tap)}
 .st-msg.user b{color:var(--acc)}
 .st-msg.user{color:var(--txt)}
 .st-msg.assistant{color:var(--dim)}
+/* who said it: the same face as in Chat (chatWho), sized for the builder's log */
+.st-who{display:flex!important;align-items:center;gap:6px}
+.st-who img.av-who{width:20px;height:20px;border-radius:6px;flex:0 0 20px}
 body.dev-touch .st-src .endbtn{min-height:var(--tap)}
 /* the Schedules tab: what keeps this app fresh while it is closed (tasks.app_id) */
 .st-sched{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px;border-bottom:1px solid var(--line)}
@@ -5516,13 +5519,22 @@ function uiIcon(name,px,cls){
    colleagues look like.
 
    Loaded before 01d (the Crew scene reads AVATARS). `var`, not `let`. */
-var AVATARS={list:[],by:{},pal:null,loaded:false,pending:null,
-  off:(()=>{try{return localStorage.getItem('avatars.off')==='1'}catch(e){return false}})()};
+var AVATARS={list:[],by:{},pal:null,loaded:false,pending:null,uid:'',off:avatarsOffStored('')};
+/* "Faces beside messages" is a choice per ACCOUNT. One browser can be signed in as
+   several people in turn, and a plain localStorage key made one person's "off" every
+   account's: reported as "agents are not shown in the chat" by somebody who never
+   switched it. On a machine with no accounts the key is the old one, unchanged. */
+function avatarsOffKey(uid){return 'avatars.off'+(uid?':'+uid:'')}
+function avatarsOffStored(uid){try{return localStorage.getItem(avatarsOffKey(uid))==='1'}catch(e){return false}}
 
 function avatarsLoad(){
   if(AVATARS.pending)return AVATARS.pending;
   AVATARS.pending=fetch('/api/avatars').then(r=>r.json()).then(d=>{
     AVATARS.list=d.avatars||[];AVATARS.pal=d.palette||null;
+    // the account is known now, so read its own choice; a change redraws the faces
+    const uid=String(d.uid||''),off=avatarsOffStored(uid),changed=off!==AVATARS.off;
+    AVATARS.uid=uid;AVATARS.off=off;
+    if(changed&&typeof refreshApp==='function')setTimeout(()=>{refreshApp('chat');refreshApp('logs')},0);
     AVATARS.by=Object.fromEntries(AVATARS.list.map(a=>[a.key,a]));
     AVATARS.loaded=true;
   }).catch(()=>{}).finally(()=>{AVATARS.pending=null});
@@ -5587,7 +5599,7 @@ function avatarsRepaint(){
 }
 function avatarsChanged(){return avatarsLoad().then(avatarsRepaint)}
 function setAvatarsOff(off){
-  AVATARS.off=!!off;try{localStorage.setItem('avatars.off',off?'1':'0')}catch(e){}
+  AVATARS.off=!!off;try{localStorage.setItem(avatarsOffKey(AVATARS.uid),off?'1':'0')}catch(e){}
   if(typeof paintLogo==='function')paintLogo();
   if(typeof refreshApp==='function'){refreshApp('chat');refreshApp('logs');refreshApp('settings')}
 }
@@ -7021,7 +7033,7 @@ async function worldBeat(){
 /* Every websocket event passes here while the scene is on (09-websocket). The server
    has already felt it; the page asks for the new state once things settle. */
 var WORLD_HEARS=['fabric_event','tool_end','turn_start','turn_end','error','approval_request',
-  'approval_resolved','agent_msg','agent_say','subagents','avatars'];
+  'approval_resolved','agent_msg','agent_say','subagents','avatars','build_start','build_done','build_error'];
 function worldHear(ev){
   if(!WORLD.on||!ev||WORLD_HEARS.indexOf(ev.type)<0)return;
   if(ev.type==='fabric_event'&&['status','step','approval','fault'].indexOf(ev.event)<0)return;
@@ -13688,8 +13700,20 @@ function aiBubble(){
   badge.style.display=AIB.seen>1?'':'none';
 }
 
+/* An App Studio build is your agent working, the same as a chat turn: the scenes
+   (Office, Crew, Mind, the dial, the World) see it begin, see each tool, and see it
+   end. Reported as "I gave the agent an instruction and the agents stayed quiet":
+   build events went to the Studio and nowhere else. */
+function buildPulse(ev){
+  if(typeof WORLD!=='undefined'&&WORLD.on)worldHear(ev);
+  if(typeof movementPulse!=='function')return;
+  if(ev.type==='build_start')movementPulse('turn','build',{type:'turn_start'});
+  else if(ev.type==='build_tool')movementPulse('tool',ev.name||'tool',ev);
+  else if(ev.type==='build_done'||ev.type==='build_error')movementPulse('turnend','build');
+}
 function handle(ev){
-  if(ev.type&&ev.type.startsWith('build_')){studioBuildEvent(ev);if(ev.type==='build_thinking')jrPulse=Math.min(1.6,jrPulse+.12);return;}
+  if(ev.type&&ev.type.startsWith('build_')){studioBuildEvent(ev);if(ev.type==='build_thinking')jrPulse=Math.min(1.6,jrPulse+.12);
+    buildPulse(ev);return;}
   const _cid=ev.conversation_id, _cur=!_cid||_cid===currentConv, _s=_cid?STREAMS[_cid]:null;
   const _sk=_cid?CHAT_SINKS.get(_cid):null;
   if(typeof WORLD!=='undefined'&&WORLD.on)worldHear(ev);   // the World scene, only while it is on
@@ -30107,8 +30131,8 @@ async function studioLoadHistory(sel){
         if(!t)return'';
         if(t.length>600)t=t.slice(0,600)+'…';
         return `<div class="st-msg ${m.role}">${m.role==='user'
-          ?`<b>You</b>${esc(t)}`
-          :`<b>${esc(agentName())}</b>${esc(t)}`}</div>`;
+          ?`<b class="st-who">${chatWho('@me','You')}</b>${esc(t)}`
+          :`<b class="st-who">${chatWho('@agent',esc(agentName()))}</b>${esc(t)}`}</div>`;
       }).filter(Boolean).join('');
       if(!lines)continue;
       parts.push(`<div class="st-src"><span>${studio?'Built in App Studio':'Built in Chat'}${studio?'':` · ${esc(c.title||'')}`}</span>`
@@ -30329,7 +30353,7 @@ function studioSay(text){
   }
   STUDIO._cur._t=(STUDIO._cur._t||'')+text;
   const body=STUDIO._cur._t.trim();
-  STUDIO._cur.innerHTML=(STUDIO._cur===STUDIO._first?'<b>▲ '+esc(agentName())+'</b>':'')+md(body);
+  STUDIO._cur.innerHTML=(STUDIO._cur===STUDIO._first?'<b class="st-who">'+chatWho('@agent',esc(agentName()))+'</b>':'')+md(body);
   if(STUDIO._status&&STUDIO._status.isConnected)STUDIO.log.appendChild(STUDIO._status);
   STUDIO.log.scrollTop=STUDIO.log.scrollHeight;
 }

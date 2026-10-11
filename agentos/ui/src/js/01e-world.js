@@ -89,7 +89,7 @@ async function worldBeat(){
 /* Every websocket event passes here while the scene is on (09-websocket). The server
    has already felt it; the page asks for the new state once things settle. */
 var WORLD_HEARS=['fabric_event','tool_end','turn_start','turn_end','error','approval_request',
-  'approval_resolved','agent_msg','agent_say','subagents','avatars'];
+  'approval_resolved','agent_msg','agent_say','subagents','avatars','build_start','build_done','build_error'];
 function worldHear(ev){
   if(!WORLD.on||!ev||WORLD_HEARS.indexOf(ev.type)<0)return;
   if(ev.type==='fabric_event'&&['status','step','approval','fault'].indexOf(ev.event)<0)return;
