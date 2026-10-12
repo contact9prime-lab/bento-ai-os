@@ -152,6 +152,12 @@ SHOW = 0.15             # below this a feeling is not the one on show
 #: counted as a finished task at full weight and stacked to the ceiling.
 ROUTINE = ("working", "succeeded", "huddled", "asked_help", "helped", "approved")
 HABIT_S = 30 * 60
+
+#: A signal that ANSWERS another ends the feelings that one raised, instead of letting
+#: them fade over HALF_LIFE. Waiting for your yes is over the moment you say yes or no,
+#: or the work is done: left to fade, a 0.6 "Restless" stayed the feeling on show for
+#: half an hour after the approval, and the agent paced the room long after its work.
+ENDS = {"waiting": ("approved", "declined", "succeeded", "failed", "refused")}
 #: A chat reply that used tools is a small success for the lead, never a triumph; a
 #: plain answer is conversation and is not "finished a task" at all.
 CHAT_SUCCESS = 0.5
@@ -639,14 +645,19 @@ def bind_working(fn) -> None:
     _WORKING[0] = fn
 
 
-def _at_work(uid: str, store) -> set:
+def _at_work(uid: str, store) -> dict:
+    """Lower-cased name -> the door to its work ({kind, id}, or None when the server
+    only said WHO). A set from an older binding still works."""
     fn = _WORKING[0]
     if fn is None:
-        return set()
+        return {}
     try:
-        return {str(n).lower() for n in fn(uid, store)}
+        got = fn(uid, store)
+        if isinstance(got, dict):
+            return {str(n).lower(): (d if isinstance(d, dict) else None) for n, d in got.items()}
+        return {str(n).lower(): None for n in got}
     except Exception:
-        return set()
+        return {}
 
 
 def _fresh() -> dict:
@@ -781,6 +792,11 @@ def feel(uid: str, name: str, signal: str, detail: str = "", other: str = "",
     if signal in ROUTINE:
         again = sum(1 for sig, _d, at in a["why"] if sig == signal and now - at < HABIT_S)
         felt = scale / (1 + again)
+    for ended, by in ENDS.items():
+        if signal in by:
+            for e in w["emotions"]:
+                if ended in e["triggers"] and signal not in e["triggers"]:
+                    a["feel"].pop(e["id"], None)
     for e in w["emotions"]:
         wgt = e["triggers"].get(signal)
         if wgt:
@@ -848,6 +864,7 @@ def view(uid: str) -> dict:
         m = mood(w, a, now)
         friend = max((a.get("bonds") or {}).items(), key=lambda kv: kv[1], default=("", 0))
         agents.append({"name": name, "mood": m, "busy": bool(st["busy"].get(name)) or name.lower() in working,
+                       "work": working.get(name.lower()),
                        "why": [{"signal": s, "words": SIGNALS.get(s, s), "detail": d,
                                 "ago": int(now - at)} for s, d, at in (a.get("why") or [])][:5],
                        "level": _level(w, int(a.get("xp", 0))),

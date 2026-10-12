@@ -233,8 +233,6 @@ function worldSync(){
       c.i=i;c.a=a;c.home=worldSpot(i);
       const vc=WL_VALENCE[a.mood.valence]!=null?WL_VALENCE[a.mood.valence]:WL_VALENCE[0];
       c.crystal.material.color.setHex(vc);c.crystal.material.emissive.setHex(vc);
-      if(a.busy&&!c.vessel)c.vessel=WORLD.kit.vessel();
-      if(!a.busy&&c.vessel){WORLD.scene.remove(c.vessel);c.vessel=null}
     });
     if(WORLD.kit.grow)WORLD.kit.grow(cast.reduce((s,a)=>s+(a.level?a.level.xp:0),0));
   }
@@ -289,9 +287,14 @@ function worldTags(){
     have.add(a.name);
     let el=box.querySelector(`[data-wa="${CSS.escape(a.name)}"]`);
     if(!el){el=document.createElement('button');el.className='wd-tag';el.dataset.wa=a.name;
-      el.onclick=()=>worldCard(a.name);box.appendChild(el)}
+      // the "…" over a working agent opens the work; anywhere else on the tag, the card
+      el.onclick=e=>{if(e.target.closest('.wd-dots'))worldOpenWork(el.dataset.wa);else worldCard(el.dataset.wa)};
+      box.appendChild(el)}
     const m=a.mood,b=WORLD.bubbles[a.name],say=b&&b.until>now?b.text:'';
-    const html=(say?`<span class="wd-say">${esc(say)}</span>`:'')+
+    // Working is a "…" bubble over the head, not motion: a figure that hurried about
+    // while it worked read as an erratic person. Tapping it opens the work itself.
+    const dots=a.busy&&!say?`<span class="wd-dots" title="See what ${esc(worldLabel(a.name))} is working on"><i></i><i></i><i></i></span>`:'';
+    const html=(say?`<span class="wd-say">${esc(say)}</span>`:dots)+
       (WORLD.flat?avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''}):'')+
       `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`+
       (worldOrg(a.name)?`<span class="wd-dept" style="--dc:${esc(worldOrg(a.name).hex)}">${esc(worldDeptLine(a.name))}</span>`:'');
@@ -304,6 +307,18 @@ function worldTags(){
   });
   [...box.children].forEach(el=>{if(!have.has(el.dataset.wa))el.remove()});
   Object.keys(WORLD.bubbles).forEach(k=>{if(WORLD.bubbles[k].until&&WORLD.bubbles[k].until<now)delete WORLD.bubbles[k]});
+}
+
+/* The door from a working agent to its work: the chat it is answering, the App Studio
+   build, or the run (the Run Inspector). The server names it (world.view's `work`, from
+   server._world_working); with no door the agent's card says what it is doing. */
+function worldOpenWork(name){
+  const a=worldCast().find(x=>x.name===name),w=a&&a.work;
+  if(!w){worldCard(name);return}
+  if(w.kind==='chat'&&w.id){openApp('chat');if(typeof openConv==='function')openConv(w.id)}
+  else if(w.kind==='build')openApp('studio');
+  else if(w.kind==='run'&&w.id&&typeof fgWatch==='function')fgWatch(w.id);
+  else worldCard(name);
 }
 
 /* ---------------- the frame ---------------- */
@@ -350,10 +365,12 @@ function worldPace(ms){
    EXPRESSION world.py lists has one here; calm and think are the quiet ones. */
 var WORLD_LOUD=['cheer','sparkle','tantrum','shiver'];
 var WORLD_FX={
-  tantrum:[['puff',3.5,{dy:2.5,v:[0,1.6,0],grow:1.6,life:1.1,size:.8,jit:.5}],['paper',2.5,{dy:2.1,v:[2.6,2.8,1.2],g:6,spin:6,life:1.3,size:.5}]],
+  // fewer and slower than they were: papers thrown across the room and a spray of
+  // stars were part of the team reading as erratic
+  tantrum:[['puff',1.2,{dy:2.5,v:[0,.8,0],grow:1.2,life:1.4,size:.7,jit:.3}]],
   slump:[['cloud',1.1,{dy:3.35,v:[.08,0,0],life:2.6,size:1.5,jit:.3}],['rain',7,{dy:3.05,v:[0,-2.6,0],life:.5,size:.55,jit:.8}]],
   doze:[['z',1,{dy:2.7,dx:.35,v:[.4,.6,0],grow:1,life:2.2,size:.5}]],
-  cheer:[['star',4,{dy:2.3,v:[1.8,2.4,.6],g:3,spin:4,life:1.1,size:.5}]],
+  cheer:[['star',1.2,{dy:2.4,v:[.5,1,0],g:1,spin:1.5,life:1.4,size:.45}]],
   sparkle:[['star',1.6,{dy:1.7,v:[0,.5,0],life:1.3,size:.42,jit:1}]],
   shiver:[['drop',.9,{dy:2.35,dx:.5,v:[.15,-.3,0],g:1.2,life:1,size:.4}]],
   wave:[['heart',1,{dy:2.6,v:[0,.8,0],grow:.4,life:1.8,size:.5,jit:.4}]],
@@ -374,44 +391,66 @@ function worldPose(t,dt){
     const I=a.mood.intensity||0,amp=WORLD_LOUD.indexOf(e)>=0?Math.max(0,Math.min(1,(I-.3)/.6)):.3+.7*Math.min(1,I/.8);
     // a blink at an uneven pace, sometimes twice, so a row of them never blinks in step
     const bk=k%(3.4+(c.phase%1.6)),blink=bk<.12||(c.phase>3&&bk>.3&&bk<.4);
-    let x=0,y=0,rot=0,frame=blink?1:0,sy=1,flip=false;
-    const target=a.busy?WORLD.kit.busy(c.i,t):c.home;
-    if(e==='cheer'){y=Math.abs(Math.sin(k*(3+3*amp)))*.5*amp+Math.sin(k*1.5)*.03;if(amp>.5)frame=2+(Math.floor(k*4)%2)}
-    else if(e==='tantrum'){y=Math.abs(Math.sin(k*14))*.25*amp;x=Math.sin(k*40)*.08*amp;rot=Math.sin(k*20)*.15*amp}
-    else if(e==='slump'){sy=.86;y=-.12}
-    else if(e==='pace'){x=Math.sin(k*1.1)*1.1;flip=Math.cos(k*1.1)<0}
-    else if(e==='sulk'){flip=true;y=-.18;rot=.08;sy=.9}
-    else if(e==='doze'){rot=.18+Math.sin(k*.8)*.04;y=Math.sin(k*.8)*.03;frame=1}
-    else if(e==='shiver'){x=Math.sin(k*55)*.04}
-    else if(e==='sparkle'){y=Math.abs(Math.sin(k*2.2))*.18*amp}
-    else if(e==='wave'){frame=2+(Math.floor(k*3)%2)}
-    else if(e==='care'){rot=c.home.x>0?.12:-.12;y=Math.sin(k*1.2)*.03}
-    else if(e==='think'){rot=Math.sin(k*.8)*.07}
+    // Calm by rule: every pose is slow (nothing faster than about 2.5 radians a
+    // second), small, and never mirrors the sprite. Reported as agents "moving left
+    // right like an erratic person": a tantrum shook 40 times a second, a shiver 55,
+    // a cheer hopped half a body high with its arms flickering, pacing turned round
+    // on every step, and a new feeling snapped straight into its pose.
+    let x=0,y=0,rot=0,frame=blink?1:0,sy=1,sx=1;
+    // Busy for a moment after the work, so a run of quick chat turns is one stay at
+    // work instead of a walk there and back for each
+    if(a.busy)c.workUntil=t+20;
+    const busy=a.busy||t<(c.workUntil||0);
+    const target=busy?WORLD.kit.busy(c.i,t):c.home;
+    // the boat (or whatever the kit carries work in) comes and goes with the stay at work
+    c.held=busy;
+    if(busy&&!c.vessel)c.vessel=WORLD.kit.vessel();
+    if(!busy&&c.vessel){WORLD.scene.remove(c.vessel);c.vessel=null}
+    const lift=v=>.5-.5*Math.cos(v);            // 0..1 with no hard bounce at the bottom
+    if(e==='cheer'){y=lift(k*2.4)*.22*amp;if(amp>.5)frame=2}
+    else if(e==='tantrum'){y=lift(k*2.2)*.1*amp;rot=Math.sin(k*1.1)*.06*amp}
+    else if(e==='slump'){sy=.88;y=-.1}
+    else if(e==='pace'){x=Math.sin(k*.6)*.3}
+    else if(e==='sulk'){y=-.15;rot=.08;sy=.92}
+    else if(e==='doze'){rot=.16+Math.sin(k*.8)*.03;y=Math.sin(k*.8)*.03;frame=1}
+    else if(e==='shiver'){rot=Math.sin(k*2.5)*.025;sy=.97}
+    else if(e==='sparkle'){y=lift(k*1.8)*.12*amp}
+    else if(e==='wave'){frame=2+(Math.floor(k*1.2)%2)}
+    else if(e==='care'){rot=c.home.x>0?.1:-.1;y=Math.sin(k*1.2)*.03}
+    else if(e==='think'){rot=Math.sin(k*.8)*.06}
     else{y=Math.sin(k*1.5)*.03}
+    // at work: a slight, slow nudge (the "…" over the head says the rest)
+    if(busy)y+=lift(k*2)*.05;
     // alive at rest: a slow breath in the chest, and now and then a lean to one side
     // (towards a friend when they have one here). Only the quiet feelings, which is
-    // where a figure standing perfectly still read as a cut-out. A lean, because the
-    // sprite faces front and a mirrored front view looks the same.
-    let sx=1;
+    // where a figure standing perfectly still read as a cut-out.
     if(e==='calm'||e==='think'||e==='care'){
       sy*=1+Math.sin(k*1.7)*.022;sx=1-Math.sin(k*1.7)*.012;
       const fr=a.friend&&WORLD.chars[a.friend],lean=Math.max(0,Math.sin(k*.31+c.phase)-.75)*.28;
       rot+=(fr?fr.sprite.position.x<s.position.x:c.phase>3)?lean:-lean}
-    // a step's bob while walking over to work or back
-    const far=s.position.distanceTo(target);
-    if(far>.25&&e!=='pace'){y+=Math.abs(Math.sin(k*9))*.12;rot+=Math.sin(k*9)*.03}
+    // The walk is eased on the figure's own place (c.at), and the pose is drawn ON it.
+    // Easing the drawn position kept last frame's sway in it, so every sideways pose
+    // piled up instead of swaying. Both are eased by time, not by frame.
+    if(!c.at)c.at=s.position.clone();
+    const far=c.at.distanceTo(target);
+    if(far>.25&&e!=='pace'){y+=lift(k*6)*.07;rot+=Math.sin(k*6)*.02}   // a step's bob on the way
     if(WORLD.still){x=0;rot=0;y=Math.max(0,y);sx=1}
-    s.position.lerp(target,a.busy?.08:.12);
+    c.at.lerp(target,1-Math.exp(-dt*(busy?2.2:2.8)));
+    // a new feeling eases into its pose rather than snapping to it
+    const p=c.pz||(c.pz={x,y,rot,sy,sx}),f=1-Math.exp(-dt*5);
+    p.x+=(x-p.x)*f;p.y+=(y-p.y)*f;p.rot+=(rot-p.rot)*f;p.sy+=(sy-p.sy)*f;p.sx+=(sx-p.sx)*f;
+    x=p.x;y=p.y;rot=p.rot;sy=p.sy;sx=p.sx;
+    s.position.copy(c.at);
     s.position.x+=x;s.position.y=target.y+y;
     m.rotation=rot;s.scale.y=2.45*sy;s.scale.x=1.5*sx;
-    c.tex.offset.x=frame*.25;c.tex.repeat.x=flip?-.25:.25;if(flip)c.tex.offset.x=(frame+1)*.25;
-    const ground=a.busy&&c.vessel?target.y+.25:target.y;
-    c.shadow.position.set(s.position.x,ground+.04,s.position.z);c.shadow.visible=!(a.busy&&!c.vessel&&target.y>3);
+    c.tex.offset.x=frame*.25;c.tex.repeat.x=.25;
+    const ground=busy&&c.vessel?target.y+.25:target.y;
+    c.shadow.position.set(s.position.x,ground+.04,s.position.z);c.shadow.visible=!(busy&&!c.vessel&&target.y>3);
     const cr=c.crystal;
     cr.position.set(s.position.x,s.position.y+s.scale.y+.55+(WORLD.still?0:Math.sin(k*2)*.06),s.position.z);
     cr.rotation.y=WORLD.still?.6:k*1.6;
-    cr.material.emissiveIntensity=.45+(WORLD.still?0:Math.sin(k*3)*.12);
-    if(c.vessel){c.vessel.position.set(s.position.x,a.busy?s.position.y-.35:-99,s.position.z)}
+    cr.material.emissiveIntensity=.45+(WORLD.still?0:Math.sin(k*2)*.12);
+    if(c.vessel){c.vessel.position.set(s.position.x,busy?s.position.y-.35:-99,s.position.z)}
     // the feeling's effect: spawned at a rate, never faster than the frame allows
     (WORLD_FX[e]||[]).forEach(([kind,rate,o])=>{if(Math.random()<rate*dt*amp*amp*crowd)worldFx(kind,s.position,o)});
   });
@@ -442,7 +481,7 @@ function worldPlaceTags(){
     const el=box.querySelector(`[data-wa="${CSS.escape(name)}"]`);if(!el)return;
     // anchored where the agent stands, not where it hops or paces: a tag that jumps
     // with a cheer is a target a finger misses. A busy agent's tag goes with it.
-    const at=c.a&&c.a.busy||!c.home?c.sprite.position:c.home;
+    const at=c.held||!c.home?(c.at||c.sprite.position):c.home;
     v.copy(at);v.project(WORLD.cam);
     const x=Math.round((v.x*.5+.5)*innerWidth),yf=Math.round((-v.y*.5+.5)*innerHeight),z=v.z;
     v.copy(at);v.y+=2.45+.85;v.project(WORLD.cam);
@@ -598,7 +637,7 @@ function worldCard(name,quiet){
     ${a.friend?`<p class="wd-friend">Works best with ${esc(worldLabel(a.friend))}</p>`:''}
     ${worldStaff(name).length?`<div class="wd-h">${esc(worldOrg(name).dept)}</div><ul class="wd-staff">${worldStaff(name).map(x=>
       `<li><b>${esc(x.mood.emoji)}</b> ${esc(x.name)} <small>${esc(x.mood.name)}${x.busy?' · at work':''}</small></li>`).join('')}</ul>`:''}
-    <div class="wd-acts"><button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>
+    <div class="wd-acts">${a.busy&&a.work?`<button class="endbtn wd-work" onclick="worldOpenWork('${esc(name)}')">${a.work.kind==='build'?'Open App Studio':a.work.kind==='run'?'Open the run':'Open the chat'}</button>`:''}<button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>
       <button class="endbtn wd-calm1" onclick="worldCalm('${esc(name)}')">Calm down</button></div>`;
 }
 /* Calm the team (or one agent) down: the person's act, like a pat on the back. Every

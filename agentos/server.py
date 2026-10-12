@@ -10463,30 +10463,36 @@ def _world_org(v: dict) -> dict:
     return v
 
 
-def _world_working(uid: str, store) -> set:
-    """Who is at work for this account RIGHT NOW, read from what is running rather than
-    remembered from events: a chat turn (the lead, or the specialist it was addressed
-    to), an App Studio build (the lead) and every run open in fabric_runs. Reported
-    with a screenshot: Claude Code was building in the Studio while Aria stood idle in
-    the World. The scene's lease had lapsed mid-build (a hidden tab beats once a
+def _world_working(uid: str, store) -> dict:
+    """Who is at work for this account RIGHT NOW, and on what, read from what is running
+    rather than remembered from events: a chat turn (the lead, or the specialist it was
+    addressed to), an App Studio build (the lead) and every run open in fabric_runs.
+    Reported with a screenshot: Claude Code was building in the Studio while Aria stood
+    idle in the World. The scene's lease had lapsed mid-build (a hidden tab beats once a
     minute), so the build_start was forgotten on re-entry; and any chat ending cleared
-    the lead's one busy flag while the build was still going."""
-    names: set = set()
-    for t in list((state.get("turns") or {}).values()):
+    the lead's one busy flag while the build was still going.
+
+    The value is the DOOR to that work ({kind, id}): the World draws a "…" bubble over a
+    working agent, and a tap on it opens the chat, the Studio or the run."""
+    names: dict = {}
+    for cid, t in list((state.get("turns") or {}).items()):
         task = t.get("task")
         if str(t.get("uid", "") or "") != uid or (task is not None and task.done()):
             continue
         who = t.get("speaker") or worldmod.LEAD
         if who != "huddle":          # a huddle's speakers are runs, counted below
-            names.add(who)
+            names.setdefault(who, {"kind": "chat", "id": str(cid)})
     b = state.get("build") or {}
     if b.get("task") and not b["task"].done() and str(b.get("uid", "") or "") == uid:
-        names.add(worldmod.LEAD)
+        names.setdefault(worldmod.LEAD, {"kind": "build", "id": ""})
     try:
         rows = store.db.execute(
-            "SELECT ref FROM fabric_runs WHERE status='running' AND started_at>?",
+            "SELECT ref, id FROM fabric_runs WHERE status='running' AND started_at>? "
+            "ORDER BY started_at DESC",
             (time.time() - playgroundmod.STALE_S,)).fetchall()
-        names |= {str(r[0]) for r in rows if r[0]}
+        for ref, rid in rows:
+            if ref:
+                names.setdefault(str(ref), {"kind": "run", "id": str(rid)})
     except Exception:
         pass
     return names
