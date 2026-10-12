@@ -5074,10 +5074,19 @@ async def api_mcp_registry_docs(name: str):
 # better apps composing a given system than inventing layout CSS from scratch.
 # Injected at the TOP of <head>, so an app's own styles can still override.
 APP_UI_CSS = """
-:root{color-scheme:dark;--bg:#0e1116;--s:#171b22;--r:#1e242e;--ln:#232a35;--tx:#e6ebf2;
-  --mut:#8a94a6;--acc:#5eead4;--acc2:#22d3ee;--errc:#f87171;--okc:#34d399;--warnc:#fbbf24}
+/* The app design kit, v2. Every built app gets this before its own CSS, so an app made of
+   semantic HTML and these classes looks like it belongs on this desktop. The desktop posts
+   its theme's accent into the frame (the runtime's 'theme' message), so --acc follows the
+   theme the person chose; the values here are Nova's, the default. */
+:root{color-scheme:dark;--bg:#0f1020;--bg2:#141530;--s:#171933;--s2:#1d2040;--r:#232650;--ln:rgba(255,255,255,.09);
+  --ln2:rgba(255,255,255,.16);--tx:#eceefe;--mut:#9ba1c9;--acc:#8b5cf6;--acc2:#6366f1;--on-acc:#fff;
+  --errc:#f87171;--okc:#34d399;--warnc:#fbbf24;--rad:14px;--sh:0 1px 0 rgba(255,255,255,.04) inset,0 10px 30px rgba(0,0,0,.28)}
 *{box-sizing:border-box}
-body{background:var(--bg);color:var(--tx);font:14px/1.55 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;margin:0;padding:18px}
+html{background:var(--bg)}
+body{background:radial-gradient(1200px 500px at 10% -10%,color-mix(in srgb,var(--acc) 14%,transparent),transparent 60%),var(--bg);
+  color:var(--tx);font:14px/1.55 Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;margin:0;padding:20px;
+  -webkit-font-smoothing:antialiased;min-height:100vh}
+::selection{background:color-mix(in srgb,var(--acc) 40%,transparent)}
 /* ---- the two surfaces every app has -------------------------------------
    Desktop: the whole application. Widget: the one thing worth a glance, at the
    size the user picked (S/M/L). Mark the two views with .widget-only and
@@ -5087,48 +5096,106 @@ html[data-surface="desktop"] .widget-only{display:none!important}
 html[data-surface="widget"] .desktop-only{display:none!important}
 /* pinned as a widget: the AgentOS glass shows through behind the content */
 html.agentos-widget,html.agentos-widget body{background:transparent}
-html.agentos-widget body{padding:14px;overflow:auto}
+html.agentos-widget body{padding:14px;overflow:auto;min-height:0}
 html.agentos-widget h1{font-size:15px} html.agentos-widget h2{font-size:13px}
 html.agentos-widget .card{padding:11px;border-radius:11px;margin-bottom:8px}
-html.agentos-widget .kpi b{font-size:21px}
+html.agentos-widget .kpi b,html.agentos-widget .stat b{font-size:21px}
 /* Small is a single glanceable number; Large can afford a table or a chart. */
 html.agentos-widget-s body{padding:11px;font-size:12.5px}
-html.agentos-widget-s h1{font-size:13.5px} html.agentos-widget-s .kpi b{font-size:26px}
+html.agentos-widget-s h1{font-size:13.5px} html.agentos-widget-s .kpi b,html.agentos-widget-s .stat b{font-size:26px}
 html.agentos-widget-s .card{padding:9px}
 html.agentos-widget-l body{padding:15px}
-h1{font-size:18px;font-weight:750;margin:0 0 2px}
-h2{font-size:15px;font-weight:700;margin:0 0 8px}
-h3{font-size:11.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);margin:0 0 6px}
-p{margin:0 0 10px} a{color:var(--acc2);text-decoration:none} a:hover{text-decoration:underline}
-label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
-button{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#04211c;border:0;border-radius:9px;
-  padding:8px 14px;font:inherit;font-weight:700;cursor:pointer;transition:filter .12s}
-button:hover{filter:brightness(1.08)} button:disabled{opacity:.5;cursor:default}
-button.ghost{background:var(--r);color:var(--tx);border:1px solid var(--ln);font-weight:600}
-button.ghost:hover{border-color:var(--acc);filter:none}
-input,select,textarea{background:var(--s);color:var(--tx);border:1px solid var(--ln);border-radius:9px;
-  padding:8px 11px;font:inherit;width:100%;max-width:100%}
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+/* ---- type ---- */
+h1{font-size:22px;font-weight:780;letter-spacing:-.02em;margin:0 0 2px;line-height:1.2}
+h2{font-size:15px;font-weight:700;margin:0 0 10px;letter-spacing:-.01em}
+h3{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:0 0 8px}
+p{margin:0 0 10px} a{color:color-mix(in srgb,var(--acc) 70%,#fff);text-decoration:none} a:hover{text-decoration:underline}
+small,.muted{color:var(--mut);font-size:12.5px} .err{color:var(--errc)} .ok{color:var(--okc)} .warn{color:var(--warnc)}
+kbd{font:11px ui-monospace,monospace;padding:1px 5px;border-radius:5px;border:1px solid var(--ln2);background:var(--s2)}
+/* ---- controls ---- */
+label{display:block;font-size:12px;font-weight:600;color:var(--mut);margin:10px 0 5px}
+button{background:linear-gradient(135deg,var(--acc),var(--acc2));color:var(--on-acc);border:0;border-radius:10px;
+  padding:9px 15px;font:inherit;font-weight:700;cursor:pointer;transition:transform .12s,filter .12s,box-shadow .12s;
+  box-shadow:0 6px 18px color-mix(in srgb,var(--acc) 30%,transparent);display:inline-flex;align-items:center;gap:6px;min-height:36px}
+button:hover{filter:brightness(1.08);transform:translateY(-1px)} button:active{transform:translateY(0) scale(.98)}
+button:disabled{opacity:.45;cursor:default;transform:none;box-shadow:none}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.ghost{background:var(--s2);color:var(--tx);border:1px solid var(--ln2);font-weight:600;box-shadow:none}
+button.ghost:hover{border-color:var(--acc)}
+button.danger{background:color-mix(in srgb,var(--errc) 16%,var(--s2));color:#fecaca;border:1px solid color-mix(in srgb,var(--errc) 40%,transparent);box-shadow:none}
+button.sm{padding:5px 10px;min-height:28px;font-size:12.5px;border-radius:8px}
+button.icon{padding:0;width:34px;min-height:34px;justify-content:center;background:var(--s2);color:var(--tx);border:1px solid var(--ln);box-shadow:none}
+button.icon:hover{border-color:var(--acc)}
+button svg,.ic svg{width:16px;height:16px;flex:none}
+input,select,textarea{background:var(--s2);color:var(--tx);border:1px solid var(--ln2);border-radius:10px;
+  padding:9px 12px;font:inherit;width:100%;max-width:100%;transition:border-color .12s,box-shadow .12s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 22%,transparent)}
+input::placeholder,textarea::placeholder{color:color-mix(in srgb,var(--mut) 75%,transparent)}
+input[type=checkbox],input[type=radio]{width:auto;accent-color:var(--acc)}
+input[type=range]{accent-color:var(--acc);padding:0;border:0;background:none}
+/* a switch: <label class="toggle"><input type="checkbox"><span></span> Label</label> */
+.toggle{display:inline-flex;align-items:center;gap:9px;margin:0;color:var(--tx);font-weight:500;cursor:pointer}
+.toggle input{display:none} .toggle span{width:36px;height:21px;border-radius:99px;background:var(--r);position:relative;transition:background .15s;flex:none}
+.toggle span::after{content:"";position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#fff;transition:transform .15s}
+.toggle input:checked+span{background:var(--acc)} .toggle input:checked+span::after{transform:translateX(15px)}
+/* ---- tables ---- */
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px;
-  padding:7px 10px;border-bottom:1px solid var(--ln)}
-td{padding:8px 10px;border-bottom:1px solid var(--ln)}
-tbody tr:hover td{background:rgba(94,234,212,.05)}
-.card{background:var(--s);border:1px solid var(--ln);border-radius:12px;padding:14px;margin-bottom:10px}
+th{text-align:left;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+  padding:8px 10px;border-bottom:1px solid var(--ln)}
+td{padding:10px;border-bottom:1px solid var(--ln)}
+tbody tr{transition:background .12s} tbody tr:hover td{background:color-mix(in srgb,var(--acc) 6%,transparent)}
+/* ---- layout ---- */
+.hero{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin:2px 0 16px}
+.hero>div:first-child{flex:1;min-width:200px} .hero .muted{font-size:13.5px}
+.card{background:linear-gradient(180deg,color-mix(in srgb,var(--s) 92%,#fff 8%),var(--s));border:1px solid var(--ln);
+  border-radius:var(--rad);padding:16px;margin-bottom:12px;box-shadow:var(--sh);animation:aoIn .32s ease both}
+.card.flat{background:var(--s);box-shadow:none}
+.card.accent{border-color:color-mix(in srgb,var(--acc) 45%,transparent);background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 16%,var(--s)),var(--s))}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .row>input,.row>select{flex:1;width:auto;min-width:120px}
-.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.kpi{background:var(--s);border:1px solid var(--ln);border-radius:12px;padding:12px 14px;text-align:center}
-.kpi b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
-.kpi span{font-size:11px;color:var(--mut)}
-.badge{display:inline-block;background:var(--r);border:1px solid var(--ln);border-radius:20px;
-  padding:2px 9px;font-size:10.5px;color:var(--mut)}
-.muted{color:var(--mut);font-size:12px} .err{color:var(--errc)} .ok{color:var(--okc)}
-.empty{border:1px dashed var(--ln);border-radius:12px;padding:26px 14px;text-align:center;color:var(--mut);font-size:12.5px}
+.spread{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.stack{display:flex;flex-direction:column;gap:8px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:560px){.grid2{grid-template-columns:1fr}}
+/* ---- numbers ---- */
+.kpi,.stat{background:var(--s);border:1px solid var(--ln);border-radius:var(--rad);padding:13px 15px}
+.kpi{text-align:center}
+.kpi b,.stat b{display:block;font-size:26px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kpi span,.stat span{font-size:11.5px;color:var(--mut)}
+.stat em{font-style:normal;font-size:12px;font-weight:700;margin-left:6px}
+.stat em.up{color:var(--okc)} .stat em.down{color:var(--errc)}
+.progress{height:8px;border-radius:99px;background:var(--r);overflow:hidden}
+.progress>i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--acc2),var(--acc));transition:width .4s ease}
+/* ---- lists, chips, tags ---- */
+.list{display:flex;flex-direction:column;gap:6px}
+.item{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:12px;background:var(--s2);border:1px solid var(--ln);
+  transition:border-color .12s,transform .12s;animation:aoIn .25s ease both}
+.item:hover{border-color:var(--ln2)} .item.done{opacity:.55} .item.done .title{text-decoration:line-through}
+.item .grow{flex:1;min-width:0} .item .title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avatar{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-weight:800;font-size:13px;flex:none;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 70%,#000),var(--acc2));color:#fff}
+.badge,.chip{display:inline-flex;align-items:center;gap:5px;background:var(--s2);border:1px solid var(--ln2);border-radius:99px;
+  padding:3px 10px;font-size:11.5px;color:var(--mut)}
+.chip{cursor:pointer;font:inherit;font-size:12.5px;min-height:30px;box-shadow:none}
+.chip.on,.chip[aria-pressed="true"]{background:color-mix(in srgb,var(--acc) 22%,var(--s2));border-color:var(--acc);color:var(--tx)}
+.badge.ok{color:var(--okc);border-color:color-mix(in srgb,var(--okc) 40%,transparent)}
+.badge.warn{color:var(--warnc);border-color:color-mix(in srgb,var(--warnc) 40%,transparent)}
+.badge.err{color:var(--errc);border-color:color-mix(in srgb,var(--errc) 40%,transparent)}
+/* tabs: <div class="tabs"><button class="on">Today</button><button>Week</button></div> */
+.tabs{display:inline-flex;gap:3px;padding:3px;border-radius:12px;background:var(--s2);border:1px solid var(--ln);margin-bottom:12px}
+.tabs button{background:none;color:var(--mut);box-shadow:none;min-height:30px;padding:5px 12px;font-weight:600;border-radius:9px}
+.tabs button:hover{transform:none;color:var(--tx)} .tabs button.on{background:var(--r);color:var(--tx)}
+/* ---- states ---- */
+.empty{border:1px dashed var(--ln2);border-radius:var(--rad);padding:30px 16px;text-align:center;color:var(--mut);font-size:13px}
+.empty b{display:block;color:var(--tx);font-size:15px;margin-bottom:4px} .empty button{margin-top:12px}
 .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--acc);border-top-color:transparent;
   border-radius:50%;animation:aospin .7s linear infinite;vertical-align:-2px}
+.skeleton{border-radius:10px;min-height:14px;background:linear-gradient(90deg,var(--s2),var(--r),var(--s2));background-size:200% 100%;animation:aoSk 1.2s linear infinite}
 @keyframes aospin{to{transform:rotate(360deg)}}
+@keyframes aoIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes aoSk{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important}}
 """
 
 APP_SHELL = ('<!DOCTYPE html><html><head><meta charset="utf-8">'
@@ -5382,6 +5449,110 @@ window.appCopilot.mount = (opts) => {
   inp.addEventListener('keydown', e => { if(e.key==='Enter') go(); });
   fab.onclick = () => { pan.classList.toggle('on'); if(pan.classList.contains('on')) inp.focus(); };
 };
+// ===== kit v2: what makes an app feel finished, and what keeps it working =====
+//   appToast(text, kind)                    a short message at the bottom: 'ok' | 'err' | 'info'
+//   await appConfirm(text, {ok, cancel, danger})   an in-page yes/no — the app frame is sandboxed,
+//                                           so the browser's confirm() always answers false here
+//   appCelebrate()                          a short burst of confetti for a real milestone
+//   appIcon(name)                           an inline SVG icon (appIcon.names lists them)
+//   await appShare({title, text})           copy a tidy summary to the clipboard, and say so
+//   appFmt.num / money / pct / ago / date / dur   numbers and times people can read
+(function(){
+  const css = document.createElement('style');
+  css.textContent = '.ao-toasts{position:fixed;left:50%%;bottom:18px;transform:translateX(-50%%);z-index:1000;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}'
+    +'.ao-toast{pointer-events:auto;padding:9px 14px;border-radius:12px;background:rgba(20,22,44,.96);color:#eceefe;border:1px solid rgba(255,255,255,.14);box-shadow:0 10px 30px rgba(0,0,0,.4);font:13px/1.4 system-ui,sans-serif;max-width:min(420px,90vw);transition:opacity .3s}'
+    +'.ao-toast.ok{border-color:rgba(52,211,153,.55)}.ao-toast.err{border-color:rgba(248,113,113,.65)}'
+    +'.ao-modal{position:fixed;inset:0;z-index:1001;display:grid;place-items:center;background:rgba(5,6,15,.55)}'
+    +'.ao-modal>div{width:min(360px,90vw);padding:18px;border-radius:16px;background:#1b1d3a;border:1px solid rgba(255,255,255,.14);box-shadow:0 20px 60px rgba(0,0,0,.5);color:#eceefe;font:14px/1.5 system-ui,sans-serif}'
+    +'.ao-modal p{margin:0 0 14px}.ao-modal .ao-b{display:flex;gap:8px;justify-content:flex-end}'
+    +'.ao-confetti{position:fixed;inset:0;pointer-events:none;z-index:1002}';
+  (document.head || document.documentElement).appendChild(css);
+})();
+window.appToast = (text, kind) => {
+  try{
+    let box = document.querySelector('.ao-toasts');
+    if(!box){ box = document.createElement('div'); box.className = 'ao-toasts'; document.body.appendChild(box); }
+    const t = document.createElement('div'); t.className = 'ao-toast ' + (kind || 'info'); t.textContent = String(text == null ? '' : text);
+    box.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 320); }, kind === 'err' ? 5200 : 2600);
+  }catch(e){}
+};
+// alert() is blocked in the sandbox and would vanish; say it instead of swallowing it
+window.alert = (m) => window.appToast(m, 'info');
+window.appConfirm = (text, o) => new Promise(res => {
+  o = o || {};
+  const m = document.createElement('div'); m.className = 'ao-modal';
+  m.innerHTML = '<div><p></p><div class="ao-b"><button class="ghost ao-no"></button><button class="ao-yes"></button></div></div>';
+  m.querySelector('p').textContent = String(text || 'Are you sure?');
+  const y = m.querySelector('.ao-yes'), n = m.querySelector('.ao-no');
+  y.textContent = o.ok || 'OK'; n.textContent = o.cancel || 'Cancel'; if(o.danger) y.className = 'danger ao-yes';
+  const key = e => { if(e.key === 'Escape') done(false); else if(e.key === 'Enter') done(true); };
+  const done = v => { m.remove(); document.removeEventListener('keydown', key); res(v); };
+  y.onclick = () => done(true); n.onclick = () => done(false); m.onclick = e => { if(e.target === m) done(false); };
+  document.addEventListener('keydown', key); document.body.appendChild(m); y.focus();
+});
+window.appCelebrate = () => {
+  try{
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){ return; }
+    const c = document.createElement('canvas'); c.className = 'ao-confetti'; c.width = innerWidth; c.height = innerHeight;
+    document.body.appendChild(c);
+    const g = c.getContext('2d'), cols = ['#8b5cf6','#22d3ee','#f472b6','#facc15','#34d399','#fb923c'], P = [];
+    for(let i = 0; i < 110; i++) P.push({x: innerWidth / 2, y: innerHeight * .35, vx: (Math.random() - .5) * 14,
+      vy: -Math.random() * 12 - 4, r: Math.random() * 6.28, s: 4 + Math.random() * 5, c: cols[i %% 6]});
+    const t0 = performance.now();
+    (function f(t){
+      const k = (t - t0) / 1000; g.clearRect(0, 0, c.width, c.height);
+      P.forEach(p => { p.vy += .45; p.x += p.vx; p.y += p.vy; p.r += .2; g.save(); g.translate(p.x, p.y); g.rotate(p.r);
+        g.globalAlpha = Math.max(0, 1 - k / 1.6); g.fillStyle = p.c; g.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); g.restore(); });
+      if(k < 1.6) requestAnimationFrame(f); else c.remove();
+    })(t0);
+  }catch(e){}
+};
+const _aoIc = {plus:'M12 5v14M5 12h14', check:'M5 12l5 5L20 7', x:'M6 6l12 12M18 6L6 18',
+  trash:'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13', edit:'M4 20h4L19 9l-4-4L4 16z',
+  search:'M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zM20 20l-4-4',
+  star:'M12 3l2.8 5.8 6.2.9-4.5 4.4 1 6.2L12 17.4 6.5 20.3l1-6.2L3 9.7l6.2-.9z',
+  heart:'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z',
+  clock:'M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18zM12 7v5l3 2', calendar:'M4 6h16v14H4zM4 10h16M9 3v4M15 3v4',
+  chart:'M4 20V10M10 20V4M16 20v-7M22 20H2', bolt:'M13 2L4 14h7l-1 8 9-12h-7z',
+  share:'M4 12v8h16v-8M12 3v13M7 8l5-5 5 5', copy:'M8 8h12v12H8zM4 16V4h12', play:'M7 4l13 8-13 8z',
+  pause:'M7 4h4v16H7zM13 4h4v16h-4z', refresh:'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5',
+  settings:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM4 12h2M18 12h2M12 4v2M12 18v2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M6.3 17.7l1.4-1.4M16.3 7.7l1.4-1.4',
+  sparkle:'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z', user:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+  money:'M3 7h18v10H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', up:'M12 19V5M5 12l7-7 7 7', down:'M12 5v14M5 12l7 7 7-7',
+  fire:'M12 3s5 4 5 9a5 5 0 0 1-10 0c0-2 1-3 1-3s0 2 2 2c0-4 2-8 2-8z',
+  target:'M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8z'};
+window.appIcon = (n) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (_aoIc[n] || _aoIc.sparkle) + '"/></svg>';
+window.appIcon.names = Object.keys(_aoIc);
+window.appShare = async (o) => {
+  o = o || {};
+  const text = [o.title, o.text, o.url].filter(Boolean).join('\\n\\n');
+  let ok = false;
+  try{ await navigator.clipboard.writeText(text); ok = true; }catch(e){}
+  if(!ok){ try{ const t = document.createElement('textarea'); t.value = text; t.style.opacity = '0';
+    document.body.appendChild(t); t.select(); ok = document.execCommand('copy'); t.remove(); }catch(e){} }
+  window.appToast(ok ? 'Copied. Paste it anywhere.' : 'Could not copy from here', ok ? 'ok' : 'err');
+  return ok;
+};
+window.appFmt = {
+  num: (n, d) => Number(n || 0).toLocaleString(undefined, {maximumFractionDigits: d == null ? 1 : d}),
+  money: (n, c) => { try{ return Number(n || 0).toLocaleString(undefined, {style: 'currency', currency: c || 'USD'}); }
+    catch(e){ return (c || '$') + ' ' + Number(n || 0).toFixed(2); } },
+  pct: (n) => Math.round(Number(n || 0) * 100) + '%%',
+  ago: (ts) => { const ms = ts > 1e12 ? ts : ts * 1000, s = Math.max(0, (Date.now() - ms) / 1000);
+    return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago'
+      : Math.round(s / 86400) + ' days ago'; },
+  date: (ts) => new Date(ts > 1e12 ? ts : ts * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}),
+  dur: (sec) => { sec = Math.max(0, Math.round(sec || 0)); const m = Math.floor(sec / 60), x = sec - m * 60;
+    return m + ':' + String(x).padStart(2, '0'); },
+};
+// The desktop's theme: ask once, and the accent follows whatever the person chose.
+window.addEventListener('message', e => {
+  if (e.source !== parent || !e.data || e.data.agentos !== 'theme' || !e.data.vars) return;
+  try{ Object.entries(e.data.vars).forEach(([k, v]) => { if(/^--[a-z0-9-]+$/.test(k) && /^[#a-z0-9(),.\\s%%-]+$/i.test(String(v)))
+    document.documentElement.style.setProperty(k, String(v)); }); }catch(_){}
+});
+try{ parent.postMessage({agentos: 'theme?'}, '*'); }catch(_){}
 // a schedule saved something into this app's data (update_app_data): say so to the app,
 // which reloads what it shows. Only the desktop that drew this frame may say it.
 window.addEventListener('message', e => {
@@ -5995,6 +6166,13 @@ BUILD QUALITY — this matters; make it look and feel professional, not a demo:
     .kpi (stat tile: <div class="kpi"><b>42</b><span>label</span></div>) ·
     .badge · .muted · .err · .ok · .empty (dashed empty-state box) ·
     .spin (ready-made loading spinner: <span class="spin"></span>)
+  and the richer pieces: .hero (top header: <div class="hero"><div><h1>…</h1><div class="muted">…</div></div>
+    <button>Primary</button></div>) · .tabs (<div class="tabs"><button class="on">Today</button>…</div>) ·
+    .chip / .chip.on (filters) · .toggle (<label class="toggle"><input type="checkbox"><span></span> Label</label>) ·
+    .progress (<div class="progress"><i style="width:40%"></i></div>) · .stat (<div class="stat"><b>$1,240</b>
+    <span>this month</span><em class="up">+12%</em></div>) · .list + .item (rows: .avatar, .grow, .title) ·
+    .badge.ok/.warn/.err · .spread · .stack · .skeleton (loading placeholder) · .card.accent (the one card that
+    matters most) · button.ghost / button.sm / button.icon / button.danger
   COMPOSE WITH THESE — semantic HTML plus these classes IS the design. Write custom CSS only for
   something genuinely app-specific (a chart, a special widget), never to restyle base elements.
 - HARD LAYOUT RULES — breaking these is what makes apps look amateur; treat them as law:
@@ -6022,6 +6200,24 @@ BUILD QUALITY — this matters; make it look and feel professional, not a demo:
   startup logic in `(async () => { … })();` and call appData/appTool/appLLM only inside async
   functions. Attach handlers with addEventListener or onclick attributes that call DEFINED functions;
   test mentally that every referenced element id exists. A syntax error kills the entire app.
+
+MAKE IT A JOY TO USE — people keep and share apps that feel finished, not ones that merely work:
+- FIRST RUN: open on a .hero (an h1, a one-line .muted promise, and the ONE primary action). An empty
+  app is a dead end: offer "Try it with an example" that fills realistic sample data in one tap, and a
+  .empty state (<div class="empty"><b>No habits yet</b>Add your first one…<button>…</button></div>) that
+  says exactly what to do first.
+- One obvious primary action per screen; secondary ones are button.ghost / button.sm / button.icon.
+- Feedback for everything: appToast('Saved') after a change, .spin or .skeleton while loading, and
+  appCelebrate() when the person reaches a real milestone (a streak, a goal met, all done), not on
+  every click. Numbers and times through appFmt.money / num / pct / ago / date / dur, never raw.
+- Icons inside buttons and rows: appIcon('plus') returns an inline SVG (appIcon.names lists them:
+  plus check x trash edit search star heart clock calendar chart bolt share copy play pause refresh
+  settings sparkle user money up down fire target). No emoji as UI icons.
+- Shareable: where the app produces something worth showing (a summary, a plan, a score), add a Share
+  button that calls appShare({title, text}) with a tidy, human summary.
+- Keyboard: Enter submits, Escape closes, the main input is focused on open.
+- NEVER alert(), confirm() or prompt(). The app runs in a sandbox where confirm() always answers no,
+  so a "Delete?" built on it never deletes. Use `if (await appConfirm('Delete this habit?', {danger:true}))`.
 
 DATA — every app has its OWN data store (its "MCP"), pre-injected as page globals:
 - `await appData.get()` returns the app's saved object; `await appData.set(obj)` saves it. USE THIS for
@@ -6099,6 +6295,27 @@ PROCESS — work like a product team in one turn:
 - If the user wants it pinned / on the desktop / as a widget, call pin_widget(name) after create_app.
 - Do the work in THIS turn — never ask questions. Finish with one short sentence on what you built.
 """
+
+
+# The craft part of the persona, without the create_app mechanics: what an agent CLI
+# building an app in Chat reads (APP_BRIEF.md beside the file it writes), so a chat build
+# is held to the same bar as an App Studio one. Before this, a chat build was told only
+# "one self-contained HTML file" and got none of the design kit, the runtime or the rules.
+APP_CRAFT = BUILDER_PERSONA[BUILDER_PERSONA.index("BUILD QUALITY"):BUILDER_PERSONA.index("PROCESS — work like")]
+APP_BRIEF = ("# Building an AgentOS app\n\nYou are writing ONE self-contained HTML file: the app. AgentOS "
+             "wraps it in a page that already has the design kit (CSS) and the app runtime (appData, "
+             "appLLM, appToast, appConfirm …) injected, so use them rather than writing your own. "
+             "Wherever this says create_app, it means the file you were given.\n\n" + APP_CRAFT)
+
+
+def write_app_brief(folder) -> str:
+    """APP_BRIEF.md beside an app being built by an agent CLI; returns its path ('' on failure)."""
+    try:
+        p = Path(folder) / "APP_BRIEF.md"
+        p.write_text(APP_BRIEF)
+        return str(p)
+    except Exception:
+        return ""
 
 
 def _known_tool_names(toolbox=None) -> set[str]:
@@ -13720,6 +13937,57 @@ async def _queue_flush(cid: str):
     await _queue_broadcast(cid, started={"id": item["id"], "text": item["text"]})
 
 
+async def _chat_app_fix(model, env, run, checkouts, toolbox, evsend, relay):
+    """The check App Studio's builds get, for an app an agent CLI just wrote in Chat.
+
+    A chat build used to be the one way to make an app that nothing looked at: a
+    confirm() that never confirms or a script that does not parse shipped as it was.
+    Now the file is checked (appcheck.py, the same rules) and, when something is broken,
+    the same session gets ONE turn to fix exactly that, before the file is
+    saved back. Only on a CLI that resumes its session (it must still know the file), and
+    its words stay out of the reply: the person sees the steps and one status line.
+    """
+    from . import executors as execmod
+    if model not in execmod.RESUMES or not run.session_id or run.stopped:
+        return
+    for co in checkouts:
+        if not co:
+            continue
+        try:
+            html = Path(co["path"]).read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        if not html.strip() or html == co.get("before", ""):
+            continue
+        # Only what is BROKEN spends a turn here. A chat asked for one thing, and a
+        # missing widget view or copilot is the Studio's bar, not a reason to bill again.
+        bad = appcheck.check(html, _known_tool_names(toolbox)).of(appcheck.BROKEN)
+        if not bad:
+            continue
+        n = len(bad)
+        await evsend({"type": "status", "message": f"checked the app: fixing {n} {'problem' if n == 1 else 'problems'}"})
+        brief = "\n".join(f"- [{i.severity}] {i.line()}" for i in bad[:10])
+        task = (f"AUTOMATED CHECK of the app you just wrote at {co['path']}:\n{brief}\n\n"
+                f"Fix every item in that file now, and change nothing else. "
+                f"{('The kit and runtime are described in ' + co['brief'] + '. ') if co.get('brief') else ''}"
+                f"Reply with one short line.")
+        fix_env = execmod.Envelope(**{**env.__dict__, "session_id": run.session_id,
+                                      "transcript": "", "fallback": ""})
+        run2 = execmod.Run(engine=model)
+
+        async def quiet(ev):
+            if ev.get("type") in ("tool_start", "tool_end", "status"):
+                await relay(ev)
+        try:
+            await execmod.run_task(task, fix_env, quiet, run2)
+        except Exception:
+            continue
+        if run2.session_id:
+            run.session_id = run2.session_id
+        run.cost_usd += run2.cost_usd or 0.0
+        run.turns += run2.turns or 0
+
+
 async def run_chat(cid: str, data: dict):
     """One chat turn, running as its own task — several conversations may run at
     once. Two guarantees on every exit path: the turn slot is released, and a
@@ -13885,6 +14153,7 @@ async def _run_chat(cid: str, data: dict):
                 # app build installs nothing.
                 try:
                     checkout = execmod.new_app_checkout(env.workspace, _default_app_name(text))
+                    checkout["brief"] = write_app_brief(checkout["dir"])
                     env.context += execmod.new_app_note(checkout)
                 except Exception:
                     checkout = None
@@ -13896,6 +14165,7 @@ async def _run_chat(cid: str, data: dict):
                     if prev:
                         chat_app = execmod.checkout_app(store, prev["id"], env.workspace)
                         if chat_app:
+                            chat_app["brief"] = write_app_brief(chat_app["dir"])
                             env.context += execmod.chat_app_note(chat_app)
                 except Exception:
                     chat_app = None
@@ -13949,6 +14219,7 @@ async def _run_chat(cid: str, data: dict):
             try:
                 await execmod.run_task(text, env, _relay, run)
                 turn_done = True
+                await _chat_app_fix(model, env, run, (checkout, chat_app), toolbox, evsend, _relay)
             finally:
                 execmod.stop(run)          # a cancelled turn must not leave it running
                 # Write the app back here, in `finally`: a turn stopped after the app

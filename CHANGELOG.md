@@ -19,6 +19,23 @@ it becomes really cluttered".
   around, Esc to go back. The ring takes the shape of the window (wide, phone, desktop scene).
 - Measured in Chromium with software rendering, nine rooms and twenty agents: 2.3 to 5 ms a
   frame, 152 draw calls. A screen with no 3D graphics gets the flat office and says why.
+- **Office HQ, a desktop scene.** The 3D office as your whole desktop, behind the prompt bar
+  (Settings → Appearance → Scene). Its cards take taps, and a name there opens the Office.
+
+**Apps that feel finished.** Asked for as "the apps App Studio makes don't have a serious jive
+to them: more engaging, more intuitive, more reliable".
+- **A new kit and a few helpers in every app.** Heroes, tabs, chips, toggles, progress, stats,
+  lists, avatars and loading skeletons, in the desktop's accent. `appToast`, `appConfirm`,
+  `appCelebrate`, `appIcon`, `appShare` and `appFmt` save each app writing its own, and the
+  builder is told to open on something you can try at once, with one obvious thing to do.
+- **Chat builds get the same bar as App Studio.** The agent CLI reads `APP_BRIEF.md` beside the
+  file it writes, the app is checked when it finishes, and Claude Code gets one turn in the same
+  session to fix anything broken. `create_app` answers with the same check.
+- **Two new checks.** A script that doesn't parse (Node reads every inline script), and
+  `confirm()` or `prompt()`, which the app's sandbox always answers with "no", so "Delete this?"
+  never deleted anything.
+- **The starter app on the setup screen saves now.** It called `appData.set('note', …)`, and the
+  runtime takes one object, so the note was gone on reload.
 
 ## 0.6.27 — 2026-10-12
 

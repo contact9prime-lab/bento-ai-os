@@ -3295,7 +3295,7 @@ body.immersive #office-scene .of-scroll{width:min(1180px,94vw);height:100%;displ
 body.immersive #office-scene canvas{display:block;border-radius:var(--r-lg,14px);
   box-shadow:0 18px 50px color-mix(in srgb,var(--bg) 60%,transparent)}
 body.immersive.imm-office #wall.has::after{background:linear-gradient(rgba(4,5,8,.0) 42%,rgba(4,5,8,.20))}
-body.immersive.dev-mobile #office-scene{display:none}
+body.immersive.dev-mobile #office-scene:not(.hq){display:none}
 body.immersive.imm-movement #wall.has::after{background:linear-gradient(rgba(4,5,8,.0),rgba(4,5,8,.12))}
 body.immersive.imm-movement #wall.has::before{opacity:.035}
 
@@ -4447,12 +4447,12 @@ body.dev-touch .of-x{min-width:var(--tap)}
 #office-scene .of3-ui *{pointer-events:none!important}
 #office-scene .of-cv3{cursor:default}
 /* the scene is a band under the home screen: one line a card, the name and the faces */
-#office-scene .of3-card{grid-template-rows:auto;padding:3px 7px 3px 5px}
-#office-scene .of3-card .of3-k,#office-scene .of3-card .of3-w{display:none}
-#office-scene .of3-card>i{grid-row:1;width:11px;height:11px}
-#office-scene .of3-card b{font-size:10.5px}
-#office-scene .of3-faces{grid-row:1}
-#office-scene .of3-faces .of3-face{width:16px;height:16px}
+#office-scene:not(.hq) .of3-card{grid-template-rows:auto;padding:3px 7px 3px 5px}
+#office-scene:not(.hq) .of3-card .of3-k,#office-scene:not(.hq) .of3-card .of3-w{display:none}
+#office-scene:not(.hq) .of3-card>i{grid-row:1;width:11px;height:11px}
+#office-scene:not(.hq) .of3-card b{font-size:10.5px}
+#office-scene:not(.hq) .of3-faces{grid-row:1}
+#office-scene:not(.hq) .of3-faces .of3-face{width:16px;height:16px}
 @media (max-width:640px){
   .of3-card{max-width:150px;padding:4px 7px 4px 5px;grid-template-columns:auto 1fr}
   .of3-faces{display:none}
@@ -4461,6 +4461,18 @@ body.dev-touch .of-x{min-width:var(--tap)}
 @media (prefers-reduced-motion:reduce){.of3-card{transition:none}}
 /* inside one room, the list says who is there: the other rooms' cards would only cover it */
 .of3-ui.focused .of3-card,.of3-ui.focused .of3-brain{display:none}
+/* Office HQ: the desktop scene, the whole screen in 3D, the prompt bar over it. The
+   greeting and the chips step aside (the Mind's rule); the cards stay two lines and take
+   taps, because they live in the desktop rather than the wall. */
+body.immersive #office-scene.hq{top:0!important;bottom:0}
+body.immersive #office-scene.hq .of-scroll{width:100%;height:100%;border-radius:0}
+body.immersive #office-scene.hq canvas{border-radius:0}
+body.imm-hq .hm-greet,body.imm-hq .hm-chips,body.imm-hq .hm-play,body.imm-hq .hm-now{display:none!important}
+body.imm-hq #wall.has::after{display:none}
+.of3-ui.hq{position:absolute;inset:0;z-index:0}
+body.has-win .of3-ui.hq{display:none}
+@media (max-width:640px){.of3-ui.hq .of3-card .of3-k,.of3-ui.hq .of3-card .of3-w{display:none}
+  .of3-ui.hq .of3-card{padding:3px 7px 3px 5px}.of3-ui.hq .of3-card b{font-size:10.5px}}
 /* ================= The play strip and comic talk (24e-playstrip.js, 10b-huddle.js) =================
    The Office's comic language at the size of a line: ink outlines, white balloons, yellow
    bursts with a red word. Like the Office canvas these are a comic's own colours — a
@@ -6051,6 +6063,7 @@ function applyImmersive(){
   document.body.classList.toggle('imm-movement',IMMERSIVE.on&&IMMERSIVE.scene==='movement');
   document.body.classList.toggle('imm-crew',IMMERSIVE.on&&IMMERSIVE.scene==='crew');
   document.body.classList.toggle('imm-office',IMMERSIVE.on&&IMMERSIVE.scene==='office');
+  document.body.classList.toggle('imm-hq',IMMERSIVE.on&&IMMERSIVE.scene==='hq');
   document.body.classList.toggle('imm-world',IMMERSIVE.on&&IMMERSIVE.scene==='world');
   document.body.classList.toggle('imm-mind',IMMERSIVE.on&&IMMERSIVE.scene==='mind');
   immersiveParallax(IMMERSIVE.on);
@@ -6064,7 +6077,11 @@ function applyImmersive(){
   if(typeof MOVEMENT!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop()}
   if(typeof CREW!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();else crewStop()}
   // the Office scene (24d) loads later still; it starts itself on first paint
-  if(typeof OFFICE_SCENE!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();
+  // Office HQ is the same office, full screen and always in 3D (24k-office3d.js)
+  if(typeof OFFICE_SCENE!=='undefined'){
+    const want=IMMERSIVE.on&&(IMMERSIVE.scene==='office'||IMMERSIVE.scene==='hq'),hq=want&&IMMERSIVE.scene==='hq';
+    if(want&&OFFICE_SCENE.on&&OFFICE_SCENE.hq!==hq)officeSceneStop();
+    if(want){OFFICE_SCENE.hq=hq;officeSceneStart()}
     else if(!document.body.classList.contains('kiosk'))officeSceneStop()}   // the kiosk keeps its office
   // the World (01e, experimental): leaving this scene is what puts the world to sleep
   if(typeof WORLD!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='world')worldStart();else worldStop()}
@@ -6077,7 +6094,7 @@ function applyImmersive(){
    this value comes out of localStorage, which outlives any release that renames a
    scene, and a desktop that fails to paint because of a stale string is not a
    trade worth making. */
-var IMMERSIVE_SCENES=['aurora','movement','crew','office','world','mind'];
+var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind'];
 function setImmersiveScene(scene){
   scene=IMMERSIVE_SCENES.indexOf(scene)<0?'aurora':scene;
   IMMERSIVE.scene=scene;localStorage.setItem('immersive.scene',scene);
@@ -11552,6 +11569,17 @@ function smRender(q){
   }
   if(!own.length&&!nat.length)sm.innerHTML='<p class="mut" style="grid-column:1/-1;padding:14px 6px">nothing matches</p>';
 }
+
+/* An app asks for the desktop's accent once it loads (APP_RUNTIME posts 'theme?'), so the
+   buttons in what the agent built match the theme the person chose. Only a frame this page
+   drew gets an answer, and only colours travel. */
+window.addEventListener('message',e=>{
+  const d=e.data;if(!d||d.agentos!=='theme?')return;
+  const fr=[...document.querySelectorAll('iframe')].find(f=>f.contentWindow===e.source);if(!fr)return;
+  const cs=getComputedStyle(document.body),v=k=>cs.getPropertyValue(k).trim(),vars={};
+  ['--acc','--acc2','--on-acc'].forEach(k=>{const x=v(k);if(x)vars[k]=x});
+  try{e.source.postMessage({agentos:'theme',vars},'*')}catch(_){}
+});
 /* ================= places: the parts inside apps, findable by the words people use =================
    Reported as: "when I type something like channel it is not indexed; I say flow and it
    should relate to jobs". The launchers only knew app NAMES, and half of what a person
@@ -15790,7 +15818,7 @@ function setTab(body,all){
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
          stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['world','World (experimental)'],['mind','Mind']],
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind']],
           (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
         {desc:'What the wallpaper shows behind your windows.',
          more:'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs.',
@@ -26706,7 +26734,7 @@ function officeClose(w){
    tapped, and the home screen's "See them at work" chip is the door to the window.
    Faces: GUI/SUI this canvas inside #wall; TUI has no wallpaper (bento office is its
    roll call). */
-var OFFICE_SCENE={on:false,host:null,wake:0};
+var OFFICE_SCENE={on:false,host:null,wake:0,hq:false};
 function officeSceneStart(){
   if(OFFICE_SCENE.on)return;
   const wall=document.getElementById('wall');if(!wall)return;
@@ -26714,6 +26742,7 @@ function officeSceneStart(){
   if(!host){host=document.createElement('div');host.id='office-scene';host.setAttribute('aria-hidden','true');
     host.innerHTML='<div class="of-scroll"><canvas class="of-cv"></canvas></div>';wall.appendChild(host)}
   OFFICE_SCENE.on=true;OFFICE_SCENE.host=host;
+  host.classList.toggle('hq',!!OFFICE_SCENE.hq);
   // the band starts under the home screen's last line, and follows it when a line
   // appears there (a working line, the office chip): the greeting must never sit on
   // top of the office
@@ -26747,7 +26776,8 @@ function officeSceneAttach(){
 }
 function officeSceneFit(){
   const S=OFFICE_SCENE,home=document.getElementById('home');if(!S.host)return false;
-  if(document.body.classList.contains('kiosk')){       // the kiosk face: the whole screen
+  // the kiosk face and Office HQ: the whole screen
+  if(document.body.classList.contains('kiosk')||S.hq){
     if(S.top===0)return false;S.top=0;S.host.style.top='0px';return true}
   let top=Math.round(innerHeight*.42);
   if(home&&!home.hidden)[...home.children].forEach(c=>{const r=c.getBoundingClientRect();if(r.height)top=Math.max(top,Math.round(r.bottom)+14)});
@@ -28090,7 +28120,7 @@ async function officeSave(patch){
   }catch(e){toast('could not change the office')}
 }
 // first paint: 01b ran before this file existed, so the scene starts itself
-if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&(IMMERSIVE.scene==='office'||IMMERSIVE.scene==='hq')){OFFICE_SCENE.hq=IMMERSIVE.scene==='hq';officeSceneStart()}
 /* ================= The play strip: the Office, one line tall, wherever a turn is shown =================
    The Office is a whole window. A turn happens in many more places — Chat, the agent panel
    inside every app, the prompt bar's card — and the playground belongs there too, at the
@@ -28884,7 +28914,7 @@ function kioskStop(){
   const hud=document.getElementById('kiosk-hud');if(hud)hud.remove();
   if(KIOSK.cid&&typeof sinkOff==='function')sinkOff(KIOSK.cid);
   // the office scene stays only if the immersive look asked for it
-  if(typeof officeSceneStop==='function'&&!(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='office'))officeSceneStop();
+  if(typeof officeSceneStop==='function'&&!(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&(IMMERSIVE.scene==='office'||IMMERSIVE.scene==='hq')))officeSceneStop();
   else if(typeof officeSceneResize==='function')officeSceneResize();
   if(typeof suiSyncStruts==='function')suiSyncStruts();
 }
@@ -29715,6 +29745,7 @@ var OF3_SPARK=/remember|recall|memor|knowledge|kg_|forget/i;
 /* ---------------- may we? ---------------- */
 function of3Wanted(){
   const v=OFFICE.view;if(!v||OF3.failed)return false;
+  if(of3HQ())return of3GL();        // the Office HQ scene is this look by definition
   if(((v.office||{}).look||'3d')!=='3d')return false;
   return of3GL();
 }
@@ -29727,6 +29758,8 @@ function of3GL(){
   }
   return OF3.gl;
 }
+/* Office HQ: the desktop scene, full screen, always 3D, its cards tappable. */
+function of3HQ(){return !!(OFFICE.w&&OFFICE.w.scene&&typeof OFFICE_SCENE!=='undefined'&&OFFICE_SCENE.hq)}
 /* The flat office is drawing: put the 3D one away, keeping three.js loaded. */
 function of3Off(){
   if(OF3.r||OF3.cv)of3Dispose();
@@ -29877,7 +29910,12 @@ async function of3Ensure(){
     if(!OFFICE.L||!OFFICE.L.radial||!OFFICE.cv||OFFICE.cv.parentElement!==host)return;
     const cv=document.createElement('canvas');cv.className='of-cv3';cv.setAttribute('aria-hidden','true');
     host.insertBefore(cv,host.firstChild);OF3.cv=cv;
-    const ui=document.createElement('div');ui.className='of3-ui';host.appendChild(ui);OF3.ui=ui;
+    // The words go over the picture. In Office HQ the picture is the wall, under the
+    // desktop, so its cards and the room list live in the desktop (as the World's tags
+    // do) to be tapped; everywhere else they sit on the canvas.
+    const ui=document.createElement('div');ui.className='of3-ui';OF3.ui=ui;
+    const desk=document.getElementById('desktop'),home=document.getElementById('home');
+    if(of3HQ()&&desk){ui.classList.add('hq');desk.insertBefore(ui,home?home.nextSibling:null)}else host.appendChild(ui);
     OF3.r=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'low-power'});
     OF3.r.outputColorSpace=T.SRGBColorSpace;OF3.r.toneMapping=T.ACESFilmicToneMapping;OF3.r.toneMappingExposure=1.05;
     // the kiosk is a small machine's own screen (a Pi): no shadows there either
@@ -29899,6 +29937,9 @@ function of3Size(){
   OF3.r.setPixelRatio(Math.min(devicePixelRatio||1,OF3.hq?1.5:1));
   OF3.r.setSize(cw,ch,false);OF3.cv.style.width=cw+'px';OF3.cv.style.height=ch+'px';
   OF3.cw=cw;OF3.ch=ch;OF3.dirty=true;
+  // where the canvas is, seen from the layer the words are placed in
+  const a=OF3.cv.getBoundingClientRect(),b=OF3.ui?OF3.ui.getBoundingClientRect():a;
+  OF3.off={x:a.left-b.left,y:a.top-b.top};
 }
 function of3Dispose(){
   const T=OF3.T;
@@ -30179,6 +30220,14 @@ function of3Frame(view){
   c.position.copy(t).addScaledVector(b.d,80);c.lookAt(t);c.updateProjectionMatrix();c.updateMatrixWorld();
   OF3.view={x:view.x,z:view.z,h};OF3.dirty=true;
 }
+/* What covers the picture, in pixels: in Office HQ the prompt bar above and the dock
+   below, so the ring fits in what is left. Nothing elsewhere. */
+function of3Pads(){
+  if(!of3HQ()||!OF3.cv)return {t:0,b:0};
+  const top=OF3.cv.getBoundingClientRect().top,bar=document.getElementById('omnibar'),dock=document.getElementById('taskbar');
+  const r=bar&&bar.offsetParent?bar.getBoundingClientRect():null,d=dock&&dock.offsetParent?dock.getBoundingClientRect():null;
+  return {t:r?Math.max(0,r.bottom-top+18):60,b:d?Math.max(0,OF3.ch-(d.top-top)+10):100};
+}
 /* The whole office in the window, with room above each room for its card. */
 function of3FitView(){
   const L=OFFICE.L,b=of3Basis(),asp=OF3.cw/Math.max(1,OF3.ch);
@@ -30189,8 +30238,11 @@ function of3FitView(){
     see(q[0]/OF3_U,-.1,q[1]/OF3_U);see(q[0]/OF3_U,OF3_SLAB+OF3_WALL+.75,q[1]/OF3_U)}));
   y1+=(y1-y0)*.05;      // the top rooms' cards stand above their walls
   const mx=(x1-x0)*.06;x0-=mx;x1+=mx;   // and the side rooms' cards stick out past them
-  const g=of3Ground((x0+x1)/2,(y0+y1)/2);
-  return {x:g.x,z:g.z,h:Math.max((y1-y0)/2,(x1-x0)/2/asp)*1.05};
+  const pad=of3Pads(),fh=Math.max(.3,(OF3.ch-pad.t-pad.b)/Math.max(1,OF3.ch));
+  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/asp)*1.05,k=2*h/Math.max(1,OF3.ch);
+  // the picture's middle goes in the middle of what is left uncovered
+  const g=of3Ground((x0+x1)/2,(y0+y1)/2+(pad.t-pad.b)/2*k);
+  return {x:g.x,z:g.z,h};
 }
 function of3RoomView(name){
   const r=OFFICE.L.rooms.find(q=>q.name===name);if(!r)return OF3.fit;
@@ -30201,11 +30253,11 @@ function of3RoomView(name){
     x0=Math.min(x0,sx);x1=Math.max(x1,sx);y0=Math.min(y0,sy);y1=Math.max(y1,sy)}));
   // the list of who is in the room covers the right of a wide window, and the bottom of a
   // phone: the room fits in what is left, centred there
-  const phone=cw<=640,list=phone?0:Math.min(280,cw*.3),under=phone?ch*.46:0;
-  const fw=(cw-list-24)/cw,fh=(ch-under-16)/ch;
+  const pad=of3Pads(),phone=cw<=640,list=phone?0:Math.min(280,cw*.3),under=(phone?ch*.46:0)+pad.b,over=pad.t;
+  const fw=(cw-list-24)/cw,fh=Math.max(.25,(ch-under-over-16)/ch);
   const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/(asp*fw))*1.08;
   const k=2*h/ch;   // world units per pixel
-  const g=of3Ground((x0+x1)/2+list/2*k,(y0+y1)/2-under/2*k);
+  const g=of3Ground((x0+x1)/2+list/2*k,(y0+y1)/2-(under-over)/2*k);
   return {x:g.x,z:g.z,h};
 }
 function of3Fit(){
@@ -30403,7 +30455,8 @@ function of3El(key,cls,html){
    under feet), 'c' centre, '' top-left (balloons, placed by hand) */
 function of3Place(e,x,y,dx,dy,anchor){
   const an={b:' translate(-50%,-100%)',t:' translate(-50%,0)',c:' translate(-50%,-50%)'}[anchor===undefined?'b':anchor]||'';
-  const t=`translate(${Math.round(x+(dx||0))}px,${Math.round(y+(dy||0))}px)${an}`;
+  const o=OF3.off||{x:0,y:0};
+  const t=`translate(${Math.round(x+(dx||0)+o.x)}px,${Math.round(y+(dy||0)+o.y)}px)${an}`;
   if(e._t!==t){e.style.transform=t;e._t=t}
 }
 function of3Overlay(now){
@@ -30506,7 +30559,12 @@ function of3Roster(){
       <small>${esc([(r.titles||{})[m],state(p),O.brains[m]].filter(Boolean).join(' · '))}</small></span></button>`}).join('')
       :`<div class="mut of3-about">${r.kind==='meeting'?'Nobody is meeting right now. Huddles and missions with two or more people gather here.':'Nobody sits here.'}</div>`}`;
   el.querySelector('.of3-back').onclick=()=>of3Focus(null);
-  el.querySelectorAll('.of3-row').forEach(b=>b.onclick=()=>{const p=O.people[b.dataset.k];if(p){of3Need(p);officeTapPerson(p)}});
+  el.querySelectorAll('.of3-row').forEach(b=>b.onclick=()=>{const p=O.people[b.dataset.k];if(!p)return;
+    // Office HQ has no chat of its own: the Office window opens, ready to ask them
+    if(O.w&&O.w.scene){const k=b.dataset.k;openApp('office');
+      setTimeout(()=>{const w=OFFICE.w,i=w&&!w.scene&&w.el.querySelector('.of-chat .cp-in');
+        if(i&&k!=='@agent'){i.value='@'+k+' ';i.focus();w.el.querySelector('.of-wrap').classList.add('chat-open')}},500);return}
+    of3Need(p);officeTapPerson(p)});
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

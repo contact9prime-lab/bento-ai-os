@@ -49,6 +49,13 @@ the same walks, papers, balloons and bursts, drawn in 3D. The faces are the same
 as everywhere else. On a screen with no 3D graphics the office is drawn flat and Design says
 why. Switch looks in **✎ Design → Look**, or with `bento office look 3d` / `flat`.
 
+**Office HQ** is the same office as your desktop: Settings → Appearance → Scene → *Office
+HQ (3D)*. It fills the screen behind the prompt bar and is always 3D, whatever look the
+Office window uses. Tap a room's card to look inside, and tap a name there to open the Office
+with a message to them started.
+
+![Office HQ as the desktop: the prompt bar at the top, the ring of rooms around the Brain below it, cards over every room, and the dock](screenshots/office-hq-scene.png)
+
 ## What moves, and why
 
 ![The Office after a huddle in democracy mode: the validator walking back to its desk, the researcher at the meeting table, and the panel ending with "The team agreed · 2 of 2"](screenshots/readme-office-vote.png)

@@ -211,8 +211,24 @@ def test_desks_follow_the_work_and_never_shuffle(tmp_path):
     assert route[-1] == [700, 150] and [600, 140] in route and [640, 120] in route
 
 
+def test_office_hq_is_a_scene_of_its_own():
+    imm = (JS / "01b-immersive.js").read_text()
+    assert "'office','hq','world'" in imm and "OFFICE_SCENE.hq=hq;officeSceneStart()" in imm
+    # switching between the band and the whole screen restarts the scene in its new shape
+    assert "if(want&&OFFICE_SCENE.on&&OFFICE_SCENE.hq!==hq)officeSceneStop();" in imm
+    assert "['hq','Office HQ (3D)']" in (JS / "11-settings.js").read_text()
+    # always 3D there, whatever the window's look, and only when this screen can draw it
+    assert "if(of3HQ())return of3GL();" in SRC
+    # its words live in the desktop so they can be tapped; the prompt bar and dock are pads
+    assert "desk.insertBefore(ui,home?home.nextSibling:null)" in SRC and "function of3Pads()" in SRC
+    css = (ROOT / "agentos/ui/src/css/23-office.css").read_text()
+    assert "body.has-win .of3-ui.hq{display:none}" in css
+    assert "kiosk" in (JS / "24h-kiosk.js").read_text() and "IMMERSIVE.scene==='hq'" in (JS / "24h-kiosk.js").read_text()
+
+
 def test_the_office_doc_shows_it():
     doc = (ROOT / "docs/office.md").read_text()
     assert "screenshots/office-3d.png" in doc and "screenshots/office-3d-room.png" in doc
     assert (ROOT / "docs/screenshots/office-3d.png").exists()
     assert (ROOT / "docs/screenshots/office-3d-room.png").exists()
+    assert "screenshots/office-hq-scene.png" in doc and (ROOT / "docs/screenshots/office-hq-scene.png").exists()

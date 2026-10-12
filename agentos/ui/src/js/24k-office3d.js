@@ -50,6 +50,7 @@ var OF3_SPARK=/remember|recall|memor|knowledge|kg_|forget/i;
 /* ---------------- may we? ---------------- */
 function of3Wanted(){
   const v=OFFICE.view;if(!v||OF3.failed)return false;
+  if(of3HQ())return of3GL();        // the Office HQ scene is this look by definition
   if(((v.office||{}).look||'3d')!=='3d')return false;
   return of3GL();
 }
@@ -62,6 +63,8 @@ function of3GL(){
   }
   return OF3.gl;
 }
+/* Office HQ: the desktop scene, full screen, always 3D, its cards tappable. */
+function of3HQ(){return !!(OFFICE.w&&OFFICE.w.scene&&typeof OFFICE_SCENE!=='undefined'&&OFFICE_SCENE.hq)}
 /* The flat office is drawing: put the 3D one away, keeping three.js loaded. */
 function of3Off(){
   if(OF3.r||OF3.cv)of3Dispose();
@@ -212,7 +215,12 @@ async function of3Ensure(){
     if(!OFFICE.L||!OFFICE.L.radial||!OFFICE.cv||OFFICE.cv.parentElement!==host)return;
     const cv=document.createElement('canvas');cv.className='of-cv3';cv.setAttribute('aria-hidden','true');
     host.insertBefore(cv,host.firstChild);OF3.cv=cv;
-    const ui=document.createElement('div');ui.className='of3-ui';host.appendChild(ui);OF3.ui=ui;
+    // The words go over the picture. In Office HQ the picture is the wall, under the
+    // desktop, so its cards and the room list live in the desktop (as the World's tags
+    // do) to be tapped; everywhere else they sit on the canvas.
+    const ui=document.createElement('div');ui.className='of3-ui';OF3.ui=ui;
+    const desk=document.getElementById('desktop'),home=document.getElementById('home');
+    if(of3HQ()&&desk){ui.classList.add('hq');desk.insertBefore(ui,home?home.nextSibling:null)}else host.appendChild(ui);
     OF3.r=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'low-power'});
     OF3.r.outputColorSpace=T.SRGBColorSpace;OF3.r.toneMapping=T.ACESFilmicToneMapping;OF3.r.toneMappingExposure=1.05;
     // the kiosk is a small machine's own screen (a Pi): no shadows there either
@@ -234,6 +242,9 @@ function of3Size(){
   OF3.r.setPixelRatio(Math.min(devicePixelRatio||1,OF3.hq?1.5:1));
   OF3.r.setSize(cw,ch,false);OF3.cv.style.width=cw+'px';OF3.cv.style.height=ch+'px';
   OF3.cw=cw;OF3.ch=ch;OF3.dirty=true;
+  // where the canvas is, seen from the layer the words are placed in
+  const a=OF3.cv.getBoundingClientRect(),b=OF3.ui?OF3.ui.getBoundingClientRect():a;
+  OF3.off={x:a.left-b.left,y:a.top-b.top};
 }
 function of3Dispose(){
   const T=OF3.T;
@@ -514,6 +525,14 @@ function of3Frame(view){
   c.position.copy(t).addScaledVector(b.d,80);c.lookAt(t);c.updateProjectionMatrix();c.updateMatrixWorld();
   OF3.view={x:view.x,z:view.z,h};OF3.dirty=true;
 }
+/* What covers the picture, in pixels: in Office HQ the prompt bar above and the dock
+   below, so the ring fits in what is left. Nothing elsewhere. */
+function of3Pads(){
+  if(!of3HQ()||!OF3.cv)return {t:0,b:0};
+  const top=OF3.cv.getBoundingClientRect().top,bar=document.getElementById('omnibar'),dock=document.getElementById('taskbar');
+  const r=bar&&bar.offsetParent?bar.getBoundingClientRect():null,d=dock&&dock.offsetParent?dock.getBoundingClientRect():null;
+  return {t:r?Math.max(0,r.bottom-top+18):60,b:d?Math.max(0,OF3.ch-(d.top-top)+10):100};
+}
 /* The whole office in the window, with room above each room for its card. */
 function of3FitView(){
   const L=OFFICE.L,b=of3Basis(),asp=OF3.cw/Math.max(1,OF3.ch);
@@ -524,8 +543,11 @@ function of3FitView(){
     see(q[0]/OF3_U,-.1,q[1]/OF3_U);see(q[0]/OF3_U,OF3_SLAB+OF3_WALL+.75,q[1]/OF3_U)}));
   y1+=(y1-y0)*.05;      // the top rooms' cards stand above their walls
   const mx=(x1-x0)*.06;x0-=mx;x1+=mx;   // and the side rooms' cards stick out past them
-  const g=of3Ground((x0+x1)/2,(y0+y1)/2);
-  return {x:g.x,z:g.z,h:Math.max((y1-y0)/2,(x1-x0)/2/asp)*1.05};
+  const pad=of3Pads(),fh=Math.max(.3,(OF3.ch-pad.t-pad.b)/Math.max(1,OF3.ch));
+  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/asp)*1.05,k=2*h/Math.max(1,OF3.ch);
+  // the picture's middle goes in the middle of what is left uncovered
+  const g=of3Ground((x0+x1)/2,(y0+y1)/2+(pad.t-pad.b)/2*k);
+  return {x:g.x,z:g.z,h};
 }
 function of3RoomView(name){
   const r=OFFICE.L.rooms.find(q=>q.name===name);if(!r)return OF3.fit;
@@ -536,11 +558,11 @@ function of3RoomView(name){
     x0=Math.min(x0,sx);x1=Math.max(x1,sx);y0=Math.min(y0,sy);y1=Math.max(y1,sy)}));
   // the list of who is in the room covers the right of a wide window, and the bottom of a
   // phone: the room fits in what is left, centred there
-  const phone=cw<=640,list=phone?0:Math.min(280,cw*.3),under=phone?ch*.46:0;
-  const fw=(cw-list-24)/cw,fh=(ch-under-16)/ch;
+  const pad=of3Pads(),phone=cw<=640,list=phone?0:Math.min(280,cw*.3),under=(phone?ch*.46:0)+pad.b,over=pad.t;
+  const fw=(cw-list-24)/cw,fh=Math.max(.25,(ch-under-over-16)/ch);
   const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/(asp*fw))*1.08;
   const k=2*h/ch;   // world units per pixel
-  const g=of3Ground((x0+x1)/2+list/2*k,(y0+y1)/2-under/2*k);
+  const g=of3Ground((x0+x1)/2+list/2*k,(y0+y1)/2-(under-over)/2*k);
   return {x:g.x,z:g.z,h};
 }
 function of3Fit(){
@@ -738,7 +760,8 @@ function of3El(key,cls,html){
    under feet), 'c' centre, '' top-left (balloons, placed by hand) */
 function of3Place(e,x,y,dx,dy,anchor){
   const an={b:' translate(-50%,-100%)',t:' translate(-50%,0)',c:' translate(-50%,-50%)'}[anchor===undefined?'b':anchor]||'';
-  const t=`translate(${Math.round(x+(dx||0))}px,${Math.round(y+(dy||0))}px)${an}`;
+  const o=OF3.off||{x:0,y:0};
+  const t=`translate(${Math.round(x+(dx||0)+o.x)}px,${Math.round(y+(dy||0)+o.y)}px)${an}`;
   if(e._t!==t){e.style.transform=t;e._t=t}
 }
 function of3Overlay(now){
@@ -841,5 +864,10 @@ function of3Roster(){
       <small>${esc([(r.titles||{})[m],state(p),O.brains[m]].filter(Boolean).join(' · '))}</small></span></button>`}).join('')
       :`<div class="mut of3-about">${r.kind==='meeting'?'Nobody is meeting right now. Huddles and missions with two or more people gather here.':'Nobody sits here.'}</div>`}`;
   el.querySelector('.of3-back').onclick=()=>of3Focus(null);
-  el.querySelectorAll('.of3-row').forEach(b=>b.onclick=()=>{const p=O.people[b.dataset.k];if(p){of3Need(p);officeTapPerson(p)}});
+  el.querySelectorAll('.of3-row').forEach(b=>b.onclick=()=>{const p=O.people[b.dataset.k];if(!p)return;
+    // Office HQ has no chat of its own: the Office window opens, ready to ask them
+    if(O.w&&O.w.scene){const k=b.dataset.k;openApp('office');
+      setTimeout(()=>{const w=OFFICE.w,i=w&&!w.scene&&w.el.querySelector('.of-chat .cp-in');
+        if(i&&k!=='@agent'){i.value='@'+k+' ';i.focus();w.el.querySelector('.of-wrap').classList.add('chat-open')}},500);return}
+    of3Need(p);officeTapPerson(p)});
 }

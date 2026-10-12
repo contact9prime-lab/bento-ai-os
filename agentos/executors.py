@@ -794,7 +794,17 @@ def new_app_note(co: dict) -> str:
         f"Studio. AgentOS installs it as an app when you finish, and says so in the "
         f"chat. Leave the file empty for any other kind of request — an empty file "
         f"means 'this was not an app build', and nothing is installed."
+        + _brief_line(co)
     )
+
+
+def _brief_line(co: dict) -> str:
+    """Where the app brief is (server.write_app_brief), for a build only: the design kit,
+    the runtime and the quality bar, the same ones App Studio's builder is held to."""
+    b = (co or {}).get("brief")
+    return (f" Before writing an app, read {b}: it is the design kit, the app runtime and "
+            f"the quality bar every AgentOS app meets, and what is in it is already in the "
+            f"page around your file." if b else "")
 
 
 def chat_app_note(co: dict) -> str:
@@ -814,6 +824,7 @@ def chat_app_note(co: dict) -> str:
         f"anything else. If they want it kept up to date on a clock, it refreshes itself "
         f"while open with setInterval in that file, and while it is closed with a schedule "
         f"for it (schedule_task with app=\"{co['name']}\", when you have that tool)."
+        + _brief_line(co)
     )
 
 

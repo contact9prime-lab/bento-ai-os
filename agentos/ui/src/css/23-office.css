@@ -238,12 +238,12 @@ body.dev-touch .of-x{min-width:var(--tap)}
 #office-scene .of3-ui *{pointer-events:none!important}
 #office-scene .of-cv3{cursor:default}
 /* the scene is a band under the home screen: one line a card, the name and the faces */
-#office-scene .of3-card{grid-template-rows:auto;padding:3px 7px 3px 5px}
-#office-scene .of3-card .of3-k,#office-scene .of3-card .of3-w{display:none}
-#office-scene .of3-card>i{grid-row:1;width:11px;height:11px}
-#office-scene .of3-card b{font-size:10.5px}
-#office-scene .of3-faces{grid-row:1}
-#office-scene .of3-faces .of3-face{width:16px;height:16px}
+#office-scene:not(.hq) .of3-card{grid-template-rows:auto;padding:3px 7px 3px 5px}
+#office-scene:not(.hq) .of3-card .of3-k,#office-scene:not(.hq) .of3-card .of3-w{display:none}
+#office-scene:not(.hq) .of3-card>i{grid-row:1;width:11px;height:11px}
+#office-scene:not(.hq) .of3-card b{font-size:10.5px}
+#office-scene:not(.hq) .of3-faces{grid-row:1}
+#office-scene:not(.hq) .of3-faces .of3-face{width:16px;height:16px}
 @media (max-width:640px){
   .of3-card{max-width:150px;padding:4px 7px 4px 5px;grid-template-columns:auto 1fr}
   .of3-faces{display:none}
@@ -252,3 +252,15 @@ body.dev-touch .of-x{min-width:var(--tap)}
 @media (prefers-reduced-motion:reduce){.of3-card{transition:none}}
 /* inside one room, the list says who is there: the other rooms' cards would only cover it */
 .of3-ui.focused .of3-card,.of3-ui.focused .of3-brain{display:none}
+/* Office HQ: the desktop scene, the whole screen in 3D, the prompt bar over it. The
+   greeting and the chips step aside (the Mind's rule); the cards stay two lines and take
+   taps, because they live in the desktop rather than the wall. */
+body.immersive #office-scene.hq{top:0!important;bottom:0}
+body.immersive #office-scene.hq .of-scroll{width:100%;height:100%;border-radius:0}
+body.immersive #office-scene.hq canvas{border-radius:0}
+body.imm-hq .hm-greet,body.imm-hq .hm-chips,body.imm-hq .hm-play,body.imm-hq .hm-now{display:none!important}
+body.imm-hq #wall.has::after{display:none}
+.of3-ui.hq{position:absolute;inset:0;z-index:0}
+body.has-win .of3-ui.hq{display:none}
+@media (max-width:640px){.of3-ui.hq .of3-card .of3-k,.of3-ui.hq .of3-card .of3-w{display:none}
+  .of3-ui.hq .of3-card{padding:3px 7px 3px 5px}.of3-ui.hq .of3-card b{font-size:10.5px}}

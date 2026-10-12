@@ -59,6 +59,13 @@ ends, the app is on your desktop and in App Studio, and the chat offers **Open i
   be restored.
 - If you stop the turn after the app was written, it is still installed. If you stop it halfway
   through writing the file, nothing is installed, and the chat says where the unfinished file is.
+- A chat build is held to the same bar as an App Studio one. The agent gets `APP_BRIEF.md` beside
+  the file it writes, with the design kit, the runtime and the quality rules. When it finishes,
+  the file is checked; if something is broken (a script that doesn't parse, a `confirm()` the
+  sandbox always answers with "no"), Claude Code gets one more turn in the same session to fix
+  exactly that, and the chat says *checked the app: fixing 2 problems*. A missing widget view or
+  assistant is not a reason to spend another turn here.
+- The built-in agent's `create_app` answers with the same check, so it can fix what it saved.
 
 ![App Studio showing the chat an app was built in, with Open in Chat](screenshots/studio-built-in-chat.png)
 
@@ -129,7 +136,7 @@ The **Store** has four tabs:
 
 ## What apps can do
 
-Every built app runs in a same-origin frame and is given a small runtime automatically. That means an
+Every built app runs in a sandboxed frame and is given a small runtime automatically. That means an
 app's own JavaScript can:
 
 ### Store its own data
@@ -143,6 +150,28 @@ await appData.set(state);                    // persists it
 
 This survives reloads **and** is readable by the agent, so you can ask *"what's in my Notes app?"*
 and it will answer from the app's stored data. Prefer `appData` over `localStorage`.
+
+### Feel finished
+
+The page around an app already carries a design kit and a few helpers, so an app the agent builds
+looks and behaves like part of the desktop without writing its own:
+
+```js
+appToast('Saved', 'ok');                              // a small note at the bottom
+if (await appConfirm('Delete 3 items?', {danger: true})) remove();
+appCelebrate();                                       // a short burst of confetti, for a real win
+btn.innerHTML = appIcon('plus') + ' Add';             // appIcon.names lists the icons
+appShare({title: 'My week', text: summary});          // the share sheet, or the clipboard
+appFmt.money(12.5, 'EUR'); appFmt.ago(ts); appFmt.dur(125);   // "€12.50", "2 min ago", "2:05"
+```
+
+The kit's classes cover the usual pieces: `.hero` for the first screen, `.tabs`, `.chip`,
+`.toggle`, `.progress`, `.stat`, `.list` with `.item`, `.avatar`, `.badge.ok/.warn/.err` and
+`.skeleton` while something loads. The accent follows the theme you chose on the desktop.
+
+The frame is sandboxed without dialogs, so `confirm()` always answers "no" and `prompt()` returns
+nothing. Use `appConfirm` or an inline field. `alert()` is shown as a toast. The checker marks a
+`confirm()` or `prompt()` as broken.
 
 ### Call the operating system
 Apps can run any agent or MCP tool to pull live data or take action:

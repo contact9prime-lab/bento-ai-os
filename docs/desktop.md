@@ -308,6 +308,9 @@ It was built ground-up in five phases, each judged in a real browser and by the 
   ([The Office](office.md)). World, which is experimental, puts your team in a small 3D place
   where they have feelings that come from what they really do, and your lead asks how you are.
   It all sleeps the moment you pick another scene ([The World](world.md)).
+- **Office HQ.** The 3D office as the whole desktop: rooms around the Brain behind the prompt
+  bar, the cards tappable to look inside a room, and the Office window a tap away
+  ([The Office](office.md#in-3d-rooms-around-the-brain)).
 - **And Mind.** Your lead as a glowing core, with Memory, Knowledge, Missions and each
   specialist around it, every memory, fact, mission and run drawn as a strand, and a spark
   running out along one whenever something actually runs. The side panels are the week in

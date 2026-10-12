@@ -240,3 +240,14 @@ function smRender(q){
   }
   if(!own.length&&!nat.length)sm.innerHTML='<p class="mut" style="grid-column:1/-1;padding:14px 6px">nothing matches</p>';
 }
+
+/* An app asks for the desktop's accent once it loads (APP_RUNTIME posts 'theme?'), so the
+   buttons in what the agent built match the theme the person chose. Only a frame this page
+   drew gets an answer, and only colours travel. */
+window.addEventListener('message',e=>{
+  const d=e.data;if(!d||d.agentos!=='theme?')return;
+  const fr=[...document.querySelectorAll('iframe')].find(f=>f.contentWindow===e.source);if(!fr)return;
+  const cs=getComputedStyle(document.body),v=k=>cs.getPropertyValue(k).trim(),vars={};
+  ['--acc','--acc2','--on-acc'].forEach(k=>{const x=v(k);if(x)vars[k]=x});
+  try{e.source.postMessage({agentos:'theme',vars},'*')}catch(_){}
+});

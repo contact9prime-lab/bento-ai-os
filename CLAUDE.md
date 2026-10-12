@@ -1383,6 +1383,24 @@ connection should be there in the chat". `tests/test_app_schedules.py`. Five thi
 The `app_data` broadcast reaches an open app as the `appdata` event (`09-websocket.js` posts into
 the app's frames; the runtime accepts it only from `parent`).
 
+## An app is held to one bar, wherever it was built
+
+`APP_UI_CSS` (the kit), `APP_RUNTIME` (appData … appToast, appConfirm, appCelebrate, appIcon,
+appShare, appFmt) and `BUILDER_PERSONA` are the bar; `APP_CRAFT`/`APP_BRIEF` is the same text
+without the create_app mechanics, written as `APP_BRIEF.md` beside a chat build's file
+(`write_app_brief`, named by `executors._brief_line`). `tests/test_app_quality.py`. Four things:
+- **Only BROKEN spends a chat turn** (`_chat_app_fix`): one resumed turn on a CLI in `RESUMES`,
+  its words kept out of the reply. A contract item (no widget view, no copilot) is the Studio's
+  bar, not a reason to bill a chat again.
+- **The frame has no dialogs.** `confirm()` answers false and `prompt()` null in a sandbox without
+  `allow-modals`, so appcheck marks either BROKEN (`modal-dialog`, inline handlers included) and
+  the runtime turns `alert()` into a toast. Do not add `allow-modals` to fix it: use appConfirm.
+- **APP_RUNTIME is %-formatted.** A lone `%` in new JS is a TypeError at every app page; write
+  `%%`. The test runs the rendered runtime in Node.
+- **The theme is asked for, never assumed.** The runtime posts `theme?`; `05-apps-registry.js`
+  answers only a frame it drew, with three colour tokens, and the runtime takes only `--name`
+  keys with colour-shaped values.
+
 ## An app's AI is the machine's brain, and the app is the principal of every step
 
 `executors.fenced_brain` / `ask_fenced` + the `/api/apps/llm/*` and `/api/apps/agent` routes;
@@ -1980,6 +1998,9 @@ things keep it true:
   signature carries their positions (rebuilt once the window settles). With only the names in
   it, maximising left people and cards beside furniture that had not moved. Faces are
   `avatarSrc`/`avatarRecipeSrc`, no painter. No WebGL, or a renderer that will not start, is the flat office plus `OF3.why`.
+  **Office HQ** (scene `hq`) is the same office scene full screen and always 3D (`of3HQ`); its
+  words layer lives in `#desktop` (the World's tags argument: the wall cannot be tapped) and the
+  prompt bar and dock are `of3Pads`, so the ring fits between them.
 - **Rooms are painted once** into an offscreen layer per layout; a frame is a blit plus people
   (~1.1ms). 30fps while something moves, 6 at rest, none asleep (`winAwake`, `winTick(...,0)`
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a

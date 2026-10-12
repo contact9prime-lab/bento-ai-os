@@ -117,7 +117,7 @@ function officeClose(w){
    tapped, and the home screen's "See them at work" chip is the door to the window.
    Faces: GUI/SUI this canvas inside #wall; TUI has no wallpaper (bento office is its
    roll call). */
-var OFFICE_SCENE={on:false,host:null,wake:0};
+var OFFICE_SCENE={on:false,host:null,wake:0,hq:false};
 function officeSceneStart(){
   if(OFFICE_SCENE.on)return;
   const wall=document.getElementById('wall');if(!wall)return;
@@ -125,6 +125,7 @@ function officeSceneStart(){
   if(!host){host=document.createElement('div');host.id='office-scene';host.setAttribute('aria-hidden','true');
     host.innerHTML='<div class="of-scroll"><canvas class="of-cv"></canvas></div>';wall.appendChild(host)}
   OFFICE_SCENE.on=true;OFFICE_SCENE.host=host;
+  host.classList.toggle('hq',!!OFFICE_SCENE.hq);
   // the band starts under the home screen's last line, and follows it when a line
   // appears there (a working line, the office chip): the greeting must never sit on
   // top of the office
@@ -158,7 +159,8 @@ function officeSceneAttach(){
 }
 function officeSceneFit(){
   const S=OFFICE_SCENE,home=document.getElementById('home');if(!S.host)return false;
-  if(document.body.classList.contains('kiosk')){       // the kiosk face: the whole screen
+  // the kiosk face and Office HQ: the whole screen
+  if(document.body.classList.contains('kiosk')||S.hq){
     if(S.top===0)return false;S.top=0;S.host.style.top='0px';return true}
   let top=Math.round(innerHeight*.42);
   if(home&&!home.hidden)[...home.children].forEach(c=>{const r=c.getBoundingClientRect();if(r.height)top=Math.max(top,Math.round(r.bottom)+14)});
@@ -1501,4 +1503,4 @@ async function officeSave(patch){
   }catch(e){toast('could not change the office')}
 }
 // first paint: 01b ran before this file existed, so the scene starts itself
-if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='office')officeSceneStart();
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&(IMMERSIVE.scene==='office'||IMMERSIVE.scene==='hq')){OFFICE_SCENE.hq=IMMERSIVE.scene==='hq';officeSceneStart()}
