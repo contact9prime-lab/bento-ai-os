@@ -61,6 +61,9 @@ COLORS: dict[str, str] = {
     "sky": "#0ea5e9", "lime": "#84cc16", "orange": "#f97316", "slate": "#64748b",
 }
 DECOR = ("plants", "coffee", "whiteboard", "bookshelf", "arcade", "posters")
+#: How the office is drawn. "3d": rooms round the Brain in 3D (24k-office3d.js), which
+#: falls back to "flat" on a screen with no 3D graphics and says so. "flat": the comic plan.
+LOOKS = {"3d": "3D rooms around the Brain", "flat": "Flat comic plan"}
 PETS = ("none", "cat", "dog", "robot")
 
 MAX_DEPTS = 10         # a company's worth of rooms (company.py), plus the fixed ones
@@ -78,6 +81,7 @@ DEFAULT: dict = {
     "lounge": True,
     "decor": ["plants", "coffee", "whiteboard"],
     "pet": "cat",
+    "look": "3d",
 }
 
 
@@ -141,6 +145,9 @@ def clean(spec: dict, known: list[str] | None) -> tuple[dict, list[str]]:
             out[flag] = bool(spec[flag]) and str(spec[flag]).lower() not in ("false", "no", "off", "0")
     if "pet" in spec:
         out["pet"] = _choice(spec["pet"] or "none", PETS, "pet")
+    if "look" in spec:
+        v = str(spec["look"] or "").strip().lower().replace(" ", "")
+        out["look"] = _choice({"3-d": "3d", "comic": "flat", "2d": "flat", "plan": "flat"}.get(v, v), LOOKS, "look")
     if "decor" in spec:
         items = spec["decor"] if isinstance(spec["decor"], list) else str(spec["decor"] or "").split(",")
         out["decor"] = []
@@ -263,9 +270,23 @@ def view(cfg: dict, store) -> dict:
     one = facemod.buddy(cfg)
     if one:
         rooms = [r for r in rooms if r["kind"] in ("lead", "lounge")]
-    return {"office": office, "rooms": rooms, "agents": roster, "buddy": one,
+    return {"office": office, "rooms": rooms, "agents": roster, "buddy": one, "brain": brain(store),
+            "looks": LOOKS,
             "style": STYLES[office["style"]], "styles": STYLES, "colors": COLORS,
             "decor": list(DECOR), "pets": list(PETS), "max_departments": MAX_DEPTS}
+
+
+def brain(store) -> dict:
+    """What the Brain in the middle of the 3D office holds: counted rows, never a guess.
+    Memories are the person's notes; facts are knowledge-graph edges. Every space's rows
+    count, because the office is the whole team's and is not scoped to a project."""
+    out = {"memories": 0, "facts": 0}
+    for key, table in (("memories", "memories"), ("facts", "kg_edges")):
+        try:
+            out[key] = int(store.db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        except Exception:
+            pass
+    return out
 
 
 def describe(v: dict) -> str:
@@ -294,7 +315,8 @@ def text(v: dict) -> str:
     shared = [r["name"].lower() for r in v["rooms"] if r["kind"] in ("meeting", "lounge")]
     lines.append("")
     lines.append(f"  also: {', '.join(shared) or 'no shared rooms'}"
-                 f" · decor: {', '.join(o['decor']) or 'none'} · pet: {o['pet']}")
+                 f" · decor: {', '.join(o['decor']) or 'none'} · pet: {o['pet']}"
+                 f" · look: {LOOKS.get(o.get('look'), o.get('look'))}")
     if not v["agents"]:
         lines.append("  No specialists yet — ask your agent for one and they take a desk here.")
     return "\n".join(lines)
@@ -341,6 +363,7 @@ def design_prompt(description: str, v: dict) -> tuple[str, str]:
         '- "lounge": true/false\n'
         f'- "decor": a list from {", ".join(DECOR)}\n'
         f'- "pet": one of {", ".join(PETS)}\n'
+        f'- "look": one of {", ".join(LOOKS)} ({"; ".join(k + " = " + d for k, d in LOOKS.items())})\n'
         "Set only the fields the description is about. Keep the current departments unless "
         f"asked to change them. Currently: {json.dumps(current_of(v))}")
     return system, prompt
@@ -348,7 +371,7 @@ def design_prompt(description: str, v: dict) -> tuple[str, str]:
 
 def current_of(v: dict) -> dict:
     o = v["office"]
-    return {k: o[k] for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet")}
+    return {k: o[k] for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet", "look")}
 
 
 def read_design(raw: str, known: list[str]) -> tuple[dict, list[str]]:
@@ -362,7 +385,7 @@ def read_design(raw: str, known: list[str]) -> tuple[dict, list[str]]:
     except Exception:
         return {}, []
     patch, dropped = {}, []
-    for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet"):
+    for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet", "look"):
         if k not in data:
             continue
         try:
@@ -395,6 +418,10 @@ def from_words(description: str) -> dict:
     for p in PETS[1:]:
         if f" {p} " in t:
             patch["pet"] = p
+    if any(f" {w} " in t for w in ("3d", "3-d", "isometric", "realistic")):
+        patch["look"] = "3d"
+    elif any(f" {w} " in t for w in ("flat", "2d", "2-d")):
+        patch["look"] = "flat"
     decor = [d for d in DECOR if f" {d.rstrip('s')}" in t]
     if decor:
         patch["decor"] = decor

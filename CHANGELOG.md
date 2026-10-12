@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.28 — 2026-10-12
+
+**The Office in 3D, and a big team that doesn't clutter it.** Asked for with a screenshot
+of an isometric agent HQ: "I want my office to look like this, but when I add so many agents
+it becomes really cluttered".
+- **Rooms around the Brain.** Each department is a room on a ring, with your agent's office
+  at the top and the Brain in the middle. Paths run from the Brain to every door. A memory
+  tool sends a spark to the Brain, and its card counts your memories and facts. It is the
+  new default; **✎ Design → Look**, `bento office look flat` or the agent's `set_office` gives
+  you the comic floor plan back.
+- **A room has four desks, and everyone else is on its card** ("Engineering · 7 agents · 3
+  running", with faces). Who has a desk follows the work: the head first, then whoever is
+  working or waiting for you. Somebody who gets work walks in from the door and sits down;
+  somebody working never loses their desk. Only people on the move have a name tag.
+- **Tap a room or its card to look inside**: the camera moves in, every desk is named, and a
+  list has the whole department with what each one is doing. Scroll to zoom, drag to look
+  around, Esc to go back. The ring takes the shape of the window (wide, phone, desktop scene).
+- Measured in Chromium with software rendering, nine rooms and twenty agents: 2.3 to 5 ms a
+  frame, 152 draw calls. A screen with no 3D graphics gets the flat office and says why.
+
 ## 0.6.27 — 2026-10-12
 
 **Calm agents, the Office awake for chat and builds, and "Always" that sticks.** Four reports.

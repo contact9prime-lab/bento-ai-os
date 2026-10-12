@@ -1,7 +1,8 @@
 # The Office
 
-The **Office** app is a playground where you watch your agents work. It is drawn as a
-comic-strip office:
+The **Office** app is a playground where you watch your agents work. It comes in two
+looks: rooms in 3D around a glowing Brain (the default, below), or a flat comic-strip
+office:
 
 - your agent sits in the corner office, behind the mission board;
 - each specialist has a desk in a department;
@@ -14,6 +15,39 @@ on the left.
 ![The Office in the Pop comic style: the analyst has walked to the writer's desk and asked a question, the writer answers in a balloon, the researcher's monitor is lit with a burst naming the tool it just called, and the chat is on the right](screenshots/office.png)
 
 Open it from the dock, the app deck (Essentials), or ask your agent to "open the office".
+
+## In 3D: rooms around the Brain
+
+![The 3D office with nineteen specialists: nine rooms on a ring round the Brain, each with a card giving its name, how many agents are in it and how many are running, and their faces. Aria walks down the path to Writing with work, Engineering's lit monitors show three people working, and two balloons say what they found](screenshots/office-3d.png)
+
+Each department is a room on a ring, with your agent's office at the top, the meeting room
+and the lounge beside them, and the Brain in the middle. Paths run from the Brain to every
+room's door, and people walk along them when they go to see each other. When an agent saves
+or looks something up in memory, a spark runs from its room to the Brain and the Brain
+pulses. The card over the Brain counts what it holds: your memories and the facts in the
+knowledge graph.
+
+A big team doesn't turn into a crowd:
+
+- **A room has four desks. Everyone else is on its card.** "Engineering · 7 agents · 3
+  running" with their faces. Who has a desk follows the work: the head of the department
+  first, then whoever is working or waiting for you. When somebody without a desk gets work,
+  they walk in from the door and sit down, and an idle colleague gives up their desk.
+  Somebody working never loses theirs, so a busy room doesn't turn into people walking in
+  and out.
+- **Names are on the cards, not over every head.** Only people on the move have a name tag.
+- **Tap a room or its card to look inside.** The camera moves in, every desk is named, and
+  the list beside it has the whole department, desk or not, with what each one is doing.
+  Tap a name to ask them in the chat. **◂ All rooms**, Esc or a double tap goes back.
+- **The ring takes the shape of your window.** Wide windows spread it out, a phone stands
+  it up, and the camera always fits the whole office. Scroll to zoom and drag to look around.
+
+![Inside Engineering: four desks with names under them, three monitors lit, and the list on the right with all seven people, who is working and who is between tasks](screenshots/office-3d-room.png)
+
+Everything that moves here moves for the same reasons as in the flat office (next section):
+the same walks, papers, balloons and bursts, drawn in 3D. The faces are the same characters
+as everywhere else. On a screen with no 3D graphics the office is drawn flat and Design says
+why. Switch looks in **✎ Design → Look**, or with `bento office look 3d` / `flat`.
 
 ## What moves, and why
 
@@ -190,6 +224,7 @@ Press **✎ Design**:
   and named. It goes through the server, not the chat, because a chat forwarded to Claude
   Code has no way to change the office. The same box is in Settings → Appearance → Office,
   in the setup step, and in the terminal as `bento office design WORDS`.
+- **Look**: *3D rooms around the Brain* (the default) or the *Flat comic plan*.
 - **Style**: *Pop comic* (the default), *Startup loft*, *Glass tower*, *Cozy studio*,
   *Space station*, *Greenhouse* or *Night shift*.
 - **Name on the door.**
@@ -268,7 +303,7 @@ HQ — Pop comic (bright halftone floors, bold ink, primary colours)
   Writing                  writer  [rose]
   Open floor               engineer, validator
 
-  also: meeting room, lounge · decor: plants, coffee, whiteboard · pet: cat
+  also: meeting room, lounge · decor: plants, coffee, whiteboard · pet: cat · look: 3D rooms around the Brain
 
 $ bento office styles
 $ bento office style space
@@ -278,6 +313,7 @@ $ bento office dept-rm Writing
 $ bento office meeting off
 $ bento office decor plants arcade
 $ bento office pet robot
+$ bento office look flat               # the comic floor plan; `look 3d` for the rooms round the Brain
 $ bento office design a space station called Orbit with a dog
 $ bento office picture office.png      # the roll call as a PNG, for a box with no screen
 $ bento office snap                    # that picture to Telegram / WhatsApp
@@ -315,3 +351,17 @@ agents:
 
 With reduced motion turned on, the office draws one still frame per event: people appear
 where they are going instead of walking there.
+
+The 3D office loads its 3D library only when that look is on. Its furniture is merged into
+a few dozen shapes when the plan is built, people are flat sprites, and the words are
+ordinary page text over the picture. It uses the same frame budget as the flat office.
+Measured in Chromium with software rendering (no graphics card), nine rooms and twenty
+agents:
+
+| | |
+|---|---|
+| Time to draw a frame | 2.3 to 5 ms typical, 9 ms at most |
+| Draw calls | 152 |
+| Triangles | about 16,000 |
+
+Software rendering, phones and the kiosk get no shadows and a lower pixel ratio.

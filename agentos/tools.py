@@ -3435,7 +3435,7 @@ class Toolbox(usersmod.Scoped):
 
     async def set_office(self, style: str = "", name: str = "", agent: str = "", department: str = "",
                          color: str = "", departments=None, remove_department: str = "",
-                         meeting=None, lounge=None, decor=None, pet: str = "") -> str:
+                         meeting=None, lounge=None, decor=None, pet: str = "", look: str = "") -> str:
         """Look at or redesign the Office playground — the agent's half of its editor
         (the parity law). Every value is from office.py's closed set, and a refusal
         names the choices. With no changes it describes the office and the options,
@@ -3447,7 +3447,7 @@ class Toolbox(usersmod.Scoped):
         try:
             if agent:
                 of.place(self.cfg, self.store, agent, department, color)
-            patch = {k: v for k, v in (("style", style), ("name", name), ("pet", pet)) if v}
+            patch = {k: v for k, v in (("style", style), ("name", name), ("pet", pet), ("look", look)) if v}
             if meeting is not None:
                 patch["meeting"] = meeting
             if lounge is not None:
@@ -3472,7 +3472,8 @@ class Toolbox(usersmod.Scoped):
                         f"departments (up to {of.MAX_DEPTS}, each a name, a colour — "
                         f"{', '.join(of.COLORS)} — and members from: {', '.join(v['agents']) or 'no specialists yet'}), "
                         f"move one agent with agent+department, remove_department, meeting and lounge "
-                        f"(yes/no), decor ({', '.join(of.DECOR)}) and pet ({', '.join(of.PETS)}).")
+                        f"(yes/no), decor ({', '.join(of.DECOR)}), pet ({', '.join(of.PETS)}) "
+                        f"and look ({', '.join(of.LOOKS)}).")
         except ValueError as e:
             return f"[error] {e}"
         cfgmod.save_config(self.cfg)
@@ -4992,7 +4993,9 @@ DESKTOP_TOOL_SCHEMAS = [
             "lounge": {"type": "boolean"},
             "decor": {"type": "array", "items": {"type": "string",
                       "enum": ["plants", "coffee", "whiteboard", "bookshelf", "arcade", "posters"]}},
-            "pet": {"type": "string", "enum": ["none", "cat", "dog", "robot"]}}},
+            "pet": {"type": "string", "enum": ["none", "cat", "dog", "robot"]},
+            "look": {"type": "string", "enum": ["3d", "flat"],
+                     "description": "3d: rooms around the Brain in 3D; flat: the comic floor plan"}}},
     },
     {
         "name": "list_themes",

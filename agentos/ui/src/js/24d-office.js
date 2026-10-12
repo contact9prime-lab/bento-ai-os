@@ -101,6 +101,7 @@ function renderOffice(el,w){
 }
 function officeClose(w){
   cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
+  of3Dispose();
   try{w._ofro&&w._ofro.disconnect()}catch(e){}
   OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;OFFICE.visiting=undefined;
   COMPANY.open=false;clearTimeout(COMPANY.timer);
@@ -141,7 +142,7 @@ function officeSceneStop(){
   try{S.ro&&S.ro.disconnect()}catch(e){}S.ro=null;
   removeEventListener('resize',officeSceneResize);
   document.removeEventListener('visibilitychange',officeKick);
-  if(OFFICE.w&&OFFICE.w.scene){cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
+  if(OFFICE.w&&OFFICE.w.scene){cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;of3Dispose();
     OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.fit=false}
   if(S.host)S.host.remove();S.host=null;
 }
@@ -206,6 +207,9 @@ function officeContext(){
 /* ---------------- layout: rooms into rows, desks into rooms ---------------- */
 function officeLayout(){
   const O=OFFICE,v=O.view;if(!O.cv||!v)return;
+  // rooms around the Brain, in 3D (24k-office3d.js), unless this screen cannot draw it
+  if(of3Wanted())return of3Layout();
+  of3Off();
   const sc=O.cv.parentElement;let cw=Math.max(280,sc.clientWidth);
   const phone=cw<640;
   // The kiosk face (24h-kiosk.js) is the whole screen of a small machine: people are
@@ -271,6 +275,7 @@ function officeLayout(){
 /* Everybody gets a home: a chair at a desk. A person already on the floor keeps
    walking; one whose department changed walks to the new desk rather than jumping. */
 function officeSeat(){
+  if(OFFICE.L&&OFFICE.L.radial)return of3Seat();
   const O=OFFICE,keep=O.people,seen={};
   O.L.rooms.forEach(r=>{
     if(r.kind==='lead'){
@@ -305,6 +310,7 @@ function officeRoomOf(kind){return OFFICE.L&&OFFICE.L.rooms.find(r=>r.kind===kin
    along the spine on the left if the other room is on another row, and in through
    that room's door. Nobody walks through a wall. */
 function officeRoute(p,to){
+  if(OFFICE.L&&OFFICE.L.radial)return of3Route(p,to);
   const L=OFFICE.L,from=p.mode==='seat'?{x:p.home.x,y:p.home.y+50}:{x:p.x,y:p.y};
   const ra=officeRoomAt(from),rb=officeRoomAt(to);
   const pts=[];
@@ -321,8 +327,10 @@ function officeRoute(p,to){
 function officeRoomAt(pt){return OFFICE.L.rooms.find(r=>pt.x>=r.x-2&&pt.x<=r.x+r.w+2&&pt.y>=r.y&&pt.y<=r.y+r.h+4)}
 function officeWalk(p,to,mode,then){
   if(!p||!OFFICE.L)return;
-  const route=officeRoute(p,mode==='seat'?{x:p.home.x+40,y:p.home.y+56}:to);
-  if(mode==='seat')route.push({x:p.home.x,y:p.home.y,sit:1});
+  // somebody without a desk (the 3D office's big departments) goes back to the door
+  const desk=mode==='seat'&&!p.bench;
+  const route=officeRoute(p,desk?{x:p.home.x+40,y:p.home.y+56}:to);
+  if(desk)route.push({x:p.home.x,y:p.home.y,sit:1});
   p.path=route;p.mode='walk';p.then={mode,fn:then||null};
   // a walk across a big office at a stroll takes ten seconds, long after the thing it
   // was showing has happened: nobody takes longer than OF_WALK_S to get anywhere
@@ -364,15 +372,17 @@ function faceBuddy(){
 }
 function officeSay(p,text,kind,ms){
   if(!p)return;
+  of3Need(p);
   p.say={text:String(text||'').replace(/\s+/g,' ').trim().slice(0,140),kind:kind||'say',at:performance.now(),ms:ms||OF_SAY_MS};
   officeKick();
 }
-function officeWork(p,on){if(!p)return;p.busy=on?performance.now():0;officeLine();officeKick()}
+function officeWork(p,on){if(!p)return;p.busy=on?performance.now():0;if(on)of3Need(p);officeLine();officeKick()}
 function officePop(p,text){if(!p)return;OFFICE.pops.push({p,text,at:performance.now()});officeKick()}
 function officeBurst(p,tool){
   if(!p)return;const now=performance.now();
   // the same step can arrive twice (the chat stream and the run's own telemetry)
   if(OFFICE.bursts.some(b=>b.p===p&&b.tool===tool&&now-b.at<700))return;
+  of3Need(p);
   OFFICE.bursts.push({p,tool,word:comicWord(tool),
     at:now,rot:(Math.random()-.5)*.3});
   if(OFFICE.bursts.length>12)OFFICE.bursts.shift();
@@ -450,7 +460,9 @@ function officePulse(kind,label,ev){
     }
     if(OF_WRITES.has(label)){const c=officeCabinetAt();
       if(c)officePaper(officeHead(who),{x:c.x+c.w/2,y:c.y+10,board:1},()=>{O.newFiles=(O.newFiles||0)+1;officeKick()})}
-    officeBurst(who,label);return;
+    officeBurst(who,label);
+    of3Tool(who,label);       // the 3D office: a memory tool sends a spark to the Brain
+    return;
   }
   if(kind==='say'){
     if(ev.kind==='talk')return;              // agents asking each other arrive as 'msg'
@@ -476,6 +488,7 @@ function officePulse(kind,label,ev){
 function officeHandOver(from,to,task){
   const O=OFFICE,start=()=>{officeWork(to,true);officePop(to,'!');officeSay(to,'on it'+(task?': '+task:''),'think',3600)};
   if(!to)return;
+  of3Need(to);      // a big department's idle member takes a desk before anybody walks over
   if(!from||from===to||from.visit||from.mode!=='seat'||O.static)return officePaper(from?officeHead(from):officeBoardPoint(),to,start);
   O.handed[to.key]=from.key;
   const visit={to:to.key,handover:1};from.visit=visit;officeWork(from,true);
@@ -640,6 +653,7 @@ function officeMeetSync(runId){
    to the table or its desk. */
 function officeEscalate(p,tool){
   const O=OFFICE,lead=O.people['@agent'];
+  of3Need(p);
   p.hand=1;p.waitSince=performance.now();p.waitTool=tool||'a step';
   officeSay(p,'? needs you: '+p.waitTool,'shout',36e5);
   if(p===lead||!lead||O.static)return;
@@ -678,7 +692,7 @@ function officeSnooze(){
 function officeMoving(){
   const O=OFFICE;
   return O.papers.length||O.bursts.length||O.pops.length||Object.values(O.people).some(p=>p.mode==='walk'||p.busy||p.say||p.hop)
-    ||(O.pet&&O.pet.walking)||!!O.ball;
+    ||(O.pet&&O.pet.walking)||!!O.ball||!!(O.L&&O.L.radial&&of3Moving());
 }
 function officeFrame(now){
   const O=OFFICE;O.raf=0;
@@ -928,6 +942,7 @@ function officeSheet(key){
 }
 function officeDraw(){
   const O=OFFICE,ctx=O.ctx;if(!ctx||!O.L)return;
+  if(O.L.radial)return of3Draw();
   const k=O.dpr*O.s;
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,O.cv.width,O.cv.height);
   if(O.bg&&O.bg.width&&O.bg.height)ctx.drawImage(O.bg,0,0);
@@ -1016,10 +1031,10 @@ function officeDesk(ctx,p){
 }
 /* A character from the server's sheet: stand, blink, one arm up, the other. Whole
    device pixels per sprite pixel, smoothing off — or it is not pixel art. */
-function officeSprite(ctx,p,x,feet,seated){
-  const O=OFFICE,img=p.recipe?officeExtraSheet(p):officeSheet(p.key);
-  const u=Math.max(2,Math.round(OF_K*O.s*O.dpr*(p.lead?1.1:1)));
-  const t=O.t,still=O.static,ph=p.phase;
+/* Which frame of the sheet a person shows, and how far up they bob: stand, blink, type,
+   walk, hand up, a hop when tapped. One rule for the flat office and the 3D one. */
+function officeFrameOf(p,seated){
+  const O=OFFICE,t=O.t,still=O.static,ph=p.phase;
   const walking=p.mode==='walk'&&!still;
   const blink=!still&&((t*.29+ph)%1)<.05;
   const frame=still?0:walking?(Math.floor(t*7)%2?3:2):p.hand?2:(p.busy&&seated)?(Math.floor(t*5+ph)%2?3:2):blink?1:0;
@@ -1027,6 +1042,12 @@ function officeSprite(ctx,p,x,feet,seated){
   // tapped: a little hop, two quick bounces over half a second
   if(p.hop&&!still){const a=(performance.now()-p.hop)/520;
     if(a<1)bob=Math.round(Math.abs(Math.sin(a*Math.PI*2))*(a<.5?5:2.5));else p.hop=0}
+  return {frame,bob};
+}
+function officeSprite(ctx,p,x,feet,seated){
+  const O=OFFICE,img=p.recipe?officeExtraSheet(p):officeSheet(p.key);
+  const u=Math.max(2,Math.round(OF_K*O.s*O.dpr*(p.lead?1.1:1)));
+  const {frame,bob}=officeFrameOf(p,seated);
   const k=O.dpr*O.s, dx=Math.round(x*k)-8*u, dy=Math.round(feet*k)-26*u-bob*u;
   if(!seated){ctx.fillStyle='#00000033';ctx.beginPath();ctx.ellipse(x,feet+1,15,4,0,0,6.283);ctx.fill()}
   if(!img)return;
@@ -1235,7 +1256,12 @@ function officeTap(e){
   const c=officeCabinetAt();
   if(c&&x>=c.x-6&&x<=c.x+c.w+6&&y>=c.y-6&&y<=c.y+c.h+14)return officeFiles(true);
   const hit=Object.values(O.people).find(p=>{const h=officeHead(p);return Math.abs(x-h.x)<34&&y>h.y-34&&y<h.y+60});
-  if(!hit)return;
+  officeTapPerson(hit);
+}
+/* Somebody was tapped: they hop, answer in their own words, and the chat is ready to
+   ask them (the flat office and the 3D one both end here). */
+function officeTapPerson(hit){
+  const O=OFFICE;if(!hit||!O.w)return;
   const i=O.w.el.querySelector('.of-chat .cp-in');
   if(hit.key!=='@agent'&&i){i.value='@'+hit.key+' ';i.focus();
     O.w.el.querySelector('.of-wrap').classList.add('chat-open')}
@@ -1297,6 +1323,9 @@ function officeDesignPaint(){
     <div class="of-sec">Style</div>
     <div class="of-styles">${Object.entries(v.styles).map(([k,s])=>`<button class="of-style${k===of.style?' on':''}" data-st="${k}" title="${esc(s.blurb)}">
       <i style="background:linear-gradient(135deg,${s.wall} 0 38%,${s.floor[0]} 38% 72%,${s.accent} 72%)"></i><span>${esc(s.label)}</span></button>`).join('')}</div>
+    <div class="of-sec">Look</div>
+    <div class="of-chips">${Object.entries(v.looks||{'3d':'3D','flat':'Flat'}).map(([k,l])=>`<button class="of-chip${(of.look||'3d')===k?' on':''}" data-look="${k}" aria-pressed="${(of.look||'3d')===k}">${esc(l)}</button>`).join('')}</div>
+    ${OF3.why&&(of.look||'3d')==='3d'?`<div class="mut of-row">${esc(OF3.why)}</div>`:''}
     <div class="of-sec">Name on the door</div>
     <div class="of-row"><input class="of-name" maxlength="24" value="${esc(of.name)}"></div>
     <div class="of-sec">Departments <span class="mut">${depts.length} of ${v.max_departments}</span></div>
@@ -1340,6 +1369,7 @@ function officeDesignPaint(){
   qa('[data-dec]').forEach(b=>b.onclick=()=>{const d=b.dataset.dec;
     officeSave({decor:of.decor.includes(d)?of.decor.filter(x=>x!==d):[...of.decor,d]})});
   qa('[data-pet]').forEach(b=>b.onclick=()=>officeSave({pet:b.dataset.pet}));
+  qa('[data-look]').forEach(b=>b.onclick=()=>officeSave({look:b.dataset.look}));
 }
 /* "Describe it", in the Office, Settings → Appearance and the setup step: one call to
    /api/office/design, which asks the machine's brain to choose from the closed set and

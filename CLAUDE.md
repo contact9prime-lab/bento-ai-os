@@ -1966,6 +1966,20 @@ things keep it true:
   and the window's ✦ is hidden — a second copy of the same thread would be two chats. A
   huddle asked there is drawn there: `agent_say` reaches the panel's `miniFeed.say` as well as
   Chat, or the panel sat empty while the agents met at the table.
+- **The 3D look draws the same plan; it decides nothing** (`24k-office3d.js`, office.py `look`,
+  `tests/test_office3d.py`). Asked for with a screenshot of an isometric agent HQ and "when I
+  add so many agents it becomes really cluttered". The flat office's logic (walks, papers,
+  balloons, `officeRoute`/`officeSeat`/`officeDraw`) branches on `O.L.radial` into `of3*`; the
+  rooms stand on a ring round the Brain (memories and KG facts, counted by `office.brain`).
+  Clutter is rules: a room seats `OF3_SEATS` and the rest are on its card; `of3Need` gives a
+  desk to whoever gets work (called from officeWork/Say/Burst/HandOver/Escalate), an IDLE
+  colleague gives it up, and somebody working is never moved out (a busy department became
+  people walking in and out). Names only on people moving and inside a focused room. The ring
+  is stretched by the window's shape (`OF3_TALL`, `wide`): a squashed ring stacked the side
+  rooms and every card covered the room behind; so a resize MOVES the rooms, and the scene's
+  signature carries their positions (rebuilt once the window settles). With only the names in
+  it, maximising left people and cards beside furniture that had not moved. Faces are
+  `avatarSrc`/`avatarRecipeSrc`, no painter. No WebGL, or a renderer that will not start, is the flat office plus `OF3.why`.
 - **Rooms are painted once** into an offscreen layer per layout; a frame is a blit plus people
   (~1.1ms). 30fps while something moves, 6 at rest, none asleep (`winAwake`, `winTick(...,0)`
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a
