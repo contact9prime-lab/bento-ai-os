@@ -4663,9 +4663,10 @@ body.imm-world.dev-mobile .hm-chips,body.imm-world.dev-mobile .hm-now{display:no
 /* working: a "…" speech bubble over the head, which is also the door to the work */
 .wd-tag .wd-dots{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);
   display:flex;gap:4px;align-items:center;padding:7px 10px;border-radius:13px 13px 13px 4px;cursor:pointer;
-  background:color-mix(in srgb,var(--bg) 88%,transparent);border:1px solid color-mix(in srgb,var(--txt) 18%,transparent);
-  box-shadow:0 4px 14px rgba(0,0,0,.25);min-height:var(--tap,28px);min-width:44px;justify-content:center}
-.wd-tag .wd-dots i{width:6px;height:6px;border-radius:50%;background:var(--txt);opacity:.35;animation:wdDot 1.4s ease-in-out infinite}
+  /* light, like a typing bubble: a dark one vanished against the canal at night */
+  background:#f4f2fb;border:1px solid rgba(0,0,0,.08);
+  box-shadow:0 6px 18px rgba(0,0,0,.35);min-height:var(--tap,28px);min-width:46px;justify-content:center}
+.wd-tag .wd-dots i{width:7px;height:7px;border-radius:50%;background:#2a2540;opacity:.35;animation:wdDot 1.4s ease-in-out infinite}
 .wd-tag .wd-dots i:nth-child(2){animation-delay:.2s}.wd-tag .wd-dots i:nth-child(3){animation-delay:.4s}
 .wd-tag .wd-dots:hover{border-color:var(--acc)}
 @keyframes wdDot{0%,60%,100%{opacity:.3}30%{opacity:.95}}
