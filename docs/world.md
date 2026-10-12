@@ -18,12 +18,12 @@ actually did, and tapping an agent's name tag shows the causes, with how long ag
 
 | What happens | What it can feel like (in Lantern Canal) |
 |---|---|
-| A step is refused by the rules | Flustered: a tantrum, steam and papers flying |
+| A step is refused by the rules | Flustered: a slow stomp, a puff of steam |
 | A step or a run fails | Gloomy: slumped under a rain cloud |
-| It waits for your yes | Restless: pacing, a bead of sweat |
-| It reads mail or a web page it can't fully trust | Wary: a nervous shiver |
+| It waits for your yes | Restless: a few small steps, a bead of sweat, until you answer |
+| It reads mail or a web page it can't fully trust | Wary: hunched, wavering a little |
 | Its AI provider asks it to slow down | Breathless: dozing, Zs rising |
-| It finishes a task | Proud: a hop and a burst of stars |
+| It finishes a task | Proud: a small hop and a star or two |
 | It asks a colleague, or helps one | Neighbourly: a wave and a heart |
 | The team adopts its idea in a vote | Proud |
 | It votes the other way and loses | Sulky: turned away, a scribble overhead |
@@ -46,6 +46,22 @@ in full, and growth still counts every piece of work.
 
 While an agent works, it goes to work in the world: out on a boat in the canal, off in a
 shuttle over the moon base, or into the flower beds in the garden.
+
+### Working is a bubble, and everyone stays calm
+
+A working agent shows a light "…" bubble over its head and nudges slightly, the way a
+person typing does. Tap the bubble to open the work: the chat it is answering, App Studio
+for a build, or the run. On a phone, where a head can sit under the prompt bar, the
+agent's card has the same button.
+
+Every pose is slow and small, eases in when a feeling changes, and never flips the figure
+round. It was reported as agents "moving left and right like an erratic person" after
+their work. Pacing added its sway on top of a position that was already easing, so the
+sway piled up, and a waiting feeling stayed on show for half an hour after you answered.
+Now answering ends the wait at once. Measured over six seconds in Chromium: pacing moved
+2.59 units and turned round eight times, and now moves 0.40 and never turns; a tantrum
+went from 0.62 to 0.11, and a cheer's hop from 0.54 to 0.14. A run of quick chat turns is
+one stay at work rather than a walk there and back for each.
 
 ## Your "no" never makes anyone sad
 

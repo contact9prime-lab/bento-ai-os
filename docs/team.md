@@ -160,6 +160,13 @@ revoke it in Permissions, set the cell back to *ask*, or delete the agent: a del
 permissions go with it, so a new agent with the same name starts from nothing. Inside a
 mission only the mission's own rules count.
 
+For a shell command, *Always* covers the next command like the one you allowed. A chain such
+as `cd app && npm test` is remembered as its programs, so `cd web && npm run build` is
+allowed too, while a program you never allowed still asks. A line with a redirect or a
+substitution, such as `pytest 2>&1 | tail -5`, is remembered as exactly that line, because
+a wildcard there could hide `> ~/.bashrc`. It used to remember only the first program, and
+these commands asked every time.
+
 ![The matrix in Settings: four agents, one allowed pair and one blocked pair](screenshots/team-matrix.png)
 
 **The mode switch** (Settings, or `bento team talk`) has four settings:

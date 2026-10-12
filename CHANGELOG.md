@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.27 — 2026-10-12
+
+**Calm agents, the Office awake for chat and builds, and "Always" that sticks.** Four reports.
+- **The World's agents no longer move about erratically.** Pacing piled its sway on top of an
+  easing position and turned the figure round at every step; a tantrum shook forty times a
+  second. Every pose is now slow, small and eased in, and never flips the figure. Measured in
+  Chromium: pacing 2.59 → 0.40 units and 8 turns → 0; a tantrum 0.62 → 0.11; a cheer 0.54 →
+  0.14. Answering an approval ends "waiting" at once (it lasted half an hour).
+- **Working is a light "…" bubble over the head with a slight nudge.** Tap it to open the
+  chat, App Studio or the run; the agent's card has the same button.
+- **The Office shows work that started before it opened**, keeps the lead's desk lit for a
+  whole App Studio build (it went dark after 12 seconds), and a chat ending no longer switches
+  off a desk with a build still going. The board says "building an app".
+- **"Always" on a shell command covers the next command like it.** It remembered only the
+  first program, so `cd app && npm test` or `pytest 2>&1 | tail` asked every time. A chain now
+  remembers its programs (`{cd*,npm*}`), and a line with a redirect remembers exactly itself.
+- **Your lead works as the lead of its team** in chat: it hands parts of real work to the
+  specialists, has a checker look at what matters, and says who did what. Measured with real
+  Claude Code turns, it already handed work over in most cases; the new note adds the checker.
+
 ## 0.6.26 — 2026-10-12
 
 **A big approval fits on the screen and says what it is for.** Reported as: when an approval
