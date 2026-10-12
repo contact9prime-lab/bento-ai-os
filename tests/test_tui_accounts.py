@@ -67,12 +67,17 @@ def test_the_tui_signs_in_shows_your_agent_and_signs_out(server_with_an_account)
     from textual.widgets import Input, Static
     from agentos.tui_app import AgentTUI, SignInScreen
 
+    def ready(app):
+        # pushed is not mounted: on a slow runner the screen is a SignInScreen a tick
+        # before its fields exist (seen on CI, Python 3.10)
+        return isinstance(app.screen, SignInScreen) and bool(app.screen.query("#si-name"))
+
     async def walk():
         app = AgentTUI(server_with_an_account, {"agent_name": "Aria"})
         async with app.run_test(size=(120, 40)) as pilot:
             for _ in range(150):
                 await pilot.pause(0.1)
-                if isinstance(app.screen, SignInScreen):
+                if ready(app):
                     break
             assert isinstance(app.screen, SignInScreen), "accounts: nothing loads before a sign-in"
             app.screen.query_one("#si-name", Input).value = "ada"
@@ -80,7 +85,7 @@ def test_the_tui_signs_in_shows_your_agent_and_signs_out(server_with_an_account)
             app.screen._go()        # submit as Enter does: a click by coordinates can land before layout
             for i in range(150):
                 await pilot.pause(0.1)
-                if isinstance(app.screen, SignInScreen) and "do not match" in str(
+                if ready(app) and app.screen.query("#si-error") and "do not match" in str(
                         app.screen.query_one("#si-error", Static).render()):
                     break
             assert "do not match" in str(app.screen.query_one("#si-error", Static).render()), (i, type(app.screen))
