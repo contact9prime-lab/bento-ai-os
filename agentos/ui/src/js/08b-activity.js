@@ -57,6 +57,8 @@ function actDetail(name, args) {
   if (name === 'Bash' || name === 'run_command') return cut(s('description', 'command'), 90);
   // an app asking the agent (appAgent / its ✦ assistant): what it asked, in its words
   if (name === 'appAgent') return cut('ask your agent: ' + s('prompt'), 110);
+  // an app's appLLM / appChat: its card read "llm_generate {}" (the walk's screenshot)
+  if (name === 'llm_generate') return cut('use the AI' + (s('prompt') ? ': ' + s('prompt') : ''), 110);
   // a schedule, in words: how often and what it will do
   if (name === 'schedule_task') {
     const every = args.schedule_type === 'interval' && args.interval_minutes ? 'every ' + args.interval_minutes + ' min'

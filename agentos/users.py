@@ -266,6 +266,11 @@ def create(name: str, password: str, role: str = "executor",
         adopt(uid)
     provision(uid)
     reset_caches()   # `enabled()` has just flipped: every cached view is now wrong
+    if first:
+        try:
+            share_own_workspace(uid)
+        except Exception:
+            pass   # sharing a folder must never be why an account could not be made
     return {k: v for k, v in (get(uid) or {}).items() if k not in ("pass_hash", "salt")}
 
 
@@ -298,6 +303,53 @@ def adopt(uid: str) -> None:
     cfg_path_for(uid).write_text(json.dumps(own, indent=2))
     os.chmod(cfg_path_for(uid), 0o600)
     cfgmod.save_config(machine_view(machine))
+
+
+def share_own_workspace(uid: str) -> bool:
+    """Keep the first account's workspace reachable by its own agent.
+
+    `adopt` hands the first account the machine's workspace, `~/AgentOS` by default,
+    which is outside the account's home. On a machine with accounts the file tools
+    and the shell jail refuse anything outside the acting home, so that person's
+    agent was refused their own workspace even after they approved the write
+    ("this belongs to another account on this machine"). Found by the end-to-end
+    walk. A read-write share for that one account is the boundary's own way to
+    widen it: every surface already honours shares, and `check_safe_folder` refuses
+    the accounts root and anything above it. Only an admin's workspace is shared,
+    because a non-admin choosing a workspace must not be a way to reach a folder.
+    Returns True when a share was added. Run again by `bento migrate`, which is how
+    a machine that already has accounts gets it."""
+    u = get(uid)
+    if not u or u.get("role") != "admin":
+        return False
+    try:
+        ws = json.loads(cfg_path_for(uid).read_text()).get("workspace")
+    except (OSError, ValueError):
+        return False
+    if not ws:
+        return False
+    p = os.path.realpath(os.path.expanduser(str(ws)))
+    home = os.path.realpath(str(home_for(uid)))
+    if p == home or p.startswith(home + os.sep):
+        return False
+    # an existing folder only: creating one is not ours to do (it may be somebody's
+    # home we cannot write), and `bento migrate` asks again once it exists
+    if not os.path.isdir(p):
+        return False
+    from .tools import check_safe_folder, folder_shares
+    ok, _why = check_safe_folder(p)
+    if not ok:
+        return False
+    machine = cfgmod.load_config()
+    if any(sh["path"] == ok and sh["mode"] == "rw" and (not sh["users"] or uid in sh["users"])
+           for sh in folder_shares(machine)):
+        return False
+    sb = machine.setdefault("sandbox", {})
+    sb["folders"] = list(sb.get("folders") or []) + [{"path": ok, "mode": "rw", "users": [uid]}]
+    view = machine_view(machine)
+    cfgmod.save_config(view)
+    machine_changed(view)
+    return True
 
 
 def provision(uid: str) -> Path:

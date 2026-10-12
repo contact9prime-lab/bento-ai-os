@@ -5400,7 +5400,7 @@ window.addEventListener('unhandledrejection', e => {
 
 
 @app.get("/api/apps/{aid}/page")
-async def api_app_page(aid: str, surface: str = "", size: str = ""):
+async def api_app_page(aid: str, request: Request, surface: str = "", size: str = ""):
     from fastapi.responses import HTMLResponse
     a = state["store"].get_app(aid)
     if not a:
@@ -5409,7 +5409,11 @@ async def api_app_page(aid: str, surface: str = "", size: str = ""):
     # since the PDP reads live grants — the token only says WHO is calling)
     tok = secrets.token_urlsafe(24)
     now = time.time()
-    state["app_tokens"][tok] = {"app_id": aid, "issued": now}
+    # and WHOSE app it is: the sandboxed frame sends no cookie, so on a machine with
+    # accounts (or a remote browser) the token is the only thing its calls carry, and
+    # the gate admits them as the account that opened the page (`_app_token_admits`)
+    state["app_tokens"][tok] = {"app_id": aid, "issued": now, "uid": usersmod.current(),
+                                "sid": _session_jti(request)}
     for k, v in list(state["app_tokens"].items()):
         if now - v["issued"] > 86400:
             state["app_tokens"].pop(k, None)
@@ -6783,6 +6787,48 @@ def _same_origin(request: Request):
     return urlsplit(o).netloc == request.headers.get("host", "")
 
 
+def _session_jti(request: Request) -> str:
+    """The id of this browser's session cookie, '' with none."""
+    claims = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE, ""))
+    return str((claims or {}).get("jti") or "")
+
+
+def _app_token_entry(request: Request) -> dict | None:
+    tok = request.headers.get("x-app-token", "")
+    return state.get("app_tokens", {}).get(tok) if tok else None
+
+
+def _app_token_admits(request: Request) -> bool:
+    """An app's runtime call, let through the sign-in gate on its token alone.
+
+    An app is a sandboxed opaque-origin frame, so its fetches carry no cookie. On a
+    machine with accounts (or from a remote browser) the gate refused every one of
+    them as "sign in required", before the token was looked at: every app built
+    there had no tools, no AI and no data. Found by the end-to-end walk. The token is
+    minted only for a page served to a signed-in session, records that account, is
+    unguessable and held server-side, so it is a credential the server issued and
+    not a claim the caller makes. It admits only the app runtime routes (never the
+    page itself, which a navigation loads with the cookie), never a locked session's
+    apps, and never an account that has been deleted. The CORS preflight carries no
+    headers at all, so it is admitted on the runtime paths and answered with 204."""
+    path = request.url.path
+    if not _is_app_runtime(path) or path.endswith("/page"):
+        return False
+    if request.method == "OPTIONS":
+        return True
+    e = _app_token_entry(request)
+    if not e or e.get("locked"):
+        return False
+    if usersmod.enabled():
+        uid = str(e.get("uid") or "")
+        return bool(uid) and usersmod.get(uid) is not None
+    return True
+
+
+def _app_tokens_of_session(sid: str) -> list[dict]:
+    return [e for e in state.get("app_tokens", {}).values() if sid and e.get("sid") == sid]
+
+
 def _valid_app_token(request: Request) -> bool:
     tok = request.headers.get("x-app-token", "")
     return bool(tok) and tok in state.get("app_tokens", {})
@@ -6968,6 +7014,12 @@ async def resolve_user(request: Request, call_next):
                                      request.cookies.get(remotemod.COOKIE, "")) or ""
         if uid and not usersmod.get(uid):
             uid = ""                     # the account was deleted mid-session
+        # An app's own call carries no cookie (a sandboxed frame), so it acts as the
+        # account its token was minted for. That is a server-issued credential, not a
+        # header the caller chose: an unknown or locked token resolves to nobody.
+        if not uid and _app_token_admits(request):
+            e = _app_token_entry(request) or {}
+            uid = str(e.get("uid") or "")
         # A LOCKED cookie still resolves to its owner, deliberately. Locking is not
         # signing out: the unlock route has to know whose password to check, and the
         # lock screen has to be able to say whose desktop this is. Nothing else runs
@@ -6981,7 +7033,7 @@ async def resolve_user(request: Request, call_next):
 
 @app.middleware("http")
 async def remote_access_gate(request: Request, call_next):
-    if _authed(request):
+    if _authed(request) or _app_token_admits(request):
         return await call_next(request)
     path = request.url.path
     if path.startswith(REMOTE_OPEN_PATHS):
@@ -8684,7 +8736,13 @@ async def api_session_lock(request: Request):
              "lock": ""}, status_code=400)
     uid = usersmod.current()
     resp = JSONResponse({"ok": True, "lock": kind})
-    _set_session_cookie(resp, request, remotemod.issue_session(cfg, uid, locked=True))
+    locked = remotemod.issue_session(cfg, uid, locked=True)
+    _set_session_cookie(resp, request, locked)
+    # the apps open in this browser stop with it: their calls carry the token, not
+    # the cookie, so the lock has to reach the token as well
+    new_sid = str((remotemod.session_claims(cfg, locked) or {}).get("jti") or "")
+    for e in _app_tokens_of_session(_session_jti(request)):
+        e["locked"], e["sid"] = True, new_sid
     state["store"].log("system", "desktop locked")
     return resp
 
@@ -8724,7 +8782,11 @@ async def api_session_unlock(body: dict, request: Request):
         return JSONResponse({"error": "that password does not match"}, status_code=401)
     remotemod.note_success(addr)
     resp = JSONResponse({"ok": True})
-    _set_session_cookie(resp, request, remotemod.issue_session(cfg, uid))
+    opened = remotemod.issue_session(cfg, uid)
+    _set_session_cookie(resp, request, opened)
+    new_sid = str((remotemod.session_claims(cfg, opened) or {}).get("jti") or "")
+    for e in _app_tokens_of_session(str(claims.get("jti") or "")):
+        e["locked"], e["sid"] = False, new_sid
     with contextlib.suppress(Exception):
         usersmod.store_for(uid).log("system", "desktop unlocked")
     return resp
@@ -9393,7 +9455,12 @@ async def api_users_login(body: dict, request: Request):
 
 
 @app.post("/api/users/logout")
-async def api_users_logout():
+async def api_users_logout(request: Request):
+    # the apps this browser opened stop with the session: their tokens are dropped
+    sid = _session_jti(request)
+    for k, e in list(state.get("app_tokens", {}).items()):
+        if sid and e.get("sid") == sid:
+            state["app_tokens"].pop(k, None)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(remotemod.COOKIE, path="/")
     return resp
@@ -10391,6 +10458,38 @@ def _world_org(v: dict) -> dict:
     return v
 
 
+def _world_working(uid: str, store) -> set:
+    """Who is at work for this account RIGHT NOW, read from what is running rather than
+    remembered from events: a chat turn (the lead, or the specialist it was addressed
+    to), an App Studio build (the lead) and every run open in fabric_runs. Reported
+    with a screenshot: Claude Code was building in the Studio while Aria stood idle in
+    the World. The scene's lease had lapsed mid-build (a hidden tab beats once a
+    minute), so the build_start was forgotten on re-entry; and any chat ending cleared
+    the lead's one busy flag while the build was still going."""
+    names: set = set()
+    for t in list((state.get("turns") or {}).values()):
+        task = t.get("task")
+        if str(t.get("uid", "") or "") != uid or (task is not None and task.done()):
+            continue
+        who = t.get("speaker") or worldmod.LEAD
+        if who != "huddle":          # a huddle's speakers are runs, counted below
+            names.add(who)
+    b = state.get("build") or {}
+    if b.get("task") and not b["task"].done() and str(b.get("uid", "") or "") == uid:
+        names.add(worldmod.LEAD)
+    try:
+        rows = store.db.execute(
+            "SELECT ref FROM fabric_runs WHERE status='running' AND started_at>?",
+            (time.time() - playgroundmod.STALE_S,)).fetchall()
+        names |= {str(r[0]) for r in rows if r[0]}
+    except Exception:
+        pass
+    return names
+
+
+worldmod.bind_working(_world_working)
+
+
 def _world_cast(store) -> list[str]:
     return [d["name"] for d in store.list_subagents() if d.get("enabled", 1)]
 
@@ -10418,7 +10517,9 @@ async def api_world_enter(body: dict):
 
 @app.post("/api/world/beat")
 async def api_world_beat(body: dict):
-    return {"live": worldmod.beat(usersmod.current() or "", str((body or {}).get("world") or ""))}
+    uid = usersmod.current() or ""
+    live = worldmod.beat(uid, str((body or {}).get("world") or ""))
+    return {"live": live, "busy": worldmod.busy_now(uid) if live else []}
 
 
 @app.post("/api/world/leave")
@@ -13904,7 +14005,7 @@ async def _run_chat(cid: str, data: dict):
         elif huddle_hit:
             names, topic = huddle_hit
             turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": "huddle",
-                          "uid": owner}
+                          "uid": owner, "speaker": "huddle"}
             knowledge.turn_started()
             started = True
             await evsend({"type": "turn_start", "model": "huddle", "huddle": names})
@@ -13919,7 +14020,7 @@ async def _run_chat(cid: str, data: dict):
             defn, task = mention
             model = state["fabric"].resolve_model(defn)
             turns[cid] = {"agent": None, "task": asyncio.current_task(),
-                          "model": model, "uid": owner}
+                          "model": model, "uid": owner, "speaker": defn["name"]}
             knowledge.turn_started()
             started = True
             await evsend({"type": "turn_start", "model": model, "speaker": defn["name"]})
@@ -15022,7 +15123,9 @@ async def ws_endpoint(ws: WebSocket):
                 "running": [c for c, t in turns.items() if t.get("uid", "") == ws_uid],
                 "queues": {c: _queue_public(c) for c in state["queues"]
                            if turns.get(c, {}).get("uid", "") == ws_uid},
-                "build_running": bool(build.get("task") and not build["task"].done())})
+                "build_running": bool(build.get("task") and not build["task"].done()),
+                "build_mine": bool(build.get("task") and not build["task"].done()
+                                   and str(build.get("uid", "") or "") == ws_uid)})
 
     def _stop(tinfo: dict):
         """Cooperative abort first; hard-cancel after a grace period — a model that
@@ -15088,6 +15191,7 @@ async def ws_endpoint(ws: WebSocket):
                     await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
                     data["uid"] = ws_uid
+                    build["uid"] = ws_uid   # whose build it is, for the World's "at work"
                     build["task"] = asyncio.create_task(run_build(data))
             elif t == "build_abort":
                 build["cancel_requested"] = True

@@ -61,11 +61,13 @@ async function renderAudit(body,w){
   if(q){q.value=audFilter.q;q.oninput=audSearch}
   const stat=(n,l,cls)=>`<div class="stat" style="text-align:center"><div class="val ${cls||''}">${n||0}</div><div class="lbl">${l}</div></div>`;
   const rows=(d.entries||[]).map(a=>{
-    const cls=a.effect==='deny'?'audden':a.effect==='ask'?'audask':'audok';
+    // a permission change records the rule it wrote; it is not a decision allowed or refused
+    const change=String(a.action||'').startsWith('grant.');
+    const cls=change?'':a.effect==='deny'?'audden':a.effect==='ask'?'audask':'audok';
     const who=a.principal_id?`${a.principal_kind}:${a.principal_id}`:a.principal_kind;
     const out=a.outcome&&a.outcome!=='ok'?`<span class="badge">${esc(a.outcome)}</span>`:'';
     return `<div class="item">
-      <span class="audpill ${cls}">${esc(a.effect||'?')}</span>
+      <span class="audpill ${cls}"${change?` title="a ${esc(a.effect||'')} rule was ${a.action==='grant.revoke'?'removed':'written'}"`:''}>${change?'changed':esc(a.effect||'?')}</span>
       <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out}
         <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · rule ${esc(a.rule||'default')}
           ${a.duration_ms?' · '+a.duration_ms+'ms':''} · ${new Date(a.ts*1000).toLocaleString()}

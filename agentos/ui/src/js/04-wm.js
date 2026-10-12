@@ -318,6 +318,10 @@ function closeWin(w){
   stopWinTicks(w);                       // whatever the app registered dies with the window
   if(w.fs)document.body.classList.remove('has-fullwin');
   WM.wins.delete(w.key);w.tb.remove();
+  // The window stays on the page for its closing animation, and its ids must not:
+  // reopening an app inside that time found the OLD #feed and #input through $('#…'),
+  // so a reopened Chat took your typing and sent nothing. Found by the end-to-end walk.
+  w.el.querySelectorAll('[id]').forEach(e=>e.removeAttribute('id'));w.el.inert=true;
   zoomWin(w.el,w.id,-1).then(()=>w.el.remove());
   let top=null;WM.wins.forEach(o=>{if(!o.min&&(!top||+o.el.style.zIndex>+top.el.style.zIndex))top=o});
   if(top)focusWin(top);else{setMenubarApp('');updateDockHide();applyWindowActivity()}

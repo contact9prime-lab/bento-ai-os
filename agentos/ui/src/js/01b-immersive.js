@@ -22,6 +22,8 @@ var WEEKDAY_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'
    off stays byte-for-byte the standard desktop. A storage that throws (a private
    window) gets the default. */
 function immersiveStored(){try{return localStorage.getItem('immersive')}catch(e){return null}}
+// a Studio build running for this person; set by buildPulse and state_sync (09-websocket)
+var BUILD_LIVE=false;
 var IMMERSIVE={on:immersiveStored()!=='0',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
 function applyImmersive(){
@@ -171,11 +173,13 @@ function homeRender(){
   const br=(typeof BRIEF!=='undefined'&&BRIEF.page&&BRIEF.page.open)?BRIEF.page.headline:'';
   // the agent's face on its own line: the one on the stage and beside every reply.
   // Rewritten only when the words change, so the image is not refetched every minute.
-  const said=n?`${who} is working on ${n} ${n===1?'turn':'turns'}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
+  // a build is work too: the line said "is ready" through a whole App Studio build
+  const work=[n?`${n} ${n===1?'turn':'turns'}`:'',BUILD_LIVE?'an app in App Studio':''].filter(Boolean).join(' and ');
+  const said=work?`${who} is working on ${work}`:(br?`Your Brief: ${br}`:(brain?`${who} · ${brain}`:`${who} is ready`));
   const html=(typeof avatarImg==='function'?avatarImg('@agent','av-home'):'')+esc(said);
   if(line.dataset.said!==html){line.dataset.said=html;line.innerHTML=html}
-  line.classList.toggle('br-open',!n&&!!br);
-  line.onclick=(!n&&br)?()=>openApp('brief'):null;
+  line.classList.toggle('br-open',!work&&!!br);
+  line.onclick=(!work&&br)?()=>openApp('brief'):null;
   // the playground's front door: the crew's own faces, one tap to the Office. The same
   // characters as everywhere else (avatarImg); nothing here says anyone is busy unless
   // a turn is running, because the Office itself is where that is shown.
@@ -183,7 +187,7 @@ function homeRender(){
   if(play){
     const crew=(typeof AVATARS!=='undefined'&&AVATARS.list||[]).filter(p=>p.key!=='@me').slice(0,5);
     const ph=crew.map(p=>avatarImg(p.key,'av-play')).join('')
-      +`<span>${n?'See them at work in the Office':'Your office'}</span>`;
+      +`<span>${work?'See them at work in the Office':'Your office'}</span>`;
     if(play.dataset.h!==ph){play.dataset.h=ph;play.innerHTML=ph}
     play.hidden=!crew.length;
   }

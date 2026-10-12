@@ -96,8 +96,10 @@ class SignInScreen(ModalScreen):
                 yield Button("Sign in", variant="primary", id="si-go")
                 yield Button("Quit", id="si-quit")
 
-    def on_mount(self):
-        self.query_one("#si-name", Input).focus()
+    # Textual focuses it once it is mounted. `query_one` in on_mount raised NoMatches
+    # when the screen mounted late (seen once on CI, Python 3.10), which ended the
+    # sign-in worker and left the TUI with no way in.
+    AUTO_FOCUS = "#si-name"
 
     def _go(self):
         self.dismiss((self.query_one("#si-name", Input).value.strip(),

@@ -141,3 +141,10 @@ def test_reset_from_a_terminal_refuses_what_it_must(tmp_path):
     js = (ROOT / "agentos/ui/src/js/14-docs-setup.js").read_text()
     fr = js.split("async function factoryReset(")[1].split("\n}")[0]
     assert "if(!r.ok)" in fr, "a refused reset must not reload as if it had worked"
+
+
+def test_the_sign_in_screen_focuses_by_selector_not_by_lookup():
+    """A lookup in on_mount raised NoMatches when the screen mounted late (CI, 3.10)."""
+    from agentos.tui_app import SignInScreen
+    assert SignInScreen.AUTO_FOCUS == "#si-name"
+    assert "on_mount" not in SignInScreen.__dict__

@@ -156,6 +156,12 @@ const out  = await appTool('run_command', { command: 'uptime' });
 `appTool` respects your autonomy and policy settings — risky actions are gated the same way they are
 for the agent.
 
+Every call is made as the app, so the card names it ("app Volume Tracker wants to use the AI")
+and the ledger records the app as the one asking. On a machine with accounts, or from a remote
+browser, the app works as the person who opened it. Its calls carry a token from when it was
+opened, because the sandboxed frame it runs in sends no cookie. Locking the screen pauses it and
+signing out ends it.
+
 ### Use the AI model inside their own features
 The model the OS runs on is **inside every app**, not just in the chat window. This is the part
 worth building around: it is how an app does the things ordinary code cannot — judge, classify,

@@ -80,7 +80,12 @@ builds an app in App Studio. A build counts like any other task: your agent goes
 when it starts and is proud of the app when it is done. Stopping a build yourself is not
 counted as a failure.
 
-![The canal during an App Studio build: Aria out on the water in the work boat, at work, while the team waits on the bank](screenshots/world-build-at-work.png)
+Whether someone is at work is checked against what is actually running, so it holds when
+you come back to a world mid-build or switch tabs for a while, and a chat finishing does not
+send your agent back to the bank while the build goes on. The line under the prompt bar says
+it too: *Aria is working on an app in App Studio*.
+
+![The canal during an App Studio build: Aria out on the water in the work boat, her card saying at work, and the line under the prompt bar saying Aria is working on an app in App Studio](screenshots/world-build-at-work.png)
 
 ### What they wear
 
