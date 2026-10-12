@@ -114,3 +114,52 @@ def test_deleting_an_agent_takes_its_remembered_permissions_with_it(tmp_path):
     # and each revocation is in the ledger
     rows = store.db.execute("SELECT detail FROM audit WHERE action='grant.revoke'").fetchall()
     assert sum("was deleted" in (r["detail"] or "") for r in rows) == 3
+
+
+# ------------------------------------------------------------------ shell commands
+#
+# Reported as "once the approval is given, like approved always, it still asks again".
+# "Always" on a shell command remembered ONE pattern, for the first program, and a pattern
+# covers a chain one command at a time and never a line with a redirect, so the commands
+# an agent actually runs (`cd app && npm test`, `pytest 2>&1 | tail -5`) asked every time.
+
+def _shell(pdp, cmd):
+    return pdp.decide_tool(MAIN, "run_command", {"command": cmd}, "risky", surface="gui",
+                           autonomy="balanced", conversation_id="c1")
+
+
+def _always(store, dec):
+    from agentos.policy import write_remembered
+    assert dec.effect == "ask" and dec.grant_offer, dec
+    write_remembered(store, dec.grant_offer, "always", via="a test")
+
+
+def test_always_covers_every_program_in_a_chain(tmp_path):
+    store = Store(tmp_path / "s.db")
+    pdp = PDP(CFG, store)
+    dec = _shell(pdp, "cd app && npm test")
+    assert dec.grant_offer["resource"] == "tool:run_command {cd*,npm*}"
+    _always(store, dec)
+    assert _shell(pdp, "cd app && npm test").effect == "allow"
+    assert _shell(pdp, "cd web && npm run build").effect == "allow", "the same programs, other arguments"
+    assert _shell(pdp, "cd app && rm -rf build").effect == "ask", "a program you never allowed"
+
+
+def test_always_on_a_line_with_a_redirect_covers_that_line(tmp_path):
+    store = Store(tmp_path / "r.db")
+    pdp = PDP(CFG, store)
+    line = "python -m pytest -q 2>&1 | tail -5"
+    _always(store, _shell(pdp, line))
+    assert _shell(pdp, line).effect == "allow", "the same command again"
+    # a wildcard never covers a redirect, so another one still asks
+    assert _shell(pdp, "python -m pytest -q > ~/.bashrc").effect == "ask"
+
+
+def test_a_simple_command_is_still_one_pattern(tmp_path):
+    store = Store(tmp_path / "p.db")
+    pdp = PDP(CFG, store)
+    dec = _shell(pdp, "git status")
+    assert dec.grant_offer["resource"] == "tool:run_command git*"
+    _always(store, dec)
+    assert _shell(pdp, "git log --oneline").effect == "allow"
+    assert _shell(pdp, "git log; bash").effect == "ask", "a chain is still read one command at a time"

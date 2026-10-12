@@ -349,8 +349,13 @@ def command_covered(pattern: str, command: str, match=None) -> bool:
         return match(pattern or "*", cmd)
     if DANGEROUS_META.search(cmd) or BACKGROUND.search(cmd):
         return False
+    # `{cd*,npm*}`: the programs one remembered chain used, each command matching one
+    # of them ("Always" on `cd app && npm test` has to cover the next such chain)
+    pat = pattern.strip()
+    alts = [a.strip() for a in pat[1:-1].split(",") if a.strip()] \
+        if pat.startswith("{") and pat.endswith("}") else [pattern]
     segs = [x.strip() for x in CONNECTORS.split(cmd) if x.strip()]
-    return bool(segs) and all(match(pattern, x) for x in segs)
+    return bool(segs) and all(any(match(a, x) for a in alts) for x in segs)
 
 
 def resource_match(pattern: str, resource: str) -> bool:
@@ -1493,8 +1498,27 @@ class PDP(usersmod.Scoped):
         name, args = ctx.get("tool") or "", ctx.get("args") or {}
         res = resource
         if name == "run_command":
-            base = (args.get("command") or "").strip().split()
-            res = f"tool:run_command {base[0]}*" if base else "tool:run_command*"
+            # "Always" has to cover the next command like this one. It wrote one pattern
+            # for the first program, and a pattern covers a chain one command at a time
+            # and never a line with a redirect or a substitution (command_covered), so
+            # `cd app && npm test` or `pytest 2>&1 | tail` asked again after Always.
+            # A chain gets a pattern per program in it; a line a wildcard can never cover
+            # is remembered as exactly itself.
+            from .tools import BACKGROUND, CONNECTORS, DANGEROUS_META
+            cmd = (args.get("command") or "").strip()
+            progs = []
+            for seg in CONNECTORS.split(cmd):
+                w = seg.strip().split()
+                if w and w[0] not in progs:
+                    progs.append(w[0])
+            if not cmd:
+                res = "tool:run_command*"
+            elif DANGEROUS_META.search(cmd) or BACKGROUND.search(cmd):
+                res = f"tool:run_command {cmd}"
+            elif len(progs) == 1:
+                res = f"tool:run_command {progs[0]}*"
+            else:
+                res = "tool:run_command {" + ",".join(f"{p}*" for p in progs) + "}"
         elif action == "tool.use" and name:
             res = f"tool:{name}*"
         elif action in ("fs.read", "fs.write"):

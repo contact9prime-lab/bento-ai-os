@@ -1625,6 +1625,11 @@ A review in 0.6.18 found the PDP sound and its INPUTS wrong, each confirmed by r
   machine-wide Rule ("Always allow") is gone and must not come back: it widened every app
   and specialist and switched the untrusted-content rule off for its pattern. A taint card
   and an ALWAYS_ASK card offer no remember.
+  For a shell command the offer has to cover the NEXT command like it (`PDP._offer`): a chain
+  remembers its programs as one pattern (`{cd*,npm*}`, each command matching one of them in
+  `command_covered`), and a line with a redirect or substitution, which no wildcard may cover,
+  is remembered as exactly itself. Reported as "approved always, it still asks again": one
+  pattern for the first program never covered `cd app && npm test` or `pytest 2>&1 | tail`.
 - **An app reaches the web and a few harmless tools without a grant** (`APP_FREE_*`), and
   nothing else. Paranoid asks for everything but reading (`PARANOID_FREE`). Approvals carry
   the asking account's `uid` and only that account sees or answers them
