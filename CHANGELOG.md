@@ -34,6 +34,10 @@ to them: more engaging, more intuitive, more reliable".
 - **Two new checks.** A script that doesn't parse (Node reads every inline script), and
   `confirm()` or `prompt()`, which the app's sandbox always answers with "no", so "Delete this?"
   never deleted anything.
+- Measured with real Claude Code on three one-line asks, before and after: all six builds
+  finished with no page errors, at $0.76 to $1.11 each. Before, one of the three deleted with
+  `confirm()` and none had an example to try; after, all three open on one obvious action and
+  fill themselves with **Try it with an example**.
 - **The starter app on the setup screen saves now.** It called `appData.set('note', …)`, and the
   runtime takes one object, so the note was gone on reload.
 

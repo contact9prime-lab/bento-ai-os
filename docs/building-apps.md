@@ -169,6 +169,13 @@ The kit's classes cover the usual pieces: `.hero` for the first screen, `.tabs`,
 `.toggle`, `.progress`, `.stat`, `.list` with `.item`, `.avatar`, `.badge.ok/.warn/.err` and
 `.skeleton` while something loads. The accent follows the theme you chose on the desktop.
 
+Three apps built by Claude Code from one line each (*a habit tracker for my daily routines*,
+*split expenses for our team offsite*, *a pomodoro focus timer*), before the kit (top) and after
+it, with **Try it with an example** pressed (bottom). The habit tracker on top deleted with
+`confirm()`, so its Delete never did anything.
+
+![Three apps before the kit, and the same three after it with their example loaded](screenshots/apps-before-after.png)
+
 The frame is sandboxed without dialogs, so `confirm()` always answers "no" and `prompt()` returns
 nothing. Use `appConfirm` or an inline field. `alert()` is shown as a toast. The checker marks a
 `confirm()` or `prompt()` as broken.
