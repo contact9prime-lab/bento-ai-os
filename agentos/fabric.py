@@ -898,6 +898,9 @@ class ControlPlane(usersmod.Scoped):
             t = ev.get("type")
             if t == "text_delta":
                 collected.append(ev.get("text", ""))
+                # what the executor says before a bridged call is what the call is for
+                # (the approval card's first line); the call spends it
+                agent._said = (getattr(agent, "_said", "") + ev.get("text", ""))[-2000:]
             elif t == "error":
                 errors.append(str(ev.get("message") or "").strip())
                 await self._emit(run_id, "log", {"node_id": run_id, "level": "error",

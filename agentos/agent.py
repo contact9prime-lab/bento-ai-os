@@ -430,6 +430,10 @@ class Agent:
         # the caller can still persist whatever streamed so far
         self._text_buf: list[str] = []
         self._final_text = ""
+        # what the agent said in the reply that made the call now running: the card's
+        # "what it is trying to do" (approvalcard). Set by the loop before each call,
+        # fed by the bridge's text for an executor, spent by the call.
+        self._said = ""
         self.partial_steps: list[dict] = []
         # What untrusted content this turn has read so far: [{tool, source}].
         # It only ever grows within a turn — once a web page is in the context
@@ -927,12 +931,15 @@ class Agent:
                 await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
                                  "args": args, "detail": tool_detail(name, args),
                                  "pending_approval": True})
-                from .policy import _NEEDS_PERSON
+                from .policy import _NEEDS_PERSON, _SAID
                 tok = _NEEDS_PERSON.set(must_person) if must_person else None
+                # what the agent said it was doing, for the card's first line
+                tok_said = _SAID.set(getattr(self, "_said", "") or "")
                 try:
                     approved = await self.approver(name, args, dec.reason or reason,
                                                    dec.grant_offer)
                 finally:
+                    _SAID.reset(tok_said)
                     if tok is not None:
                         _NEEDS_PERSON.reset(tok)
                 if approved is PARK:
@@ -1018,6 +1025,7 @@ class Agent:
                          "output": output[:4000], "ok": ok,
                          **({"untrusted": True} if untrusted else {}),
                          **({"image": image_path} if image_path else {})})
+        self._said = ""
         return output, ok, image_path, untrusted
 
     async def _park_here(self, name: str, args: dict, call_id: str, dec, reason: str,
@@ -1267,6 +1275,7 @@ class Agent:
                     self.aborted = True
                     break
                 name, args, call_id = tc["name"], tc["args"], tc["id"]
+                self._said = text
                 output, ok, image_path, untrusted = await self.call_tool(name, args, call_id)
                 if self.parked:
                     # no result for this call, nor for any after it in the same reply:

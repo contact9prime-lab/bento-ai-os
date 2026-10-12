@@ -21,6 +21,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
 from . import agentbundle
 from . import turnerrors
 from . import appcheck
+from . import approvalcard
 from . import config as cfgmod
 from . import fabric as fabricmod
 from . import flows as flowsmod
@@ -50,6 +51,7 @@ from .memory import Store
 from .policy import MAIN, PDP, SURFACES, Principal, team_talk
 from .policy import STANDING_ACTIONS as _STANDING_ACTIONS, STANDING_TOOLS as _STANDING_TOOLS
 from .policy import taint_mode as _taint_mode
+from .policy import said as _approval_said
 from .scheduler import Scheduler
 from .telegram import TelegramBridge
 from . import whatsapp as whatsappmod
@@ -6139,12 +6141,15 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
     # Whose question this is. Without it every account on the machine saw every card
     # (its arguments included) and any of them could answer it.
     uid = usersmod.current() if usersmod.enabled() else ""
+    # what the step is FOR and exactly what it does, shortened by each surface rather
+    # than dumped: a long command used to push Allow off the bottom of the screen
+    card = approvalcard.card(name, args, _approval_said())
     entry = {"fut": fut, "offer": offer, "ws": ws, "name": name, "uid": uid,
-             "args": args, "reason": reason, "run_id": run_id,
+             "args": args, "reason": reason, "run_id": run_id, "card": card,
              "flow": flow, "asked_at": time.time()}
     state["pending_approvals"][aid] = entry
     ev = {"type": "approval_request", "id": aid, "name": name, "args": args,
-          "reason": reason, "offer": offer, "run_id": run_id, "flow": flow}
+          "reason": reason, "offer": offer, "run_id": run_id, "flow": flow, "card": card}
     if evsend is not None:
         await evsend(ev)
     else:
@@ -13016,6 +13021,7 @@ async def api_fabric_approvals():
             continue
         out.append({"id": aid, "name": entry.get("name", ""), "args": entry.get("args", {}),
                     "reason": entry.get("reason", ""), "offer": entry.get("offer"),
+                    "card": entry.get("card") or approvalcard.card(entry.get("name", ""), entry.get("args", {})),
                     "run_id": entry.get("run_id", ""), "flow": entry.get("flow", ""),
                     "asked_at": entry.get("asked_at", 0)})
     return {"approvals": out}

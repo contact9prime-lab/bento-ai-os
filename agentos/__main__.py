@@ -2835,7 +2835,10 @@ def _flow_cli(args):
             print("nothing is waiting on you")
             return
         for a in rows:
-            print(f"\n  {a['id']}  {a['name']}  {json.dumps(a.get('args') or {})[:80]}")
+            from . import approvalcard
+            card = a.get("card") or approvalcard.card(a["name"], a.get("args") or {})
+            print(f"\n  {a['id']}  {approvalcard.headline(card)}")
+            print("\n".join("      " + ln[:100] for ln in approvalcard.preview(card, lines=3).splitlines()))
             print(f"      {a.get('flow') or a.get('run_id', '')[:8]} · {a.get('reason', '')[:120]}")
         print("\n  agentos flow allow <id> [--hour | --always]   |   agentos flow deny <id>")
         return

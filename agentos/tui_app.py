@@ -43,15 +43,29 @@ class ApprovalScreen(ModalScreen):
     """The approval card, in the terminal. With a grant on offer it has the same
     remember choices as the desktop's card: this chat, an hour, or always. Answers with
     (approved, remember) where remember is '' or one of those scopes."""
-    def __init__(self, name, detail, reason, offer=None):
+    def __init__(self, name, detail, reason, offer=None, card=None):
         super().__init__()
         self._name, self._detail, self._reason = name, detail, reason
         self._offer = offer or None
+        self._card = card or None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="ap-box"):
             yield Label("⚠  Approval needed", id="ap-title")
-            yield Static(f"[b]{_esc(self._name)}[/b]  {_esc(self._detail)}", id="ap-cmd")
+            if self._card:
+                # what it is for, then exactly what it does in a box that scrolls: a
+                # long command used to push the buttons off the bottom of the terminal
+                from . import approvalcard
+                yield Static(f"[b]{_esc(approvalcard.headline(self._card))}[/b]", id="ap-goal")
+                with VerticalScroll(id="ap-scroll"):
+                    yield Static(_esc(self._card.get("body") or ""), id="ap-cmd")
+                if (self._card.get("lines") or 0) > 8 or self._card.get("cut"):
+                    more = f"{self._card.get('lines')} lines, scroll to read all"
+                    if self._card.get("cut"):
+                        more += f"; the last {self._card['cut']} characters are not shown"
+                    yield Static(more, id="ap-more")
+            else:
+                yield Static(f"[b]{_esc(self._name)}[/b]  {_esc(self._detail)}", id="ap-cmd")
             yield Static(_esc(self._reason or ""), id="ap-reason")
             with Horizontal(id="ap-btns"):
                 yield Button("Allow once" if self._offer else "Allow", variant="success",
@@ -148,6 +162,9 @@ class AgentTUI(App):
     #ap-box { width: 70; height: auto; padding: 1 2; border: round $accent; background: $panel; }
     #ap-title { color: $warning; text-style: bold; }
     #ap-cmd { margin: 1 0; }
+    #ap-goal { margin: 1 0 0 0; }
+    #ap-scroll { height: auto; max-height: 12; border: tall $panel-darken-1; }
+    #ap-more { color: $text-muted; }
     #ap-reason { color: $text-muted; }
     #ap-btns { height: auto; align-horizontal: center; margin-top: 1; }
     #ap-btns Button { margin: 0 1; }
@@ -906,7 +923,8 @@ class AgentTUI(App):
                     elif t == "approval_request":
                         detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])[:120]
                         ok, rem = await self.push_screen_wait(ApprovalScreen(
-                            ev["name"], detail, ev.get("reason", ""), ev.get("offer")))
+                            ev["name"], detail, ev.get("reason", ""), ev.get("offer"),
+                            ev.get("card")))
                         await ws.send(json.dumps({"type": "approval", "id": ev["id"],
                                                   "approved": bool(ok), "remember": rem or False}))
                     elif t == "error":

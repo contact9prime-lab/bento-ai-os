@@ -114,6 +114,26 @@ conversation is open there, and floats top right otherwise.
 Before, a turn from the prompt bar put its card inside the bar's answer card, which hides when a
 window opens. The hand-over then waited for five minutes on a question nobody could see.
 
+### A big ask fits on the screen
+
+![A 59-line setup script waiting for approval: the card starts with what Aria said it is doing,
+in quotes, shows the first lines of the script, and has Show all · 59 lines above Allow and
+Deny](screenshots/approval-long-command.png)
+
+The card's first line says what the step is for. When your agent said so in the reply that made
+the call, those are its words, in quotes, because it is the agent's claim and not something the
+gate checked. Otherwise it is the step in plain words, such as "Build an app: Big Board". Below it
+is exactly what will run or be written. A long command shows its first lines and **Show all**,
+with the number of lines, so nothing is hidden without saying so. The card never grows past the
+screen: it scrolls, and Allow and Deny stay in view.
+
+![The same card on a phone with Show all open: the script scrolls inside its box and the buttons
+are still on screen](screenshots/approval-long-command-phone.png)
+
+Telegram, WhatsApp, the TUI, the terminal chat and `bento flow approvals` all say the same first
+line, then the start of the command and how many lines are not shown. Before, a 59-line command
+made the floating card 1,896px tall on a 900px screen, and Allow was off the bottom.
+
 ## Agents messaging each other: the matrix, and swarm
 
 A huddle is you (or your agent) putting agents in a room. A **message** is one specialist

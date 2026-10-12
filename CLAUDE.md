@@ -1318,6 +1318,16 @@ sense" when it was missing:
   (`approvalWatch`, only while something waits) and `approvalHome` re-homes: in Chat when
   its conversation is open there, floated otherwise. `approvalShown` asks `elementFromPoint`,
   because a card under a window is displayed and not seen.
+- **An approval says what it is FOR, and fits on the screen** (`agentos/approvalcard.py`,
+  `tests/test_approval_card.py`). Reported as a long command pushing Allow off the bottom of the
+  floating card (1,896px on a 900px screen). `card()` is one answer carried on every approval event
+  (`card` beside `args`) and read by the page (`apCard`), the TUI, the terminal chat, Telegram,
+  WhatsApp and `bento flow approvals`. Its `goal` is the agent's own words from the reply that made
+  the call (`Agent._said`, passed to approvers as `policy.said()`, a contextvar like
+  `needs_person`) and is shown in quotes, because it is the agent's claim and not something the
+  gate checked; otherwise the tool's phrase from `GOALS`. Its `body` is shortened by each surface,
+  and `preview()` ALWAYS says how much is not shown: cutting a command silently would hide the
+  `; rm -rf` at its end. The floating card has a max height and sits above the toast stack.
 - **A turn that MAKES something offers the door to it.** `10a-handoff.js` maps
   the creating tools (`create_app`, `create_flow`, `enable_flow`,
   `save_automation`, `schedule_task`) to the app that owns the result, and the

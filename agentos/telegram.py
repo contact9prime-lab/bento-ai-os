@@ -9,7 +9,6 @@ Commands: /start pairs, /clear wipes the Telegram session, /status pings.
 
 import asyncio
 import os
-import json
 import time
 from pathlib import Path
 
@@ -438,8 +437,10 @@ class TelegramBridge(usersmod.Scoped):
         """
         import uuid
         aid = uuid.uuid4().hex[:8]
-        detail = args.get("command", "") if name == "run_command" else json.dumps(args)[:300]
-        text = f"⚠ Approval needed\n\n{name}  {detail}\n\n{reason}"
+        # what it is for and the start of what it does; a message is capped at 4096
+        from . import approvalcard
+        from .policy import said
+        text = approvalcard.message(approvalcard.card(name, args, said()), reason, limit=4000)
         row = [{"text": "✅ Allow once", "callback_data": f"ap:{aid}:1"},
                {"text": "⛔ Deny", "callback_data": f"ap:{aid}:0"}]
         if offer:

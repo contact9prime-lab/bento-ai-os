@@ -176,8 +176,12 @@ async def run_tui():
                             if len(out) > 6:
                                 print(f"{C['dim']}  … (+{len(out)-6} lines){C['r']}")
                         elif t == "approval_request":
-                            detail = ev["args"].get("command", "") if ev["name"] == "run_command" else json.dumps(ev["args"])
-                            print(f"\n{C['warn']}⚠ approval: {ev['name']} {detail[:120]}\n  {ev.get('reason','')}{C['r']}")
+                            from . import approvalcard
+                            card = ev.get("card") or approvalcard.card(ev["name"], ev.get("args") or {})
+                            # what it is for, then the start of what it does and how much is left
+                            pv = "\n".join("  " + ln[:_w() - 4] for ln in approvalcard.preview(card).splitlines())
+                            print(f"\n{C['warn']}⚠ approval: {approvalcard.headline(card)}{C['r']}\n"
+                                  f"{C['dim']}{pv}{C['r']}\n{C['warn']}  {ev.get('reason','')}{C['r']}")
                             ans = (await _ainput(f"{C['warn']}  allow? [y/N] {C['r']}")).strip().lower()
                             await ws.send(json.dumps({"type": "approval", "id": ev["id"],
                                                       "approved": ans in ("y", "yes")}))
