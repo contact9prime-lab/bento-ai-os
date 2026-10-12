@@ -1952,6 +1952,11 @@ things keep it true:
 - **The plan is office.py's closed set and the cast is the real one**: an unknown member is
   dropped and NAMED, one desk each, a deleted specialist leaves no named chair. `office` is a
   USER_KEY; a person's change is an `office.write` audit row, the agent's is its own action.
+- **The Office catches up when it opens, and a build is work too** (`officeCatchUp`,
+  `officeLive`). Events only reach an Office that exists, so a chat or build started before it
+  opened lit nothing; a build is not in RUNNING (a chat set), so the lead's desk went dark 12 s
+  into it, and any chat ending switched the desk off. Reported as "the office is generally
+  silent". A turn ending quiets a desk only when nothing else of that person's runs.
 - **A running chat is work until turn_end** (`officeLive`, the "…" balloon). A forwarded
   brain sends its answer only at the end (measured: 50 silent seconds), and a desk that
   went dark after `OF_WORK_MS` read as the Office ignoring the chat. The same silence is

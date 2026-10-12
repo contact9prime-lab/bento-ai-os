@@ -26694,6 +26694,7 @@ async function officeLoad(){
     if(typeof avatarsLoad==='function'&&(v.agents||[]).some(n=>!AVATARS.by[n]))await avatarsLoad();
     OFFICE.loaded=true;
     officeLayout();
+    officeCatchUp();
     if(OFFICE.design)officeDesignPaint();
     companyLoad();
   }catch(e){const l=document.getElementById('of-line');if(l)l.textContent='could not load the office — '+(e.message||e)}
@@ -26902,8 +26903,28 @@ function officeName(k){return k==='@agent'?(typeof agentName==='function'?agentN
    answer only at the end), so their desk stays lit until turn_end. */
 function officeLive(p){
   const O=OFFICE;if(!p||typeof RUNNING==='undefined')return false;
-  for(const c in O.convWho)if(O.convWho[c]===p.key&&RUNNING.has(c))return true;
+  for(const c in O.convWho){
+    if(O.convWho[c]!==p.key)continue;
+    if(RUNNING.has(c))return true;
+    // an App Studio build is not a chat, so RUNNING never had it: the lead's desk went
+    // dark twelve seconds into a build that ran for minutes ("the office is silent")
+    if(c==='build'&&typeof BUILD_LIVE!=='undefined'&&BUILD_LIVE)return true;
+  }
   return false;
+}
+/* What is already running when the Office opens (or is rebuilt). Events only reach an
+   Office that exists, so a chat or a build started before it opened lit nothing: the
+   Office sat silent through work the rest of the desktop showed. A chat's speaker is
+   learned from its next event; until then it is the lead's, as a new turn's is. */
+function officeCatchUp(){
+  const O=OFFICE;if(!O.w||!O.L)return;
+  const lead=O.people['@agent'];if(!lead)return;
+  const open=[];
+  if(typeof RUNNING!=='undefined')RUNNING.forEach(c=>{if(!O.convWho[c]){O.convWho[c]='@agent';open.push(c)}});
+  if(typeof BUILD_LIVE!=='undefined'&&BUILD_LIVE&&!O.convWho.build){O.convWho.build='@agent';open.push('build')}
+  if(!open.length)return;
+  officeWork(lead,true);
+  if(!lead.say)officeSay(lead,'…','think',600000);
 }
 function officePulse(kind,label,ev){
   const O=OFFICE;if(!O.w||!O.L)return;
@@ -26921,8 +26942,11 @@ function officePulse(kind,label,ev){
   if(kind==='turnend'){
     const who=O.people[O.convWho[label]||'@agent'];
     if(O.huddle&&O.huddle.cid===label)officeHuddleEnd();
-    if(who){officeWork(who,false);if(who.say&&who.say.kind==='think')who.say=null}
-    delete O.convWho[label];return;
+    delete O.convWho[label];
+    // one piece of work ending is not the desk going quiet: a build (or another chat)
+    // the same person is on keeps it lit
+    if(who&&!officeLive(who)){officeWork(who,false);if(who.say&&who.say.kind==='think')who.say=null}
+    return;
   }
   if(kind==='tool'){
     const who=O.people[(ev.conversation_id&&O.convWho[ev.conversation_id])||'@agent']||O.people['@agent'];
@@ -27457,7 +27481,9 @@ function officeBoard(ctx){
    the title says the same in words (officeLine). */
 function officeNow(){
   const O=OFFICE,rows=Object.keys(O.missions).map(n=>'▸ '+n);
-  const chats=Object.keys(O.convWho).length;
+  // an App Studio build sits in convWho as 'build'; it is a build, not a chat
+  const chats=Object.keys(O.convWho).filter(c=>c!=='build').length;
+  if('build' in O.convWho)rows.push('⚒ building an app');
   if(chats)rows.push(`✎ ${chats} ${chats===1?'chat':'chats'} going`);
   const busy=Object.values(O.people).filter(p=>p.busy&&p.key!=='@agent').length;
   if(busy)rows.push(`⚙ ${busy} at work`);
