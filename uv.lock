@@ -12,7 +12,7 @@ resolution-markers = [
 
 [[package]]
 name = "agentos"
-version = "0.6.26"
+version = "0.6.27"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

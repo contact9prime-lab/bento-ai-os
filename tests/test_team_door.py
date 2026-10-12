@@ -84,8 +84,8 @@ def test_a_forwarded_turn_hands_over_through_the_gate(tmp_path, monkeypatch):
                                             team={"toolbox": tb, "store": store, "approver": approver,
                                                   "conversation_id": "c1", "surface": "telegram"}))
     assert said == "The toolsmith built it."
-    assert "YOUR TEAM" in seen["context"] and "toolsmith: You are the toolsmith" in seen["context"]
-    assert "HAND IT OVER" in seen["context"]
+    assert "YOU LEAD A TEAM" in seen["context"] and "toolsmith: You are the toolsmith" in seen["context"]
+    assert "hand that part over" in seen["context"] and "who did what" in seen["context"]
     assert seen["tools"] == ["create_flow", "delegate", "huddle", "list_flows", "schedule_task"], \
         "the door offers the team, missions and schedules, and nothing else"
     assert handed == [("toolsmith", "build a VCP scanner", "c1")] and "made tools/vcp.py" in seen["out"]
@@ -117,7 +117,7 @@ def test_standing_work_is_a_mission_even_with_no_team(tmp_path):
         "it may draft a mission; switching it on is the person's grant"
     assert "MISSIONS." in env.context and "NEVER set it up yourself" in env.context
     assert "file_change" in env.context and "~/Downloads" in env.context
-    assert "YOUR TEAM" not in env.context, "no team is claimed where there is none"
+    assert "YOU LEAD A TEAM" not in env.context, "no team is claimed where there is none"
     mcpbridge.close_session(token)
     status, _ = asyncio.run(mcpbridge.handle(token, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
     assert status == 401, "a closed door answers nothing"

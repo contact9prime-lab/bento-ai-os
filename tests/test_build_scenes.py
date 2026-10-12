@@ -139,13 +139,15 @@ def test_the_server_says_who_is_working_and_the_heartbeat_carries_it(tmp_path):
         turns["cw1"] = {"task": pending, "uid": "ada"}
         turns["cw2"] = {"task": pending, "uid": "ada", "speaker": "researcher"}
         turns["cw3"] = {"task": pending, "uid": "bob"}
-        assert servermod._world_working("ada", store) == {"@agent", "researcher"}
+        # and on what: the door the World's "…" bubble opens
+        assert servermod._world_working("ada", store) == {
+            "@agent": {"kind": "chat", "id": "cw1"}, "researcher": {"kind": "chat", "id": "cw2"}}
         turns.pop("cw1"), turns.pop("cw2")
         st["build"].update(task=pending, uid="ada")
-        assert servermod._world_working("ada", store) == {"@agent"}
-        assert servermod._world_working("bob", store) == {"@agent"}
+        assert servermod._world_working("ada", store) == {"@agent": {"kind": "build", "id": ""}}
+        assert set(servermod._world_working("bob", store)) == {"@agent"}
         turns.pop("cw3")
-        assert servermod._world_working("bob", store) == set()
+        assert servermod._world_working("bob", store) == {}
     finally:
         for k, v in saved.items():
             if v is None:

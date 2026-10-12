@@ -1717,13 +1717,21 @@ def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
         rows.append(f"- {sa['name']}: {first}")
     if not rows:
         return missions
-    return missions + ("\n\nYOUR TEAM. The person has specialists on this machine, each built for a job:\n"
+    # The lead MANAGES. Reported as "the work is not really managed by handing off to
+    # sub agents when it is done in the chat": told only to hand over "when it is one of
+    # those jobs", the lead judged almost nothing a fit and did it all itself.
+    return missions + ("\n\nYOU LEAD A TEAM. The person has specialists on this machine, each built for a job:\n"
             + "\n".join(rows[:20])
-            + f"\nWhen what they ask for is one of those jobs, HAND IT OVER: call "
-              f"{prefix}delegate with {{\"subagent\": name, \"task\": a self-contained brief}} "
-              f"and report what they did. {prefix}huddle has two to four of them talk a "
-              "question through. Do the work yourself only when nobody fits, or when the "
-              "person asks you to."
+            + f"\nWork like the lead of that team, not on your own. When a request is real work "
+              f"(finding things out, writing, checking, building) and one of them fits a part of "
+              f"it, hand that part over: call {prefix}delegate with {{\"subagent\": name, "
+              f"\"task\": a self-contained brief with everything they need}}. Split work that has "
+              f"parts, for example research to one and the write-up to another, and have a "
+              f"checker look at anything that matters. Then read what comes back, put it "
+              f"together, and tell the person who did what. {prefix}huddle has two to four of "
+              "them talk a question through. Answer yourself only small talk and questions "
+              "about this conversation, or when nobody fits or the person asks you to do it "
+              "yourself."
             + (" Those two tools are this OS's: every call is checked against its "
                "permissions and recorded." if prefix else ""))
 

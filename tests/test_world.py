@@ -546,7 +546,7 @@ def test_the_team_breathes_and_can_be_drawn_smooth():
     scene = (js / "01e-world.js").read_text()
     pose = scene.split("function worldPose(", 1)[1].split("\n}", 1)[0]
     assert "s.scale.x=1.5*sx" in pose and "a.friend" in pose and "c.phase%1.6" in pose
-    assert "Math.sin(k*9)" in pose, "a step's bob while walking"
+    assert "lift(k*6)" in pose, "a step's bob while walking, slower than it was (k*9)"
     assert "WORLD.still" in pose, "reduced motion still stands still"
     assert "worldSetSoft(this.checked)" in scene.split("function worldMenuHTML(", 1)[1]
     assert "draw:worldSoft()?'soft':''" in scene and "T.LinearFilter" in scene
@@ -643,3 +643,82 @@ def test_a_good_day_is_a_tint_not_a_party(store):
     assert "a.mood.intensity" in pose and "amp*amp*crowd" in pose
     # at the check-in's cap a loud feeling is drawn nearly still: (0.4-.3)/.6 of a jump
     assert "(I-.3)/.6" in pose and (world.YOU_CAP - .3) / .6 < .2
+
+
+# ------------------------------------------------------------------ after the work
+
+
+def test_waiting_ends_when_you_answer_not_half_an_hour_later(store):
+    """Reported as the agent going "crazy, moving left right like an erratic person" once
+    its work was done. The approval's "waiting" feeling (0.6, halving every 15 minutes)
+    stayed the one on show for half an hour after the answer, and its pose is pacing."""
+    lead = world.LEAD
+    world.enter("", store, "lantern-canal", [lead])
+    world.observe({"type": "approval_request", "id": "a1", "name": "write_file"}, "")
+    assert _agent(world.view(""), lead)["mood"]["expression"] == "pace"
+    world.observe({"type": "approval_resolved", "id": "a1", "approved": True}, "")
+    assert _agent(world.view(""), lead)["mood"]["expression"] != "pace"
+    # a flow's question, answered no: also over
+    world.enter("", store, "lantern-canal", ["researcher"])
+    world.observe({"type": "fabric_event", "event": "approval", "state": "asked", "ref": "researcher",
+                   "run_id": "r9", "tool": "write_file"}, "")
+    assert _agent(world.view(""), "researcher")["mood"]["expression"] == "pace"
+    world.observe({"type": "fabric_event", "event": "approval", "state": "denied", "ref": "researcher",
+                   "run_id": "r9", "tool": "write_file"}, "")
+    assert _agent(world.view(""), "researcher")["mood"]["expression"] != "pace"
+
+
+def test_a_pose_sways_around_its_place_and_never_piles_up():
+    """The walk is eased on the figure's own place and the pose is drawn on top of it.
+    Easing the drawn position kept last frame's sway, so pacing swung across the room."""
+    js = (ROOT / "agentos/ui/src/js/01e-world.js").read_text()
+    pose = js[js.index("function worldPose("):][:5000]
+    assert "c.at.lerp(target" in pose and "s.position.copy(c.at)" in pose
+    assert "s.position.lerp(target" not in pose
+    import re
+    amp = float(re.search(r"e==='pace'\)\{x=Math\.sin\(k\*[\d.]+\)\*([\d.]+)", pose).group(1))
+    assert amp <= 0.5, "a few small steps, not across the room"
+
+
+def test_the_team_moves_calmly_and_shows_work_as_a_bubble():
+    """"I just can't have an erratic behaviour of the agents, it looks stupid." A tantrum
+    shook 40 times a second, a shiver 55, a cheer hopped half a body high with its arms
+    flickering, and pacing mirrored the sprite on every turn. Every pose is now slow and
+    small, eased in, and never mirrored; working is a "…" bubble that opens the work.
+    Measured in Chromium: pacing swung 2.59 world units and flipped 8 times in 6 s, now
+    0.40 and none; a tantrum swung 0.62, now 0.11; a cheer rose 0.54, now 0.14."""
+    import re
+    scene = (ROOT / "agentos/ui/src/js/01e-world.js").read_text()
+    pose = scene.split("function worldPose(", 1)[1].split("\n}", 1)[0]
+    for line in pose.splitlines():
+        if "a step's bob" in line:
+            continue                      # walking has a step, and only while walking
+        for rate in re.findall(r"\bk\*\(?([\d.]+)", line):
+            assert float(rate) <= 2.5, f"too fast for a calm figure: k*{rate} in {line.strip()}"
+    assert "flip" not in pose, "a figure is never mirrored mid-scene"
+    assert "c.pz" in pose and "Math.exp(-dt*5)" in pose, "a new feeling eases in"
+    assert "c.workUntil=t+20" in pose, "quick chat turns are one stay at work"
+    css = (ROOT / "agentos/ui/src/css/25-world.css").read_text()
+    for anim in re.findall(r"animation:(\w+) ([\d.]+)s", css):
+        if anim[0] in ("wdShake", "wdHop"):
+            assert float(anim[1]) >= 1.5, anim
+    # working is a bubble, and the bubble is a door to the work
+    assert "wd-dots" in scene.split("function worldTags(", 1)[1].split("\n}", 1)[0]
+    door = scene.split("function worldOpenWork(", 1)[1].split("\n}", 1)[0]
+    assert "openConv(w.id)" in door and "openApp('studio')" in door and "fgWatch(w.id)" in door
+    # on a phone the head can sit under the prompt bar, so the card is a second door
+    assert "worldOpenWork('${esc(name)}')" in scene.split("function worldCard(", 1)[1]
+
+
+def test_the_view_says_what_each_agent_is_working_on(store):
+    world.bind_working(lambda uid, st: {"@agent": {"kind": "chat", "id": "c1"},
+                                        "researcher": {"kind": "run", "id": "r1"}})
+    try:
+        world.enter("", store, "lantern-canal", ["@agent", "researcher", "writer"])
+        v = world.view("")
+        assert _agent(v, "@agent")["work"] == {"kind": "chat", "id": "c1"}
+        assert _agent(v, "researcher")["work"] == {"kind": "run", "id": "r1"} and _agent(v, "researcher")["busy"]
+        assert _agent(v, "writer")["work"] is None and not _agent(v, "writer")["busy"]
+        assert world.busy_now("") == ["@agent", "researcher"]
+    finally:
+        world.bind_working(None)

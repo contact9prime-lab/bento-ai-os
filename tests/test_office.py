@@ -289,3 +289,24 @@ def test_the_lounge_has_regulars_who_are_visibly_not_agents():
     assert "officeWalk" not in body, "they do not walk about; the pet fetches"
     assert "if(officeExtra('sitter'))return officeFetchStep(dt)" in of
     assert "p.kind==='cat'" in body, "a cat bats the ball back rather than carrying it"
+
+
+def test_the_office_shows_work_that_started_before_it_opened_and_whole_builds():
+    """Reported as "when it's done with chat or App Studio the office is generally
+    silent". Events only reach an Office that exists, so a chat or a build started before
+    it opened lit nothing; and an App Studio build was not in RUNNING (a chat set), so the
+    lead's desk went dark twelve seconds into a build that ran for minutes, and any chat
+    ending switched it off. Checked in Chromium: on open the lead is at work with "…",
+    still at work 16 s into the build after the chat ended, and quiet after the build."""
+    js = (ROOT / "agentos/ui/src/js/24d-office.js").read_text()
+    load = js.split("async function officeLoad(", 1)[1].split("\n}", 1)[0]
+    assert "officeCatchUp()" in load
+    catch = js.split("function officeCatchUp(", 1)[1].split("\n}", 1)[0]
+    assert "RUNNING.forEach" in catch and "BUILD_LIVE" in catch
+    live = js.split("function officeLive(", 1)[1].split("\n}", 1)[0]
+    assert "c==='build'" in live and "BUILD_LIVE" in live
+    pulse = js.split("function officePulse(", 1)[1].split("\n}", 1)[0]
+    end = pulse.split("if(kind==='turnend')", 1)[1].split("if(kind==='tool')", 1)[0]
+    assert "!officeLive(who)" in end, "one piece of work ending does not quiet a desk with more"
+    now = js.split("function officeNow(", 1)[1].split("\n}", 1)[0]
+    assert "building an app" in now
