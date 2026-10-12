@@ -1729,9 +1729,9 @@ def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
               f"parts, for example research to one and the write-up to another, and have a "
               f"checker look at anything that matters. Then read what comes back, put it "
               f"together, and tell the person who did what. {prefix}huddle has two to four of "
-              "them talk a question through. Answer yourself only small talk, quick facts, "
-              "questions about this conversation, or when nobody fits or the person asks you "
-              "to do it yourself."
+              "them talk a question through. Answer yourself only small talk and questions "
+              "about this conversation, or when nobody fits or the person asks you to do it "
+              "yourself."
             + (" Those two tools are this OS's: every call is checked against its "
                "permissions and recorded." if prefix else ""))
 
