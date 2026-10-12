@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.26 — 2026-10-12
+
+**A big approval fits on the screen and says what it is for.** Reported as: when an approval
+asks for something long, the card goes past the edge of the screen.
+- The card's first line is what the step is for. When your agent said so just before the call,
+  it is your agent's words in quotes; otherwise the step in plain words ("Build an app: Big
+  Board"). Below that is exactly what will run, cut to its first lines with **Show all · 59
+  lines**, so a long command never hides its end without saying so.
+- The card never grows past the screen. It scrolls, Allow and Deny stay in view, and it sits
+  above the notifications. Measured at 1440x900 with a 59-line script: the floating card was
+  1,896px tall with Allow at y=1,894, and is now 364px with Allow at y=362. On a 390px phone it
+  was 1,914px; it is now 417px, and 673px with Show all open.
+- The "Approval needed" notification names the goal too, and goes away once the card is on
+  screen. On a phone it sat over the card's own Allow button.
+- The waiting line under the prompt bar and in Chat says *waiting for you:* and the goal, where
+  it used to say *waiting for you to approve run_command*.
+- Telegram, WhatsApp, the TUI, the terminal chat and `bento flow approvals` say the same first
+  line, then the start of the command and how many lines are not shown. WhatsApp used to cut the
+  whole message at 1,024 characters, which took the reason off the end.
+
 ## 0.6.25 — 2026-10-11
 
 **Your agent shows as working for the whole of a build, wherever you look.** Reported with a

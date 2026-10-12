@@ -125,7 +125,9 @@ function actText(cid) {
       const verb = ACT_VERB[a.name] || String(a.name || 'tool').replace(/_/g, ' ');
       return a.detail ? verb + ' ' + a.detail : verb;
     }
-    case 'approve': return 'waiting for you to approve ' + (a.name || 'something');
+    // what it is for, from the approval card (approvalcard.py), cut for a one-line row
+    case 'approve': return a.goal ? 'waiting for you: ' + (a.goal.length > 64 ? a.goal.slice(0, 63) + '…' : a.goal)
+                                  : 'waiting for you to approve ' + (a.name || 'something');
     case 'think':   return a.msg || 'thinking';
     case 'after':   return a.msg || 'reading the result';
     case 'write':   return 'writing the reply';

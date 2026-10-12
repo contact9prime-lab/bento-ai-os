@@ -567,6 +567,18 @@ def needs_person() -> str:
     return _NEEDS_PERSON.get()
 
 
+# What the agent said in the reply that made the call being approved, set by the agent
+# loop around the approver like `_NEEDS_PERSON`. Every approver (the desktop's card,
+# Telegram, WhatsApp) reads it through `approvalcard.card` to say what the step is FOR,
+# without a fifth argument on every approver signature in the OS.
+_SAID: "_cv.ContextVar[str]" = _cv.ContextVar("approval_said", default="")
+
+
+def said() -> str:
+    """The agent's words before the call being approved ('' when it said none)."""
+    return _SAID.get()
+
+
 # ---- standing permissions for a linked team ----------------------------------------------
 #
 # A question from another team taints the run that answers it, so every step that would

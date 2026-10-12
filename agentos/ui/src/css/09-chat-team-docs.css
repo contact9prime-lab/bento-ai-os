@@ -219,16 +219,29 @@
 /* a card floated because the one placed in a feed is hidden (the prompt bar's card
    under an open window, a chat you are not looking at) — never off a phone's edge */
 .ap-review{margin-left:auto;flex:0 0 auto;min-height:var(--tap,32px);padding:0 16px;align-self:center}
-.approval.ap-float{position:fixed;right:18px;top:52px;z-index:9999;max-width:440px;width:calc(100vw - 36px);
-  background:var(--bg2);box-shadow:0 18px 50px rgba(0,0,0,.5)}
-/* top-right, clear of the toast stack (bottom-right) that announces it */
+.approval.ap-float{position:fixed;right:18px;top:52px;z-index:11001;max-width:440px;width:calc(100vw - 36px);
+  background:var(--bg2);box-shadow:0 18px 50px rgba(0,0,0,.5);
+  /* never taller than the screen: the card scrolls and its buttons stay in view */
+  max-height:calc(100vh - 68px);max-height:calc(100dvh - 68px);overflow-y:auto;overscroll-behavior:contain}
+.approval.ap-float .btns{position:sticky;bottom:-13px;background:var(--bg2);margin:11px -13px -13px;padding:11px 13px 13px}
+/* top-right, clear of the toast stack (bottom-right) that announces it, and above it:
+   on a phone the stack is full width and a toast sat over the card's Allow */
 body.dev-mobile .approval.ap-float{right:12px;left:12px;width:auto;max-width:none;top:calc(52px + env(safe-area-inset-top,0px))}
 .approval.ap-flash{animation:apFlash .9s ease-out 2}
 @keyframes apFlash{0%{box-shadow:0 0 0 0 var(--warn)}100%{box-shadow:0 0 0 10px transparent}}
 @media (prefers-reduced-motion:reduce){.approval.ap-flash{animation:none;outline:2px solid var(--warn)}}
 body.act-approving #working,body.act-approving .mf-working{cursor:pointer}
 .approval .atitle{color:var(--warn);font-weight:700;font-size:var(--fs-md);margin-bottom:6px}
-.approval .acmd{font-family:var(--mono);font-size:var(--fs-sm);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;margin:8px 0;white-space:pre-wrap;word-break:break-all}
+.approval .agoal{color:var(--txt);font-size:var(--fs-md);font-weight:600;line-height:1.35;margin:2px 0 6px;overflow-wrap:anywhere}
+.approval .agoal.said{font-weight:500;font-style:italic}
+.approval .acmd{font-family:var(--mono);font-size:var(--fs-sm);line-height:1.35;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 11px;margin:8px 0 4px;white-space:pre-wrap;word-break:break-all}
+/* a long body shows its first lines; Show all opens it in a box that scrolls */
+.approval .acmd.clip{max-height:calc(6 * 1.35em + 18px);overflow:hidden;
+  -webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}
+.approval .acmd.clip.open{max-height:min(45vh,420px);overflow:auto;-webkit-mask-image:none;mask-image:none}
+.approval .amore{color:var(--acc);font-size:var(--fs-sm);padding:4px 0;min-height:var(--tap,24px)}
+.approval .amore[hidden]{display:none}
+.approval .acut{color:var(--dim);font-size:var(--fs-sm)}
 .approval .areason{color:var(--dim);font-size:var(--fs-sm)}
 .approval .btns{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap;align-items:center}
 .approval .ap-rem{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto}

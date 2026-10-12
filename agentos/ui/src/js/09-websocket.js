@@ -166,13 +166,25 @@ function approvalReveal(id){
   box.scrollIntoView({block:'center',behavior:'smooth'});
   box.classList.remove('ap-flash');void box.offsetWidth;box.classList.add('ap-flash');
 }
+/* What the card says: what the step is FOR, then exactly what it does. The server sends
+   it (approvalcard.py, one answer for every surface); this is the same shape for an
+   event from an older server. A long command or an app's whole HTML used to be the
+   card, which grew past the bottom of the screen and took Allow and Deny with it. */
+function apCard(ev){
+  if(ev.card&&typeof ev.card.body==='string')return ev.card;
+  const a=ev.args||{},cmd=(ev.name==='run_command'||ev.name==='Bash')&&typeof a.command==='string';
+  const body=cmd?a.command:Object.keys(a).filter(k=>k[0]!=='_').map(k=>{
+    const v=typeof a[k]==='string'?a[k]:JSON.stringify(a[k],null,1);
+    return v.indexOf('\n')>=0?k+':\n'+v:k+': '+v}).join('\n');
+  const d=typeof actDetail==='function'&&!cmd?actDetail(ev.name,a):'';
+  const w=String(ev.name||'a step').replace(/_/g,' ');
+  return {goal:(w[0]||'').toUpperCase()+w.slice(1)+(d&&d.length<80?': '+d:''),said:false,
+          body,lines:body?body.split('\n').length:0,chars:body.length,cut:0};
+}
+function apGoalLine(c){return c.said?'“'+c.goal+'”':c.goal}
 function buildApprovalBox(ev,cur){
   const box=document.createElement('div');box.className='approval';box.id='ap-'+ev.id;
-  // Words, not a JSON dump: the thing being approved should be readable at a
-  // glance, and `detail` is the same phrase the tool cards and the waiting row use.
-  const d=typeof actDetail==='function'?actDetail(ev.name,ev.args):'';
-  const detail=ev.name==='run_command'?(ev.args.command||'')
-              :(d?ev.name+' · '+d:ev.name+' '+JSON.stringify(ev.args,null,1));
+  const card=apCard(ev);
   const who=ev.offer?permPrincipalLabel(ev.offer.principal_kind,ev.offer.principal_id):'';
   // the face of whoever is asking: your agent, or the specialist that wants this
   // a linked team's standing offer (team.act) is about one of YOUR agents: resource "agent|action|scope"
@@ -190,7 +202,21 @@ function buildApprovalBox(ev,cur){
     :`<span class="ap-rem"><span class="ap-remlbl">Remember</span>${o.conversation_id?'<button class="deny always" data-rem="chat">This chat</button>':''}<button class="deny always" data-rem="hour">1 hour</button><button class="deny always" data-rem="always">Always</button></span>`;
   // where it came from: App Studio says so (ev.where); a chat you aren't looking at says that
   const from=ev.where?' · '+esc(ev.where):cur?'':' · another chat';
-  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${from}</div><div class="acmd">${esc(detail)}</div><div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
+  // the goal in the agent's own words is a quote (its claim), else the tool's phrase;
+  // the body is shown from the top, a few lines, with Show all for the rest
+  const long=card.lines>6||card.chars>320;
+  const cut=card.cut?`<div class="acut">${card.cut} more characters are not shown here.</div>`:'';
+  box.innerHTML=`<div class="atitle">${avatarImg(askKey,'av-ap')}Approval needed${who?' · '+esc(who):''}${from}</div>`
+    +`<div class="agoal${card.said?' said':''}" title="${card.said?'What the agent said it is doing':'What this step does'}">${esc(apGoalLine(card))}</div>`
+    +(card.body?`<div class="acmd${long?' clip':''}">${esc(card.body)}</div>`:'')
+    +`<button class="amore" type="button"${long?'':' hidden'}>Show all · ${card.lines} line${card.lines===1?'':'s'}</button>${cut}`
+    +`<div class="areason">${esc(ev.reason||'')}</div><div class="btns"><button class="allow">${o?'Allow once':'Allow'}</button><button class="deny">Deny</button>${rem}</div>`;
+  const pre=box.querySelector('.acmd'),more=box.querySelector('.amore');
+  more.onclick=e=>{e.stopPropagation();const open=pre.classList.toggle('open');
+    more.textContent=open?'Show less':'Show all · '+card.lines+' line'+(card.lines===1?'':'s')};
+  // wrapping can make a short body tall (one 300-character line): measure once placed
+  requestAnimationFrame(()=>{if(pre&&!pre.classList.contains('open')&&pre.scrollHeight>pre.clientHeight+2){
+    pre.classList.add('clip');more.hidden=false}});
   box.querySelector('.allow').onclick=()=>resolveApproval(ev.id,true);
   box.querySelector('.deny:not(.always)').onclick=()=>resolveApproval(ev.id,false);
   box.querySelectorAll('.always').forEach(b=>b.onclick=()=>{
@@ -506,7 +532,7 @@ function handle(ev){
       toast('a price is needed before this model runs'); scrollDown(); break;}
     case 'approval_request':{
       // the turn is not slow here, it is waiting on a human — say which
-      actMove(_cid,'approve',{name:ev.name||''});
+      actMove(_cid,'approve',{name:ev.name||'',goal:apGoalLine(apCard(ev))});
       APPROVALS[ev.id]=ev;
       const box=buildApprovalBox(ev,_cur);
       if(_sk&&_sk.approval&&_sk.approval(box,ev)){ /* the sink placed it */ }
@@ -517,10 +543,15 @@ function handle(ev){
       // Placed is not SEEN: a turn from the prompt bar puts its card in the bar's
       // answer card, which hides the moment a window opens — found as a hand-over
       // to the toolsmith that waited five minutes on a question nobody could see.
-      requestAnimationFrame(()=>{if(APPROVALS[ev.id])approvalHome(ev.id)});
       approvalWatch();
-      { const tt=toast('approval needed — '+(ev.name||'a step'),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
-        if(tt)tt.dataset.approval=ev.id; }
+      // what it is for, cut short: the card has the rest
+      { const g=apCard(ev).goal||ev.name||'a step';
+        const tt=toast('Approval needed: '+(g.length>70?g.slice(0,69)+'…':g),{kind:'warn',ms:12000,label:'Review',go:()=>approvalReveal(ev.id)});
+        if(tt)tt.dataset.approval=ev.id;
+        // the toast is a door to the card; once the card is on screen it is in the way
+        // (on a phone it sat over the card's own Allow button)
+        requestAnimationFrame(()=>{if(APPROVALS[ev.id])approvalHome(ev.id);
+          if(tt&&approvalVisible(ev.id))tt.remove()}); }
       scrollDown(); break;}
     case 'error':{
       ERRED[ev.conversation_id||_cid||'']=1;   // this turn is not a reply, whatever ends it

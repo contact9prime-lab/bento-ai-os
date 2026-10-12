@@ -49,7 +49,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
-import json
 import time
 from pathlib import Path
 
@@ -668,7 +667,11 @@ class WhatsAppBridge(usersmod.Scoped):
         """
         import uuid
         aid = uuid.uuid4().hex[:8]
-        detail = args.get("command", "") if name == "run_command" else json.dumps(args)[:200]
+        # what it is for and the start of what it does (approvalcard): the Cloud API's
+        # button body is 1024 characters, and slicing the whole text cut the reason off
+        from . import approvalcard
+        from .policy import said
+        card = approvalcard.card(name, args, said())
         rows = [{"type": "reply", "reply": {"id": f"ap:{aid}:0", "title": _TITLES["deny"]}},
                 {"type": "reply", "reply": {"id": f"ap:{aid}:1", "title": _TITLES["once"]}}]
         if offer:
@@ -686,8 +689,8 @@ class WhatsAppBridge(usersmod.Scoped):
                 if offer:
                     opts += " · 3 to allow and remember"
                 sent = await self.link.send(
-                    f"⚠ Approval needed\n\n{name}  {detail}\n\n{reason}\n\n"
-                    f"Reply {opts}", wa_id) if self.link else "[error] no link"
+                    approvalcard.message(card, reason, limit=3500) + f"\n\nReply {opts}",
+                    wa_id) if self.link else "[error] no link"
                 if str(sent).startswith("[error]"):
                     raise RuntimeError(sent)
             else:
@@ -695,7 +698,7 @@ class WhatsAppBridge(usersmod.Scoped):
                     "messaging_product": "whatsapp", "to": wa_id, "type": "interactive",
                     "interactive": {
                         "type": "button",
-                        "body": {"text": f"⚠ Approval needed\n\n{name}  {detail}\n\n{reason}"[:1024]},
+                        "body": {"text": approvalcard.message(card, reason, limit=1024)},
                         "action": {"buttons": rows}}})
         except Exception as e:
             self._pending.pop(aid, None)
