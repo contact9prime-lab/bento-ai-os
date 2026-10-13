@@ -251,7 +251,7 @@ def test_the_office_is_a_scene_and_the_window_takes_it_over():
     # the scene sleeps when nobody can see it, the Crew stage's test, and has no frame
     # loop of its own while it sleeps
     assert "crewCovered()" in of and "function officeSnooze(" in of
-    assert "officeSceneStart();" in of.rsplit("\n", 3)[-2], "first paint: the file starts its own scene"
+    assert "officeSceneStart()" in of.rsplit("\n", 3)[-2], "first paint: the file starts its own scene"
     # several things at once are all on the board
     now = of.split("function officeNow(")[1].split("\n}")[0]
     assert "O.missions" in now and "O.convWho" in now

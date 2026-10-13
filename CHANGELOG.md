@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.6.28 — 2026-10-12
+
+**The Office in 3D, and a big team that doesn't clutter it.** Asked for with a screenshot
+of an isometric agent HQ: "I want my office to look like this, but when I add so many agents
+it becomes really cluttered".
+- **Rooms around the Brain.** Each department is a room on a ring, with your agent's office
+  at the top and the Brain in the middle. Paths run from the Brain to every door. A memory
+  tool sends a spark to the Brain, and its card counts your memories and facts. It is the
+  new default; **✎ Design → Look**, `bento office look flat` or the agent's `set_office` gives
+  you the comic floor plan back.
+- **A room has four desks, and everyone else is on its card** ("Engineering · 7 agents · 3
+  running", with faces). Who has a desk follows the work: the head first, then whoever is
+  working or waiting for you. Somebody who gets work walks in from the door and sits down;
+  somebody working never loses their desk. Only people on the move have a name tag.
+- **Tap a room or its card to look inside**: the camera moves in, every desk is named, and a
+  list has the whole department with what each one is doing. Scroll to zoom, drag to look
+  around, Esc to go back. The ring takes the shape of the window (wide, phone, desktop scene).
+- Measured in Chromium with software rendering, nine rooms and twenty agents: 2.3 to 5 ms a
+  frame, 152 draw calls. A screen with no 3D graphics gets the flat office and says why.
+- **Office HQ, a desktop scene.** The 3D office as your whole desktop, behind the prompt bar
+  (Settings → Appearance → Scene). Its cards take taps, and a name there opens the Office.
+
+**An office, not a classroom.** Reported as "all of them are facing me, while they can be
+facing the wall".
+- **People face their work.** Desks stand against the walls under windows onto a city, so you
+  see people from behind with two screens over their shoulder. A screen lights and its code
+  scrolls while that person works; somebody between tasks turns their chair into the room.
+- **People are 3D now**, the same characters as in Chat, seen from the front, the side and
+  behind. They turn the way they walk, towards whoever they visit, and to the middle of the
+  meeting table, and the office chair turns with them. The painter draws the back and side
+  views (`bento`'s one painter, `?body=1`).
+- **Every room is furnished like one.** Your agent's desk faces the door with a laptop and two
+  visitors' chairs; the meeting room has a long table with a chair at every place; departments
+  have carpet under the desks, a board with sticky notes and a water cooler; the lounge has a
+  coffee bar and a foosball table.
+- Measured in Chromium with software rendering, nine rooms and twenty agents: 3.4 ms of CPU a
+  frame (3.3 before) and 152 ms for the whole picture (140 before), about 300 draw calls.
+
+**Apps that feel finished.** Asked for as "the apps App Studio makes don't have a serious jive
+to them: more engaging, more intuitive, more reliable".
+- **A new kit and a few helpers in every app.** Heroes, tabs, chips, toggles, progress, stats,
+  lists, avatars and loading skeletons, in the desktop's accent. `appToast`, `appConfirm`,
+  `appCelebrate`, `appIcon`, `appShare` and `appFmt` save each app writing its own, and the
+  builder is told to open on something you can try at once, with one obvious thing to do.
+- **Chat builds get the same bar as App Studio.** The agent CLI reads `APP_BRIEF.md` beside the
+  file it writes, the app is checked when it finishes, and Claude Code gets one turn in the same
+  session to fix anything broken. `create_app` answers with the same check.
+- **Two new checks.** A script that doesn't parse (Node reads every inline script), and
+  `confirm()` or `prompt()`, which the app's sandbox always answers with "no", so "Delete this?"
+  never deleted anything.
+- Measured with real Claude Code on three one-line asks, before and after: all six builds
+  finished with no page errors, at $0.76 to $1.11 each. Before, one of the three deleted with
+  `confirm()` and none had an example to try; after, all three open on one obvious action and
+  fill themselves with **Try it with an example**.
+- **The starter app on the setup screen saves now.** It called `appData.set('note', …)`, and the
+  runtime takes one object, so the note was gone on reload.
+
 ## 0.6.27 — 2026-10-12
 
 **Calm agents, the Office awake for chat and builds, and "Always" that sticks.** Four reports.

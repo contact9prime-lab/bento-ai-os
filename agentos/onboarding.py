@@ -447,29 +447,26 @@ STARTER_AGENT = {
 STARTER_APP = {
     "name": "Scratchpad",
     "description": "Notes that survive a reload, with a word count.",
-    "html": """<style>
-  .sp{display:flex;flex-direction:column;gap:8px;height:100%;padding:12px;box-sizing:border-box}
-  .sp textarea{flex:1;width:100%;resize:none;font:14px/1.6 ui-monospace,monospace;
-    padding:12px;border-radius:10px;border:1px solid #2a3240;background:#12161d;color:#e6edf3}
-  .sp .bar{display:flex;gap:14px;font:12px system-ui;color:#8b97a8}
-</style>
-<div class="sp">
+    "html": """<div class="sp">
+  <div class="spread"><h2>Scratchpad</h2><span class="badge" id="s">saved</span></div>
   <textarea id="pad" placeholder="Type. It saves itself."></textarea>
-  <div class="bar"><span id="w">0 words</span><span id="c">0 characters</span>
-    <span id="s"></span></div>
+  <div class="spread muted"><span id="w">0 words</span><span id="c">0 characters</span></div>
 </div>
+<style>
+  .sp{display:flex;flex-direction:column;gap:10px;height:100%;padding:14px;box-sizing:border-box}
+  .sp textarea{flex:1;width:100%;resize:none;font:14px/1.6 ui-monospace,monospace}
+</style>
 <script>
-  const pad=document.getElementById('pad');
+  const pad=document.getElementById('pad'), s=document.getElementById('s');
   const count=()=>{const t=pad.value;
-    document.getElementById('w').textContent=(t.trim()?t.trim().split(/\\s+/).length:0)+' words';
-    document.getElementById('c').textContent=t.length+' characters'};
-  // appData is the app's own private store — nothing else on this machine reads it.
-  (async()=>{try{const d=await appData.get('note');pad.value=(d&&d.text)||''}catch(e){}
-    count()})();
+    document.getElementById('w').textContent=appFmt.num(t.trim()?t.trim().split(/\\s+/).length:0)+' words';
+    document.getElementById('c').textContent=appFmt.num(t.length)+' characters'};
+  // appData is the app's own private store. set() takes the whole object.
+  (async()=>{const d=await appData.get();pad.value=(d&&d.text)||'';count()})();
   let t=null;
-  pad.addEventListener('input',()=>{count();clearTimeout(t);
-    t=setTimeout(async()=>{try{await appData.set('note',{text:pad.value});
-      document.getElementById('s').textContent='saved'}catch(e){}},400)});
+  pad.addEventListener('input',()=>{count();s.textContent='saving';s.className='badge';
+    clearTimeout(t);t=setTimeout(async()=>{await appData.set({text:pad.value});
+      s.textContent='saved';s.className='badge ok'},400)});
 </script>""",
 }
 

@@ -170,3 +170,97 @@ body.dev-touch .of-bar .endbtn,body.dev-touch .of-chip,body.dev-touch .of-style,
 body.dev-touch .of-design input,body.dev-touch .of-design select,body.dev-touch .of-design .endbtn,
 body.dev-touch .of-vteam,body.dev-touch .of-visit .endbtn{min-height:var(--tap)}
 body.dev-touch .of-x{min-width:var(--tap)}
+
+/* ---------------- the 3D office (24k-office3d.js): rooms around the Brain ----------------
+   The canvas fills the stage and never scrolls (the camera fits the ring instead); the
+   words are HTML over it, placed by a transform each frame. Cards and the side list
+   take taps; everything else lets them through to the canvas. */
+.of-scroll.of3{overflow:hidden;background:#0f1020}
+.of-cv3{position:absolute;inset:0;display:block;touch-action:none;cursor:grab}
+.of-cv3:active{cursor:grabbing}
+.of3-ui{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1;
+  font-family:var(--font,inherit);--o3bg:rgba(20,22,40,.86);--o3ln:rgba(255,255,255,.12)}
+.of3-ui>div{position:absolute;left:0;top:0;will-change:transform}
+.of3-card{pointer-events:auto;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;
+  column-gap:7px;align-items:center;padding:4px 8px 4px 6px;border-radius:9px;background:var(--o3bg);
+  border:1px solid var(--o3ln);box-shadow:0 6px 18px rgba(0,0,0,.35);color:#eef0ff;max-width:220px;
+  backdrop-filter:none;transition:border-color .2s,box-shadow .2s}
+.of3-card>i{grid-row:1/3;width:15px;height:15px;border-radius:5px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.25)}
+.of3-card b{font-size:11.5px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.of3-k{grid-column:2;font-size:10.5px;color:#aeb3d6;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.of3-k em{font-style:normal;color:#86efac}
+.of3-dot{width:6px;height:6px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.22)}
+.of3-faces{grid-column:3;grid-row:1/3;display:flex;align-items:center}
+.of3-faces .of3-face{width:20px;height:20px;border-radius:50%;margin-left:-6px;border:2px solid #23253f;background:#2d3052;image-rendering:pixelated}
+.of3-faces .of3-face:first-child{margin-left:0}
+.of3-more{margin-left:3px;font-size:10px;color:#c7cbef;font-weight:700}
+.of3-w{grid-column:2/4;font-size:10px;font-weight:800;color:#fbbf24}
+.of3-w.fl{color:#f87171}
+.of3-card.busy{border-color:rgba(134,239,172,.45)}
+.of3-card.on{border-color:var(--acc,#8b5cf6);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc,#8b5cf6) 45%,transparent),0 6px 18px rgba(0,0,0,.35)}
+.of3-card:focus-visible{outline:2px solid var(--acc,#8b5cf6);outline-offset:2px}
+.of3-brain{text-align:center;padding:5px 10px;border-radius:9px;background:rgba(14,18,38,.82);border:1px solid rgba(125,211,252,.35);color:#dff3ff}
+.of3-brain b{display:block;font:800 10px/1.3 ui-monospace,SFMono-Regular,monospace;letter-spacing:.14em;color:#7dd3fc}
+.of3-brain span{font-size:10.5px;color:#b8c7e8;white-space:nowrap}
+.of3-tag{font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(15,16,32,.78);color:#e7e9ff;white-space:nowrap}
+.of3-tag.busy{background:rgba(22,101,52,.85)}
+.of3-say{max-width:200px;padding:6px 9px;border-radius:12px;background:#fff;color:#191827;font-size:11.5px;font-weight:650;line-height:1.3;
+  box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.of3-say::after{content:'';position:absolute;left:var(--tail,20px);bottom:-6px;width:12px;height:12px;background:inherit;transform:translateX(-50%) rotate(45deg);border-radius:2px}
+.of3-say.think{border-radius:16px;font-style:italic;color:#44415a}
+.of3-say.shout{background:#fff7d6;font-weight:800;border:2px solid #f59e0b}
+.of3-burst{text-align:center;transform-origin:center}
+.of3-burst b{display:inline-block;padding:9px 14px;background:#ffe14d;color:#e11d48;font:italic 900 12px/1 var(--font,inherit);
+  clip-path:polygon(50% 0,61% 22%,86% 9%,79% 35%,100% 50%,79% 65%,86% 91%,61% 78%,50% 100%,39% 78%,14% 91%,21% 65%,0 50%,21% 35%,14% 9%,39% 22%);
+  scale:var(--s,1)}
+.of3-burst i{display:block;font-size:9px;font-style:normal;color:#d7daf5;text-shadow:0 1px 2px #000}
+.of3-pop{font:italic 900 24px/1 var(--font,inherit);color:#ffd23f;-webkit-text-stroke:2px #191827;paint-order:stroke}
+.of3-stuck{font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;background:#ef4444;color:#fff}
+.of3-badge{width:22px;height:22px;border-radius:50%;background:#ef4444;color:#fff;font-size:10.5px;font-weight:900;display:grid;place-items:center;border:2px solid #191827}
+.of3-meet{font-size:11px;font-weight:800;padding:3px 8px;border-radius:7px;background:#fff7d6;color:#7c2d12;border:2px solid #f59e0b}
+.of3-files{font:800 9px/1 ui-monospace,monospace;letter-spacing:.1em;color:#cbd5e1;padding:2px 5px;border-radius:5px;background:rgba(15,16,32,.7)}
+.of3-files em{font-style:normal;color:#fff;background:#ef4444;border-radius:8px;padding:0 4px;margin-left:3px}
+/* inside one room: the whole department, desk or not */
+.of3-ui>.of3-roster{left:auto;right:12px;top:12px;bottom:12px;width:250px;z-index:2;pointer-events:auto;overflow:auto;transform:none;will-change:auto;
+  padding:10px;border-radius:14px;background:rgba(18,20,38,.92);border:1px solid var(--o3ln);color:#eef0ff;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.of3-rh{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.of3-rh b{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.of3-about{font-size:11.5px;margin:2px 2px 8px}
+.of3-row{display:flex;align-items:center;gap:9px;width:100%;min-height:var(--tap,40px);padding:5px 6px;border:0;border-radius:9px;
+  background:transparent;color:inherit;text-align:left;cursor:pointer}
+.of3-row:hover,.of3-row:focus-visible{background:rgba(255,255,255,.07)}
+.of3-row .of3-rface{width:28px;height:28px;border-radius:8px;background:#2d3052;image-rendering:pixelated;flex:none}
+.of3-row span{display:flex;flex-direction:column;min-width:0}
+.of3-row b{font-size:12px}
+.of3-row small{font-size:10.5px;color:#aeb3d6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.of3-row.busy small{color:#86efac}
+/* the desktop scene is behind the windows: nothing on it takes a tap */
+#office-scene .of3-ui *{pointer-events:none!important}
+#office-scene .of-cv3{cursor:default}
+/* the scene is a band under the home screen: one line a card, the name and the faces */
+#office-scene:not(.hq) .of3-card{grid-template-rows:auto;padding:3px 7px 3px 5px}
+#office-scene:not(.hq) .of3-card .of3-k,#office-scene:not(.hq) .of3-card .of3-w{display:none}
+#office-scene:not(.hq) .of3-card>i{grid-row:1;width:11px;height:11px}
+#office-scene:not(.hq) .of3-card b{font-size:10.5px}
+#office-scene:not(.hq) .of3-faces{grid-row:1}
+#office-scene:not(.hq) .of3-faces .of3-face{width:16px;height:16px}
+@media (max-width:640px){
+  .of3-card{max-width:150px;padding:4px 7px 4px 5px;grid-template-columns:auto 1fr}
+  .of3-faces{display:none}
+  .of3-ui>.of3-roster{left:8px;right:8px;top:auto;width:auto;max-height:46%}
+}
+@media (prefers-reduced-motion:reduce){.of3-card{transition:none}}
+/* inside one room, the list says who is there: the other rooms' cards would only cover it */
+.of3-ui.focused .of3-card,.of3-ui.focused .of3-brain{display:none}
+/* Office HQ: the desktop scene, the whole screen in 3D, the prompt bar over it. The
+   greeting and the chips step aside (the Mind's rule); the cards stay two lines and take
+   taps, because they live in the desktop rather than the wall. */
+body.immersive #office-scene.hq{top:0!important;bottom:0}
+body.immersive #office-scene.hq .of-scroll{width:100%;height:100%;border-radius:0}
+body.immersive #office-scene.hq canvas{border-radius:0}
+body.imm-hq .hm-greet,body.imm-hq .hm-chips,body.imm-hq .hm-play,body.imm-hq .hm-now{display:none!important}
+body.imm-hq #wall.has::after{display:none}
+.of3-ui.hq{position:absolute;inset:0;z-index:0}
+body.has-win .of3-ui.hq{display:none}
+@media (max-width:640px){.of3-ui.hq .of3-card .of3-k,.of3-ui.hq .of3-card .of3-w{display:none}
+  .of3-ui.hq .of3-card{padding:3px 7px 3px 5px}.of3-ui.hq .of3-card b{font-size:10.5px}}

@@ -4320,6 +4320,10 @@ def _office_cli(args):
         if a == "pet" and rest:
             of.save(cfg, store, {"pet": rest[0]})
             return done(f"pet: {of.current(cfg)['pet']}")
+        if a == "look" and rest:
+            # how the desktop draws it: 3D rooms around the Brain, or the flat comic plan
+            of.save(cfg, store, {"look": rest[0]})
+            return done(f"look: {of.LOOKS[of.current(cfg)['look']]}")
         if a == "design" and rest:
             # the same designer as the Office's "Describe it": the machine's brain picks
             # from the closed set, and with nothing answering the words are matched
@@ -4405,6 +4409,7 @@ def _office_cli(args):
         sys.exit(2)
     print("  bento office [show] · styles · style NAME · name TEXT · move AGENT [DEPARTMENT] [--color C]\n"
           "  dept-rm DEPARTMENT · meeting on|off · lounge on|off · decor plants coffee … · pet cat|dog|robot|none\n"
+          "  look 3d|flat\n"
           "  design WORDS · snap [telegram|whatsapp] · picture [FILE.png] · visit LINK",
           file=sys.stderr)
     sys.exit(2)
@@ -7246,7 +7251,7 @@ def main():
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
-                               "lounge", "decor", "pet", "design", "snap", "picture", "visit"])
+                               "lounge", "decor", "pet", "look", "design", "snap", "picture", "visit"])
     p_of.add_argument("args", nargs="*", help="move: AGENT [DEPARTMENT] · style: pop|loft|tower|cozy|space|garden|night"
                                               " · design: a description in words · snap: telegram|whatsapp"
                                               " · picture: FILE.png · visit: LINK")

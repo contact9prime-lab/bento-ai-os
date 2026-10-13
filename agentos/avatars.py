@@ -54,6 +54,11 @@ import zlib
 W, H = 16, 26                       # one frame of one character
 FRAMES = 4                          # standing, blinking, wave (left arm), wave (right arm)
 FACE = (1, 0, 15, 14)               # x0, y0, x1, y1 (exclusive) — the head, for avatars
+#: The other ways round, for a scene where people turn (the 3D office: somebody at a
+#: desk has their back to you, somebody walking past is seen from the side). Still this
+#: painter and this recipe; the body sheet is [front, blink, back, side], side facing right.
+VIEWS = ("front", "back", "side")
+BODY = (("front", 0), ("front", 1), ("back", 0), ("side", 0))
 
 AGENT, ME = "@agent", "@me"
 
@@ -352,13 +357,15 @@ def _lum(c) -> float:
     """Perceived brightness, 0-255 (Rec. 601 weights) — enough to tell light from deep."""
     return .299 * c[0] + .587 * c[1] + .114 * c[2]
 
-def paint(rec: dict, frame: int = 0, costume: str = "") -> bytearray:
+def paint(rec: dict, frame: int = 0, costume: str = "", view: str = "front") -> bytearray:
     """One frame of one character as RGBA bytes, W x H. Frames: 0 standing, 1
     blinking, 2 and 3 the two halves of a working wave (one arm up, then the other).
     `costume` (one of COSTUMES, or '') dresses them for a scene without touching the
-    recipe: the face, hair and skin stay theirs."""
+    recipe: the face, hair and skin stay theirs. `view` turns them round: "back" is
+    the same person from behind, "side" faces right (mirror it for left)."""
     r = clean(rec)
     costume = costume if costume in COSTUMES else ""
+    view = view if view in VIEWS else "front"
     buf = bytearray(W * H * 4)
 
     def put(x, y, c):
@@ -405,6 +412,14 @@ def paint(rec: dict, frame: int = 0, costume: str = "") -> bytearray:
     # the outline: a deep shade of the character's own shirt colour, never one
     # shared black — eight characters sharing one ink look printed, not drawn
     ln = _hsl(r["hue"], .28, .13)
+
+    if view != "front":
+        _turned(view, r, costume, put, clr, box, sk, skH, skS, mouth, sh, shH, shS, pa, paS,
+                hr, hrH, hrS, ln)
+        if costume:
+            _hat(put, box, costume, r)
+        _outline(buf, put, ln)
+        return buf
 
     # legs, belt and shoes
     box(5, 19, 7, 22, pa); box(8, 19, 10, 22, pa); box(5, 19, 10, 19, paS)
@@ -531,9 +546,14 @@ def paint(rec: dict, frame: int = 0, costume: str = "") -> bytearray:
     if costume:
         _hat(put, box, costume, r)
 
-    # THE OUTLINE: every empty pixel touching the character becomes the line colour.
-    # One pass over the finished figure, so a new hair style needs no outline of its
-    # own and cannot forget one.
+    _outline(buf, put, ln)
+    return buf
+
+
+def _outline(buf, put, ln) -> None:
+    """THE OUTLINE: every empty pixel touching the character becomes the line colour.
+    One pass over the finished figure, so a new hair style (or a new view) needs no
+    outline of its own and cannot forget one."""
     alpha = [buf[i * 4 + 3] for i in range(W * H)]
     for y in range(H):
         for x in range(W):
@@ -542,7 +562,118 @@ def paint(rec: dict, frame: int = 0, costume: str = "") -> bytearray:
             if ((x > 0 and alpha[y * W + x - 1]) or (x < W - 1 and alpha[y * W + x + 1])
                     or (y > 0 and alpha[(y - 1) * W + x]) or (y < H - 1 and alpha[(y + 1) * W + x])):
                 put(x, y, ln)
-    return buf
+
+
+def _turned(view, r, costume, put, clr, box, sk, skH, skS, mouth, sh, shH, shS, pa, paS,
+            hr, hrH, hrS, ln) -> None:
+    """The same person from behind, or from the side facing right. The body keeps the
+    front view's columns (head x4-11, torso x4-11 from behind and x6-9 side on, legs
+    x5-10), so a 3D figure can wrap these pixels round its boxes and line up."""
+    white, gold = (242, 244, 248), (240, 194, 72)
+    outfit = "costume" if costume else r["outfit"]
+    st = r["style"]
+    if view == "back":
+        box(5, 19, 7, 22, pa); box(8, 19, 10, 22, pa); box(5, 19, 10, 19, paS)
+        box(7, 20, 7, 22, paS); box(10, 20, 10, 22, paS)
+        box(4, 23, 7, 24, ln); box(8, 23, 11, 24, ln)
+        box(4, 13, 11, 18, sh); box(5, 14, 5, 17, shH); box(11, 14, 11, 18, shS); box(4, 18, 11, 18, shS)
+        box(7, 12, 8, 12, skS)
+        if outfit == "blazer":
+            box(5, 13, 10, 13, shS); box(7, 16, 8, 18, _tone(sh, .82))   # collar and the vent
+        elif outfit == "hoodie":
+            box(5, 12, 10, 14, shS); box(6, 14, 9, 14, _tone(sh, .6))     # the hood, down
+        elif not costume:
+            box(6, 13, 9, 13, shH)                                         # a collar
+        if costume == "yukata":
+            obi = _hsl((r["hue"] + 180) % 360, .55, .52)
+            box(4, 17, 11, 17, obi); box(6, 16, 9, 18, obi); box(5, 22, 10, 22, _tone(pa, .7))
+        elif costume == "spacesuit":
+            pack = (200, 206, 216)
+            box(5, 13, 10, 17, pack); box(6, 14, 9, 14, _hsl(r["hue"], .62, .5))
+        elif costume == "overalls":
+            box(5, 15, 10, 18, pa); put(5, 13, pa); put(5, 14, pa); put(10, 13, pa); put(10, 14, pa)
+        for x0 in (2, 12):
+            box(x0, 13, x0 + 1, 16, sh); box(x0, 17, x0 + 1, 17, sk)
+        box(4, 3, 11, 11, sk)
+        for x, y in ((4, 3), (11, 3), (4, 11), (11, 11)):
+            clr(x, y)
+        put(3, 7, sk); put(3, 8, skS); put(12, 7, sk); put(12, 8, skS)      # ears
+        if st in ("short", "bun"):
+            box(4, 2, 11, 8, hr); clr(4, 2); clr(11, 2); box(6, 2, 8, 2, hrH); box(5, 8, 10, 8, hrS)
+            if st == "bun":
+                box(6, 0, 9, 2, hr); put(7, 0, hrH)
+        elif st == "long":
+            box(4, 2, 11, 3, hr); clr(4, 2); clr(11, 2); box(3, 4, 12, 13, hr)
+            box(6, 2, 8, 2, hrH); box(3, 13, 12, 13, hrS)
+        elif st == "bob":
+            box(4, 2, 11, 10, hr); clr(4, 2); clr(11, 2); box(3, 4, 3, 10, hr); box(12, 4, 12, 10, hr)
+            box(6, 2, 8, 2, hrH); box(3, 10, 12, 10, hrS)
+        elif st == "curly":
+            box(3, 2, 12, 9, hr); clr(3, 2); clr(12, 2)
+            for x in (4, 7, 10):
+                put(x, 1, hr); put(x + 1, 1, hr)
+            for x, y in ((5, 3), (8, 4), (11, 3), (6, 6), (9, 7)):
+                put(x, y, hrH)
+        elif st == "spiky":
+            box(4, 3, 11, 7, hr)
+            for x in (4, 6, 8, 10):
+                put(x, 2, hr); put(x + 1, 1, hr)
+            put(5, 1, hrH); put(9, 1, hrH); box(5, 7, 10, 7, hrS)
+        elif st == "bald":
+            box(4, 6, 11, 8, hr); box(5, 3, 10, 5, sk); put(6, 4, _tone(sk, 1.18)); put(7, 4, _tone(sk, 1.18))
+        return
+    # side on, facing right: we see their left side, so the lead's pin shows
+    box(6, 19, 9, 22, pa); box(6, 19, 6, 22, paS); box(6, 19, 9, 19, paS)
+    box(6, 23, 10, 24, ln); put(9, 23, _tone(ln, 2.2))
+    box(6, 13, 9, 18, sh); box(6, 14, 6, 18, shS); box(9, 14, 9, 17, shH); box(6, 18, 9, 18, shS)
+    box(7, 12, 8, 12, skS)
+    if outfit == "blazer":
+        tie = _hsl((r["hue"] + 180) % 360, .62, .46)
+        put(9, 13, white); put(9, 14, tie); put(9, 15, gold)
+    elif outfit == "hoodie":
+        box(5, 12, 6, 14, shS); put(9, 14, white); put(9, 15, white)
+    if costume == "yukata":
+        box(6, 17, 9, 17, _hsl((r["hue"] + 180) % 360, .55, .52))
+    elif costume == "spacesuit":
+        box(4, 13, 5, 17, (200, 206, 216))
+    elif costume == "overalls":
+        box(8, 15, 9, 18, pa); put(8, 13, pa); put(8, 14, pa)
+    box(7, 13, 8, 16, sh); put(7, 14, shS); box(7, 17, 8, 17, sk)          # the near arm
+    box(4, 3, 11, 11, sk)
+    for x, y in ((4, 3), (4, 11), (11, 11)):
+        clr(x, y)
+    box(5, 11, 10, 11, skS); box(11, 5, 11, 9, skH)
+    put(12, 8, sk)                                                          # the nose
+    put(6, 7, skS); put(6, 8, skS)                                          # the ear
+    deep = _lum(sk) < 130
+    eye = (16, 12, 18) if deep else ln
+    put(10, 7, eye); put(10, 8, eye)
+    if deep and not r["glasses"]:
+        put(10, 7, (236, 232, 228))
+    put(11, 10, mouth)
+    if r["blush"]:
+        put(9, 9, (232, 136, 136))
+    if r["glasses"]:
+        box(9, 6, 11, 6, ln); put(11, 7, (214, 226, 236)); box(6, 6, 8, 6, ln)
+    if st in ("short", "bun", "curly", "spiky"):
+        box(4, 2, 11, 4, hr); clr(11, 2); box(4, 4, 5, 8, hr); put(6, 5, hr)
+        box(6, 2, 9, 2, hrH)
+        if st == "bun":
+            box(2, 2, 4, 4, hr); put(3, 2, hrH)
+        elif st == "curly":
+            box(3, 2, 3, 9, hr)
+            for x in (5, 8, 11):
+                put(x, 1, hr)
+        elif st == "spiky":
+            for x in (5, 7, 9):
+                put(x, 1, hr)
+            put(4, 1, hr); put(3, 2, hr)
+    elif st == "long":
+        box(4, 2, 11, 4, hr); clr(11, 2); box(3, 4, 6, 13, hr); box(3, 12, 6, 13, hrS); box(6, 2, 9, 2, hrH)
+    elif st == "bob":
+        box(4, 2, 11, 4, hr); clr(11, 2); box(3, 4, 6, 10, hr); box(3, 10, 6, 10, hrS); box(6, 2, 9, 2, hrH)
+    elif st == "bald":
+        box(4, 6, 5, 8, hr); put(7, 3, _tone(sk, 1.18))
 
 
 def _dress(put, box, costume: str, r: dict, sh, pa, ln) -> None:
@@ -632,18 +763,20 @@ def _soften(px: bytes, w: int, h: int) -> tuple[int, int, bytes]:
 
 
 def image(rec: dict, frame: int = 0, crop: str = "", sheet: bool = False,
-          scale: int = 1, costume: str = "", draw: str = "") -> tuple[int, int, bytes]:
+          scale: int = 1, costume: str = "", draw: str = "", body: bool = False) -> tuple[int, int, bytes]:
     """(width, height, rgba) — a frame, the face crop, or all frames side by side,
     scaled up by a whole number (nearest neighbour: it is pixel art). `draw="soft"`
-    rounds the steps first, per frame, so one frame never bleeds into the next."""
+    rounds the steps first, per frame, so one frame never bleeds into the next.
+    `body` is the sheet a 3D scene wraps round a figure: BODY, four frames wide."""
     soft = draw == "soft"
-    if sheet:
-        frames = [bytes(paint(rec, f, costume)) for f in range(FRAMES)]
+    if sheet or body:
+        frames = ([bytes(paint(rec, f, costume, view)) for view, f in BODY] if body
+                  else [bytes(paint(rec, f, costume)) for f in range(FRAMES)])
         fw, h = W, H
         if soft:
             frames = [_soften(fb, W, H)[2] for fb in frames]
             fw, h = W * SOFT, H * SOFT
-        w = fw * FRAMES
+        w = fw * len(frames)
         rows = bytearray()
         for y in range(h):
             for fb in frames:
@@ -683,20 +816,20 @@ def png(w: int, h: int, rgba: bytes) -> bytes:
 
 @functools.lru_cache(maxsize=512)
 def _png_cached(recipe_json: str, frame: int, crop: str, sheet: bool, scale: int,
-                costume: str = "", draw: str = "") -> bytes:
+                costume: str = "", draw: str = "", body: bool = False) -> bytes:
     w, h, px = image(json.loads(recipe_json), frame=frame, crop=crop, sheet=sheet, scale=scale,
-                     costume=costume, draw=draw)
+                     costume=costume, draw=draw, body=body)
     return png(w, h, px)
 
 
 def png_of(rec: dict, frame: int = 0, crop: str = "", sheet: bool = False, scale: int = 1,
-           costume: str = "", draw: str = "") -> bytes:
+           costume: str = "", draw: str = "", body: bool = False) -> bytes:
     """A character as PNG bytes. Cached on the RECIPE, not on the key: an edit is a
     new recipe and so a new entry, and nothing has to remember to invalidate."""
     return _png_cached(as_json(rec), max(0, min(FRAMES - 1, int(frame or 0))),
                        "face" if crop == "face" else "", bool(sheet), max(1, min(12, int(scale or 1))),
                        costume if costume in COSTUMES else "",
-                       "soft" if draw == "soft" else "")
+                       "soft" if draw == "soft" else "", bool(body))
 
 
 def terminal(rec: dict, crop: str = "", frame: int = 0) -> list[str]:

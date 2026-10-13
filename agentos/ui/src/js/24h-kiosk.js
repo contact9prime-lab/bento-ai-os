@@ -71,7 +71,7 @@ function kioskStop(){
   const hud=document.getElementById('kiosk-hud');if(hud)hud.remove();
   if(KIOSK.cid&&typeof sinkOff==='function')sinkOff(KIOSK.cid);
   // the office scene stays only if the immersive look asked for it
-  if(typeof officeSceneStop==='function'&&!(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='office'))officeSceneStop();
+  if(typeof officeSceneStop==='function'&&!(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&(IMMERSIVE.scene==='office'||IMMERSIVE.scene==='hq')))officeSceneStop();
   else if(typeof officeSceneResize==='function')officeSceneResize();
   if(typeof suiSyncStruts==='function')suiSyncStruts();
 }

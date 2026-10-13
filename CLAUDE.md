@@ -1383,6 +1383,24 @@ connection should be there in the chat". `tests/test_app_schedules.py`. Five thi
 The `app_data` broadcast reaches an open app as the `appdata` event (`09-websocket.js` posts into
 the app's frames; the runtime accepts it only from `parent`).
 
+## An app is held to one bar, wherever it was built
+
+`APP_UI_CSS` (the kit), `APP_RUNTIME` (appData … appToast, appConfirm, appCelebrate, appIcon,
+appShare, appFmt) and `BUILDER_PERSONA` are the bar; `APP_CRAFT`/`APP_BRIEF` is the same text
+without the create_app mechanics, written as `APP_BRIEF.md` beside a chat build's file
+(`write_app_brief`, named by `executors._brief_line`). `tests/test_app_quality.py`. Four things:
+- **Only BROKEN spends a chat turn** (`_chat_app_fix`): one resumed turn on a CLI in `RESUMES`,
+  its words kept out of the reply. A contract item (no widget view, no copilot) is the Studio's
+  bar, not a reason to bill a chat again.
+- **The frame has no dialogs.** `confirm()` answers false and `prompt()` null in a sandbox without
+  `allow-modals`, so appcheck marks either BROKEN (`modal-dialog`, inline handlers included) and
+  the runtime turns `alert()` into a toast. Do not add `allow-modals` to fix it: use appConfirm.
+- **APP_RUNTIME is %-formatted.** A lone `%` in new JS is a TypeError at every app page; write
+  `%%`. The test runs the rendered runtime in Node.
+- **The theme is asked for, never assumed.** The runtime posts `theme?`; `05-apps-registry.js`
+  answers only a frame it drew, with three colour tokens, and the runtime takes only `--name`
+  keys with colour-shaped values.
+
 ## An app's AI is the machine's brain, and the app is the principal of every step
 
 `executors.fenced_brain` / `ask_fenced` + the `/api/apps/llm/*` and `/api/apps/agent` routes;
@@ -1899,6 +1917,9 @@ things keep it true:
   answer (`teamlink.clean_identity`: a 40-char name, `avatars.clean`'d looks, nothing else) and
   is drawn by `/api/avatar.png?recipe=` through `avatarRecipeImg` — the one door, so still no
   surface builds its own face URL.
+- **A view is asked for with the picture too** (`paint(view=)`, `VIEWS`, the `BODY` sheet via
+  `?body=1`): back and side keep the front view's columns so a 3D figure lines up. A new hair
+  style or costume needs its back and side drawn as well; the test paints every combination.
 - **A costume and the smooth drawing are asked for with the picture, never stored.**
   `paint(rec, frame, costume)` dresses a figure for a scene (`COSTUMES`) over the same face, and
   the lead keeps the gold pin in every one; `image(draw="soft")` rounds the painter's own pixels
@@ -1966,6 +1987,32 @@ things keep it true:
   and the window's ✦ is hidden — a second copy of the same thread would be two chats. A
   huddle asked there is drawn there: `agent_say` reaches the panel's `miniFeed.say` as well as
   Chat, or the panel sat empty while the agents met at the table.
+- **The 3D look draws the same plan; it decides nothing** (`24k-office3d.js`, office.py `look`,
+  `tests/test_office3d.py`). Asked for with a screenshot of an isometric agent HQ and "when I
+  add so many agents it becomes really cluttered". The flat office's logic (walks, papers,
+  balloons, `officeRoute`/`officeSeat`/`officeDraw`) branches on `O.L.radial` into `of3*`; the
+  rooms stand on a ring round the Brain (memories and KG facts, counted by `office.brain`).
+  Clutter is rules: a room seats `OF3_SEATS` and the rest are on its card; `of3Need` gives a
+  desk to whoever gets work (called from officeWork/Say/Burst/HandOver/Escalate), an IDLE
+  colleague gives it up, and somebody working is never moved out (a busy department became
+  people walking in and out). Names only on people moving and inside a focused room. The ring
+  is stretched by the window's shape (`OF3_TALL`, `wide`): a squashed ring stacked the side
+  rooms and every card covered the room behind; so a resize MOVES the rooms, and the scene's
+  signature carries their positions (rebuilt once the window settles). With only the names in
+  it, maximising left people and cards beside furniture that had not moved. Faces are
+  `avatarSrc`/`avatarRecipeSrc`, no painter. No WebGL, or a renderer that will not start, is the flat office plus `OF3.why`.
+  **People face their work, and that is a layout rule** (`of3SeatPos`, `of3SeatOf`; reported
+  as "all of them are facing me"): desks stand against the two back walls and face them, so
+  you see people from behind with screens over their shoulder; only the boss's desk faces the
+  door. A person is a figure of boxes wrapped in the painter's BODY sheet (front, blink, back,
+  side; `of3UV`/`of3Part`), so it is still one painter. It turns: to the desk while working, a
+  little into the room when not, the way it walks, towards whoever it visits (`of3LookAt`).
+  Walks start and end a step behind the chair (`officeStepOut`), and visits stand beside it
+  (`officeBeside`), because a walk to `home+(40,56)` went through a desk that faces a wall.
+  Shared shapes are `of3Geo` (`userData.shared`), and every scene traverse must skip them.
+  **Office HQ** (scene `hq`) is the same office scene full screen and always 3D (`of3HQ`); its
+  words layer lives in `#desktop` (the World's tags argument: the wall cannot be tapped) and the
+  prompt bar and dock are `of3Pads`, so the ring fits between them.
 - **Rooms are painted once** into an offscreen layer per layout; a frame is a blit plus people
   (~1.1ms). 30fps while something moves, 6 at rest, none asleep (`winAwake`, `winTick(...,0)`
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a

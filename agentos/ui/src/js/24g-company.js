@@ -40,6 +40,8 @@ function companyCards(){
   const host=w.el.querySelector('.of-cards');if(!host)return;
   const O=OFFICE,d=COMPANY.data;
   if(!O.L||!d||!d.departments||!d.departments.length){host.innerHTML='';return}
+  // the 3D office puts the same numbers on its own room cards (of3Cards)
+  if(O.L.radial){host.innerHTML='';of3Cards(true);return}
   host.style.width=O.cw+'px';host.style.height=O.ch+'px';
   const by={};d.departments.forEach(s=>by[s.name.toLowerCase()]=s);
   host.innerHTML=O.L.rooms.filter(r=>r.kind==='dept'&&by[r.name.toLowerCase()]).map(r=>{

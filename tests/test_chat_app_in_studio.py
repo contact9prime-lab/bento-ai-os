@@ -118,7 +118,7 @@ def test_a_follow_up_edits_the_app_this_chat_built(tmp_path):
 
 def test_the_chat_path_wires_all_of_it():
     i = SERVER.index("checkout = execmod.new_app_checkout(env.workspace")
-    chat = SERVER[i - 3000:i + 6000]
+    chat = SERVER[i - 3000:i + 7500]
     assert "_default_app_name(text)" in chat[3000:3200], "not the first 60 characters of the message"
     assert "store.app_for_conversation(cid)" in chat and "execmod.chat_app_note" in chat
     assert '_co["conversation_id"] = cid' in chat

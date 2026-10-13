@@ -143,6 +143,49 @@ def _top_level_awaits(js: str) -> bool:
     return False
 
 
+def _syntax_errors(html: str) -> list[str]:
+    """Each classic inline <script> parsed by Node (`node --check`), when Node is here.
+
+    A syntax error anywhere in a script stops the whole of it: a blank window, and the
+    error in a console nobody has open. The regex rules above catch the commonest shape
+    of it (top-level await); this catches the rest, with the parser's own line. Node is
+    on most machines that build apps (Claude Code and the WhatsApp bridge need it); where
+    it is not, the rule is skipped rather than guessed at.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+    node = shutil.which("node")
+    if not node:
+        return []
+    out = []
+    blocks = re.findall(r"<script\b([^>]*)>(.*?)</script>", html or "", re.I | re.S)
+    for i, (attrs, js) in enumerate(blocks):
+        if re.search(r"\bsrc\s*=|type\s*=\s*[\"']?(module|application/json|text/template|importmap)", attrs, re.I):
+            continue
+        if not js.strip():
+            continue
+        try:
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+                f.write(js)
+                path = f.name
+            r = subprocess.run([node, "--check", path], capture_output=True, text=True, timeout=8)
+            if r.returncode != 0:
+                lines = [ln for ln in (r.stderr or "").splitlines() if ln.strip()]
+                msg = next((ln for ln in lines if "Error" in ln), lines[-1] if lines else "syntax error")
+                where = next((ln.rsplit(":", 1)[-1] for ln in lines if ln.startswith(path + ":")), "")
+                out.append(f"script {i + 1}{(' line ' + where) if where.isdigit() else ''}: {msg.strip()[:160]}")
+        except Exception:
+            continue
+        finally:
+            try:
+                import os
+                os.unlink(path)
+            except Exception:
+                pass
+    return out
+
+
 def _has(html: str, pattern: str) -> bool:
     return re.search(pattern, html, re.I) is not None
 
@@ -171,7 +214,24 @@ def check(html: str, known_tools: set[str] | None = None) -> Report:
                           f"appTool('{m.group(1)}') names a tool that does not exist",
                           "use a name from the API registry"))
 
-    for js in _scripts(h):
+    # The app frame is sandboxed without modals: confirm() always answers false and
+    # prompt() returns null, so "Delete this?" built on them never deletes. The runtime
+    # gives appConfirm instead (alert() is turned into a toast, so it is not listed).
+    handlers = [a or b for a, b in re.findall(r"\son[a-z]+\s*=\s*(?:\"([^\"]*)\"|'([^']*)')", h, re.I)]
+    src = "\n".join(_strip_strings_and_comments(js) for js in _scripts(h) + handlers)
+    if re.search(r"(?<![\w.$])(?:window\.)?(confirm|prompt)\s*\(", src):
+        add(Issue(BROKEN, "modal-dialog",
+                  "uses confirm() or prompt(), which the app's sandbox always answers with "
+                  "'no' or nothing, so that action never happens",
+                  "if (await appConfirm('…', {danger:true})) …, or an inline input"))
+
+    for err in _syntax_errors(h):
+        add(Issue(BROKEN, "js-syntax", f"JavaScript does not parse ({err}), so none of that "
+                  "script runs", "fix the syntax"))
+
+    for attrs, js in re.findall(r"<script\b([^>]*)>(.*?)</script>", h, re.I | re.S):
+        if re.search(r"type\s*=\s*[\"']?module", attrs, re.I):
+            continue          # a module may await at the top; only a classic script dies of it
         if _top_level_awaits(js):
             add(Issue(BROKEN, "top-level-await",
                       "a plain <script> uses top-level await — a SyntaxError that stops "

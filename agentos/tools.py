@@ -1856,8 +1856,31 @@ class Toolbox(usersmod.Scoped):
         self.store.log("system", f"app created by agent: {name}")
         if self.broadcast:
             await self.broadcast({"type": "apps"})
-        return (f"app '{name}' ({icon}) saved with id {aid} — it now has a desktop icon and opens in a window. "
+        done = (f"app '{name}' ({icon}) saved with id {aid} — it now has a desktop icon and opens in a window. "
                 f"It can call the AgentOS REST API (e.g. GET /api/tasks, /api/system, POST /api/chat).")
+        # The same checker App Studio's builds pass (appcheck.py), on every save: a chat
+        # build was the one way to make an app that nothing looked at, and it is where a
+        # confirm() that never confirms or a script that does not parse shipped from.
+        try:
+            from . import appcheck
+            try:
+                from .server import _known_tool_names
+                known = _known_tool_names(self)
+            except Exception:
+                known = None
+            rep = appcheck.check(html, known)
+            broken, contract = rep.of(appcheck.BROKEN), rep.of(appcheck.CONTRACT)
+            if broken or contract:
+                done += ("\n\nAUTOMATED CHECK of what you saved"
+                         + (" — it will not work as it is; fix these and call create_app again with the "
+                            "same name and the corrected html:" if broken else
+                            " — it runs, but it is not finished; fix these with create_app (same name):")
+                         + "\n" + rep.brief(limit=8)
+                         + "\nThe page already has the design kit and the runtime (appToast, appConfirm, "
+                           "appCelebrate, appIcon, appShare, appFmt, appData, appLLM, appCopilot.mount).")
+        except Exception:
+            pass
+        return done
 
     def _repo_root(self):
         return Path(__file__).resolve().parent.parent   # the AgentOS source checkout
@@ -3435,7 +3458,7 @@ class Toolbox(usersmod.Scoped):
 
     async def set_office(self, style: str = "", name: str = "", agent: str = "", department: str = "",
                          color: str = "", departments=None, remove_department: str = "",
-                         meeting=None, lounge=None, decor=None, pet: str = "") -> str:
+                         meeting=None, lounge=None, decor=None, pet: str = "", look: str = "") -> str:
         """Look at or redesign the Office playground — the agent's half of its editor
         (the parity law). Every value is from office.py's closed set, and a refusal
         names the choices. With no changes it describes the office and the options,
@@ -3447,7 +3470,7 @@ class Toolbox(usersmod.Scoped):
         try:
             if agent:
                 of.place(self.cfg, self.store, agent, department, color)
-            patch = {k: v for k, v in (("style", style), ("name", name), ("pet", pet)) if v}
+            patch = {k: v for k, v in (("style", style), ("name", name), ("pet", pet), ("look", look)) if v}
             if meeting is not None:
                 patch["meeting"] = meeting
             if lounge is not None:
@@ -3472,7 +3495,8 @@ class Toolbox(usersmod.Scoped):
                         f"departments (up to {of.MAX_DEPTS}, each a name, a colour — "
                         f"{', '.join(of.COLORS)} — and members from: {', '.join(v['agents']) or 'no specialists yet'}), "
                         f"move one agent with agent+department, remove_department, meeting and lounge "
-                        f"(yes/no), decor ({', '.join(of.DECOR)}) and pet ({', '.join(of.PETS)}).")
+                        f"(yes/no), decor ({', '.join(of.DECOR)}), pet ({', '.join(of.PETS)}) "
+                        f"and look ({', '.join(of.LOOKS)}).")
         except ValueError as e:
             return f"[error] {e}"
         cfgmod.save_config(self.cfg)
@@ -4992,7 +5016,9 @@ DESKTOP_TOOL_SCHEMAS = [
             "lounge": {"type": "boolean"},
             "decor": {"type": "array", "items": {"type": "string",
                       "enum": ["plants", "coffee", "whiteboard", "bookshelf", "arcade", "posters"]}},
-            "pet": {"type": "string", "enum": ["none", "cat", "dog", "robot"]}}},
+            "pet": {"type": "string", "enum": ["none", "cat", "dog", "robot"]},
+            "look": {"type": "string", "enum": ["3d", "flat"],
+                     "description": "3d: rooms around the Brain in 3D; flat: the comic floor plan"}}},
     },
     {
         "name": "list_themes",
