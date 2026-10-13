@@ -805,6 +805,25 @@ class Agent:
         )
         return (base + "\n\n" + self.extra_system) if self.extra_system else base
 
+    async def _checkpoint(self, name: str, args: dict) -> None:
+        """Time travel: before a step that changes something, keep what it is about to
+        change (agentos/timetravel.py). Only here, at the one gate both loops pass, and
+        only after the step was allowed. Never fails the step it is guarding."""
+        from . import timetravel
+        if not timetravel.changes_things(name):
+            return
+        try:
+            from pathlib import Path as _P
+            from . import config as cfgmod
+            home = _P(self.toolbox.store.path).parent        # the store's own home: whoever's turn
+            files = timetravel.targets(name, args, self.toolbox._abs, cfgmod.soul_path(),
+                                       (self.toolbox.cfg or {}).get("workspace", ""))
+            pt = timetravel.checkpoint(self.toolbox.store.db, home, name, tool_detail(name, args), files,
+                                       self.conversation_id, getattr(self, "run_id", ""), self.steps_used)
+            await self.emit({"type": "checkpoint", "id": pt["id"], "tool": name, "unseen": bool(pt["unseen"])})
+        except Exception:
+            pass
+
     async def call_tool(self, name: str, args: dict, call_id: str = "") -> tuple:
         """ONE tool call through the whole gate: scope injection, risk, the PDP
         decision, approval, execution, the ledger row, the log, taint, and the
@@ -956,6 +975,7 @@ class Agent:
                     return await self._park_here(name, args, call_id, dec,
                                                  dec.reason or reason)
             if approved:
+                await self._checkpoint(name, args)
                 output = await self.toolbox.execute(name, args)
             elif verdict is not None:
                 why = "; ".join(f"{b['agent']}: {b['why']}" for b in verdict["ballots"]
@@ -977,6 +997,7 @@ class Agent:
             await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
                              "args": args, "detail": tool_detail(name, args),
                              "pending_approval": False})
+            await self._checkpoint(name, args)
             output = await self.toolbox.execute(name, args)
         if self.park_child is not None:
             # the tool started work that parked (a mission's `delegate` whose specialist

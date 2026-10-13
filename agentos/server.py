@@ -11233,6 +11233,98 @@ async def api_arena_stop(aid: str):
     return {"stopped": n}
 
 
+# ---- time travel: rewind what an agent changed, fork from a step ----------------------
+
+def _tt_where():
+    # the copies live beside the database they belong to: each person's own home
+    return state["store"].db, Path(state["store"].path).parent
+
+
+@app.get("/api/timetravel")
+async def api_timetravel(conversation_id: str = ""):
+    """The checkpoints (agentos/timetravel.py), newest last, and the conversations they
+    belong to, so the scrubber can offer the ones with something to rewind."""
+    from . import timetravel
+    db, _ = _tt_where()
+    pts = timetravel.points(db, conversation_id, limit=300)
+    convs = {}
+    for cid, n in db.execute("SELECT conversation_id, COUNT(*) FROM _tt_points WHERE conversation_id!='' "
+                             "GROUP BY conversation_id ORDER BY MAX(ts) DESC LIMIT 20"):
+        c = state["store"].get_conversation(cid) or {}
+        convs[cid] = {"id": cid, "title": c.get("title") or "a conversation", "points": n}
+    return {"points": pts, "conversations": list(convs.values()),
+            "busy": [c for c, t in state["turns"].items() if t.get("uid", "") == usersmod.current()]}
+
+
+@app.get("/api/timetravel/{pid}/plan")
+async def api_timetravel_plan(pid: str):
+    from . import timetravel
+    db, home = _tt_where()
+    try:
+        return timetravel.plan(db, home, pid)
+    except KeyError:
+        return JSONResponse({"error": "no such checkpoint"}, status_code=404)
+
+
+@app.post("/api/timetravel/{pid}/rewind")
+async def api_timetravel_rewind(pid: str):
+    """Go back to just before a checkpoint: exactly what /plan showed. Refused while a turn
+    in that conversation is still running, because it would keep writing."""
+    from . import timetravel
+    db, home = _tt_where()
+    p = timetravel.get(db, pid)
+    if not p:
+        return JSONResponse({"error": "no such checkpoint"}, status_code=404)
+    if p["conversation_id"] and p["conversation_id"] in state["turns"]:
+        return JSONResponse({"error": "That conversation is still working. Stop it or let it finish, then rewind."},
+                            status_code=409)
+    got = await asyncio.to_thread(timetravel.rewind, db, home, pid)
+    state["store"].log("system", f"time travel: rewound to before {p['tool']} ({pid}): " + ", ".join(got["words"]))
+    await state["broadcast_user"]({"type": "timetravel", "rewound": pid, "conversation_id": p["conversation_id"]},
+                                  usersmod.current())
+    await state["broadcast_user"]({"type": "files"}, usersmod.current())
+    return got
+
+
+@app.post("/api/timetravel/{pid}/fork")
+async def api_timetravel_fork(pid: str, body: dict):
+    """A new conversation from a checkpoint, on another brain: the history before that
+    turn, the same question, and the steps that had already run, so the new brain carries
+    on from there. The person's act; the turn runs like any chat turn."""
+    from . import executors as execmod
+    from . import providers
+    from . import timetravel
+    db, _ = _tt_where()
+    p = timetravel.get(db, pid)
+    if not p or not p["conversation_id"]:
+        return JSONResponse({"error": "that checkpoint is not part of a conversation"}, status_code=404)
+    model = str((body or {}).get("model") or "")
+    if model:
+        brains = await asyncio.to_thread(execmod.brains, state["cfg"], await providers.available_models(state["cfg"]))
+        ok = {c["model"] if c["kind"] == "provider" else c["executor"] for c in arenamod.choices(brains)}
+        if model not in ok:
+            return JSONResponse({"error": f"{model!r} is not a brain this machine can run right now"}, status_code=400)
+    store = state["store"]
+    try:
+        fk = timetravel.fork_history(db, store.get_messages(p["conversation_id"]), pid)
+    except (KeyError, ValueError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    src = store.get_conversation(p["conversation_id"]) or {}
+    cid = store.create_conversation(title=f"Fork · {(src.get('title') or 'chat')[:60]}", origin="fork")
+    for m in fk["history"]:
+        store.add_message(cid, m["role"], m.get("content") or "", m.get("meta") or {})
+    note = ("This conversation was forked from an earlier one at a checkpoint. Files, memory and the graph "
+            "may have been rewound to that moment. Steps of this task that had already run before the fork:\n"
+            + "\n".join(f"- {s}" for s in fk["already"])) if fk["already"] else ""
+    uid = usersmod.current()
+    state["turns"][cid] = {"agent": None, "task": None, "model": "", "uid": uid}
+    asyncio.create_task(run_chat(cid, {"text": fk["ask"], "model": model, "uid": uid, "context": note,
+                                       "origin": "fork", "surface": "gui"}))
+    await state["broadcast_user"]({"type": "conversation", "id": cid, "title": f"Fork · {src.get('title') or ''}",
+                                   "origin": "fork"}, uid)
+    return {"conversation_id": cid, "ask": fk["ask"], "already": fk["already"], "model": model or "default"}
+
+
 def _drama_story():
     cfg = state["cfg"]
     beats = dramamod.load(usersmod.current())

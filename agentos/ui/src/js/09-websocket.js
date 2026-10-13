@@ -763,6 +763,8 @@ function handle(ev){
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
     case 'arena': arenaEvent(ev); break;
+    case 'checkpoint': ttLayoutSave(ev.id); if(TT.w&&TT.conv===ev.conversation_id)refreshApp('timetravel'); break;
+    case 'timetravel': if(TT.w)refreshApp('timetravel'); break;
     case 'drama': dramaOffer(ev); if(typeof refreshApp==='function')refreshApp('drama'); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'toast': toast(ev.text||''); break;   // the server has something short to say

@@ -4643,6 +4643,45 @@ def _provision_cli(args, cfg, a, rest, val, run):
         print(f"  ✓ {r['name']} is set up ({r['how']}) and is joining '{d['pool']['name']}'.")
 
 
+def _timetravel_cli(args):
+    """`bento timetravel` — the checkpoints kept before each step that changed something,
+    what going back to one would undo (`plan`, the same computation the desktop's
+    scrubber shows), and `rewind ID --yes`. Reads the person's own database, so it works
+    with the server down; a running server would keep writing, so stop the turn first.
+    Forking onto another brain is the desktop's and the server's (it starts a turn)."""
+    from . import timetravel as tt
+    from . import users as usersmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    home = Path(store.path).parent
+    a = args.action
+    if a == "list":
+        print(tt.text(store.db, args.conv or "", int(args.n or 30)))
+        return
+    if not args.id:
+        print("say which checkpoint: bento timetravel list shows their ids")
+        sys.exit(2)
+    try:
+        pl = tt.plan(store.db, home, args.id)
+    except KeyError:
+        print(f"no checkpoint {args.id!r}")
+        sys.exit(2)
+    print(f"going back to before {pl['point']['tool']} ({pl['point']['detail']}) would undo {pl['steps']} step(s):")
+    for w in pl["words"]:
+        print("  - " + w)
+    for f in pl["restore"]:
+        print("    put back " + f)
+    for f in pl["remove"]:
+        print("    set aside " + f)
+    if pl["warning"]:
+        print("  ! " + pl["warning"])
+    if a == "rewind":
+        if not args.yes:
+            print("nothing changed: add --yes to rewind")
+            return
+        got = tt.rewind(store.db, home, args.id)
+        print("rewound." + (f" What it replaced is in {got['aside']}" if got["aside"] else ""))
+
+
 def _arena_cli(args):
     """`bento arena` — the Arena from a terminal: the same task to two to four brains at
     once, run by the server (the gate, the ledger and the folders are its), shown here as
@@ -7753,6 +7792,13 @@ def main():
                                               " · picture: FILE.png · visit: LINK")
     p_of.add_argument("--color", default="", help="move: the colour of a NEW department")
     p_of.add_argument("--user", default="", help="whose office, on a machine with users")
+    p_tt = verb("timetravel", help="rewind files, memory and the graph to before an agent's step")
+    p_tt.add_argument("action", nargs="?", default="list", choices=["list", "plan", "rewind"])
+    p_tt.add_argument("id", nargs="?", default="", help="plan/rewind: the checkpoint id from `list`")
+    p_tt.add_argument("--conv", default="", help="list: one conversation's checkpoints")
+    p_tt.add_argument("-n", default="30", help="list: how many")
+    p_tt.add_argument("--yes", action="store_true", help="rewind: really do it")
+    p_tt.add_argument("--user", default="", help="whose timeline, on a machine with users")
     p_ar = verb("arena", help="the same task to two to four brains at once, side by side")
     p_ar.add_argument("action", nargs="?", default="list", choices=["list", "brains", "run", "show", "stop"])
     p_ar.add_argument("arg", nargs="?", default="", help="run: the task · show/stop: the arena id")
@@ -8070,6 +8116,8 @@ def main():
         _pool_cli(args)
     elif args.cmd == "face":
         _face_cli(args)
+    elif args.cmd == "timetravel":
+        _timetravel_cli(args)
     elif args.cmd == "arena":
         _arena_cli(args)
     elif args.cmd == "drama":
