@@ -4521,6 +4521,29 @@ body.dev-touch .co-cosl select,body.dev-touch .co-newco,body.dev-touch .co-plan,
 body.dev-touch .co-wrow{min-height:var(--tap)}
 body.dev-touch .co-wrow input{width:22px;height:22px}
 .co-go .co-apply,.co-go .co-wapply{white-space:normal;text-align:left;line-height:1.3}
+
+/* zoom on the picture (24k-office3d.js of3Controls): in, out, the whole office */
+.of3-ui>.of3-zoom{left:12px;top:auto;bottom:12px;transform:none;will-change:auto;display:flex;flex-direction:column;gap:6px;pointer-events:auto;z-index:2}
+.of3-zb{width:var(--tap,36px);height:var(--tap,36px);border-radius:10px;border:1px solid var(--o3ln);background:var(--o3bg);color:#eef0ff;
+  font:700 17px/1 var(--font,inherit);display:grid;place-items:center;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.of3-zb:hover,.of3-zb:focus-visible{border-color:var(--acc,#8b5cf6)}
+#office-scene:not(.hq) .of3-zoom{display:none}
+.of3-ui.hq>.of3-zoom{bottom:110px;left:16px}
+/* Office HQ on a wide screen: the conversation is a column on the right, so the work
+   plays out in the room the camera follows on the left (of3Docked, of3Pads). The list of
+   a room's people moves left to stay clear of it. */
+@media (min-width:901px){
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar{top:44px;bottom:auto;left:auto;right:16px;
+    transform:none;width:min(440px,34vw)}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{width:min(440px,34vw)}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:112px;bottom:auto;left:auto;right:16px;
+    transform:none;width:min(440px,34vw);flex-direction:column}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{max-height:calc(100vh - 230px)}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full) .approval.ap-float,
+  body.immersive.imm-hq:not(.has-win):not(.deck-full) #aibubble{right:calc(min(440px,34vw) + 32px)}
+  .of3-ui.hq>.of3-roster{right:auto;left:16px;top:56px;bottom:110px}
+  .of3-ui.hq.focused>.of3-zoom{left:282px}
+}
 /* ================= The play strip and comic talk (24e-playstrip.js, 10b-huddle.js) =================
    The Office's comic language at the size of a line: ink outlines, white balloons, yellow
    bursts with a red word. Like the Office canvas these are a comic's own colours — a
@@ -13760,6 +13783,10 @@ function approvalFloat(ev){
 var APPROVAL_WATCH=0;
 function approvalHome(id){
   const ev=APPROVALS[id];if(!ev)return;
+  // a placed card that is in view now makes its floating copy a second door to the same
+  // question (Office HQ: the answer card scrolled to it a moment after the float went up)
+  if([...document.querySelectorAll('[id="ap-'+id+'"]:not(.ap-float)')].some(approvalShown)){
+    document.querySelectorAll('[id="ap-'+id+'"].ap-float').forEach(f=>f.remove());return}
   if(approvalVisible(id))return;
   const feed=document.getElementById('feed');
   const chatOpen=feed&&ev.conversation_id&&ev.conversation_id===currentConv&&approvalShownArea(feed);
@@ -30431,7 +30458,7 @@ async function of3Ensure(){
     // the kiosk is a small machine's own screen (a Pi): no shadows there either
     OF3.hq=!document.body.classList.contains('kiosk')&&typeof worldQuality==='function'?worldQuality(OF3.r):false;
     if(OF3.hq){OF3.r.shadowMap.enabled=true;OF3.r.shadowMap.type=T.PCFSoftShadowMap}
-    of3Input(cv);
+    of3Input(cv);of3Controls();
     of3Size();of3Build();
   }catch(e){
     console.warn('office 3d',e);
@@ -30460,7 +30487,7 @@ function of3Dispose(){
   if(OF3.cv)OF3.cv.remove();if(OF3.ui)OF3.ui.remove();
   clearTimeout(OF3.rebuild);
   Object.assign(OF3,{r:null,scene:null,cam:null,cv:null,ui:null,sig:'',names:'',rooms:[],screens:[],sp:{},el:{},
-    view:null,target:null,fit:null,anim:null,focus:null,sparks:[],brain:null,papers:[],pet:null,ball:null,cardSig:'',
+    view:null,target:null,fit:null,anim:null,focus:null,follow:'',followAt:0,userMoved:false,sparks:[],brain:null,papers:[],pet:null,ball:null,cardSig:'',
     geo:{},chairs:{},table:null,texs:{}});
   if(T)OF3.T=T;
 }
@@ -30918,13 +30945,18 @@ function of3Frame(view){
   c.position.copy(t).addScaledVector(b.d,80);c.lookAt(t);c.updateProjectionMatrix();c.updateMatrixWorld();
   OF3.view={x:view.x,z:view.z,h};OF3.dirty=true;
 }
-/* What covers the picture, in pixels: in Office HQ the prompt bar above and the dock
-   below, so the ring fits in what is left. Nothing elsewhere. */
+/* What covers the picture, in pixels: in Office HQ the dock below, and the prompt bar
+   with its answers. On a wide screen those are a column on the right (of3Docked), so
+   the office plays out on the left while the conversation runs beside it; on a phone
+   the bar sits above the ring. Nothing elsewhere. */
+function of3Docked(){return of3HQ()&&innerWidth>900&&document.body.classList.contains('imm-hq')}
 function of3Pads(){
-  if(!of3HQ()||!OF3.cv)return {t:0,b:0};
-  const top=OF3.cv.getBoundingClientRect().top,bar=document.getElementById('omnibar'),dock=document.getElementById('taskbar');
+  if(!of3HQ()||!OF3.cv)return {t:0,b:0,l:0,r:0};
+  const box=OF3.cv.getBoundingClientRect(),top=box.top,bar=document.getElementById('omnibar'),dock=document.getElementById('taskbar');
   const r=bar&&bar.offsetParent?bar.getBoundingClientRect():null,d=dock&&dock.offsetParent?dock.getBoundingClientRect():null;
-  return {t:r?Math.max(0,r.bottom-top+18):60,b:d?Math.max(0,OF3.ch-(d.top-top)+10):100};
+  const b=d?Math.max(0,OF3.ch-(d.top-top)+10):100;
+  if(of3Docked()&&r)return {t:24,b,l:0,r:Math.max(0,box.right-r.left+16)};
+  return {t:r?Math.max(0,r.bottom-top+18):60,b,l:0,r:0};
 }
 /* The whole office in the window, with room above each room for its card. */
 function of3FitView(){
@@ -30937,12 +30969,16 @@ function of3FitView(){
   y1+=(y1-y0)*.05;      // the top rooms' cards stand above their walls
   const mx=(x1-x0)*.06;x0-=mx;x1+=mx;   // and the side rooms' cards stick out past them
   const pad=of3Pads(),fh=Math.max(.3,(OF3.ch-pad.t-pad.b)/Math.max(1,OF3.ch));
-  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/asp)*1.05,k=2*h/Math.max(1,OF3.ch);
+  const fw=Math.max(.3,(OF3.cw-pad.l-pad.r)/Math.max(1,OF3.cw));
+  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/(asp*fw))*1.05,k=2*h/Math.max(1,OF3.ch);
   // the picture's middle goes in the middle of what is left uncovered
-  const g=of3Ground((x0+x1)/2,(y0+y1)/2+(pad.t-pad.b)/2*k);
+  const g=of3Ground((x0+x1)/2+(pad.r-pad.l)/2*k,(y0+y1)/2+(pad.t-pad.b)/2*k);
   return {x:g.x,z:g.z,h};
 }
-function of3RoomView(name){
+/* One room filling what is left of the screen. `bare` leaves no space for the list of
+   who is in it (the camera following the work, of3Follow). In Office HQ with the
+   conversation docked on the right, the list goes on the left. */
+function of3RoomView(name,bare){
   const r=OFFICE.L.rooms.find(q=>q.name===name);if(!r)return OF3.fit;
   const b=of3Basis(),cw=OF3.cw,ch=OF3.ch,asp=cw/Math.max(1,ch);
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
@@ -30951,17 +30987,18 @@ function of3RoomView(name){
     x0=Math.min(x0,sx);x1=Math.max(x1,sx);y0=Math.min(y0,sy);y1=Math.max(y1,sy)}));
   // the list of who is in the room covers the right of a wide window, and the bottom of a
   // phone: the room fits in what is left, centred there
-  const pad=of3Pads(),phone=cw<=640,list=phone?0:Math.min(280,cw*.3),under=(phone?ch*.46:0)+pad.b,over=pad.t;
-  const fw=(cw-list-24)/cw,fh=Math.max(.25,(ch-under-over-16)/ch);
-  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/(asp*fw))*1.08;
+  const pad=of3Pads(),phone=cw<=640,list=phone||bare?0:Math.min(280,cw*.3),under=(phone&&!bare?ch*.46:0)+pad.b,over=pad.t;
+  const L=pad.l+(of3Docked()?list:0),R=pad.r+(of3Docked()?0:list);
+  const fw=Math.max(.25,(cw-L-R-24)/cw),fh=Math.max(.25,(ch-under-over-16)/ch);
+  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/(asp*fw))*(bare?1.3:1.08);
   const k=2*h/ch;   // world units per pixel
-  const g=of3Ground((x0+x1)/2+list/2*k,(y0+y1)/2-(under-over)/2*k);
+  const g=of3Ground((x0+x1)/2+(R-L)/2*k,(y0+y1)/2-(under-over)/2*k);
   return {x:g.x,z:g.z,h};
 }
 function of3Fit(){
   if(!OF3.T||!OFFICE.L)return;
   OF3.fit=of3FitView();
-  of3Frame(OF3.focus?of3RoomView(OF3.focus):OF3.fit);
+  of3Frame(OF3.focus?of3RoomView(OF3.focus):OF3.follow?of3RoomView(OF3.follow,true):OF3.fit);
 }
 function of3Go(view,ms){
   const from=OF3.view||view;
@@ -30969,7 +31006,7 @@ function of3Go(view,ms){
   OF3.anim={from:{...from},to:view,at:performance.now(),ms};officeKick();
 }
 function of3Focus(name){
-  OF3.focus=name||null;OF3.cardSig='';
+  OF3.focus=name||null;OF3.cardSig='';OF3.follow='';if(!name)OF3.userMoved=false;
   if(OF3.ui)OF3.ui.classList.toggle('focused',!!name);
   of3Roster();
   of3Go(name?of3RoomView(name):OF3.fit,OFFICE.static?0:650);
@@ -30981,16 +31018,59 @@ function of3Input(cv){
   if(O.w&&O.w.scene)return;           // the desktop scene is behind the windows: look, never touch
   cv.addEventListener('click',e=>{if(OF3.dragged){OF3.dragged=false;return}of3Tap(e)});
   cv.addEventListener('dblclick',()=>of3Focus(null));
-  cv.addEventListener('wheel',e=>{if(!OF3.view)return;e.preventDefault();
-    const v={...OF3.view,h:Math.max(1.2,Math.min((OF3.fit?OF3.fit.h:8)*1.6,OF3.view.h*(e.deltaY>0?1.1:1/1.1)))};
-    OF3.anim=null;of3Frame(v);officeKick()},{passive:false});
+  cv.addEventListener('wheel',e=>{if(!OF3.view)return;e.preventDefault();of3Wheel(e)},{passive:false});
   cv.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')return;OF3.drag={x:e.clientX,y:e.clientY,v:{...OF3.view}};OF3.dragged=false});
   addEventListener('pointerup',()=>{OF3.drag=null});
   cv.addEventListener('pointermove',e=>{const d=OF3.drag;if(!d||!OF3.view)return;
     const dx=e.clientX-d.x,dy=e.clientY-d.y;if(Math.hypot(dx,dy)>4)OF3.dragged=true;if(!OF3.dragged)return;
     const k=2*d.v.h/OF3.ch,g=of3Ground(-dx*k,dy*k);
-    OF3.anim=null;of3Frame({x:d.v.x+g.x,z:d.v.z+g.z,h:d.v.h});officeKick()});
+    OF3.anim=null;OF3.userMoved=true;OF3.follow='';of3Frame({x:d.v.x+g.x,z:d.v.z+g.z,h:d.v.h});officeKick()});
   if(O.w&&O.w.el)O.w.el.addEventListener('keydown',e=>{if(e.key==='Escape'&&OF3.focus){of3Focus(null);e.stopPropagation()}});
+}
+/* Zoom: in close enough to see one desk (OF3_ZOOM_MIN, was 1.2, a room at most), out to
+   a little past the whole office. Tapping a room's card is the way into a department. */
+var OF3_ZOOM_MIN=.55;
+function of3Zoom(f,ms){
+  if(!OF3.view)return;
+  const v={...OF3.view,h:Math.max(OF3_ZOOM_MIN,Math.min((OF3.fit?OF3.fit.h:8)*1.6,OF3.view.h*f))};
+  OF3.userMoved=true;OF3.follow='';
+  if(ms){of3Go(v,ms)}else{OF3.anim=null;of3Frame(v);officeKick()}
+}
+function of3Wheel(e){of3Zoom(e.deltaY>0?1.1:1/1.1)}
+/* ＋ − ⤢ on the picture: the same zoom for a finger, a keyboard and a screen reader. */
+function of3Controls(){
+  if(!OF3.ui||OF3.ui.querySelector('.of3-zoom'))return;
+  const z=document.createElement('div');z.className='of3-zoom';z.setAttribute('role','group');z.setAttribute('aria-label','Zoom the office');
+  z.innerHTML='<button class="of3-zb" data-z="in" title="Zoom in" aria-label="Zoom in">+</button>'
+    +'<button class="of3-zb" data-z="out" title="Zoom out" aria-label="Zoom out">−</button>'
+    +'<button class="of3-zb" data-z="fit" title="The whole office" aria-label="Show the whole office">⤢</button>';
+  z.onclick=e=>{const b=e.target.closest('[data-z]');if(!b)return;
+    const k=b.dataset.z;if(k==='fit'){of3Focus(null);return}of3Zoom(k==='in'?1/1.35:1.35,OFFICE.static?0:220)};
+  OF3.ui.appendChild(z);
+}
+/* Office HQ is under the desktop, so the canvas never sees the wheel: the desktop's own
+   background passes it on, while nothing else is under the pointer. */
+document.addEventListener('wheel',e=>{
+  if(!of3HQ()||!OF3.view||document.body.classList.contains('has-win'))return;
+  if(typeof deckScrollOn==='function'&&deckScrollOn())return;    // the person chose wheel = faces
+  const t=e.target;if(!t||!t.closest||t.closest('#omnibar,#omnicards,#taskbar,#menubar,.win,.ats,.approval,#toasts,#deck,.of3-roster,.ctx'))return;
+  if(!t.closest('#desktop,#wall'))return;
+  e.preventDefault();of3Wheel(e);
+},{passive:false});
+/* The camera follows the work in Office HQ: when one department is working it glides to
+   that room, and back to the whole office a few seconds after the work ends. Several
+   at once, and it shows them all. Never when the person moved the camera themselves or
+   is looking inside a room. Only events move it: the room counts come from the cards. */
+function of3Follow(rows){
+  if(!of3HQ()||OF3.focus||OF3.userMoved||!OF3.fit||OFFICE.static)return;
+  const busy=rows.filter(x=>x.run&&x.r.kind!=='lead'&&x.r.kind!=='lounge'&&x.r.kind!=='meeting').map(x=>x.r.name);
+  const now=performance.now();
+  if(busy.length)OF3.followAt=now;
+  const want=busy.length===1?busy[0]:'';
+  if(!want&&!busy.length&&OF3.follow&&now-(OF3.followAt||0)<6000)return;   // hold a moment
+  if(want===(OF3.follow||''))return;
+  OF3.follow=want;
+  of3Go(want?of3RoomView(want,true):OF3.fit,900);
 }
 function of3Project(v3){
   const p=v3.clone().project(OF3.cam);
@@ -31345,6 +31425,7 @@ function of3Cards(force){
     Object.keys(OF3.el).forEach(k=>{if(k.startsWith('card:')&&+k.slice(5)>=rows.length){OF3.el[k].remove();delete OF3.el[k]}});
   }
   // over the room: centred on it, standing on its highest point (the back corner's wall)
+  of3Follow(rows);
   rows.forEach((x,i)=>{const r=x.r,e=OF3.el['card:'+i];if(!e)return;e._seen=1;
     const c=of3Project(of3W(r.cx,r.cy,0)),t=of3Project(of3W(r.x,r.y,OF3_SLAB+OF3_WALL));of3Place(e,c.x,t.y-6)});
 }

@@ -129,6 +129,10 @@ function approvalFloat(ev){
 var APPROVAL_WATCH=0;
 function approvalHome(id){
   const ev=APPROVALS[id];if(!ev)return;
+  // a placed card that is in view now makes its floating copy a second door to the same
+  // question (Office HQ: the answer card scrolled to it a moment after the float went up)
+  if([...document.querySelectorAll('[id="ap-'+id+'"]:not(.ap-float)')].some(approvalShown)){
+    document.querySelectorAll('[id="ap-'+id+'"].ap-float').forEach(f=>f.remove());return}
   if(approvalVisible(id))return;
   const feed=document.getElementById('feed');
   const chatOpen=feed&&ev.conversation_id&&ev.conversation_id===currentConv&&approvalShownArea(feed);
