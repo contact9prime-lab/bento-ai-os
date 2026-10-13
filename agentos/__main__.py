@@ -3975,6 +3975,46 @@ def _company_cli(args):
                  ". This counts once the company decides per department: "
                  "bento company permissions department"))
         return
+    if a == "kit":
+        # bento company kit SALES                       what teams like Sales commonly use
+        # bento company kit SALES crm=hubspot --yes     give it to Sales (every person in it)
+        if not rest:
+            print("  bento company kit DEPARTMENT [QUESTION=ANSWER ...] [--yes]")
+            sys.exit(2)
+        dept = next((x for x in co.departments(cfg, store) if x["name"].lower() == rest[0].lower()), None)
+        if not dept:
+            print(f"✗ there is no department called {rest[0]}")
+            sys.exit(1)
+        answers = dict(x.split("=", 1) for x in rest[1:] if "=" in x)
+        offer = co.recommend(dept, answers)
+        print(f"{dept['name']}: what teams like it commonly use ({offer['kind']})")
+        for q in offer["questions"]:
+            opts = " | ".join(f"{v}" for v, _ in q["options"])
+            print(f"  {q['ask']}  {q['id']}={offer['answers'][q['id']]}   ({opts})")
+        print(f"  tools:   {', '.join(offer['tools']) or '-'}")
+        print(f"  skills:  {', '.join(s['name'] for s in offer['skills']) or '-'}")
+        print("  servers: " + (", ".join(f"{m['name']} ({m['why']})" for m in offer["mcp"]) or "-"))
+        if not getattr(args, "yes", False):
+            print(f"\n  give it to {dept['name']}: bento company kit \"{dept['name']}\" "
+                  + " ".join(f"{k}={v}" for k, v in offer["answers"].items()) + " --yes")
+            print("  servers are never installed by a kit: set each one up in the MCP app with its own key.")
+            return
+        kit = {"tools": offer["tools"], "skills": [s["id"] for s in offer["skills"]],
+               "mcp": [m["id"] for m in offer["mcp"]]}
+        if up:
+            d = _api_call(port, "/api/company/kit", "POST", {"department": dept["name"], "kit": kit})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            d = co.apply_kit(cfg, store, dept["name"], kit)
+            _cfgmod.save_config(cfg)
+        print(f"✓ {dept['name']}: {len(kit['tools'])} tools and {len(kit['skills'])} skills for "
+              f"{len(d.get('agents') or [])} agents; {len(d.get('skills_made') or [])} new skills.")
+        for m in (d.get("kit") or {}).get("mcp") or []:
+            if not m.get("added"):
+                print(f"  set up {m['name']} in the MCP app ({m['why']})")
+        return
     if a == "hands":
         # bento company hands                    each department's executor
         # bento company hands SALES research     Sales works with the 'research' executor

@@ -12898,6 +12898,46 @@ async def api_company_permissions(body: dict):
     return {"ok": True, "mode": mode, "departments": companymod.dept_matrix(state["cfg"], state["store"])}
 
 
+@app.post("/api/company/kit/offer")
+async def api_company_kit_offer(body: dict):
+    """The kit for a department and the answers so far (company.recommend): the
+    questions, then the tools, skills and MCP servers teams like it commonly use. Pure,
+    so the page asks again after every answer."""
+    from . import company as companymod
+    cfg, store = state["cfg"], state["store"]
+    b = body or {}
+    dept = next((d for d in companymod.departments(cfg, store)
+                 if d["name"].lower() == str(b.get("department") or "").strip().lower()), None)
+    if dept is None and isinstance(b.get("dept"), dict):
+        dept = {k: str(b["dept"].get(k) or "")[:200] for k in ("id", "name", "about")}
+    if dept is None:
+        return JSONResponse({"error": "there is no department by that name"}, status_code=404)
+    answers = b.get("answers") if isinstance(b.get("answers"), dict) else {}
+    have = {s["name"] for s in store.list_skills()} if hasattr(store, "list_skills") else set()
+    offer = companymod.recommend(dept, answers)
+    for s in offer["skills"]:
+        s["exists"] = s["name"] in have
+    return {"department": dept.get("name", ""), "offer": offer,
+            "current": companymod.kit_status(cfg, dept.get("kit"))}
+
+
+@app.post("/api/company/kit")
+async def api_company_kit(body: dict):
+    """Give a department that exists the kit the person ticked (company.apply_kit)."""
+    from . import company as companymod
+    b = body or {}
+    try:
+        got = companymod.apply_kit(state["cfg"], state["store"], str(b.get("department") or ""),
+                                   b.get("kit") if isinstance(b.get("kit"), dict) else {})
+    except KeyError as e:
+        return JSONResponse({"error": f"there is no department called {e.args[0] or '(none)'}"},
+                            status_code=404)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "fabric_defs"})
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {"ok": True, **got}
+
+
 @app.put("/api/company/hands")
 async def api_company_hands(body: dict):
     """Give a department an executor (hands profile) for every member without their own."""

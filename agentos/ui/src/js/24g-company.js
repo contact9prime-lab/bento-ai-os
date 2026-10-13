@@ -110,6 +110,7 @@ function companyPaint(){
   if(!d){el.innerHTML=`<div class="of-dh"><b>Your company</b><button class="of-x" aria-label="Close">✕</button></div>
     <div class="mut">${esc(COMPANY.err||'loading…')}</div>`;el.querySelector('.of-x').onclick=()=>officeCompany(false);return}
   if(COMPANY.newco)return companyNewPaint(el);
+  if(COMPANY.kit)return companyKitPaint(el);
   if(COMPANY.plan)return companyPreviewPaint(el);
   if(COMPANY.work)return companyWorkPaint(el);
   if(!d.departments.length||COMPANY.adding)return companySetupPaint(el);
@@ -227,8 +228,13 @@ async function companyDraft(btn,said){
    what saving does. Untick a person or a whole department; open a persona to edit it. */
 function companyPlanNow(){
   const p=COMPANY.plan;if(!p)return null;
-  const departments=p.departments.filter(d=>!COMPANY.off['d:'+d.name]).map(d=>({...d,
-    people:d.people.filter(x=>!COMPANY.off['p:'+x.name])})).filter(d=>d.people.length);
+  const pv={};((COMPANY.preview||{}).departments||[]).forEach(x=>pv[x.name]=x);
+  const departments=p.departments.filter(d=>!COMPANY.off['d:'+d.name]).map(d=>{
+    const o=(pv[d.name]||{}).kit_offer,out={...d,people:d.people.filter(x=>!COMPANY.off['p:'+x.name])};
+    // the kit as ticked: what the server offered for these answers, minus each untick
+    // (not while an answer changed it: the offer on screen is for the old answers)
+    if(o&&!(COMPANY.kitStale||{})[d.name])out.kit=companyKitTicked(d.name,o);
+    return out}).filter(d=>d.people.length);
   const out={company:p.company,departments};
   if(p.work)out.work=companyWorkNow(p.work,new Set(departments.map(d=>d.name)));
   return out;
@@ -286,7 +292,8 @@ function companyPreviewPaint(el){
           <textarea class="co-soul" data-s="${esc(x.name)}" rows="5" maxlength="1600" aria-label="Persona for ${esc(x.name)}">${esc(x.soul)}</textarea>
           <div class="co-tools">${(q.tools||x.tools).map(t=>`<code>${esc(t)}</code>`).join(' ')}</div>
           ${q.status==='exists'?'<div class="mut co-small">This agent exists already. It joins as it is and none of this is written over it.</div>':''}
-        </details></div>`}).join('')}</div>`}).join('')}
+        </details></div>`}).join('')}
+      ${doff?'':companyKitBlock(d,(V.departments||[]).find(x=>x.name===d.name))}</div>`}).join('')}
     ${P.work?companyWorkHTML(P.work,V.work,P.company.objective,n=>!!COMPANY.off['d:'+n]):''}
     <label class="co-talk"><input type="checkbox" class="co-talkcb"${COMPANY.talk?' checked':''}> Colleagues in a department can ask each other, and the heads can ask each other</label>
     ${(V.notes||[]).map(n=>`<p class="mut co-small">${esc(n)}</p>`).join('')}
@@ -303,16 +310,108 @@ function companyPreviewPaint(el){
   el.querySelectorAll('[data-p]').forEach(c=>c.onchange=()=>{COMPANY.off['p:'+c.dataset.p]=!c.checked;companyRepreview()});
   el.querySelectorAll('.co-soul').forEach(t=>t.oninput=()=>{P.departments.forEach(d=>d.people.forEach(x=>{if(x.name===t.dataset.s)x.soul=t.value}))});
   q('.co-talkcb').onchange=e=>{COMPANY.talk=e.target.checked;companyRepreview()};
+  companyKitWire(el,(dn,qid,v)=>{const d=P.departments.find(x=>x.name===dn);if(!d)return;
+    d.answers={...(d.answers||{}),[qid]:v};delete d.kit;
+    COMPANY.kitStale={...(COMPANY.kitStale||{}),[dn]:true};companyRepreview()},companyRepreview);
   companyWorkWire(el,v=>{P.company.objective=v},companyRepreview);
   q('.co-again').onclick=()=>{COMPANY.plan=null;COMPANY.preview=null;companyPaint()};
   q('.co-apply').onclick=()=>companyApply(q('.co-apply'),q('.of-said'));
+}
+/* ---------------- the kit a department starts with (company.recommend) ----------------
+   Questions first, then the tools, skills and MCP servers teams like it commonly use,
+   each with a tick. Skills show their full text. Servers are never installed here: the
+   department's card says "Set it up" until one is. One block for a new department in
+   the preview and for one that exists (the Kit sheet). */
+function companyN(n,w){return n+' '+w+(n===1?'':'s')}
+function companyKitTicked(dn,o){
+  const off=k=>!!COMPANY.off['k:'+dn+':'+k];
+  return {tools:(o.tools||[]).filter(t=>!off('t:'+t)),skills:(o.skills||[]).filter(s=>!off('s:'+s.id)).map(s=>s.id),
+    mcp:(o.mcp||[]).filter(m=>!off('m:'+m.id)).map(m=>m.id)};
+}
+function companyKitBlock(d,v,everyone){
+  const o=v&&v.kit_offer;if(!o)return '';
+  const dn=d.name,on=k=>!COMPANY.off['k:'+dn+':'+k];
+  const ans=o.answers||{};
+  return `<details class="co-kit"${COMPANY.kitOpen&&COMPANY.kitOpen[dn]?' open':''} data-kitd="${esc(dn)}"><summary>Kit: ${companyN(o.tools.length,'tool')}, ${companyN(o.skills.length,'skill')}, ${companyN(o.mcp.length,'server')}
+      <span class="mut">what teams like this commonly use</span></summary>
+    ${(o.questions||[]).map(q=>`<label class="co-kq"><span>${esc(q.ask)}</span><select data-kq="${esc(q.id)}" data-kd="${esc(dn)}">
+      ${q.options.map(([k,l])=>`<option value="${esc(k)}"${ans[q.id]===k?' selected':''}>${esc(l)}</option>`).join('')}</select></label>`).join('')}
+    ${o.tools.length?`<div class="co-kh">Tools <span class="mut">${everyone?'for everyone here':'for the new people here'}</span></div><div class="co-kt">${o.tools.map(t=>
+      `<label class="co-kc"><input type="checkbox" data-kk="${esc(dn)}|t:${esc(t)}"${on('t:'+t)?' checked':''}><code>${esc(t)}</code></label>`).join('')}</div>`:''}
+    ${o.skills.length?`<div class="co-kh">Skills</div>${o.skills.map(s=>`<div class="co-ks"><label class="co-kc"><input type="checkbox" data-kk="${esc(dn)}|s:${esc(s.id)}"${on('s:'+s.id)?' checked':''}>
+      <b>${esc(s.name)}</b><span class="mut">${esc(s.description)}${s.exists?' · you have this one, it is used as it is':''}</span></label>
+      <details class="co-more"><summary>What it says</summary><p class="co-small">${esc(s.content)}</p></details></div>`).join('')}`:''}
+    ${o.mcp.length?`<div class="co-kh">MCP servers <span class="mut">set up later with your own key</span></div><div class="co-kt">${o.mcp.map(m=>
+      `<label class="co-kc"><input type="checkbox" data-kk="${esc(dn)}|m:${esc(m.id)}"${on('m:'+m.id)?' checked':''}><b>${esc(m.name)}</b><span class="mut">${esc(m.why)}</span></label>`).join('')}</div>`:''}
+  </details>`;
+}
+function companyKitWire(el,onAnswer,again){
+  el.querySelectorAll('[data-kq]').forEach(s=>s.onchange=()=>{COMPANY.kitOpen={...(COMPANY.kitOpen||{}),[s.dataset.kd]:true};onAnswer(s.dataset.kd,s.dataset.kq,s.value)});
+  el.querySelectorAll('[data-kk]').forEach(c=>c.onchange=()=>{const [dn,k]=c.dataset.kk.split('|');
+    COMPANY.kitOpen={...(COMPANY.kitOpen||{}),[dn]:true};COMPANY.off['k:'+dn+':'+k]=!c.checked;again()});
+  el.querySelectorAll('details.co-kit').forEach(dt=>dt.ontoggle=()=>{COMPANY.kitOpen={...(COMPANY.kitOpen||{}),[dt.dataset.kitd]:dt.open}});
+}
+/* On a department's card: the servers its kit wants, and the way to set each one up. */
+function companyKitHTML(x){
+  const k=x.kit||{},ms=k.mcp||[];
+  return `<div class="co-desk mut co-kitline">${ms.length?`Servers: ${ms.map(m=>m.added?`<span class="co-kok">✓ ${esc(m.name)}</span>`
+      :`<button class="co-link" data-mcp="${esc(m.preset||'')}" data-mcpc="${esc(m.curated||'')}" data-mcpq="${esc(m.search||m.name)}" title="${esc(m.why)}">Set up ${esc(m.name)}</button>`).join(' ')}`
+      :(k.skills||[]).length||(k.tools||[]).length?'Kit given.':'No kit yet.'}
+    <button class="co-link" data-kit="${esc(x.name)}">${(k.skills||[]).length||(k.tools||[]).length||ms.length?'Change the kit':'Choose a kit'}</button></div>`;
+}
+function companyKitSetUp(preset,q,curated){
+  if(preset){openApp('mcp');setTimeout(()=>{if(typeof mcpPreset==='function')mcpPreset(preset)},400);return}
+  if(curated){openApp('mcp');setTimeout(()=>{if(typeof mcpConnectCurated==='function')mcpConnectCurated(curated)},400);return}
+  if(typeof STORE_TAB!=='undefined')STORE_TAB='discover';
+  openApp('store');refreshApp('store');
+  setTimeout(()=>{const i=document.getElementById('disc-q');if(i){i.value=q;i.focus()}
+    if(typeof storeDiscover==='function')storeDiscover(q)},500);
+}
+/* The Kit sheet, for a department that exists. */
+async function companyKitOpen(name){
+  COMPANY.kit={dept:name,answers:{},offer:null,err:''};COMPANY.kitOpen={[name]:true};
+  Object.keys(COMPANY.off).forEach(k=>{if(k.startsWith('k:'+name+':'))delete COMPANY.off[k]});
+  companyPaint();companyKitOffer();
+}
+async function companyKitOffer(){
+  const K=COMPANY.kit;if(!K)return;
+  try{const j=await apiJSON('/api/company/kit/offer',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({department:K.dept,answers:K.answers})});
+    if(j.error)throw new Error(j.error);K.offer=j.offer;K.current=j.current}
+  catch(e){K.err=e.message||String(e)}
+  companyPaint();
+}
+function companyKitPaint(el){
+  const K=COMPANY.kit,o=K.offer,dn=K.dept;
+  const kt=o?companyKitTicked(dn,o):null;
+  el.innerHTML=`<div class="of-dh"><b>${esc(dn)}: its kit</b><button class="of-x" aria-label="Close">✕</button></div>
+    <p class="co-lead">A few questions, then what teams like ${esc(dn)} commonly use. Untick what you do not want.</p>
+    ${!o?`<div class="mut">${esc(K.err||'loading…')}</div>`:companyKitBlock({name:dn},{kit_offer:o},true)}
+    ${o?`<p class="mut co-small">Ticked tools and skills go to everyone in ${esc(dn)}. Servers are never installed here: each needs your own account, and its card says Set it up.</p>
+    <div class="of-row co-go"><button class="endbtn primary co-kitgo">Give ${esc(dn)} ${companyN(kt.tools.length,'tool')} and ${companyN(kt.skills.length,'skill')}</button>
+      <button class="endbtn co-kitno">Not now</button></div><div class="of-said mut" aria-live="polite"></div>`:''}`;
+  const q=s=>el.querySelector(s);
+  const close=()=>{COMPANY.kit=null;companyPaint()};
+  q('.of-x').onclick=close;
+  if(!o)return;
+  const det=el.querySelector('details.co-kit');if(det)det.open=true;
+  companyKitWire(el,(d,qid,v)=>{K.answers={...K.answers,[qid]:v};companyKitOffer()},()=>companyPaint());
+  q('.co-kitno').onclick=close;
+  q('.co-kitgo').onclick=async()=>{const b=q('.co-kitgo'),said=q('.of-said');b.disabled=true;said.textContent='setting it up…';
+    try{const j=await apiJSON('/api/company/kit',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({department:dn,kit:companyKitTicked(dn,o)})});
+      if(j.error)throw new Error(j.error);
+      toast(`✓ ${dn}: ${j.skills_made.length} new skills, ${j.agents.length} agents given the kit`);
+      COMPANY.kit=null;await companyLoad();
+    }catch(e){said.textContent='could not: '+(e.message||e);b.disabled=false}};
 }
 function companyButton(V){
   const n=V.new||0,d=V.desks||0,w=V.work||{},m=w.new_missions||0,t=(w.tasks||[]).length;
   if(!d)return 'Nothing to make';
   const work=m||t?` with ${[m?`${m} ${m===1?'mission':'missions'}`:'',t?`${t} ${t===1?'task':'tasks'}`:''].filter(Boolean).join(' and ')}`:'';
-  return (n?`Make ${n} ${n===1?'agent':'agents'} in ${d} ${d===1?'department':'departments'}`
-    :`Set up ${d} ${d===1?'department':'departments'}`)+work;
+  const k=V.kit||{},kit=k.skills?` and ${k.skills} ${k.skills===1?'skill':'skills'}`:'';
+  return (n?`Make ${n} ${n===1?'agent':'agents'}${kit} in ${d} ${d===1?'department':'departments'}`
+    :`Set up ${d} ${d===1?'department':'departments'}${kit}`)+work;
 }
 /* An untick changes what saving does: ask the server again, so the button counts what
    the save will make (one computation), then repaint. */
@@ -323,7 +422,7 @@ function companyRepreview(){
     try{
       const j=await apiJSON('/api/company/preview',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({plan,talk:COMPANY.talk})});
-      COMPANY.preview=j.preview;
+      COMPANY.preview=j.preview;COMPANY.kitStale={};
     }catch(e){}
     const el=companyWindow()&&companyWindow().el.querySelector('.of-company');
     if(el&&COMPANY.plan){const open=[...el.querySelectorAll('details[open] .co-soul')].map(t=>t.dataset.s);
@@ -529,6 +628,7 @@ function companyOverviewPaint(el){
   q('.co-grid').onclick=()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
     setTimeout(()=>document.getElementById('s-team-matrix')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)};
   el.querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>companyKitOpen(b.dataset.kit));
+  el.querySelectorAll('[data-mcpq]').forEach(b=>b.onclick=()=>companyKitSetUp(b.dataset.mcp,b.dataset.mcpq,b.dataset.mcpc));
   el.querySelectorAll('[data-run]').forEach(b=>b.onclick=e=>{
     const ap=e.target.closest('[data-ap]');if(ap)return companyReview(ap.dataset.ap.split(','));
     const ck=e.target.closest('[data-check]');if(ck)return companyCheck(b.dataset.run,ck);

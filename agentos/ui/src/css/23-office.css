@@ -326,3 +326,19 @@ body.dev-touch .co-wrow input{width:22px;height:22px}
   .of3-ui.hq>.of3-roster{right:auto;left:16px;top:56px;bottom:110px}
   .of3-ui.hq.focused>.of3-zoom{left:282px}
 }
+
+/* the kit a department starts with (24g-company.js companyKitBlock) */
+.co-kit{margin:8px 0 2px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:color-mix(in srgb,var(--bg3) 60%,transparent)}
+.co-kit>summary{cursor:pointer;font-weight:650;font-size:var(--fs-sm);min-height:var(--tap,36px);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.co-kit>summary .mut{font-weight:400}
+.co-kq{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:var(--fs-sm);flex-wrap:wrap}
+.co-kq span{flex:1 1 180px}
+.co-kq select{flex:0 1 200px;min-height:var(--tap,36px)}
+.co-kh{font-size:var(--fs-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:10px 0 4px}
+.co-kt{display:flex;flex-wrap:wrap;gap:6px 12px}
+.co-kc{display:flex;align-items:center;gap:7px;min-height:var(--tap,36px);font-size:var(--fs-sm);flex-wrap:wrap}
+.co-kc input{flex:none}
+.co-ks{margin:2px 0}
+.co-ks .co-more{margin-left:26px}
+.co-kok{color:var(--ok,#22c55e);font-weight:600}
+.co-kitline{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
