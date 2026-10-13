@@ -1188,7 +1188,7 @@ class ControlPlane(usersmod.Scoped):
                                                  origin_ref=str(origin.get("ref", "") or
                                                                 origin.get("chat_id", "") or ""))
         await self._emit(run_id, "status", {"status": "running", "ref": defn["name"],
-                                            "model": model, "parent_run": parent_run,
+                                            "model": model, "parent_run": parent_run, "kind": kind,
                                             **({"resumed": True} if resume else {})})
         if cli_note:
             await self._emit(run_id, "log", {"node_id": run_id, "level": "info", "text": cli_note})
@@ -1274,7 +1274,7 @@ class ControlPlane(usersmod.Scoped):
         # that mission's grants there), and never inside a huddle turn, which is already
         # a conversation.
         from .policy import team_talk
-        talks = team_talk(self.cfg) != "off" and kind not in ("huddle", "vote", "audit", "freetalk")
+        talks = team_talk(self.cfg) != "off" and kind not in ("huddle", "vote", "audit", "review", "freetalk")
         if talks and flow:
             # inside a mission only if the mission declared it — its consent screen said so
             try:
@@ -1283,9 +1283,10 @@ class ControlPlane(usersmod.Scoped):
                 talks = False
         if talks and "ask_agent" not in tools:
             tools.append("ask_agent")
-        if kind == "audit":
-            # the auditor reads and reports: whatever its definition was edited to hold,
-            # an audit run can remember nothing, file nothing and change nothing
+        if kind in ("audit", "review"):
+            # the auditor and a boss signing work off read and report: whatever their
+            # definition holds, a check can remember nothing, file nothing and change
+            # nothing
             from .company import AUDIT_TOOLS
             tools = [t for t in tools if t in AUDIT_TOOLS]
         if kind == "vote" or no_tools:
@@ -1388,7 +1389,7 @@ class ControlPlane(usersmod.Scoped):
                                      steps=nsteps["n"])
         await self._emit(run_id, "status",
                          {"status": status, "ref": defn["name"], "parent_run": parent_run,
-                          "fault": fault[:300], "tokens": usage, "steps": nsteps["n"]})
+                          "kind": kind, "fault": fault[:300], "tokens": usage, "steps": nsteps["n"]})
         return {"run_id": run_id, "status": status, "content": content, "fault": fault,
                 "model": model, "usage": usage, "steps": trace,
                 "tainted": bool(agent.taint)}
@@ -2463,6 +2464,34 @@ class ControlPlane(usersmod.Scoped):
             "and report it plainly if you cannot.",
         ])
 
+    def _fold_children(self, run_id: str, status: str, fault: str) -> tuple[str, str]:
+        """A flow whose delegated steps all failed did not succeed, whatever the master
+        says; one that lost some is partial. Reviews and audits are not steps."""
+        kids = [k for k in self.store.fabric_runs(parent_run=run_id)
+                if k.get("kind") not in ("audit", "review")]
+        if status == "ok" and kids and all(k["status"] != "ok" for k in kids):
+            status, fault = "error", fault or "every delegated step failed"
+        for k in (kids if status == "ok" else []):
+            if k["status"] != "ok":
+                status = "partial"
+                fault = fault or f"step '{k['ref']}' {k['status']}"
+        return status, fault
+
+    @staticmethod
+    def _rework_text(opening: str, content: str, review: dict, n: int) -> str:
+        """What the master is given when a boss sends the work back: the original ask,
+        its last answer, and exactly what to fix."""
+        from . import company as _company
+        back = review["sent_back"][-1]
+        fixes = "\n".join(f"- {x}" for x in back.get("notes") or []) or "- (no reason given)"
+        return (f"{opening}\n\n=== your last answer, which {back['who']} sent back ===\n"
+                f"{str(content or '').strip()[:4000] or '(nothing)'}\n\n"
+                f"=== what {back['who']} wants fixed ===\n{fixes}\n\n"
+                f"Fix exactly that. Your earlier work is still on the board (read_handle), so "
+                f"delegate only what has to be redone, then `finish` with the corrected "
+                f"deliverable. This is round {n + 1} of {_company.REWORK_MAX + 1}; after that "
+                f"it goes to the person.")
+
     async def run_flow(self, flow: dict, input_text: str = "", origin: dict | None = None,
                        conversation_id: str = "", space_id: str = "", trigger_id: str = "",
                        tainted: bool = False, approver=None, ui_emit=None,
@@ -2603,43 +2632,75 @@ class ControlPlane(usersmod.Scoped):
         parked = None
         from . import knowledge as _k
         _k.turn_started()
+        review = None
+        rounds, rework = 0, ""
+        from . import company as _company
         try:
-            if resume:
-                work = self._resume_master(agent, resume, decision, state)
-            elif engine:
-                work = self._run_on_executor(agent, opening, run_id, engine)
-            else:
-                work = agent.run([{"role": "user", "content": opening}])
-            result = await asyncio.wait_for(
-                work, timeout=budget.remaining() + self._approval_ceiling() + 60)
-            content = state["final"] or result.get("content") or ""
-            tk = result.get("tokens") or {}
-            usage["in"] += tk.get("input", 0)
-            usage["out"] += tk.get("output", 0)
-            if result.get("parked"):
-                status = "parked"
-                parked = {"run_id": run_id, "flow": name, "origin": origin,
-                          "conversation_id": conversation_id, "space_id": space_id,
-                          "taint": list(agent.taint), "elapsed": budget.elapsed(),
-                          "tokens": dict(usage), "steps_used": agent.steps_used,
-                          "state": {k: v for k, v in state.items() if k in PARK_STATE_KEYS},
-                          "messages": result.get("messages") or [],
-                          "pending": result["parked"]}
-            elif state.get("finished"):
-                status = "ok"           # it said it was done; a child's failure is folded in below
-            elif any(s.get("type") == "error" for s in result.get("steps", [])):
-                status, fault = "error", next((s["message"] for s in result["steps"]
-                                               if s.get("type") == "error"), "")
-            elif budget.remaining() <= 0:
-                status, fault = "timeout", f"exceeded max_seconds={int(budget.limit)} of working time"
-            elif agent.aborted:
-                status = "cancelled"
-            elif state["delegations"] == 0:
-                # It neither delegated nor called finish: whatever text it left is
-                # not a deliverable. Saying "ok" here is how a run that answered
-                # with one word read as a success on the Missions row.
-                status, fault = "error", ("the orchestrator ended without delegating or "
-                                          "finishing — nothing was done")
+            while True:
+                if rounds:
+                    # a boss sent it back: the same master, the same board, one more go
+                    work = (self._run_on_executor(agent, rework, run_id, engine) if engine
+                            else agent.run([{"role": "user", "content": rework}]))
+                elif resume:
+                    work = self._resume_master(agent, resume, decision, state)
+                elif engine:
+                    work = self._run_on_executor(agent, opening, run_id, engine)
+                else:
+                    work = agent.run([{"role": "user", "content": opening}])
+                result = await asyncio.wait_for(
+                    work, timeout=budget.remaining() + self._approval_ceiling() + 60)
+                content = state["final"] or result.get("content") or ""
+                tk = result.get("tokens") or {}
+                usage["in"] += tk.get("input", 0)
+                usage["out"] += tk.get("output", 0)
+                if result.get("parked"):
+                    status = "parked"
+                    parked = {"run_id": run_id, "flow": name, "origin": origin,
+                              "conversation_id": conversation_id, "space_id": space_id,
+                              "taint": list(agent.taint), "elapsed": budget.elapsed(),
+                              "tokens": dict(usage), "steps_used": agent.steps_used,
+                              "state": {k: v for k, v in state.items() if k in PARK_STATE_KEYS},
+                              "messages": result.get("messages") or [],
+                              "pending": result["parked"]}
+                elif state.get("finished"):
+                    status = "ok"           # it said it was done; a child's failure is folded in below
+                elif any(s.get("type") == "error" for s in result.get("steps", [])):
+                    status, fault = "error", next((s["message"] for s in result["steps"]
+                                                   if s.get("type") == "error"), "")
+                elif budget.remaining() <= 0:
+                    status, fault = "timeout", f"exceeded max_seconds={int(budget.limit)} of working time"
+                elif agent.aborted:
+                    status = "cancelled"
+                elif state["delegations"] == 0:
+                    # It neither delegated nor called finish: whatever text it left is
+                    # not a deliverable. Saying "ok" here is how a run that answered
+                    # with one word read as a success on the Missions row.
+                    status, fault = "error", ("the orchestrator ended without delegating or "
+                                              "finishing — nothing was done")
+                if parked is not None or status not in _company.AUDITED:
+                    break
+                # The review chain (company.py): the bosses above a department sign its
+                # finished work off before anything is delivered. The control plane walks
+                # it, so the master can neither skip it nor choose who sees the work.
+                status, fault = self._fold_children(run_id, status, fault)
+                try:
+                    review = await self.review(flow, run_id, status=status, content=content,
+                                               fault=fault, origin=origin, round_no=rounds)
+                except Exception as e:
+                    review = None
+                    await self._emit(run_id, "log", {"node_id": run_id, "level": "error",
+                                                     "text": f"the review chain could not run: {e}"[:240]})
+                if not review or review.get("outcome") != "sent_back" \
+                        or rounds >= _company.REWORK_MAX:
+                    break
+                rounds += 1
+                rework = self._rework_text(opening, content, review, rounds)
+                state.update({"final": "", "final_handles": [], "finished": False})
+                agent.aborted = False
+                await self._emit(run_id, "log", {"node_id": run_id, "level": "info",
+                                                 "text": f"sent back by "
+                                                 f"{review['sent_back'][-1]['who']}: round "
+                                                 f"{rounds + 1} of {_company.REWORK_MAX + 1}"})
         except asyncio.TimeoutError:
             agent.aborted = True
             status, fault = "timeout", f"exceeded max_seconds={int(budget.limit)}"
@@ -2656,14 +2717,7 @@ class ControlPlane(usersmod.Scoped):
                     "model": model, "usage": usage, "delegations": state["delegations"],
                     "delivered": [], "brief_id": brief_id,
                     "board": self.store.artifact_index(run_id)}
-        # a flow whose children all failed did not succeed, whatever the master says
-        kids = self.store.fabric_runs(parent_run=run_id)
-        if status == "ok" and kids and all(k["status"] != "ok" for k in kids):
-            status, fault = "error", fault or "every delegated step failed"
-        for k in (kids if status == "ok" else []):
-            if k["status"] != "ok":
-                status = "partial"
-                fault = fault or f"step '{k['ref']}' {k['status']}"
+        status, fault = self._fold_children(run_id, status, fault)
         self.store.fabric_run_finish(run_id, status, output=content, fault=fault,
                                      tokens_in=usage["in"], tokens_out=usage["out"],
                                      steps=state["delegations"])
@@ -2676,10 +2730,12 @@ class ControlPlane(usersmod.Scoped):
         except Exception as e:
             await self._emit(run_id, "log", {"node_id": run_id, "level": "error",
                                              "text": f"the auditor could not run: {e}"[:240]})
+        if review:
+            self._review_brief(flow, run_id, review)
         delivered: list = []
         if self.deliver and content:
             try:
-                said = content + (f"\n\n{audit['line']}" if audit else "")
+                said = content + "".join(f"\n\n{x['line']}" for x in (review, audit) if x)
                 delivered = await self.deliver(flow, self.store.fabric_run(run_id) or {},
                                                origin, said) or []
             except Exception as e:
@@ -2691,11 +2747,149 @@ class ControlPlane(usersmod.Scoped):
                           "preview": content[:400], "delivered": delivered,
                           "fault": fault[:300],
                           **({"audit": {k: audit.get(k) for k in ("verdict", "line")}}
-                             if audit else {})})
+                             if audit else {}),
+                          **({"review": {k: review.get(k) for k in ("outcome", "line", "rounds")}}
+                             if review else {})})
         return {"run_id": run_id, "status": status, "content": content, "fault": fault,
                 "model": model, "usage": usage, "delegations": state["delegations"],
-                "delivered": delivered, "audit": audit,
+                "delivered": delivered, "audit": audit, "review": review,
                 "board": self.store.artifact_index(run_id)}
+
+    # -- the review chain: every boss above the work signs it off ---------------------
+
+    def _checked_work(self, run_id: str) -> tuple[list, list]:
+        """The board with its contents, and what the work filed in the Brief: what the
+        auditor and the bosses read, gathered once."""
+        board = []
+        for a in self.store.artifact_index(run_id):
+            full = self.store.artifact_get(run_id, a["handle"]) or {}
+            board.append({**a, "content": full.get("content") or ""})
+        ids = {run_id} | {k["id"] for k in self.store.fabric_runs(parent_run=run_id)
+                          if k.get("kind") not in ("audit", "review")}
+        briefed = [b for b in self.store.brief_items(limit=1000)
+                   if b.get("run_id") in ids and not str(b.get("key") or "").startswith(("audit-", "review-"))]
+        return board, briefed
+
+    async def review(self, flow: dict, run_id: str, status: str = "", content: str = "",
+                     fault: str = "", origin: dict | None = None, round_no: int = 0) -> dict | None:
+        """Walk a department's finished task up its review chain (company.chain): its
+        head, the head of each department it reports to, then the lead. Each boss is a
+        run of kind `review` under this one, with read-only tools for a specialist and
+        no tools for the lead, and each answer is a `company.review` ledger row. The
+        chain stops at the first send-back (the caller reworks) or unreadable answer.
+        None when there is nothing to review: not a desk, the chain is off, or the run
+        did not finish."""
+        from . import company as companymod, executors
+        if status not in companymod.AUDITED:
+            return None
+        dept = companymod.audit_scope(self.cfg, self.store, flow["name"])
+        if not dept:
+            return None
+        gates = companymod.chain(self.cfg, self.store, dept["name"])
+        if not gates:
+            return None
+        run = self.store.fabric_run(run_id) or {}
+        task = run.get("input") or ""
+        if task.startswith("You run the "):
+            task = ""
+        board, briefed = self._checked_work(run_id)
+        before = companymod.review_state(self.store.fabric_runs(parent_run=run_id))
+        earlier = (before or {}).get("sent_back") or []
+        kids = self.store.fabric_runs(parent_run=run_id)
+        workers = [k.get("ref") for k in sorted(kids, key=lambda k: float(k.get("started_at") or 0))
+                   if k.get("kind") == "delegate" and k.get("ref")]
+        frm = workers[-1] if workers else (dept.get("lead") or "")
+        where = {"conversation_id": run.get("conversation_id") or "",
+                 "space_id": run.get("space_id") or ""}
+        below: list[dict] = []
+        for i, g in enumerate(gates):
+            who = g["who"] or g["department"]
+            last = i == len(gates) - 1
+            await self._emit(run_id, "review", {
+                "phase": "start", "node_id": run_id, "department": dept["name"],
+                "reviewer": who, "key": g["key"], "lead": g["lead"], "level": i,
+                "of": len(gates), "round": round_no, "from": frm})
+            defn = self.store.get_subagent(g["who"]) if g["who"] and not g["lead"] else None
+            why = g.get("why") or ""
+            if not why and not g["lead"] and not defn:
+                why = f"{g['who']} is not here any more, so nobody signed off for {g['department']}"
+            prompt = "" if why else companymod.review_task(
+                dept, g, task, content, status, fault, board, briefed, below, earlier, last)
+            if why:
+                rid = self.store.fabric_run_start("review", who, "", parent_run=run_id, flow="",
+                                                  **where)
+                self.store.fabric_run_finish(rid, "skipped", output=why)
+            elif g["lead"]:
+                # the lead answers on the machine's brain, one answer and no tools, as its
+                # vote in a council does: it reads what the bosses below it were handed
+                rid = self.store.fabric_run_start("review", who, f"sign off {dept['name']}'s task",
+                                                  parent_run=run_id, flow="", **where)
+                await self._emit(rid, "status", {"status": "running", "ref": who,
+                                                 "parent_run": run_id, "kind": "review"})
+                text, model, why = await executors.ask_brain(
+                    self.cfg, f"You are {who}, the lead agent of this company.", prompt,
+                    timeout=180)
+                if why:
+                    self.store.fabric_run_finish(rid, "skipped", output=f"{who} could not "
+                                                 f"review: {why}"[:300])
+                else:
+                    self.store.fabric_run_finish(rid, "ok", output=text, model=model or "")
+            else:
+                res = await self.run_subagent(defn, prompt, parent_run=run_id, kind="review",
+                                              origin=origin or {}, **where)
+                rid = res["run_id"]
+            row = self.store.fabric_run(rid) or {"status": "error", "ref": who}
+            gs = {**companymod.gate_state(row), "who": who, "department": g["department"],
+                  "lead": g["lead"]}
+            below.append(gs)
+            await self._emit(run_id, "review", {
+                "phase": "done", "node_id": run_id, "department": dept["name"],
+                "reviewer": who, "key": g["key"], "lead": g["lead"], "level": i,
+                "of": len(gates), "round": round_no, "answer": gs["answer"],
+                "notes": gs.get("notes") or [], "why": gs.get("why") or ""})
+            try:
+                self.store.audit_add(uid=usersmod.current() or "",
+                                     principal_kind="user" if g["lead"] else "subagent",
+                                     principal_id="" if g["lead"] else (g["who"] or ""),
+                                     action="company.review", resource=f"run:{run_id}",
+                                     effect="allow", rule="review chain", outcome=gs["answer"],
+                                     detail=(f"{dept['name']}: {who} "
+                                             f"{gs['answer'].replace('_', ' ')}"
+                                             + (f" (round {round_no + 1})" if round_no else "")
+                                             + ": " + " · ".join(gs.get("notes") or [gs.get("why") or ""])
+                                             )[:1000])
+            except Exception:
+                pass
+            if gs["answer"] in ("send_back", "unchecked"):
+                break
+            frm = who
+        result = companymod.review_state(self.store.fabric_runs(parent_run=run_id))
+        result["department"] = dept["name"]
+        return result
+
+    def _review_brief(self, flow: dict, run_id: str, review: dict) -> None:
+        """A task the chain did not sign off is the person's: one Brief item per task."""
+        from . import brief as briefmod
+        o = review.get("outcome")
+        if o not in ("escalated", "sent_back", "unchecked", "unreviewed"):
+            return
+        dept = review.get("department") or flow["name"]
+        last = next((g for g in reversed(review.get("gates") or [])
+                     if g.get("answer") not in ("skipped", "")), {})
+        title = {"escalated": f"{last.get('who')} needs you to decide on {dept}'s task",
+                 "sent_back": f"{last.get('who')} sent {dept}'s task back "
+                              f"{len(review.get('sent_back') or [])} times",
+                 }.get(o, f"Nobody signed off {dept}'s task")
+        run = self.store.fabric_run(run_id) or {}
+        try:
+            briefmod.add(self.store, flow["name"], run_id,
+                         "fyi" if o == "unreviewed" else "needs_you",
+                         title, body=review.get("line") or "", who=last.get("who") or "",
+                         key=f"review-{run_id}",
+                         source={"run_id": run_id, "flow": flow["name"]},
+                         space_id=run.get("space_id") or "")
+        except Exception:
+            pass
 
     # -- the independent auditor: a department's finished work, checked -----------
 
@@ -2743,16 +2937,9 @@ class ControlPlane(usersmod.Scoped):
             self.store.fabric_run_finish(rid, "skipped", output=why)
             result = {"verdict": "skipped", "why": why, "findings": [], "run_id": rid}
         else:
-            board = []
-            for a in self.store.artifact_index(run_id):
-                full = self.store.artifact_get(run_id, a["handle"]) or {}
-                board.append({**a, "content": full.get("content") or ""})
             # what the work filed in the Brief, which the auditor has no tool to read: a
             # deliverable that says "three items are in your Brief" is checkable only so
-            ids = {run_id} | {k["id"] for k in self.store.fabric_runs(parent_run=run_id)
-                              if k.get("kind") != "audit"}
-            briefed = [b for b in self.store.brief_items(limit=1000)
-                       if b.get("run_id") in ids and not str(b.get("key") or "").startswith("audit-")]
+            board, briefed = self._checked_work(run_id)
             prompt = companymod.audit_task(dept, task, content, status, fault, board, briefed)
             res = await self.run_subagent(defn, prompt, parent_run=run_id, kind="audit",
                                           conversation_id=run.get("conversation_id") or "",

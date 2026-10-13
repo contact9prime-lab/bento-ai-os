@@ -3690,6 +3690,17 @@ def _company_cli(args):
                         or ("… checking" if au.get("state") == "checking" else ""))
                 print(f"    {t['status']:<12} {t['department']:<12} {t['task'][:56]:<56} "
                       f"{mark}  {t.get('run_id') or ''}".rstrip())
+                rv = t.get("review") or {}
+                if rv.get("gates"):
+                    ticks = " → ".join(
+                        f"{g['who']} " + {"approve": "✓", "send_back": "↩", "escalate": "↑",
+                                          "skipped": "–", "unchecked": "?"}.get(g.get("answer"), "…")
+                        for g in rv["gates"])
+                    print(f"    {'':<12} {'':<12} sign-off: {ticks}"
+                          + (f" · {rv['rounds']} round{'s' if rv['rounds'] != 1 else ''} of fixes"
+                             if rv.get("rounds") else ""))
+                    if rv.get("outcome") in ("sent_back", "escalated", "unchecked", "unreviewed"):
+                        print(f"    {'':<12} {'':<12} {rv['line'][:110]}")
                 if au.get("verdict") in ("concerns", "fail") and au.get("findings"):
                     print(f"    {'':<12} {'':<12} auditor: {au['findings'][0][:90]}")
                 elif au.get("verdict") in ("skipped", "unchecked") and au.get("why"):
@@ -3723,6 +3734,78 @@ def _company_cli(args):
                           action="company.audit")
         print("✓ the independent auditor is " + ("on: every finished department task is checked."
                                                  if want else "off: finished tasks are not checked."))
+        return
+    if a == "review":
+        # who signs finished work off: each boss up to the lead, each department's own
+        # head, or nobody. Up to the lead unless the person says otherwise.
+        words = {"lead": f"each boss signs finished work off, up to {co.lead_name(cfg)}",
+                 "heads": "each department's own head signs its finished work off",
+                 "off": "nobody signs finished work off"}
+        if not rest or rest[0] not in co.REVIEW_MODES:
+            print(f"Sign-off: {co.review_mode(cfg)} ({words[co.review_mode(cfg)]}).")
+            print("  bento company review lead|heads|off")
+            return
+        want = rest[0]
+        if up:
+            d = _api_call(port, "/api/company", "PUT", {"review": want})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            was = co.review_mode(cfg)
+            cfg["company"] = {**(cfg.get("company") or {}), "review": want}
+            _cfgmod.save_config(cfg)
+            if want != was:
+                co.record(store, f"sign-off changed from {was} to {want} from the terminal",
+                          action="company.review")
+        print(f"✓ {words[want]}.")
+        return
+    if a == "chain":
+        # bento company chain                 every department's line of bosses
+        # bento company chain TECH OPS|lead   Tech reports to Ops (or to the lead)
+        if len(rest) >= 2:
+            body = {"department": rest[0], "reports_to": " ".join(rest[1:])}
+            if up:
+                d = _api_call(port, "/api/company/reports", "PUT", body)
+                if d.get("error"):
+                    print(f"✗ {d['error']}")
+                    sys.exit(1)
+            else:
+                from . import office as _office
+                cur = _office.current(cfg)
+                boss = body["reports_to"]
+                if boss.lower() in ("lead", "@agent", co.lead_name(cfg).lower()):
+                    boss = ""
+                depts = [dict(x) for x in cur["departments"]]
+                hit = next((x for x in depts if x["name"].lower() == rest[0].lower()), None)
+                if not hit:
+                    print(f"✗ there is no department called {rest[0]}")
+                    sys.exit(1)
+                hit.pop("reports_to", None)
+                if boss:
+                    hit["reports_to"] = boss
+                try:
+                    _office.save(cfg, store, {"departments": depts})
+                except ValueError as e:
+                    print(f"✗ {e}")
+                    sys.exit(1)
+                _cfgmod.save_config(cfg)
+                co.record(store, f"{hit['name']} reports to {boss or co.lead_name(cfg)} "
+                                 f"(from the terminal)")
+            cfg, store = _open_store(getattr(args, "user", ""))
+        depts = co.departments(cfg, store)
+        if not depts:
+            print("No departments yet: bento company setup \"what your company does\"")
+            return
+        mode = co.review_mode(cfg)
+        for d in depts:
+            gates = co.chain(cfg, store, d["name"], "lead" if mode == "off" else mode)
+            line = " → ".join(g["who"] or f"(nobody in {g['department']})" for g in gates)
+            print(f"  {d['name']:<14} reports to {d.get('reports_to') or co.lead_name(cfg):<12} "
+                  f"sign-off: {line}")
+        if mode == "off":
+            print("\nSign-off is off, so this is the line work WOULD go up: "
+                  "bento company review lead")
         return
     if a == "check":
         if not rest:
@@ -3841,7 +3924,7 @@ def _company_cli(args):
         co.record(store, f"company renamed: {cur['name']}")
         print(f"✓ the company is called {co.profile(cfg)['name']}")
         return
-    print("bento company [show|templates|setup|task|name|audit|check]")
+    print("bento company [show|templates|setup|task|name|audit|review|chain|check]")
     sys.exit(2)
 
 
@@ -7207,10 +7290,12 @@ def main():
     p_fl.add_argument("--limit", type=int, default=20)
     p_co = verb("company", help="your company: departments of agents, set up from a sentence, and their work")
     p_co.add_argument("action", nargs="?", default="show",
-                      choices=["show", "list", "templates", "setup", "task", "name", "audit", "check"])
+                      choices=["show", "list", "templates", "setup", "task", "name", "audit",
+                               "review", "chain", "check"])
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
                                               " · name: the company's name · audit: on|off"
-                                              " · check: RUN")
+                                              " · review: lead|heads|off"
+                                              " · chain: [DEPARTMENT BOSS|lead] · check: RUN")
     p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")
     p_co.add_argument("--no-talk", action="store_true", help="setup: do not let colleagues ask each other")
     p_co.add_argument("--words", action="store_true", help="setup: skip the brain, use the catalogue as it is")

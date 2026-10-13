@@ -1146,9 +1146,9 @@ function of3Cards(force){
   const rows=O.L.rooms.map(r=>{
     const ms=r.kind==='lead'?['@agent']:(r.members||[]),run=ms.filter(m=>O.people[m]&&O.people[m].busy).length;
     const s=co[r.name.toLowerCase()]||{};
-    return {r,ms,run,wait:s.waiting||0,flag:s.flagged||0};
+    return {r,ms,run,wait:s.waiting||0,flag:s.flagged||0,held:s.held||0,up:s.reports_to||''};
   });
-  const sig=JSON.stringify([rows.map(x=>[x.r.name,x.ms.length,x.run,x.wait,x.flag,x.ms.slice(0,3)]),OF3.focus]);
+  const sig=JSON.stringify([rows.map(x=>[x.r.name,x.ms.length,x.run,x.wait,x.flag,x.held,x.up,x.ms.slice(0,3)]),OF3.focus]);
   if(force||sig!==OF3.cardSig){
     OF3.cardSig=sig;
     rows.forEach((x,i)=>{
@@ -1156,11 +1156,11 @@ function of3Cards(force){
       const kind=r.kind==='meeting'?'huddles gather here':r.kind==='lounge'?'take a break':
         `${x.ms.length} ${x.ms.length===1?'agent':'agents'}${x.run?` · <em>${x.run} running</em>`:''}`;
       const faces=x.ms.slice(0,3).map(m=>typeof avatarImg==='function'?avatarImg(m,'of3-face'):'').join('')+(x.ms.length>3?`<span class="of3-more">+${x.ms.length-3}</span>`:'');
-      const tip=`${r.name}: ${x.ms.length} ${x.ms.length===1?'agent':'agents'}, ${x.run} working${x.wait?`, ${x.wait} waiting for you`:''}. Tap to look inside.`;
+      const tip=`${r.name}: ${x.ms.length} ${x.ms.length===1?'agent':'agents'}, ${x.run} working${x.wait?`, ${x.wait} waiting for you`:''}${x.held?`, ${x.held} held at sign-off`:''}${x.up?`. Reports to ${x.up}`:''}. Tap to look inside.`;
       const e=of3El('card:'+i,'of3-card'+(x.run?' busy':'')+(OF3.focus===r.name?' on':''),
         `<i style="background:${col}"></i><b>${esc(r.name)}</b><span class="of3-k">${x.run?'<span class="of3-dot"></span>':''}${kind}</span>`
         +(faces?`<span class="of3-faces">${faces}</span>`:'')
-        +(x.wait?`<span class="of3-w">⚠ ${x.wait}</span>`:'')+(x.flag?`<span class="of3-w fl">⚑ ${x.flag}</span>`:''));
+        +(x.wait?`<span class="of3-w">⚠ ${x.wait}</span>`:'')+(x.held?`<span class="of3-w">↩ ${x.held}</span>`:'')+(x.flag?`<span class="of3-w fl">⚑ ${x.flag}</span>`:''));
       e.title=tip;e.setAttribute('role','button');e.setAttribute('aria-label',tip);e.tabIndex=0;
       e.onclick=()=>of3Focus(OF3.focus===r.name?null:r.name);
       e.onkeydown=ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();e.onclick()}};

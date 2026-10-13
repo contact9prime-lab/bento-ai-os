@@ -4,8 +4,8 @@ Say what your business does and Bento sets it up as a company: departments like 
 HR, Finance, Supply, Sales, Tech and Marketing, each with a head and two or three staff.
 Every person has a job title and a persona written for your business. They sit in their
 department's room in the Office, and each department can be given work. When a
-department finishes a task, an independent auditor checks it before the answer reaches
-you.
+department finishes a task, its head signs it off, then each boss above it, up to your
+agent. Then an independent auditor checks it before the answer reaches you.
 
 ## Set it up
 
@@ -95,6 +95,70 @@ to open it in the Run Inspector.
 `bento company` prints the same numbers in a terminal.
 
 ![The Office with a company: each department's room, its head, and its card](screenshots/company-office.png)
+
+## Every boss signs the work off, up to your agent
+
+A department reports to a boss. Its finished task goes to its own head first, then to the
+head of each department it reports to, and last to your agent (Aria, unless you renamed
+it). Each of them is a gate:
+
+- **Approve:** it does what was asked, and they'd put their name to it. It goes up.
+- **Send back:** something has to be fixed first. They say exactly what, and the same task
+  goes back to the department with their notes. The fixed work starts at the bottom of the
+  chain again, so the head checks its own ask. After two rounds of fixes it stops and comes
+  to you.
+- **Escalate:** the work is sound, but it holds a decision that isn't theirs. It goes up
+  with their note, and the next boss decides. From your agent, it comes to you.
+
+An answer that isn't one of those is **not signed off**, never a pass. Bento walks the
+chain itself once the department is done, so no department can skip it or choose who sees
+the work. A boss reads what was asked, what came back, everything handed round while
+working, who signed it below them and what earlier rounds sent back. A head has read-only
+tools to check a claim; your agent answers with none.
+
+**Who reports to whom:** each department's line in **▦ Company** has a **Reports to** list:
+another department, or your agent, which is the default. A loop (Tech reports to Ops, Ops
+to Tech) is refused, and so is a line more than four departments deep. In a terminal:
+
+```
+bento company chain                    # every department's line of bosses
+bento company chain tech ops           # Tech reports to Ops
+bento company chain tech lead          # Tech reports to your agent again
+bento company review lead|heads|off    # up to your agent, each head only, or nobody
+```
+
+In the Office you can watch it: whoever did the last piece carries the work to their head,
+each boss carries it to the next, and the last one takes it to your agent's office. Each
+answer is said at the reviewer's desk, and a send-back flies back to the head. Nothing
+there moves that didn't happen.
+
+![The head of Engineering sends the checkout page back: it breaks on a phone](screenshots/company-signoff-back.png)
+
+![Aria signs off last, in her office](screenshots/company-signoff-lead.png)
+
+The chain shows under each task on the board, with a mark for each boss (✓ approved,
+↩ sent back, ↑ passed up) and how many rounds of fixes it took. A department's line says
+how many tasks were signed off this week and how many are held, and **Held** on the board
+lists the ones waiting on you.
+
+![The task board: kai ✓ → maya ✓ → Aria ✓ after one round of fixes, and the Sign-off choice](screenshots/company-signoff.png)
+
+![On a phone: the same board as a sheet](screenshots/company-signoff-phone.png)
+
+Each answer is a `company.review` row in the ledger, and the result's line says who signed
+it off ("Signed off by kai → maya → Aria after 1 round of fixes."). A task sent back twice,
+escalated to you, or not signed off is a **Needs you** item in your Brief.
+
+A few things to know:
+
+- **Each boss is a model call,** so a task three levels deep costs about four more calls,
+  plus any fixes. **Sign-off** above the task board chooses every boss up to your agent
+  (the default), each department's own head, or nobody.
+- **The bosses aren't independent.** A head may have done part of the work. That's why the
+  auditor still checks the final work afterwards, as somebody who did none of it.
+- **A department with no head** (a room you filled by hand) is a gap in the chain: nobody
+  signs off there, the bosses above still do, and the result says so.
+- It reviews a department's desk tasks. Other missions and chat hand-overs aren't reviewed.
 
 ## The independent auditor checks every finished task
 
@@ -197,6 +261,7 @@ the same answer about who is in which department, so they never disagree.
 - **GUI:** the Office's ▦ Company panel and the cards over the rooms. On a phone the
   panel is a sheet and the cards shrink to fit the room.
 - **TUI:** `bento company` shows, `setup` plans and makes, `task` hands out work,
+  `chain` shows and sets who reports to whom, `review` chooses who signs off,
   `audit on|off` switches the auditor and `check` asks it to check a task. A task and a
   check need the server running, because that is where the work runs.
 - **SUI:** the same page. The desktop scenes (Office, Crew, Mind, World) show the

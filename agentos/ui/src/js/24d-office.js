@@ -510,6 +510,57 @@ function officeHandOver(from,to,task){
     setTimeout(()=>{start();setTimeout(()=>{if(from.visit===visit)officeHome(from)},1400)},1300);
   });
 }
+/* A finished department task walks UP its review chain (company.chain): whoever did the
+   last piece carries it to their head, each boss carries it on to the next, and the last
+   one takes it to the lead's office. Every walk is a review the server started, and each
+   answer is said at the reviewer's desk. A send-back flies back to the department's head.
+   The server is faster than a walk (a model answers in a second, a walk takes three), so a
+   run's review events are QUEUED and played in order: the work arrives, then the answer,
+   then the next boss. Played as they came, an answer was said before the work reached the
+   desk, and the next boss's start overwrote the walk still on its way. */
+function officeReview(ev){
+  const O=OFFICE;O.reviewing=O.reviewing||{};
+  const R=O.reviewing[ev.run_id]=O.reviewing[ev.run_id]||{q:[],busy:false,head:''};
+  R.q.push(ev);
+  if(!R.busy)officeReviewNext(ev.run_id);
+}
+function officeReviewNext(run){
+  const O=OFFICE,R=(O.reviewing||{})[run];if(!R)return;
+  const ev=R.q.shift();
+  if(!ev){R.busy=false;if(R.over)delete O.reviewing[run];return}
+  R.busy=true;
+  const next=ms=>setTimeout(()=>officeReviewNext(run),O.static?0:ms);
+  const to=ev.lead?O.people['@agent']:officeMatch(ev.reviewer);
+  if(ev.phase==='start'){
+    if(ev.level===0&&to)R.head=to.key;
+    officeLog(`${ev.department}'s task went to ${ev.reviewer} for sign-off${ev.round?` (round ${ev.round+1})`:''}`);
+    if(!to)return next(0);
+    const ask=()=>{officeWork(to,true);officePop(to,'?');officeSay(to,'reading it…','think',180000);next(500)};
+    const from=officeMatch(ev.from);
+    if(!from||from===to||from.visit||from.mode!=='seat'||O.static)
+      return officePaper(from?officeHead(from):officeBoardPoint(),to,ask);
+    const visit={to:to.key,review:1};from.visit=visit;officeWork(from,true);
+    officeWalk(from,officeBeside(to.home,34,62),'stand',()=>{
+      if(from.visit!==visit)return ask();
+      officeSay(from,`@${to.label} ${ev.department}'s work, for your sign-off`,'say',2600);
+      setTimeout(()=>{ask();setTimeout(()=>{if(from.visit===visit){officeWork(from,false);officeHome(from)}},1400)},1300);
+    });
+    return;
+  }
+  const n=(ev.notes||[])[0]||'';
+  officeLog(`${ev.reviewer} ${({approve:'signed off',send_back:'sent back',escalate:'passed up',skipped:'could not review',unchecked:'gave no clear answer on'})[ev.answer]||'reviewed'} ${ev.department}'s task${n?': '+n.slice(0,80):''}`);
+  if(ev.level===ev.of-1||ev.answer==='unchecked')R.over=true;
+  if(!to)return next(0);
+  officeWork(to,false);
+  const said={approve:'approved ✓',send_back:'sending it back ↩'+(n?' '+n:''),
+    escalate:'this is above me ↑'+(n?' '+n:''),unchecked:'hm, not sure…'}[ev.answer];
+  if(said)officeSay(to,said,'say',ev.answer==='approve'?3000:5200);
+  if(ev.answer==='send_back'){
+    const head=O.people[R.head];
+    officePaper(officeHead(to),head&&head!==to?head:officeBoardPoint(),head&&head!==to?()=>{officePop(head,'!');officeSay(head,'on it, fixing that','think',4000)}:null);
+  }
+  next(ev.answer==='approve'?1500:2600);
+}
 /* The result comes back the same way: on foot, to the desk of whoever handed it over. */
 function officeReport(p,ok){
   const O=OFFICE,boss=O.people[O.handed[p.key]];delete O.handed[p.key];
@@ -568,7 +619,8 @@ function officeReply(asker,who,text){
    (which names a tool and no agent) lands on the right desk. */
 function officeFabric(ev){
   const O=OFFICE,e=ev.event;
-  if(e==='flow_start'||e==='flow_end'||e==='approval'||e==='parked'||e==='audit'||(e==='status'&&ev.status!=='running'))companySoon();
+  if(e==='flow_start'||e==='flow_end'||e==='approval'||e==='parked'||e==='audit'||e==='review'||(e==='status'&&ev.status!=='running'))companySoon();
+  if(e==='review')return officeReview(ev);
   if(e==='flow_start'){O.missions[ev.flow]=performance.now();if(ev.run_id)O.flowRuns[ev.run_id]=ev.flow;
     officeLog(`mission ${ev.flow} started`);officeKick();return}
   if(e==='flow_end'){if(ev.flow)delete O.missions[ev.flow];else O.missions={};
@@ -587,6 +639,9 @@ function officeFabric(ev){
   }
   if(e==='status'&&ev.ref){
     const p=officeMatch(ev.ref);if(!p)return;
+    // a boss's sign-off run: officeReview draws it from the review events, so the run's
+    // own start and end must not also light a meeting or send a "done ✓"
+    if(ev.kind==='review')return;
     if(ev.status==='running'){O.runs[ev.run_id]=p.key;officeWork(p,true);p.stuck=0;
       if(ev.parent_run&&O.flowRuns[ev.parent_run]){(O.meet[ev.parent_run]=O.meet[ev.parent_run]||new Set()).add(p.key);
         officeMeetSync(ev.parent_run)}

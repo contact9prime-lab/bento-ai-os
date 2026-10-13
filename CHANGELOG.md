@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.29 — 2026-10-13
+
+**Every boss signs the work off, up to your agent.** Asked for as "the department team reports
+to the boss that does the QA, that boss may report to other bosses, and finally Aria is the main
+boss. Every boss acts like a gate of quality review."
+- **Reporting lines.** A department reports to another department or to your agent (the
+  default): **Reports to** on its line in ▦ Company, or `bento company chain tech ops`. A loop or
+  a line more than four departments deep is refused.
+- **Each boss is a gate.** A finished task goes to its head, then to the head of each department
+  above, then to your agent. Each one approves it, sends it back with what to fix, or passes a
+  decision up. Bento walks the chain itself, so no department can skip it.
+- **Sent back means fixed by the same task**, with the boss's notes, then checked again from the
+  bottom. After two rounds of fixes, or a decision only you can make, it's in your Brief.
+- **You can watch it in the Office.** The work is carried desk to desk, room to room, up to your
+  agent's office, and each answer is said at the reviewer's desk.
+- The board shows each task's chain (kai ✓ → maya ✓ → Aria ✓), **Held** lists what's waiting on
+  you, every answer is a `company.review` ledger row, and the result says who signed it off.
+  **Sign-off** chooses every boss up to your agent, each head only, or nobody
+  (`bento company review`). The independent auditor still checks the final work.
+
 ## 0.6.28 — 2026-10-12
 
 **The Office in 3D, and a big team that doesn't clutter it.** Asked for with a screenshot

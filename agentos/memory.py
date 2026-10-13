@@ -2369,11 +2369,13 @@ class Store:
         return rid
 
     def fabric_run_finish(self, rid: str, status: str, output: str = "", fault: str = "",
-                          tokens_in: int = 0, tokens_out: int = 0, steps: int = 0):
+                          tokens_in: int = 0, tokens_out: int = 0, steps: int = 0,
+                          model: str = ""):
         self.db.execute(
             "UPDATE fabric_runs SET status=?, output=?, fault=?, tokens_in=?, tokens_out=?, "
-            "steps=?, finished_at=? WHERE id=?",
-            (status, output[:8000], fault[:2000], tokens_in, tokens_out, steps, time.time(), rid))
+            "steps=?, finished_at=?, model=CASE WHEN ?='' THEN model ELSE ? END WHERE id=?",
+            (status, output[:8000], fault[:2000], tokens_in, tokens_out, steps, time.time(),
+             model or "", model or "", rid))
         # A finished run is a milestone: it is what "what did my agents do while I
         # was away?" is actually asking about.
         row = self.db.execute(

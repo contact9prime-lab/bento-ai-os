@@ -392,6 +392,8 @@ def design_prompt(description: str, tools: list[str] | None = None) -> tuple[str
         '"about": "one sentence: what it does and for whom"},\n'
         ' "departments": [{"id": "one of the ids above, or custom", "name": "the name on '
         'the door", "about": "one sentence: what this department does FOR THIS company", '
+        '"reports_to": "the name of the department whose head signs off this one\'s work, '
+        'or leave it out to report straight to the lead agent", '
         '"people": [{"name": "one-word-name", "title": "job title", "lead": true, '
         '"persona": "two or three sentences in the second person (You ...) about this job '
         'at this company", "tools": ["..."]}]}]}\n\n'
@@ -400,7 +402,9 @@ def design_prompt(description: str, tools: list[str] | None = None) -> tuple[str
         f"small company needs fewer. Keep the usual people's names where they fit. Names are "
         f"one lowercase word with - allowed, unique across the company. Tools only from: "
         f"{', '.join(allowed)}. Do not add numbers or facts about the company that the "
-        f"person did not give.")
+        f"person did not give. Most departments report straight to the lead; give "
+        f"reports_to only where one department really answers to another, and never in a "
+        f"loop.")
     return system, prompt
 
 
@@ -499,8 +503,28 @@ def normalize(plan: dict, tools: list[str] | None = None) -> tuple[dict, list[st
             people[0]["lead"] = True
         people.sort(key=lambda x: not x["lead"])
         seen_depts.add(name.lower())
-        depts.append({"id": did if tpl else "custom", "name": name, "color": color,
-                      "about": about, "people": people})
+        dept = {"id": did if tpl else "custom", "name": name, "color": color,
+                "about": about, "people": people}
+        boss = officemod._plain(d.get("reports_to"))
+        if boss:
+            dept["reports_to"] = boss
+        depts.append(dept)
+    # who reports to whom: a name in this plan, or a department already in the office
+    # (apply checks that one); a loop or a line too deep is dropped and named here
+    names = {d["name"].lower(): d["name"] for d in depts}
+    for d in depts:
+        boss = d.pop("reports_to", "")
+        if not boss or boss.lower() == d["name"].lower():
+            continue
+        d["reports_to"] = names.get(boss.lower(), boss)
+    try:
+        officemod._reporting_lines([{"name": d["name"], **({"reports_to": d["reports_to"]}
+                                     if d.get("reports_to") in names.values() else {})}
+                                    for d in depts])
+    except ValueError as e:
+        for d in depts:
+            d.pop("reports_to", None)
+        dropped.append(f"the reporting lines ({e}) so every department reports to the lead")
     return {"company": company, "departments": depts}, dropped
 
 
@@ -707,6 +731,7 @@ def apply(cfg: dict, store, plan: dict, accounts: dict | None = None,
         lead = next((p["name"] for p in d["people"] if p["lead"] and p["name"] in members), members[0])
         new_depts.append({"name": d["name"], "color": d["color"], "members": members,
                           "lead": lead, "about": d.get("about") or "", "desk": d["desk"],
+                          **({"reports_to": d["reports_to"]} if d.get("reports_to") else {}),
                           "titles": {p["name"]: p["title"] for p in d["people"]
                                      if p["name"] in members}})
     officemod.save(cfg, store, {"departments": kept + new_depts})
@@ -869,6 +894,7 @@ def _task_rows(cfg: dict, store, waiting: list | None, now: float) -> list[dict]
         who = [c.get("ref") for c in ch if c.get("kind") == "delegate" and c.get("ref")]
         # the newest check of this task (a person may ask for it again); the list is newest first
         audit = audit_state(next((c for c in ch if c.get("kind") == "audit"), None))
+        review = review_state(ch, running=r.get("status") == "running")
         ids = asks.get(r["id"], []) + [a for c in ch for a in asks.get(c["id"], [])]
         if r.get("kind") == "flow":
             ids += asks.get("flow:" + str(r.get("flow") or ""), [])
@@ -881,7 +907,7 @@ def _task_rows(cfg: dict, store, waiting: list | None, now: float) -> list[dict]
                      "approvals": ids if st == "waiting" else [],
                      "in_brief": (r.get("status") == "parked"
                                   or any(c.get("status") == "parked" for c in ch)),
-                     "audit": audit,
+                     "audit": audit, "review": review,
                      "can_check": r.get("kind") == "flow" and r.get("status") in AUDITED})
     return rows
 
@@ -918,7 +944,12 @@ def stats(cfg: dict, store, waiting: list | None = None, now: float | None = Non
                     # what the independent auditor found in this week's finished work
                     "checked": sum(bool((r.get("audit") or {}).get("verdict")) for r in week),
                     "flagged": sum((r.get("audit") or {}).get("verdict") in ("concerns", "fail")
-                                   for r in week)})
+                                   for r in week),
+                    # what the bosses above it did with this week's finished work
+                    "reports_to": d.get("reports_to") or "",
+                    "signed": sum((r.get("review") or {}).get("outcome") == "approved" for r in week),
+                    "held": sum((r.get("review") or {}).get("outcome") in
+                                ("sent_back", "escalated", "unchecked") for r in week)})
     return out
 
 
@@ -939,7 +970,10 @@ def board(cfg: dict, store, waiting: list | None = None, now: float | None = Non
     counts["scheduled"] = len(sched)
     counts["flagged"] = sum((r.get("audit") or {}).get("verdict") in ("concerns", "fail")
                             for r in rows)
-    return {"tasks": sched + rows, "counts": counts, "audit": audit_on(cfg)}
+    counts["held"] = sum((r.get("review") or {}).get("outcome") in
+                         ("sent_back", "escalated", "unchecked") for r in rows)
+    return {"tasks": sched + rows, "counts": counts, "audit": audit_on(cfg),
+            "review": review_mode(cfg), "lead": lead_name(cfg)}
 
 
 def brain(store) -> dict:
@@ -1042,9 +1076,22 @@ def audit_task(dept: dict, task: str, deliverable: str, status: str, fault: str,
                board: list[dict], briefed: list[dict] | None = None) -> str:
     """What the auditor is handed: the task, the deliverable and the work behind it. A
     handle that read something from outside this machine is fenced as data."""
+    parts = [f"Check the work the {dept['name']} department just finished."]
+    parts += _work_parts(task, deliverable, status, fault, board, briefed)
+    parts.append("Reply with PASS, CONCERNS or FAIL alone on the first line. PASS: it does what "
+                 "was asked and what it says holds up. CONCERNS: usable, but something is "
+                 "unsupported, missing or needs a person to look. FAIL: it does not do what was "
+                 "asked, or it states things the work does not back. Then at most six lines, "
+                 "one finding each, naming the handle or file. Nothing else.")
+    return "\n\n".join(parts)
+
+
+def _work_parts(task: str, deliverable: str, status: str, fault: str, board: list[dict],
+                briefed: list[dict] | None) -> list[str]:
+    """The task, the deliverable, the board and what was filed in the Brief: what the
+    auditor and every boss in the review chain read, written once."""
     from .agent import fence
-    parts = [f"Check the work the {dept['name']} department just finished.",
-             "=== what they were asked ===\n" + (" ".join(str(task or "").split())[:2000]
+    parts = ["=== what they were asked ===\n" + (" ".join(str(task or "").split())[:2000]
                                                or "(no task was given: the desk ran on its own)"),
              f"=== what they handed back (the run ended {status}"
              + (f": {fault}" if fault else "") + ") ===\n"
@@ -1068,12 +1115,7 @@ def audit_task(dept: dict, task: str, deliverable: str, status: str, fault: str,
         f"- {b.get('kind')}: {' '.join(str(b.get('title') or '').split())[:160]}"
         + (f" ({' '.join(str(b.get('body') or '').split())[:200]})" if b.get("body") else "")
         for b in (briefed or [])[:12]) or "(nothing)"))
-    parts.append("Reply with PASS, CONCERNS or FAIL alone on the first line. PASS: it does what "
-                 "was asked and what it says holds up. CONCERNS: usable, but something is "
-                 "unsupported, missing or needs a person to look. FAIL: it does not do what was "
-                 "asked, or it states things the work does not back. Then at most six lines, "
-                 "one finding each, naming the handle or file. Nothing else.")
-    return "\n\n".join(parts)
+    return parts
 
 
 _VERDICT = re.compile(r"^\W*(?:verdict\W*)?(pass(?:ed)?|concerns?|fail(?:ed)?)\b", re.I)
@@ -1134,6 +1176,209 @@ def audit_state(row: dict | None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# The review chain: every boss above the work signs it off, up to the lead
+#
+# A department's finished task goes to its own head, then to the head of each
+# department it reports to, then to the lead agent. Each one approves it, sends it
+# back with what to fix, or escalates a decision to the next boss up (from the lead,
+# to the person). The control plane walks the chain, never the master: a desk that
+# could choose whether to show its boss the work is not being reviewed. The bosses
+# are accountable for their teams, so they are not independent; the auditor still
+# checks the final work afterwards, as somebody who did none of it.
+# ---------------------------------------------------------------------------
+
+REVIEW_MODES = ("off", "heads", "lead")
+REWORK_MAX = 2             # rounds of fixes a send-back may ask for, then it is the person's
+REVIEW_ANSWERS = ("approve", "send_back", "escalate")
+LEAD_KEY = "@agent"
+
+
+def review_mode(cfg: dict) -> str:
+    """off, heads (each department's own head only) or lead (every boss up to the lead).
+    Up to the lead unless the person chose otherwise; `company` is theirs."""
+    v = str((cfg.get("company") or {}).get("review") or "lead").lower()
+    return v if v in REVIEW_MODES else "lead"
+
+
+def lead_name(cfg: dict) -> str:
+    return str(cfg.get("agent_name") or "Aria")
+
+
+def chain(cfg: dict, store, dept_name: str, mode: str | None = None) -> list[dict]:
+    """The bosses who sign off a department's finished work, nearest first. A department
+    whose room was filled by hand has a first person, not a head: it stays in the chain
+    as a gate nobody can answer, so the record says nobody signed off there."""
+    mode = mode or review_mode(cfg)
+    if mode == "off":
+        return []
+    depts = {d["name"]: d for d in departments(cfg, store)}
+    at = depts.get(dept_name)
+    gates: list[dict] = []
+    seen: set[str] = set()
+    while at and at["name"] not in seen and len(seen) < officemod.MAX_REPORT_DEPTH:
+        seen.add(at["name"])
+        if at.get("named") and at.get("lead"):
+            gates.append({"who": at["lead"], "key": at["lead"], "department": at["name"],
+                          "lead": False})
+        else:
+            gates.append({"who": "", "key": "", "department": at["name"], "lead": False,
+                          "why": f"{at['name']} has no head, so nobody signed off there"})
+        if mode == "heads":
+            break
+        at = depts.get(at.get("reports_to") or "")
+    if mode == "lead":
+        gates.append({"who": lead_name(cfg), "key": LEAD_KEY, "department": "", "lead": True})
+    return gates
+
+
+def review_task(dept: dict, gate: dict, task: str, deliverable: str, status: str,
+                fault: str, board: list[dict], briefed: list[dict] | None,
+                below: list[dict], earlier: list[dict], last: bool) -> str:
+    """What one boss is handed: the work (as the auditor sees it), who signed it off
+    below, and what earlier rounds sent back, so a fix is checked against the ask."""
+    name = dept["name"]
+    signed = ", ".join(g["who"] for g in below if g.get("answer") in ("approve", "escalate"))
+    if gate["lead"]:
+        head = (f"You are {gate['who']}, the lead agent. Every department reports to you in the "
+                f"end. {name}'s finished task has come to you"
+                + (f" after {signed} signed it off" if signed else "")
+                + ". Sign it off only if it is ready to hand to the person.")
+    elif gate["department"] == name:
+        head = (f"You head {name}. Your team has finished a task and brought it to you before "
+                f"it goes any further. You are accountable for it: sign it off only if you "
+                f"would put your name to it.")
+    else:
+        head = (f"You head {gate['department']}. {name} reports to you, and its finished task "
+                f"has come up to you" + (f" after {signed} signed it off" if signed else "")
+                + ". Sign it off only if you would put your name to it.")
+    parts = [head] + _work_parts(task, deliverable, status, fault, board, briefed)
+    if below:
+        parts.append("=== below you ===\n" + "\n".join(
+            f"- {g['who'] or g['department']}: " + {"approve": "approved",
+                                                   "escalate": "passed it up to decide: ",
+                                                   "skipped": "did not review: "}.get(
+                g.get("answer"), g.get("answer") or "")
+            + (" ".join(g.get("notes") or []) if g.get("answer") == "escalate" else
+               (g.get("why") or "") if g.get("answer") == "skipped" else "")
+            for g in below))
+    if earlier:
+        parts.append("=== sent back before (check these were fixed) ===\n" + "\n".join(
+            f"- {g['who']}: " + " ".join(g.get("notes") or ["(no reason given)"])
+            for g in earlier))
+    up = "the person" if last else "the next boss up"
+    parts.append("Reply with APPROVE, SEND BACK or ESCALATE alone on the first line. APPROVE: "
+                 "it does what was asked, what it says holds up, and you would sign it. SEND "
+                 "BACK: something must be fixed before it goes on; then one line per fix, saying "
+                 "exactly what to change. ESCALATE: the work is sound as far as you can judge, "
+                 f"but it holds a decision that is not yours to make, and it goes to {up}; then "
+                 "one line saying which decision. Nothing else.")
+    return "\n\n".join(parts)
+
+
+_ANSWER = re.compile(r"^\W*(?:answer\W*|verdict\W*|decision\W*)?(approved?|approval|sign(?:ed)?\s*off|"
+                     r"send(?:ing)?\s*(?:it\s*)?back|sent\s*back|escalat(?:e|ed|ing|ion))\b", re.I)
+
+
+def read_review(text: str) -> tuple[str, list[str]]:
+    """A boss's answer as (approve | send_back | escalate | '', notes). Strict, like the
+    auditor's verdict: an answer that does not start with one of the three is '', which
+    is never counted as a sign-off."""
+    lines = [ln.strip() for ln in str(text or "").strip().splitlines() if ln.strip()]
+    if not lines:
+        return "", []
+    m = _ANSWER.match(lines[0])
+    if not m:
+        return "", [" ".join(" ".join(lines).split())[:300]]
+    w = m.group(1).lower()
+    answer = ("approve" if w.startswith(("approv", "sign")) else
+              "escalate" if w.startswith("escalat") else "send_back")
+    rest = lines[0][m.end():].strip(" :-–—*.")
+    notes = ([rest] if rest else []) + lines[1:]
+    notes = [re.sub(r"^(?:[-*•]|\d+[.)])\s*", "", n)[:300] for n in notes]
+    return answer, [n for n in notes if n][:6]
+
+
+def gate_state(row: dict) -> dict:
+    """One review run's row, read back. The run is the record: the answer is read out of
+    what the boss said, never kept a second time."""
+    st = row.get("status") or ""
+    out = {"who": row.get("ref") or "", "run_id": row.get("id"), "model": row.get("model") or ""}
+    if st == "running":
+        return {**out, "answer": "", "state": "reviewing"}
+    if st == "skipped":
+        return {**out, "answer": "skipped", "state": "done", "why": row.get("output") or ""}
+    if st == "ok":
+        a, notes = read_review(row.get("output") or "")
+        if a:
+            return {**out, "answer": a, "state": "done", "notes": notes}
+        return {**out, "answer": "unchecked", "state": "done", "notes": notes,
+                "why": f"{out['who']} did not answer approve, send back or escalate"}
+    return {**out, "answer": "unchecked", "state": "done",
+            "why": (row.get("fault") or st or "the review stopped")[:200]}
+
+
+def review_state(rows: list[dict], running: bool = False) -> dict:
+    """A task's review chain, read from its review runs: the last round's gates, how many
+    rounds of fixes there were, and the outcome. `running`: the task's run is still
+    open, so a send-back is being reworked rather than the end of it."""
+    mine = sorted([r for r in rows or [] if r.get("kind") == "review"],
+                  key=lambda r: (float(r.get("started_at") or 0), str(r.get("id") or "")))
+    if not mine:
+        return {}
+    rounds: list[list[dict]] = [[]]
+    for r in mine:
+        g = gate_state(r)
+        rounds[-1].append(g)
+        if g["answer"] == "send_back":
+            rounds.append([])
+    if not rounds[-1]:
+        rounds.pop()
+    gates = rounds[-1]
+    sent = [g for rnd in rounds for g in rnd if g["answer"] == "send_back"]
+    real = [g for g in gates if g["answer"] != "skipped"]
+    if any(g["state"] == "reviewing" for g in gates):
+        outcome = "reviewing"
+    elif not real:
+        outcome = "unreviewed"
+    else:
+        outcome = {"approve": "approved", "escalate": "escalated", "send_back":
+                   "reworking" if running else "sent_back"}.get(real[-1]["answer"], "unchecked")
+    # rounds of FIXES: a send-back that was worked on again; the last one is not a fix
+    out = {"gates": gates, "rounds": len(rounds) - 1, "outcome": outcome,
+           "sent_back": [{"who": g["who"], "notes": g.get("notes") or []} for g in sent]}
+    out["line"] = review_line(out)
+    return out
+
+
+def review_line(r: dict) -> str:
+    """One sentence for wherever the task's answer is read: chat, a channel, the card."""
+    gates = r.get("gates") or []
+    fixes = r.get("rounds") or 0
+    after = f" after {fixes} round{'s' if fixes != 1 else ''} of fixes" if fixes else ""
+    signed = " → ".join(g["who"] for g in gates if g.get("answer") in ("approve", "escalate"))
+    holes = [g.get("why") for g in gates if g.get("answer") == "skipped" and g.get("why")]
+    tail = (" (" + "; ".join(holes) + ")") if holes else ""
+    o = r.get("outcome") or ""
+    last = next((g for g in reversed(gates) if g.get("answer") not in ("skipped", "")), {})
+    note = " ".join(last.get("notes") or [])[:240]
+    if o == "approved":
+        return f"Signed off by {signed}{after}.{tail}"
+    if o == "escalated":
+        return (f"{last.get('who')} needs you to decide: {note or 'see the task board.'}"
+                + (f" Signed off by {signed} so far." if signed and signed != last.get("who")
+                   else "") + tail)
+    if o in ("sent_back", "reworking"):
+        return (f"Sent back by {last.get('who')}{after}"
+                + (", so it needs you: " if o == "sent_back" else ": ")
+                + (note or "see the task board.") + tail)
+    if o == "reviewing":
+        return f"Being reviewed by {next((g['who'] for g in gates if g['state'] == 'reviewing'), 'a boss')}."
+    if o == "unreviewed":
+        return "Not signed off: " + ("; ".join(holes) or "nobody could review it.")
+    return f"Not signed off: {last.get('why') or 'a boss did not give a clear answer.'}{tail}"
+
+
+# ---------------------------------------------------------------------------
 # Words: the lead's context and the terminal
 # ---------------------------------------------------------------------------
 
@@ -1157,7 +1402,13 @@ def note(cfg: dict, store, desks: bool = True) -> str:
             + " Work that spans departments goes to each head."
             + (" When a department's desk finishes a task, an independent auditor checks it "
                "and the verdict comes back with the result; you do not need to ask for that "
-               "check, and you cannot skip it." if audit_on(cfg) and desks else ""))
+               "check, and you cannot skip it." if audit_on(cfg) and desks else "")
+            + (" Before that, each boss above the department signs the work off"
+               + (", up to you" if review_mode(cfg) == "lead" else "")
+               + "; you will be asked for your sign-off when it reaches you."
+               if review_mode(cfg) != "off" and desks else "")
+            + "".join(f"\n{d['name']} reports to {d['reports_to']}." for d in depts
+                      if d.get("reports_to")))
 
 
 def text(cfg: dict, store, waiting: list | None = None, st: list | None = None) -> str:
@@ -1177,9 +1428,17 @@ def text(cfg: dict, store, waiting: list | None = None, st: list | None = None) 
         lines.append(f"  {'':<14} head {s['lead'] or '-'}; "
                      f"{', '.join(m for m in s['members'] if m != s['lead']) or 'nobody else'}"
                      + ("" if s["has_desk"] else "; no desk"))
-    lines += ["", ("The independent auditor checks every finished task." if audit_on(cfg) else
-                   "The independent auditor is off: finished tasks are not checked. "
-                   "Turn it on with: bento company audit on")]
+        lines.append(f"  {'':<14} {s['name']} reports to {s.get('reports_to') or lead_name(cfg)}"
+                     + (f" · {s['signed']} signed off, {s['held']} held this week"
+                        if s.get("signed") or s.get("held") else ""))
+    mode = review_mode(cfg)
+    lines += ["", {"lead": f"Finished work is signed off by each boss, up to {lead_name(cfg)}.",
+                   "heads": "Finished work is signed off by each department's own head.",
+                   "off": "Nobody signs finished work off. Turn it on with: "
+                          "bento company review lead"}[mode],
+              ("The independent auditor checks every finished task." if audit_on(cfg) else
+               "The independent auditor is off: finished tasks are not checked. "
+               "Turn it on with: bento company audit on")]
     return "\n".join(lines)
 
 

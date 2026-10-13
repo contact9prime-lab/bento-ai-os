@@ -62,6 +62,7 @@ def _script(turns, seen):
 def _world(tmp_path, desk="finance-desk", members=("finance-lead", "bookkeeper"), **cfg):
     c = {"agent_name": "Aria", "autonomy": "full", "max_steps": 8, "default_model": "ollama/x",
          "workspace": str(tmp_path), "providers": {}, "memory": {"inject_facts": 0, "inject_user": 0}}
+    c["company"] = {"review": "off"}     # the bosses' sign-off: test_company_review.py
     c.update(cfg)
     store = Store(tmp_path / "t.db")
     tb = Toolbox(c, store)
