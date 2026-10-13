@@ -20,6 +20,9 @@ rediscover, not style preferences.
   choice. `bento version bump` prints a reminder when it is older than `STALE_DAYS`. It is
   a SELECTION list: never rewrite anybody's saved models (`providers.<p>.models`,
   `default_model`, an agent's pin). The shipped prices in `usage.py` move with it.
+- **Every video is 9:16 and comes with its Instagram post.** 1080×1920, with sound, and
+  delivered with a caption (a hook line, what it shows, a call to action) and its hashtags,
+  ready to paste. That holds for every reel, demo or walk-through video, asked for or not.
 
 ---
 
