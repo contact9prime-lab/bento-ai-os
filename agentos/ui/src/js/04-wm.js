@@ -505,3 +505,19 @@ function segTabs(id,labels,active,fn){
     `<button class="${i===active?'on':''}" onclick="${fn}(${i})">${esc(l)}</button>`).join('')}</span>`;
 }
 
+
+/* ---- a window that needs you ----------------------------------------------
+   A live window (the shared browser, a terminal session, a projected app) can stop
+   and wait for the person: a sign-in, a 2FA code, a CAPTCHA. The window, its taskbar
+   entry and its dock icon pulse until it is answered. One rule for every live window,
+   so a new kind of stream gets it for free. Never raises the window on its own: taking
+   focus away from what somebody is typing in is its own bug. */
+function winNeedsYou(appId,on,label){
+  winsOf(appId).forEach(w=>{
+    w.el.classList.toggle('needs-you',!!on);
+    w.tb&&w.tb.classList.toggle('needs-you',!!on);
+    if(on&&label)w.el.dataset.needs=label;else delete w.el.dataset.needs;
+  });
+  const d=document.querySelector(`#dock .dockb[data-app="${CSS.escape(appId)}"]`);
+  if(d)d.classList.toggle('needs-you',!!on);
+}

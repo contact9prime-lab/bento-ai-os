@@ -766,6 +766,8 @@ function handle(ev){
     case 'checkpoint': ttLayoutSave(ev.id); if(TT.w&&TT.conv===ev.conversation_id)refreshApp('timetravel'); break;
     case 'timetravel': if(TT.w)refreshApp('timetravel'); break;
     case 'drama': dramaOffer(ev); if(typeof refreshApp==='function')refreshApp('drama'); break;
+    case 'browser_attention': browserAttention(ev); break;
+    case 'appstream': if(typeof showAppWindow==='function')showAppWindow(ev.id,ev.title); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'toast': toast(ev.text||''); break;   // the server has something short to say
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;

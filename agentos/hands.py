@@ -317,6 +317,17 @@ def refusal(spec: dict, cfg: dict, tool: str, action: str, resource: str) -> str
         if ro_hit:
             return f"{real} is read-only for this executor"
         return f"{real} is outside this executor's folders"
+    if action.startswith("browser.") and resource.startswith("site:"):
+        # the shared browser reaches what the web list reaches: a site is allowed when an
+        # address on it would be
+        web = s["web"]
+        if web == "none":
+            return "this executor has no web access"
+        host = resource[5:]
+        if host not in ("", "*") and isinstance(web, list) and not any(
+                fnmatch.fnmatchcase(f"https://{host}/", w) or fnmatch.fnmatchcase(f"http://{host}/", w)
+                or fnmatch.fnmatchcase(host, w) for w in web):
+            return f"{host} is not one of this executor's web addresses"
     if action == "net.fetch" and resource not in ("net:*", "net:"):
         url = resource[4:]
         web = s["web"]

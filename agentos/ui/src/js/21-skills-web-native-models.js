@@ -94,13 +94,16 @@ async function openHost(opts){
   }catch(e){toast('open failed')}
 }
 function openInBrowser(url){openHost({url})}
-function renderBrowser(body,w){
+/* The system-browser launcher: what Web was before the shared browser, and what it
+   falls back to on a machine with no Chromium (renderBrowser in 04f-streams.js says why). */
+function renderWebLauncher(body,w,why){
   const links=[['DuckDuckGo','https://duckduckgo.com'],['Hacker News','https://news.ycombinator.com'],
     ['GitHub','https://github.com'],['Finance','https://finance.yahoo.com'],['Google','https://google.com']];
   body.innerHTML=`<div class="pad" style="display:flex;flex-direction:column;gap:14px">
     <div style="text-align:center;padding-top:6px">
       <div style="font-size:15px;font-weight:700">Web</div>
-      <p class="mut" style="margin-top:4px">Opens pages in your real system browser (Chrome/Firefox) — full sites, logins, extensions.</p>
+      <p class="mut" style="margin-top:4px">Opens pages in your real system browser (Chrome/Firefox): full sites, logins, extensions.</p>
+      ${why?`<p class="mut" style="margin-top:6px">The shared browser, which your agent can use with you, is not available here. ${esc(why)}</p>`:''}
     </div>
     <div class="apptop" style="border:none;padding:0">
       <input id="wb-url" placeholder="Search or type a URL, then Enter…" style="flex:1">
@@ -124,8 +127,11 @@ function renderBrowser(body,w){
 
 /* ================= native applications launcher ================= */
 async function renderNativeApps(body,w){
+  const st=await appStreamStatus();
   body.innerHTML=`<div class="apptop">
       <input id="na-q" placeholder="Search installed apps…" style="flex:1">
+      ${st.ok&&!nativeRunsElsewhere()?`<label class="na-inwin" title="Draw the app inside a Bento window that your agent can use with you"><input type="checkbox" id="na-inwin" ${NATIVE_IN_WINDOW?'checked':''}> In a window</label>`
+        :!st.ok&&st.why?`<span class="mut na-inwin" title="${esc(st.why)}">In a window: not set up ⓘ</span>`:''}
       <button class="endbtn" id="na-get">＋ Get apps…</button>
       <span class="mut" id="na-n"></span></div>
     <div id="na-store" style="display:none"></div>
@@ -143,7 +149,9 @@ async function renderNativeApps(body,w){
   draw('');
   $('#na-q').addEventListener('input',e=>draw(e.target.value.trim().toLowerCase()));
   $('#na-get').onclick=()=>naStore();
+  const iw=$('#na-inwin');if(iw)iw.onchange=()=>{NATIVE_IN_WINDOW=iw.checked};
 }
+var NATIVE_IN_WINDOW=false;
 
 /* ---- getting a NEW app ----------------------------------------------------
    A desktop you cannot install software on is a demo. This asks the machine's
@@ -234,6 +242,13 @@ function nativeRunsElsewhere(){return remoteClient()&&PLATFORM.mode!=='hosted'}
 
 async function launchNative(id,name){
   const label=name||id;
+  // From another room a native window is pixels nobody here can see: draw the app in a
+  // Bento window instead, when this machine can (appstream.py). At the machine it opens
+  // on the real screen, as it always did; "In a window" in the launcher asks for it there.
+  if(nativeRunsElsewhere()||NATIVE_IN_WINDOW){
+    const st=await appStreamStatus();
+    if(st.ok)return openAppWindow(id,label);
+  }
   toast('↗ starting '+label+'…');
   // The launch now WAITS for the window to map instead of returning instantly and
   // lying, so a heavy app leaves a real gap. Mark the tile as busy for that gap —

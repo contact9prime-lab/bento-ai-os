@@ -14,8 +14,18 @@ const APPS={
     menus:w=>[['Edit',[
       {label:'Clear the screen',fn:()=>{try{w.term.clear()}catch(e){}}},
       {label:'Copy the selection',fn:()=>{try{navigator.clipboard.writeText(w.term.getSelection()||'')}catch(e){}}},
+    ]],['Sessions',[
+      {label:'Switch session or start one…',fn:async()=>{const it=await terminalSessionsMenu(w);
+        const r=w.el.getBoundingClientRect();showCtxItems({clientX:r.left+40,clientY:r.top+48},it)}},
+      {label:'New session',fn:()=>terminalAttach(w,'new')},
+      {label:'End this session',fn:async()=>{if(!w._session)return;
+        await fetch('/api/terminal/sessions/'+encodeURIComponent(w._session),{method:'DELETE'});toast('Session ended')}},
     ]]]},
-  browser:{id:'browser',title:'Web',icon:'',w:520,h:440,desc:'Open the web in your system browser',render:renderBrowser},
+  browser:{id:'browser',title:'Web',icon:'',w:1100,h:760,desc:'A real browser you and your agent share; sign-ins stay',render:renderBrowser,
+    onClose(w){try{w.sv&&w.sv.destroy();winNeedsYou('browser',false)}catch(e){}return true}},
+  appwindow:{id:'appwindow',title:'App',icon:'',w:900,h:620,desc:'A native app on this machine, drawn in a window you and your agent can both use',
+    multi:true,hidden:true,render:renderAppWindow,
+    onClose(w){try{w.sv&&w.sv.destroy();if(w._sid)fetch('/api/appstreams/'+encodeURIComponent(w._sid),{method:'DELETE'})}catch(e){}return true}},
   files:{id:'files',title:'Files',icon:'',w:720,h:560,desc:'Your workspace files & reports',multi:true,render:renderFiles,
     menus:w=>[['File',[
       {label:'Go to workspace root',fn:()=>{w.path='';renderFiles(w.el.querySelector('.wbody'),w)}},

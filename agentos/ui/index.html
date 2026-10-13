@@ -5188,6 +5188,65 @@ body.kiosk #office-scene canvas{display:block}
   background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff)}
 .wd-dept.wd-guest{--dc:var(--acc)}
 .wd-left{font-variant-numeric:tabular-nums}
+/* ---- live windows (04f-streams.js): a real process drawn here and steered from here ---- */
+.sv{position:relative;flex:1;min-height:0;background:#0b0d10;overflow:hidden;touch-action:none}
+.sv-cv{display:block;width:100%;height:100%;object-fit:contain;outline:none;cursor:default;image-rendering:auto}
+.sv:not(.live)::after{content:'starting…';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:var(--txt3,#8892a6);font-size:13px}
+.sv-hand{position:absolute;inset:0;pointer-events:none}
+.sv-tap{position:absolute;transform:translate(-50%,-50%)}
+.sv-tap i{display:block;width:34px;height:34px;border-radius:50%;border:3px solid var(--acc);
+  box-shadow:0 0 18px color-mix(in srgb,var(--acc) 60%,transparent);animation:svTap 1.1s ease-out forwards}
+.sv-tap span{position:absolute;left:50%;top:26px;transform:translateX(-50%);white-space:nowrap;font-size:12px;font-weight:600;
+  padding:3px 9px;border-radius:999px;background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);animation:svSay 2.6s ease forwards}
+.sv-tap.nopos{transform:translateX(-50%)}.sv-tap.nopos i{display:none}.sv-tap.nopos span{top:0}
+@keyframes svTap{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.6);opacity:0}}
+@keyframes svSay{0%,80%{opacity:1}100%{opacity:0}}
+.sv-note{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);max-width:90%;padding:8px 14px;border-radius:10px;
+  background:var(--bg2);color:var(--txt);font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.sv-kb{position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0}
+
+/* the browser's own chrome */
+.bw{display:flex;flex-direction:column;height:100%;min-height:0}
+.bw-bar{display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--bdr,rgba(255,255,255,.08))}
+.bw-b{min-width:var(--tap,34px);min-height:var(--tap,34px);border-radius:9px;background:transparent;border:1px solid transparent;
+  color:var(--txt);font-size:18px;line-height:1;cursor:pointer}
+.bw-b:hover{background:color-mix(in srgb,var(--txt) 8%,transparent)}
+.bw-url{flex:1;min-width:0;min-height:var(--tap,34px);border-radius:999px;padding:0 14px}
+.bw-kb{display:none}
+@media (pointer:coarse){.bw-kb{display:inline-block}}
+.bw-tabs{display:flex;gap:4px;padding:4px 8px 0;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.bw-tab{display:flex;align-items:center;gap:6px;max-width:220px;min-height:var(--tap,30px);padding:0 10px;border-radius:9px 9px 0 0;
+  background:color-mix(in srgb,var(--txt) 5%,transparent);color:var(--txt2,var(--txt));border:0;font-size:12px;cursor:pointer;scroll-snap-align:start}
+.bw-tab span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bw-tab.on{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--txt)}
+.bw-tab i{font-style:normal;opacity:.6;padding:4px}
+.bw-ask{display:flex;align-items:center;gap:12px;padding:10px 14px;background:color-mix(in srgb,#f59e0b 18%,var(--bg2));
+  border-bottom:1px solid color-mix(in srgb,#f59e0b 45%,transparent)}
+.bw-ask[hidden]{display:none}
+.bw-ask-ic{font-size:22px}.bw-ask div{flex:1;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.bw-view{flex:1;min-height:0;display:flex}
+.bw-foot{padding:3px 10px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* a window that needs you (winNeedsYou in 04-wm.js) */
+.win.needs-you{animation:winNeeds 1.6s ease-in-out infinite}
+.win.needs-you .ttl::after{content:attr(data-needs);display:none}
+@keyframes winNeeds{0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,#f59e0b 70%,transparent),0 18px 50px rgba(0,0,0,.45)}
+  50%{box-shadow:0 0 0 6px color-mix(in srgb,#f59e0b 40%,transparent),0 18px 50px rgba(0,0,0,.45)}}
+.tbwin.needs-you,.dockb.needs-you{animation:dockNeeds 1.2s ease-in-out infinite}
+@keyframes dockNeeds{0%,100%{filter:none}50%{filter:drop-shadow(0 0 10px #f59e0b) brightness(1.15)}}
+@media (prefers-reduced-motion:reduce){.win.needs-you,.tbwin.needs-you,.dockb.needs-you{animation:none;outline:3px solid #f59e0b}}
+
+/* the Terminal: a session that outlives its window, and a line when the agent types */
+.term-wrap{display:flex;flex-direction:column;flex:1;min-height:0;height:100%}
+.term-agent{padding:5px 12px;font-size:12px;font-family:ui-monospace,Menlo,monospace;background:var(--acc-grad,var(--acc));
+  color:var(--on-acc,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.term-agent[hidden]{display:none}
+
+/* a native app's window (appstream.py): the app's own pixels and a line saying where it runs */
+.aw{display:flex;flex-direction:column;flex:1;min-height:0;height:100%}
+.aw-view{flex:1;display:flex;min-height:0}
+.aw-foot{padding:3px 10px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -5583,6 +5642,16 @@ function suiRaise(on){
   suiSend(SUI.raised ? 'raise' : 'lower');
   document.body.classList.toggle('sui-raised', SUI.raised);
   return true;
+}
+
+/* A live window needs the person (a sign-in, a 2FA code, a CAPTCHA in the shared
+   browser). In SUI the page is the BACKGROUND layer and native windows cover it, so the
+   toast and the pulsing window would be under whatever the person is using: the desktop
+   comes to the front, by the one layer change suiRaise already is. Outside SUI the
+   toast and the pulse are enough, and nothing is raised. */
+function suiAttention(){
+  if(!suiActive()||SUI.raised)return false;
+  return suiRaise(true);
 }
 
 function suiInit(){
@@ -6901,6 +6970,7 @@ const ICONS={
   teamchat:['#34D399','#047857','<path d="M4 6.6c0-.9.7-1.6 1.6-1.6h8.2c.9 0 1.6.7 1.6 1.6v5.2c0 .9-.7 1.6-1.6 1.6H9.2L6 16v-2.6h-.4c-.9 0-1.6-.7-1.6-1.6Z"/><path d="M18.2 9.4h.2c.9 0 1.6.7 1.6 1.6v5c0 .9-.7 1.6-1.6 1.6H18V20l-3.2-2.4h-3.4c-.9 0-1.6-.7-1.6-1.6v-.4"/>'],
   taskmgr:['#6B7684','#39414E','<path d="M3.8 12.2h3.6l2.4-5.8 4.2 11.2 2.4-5.4h3.8"/>'],
   terminal:['#4A5160','#1E222B','<path d="M6.5 8.2l4 3.8-4 3.8"/><path d="M12.8 16.4h4.7"/>'],
+  appwindow:['#64748B','#334155','<rect x="4" y="5" width="16" height="13" rx="2"/><path d="M4 9h16"/><path d="M9 13.5l2 2 4-4"/>'],
   browser:['#38BDF8','#0369A1','<circle cx="12" cy="12" r="7.8"/><path d="M4.2 12h15.6"/><path d="M12 4.2c2.3 2.2 3.6 4.9 3.6 7.8s-1.3 5.6-3.6 7.8c-2.3-2.2-3.6-4.9-3.6-7.8S9.7 6.4 12 4.2Z"/>'],
   files:['#60A5FA','#2563EB','<path d="M4 7.3c0-.8.6-1.4 1.4-1.4h4.1l1.9 2.4h7.2c.8 0 1.4.6 1.4 1.4v7.9c0 .8-.6 1.4-1.4 1.4H5.4c-.8 0-1.4-.6-1.4-1.4Z"/><path d="M4 10.7h16"/>'],
   apps:['#A78BFA','#6D28D9','<rect x="4.6" y="4.6" width="6" height="6" rx="1.7"/><rect x="13.4" y="4.6" width="6" height="6" rx="1.7"/><rect x="4.6" y="13.4" width="6" height="6" rx="1.7"/><rect x="13.4" y="13.4" width="6" height="6" rx="1.7"/>'],
@@ -11421,6 +11491,22 @@ function segTabs(id,labels,active,fn){
     `<button class="${i===active?'on':''}" onclick="${fn}(${i})">${esc(l)}</button>`).join('')}</span>`;
 }
 
+
+/* ---- a window that needs you ----------------------------------------------
+   A live window (the shared browser, a terminal session, a projected app) can stop
+   and wait for the person: a sign-in, a 2FA code, a CAPTCHA. The window, its taskbar
+   entry and its dock icon pulse until it is answered. One rule for every live window,
+   so a new kind of stream gets it for free. Never raises the window on its own: taking
+   focus away from what somebody is typing in is its own bug. */
+function winNeedsYou(appId,on,label){
+  winsOf(appId).forEach(w=>{
+    w.el.classList.toggle('needs-you',!!on);
+    w.tb&&w.tb.classList.toggle('needs-you',!!on);
+    if(on&&label)w.el.dataset.needs=label;else delete w.el.dataset.needs;
+  });
+  const d=document.querySelector(`#dock .dockb[data-app="${CSS.escape(appId)}"]`);
+  if(d)d.classList.toggle('needs-you',!!on);
+}
 /* ================= the ever-present agent: turn client + copilot panels =================
    One shared machinery for every embedded agent surface:
    - agentTurn(): send a turn on any conversation, with per-surface context and a sink
@@ -12414,6 +12500,203 @@ document.addEventListener('click',e=>{
     popClose(p.el);
   });
 },true);
+/* ---------------- live windows: a real process, drawn here, steered from here ----------------
+   A window on this desktop used to be HTML pretending to be an app. A LIVE window is a
+   picture of a real process (the shared Chromium, a native app on this machine) with the
+   person's pointer and keys sent back to it, and the agent's hand drawn on top when it
+   acts in the same window. `streamView` is that one component; the Browser and the app
+   streams (04g) are thin shells round it, so a new kind of stream gets pointer, keyboard,
+   touch, resize, the agent's cursor and "needs you" for free.
+
+   The wire: binary messages are JPEG/PNG frames, text messages are JSON (state, the
+   agent's hand, notices). Input goes back as JSON ops the server maps to the process
+   (cdpbrowser.Browser.person, appstream.Stream.person).
+
+   Faces: GUI and SUI are this. On a phone a tap is a click and the ⌨ button opens the
+   keyboard. TUI: a terminal cannot draw pixels; the agent's tools reach the same browser
+   and apps (`browser_*`), and `bento browser` says what it shows. */
+var STREAM_MODS={Alt:1,Control:2,Meta:4,Shift:8};
+var STREAM_KEYS=['Enter','Tab','Escape','Backspace','Delete','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+  'Home','End','PageUp','PageDown'];
+
+function streamMods(e){return (e.altKey?1:0)|(e.ctrlKey?2:0)|(e.metaKey?4:0)|(e.shiftKey?8:0)}
+
+function streamView(holder,opts){
+  holder.classList.add('sv');
+  holder.innerHTML=`<canvas class="sv-cv" tabindex="0" aria-label="${esc(opts.label||'live window')}"></canvas>
+    <div class="sv-hand" aria-hidden="true"></div><div class="sv-note" hidden></div>
+    <input class="sv-kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-hidden="true">`;
+  const cv=holder.querySelector('.sv-cv'),ctx=cv.getContext('2d'),hand=holder.querySelector('.sv-hand'),
+        note=holder.querySelector('.sv-note'),kb=holder.querySelector('.sv-kb');
+  const S={remote:[0,0],closed:false,frames:0,lastMove:0};
+  const proto=location.protocol==='https:'?'wss://':'ws://';
+  const ws=new WebSocket(proto+location.host+opts.path);ws.binaryType='blob';
+  const send=op=>{if(ws.readyState===1)ws.send(JSON.stringify(op))};
+  // the LAYOUT size: a window opening is scaled by a transform, and the box it reports then
+  // made the remote page 320x240 for good (a transform never fires the ResizeObserver)
+  const size=()=>[Math.max(320,holder.clientWidth|0),Math.max(240,holder.clientHeight|0)];
+  ws.onopen=()=>{const [w,h]=size();ws.send(JSON.stringify(Object.assign({type:'hello',w,h},opts.hello||{})))};
+  ws.onmessage=async e=>{
+    if(typeof e.data!=='string'){
+      try{const bm=await createImageBitmap(e.data);
+        if(cv.width!==bm.width||cv.height!==bm.height){cv.width=bm.width;cv.height=bm.height}
+        S.remote=[bm.width,bm.height];ctx.drawImage(bm,0,0);bm.close&&bm.close();S.frames++;
+        holder.classList.add('live')}catch(err){}
+      return;
+    }
+    let m;try{m=JSON.parse(e.data)}catch(err){return}
+    if(m.type==='agent')streamHand(hand,cv,S,m);
+    else if(m.type==='notice'){note.textContent=m.text;note.hidden=false;clearTimeout(S.nt);S.nt=setTimeout(()=>{note.hidden=true},5000)}
+    else if(m.type==='error'){holder.classList.remove('live');opts.onError&&opts.onError(m.text)}
+    if(m.size)S.remote=m.size;
+    opts.onMessage&&opts.onMessage(m);
+  };
+  ws.onclose=()=>{S.closed=true;holder.classList.remove('live');opts.onClose&&opts.onClose()};
+  // where on the remote page a point on the canvas is
+  const at=e=>{const r=cv.getBoundingClientRect(),[W,H]=S.remote[0]?S.remote:[cv.width,cv.height];
+    return {x:Math.round((e.clientX-r.left)*W/r.width),y:Math.round((e.clientY-r.top)*H/r.height)}};
+  const btn=b=>b===2?'right':b===1?'middle':'left';
+  cv.addEventListener('pointerdown',e=>{cv.focus();cv.setPointerCapture&&cv.setPointerCapture(e.pointerId);
+    send(Object.assign({type:'mouse',kind:'mousePressed',button:btn(e.button),clicks:e.detail||1,mods:streamMods(e)},at(e)));e.preventDefault()});
+  cv.addEventListener('pointerup',e=>{send(Object.assign({type:'mouse',kind:'mouseReleased',button:btn(e.button),clicks:e.detail||1,mods:streamMods(e)},at(e)))});
+  cv.addEventListener('pointermove',e=>{const now=performance.now();if(now-S.lastMove<33)return;S.lastMove=now;
+    send(Object.assign({type:'mouse',kind:'mouseMoved',buttons:e.buttons,button:e.buttons?'left':'none'},at(e)))});
+  cv.addEventListener('wheel',e=>{send(Object.assign({type:'wheel',dx:e.deltaX,dy:e.deltaY},at(e)));e.preventDefault()},{passive:false});
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  const key=e=>{
+    if(STREAM_KEYS.includes(e.key)||((e.ctrlKey||e.metaKey)&&e.key.length===1)){send({type:'key',key:e.key,mods:streamMods(e)});e.preventDefault();return}
+    if(e.key===' '){send({type:'key',key:' '});e.preventDefault();return}
+    if(e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){send({type:'text',text:e.key});e.preventDefault()}
+  };
+  cv.addEventListener('keydown',key);
+  cv.addEventListener('paste',e=>{const t=(e.clipboardData||window.clipboardData).getData('text');if(t)send({type:'text',text:t});e.preventDefault()});
+  // a phone's keyboard opens only for a real input: this one is off-screen and forwards
+  kb.addEventListener('input',()=>{if(kb.value){send({type:'text',text:kb.value});kb.value=''}});
+  kb.addEventListener('keydown',e=>{if(STREAM_KEYS.includes(e.key)){send({type:'key',key:e.key});e.preventDefault()}});
+  let rt=0;const ro=new ResizeObserver(()=>{clearTimeout(rt);rt=setTimeout(()=>{const [w,h]=size();send({type:'resize',w,h})},250)});
+  ro.observe(holder);
+  return {ws,send,keyboard:()=>{kb.focus()},frames:()=>S.frames,
+    destroy(){try{ro.disconnect();ws.close()}catch(e){}}};
+}
+/* The agent's hand: a ring where it clicked and a line saying what it did, so a page
+   that moves on its own is never a surprise. */
+function streamHand(hand,cv,S,m){
+  const r=cv.getBoundingClientRect(),hr=hand.getBoundingClientRect(),[W,H]=S.remote[0]?S.remote:[cv.width,cv.height];
+  const say=m.kind==='click'?`${m.who||'Agent'} clicked${m.label?' “'+m.label+'”':''}`:
+            m.kind==='type'?`${m.who||'Agent'} is typing`:`${m.who||'Agent'} pressed ${m.text||'a key'}`;
+  const d=document.createElement('div');d.className='sv-tap '+(m.kind||'');
+  if(m.x!=null&&m.y!=null){d.style.left=(r.left-hr.left+m.x*r.width/W)+'px';d.style.top=(r.top-hr.top+m.y*r.height/H)+'px'}
+  else{d.style.left='50%';d.style.top='18px';d.classList.add('nopos')}
+  d.innerHTML=`<i></i><span>${esc(say)}</span>`;
+  hand.appendChild(d);setTimeout(()=>d.remove(),2600);
+}
+
+/* ---------------- the shared browser window ---------------- */
+var BROWSER_STATE={status:null};
+async function renderBrowser(body,w){
+  let st=BROWSER_STATE.status;
+  if(!st){try{st=BROWSER_STATE.status=await apiJSON('/api/browser')}catch(e){st={ok:false,why:e.message}}}
+  if(!st.ok)return renderWebLauncher(body,w,st.why);
+  body.innerHTML=`<div class="bw">
+    <div class="bw-bar">
+      <button class="bw-b" data-op="back" title="Back" aria-label="Back">‹</button>
+      <button class="bw-b" data-op="forward" title="Forward" aria-label="Forward">›</button>
+      <button class="bw-b" data-op="reload" title="Reload" aria-label="Reload">⟳</button>
+      <input class="bw-url" placeholder="Search or type an address" aria-label="Address" autocapitalize="off" spellcheck="false">
+      <button class="bw-b bw-kb" title="Keyboard" aria-label="Open the keyboard">⌨</button>
+      <button class="bw-b bw-ext" title="Open this page in your own browser" aria-label="Open in your own browser">↗</button>
+    </div>
+    <div class="bw-tabs" role="tablist"></div>
+    <div class="bw-ask" hidden></div>
+    <div class="bw-view"></div>
+    <div class="bw-foot mut"><span class="bw-who"></span></div>
+  </div>`;
+  const q=s=>body.querySelector(s),view=q('.bw-view'),url=q('.bw-url'),ask=q('.bw-ask');
+  const start=w._pending||'';w._pending=null;
+  const sv=streamView(view,{path:'/ws/browser',label:'the shared browser',hello:start?{url:start}:{},
+    onMessage:m=>{if(m.type==='state')browserPaint(w,m)},
+    onError:t=>{view.innerHTML=emptyBox('The browser could not start',esc(t))}});
+  w.sv=sv;
+  body.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>sv.send({type:b.dataset.op}));
+  url.addEventListener('keydown',e=>{if(e.key==='Enter'){sv.send({type:'navigate',url:url.value});view.querySelector('.sv-cv')?.focus()}});
+  q('.bw-kb').onclick=()=>sv.keyboard();
+  q('.bw-ext').onclick=()=>{const u=w._url||'';if(/^https?:/.test(u))openHost({url:u});else toast('Nothing to open yet')};
+  ask.addEventListener('click',e=>{if(e.target.closest('.bw-done')){sv.send({type:'resume'})}});
+}
+function browserPaint(w,m){
+  const body=w.el.querySelector('.wbody');if(!body)return;
+  const q=s=>body.querySelector(s);
+  w._url=m.url||'';
+  const url=q('.bw-url');if(url&&document.activeElement!==url)url.value=m.url&&m.url!=='about:blank'?m.url:'';
+  const tabs=q('.bw-tabs');
+  if(tabs)tabs.innerHTML=(m.tabs||[]).map(t=>`<button class="bw-tab${t.active?' on':''}" role="tab" aria-selected="${t.active}" data-id="${esc(t.id)}" title="${esc(t.url)}">
+      <span>${esc(t.title||'New tab')}</span>${(m.tabs||[]).length>1?`<i data-close="${esc(t.id)}" aria-label="Close tab">✕</i>`:''}</button>`).join('')
+    +`<button class="bw-tab bw-new" aria-label="New tab">＋</button>`;
+  tabs&&tabs.querySelectorAll('.bw-tab').forEach(b=>b.onclick=e=>{
+    const c=e.target.closest('[data-close]');
+    if(c)w.sv.send({type:'tab_close',id:c.dataset.close});
+    else if(b.classList.contains('bw-new'))w.sv.send({type:'tab_new'});
+    else w.sv.send({type:'tab_switch',id:b.dataset.id})});
+  const ask=q('.bw-ask'),a=m.attention;
+  if(ask){
+    ask.hidden=!a;
+    if(a)ask.innerHTML=`<span class="bw-ask-ic">${a.kind==='captcha'?'🧩':a.kind==='code'?'🔢':a.kind==='login'?'🔐':'✋'}</span>
+      <div><b>${esc((typeof agentName==='function'&&agentName())||'Your agent')} needs you here</b>
+      <span>${esc(a.reason||('This page wants '+(a.why||'a person')+'.'))} Do it in the page below, then press Done.</span></div>
+      <button class="pact bw-done">Done, carry on</button>`;
+  }
+  winNeedsYou('browser',!!a,a&&(a.site||''));
+  const who=q('.bw-who');if(who)who.textContent=m.title?m.title:'';
+}
+/* The browser needs the person and its window may not be open: open it, or offer to. */
+function browserAttention(ev){
+  const open=winsOf('browser').length>0;
+  winNeedsYou('browser',true,ev.site||'');
+  // the same wall is announced when the agent meets it and again when it starts waiting:
+  // one toast, not a stack of the same sentence
+  const key=(ev.kind||'')+'|'+(ev.site||''),now=Date.now();
+  if(BROWSER_STATE.asked===key&&now-(BROWSER_STATE.askedAt||0)<60000)return;
+  BROWSER_STATE.asked=key;BROWSER_STATE.askedAt=now;
+  const what=ev.kind==='captcha'?'a CAPTCHA':ev.kind==='code'?'a sign-in code':ev.kind==='login'?'a sign-in':'your help';
+  toast(`${(typeof agentName==='function'&&agentName())||'Your agent'} needs ${what} in the browser${ev.site?' on '+ev.site:''}`,
+    {kind:'warn',label:open?'Show':'Open',go:()=>openApp('browser')});
+  if(typeof suiAttention==='function')suiAttention();
+}
+
+/* ---------------- a native app in a window (agentos/appstream.py) ---------------- */
+var APPWIN={next:null,status:null};
+async function appStreamStatus(){
+  if(APPWIN.status)return APPWIN.status;
+  try{APPWIN.status=await apiJSON('/api/appstreams')}catch(e){APPWIN.status={ok:false,why:e.message}}
+  return APPWIN.status;
+}
+/* Open an installed app in a Bento window: started in its own display on this machine,
+   drawn here. The way a phone or a laptop in another room sees a native app at all. */
+async function openAppWindow(app,title){
+  const st=await appStreamStatus();
+  if(!st.ok){toast(st.why||'Apps cannot be shown in windows here',{kind:'warn'});return null}
+  const box=document.getElementById('desktop')||document.body,r=box.getBoundingClientRect();
+  try{
+    const d=await apiJSON('/api/appstreams',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({app,w:Math.min(1280,Math.round(r.width*.7)),h:Math.min(800,Math.round(r.height*.7))})});
+    return showAppWindow(d.id,d.title||title||app);
+  }catch(e){toast('Could not open it: '+e.message,{kind:'err'});return null}
+}
+function showAppWindow(id,title){
+  const have=winsOf('appwindow').find(w=>w._sid===id);
+  if(have){focusWin(have);return have}
+  APPWIN.next={id,title};
+  return openApp('appwindow',{fresh:true});
+}
+function renderAppWindow(body,w){
+  if(!w._sid&&APPWIN.next){w._sid=APPWIN.next.id;w._title=APPWIN.next.title;APPWIN.next=null}
+  const t=w.el.querySelector('.tname');if(t&&w._title)t.textContent=w._title;
+  if(!w._sid){body.innerHTML=emptyBox('No app here','Open one from the Apps launcher with “In a window”.');return}
+  body.innerHTML='<div class="aw"><div class="aw-view"></div></div>';
+  w.sv=streamView(body.querySelector('.aw-view'),{path:'/ws/appstream?id='+encodeURIComponent(w._sid),label:w._title||'app',
+    onMessage:m=>{if(m.type==='ended'){body.innerHTML=emptyBox('This app has closed','Open it again from the Apps launcher.')}},
+    onError:t=>{body.innerHTML=emptyBox('This app is not open any more',esc(t))}});
+}
 /* ================= apps ================= */
 const APPS={
   chat:{id:'chat',title:'Agent Chat',icon:'',w:920,h:620,desc:'Talk to your machine',
@@ -12430,8 +12713,18 @@ const APPS={
     menus:w=>[['Edit',[
       {label:'Clear the screen',fn:()=>{try{w.term.clear()}catch(e){}}},
       {label:'Copy the selection',fn:()=>{try{navigator.clipboard.writeText(w.term.getSelection()||'')}catch(e){}}},
+    ]],['Sessions',[
+      {label:'Switch session or start one…',fn:async()=>{const it=await terminalSessionsMenu(w);
+        const r=w.el.getBoundingClientRect();showCtxItems({clientX:r.left+40,clientY:r.top+48},it)}},
+      {label:'New session',fn:()=>terminalAttach(w,'new')},
+      {label:'End this session',fn:async()=>{if(!w._session)return;
+        await fetch('/api/terminal/sessions/'+encodeURIComponent(w._session),{method:'DELETE'});toast('Session ended')}},
     ]]]},
-  browser:{id:'browser',title:'Web',icon:'',w:520,h:440,desc:'Open the web in your system browser',render:renderBrowser},
+  browser:{id:'browser',title:'Web',icon:'',w:1100,h:760,desc:'A real browser you and your agent share; sign-ins stay',render:renderBrowser,
+    onClose(w){try{w.sv&&w.sv.destroy();winNeedsYou('browser',false)}catch(e){}return true}},
+  appwindow:{id:'appwindow',title:'App',icon:'',w:900,h:620,desc:'A native app on this machine, drawn in a window you and your agent can both use',
+    multi:true,hidden:true,render:renderAppWindow,
+    onClose(w){try{w.sv&&w.sv.destroy();if(w._sid)fetch('/api/appstreams/'+encodeURIComponent(w._sid),{method:'DELETE'})}catch(e){}return true}},
   files:{id:'files',title:'Files',icon:'',w:720,h:560,desc:'Your workspace files & reports',multi:true,render:renderFiles,
     menus:w=>[['File',[
       {label:'Go to workspace root',fn:()=>{w.path='';renderFiles(w.el.querySelector('.wbody'),w)}},
@@ -15479,6 +15772,8 @@ function handle(ev){
     case 'checkpoint': ttLayoutSave(ev.id); if(TT.w&&TT.conv===ev.conversation_id)refreshApp('timetravel'); break;
     case 'timetravel': if(TT.w)refreshApp('timetravel'); break;
     case 'drama': dramaOffer(ev); if(typeof refreshApp==='function')refreshApp('drama'); break;
+    case 'browser_attention': browserAttention(ev); break;
+    case 'appstream': if(typeof showAppWindow==='function')showAppWindow(ev.id,ev.title); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'toast': toast(ev.text||''); break;   // the server has something short to say
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
@@ -25791,13 +26086,16 @@ async function openHost(opts){
   }catch(e){toast('open failed')}
 }
 function openInBrowser(url){openHost({url})}
-function renderBrowser(body,w){
+/* The system-browser launcher: what Web was before the shared browser, and what it
+   falls back to on a machine with no Chromium (renderBrowser in 04f-streams.js says why). */
+function renderWebLauncher(body,w,why){
   const links=[['DuckDuckGo','https://duckduckgo.com'],['Hacker News','https://news.ycombinator.com'],
     ['GitHub','https://github.com'],['Finance','https://finance.yahoo.com'],['Google','https://google.com']];
   body.innerHTML=`<div class="pad" style="display:flex;flex-direction:column;gap:14px">
     <div style="text-align:center;padding-top:6px">
       <div style="font-size:15px;font-weight:700">Web</div>
-      <p class="mut" style="margin-top:4px">Opens pages in your real system browser (Chrome/Firefox) — full sites, logins, extensions.</p>
+      <p class="mut" style="margin-top:4px">Opens pages in your real system browser (Chrome/Firefox): full sites, logins, extensions.</p>
+      ${why?`<p class="mut" style="margin-top:6px">The shared browser, which your agent can use with you, is not available here. ${esc(why)}</p>`:''}
     </div>
     <div class="apptop" style="border:none;padding:0">
       <input id="wb-url" placeholder="Search or type a URL, then Enter…" style="flex:1">
@@ -25821,8 +26119,11 @@ function renderBrowser(body,w){
 
 /* ================= native applications launcher ================= */
 async function renderNativeApps(body,w){
+  const st=await appStreamStatus();
   body.innerHTML=`<div class="apptop">
       <input id="na-q" placeholder="Search installed apps…" style="flex:1">
+      ${st.ok&&!nativeRunsElsewhere()?`<label class="na-inwin" title="Draw the app inside a Bento window that your agent can use with you"><input type="checkbox" id="na-inwin" ${NATIVE_IN_WINDOW?'checked':''}> In a window</label>`
+        :!st.ok&&st.why?`<span class="mut na-inwin" title="${esc(st.why)}">In a window: not set up ⓘ</span>`:''}
       <button class="endbtn" id="na-get">＋ Get apps…</button>
       <span class="mut" id="na-n"></span></div>
     <div id="na-store" style="display:none"></div>
@@ -25840,7 +26141,9 @@ async function renderNativeApps(body,w){
   draw('');
   $('#na-q').addEventListener('input',e=>draw(e.target.value.trim().toLowerCase()));
   $('#na-get').onclick=()=>naStore();
+  const iw=$('#na-inwin');if(iw)iw.onchange=()=>{NATIVE_IN_WINDOW=iw.checked};
 }
+var NATIVE_IN_WINDOW=false;
 
 /* ---- getting a NEW app ----------------------------------------------------
    A desktop you cannot install software on is a demo. This asks the machine's
@@ -25931,6 +26234,13 @@ function nativeRunsElsewhere(){return remoteClient()&&PLATFORM.mode!=='hosted'}
 
 async function launchNative(id,name){
   const label=name||id;
+  // From another room a native window is pixels nobody here can see: draw the app in a
+  // Bento window instead, when this machine can (appstream.py). At the machine it opens
+  // on the real screen, as it always did; "In a window" in the launcher asks for it there.
+  if(nativeRunsElsewhere()||NATIVE_IN_WINDOW){
+    const st=await appStreamStatus();
+    if(st.ok)return openAppWindow(id,label);
+  }
   toast('↗ starting '+label+'…');
   // The launch now WAITS for the window to map instead of returning instantly and
   // lying, so a heavy app leaves a real gap. Mark the tile as busy for that gap —
@@ -34108,10 +34418,22 @@ function loadXterm(){
   });
   return xtermLoading;
 }
-async function renderTerminal(body,w){
-  body.innerHTML='<div style="flex:1;min-height:0;background:#0b0d10;padding:6px 2px 4px 8px"></div>';
-  const holder=body.firstChild;
+/* A Terminal window is a view onto a SESSION (agentos/ptyhub.py) that outlives it: close
+   the window and the shell keeps running; open the Terminal again and it reattaches to
+   the newest session nobody is watching, screen and all. The agent reads and types into
+   the same sessions (terminal_read / terminal_send, through the gate), and when it types
+   the window says so. Faces: GUI/SUI here; TUI `bento terminal` lists and ends sessions. */
+async function renderTerminal(body,w,want){
+  body.innerHTML='<div class="term-wrap"><div class="term-agent" hidden></div><div class="term-holder" style="flex:1;min-height:0;background:#0b0d10;padding:6px 2px 4px 8px"></div></div>';
+  const holder=body.querySelector('.term-holder'),agentLine=body.querySelector('.term-agent');
   try{await loadXterm()}catch(e){holder.innerHTML='<p class="mut" style="padding:16px">could not load terminal assets</p>';return}
+  if(want===undefined&&!w._session){
+    // reattach to the newest session nobody is watching, if there is one
+    try{const d=await apiJSON('/api/terminal/sessions');
+      const free=(d.sessions||[]).filter(x=>x.alive&&!x.watching).pop();
+      if(free){want=free.id;toast('Back in '+free.name+', still running')}}catch(e){}
+  }
+  want=want||w._session||'new';
   const term=new Terminal({fontSize:13,cursorBlink:true,scrollback:4000,
     fontFamily:"'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace",
     theme:{background:'#0b0d10',foreground:'#e6ebf2',cursor:'#5eead4',cursorAccent:'#0b0d10',
@@ -34119,16 +34441,39 @@ async function renderTerminal(body,w){
   const fit=new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(holder);
-  const tws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/terminal');
+  const tws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/terminal?session='+encodeURIComponent(want));
   const sendResize=()=>{if(tws.readyState===1)tws.send(JSON.stringify({type:'resize',cols:term.cols,rows:term.rows}))};
   tws.onopen=()=>{fit.fit();sendResize();term.focus()};
-  tws.onmessage=e=>term.write(e.data);
-  tws.onclose=()=>{try{term.write('\r\n\x1b[90m[session ended — close and reopen the Terminal to start a new one]\x1b[0m\r\n')}catch(e){}};
+  tws.onmessage=e=>{
+    if(e.data.charCodeAt(0)===0){            // control, never screen output
+      let m;try{m=JSON.parse(e.data.slice(1))}catch(err){return}
+      if(m.type==='session'){w._session=m.id;w._sname=m.name;const t=w.el.querySelector('.tname');if(t)t.textContent='Terminal · '+m.name}
+      else if(m.type==='agent'){agentLine.hidden=false;agentLine.textContent=(m.who||'Agent')+' typed: '+m.text;
+        clearTimeout(w._at);w._at=setTimeout(()=>{agentLine.hidden=true},6000)}
+      return;
+    }
+    term.write(e.data);
+  };
+  tws.onclose=()=>{try{term.write('\r\n\x1b[90m[detached; the session may still be running. Reopen the Terminal to attach]\x1b[0m\r\n')}catch(e){}};
   term.onData(d=>{if(tws.readyState===1)tws.send(JSON.stringify({type:'input',data:d}))});
   const ro=new ResizeObserver(()=>{try{fit.fit();sendResize()}catch(e){}});
   ro.observe(holder);
   w.term=term;w.tws=tws;w.ro=ro;
   setTimeout(()=>{try{fit.fit();sendResize();term.focus()}catch(e){}},80);
+}
+/* Switch this window to another session (or a new one), keeping the window. */
+function terminalAttach(w,id){
+  try{w.ro?.disconnect();w.tws?.close();w.term?.dispose()}catch(e){}
+  w._session=id==='new'?'':id;renderTerminal(w.el.querySelector('.wbody'),w,id);
+}
+async function terminalSessionsMenu(w){
+  let d={sessions:[]};try{d=await apiJSON('/api/terminal/sessions')}catch(e){}
+  const items=(d.sessions||[]).filter(x=>x.alive).map(x=>({label:esc((x.id===w._session?'● ':'')+x.name+
+      (x.by!=='you'?' · by '+x.by:'')+(x.foreground?' · '+x.foreground:'')+(x.watching&&x.id!==w._session?' · open elsewhere':'')),
+    fn:()=>terminalAttach(w,x.id)}));
+  return items.concat([{label:'New session',fn:()=>terminalAttach(w,'new')},
+    {label:'End this session',fn:async()=>{if(!w._session)return;
+      await fetch('/api/terminal/sessions/'+encodeURIComponent(w._session),{method:'DELETE'});toast('Session ended')}}]);
 }
 
 /* ================= about app ================= */
@@ -34538,7 +34883,8 @@ async function omniAsk(q){
     if(e.key.length!==1)return;                                   // printable only
     const t=document.activeElement;
     if(t&&(/^(input|textarea|select)$/i.test(t.tagName)||t.isContentEditable))return;
-    if(e.target.closest&&(e.target.closest('.xterm')||e.target.closest('#setup-wiz')))return;
+    // a terminal and a live window (the shared browser, a projected app) take their own keys
+    if(e.target.closest&&(e.target.closest('.xterm')||e.target.closest('.sv')||e.target.closest('#setup-wiz')))return;
     omniSummon(true);
     inp.focus();                                                  // the keypress lands in the bar
   });
@@ -34990,7 +35336,8 @@ function scRun(name,e){const f=SC_ACTIONS[name];if(f){f(e);return true}return fa
 
 document.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'||e.key==='Alt')switcherCommit()});
 document.addEventListener('keydown',e=>{
-  const inTerm=e.target.closest&&e.target.closest('.xterm');
+  // a terminal or a live window (04f-streams.js): its keys are the process's, not shortcuts
+  const inTerm=e.target.closest&&(e.target.closest('.xterm')||e.target.closest('.sv'));
   // "Typing" means a field with something in it. The prompt bar holds the caret
   // by default, so treating an EMPTY bar as typing would mute every desktop
   // shortcut on a fresh desktop — which is where you need them most.

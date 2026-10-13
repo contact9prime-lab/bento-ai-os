@@ -1030,6 +1030,13 @@ async def shutdown():
         await _keep_flush()
     with contextlib.suppress(Exception):
         await _standby_flush()
+    with contextlib.suppress(Exception):
+        await _cdpb.stop_all()
+    with contextlib.suppress(Exception):
+        from . import ptyhub as _ph
+        _ph.end_all()
+    with contextlib.suppress(Exception):
+        await _aps.stop_all()
     if state.get("notifd"):
         state["notifd"].stop()
     if state.get("team_listener"):
@@ -2255,6 +2262,13 @@ async def api_platform(request: Request):
     # screen attached to the machine (or a page opened with #kiosk) turns into the kiosk.
     from . import face as facemod
     state_["face"] = facemod.state(state.machine_cfg())
+    # The windows that are live streams of real processes: the shared browser, terminal
+    # sessions that outlive their window, and native apps projected into a window. Each
+    # says whether it can run here and, if not, why and which component would fix it.
+    state_["browser"] = _cdpb.status(state["cfg"])
+    from . import ptyhub as _ph
+    state_["terminal_sessions"] = {"ok": not _ph.available(), "why": _ph.available()}
+    state_["appstream"] = _aps.status()
     return state_
 
 
@@ -14570,112 +14584,262 @@ async def ws_vnc(ws: WebSocket):
             await ws.close()
 
 
-@app.websocket("/ws/terminal")
-async def ws_terminal(ws: WebSocket):
-    """A real shell on the host, bridged to xterm.js in the Terminal app."""
+# ---------------------------------------------------------------------------
+# The shared browser (cdpbrowser.py): a real Chromium per person, drawn into a window
+# as a screencast, with the person's input sent back and the agent driving the same tab.
+# ---------------------------------------------------------------------------
+
+def _someone_here(uid: str) -> bool:
+    """Is this person at a screen right now (any desktop or phone connected)?"""
+    cu = state.get("client_uids") or {}
+    return any(cu.get(ws, "") == (uid or "") for ws in list(state.get("clients") or []))
+
+
+async def _browser_attention(uid: str, payload: dict):
+    """The browser needs the person: every screen of theirs is told, and the window pulses."""
+    with usersmod.as_user(uid):
+        state["store"].log("browser", f"needs you: {payload.get('why') or payload.get('reason')} "
+                                      f"on {payload.get('site') or 'a page'}")
+    await state["broadcast_user"]({"type": "browser_attention", **payload}, uid)
+
+
+from . import cdpbrowser as _cdpb  # noqa: E402
+_cdpb.bind(attention=_browser_attention, presence=_someone_here)
+
+
+@app.get("/api/browser")
+async def api_browser():
+    """Whether the shared browser can run here, and what it shows if it is running."""
+    uid = usersmod.current() or ""
+    st = _cdpb.status(state["cfg"])
+    b = _cdpb.current(uid)
+    return {**st, "running": bool(b), **({"state": b.snapshot_state()} if b else {})}
+
+
+@app.websocket("/ws/browser")
+async def ws_browser(ws: WebSocket):
+    """One window onto the person's shared browser: JPEG frames out (binary), state and the
+    agent's hand out (JSON), the person's pointer and keys in. Several windows (a desktop
+    and a phone) may watch one browser; they all see and steer the same tab."""
     if await _ws_reject(ws):
         return
-    import fcntl
-    import os
-    import pty
-    import signal
-    import struct
-    import termios
-
-    # On a machine with accounts the Terminal is a real shell, so it is exactly the
-    # place the data boundary would leak: without a jail, whoever opened it could
-    # read every other account's home. So it fails closed — a jail per account, or
-    # no shell — and it opens in the acting account's own home, not the OS user's.
-    ws_uid = _ws_user(ws) or ""
-    from .tools import bwrap_argv, folder_binds, sandbox_conf, sandbox_mechanism
-    # The same safe folders the agent's own tools use. The Terminal is the other
-    # half of "the agent may work here" — a folder the agent can read and the
-    # Terminal cannot is a difference nobody can explain from the outside.
-    sb_ro, sb_extra = folder_binds(state.machine_cfg(), ws_uid or None)
-    if usersmod.enabled():
-        if not sandbox_mechanism():
-            await ws.accept()
+    uid = _ws_user(ws) or ""
+    await ws.accept()
+    with usersmod.as_user(uid):
+        try:
+            hello = json.loads(await asyncio.wait_for(ws.receive_text(), 15))
+        except Exception:
+            hello = {}
+        try:
+            b = await _cdpb.get(uid, state["cfg"], usersmod.home_for(uid))
+        except Exception as e:
             with contextlib.suppress(Exception):
-                await ws.send_text("This machine has accounts, so the Terminal must run in a "
-                                   "per-account jail — install bubblewrap to enable it.\r\n")
+                await ws.send_text(json.dumps({"type": "error", "text": str(e)}))
                 await ws.close()
             return
-        home = os.path.realpath(str(usersmod.home_for(ws_uid)))
-        os.makedirs(home, exist_ok=True)
-        jail = bwrap_argv(home, ["/bin/bash", "-l"], chdir=home,
-                          hide=[os.path.realpath(str(usersmod.users_root()))],
-                          extra=sb_extra, ro_extra=sb_ro)
-    else:
-        sandboxed, sb_root = sandbox_conf(state.machine_cfg())
-        if sandboxed:
-            Path(sb_root).mkdir(parents=True, exist_ok=True)
-        jail = bwrap_argv(sb_root, ["/bin/bash", "-l"], extra=sb_extra,
-                          ro_extra=sb_ro) if sandboxed else None
+        lock = asyncio.Lock()   # frames and state come from different tasks: one send at a time
 
-    await ws.accept()
-    shell = os.environ.get("SHELL", "/bin/bash")
-    pid, fd = pty.fork()
-    if pid == 0:  # child: become the user's shell, jailed to their own home
-        env = dict(os.environ)
-        env["TERM"] = "xterm-256color"
-        if jail:
-            os.execvpe("bwrap", jail, env)
+        async def send_bytes(data):
+            async with lock:
+                await ws.send_bytes(data)
+
+        async def send_json(msg):
+            async with lock:
+                await ws.send_text(json.dumps(msg))
+        vid = await b.add_viewer(send_bytes, send_json,
+                                 int(hello.get("w") or 0), int(hello.get("h") or 0))
+        if hello.get("url"):
+            with contextlib.suppress(Exception):
+                await b.person({"type": "navigate", "url": hello["url"]})
         try:
-            os.chdir(os.path.expanduser("~"))
-        except OSError:
-            pass
-        os.execvpe(shell, [shell, "-l"], env)
-
-    with usersmod.as_user(ws_uid):
-        state["store"].log("system", f"terminal session opened (pid {pid})")
-    loop = asyncio.get_event_loop()
-    out_q: asyncio.Queue = asyncio.Queue()
-
-    def on_readable():
-        try:
-            data = os.read(fd, 65536)
-        except OSError:
-            data = b""
-        out_q.put_nowait(data)
-
-    loop.add_reader(fd, on_readable)
-
-    async def pump():
-        while True:
-            data = await out_q.get()
-            if not data:
+            while True:
+                op = json.loads(await ws.receive_text())
                 try:
-                    await ws.close()
-                except Exception:
-                    pass
-                return
-            try:
-                await ws.send_text(data.decode("utf-8", "replace"))
-            except Exception:
-                return
+                    await b.person(op)
+                except _cdpb.CDPError as e:
+                    await send_json({"type": "notice", "text": str(e)})
+        except (WebSocketDisconnect, RuntimeError, json.JSONDecodeError):
+            pass
+        finally:
+            await b.drop_viewer(vid)
 
-    pump_task = asyncio.create_task(pump())
+
+# ---------------------------------------------------------------------------
+# Native apps projected into a window (appstream.py): one installed app, its own headless
+# display, drawn in a Bento window and steered from there, by the person or the agent.
+# ---------------------------------------------------------------------------
+
+from . import appstream as _aps  # noqa: E402
+
+
+@app.get("/api/appstreams")
+async def api_appstreams():
+    uid = usersmod.current() or ""
+    return {**_aps.status(), "streams": [x.summary() for x in _aps.streams(uid)]}
+
+
+@app.post("/api/appstreams")
+async def api_appstream_open(body: dict):
+    """Open an installed app (by its id or name) in its own window here."""
+    uid = usersmod.current() or ""
+    b = body or {}
+    try:
+        s = await _aps.open_app(uid, str(b.get("app") or ""),
+                                (int(b.get("w") or _aps.SIZE[0]), int(b.get("h") or _aps.SIZE[1])))
+    except RuntimeError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    state["store"].log("system", f"app in a window: {s.title} ({s.backend})")
+    return {"ok": True, **s.summary()}
+
+
+@app.delete("/api/appstreams/{sid}")
+async def api_appstream_close(sid: str):
+    s = _aps.get(usersmod.current() or "", sid)
+    if not s:
+        return JSONResponse({"error": "no such app window"}, status_code=404)
+    await s.stop()
+    return {"ok": True}
+
+
+@app.websocket("/ws/appstream")
+async def ws_appstream(ws: WebSocket):
+    """One window onto a projected app: frames out (binary), the person's input in."""
+    if await _ws_reject(ws):
+        return
+    uid = _ws_user(ws) or ""
+    await ws.accept()
+    s = _aps.get(uid, ws.query_params.get("id") or "")
+    if not s:
+        with contextlib.suppress(Exception):
+            await ws.send_text(json.dumps({"type": "error", "text": "that app is no longer open"}))
+            await ws.close()
+        return
+    lock = asyncio.Lock()
+
+    async def send_bytes(data):
+        async with lock:
+            await ws.send_bytes(data)
+
+    async def send_json(msg):
+        async with lock:
+            await ws.send_text(json.dumps(msg))
+    vid = await s.add_viewer(send_bytes, send_json)
+    try:
+        while True:
+            op = json.loads(await ws.receive_text())
+            if op.get("type") == "hello":
+                continue
+            await s.person(op)
+    except (WebSocketDisconnect, RuntimeError, json.JSONDecodeError):
+        pass
+    finally:
+        s.drop_viewer(vid)
+
+
+def _terminal_argv(uid: str) -> tuple[list, str, str]:
+    """The Terminal's shell for this account: (argv, working folder, '' or why it cannot
+    run). The same for a window and for a session the agent starts.
+
+    On a machine with accounts the Terminal is a real shell, so it is exactly the place the
+    data boundary would leak: without a jail, whoever opened it could read every other
+    account's home. So it fails closed (a jail per account, or no shell) and it opens in the
+    acting account's own home, not the OS user's. The safe folders are the agent's own
+    (folder_binds): a folder the agent can read and the Terminal cannot is a difference
+    nobody can explain from the outside."""
+    import os
+    from .tools import bwrap_argv, folder_binds, sandbox_conf, sandbox_mechanism
+    sb_ro, sb_extra = folder_binds(state.machine_cfg(), uid or None)
+    shell = os.environ.get("SHELL", "/bin/bash")
+    if usersmod.enabled():
+        if not sandbox_mechanism():
+            return [], "", ("This machine has accounts, so the Terminal must run in a per-account "
+                            "jail. Install bubblewrap to enable it.")
+        home = os.path.realpath(str(usersmod.home_for(uid)))
+        os.makedirs(home, exist_ok=True)
+        return (bwrap_argv(home, ["/bin/bash", "-l"], chdir=home,
+                           hide=[os.path.realpath(str(usersmod.users_root()))],
+                           extra=sb_extra, ro_extra=sb_ro), home, "")
+    sandboxed, sb_root = sandbox_conf(state.machine_cfg())
+    if sandboxed:
+        Path(sb_root).mkdir(parents=True, exist_ok=True)
+        return bwrap_argv(sb_root, ["/bin/bash", "-l"], extra=sb_extra, ro_extra=sb_ro), sb_root, ""
+    return [shell, "-l"], os.path.expanduser("~"), ""
+
+
+def _terminal_spawn(uid: str, name: str = "", by: str = "you"):
+    from . import ptyhub
+    argv, cwd, why = _terminal_argv(uid)
+    if why:
+        raise RuntimeError(why)
+    s = ptyhub.spawn(uid, argv, cwd=cwd, name=name, by=by)
+    with usersmod.as_user(uid):
+        state["store"].log("system", f"terminal session started: {s.name} (pid {s.pid}, by {by})")
+    return s
+
+
+@app.get("/api/terminal/sessions")
+async def api_terminal_sessions():
+    """This person's terminal sessions: running, who started each, who is watching, and
+    what is in the foreground. The Terminal's Sessions menu and the agent read this."""
+    from . import ptyhub
+    uid = usersmod.current() or ""
+    return {"available": ptyhub.available() or _terminal_argv(uid)[2],
+            "sessions": [x.summary() for x in ptyhub.sessions(uid)]}
+
+
+@app.delete("/api/terminal/sessions/{sid}")
+async def api_terminal_end(sid: str):
+    from . import ptyhub
+    uid = usersmod.current() or ""
+    s = ptyhub.get(uid, sid)
+    if not s:
+        return JSONResponse({"error": "no such session"}, status_code=404)
+    s.end()
+    state["store"].log("system", f"terminal session ended: {s.name}")
+    return {"ok": True}
+
+
+@app.websocket("/ws/terminal")
+async def ws_terminal(ws: WebSocket):
+    """A window onto one terminal session (ptyhub): the screen so far, then live output;
+    keys and resizes back. Closing the window detaches; the session keeps running.
+    `?session=<id>` attaches to one, `?session=new` (or none) starts one. The first
+    message is control, marked by a leading NUL: which session this is."""
+    if await _ws_reject(ws):
+        return
+    from . import ptyhub
+    uid = _ws_user(ws) or ""
+    await ws.accept()
+    want = ws.query_params.get("session") or "new"
+    s = None if want == "new" else ptyhub.get(uid, want)
+    if s is None:
+        try:
+            s = _terminal_spawn(uid)
+        except RuntimeError as e:
+            with contextlib.suppress(Exception):
+                await ws.send_text(f"{e}\r\n")
+                await ws.close()
+            return
+    lock = asyncio.Lock()
+
+    async def send(data: bytes):
+        async with lock:
+            await ws.send_text(data.decode("utf-8", "replace"))
+    await ws.send_text("\x00" + json.dumps({"type": "session", **s.summary()}))
+    if s.buf:
+        await send(bytes(s.buf))
+    sub = s.attach(send)
     try:
         while True:
             msg = json.loads(await ws.receive_text())
             if msg.get("type") == "input":
-                os.write(fd, msg.get("data", "").encode())
+                s.write(str(msg.get("data", "")))
             elif msg.get("type") == "resize":
-                fcntl.ioctl(fd, termios.TIOCSWINSZ,
-                            struct.pack("HHHH", int(msg.get("rows", 24)), int(msg.get("cols", 80)), 0, 0))
-    except (WebSocketDisconnect, OSError, json.JSONDecodeError):
+                s.resize(int(msg.get("cols", 80)), int(msg.get("rows", 24)))
+    except (WebSocketDisconnect, OSError, RuntimeError, json.JSONDecodeError):
         pass
     finally:
-        loop.remove_reader(fd)
-        pump_task.cancel()
-        try:
-            os.kill(pid, signal.SIGHUP)
-        except ProcessLookupError:
-            pass
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+        s.detach(sub)
 
 
 # ---------------------------------------------------------------------------

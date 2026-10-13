@@ -262,6 +262,25 @@ CATALOG: dict[str, dict] = {
                    "X11 desktop.",
         "detect": lambda: bool(shutil.which("wmctrl")),
     },
+    "app-windows": {
+        "packages": {"debian": "xvfb xdotool", "rhel": "xorg-x11-server-Xvfb xdotool",
+                     "arch": "xorg-server-xvfb xdotool", "suse": "xorg-x11-server-Xvfb xdotool"},
+        "method": "system", "licence": "MIT (Xvfb), BSD-3-Clause (xdotool)",
+        "group": "optional", "for_session": False,
+        "title": "Native apps in a window",
+        "unlocks": "Opens an installed app inside a Bento window that you and your agent can "
+                   "both use, from this screen or a phone. Needs ffmpeg too.",
+        "detect": lambda: bool(shutil.which("Xvfb") and shutil.which("xdotool")),
+    },
+    "wtype": {
+        "packages": _same("wtype"),
+        "method": "system", "licence": "MIT",
+        "group": "optional", "for_session": False,
+        "title": "Typing into Wayland apps",
+        "unlocks": "Lets native apps in a window take your keyboard on a Wayland-only machine "
+                   "(with sway and grim).",
+        "detect": lambda: bool(shutil.which("wtype")),
+    },
     "upower": {
         "packages": _same("upower"),
         "method": "system", "licence": "GPL-2.0+",

@@ -337,7 +337,8 @@ async function omniAsk(q){
     if(e.key.length!==1)return;                                   // printable only
     const t=document.activeElement;
     if(t&&(/^(input|textarea|select)$/i.test(t.tagName)||t.isContentEditable))return;
-    if(e.target.closest&&(e.target.closest('.xterm')||e.target.closest('#setup-wiz')))return;
+    // a terminal and a live window (the shared browser, a projected app) take their own keys
+    if(e.target.closest&&(e.target.closest('.xterm')||e.target.closest('.sv')||e.target.closest('#setup-wiz')))return;
     omniSummon(true);
     inp.focus();                                                  // the keypress lands in the bar
   });

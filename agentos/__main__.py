@@ -7839,6 +7839,12 @@ def main():
     p_tt.add_argument("-n", default="30", help="list: how many")
     p_tt.add_argument("--yes", action="store_true", help="rewind: really do it")
     p_tt.add_argument("--user", default="", help="whose timeline, on a machine with users")
+    p_tm = verb("terminal", help="terminal sessions that outlive their window; attach one over SSH")
+    p_tm.add_argument("action", nargs="?", default="list", choices=["list", "attach", "end"])
+    p_tm.add_argument("id", nargs="?", default="", help="attach: a session id or name, or 'new' · end: the id")
+    p_wn = verb("windows", help="the live windows: the shared browser, terminal sessions, apps in windows")
+    p_wn.add_argument("action", nargs="?", default="list", choices=["list", "end"])
+    p_wn.add_argument("id", nargs="?", default="", help="end: a terminal session or app window id")
     p_ar = verb("arena", help="the same task to two to four brains at once, side by side")
     p_ar.add_argument("action", nargs="?", default="list", choices=["list", "brains", "run", "show", "stop"])
     p_ar.add_argument("arg", nargs="?", default="", help="run: the task · show/stop: the arena id")
@@ -8161,6 +8167,12 @@ def main():
         _face_cli(args)
     elif args.cmd == "timetravel":
         _timetravel_cli(args)
+    elif args.cmd == "terminal":
+        from .termcli import terminal_cli
+        sys.exit(terminal_cli(args))
+    elif args.cmd == "windows":
+        from .termcli import windows_cli
+        sys.exit(windows_cli(args))
     elif args.cmd == "arena":
         _arena_cli(args)
     elif args.cmd == "drama":

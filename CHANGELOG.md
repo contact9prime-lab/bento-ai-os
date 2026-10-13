@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.33 — 2026-10-13
+
+**Windows that are real processes, shared with your agent.** Asked for as "turn the window manager from
+a fake HTML desktop into a real session compositor": your own signed-in browser, terminals that stay, and
+native apps, each one a live window you and the agent both use.
+- **Web is a real Chromium**, streamed into its window and signed in where you signed in. Your agent reads,
+  clicks and types in the same tabs. When a page wants a password, a code from your phone or a CAPTCHA, the
+  window pulses and asks you; you do it in the window and the agent carries on in the same session. Clicks
+  are asked for per site, and words read on one site never spend your session on another.
+- **Terminal sessions stay.** Close the window and the shell keeps running; open the Terminal and you are
+  back with what it printed. Your agent can read a session and type into it. Typing into an editor, ssh or a
+  `[y/N]` prompt always asks you. `bento terminal attach` joins the same session over SSH.
+- **Installed apps in a window.** Tick *In a window* in the Apps launcher: the app runs in its own invisible
+  display on this machine and is drawn in a Bento window you can use from a phone. Your agent can look at
+  it and click in it, and asks first. Needs Xvfb, xdotool and ffmpeg (or sway, grim and wtype).
+- `bento windows` lists the browser's tabs, terminal sessions and app windows. An agent on Claude Code,
+  Gemini CLI or Codex reaches all three through the same door as its team.
+
 ## 0.6.32 — 2026-10-13
 
 **Five things worth showing somebody else.** Asked for as a list: a drama reel, an arena, a desktop

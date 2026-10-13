@@ -2911,6 +2911,47 @@ test runs it in Node. Kept in page memory; a decline is remembered per browser. 
 - Window layouts are the page's (sessionStorage per checkpoint id); a fork is a new conversation with the history
   before that turn and the same question on the chosen brain (validated against `arena.choices`).
 
+## Live windows: a window can be a real process, and the agent shares it
+
+`agentos/cdpbrowser.py` (Web: a real Chromium over CDP), `agentos/ptyhub.py` (Terminal sessions)
+and `agentos/appstream.py` (an installed app in a window), drawn by ONE canvas view, `streamView`
+in `04f-streams.js`; `docs/live-windows.md`, `tests/test_live_windows.py`. Asked for as "every
+window is a live stream of a real process that both you and the agent control", so a login wall
+or a CAPTCHA is handed to the person in the same session the agent then carries on in. Rules:
+- **The browser is driven over `--remote-debugging-pipe`, never a port**: a debugging port is a
+  door into the person's signed-in sessions for anything on the machine. Its profile is
+  `<home>/browser/profile` (0700, per account), web pages only (`allowed`), closed after `IDLE_S`.
+- **A browser step is decided per SITE**: `browser.act site:<host>` and `browser.read`, with
+  `_site` injected by the agent loop from what the tab shows, never the model's. The hands' web
+  list bounds `site:`. `_same_site_taint` lifts the untrusted-content ceiling ONLY when every
+  taint entry came from that same site in the shared browser: a page's own scripts can already
+  act on its site, words from anywhere else must not spend the session.
+- **A wall is the person's, and the agent waits for it** (`browser_wait_for_person`): the
+  window pulses (`winNeedsYou`), one toast per wall (`browserAttention` dedupes the open and the
+  wait), SUI raises the desktop (`suiAttention`). It ends on Done or when the wall goes away;
+  with nobody connected (`_someone_here`) it returns `[nobody here]` at once instead of holding
+  a turn for five minutes.
+- **A terminal session belongs to the server, a window only watches it.** Closing detaches;
+  opening the Terminal reattaches to the newest unwatched one with its scrollback;
+  `bento terminal attach` joins the same pty over SSH (Ctrl+] detaches). The argv is
+  `_terminal_argv`, jail included, for a window and for the agent's own session alike.
+- **Typing into a terminal is a command, and a program in the foreground is a person's call.**
+  `terminal_send` is classified like `run_command`; `_fg` (read from the pty's foreground
+  process group, injected by the loop) makes anything typed into vim, ssh or a `[y/N]` prompt
+  `must_person` at every autonomy level. In the jail an idle shell is bwrap's child in its own
+  group, so a shell name at the prompt counts as the shell (`SHELLS`); unsure is "a program".
+- **An app in a window gets its own headless display** (X11 first: Xvfb + xdotool + ffmpeg
+  x11grab; Wayland: headless sway + grim + wtype), never the person's screen. A bare Xvfb has no
+  window manager, so `_x11_fit` sizes and focuses the app's windows: without it xterm came up
+  80x24 in a corner and typing went to the root window. waypipe and PipeWire are not used, and
+  `status()` says why; a missing tool names its component (`COMPONENT`).
+- **The view uses the LAYOUT size** (`clientWidth`), never `getBoundingClientRect`: a window
+  opens under a scale transform, the transformed box made the remote page 320x240, and a
+  transform never fires the ResizeObserver to fix it. Keys typed in a `.sv` are the stream's:
+  the type-anywhere omnibar and the palette skip it, as they skip `.xterm`.
+- **A forwarded chat reaches them through the team door** (`executors.WORKSPACE_DOOR_TOOLS`,
+  `workspace_note`), each call through the gate; its own fetch sees only the anonymous web.
+
 ## Window chrome: the rules that keep a stack readable
 
 - **A closing window gives up its ids at once** (`closeWin`, then `inert`). It stays on

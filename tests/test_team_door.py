@@ -86,8 +86,9 @@ def test_a_forwarded_turn_hands_over_through_the_gate(tmp_path, monkeypatch):
     assert said == "The toolsmith built it."
     assert "YOU LEAD A TEAM" in seen["context"] and "toolsmith: You are the toolsmith" in seen["context"]
     assert "hand that part over" in seen["context"] and "who did what" in seen["context"]
-    assert seen["tools"] == ["create_flow", "delegate", "department_task", "huddle", "list_flows", "schedule_task"], \
-        "the door offers the team, missions and schedules, and nothing else"
+    assert seen["tools"] == sorted(executors.DOOR_TOOLS), \
+        "the door offers the team, missions, schedules and the person's live windows, and nothing else"
+    assert "run_command" not in executors.DOOR_TOOLS and "write_file" not in executors.DOOR_TOOLS
     assert handed == [("toolsmith", "build a VCP scanner", "c1")] and "made tools/vcp.py" in seen["out"]
     assert "[denied] no tool called 'run_command'" in seen["bad"]
     argv = seen["argv"]

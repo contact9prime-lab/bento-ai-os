@@ -1695,6 +1695,25 @@ async def install(note=None) -> tuple[bool, str]:
 # Chat on Claude Code had no way to become a schedule this OS could see, so it became a
 # setInterval in an app or a sentence. It is risky, so the person approves it on the card.
 TEAM_TOOLS = ("delegate", "huddle", "department_task", "create_flow", "list_flows", "schedule_task")
+# The live windows (cdpbrowser, ptyhub, appstream) are the person's own, so a forwarded chat
+# reaches them through this door too: Claude Code's own WebFetch sees the anonymous web, and
+# "finish checking out on the site I'm signed in to" needs the browser the person signed in
+# with. Each call is the gate's, so a click asks and a wall hands the window to the person.
+WORKSPACE_DOOR_TOOLS = ("browser_open", "browser_read", "browser_click", "browser_type", "browser_key",
+                        "browser_scroll", "browser_tabs", "browser_screenshot", "browser_wait_for_person",
+                        "terminal_sessions", "terminal_read", "terminal_send",
+                        "app_windows", "app_window_open", "app_window_look", "app_window_act")
+DOOR_TOOLS = TEAM_TOOLS + WORKSPACE_DOOR_TOOLS
+
+
+def workspace_note(prefix: str = "mcp__bento__") -> str:
+    """What the live windows are, for a forwarded chat that can reach them."""
+    return (f"\n\nTHE PERSON'S WINDOWS. {prefix}browser_open/read/click/type use the person's own "
+            f"signed-in browser (a window on their desktop), not an anonymous fetch: use it for sites "
+            f"they are signed in to. When a page wants a sign-in, a code or a CAPTCHA, call "
+            f"{prefix}browser_wait_for_person and carry on in the same tab once it returns. "
+            f"{prefix}terminal_read/send use the terminal sessions they have open; "
+            f"{prefix}app_window_open/look/act open and use an installed app in a window.")
 
 
 def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
@@ -1803,15 +1822,17 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     async def _quiet(_ev):
         pass
     agent = Agent(cfg, toolbox, "", emit or _quiet, approver, conversation_id=conversation_id,
-                  surface=surface, tool_filter=list(TEAM_TOOLS), space_id=space_id)
+                  surface=surface, tool_filter=list(DOOR_TOOLS), space_id=space_id)
     agent._task_text = text
-    schemas = [t for t in agent._tools() if t["name"] in TEAM_TOOLS]
+    schemas = [t for t in agent._tools() if t["name"] in DOOR_TOOLS]
     if not schemas:
         return ""                    # the gate hides both from this principal: no door
-    token = mcpbridge.open_session(agent, schemas, label="chat team door", max_calls=8)
+    # a page is many small steps (open, read, click, type), so the ceiling is wider than
+    # the hand-overs alone needed; every step still passes the gate
+    token = mcpbridge.open_session(agent, schemas, label="chat team door", max_calls=40)
     port = int(os.environ.get("AGENTOS_BOUND_PORT") or (cfg or {}).get("port", 8321) or 8321)
     env.team_mcp = (f"http://127.0.0.1:{port}/api/mcp/run/{token}", token)
-    env.context = (env.context or "") + team_note(subs)
+    env.context = (env.context or "") + team_note(subs) + workspace_note()
     try:
         from . import company as _company
         env.context += _company.note(cfg, store, desks=False, tool="mcp__bento__department_task")

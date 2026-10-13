@@ -209,6 +209,14 @@ SAFE_TOOLS = {
     "generate_image", "generate_wallpaper", "llm_generate",
     # to the owner's own chat; another chat or number is risky (see risk_of)
     "telegram_send", "whatsapp_send",
+    # the shared browser: looking, and handing it to the person. Clicking and typing
+    # are risky (risk_of): in a signed-in browser a click can buy, post or delete
+    "browser_open", "browser_read", "browser_scroll", "browser_screenshot", "browser_tabs",
+    "browser_wait_for_person",
+    # the shared terminal: listing and reading it. Typing into it is judged in risk_of
+    "terminal_sessions", "terminal_read",
+    # projected app windows: listing and looking. Opening one and acting in it are risky
+    "app_windows", "app_window_look",
 }
 
 
@@ -2816,6 +2824,40 @@ class Toolbox(usersmod.Scoped):
             return "safe", ""
         if name == "write_file":
             return "risky", f"Writes to {args.get('path', '?')}."
+        if name == "app_window_open":
+            return "risky", f"Opens the app '{args.get('app', '?')}' in a window."
+        if name == "app_window_act":
+            act = args.get("action") or "click"
+            what = (f"Clicks at {args.get('x')},{args.get('y')}" if act == "click" else
+                    f"Types “{str(args.get('text') or '')[:60]}”" if act == "type" else
+                    f"Presses {args.get('key') or 'a key'}")
+            return "risky", f"{what} in the app window {args.get('window') or '(the newest)'}."
+        if name == "terminal_send":
+            # a line typed into a shell is a command: blocked, risky or safe by the same
+            # classifier, and safe only when the shell itself is in the foreground (in vim,
+            # ssh or a REPL the same keys do something else entirely)
+            from . import ptyhub
+            from . import users as usersmod
+            text = str(args.get("text") or "")
+            level = classify_command(text)
+            if level == "blocked":
+                return "blocked", "This command is blocked (destructive to the system)."
+            s = ptyhub.get(usersmod.current() or "", str(args.get("session") or ""))
+            fg = str(args.get("_fg") or "") or (s.foreground() if s else "")
+            where = f"your terminal “{s.name}”" if s else "a new terminal"
+            if fg:
+                return "risky", f"Types `{text[:120]}` into {where}, where {fg} is running."
+            if level == "safe" and args.get("enter", True) is not False:
+                return "safe", ""
+            return "risky", f"Types `{text[:120]}` into {where} and runs it."
+        if name in ("browser_click", "browser_type", "browser_key"):
+            site = str(args.get("_site") or "") or "the page"
+            what = (f"Clicks “{args.get('text')}”" if name == "browser_click" and args.get("text") else
+                    f"Clicks item {args.get('ref')}" if name == "browser_click" else
+                    f"Types into {('item ' + str(args.get('ref'))) if args.get('ref') not in (None, '') else 'the page'}"
+                    + (" and submits" if args.get("submit") else "") if name == "browser_type" else
+                    f"Presses {args.get('key') or 'a key'}")
+            return "risky", f"{what} on {site}, in your signed-in browser."
         # mail_search / mail_read / calendar_events are SAFE here on purpose: a
         # read changes nothing, and marking it risky put it under the taint ceiling —
         # the second message read in a triage asked for a human, unattended. What
@@ -3868,6 +3910,179 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {res}"
         self.store.log("system", f"screenshot by agent: {Path(res).name}")
         return json.dumps({"__image__": res, "text": f"screenshot saved to {res}"})
+
+    # ---- the shared browser (cdpbrowser.py): the real Chromium window on this desktop ----
+    async def _browser(self):
+        from . import cdpbrowser
+        from . import users as usersmod
+        uid = usersmod.current() or ""
+        return cdpbrowser, await cdpbrowser.get(uid, self.cfg, usersmod.home_for(uid))
+
+    async def _browser_do(self, what):
+        from . import cdpbrowser
+        try:
+            mod, b = await self._browser()
+            return await what(mod, b)
+        except cdpbrowser.CDPError as e:
+            return f"[error] {e}"
+
+    async def browser_open(self, url: str, new_tab: bool = False) -> str:
+        return await self._browser_do(lambda m, b: m.tool_open(b, url, bool(new_tab)))
+
+    async def browser_read(self) -> str:
+        return await self._browser_do(lambda m, b: m.tool_read(b))
+
+    async def browser_click(self, ref: int | str | None = None, text: str = "") -> str:
+        if ref in (None, "") and not text:
+            return "[error] say which: a ref from browser_read, or the text on the thing to click"
+        return await self._browser_do(lambda m, b: m.tool_click(b, ref=ref, text=text,
+                                                                who=self.cfg.get("agent_name") or "agent"))
+
+    async def browser_type(self, text: str, ref: int | str | None = None, submit: bool = False) -> str:
+        return await self._browser_do(lambda m, b: m.tool_type(b, text, ref=ref, submit=bool(submit),
+                                                               who=self.cfg.get("agent_name") or "agent"))
+
+    async def browser_key(self, key: str) -> str:
+        async def go(m, b):
+            await b.agent_key(str(key or ""), who=self.cfg.get("agent_name") or "agent")
+            await b.settle(4)
+            return f"pressed {key}.\n" + m._page_words(await b.read())
+        return await self._browser_do(go)
+
+    async def browser_scroll(self, direction: str = "down") -> str:
+        return await self._browser_do(lambda m, b: m.tool_scroll(b, direction))
+
+    async def browser_tabs(self) -> str:
+        return await self._browser_do(lambda m, b: m.tool_tabs(b))
+
+    async def browser_wait_for_person(self, reason: str, minutes: int = 5) -> str:
+        return await self._browser_do(lambda m, b: m.tool_wait(b, reason, int(minutes or 5) * 60))
+
+    async def browser_screenshot(self) -> str:
+        async def go(m, b):
+            png = await b.screenshot()
+            d = Path(self.cfg.get("workspace") or ".") / "Screenshots"
+            d.mkdir(parents=True, exist_ok=True)
+            path = d / f"browser-{time.strftime('%Y%m%d-%H%M%S')}.png"
+            path.write_bytes(png)
+            t = b.tab()
+            return json.dumps({"__image__": str(path),
+                               "text": f"the shared browser showing {t.get('title') or ''} — "
+                                       f"{t.get('url') or ''} (saved to {path})"})
+        return await self._browser_do(go)
+
+    # ---- the shared terminal (ptyhub.py): sessions the person and the agent both use ----
+    async def terminal_sessions(self) -> str:
+        from . import ptyhub
+        from . import users as usersmod
+        ss = ptyhub.sessions(usersmod.current() or "")
+        if not ss:
+            return "no terminal sessions are running; terminal_send starts one"
+        return "\n".join(f"- {x.name} (id {x.id}, started by {x.by}, "
+                         f"{'watched' if x.subs else 'nobody watching'}): "
+                         f"{('running ' + x.foreground()) if x.foreground() else 'at the shell prompt'}"
+                         for x in ss)
+
+    async def terminal_read(self, session: str = "", lines: int = 40) -> str:
+        from . import ptyhub
+        from . import users as usersmod
+        s = ptyhub.get(usersmod.current() or "", session)
+        if not s:
+            return "[error] no such terminal session; terminal_sessions lists them"
+        fg = s.foreground()
+        return (f"{s.name} ({'running ' + fg if fg else 'at the shell prompt'}), last lines:\n"
+                + (s.tail(lines) or "(empty)"))
+
+    async def terminal_send(self, text: str, session: str = "", enter: bool = True) -> str:
+        from . import ptyhub
+        from . import server as srv
+        from . import users as usersmod
+        uid = usersmod.current() or ""
+        s = ptyhub.get(uid, session)
+        if s is None:
+            if session:
+                return f"[error] no terminal session called '{session}'; terminal_sessions lists them"
+            try:
+                s = srv._terminal_spawn(uid, name="Agent's terminal", by=self.cfg.get("agent_name") or "agent")
+            except RuntimeError as e:
+                return f"[error] {e}"
+            await asyncio.sleep(0.4)          # let the shell print its prompt first
+        s.note({"type": "agent", "who": self.cfg.get("agent_name") or "agent", "text": str(text)[:200]})
+        before = len(s.buf)
+        s.write(str(text) + ("\r" if enter else ""))
+        await asyncio.sleep(1.2)              # long enough for most commands to answer
+        new = bytes(s.buf[before:]) if len(s.buf) >= before else bytes(s.buf)
+        out = ptyhub._ANSI.sub("", new.decode("utf-8", "replace")).strip()
+        self.store.log("system", f"agent typed into terminal {s.name}: {str(text)[:120]}")
+        return (f"typed into {s.name}. Output so far (it may still be running; terminal_read "
+                f"shows more later):\n{out[-4000:] or '(nothing yet)'}")
+
+    # ---- native apps projected into windows (appstream.py) ----
+    async def app_windows(self) -> str:
+        from . import appstream
+        from . import users as usersmod
+        st = appstream.status()
+        ss = appstream.streams(usersmod.current() or "")
+        if not st["ok"]:
+            return f"[unavailable] {st['why']}"
+        return "\n".join(f"- {x.title} (id {x.id}, {x.size[0]}x{x.size[1]}, "
+                         f"{'watched' if x.viewers else 'nobody watching'})" for x in ss) or \
+            "no apps are open in windows; app_window_open opens one"
+
+    async def app_window_open(self, app: str) -> str:
+        from . import appstream
+        from . import server as srv
+        from . import users as usersmod
+        uid = usersmod.current() or ""
+        try:
+            s = await appstream.open_app(uid, app)
+        except RuntimeError as e:
+            return f"[error] {e}"
+        with contextlib.suppress(Exception):
+            await srv.state["broadcast_user"]({"type": "appstream", "id": s.id, "title": s.title}, uid)
+        await asyncio.sleep(2.0)    # an app takes a moment to draw its first window
+        return f"opened {s.title} in a window (id {s.id}, {s.size[0]}x{s.size[1]}). " \
+               f"app_window_look shows you what it looks like."
+
+    async def app_window_look(self, window: str = "") -> str:
+        from . import appstream
+        from . import users as usersmod
+        s = appstream.get(usersmod.current() or "", window)
+        if not s:
+            return "[error] no such app window; app_windows lists them"
+        frame = await s.grab()
+        if not frame:
+            return "[error] the app has not drawn anything yet; try again in a moment"
+        ext = "png" if frame[:4] == b"\x89PNG" else "jpg"
+        d = Path(self.cfg.get("workspace") or ".") / "Screenshots"
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / f"app-{s.id}-{time.strftime('%Y%m%d-%H%M%S')}.{ext}"
+        path.write_bytes(frame)
+        return json.dumps({"__image__": str(path),
+                           "text": f"{s.title} in its window, {s.size[0]}x{s.size[1]} pixels "
+                                   f"(x from the left, y from the top). Saved to {path}"})
+
+    async def app_window_act(self, window: str = "", action: str = "click", x: int = 0, y: int = 0,
+                             text: str = "", key: str = "") -> str:
+        from . import appstream
+        from . import users as usersmod
+        s = appstream.get(usersmod.current() or "", window)
+        if not s:
+            return "[error] no such app window; app_windows lists them"
+        who = self.cfg.get("agent_name") or "agent"
+        if action == "click":
+            await s.agent_hand("click", who, x=int(x), y=int(y))
+            await s.click(int(x), int(y))
+        elif action == "type":
+            await s.agent_hand("type", who, text=str(text)[:40])
+            await s.type(str(text))
+        elif action == "key":
+            await s.agent_hand("key", who, text=str(key))
+            await s.key(str(key))
+        else:
+            return "[error] action is click, type or key"
+        await asyncio.sleep(0.6)
+        return f"done ({action}) in {s.title}. app_window_look shows the result."
 
     async def execute(self, name: str, args: dict) -> str:
         if name.startswith("mcp_") and self.mcp:
@@ -5146,6 +5361,135 @@ DESKTOP_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(DESKTOP_TOOL_SCHEMAS)
+
+# The shared browser (cdpbrowser.py) and, below, the shared terminal (ptyhub.py): the
+# windows the person and the agent work in together. Their own list, because the desktop
+# parity list is pinned by tests/test_tool_parity.py.
+_REF = {"description": "the number shown beside the item in browser_read's list",
+        "type": ["integer", "string"]}
+WORKSPACE_TOOL_SCHEMAS = [
+    {
+        "name": "browser_open",
+        "description": "Open a web page in the SHARED browser: the real Chromium window on the person's "
+                       "desktop, which they can watch and use too. Sign-ins and cookies persist between "
+                       "sessions. Prefer this to fetch_url when a page needs JavaScript, a sign-in or "
+                       "clicks. Returns the page's text and its clickable items, each with a ref number.",
+        "parameters": {"type": "object", "properties": {
+            "url": {"type": "string", "description": "an http(s) address, or words to search for"},
+            "new_tab": {"type": "boolean"}}, "required": ["url"]},
+    },
+    {
+        "name": "browser_read",
+        "description": "Read the page the shared browser is showing now: its text and its clickable "
+                       "items with ref numbers. Refs change when the page changes, so read again "
+                       "after anything moves.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "browser_click",
+        "description": "Click something in the shared browser, by ref (from browser_read) or by the "
+                       "text on it. It is a real click in the person's signed-in browser, so it can "
+                       "buy, post or delete: it asks first like any change.",
+        "parameters": {"type": "object", "properties": {
+            "ref": _REF, "text": {"type": "string", "description": "the visible text, if no ref"}}},
+    },
+    {
+        "name": "browser_type",
+        "description": "Type into the shared browser: into a field by ref (its old text is replaced), "
+                       "or wherever the cursor is. submit=true presses Enter after.",
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string"}, "ref": _REF, "submit": {"type": "boolean"}},
+            "required": ["text"]},
+    },
+    {
+        "name": "browser_key",
+        "description": "Press one key in the shared browser: Enter, Tab, Escape, Backspace, an arrow, "
+                       "PageDown, Home, End.",
+        "parameters": {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]},
+    },
+    {
+        "name": "browser_scroll",
+        "description": "Scroll the shared browser's page (down, up, top or bottom) and read it again.",
+        "parameters": {"type": "object", "properties": {
+            "direction": {"type": "string", "enum": ["down", "up", "top", "bottom"]}}},
+    },
+    {
+        "name": "browser_screenshot",
+        "description": "Take a picture of what the shared browser shows and LOOK at it (vision models "
+                       "get the image). Use it when the page's layout matters or text is not enough.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "browser_tabs",
+        "description": "List the shared browser's tabs; the one marked * is shown.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "browser_wait_for_person",
+        "description": "Hand the shared browser to the person: a sign-in, a two-factor code, a CAPTCHA, "
+                       "anything you cannot or should not do. Their browser window pulses and shows "
+                       "your reason; they do it inside the window and press Done, and you carry on in "
+                       "the same signed-in session. Waits up to `minutes` (default 5, at most 15).",
+        "parameters": {"type": "object", "properties": {
+            "reason": {"type": "string", "description": "what they should do, in one short sentence"},
+            "minutes": {"type": "integer"}}, "required": ["reason"]},
+    },
+]
+WORKSPACE_TOOL_SCHEMAS += [
+    {
+        "name": "terminal_sessions",
+        "description": "List the person's terminal sessions (the Terminal app's shells, which keep "
+                       "running after their window closes) and what each is doing.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "terminal_read",
+        "description": "Read the last lines of a terminal session the person or you started: an error "
+                       "they are looking at, a build's output, a server's log. session is its name or "
+                       "id ('' = the newest).",
+        "parameters": {"type": "object", "properties": {
+            "session": {"type": "string"}, "lines": {"type": "integer"}}},
+    },
+    {
+        "name": "terminal_send",
+        "description": "Type a line into a terminal session the person can see, and press Enter "
+                       "(enter=false to leave it unsent). With no session, starts your own one, which "
+                       "keeps running: use it for a dev server or a long build you want to keep. It is "
+                       "judged like a shell command, and asks first unless it only reads.",
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string"}, "session": {"type": "string"}, "enter": {"type": "boolean"}},
+            "required": ["text"]},
+    },
+]
+WORKSPACE_TOOL_SCHEMAS += [
+    {
+        "name": "app_windows",
+        "description": "List the native apps open in Bento windows (each runs in its own display "
+                       "and is drawn into a window the person sees).",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "app_window_open",
+        "description": "Open an installed native app (by its name or id from the Apps launcher) in a "
+                       "Bento window the person and you can both use. Asks first.",
+        "parameters": {"type": "object", "properties": {"app": {"type": "string"}}, "required": ["app"]},
+    },
+    {
+        "name": "app_window_look",
+        "description": "Take a picture of an app window and LOOK at it, to see where to click.",
+        "parameters": {"type": "object", "properties": {"window": {"type": "string"}}},
+    },
+    {
+        "name": "app_window_act",
+        "description": "Use an app window: action click (at x, y in the picture's pixels), type "
+                       "(text) or key (Enter, Tab, Escape, an arrow…). The person sees your hand.",
+        "parameters": {"type": "object", "properties": {
+            "window": {"type": "string"}, "action": {"type": "string", "enum": ["click", "type", "key"]},
+            "x": {"type": "integer"}, "y": {"type": "integer"}, "text": {"type": "string"},
+            "key": {"type": "string"}}, "required": ["action"]},
+    },
+]
+TOOL_SCHEMAS.extend(WORKSPACE_TOOL_SCHEMAS)
 
 AUTOMATION_TOOL_SCHEMAS = [
     {

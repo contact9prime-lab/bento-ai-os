@@ -193,6 +193,31 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "fs.write", f"fs:{args.get('path', '') or '*'}"
     if name == "fetch_url":
         return "net.fetch", f"net:{args.get('url', '') or '*'}"
+    # The shared browser. Two actions: looking at pages, and acting on one in the person's
+    # signed-in browser. "May read pages" and "may click on my bank's site" are not the
+    # same consent, and the resource is the SITE so a grant can name one.
+    if name in ("browser_click", "browser_type", "browser_key"):
+        return "browser.act", f"site:{args.get('_site') or '*'}"
+    if name == "browser_open":
+        from urllib.parse import urlparse
+        h = (urlparse(str(args.get("url") or "")).hostname or "").lower()
+        return "browser.read", f"site:{(h[4:] if h.startswith('www.') else h) or '*'}"
+    if name.startswith("browser_"):
+        return "browser.read", "site:*"
+    # A shared terminal session: typing into it is its own action, grantable per session
+    # (and refusable), apart from the agent's own run_command
+    if name == "terminal_send":
+        return "terminal.write", f"terminal:{args.get('session') or 'new'}"
+    if name in ("terminal_read", "terminal_sessions"):
+        return "terminal.read", f"terminal:{args.get('session') or '*'}"
+    # A native app in a window: opening one starts software, acting in one is a person's
+    # pointer and keys in it; each its own action so either can be granted or refused
+    if name == "app_window_open":
+        return "app.launch", f"nativeapp:{args.get('app') or '*'}"
+    if name == "app_window_act":
+        return "appwindow.act", f"appwindow:{args.get('window') or '*'}"
+    if name in ("app_windows", "app_window_look"):
+        return "appwindow.read", f"appwindow:{args.get('window') or '*'}"
     if name == "community_recall" or (name == "remember" and args.get("community")):
         # the community's notes are their own resource: "may share with my community"
         # is grantable, and deniable, apart from this machine's own memory
@@ -410,6 +435,8 @@ TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation"}
 # Paranoid is "ask before anything that isn't just reading". Before 0.6.18 it behaved
 # exactly like balanced, under a label that said "asks before every action".
 PARANOID_FREE = {
+    "browser_open", "browser_read", "browser_scroll", "browser_screenshot", "browser_tabs",
+    "browser_wait_for_person", "terminal_sessions", "terminal_read", "app_windows", "app_window_look",
     "read_file", "list_dir", "search_files", "list_folders", "read_source", "search_docs",
     "fetch_url", "recall", "kg_query", "timeline", "list_spaces", "list_flows", "list_assets",
     "get_asset", "list_automations", "read_app_data", "system_info", "desktop_state",
@@ -677,6 +704,21 @@ def _link_only_taint(taint) -> str:
             return ""
         labels.add(str(t.get("source") or ""))
     return labels.pop() if len(labels) == 1 else ""
+
+
+def _same_site_taint(taint, tool: str, resource: str) -> bool:
+    """A browser step on a site, when everything untrusted this turn came from that same
+    site in the shared browser. The ceiling guards against content from one place
+    spending your session somewhere else; a page's own scripts can already act on their
+    own site, so words read there add nothing it could not do itself. Anything else read
+    this turn (another site, a mail, a fetch) brings the ceiling back."""
+    if tool not in ("browser_click", "browser_type", "browser_key") or not resource.startswith("site:"):
+        return False
+    site = resource[5:]
+    if not site or site == "*" or not taint:
+        return False
+    return all(isinstance(t, dict) and str(t.get("tool") or "").startswith("browser_")
+               and t.get("site") == site for t in taint)
 
 
 def taint_mode(cfg: dict) -> str:
@@ -1216,7 +1258,8 @@ class PDP(usersmod.Scoped):
         # git, not for a web page it read to run git through it. And the few safe tools
         # that write something read back later count as risky here (TAINT_WATCH).
         base = ctx.get("base_risk") or risk
-        watched = (base != "safe" or ctx.get("tool") in TAINT_WATCH) and base != "blocked"
+        watched = (base != "safe" or ctx.get("tool") in TAINT_WATCH) and base != "blocked" \
+            and not _same_site_taint(taint, ctx.get("tool") or "", resource)
         if taint and watched and mode == "ask":
             standing = self._standing(principal, action, resource, taint)
         if standing:
