@@ -71,6 +71,7 @@ NAME_MAX = 24
 ABOUT_MAX = 200        # a department's one-line mandate
 TITLE_MAX = 40         # "Head of Finance"
 _DESK = re.compile(r"^[A-Za-z0-9_-]{1,49}$")   # the department's desk is a flow name
+MAX_REPORT_DEPTH = 4   # departments in one line of reports, before the lead
 FLOOR = "Open floor"   # where a specialist nobody placed sits
 
 DEFAULT: dict = {
@@ -202,9 +203,40 @@ def clean(spec: dict, known: list[str] | None) -> tuple[dict, list[str]]:
             kept = {m: t for m, t in kept.items() if t}
             if kept:
                 dept["titles"] = kept
+            boss = _plain(d.get("reports_to"))
+            if boss:
+                dept["reports_to"] = boss
             depts.append(dept)
+        _reporting_lines(depts)
         out["departments"] = depts
     return out, dropped
+
+
+def _reporting_lines(depts: list[dict]) -> None:
+    """Who each department reports to: another department, or the lead when the field
+    is absent. A name that is not a department here (a rename, a typo) falls back to
+    the lead. A loop or a line deeper than MAX_REPORT_DEPTH is refused in a sentence:
+    a loop has no top, so its work would never reach anybody who can sign it off."""
+    names = {d["name"].lower(): d["name"] for d in depts}
+    for d in depts:
+        boss = str(d.get("reports_to") or "").strip()
+        real = names.get(boss.lower())
+        if not real or real == d["name"]:
+            d.pop("reports_to", None)
+        else:
+            d["reports_to"] = real
+    up = {d["name"]: d.get("reports_to") or "" for d in depts}
+    for d in depts:
+        line, at = [d["name"]], up[d["name"]]
+        while at:
+            if at in line:
+                raise ValueError(f"{' → '.join(line + [at])} is a loop. One of them has to "
+                                 f"report to the lead instead.")
+            line.append(at)
+            at = up.get(at, "")
+        if len(line) > MAX_REPORT_DEPTH:
+            raise ValueError(f"{' → '.join(line)} is {len(line)} departments deep. A line of "
+                             f"reports can be {MAX_REPORT_DEPTH} at most, then the lead.")
 
 
 def save(cfg: dict, store, patch: dict) -> tuple[dict, list[str]]:
@@ -249,7 +281,7 @@ def view(cfg: dict, store) -> dict:
         members = [live[m.lower()] for m in d["members"] if m.lower() in live and m.lower() not in placed]
         placed.update(m.lower() for m in members)
         room = {"kind": "dept", "name": d["name"], "color": d["color"], "members": members}
-        for k in ("about", "desk"):
+        for k in ("about", "desk", "reports_to"):
             if d.get(k):
                 room[k] = d[k]
         if d.get("lead") in members:

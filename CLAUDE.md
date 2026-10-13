@@ -494,6 +494,37 @@ of the main agent". Five rules keep it independent:
   merge `cfg["company"]` rather than replace it). The switch is a ledger row. `force=True`
   (the page's Check it, `bento company check`) checks a task the switch skipped.
 
+**Every boss above a department signs its finished work off, up to the lead**
+(`company.chain`/`review_task`/`read_review`/`review_state`, `ControlPlane.review` inside
+`run_flow`; `tests/test_company_review.py`). Asked for as "the department team reports to the
+boss that does the QA, that boss may report to other bosses, and finally Aria is the main
+boss; every boss acts like a gate". Six rules:
+- **Reporting lines are the office's** (`reports_to` on a department, `office._reporting_lines`):
+  a name that is no department means the lead, a loop or a line over `MAX_REPORT_DEPTH` is
+  REFUSED at the save in a sentence. `/api/company/reports` and `bento company chain` go
+  through `office.save`, so the page never decides a loop.
+- **The control plane walks the chain, never the master**, after the master finishes and
+  before the audit and delivery. Each head is a run of kind `review` (read-only:
+  `kind in ("audit","review")` filters to `AUDIT_TOOLS`, and asks nobody); the lead answers
+  through `executors.ask_brain` with no tools, as its council vote does, recorded as a
+  `review` row by hand. Every answer is a `company.review` ledger row.
+- **A send-back is reworked by the SAME run** (`_rework_text`, the master's next round with the
+  boss's notes; the board stays), then the chain starts at the bottom again. `REWORK_MAX`
+  rounds of fixes, then a Brief item (`review-<run>`). One flow run per task, so the board
+  counts one task. Reviews and audits are not steps: `_fold_children` skips them, or a
+  skipped gate turned a good run `partial`.
+- **Read strictly, read back.** APPROVE / SEND BACK / ESCALATE on the first line, anything else
+  is `unchecked` and never a sign-off. `review_state` derives the gates, `rounds` (fixes, so
+  the last send-back is not one) and the outcome from the review rows: the board, the cards,
+  the CLI and the delivered line all read that one function.
+- **Escalate goes up with its note**; the next boss decides, and from the lead it is the
+  person's. A department with no named head is a gap the record names, not a pass.
+- **The Office queues a run's review events** (`officeReview`/`officeReviewNext`): the server
+  answers faster than a walk, so played as they came an answer was said before the work reached
+  the desk and the next boss's start overwrote the walk on its way (found live: Aria sat on
+  "reading it…" forever). A review run's own `status` events carry `kind` and are skipped, or
+  they lit a meeting and said "done ✓".
+
 **Every scene draws the company from ONE answer, `company.membership()`** (who is in which
 department, its head, whether that head was NAMED, the colour's hex, each title). The Crew
 stage reads it off `/api/subagents`, the Mind off `mind.snapshot`, the World off the

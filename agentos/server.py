@@ -11074,6 +11074,13 @@ async def api_company_profile(body: dict):
             cur[k] = teamlink.plain((body or {}).get(k), n, newlines=False)
             renamed = True
     was = companymod.audit_on(cfg)
+    was_review = companymod.review_mode(cfg)
+    if "review" in (body or {}):
+        mode = str((body or {}).get("review") or "").lower()
+        if mode not in companymod.REVIEW_MODES:
+            return JSONResponse({"error": "review is one of: " + ", ".join(companymod.REVIEW_MODES)},
+                                status_code=400)
+        cur["review"] = mode
     if "audit" in (body or {}):
         # switching off the independent check is a decision somebody should be able to
         # find later, so it is a ledger row of its own
@@ -11087,8 +11094,51 @@ async def api_company_profile(body: dict):
             companymod.ensure_auditor(state["store"])
         companymod.record(state["store"], "the independent auditor switched "
                           + ("on" if cur["audit"] else "off"), action="company.audit")
+    if "review" in (body or {}) and cur["review"] != was_review:
+        # who signs finished work off is as much a decision as whether it is audited
+        companymod.record(state["store"], f"sign-off changed from {was_review} to {cur['review']}",
+                          action="company.review")
     await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
     return {"ok": True, "company": companymod.profile(cfg)}
+
+
+@app.put("/api/company/reports")
+async def api_company_reports(body: dict):
+    """Who a department reports to: another department, or '' for the lead. Goes through
+    the office's own save, so a loop or a line too deep is refused in a sentence."""
+    from . import company as companymod, office
+    cfg, store = state["cfg"], state["store"]
+    name = str((body or {}).get("department") or "").strip()
+    boss = str((body or {}).get("reports_to") or "").strip()
+    cur = office.current(cfg)
+    hit = next((d for d in cur["departments"] if d["name"].lower() == name.lower()), None)
+    if not hit:
+        return JSONResponse({"error": f"there is no department called {name or '(none)'}"},
+                            status_code=404)
+    if boss.lower() in ("", "lead", "@agent", companymod.lead_name(cfg).lower()):
+        boss = ""
+    elif not any(d["name"].lower() == boss.lower() for d in cur["departments"]):
+        return JSONResponse({"error": f"{boss} is not a department here. Choose one of: "
+                             + ", ".join(d["name"] for d in cur["departments"] if d is not hit)
+                             + f", or {companymod.lead_name(cfg)}"}, status_code=400)
+    depts = [dict(d) for d in cur["departments"]]
+    for d in depts:
+        if d["name"] == hit["name"]:
+            d.pop("reports_to", None)
+            if boss:
+                d["reports_to"] = boss
+    try:
+        office.save(cfg, store, {"departments": depts})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(cfg)
+    to = next((d.get("reports_to") for d in office.current(cfg)["departments"]
+               if d["name"] == hit["name"]), "") or companymod.lead_name(cfg)
+    companymod.record(store, f"{hit['name']} reports to {to}")
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {"ok": True, "department": hit["name"], "reports_to": to,
+            "chain": [g["who"] or f"({g['department']})"
+                      for g in companymod.chain(cfg, store, hit["name"])]}
 
 
 @app.post("/api/company/draft")

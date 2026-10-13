@@ -14,8 +14,11 @@
      every window and cannot be tapped, so it draws none of this.
    - The auditor's verdict on a task is read from the audit run the server keeps
      (company.audit_state); the page never decides whether work passed.
+   - So is the review chain (company.review_state): each boss's answer is read back from
+     its review run. Who reports to whom is the office's, saved through
+     /api/company/reports so a loop is refused by the server, not guessed at here.
    Faces: GUI and SUI are this page. TUI is `bento company` (show, setup, task, audit,
-   check). */
+   review, chain, check). */
 var COMPANY={data:null,plan:null,preview:null,how:'',said:'',dropped:[],open:false,
   filter:'all',focus:'',arrival:null,timer:0,pv:0,talk:true,off:{}};
 
@@ -49,6 +52,7 @@ function companyCards(){
     const next=s.next_at?companyWhen(s.next_at):'';
     const tip=`${s.name}: ${s.doing} doing, ${s.waiting} waiting for you, ${s.done} done this week`
       +(s.failed?`, ${s.failed} failed`:'')+(s.flagged?`, ${s.flagged} flagged by the auditor`:'')
+      +(s.held?`, ${s.held} held at sign-off`:'')+(s.reports_to?`. Reports to ${s.reports_to}`:'')
       +(next?`, next run ${next}`:'')+'. Tap to give it a task.';
     const x=Math.round((r.x+r.w)*O.s)-8,y=Math.round((r.y+8)*O.s);
     return `<button class="co-card${s.waiting?' wait':''}${s.doing?' busy':''}" style="right:${Math.max(4,O.cw-x)}px;top:${y}px"
@@ -56,7 +60,7 @@ function companyCards(){
       <span class="co-n">${s.people}<small> ${s.people===1?'agent':'agents'}</small></span>
       <span class="co-k" data-s="▶"><i>doing</i>${s.doing}</span><span class="co-k" data-s="⏱"><i>next</i>${s.next}</span>
       <span class="co-k" data-s="✓"><i>done</i>${s.done}</span>${s.waiting?`<span class="co-w">⚠ ${s.waiting}</span>`:''}${
-      s.flagged?`<span class="co-fl">⚑ ${s.flagged}</span>`:''}</button>`;
+      s.held?`<span class="co-w">↩ ${s.held}</span>`:''}${s.flagged?`<span class="co-fl">⚑ ${s.flagged}</span>`:''}</button>`;
   }).join('');
   host.querySelectorAll('.co-card').forEach(b=>b.onclick=()=>{COMPANY.focus=b.dataset.dept;officeCompany(true)});
   companyCardsFit(host);
@@ -237,7 +241,7 @@ function companyOverviewPaint(el){
   const focus=COMPANY.focus&&d.departments.find(x=>x.name===COMPANY.focus)?COMPANY.focus:(d.departments[0]||{}).name;
   const b=d.board||{tasks:[],counts:{}},f=COMPANY.filter;
   const tasks=b.tasks.filter(t=>f==='all'||t.status===f||(f==='in_progress'&&t.status==='stale')||(f==='failed'&&t.status==='stopped')
-    ||(f==='flagged'&&companyFlagged(t)));
+    ||(f==='flagged'&&companyFlagged(t))||(f==='held'&&companyHeld(t)));
   const chip=(k,l)=>`<button class="of-chip${f===k?' on':''}" data-f="${k}" aria-pressed="${f===k}">${l}${k!=='all'&&b.counts[k]?' '+b.counts[k]:''}</button>`;
   const pill={in_progress:'working',waiting:'waiting for you',done:'done',failed:'failed',scheduled:'scheduled',
     stale:'stopped answering',stopped:'stopped'};
@@ -258,22 +262,29 @@ function companyOverviewPaint(el){
       <div class="co-lk"><span>doing ${x.doing}</span><span>next ${x.next}</span><span>done ${x.done}</span>
         ${x.waiting?`<span class="co-w">⚠ ${x.waiting} waiting</span>`:''}${x.failed?`<span class="co-bad">${x.failed} failed</span>`:''}${
         x.flagged?`<span class="co-fl">⚑ ${x.flagged} flagged</span>`:''}</div>
+      <label class="co-rep mut">Reports to <select data-rep="${esc(x.name)}" aria-label="${esc(x.name)} reports to">
+        <option value="">${esc(b.lead||'your agent')}</option>${d.departments.filter(y=>y.name!==x.name).map(y=>
+          `<option value="${esc(y.name)}"${x.reports_to===y.name?' selected':''}>${esc(y.name)}</option>`).join('')}</select>
+        ${x.signed||x.held?`<span>${x.signed} signed off${x.held?`, <b class="co-w">${x.held} held</b>`:''} this week</span>`:''}</label>
       <div class="co-desk mut">${!x.has_desk?'No desk: tasks go to its head in chat.'
         :x.desk_on?'Desk on.':'Desk off, so gated steps ask you.'}
         ${x.has_desk?`<button class="co-link" data-desk="${esc(x.desk)}">${x.desk_on?'Open in Missions':'Switch on in Missions'}</button>`:''}</div>
     </div>`).join('')}
     <div class="of-row"><button class="endbtn co-add">＋ Add departments</button></div>
     <div class="of-sec">Tasks</div>
+    <label class="co-audit co-signoff"><span>Sign-off</span><select class="co-rv" aria-label="Who signs finished work off">
+      ${[['lead',`Every boss, up to ${b.lead||'your agent'}`],['heads',"The department's own head"],['off','Nobody']].map(([k,l])=>
+        `<option value="${k}"${(b.review||'lead')===k?' selected':''}>${esc(l)}</option>`).join('')}</select>${typeof pInfo==='function'?pInfo('A finished task goes to its head, then to the head of each department it reports to, then to your agent. Each one approves it, sends it back to be fixed (twice at most) or passes a decision up. What is held goes to your Brief.'):''}</label>
     <label class="co-audit"><input type="checkbox" class="co-aud"${b.audit!==false?' checked':''}>
       <span>An independent auditor checks every finished task</span>${typeof pInfo==='function'?pInfo('The auditor did none of the work and no department can skip it. Anything it flags goes to your Brief.'):''}</label>
-    <div class="of-chips co-filter">${chip('all','All')}${chip('in_progress','Working')}${chip('waiting','Waiting')}${chip('scheduled','Scheduled')}${chip('done','Done')}${chip('flagged','Flagged')}${chip('failed','Failed')}</div>
+    <div class="of-chips co-filter">${chip('all','All')}${chip('in_progress','Working')}${chip('waiting','Waiting')}${chip('scheduled','Scheduled')}${chip('done','Done')}${chip('held','Held')}${chip('flagged','Flagged')}${chip('failed','Failed')}</div>
     <div class="co-board">${tasks.length?tasks.slice(0,40).map(t=>`<button class="co-task-row" ${t.run_id?`data-run="${esc(t.run_id)}"`:''} style="--dc:${colors[t.color]||'#888'}">
       <span class="co-st ${t.status}">${esc(pill[t.status]||t.status)}</span>
       <span class="co-tt">${esc(t.task)}</span>
       <span class="co-tm mut">${esc(t.department)}${t.who?' · '+esc(t.who):''}${t.handoffs?` · ${t.handoffs} ${t.handoffs===1?'hand-over':'hand-overs'}`:''}
         · ${esc(t.status==='scheduled'?companyWhen(t.next_at):companyAgo(t.finished_at||t.started_at))}</span>
       ${t.said&&t.status!=='in_progress'?`<span class="co-said mut">${esc(t.said)}</span>`:''}
-      ${companyAuditHTML(t)}
+      ${companyReviewHTML(t)}${companyAuditHTML(t)}
       ${(t.approvals||[]).length?`<span class="co-review" role="button" tabindex="0" data-ap="${esc(t.approvals.join(','))}">Review what it asks</span>`
         :t.in_brief&&t.status==='waiting'?'<span class="co-review" role="button" tabindex="0" data-brief="1">Answer it in the Brief</span>':''}</button>`).join('')
       :`<p class="mut co-small">${f==='all'?'No tasks yet. Give a department one above.':'Nothing here.'}</p>`}</div>`;
@@ -291,12 +302,51 @@ function companyOverviewPaint(el){
     openApp('fabric');refreshApp('fabric')});
   el.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{COMPANY.filter=b.dataset.f;companyPaint()});
   q('.co-aud').onchange=e=>companyAuditSwitch(e.target);
+  q('.co-rv').onchange=e=>companyReviewMode(e.target);
+  el.querySelectorAll('[data-rep]').forEach(x=>x.onchange=()=>companyReports(x));
   el.querySelectorAll('[data-run]').forEach(b=>b.onclick=e=>{
     const ap=e.target.closest('[data-ap]');if(ap)return companyReview(ap.dataset.ap.split(','));
     const ck=e.target.closest('[data-check]');if(ck)return companyCheck(b.dataset.run,ck);
     if(e.target.closest('[data-brief]'))return openApp('brief');
     if(typeof fgWatch==='function')fgWatch(b.dataset.run)});
   q('.co-add').onclick=()=>{COMPANY.adding=true;COMPANY.arrival=null;companyPaint()};
+}
+/* ---------------- the review chain (company.chain, fabric ControlPlane.review) ---------------- */
+function companyHeld(t){const o=(t.review||{}).outcome;return o==='sent_back'||o==='escalated'||o==='unchecked'}
+/* The chain under a task: each boss with a mark for what they said, in order, and the
+   sentence when it stopped short of the top. Read from the review runs, never decided here. */
+function companyReviewHTML(t){
+  const r=t.review||{};if(!r.gates||!r.gates.length)return '';
+  const lead=((COMPANY.data||{}).board||{}).lead;
+  const mark={approve:'✓',send_back:'↩',escalate:'↑',skipped:'–',unchecked:'?'};
+  const word={approve:'approved',send_back:'sent it back',escalate:'passed it up',skipped:'could not review',unchecked:'gave no clear answer'};
+  const gates=r.gates.map(g=>`<span class="co-gate ${g.answer||'wait'}" title="${esc(g.who+': '+(word[g.answer]||'reviewing')+((g.notes||[])[0]?' · '+g.notes[0]:g.why?' · '+g.why:''))}">${
+    avatarImgSafe(g.who===lead?'@agent':g.who)}${esc(g.who)} ${mark[g.answer]||'…'}</span>`).join('<i>→</i>');
+  const held=companyHeld(t)||r.outcome==='reworking';
+  return `<span class="co-chain${held?' held':''}">${gates}${r.rounds?`<small>${r.rounds} round${r.rounds===1?'':'s'} of fixes</small>`:''}</span>`
+    +(held||r.outcome==='unreviewed'?`<span class="co-au none">${esc(r.line||'')}</span>`:'');
+}
+async function companyReviewMode(sel){
+  const v=sel.value;sel.disabled=true;
+  try{
+    const j=await apiJSON('/api/company',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({review:v})});
+    if(j.error)throw new Error(j.error);
+    toast({lead:'Each boss signs finished work off, up to your agent',heads:"Each department's head signs its work off",off:'Nobody signs finished work off now'}[v]);
+    companyLoad();
+  }catch(e){toast(e.message||String(e));companyPaint()}
+  finally{sel.disabled=false}
+}
+async function companyReports(sel){
+  const dept=sel.dataset.rep;sel.disabled=true;
+  try{
+    const j=await apiJSON('/api/company/reports',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({department:dept,reports_to:sel.value})});
+    if(j.error)throw new Error(j.error);
+    toast(`${dept} reports to ${j.reports_to}. Sign-off: ${(j.chain||[]).join(' → ')}`);
+    companyLoad();
+  }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
+  finally{sel.disabled=false}
 }
 /* ---------------- the independent auditor (company.py, fabric ControlPlane.audit) ---------------- */
 function companyFlagged(t){const v=(t.audit||{}).verdict;return v==='concerns'||v==='fail'}
