@@ -2665,6 +2665,26 @@ things keep it honest (`tests/test_team_missions.py`):
   The name is the other machine's CLAIM; stopping a mission is for an honest partner, and the
   docs say that unticking the agent is what stops a machine.
 
+**A guest pass lends ONE agent for minutes, and the lent agent has no hands** (`teamlink.invite(guest=)`,
+`clean_pass`/`pass_state`/`ended_passes`, `fabric.grant_pass`/`guest_seat`/`_guest_turn`, `/api/team/pass(es)`,
+`bento link pass`; `docs/team.md`, `tests/test_guest_pass.py`). Asked for as "summon my Security Auditor into
+your Bento for 10 minutes, without exposing my keys or filesystem". Five rules:
+- **It is a link, not a second door.** An invite carrying `{agent, minutes, look}`; both halves of the link
+  carry `pass` (role lender/guest). The lender writes ONE `agent.message` cell with `source="pass"` and
+  `expires_at` (`set_link_access` leaves pass rows alone, the access route and `bento link allow` refuse a
+  pass link), so it never outlives the pass by being re-ticked.
+- **The lender answers with `no_tools=True`.** Words from the agent's soul and nothing it can reach. Only the
+  lent agent is answered, and `answer_linked` and `_message_linked` each refuse on their OWN clock.
+- **The sweep ends it** (`_team_chat_sweep` → `_team_end_link`, the remove route's one path): the row, the
+  cells on both sides, a `link.revoke` row each side, the visit cache.
+- **A guest in a huddle taints every local turn and never votes.** Its words reach the others' prompts.
+  `guest_seat` admits only a live guest-role pass for that agent; `parse_huddle` and `huddleParse` accept
+  `name@link`.
+- **What the other side says about a pass is held**: `until` to `PASS_MAX`, the name through `plain`, the
+  face through `avatars.clean`. The page paints a guest's face from `AV_GUEST` (`avatarGuest`), filled by the
+  huddle event, the World and Settings; it is never stored. The World's guest comes from
+  `server._world_guests` at the resting mood: world.py never hears of it.
+
 ## People on linked teams: messages, and no agent reads them
 
 `agentos/teamchat.py` + the `team_messages` table + Team Chat (`24c-teamchat.js`) + `bento link
@@ -2848,6 +2868,48 @@ be on and agents would be working in the office". Five rules:
   list). The wizard, Settings' Test it and `bento face test` (arecord) all use that one route
   or `_step_voice`. A wake word of the person's own (`face.wake_word`) never replaces the
   agent's name.
+
+## Drama, Arena, Watch me once, Time travel: four things a person shows somebody else
+
+Asked for as five features to share (the fifth is the guest pass, above). Each is a module free of HTTP and
+asyncio with a CLI verb, and a window.
+
+**The drama reel tells only what happened** (`agentos/drama.py`, `comic.manga`, `00g-drama.js`,
+`/api/drama*`, `bento drama`; `docs/drama.md`, `tests/test_drama.py`). Beats come from ONE place, `_drama_seen`
+inside `broadcast`/`broadcast_user`; nothing else writes them. `story()` is four acts and names a missing one
+rather than borrowing it. Balloon words are the agent's (a refusal shows the command and `detail`, which
+`tool_end` and fabric's step events now carry); act titles are captions. A person's no is never stamped
+(`STAMP["declined"]`, the World's GENTLE rule). Kept per person in `drama.json`, `KEEP` beats. The clip is the
+page's (MediaRecorder; voices only through a server speech engine, since speechSynthesis has no stream, and
+the window says so); the strip is the server's, so the terminal gets the same picture. Every output carries the
+`WATERMARK` footer. Nothing is sent anywhere.
+
+**The Arena measures and never judges** (`agentos/arena.py`, `00h-arena.js`, `/api/arena*`, `bento arena`;
+`docs/arena.md`, `tests/test_arena.py`). Contenders come only from `executors.brains` (`contenders()`), each
+works in its own folder through `_SeatToolbox` (a cfg override resolved through `usersmod._ScopedCfg`), every
+call passes the gate under the person's autonomy. Speed is counted from the FIRST output (a slow start is time),
+steps and refusals at `tool_end` (so a hard deny counts), cost only from `usage` events (`Agent.emit_usage`).
+`summary()` must never say won/winner/best.
+
+**Watch me once notes doors, never content** (`00i-watch.js`, `pinRoutine` in `07-widgets.js`, `place`/`view`
+routine steps; `docs/watch.md`, `tests/test_watch.py`). `watchNote` is called from openApp, a place, a Settings
+tab, a Missions tab and the Logs filter, and only for steps `navigator.userActivation` says a person caused, and
+never while `AUTO_RUNNING`. `watchFind` is pure (3 to 6 steps, two doors at least, twice in 45 minutes) and the
+test runs it in Node. Kept in page memory; a decline is remembered per browser. The daily option is an ordinary
+`/api/tasks` schedule running `run_automation`; it says "every day", because that is what the scheduler does.
+
+**Time travel journals by trigger and deletes nothing** (`agentos/timetravel.py`, `Agent._checkpoint`,
+`00j-timetravel.js`, `/api/timetravel*`, `bento timetravel`; `docs/timetravel.md`, `tests/test_timetravel.py`).
+- Memory, graph and skills are journalled by SQLite triggers into `_tt_undo` (rebuilt from live columns at every
+  `Store` start, `WHEN paused='0'` so a rewind is not journalled); files are content-addressed blobs taken by
+  `_checkpoint` AFTER the gate allowed the step and BEFORE it runs, and a checkpoint never fails a step.
+- `plan()` is what `rewind()` does (the jobs rule). A rewind moves what it replaces into
+  `.timetravel/rewound/<time>/`; it never deletes. A shell step is marked `unseen` and the plan says it cannot be
+  undone; an agent CLI's native edits are outside it, and the docs say so.
+- Home is the STORE's parent everywhere (`Path(store.path).parent`), or the agent and the route disagreed about
+  where the blobs were. Rewind is refused (409) while that conversation's turn runs. The ledger is never touched.
+- Window layouts are the page's (sessionStorage per checkpoint id); a fork is a new conversation with the history
+  before that turn and the same question on the chosen brain (validated against `arena.choices`).
 
 ## Window chrome: the rules that keep a stack readable
 

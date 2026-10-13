@@ -167,8 +167,11 @@ function routineOf(wd){
 function pinRoutine(id){
   const key='routine:'+id;
   if(WIDGETS.some(w=>w.app_id===key))return;
-  const n=WIDGETS.filter(w=>(w.desk||1)===curDesk).length;
-  WIDGETS.push({app_id:key,kind:'routine',routine:id,desk:curDesk,x:170+(n%3)*270,y:40+(n%2)*170,w:250,h:150});
+  // top right, clear of the greeting and its chips: #home sits above the widgets and its
+  // chips take taps, so a routine pinned in the middle could not be played
+  const r=WIDGETS.filter(w=>w.kind==='routine'&&(w.desk||1)===curDesk).length;
+  WIDGETS.push({app_id:key,kind:'routine',routine:id,desk:curDesk,
+    x:Math.max(16,innerWidth-266-Math.floor(r/4)*266),y:44+(r%4)*164,w:250,h:150});
   renderWidgets();saveWidgets();toast('pinned to Desktop '+curDesk,{kind:'ok'});
 }
 function createRoutineWidgetEl(wd,rt){

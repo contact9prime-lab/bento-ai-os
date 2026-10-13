@@ -90,3 +90,11 @@ def test_a_routine_keeps_places_and_views():
     assert "case 'place':" in run and "function automationView(" in run
     w = (JS / "07-widgets.js").read_text()
     assert "function pinRoutine(" in w and "function createRoutineWidgetEl(" in w and "runAutomation(rt)" in w
+
+
+def test_a_pinned_routine_lands_clear_of_the_greeting():
+    """#home sits above the widgets and its chips take taps: a routine pinned in the middle
+    of the screen showed a Play button nobody could press (found by the live walk)."""
+    js = (ROOT / "agentos/ui/src/js/07-widgets.js").read_text()
+    pin = js.split("function pinRoutine(", 1)[1].split("\n}", 1)[0]
+    assert "innerWidth-266" in pin and "x:170" not in pin

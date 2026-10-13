@@ -685,6 +685,52 @@ office's person see it, audit it and stop it without asking you.
   the agent, or ending the link, is what stops a machine. Ending the link revokes the records
   with everything else.
 
+### Lending an agent: the guest pass
+
+Sometimes you want a friend's team to have your security auditor for one meeting, not a
+standing link. A **guest pass** lends one of your specialists for a few minutes (1 to 60,
+10 by default).
+
+In Settings → Team & Communications → Linked teams, open **Lend an agent for a few
+minutes**, pick the agent and how long, and press **Make a pass**. It is an invite like any
+other: share the code privately; it works once, within ten minutes. Lending to another
+machine needs "Let other machines ask to link" on. From a terminal:
+
+```
+bento link pass auditor            # to another machine
+bento link pass auditor account --minutes 15 --user you
+```
+
+![Settings lending the auditor for 10 minutes, with the one-time code to share](screenshots/guest-lend.png)
+
+Once it is redeemed:
+
+- **Your agent answers in words only.** On your machine it runs with no tools at all, so a
+  guest never reaches your files, keys, memory or shell. It answers from its own soul and
+  knowledge, under your gate, and every answer arrives on their side marked as another
+  team's words.
+- **Only that agent, only for that long.** The pass writes one cell, for that agent, that
+  expires with the pass. Asking anyone else on your team is refused, and each side refuses
+  on its own clock once the time is up. Within 30 seconds of the end, the link and its cell
+  are gone on both sides, with a `link.revoke` line in each ledger.
+- **It is not a link to edit.** The matrix boxes are hidden on a pass, and
+  `bento link allow` refuses one. Remove it and link properly to change who may ask whom.
+
+On your friend's side the agent is `auditor@yourteam` for those minutes. **Bring into a
+huddle** starts a huddle with one of their agents and yours, and the guest takes its turns
+from your machine:
+
+![A huddle where the guest auditor@bob talks with the local researcher](screenshots/guest-huddle.png)
+
+A guest's words reach the other agents' prompts, so while a guest is in the room every
+local turn is treated like content from outside: a risky step needs a person. A guest
+gives advice; when the team votes (democracy), it does not get a ballot.
+
+The guest wears its own face, which travels with the pass, and stands in their World for as
+long as the pass lasts, with a card saying whose it is and how long is left:
+
+![The guest auditor standing in the World, its card showing the time left](screenshots/guest-world.png)
+
 ### Security: what was checked, and the ceilings
 
 Linked teams and Team Chat were reviewed as an attacker would read them: a hostile linked
