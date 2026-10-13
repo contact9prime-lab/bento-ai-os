@@ -1694,7 +1694,7 @@ async def install(note=None) -> tuple[bool, str]:
 # schedule_task is the small case of the same thing: "check it every 10 minutes" asked in
 # Chat on Claude Code had no way to become a schedule this OS could see, so it became a
 # setInterval in an app or a sentence. It is risky, so the person approves it on the card.
-TEAM_TOOLS = ("delegate", "huddle", "create_flow", "list_flows", "schedule_task")
+TEAM_TOOLS = ("delegate", "huddle", "department_task", "create_flow", "list_flows", "schedule_task")
 
 
 def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
@@ -1814,7 +1814,7 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     env.context = (env.context or "") + team_note(subs)
     try:
         from . import company as _company
-        env.context += _company.note(cfg, store, desks=False)
+        env.context += _company.note(cfg, store, desks=False, tool="mcp__bento__department_task")
     except Exception:
         pass
     return token

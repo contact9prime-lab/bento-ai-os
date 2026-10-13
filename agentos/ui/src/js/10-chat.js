@@ -254,13 +254,14 @@ async function openConv(cid){
     if(msg.meta&&msg.meta.freetalk&&typeof freeTalkRender==='function'&&freeTalkRender(msg))return;
     const m=document.createElement('div');m.className='msg '+msg.role;
     if(msg.role==='user'){m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
-    else{const sp=msg.meta&&msg.meta.speaker;
+    else{const sp=msg.meta&&msg.meta.speaker,dp=msg.meta&&msg.meta.department;
       // a specialist's reply is stored with a first line naming it and its model;
       // with its face in the header that line would say the same thing twice
       let body=msg.content||'', spModel='';
       if(sp){const h=body.match(/^@[\w-]+ · ([^\n]*)\n\n/);if(h){spModel=h[1];body=body.slice(h[0].length)}}
       const hud=msg.meta&&msg.meta.huddle;
-      m.innerHTML='<div class="who">'+(hud?huddleWho(hud):sp?chatWho(sp,'@'+esc(sp)+(spModel?' '+brainChip(spModel):'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
+      if(dp){const h=body.match(/^▦ [^\n]* · [^\n]*\n\n/);if(h)body=body.slice(h[0].length)}
+      m.innerHTML='<div class="who">'+(hud?huddleWho(hud):dp?chatWho(sp||'@agent','▦ '+esc(dp)+(sp?' · @'+esc(sp):'')):sp?chatWho(sp,'@'+esc(sp)+(spModel?' '+brainChip(spModel):'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
       if(hud){m.insertAdjacentHTML('beforeend',huddleCard(huddleParse(body),hud,true));feed.appendChild(m);return}
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';

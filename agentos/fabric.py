@@ -1776,6 +1776,38 @@ class ControlPlane(usersmod.Scoped):
 
     # -- huddles: agents talking to each other ---------------------------------------
 
+    async def department_task(self, department: str, task: str, conversation_id: str = "",
+                              approver=None, surface: str = "gui", ui_emit=None,
+                              agent_slot=None, decided: bool = False) -> dict:
+        """A task for a department of the open company: a run of its desk, led by its
+        head, signed off by the bosses above it and checked by the auditor. One door for
+        every way a department is reached by name: `@Sales …` in Chat, Telegram and
+        WhatsApp, and the lead's `department_task` tool (which the agent loop has already
+        put through the gate, `decided=True`). The person asking is the principal, and the
+        decision is `agent.invoke` on the desk's flow, as /api/company/task decides it.
+
+        Returns {"department", "head", "flow", "result"}; raises ValueError with a
+        sentence when there is no such department or desk, PermissionError on a deny."""
+        from . import company as _company
+        from .policy import MAIN
+        flow = _company.desk_for(self.cfg, self.store, department)
+        dept = next((d for d in _company.departments(self.cfg, self.store)
+                     if d.get("desk") == flow["name"]), {"name": department})
+        if not decided and self.toolbox is not None and getattr(self.toolbox, "pdp", None):
+            dec = self.toolbox.pdp.decide(MAIN, "agent.invoke", f"agent:flow/{flow['name']}",
+                                          {"surface": surface, "risk": "safe",
+                                           "conversation_id": conversation_id})
+            if dec.effect == "deny":
+                raise PermissionError(dec.reason or f"{dept['name']} may not be given work here")
+        # origin "chat": the answer is the reply in the conversation that asked, so the
+        # desk's own delivery never sends it a second time to the same phone
+        res = await self.run_flow(flow, str(task or "").strip(),
+                                  origin={"surface": "chat", "ref": dept["name"]},
+                                  conversation_id=conversation_id, approver=approver,
+                                  ui_emit=ui_emit, agent_slot=agent_slot)
+        return {"department": dept["name"], "head": dept.get("lead") or "",
+                "flow": flow["name"], "result": res}
+
     async def huddle(self, names: list, topic: str, rounds: int = 2,
                      conversation_id: str = "", space_id: str = "", say=None,
                      approver=None) -> dict:
@@ -3192,6 +3224,21 @@ def parse_huddle(store, text: str):
     if len(known) < 2 or len(known) != len(names):
         return None
     return known, m.group(2).strip()
+
+
+async def department_reply(control, department: str, task: str, conversation_id: str,
+                           approver, surface: str) -> str:
+    """`@Sales …` from a channel with no event stream (Telegram, WhatsApp): the
+    department's answer as one message, or the sentence saying why it could not run."""
+    try:
+        got = await control.department_task(department, task, conversation_id=conversation_id,
+                                            approver=approver, surface=surface)
+    except (ValueError, PermissionError) as e:
+        return f"▦ {department}: {e}"
+    res = got["result"]
+    return (f"▦ {got['department']} · {res['status']}"
+            + (f" · led by {got['head']}" if got["head"] else "") + "\n\n"
+            + (res["content"] or res["fault"] or "(no output)"))
 
 
 def parse_mention(store, text: str):

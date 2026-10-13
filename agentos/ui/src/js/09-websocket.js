@@ -411,7 +411,7 @@ function handle(ev){
       if(_cur)CUR_ENGINE={engine:EXEC_TITLES[ev.model]?ev.model:'',
                           model:EXEC_TITLES[ev.model]?'':(ev.model||''),
                           // `@researcher …` is the researcher answering, in its own face
-                          speaker:ev.speaker||'',
+                          speaker:ev.speaker||'',department:ev.department||'',
                           // `@a @b …` is a huddle: the room answers, each in turn
                           huddle:ev.huddle||null};
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
@@ -821,7 +821,9 @@ function flushText(){
    its own face, or the agent labelled with whatever engine is running it. */
 function curWho(){
   if(CUR_ENGINE.huddle&&typeof huddleWho==='function')return huddleWho(CUR_ENGINE.huddle);
-  const sp=CUR_ENGINE.speaker;
+  const sp=CUR_ENGINE.speaker,dp=CUR_ENGINE.department;
+  // `@Sales …`: the department answers, in its head's face, under its own name
+  if(dp)return chatWho(sp||'@agent','▦ '+esc(dp)+(sp?' · @'+esc(sp):''));
   return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
     :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
 }

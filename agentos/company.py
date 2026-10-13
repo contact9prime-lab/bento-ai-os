@@ -1156,6 +1156,49 @@ def desk_for(cfg: dict, store, department: str) -> dict:
     raise ValueError(f"no department called '{department}'. Departments: {names}")
 
 
+def _dept_pattern(name: str) -> str:
+    """"Customer Care" is reached as @Customer Care, @customer-care, @customer_care or
+    @CustomerCare: the words in order, any of those between them, any case."""
+    words = [re.escape(w) for w in re.split(r"[\s_&-]+", name) if w]
+    return r"[\s_&-]*".join(words)
+
+
+def parse_department(cfg: dict, store, text: str):
+    """'@Sales find ten clinics' → (department, 'find ten clinics') when the words after
+    the @ name a department of the open company; None otherwise. The longest name
+    wins, so @Customer Care is not read as @Customer. A specialist's name is checked
+    before this (fabric.parse_mention): an agent addressed by name answers itself."""
+    t = (text or "").strip()
+    if not t.startswith("@"):
+        return None
+    best = None
+    for d in departments(cfg, store):
+        if not d["members"]:
+            continue
+        m = re.match(r"@" + _dept_pattern(d["name"]) + r"(?![A-Za-z0-9])[\s:,]*(.*)", t, re.S | re.I)
+        if m and m.group(1).strip() and (best is None or len(d["name"]) > len(best[0]["name"])):
+            best = (d, m.group(1).strip())
+    return best
+
+
+def addresses(cfg: dict, store) -> dict:
+    """Who can be addressed with @ in a chat: the specialists, then the departments of
+    the open company with their heads. One list for every composer's suggestions."""
+    mem = membership(cfg, store)
+    # people who work in another of the person's companies are that company's
+    away = {str(m).lower() for rec in (cfg.get("companies") or {}).values() if isinstance(rec, dict)
+            for d in ((rec.get("office") or {}).get("departments") or []) if isinstance(d, dict)
+            for m in d.get("members") or []} - {m.lower() for m in mem["of"]}
+    agents = [{"name": s["name"], "title": (mem["of"].get(s["name"]) or {}).get("title", ""),
+               "dept": (mem["of"].get(s["name"]) or {}).get("dept", "")}
+              for s in store.list_subagents()
+              if s["name"] != AUDITOR and s["name"].lower() not in away]
+    depts = [{"name": d["name"], "head": d["head"], "hex": d["hex"],
+              "people": len(d["members"]), "desk": bool(d["desk"])}
+             for d in mem["departments"]]
+    return {"agents": agents, "departments": depts}
+
+
 # ---------------------------------------------------------------------------
 # The independent auditor: every finished task is checked by an agent that did none
 # of the work and is started by nobody who did
@@ -1535,7 +1578,7 @@ def review_line(r: dict) -> str:
 # Words: the lead's context and the terminal
 # ---------------------------------------------------------------------------
 
-def note(cfg: dict, store, desks: bool = True) -> str:
+def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") -> str:
     """One paragraph for the lead agent: the company and who heads what, so "ask
     Finance" means the finance desk and not a guess. `desks=False` for a forwarded
     turn's team door, which offers `delegate` and `huddle` and no `run_flow`."""
@@ -1552,9 +1595,16 @@ def note(cfg: dict, store, desks: bool = True) -> str:
     return ("\n\nYOUR COMPANY" + (f" ({pr['name']})" if pr["name"] else "")
             + (f". Its objective, in the person's words: {pr['objective']}" if pr["objective"] else "")
             + ". The specialists are organised in departments:\n" + "\n".join(lines)
-            + ("\nWork for a department goes to its head, or to its desk with run_flow and the "
-               "task as the input." if desks else "\nWork for a department goes to its head.")
-            + " Work that spans departments goes to each head."
+            # Reported as "when I asked Aria to do something, no agents were invoked":
+            # told only that work "goes to its head", a lead on Claude Code searched the
+            # web itself. The department is a tool now, and the lead is told to use it.
+            + (f"\nWhen a request is real work and a department fits it, hand it to that "
+               f"department with {tool} {{\"department\": name, \"task\": a self-contained "
+               f"brief}}: its head leads it, its people do it, and it comes back signed off. "
+               f"Do not do a department's work yourself. Work that spans departments goes to "
+               f"each one; then put the answers together and say which department did what. "
+               f"Answer yourself only small talk, questions about this conversation, or when "
+               f"no department fits or the person asks you to.")
             + (" When a department's desk finishes a task, an independent auditor checks it "
                "and the verdict comes back with the result; you do not need to ask for that "
                "check, and you cannot skip it." if audit_on(cfg) and desks else "")

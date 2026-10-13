@@ -197,7 +197,7 @@ SAFE_TOOLS = {
     "port_openclaw_plugin", "verify_openclaw_port",
     # the team: each of these is its own action, decided by the gate (agent.invoke,
     # agent.message, agent.huddle, skill.use)
-    "delegate", "huddle", "ask_agent", "run_flow", "use_skill",
+    "delegate", "huddle", "ask_agent", "run_flow", "department_task", "use_skill",
     # the community's shared notes (pool.py): read only, and UNTRUSTED (agent.py)
     "community_recall",
     # this OS's own records and looks. The ones that write something an agent reads
@@ -2680,6 +2680,24 @@ class Toolbox(usersmod.Scoped):
         head = (f"[flow {defn['name']} · {res['status']} · {res['delegations']} delegations]")
         return f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}"
 
+    async def department_task(self, department: str, task: str, _conv: str = "") -> str:
+        """Hand a task to a department of the company: a run of its desk, led by its
+        head, signed off by the bosses above it and checked by the auditor before the
+        answer comes back. The gate decided it as `agent.invoke` on the desk's flow
+        (policy.action_of, with the desk the agent loop resolved), so a deny written
+        for the desk refuses this too."""
+        if not self.fabric:
+            return "[error] fabric not available"
+        try:
+            got = await self.fabric.department_task(department, task, conversation_id=_conv or "",
+                                                    decided=True)
+        except (ValueError, PermissionError) as e:
+            return f"[error] {e}"
+        res = got["result"]
+        head = (f"[{got['department']} · {res['status']} · led by {got['head'] or 'its head'} · "
+                f"{res['delegations']} hand-overs]")
+        return f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}"
+
     async def telegram_send(self, message: str, chat_id: int = 0) -> str:
         """`chat_id` 0 means the owner's chat. It exists so work that arrived from a
         group can answer in that group rather than privately to the owner, which is a
@@ -3872,7 +3890,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name == "create_app" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task") else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -4784,6 +4802,20 @@ TOOL_SCHEMAS = [
             "properties": {"flow": {"type": "string"},
                            "input": {"type": "string", "description": "what to hand this run (optional)"}},
             "required": ["flow"],
+        },
+    },
+    {
+        "name": "department_task",
+        "description": "Give a task to one of the company's departments (see YOUR COMPANY in your "
+                       "instructions). Its head leads it with the department's people, the bosses "
+                       "above it sign the work off and an auditor checks it, then the result comes "
+                       "back to you. Prefer this to doing the work yourself whenever a department "
+                       "fits: that is what the departments are for.",
+        "parameters": {
+            "type": "object",
+            "properties": {"department": {"type": "string", "description": "The department's name, e.g. 'Sales'."},
+                           "task": {"type": "string", "description": "Self-contained task: the department sees nothing else."}},
+            "required": ["department", "task"],
         },
     },
     {

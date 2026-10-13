@@ -6781,6 +6781,11 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
     digest = briefmod.digest(items, flow["name"]) if items else ""
     for sink in sinks:
         kind = sink.get("kind")
+        if kind == "origin" and surface == "chat":
+            # asked in a conversation (`@Sales …`, the lead's department_task): the answer
+            # is the reply there, so it is not announced a second time
+            done.append("chat")
+            continue
         if kind == "origin":
             kind = {"telegram": "telegram", "whatsapp": "whatsapp",
                     "webhook": "notify", "task": "notify",
@@ -11261,6 +11266,14 @@ async def api_company_task(body: dict, request: Request):
             "department": str(b.get("department") or "")}
 
 
+@app.get("/api/chat/addresses")
+async def api_chat_addresses():
+    """Who `@` reaches in a chat: the specialists and the open company's departments.
+    Every composer's suggestions read this one list (company.addresses)."""
+    from . import company as companymod
+    return companymod.addresses(state["cfg"], state["store"])
+
+
 @app.post("/api/company/audit")
 async def api_company_audit(body: dict):
     """Check a department's finished task again, or for the first time (one that
@@ -14325,10 +14338,20 @@ async def _run_chat(cid: str, data: dict):
         # other, each on its own brain, and every turn lands as that agent's bubble
         huddle_hit = fabricmod.parse_huddle(store, text)
         mention = None if huddle_hit else fabricmod.parse_mention(store, text)
+        # '@Sales find ten clinics' gives the task to a DEPARTMENT: a run of its desk,
+        # led by its head, signed off and checked like any department task. A specialist
+        # addressed by name was checked first and answers itself.
+        dept_hit = None
+        if not (huddle_hit or mention):
+            from . import company as _companymod
+            try:
+                dept_hit = _companymod.parse_department(cfg, store, text)
+            except Exception:
+                dept_hit = None
         # A message trigger can start a flow from the chat too. `@name` is resolved first
         # and always wins: an explicit address is not a pattern to be second-guessed.
         flow_hit = None
-        if not mention and not huddle_hit:
+        if not mention and not huddle_hit and not dept_hit:
             try:
                 flow_hit = flowsmod.match_message(store, text, surface="gui")
             except Exception:
@@ -14337,7 +14360,7 @@ async def _run_chat(cid: str, data: dict):
         # trigger go to the specialist / the huddle / the flow even when the machine's
         # brain is Claude Code. Checked in the wrong order, every `@toolsmith build a
         # tool` was forwarded to Claude Code, which built it itself.
-        if model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit):
+        if model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit or dept_hit):
             # Engine = Claude Code: delegate the turn to the coding agent already
             # installed on this machine. It keeps AgentOS's turn lifecycle — working
             # indicator, global turn slot, Stop, persistence — because its stream is
@@ -14538,6 +14561,37 @@ async def _run_chat(cid: str, data: dict):
             usage = res.get("usage") or {}
             result = {"content": content, "steps": [],
                       "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
+        elif dept_hit:
+            dept, task = dept_hit
+            from . import company as _companymod
+            flow = _companymod.desk_for(cfg, store, dept["name"])   # a sentence when it has none
+            head = dept.get("lead") or ""
+            model = state["fabric"].resolve_model({"name": flow["name"],
+                                                   "model": flow.get("model") or ""})
+            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model,
+                          "uid": owner, "speaker": head}
+            knowledge.turn_started()
+            started = True
+            await evsend({"type": "turn_start", "model": model, "speaker": head,
+                          "department": dept["name"]})
+            await evsend({"type": "status", "message": f"{dept['name']} has it"
+                          + (f": {head} leads" if head else "")})
+            try:
+                got = await state["fabric"].department_task(
+                    dept["name"], task, conversation_id=cid, approver=approver,
+                    surface="gui", ui_emit=evsend, agent_slot=turns[cid])
+            except PermissionError as e:
+                raise RuntimeError(str(e))
+            res = got["result"]
+            content = res["content"] or (f"({res['status']}: {res['fault']})" if res["fault"]
+                                         else f"({res['status']})")
+            header = f"▦ {dept['name']} · {res['status']}\n\n"
+            if not res["content"]:
+                await evsend({"type": "text_delta", "text": header + content})
+            usage = res.get("usage") or {}
+            result = {"content": content, "steps": [], "speaker": head,
+                      "department": dept["name"],
+                      "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
         elif huddle_hit:
             names, topic = huddle_hit
             turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": "huddle",
@@ -14640,6 +14694,8 @@ async def _run_chat(cid: str, data: dict):
                                **({"model": model} if model and not result.get("engine") else {}),
                                # a specialist addressed by name answered, and wears its face
                                **({"speaker": result["speaker"]} if result.get("speaker") else {}),
+                               # a department answered: its head's face, its name on the bubble
+                               **({"department": result["department"]} if result.get("department") else {}),
                                # a huddle: the content is one line per turn (fabric.huddle_text)
                                **({"huddle": result["huddle"]} if result.get("huddle") else {})})
             store.touch_conversation(cid)

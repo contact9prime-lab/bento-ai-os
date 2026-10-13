@@ -118,6 +118,8 @@ function of3Layout(){
   companyCards();
   officeLine();
   OF3.dirty=true;
+  // a renderer bound to another host (the desktop scene, a closed window) is no use here
+  if(OF3.cv&&OF3.cv.parentElement!==sc)of3Dispose();
   if(OF3.r){of3Size();of3Build()}else of3Ensure();
   if(officeAwake())officeDraw();
   officeKick();

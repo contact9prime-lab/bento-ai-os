@@ -247,11 +247,12 @@ def test_the_lead_is_told_how_the_team_is_organised(tmp_path):
     plan, _ = company.normalize(company.template_plan(["finance"], "Acme"), _tools())
     company.apply(cfg, store, plan, ALL_MAIL)
     n = company.note(cfg, store)
-    assert "YOUR COMPANY (Acme)" in n and "Finance: head finance-lead" in n and "run_flow" in n
-    door = company.note(cfg, store, desks=False)
-    assert "run_flow" not in door and "Desk:" not in door, "a team door has no run_flow"
+    assert "YOUR COMPANY (Acme)" in n and "Finance: head finance-lead" in n and "department_task" in n
+    door = company.note(cfg, store, desks=False, tool="mcp__bento__department_task")
+    assert "Desk:" not in door and "mcp__bento__department_task" in door
     assert "company.note(self.cfg, store)" in (ROOT / "agentos/agent.py").read_text()
-    assert "company.note(cfg, store, desks=False)" in (ROOT / "agentos/executors.py").read_text()
+    assert ('company.note(cfg, store, desks=False, tool="mcp__bento__department_task")'
+            in (ROOT / "agentos/executors.py").read_text())
 
 
 def test_the_office_keeps_what_makes_a_room_a_department(tmp_path):

@@ -294,6 +294,10 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "folder.read", "fs:*"
     if name == "run_flow":
         return "agent.invoke", f"agent:flow/{args.get('flow', '') or '*'}"
+    if name == "department_task":
+        # the desk the agent loop resolved (`_desk`, never the model's), so a grant or a
+        # deny on the desk's flow decides a department's task the way it decides run_flow
+        return "agent.invoke", f"agent:flow/{args.get('_desk', '') or '*'}"
     if name == "delegate":
         return "agent.invoke", f"agent:subagent/{args.get('subagent', '') or '*'}"
     # default: same "<tool> <command-or-args>" string the legacy Policies app matches,

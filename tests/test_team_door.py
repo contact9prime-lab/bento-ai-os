@@ -86,7 +86,7 @@ def test_a_forwarded_turn_hands_over_through_the_gate(tmp_path, monkeypatch):
     assert said == "The toolsmith built it."
     assert "YOU LEAD A TEAM" in seen["context"] and "toolsmith: You are the toolsmith" in seen["context"]
     assert "hand that part over" in seen["context"] and "who did what" in seen["context"]
-    assert seen["tools"] == ["create_flow", "delegate", "huddle", "list_flows", "schedule_task"], \
+    assert seen["tools"] == ["create_flow", "delegate", "department_task", "huddle", "list_flows", "schedule_task"], \
         "the door offers the team, missions and schedules, and nothing else"
     assert handed == [("toolsmith", "build a VCP scanner", "c1")] and "made tools/vcp.py" in seen["out"]
     assert "[denied] no tool called 'run_command'" in seen["bad"]
@@ -150,7 +150,8 @@ def test_the_built_in_lead_knows_its_team(tmp_path):
 
 def test_an_address_wins_over_the_brain():
     src = (ROOT / "agentos/server.py").read_text()
-    assert 'if model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit):' in src
+    assert ('if model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit or dept_hit):'
+            in src), "a department addressed by name is not forwarded either"
     assert "execmod.open_team_door(" in src
     assert 'startswith(f"mcp__{execmod.BRIDGE_SERVER}__")' in src, "one card per hand-over"
     for f in ("telegram.py", "whatsapp.py"):

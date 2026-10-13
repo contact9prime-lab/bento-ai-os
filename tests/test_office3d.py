@@ -277,6 +277,15 @@ def test_office_hq_is_a_scene_of_its_own():
     assert "kiosk" in (JS / "24h-kiosk.js").read_text() and "IMMERSIVE.scene==='hq'" in (JS / "24h-kiosk.js").read_text()
 
 
+def test_the_window_takes_the_renderer_from_the_scene():
+    # Reported as "I cannot see the existing office": with Office HQ as the scene, the
+    # window opened dark because the scene's renderer kept drawing into the scene.
+    i = FLAT.index("function renderOffice(")
+    take = FLAT[i:FLAT.index("OFFICE.w=w;", i)]
+    assert "of3Dispose();" in take
+    assert "if(OF3.cv&&OF3.cv.parentElement!==sc)of3Dispose();" in SRC
+
+
 def test_the_office_doc_shows_it():
     doc = (ROOT / "docs/office.md").read_text()
     assert "screenshots/office-3d.png" in doc and "screenshots/office-3d-room.png" in doc

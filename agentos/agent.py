@@ -834,6 +834,16 @@ class Agent:
             # could name a conversation could file an app under somebody else's chat
             args = {**{k: v for k, v in args.items() if k != "_conv"},
                     "_conv": self.conversation_id or ""}
+        if name == "department_task":
+            # which desk, resolved here from the department named; a model that could
+            # name the desk could have the gate decide one flow and the tool run another
+            from . import company as _co
+            args = {k: v for k, v in args.items() if k not in ("_desk", "_conv")}
+            try:
+                desk = _co.desk_for(self.cfg, self.toolbox.store, str(args.get("department") or ""))["name"]
+            except Exception:
+                desk = ""
+            args.update({"_desk": desk, "_conv": self.conversation_id or ""})
         if name in APP_BOUND_TOOLS:
             # the app this run works for (App Studio building it, a schedule that belongs
             # to it): the agent's and never the model's, or a model could write another

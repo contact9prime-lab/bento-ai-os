@@ -891,6 +891,15 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 .cp-attach{flex:none;width:30px;height:30px;border-radius:var(--r-full);color:var(--dim);display:flex;align-items:center;justify-content:center;font-size:var(--fs-md)}
 .cp-attach:hover{background:rgba(255,255,255,.08);color:var(--txt)}
 #composer.dropping,.cp-inbar.dropping{outline:2px dashed var(--acc);outline-offset:-2px}
+/* @ suggestions (10d-mentions.js): agents and departments, above the composer */
+.ats{position:fixed;z-index:9600;max-height:min(340px,50vh);overflow:auto;padding:4px;border-radius:var(--r-md,12px);
+  background:var(--bg2);border:1px solid var(--line);box-shadow:var(--el-4,0 10px 30px rgba(0,0,0,.35))}
+.ats-row{display:flex;align-items:center;gap:10px;min-height:var(--tap,40px);padding:4px 10px;border-radius:var(--r-sm,8px);cursor:pointer}
+.ats-row.on,.ats-row:hover{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+.ats-row .av,.ats-dot{width:26px;height:26px;flex:none;border-radius:50%;image-rendering:pixelated}
+.ats-dot{display:inline-grid;place-items:center;color:#fff;font-size:13px;background:var(--bg3)}
+.ats-name{font-weight:600;white-space:nowrap}
+.ats-sub{color:var(--dim);font-size:var(--fs-sm,12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 /* ===== gallery, spaces, timeline, audit =====
    Named 09a- deliberately: CSS parts are concatenated in filename order and
    16-glass.css must stay last, so anything numbered 17+ would land after it and
@@ -14033,7 +14042,7 @@ function handle(ev){
       if(_cur)CUR_ENGINE={engine:EXEC_TITLES[ev.model]?ev.model:'',
                           model:EXEC_TITLES[ev.model]?'':(ev.model||''),
                           // `@researcher …` is the researcher answering, in its own face
-                          speaker:ev.speaker||'',
+                          speaker:ev.speaker||'',department:ev.department||'',
                           // `@a @b …` is a huddle: the room answers, each in turn
                           huddle:ev.huddle||null};
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
@@ -14443,7 +14452,9 @@ function flushText(){
    its own face, or the agent labelled with whatever engine is running it. */
 function curWho(){
   if(CUR_ENGINE.huddle&&typeof huddleWho==='function')return huddleWho(CUR_ENGINE.huddle);
-  const sp=CUR_ENGINE.speaker;
+  const sp=CUR_ENGINE.speaker,dp=CUR_ENGINE.department;
+  // `@Sales …`: the department answers, in its head's face, under its own name
+  if(dp)return chatWho(sp||'@agent','▦ '+esc(dp)+(sp?' · @'+esc(sp):''));
   return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
     :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
 }
@@ -14744,13 +14755,14 @@ async function openConv(cid){
     if(msg.meta&&msg.meta.freetalk&&typeof freeTalkRender==='function'&&freeTalkRender(msg))return;
     const m=document.createElement('div');m.className='msg '+msg.role;
     if(msg.role==='user'){m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
-    else{const sp=msg.meta&&msg.meta.speaker;
+    else{const sp=msg.meta&&msg.meta.speaker,dp=msg.meta&&msg.meta.department;
       // a specialist's reply is stored with a first line naming it and its model;
       // with its face in the header that line would say the same thing twice
       let body=msg.content||'', spModel='';
       if(sp){const h=body.match(/^@[\w-]+ · ([^\n]*)\n\n/);if(h){spModel=h[1];body=body.slice(h[0].length)}}
       const hud=msg.meta&&msg.meta.huddle;
-      m.innerHTML='<div class="who">'+(hud?huddleWho(hud):sp?chatWho(sp,'@'+esc(sp)+(spModel?' '+brainChip(spModel):'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
+      if(dp){const h=body.match(/^▦ [^\n]* · [^\n]*\n\n/);if(h)body=body.slice(h[0].length)}
+      m.innerHTML='<div class="who">'+(hud?huddleWho(hud):dp?chatWho(sp||'@agent','▦ '+esc(dp)+(sp?' · @'+esc(sp):'')):sp?chatWho(sp,'@'+esc(sp)+(spModel?' '+brainChip(spModel):'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
       if(hud){m.insertAdjacentHTML('beforeend',huddleCard(huddleParse(body),hud,true));feed.appendChild(m);return}
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';
@@ -15330,6 +15342,99 @@ function fileChips(root){
     fileChipWire(b);
   });
 }
+/* ---------------- @ suggestions: an agent or a department, by name ----------------
+   Typing @ at the start of a message offers the people and the departments it can
+   reach: `@nora …` is the specialist answering itself (fabric.parse_mention), `@Sales …`
+   is a run of that department's desk (company.parse_department), `@a @b …` a huddle.
+   One list from the server (/api/chat/addresses → company.addresses), one popup, and
+   every composer gets it by delegation: Chat (#input), the prompt bar (#omni-in) and
+   every app's agent panel, the Office's included (.cp-in). Nothing is sent by picking;
+   it only writes the address.
+   Faces: GUI and SUI are this list. TUI and the channels type the same @ by hand, and
+   `bento company` lists the departments. */
+var ATS={data:null,at:0,el:null,box:null,items:[],sel:0,start:0,end:0};
+var ATS_TTL=30000;
+function atsLoad(){
+  if(ATS.data&&Date.now()-ATS.at<ATS_TTL)return Promise.resolve(ATS.data);
+  return fetch('/api/chat/addresses').then(r=>r.ok?r.json():null).then(j=>{
+    if(j&&Array.isArray(j.agents)){ATS.data=j;ATS.at=Date.now()}return ATS.data}).catch(()=>ATS.data);
+}
+function atsForget(){ATS.at=0}
+/* The address being typed: only in the leading run of @words, since only an address
+   at the start routes a message. */
+function atsToken(el){
+  const v=el.value||'',caret=el.selectionStart==null?v.length:el.selectionStart;
+  const head=v.slice(0,caret);
+  const m=head.match(/^((?:@[^@\s][^@]*?\s+)*)@([^@]*)$/);
+  if(!m)return null;
+  const q=m[2];
+  if(q.length>40||/\n/.test(q))return null;
+  return {q,start:m[1].length,end:caret};
+}
+function atsMatch(d,q){
+  const k=q.toLowerCase().replace(/[\s_-]+/g,'');
+  const has=s=>String(s||'').toLowerCase().replace(/[\s_&-]+/g,'').startsWith(k)
+    ||String(s||'').toLowerCase().split(/[\s_&-]+/).some(w=>w.startsWith(q.toLowerCase().trim()));
+  const out=[];
+  (d.departments||[]).forEach(x=>{if(!k||has(x.name))out.push({kind:'dept',name:x.name,
+    sub:(x.head?'head '+x.head+' · ':'')+x.people+' '+(x.people===1?'person':'people'),hex:x.hex,head:x.head,desk:x.desk})});
+  (d.agents||[]).forEach(x=>{if(!k||has(x.name)||has(x.title))out.push({kind:'agent',name:x.name,
+    sub:[x.title,x.dept].filter(Boolean).join(' · ')||'specialist'})});
+  return out.slice(0,8);
+}
+function atsClose(){if(ATS.box){ATS.box.remove();ATS.box=null}ATS.items=[];ATS.el=null}
+function atsPaint(){
+  const el=ATS.el;if(!el||!ATS.items.length){atsClose();return}
+  if(!ATS.box){ATS.box=document.createElement('div');ATS.box.className='ats';ATS.box.setAttribute('role','listbox');
+    document.body.appendChild(ATS.box);
+    // a tap chooses; pointerdown so the field keeps its focus and caret
+    ATS.box.addEventListener('pointerdown',e=>{const r=e.target.closest('[data-i]');if(!r)return;
+      e.preventDefault();atsPick(+r.dataset.i)})}
+  ATS.box.innerHTML=ATS.items.map((x,i)=>`<div class="ats-row${i===ATS.sel?' on':''}" data-i="${i}" role="option" aria-selected="${i===ATS.sel}">
+    ${x.kind==='dept'?`<span class="ats-dot" style="background:${esc(x.hex||'#64748b')}">▦</span>`
+      :(typeof avatarImg==='function'&&avatarImg(x.name,'ats-av'))||'<span class="ats-dot">@</span>'}
+    <span class="ats-name">${x.kind==='dept'?esc(x.name):'@'+esc(x.name)}</span>
+    <span class="ats-sub">${x.kind==='dept'?(x.desk?'department · ':'department, no desk · '):''}${esc(x.sub)}</span></div>`).join('');
+  const r=el.getBoundingClientRect(),w=Math.min(360,innerWidth-32);
+  ATS.box.style.width=w+'px';
+  ATS.box.style.left=Math.max(16,Math.min(r.left,innerWidth-w-16))+'px';
+  // above the field when there is room (composers sit at the bottom), else below it
+  const h=ATS.box.offsetHeight;
+  ATS.box.style.top=(r.top-h-6>8?r.top-h-6:r.bottom+6)+'px';
+}
+function atsPick(i){
+  const x=ATS.items[i],el=ATS.el;if(!x||!el)return;
+  const v=el.value,addr='@'+(x.kind==='dept'?x.name:x.name)+' ';
+  el.value=v.slice(0,ATS.start)+addr+v.slice(ATS.end).replace(/^\S*\s?/,'');
+  const p=ATS.start+addr.length;try{el.setSelectionRange(p,p)}catch(e){}
+  atsClose();el.focus();el.dispatchEvent(new Event('input',{bubbles:true}));
+}
+function atsInput(el){
+  const t=atsToken(el);if(!t){atsClose();return}
+  atsLoad().then(d=>{
+    if(!d||document.activeElement!==el){atsClose();return}
+    const t2=atsToken(el);if(!t2){atsClose();return}
+    ATS.el=el;ATS.start=t2.start;ATS.end=t2.end;
+    const items=atsMatch(d,t2.q);
+    if(!items.length){atsClose();return}
+    if(ATS.items.map(x=>x.name).join('|')!==items.map(x=>x.name).join('|'))ATS.sel=0;
+    ATS.items=items;atsPaint();
+  });
+}
+var ATS_FIELDS='#input,#omni-in,.cp-in';
+document.addEventListener('input',e=>{const el=e.target;if(el&&el.matches&&el.matches(ATS_FIELDS))atsInput(el)},true);
+// capture: while the list is open, the arrows and Enter belong to it, not to the send
+document.addEventListener('keydown',e=>{
+  if(!ATS.box||!ATS.el||e.target!==ATS.el)return;
+  const n=ATS.items.length;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ATS.sel=(ATS.sel+(e.key==='ArrowDown'?1:n-1))%n;atsPaint()}
+  else if(e.key==='Enter'||e.key==='Tab'){atsPick(ATS.sel)}
+  else if(e.key==='Escape'){atsClose()}
+  else return;
+  e.preventDefault();e.stopImmediatePropagation();
+},true);
+document.addEventListener('focusout',e=>{if(e.target===ATS.el)setTimeout(()=>{if(document.activeElement!==ATS.el)atsClose()},120)},true);
+addEventListener('resize',()=>{if(ATS.box)atsPaint()});
 /* ================= settings app ================= */
 /* ---- preference primitives: every row is label+description left, control right ---- */
 function pGroup(title,rows,o){
@@ -26710,7 +26815,9 @@ function renderOffice(el,w){
   if(OFFICE.w===w&&el.querySelector('.of-wrap')){officeLoad();return}
   // the desktop scene may be holding the Office: the window takes it over, and the
   // scene gets it back when the window closes (officeClose)
-  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;OFFICE.fit=false;
+  // The 3D renderer goes with the scene: left alive, it kept drawing into the scene's
+  // canvas while the window's stayed dark (reported as "I cannot see the office").
+  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;OFFICE.fit=false;of3Dispose();
   OFFICE.w=w;OFFICE.people={};OFFICE.papers=[];OFFICE.bursts=[];OFFICE.pops=[];OFFICE.sheets={};
   OFFICE.static=matchMedia('(prefers-reduced-motion: reduce)').matches;
   try{OFFICE.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){OFFICE.font='sans-serif'}
@@ -30186,6 +30293,8 @@ function of3Layout(){
   companyCards();
   officeLine();
   OF3.dirty=true;
+  // a renderer bound to another host (the desktop scene, a closed window) is no use here
+  if(OF3.cv&&OF3.cv.parentElement!==sc)of3Dispose();
   if(OF3.r){of3Size();of3Build()}else of3Ensure();
   if(officeAwake())officeDraw();
   officeKick();

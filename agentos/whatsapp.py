@@ -602,7 +602,21 @@ class WhatsAppBridge(usersmod.Scoped):
         engine = execmod.resolve_engine(self.cfg)
         mention = (fabricmod.parse_mention(self.store, text)
                    if getattr(self.toolbox, "fabric", None) else None)
-        if mention:
+        dept_hit = None
+        if not mention and getattr(self.toolbox, "fabric", None):
+            from . import company as _companymod
+            dept_hit = _companymod.parse_department(self.cfg, self.store, text)
+        if dept_hit:
+            # '@Sales …' from the phone is a task for that department, as it is at the desk
+            dept, task = dept_hit
+            _k.turn_started()
+            try:
+                reply = await fabricmod.department_reply(self.toolbox.fabric, dept["name"], task,
+                                                         cid, approver, "whatsapp")
+            finally:
+                _k.turn_ended()
+            result = {"steps": []}
+        elif mention:
             # '@toolsmith …' from the phone goes straight to that specialist, as it does
             # on Telegram and at the desk — whatever the machine's brain is
             defn, task = mention
