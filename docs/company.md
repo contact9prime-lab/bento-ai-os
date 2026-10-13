@@ -7,10 +7,15 @@ department's room in the Office, and each department can be given work. When a
 department finishes a task, its head signs it off, then each boss above it, up to your
 agent. Then an independent auditor checks it before the answer reaches you.
 
+Give the company an **objective** and the draft also has the work it needs: missions that
+repeat (some on a schedule) and tasks to start now, each given to a department. You can
+keep **several companies**, each with its own office, people, objective and work. A
+services firm and a factory can live side by side without seeing each other.
+
 ## Set it up
 
-**In the Office:** press **▦ Company**, write a sentence about the business, and press
-**Draft my company**. You can also tick the departments you want. With none ticked, your
+**In the Office:** press **▦ Company**, write a sentence about the business, say what it
+should achieve under **Objective** if you like, and press **Draft my company**. You can also tick the departments you want. With none ticked, your
 AI picks the ones your business needs. The setup wizard's crew step has a **Set up a
 whole company** button that opens the same panel.
 
@@ -26,6 +31,7 @@ counts what will be made, and the count changes as you untick.
 ```
 bento company setup "a dental scheduling startup, fifteen people, selling to clinic chains"
 bento company setup "..." --departments admin,finance,sales    # exactly these
+bento company setup "..." --objective "win ten clinic clients this quarter"
 bento company setup "..." --words      # skip the AI, use the catalogue as it is
 bento company templates                # the departments to choose from
 ```
@@ -34,6 +40,99 @@ It shows the same plan and asks before making anything (`--yes` skips the questi
 
 With no AI set up, the catalogue fills the plan in as it is, with your company's name
 and description in every persona. The panel says when that happened.
+
+## The objective, and the work it calls for
+
+An objective is your own words for what the company is for: "sign ten new clinic clients
+this quarter", "cut defects in half by June". With one, the draft has a section **For the
+objective** under the departments:
+
+- **Missions** are work that repeats: "Find five clinics a day that fit, and draft the
+  first email for each". Most have a schedule (every day at 08:30, every Friday at 16:00);
+  a few are started by hand.
+- **Tasks to start** are one piece of work each: "List twenty clinics in Pune that should
+  be talking to us".
+
+Each belongs to one department, and you can untick any of them. The button counts what
+will be made.
+
+![The drafted work for the objective: missions with their schedules, and tasks to start](screenshots/company-objective.png)
+
+What saving makes:
+
+- **Each mission is a mission in Missions**, with its department's people as its team
+  and the objective in its brief. It starts **switched off**, like a desk: the schedule is
+  there but nothing runs until you switch the mission on, which is when it gets its
+  permissions. A mission with the same name that is already here is kept as it is.
+- **Each task waits on the task board** as **to do**, with **Start it** and **Not now**.
+  Start it runs the department's desk with that task, like any task you type.
+
+A mission is its department's work, so its runs show on the department's card and the
+task board, and every finished run goes up the same sign-off chain and past the same
+auditor as the desk's.
+
+![The company with its objective, and the tasks waiting to be started](screenshots/company-todo.png)
+
+Your agent is told the objective, so it can keep it in mind when you ask it for
+something.
+
+**Already have the departments?** Press **Plan the work** (or **Set an objective**) at the
+top of ▦ Company. It drafts missions and tasks for the departments you have, shows them,
+and makes what you keep ticked.
+
+```
+bento company objective "win ten clinic clients this quarter"   # draft, show, ask, make
+bento company todo                                              # the tasks waiting
+bento company start 3fa2b1c9                                    # start one (server running)
+```
+
+With no AI set up, each department gets the standing mission the catalogue has for it,
+pointed at your objective, and its usual first task. The catalogue includes **Production**,
+**Quality** and **Delivery** for makers and services firms.
+
+## Several companies
+
+A person can keep up to eight companies. Each one is a whole setup of its own: its office
+(rooms, look and name), its departments and people, its objective, its missions and tasks,
+and its own **space**, so its chats, memories and runs stay with it.
+
+**Start one:** ▦ Company → **＋ New company**. Give it a name, a line about what it does and
+its objective. It opens straight away in an empty office of its own, and the setup sheet
+follows with your words filled in. The company you were in is kept exactly as it was.
+
+![A new company: a name, what it does, and what it should achieve](screenshots/company-new.png)
+
+**Switch:** the **Company** list at the top of the panel. The office, the cards, the task
+board and the space chip in the menu bar all change to that company. Only the screen you
+switched on moves: a phone on Telegram stays in the space it was in.
+
+![Forgeline, a machine shop: its own rooms, people and look](screenshots/company-forgeline.png)
+
+![Back in Brightdesk, the consultancy: a different office altogether](screenshots/company-brightdesk.png)
+
+How they stay apart:
+
+- **People belong to one company.** If a draft would use a name that already works in
+  another of your companies, this company gets its own person with the company's name on
+  it (`sales-lead-forgeline`). Your other company's people are not on this office's floor.
+- **Desks and missions are named for their company** once you have more than one
+  (`forgeline-sales-desk`), so two companies can each have a Sales desk.
+- **Each company's work is checked by its own bosses.** A scheduled mission of a company
+  you are not in still runs, and its sign-off chain and auditor are that company's.
+- The first company gets its own space when you start the second, and its desks and
+  missions move into it. Chats and memories made before that stay where they were,
+  visible from every company.
+
+**Remove one** you are not in with `bento company drop NAME`. Its desks and missions are
+switched off, since nothing would sign their work off any more. Its agents, missions and
+space are kept.
+
+```
+bento company companies                       # your companies, the open one first
+bento company new Forgeline --about "a machine shop" --objective "cut defects in half"
+bento company open Brightdesk
+bento company drop Forgeline
+```
 
 ## What it makes
 
@@ -259,11 +358,16 @@ the same answer about who is in which department, so they never disagree.
 ## The three faces
 
 - **GUI:** the Office's ▦ Company panel and the cards over the rooms. On a phone the
-  panel is a sheet and the cards shrink to fit the room.
-- **TUI:** `bento company` shows, `setup` plans and makes, `task` hands out work,
+  panel is a sheet and the cards shrink to fit the room. The company list, **＋ New
+  company**, **Plan the work**, every tick and **Start it** are a fingertip wide.
+
+![The objective's work on a phone](screenshots/company-objective-phone.png)
+- **TUI:** `bento company` shows, `setup` plans and makes, `objective` drafts and makes
+  the work, `todo` and `start` list and start its tasks, `companies`, `new`, `open` and
+  `drop` keep several companies, `task` hands out work,
   `chain` shows and sets who reports to whom, `review` chooses who signs off,
-  `audit on|off` switches the auditor and `check` asks it to check a task. A task and a
-  check need the server running, because that is where the work runs.
+  `audit on|off` switches the auditor and `check` asks it to check a task. A task, a
+  start and a check need the server running, because that is where the work runs.
 - **SUI:** the same page. The desktop scenes (Office, Crew, Mind, World) show the
   departments. The Office scene shows no cards, because nothing under the windows can be
   tapped; the Mind's and the World's tags can be.

@@ -289,7 +289,15 @@ def view(cfg: dict, store) -> dict:
         if d.get("titles"):
             room["titles"] = {m: t for m, t in d["titles"].items() if m in members}
         rooms.append(room)
-    loose = [r for r in roster if r.lower() not in placed]
+    # somebody who works in another of the person's companies (company.py) is not on
+    # this company's open floor: each company is its own office
+    away = set()
+    for rec in ((cfg or {}).get("companies") or {}).values():
+        o = rec.get("office") if isinstance(rec, dict) else None
+        for d in (o or {}).get("departments") or [] if isinstance(o, dict) else []:
+            if isinstance(d, dict):
+                away.update(str(m).lower() for m in d.get("members") or [])
+    loose = [r for r in roster if r.lower() not in placed and r.lower() not in away]
     if loose or not office["departments"]:
         rooms.append({"kind": "floor", "name": FLOOR, "color": "slate", "members": loose})
     if office["meeting"]:
@@ -302,7 +310,8 @@ def view(cfg: dict, store) -> dict:
     one = facemod.buddy(cfg)
     if one:
         rooms = [r for r in rooms if r["kind"] in ("lead", "lounge")]
-    return {"office": office, "rooms": rooms, "agents": roster, "buddy": one, "brain": brain(store),
+    return {"office": office, "rooms": rooms, "agents": [r for r in roster if r.lower() not in away],
+            "buddy": one, "brain": brain(store),
             "looks": LOOKS,
             "style": STYLES[office["style"]], "styles": STYLES, "colors": COLORS,
             "decor": list(DECOR), "pets": list(PETS), "max_departments": MAX_DEPTS}

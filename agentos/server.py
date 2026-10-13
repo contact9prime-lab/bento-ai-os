@@ -11059,7 +11059,8 @@ async def api_company():
             "board": companymod.board(cfg, store, waiting),
             "catalogue": companymod.catalogue(), "brain": execmod.has_brain(cfg),
             "accounts": _company_accounts(cfg), "max_departments": companymod.MAX_DEPTS,
-            "brain_notes": companymod.brain(store)}
+            "brain_notes": companymod.brain(store),
+            "companies": companymod.companies(cfg), "max_companies": companymod.MAX_COMPANIES}
 
 
 @app.put("/api/company")
@@ -11073,6 +11074,10 @@ async def api_company_profile(body: dict):
         if k in (body or {}):
             cur[k] = teamlink.plain((body or {}).get(k), n, newlines=False)
             renamed = True
+    if "objective" in (body or {}):
+        cur["objective"] = teamlink.plain((body or {}).get("objective"),
+                                          companymod.OBJECTIVE_MAX, newlines=False)
+        companymod.record(state["store"], f"objective set: {cur['objective'] or '(none)'}")
     was = companymod.audit_on(cfg)
     was_review = companymod.review_mode(cfg)
     if "review" in (body or {}):
@@ -11151,6 +11156,10 @@ async def api_company_draft(body: dict):
     cfg, store = state["cfg"], state["store"]
     b = body or {}
     desc = teamlink.plain(b.get("description"), 1200, newlines=False)
+    goal = teamlink.plain(b.get("objective"), companymod.OBJECTIVE_MAX, newlines=False)
+    if not goal and not companymod.departments(cfg, store):
+        # a company started with its objective keeps it for its first setup
+        goal = companymod.objective(cfg)
     ids = [i for i in (b.get("departments") or []) if i in companymod.DEPARTMENTS]
     if len(desc) < 3 and not ids:
         return JSONResponse({"error": "say what the company does, or tick the departments "
@@ -11160,14 +11169,24 @@ async def api_company_draft(body: dict):
     if len(desc) >= 3:
         ask = desc + ("\nThey want exactly these departments: " + ", ".join(
             companymod.DEPARTMENTS[i]["label"] for i in ids) if ids else "")
-        system, prompt = companymod.design_prompt(ask, names)
+        system, prompt = companymod.design_prompt(ask, names, goal)
         raw, who = await execmod.ask_once(cfg, system, prompt, timeout=240)
         if raw:
             plan, dropped = companymod.read_plan(raw, names)
             if plan and plan.get("departments"):
                 how = "brain"
     if how != "brain":
-        plan, dropped = companymod.normalize(companymod.from_words(desc, ids), names)
+        raw_plan = companymod.from_words(desc, ids)
+        if goal:
+            raw_plan["work"] = companymod.work_from_words(goal, raw_plan["departments"])
+        plan, dropped = companymod.normalize(raw_plan, names)
+    if goal:
+        plan["company"]["objective"] = goal
+        if "work" not in plan:
+            # the brain made departments but no work: the catalogue drafts it for them
+            plan["work"] = companymod.work_from_words(goal, plan["departments"])
+    if not plan["company"].get("name") and companymod.profile(cfg).get("name"):
+        plan["company"]["name"] = companymod.profile(cfg)["name"]
     pv = companymod.preview(cfg, store, plan, _company_accounts(cfg),
                             talk=bool(b.get("talk", True)))
     return {"ok": True, "plan": plan, "preview": pv, "how": how,
@@ -11254,6 +11273,8 @@ async def api_company_audit(body: dict):
     if not run or run.get("kind") != "flow":
         return JSONResponse({"error": "no department task with that id"}, status_code=404)
     flow = store.get_flow(run.get("flow") or run.get("ref") or "")
+    if flow:
+        cfg = companymod.cfg_for(cfg, flow["name"])
     if not flow or not companymod.audit_scope(cfg, store, flow["name"]):
         return JSONResponse({"error": "that run is not a department's task"}, status_code=400)
     if run.get("status") not in companymod.AUDITED:
@@ -11267,6 +11288,186 @@ async def api_company_audit(body: dict):
             await state["broadcast_user"]({"type": "office"}, uid)
     asyncio.create_task(go())
     return {"ok": True, "run_id": rid, "department": companymod.audit_scope(cfg, store, flow["name"])["name"]}
+
+
+# ---- the objective and the work it calls for (company.py) ----
+
+async def _company_changed(spaces: bool = False) -> None:
+    uid = usersmod.current() or ""
+    for t in ("office", "agents", "avatars"):
+        await state["broadcast_user"]({"type": t}, uid)
+    await state["broadcast"]({"type": "fabric_defs"})
+    if spaces:
+        await state["broadcast_user"]({"type": "spaces_update"}, uid)
+
+
+@app.post("/api/company/work/draft")
+async def api_company_work_draft(body: dict):
+    """What the objective calls for, for the departments this company has: missions (some
+    on a schedule) and tasks. Writes nothing; the answer is the work and exactly what
+    making it would do. The brain drafts it, or with nothing answering the catalogue."""
+    from . import company as companymod, executors as execmod, teamlink
+    cfg, store = state["cfg"], state["store"]
+    goal = teamlink.plain((body or {}).get("objective") or companymod.objective(cfg),
+                          companymod.OBJECTIVE_MAX, newlines=False)
+    if len(goal.strip()) < 3:
+        return JSONResponse({"error": "say what the company is trying to achieve"}, status_code=400)
+    depts = companymod.departments(cfg, store)
+    if not depts:
+        return JSONResponse({"error": "set up the departments first: the work is given to them"},
+                            status_code=400)
+    names = [d["name"] for d in depts]
+    work, dropped, how, who = {}, [], "words", ""
+    system, prompt = companymod.work_prompt(companymod.profile(cfg), goal, depts)
+    raw, who = await execmod.ask_once(cfg, system, prompt, timeout=180)
+    if raw:
+        work, dropped = companymod.read_work(raw, names)
+        if work.get("missions") or work.get("tasks"):
+            how = "brain"
+    if how != "brain":
+        work = companymod.work_from_words(goal, depts)
+    return {"ok": True, "objective": goal, "work": work, "dropped": dropped, "how": how,
+            "who": who if how == "brain" else "",
+            "preview": companymod.preview_work(cfg, store, work, goal=goal),
+            "said": ("" if how == "brain" else
+                     "Nothing answered, so this was filled in from the catalogue." if execmod.has_brain(cfg) else
+                     "No brain is set up, so this was filled in from the catalogue.")}
+
+
+@app.post("/api/company/work/preview")
+async def api_company_work_preview(body: dict):
+    """The (possibly edited) work, recounted: the page asks after every untick."""
+    from . import company as companymod, teamlink
+    cfg, store = state["cfg"], state["store"]
+    goal = teamlink.plain((body or {}).get("objective") or companymod.objective(cfg),
+                          companymod.OBJECTIVE_MAX, newlines=False)
+    work, dropped = companymod.normalize_work((body or {}).get("work") or {},
+                                              [d["name"] for d in companymod.departments(cfg, store)])
+    return {"ok": True, "work": work, "dropped": dropped,
+            "preview": companymod.preview_work(cfg, store, work, goal=goal)}
+
+
+@app.post("/api/company/work/apply")
+async def api_company_work_apply(body: dict):
+    """Make the work: each mission a flow that starts OFF (its schedule armed when you
+    switch it on), each task a to-do on the company. Re-derives the preview."""
+    from . import company as companymod, teamlink
+    cfg, store = state["cfg"], state["store"]
+    goal = teamlink.plain((body or {}).get("objective") or companymod.objective(cfg),
+                          companymod.OBJECTIVE_MAX, newlines=False)
+    work, dropped = companymod.normalize_work((body or {}).get("work") or {},
+                                              [d["name"] for d in companymod.departments(cfg, store)])
+    if not work["missions"] and not work["tasks"]:
+        return JSONResponse({"error": "there is no mission or task in this"}, status_code=400)
+    rep = companymod.apply_work(cfg, store, work, goal)
+    cfgmod.save_config(cfg)
+    companymod.record(store, f"objective: {goal}; {len(rep['missions'])} missions made "
+                             f"({rep['scheduled']} on a schedule, all off), {rep['tasks']} tasks to start")
+    await _company_changed()
+    return {"ok": True, **rep, "dropped": dropped, "company": companymod.profile(cfg)}
+
+
+@app.post("/api/company/todo/{tid}/start")
+async def api_company_todo_start(tid: str, body: dict, request: Request):
+    """Start one of the objective's tasks: a run of its department's desk, like any task."""
+    from . import company as companymod
+    cfg, store = state["cfg"], state["store"]
+    try:
+        item = companymod.take_todo(cfg, tid)
+        flow = companymod.desk_for(cfg, store, item["department"])
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    surface = _client_surface((body or {}).get("surface"))
+    dec = state["pdp"].decide(MAIN, "agent.invoke", f"agent:flow/{flow['name']}",
+                              {"surface": surface, "risk": "safe"})
+    if dec.effect == "deny":
+        return JSONResponse({"error": dec.reason or "not permitted"}, status_code=403)
+    run_id = await _start_flow(flow, item["text"], origin={"surface": surface, "ref": _client_addr(request)})
+    companymod.mark_todo(cfg, tid, run_id)
+    cfgmod.save_config(cfg)
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {"ok": True, "run_id": run_id, "flow": flow["name"], "department": item["department"]}
+
+
+@app.delete("/api/company/todo/{tid}")
+async def api_company_todo_drop(tid: str):
+    from . import company as companymod
+    cfg = state["cfg"]
+    try:
+        item = companymod.take_todo(cfg, tid)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+    companymod.mark_todo(cfg, tid, drop=True)
+    cfgmod.save_config(cfg)
+    companymod.record(state["store"], f"task dropped: {item['text']}")
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {"ok": True}
+
+
+# ---- several companies, each its own office, objective, work and space ----
+
+@app.get("/api/companies")
+async def api_companies():
+    from . import company as companymod
+    return {"companies": companymod.companies(state["cfg"]),
+            "max": companymod.MAX_COMPANIES}
+
+
+@app.post("/api/companies")
+async def api_companies_create(body: dict):
+    """Start a new company and open it: an empty office, its objective and a space of its
+    own. The company that was open is kept whole and can be opened again."""
+    from . import company as companymod, teamlink
+    cfg, store = state["cfg"], state["store"]
+    b = body or {}
+    try:
+        row = companymod.create(cfg, store, teamlink.plain(b.get("name"), 48, newlines=False),
+                                teamlink.plain(b.get("about"), companymod.ABOUT_MAX, newlines=False),
+                                teamlink.plain(b.get("objective"), companymod.OBJECTIVE_MAX, newlines=False),
+                                surface=_client_surface(b.get("surface")))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(cfg)
+    companymod.record(store, f"company started: {row['name']}")
+    await _company_changed(spaces=True)
+    return {"ok": True, "company": row, "companies": companymod.companies(cfg)}
+
+
+@app.put("/api/companies/active")
+async def api_companies_switch(body: dict):
+    """Open another of your companies. This surface moves to its space; a phone on
+    Telegram keeps the one it is in."""
+    from . import company as companymod
+    cfg, store = state["cfg"], state["store"]
+    b = body or {}
+    hit = companymod.find(cfg, str(b.get("id") or b.get("name") or ""))
+    if not hit:
+        return JSONResponse({"error": "no company with that id or name"}, status_code=404)
+    try:
+        row = companymod.switch(cfg, store, hit["id"], surface=_client_surface(b.get("surface")))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(cfg)
+    companymod.record(store, f"opened company: {row['name']}")
+    await _company_changed(spaces=True)
+    return {"ok": True, "company": row, "companies": companymod.companies(cfg)}
+
+
+@app.delete("/api/companies/{cid}")
+async def api_companies_remove(cid: str):
+    """Take a company you are not in off your list. Its desks and missions are switched
+    off; its agents, missions and space stay."""
+    from . import company as companymod
+    cfg, store = state["cfg"], state["store"]
+    try:
+        rep = companymod.remove(cfg, store, cid)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(cfg)
+    companymod.record(store, f"company removed: {rep['removed']['name']}; "
+                             f"{len(rep['switched_off'])} missions switched off")
+    await _company_changed()
+    return {"ok": True, **rep, "companies": companymod.companies(cfg)}
 
 
 @app.get("/api/subagents")

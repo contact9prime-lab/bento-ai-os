@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.30 — 2026-10-13
+
+**Give the company an objective, and keep more than one company.** Asked for as "there has to be
+an objective defined by the user, and it would require missions, schedules and tasks … that user
+may have different offices as well: a services company and a manufacturing company".
+- **The objective drafts the work.** Say what the company should achieve when you set it up (or
+  later, with **Plan the work**) and the draft gets missions that repeat, most on a schedule, and
+  tasks to start now, each given to a department. You see all of it, untick what you don't
+  want, and the button counts what will be made.
+- **Missions start off, tasks wait for you.** Each mission is a mission in Missions with its
+  department as the team; its schedule runs once you switch it on. Each task waits on the task
+  board with **Start it**. A mission's runs go up the same sign-off chain and past the same
+  auditor as the department's other work.
+- **Several companies, each its own setup.** **＋ New company** opens an empty office of its own,
+  with its own look, people, objective, missions and space. The **Company** list switches
+  between them; the office, the cards, the board and the space chip all follow. A scheduled
+  mission of a company you are not in still runs, signed off by its own bosses.
+- **Production, Quality and Delivery** join the catalogue, for makers and services firms.
+- Terminal: `bento company objective`, `todo`, `start`, `companies`, `new`, `open`, `drop`, and
+  `setup --objective`.
+
 ## 0.6.29 — 2026-10-13
 
 **Every boss signs the work off, up to your agent.** Asked for as "the department team reports

@@ -225,8 +225,10 @@ DEFAULTS = {
     # Empty means the default office; a USER_KEY, because how my office looks is mine.
     "office": {},
     # what MY company is called and what it does (agentos/company.py). The departments are
-    # the office's rooms; this is only the name and one line.
+    # the office's rooms; this is the name, one line, its objective and the work it made.
     "company": {},
+    # my OTHER companies, each parked whole with its own office (company.py switch)
+    "companies": {},
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight
     # (fold it in) or is a separate ask (leave it queued for the next turn). Off = every

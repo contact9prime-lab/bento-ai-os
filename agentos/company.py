@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import time
 
 from . import office as officemod
@@ -306,9 +307,71 @@ DEPARTMENTS: dict[str, dict] = {
                "struggle with, in their words, with how many said it.",
                ["fetch_url", "read_file", "search_files", "mail_search", "mail_read"]),
         ]},
+    # A maker and a services firm need rooms an online startup does not: the floor, the
+    # checks on what leaves it, and the people who deliver work to a client.
+    "production": {
+        "label": "Production", "color": "orange",
+        "words": ("production", "manufacturing", "manufacture", "factory", "plant", "assembly",
+                  "shop floor", "machining", "fabrication", "manufacturer", "maker"),
+        "mandate": "Plans what gets made and when, tracks output and downtime, and says "
+                   "what is holding the line up.",
+        "people": [
+            _p("plant-manager", "Plant manager",
+               "You run production: the plan for the week, what was made against it, and "
+               "what stopped the line. You work from the logs and sheets you are given and "
+               "say plainly when a number is missing.",
+               ["read_file", "list_dir", "search_files", "timeline"], lead=True,
+               look={"glasses": True}),
+            _p("planner", "Production planner",
+               "You turn orders and stock into a schedule: what to run, in what order, on "
+               "which line, and what material it needs first.",
+               ["read_file", "list_dir", "search_files"]),
+            _p("maintenance", "Maintenance lead",
+               "You keep the machines running: what is due for service, what broke and "
+               "why, and what spare parts to keep.",
+               ["read_file", "search_files", "fetch_url"]),
+        ]},
+    "quality": {
+        "label": "Quality", "color": "lime",
+        "words": ("quality", "qa", "qc", "inspection", "inspections", "defects", "iso",
+                  "standards"),
+        "mandate": "Checks what is made against the standard, tracks defects to their "
+                   "cause and keeps the paperwork an auditor will ask for.",
+        "people": [
+            _p("quality-lead", "Head of Quality",
+               "You own the standard: what passes, what fails and why. You trace a defect "
+               "to its cause before proposing a fix, and you keep records an auditor can "
+               "follow.",
+               ["read_file", "list_dir", "search_files", "fetch_url"], lead=True),
+            _p("inspector", "Quality inspector",
+               "You compare inspection results against the specification and list every "
+               "deviation with where it was found.",
+               ["read_file", "search_files"]),
+        ]},
+    "delivery": {
+        "label": "Delivery", "color": "sky",
+        "words": ("services", "consulting", "consultancy", "agency", "clients",
+                  "client", "projects", "delivery", "engagements", "studio"),
+        "mandate": "Delivers the work clients pay for: scope, plan, progress and what is "
+                   "at risk on every engagement.",
+        "people": [
+            _p("delivery-lead", "Head of Delivery",
+               "You make sure every client gets what was agreed, on time. You keep each "
+               "engagement's scope, plan and risks current and raise a slip early.",
+               ["read_file", "list_dir", "search_files", "calendar_events", "mail_search",
+                "mail_read", "timeline"], lead=True),
+            _p("project-manager", "Project manager",
+               "You run engagements week to week: milestones, who owes what, and the "
+               "status note the client reads.",
+               ["read_file", "search_files", "calendar_events", "timeline"]),
+            _p("consultant", "Consultant",
+               "You do the client work itself: research, analysis and the deliverable, "
+               "with sources a client can check.",
+               ["fetch_url", "read_file", "search_files", "search_docs"]),
+        ]},
 }
 ORDER = ("admin", "hr", "finance", "supply", "sales", "tech", "marketing", "support",
-         "legal", "product")
+         "legal", "product", "production", "quality", "delivery")
 #: What "a startup" gets when the words name nothing more specific.
 STARTUP = ("admin", "hr", "finance", "sales", "tech", "marketing")
 
@@ -338,6 +401,8 @@ def profile(cfg: dict) -> dict:
         raw = {}
     return {"name": officemod._plain(raw.get("name"), 48),
             "about": officemod._plain(raw.get("about"), ABOUT_MAX),
+            "objective": officemod._plain(raw.get("objective"), OBJECTIVE_MAX),
+            "id": str(raw.get("id") or ""), "space_id": str(raw.get("space_id") or ""),
             "set_up_at": float(raw.get("set_up_at") or 0)}
 
 
@@ -373,7 +438,8 @@ def template_plan(ids, company: str = "", about: str = "") -> dict:
 # Reading a plan: from a brain, from words, from the page
 # ---------------------------------------------------------------------------
 
-def design_prompt(description: str, tools: list[str] | None = None) -> tuple[str, str]:
+def design_prompt(description: str, tools: list[str] | None = None,
+                  goal: str = "") -> tuple[str, str]:
     """Ask the brain for a company. It picks from the catalogue and tailors it; the
     closed parts (ids, colours, tools) are listed so it cannot invent them."""
     system = ("You design the departments of a company run by AI agents. Answer with ONE "
@@ -405,6 +471,17 @@ def design_prompt(description: str, tools: list[str] | None = None) -> tuple[str
         f"person did not give. Most departments report straight to the lead; give "
         f"reports_to only where one department really answers to another, and never in a "
         f"loop.")
+    if goal:
+        prompt += (
+            f'\n\nTheir objective for the company, in their words: "{str(goal)[:OBJECTIVE_MAX]}". '
+            "Choose the departments that objective needs, and add to the same object:\n"
+            ' "work": {"missions": [{"department": "a department name from your answer", '
+            '"title": "a short name", "what": "one or two sentences: what it does each time and '
+            'how it moves the objective forward", "every": "daily, weekly, or empty when started '
+            'by hand", "at": "HH:MM", "day": "monday … sunday for weekly"}], '
+            '"tasks": [{"department": "a department name", "text": "one piece of work to start '
+            f'now"}}]}}\nAt most {MAX_MISSIONS} missions and {MAX_TODO} tasks. A mission repeats; '
+            "a task is done once.")
     return system, prompt
 
 
@@ -419,10 +496,11 @@ def normalize(plan: dict, tools: list[str] | None = None) -> tuple[dict, list[st
     coming back from the page after the person edited it, so both pass one check."""
     dropped: list[str] = []
     if not isinstance(plan, dict):
-        return {"company": {"name": "", "about": ""}, "departments": []}, ["the plan"]
+        return {"company": {"name": "", "about": "", "objective": ""}, "departments": []}, ["the plan"]
     co = plan.get("company") if isinstance(plan.get("company"), dict) else {}
     company = {"name": officemod._plain(co.get("name"), 48),
-               "about": officemod._plain(co.get("about"), ABOUT_MAX)}
+               "about": officemod._plain(co.get("about"), ABOUT_MAX),
+               "objective": officemod._plain(co.get("objective"), OBJECTIVE_MAX)}
     allowed = set(t for t in ALLOWED_TOOLS if tools is None or t in tools)
     seen_depts, seen_people, depts, total = set(), set(), [], 0
     for i, d in enumerate(plan.get("departments") or []):
@@ -525,7 +603,11 @@ def normalize(plan: dict, tools: list[str] | None = None) -> tuple[dict, list[st
         for d in depts:
             d.pop("reports_to", None)
         dropped.append(f"the reporting lines ({e}) so every department reports to the lead")
-    return {"company": company, "departments": depts}, dropped
+    out = {"company": company, "departments": depts}
+    if isinstance(plan.get("work"), dict):
+        out["work"], wd = normalize_work(plan["work"], [d["name"] for d in depts])
+        dropped += wd
+    return out, dropped
 
 
 def read_plan(raw: str, tools: list[str] | None = None) -> tuple[dict, list[str]]:
@@ -569,8 +651,19 @@ def from_words(description: str, ids: list[str] | None = None) -> dict:
 # Preview and apply: one computation, the jobs.py rule
 # ---------------------------------------------------------------------------
 
-def desk_name(dept_name: str) -> str:
-    return (_slug(dept_name) or "dept")[:44] + DESK_SUFFIX
+def desk_name(dept_name: str, prefix: str = "") -> str:
+    """A department's desk. With more than one company it carries the company's name, so
+    two companies' Sales desks are two flows (`_prefix`)."""
+    base = (f"{prefix}-" if prefix else "") + (_slug(dept_name) or "dept")
+    return base[:44].strip("-") + DESK_SUFFIX
+
+
+def _prefix(cfg: dict, company: dict | None = None) -> str:
+    """'' while the person has one company; the company's name once there are more."""
+    if len(companies(cfg)) <= 1:
+        return ""
+    co = company or profile(cfg)
+    return _slug(co.get("name") or profile(cfg).get("name"))[:16].strip("-")
 
 
 def desk_mission(dept: dict, company: dict) -> str:
@@ -589,11 +682,11 @@ def desk_mission(dept: dict, company: dict) -> str:
             "another department, say which one instead of doing it.")
 
 
-def _desk_def(dept: dict, company: dict) -> dict:
+def _desk_def(dept: dict, company: dict, space_id: str = "") -> dict:
     tools = []
     for p in dept["people"]:
         tools += [t for t in p["tools"] if t not in tools]
-    return {"name": desk_name(dept["name"]),
+    return {"name": dept.get("desk") or desk_name(dept["name"]),
             "description": f"{dept['name']}: {dept.get('about') or ''}"[:500],
             "mission": desk_mission(dept, company),
             "roster": [{"subagent": p["name"],
@@ -601,6 +694,7 @@ def _desk_def(dept: dict, company: dict) -> dict:
                                 else p["title"])} for p in dept["people"]],
             "permissions": {"tools": tools, "memory": "read-write", "talk": True},
             "sinks": [{"kind": "origin"}], "triggers": [], "enabled": 0,
+            "space_id": space_id or "",
             "max_delegations": 12, "max_steps": 24, "max_seconds": 1800}
 
 
@@ -631,10 +725,13 @@ def preview(cfg: dict, store, plan: dict, accounts: dict | None = None,
     function, so what the person agreed to is what gets written."""
     from . import flows as flowsmod
     accounts = accounts if accounts is not None else {"mail": True, "calendar": True}
+    plan = json.loads(json.dumps(plan or {}))
+    renamed = rename_for(cfg, store, plan)
     existing = {s["name"].lower(): s for s in store.list_subagents()}
     office = officemod.current(cfg)
     where = {m.lower(): d["name"] for d in office["departments"] for m in d["members"]}
     notes, depts, new, reuse = [], [], 0, 0
+    pre = _prefix(cfg, {**profile(cfg), **{k: v for k, v in (plan.get("company") or {}).items() if v}})
     missing_acc: dict[str, list[str]] = {}
     for d in plan.get("departments") or []:
         people = []
@@ -658,7 +755,7 @@ def preview(cfg: dict, store, plan: dict, accounts: dict | None = None,
             else:
                 new += 1
             people.append(row)
-        dd = {**d, "people": people, "desk": desk_name(d["name"])}
+        dd = {**d, "people": people, "desk": desk_name(d["name"], pre)}
         desk = _desk_def(dd, plan.get("company") or {})
         dd["desk_exists"] = bool(store.get_flow(desk["name"]))
         # the desk lands off and holds nothing; this is what switching it on would grant
@@ -671,13 +768,17 @@ def preview(cfg: dict, store, plan: dict, accounts: dict | None = None,
     if reuse:
         notes.append(f"{reuse} of these agents already exist here and join as they are; "
                      f"nothing about them is rewritten.")
+    notes += [r + "." for r in renamed]
     kept = [d["name"] for d in office["departments"]
             if d["name"].lower() not in {x["name"].lower() for x in depts}]
     if len(kept) + len(depts) > MAX_DEPTS:
         notes.append(f"The office has room for {MAX_DEPTS} departments and this would make "
                      f"{len(kept) + len(depts)}. Untick some, or remove one in the Office.")
     pairs = _talk_pairs({"departments": depts}) if talk else []
-    return {"company": plan.get("company") or {}, "departments": depts,
+    co = {**profile(cfg), **{k: v for k, v in (plan.get("company") or {}).items() if v}}
+    work = (preview_work(cfg, store, plan["work"], depts, co.get("objective") or "", co)
+            if plan.get("work") else None)
+    return {"company": plan.get("company") or {}, "departments": depts, "work": work,
             "new": new, "existing": reuse, "desks": len(depts), "kept_departments": kept,
             "talk_pairs": len(pairs), "fits": len(kept) + len(depts) <= MAX_DEPTS,
             "auditor": {"on": audit_on(cfg), "exists": bool(store.get_subagent(AUDITOR))},
@@ -734,7 +835,11 @@ def apply(cfg: dict, store, plan: dict, accounts: dict | None = None,
                           **({"reports_to": d["reports_to"]} if d.get("reports_to") else {}),
                           "titles": {p["name"]: p["title"] for p in d["people"]
                                      if p["name"] in members}})
-    officemod.save(cfg, store, {"departments": kept + new_depts})
+    patch = {"departments": kept + new_depts}
+    if company.get("name") and office.get("name") in ("", officemod.DEFAULT["name"]):
+        # the office takes the company's name the first time there is one
+        patch["name"] = company["name"][:officemod.NAME_MAX]
+    officemod.save(cfg, store, patch)
     # the desks: a disabled flow per department, never replacing one that exists
     made_by = {nd["name"]: nd for nd in new_depts}
     for d in pv["departments"]:
@@ -742,7 +847,7 @@ def apply(cfg: dict, store, plan: dict, accounts: dict | None = None,
         if not nd:
             continue
         defn = _desk_def({**d, "people": [p for p in d["people"] if p["name"] in nd["members"]]},
-                         company)
+                         company, profile(cfg).get("space_id") or "")
         if store.get_flow(defn["name"]):
             desks.append({"name": defn["name"], "status": "exists"})
             continue
@@ -763,13 +868,28 @@ def apply(cfg: dict, store, plan: dict, accounts: dict | None = None,
                 pass
     # the independent auditor comes with every company, outside all of its departments
     auditor = ensure_auditor(store) if audit_on(cfg) else False
-    cfg["company"] = {**(cfg.get("company") or {}),
-                      "name": company.get("name") or "", "about": company.get("about") or "",
+    had = cfg.get("company") or {}
+    # an empty field in the plan keeps what the company already says (a company started
+    # with a name and a line, then set up from ticked departments alone)
+    cfg["company"] = {**had,
+                      "name": company.get("name") or had.get("name") or "",
+                      "about": company.get("about") or had.get("about") or "",
                       "set_up_at": time.time()}
+    if company.get("objective"):
+        cfg["company"]["objective"] = company["objective"]
+    work = None
+    if pv.get("work"):
+        w = {"missions": [{k: v for k, v in m.items() if k in ("name", "title", "department",
+                                                                "what", "every", "at", "day")}
+                          for m in pv["work"]["missions"]],
+             "tasks": pv["work"]["tasks"]}
+        work = apply_work(cfg, store, w, company.get("objective") or objective(cfg))
+        errors += work["errors"]
     first = new_depts[0] if new_depts else None
     return {"made": made, "joined": joined, "departments": [d["name"] for d in new_depts],
             "desks": desks, "talk_cells": cells, "errors": errors, "notes": pv["notes"],
             "auditor": "new" if auditor else ("exists" if store.get_subagent(AUDITOR) else "off"),
+            "work": work,
             "try": (f"Give {first['name']} its first task, for example: "
                     f"\"{_first_task(first)}\"") if first else ""}
 
@@ -783,7 +903,10 @@ _FIRST = {"admin": "List what is due this week and who owes it.",
           "marketing": "Draft this month's content plan: four posts and one email.",
           "support": "What are customers asking most, and which answers are missing?",
           "legal": "List the contracts in my workspace and what each commits us to.",
-          "product": "Turn the feedback we have into the three things to build next."}
+          "product": "Turn the feedback we have into the three things to build next.",
+          "production": "Plan next week's production from the open orders in my workspace.",
+          "quality": "List the defects logged this month and the likely cause of each.",
+          "delivery": "Write a status note for each active client engagement."}
 
 
 def _first_task(dept: dict) -> str:
@@ -844,6 +967,11 @@ def _task_rows(cfg: dict, store, waiting: list | None, now: float) -> list[dict]
     one of its people. A hand-over inside a desk run is part of that task, not a task."""
     depts = departments(cfg, store)
     by_desk = {d.get("desk"): d for d in depts if d.get("desk")}
+    # a mission the objective made is that department's work too
+    by_name = {d["name"]: d for d in depts}
+    for f, dn in work_flows(cfg).items():
+        if dn in by_name and f not in by_desk:
+            by_desk[f] = by_name[dn]
     by_member = {m.lower(): d for d in depts for m in d["members"]}
     runs = store.fabric_runs(limit=400)
     desk_runs = {r["id"] for r in runs if r.get("kind") == "flow" and r.get("flow") in by_desk}
@@ -890,6 +1018,10 @@ def _task_rows(cfg: dict, store, waiting: list | None, now: float) -> list[dict]
         text = " ".join(str(r.get("input") or "").split())
         if r.get("kind") == "flow" and text.startswith("You run the "):
             text = "Run the desk"          # a hand-started run with no task keeps the mission
+        elif r.get("kind") == "flow" and r.get("flow") != d.get("desk") and \
+                (not text or ": a standing mission of the " in text):
+            text = next((w.get("title") for w in (cfg.get("company") or {}).get("work") or []
+                         if isinstance(w, dict) and w.get("flow") == r.get("flow")), "") or r["flow"]
         out = " ".join(str(r.get("output") or r.get("fault") or "").split())
         who = [c.get("ref") for c in ch if c.get("kind") == "delegate" and c.get("ref")]
         # the newest check of this task (a person may ask for it again); the list is newest first
@@ -924,16 +1056,29 @@ def stats(cfg: dict, store, waiting: list | None = None, now: float | None = Non
         flow = store.get_flow(d["desk"]) if d.get("desk") else None
         nxt = None
         scheduled = 0
-        if flow and flow.get("enabled"):
+        mine_flows = [flow] if flow else []
+        mine_flows += [f for f in (store.get_flow(n) for n, dn in work_flows(cfg).items()
+                                   if dn == d["name"]) if f]
+        for fl in mine_flows:
+            if not fl.get("enabled"):
+                continue
             try:
                 from .jobs import next_run
-                nxt = next_run(store, flow["name"])
+                at = next_run(store, fl["name"])
             except Exception:
-                nxt = None
-            scheduled = sum(1 for t in store.flow_triggers(flow["name"]) if t.get("enabled", 1))
+                at = None
+            if at and (nxt is None or at < nxt):
+                nxt = at
+            scheduled += sum(1 for t in store.flow_triggers(fl["name"]) if t.get("enabled", 1))
         out.append({"name": d["name"], "color": d["color"], "lead": d.get("lead") or "",
                     "about": d.get("about") or "", "desk": d.get("desk") or "",
                     "desk_on": bool(flow and flow.get("enabled")), "has_desk": bool(flow),
+                    "missions": [{"flow": f["name"], "on": bool(f.get("enabled")),
+                                  "title": next((w.get("title") for w in
+                                                 (cfg.get("company") or {}).get("work") or []
+                                                 if isinstance(w, dict) and w.get("flow") == f["name"]),
+                                                f["name"])}
+                                 for f in mine_flows if f is not flow],
                     "people": len(d["members"]), "members": d["members"],
                     "titles": d.get("titles") or {},
                     "doing": sum(r["status"] == "in_progress" for r in mine),
@@ -959,20 +1104,26 @@ def board(cfg: dict, store, waiting: list | None = None, now: float | None = Non
     now = now if now is not None else time.time()
     rows = _task_rows(cfg, store, waiting, now)[:limit]
     sched = []
-    for s in stats(cfg, store, waiting, now):
+    st = stats(cfg, store, waiting, now)
+    for s in st:
         if s["next_at"]:
             sched.append({"run_id": "", "department": s["name"], "color": s["color"],
-                          "task": f"{s['name']} desk runs on its schedule", "status": "scheduled",
+                          "task": f"{s['name']} works on its schedule", "status": "scheduled",
                           "who": s["lead"], "handoffs": 0, "started_at": None,
                           "finished_at": None, "next_at": s["next_at"], "said": ""})
     counts = {k: sum(r["status"] == k for r in rows) for k in
               ("in_progress", "waiting", "done", "failed", "stale", "stopped")}
     counts["scheduled"] = len(sched)
+    todo_rows = [{"run_id": "", "todo": t["id"], "department": t["department"],
+                  "color": next((s["color"] for s in st if s["name"] == t["department"]), "slate"),
+                  "task": t["text"], "status": "todo", "who": "", "handoffs": 0,
+                  "started_at": None, "finished_at": None, "said": ""} for t in todo(cfg)]
+    counts["todo"] = len(todo_rows)
     counts["flagged"] = sum((r.get("audit") or {}).get("verdict") in ("concerns", "fail")
                             for r in rows)
     counts["held"] = sum((r.get("review") or {}).get("outcome") in
                          ("sent_back", "escalated", "unchecked") for r in rows)
-    return {"tasks": sched + rows, "counts": counts, "audit": audit_on(cfg),
+    return {"tasks": todo_rows + sched + rows, "counts": counts, "audit": audit_on(cfg),
             "review": review_mode(cfg), "lead": lead_name(cfg)}
 
 
@@ -1052,10 +1203,12 @@ def ensure_auditor(store) -> bool:
 def audit_scope(cfg: dict, store, flow_name: str) -> dict | None:
     """The department whose desk this flow is, or None: only a department's work is
     audited by default, because that is where a head plans and checks its own staff."""
-    for d in departments(cfg, store):
+    depts = departments(cfg, store)
+    for d in depts:
         if d.get("desk") and d["desk"] == flow_name:
             return d
-    return None
+    dn = work_flows(cfg).get(flow_name)
+    return next((d for d in depts if dn and d["name"] == dn), None)
 
 
 def audit_conflict(dept: dict, flow: dict) -> str:
@@ -1395,7 +1548,9 @@ def note(cfg: dict, store, desks: bool = True) -> str:
                 if len(d["members"]) > 1 else "")
              + (f". Desk: {d['desk']}" if d.get("desk") and desks else "")
              for d in depts]
+    others = [c["name"] for c in companies(cfg) if not c["active"]]
     return ("\n\nYOUR COMPANY" + (f" ({pr['name']})" if pr["name"] else "")
+            + (f". Its objective, in the person's words: {pr['objective']}" if pr["objective"] else "")
             + ". The specialists are organised in departments:\n" + "\n".join(lines)
             + ("\nWork for a department goes to its head, or to its desk with run_flow and the "
                "task as the input." if desks else "\nWork for a department goes to its head.")
@@ -1408,7 +1563,10 @@ def note(cfg: dict, store, desks: bool = True) -> str:
                + "; you will be asked for your sign-off when it reaches you."
                if review_mode(cfg) != "off" and desks else "")
             + "".join(f"\n{d['name']} reports to {d['reports_to']}." for d in depts
-                      if d.get("reports_to")))
+                      if d.get("reports_to"))
+            + (f"\nThe person also keeps other companies ({', '.join(others)}), each with its "
+               f"own office and people; they switch between them in the Office."
+               if others else ""))
 
 
 def text(cfg: dict, store, waiting: list | None = None, st: list | None = None) -> str:
@@ -1455,3 +1613,675 @@ def record(store, detail: str, action: str = "company.write") -> None:
                         detail=str(detail)[:1000])
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# The objective, and the work it calls for: missions, schedules and tasks
+# ---------------------------------------------------------------------------
+#
+# "When I'm building the company there has to be an objective, defined by the user, and
+#  it would require missions, schedules and tasks, so it should all open up when the
+#  company is defined." The objective is the person's own words, kept on the company.
+#  The brain (or, with nothing answering, the catalogue) drafts the WORK it calls for,
+#  each piece belonging to one department:
+#
+#  - a mission is standing work: a flow with that department's people on its roster and
+#    a mission that names the objective. Given `every`, it also has a schedule (a cron
+#    trigger). It lands DISABLED, like every desk: enabling is the act of granting.
+#  - a task is one piece of work to start now: it is kept on the company as a to-do and
+#    started as a run of the department's desk, so it passes the gate like any task.
+#
+#  The work is read field by field (`normalize_work`), shown before anything is made
+#  (`preview_work`) and made by re-deriving that preview (`apply_work`). A mission is a
+#  department's work, so the review chain and the auditor check it like the desk's.
+
+OBJECTIVE_MAX = 400
+MAX_MISSIONS = 8           # each one is a flow, and each run of one is model calls
+MAX_TODO = 10
+EVERY = ("", "daily", "weekly")
+MISSION_TEXT_MAX = 600
+TODO_TEXT_MAX = 300
+
+#: What a catalogue department keeps doing, when no brain drafts it: a name, the
+#: mission's one line, and how often.
+_STANDING = {
+    "admin": ("admin-roundup", "Weekly admin round-up",
+              "List what is due next week, who owes it and what is already late.", "weekly", "09:00", 0),
+    "hr": ("hiring-pipeline", "Hiring pipeline",
+           "Go through the open roles and candidates and say what needs a decision.", "weekly", "10:00", 2),
+    "finance": ("cash-and-spend", "Cash and spend",
+                "Summarise this week's spending from the files in the workspace and flag anything unusual.",
+                "weekly", "16:00", 4),
+    "supply": ("supplier-watch", "Supplier watch",
+               "Check supplier prices, lead times and news that affect us.", "weekly", "09:00", 1),
+    "sales": ("sales-pipeline", "Sales pipeline",
+              "Find and qualify new leads, and list who to contact today and why.", "daily", "08:30", 0),
+    "tech": ("tech-health", "Tech health",
+             "Say what changed in the code this week and what looks risky.", "weekly", "11:00", 3),
+    "marketing": ("content-plan", "Content plan",
+                  "Draft next week's posts and one email.", "weekly", "10:00", 0),
+    "support": ("support-digest", "Support digest",
+                "What customers asked most today and which answers are missing.", "daily", "17:00", 0),
+    "legal": ("contract-dates", "Contract dates",
+              "List contract renewals and deadlines in the next thirty days.", "weekly", "09:30", 0),
+    "product": ("feedback-roadmap", "Feedback to roadmap",
+                "Turn new feedback into the next three things to build.", "weekly", "11:00", 3),
+    "production": ("production-plan", "Production plan",
+                   "Plan tomorrow's runs from the open orders, and say what output and downtime "
+                   "looked like today.", "daily", "17:30", 0),
+    "quality": ("defect-review", "Defect review",
+                "Go through this week's defects and inspections and name the likely cause of each.",
+                "weekly", "15:00", 4),
+    "delivery": ("client-status", "Client status",
+                 "Write a status note for each active engagement: done, next and at risk.",
+                 "weekly", "16:00", 4),
+}
+
+
+def objective(cfg: dict) -> str:
+    return officemod._plain(((cfg or {}).get("company") or {}).get("objective"), OBJECTIVE_MAX)
+
+
+def _mission_slug(v) -> str:
+    return _slug(v)[:30].strip("-")
+
+
+def normalize_work(work, depts: list[str]) -> tuple[dict, list[str]]:
+    """The drafted work through the closed set, each field on its own. `depts` are the
+    department names the work may belong to; a piece for any other is dropped and named."""
+    dropped: list[str] = []
+    out = {"missions": [], "tasks": []}
+    if not isinstance(work, dict):
+        return out, dropped
+    by = {d.lower(): d for d in depts}
+    seen = set()
+    for m in work.get("missions") or []:
+        if not isinstance(m, dict):
+            continue
+        title = officemod._plain(m.get("title") or m.get("name"), 60)
+        dept = by.get(officemod._plain(m.get("department")).lower())
+        if not title:
+            dropped.append("a mission with no name")
+            continue
+        if not dept:
+            dropped.append(f"mission {title} (no department called "
+                           f"'{officemod._plain(m.get('department')) or '?'}')")
+            continue
+        slug = _mission_slug(m.get("name") or title) or "mission"
+        if slug in seen:
+            dropped.append(f"mission {title} (named twice)")
+            continue
+        if len(out["missions"]) >= MAX_MISSIONS:
+            dropped.append(f"mission {title} (at most {MAX_MISSIONS} at a time)")
+            continue
+        what = officemod._plain(m.get("what") or m.get("mission"), MISSION_TEXT_MAX)
+        if not what:
+            dropped.append(f"mission {title} (it does not say what it does)")
+            continue
+        every = str(m.get("every") or "").strip().lower()
+        if every in ("day", "every day", "weekdays"):
+            every = "daily"
+        if every in ("week", "every week"):
+            every = "weekly"
+        if every not in EVERY:
+            dropped.append(f"mission {title}'s schedule '{every}' (it is daily, weekly or "
+                           f"by hand), so it starts by hand")
+            every = ""
+        row = {"name": slug, "title": title, "department": dept, "what": what, "every": every}
+        if every:
+            from . import flows as flowsmod
+            try:
+                row["at"] = flowsmod._at_time(m.get("at"))
+            except ValueError:
+                dropped.append(f"mission {title}'s time '{m.get('at')}', so it runs at 08:00")
+                row["at"] = "08:00"
+            if every == "weekly":
+                try:
+                    row["day"] = flowsmod._weekday(m.get("day"))
+                except ValueError:
+                    dropped.append(f"mission {title}'s day '{m.get('day')}', so it runs on Friday")
+                    row["day"] = 4
+        seen.add(slug)
+        out["missions"].append(row)
+    for t in work.get("tasks") or []:
+        if not isinstance(t, dict):
+            continue
+        text = officemod._plain(t.get("text") or t.get("task"), TODO_TEXT_MAX)
+        dept = by.get(officemod._plain(t.get("department")).lower())
+        if not text:
+            continue
+        if not dept:
+            dropped.append(f"task '{text[:40]}' (no department called "
+                           f"'{officemod._plain(t.get('department')) or '?'}')")
+            continue
+        if len(out["tasks"]) >= MAX_TODO:
+            dropped.append(f"task '{text[:40]}' (at most {MAX_TODO} at a time)")
+            continue
+        out["tasks"].append({"department": dept, "text": text})
+    return out, dropped
+
+
+def work_prompt(company: dict, goal: str, depts: list[dict]) -> tuple[str, str]:
+    """Ask the brain what work an objective calls for, from the departments there are."""
+    system = ("You plan the work of a company run by AI agents. Answer with ONE JSON object "
+              "and nothing else: no prose, no code fence.")
+    lines = "\n".join(f"- {d['name']}: {d.get('about') or ''}" for d in depts)
+    prompt = (
+        f"Company: {company.get('name') or 'the company'}"
+        + (f" ({company['about']})" if company.get("about") else "") + "\n"
+        f'Its objective, in the owner\'s words: "{goal}"\n\nDepartments:\n{lines}\n\n'
+        "Answer with:\n"
+        '{"missions": [{"department": "one of the names above", "title": "a short name", '
+        '"what": "one or two sentences: what it does each time, and how it moves the objective '
+        'forward", "every": "daily, weekly, or empty when it is started by hand", '
+        '"at": "HH:MM", "day": "monday … sunday for weekly"}],\n'
+        ' "tasks": [{"department": "one of the names above", "text": "one piece of work to '
+        'start now, in one sentence"}]}\n\n'
+        f"Rules: at most {MAX_MISSIONS} missions and {MAX_TODO} tasks. A mission is work that "
+        "repeats; a task is done once. Give each department only the work that serves the "
+        "objective, and leave a department out when it has none. Do not invent numbers or "
+        "facts about the company that the owner did not give.")
+    return system, prompt
+
+
+def read_work(raw: str, depts: list[str]) -> tuple[dict, list[str]]:
+    from .knowledge import _parse_json
+    data = _parse_json(str(raw or ""))
+    if not isinstance(data, dict) or not (data.get("missions") or data.get("tasks")):
+        return {"missions": [], "tasks": []}, []
+    if isinstance(data.get("work"), dict):
+        data = data["work"]
+    return normalize_work(data, depts)
+
+
+def _catalogue_id(name: str) -> str:
+    for k, v in DEPARTMENTS.items():
+        if v["label"].lower() == str(name or "").lower():
+            return k
+    return ""
+
+
+def work_from_words(goal: str, depts: list[dict]) -> dict:
+    """With no brain to ask: each catalogue department's standing mission, pointed at the
+    objective, and its first task. A department the catalogue does not know gets one
+    weekly progress check for its head."""
+    goal = officemod._plain(goal, OBJECTIVE_MAX)
+    tail = f" Keep it pointed at the objective: {goal}" if goal else ""
+    days = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    missions, tasks = [], []
+    for d in depts:
+        k = _catalogue_id(d["name"])
+        if k in _STANDING:
+            slug, title, what, every, at, day = _STANDING[k]
+            missions.append({"department": d["name"], "name": slug, "title": title,
+                             "what": what + tail, "every": every, "at": at, "day": days[day]})
+            tasks.append({"department": d["name"], "text": _FIRST[k]})
+        else:
+            missions.append({"department": d["name"], "name": f"{_slug(d['name'])}-progress",
+                             "title": f"{d['name']} progress",
+                             "what": f"Say what {d['name']} moved forward this week and what is "
+                                     f"stuck." + tail,
+                             "every": "weekly", "at": "16:00", "day": "friday"})
+    work, _ = normalize_work({"missions": missions, "tasks": tasks},
+                             [d["name"] for d in depts])
+    return work
+
+
+def mission_flow_name(cfg: dict, m: dict, company: dict | None = None) -> str:
+    """A mission's flow is named for its company when there is more than one company, so
+    two companies can each have a 'sales-pipeline'."""
+    prefix = _prefix(cfg, company)
+    base = (f"{prefix}-" if prefix else "") + m["name"]
+    return base[:49].strip("-")
+
+
+def _mission_def(m: dict, dept: dict, company: dict, goal: str, space_id: str,
+                 name: str) -> dict:
+    people = dept["people"]
+    head = next((p for p in people if p["lead"]), people[0])
+    tools = []
+    for p in people:
+        tools += [t for t in p["tools"] if t not in tools]
+    co = company.get("name") or "the company"
+    mission = (f"{m['title']}: a standing mission of the {dept['name']} department of {co}"
+               + (f" ({company['about']})" if company.get("about") else "") + ".\n\n"
+               + m["what"] + "\n\n"
+               + (f"The company's objective, in the owner's words: {goal}\n\n" if goal else "")
+               + f"Your people: {', '.join(p['name'] + ' (' + p['title'] + ')' for p in people)}. "
+               f"Hand the plan and the final check to {head['name']}. Finish with what was done, "
+               "what needs the person (as Brief items) and where the results are.")
+    trig = []
+    if m.get("every") == "daily":
+        trig = [{"kind": "cron", "config": {"type": "daily", "at": m.get("at") or "08:00"}}]
+    elif m.get("every") == "weekly":
+        trig = [{"kind": "cron", "config": {"type": "weekly", "at": m.get("at") or "08:00",
+                                            "day": m.get("day", 4)}}]
+    return {"name": name, "description": f"{dept['name']}: {m['title']}"[:500],
+            "mission": mission,
+            "roster": [{"subagent": p["name"],
+                        "why": ("heads the department: plans and checks the work" if p["lead"]
+                                else p["title"])} for p in people],
+            "permissions": {"tools": tools, "memory": "read-write", "talk": True},
+            "sinks": [{"kind": "report"}], "triggers": trig, "enabled": 0,
+            "space_id": space_id or "",
+            "max_delegations": 10, "max_steps": 20, "max_seconds": 1500}
+
+
+def _when_words(m: dict) -> str:
+    days = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    if m.get("every") == "daily":
+        return f"every day at {m.get('at')}"
+    if m.get("every") == "weekly":
+        d = m.get("day", 4)
+        return f"every {days[d] if isinstance(d, int) and 0 <= d < 7 else d} at {m.get('at')}"
+    return "started by hand"
+
+
+def _people_of(cfg: dict, store, plan_depts: list[dict] | None) -> dict:
+    """{department name: {name, people:[{name,title,lead,tools}]}} from a plan being made,
+    or from the office as it is."""
+    if plan_depts is not None:
+        return {d["name"]: d for d in plan_depts}
+    out = {}
+    subs = {s["name"]: s for s in store.list_subagents()}
+    for d in departments(cfg, store):
+        ppl = []
+        for mname in d["members"]:
+            s = subs.get(mname) or {}
+            tl = s.get("tools") or []
+            if isinstance(tl, str):
+                try:
+                    tl = json.loads(tl)
+                except ValueError:
+                    tl = []
+            ppl.append({"name": mname, "title": (d.get("titles") or {}).get(mname, mname),
+                        "lead": mname == d.get("lead"),
+                        "tools": [t for t in tl if t in ALLOWED_TOOLS] or list(_BASE)})
+        if ppl:
+            out[d["name"]] = {"name": d["name"], "people": ppl}
+    return out
+
+
+def preview_work(cfg: dict, store, work: dict, plan_depts: list[dict] | None = None,
+                 goal: str | None = None, company: dict | None = None) -> dict:
+    """Exactly what making this work would do. `plan_depts` are a plan's departments when
+    the company is being made in the same step; otherwise the office's."""
+    from . import flows as flowsmod
+    goal = objective(cfg) if goal is None else goal
+    company = company or profile(cfg)
+    depts = _people_of(cfg, store, plan_depts)
+    sid = profile(cfg).get("space_id") or ""
+    taken = set()
+    missions, notes = [], []
+    for m in (work or {}).get("missions") or []:
+        d = depts.get(m["department"])
+        if not d:
+            notes.append(f"{m['title']} is for {m['department']}, which has nobody in it yet.")
+            continue
+        name = mission_flow_name(cfg, m, company)
+        exists = bool(store.get_flow(name))
+        if exists or name in taken:
+            # a mission somebody already has is kept as it is, never replaced
+            row = {**m, "flow": name, "status": "exists", "when": _when_words(m)}
+        else:
+            defn = _mission_def(m, d, company, goal, sid, name)
+            row = {**m, "flow": name, "status": "new", "when": _when_words(m),
+                   "grants_when_on": len(flowsmod.declared_grants(defn)),
+                   "roster": [r["subagent"] for r in defn["roster"]]}
+        taken.add(name)
+        missions.append(row)
+    tasks = [t for t in (work or {}).get("tasks") or [] if t["department"] in depts]
+    return {"objective": goal, "missions": missions, "tasks": tasks,
+            "new_missions": sum(m["status"] == "new" for m in missions),
+            "scheduled": sum(bool(m.get("every")) and m["status"] == "new" for m in missions),
+            "notes": notes}
+
+
+def apply_work(cfg: dict, store, work: dict, goal: str | None = None) -> dict:
+    """Make the work for departments that exist: each mission a DISABLED flow (its
+    schedule declared, armed when somebody switches it on), each task a to-do on the
+    company. Re-derives `preview_work`, so what was shown is what is made."""
+    from . import flows as flowsmod
+    goal = objective(cfg) if goal is None else goal
+    pv = preview_work(cfg, store, work, None, goal)
+    depts = _people_of(cfg, store, None)
+    sid = profile(cfg).get("space_id") or ""
+    made, kept, errors = [], [], []
+    cur = dict(cfg.get("company") or {})
+    have = [w for w in (cur.get("work") or []) if isinstance(w, dict)]
+    for m in pv["missions"]:
+        if m["status"] == "exists":
+            kept.append(m["flow"])
+        else:
+            defn = _mission_def(m, depts[m["department"]], profile(cfg), goal, sid, m["flow"])
+            try:
+                flowsmod.save(store, defn)
+                made.append(m["flow"])
+            except ValueError as e:
+                errors.append(f"{m['title']}: {e}")
+                continue
+        if not any(w.get("flow") == m["flow"] for w in have):
+            have.append({"flow": m["flow"], "department": m["department"], "title": m["title"]})
+    todo = [t for t in (cur.get("todo") or []) if isinstance(t, dict)]
+    added = 0
+    for t in pv["tasks"]:
+        if any(x.get("text") == t["text"] and x.get("department") == t["department"]
+               and not x.get("run_id") for x in todo):
+            continue
+        todo.append({"id": secrets.token_hex(4), "department": t["department"],
+                     "text": t["text"], "run_id": "", "added_at": time.time()})
+        added += 1
+    cur["work"] = have[-40:]
+    cur["todo"] = todo[-40:]
+    if goal:
+        cur["objective"] = goal
+    cfg["company"] = cur
+    return {"missions": made, "kept": kept, "tasks": added, "errors": errors,
+            "scheduled": sum(1 for m in pv["missions"] if m.get("every") and m["flow"] in made)}
+
+
+def work_flows(cfg: dict) -> dict:
+    """{flow name: department} for the missions this company's objective made."""
+    return {w["flow"]: w.get("department") or ""
+            for w in ((cfg or {}).get("company") or {}).get("work") or []
+            if isinstance(w, dict) and w.get("flow")}
+
+
+def todo(cfg: dict) -> list[dict]:
+    """The tasks waiting to be started, oldest first."""
+    return [t for t in ((cfg or {}).get("company") or {}).get("todo") or []
+            if isinstance(t, dict) and t.get("id") and not t.get("run_id")]
+
+
+def take_todo(cfg: dict, tid: str) -> dict:
+    hit = next((t for t in todo(cfg) if t["id"] == tid), None)
+    if not hit:
+        raise ValueError("no task waiting with that id; it may have been started already")
+    return hit
+
+
+def mark_todo(cfg: dict, tid: str, run_id: str = "", drop: bool = False) -> None:
+    cur = dict(cfg.get("company") or {})
+    rows = []
+    for t in cur.get("todo") or []:
+        if isinstance(t, dict) and t.get("id") == tid:
+            if drop:
+                continue
+            t = {**t, "run_id": run_id, "started_at": time.time()}
+        rows.append(t)
+    cur["todo"] = rows
+    cfg["company"] = cur
+
+
+# ---------------------------------------------------------------------------
+# Several companies: each its own office, objective, work and space
+# ---------------------------------------------------------------------------
+#
+# "That user may have different offices as well … a complete different setup altogether
+#  within the same user. A company may be a services company while the other company may
+#  be manufacturing." So a person can keep several companies. The one they are in lives
+#  where it always has (`cfg["company"]`, `cfg["office"]`), so every reader of those keys
+#  is unchanged; the others are PARKED whole under `cfg["companies"][id]` and switching
+#  swaps them. Three things keep them apart:
+#
+#  - **Each company is its own space** (spaces.py). Its desks and missions carry that
+#    space, so their runs, memories and facts are the company's, and switching company
+#    points this surface at it. Rows made before a company had a space stay global: they
+#    are not moved, and the docs say so.
+#  - **People belong to one company.** A drafted name that already works in another of
+#    the person's companies is renamed for this one (`maya-forge`), so one agent never
+#    carries two companies' personas. The office's open floor leaves them out too.
+#  - **A parked company's work still runs**, on its schedule. `cfg_for` hands the control
+#    plane that company's own office and settings for the review chain and the auditor,
+#    so a scheduled mission is signed off by its own bosses whichever company is open.
+
+MAX_COMPANIES = 8
+_CID = re.compile(r"^[a-f0-9]{8}$")
+
+
+def _parked(cfg: dict) -> dict:
+    raw = (cfg or {}).get("companies")
+    if not isinstance(raw, dict):
+        return {}
+    return {k: v for k, v in raw.items()
+            if _CID.match(str(k)) and isinstance(v, dict) and isinstance(v.get("company"), dict)}
+
+
+def _has_company(co: dict, office: dict) -> bool:
+    return bool((co or {}).get("name") or (co or {}).get("id")
+                or ((office or {}).get("departments")))
+
+
+def _summary(co: dict, office: dict, active: bool) -> dict:
+    depts = [d for d in (office or {}).get("departments") or [] if isinstance(d, dict)]
+    return {"id": str((co or {}).get("id") or ""),
+            "name": officemod._plain((co or {}).get("name"), 48) or "My company",
+            "about": officemod._plain((co or {}).get("about"), ABOUT_MAX),
+            "objective": officemod._plain((co or {}).get("objective"), OBJECTIVE_MAX),
+            "space_id": str((co or {}).get("space_id") or ""),
+            "departments": len(depts),
+            "people": sum(len(d.get("members") or []) for d in depts),
+            "missions": len([w for w in (co or {}).get("work") or [] if isinstance(w, dict)]),
+            "style": str((office or {}).get("style") or officemod.DEFAULT_STYLE),
+            "active": active}
+
+
+def companies(cfg: dict) -> list[dict]:
+    """Every company this person keeps, the open one first. A person who never set one up
+    has none; a single company made before there could be several has no id until a
+    second one is made, and is still listed."""
+    out = []
+    cur, office = (cfg or {}).get("company") or {}, (cfg or {}).get("office") or {}
+    if _has_company(cur, office):
+        out.append(_summary(cur, office, True))
+    for _cid, rec in _parked(cfg).items():
+        out.append(_summary(rec["company"], rec.get("office") or {}, False))
+    return out
+
+
+def _members_of(office: dict) -> set:
+    return {str(m).lower() for d in (office or {}).get("departments") or []
+            if isinstance(d, dict) for m in d.get("members") or []}
+
+
+def members_elsewhere(cfg: dict) -> set:
+    """Agents who work in one of the person's OTHER companies (lower-case names)."""
+    out = set()
+    for rec in _parked(cfg).values():
+        out |= _members_of(rec.get("office") or {})
+    return out
+
+
+def _space_for(store, name: str, about: str, taken: set) -> str:
+    base = officemod._plain(name, 40) or "Company"
+    for n in [base] + [f"{base} {i}" for i in range(2, 9)]:
+        row = store.get_space(n)
+        if row and row["id"] in taken:
+            continue
+        return store.create_space(n, description=about or f"The company {base}", icon="▦")
+    return ""
+
+
+def _company_flows(co: dict, office: dict) -> list[str]:
+    names = [d.get("desk") for d in (office or {}).get("departments") or []
+             if isinstance(d, dict) and d.get("desk")]
+    names += [w.get("flow") for w in (co or {}).get("work") or [] if isinstance(w, dict)]
+    return [n for n in names if n]
+
+
+def _move_flows(store, flows: list[str], sid: str) -> int:
+    """Put a company's desks and missions in its space, with their scheduled rows."""
+    if not flows or not sid:
+        return 0
+    marks = ",".join("?" for _ in flows)
+    n = store.db.execute(f"UPDATE flows SET space_id=? WHERE name IN ({marks}) "
+                         f"AND COALESCE(space_id,'')=''", (sid, *flows)).rowcount
+    try:
+        store.db.execute(f"UPDATE tasks SET space_id=? WHERE id IN (SELECT task_id FROM "
+                         f"flow_triggers WHERE flow IN ({marks}) AND COALESCE(task_id,'')!='') "
+                         f"AND COALESCE(space_id,'')=''", (sid, *flows))
+    except Exception:
+        pass
+    store.db.commit()
+    return n
+
+
+def _taken_spaces(cfg: dict) -> set:
+    return {c["space_id"] for c in companies(cfg) if c["space_id"]}
+
+
+def _ensure_identity(cfg: dict, store) -> None:
+    """The open company gets an id and a space of its own, once there is more than one."""
+    cur = dict(cfg.get("company") or {})
+    if not _has_company(cur, cfg.get("office") or {}):
+        return
+    if not _CID.match(str(cur.get("id") or "")):
+        cur["id"] = secrets.token_hex(4)
+    if not cur.get("space_id") or not store.get_space(cur["space_id"]):
+        taken = _taken_spaces(cfg) - {cur.get("space_id") or ""}
+        cur["space_id"] = _space_for(store, cur.get("name") or "My company",
+                                     cur.get("about") or "", taken)
+        _move_flows(store, _company_flows(cur, cfg.get("office") or {}), cur["space_id"])
+    cfg["company"] = cur
+
+
+def _park(cfg: dict) -> None:
+    cur = dict(cfg.get("company") or {})
+    if not _has_company(cur, cfg.get("office") or {}):
+        return
+    parked = dict(_parked(cfg))
+    parked[cur["id"]] = {"company": cur, "office": dict(cfg.get("office") or {})}
+    cfg["companies"] = parked
+
+
+def create(cfg: dict, store, name: str, about: str = "", goal: str = "",
+           surface: str = "gui") -> dict:
+    """Start a new, empty company and open it: its own office (empty), objective and space.
+    The company that was open is parked whole, with its office, desks and missions."""
+    from . import spaces as spacesmod
+    name = officemod._plain(name, 48)
+    if not name:
+        raise ValueError("a company needs a name")
+    have = companies(cfg)
+    if len(have) >= MAX_COMPANIES:
+        raise ValueError(f"you can keep up to {MAX_COMPANIES} companies; remove one first")
+    if any(c["name"].lower() == name.lower() for c in have):
+        raise ValueError(f"you already have a company called {name}")
+    _ensure_identity(cfg, store)
+    _park(cfg)
+    sid = _space_for(store, name, about, _taken_spaces(cfg))
+    # its own look, so the switch is seen: a style its words name, else one no other
+    # company of theirs wears yet
+    style = officemod.from_words(f"{name} {about}").get("style")
+    if not style:
+        worn = {officemod.current(cfg).get("style")} | {c["style"] for c in companies(cfg)}
+        style = next((k for k in ("loft", "tower", "cozy", "garden", "night", "space", "pop")
+                      if k not in worn), officemod.DEFAULT_STYLE)
+    cfg["company"] = {"id": secrets.token_hex(4), "name": name,
+                      "about": officemod._plain(about, ABOUT_MAX),
+                      "objective": officemod._plain(goal, OBJECTIVE_MAX),
+                      "space_id": sid, "set_up_at": 0}
+    # a new company starts with a new office: the same look, no departments yet
+    cfg["office"] = {**officemod.DEFAULT, "style": style, "name": name[:officemod.NAME_MAX],
+                     "look": officemod.current(cfg).get("look") or officemod.DEFAULT["look"]}
+    if sid:
+        spacesmod.set_active(cfg, surface, sid)
+    return _summary(cfg["company"], cfg["office"], True)
+
+
+def switch(cfg: dict, store, cid: str, surface: str = "gui") -> dict:
+    """Open another company: park the open one, bring that one back, and point this
+    surface at its space. Other surfaces (a phone on Telegram) keep theirs."""
+    from . import spaces as spacesmod
+    cid = str(cid or "").strip().lower()
+    cur = cfg.get("company") or {}
+    if cid and cid == str(cur.get("id") or ""):
+        return _summary(cur, cfg.get("office") or {}, True)
+    parked = _parked(cfg)
+    rec = parked.get(cid)
+    if not rec:
+        names = ", ".join(c["name"] for c in companies(cfg)) or "none yet"
+        raise ValueError(f"no company with that id. Your companies: {names}")
+    _ensure_identity(cfg, store)
+    _park(cfg)
+    parked = dict(_parked(cfg))
+    parked.pop(cid, None)
+    cfg["companies"] = parked
+    cfg["company"] = dict(rec["company"])
+    cfg["office"] = dict(rec.get("office") or {})
+    sid = cfg["company"].get("space_id") or ""
+    if sid and store.get_space(sid):
+        spacesmod.set_active(cfg, surface, sid)
+    return _summary(cfg["company"], cfg["office"], True)
+
+
+def find(cfg: dict, ref: str) -> dict | None:
+    """A company by id or by name (the CLI takes either)."""
+    want = str(ref or "").strip().lower()
+    return next((c for c in companies(cfg) if want and (c["id"] == want or c["name"].lower() == want)),
+                None)
+
+
+def remove(cfg: dict, store, cid: str) -> dict:
+    """Take a company you are not in off your list. Its desks and missions are switched
+    off, because nothing would sign their work off any more; its agents, missions and
+    space are kept, so nothing anybody made is lost."""
+    from . import flows as flowsmod
+    cid = str(cid or "").strip().lower()
+    if cid and cid == str((cfg.get("company") or {}).get("id") or ""):
+        raise ValueError("that is the company you are in. Open another one first")
+    parked = dict(_parked(cfg))
+    rec = parked.pop(cid, None)
+    if not rec:
+        raise ValueError("no company with that id")
+    off = []
+    for f in _company_flows(rec["company"], rec.get("office") or {}):
+        flow = store.get_flow(f)
+        if flow and flow.get("enabled"):
+            try:
+                flowsmod.set_enabled(store, f, False)
+                off.append(f)
+            except ValueError:
+                pass
+    cfg["companies"] = parked
+    return {"removed": _summary(rec["company"], rec.get("office") or {}, False),
+            "switched_off": off}
+
+
+def cfg_for(cfg: dict, flow_name: str) -> dict:
+    """The settings a flow's company runs under: the open company's for its own desks and
+    missions, a parked company's own office and settings for one of its flows. Anything
+    else (a flow that belongs to no company) gets cfg as it is."""
+    if not flow_name:
+        return cfg
+    office = cfg.get("office") or {}
+    if flow_name in _company_flows(cfg.get("company") or {}, office):
+        return cfg
+    for rec in _parked(cfg).values():
+        if flow_name in _company_flows(rec["company"], rec.get("office") or {}):
+            return {**cfg, "company": rec["company"], "office": rec.get("office") or {}}
+    return cfg
+
+
+def rename_for(cfg: dict, store, plan: dict) -> list[str]:
+    """People a plan would take from another of the person's companies get this company's
+    name on theirs instead (maya → maya-forge). Returns what was renamed, in words."""
+    away = members_elsewhere(cfg)
+    if not away:
+        return []
+    tag = _slug(profile(cfg).get("name"))[:12] or "co"
+    taken = {s["name"].lower() for s in store.list_subagents()} | away
+    said = []
+    for d in plan.get("departments") or []:
+        for p in d.get("people") or []:
+            if p["name"].lower() not in away:
+                continue
+            new = f"{p['name']}-{tag}"[:40].strip("-")
+            i = 2
+            while new.lower() in taken:
+                new = f"{p['name']}-{tag}{i}"[:40]
+                i += 1
+            said.append(f"{p['name']} works in another of your companies, so this one gets {new}")
+            p["name"] = new
+            taken.add(new.lower())
+    return said

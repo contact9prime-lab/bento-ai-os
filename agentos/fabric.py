@@ -2782,10 +2782,12 @@ class ControlPlane(usersmod.Scoped):
         from . import company as companymod, executors
         if status not in companymod.AUDITED:
             return None
-        dept = companymod.audit_scope(self.cfg, self.store, flow["name"])
+        # a parked company's mission is signed off by ITS bosses (company.cfg_for)
+        ccfg = companymod.cfg_for(self.cfg, flow["name"])
+        dept = companymod.audit_scope(ccfg, self.store, flow["name"])
         if not dept:
             return None
-        gates = companymod.chain(self.cfg, self.store, dept["name"])
+        gates = companymod.chain(ccfg, self.store, dept["name"])
         if not gates:
             return None
         run = self.store.fabric_run(run_id) or {}
@@ -2909,11 +2911,12 @@ class ControlPlane(usersmod.Scoped):
         from . import company as companymod, brief as briefmod
         run = self.store.fabric_run(run_id) or {}
         status = status or run.get("status") or ""
-        if not force and not companymod.audit_on(self.cfg):
+        ccfg = companymod.cfg_for(self.cfg, flow["name"])
+        if not force and not companymod.audit_on(ccfg):
             return None
         if status not in companymod.AUDITED:
             return None
-        dept = companymod.audit_scope(self.cfg, self.store, flow["name"])
+        dept = companymod.audit_scope(ccfg, self.store, flow["name"])
         if not dept:
             return None
         content = content or run.get("output") or ""

@@ -3672,6 +3672,169 @@ def _company_cli(args):
               f"(each off until you switch it on), {pv['talk_pairs']} who-may-ask-whom cells.")
         for n in pv.get("notes") or []:
             print(f"  note: {n}")
+        if pv.get("work"):
+            show_work(pv["work"])
+
+    def show_work(w):
+        if w.get("objective"):
+            print(f"\n  Objective: {w['objective']}")
+        if w.get("missions"):
+            print("\n  Missions (each starts off; its schedule runs once you switch it on):")
+            for m in w["missions"]:
+                st = "" if m["status"] == "new" else "  (already here, kept as it is)"
+                print(f"    {m['department']:<12} {m['title']:<26} {m['when']}{st}")
+        if w.get("tasks"):
+            print("\n  Tasks to start:")
+            for t in w["tasks"]:
+                print(f"    {t['department']:<12} {t['text'][:90]}")
+        for n in w.get("notes") or []:
+            print(f"  note: {n}")
+
+    def confirm(q):
+        if getattr(args, "yes", False):
+            return True
+        try:
+            return input(f"\n  {q} [y/N] ").strip().lower() in ("y", "yes")
+        except EOFError:
+            return False
+
+    if a in ("companies", "new", "open", "drop"):
+        # several companies, each its own office, objective, work and space
+        if a == "new":
+            name = " ".join(rest).strip()
+            body = {"name": name, "about": getattr(args, "about", "") or "",
+                    "objective": getattr(args, "objective", "") or "", "surface": "cli"}
+            if up:
+                d = _api_call(port, "/api/companies", "POST", body)
+                if d.get("error"):
+                    print(f"✗ {d['error']}")
+                    sys.exit(1)
+                row = d["company"]
+            else:
+                try:
+                    row = co.create(cfg, store, name, body["about"], body["objective"], surface="cli")
+                except ValueError as e:
+                    print(f"✗ {e}")
+                    sys.exit(1)
+                _cfgmod.save_config(cfg)
+                co.record(store, f"company started from the terminal: {row['name']}")
+            print(f"✓ {row['name']} is open: an empty office of its own and its own space.\n"
+                  f'  bento company setup "what {row["name"]} does" --objective "what it is for"')
+            return
+        if a in ("open", "drop"):
+            hit = co.find(cfg, " ".join(rest))
+            if not hit:
+                print(f"✗ no company called {' '.join(rest) or '?'}. bento company companies")
+                sys.exit(1)
+            if a == "drop" and not confirm(f"Take {hit['name']} off your list? Its missions are "
+                                           f"switched off; its agents and space stay."):
+                print("  Nothing was changed.")
+                return
+            if up:
+                d = (_api_call(port, "/api/companies/active", "PUT", {"id": hit["id"], "surface": "cli"})
+                     if a == "open" else _api_call(port, f"/api/companies/{hit['id']}", "DELETE"))
+                if d.get("error"):
+                    print(f"✗ {d['error']}")
+                    sys.exit(1)
+            else:
+                try:
+                    if a == "open":
+                        co.switch(cfg, store, hit["id"], surface="cli")
+                    else:
+                        co.remove(cfg, store, hit["id"])
+                except ValueError as e:
+                    print(f"✗ {e}")
+                    sys.exit(1)
+                _cfgmod.save_config(cfg)
+                co.record(store, f"{'opened' if a == 'open' else 'removed'} company "
+                                 f"{hit['name']} from the terminal")
+            print(f"✓ {hit['name']} is " + ("open." if a == "open" else "off your list."))
+            if a == "drop":
+                return
+            cfg, store = _open_store(getattr(args, "user", ""))
+        rows = co.companies(cfg)
+        if not rows:
+            print('No company yet:  bento company setup "what your company does"')
+            return
+        for c in rows:
+            print(f"  {'▸' if c['active'] else ' '} {c['name']:<22} {c['departments']} departments, "
+                  f"{c['people']} people, {c['missions']} missions"
+                  + (f"\n    objective: {c['objective']}" if c["objective"] else ""))
+        print("\n  bento company open NAME  ·  bento company new NAME --objective \"…\"")
+        return
+    if a == "objective":
+        goal = " ".join(rest).strip() or co.objective(cfg)
+        if len(goal) < 3:
+            print('say what the company is trying to achieve:\n'
+                  '  bento company objective "win ten clinic clients this quarter"')
+            print(f"  Now: {co.objective(cfg) or '(none)'}")
+            sys.exit(2)
+        if up:
+            d = _api_call(port, "/api/company/work/draft", "POST", {"objective": goal})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+            work, pv = d["work"], d["preview"]
+            how = f"drafted by {d['who']}" if d["how"] == "brain" else (d.get("said") or "")
+        else:
+            import asyncio as _aio
+            from . import executors as _ex
+            depts = co.departments(cfg, store)
+            if not depts:
+                print('✗ set up the departments first:  bento company setup "what it does"')
+                sys.exit(1)
+            work, how = {}, ""
+            if not getattr(args, "words", False):
+                system, prompt = co.work_prompt(co.profile(cfg), goal, depts)
+                raw, who = _aio.run(_ex.ask_once(cfg, system, prompt, timeout=180))
+                work, _ = co.read_work(raw, [x["name"] for x in depts]) if raw else ({}, [])
+                how = f"drafted by {who}" if work.get("missions") or work.get("tasks") else ""
+            if not (work.get("missions") or work.get("tasks")):
+                work = co.work_from_words(goal, depts)
+                how = "filled in from the catalogue"
+            pv = co.preview_work(cfg, store, work, goal=goal)
+        if how:
+            print(f"  {how[0].upper() + how[1:]}.")
+        show_work(pv)
+        if not confirm("Make this?"):
+            print("  Nothing was changed.")
+            return
+        if up:
+            rep_ = _api_call(port, "/api/company/work/apply", "POST", {"work": work, "objective": goal})
+            if rep_.get("error"):
+                print(f"✗ {rep_['error']}")
+                sys.exit(1)
+        else:
+            rep_ = co.apply_work(cfg, store, work, goal)
+            _cfgmod.save_config(cfg)
+            co.record(store, f"objective from the terminal: {goal}")
+        print(f"✓ {len(rep_['missions'])} missions made ({rep_['scheduled']} on a schedule, all "
+              f"off until you switch them on in Missions), {rep_['tasks']} tasks to start.")
+        for e in rep_.get("errors") or []:
+            print(f"  ✗ {e}")
+        if rep_["tasks"]:
+            print("  bento company todo   lists them; bento company start ID starts one")
+        return
+    if a in ("todo", "start"):
+        if a == "todo" or not rest:
+            items = co.todo(cfg)
+            if not items:
+                print("No tasks waiting. bento company objective \"…\" drafts some.")
+                return
+            for t in items:
+                print(f"  {t['id']}  {t['department']:<12} {t['text'][:90]}")
+            print("\n  bento company start ID")
+            return
+        if not _server_answers(port):
+            print("✗ AgentOS is not running here. A department's work runs in the server: "
+                  "start it with `bento serve`.")
+            sys.exit(1)
+        d = _api_call(port, f"/api/company/todo/{rest[0]}/start", "POST", {"surface": "cli"})
+        if d.get("error"):
+            print(f"✗ {d['error']}")
+            sys.exit(1)
+        print(f"▶ {d['department']} is on it · run {d['run_id']}\n  bento flow show {d['run_id']}")
+        return
 
     if a in ("show", "list"):
         # the server knows what is waiting for approval right now; the files do not
@@ -3838,9 +4001,12 @@ def _company_cli(args):
             print('say what the company does:  bento company setup "a coffee subscription startup"')
             sys.exit(2)
         talk = not getattr(args, "no_talk", False)
+        # a company opened with `bento company new --objective` keeps it for its setup
+        goal = ((getattr(args, "objective", "") or "").strip()
+                or (co.objective(cfg) if not co.departments(cfg, store) else ""))
         if up:
             d = _api_call(port, "/api/company/draft", "POST",
-                          {"description": desc, "departments": ids, "talk": talk})
+                          {"description": desc, "departments": ids, "talk": talk, "objective": goal})
             if d.get("error"):
                 print(f"✗ {d['error']}")
                 sys.exit(1)
@@ -3853,15 +4019,24 @@ def _company_cli(args):
             names = [t["name"] for t in _tools.TOOL_SCHEMAS]
             plan, how = {}, ""
             if len(desc) >= 3 and not getattr(args, "words", False):
-                system, prompt = co.design_prompt(desc, names)
+                system, prompt = co.design_prompt(desc, names, goal)
                 raw, who = _aio.run(_ex.ask_once(cfg, system, prompt, timeout=240))
                 plan, _ = co.read_plan(raw, names) if raw else ({}, [])
                 how = f"designed by {who}" if plan else ""
             if not plan:
-                plan, _ = co.normalize(co.from_words(desc, ids), names)
+                raw_plan = co.from_words(desc, ids)
+                if goal:
+                    raw_plan["work"] = co.work_from_words(goal, raw_plan["departments"])
+                plan, _ = co.normalize(raw_plan, names)
                 how = ("filled in from the catalogue, as asked" if getattr(args, "words", False) else
                        "nothing answered, so this was filled in from the catalogue" if _ex.has_brain(cfg)
                        else "no brain is set up, so this was filled in from the catalogue")
+            if goal:
+                plan["company"]["objective"] = goal
+                if "work" not in plan:
+                    plan["work"] = co.work_from_words(goal, plan["departments"])
+            if not plan["company"].get("name") and co.profile(cfg).get("name"):
+                plan["company"]["name"] = co.profile(cfg)["name"]
             from . import accounts as _acc
             accts = {k: bool(v.get("ready")) for k, v in _acc.readiness(cfg).items()}
             pv = co.preview(cfg, store, plan, accts, talk=talk)
@@ -3896,6 +4071,11 @@ def _company_cli(args):
         for e in rep.get("errors") or []:
             print(f"  ✗ {e}")
         print("  Each department has a desk (a mission), off until you switch it on in Missions.")
+        wk = rep.get("work") or {}
+        if wk.get("missions") or wk.get("tasks"):
+            print(f"  For the objective: {len(wk.get('missions') or [])} missions "
+                  f"({wk.get('scheduled', 0)} on a schedule, all off) and {wk.get('tasks', 0)} "
+                  f"tasks to start (bento company todo).")
         if rep.get("try"):
             print(f"  {rep['try']}")
             first = rep["departments"][0] if rep["departments"] else ""
@@ -3924,7 +4104,8 @@ def _company_cli(args):
         co.record(store, f"company renamed: {cur['name']}")
         print(f"✓ the company is called {co.profile(cfg)['name']}")
         return
-    print("bento company [show|templates|setup|task|name|audit|review|chain|check]")
+    print("bento company [show|templates|setup|task|name|objective|todo|start|audit|review|"
+          "chain|check|companies|new|open|drop]")
     sys.exit(2)
 
 
@@ -7291,11 +7472,16 @@ def main():
     p_co = verb("company", help="your company: departments of agents, set up from a sentence, and their work")
     p_co.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "templates", "setup", "task", "name", "audit",
-                               "review", "chain", "check"])
+                               "review", "chain", "check", "objective", "todo", "start",
+                               "companies", "new", "open", "drop"], metavar="ACTION")
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
                                               " · name: the company's name · audit: on|off"
                                               " · review: lead|heads|off"
-                                              " · chain: [DEPARTMENT BOSS|lead] · check: RUN")
+                                              " · chain: [DEPARTMENT BOSS|lead] · check: RUN"
+                                              " · objective: what it is for · start: TODO-ID"
+                                              " · new/open/drop: a company's name")
+    p_co.add_argument("--objective", default="", help="setup, new: what the company is trying to achieve")
+    p_co.add_argument("--about", default="", help="new: what the company does, in one line")
     p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")
     p_co.add_argument("--no-talk", action="store_true", help="setup: do not let colleagues ask each other")
     p_co.add_argument("--words", action="store_true", help="setup: skip the brain, use the catalogue as it is")
