@@ -262,7 +262,15 @@ def profile_name(store, cfg: dict, kind: str, ident: str) -> str | None:
         return (cfg or {}).get("agent_profile") or DEFAULT
     if kind == "subagent":
         d = store.get_subagent(ident)
-        return (d or {}).get("profile") or DEFAULT
+        if (d or {}).get("profile"):
+            return d["profile"]
+        # an agent with no hands of its own works with its department's, when the
+        # department was given some (company.set_hands); otherwise the default
+        from .office import department_of
+        dep = department_of(cfg, ident)
+        if dep and dep[0].get("hands") and get(store, dep[0]["hands"]):
+            return dep[0]["hands"]
+        return DEFAULT
     return None
 
 

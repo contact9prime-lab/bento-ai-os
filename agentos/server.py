@@ -11065,7 +11065,18 @@ async def api_company():
             "catalogue": companymod.catalogue(), "brain": execmod.has_brain(cfg),
             "accounts": _company_accounts(cfg), "max_departments": companymod.MAX_DEPTS,
             "brain_notes": companymod.brain(store),
-            "companies": companymod.companies(cfg), "max_companies": companymod.MAX_COMPANIES}
+            "companies": companymod.companies(cfg), "max_companies": companymod.MAX_COMPANIES,
+            "permissions": companymod.permission_mode(cfg),
+            "executors": [{"name": p["name"], "summary": p.get("summary", "")}
+                          for p in _hands_list(store)]}
+
+
+def _hands_list(store) -> list:
+    try:
+        from . import hands as handsmod
+        return handsmod.list_profiles(store)
+    except Exception:
+        return []
 
 
 @app.put("/api/company")
@@ -12839,8 +12850,12 @@ async def api_agent_hands(key: str, body: dict):
 
 @app.get("/api/team/matrix")
 async def api_team_matrix():
-    """Who may ask whom (fabric.matrix — grants rows, drawn as a grid)."""
-    return fabricmod.matrix(state["store"], state["cfg"])
+    """Who may ask whom (fabric.matrix — grants rows, drawn as a grid), and the same
+    question between the company's departments (company.dept_matrix), with the level
+    the company decides it at."""
+    from . import company as companymod
+    return {**fabricmod.matrix(state["store"], state["cfg"]),
+            "departments": companymod.dept_matrix(state["cfg"], state["store"])}
 
 
 @app.put("/api/team/matrix")
@@ -12849,15 +12864,57 @@ async def api_team_matrix_set(body: dict):
     not an agent-facing door — an agent that could write the matrix could grant
     itself colleagues (there is deliberately no tool for this)."""
     b = body or {}
+    from . import company as companymod
+    dept = str(b.get("level") or "") == "department"
     try:
-        cell = fabricmod.set_cell(state["store"], str(b.get("from") or ""),
-                                  str(b.get("to") or ""), str(b.get("effect") or ""))
+        if dept:
+            cell = companymod.set_dept_cell(state["cfg"], state["store"], str(b.get("from") or ""),
+                                            str(b.get("to") or ""), str(b.get("effect") or ""))
+        else:
+            cell = fabricmod.set_cell(state["store"], str(b.get("from") or ""),
+                                      str(b.get("to") or ""), str(b.get("effect") or ""))
     except KeyError as e:
-        return JSONResponse({"error": f"no agent called '{e.args[0]}'"}, status_code=404)
+        return JSONResponse({"error": f"no {'department' if dept else 'agent'} called '{e.args[0]}'"},
+                            status_code=404)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     await state["broadcast"]({"type": "grants"})
-    return {"ok": True, "cell": cell, **fabricmod.matrix(state["store"], state["cfg"])}
+    return {"ok": True, "cell": cell, **fabricmod.matrix(state["store"], state["cfg"]),
+            "departments": companymod.dept_matrix(state["cfg"], state["store"])}
+
+
+@app.put("/api/company/permissions")
+async def api_company_permissions(body: dict):
+    """Decide who may ask whom per agent or per department (company.set_permission_mode).
+    The person's choice, so a cookie door and no tool, like the matrix itself."""
+    from . import company as companymod
+    try:
+        mode = companymod.set_permission_mode(state["cfg"], state["store"], str((body or {}).get("mode") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "grants"})
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {"ok": True, "mode": mode, "departments": companymod.dept_matrix(state["cfg"], state["store"])}
+
+
+@app.put("/api/company/hands")
+async def api_company_hands(body: dict):
+    """Give a department an executor (hands profile) for every member without their own."""
+    from . import company as companymod
+    b = body or {}
+    try:
+        got = companymod.set_hands(state["cfg"], state["store"], str(b.get("department") or ""),
+                                   str(b.get("hands") or ""))
+    except KeyError as e:
+        return JSONResponse({"error": f"there is no department called {e.args[0] or '(none)'}"},
+                            status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, **got}
 
 
 @app.put("/api/subagents/{name}/brain")

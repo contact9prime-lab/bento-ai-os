@@ -473,12 +473,20 @@ function companyOverviewPaint(el){
         <option value="">${esc(b.lead||'your agent')}</option>${d.departments.filter(y=>y.name!==x.name).map(y=>
           `<option value="${esc(y.name)}"${x.reports_to===y.name?' selected':''}>${esc(y.name)}</option>`).join('')}</select>
         ${x.signed||x.held?`<span>${x.signed} signed off${x.held?`, <b class="co-w">${x.held} held</b>`:''} this week</span>`:''}</label>
+      <label class="co-rep mut">Executor <select data-hands="${esc(x.name)}" aria-label="${esc(x.name)}'s executor">
+        <option value="">Each agent's own</option>${(d.executors||[]).map(p=>
+          `<option value="${esc(p.name)}"${x.hands===p.name?' selected':''}>${esc(p.name)}</option>`).join('')}</select>
+        ${typeof pInfo==='function'?pInfo('What the department’s people can reach: tools, folders, web and MCP servers. An agent with an executor of its own keeps it.'):''}</label>
+      ${companyKitHTML(x)}
       <div class="co-desk mut">${!x.has_desk?'No desk: tasks go to its head in chat.'
         :x.desk_on?'Desk on.':'Desk off, so gated steps ask you.'}
         ${x.has_desk?`<button class="co-link" data-desk="${esc(x.desk)}">${x.desk_on?'Open in Missions':'Switch on in Missions'}</button>`:''}</div>
       ${(x.missions||[]).length?`<div class="co-desk mut">Missions: ${x.missions.map(m=>`<button class="co-link" data-desk="${esc(m.flow)}">${esc(m.title)}${m.on?'':' (off)'}</button>`).join(' ')}</div>`:''}
     </div>`).join('')}
     <div class="of-row"><button class="endbtn co-add">＋ Add departments</button></div>
+    <label class="co-audit co-signoff"><span>Who may ask whom</span><select class="co-perm" aria-label="Who may ask whom is decided per">
+      ${[['agent','Per agent'],['department','Per department']].map(([k,l])=>`<option value="${k}"${(d.permissions||'agent')===k?' selected':''}>${l}</option>`).join('')}</select>
+      <button class="co-link co-grid">${(d.permissions||'agent')==='department'?'Department grid':'Agent grid'}</button>${typeof pInfo==='function'?pInfo('Per department: people in one department may ask each other, and the grid decides between departments. A block between two agents still holds.'):''}</label>
     <div class="of-sec">Tasks</div>
     <label class="co-audit co-signoff"><span>Sign-off</span><select class="co-rv" aria-label="Who signs finished work off">
       ${[['lead',`Every boss, up to ${b.lead||'your agent'}`],['heads',"The department's own head"],['off','Nobody']].map(([k,l])=>
@@ -516,6 +524,11 @@ function companyOverviewPaint(el){
   q('.co-aud').onchange=e=>companyAuditSwitch(e.target);
   q('.co-rv').onchange=e=>companyReviewMode(e.target);
   el.querySelectorAll('[data-rep]').forEach(x=>x.onchange=()=>companyReports(x));
+  el.querySelectorAll('[data-hands]').forEach(x=>x.onchange=()=>companyHands(x));
+  q('.co-perm').onchange=e=>companyPermMode(e.target);
+  q('.co-grid').onclick=()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
+    setTimeout(()=>document.getElementById('s-team-matrix')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)};
+  el.querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>companyKitOpen(b.dataset.kit));
   el.querySelectorAll('[data-run]').forEach(b=>b.onclick=e=>{
     const ap=e.target.closest('[data-ap]');if(ap)return companyReview(ap.dataset.ap.split(','));
     const ck=e.target.closest('[data-check]');if(ck)return companyCheck(b.dataset.run,ck);
@@ -560,6 +573,29 @@ async function companyReports(sel){
       body:JSON.stringify({department:dept,reports_to:sel.value})});
     if(j.error)throw new Error(j.error);
     toast(`${dept} reports to ${j.reports_to}. Sign-off: ${(j.chain||[]).join(' → ')}`);
+    companyLoad();
+  }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
+  finally{sel.disabled=false}
+}
+/* ---------------- permissions and hands at the department level (company.py) ---------------- */
+async function companyHands(sel){
+  const dept=sel.dataset.hands;sel.disabled=true;
+  try{
+    const j=await apiJSON('/api/company/hands',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({department:dept,hands:sel.value})});
+    if(j.error)throw new Error(j.error);
+    toast(j.hands?`${dept} works with the ${j.hands} executor`:`${dept}'s people each use their own executor`);
+    companyLoad();
+  }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
+  finally{sel.disabled=false}
+}
+async function companyPermMode(sel){
+  sel.disabled=true;
+  try{
+    const j=await apiJSON('/api/company/permissions',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mode:sel.value})});
+    if(j.error)throw new Error(j.error);
+    toast(j.mode==='department'?'Departments decide who may ask whom. Colleagues may ask each other.':'Each pair of agents decides who may ask whom.');
     companyLoad();
   }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
   finally{sel.disabled=false}

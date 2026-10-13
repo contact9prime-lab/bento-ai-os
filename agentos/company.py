@@ -1094,7 +1094,9 @@ def stats(cfg: dict, store, waiting: list | None = None, now: float | None = Non
                     "reports_to": d.get("reports_to") or "",
                     "signed": sum((r.get("review") or {}).get("outcome") == "approved" for r in week),
                     "held": sum((r.get("review") or {}).get("outcome") in
-                                ("sent_back", "escalated", "unchecked") for r in week)})
+                                ("sent_back", "escalated", "unchecked") for r in week),
+                    # the executor its people work with, and the kit it was set up with
+                    "hands": d.get("hands") or "", "kit": d.get("kit") or {}})
     return out
 
 
@@ -2335,3 +2337,155 @@ def rename_for(cfg: dict, store, plan: dict) -> list[str]:
             p["name"] = new
             taken.add(new.lower())
     return said
+
+
+# ---------------------------------------------------------------------------
+# Permissions and hands at the department level
+# ---------------------------------------------------------------------------
+# "I should be able to build PDP between the departments instead of just the agents,
+# and switch between the two; and give a department executors instead of each agent."
+# Nothing new is stored beside the gate's own rows:
+#
+# - The MODE is the company's (`company.permissions`: "agent" or "department"). In
+#   department mode the gate (PDP, step 2e) decides an ask between two people of this
+#   company by their departments: colleagues in one department may ask each other, and
+#   between departments the department cell decides. An explicit block between two
+#   agents still refuses, so switching the mode never reopens what a person closed.
+# - A department CELL is an ordinary grant row: principal `department:<company>/<Dept>`,
+#   action agent.message, resource `department:<Dept>`. Permissions lists and revokes it.
+# - A department's HANDS are a field on its room (`hands`); hands.profile_name gives it to
+#   every member without hands of their own, so one choice fits a whole department.
+
+PERMISSION_MODES = ("agent", "department")
+
+
+def permission_mode(cfg: dict) -> str:
+    m = str(((cfg or {}).get("company") or {}).get("permissions") or "agent")
+    return m if m in PERMISSION_MODES else "agent"
+
+
+def _audit_row(store, action: str, resource: str, detail: str) -> None:
+    try:
+        from . import users as _users
+        uid = _users.current() or ""
+    except Exception:
+        uid = ""
+    store.audit_add(uid=uid, principal_kind="user", principal_id="", action=action,
+                    resource=resource, effect="allow", rule="person", outcome="ok",
+                    detail=detail[:1000])
+
+
+def set_permission_mode(cfg: dict, store, mode: str) -> str:
+    """Switch who-may-ask-whom between agents and departments. The caller saves config."""
+    mode = str(mode or "").strip().lower()
+    if mode not in PERMISSION_MODES:
+        raise ValueError("permissions are decided per agent or per department")
+    if mode == "department" and not departments(cfg, store):
+        raise ValueError("this company has no departments yet, so there is nothing to decide "
+                         "between them. Set the company up first.")
+    cur = dict(cfg.get("company") or {})
+    cur["permissions"] = mode
+    cfg["company"] = cur
+    _audit_row(store, "company.permissions", "company:" + (cur.get("id") or ""),
+               f"who may ask whom is decided per {mode}")
+    return mode
+
+
+def dept_key(cfg: dict, dept: str) -> str:
+    """The principal id of a department's cells: the company's id and the name, because
+    two companies may each have a Sales."""
+    return f"{profile(cfg)['id'] or 'company'}/{dept}"
+
+
+def dept_matrix(cfg: dict, store) -> dict:
+    """The department grid: rows ask, columns answer, read from the grant rows."""
+    names = [d["name"] for d in departments(cfg, store) if d["members"]]
+    pre = (profile(cfg)["id"] or "company") + "/"
+    cells: dict = {}
+    for g in store.list_grants(principal_kind="department"):
+        frm = str(g.get("principal_id") or "")
+        if g.get("action") != "agent.message" or not frm.startswith(pre):
+            continue
+        a, to = frm[len(pre):], str(g.get("resource") or "").partition(":")[2]
+        for b in ([n for n in names if n != a] if to == "*" else [to]):
+            k = f"{a}>{b}"
+            if g.get("effect") == "deny" or cells.get(k) != "deny":
+                cells[k] = "deny" if g.get("effect") == "deny" else "allow"
+    return {"mode": permission_mode(cfg), "departments": names, "cells": cells}
+
+
+def set_dept_cell(cfg: dict, store, frm: str, to: str, effect: str) -> dict:
+    """Write one department cell: 'allow', 'deny' or 'ask' (clear it)."""
+    if effect not in ("allow", "deny", "ask"):
+        raise ValueError("a cell is allow, deny or ask")
+    names = {d["name"].lower(): d["name"] for d in departments(cfg, store)}
+    a, b = names.get(str(frm or "").strip().lower()), names.get(str(to or "").strip().lower())
+    if not a or not b:
+        raise KeyError(frm if not a else to)
+    if a == b:
+        raise ValueError("people in one department may always ask each other")
+    pid, res = dept_key(cfg, a), f"department:{b}"
+    for g in store.list_grants(principal_kind="department", principal_id=pid):
+        if g.get("action") == "agent.message" and g.get("resource") == res:
+            store.revoke_grant(g["id"])
+    if effect != "ask":
+        store.add_grant("department", pid, "agent.message", res, effect=effect, source="matrix",
+                        note=f"{a} {'may' if effect == 'allow' else 'may not'} ask {b}")
+    return {"from": a, "to": b, "effect": effect}
+
+
+def dept_cell_decision(cfg: dict, store, asker: str, asked: str):
+    """What the department level says about `asker` asking `asked`, for the gate:
+    None when it does not apply (agent mode, someone outside a department, two
+    companies), ("allow", why, rule) / ("deny", why, rule), or ("empty", "", "") for an
+    unset cell, which the gate's default then answers (ask, swarm or a vote)."""
+    a = officemod.department_of(cfg, asker)
+    b = officemod.department_of(cfg, asked)
+    if not a or not b:
+        return None
+    (da, ca), (db, cb) = a, b
+    if str(ca.get("permissions") or "agent") != "department":
+        return None
+    if str(ca.get("id") or "") != str(cb.get("id") or ""):
+        return None
+    if da["name"] == db["name"]:
+        return ("allow", f"{asker} and {asked} work in {da['name']}", "department-same")
+    pid = f"{ca.get('id') or 'company'}/{da['name']}"
+    rows = [g for g in store.list_grants(principal_kind="department", principal_id=pid)
+            if g.get("action") == "agent.message"
+            and g.get("resource") in (f"department:{db['name']}", "department:*")]
+    for g in rows:
+        if g.get("effect") == "deny":
+            return ("deny", g.get("note") or f"{da['name']} may not ask {db['name']}", g["id"])
+    for g in rows:
+        if g.get("effect", "allow") == "allow":
+            return ("allow", g.get("note") or "", g["id"])
+    return ("empty", f"{da['name']} → {db['name']}", "")
+
+
+def set_hands(cfg: dict, store, department: str, profile_name_: str) -> dict:
+    """Give a department an executor: every member without hands of their own works with
+    it. '' clears it (members go back to the default). The caller saves config."""
+    from . import hands as handsmod
+    want = str(profile_name_ or "").strip()
+    if want and not handsmod.get(store, want):
+        names = ", ".join(p["name"] for p in handsmod.list_profiles(store))
+        raise ValueError(f"no executor called '{want}'. Executors: {names}")
+    office = officemod.current(cfg)
+    hit = next((d for d in office["departments"] if d["name"].lower() == str(department or "").strip().lower()), None)
+    if not hit:
+        raise KeyError(department)
+    depts = []
+    for d in office["departments"]:
+        d = dict(d)
+        if d["name"] == hit["name"]:
+            d.pop("hands", None)
+            if want:
+                d["hands"] = want
+        depts.append(d)
+    officemod.save(cfg, store, {"departments": depts})
+    handsmod._GEN[0] += 1
+    _audit_row(store, "agent.hands", f"department:{hit['name']}",
+               f"{hit['name']} works with the '{want or handsmod.DEFAULT}' executor"
+               + ("" if want else " (each agent's own, or the default)"))
+    return {"department": hit["name"], "hands": want}

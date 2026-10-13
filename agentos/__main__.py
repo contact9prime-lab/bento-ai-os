@@ -3923,6 +3923,86 @@ def _company_cli(args):
                           action="company.review")
         print(f"✓ {words[want]}.")
         return
+    if a == "permissions":
+        # bento company permissions agent|department   who decides who may ask whom
+        m = co.dept_matrix(cfg, store)
+        if not rest or rest[0] not in co.PERMISSION_MODES:
+            print(f"Who may ask whom is decided per {m['mode']}.")
+            if m["mode"] == "department":
+                print("  colleagues in one department may ask each other")
+                for k, v in sorted(m["cells"].items()):
+                    print(f"  {k.replace('>', ' → ')}: {'allow' if v == 'allow' else 'block'}")
+                print("  every other pair of departments: ask, swarm or vote, as the team's talk says")
+            print("  bento company permissions agent|department · bento company allow|block|ask DEPT DEPT")
+            return
+        if up:
+            d = _api_call(port, "/api/company/permissions", "PUT", {"mode": rest[0]})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            try:
+                co.set_permission_mode(cfg, store, rest[0])
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+            _cfgmod.save_config(cfg)
+        print(f"✓ who may ask whom is decided per {rest[0]}.")
+        return
+    if a in ("allow", "block", "ask"):
+        # bento company allow SALES FINANCE   Sales may ask Finance (department level)
+        if len(rest) < 2:
+            print(f"  bento company {a} DEPARTMENT DEPARTMENT   (the first asks, the second answers)")
+            sys.exit(2)
+        eff = {"allow": "allow", "block": "deny", "ask": "ask"}[a]
+        if up:
+            d = _api_call(port, "/api/team/matrix", "PUT",
+                          {"level": "department", "from": rest[0], "to": rest[1], "effect": eff})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            try:
+                co.set_dept_cell(cfg, store, rest[0], rest[1], eff)
+            except KeyError as e:
+                print(f"✗ there is no department called {e.args[0]}")
+                sys.exit(1)
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+        print(f"✓ {rest[0]} → {rest[1]}: {a}"
+              + ("" if co.permission_mode(cfg) == "department" else
+                 ". This counts once the company decides per department: "
+                 "bento company permissions department"))
+        return
+    if a == "hands":
+        # bento company hands                    each department's executor
+        # bento company hands SALES research     Sales works with the 'research' executor
+        # bento company hands SALES own          each agent's own again
+        if not rest:
+            for s in co.stats(cfg, store):
+                print(f"  {s['name']:<16} {s.get('hands') or 'each agent’s own'}")
+            print("  bento company hands DEPARTMENT EXECUTOR|own   (bento hands lists the executors)")
+            return
+        prof = "" if len(rest) < 2 or rest[1].lower() in ("own", "none", "-") else rest[1]
+        if up:
+            d = _api_call(port, "/api/company/hands", "PUT", {"department": rest[0], "hands": prof})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            try:
+                co.set_hands(cfg, store, rest[0], prof)
+            except KeyError as e:
+                print(f"✗ there is no department called {e.args[0]}")
+                sys.exit(1)
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+            _cfgmod.save_config(cfg)
+        print(f"✓ {rest[0]} " + (f"works with the '{prof}' executor." if prof
+                                  else "people each use their own executor."))
+        return
     if a == "chain":
         # bento company chain                 every department's line of bosses
         # bento company chain TECH OPS|lead   Tech reports to Ops (or to the lead)
@@ -7473,13 +7553,17 @@ def main():
     p_co.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "templates", "setup", "task", "name", "audit",
                                "review", "chain", "check", "objective", "todo", "start",
-                               "companies", "new", "open", "drop"], metavar="ACTION")
+                               "companies", "new", "open", "drop", "permissions", "allow", "block",
+                               "ask", "hands", "kit"], metavar="ACTION")
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
                                               " · name: the company's name · audit: on|off"
                                               " · review: lead|heads|off"
                                               " · chain: [DEPARTMENT BOSS|lead] · check: RUN"
                                               " · objective: what it is for · start: TODO-ID"
-                                              " · new/open/drop: a company's name")
+                                              " · new/open/drop: a company's name"
+                                              " · permissions: agent|department"
+                                              " · allow/block/ask: DEPARTMENT DEPARTMENT"
+                                              " · hands: DEPARTMENT EXECUTOR|own · kit: DEPARTMENT")
     p_co.add_argument("--objective", default="", help="setup, new: what the company is trying to achieve")
     p_co.add_argument("--about", default="", help="new: what the company does, in one line")
     p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")

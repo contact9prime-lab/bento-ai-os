@@ -1407,6 +1407,10 @@ async function paintTeamMatrix(){
   if(names.length<2){box.textContent='You need at least two specialists before they can message each other.';return}
   if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first”, “Swarm” or “Democracy” above to turn it on.';return}
   box.classList.remove('mut');
+  // the company can decide this per department instead (company.dept_matrix): one grid
+  // of departments, colleagues free to ask each other, an agent-level block still holding
+  const dm=d.departments||{},dn=dm.departments||[];
+  if(dm.mode==='department'&&dn.length>=2){paintDeptMatrix(box,dm,talk);return}
   const blank=talk==='swarm'?'swarm':talk==='democracy'?'vote':'ask';
   const label=(v)=>v==='allow'?'allow':v==='deny'?'block':blank;
   box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
@@ -1414,7 +1418,9 @@ async function paintTeamMatrix(){
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
       const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
+      ${dn.length>=2?` <button class="co-link tm-level" data-mode="department">Decide it per department instead</button>`:''}</div>`;
+  box.querySelector('.tm-level')?.addEventListener('click',e=>teamMatrixLevel(e.target.dataset.mode));
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
     const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
     const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
@@ -1424,6 +1430,33 @@ async function paintTeamMatrix(){
   });
 }
 
+/* The department grid: the same cells, one level up. Rows ask, columns answer. */
+function paintDeptMatrix(box,dm,talk){
+  const names=dm.departments,cells=dm.cells||{},blank=talk==='swarm'?'swarm':talk==='democracy'?'vote':'ask';
+  const label=v=>v==='allow'?'allow':v==='deny'?'block':blank;
+  box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>▦ ${esc(n)}</th>`).join('')}</tr>
+    ${names.map(a=>`<tr><th class="tm-row">▦ ${esc(a)}</th>${names.map(b=>{
+      if(a===b)return '<td><div class="tm-self" title="Colleagues in one department may always ask each other" aria-hidden="true"></div></td>';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
+      return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
+    <div class="tm-legend">Per department: people in one department may ask each other, and these cells decide between departments. A block between two agents still holds.
+      <button class="co-link tm-level" data-mode="agent">Decide it per agent instead</button></div>`;
+  box.querySelector('.tm-level').onclick=e=>teamMatrixLevel(e.target.dataset.mode);
+  box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
+    const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
+    const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({level:'department',from:b.dataset.a,to:b.dataset.b,effect:next})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    paintTeamMatrix();
+  });
+}
+async function teamMatrixLevel(mode){
+  const r=await fetch('/api/company/permissions',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+  if(r.error){toast(r.error);return}
+  toast(mode==='department'?'Departments decide who may ask whom':'Each pair of agents decides who may ask whom');
+  paintTeamMatrix();
+}
 /* One number per limit, with its range from the server (fabric.LIMITS). Saved on
    change; a value out of range is refused with the sentence that says the range. */
 async function paintTeamLimits(){

@@ -1018,6 +1018,17 @@ class PDP(usersmod.Scoped):
         self._skills[key] = (now + 5, names)
         return names
 
+    def _dept_level(self, asker: str, resource: str):
+        """company.dept_cell_decision for an ask, or None where it does not apply."""
+        to = resource.rsplit("/", 1)[-1]
+        if not resource.startswith("agent:subagent/") or "@" in to or to == "*":
+            return None
+        try:
+            from . import company as _company
+            return _company.dept_cell_decision(self.cfg, self.store, asker, to)
+        except Exception:
+            return None
+
     def reach_of(self, principal: Principal) -> dict | None:
         """The executor profile (hands) this principal works with, or None where
         profiles do not apply. Keyed on the USER as well (two accounts can each have
@@ -1262,6 +1273,21 @@ class PDP(usersmod.Scoped):
                 if g.get("effect") == "deny":
                     return Decision("deny", g.get("note") or "blocked in the team's matrix",
                                     rule=g["id"])
+            # Department level (company.permissions = "department"): between two people
+            # of one company the department cell decides, colleagues in one department
+            # may ask each other, and an unset cell goes to the default below (ask,
+            # swarm or a vote). Only at the desk: a mission keeps its own consent.
+            # Checked after the agent-level blocks, so switching the level never reopens
+            # a pair a person closed.
+            if not flow and principal.kind == "subagent":
+                dd = self._dept_level(principal.id, resource)
+                if dd is not None:
+                    kind, why, rid = dd
+                    if kind == "deny":
+                        return Decision("deny", why, rule=rid)
+                    if kind == "allow":
+                        return Decision("allow", why, rule=rid)
+                    return self._default(principal, action, resource, ctx)
             for g in rows:
                 if g.get("effect", "allow") == "allow":
                     return Decision("allow", rule=g["id"])

@@ -71,6 +71,7 @@ NAME_MAX = 24
 ABOUT_MAX = 200        # a department's one-line mandate
 TITLE_MAX = 40         # "Head of Finance"
 _DESK = re.compile(r"^[A-Za-z0-9_-]{1,49}$")   # the department's desk is a flow name
+_HANDS = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$")   # hands.py's profile names
 MAX_REPORT_DEPTH = 4   # departments in one line of reports, before the lead
 FLOOR = "Open floor"   # where a specialist nobody placed sits
 
@@ -206,6 +207,17 @@ def clean(spec: dict, known: list[str] | None) -> tuple[dict, list[str]]:
             boss = _plain(d.get("reports_to"))
             if boss:
                 dept["reports_to"] = boss
+            # the executor (hands profile) the department's people work with unless one
+            # of them has their own (hands.profile_name); a name, checked by company.py
+            hands_ = str(d.get("hands") or "").strip()
+            if hands_ and _HANDS.match(hands_):
+                dept["hands"] = hands_
+            # the kit a new department was set up with (company.recommend): what it was
+            # offered and took, kept so the panel can say what is still not switched on
+            kit = d.get("kit") if isinstance(d.get("kit"), dict) else None
+            if kit:
+                dept["kit"] = {k: [str(x)[:64] for x in (kit.get(k) or [])[:12] if str(x).strip()]
+                               for k in ("tools", "skills", "mcp") if kit.get(k)}
             depts.append(dept)
         _reporting_lines(depts)
         out["departments"] = depts
@@ -471,3 +483,22 @@ def from_words(description: str) -> dict:
     if m and m.group(1).strip():
         patch["name"] = _plain(m.group(1))
     return patch
+
+
+def department_of(cfg: dict, member: str) -> tuple[dict, dict] | None:
+    """(department, its company's settings) for an agent, in the open company or a
+    parked one; None for an agent in no department. Read from the raw rooms, so the gate
+    can ask it on every decision without a store: who is in which room is config."""
+    m = str(member or "").strip().lower()
+    if not m:
+        return None
+    places = [((cfg or {}).get("office") or {}, (cfg or {}).get("company") or {})]
+    for rec in ((cfg or {}).get("companies") or {}).values():
+        if isinstance(rec, dict):
+            places.append((rec.get("office") or {}, rec.get("company") or {}))
+    for off, co in places:
+        for d in (off.get("departments") or []) if isinstance(off, dict) else []:
+            if isinstance(d, dict) and m in {str(x).lower() for x in d.get("members") or []}:
+                return d, (co if isinstance(co, dict) else {})
+    return None
+
