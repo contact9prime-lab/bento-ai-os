@@ -90,7 +90,9 @@ var PLACES=[
   ['Rules','permissions','Permissions → Rules',['policies','policy','rules','always allow','always deny'],placeFold('policies')],
   ['Ledger','permissions','Permissions → Ledger',['audit','ledger','decisions','history of decisions','who did what'],placeFold('audit')],
   ['Quarantine','permissions','Permissions → Quarantine',['quarantine','held','stopped','blocked','suspended','runaway'],placeFold('quarantine')],
-].map(([label,app,hint,words,go])=>({label,app,hint,words,go}));
+].map(([label,app,hint,words,go])=>({label,app,hint,words,
+  // Watch me once notes a place as the step (00i-watch.js), not the app it opens
+  go:()=>{if(typeof watchNote==='function')watchNote('place',label);return go()}}));
 
 /* How well `q` names a place or an app by one of its words: 2.6 a whole word, 2.2 the
    start of one. The same scale as palScore, so a word hit ranks with a name hit. */

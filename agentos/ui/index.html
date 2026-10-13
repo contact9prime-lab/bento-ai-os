@@ -5136,6 +5136,16 @@ body.kiosk #office-scene canvas{display:block}
   .ar-top .endbtn,.ar-pane footer .endbtn{min-height:var(--tap,40px)}
   #ar-n button{min-height:var(--tap,40px)}
 }
+
+/* ---- Watch me once (00i-watch.js) and a routine's desktop card ---- */
+.watchcard .pc-text{line-height:1.7}
+.wt-step{display:inline-block;padding:1px 8px;border-radius:8px;background:color-mix(in srgb,var(--acc) 22%,transparent);font-weight:600}
+.wt-arr{opacity:.6;margin:0 4px}
+.wt-daily{display:flex;align-items:center;gap:6px;font-size:12.5px;margin:4px 0;min-height:var(--tap,40px)}
+.routine-widget .rw-body{display:flex;flex-direction:column;gap:6px;padding:10px 12px;height:calc(100% - 34px);box-sizing:border-box}
+.rw-name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rw-steps{font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rw-run{align-self:flex-start;min-height:var(--tap,40px)}
 </style>
 </head>
 <body>
@@ -6563,6 +6573,125 @@ function arenaEvent(ev){
   }
   if(log.childElementCount>400)log.firstElementChild.remove();
   if(stick)log.scrollTop=log.scrollHeight;
+}
+/* ---------------- Watch me once: the desktop notices a routine ----------------
+   When the person does the same few steps twice (open Logs filtered to errors, then
+   the Brief, then WhatsApp), a card offers to make it one click: a Routine (the
+   desktop's own replayable sequence, 15a-automations.js) pinned to the desktop as a
+   card, and if they like, played every day at nine.
+
+   What is noted is the DOOR, never the content: which app, which tab, which place,
+   which Logs filter. Not a word typed, not a file, not a message. It is kept in this
+   page's memory only (a reload forgets it), only steps a person's own tap caused are
+   noted (navigator.userActivation), nothing a Routine itself replays, and a sequence
+   turned down is never offered again in this browser. Off is one switch in Settings →
+   Appearance, remembered per account.
+   Faces: GUI and SUI. A terminal has no desktop to watch; a Routine made here plays from
+   the prompt bar and Missions → Routines, and `run_automation` reaches it from any chat. */
+var WATCH={steps:[],quiet:0,offered:{},card:null};
+var WATCH_KEEP=60,WATCH_WINDOW=45*60*1000,WATCH_MIN=3,WATCH_MAX=6;
+
+function watchKey(){return 'watch.off'+((typeof AVATARS!=='undefined'&&AVATARS.uid)?':'+AVATARS.uid:'')}
+function watchOn(){try{return localStorage.getItem(watchKey())!=='1'}catch(e){return true}}
+function setWatchOn(on){try{localStorage.setItem(watchKey(),on?'0':'1')}catch(e){};if(!on)WATCH.steps=[]}
+function watchSeen(){try{return JSON.parse(localStorage.getItem('watch.declined')||'{}')}catch(e){return {}}}
+function watchDecline(sig){const d=watchSeen();d[sig]=Date.now();try{localStorage.setItem('watch.declined',JSON.stringify(d))}catch(e){}}
+
+/* One step. kind 'app' (a = app id), 'view' (a = app id, v = the tab or filter) or
+   'place' (a = a place's label, 05b-places.js). */
+function watchNote(kind,a,v){
+  try{
+    if(!watchOn()||!a)return;
+    if(typeof AUTO_RUNNING!=='undefined'&&AUTO_RUNNING)return;           // a routine replaying is not you
+    if(navigator.userActivation&&!navigator.userActivation.isActive)return;  // code opening things is not you
+    const now=Date.now();
+    if(kind!=='place'&&now<WATCH.quiet)return;     // a place opens its app; the place is the step
+    const last=WATCH.steps[WATCH.steps.length-1];
+    if(kind==='view'){
+      // a tab chosen right after its app opened is that same step, made precise
+      if(last&&last.app===a&&now-last.at<4000){last.view=String(v||'');last.key=watchStepKey(last);last.at=now}
+      else watchPush({app:a,view:String(v||''),at:now});
+    }else if(kind==='place'){
+      WATCH.quiet=now+1500;
+      watchPush({place:a,at:now});
+    }else{
+      if(last&&last.app===a&&!last.view&&now-last.at<1500)return;
+      watchPush({app:a,at:now});
+    }
+  }catch(e){}
+}
+function watchStepKey(s){return s.place?'place:'+s.place:'app:'+s.app+(s.view?'#'+s.view:'')}
+function watchPush(s){
+  s.key=watchStepKey(s);
+  const last=WATCH.steps[WATCH.steps.length-1];
+  if(last&&last.key===s.key)return;                // the same door twice in a row is one step
+  WATCH.steps.push(s);
+  if(WATCH.steps.length>WATCH_KEEP)WATCH.steps.shift();
+  const hit=watchFind(WATCH.steps,Date.now());
+  if(hit)watchOffer(hit);
+}
+/* The newest steps, if the same sequence of them happened earlier too. Longest first,
+   at least two different doors, both times within the last WATCH_WINDOW. Pure, so the
+   rule can be checked on its own. */
+function watchFind(steps,now){
+  const n=steps.length;
+  for(let L=Math.min(WATCH_MAX,Math.floor(n/2));L>=WATCH_MIN;L--){
+    const tail=steps.slice(n-L),keys=tail.map(s=>s.key);
+    if(new Set(keys).size<2)continue;
+    for(let j=n-2*L;j>=0;j--){
+      const prev=steps.slice(j,j+L);
+      if(prev[0].at<now-WATCH_WINDOW)break;
+      if(prev.every((s,i)=>s.key===keys[i]))return {steps:tail,sig:keys.join('>')};
+    }
+  }
+  return null;
+}
+function watchLabel(s){
+  if(s.place)return s.place;
+  const t=(APPS[s.app]&&APPS[s.app].title)||s.app;
+  return s.view?t+' · '+s.view:t;
+}
+function watchRoutineSteps(steps){
+  return steps.map(s=>s.place?{kind:'place',place:s.place}:(s.view?{kind:'app',app:s.app,view:s.view}:{kind:'app',app:s.app}));
+}
+function watchOffer(hit){
+  if(WATCH.offered[hit.sig]||watchSeen()[hit.sig])return;
+  WATCH.offered[hit.sig]=Date.now();
+  const words=hit.steps.map(watchLabel);
+  const old=document.getElementById('watchcard');if(old)old.remove();
+  const c=document.createElement('div');c.id='watchcard';c.className='procard watchcard';
+  c.innerHTML=`<div class="pc-head"><span data-ic="sparkles">✦</span> I just watched you do that twice</div>
+    <div class="pc-text">${words.map(w=>`<span class="wt-step">${esc(w)}</span>`).join('<span class="wt-arr">→</span>')}</div>
+    <div class="pc-text mut">Make it one click? It becomes a Routine with a card on your desktop.</div>
+    <label class="wt-daily"><input type="checkbox" id="wt-daily"> Also play it every day at 9:00 ${pInfoSafe('Played on this desktop by your agent when the desktop is open. Change or stop it in Missions → Schedule.')}</label>
+    <div class="pc-actions"><button class="pc-go" id="wt-yes">Make it one click</button><button class="pc-x" id="wt-no">Not this one</button></div>`;
+  ($('#desktop')||document.body).appendChild(c);
+  if(typeof popIn==='function')popIn(c,{origin:'bottom right'});
+  c.querySelector('#wt-yes').onclick=()=>watchMake(hit,words,c.querySelector('#wt-daily').checked,c);
+  c.querySelector('#wt-no').onclick=()=>{watchDecline(hit.sig);c.remove()};
+  setTimeout(()=>{if(c.isConnected)c.remove()},60000);
+}
+async function watchMake(hit,words,daily,card){
+  const name=watchName(words);
+  const btn=card.querySelector('#wt-yes');btn.disabled=true;
+  try{
+    const d=await saveAutomation(name,watchRoutineSteps(hit.steps));
+    if(!d||!d.id)throw new Error('the routine was not saved');
+    pinRoutine(d.id);
+    if(daily){
+      const r=await apiJSON('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({prompt:`Run my desktop routine "${name}" with run_automation.`,schedule_type:'daily',at_time:'09:00'})});
+      if(r&&r.ok===false)throw new Error(r.message||'the schedule was not saved');
+      toast('It plays every day at 9:00 on this desktop. Change it in Missions → Schedule.',{kind:'ok'});
+    }
+    watchDecline(hit.sig);            // made: never offered again
+    card.remove();
+  }catch(e){btn.disabled=false;toast('Could not make it: '+e.message,{kind:'err'})}
+}
+function watchName(words){
+  let s=words.join(' → ');
+  if(s.length>60)s=words[0]+' → … → '+words[words.length-1];
+  return s.slice(0,80);
 }
 /* ================= app icon system =================
    Squircle tiles: a curated duotone gradient + a white SVG glyph per app.
@@ -10600,6 +10729,7 @@ function appAlias(id){
 function openApp(id,opts){
   opts=opts||{};
   const asked=id;
+  if(typeof watchNote==='function')watchNote('app',id);
   id=appAlias(id);
   const app=APPS[id];if(!app)return null;
   if(!(app.multi&&opts.fresh)){
@@ -12406,7 +12536,9 @@ var PLACES=[
   ['Rules','permissions','Permissions → Rules',['policies','policy','rules','always allow','always deny'],placeFold('policies')],
   ['Ledger','permissions','Permissions → Ledger',['audit','ledger','decisions','history of decisions','who did what'],placeFold('audit')],
   ['Quarantine','permissions','Permissions → Quarantine',['quarantine','held','stopped','blocked','suspended','runaway'],placeFold('quarantine')],
-].map(([label,app,hint,words,go])=>({label,app,hint,words,go}));
+].map(([label,app,hint,words,go])=>({label,app,hint,words,
+  // Watch me once notes a place as the step (00i-watch.js), not the app it opens
+  go:()=>{if(typeof watchNote==='function')watchNote('place',label);return go()}}));
 
 /* How well `q` names a place or an app by one of its words: 2.6 a whole word, 2.2 the
    start of one. The same scale as palScore, so a word hit ranks with a name hit. */
@@ -13685,16 +13817,17 @@ function renderWidgets(){
   const box=$('#widgets');if(!box)return;
   const apps={};(USERAPPS||[]).forEach(a=>apps[a.id]=a);
   renderPlacedWidgets();
-  // only free desktop widgets pinned to the CURRENT desktop are shown here
-  const here=WIDGETS.filter(w=>apps[w.app_id]&&!w.place&&(w.desk||1)===curDesk);
+  // only free desktop widgets pinned to the CURRENT desktop are shown here; a routine's
+  // card (kind 'routine', Watch me once) is drawn here too, while its routine exists
+  const here=WIDGETS.filter(w=>(apps[w.app_id]||routineOf(w))&&!w.place&&(w.desk||1)===curDesk);
   const want=new Set(here.map(w=>w.app_id));
   Object.keys(widgetEls).forEach(id=>{if(!want.has(id)){widgetEls[id].remove();delete widgetEls[id]}});
   here.forEach(wd=>{
-    const a=apps[wd.app_id];
+    const a=apps[wd.app_id],rt=routineOf(wd);
     let el=widgetEls[wd.app_id];
-    if(!el){el=createWidgetEl(a);widgetEls[wd.app_id]=el;box.appendChild(el)}
+    if(!el){el=rt?createRoutineWidgetEl(wd,rt):createWidgetEl(a);widgetEls[wd.app_id]=el;box.appendChild(el)}
     if(el._dragging||el._resizing)return;             // don't fight the user mid-gesture
-    const dim=widgetSizeOf(wd.app_id);
+    const dim=rt?{w:250,h:150}:widgetSizeOf(wd.app_id);
     el.style.left=(wd.x??40)+'px';el.style.top=(wd.y??40)+'px';
     el.style.width=(wd.w??dim.w)+'px';el.style.height=(wd.h??dim.h)+'px';
   });
@@ -13723,7 +13856,8 @@ function widgetDrag(el,handle,appId){
     e.preventDefault();
     const desk=$('#desktop'),sx=e.clientX,sy=e.clientY,ol=el.offsetLeft,ot=el.offsetTop;
     el._dragging=true;el.style.zIndex=50;
-    el.querySelector('iframe').style.pointerEvents='none';   // let the drag win over the page
+    const ifr=el.querySelector('iframe');
+    if(ifr)ifr.style.pointerEvents='none';   // let the drag win over the page
     handle.setPointerCapture(e.pointerId);
     const move=ev=>{
       let l=Math.max(0,Math.min(ol+ev.clientX-sx,desk.clientWidth-60));
@@ -13733,7 +13867,7 @@ function widgetDrag(el,handle,appId){
     };
     const up=()=>{
       handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);
-      el._dragging=false;el.style.zIndex='';el.querySelector('iframe').style.pointerEvents='';
+      el._dragging=false;el.style.zIndex='';if(ifr)ifr.style.pointerEvents='';
       const wd=widgetLayout(appId);if(wd){wd.x=el.offsetLeft;wd.y=el.offsetTop;queueWidgetSave()}
     };
     handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up);
@@ -13774,6 +13908,33 @@ function arrangeWidgets(){
   renderWidgets();saveWidgets();toast('▦ widgets arranged on Desktop '+curDesk);
 }
 
+
+/* ---- a routine's card: one tap plays it (Watch me once, 00i-watch.js) ----
+   A native card, not an app's iframe: the routine is the desktop's own steps, run by
+   runAutomation in this page. Its widget entry is {app_id:'routine:<id>', kind:'routine',
+   routine:<id>}, saved with the others (/api/widgets, a USER_KEY). */
+function routineOf(wd){
+  if(!wd||wd.kind!=='routine')return null;
+  try{return (AUTOMATIONS||[]).find(a=>a.id===wd.routine)||null}catch(e){return null}
+}
+function pinRoutine(id){
+  const key='routine:'+id;
+  if(WIDGETS.some(w=>w.app_id===key))return;
+  const n=WIDGETS.filter(w=>(w.desk||1)===curDesk).length;
+  WIDGETS.push({app_id:key,kind:'routine',routine:id,desk:curDesk,x:170+(n%3)*270,y:40+(n%2)*170,w:250,h:150});
+  renderWidgets();saveWidgets();toast('pinned to Desktop '+curDesk,{kind:'ok'});
+}
+function createRoutineWidgetEl(wd,rt){
+  const el=document.createElement('div');el.className='widget routine-widget';el.dataset.app=wd.app_id;
+  el.innerHTML=`<div class="wgh"><span class="wgt">Routine</span><button class="x" title="unpin">✕</button></div>
+    <div class="rw-body"><div class="rw-name">${esc(rt.name)}</div>
+      <div class="rw-steps mut">${(rt.steps||[]).map(s=>esc(automationStepLabel(s))).join(' → ')}</div>
+      <button class="endbtn primary rw-run">▶ Play</button></div>`;
+  el.querySelector('.rw-run').onclick=()=>runAutomation(rt);
+  el.querySelector('.x').onclick=()=>unpinWidget(wd.app_id);
+  widgetDrag(el,el.querySelector('.wgh'),wd.app_id);
+  return el;
+}
 /* ================= wallpaper =================
    Four sources, most-specific first:
      1. a wallpaper file the user generated or adopted from the host,
@@ -16274,6 +16435,7 @@ async function renderSettings(body){
     </div>`;
   body.querySelectorAll('.prefs-side button').forEach(b=>b.onclick=()=>{
     SETTAB=b.dataset.t;localStorage.setItem('settab',SETTAB);
+    if(typeof watchNote==='function')watchNote('view','settings',SETTAB);
     body.querySelectorAll('.prefs-side button').forEach(x=>x.classList.toggle('on',x===b));
     setTab(body);
   });
@@ -16680,6 +16842,10 @@ function setTab(body,all){
       pRow('Faces beside messages',pSwitch('s-av-on',!AVATARS.off),
         {desc:'Turn off to see plain names instead. Remembered by this browser.',
          f:'characters avatars faces off plain text chat logs'}),
+      pRow('Notice my routines',pSwitch('s-watch',watchOn()),
+        {desc:'When you do the same steps twice, offers to make them one click.',
+         more:'Only which apps, tabs and places you open is noted, in this browser, never what is in them.',
+         f:'watch routine repeat automation one click widget habits notice'}),
     ],{f:'characters avatars faces'}));
     /* The Office is the crew's scene, so its design lives beside the characters: the
        style, the name on the door, the pet — and "describe it", which the machine's
@@ -16792,6 +16958,8 @@ function setTab(body,all){
   if(im)im.onchange=()=>setImmersive(im.checked);
   const avs=main.querySelector('#s-av-on');
   if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
+  const wch=main.querySelector('#s-watch');
+  if(wch)wch.onchange=()=>setWatchOn(wch.checked);
   const tt=main.querySelector('#s-team-talk');
   if(tt)tt.onchange=async()=>{
     await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{talk:tt.value}})});
@@ -21823,7 +21991,7 @@ var JOB_TABS=['run','history','build','schedule','routines'];
 function jobTabs(){
   return `<div class="job-tabs">${segTabs('job-tabs',['Run','History','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
 }
-function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';refreshApp('jobs')}
+function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';if(typeof watchNote==='function')watchNote('view','jobs',JOBS.tab);refreshApp('jobs')}
 
 async function jobsLoad(){
   try{const d=await (await fetch('/api/jobs')).json();
@@ -23472,7 +23640,8 @@ const AUTO_ACTIONS=['deck','expose','showdesktop','launcher','control','notifica
                     'voice','fullscreen','copilot','agent.stop','help'];
 function automationStepLabel(s){
   switch(s.kind){
-    case 'app':return 'Open '+((APPS[s.app]&&APPS[s.app].title)||s.app);
+    case 'app':return 'Open '+((APPS[s.app]&&APPS[s.app].title)||s.app)+(s.view?' · '+s.view:'');
+    case 'place':return 'Go to '+s.place;
     // reuse the hot-corner vocabulary's wording so the same action reads the
     // same everywhere ("Show desktop", not "showdesktop")
     case 'action':{const hit=HC_ACTIONS.find(a=>a[0]===s.action);return hit?hit[1]:'Do '+s.action}
@@ -23489,7 +23658,9 @@ function automationStepLabel(s){
 
 async function runAutomationStep(s){
   switch(s.kind){
-    case 'app':      if(APPS[s.app])openApp(s.app); else toast('automation: no app "'+s.app+'"'); break;
+    case 'app':      if(APPS[s.app]){openApp(s.app);if(s.view)automationView(s.app,s.view)} else toast('automation: no app "'+s.app+'"'); break;
+    case 'place':    {const p=(typeof PLACES!=='undefined'?PLACES:[]).find(x=>x.label===s.place);
+                      if(p)p.go(); else toast('automation: no place "'+s.place+'"'); break}
     case 'action':   if(!scRun(s.action))toast('automation: unknown action "'+s.action+'"'); break;
     case 'theme':    if(allThemes()[s.theme])applyTheme(s.theme); else toast('automation: no theme "'+s.theme+'"'); break;
     case 'wallpaper':await setBuiltinWallpaper(s.wallpaper); break;
@@ -23501,6 +23672,13 @@ async function runAutomationStep(s){
     case 'tool':     await runAutomationTool(s.tool,s.args); break;
     case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code})); break;
   }
+}
+/* An app opened at a view: a Settings tab, a Missions tab, a Logs filter. The three a
+   Routine recorded by Watch me once can carry (00i-watch.js). */
+function automationView(app,view){
+  if(app==='settings'&&typeof settingsGo==='function')return setTimeout(()=>settingsGo(view),80);
+  if(app==='jobs'&&typeof JOB_TABS!=='undefined'&&JOB_TABS.indexOf(view)>=0){JOBS.tab=view;return refreshApp('jobs')}
+  if(app==='logs'){const w=winsOf('logs')[0];if(w){w.kind=view;w.app.render(w.el.querySelector('.wbody'),w)}}
 }
 async function runAutomationTool(name,args){
   let parsed={};
@@ -24186,7 +24364,7 @@ function renderLogs(body,w){
     </div>
     <div style="flex:1;overflow-y:auto;user-select:text"><table class="loglist"><tbody id="log-rows"></tbody></table></div>`;
   $('#log-kind').value=w.kind;$('#log-q').value=w.q;
-  $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;loadLogs(w)};
+  $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;if(typeof watchNote==='function')watchNote('view','logs',w.kind);loadLogs(w)};
   let deb;$('#log-q').oninput=e=>{clearTimeout(deb);deb=setTimeout(()=>{w.q=e.target.value;loadLogs(w)},300)};
   stopWinTicks(w);
   winTick(w,()=>loadLogs(w),5000,{key:'poll'});

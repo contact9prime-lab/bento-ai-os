@@ -64,16 +64,17 @@ function renderWidgets(){
   const box=$('#widgets');if(!box)return;
   const apps={};(USERAPPS||[]).forEach(a=>apps[a.id]=a);
   renderPlacedWidgets();
-  // only free desktop widgets pinned to the CURRENT desktop are shown here
-  const here=WIDGETS.filter(w=>apps[w.app_id]&&!w.place&&(w.desk||1)===curDesk);
+  // only free desktop widgets pinned to the CURRENT desktop are shown here; a routine's
+  // card (kind 'routine', Watch me once) is drawn here too, while its routine exists
+  const here=WIDGETS.filter(w=>(apps[w.app_id]||routineOf(w))&&!w.place&&(w.desk||1)===curDesk);
   const want=new Set(here.map(w=>w.app_id));
   Object.keys(widgetEls).forEach(id=>{if(!want.has(id)){widgetEls[id].remove();delete widgetEls[id]}});
   here.forEach(wd=>{
-    const a=apps[wd.app_id];
+    const a=apps[wd.app_id],rt=routineOf(wd);
     let el=widgetEls[wd.app_id];
-    if(!el){el=createWidgetEl(a);widgetEls[wd.app_id]=el;box.appendChild(el)}
+    if(!el){el=rt?createRoutineWidgetEl(wd,rt):createWidgetEl(a);widgetEls[wd.app_id]=el;box.appendChild(el)}
     if(el._dragging||el._resizing)return;             // don't fight the user mid-gesture
-    const dim=widgetSizeOf(wd.app_id);
+    const dim=rt?{w:250,h:150}:widgetSizeOf(wd.app_id);
     el.style.left=(wd.x??40)+'px';el.style.top=(wd.y??40)+'px';
     el.style.width=(wd.w??dim.w)+'px';el.style.height=(wd.h??dim.h)+'px';
   });
@@ -102,7 +103,8 @@ function widgetDrag(el,handle,appId){
     e.preventDefault();
     const desk=$('#desktop'),sx=e.clientX,sy=e.clientY,ol=el.offsetLeft,ot=el.offsetTop;
     el._dragging=true;el.style.zIndex=50;
-    el.querySelector('iframe').style.pointerEvents='none';   // let the drag win over the page
+    const ifr=el.querySelector('iframe');
+    if(ifr)ifr.style.pointerEvents='none';   // let the drag win over the page
     handle.setPointerCapture(e.pointerId);
     const move=ev=>{
       let l=Math.max(0,Math.min(ol+ev.clientX-sx,desk.clientWidth-60));
@@ -112,7 +114,7 @@ function widgetDrag(el,handle,appId){
     };
     const up=()=>{
       handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);
-      el._dragging=false;el.style.zIndex='';el.querySelector('iframe').style.pointerEvents='';
+      el._dragging=false;el.style.zIndex='';if(ifr)ifr.style.pointerEvents='';
       const wd=widgetLayout(appId);if(wd){wd.x=el.offsetLeft;wd.y=el.offsetTop;queueWidgetSave()}
     };
     handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up);
@@ -153,3 +155,30 @@ function arrangeWidgets(){
   renderWidgets();saveWidgets();toast('▦ widgets arranged on Desktop '+curDesk);
 }
 
+
+/* ---- a routine's card: one tap plays it (Watch me once, 00i-watch.js) ----
+   A native card, not an app's iframe: the routine is the desktop's own steps, run by
+   runAutomation in this page. Its widget entry is {app_id:'routine:<id>', kind:'routine',
+   routine:<id>}, saved with the others (/api/widgets, a USER_KEY). */
+function routineOf(wd){
+  if(!wd||wd.kind!=='routine')return null;
+  try{return (AUTOMATIONS||[]).find(a=>a.id===wd.routine)||null}catch(e){return null}
+}
+function pinRoutine(id){
+  const key='routine:'+id;
+  if(WIDGETS.some(w=>w.app_id===key))return;
+  const n=WIDGETS.filter(w=>(w.desk||1)===curDesk).length;
+  WIDGETS.push({app_id:key,kind:'routine',routine:id,desk:curDesk,x:170+(n%3)*270,y:40+(n%2)*170,w:250,h:150});
+  renderWidgets();saveWidgets();toast('pinned to Desktop '+curDesk,{kind:'ok'});
+}
+function createRoutineWidgetEl(wd,rt){
+  const el=document.createElement('div');el.className='widget routine-widget';el.dataset.app=wd.app_id;
+  el.innerHTML=`<div class="wgh"><span class="wgt">Routine</span><button class="x" title="unpin">✕</button></div>
+    <div class="rw-body"><div class="rw-name">${esc(rt.name)}</div>
+      <div class="rw-steps mut">${(rt.steps||[]).map(s=>esc(automationStepLabel(s))).join(' → ')}</div>
+      <button class="endbtn primary rw-run">▶ Play</button></div>`;
+  el.querySelector('.rw-run').onclick=()=>runAutomation(rt);
+  el.querySelector('.x').onclick=()=>unpinWidget(wd.app_id);
+  widgetDrag(el,el.querySelector('.wgh'),wd.app_id);
+  return el;
+}

@@ -309,7 +309,7 @@ function renderLogs(body,w){
     </div>
     <div style="flex:1;overflow-y:auto;user-select:text"><table class="loglist"><tbody id="log-rows"></tbody></table></div>`;
   $('#log-kind').value=w.kind;$('#log-q').value=w.q;
-  $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;loadLogs(w)};
+  $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;if(typeof watchNote==='function')watchNote('view','logs',w.kind);loadLogs(w)};
   let deb;$('#log-q').oninput=e=>{clearTimeout(deb);deb=setTimeout(()=>{w.q=e.target.value;loadLogs(w)},300)};
   stopWinTicks(w);
   winTick(w,()=>loadLogs(w),5000,{key:'poll'});

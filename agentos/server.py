@@ -8850,7 +8850,7 @@ async def api_wallpaper_system():
 # ---------------------------------------------------------------------------
 
 AUTOMATION_STEP_KINDS = {"app", "action", "theme", "wallpaper", "desktop",
-                         "agent", "tool", "python", "wait"}
+                         "agent", "tool", "python", "wait", "place"}
 
 
 def _clean_steps(steps) -> list[dict]:
@@ -8867,6 +8867,14 @@ def _clean_steps(steps) -> list[dict]:
         for k in ("app", "action", "theme", "wallpaper", "prompt", "tool", "code"):
             if s.get(k):
                 step[k] = str(s[k])[:20000]
+        # a place inside an app (by its label, 05b-places.js) and an app's view (a
+        # Settings tab, a Missions tab, a Logs filter): what Watch me once records
+        if kind == "place":
+            if not s.get("place"):
+                continue
+            step["place"] = str(s["place"])[:80]
+        if kind == "app" and s.get("view"):
+            step["view"] = re.sub(r"[^\w .:-]", "", str(s["view"]))[:60]
         if kind == "tool":
             if not step.get("tool"):
                 continue                      # a tool step without a tool is nothing

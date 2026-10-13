@@ -143,6 +143,7 @@ async function renderSettings(body){
     </div>`;
   body.querySelectorAll('.prefs-side button').forEach(b=>b.onclick=()=>{
     SETTAB=b.dataset.t;localStorage.setItem('settab',SETTAB);
+    if(typeof watchNote==='function')watchNote('view','settings',SETTAB);
     body.querySelectorAll('.prefs-side button').forEach(x=>x.classList.toggle('on',x===b));
     setTab(body);
   });
@@ -549,6 +550,10 @@ function setTab(body,all){
       pRow('Faces beside messages',pSwitch('s-av-on',!AVATARS.off),
         {desc:'Turn off to see plain names instead. Remembered by this browser.',
          f:'characters avatars faces off plain text chat logs'}),
+      pRow('Notice my routines',pSwitch('s-watch',watchOn()),
+        {desc:'When you do the same steps twice, offers to make them one click.',
+         more:'Only which apps, tabs and places you open is noted, in this browser, never what is in them.',
+         f:'watch routine repeat automation one click widget habits notice'}),
     ],{f:'characters avatars faces'}));
     /* The Office is the crew's scene, so its design lives beside the characters: the
        style, the name on the door, the pet — and "describe it", which the machine's
@@ -661,6 +666,8 @@ function setTab(body,all){
   if(im)im.onchange=()=>setImmersive(im.checked);
   const avs=main.querySelector('#s-av-on');
   if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
+  const wch=main.querySelector('#s-watch');
+  if(wch)wch.onchange=()=>setWatchOn(wch.checked);
   const tt=main.querySelector('#s-team-talk');
   if(tt)tt.onchange=async()=>{
     await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{talk:tt.value}})});

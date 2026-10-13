@@ -40,6 +40,7 @@ function appAlias(id){
 function openApp(id,opts){
   opts=opts||{};
   const asked=id;
+  if(typeof watchNote==='function')watchNote('app',id);
   id=appAlias(id);
   const app=APPS[id];if(!app)return null;
   if(!(app.multi&&opts.fresh)){

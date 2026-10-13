@@ -671,7 +671,9 @@ def _automation_step_label(s: dict) -> str:
     """One step as a short phrase — what list_automations shows the model."""
     k = s.get("kind")
     if k == "app":
-        return f"open {s.get('app')}"
+        return f"open {s.get('app')}" + (f" ({s['view']})" if s.get("view") else "")
+    if k == "place":
+        return f"go to {s.get('place')}"
     if k == "action":
         return str(s.get("action"))
     if k == "theme":
