@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.31 — 2026-10-13
+
+**Give work to a department by name, and Aria hands it on.** Asked for with three screenshots: the
+Office window blank, the HQ scene, and Aria searching the web herself for "which products are
+viral", with the question "why are no agents being invoked?"
+- **The Office window draws again.** With Office HQ as your desktop, opening the Office window
+  left it dark: the desktop kept the 3D office. The window now takes it, and gives it back when
+  it closes.
+- **`@Sales …` gives Sales the task**, in Chat, the prompt bar, an app's agent panel, the
+  terminal chat, Telegram and WhatsApp. Its head leads it, the bosses above sign it off, the
+  auditor checks it, and the answer comes back in the chat under the department's name. Typing
+  `@` suggests your agents and departments.
+- **Aria hands real work to the department that fits**, on the built-in brain and on Claude Code,
+  Gemini CLI or Codex, through a new `department_task` tool that goes through the permission gate
+  as starting that department's desk.
+- **Office HQ shows the conversation beside the action.** On a wide screen the prompt bar and its
+  answers are a column on the right, the office fits on the left, and the camera moves to the
+  department that is working. Zoom goes down to a single desk, with ＋ − ⤢ on the picture.
+- **Who may ask whom, per agent or per department.** Switch it in ▦ Company or Settings → Team &
+  Communications: colleagues in a department may ask each other, and a department grid decides
+  between departments. A block between two agents still holds.
+- **A department can have an executor**, used by everyone in it who has none of their own.
+- **A new department starts with a kit.** The setup asks a question or two (where are your
+  customers, where do questions arrive) and proposes the tools, skills and MCP servers teams like
+  it commonly use. Skills are shown in full and made only when ticked; servers are never
+  installed, and the department's card says **Set up** for each. A department you already have
+  gets the same sheet from its card.
+- Terminal: `bento company permissions|allow|block|ask|hands|kit`.
+
 ## 0.6.30 — 2026-10-13
 
 **Give the company an objective, and keep more than one company.** Asked for as "there has to be

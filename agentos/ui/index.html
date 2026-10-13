@@ -4536,6 +4536,7 @@ body.dev-touch .co-wrow input{width:22px;height:22px}
   body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar{top:44px;bottom:auto;left:auto;right:16px;
     transform:none;width:min(440px,34vw)}
   body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{width:min(440px,34vw)}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{text-overflow:ellipsis}
   body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:112px;bottom:auto;left:auto;right:16px;
     transform:none;width:min(440px,34vw);flex-direction:column}
   body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{max-height:calc(100vh - 230px)}
@@ -31235,7 +31236,7 @@ function of3Controls(){
 }
 /* Office HQ is under the desktop, so the canvas never sees the wheel: the desktop's own
    background passes it on, while nothing else is under the pointer. */
-document.addEventListener('wheel',e=>{
+if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('wheel',e=>{
   if(!of3HQ()||!OF3.view||document.body.classList.contains('has-win'))return;
   if(typeof deckScrollOn==='function'&&deckScrollOn())return;    // the person chose wheel = faces
   const t=e.target;if(!t||!t.closest||t.closest('#omnibar,#omnicards,#taskbar,#menubar,.win,.ats,.approval,#toasts,#deck,.of3-roster,.ctx'))return;

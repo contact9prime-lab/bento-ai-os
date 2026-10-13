@@ -848,7 +848,7 @@ function of3Controls(){
 }
 /* Office HQ is under the desktop, so the canvas never sees the wheel: the desktop's own
    background passes it on, while nothing else is under the pointer. */
-document.addEventListener('wheel',e=>{
+if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('wheel',e=>{
   if(!of3HQ()||!OF3.view||document.body.classList.contains('has-win'))return;
   if(typeof deckScrollOn==='function'&&deckScrollOn())return;    // the person chose wheel = faces
   const t=e.target;if(!t||!t.closest||t.closest('#omnibar,#omnicards,#taskbar,#menubar,.win,.ats,.approval,#toasts,#deck,.of3-roster,.ctx'))return;

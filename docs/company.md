@@ -169,8 +169,28 @@ happen in the Office: papers fly to desks and people walk over to ask each other
 bento company task Finance "summarise what we spend each month from the files in my workspace"
 ```
 
-Your own agent knows the departments too. Ask it for something in chat and it hands the
-work to the right head.
+**From any chat, with @.** Write `@Sales find ten clinics in Pune` in Chat, the prompt bar,
+an app's agent panel, Telegram or WhatsApp. The department gets it as a task: its head
+leads, the bosses above sign it off, the auditor checks it, and the answer comes back in
+the same chat under the department's name and its head's face. Typing `@` suggests your
+agents and your departments. A name with spaces works as typed (`@Customer Care`,
+`@customer-care`). An agent's own name is checked first, so `@nora` is still Nora.
+
+![@ suggests agents and departments](screenshots/company-at-suggest.png)
+
+![A department's answer in Chat](screenshots/company-at-answer.png)
+
+**Or just ask your agent.** Your agent is told to hand real work to the department that
+fits, and has a tool for it (`department_task`). On the built-in brain and on Claude Code,
+Gemini CLI or Codex alike, asking "which products are going viral?" goes to Sales or
+Marketing instead of your agent searching the web itself. Small talk and questions about
+the conversation it still answers itself.
+
+![Aria hands a question to Sales](screenshots/company-aria-hands-over.png)
+
+Handing work to a department goes through the permission gate as starting its desk
+(`agent.invoke` on the desk's flow), so a block written on the desk refuses it however it
+was asked.
 
 ## What the cards and the task board count
 
@@ -345,6 +365,67 @@ the same answer about who is in which department, so they never disagree.
 
 `bento mind` groups by department in a terminal as well.
 
+## Who may ask whom: per agent or per department
+
+![The department grid in Settings](screenshots/company-dept-grid.png)
+
+People in a company ask each other questions. By default each pair of agents is decided on
+its own in Settings → Team & Communications. With many people that is a big grid, so a
+company can decide it **per department** instead: ▦ Company → **Who may ask whom** →
+**Per department**, or `bento company permissions department`.
+
+- Colleagues in one department may always ask each other.
+- Between departments, the department grid decides: allow, block, or empty. An empty cell
+  works the way the team's talk mode says (ask you, swarm or a vote).
+- A block you wrote between two agents still holds, so switching the level never reopens a
+  pair you closed.
+- Inside a mission, only the mission's own permissions count, as before.
+
+```
+bento company permissions department
+bento company allow Sales Finance      # Sales may ask Finance
+bento company block Support Finance
+```
+
+Each department cell is an ordinary row in Permissions, and the ledger records every change.
+
+## What a department can reach: its executor
+
+An executor (Settings → Executors) says which tools, folders, web addresses and MCP servers
+an agent can reach. Give one to a whole department with **Executor** on its line in
+▦ Company, or `bento company hands Sales research`. Everyone in it works with that executor,
+except an agent that has one of its own. Choose **Each agent's own** to go back.
+
+## A new department starts with a kit
+
+![The kit for a new Support department](screenshots/company-kit.png)
+
+When you add a department, the preview asks a question or two about how that kind of team
+works (where customers are kept, where questions arrive, whether it may read the mailbox),
+then proposes what teams like it commonly use:
+
+- **Tools**, from the same short list as everything else a draft can give, for the
+  department's new people.
+- **Skills**, written out in full. Open **What it says** to read one. A skill is made only
+  when ticked, and never over one you already have with the same name.
+- **MCP servers**, such as HubSpot for Sales or Zendesk for Support. These are never
+  installed by the kit, because each needs your own account and key. The department's
+  card lists them with **Set up**, which opens the MCP app on that server, or the Store's
+  search for it.
+
+Untick anything you don't want; the button counts what will be made. A department you
+already have gets the same sheet from **Choose a kit** on its line, and then the tools and
+skills go to everyone in it. The ledger records it.
+
+![The kit sheet for a department you already have](screenshots/company-kit-sheet.png)
+
+![The kit sheet on a phone: each question and tick a fingertip wide](screenshots/company-kit-phone.png)
+
+```
+bento company kit Sales                        # the questions and what it would get
+bento company kit Sales crm=hubspot --yes      # give it to Sales
+```
+
 ## Changing it later
 
 - **Add departments:** ▦ Company → **＋ Add departments**. Existing departments and
@@ -362,12 +443,15 @@ the same answer about who is in which department, so they never disagree.
   company**, **Plan the work**, every tick and **Start it** are a fingertip wide.
 
 ![The objective's work on a phone](screenshots/company-objective-phone.png)
-- **TUI:** `bento company` shows, `setup` plans and makes, `objective` drafts and makes
+- **TUI:** `@Department …` works in the terminal chat as it does everywhere.
+  `bento company` shows, `setup` plans and makes, `objective` drafts and makes
   the work, `todo` and `start` list and start its tasks, `companies`, `new`, `open` and
   `drop` keep several companies, `task` hands out work,
   `chain` shows and sets who reports to whom, `review` chooses who signs off,
-  `audit on|off` switches the auditor and `check` asks it to check a task. A task, a
-  start and a check need the server running, because that is where the work runs.
+  `audit on|off` switches the auditor and `check` asks it to check a task.
+  `permissions`, `allow`, `block` and `ask` decide who may ask whom between departments,
+  `hands` gives a department an executor, and `kit` shows or gives a department its kit.
+  A task, a start and a check need the server running, because that is where the work runs.
 - **SUI:** the same page. The desktop scenes (Office, Crew, Mind, World) show the
   departments. The Office scene shows no cards, because nothing under the windows can be
   tapped; the Mind's and the World's tags can be.

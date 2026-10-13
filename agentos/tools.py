@@ -2695,7 +2695,7 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {e}"
         res = got["result"]
         head = (f"[{got['department']} · {res['status']} · led by {got['head'] or 'its head'} · "
-                f"{res['delegations']} hand-overs]")
+                f"{res['delegations']} hand-over{'' if res['delegations'] == 1 else 's'}]")
         return f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}"
 
     async def telegram_send(self, message: str, chat_id: int = 0) -> str:

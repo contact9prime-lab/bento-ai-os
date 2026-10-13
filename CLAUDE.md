@@ -568,6 +568,49 @@ user." Six rules:
   and then set up from ticked departments lost the line. Removing a company switches its desks
   and missions off (nothing would sign their work off) and keeps its agents and space.
 
+**A department is reached by name, from every chat and by the lead** (`company.parse_department`,
+`ControlPlane.department_task`, the `department_task` tool, `fabric.department_reply`, `10d-mentions.js`;
+`tests/test_department_routing.py`). Reported with a screenshot: Aria on Claude Code ran WebSearch
+herself for "which products are viral", and "why are no agents invoked?" Four rules:
+- **`@Sales …` is a task for that department** in Chat, the prompt bar, an agent panel, the TUI,
+  Telegram and WhatsApp: a run of its desk through ONE door, `ControlPlane.department_task`, decided as
+  `agent.invoke` on the desk's flow (as `/api/company/task`). An agent's own name is checked first
+  (`parse_mention`), and the longest department name wins. Checked before the executor branch.
+- **The lead's tool resolves the desk in the agent loop** (`_desk`, never the model's, `_conv` too), so
+  `policy.action_of` decides the flow that actually runs. In `TEAM_TOOLS`, `toolscope.CORE` and
+  `SAFE_TOOLS`; `company.note(tool=)` tells the lead not to do a department's work itself.
+- **A run asked from a conversation answers there once**: origin surface `chat` is skipped by
+  `_flow_deliver`, or the desk announced the answer a second time.
+- **`/api/chat/addresses` is the one list `@` suggests**, and a parked company's people are not on it.
+
+**Who may ask whom can be decided per department, and a department can have hands** (`company.permissions`,
+`dept_cell_decision`, `set_dept_cell`, `set_hands`, `office.department_of`, `PDP._dept_level`;
+`tests/test_department_permissions.py`). Asked for as "PDP between the departments instead of just the
+agents, switchable, and executors at department level". Four rules:
+- **The gate decides it at 2e, after the agent-level blocks**: colleagues in one department may ask each
+  other (`department-same`), a department cell (principal `department:<company>/<Dept>`, resource
+  `department:<Dept>`) decides between departments, an empty one goes to `_default`. An agent-level
+  deny still refuses; inside a flow only the flow's consent counts.
+- **The mode is the company's** (`company.permissions`), so each company decides it for itself, and
+  `department_of` reads parked companies too: a mission of a parked company is still judged by its own.
+- **A department's `hands` is every member's unless the member has its own** (`hands.profile_name`).
+  `set_hands` bumps the hands generation, so the gate's reach cache sees it at once.
+- Faces: Company panel (Executor, Who may ask whom), Settings → Team & Communications (the department
+  grid, `paintDeptMatrix`), `bento company permissions|allow|block|ask|hands`.
+
+**A new department starts with a kit: asked, proposed, ticked** (`company.KITS`, `KIT_SKILLS`,
+`KIT_MCP`, `recommend`, `clean_kit`, `apply_kit`, `kit_status`; `tests/test_company_kit.py`). Asked for
+as "set up the skills, tools and MCP most widely used for that kind of department, asking questions".
+- **Every item is a closed set**: tools from `ALLOWED_TOOLS`, skills written out in `KIT_SKILLS`, servers
+  in `KIT_MCP`; every `if` condition names a real option. The test checks a `preset` is in the MCP app's
+  catalogue and a `curated` one in `mcp_catalog.py`. Add a kit by adding rows, never by free text.
+- **Preview and apply are one computation**: `preview` attaches `kit_offer` and the kit, the page sends
+  back the ticked kit (not while an answer is changing it, `kitStale`), and `apply` re-derives. Kit tools
+  go to NEW people; skills are made only when ticked and never over an existing name (`_kit_skills`).
+- **A kit never installs a server.** The department remembers it, its card says Set up (MCP app preset,
+  sign-in server, or the Store's search) until a server by that name is configured.
+- A department that exists gets the same sheet (`apply_kit`: everyone in it, one `company.kit` row).
+
 **Every scene draws the company from ONE answer, `company.membership()`** (who is in which
 department, its head, whether that head was NAMED, the colour's hex, each title). The Crew
 stage reads it off `/api/subagents`, the Mind off `mind.snapshot`, the World off the
@@ -2086,7 +2129,16 @@ things keep it true:
   Shared shapes are `of3Geo` (`userData.shared`), and every scene traverse must skip them.
   **Office HQ** (scene `hq`) is the same office scene full screen and always 3D (`of3HQ`); its
   words layer lives in `#desktop` (the World's tags argument: the wall cannot be tapped) and the
-  prompt bar and dock are `of3Pads`, so the ring fits between them.
+  prompt bar and dock are `of3Pads`, so the ring fits between them. On a wide screen the bar and
+  its answer cards are a right-hand column (`of3Docked`, CSS in 23-office.css), `of3Pads` gains a
+  right pad, a room's list moves left, and `#aibubble`/`.ap-float` move clear of the column.
+  **The camera follows the work there** (`of3Follow`, fed by the cards' run counts, never a timer):
+  one department working → its room (`of3RoomView(name, bare)`), back to the whole office 6 s after;
+  a person's wheel, drag or ＋/− (`OF3.userMoved`) stops it until ⤢. The wheel reaches HQ through a
+  document listener that only acts over `#desktop`/`#wall`. Zoom goes to `OF3_ZOOM_MIN` (one desk).
+  **The window takes the renderer from the scene**: `renderOffice` calls `of3Dispose()` before taking
+  OFFICE over, and `of3Layout` rebuilds when `OF3.cv` lives in another host. Without it the window
+  stayed dark while the scene's canvas kept drawing ("I cannot see the office").
 - **Rooms are painted once** into an offscreen layer per layout; a frame is a blit plus people
   (~1.1ms). 30fps while something moves, 6 at rest, none asleep (`winAwake`, `winTick(...,0)`
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a
