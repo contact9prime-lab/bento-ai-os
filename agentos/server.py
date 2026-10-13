@@ -38,6 +38,7 @@ from . import accounts as accountsmod
 from . import brief as briefmod
 from . import avatars as avatarsmod
 from . import playground as playgroundmod
+from . import drama as dramamod
 from . import world as worldmod
 from . import vault as vaultmod
 from . import signin as signinmod
@@ -161,6 +162,18 @@ async def startup():
     # single-user machine every socket's uid is '' and the map changes nothing.
     client_uids: dict = {}
 
+    def _drama_seen(event: dict, uid: str):
+        """The drama reel keeps the beats of a story (agentos/drama.py), and when one
+        finishes (work shipped after trouble) the person's page is told ONCE, so it can
+        offer a clip. Offered, never recorded: sharing is the person's act."""
+        if event.get("type") == "drama":
+            return
+        done = dramamod.observe(event, uid)
+        if done:
+            with contextlib.suppress(RuntimeError):
+                asyncio.get_running_loop().create_task(
+                    broadcast_user({"type": "drama", "episode": done["id"], "who": done["who"]}, uid))
+
     async def broadcast(event: dict):
         """Machine-wide: a fact true for the whole box (wallpaper, an MCP consent
         prompt). A turn is NOT machine-wide — use `broadcast_user` for it."""
@@ -170,6 +183,7 @@ async def startup():
         # the World scene feels it, for the account whose work this is, and only while
         # that account has a world live (returns at once otherwise)
         worldmod.observe(event, usersmod.current())
+        _drama_seen(event, usersmod.current())
         dead = []
         for ws in clients:
             try:
@@ -188,6 +202,7 @@ async def startup():
         every uid is '' and this is exactly `broadcast`."""
         playgroundmod.observe(event)
         worldmod.observe(event, uid)
+        _drama_seen(event, uid)
         dead = []
         for ws in clients:
             if client_uids.get(ws, "") != uid:
@@ -10988,6 +11003,65 @@ async def api_office_rollcall_png(style: str = "", name: str = ""):
     rows = playground.rollcall(state["store"], cfg, lead_busy=knowledge.active_turns() > 0)
     png = comic.rollcall_image(state["store"], cfg, rows, office.current(cfg)["name"])
     return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+def _drama_story():
+    cfg = state["cfg"]
+    beats = dramamod.load(usersmod.current())
+    return beats, dramamod.story(beats, cfg)
+
+
+@app.get("/api/drama")
+async def api_drama():
+    """The drama reel: the person's latest episode as four acts (drama.story) and the
+    beats it was made from. The clip, the strip and `bento drama` all read this."""
+    beats, st = _drama_story()
+    return {"story": st, "beats": beats[-40:], "text": dramamod.text(st),
+            "speech": (state["cfg"].get("speech") or {}).get("engine") or "browser"}
+
+
+@app.get("/api/drama/strip.png")
+async def api_drama_strip_png():
+    """The episode as a four-panel strip with the watermark (comic.manga)."""
+    from . import comic
+    avatarsmod.ensure(state["store"], state["cfg"])
+    _, st = _drama_story()
+    png = comic.manga(state["store"], state["cfg"], st["panels"], st["title"])
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+_CLIP_TYPES = {"video/mp4": "mp4", "video/webm": "webm", "image/png": "png"}
+CLIP_MAX = 60 * 1024 * 1024
+
+
+@app.post("/api/drama/clip")
+async def api_drama_clip(request: Request):
+    """Keep a clip the page recorded (or the strip) in the person's own workspace, under
+    clips/, where Files, chat chips and the channels' send_files can reach it. The body
+    is the file; nothing is sent anywhere else."""
+    kind = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    ext = _CLIP_TYPES.get(kind)
+    if not ext:
+        return JSONResponse({"error": "a clip is an mp4, a webm or a png"}, status_code=415)
+    raw = await request.body()
+    if not raw:
+        return JSONResponse({"error": "the clip is empty"}, status_code=400)
+    if len(raw) > CLIP_MAX:
+        return JSONResponse({"error": "that clip is over 60 MB"}, status_code=413)
+    from . import executors as execmod
+    folder = Path(execmod.default_workspace(state["cfg"])).expanduser() / "clips"
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y-%m-%d-%H%M%S")
+    target = folder / f"{stamp}-drama.{ext}"
+    target.write_bytes(raw)
+    state["store"].log("system", f"drama clip saved: clips/{target.name}")
+    await state["broadcast_user"]({"type": "files"}, usersmod.current())
+    return {"path": str(target), "name": f"clips/{target.name}", "bytes": len(raw)}
+
+
+@app.delete("/api/drama")
+async def api_drama_clear():
+    return {"cleared": dramamod.clear(usersmod.current())}
 
 
 @app.post("/api/office/snap")

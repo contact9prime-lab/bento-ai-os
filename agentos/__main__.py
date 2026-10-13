@@ -4643,6 +4643,41 @@ def _provision_cli(args, cfg, a, rest, val, run):
         print(f"  ✓ {r['name']} is set up ({r['how']}) and is joining '{d['pool']['name']}'.")
 
 
+def _drama_cli(args):
+    """`bento drama` — the crew's latest episode (drama.story): the argument, the
+    tantrum, the fix, the ship, in words; `strip FILE.png` paints it as the four-panel
+    strip with the watermark (comic.manga), the same picture the desktop offers. What a
+    terminal cannot make is the clip with voices; that is recorded by the desktop page,
+    and this says so. Reads the person's own drama.json, so it works with the server down.
+    """
+    from . import comic, drama
+    from . import avatars as av
+    from . import users as usersmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    uid = usersmod.current() if usersmod.enabled() else ""
+    beats = drama.load(uid)
+    st = drama.story(beats, cfg)
+    a = args.action
+    if a in ("show", "story"):
+        print(drama.text(st))
+        if st["panels"]:
+            print("\n  bento drama strip FILE.png paints it; the clip with voices is made on the desktop"
+                  " (Drama reel).")
+    elif a == "beats":
+        for b in beats[-int(args.n or 20):]:
+            when = time.strftime("%H:%M", time.localtime(b["ts"]))
+            print(f"  {when}  {b['kind']:<9} {drama.label(b['who'], cfg)}: {b.get('text', '')}")
+        if not beats:
+            print("no beats yet")
+    elif a == "strip":
+        out = Path(args.file or "drama.png").expanduser()
+        av.ensure(store, cfg)
+        out.write_bytes(comic.manga(store, cfg, st["panels"], st["title"]))
+        print(f"wrote {out} ({len(st['panels'])} panels)")
+    elif a == "clear":
+        print(f"forgot {drama.clear(uid)} beats")
+
+
 def _office_cli(args):
     """`bento office` — the Office playground, as a terminal can have it.
 
@@ -7652,6 +7687,11 @@ def main():
                                               " · picture: FILE.png · visit: LINK")
     p_of.add_argument("--color", default="", help="move: the colour of a NEW department")
     p_of.add_argument("--user", default="", help="whose office, on a machine with users")
+    p_dr = verb("drama", help="the crew's latest drama as a story; strip FILE.png paints it")
+    p_dr.add_argument("action", nargs="?", default="show", choices=["show", "story", "beats", "strip", "clear"])
+    p_dr.add_argument("file", nargs="?", default="", help="strip: where to write the PNG")
+    p_dr.add_argument("-n", default="20", help="beats: how many")
+    p_dr.add_argument("--user", default="", help="whose crew, on a machine with users")
     p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
     p_link.add_argument("action", nargs="?", default="list",
                         choices=["list", "request", "requests", "approve", "deny", "say", "chat",
@@ -7958,6 +7998,8 @@ def main():
         _pool_cli(args)
     elif args.cmd == "face":
         _face_cli(args)
+    elif args.cmd == "drama":
+        _drama_cli(args)
     elif args.cmd == "office":
         _office_cli(args)
     elif args.cmd == "files":

@@ -403,3 +403,116 @@ def rollcall_image(store, cfg: dict, rows: list[dict], title: str = "") -> bytes
             cv.text(px + 6, py + PH - 19 + k * LINE, ln)
         cv.box(px, py, PW, PH, INK, 2)
     return avatars.png(*cv.scaled(SCALE))
+
+
+# ---- the drama strip: four acts, two by two, with the footer ---------------------------
+
+WATERMARK = "bento-ai-os"
+RED = (226, 54, 54)
+GREEN = (34, 160, 96)
+AMBER = (232, 160, 32)
+_ACT_TINT = {"argue": None, "trouble": RED, "fix": AMBER, "ship": GREEN}
+
+
+def _caption(cv: Canvas, x: int, y: int, s: str, fill: tuple = (255, 236, 140)):
+    """The narrator's box in a panel's corner: square, yellow, the manga convention for
+    words nobody in the picture said."""
+    t, _ = drawable(s.upper())
+    t = t[:(PW - 16) // ADV]
+    w = len(t) * ADV + 6
+    cv.rect(x, y, w, 11, fill)
+    cv.box(x, y, w, 11, INK)
+    cv.text(x + 3, y + 2, t)
+
+
+def _stamp(cv: Canvas, cx: int, y: int, s: str, fill: tuple):
+    t, _ = drawable(s)
+    w = len(t) * ADV + 10
+    x = cx - w // 2
+    cv.rect(x, y, w, 15, fill)
+    cv.box(x, y, w, 15, INK, 2)
+    cv.text(x + 5, y + 4, t, WHITE)
+
+
+def _grawlix(cv: Canvas, x: int, y: int, c: tuple = RED):
+    """The tantrum's marks over a head: three short zigzags, drawn, never words."""
+    for k in range(3):
+        bx = x + k * 9
+        for i in range(6):
+            cv.put(bx + i, y + (i % 2) * 2 - k % 2, c)
+            cv.put(bx + i, y + 1 + (i % 2) * 2 - k % 2, c)
+
+
+def drama_panel(cv: Canvas, px: int, py: int, store, st: dict, p: dict):
+    """One act of a drama story (drama.panel): the narrator's caption, the person, and
+    either their own words in a balloon or the command in a box with its stamp."""
+    _floor(cv, px, py, PW, PH, st)
+    tint = _ACT_TINT.get(p["act"])
+    if tint:                                     # the act's colour along the floor's edge
+        cv.rect(px, py + PH - 5, PW, 4, tint)
+    feet = py + PH - 18
+    frame = 2 if p["act"] in ("argue", "ship") else 0
+    w, h, spx = _person(store, p["who"], frame)
+    hop = 6 if p["act"] == "ship" else 0
+    x0 = px + 14 + (3 if p.get("mood") == "tantrum" else 0)
+    cv.blit(w, h, spx, x0, feet - h * 2 - hop, 2)
+    _label(cv, x0 + 16, feet + 3, p.get("name") or _name(p["who"]), px, px + PW)
+    if p.get("to"):
+        w2, h2, tpx = _person(store, p["to"], 0)
+        cv.blit(w2, h2, tpx, px + PW - 46, feet - h2 * 2, 2)
+        _label(cv, px + PW - 30, feet + 3, p.get("to_name") or _name(p["to"]), px, px + PW)
+    if p.get("mood") == "tantrum":
+        _grawlix(cv, x0 + 2, feet - h * 2 - 8)
+    _caption(cv, px + 4, py + 4, p.get("title") or "")
+    head_y = feet - h * 2 - hop - 2
+    if p.get("says"):
+        lines = _say_lines(p["says"], (PW - 20) // ADV, 4)
+        _balloon(cv, px + 6, py + 20, PW - 12, lines, x0 + 16, head_y)
+    elif p.get("command"):
+        # a terminal box: the command as it was, in the font, on dark glass
+        cmd, _ = drawable(("$ " if p.get("shell", True) else "") + p["command"])
+        rows = wrap(cmd, (PW - 70) // ADV, 3)
+        bx, by, bw = px + 58, py + 22, PW - 64
+        bh = len(rows) * LINE + 6
+        cv.rect(bx, by, bw, bh, (24, 26, 38))
+        cv.box(bx, by, bw, bh, INK)
+        for n, ln in enumerate(rows):
+            cv.text(bx + 4, by + 4 + n * LINE, ln, (160, 255, 190))
+        if p.get("stamp"):
+            fill = RED if p["kind"] in ("blocked", "outvoted") else (90, 110, 160)
+            _stamp(cv, bx + bw // 2, by + bh + 4, p["stamp"], fill)
+            if p.get("reason"):
+                why, _ = drawable(p["reason"])
+                for n, ln in enumerate(wrap(why, (PW - 70) // ADV, 2)):
+                    cv.text(bx, by + bh + 23 + n * LINE, ln, INK)
+    cv.box(px, py, PW, PH, INK, 2)
+
+
+def manga(store, cfg: dict, panels: list[dict], title: str = "",
+          footer: str = WATERMARK) -> bytes:
+    """A drama story (drama.story) as a four-panel strip, two by two, with a title bar
+    and a footer carrying the watermark. Fewer acts than four draw fewer panels; an act
+    that did not happen is never drawn."""
+    panels = panels[:4]
+    st = _style(cfg)
+    n = max(1, len(panels))
+    cols = 2 if n > 1 else 1
+    rows = (n + cols - 1) // cols
+    head, foot = 14, 13
+    W = GUTTER + cols * (PW + GUTTER)
+    H = head + GUTTER + rows * (PH + GUTTER) + foot
+    cv = Canvas(W, H, _mix(_rgb(st["wall"]), INK, .6))
+    cv.rect(0, 0, W, head, _rgb(st["accent"]))
+    s, _ = drawable(title or office.current(cfg)["name"])
+    cv.text(GUTTER, 4, s[:(W - 12) // ADV].upper(), WHITE)
+    for i, p in enumerate(panels):
+        c, r = i % cols, i // cols
+        drama_panel(cv, GUTTER + c * (PW + GUTTER), head + GUTTER + r * (PH + GUTTER), store, st, p)
+    if not panels:
+        cv.text(GUTTER + 6, head + 50, "no drama yet")
+    fy = H - foot
+    cv.rect(0, fy, W, foot, INK)
+    f, _ = drawable(footer)
+    cv.text(W - len(f) * ADV - GUTTER, fy + 3, f, WHITE)
+    cv.text(GUTTER, fy + 3, "real agents, real events", (150, 150, 170))
+    return avatars.png(*cv.scaled(SCALE))

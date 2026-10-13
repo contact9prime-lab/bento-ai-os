@@ -762,6 +762,7 @@ function handle(ev){
       break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
+    case 'drama': dramaOffer(ev); if(typeof refreshApp==='function')refreshApp('drama'); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'toast': toast(ev.text||''); break;   // the server has something short to say
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;

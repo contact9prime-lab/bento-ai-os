@@ -23,6 +23,7 @@
 var APP_WORDS={
   jobs:['mission','missions','job','jobs','flow','flows','workflow','workflows','fabric','orchestrator','recipe'],
   settings:['preferences','prefs','config','configuration','options'],
+  drama:['clip','reel','video','comic','manga','strip','share','tantrum','story','record'],
   office:['crew','team','playground','floor','lounge','meeting room','company','departments'],
   brief:['inbox','today','digest','summary'],
   permissions:['grants','grant','allow','deny','matrix','consent','policy','policies'],

@@ -1033,6 +1033,9 @@ class Agent:
             output = fence(src, output)
         await self.emit({"type": "tool_end", "call_id": call_id, "name": name,
                          "output": output[:4000], "ok": ok,
+                         # what was refused or broke, in words: a hard deny never sent a
+                         # tool_start, so without this the refusal named no command
+                         **({"detail": tool_detail(name, args)[:200]} if not ok else {}),
                          **({"untrusted": True} if untrusted else {}),
                          **({"image": image_path} if image_path else {})})
         self._said = ""

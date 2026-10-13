@@ -1213,13 +1213,16 @@ class ControlPlane(usersmod.Scoped):
                     pass
             if ev["type"] == "tool_start":
                 nsteps["n"] += 1
-                await self._emit(run_id, "step", {"tool": ev["name"], "status": "start"})
+                await self._emit(run_id, "step", {"tool": ev["name"], "status": "start",
+                                                  "detail": str(ev.get("detail") or "")[:200]})
             elif ev["type"] == "tool_end":
                 # why a step did not go through (the gate, you, the team, a breakage) and
                 # whether it read untrusted content: the World scene's feelings read these
                 from .world import step_outcome
                 await self._emit(run_id, "step", {"tool": ev["name"], "status": "end",
                                                   "ok": ev.get("ok", True),
+                                                  **({"detail": str(ev.get("detail") or "")[:200]}
+                                                     if ev.get("ok") is False and ev.get("detail") else {}),
                                                   **({"outcome": step_outcome(ev.get("output", ""))}
                                                      if ev.get("ok") is False else {}),
                                                   **({"untrusted": True} if ev.get("untrusted") else {})})
