@@ -10442,7 +10442,8 @@ async def api_avatars():
 
 @app.get("/api/avatar.png")
 async def api_avatar_png(key: str = "", frame: int = 0, crop: str = "", sheet: int = 0,
-                         scale: int = 1, recipe: str = "", costume: str = "", draw: str = ""):
+                         scale: int = 1, recipe: str = "", costume: str = "", draw: str = "",
+                         body: int = 0):
     """A character as a PNG: one frame, the face, or all frames side by side.
 
     A query parameter rather than a path segment, because the keys are '@agent',
@@ -10462,10 +10463,11 @@ async def api_avatar_png(key: str = "", frame: int = 0, crop: str = "", sheet: i
         rec = avatarsmod.recipe_for(state["store"], key)
     # a scene's costume (avatars.COSTUMES) and the smooth drawing are asked for with the
     # picture and never stored on the recipe
-    body = avatarsmod.png_of(rec, frame=frame, crop=crop, sheet=bool(sheet), scale=scale,
-                             costume=costume, draw=draw)
+    # `body` is the sheet the 3D office wraps round a figure (front, blink, back, side)
+    png = avatarsmod.png_of(rec, frame=frame, crop=crop, sheet=bool(sheet), scale=scale,
+                            costume=costume, draw=draw, body=bool(body))
     # the page asks with ?v=<updated_at>, so an edit is a new URL and this can be long
-    return Response(body, media_type="image/png",
+    return Response(png, media_type="image/png",
                     headers={"Cache-Control": "private, max-age=86400"})
 
 

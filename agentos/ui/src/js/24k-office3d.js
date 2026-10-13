@@ -20,24 +20,35 @@
    - **Rooms are one size and stand on one ring**, which grows with the number of rooms
      (ten departments at most, office.py), and the camera fits the ring to the window.
 
+   - **People work facing their desks, and the desks face the walls.** The first cut drew
+     every person as a flat picture turned to the camera behind a desk turned the same
+     way, and it was reported as "all of them are facing me": a classroom. Now desks
+     stand against the two back walls (of3SeatPos), so you see people from behind with
+     their screens over their shoulder; the boss's desk faces the door. A person is a
+     little figure of boxes that turns: to the screen while working, a little into the
+     room when not, the way they walk, towards whoever they came to see, to the middle
+     of the meeting table (of3SeatOf, of3LookAt). The chair turns with them.
+
    The rules the flat office lives by hold here too: nothing moves that did not happen
-   (the Brain pulses when a memory tool really ran, a spark runs to it along the path);
-   every face is the server's character sheet through avatarSrc / avatarRecipeSrc, so
-   there is no second painter (tests/test_avatars.py); a screen with no 3D graphics
-   gets the flat office and one sentence saying why (OF3.why, shown in Design).
+   (the Brain pulses when a memory tool really ran, a spark runs to it along the path,
+   a screen lights and scrolls only while its person works); every person is the
+   server's body sheet (front, blink, back, side) through avatarSrc / avatarRecipeSrc,
+   wrapped round boxes, so there is no second painter (tests/test_avatars.py); a screen
+   with no 3D graphics gets the flat office and one sentence saying why (OF3.why).
 
    Cost: three.js is the World's vendored copy, loaded only when this look is on. Static
-   furniture is baked (wlBake), so a ten-room office is a few dozen draw calls; people
-   are sprites; text is HTML over the canvas. Frames come from the Office's own loop
-   (30 a second while something moves, 6 at rest, none asleep). Software rendering and
-   phones get no shadows and pixel ratio 1 (worldQuality).
+   furniture is baked (wlBake); a person is six meshes on shared shapes (of3Geo); text is
+   HTML over the canvas. Frames come from the Office's own loop (30 a second while
+   something moves, 6 at rest, none asleep). Software rendering and phones get no
+   shadows and pixel ratio 1 (worldQuality).
 
    Faces — GUI: the Office window and the desktop scene. SUI: the same page. TUI: `bento
    office look 3d|flat` sets it; a terminal shows the plan (`bento office`), not a picture.
    `var`, not `let`: the bundle is one script. */
 var OF3={T:null,r:null,scene:null,cam:null,cv:null,ui:null,failed:false,why:'',gl:undefined,building:false,
   sig:'',rooms:[],screens:[],sp:{},el:{},view:null,target:null,fit:null,anim:null,focus:null,
-  sparks:[],pulse:0,brain:null,papers:[],pet:null,ball:null,hq:false,cw:0,ch:0,dirty:true,drag:null,cardSig:''};
+  sparks:[],pulse:0,brain:null,papers:[],pet:null,ball:null,hq:false,cw:0,ch:0,dirty:true,drag:null,cardSig:'',
+  geo:{},chairs:{},table:null};
 var OF3_SEATS=4;                 // desks in a room; a bigger department is on its card
 var OF3_U=100;                   // plan units (the flat office's) per world unit
 var OF3_ROOM={w:330,h:280};      // every room is one size, so the ring stays a ring
@@ -113,15 +124,30 @@ function of3Layout(){
 }
 
 /* ---------------- seats: who has a desk, and who is on the card ---------------- */
+/* Where desk k of n stands, and which way its person faces. An office is people at
+   their screens, so the desks are against the walls and face them: two along the back
+   wall, then down the left one. The camera looks from the front right, so you see each
+   person from behind with their screens over their shoulder, which is what a working
+   office looks like. (The first cut sat everybody facing you, and it read as a class.)
+   fx/fy is the way they face, in plan units; the desk is in front of them. */
 function of3SeatPos(r,k,n){
-  const P=n<=1?[[.5,.48]]:n===2?[[.3,.5],[.7,.5]]:[[.3,.36],[.7,.36],[.3,.72],[.7,.72]];
-  const q=P[k]||P[0];return {x:r.x+r.w*q[0],y:r.y+r.h*q[1]};
+  const back=n<=1?[.55]:[.42,.75];
+  if(k<back.length)return {x:r.x+r.w*back[k],y:r.y+88,fx:0,fy:-1};
+  const left=n===3?[.6]:[.5,.82];
+  return {x:r.x+88,y:r.y+r.h*left[Math.min(k-2,left.length-1)],fx:-1,fy:0};
 }
+/* Your agent runs the place, so its desk faces the door, with two chairs for visitors. */
+function of3LeadSeat(r){return {x:r.x+r.w*.4,y:r.y+80,fx:0,fy:1,boss:1}}
+/* A step behind the chair: where somebody stands up to, and comes back to, so a walk
+   to or from a desk never goes through it. */
+function of3Behind(h){return {x:h.x-h.fx*48,y:h.y-h.fy*48}}
 function of3Seat(){
   const O=OFFICE,keep=O.people,seen={};
   O.L.rooms.forEach(r=>{
     if(r.kind==='lead'){
-      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Aria'),r,r.x+r.w*.5,r.y+r.h*.46,true);
+      const at=of3LeadSeat(r);
+      seen['@agent']=officePerson(keep['@agent'],'@agent',(typeof agentName==='function'?agentName():'Aria'),r,at.x,at.y,true);
+      Object.assign(seen['@agent'].home,{fx:at.fx,fy:at.fy,boss:1});
       seen['@agent'].bench=false;
     }
     if(r.kind!=='dept'&&r.kind!=='floor')return;
@@ -130,6 +156,7 @@ function of3Seat(){
       // a person keeps the desk they had; everybody else waits at the door, unseen
       const home=p&&!p.bench&&p.room&&p.room.name===r.name&&p.room.kind===r.kind?p.home:r.inside;
       seen[m]=officePerson(p,m,m,r,home.x,home.y,false);
+      if(home.fx!==undefined)Object.assign(seen[m].home,{fx:home.fx,fy:home.fy});
       seen[m].head=r.lead===m;seen[m].title=(r.titles||{})[m]||'';
       if(!p)seen[m].bench=true;
     });
@@ -184,9 +211,10 @@ function of3Shown(p){return !p.bench||p.mode==='walk'||!!p.visit}
 
 /* ---------------- walking: out of the door, round the ring, in at the other ---------------- */
 function of3Route(p,to){
-  const from=p.mode!=='seat'?{x:p.x,y:p.y}:p.bench?{x:p.home.x,y:p.home.y}:{x:p.home.x,y:p.home.y+50};
+  const step=p.mode==='seat'&&!p.bench?officeStepOut(p.home):null;
+  const from=p.mode!=='seat'?{x:p.x,y:p.y}:step||{x:p.home.x,y:p.home.y};
   const ra=officeRoomAt(from),rb=officeRoomAt(to),pts=[];
-  if(p.mode==='seat'&&!p.bench)pts.push({x:p.home.x+40,y:p.home.y+56});
+  if(step)pts.push(step);
   if(ra!==rb){
     let a0;
     if(ra){pts.push(ra.inside,ra.doorPt,ra.spoke);a0=Math.atan2(ra.spoke.y,ra.spoke.x)}
@@ -248,13 +276,15 @@ function of3Size(){
 }
 function of3Dispose(){
   const T=OF3.T;
-  if(OF3.scene)OF3.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();
+  if(OF3.scene)OF3.scene.traverse(o=>{if(o.geometry&&!o.geometry.userData.shared)o.geometry.dispose();
     const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map)x.map.dispose();x.dispose()})});
+  Object.values(OF3.geo||{}).forEach(g=>g.dispose());
   if(OF3.r){try{OF3.r.dispose();OF3.r.forceContextLoss()}catch(e){}}
   if(OF3.cv)OF3.cv.remove();if(OF3.ui)OF3.ui.remove();
   clearTimeout(OF3.rebuild);
   Object.assign(OF3,{r:null,scene:null,cam:null,cv:null,ui:null,sig:'',names:'',rooms:[],screens:[],sp:{},el:{},
-    view:null,target:null,fit:null,anim:null,focus:null,sparks:[],brain:null,papers:[],pet:null,ball:null,cardSig:''});
+    view:null,target:null,fit:null,anim:null,focus:null,sparks:[],brain:null,papers:[],pet:null,ball:null,cardSig:'',
+    geo:{},chairs:{},table:null,texs:{}});
   if(T)OF3.T=T;
 }
 /* Plan (x, y) to the floor of the world: x stays x, the plan's y is the world's z. */
@@ -294,9 +324,9 @@ function of3BuildNow(){
     OF3.rebuild=setTimeout(()=>{OF3.now=1;try{of3Build()}finally{OF3.now=0}officeKick()},180);return}
   clearTimeout(OF3.rebuild);
   // a new plan: the old scene goes, three.js and the renderer stay
-  if(OF3.scene)OF3.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();
+  if(OF3.scene)OF3.scene.traverse(o=>{if(o.geometry&&!o.geometry.userData.shared)o.geometry.dispose();
     const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map&&!x.map.userData.shared)x.map.dispose();x.dispose()})});
-  OF3_MAT={};OF3.sp={};OF3.screens=[];OF3.papers=[];OF3.pet=null;OF3.ball=null;
+  OF3_MAT={};OF3.sp={};OF3.screens=[];OF3.papers=[];OF3.pet=null;OF3.ball=null;OF3.chairs={};OF3.table=null;
   Object.values(OF3.el).forEach(e=>e.remove());OF3.el={};OF3.cardSig='';
   OF3.sig=sig;
   const S=OF3.scene=new T.Scene();
@@ -367,14 +397,122 @@ function of3Beam(){return of3Tex('beam',8,128,(g,w,h)=>{const r=g.createLinearGr
   r.addColorStop(0,'rgba(255,255,255,0)');r.addColorStop(.7,'rgba(255,255,255,.55)');r.addColorStop(1,'rgba(255,255,255,.95)');g.fillStyle=r;g.fillRect(0,0,w,h)})}
 function of3Shadow(){return of3Tex('shadow',64,64,(g,w)=>{const r=g.createRadialGradient(w/2,w/2,0,w/2,w/2,w/2);
   r.addColorStop(0,'rgba(0,0,0,.5)');r.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=r;g.fillRect(0,0,w,w)})}
-/* A room as a diorama: a coloured slab, a light floor, two walls at the back (the two the
-   camera looks past), and the furniture its kind of room has. */
+/* A group standing at (x, z) on the slab, turned so its +z looks along (fx, fz). */
+function of3At(par,x,z,fx,fz){const g=new OF3.T.Group();g.position.set(x,OF3_SLAB,z);g.rotation.y=Math.atan2(fx,fz);par.add(g);return g}
+/* Shapes several things share (the chair, a person's head, an arm): made once. */
+function of3Geo(key,make){const g=OF3.geo[key];if(g)return g;const n=make();n.userData.shared=1;return OF3.geo[key]=n}
+function of3Merge(gs){
+  const T=OF3.T,parts=gs.map(g=>g.index?g.toNonIndexed():g),out=new T.BufferGeometry();
+  ['position','normal','uv'].forEach(a=>{
+    let n=0;parts.forEach(g=>n+=g.attributes[a].array.length);
+    const arr=new Float32Array(n);let o=0;parts.forEach(g=>{arr.set(g.attributes[a].array,o);o+=g.attributes[a].array.length});
+    out.setAttribute(a,new T.BufferAttribute(arr,a==='uv'?2:3))});
+  gs.forEach(g=>g.dispose());parts.forEach(g=>g.dispose());
+  return out;
+}
+function of3Rand(s){s=s%2147483647||7;return ()=>{s=(s*16807)%2147483647;return (s-1)/2147483646}}
+/* Wooden boards, tinted towards the room's colour. */
+function of3FloorTex(col){
+  const t=of3Tex('floor:'+col,128,128,(g,w,h)=>{
+    g.fillStyle='#'+new OF3.T.Color(col).lerp(new OF3.T.Color('#efe6d6'),.84).getHexString();g.fillRect(0,0,w,h);
+    const rnd=of3Rand(31);
+    for(let y=0;y<h;y+=16){
+      g.fillStyle='rgba(60,40,20,.07)';g.fillRect(0,y,w,1);
+      for(let x=(y/16%2)*44;x<w;x+=88){g.fillRect(x,y,1,16)}
+      for(let k=0;k<6;k++){g.fillStyle=`rgba(${rnd()<.5?'255,255,255':'90,60,30'},.035)`;g.fillRect(rnd()*w,y+2+rnd()*12,20+rnd()*40,1)}
+    }});
+  const T=OF3.T;t.wrapS=t.wrapT=T.RepeatWrapping;t.repeat.set(2.4,2);return t;
+}
+/* A city at dusk through the windows: lit offices in the towers. */
+function of3Sky(){
+  return of3Tex('sky',256,96,(g,w,h)=>{
+    const gr=g.createLinearGradient(0,0,0,h);gr.addColorStop(0,'#141a3a');gr.addColorStop(.55,'#3b2f6b');gr.addColorStop(1,'#d9897a');
+    g.fillStyle=gr;g.fillRect(0,0,w,h);
+    const rnd=of3Rand(11);g.fillStyle='rgba(255,255,255,.7)';for(let k=0;k<26;k++)g.fillRect(rnd()*w,rnd()*h*.4,1,1);
+    for(let layer=0;layer<2;layer++){let x=-4;
+      while(x<w){const bw=12+rnd()*24,bh=h*(layer?.22+rnd()*.4:.4+rnd()*.5);
+        g.fillStyle=layer?'#191b3d':'#232650';g.fillRect(x,h-bh,bw,bh);
+        g.fillStyle=layer?'rgba(255,196,120,.9)':'rgba(170,190,255,.55)';
+        for(let yy=h-bh+4;yy<h-3;yy+=5)for(let xx=x+2;xx<x+bw-3;xx+=4)if(rnd()<(layer?.42:.25))g.fillRect(xx,yy,2,2);
+        x+=bw+(layer?2:6)}}
+  });
+}
+/* A band of windows along a back wall: glass with the city, a frame and mullions.
+   axis 'x' runs along the back wall at z; 'z' runs down the left wall at x. */
+function of3Window(par,a0,a1,y0,y1,at,axis){
+  const T=OF3.T,len=a1-a0,h=y1-y0,mid=(a0+a1)/2,my=(y0+y1)/2,tex=of3Sky();
+  const glass=of3Mat('window',{color:'#ffffff',map:tex,emissive:'#ffffff',emissiveMap:tex,emissiveIntensity:.75,roughness:.12,metalness:.1});
+  const frame=of3Mat('winframe',{color:'#2a2d42',roughness:.5});
+  const pl=new T.Mesh(new T.PlaneGeometry(len,h),glass);
+  if(axis==='z'){pl.rotation.y=Math.PI/2;pl.position.set(at,my,mid)}else pl.position.set(mid,my,at);
+  par.add(pl);
+  const n=Math.max(1,Math.round(len/.55));
+  for(let k=0;k<=n;k++){const p=a0+len*k/n;
+    if(axis==='z')of3Box(par,.03,h+.02,.035,frame,at+.012,my,p,false);else of3Box(par,.035,h+.02,.03,frame,p,my,at+.012,false)}
+  [y0,y1].forEach(y=>{if(axis==='z')of3Box(par,.06,.03,len,frame,at+.02,y,mid,false);else of3Box(par,len,.03,.06,frame,mid,y,at+.02,false)});
+}
+/* What is on a screen: code, in the department's colour and a few others. */
+function of3CodeTex(col){
+  return of3Tex('code:'+col,128,128,(g,w,h)=>{
+    g.fillStyle='#0b0e1a';g.fillRect(0,0,w,h);
+    let seed=0;for(const c of col)seed=seed*31+c.charCodeAt(0);
+    const rnd=of3Rand(seed),cols=[col,'#e2e8f0','#94a3b8','#fbbf24','#a78bfa','#34d399',col];
+    for(let y=3;y<h;y+=6){let x=3+Math.floor(rnd()*4)*6;if(rnd()<.12)continue;
+      while(x<w-8&&rnd()>.16){const l=4+Math.floor(rnd()*18);g.fillStyle=cols[Math.floor(rnd()*cols.length)];g.globalAlpha=.9;g.fillRect(x,y,Math.min(l,w-4-x),3);x+=l+3}}
+    g.globalAlpha=1;
+  });
+}
+function of3Plant(par,x,y,z,big,s){
+  const T=OF3.T,pot=of3Mat('pot',{color:'#e7e5e4',roughness:.6}),leaf=of3Mat('leaf',{color:'#3f9d4f',roughness:.8,flatShading:true});
+  const leaf2=of3Mat('leaf2',{color:'#2f7d3e',roughness:.8,flatShading:true});s=s||1;
+  if(big){
+    of3Cyl(par,.13,.1,.26,pot,x,y+.13,z,14);
+    [[0,.42,0,.17,0],[.08,.58,.04,.14,1],[-.07,.62,-.05,.13,0],[.02,.76,.0,.11,1],[-.09,.46,.07,.12,1]].forEach(q=>{
+      const m=new T.Mesh(new T.IcosahedronGeometry(q[3],0),q[4]?leaf2:leaf);m.position.set(x+q[0],y+q[1],z+q[2]);if(OF3.hq)m.castShadow=true;par.add(m)});
+    return;
+  }
+  of3Cyl(par,.1*s,.075*s,.18*s,pot,x,y+.09*s,z,12);
+  [[0,.32,0,.15],[.06,.41,.03,.11],[-.05,.42,-.04,.1]].forEach(q=>{
+    const m=new T.Mesh(new T.IcosahedronGeometry(q[3]*s,0),leaf);m.position.set(x+q[0]*s,y+q[1]*s,z+q[2]*s);if(OF3.hq)m.castShadow=true;par.add(m)});
+}
+/* A whiteboard on wheels with sticky notes in three columns. Decor: the notes are not
+   tasks (the cards over the rooms count those), so they never change. */
+function of3Kanban(par,x,y,z,i,col){
+  const T=OF3.T,g=of3At(par,x,z,1,1),frame=of3Mat('kbframe',{color:'#cbd5e1',metalness:.4,roughness:.4});
+  g.position.y=y;g.scale.setScalar(.8);
+  of3Box(g,.86,.5,.03,of3Mat('kbboard',{color:'#ffffff',emissive:'#ffffff',emissiveIntensity:.18,roughness:.6}),0,.52,0);
+  of3Box(g,.9,.03,.05,frame,0,.785,0,false);of3Box(g,.9,.03,.05,frame,0,.255,0,false);
+  [-.43,.43].forEach(x=>{of3Box(g,.025,.26,.025,frame,x,.13,0,false);of3Box(g,.025,.02,.22,frame,x,.01,0,false)});
+  const rnd=of3Rand(i*7+3),notes=['#fde047','#f9a8d4','#86efac','#93c5fd',col];
+  [-.28,0,.28].forEach((cx,c)=>{of3Box(g,.005,.42,.006,of3Mat('kbline',{color:'#cbd5e1'}),cx+.14,.52,.018,false);
+    const n=2+Math.floor(rnd()*(c===1?2:3));
+    for(let k=0;k<n;k++)of3Box(g,.075,.075,.006,of3Mat('note:'+notes[(k+c)%notes.length],{color:notes[(k+c)%notes.length],emissive:notes[(k+c)%notes.length],emissiveIntensity:.45}),
+      cx-.05+(k%2)*.1,.7-Math.floor(k/2)*.1,.02,false)});
+}
+function of3Beanbag(par,x,y,z,col){
+  const T=OF3.T,m=new T.Mesh(new T.SphereGeometry(.2,14,10),of3Mat('bean:'+col,{color:of3Hex(col,['#ffffff',.15]),roughness:.95}));
+  m.scale.set(1,.55,1);m.position.set(x,y+.1,z);if(OF3.hq){m.castShadow=true;m.receiveShadow=true}par.add(m);
+}
+function of3Cooler(par,x,y,z){
+  of3Box(par,.22,.5,.22,of3Mat('cooler',{color:'#e2e8f0',roughness:.4}),x,y+.25,z);
+  of3Cyl(par,.09,.09,.24,of3Mat('water',{color:'#7dd3fc',transparent:true,opacity:.7,roughness:.1}),x,y+.62,z,14);
+  of3Box(par,.08,.03,.02,of3Mat('tap',{color:'#3b82f6'}),x,y+.38,z+.115,false);
+}
+function of3Art(par,x,y,z,i){
+  const c=['#f472b6','#facc15','#60a5fa','#34d399'][i%4];
+  of3Box(par,.02,.36,.5,of3Mat('frame',{color:'#1f2937'}),x,y,z,false);
+  of3Box(par,.02,.3,.44,of3Mat('art:'+c,{color:c,emissive:c,emissiveIntensity:.15}),x+.012,y,z,false);
+}
+/* A room as a diorama: a coloured slab, a wooden floor, two walls at the back (the two
+   the camera looks past) with windows onto a city, and the furniture its kind of room
+   has. Everything here is baked into a few meshes; only what moves stays apart (the
+   chairs, which swivel with whoever sits in them, and the screens, which light up). */
 function of3Room(par,r,i,v){
-  const T=OF3.T,col=v.colors[r.color]||v.style.accent||'#94a3b8',st=v.office.style,decor=v.office.decor||[];
+  const T=OF3.T,col=v.colors[r.color]||v.style.accent||'#94a3b8',decor=v.office.decor||[];
   const W=r.w/OF3_U,D=r.h/OF3_U,x0=r.x/OF3_U,z0=r.y/OF3_U,cx=x0+W/2,cz=z0+D/2,top=OF3_SLAB;
   const slab=of3Mat('slab:'+col,{color:of3Hex(col,['#0b0c18',.18]),roughness:.7});
   of3Box(par,W,top,D,slab,cx,top/2,cz);
-  const floor=of3Mat('floor:'+col,{color:of3Hex(col,['#f6f1e7',.78]),roughness:.9});
+  const floor=of3Mat('floor:'+col,{color:'#ffffff',map:of3FloorTex(col),roughness:.78});
   of3Box(par,W-.14,.012,D-.14,floor,cx,top+.006,cz,false).receiveShadow=OF3.hq;
   const wall=of3Mat('wall:'+col,{color:of3Hex(col,['#1d1b2e',.22]),roughness:.85});
   const cap=of3Mat('cap:'+col,{color:of3Hex(col,['#ffffff',.35])});
@@ -382,88 +520,166 @@ function of3Room(par,r,i,v){
   of3Box(par,.08,OF3_WALL,D,wall,x0+.04,top+OF3_WALL/2,cz);
   of3Box(par,W,.03,.1,cap,cx,top+OF3_WALL+.015,z0+.04,false);
   of3Box(par,.1,.03,D,cap,x0+.04,top+OF3_WALL+.015,cz,false);
+  // the skirting light along the two open edges, in the department's colour
+  const led=of3Mat('led:'+col,{color:col,emissive:col,emissiveIntensity:1.3});
+  of3Box(par,W-.1,.02,.025,led,cx,top+.01,z0+D-.06,false);of3Box(par,.025,.02,D-.1,led,x0+W-.06,top+.01,cz,false);
   // a soft dark pool under the slab, so the rooms float rather than hang
   const pool=new T.Mesh(new T.PlaneGeometry(W*1.5,D*1.5),new T.MeshBasicMaterial({map:of3Shadow(),transparent:true,depthWrite:false}));
   pool.rotation.x=-Math.PI/2;pool.position.set(cx+.25,-.05,cz+.25);pool.userData.keep=1;OF3.scene.add(pool);
-  // the wall screen: a dark panel with the department's colour in its lines
-  const scr=of3Tex('wallscreen:'+col,128,64,(g,w,h)=>{g.fillStyle='#0d1020';g.fillRect(0,0,w,h);
-    g.strokeStyle=col;g.lineWidth=2;g.globalAlpha=.85;g.beginPath();for(let x=6;x<w-6;x+=6){const y=h*.65-Math.abs(Math.sin(x*.09+i))*h*.38;x===6?g.moveTo(x,y):g.lineTo(x,y)}g.stroke();
-    g.globalAlpha=.5;g.fillStyle=col;for(let k=0;k<5;k++)g.fillRect(8+k*22,h-12,14,4)});
-  const panel=new T.Mesh(new T.PlaneGeometry(.9,.46),new T.MeshStandardMaterial({map:scr,emissive:'#ffffff',emissiveMap:scr,emissiveIntensity:.55,roughness:.4}));
-  panel.position.set(cx+(r.kind==='lead'?-.55:.35),top+.6,z0+.085);par.add(panel);
-  if(decor.includes('bookshelf')||r.kind==='lead')of3Shelf(par,x0+.13,top,z0+D*(r.kind==='lead'?.2:.38));
-  if(decor.includes('posters')){const p=of3Mat('poster:'+i%3,{color:['#f472b6','#facc15','#60a5fa'][i%3]});
-    const m=of3Box(par,.02,.42,.3,p,x0+.09,top+.55,z0+D*.78,false);m.userData.k=1}
-  if(decor.includes('plants'))[[x0+W-.22,z0+.24],[x0+.24,z0+D-.24]].forEach(q=>of3Plant(par,q[0],top,q[1]));
-  of3Lamp(par,x0+.3,top,z0+.3,col);      // in the back corner, clear of every desk
+  const plant=(x,z,big)=>of3Plant(par,x,top,z,big);
+  if(r.kind==='lead')return of3LeadRoom(par,r,i,col,decor,{W,D,x0,z0,cx,cz,top});
+  if(r.kind==='meeting')return of3MeetRoom(par,r,i,col,{W,D,x0,z0,cx,cz,top});
+  if(r.kind==='lounge')return of3Lounge(par,r,i,col,decor,{W,D,x0,z0,cx,cz,top});
+  // a department: windows down both walls, desks against them, a plant in each corner
+  of3Window(par,x0+.3,x0+W-.25,top+.42,top+.86,z0+.085,'x');
+  of3Window(par,z0+.35,z0+D-.25,top+.42,top+.86,x0+.085,'z');
+  plant(x0+.24,z0+.26,true);
+  if(decor.includes('plants'))plant(x0+W-.22,z0+D-.24,false);
   const seats=Math.min(OF3_SEATS,(r.members||[]).length);
-  if(r.kind==='lead'){
-    const at={x:(r.x+r.w*.5)/OF3_U,z:(r.y+r.h*.46)/OF3_U};
-    OF3.screens.push({room:i,key:'@agent',mats:of3Desk(par,at.x,at.z,col,1.35,2)});
-    const c=officeCabinetAt();if(c)of3Cabinet(par,(c.x+c.w/2)/OF3_U,top,(c.y+c.h/2)/OF3_U);
-    if(decor.includes('whiteboard'))of3Board(par,(r.x+r.w*.78)/OF3_U,top,z0+.09);
-    of3Rug(par,cx,top,cz+.25,W*.62,col);
-  }
-  if(r.kind==='dept'||r.kind==='floor'){
-    for(let k=0;k<seats;k++){const at=of3SeatPos(r,k,seats);
-      OF3.screens.push({room:i,seat:k,mats:of3Desk(par,at.x/OF3_U,at.y/OF3_U,col,1,1)})}
-    if(!seats)of3Rug(par,cx,top,cz,W*.5,col);
-  }
-  if(r.kind==='meeting'){
-    // the same table officeTableSpot seats people round
-    const tc={x:(r.x+r.w/2)/OF3_U,z:(r.y+OF_WALL+92+16)/OF3_U};
-    of3Rug(par,tc.x,top,tc.z,1.9,col);
-    of3Cyl(par,.62,.62,.05,of3Mat('table',{color:'#e8e2d6',roughness:.5}),tc.x,top+.5,tc.z,40);
-    of3Cyl(par,.08,.14,.48,of3Mat('leg',{color:'#3b3f55'}),tc.x,top+.24,tc.z,12);
-  }
-  if(r.kind==='lounge'){
-    of3Rug(par,cx,top,cz+.1,W*.55,col);
-    const sofa=of3Mat('sofa:'+col,{color:of3Hex(col,['#3b2f4a',.35])});
-    of3Box(par,1.3,.22,.48,sofa,x0+.95,top+.16,z0+.5);of3Box(par,1.3,.42,.14,sofa,x0+.95,top+.3,z0+.3);
-    of3Box(par,.6,.04,.4,of3Mat('ctable',{color:'#c9a77c'}),x0+.95,top+.3,z0+1.05);
-    const g=officeExtra('guard');
-    if(g){const ax=g.x/OF3_U,az=g.y/OF3_U,arm=of3Mat('armchair',{color:'#4b5563'});
-      of3Box(par,.5,.2,.44,arm,ax,top+.14,az-.06);of3Box(par,.5,.5,.12,arm,ax,top+.32,az-.26);
-      of3Box(par,.1,.3,.44,arm,ax-.26,top+.24,az-.06);of3Box(par,.1,.3,.44,arm,ax+.26,top+.24,az-.06)}
-    if(decor.includes('coffee')){of3Box(par,.3,.5,.26,of3Mat('coffee',{color:'#2b2f3f'}),x0+W-.3,top+.25,z0+.3);
-      of3Box(par,.06,.06,.02,of3Mat('coffeeled',{color:'#fca5a5',emissive:'#ef4444',emissiveIntensity:2}),x0+W-.3,top+.38,z0+.44,false)}
-    if(decor.includes('arcade')){of3Box(par,.4,.9,.36,of3Mat('arcade',{color:'#4c1d95'}),x0+.32,top+.45,z0+D-.5);
-      of3Box(par,.3,.24,.02,of3Mat('arcadescr',{color:'#111',emissive:'#22d3ee',emissiveIntensity:1.4}),x0+.32,top+.66,z0+D-.31,false)}
-  }
+  // carpet where the desks are, so the room has a working side and an open one
+  const carpet=of3Mat('carpet:'+col,{color:of3Hex(col,['#2a2f45',.62]),roughness:1});
+  of3Box(par,W-.16,.006,1.2,carpet,cx,top+.014,z0+.68,false).receiveShadow=OF3.hq;
+  if(seats>2)of3Box(par,1.2,.006,D-1.36,carpet,x0+.68,top+.014,z0+1.28+(D-1.36)/2,false).receiveShadow=OF3.hq;
+  // the team's board, turned to the room: what is to do, being done and done
+  of3Kanban(par,x0+W*.66,top,z0+D*.66,i,col);
+  for(let k=0;k<seats;k++){const at=of3SeatPos(r,k,seats);
+    OF3.screens.push({room:i,seat:k,mats:of3Workstation(par,at,col,k,i+':'+k)})}
+  if(seats<3){of3Beanbag(par,x0+W*.32,top,z0+D*.78,col);of3Beanbag(par,x0+W*.48,top,z0+D*.86,'#475569')}
+  of3Cooler(par,x0+W-.22,top,z0+D-.55);
 }
-function of3Desk(par,x,z,col,wide,mons){
-  const T=OF3.T,top=OF3_SLAB,dw=.95*wide;
-  const wood=of3Mat('desk',{color:'#ece6da',roughness:.55}),leg=of3Mat('deskleg',{color:'#454a63'});
-  const dz=z+.3;
-  of3Box(par,dw,.05,.48,wood,x,top+.44,dz);
-  of3Box(par,.04,.42,.44,leg,x-dw/2+.04,top+.21,dz);of3Box(par,.04,.42,.44,leg,x+dw/2-.04,top+.21,dz);
-  of3Box(par,dw-.1,.3,.03,leg,x,top+.26,dz+.2);                 // the modesty panel hides the legs
-  of3Box(par,.3,.015,.1,of3Mat('kbd',{color:'#2b2f42'}),x,top+.475,dz+.04,false);
-  // the chair behind them
-  const chair=of3Mat('chair:'+col,{color:of3Hex(col,['#1e2235',.6])});
-  of3Box(par,.36,.06,.34,chair,x,top+.27,z-.04);of3Box(par,.36,.4,.06,chair,x,top+.5,z-.21);
-  of3Cyl(par,.03,.03,.24,leg,x,top+.12,z-.04,8);
-  // the monitor(s): their own material, because they light up when the person works.
-  // Off to the side and turned towards the chair: a sprite always faces the camera, so a
-  // screen straight in front of the person would hide their face.
-  const mats=[];
-  for(let k=0;k<mons;k++){
-    const m=new T.MeshStandardMaterial({color:'#11131f',emissive:new T.Color(col).lerp(new T.Color('#ffffff'),.3),emissiveIntensity:0,roughness:.35});
-    const mon=new T.Mesh(new T.BoxGeometry(.36,.24,.03),m);mon.userData.keep=1;
-    const side=mons>1?(k?1:-1):-1;
-    mon.position.set(x+side*dw*.4,top+.64,dz-.06);mon.rotation.y=-side*.55;if(OF3.hq)mon.castShadow=true;par.add(mon);
-    of3Box(par,.04,.13,.04,leg,mon.position.x,top+.52,mon.position.z,false);
-    mats.push(m);
-  }
-  const mug=of3Cyl(par,.035,.03,.08,of3Mat('mug:'+col,{color:col}),x+dw/2-.14,top+.505,dz+.06,10);mug.castShadow=false;
-  return mats;
+/* A workstation: desk, two screens, keyboard, a mug, and the chair (which swivels).
+   Built facing +z at the origin and turned to face (fx, fy). Returns the screens'
+   materials, which light up while the person works. */
+function of3Workstation(par,at,col,k,chairKey){
+  const T=OF3.T,g=of3At(par,at.x/OF3_U,at.y/OF3_U,at.fx,at.fy);
+  const wood=of3Mat('desk',{color:'#e9e2d4',roughness:.55}),leg=of3Mat('deskleg',{color:'#3b4057'});
+  of3Box(g,.86,.03,.42,wood,0,.31,.42);
+  of3Box(g,.03,.3,.38,leg,-.41,.155,.42);of3Box(g,.03,.3,.38,leg,.41,.155,.42);
+  of3Box(g,.8,.16,.02,leg,0,.2,.62,false);
+  of3Box(g,.26,.012,.08,of3Mat('kbd',{color:'#262a3c'}),0,.33,.3,false);
+  of3Box(g,.04,.014,.06,of3Mat('mouse',{color:'#cbd5e1'}),.2,.33,.3,false);
+  of3Cyl(g,.03,.026,.07,of3Mat('mug:'+col,{color:col}),-.34,.36,.3,10).castShadow=false;
+  if(k%2)of3Plant(g,-.33,.325,.52,false,.55);else of3Box(g,.13,.03,.17,of3Mat('paper',{color:'#f8fafc'}),.31,.34,.46,false);
+  // both screens share one material: one draw for the pair, and they light together
+  const mat=of3ScreenMat(col);[-.18,.18].forEach(x=>of3Monitor(g,x,.56,mat,x<0?.2:-.2));
+  of3Chair(par,at,col,chairKey);
+  return [mat];
 }
-function of3Plant(par,x,y,z){
-  const T=OF3.T,pot=of3Mat('pot',{color:'#e7e5e4',roughness:.6}),leaf=of3Mat('leaf',{color:'#3f9d4f',roughness:.8,flatShading:true});
-  of3Cyl(par,.11,.08,.2,pot,x,y+.1,z,12);
-  [[0,.36,0,.17],[.07,.46,.03,.12],[-.06,.47,-.04,.11]].forEach(q=>{
-    const m=new T.Mesh(new T.IcosahedronGeometry(q[3],0),leaf);m.position.set(x+q[0],y+q[1],z+q[2]);if(OF3.hq)m.castShadow=true;par.add(m)});
+function of3ScreenMat(col){
+  const T=OF3.T,tex=of3CodeTex(col).clone();tex.needsUpdate=true;tex.repeat.set(1,.55);tex.offset.y=Math.random()*.45;
+  return new T.MeshStandardMaterial({color:'#0b0d18',map:tex,emissive:'#ffffff',emissiveMap:tex,emissiveIntensity:.18,roughness:.3});
 }
+function of3Monitor(g,x,z,mat,turn){
+  const T=OF3.T,dark=of3Mat('bezel',{color:'#151827',roughness:.4}),m=new T.Group();m.position.set(x,0,z);m.rotation.y=turn||0;g.add(m);
+  of3Box(m,.33,.21,.025,dark,0,.52,0);
+  of3Box(m,.03,.1,.03,dark,0,.38,.02,false);of3Box(m,.12,.01,.08,dark,0,.33,.02,false);
+  const s=new T.Mesh(new T.PlaneGeometry(.3,.18),mat);s.rotation.y=Math.PI;s.position.set(0,.52,-.014);s.userData.keep=1;m.add(s);
+}
+/* An office chair that turns with whoever sits in it. One shared shape; its own mesh. */
+function of3Chair(par,at,col,key,yaw){
+  const T=OF3.T,m=new T.Mesh(of3ChairGeo(),of3Mat('chair:'+col,{color:of3Hex(col,['#1a1d2e',.72]),roughness:.7}));
+  m.position.set(at.x/OF3_U,OF3_SLAB,at.y/OF3_U);m.rotation.y=yaw!==undefined?yaw:Math.atan2(at.fx,at.fy);m.userData.keep=1;
+  if(OF3.hq){m.castShadow=true;m.receiveShadow=true}
+  OF3.scene.add(m);if(key)OF3.chairs[key]=m;return m;
+}
+function of3ChairGeo(){
+  return of3Geo('chair',()=>{
+    const T=OF3.T,parts=[],add=(w,h,d,x,y,z)=>{const b=new T.BoxGeometry(w,h,d);b.translate(x,y,z);parts.push(b)};
+    add(.28,.05,.26,0,.14,-.01);add(.26,.22,.05,0,.3,-.15);add(.03,.11,.03,0,.07,0);
+    add(.035,.03,.16,-.15,.22,0);add(.035,.03,.16,.15,.22,0);add(.022,.06,.022,-.15,.18,0);add(.022,.06,.022,.15,.18,0);
+    for(let a=0;a<5;a++){const b=new T.BoxGeometry(.19,.025,.035);b.translate(.095,.02,0);b.rotateY(a*Math.PI*2/5);parts.push(b)}
+    return of3Merge(parts);
+  });
+}
+/* Your agent's office: an executive desk facing the door with a laptop, two chairs
+   for visitors, a sofa under the board, the files, books and a big plant. */
+function of3LeadRoom(par,r,i,col,decor,R){
+  const T=OF3.T,{W,D,x0,z0,cx,cz,top}=R,at=of3LeadSeat(r);
+  of3Window(par,x0+.3,x0+W*.62,top+.42,top+.86,z0+.085,'x');
+  of3Window(par,z0+1.8,z0+D-.25,top+.42,top+.86,x0+.085,'z');
+  of3Rug(par,at.x/OF3_U,top,at.y/OF3_U+.6,1.7,col);
+  const g=of3At(par,at.x/OF3_U,at.y/OF3_U,at.fx,at.fy);
+  const walnut=of3Mat('walnut',{color:'#5b3a29',roughness:.45}),brass=of3Mat('brass',{color:'#d6b25e',roughness:.3,metalness:.6});
+  of3Box(g,1.15,.04,.5,walnut,0,.33,.42);of3Box(g,1.15,.28,.03,walnut,0,.17,.66);
+  of3Box(g,.04,.3,.48,walnut,-.56,.16,.42);of3Box(g,.04,.3,.48,walnut,.56,.16,.42);
+  of3Box(g,1.1,.012,.03,brass,0,.31,.67,false);
+  // the laptop: low enough that you see who is behind it
+  const dark=of3Mat('bezel',{color:'#151827',roughness:.4});
+  of3Box(g,.28,.012,.19,dark,0,.357,.36,false);
+  const mat=of3ScreenMat(col),lid=new T.Group();lid.position.set(0,.36,.455);lid.rotation.x=.32;g.add(lid);
+  of3Box(lid,.28,.18,.012,dark,0,.09,0,false);
+  const s=new T.Mesh(new T.PlaneGeometry(.25,.15),mat);s.rotation.y=Math.PI;s.position.set(0,.09,-.008);s.userData.keep=1;lid.add(s);
+  OF3.screens.push({room:i,key:'@agent',mats:[mat]});
+  of3Cyl(g,.035,.03,.08,of3Mat('mug:'+col,{color:col}),.42,.39,.3,10);
+  of3Box(g,.12,.02,.16,of3Mat('paper',{color:'#f8fafc'}),-.4,.36,.44,false);
+  of3Chair(par,at,col,'lead');
+  // two chairs for whoever comes to report, facing the desk
+  [-.36,.36].forEach(x=>of3Chair(par,{x:at.x+x*OF3_U,y:at.y+95,fx:0,fy:-1},'#64748b'));
+  // the sofa under the mission board, and a coffee table
+  const sofa=of3Mat('sofa:'+col,{color:of3Hex(col,['#3b2f4a',.35])}),sx=x0+W*.8;
+  of3Box(par,1.0,.16,.42,sofa,sx,top+.12,z0+.36);of3Box(par,1.0,.32,.12,sofa,sx,top+.24,z0+.18);
+  of3Box(par,.12,.24,.42,sofa,sx-.5,top+.16,z0+.36);of3Box(par,.12,.24,.42,sofa,sx+.5,top+.16,z0+.36);
+  of3Box(par,.5,.03,.3,walnut,sx,top+.2,z0+.82);of3Box(par,.04,.18,.04,walnut,sx,top+.1,z0+.82,false);
+  if(decor.includes('whiteboard'))of3Board(par,sx,top+.08,z0+.09);
+  const c=officeCabinetAt();if(c)of3Cabinet(par,(c.x+c.w/2)/OF3_U,top,(c.y+c.h/2)/OF3_U);
+  if(decor.includes('bookshelf'))of3Shelf(par,x0+.14,top,z0+D*.5);
+  of3Plant(par,x0+W-.24,top,z0+D-.26,true);of3Plant(par,x0+.25,top,z0+.27,true);
+  of3Lamp(par,x0+W-.25,top,z0+1.1,col);
+}
+/* The meeting room: a long table with a chair at every place a meeting seats people
+   (officeTableSpot), a screen on the wall, and windows. */
+function of3MeetRoom(par,r,i,col,R){
+  const T=OF3.T,{W,D,x0,z0,cx,cz,top}=R;
+  of3Window(par,z0+.3,z0+D-.25,top+.42,top+.86,x0+.085,'z');
+  const tc={x:r.x+r.w/2,y:r.y+155},tx=tc.x/OF3_U,tz=tc.y/OF3_U;
+  of3Rug(par,tx,top,tz,2.4,col);
+  const tm=of3Mat('table',{color:'#efe8dc',roughness:.4}),leg=of3Mat('leg',{color:'#3b3f55'});
+  of3Box(par,1.34,.04,.66,tm,tx,top+.33,tz);of3Cyl(par,.33,.33,.04,tm,tx-.67,top+.33,tz,24);of3Cyl(par,.33,.33,.04,tm,tx+.67,top+.33,tz,24);
+  of3Box(par,.9,.3,.08,leg,tx,top+.16,tz,false);
+  OF3.table={x:tc.x,y:tc.y,spots:[]};
+  for(let k=0;k<8;k++){const s=officeTableSpot(k),ax=Math.max(tc.x-67,Math.min(tc.x+67,s.x));
+    const fx=ax-s.x,fy=tc.y-s.y,l=Math.hypot(fx,fy)||1;
+    of3Chair(par,{x:s.x,y:s.y,fx:fx/l,fy:fy/l},col,'meet:'+k);OF3.table.spots.push({x:s.x,y:s.y,yaw:Math.atan2(fx/l,fy/l),k})}
+  // the screen on the back wall, with a chart in the room's colour
+  const scr=of3Tex('wallscreen:'+col,128,64,(g,w,h)=>{g.fillStyle='#0d1020';g.fillRect(0,0,w,h);
+    g.strokeStyle=col;g.lineWidth=2;g.globalAlpha=.9;g.beginPath();for(let x=6;x<w-6;x+=6){const y=h*.65-Math.abs(Math.sin(x*.09+i))*h*.38;x===6?g.moveTo(x,y):g.lineTo(x,y)}g.stroke();
+    g.globalAlpha=.55;g.fillStyle=col;for(let k=0;k<5;k++)g.fillRect(8+k*22,h-12,14,4)});
+  of3Box(par,1.1,.6,.03,of3Mat('bezel',{color:'#151827'}),tx,top+.6,z0+.1,false);
+  const p=new T.Mesh(new T.PlaneGeometry(1.04,.54),new T.MeshStandardMaterial({map:scr,emissive:'#ffffff',emissiveMap:scr,emissiveIntensity:.6,roughness:.4}));
+  p.position.set(tx,top+.6,z0+.118);par.add(p);
+  of3Plant(par,x0+W-.24,top,z0+.26,true);of3Plant(par,x0+.25,top,z0+D-.26,false);
+}
+/* The lounge: sofa, coffee bar, arcade, a foosball table and bean bags. The guard's
+   armchair and the pet sitter are the Office's own regulars (OF_EXTRAS). */
+function of3Lounge(par,r,i,col,decor,R){
+  const T=OF3.T,{W,D,x0,z0,cx,cz,top}=R;
+  of3Window(par,x0+.3,x0+W-.25,top+.42,top+.86,z0+.085,'x');
+  of3Rug(par,cx,top,cz+.1,W*.55,col);
+  const sofa=of3Mat('sofa:'+col,{color:of3Hex(col,['#3b2f4a',.35])});
+  of3Box(par,1.3,.16,.46,sofa,x0+.95,top+.12,z0+.5);of3Box(par,1.3,.34,.12,sofa,x0+.95,top+.25,z0+.3);
+  of3Box(par,.12,.25,.46,sofa,x0+.3,top+.16,z0+.5);of3Box(par,.12,.25,.46,sofa,x0+1.6,top+.16,z0+.5);
+  of3Box(par,.6,.04,.4,of3Mat('ctable',{color:'#c9a77c'}),x0+.95,top+.22,z0+1.05);
+  const g=officeExtra('guard');
+  if(g){const ax=g.x/OF3_U,az=g.y/OF3_U,arm=of3Mat('armchair',{color:'#4b5563'});
+    of3Box(par,.5,.2,.44,arm,ax,top+.1,az-.06);of3Box(par,.5,.5,.12,arm,ax,top+.25,az-.26);
+    of3Box(par,.1,.3,.44,arm,ax-.26,top+.2,az-.06);of3Box(par,.1,.3,.44,arm,ax+.26,top+.2,az-.06)}
+  // the coffee bar along the left wall
+  const bar=of3Mat('bar',{color:'#2b2f3f',roughness:.5});
+  of3Box(par,.36,.36,1.0,bar,x0+.26,top+.18,z0+D*.62);of3Box(par,.4,.03,1.04,of3Mat('walnut',{color:'#5b3a29',roughness:.45}),x0+.26,top+.375,z0+D*.62,false);
+  if(decor.includes('coffee')){of3Box(par,.22,.26,.2,of3Mat('coffee',{color:'#cbd5e1',metalness:.4,roughness:.3}),x0+.24,top+.52,z0+D*.5);
+    of3Box(par,.05,.05,.02,of3Mat('coffeeled',{color:'#fca5a5',emissive:'#ef4444',emissiveIntensity:2}),x0+.36,top+.55,z0+D*.5,false)}
+  if(decor.includes('arcade')){of3Box(par,.4,.9,.36,of3Mat('arcade',{color:'#4c1d95'}),x0+W-.32,top+.45,z0+.35);
+    of3Box(par,.3,.24,.02,of3Mat('arcadescr',{color:'#111',emissive:'#22d3ee',emissiveIntensity:1.4}),x0+W-.32,top+.66,z0+.54,false)}
+  // foosball
+  const fx=x0+W*.66,fz=z0+D*.4,green=of3Mat('pitch',{color:'#15803d',roughness:.8});
+  of3Box(par,.7,.05,.4,green,fx,top+.36,fz);of3Box(par,.74,.08,.44,of3Mat('walnut',{}),fx,top+.33,fz,false);
+  [-.26,.26].forEach(x=>[-.15,.15].forEach(z=>of3Box(par,.04,.32,.04,leg3(),fx+x,top+.16,fz+z,false)));
+  [-.2,-.07,.07,.2].forEach((x,k)=>of3Box(par,.012,.012,.6,of3Mat('rod',{color:'#cbd5e1',metalness:.6}),fx+x,top+.42,fz,false));
+  of3Beanbag(par,x0+W*.4,top,z0+D-.45,col);
+  of3Plant(par,x0+W-.24,top,z0+D-.26,true);
+  function leg3(){return of3Mat('leg',{color:'#3b3f55'})}
+}
+
 function of3Lamp(par,x,y,z,col){
   const T=OF3.T;of3Cyl(par,.012,.012,.7,of3Mat('lamp',{color:'#2d3148'}),x,y+.35,z,6);
   const bulb=new T.Mesh(new T.SphereGeometry(.07,12,8),of3Mat('bulb',{color:'#fff7e0',emissive:'#ffd89a',emissiveIntensity:2.4}));
@@ -603,10 +819,8 @@ function of3Project(v3){
   const p=v3.clone().project(OF3.cam);
   return {x:(p.x+1)/2*OF3.cw,y:(1-p.y)/2*OF3.ch,z:p.z};
 }
-function of3Head(p){
-  const seated=p.mode==='seat'&&!p.bench;
-  return of3W(p.x,p.y,OF3_SLAB+(seated?.98:1.02)*(p.lead?1.1:1));
-}
+/* Just over somebody's head, where a balloon or a burst is pinned. */
+function of3Head(p){return of3W(p.x,p.y,OF3_SLAB+.68*(p.lead?1.1:1))}
 function of3Tap(e){
   const O=OFFICE;if(!OF3.cam||!O.L)return;
   const r=OF3.cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
@@ -648,48 +862,157 @@ function of3Draw(){
 /* Is anything in the 3D view still moving? The Office's loop asks officeMoving() for
    its own people; the camera, sparks and the Brain's pulse are this file's. */
 function of3Moving(){return !!(OF3.anim||OF3.sparks.length||(OF3.pulse&&performance.now()-OF3.pulse<1400))}
-function of3Sheet(p){
-  const src=p.recipe?avatarRecipeSrc(p.recipe,{sheet:1}):avatarSrc(p.key,{sheet:1});
-  let s=OF3.sp[p.key];
-  if(s&&s.src===src)return s;
-  const T=OF3.T;
-  if(!s){
-    const sp=new T.Sprite(new T.SpriteMaterial({transparent:true,alphaTest:.5}));
-    sp.center.set(.5,0);OF3.scene.add(sp);
-    const sh=new T.Mesh(new T.PlaneGeometry(.5,.24),new T.MeshBasicMaterial({map:of3Shadow(),transparent:true,depthWrite:false}));
-    sh.rotation.x=-Math.PI/2;OF3.scene.add(sh);
-    s=OF3.sp[p.key]={sprite:sp,shadow:sh,tex:null,src:''};
-  }
-  const tex=new T.TextureLoader().load(src,()=>officeKick());
-  tex.magFilter=tex.minFilter=T.NearestFilter;tex.generateMipmaps=false;tex.colorSpace=T.SRGBColorSpace;tex.repeat.set(.25,1);
-  if(s.tex)s.tex.dispose();s.tex=tex;s.src=src;s.sprite.material.map=tex;s.sprite.material.needsUpdate=true;
-  return s;
+/* ---------------- people: the painter's pixels, wrapped round boxes ----------------
+   A person is a little figure of boxes (head, body, two arms, two legs) and every side
+   of every box is cut from the server's body sheet: front, blink, back and side, painted
+   by avatars.py from the same recipe as every face on this machine. So there is still
+   one painter; this file only decides which of its pixels go on which side of which
+   box, and turns the figure the way the person is facing. Sizes are in the painter's
+   pixels (16 x 26 a frame), OF3_PX world units each. */
+var OF3_PX=.026;
+/* A rect of one frame of the body sheet (0 front, 1 blink, 2 back, 3 side) as UVs. */
+function of3UV(view,x0,y0,x1,y1,flip){
+  const o=view*16;let u0=(o+x0)/64,u1=(o+x1)/64;if(flip){const t=u0;u0=u1;u1=t}
+  return [u0,1-y1/26,u1,1-y0/26];
 }
-function of3People(now){
-  const O=OFFICE,seen=new Set(),all=[...Object.values(O.people),...(O.extras||[])];
-  all.forEach(p=>{
-    const show=p.recipe||of3Shown(p);
-    if(!show){const s=OF3.sp[p.key];if(s){s.sprite.visible=false;s.shadow.visible=false}return}
-    const s=of3Sheet(p);seen.add(p.key);
-    const seated=p.mode==='seat'&&(p.recipe||!p.bench);
-    const {frame,bob}=officeFrameOf(p,seated);
-    s.tex.offset.x=frame*.25;
-    const k=p.lead?1.1:1,arm=p.role==='guard';
-    s.sprite.scale.set(.5*k,.81*k,1);
-    s.sprite.position.copy(of3W(p.x,p.y,OF3_SLAB+(seated?(arm?.12:.16):0)+bob*.018));
-    s.sprite.visible=true;
-    s.shadow.visible=!seated;s.shadow.position.copy(of3W(p.x,p.y,OF3_SLAB+.012));
+/* A box w x h x d (pixels) whose six sides show the given rects, centred at (ox, oy, oz). */
+function of3Part(w,h,d,faces,ox,oy,oz){
+  const P=OF3_PX,g=new OF3.T.BoxGeometry(w*P,h*P,d*P),uv=g.attributes.uv;
+  ['px','nx','py','ny','pz','nz'].forEach((f,i)=>{const r=faces[f]||faces.all;
+    for(let k=0;k<4;k++){const j=i*4+k,a=uv.getX(j),b=uv.getY(j);uv.setXY(j,r[0]+(r[2]-r[0])*a,r[1]+(r[3]-r[1])*b)}});
+  g.translate((ox||0)*P,(oy||0)*P,(oz||0)*P);
+  return g;
+}
+/* Hair that stands off the head (a bun, long hair down the back), in the hair's colour. */
+function of3HairParts(style){
+  const H=of3UV(2,6,5,9,7),all={all:H},P=[];
+  if(style==='bald')return P;
+  if(style==='curly'){P.push(of3Part(10,3,10,all,0,9,0));return P}
+  if(style==='spiky'){[-2.5,0,2.5].forEach((x,i)=>P.push(of3Part(2,2,2,all,x,10.5,(i-1)*1.5)));P.push(of3Part(8,1,8,all,0,9.5,0));return P}
+  P.push(of3Part(8,1,8,{all:H,pz:of3UV(0,4,2,12,3)},0,9.5,0));
+  if(style==='bun')P.push(of3Part(4,3,4,all,0,11,-2.5));
+  if(style==='long'||style==='bob'){const h=style==='long'?10:7,oy=style==='long'?3:4.5;
+    P.push(of3Part(10,h,1,all,0,oy,-4.5),of3Part(1,h-1,6,all,-4.5,oy+.5,-1),of3Part(1,h-1,6,all,4.5,oy+.5,-1))}
+  return P;
+}
+function of3HeadGeo(style,blink){
+  return of3Geo('head:'+style+(blink?':b':''),()=>of3Merge([
+    of3Part(8,9,8,{pz:of3UV(blink?1:0,4,3,12,12),nz:of3UV(2,4,3,12,12),px:of3UV(3,4,3,12,12,true),nx:of3UV(3,4,3,12,12),
+      py:of3UV(2,5,3,11,6),ny:of3UV(0,7,12,9,13)},0,4.5,0),...of3HairParts(style)]));
+}
+function of3BodyGeo(part){
+  return of3Geo('body:'+part,()=>{
+    if(part==='torso')return of3Part(8,6,4,{pz:of3UV(0,4,13,12,19),nz:of3UV(2,4,13,12,19),px:of3UV(3,6,13,10,19,true),
+      nx:of3UV(3,6,13,10,19),py:of3UV(0,5,14,11,15),ny:of3UV(0,5,19,11,20)},0,9,0);
+    if(part==='armL'||part==='armR'){const L=part==='armL',a=L?2:12,b=L?12:2;
+      return of3Part(2,5,2,{pz:of3UV(0,a,13,a+2,18),nz:of3UV(2,b,13,b+2,18),px:of3UV(0,a,13,a+1,18),nx:of3UV(0,a,13,a+1,18),
+        py:of3UV(0,a,13,a+2,14),ny:of3UV(0,a,17,a+2,18)},0,-2.5,0)}
+    const L=part==='legL',a=L?5:8,b=L?8:5,s=L?4:8,sb=L?8:4;
+    return of3Merge([
+      of3Part(3,4,3,{pz:of3UV(0,a,19,a+3,23),nz:of3UV(2,b,19,b+3,23),px:of3UV(3,6,19,9,23,true),nx:of3UV(3,6,19,9,23),
+        py:of3UV(0,a,19,a+3,20),ny:of3UV(0,a,22,a+3,23)},0,-2,0),
+      of3Part(4,2,4,{pz:of3UV(0,s,23,s+4,25),nz:of3UV(2,sb,23,sb+4,25),px:of3UV(3,6,23,10,25,true),nx:of3UV(3,6,23,10,25),
+        py:of3UV(0,4,23,6,24),ny:of3UV(0,4,23,6,24)},L?-.5:.5,-5,.5)]);
   });
-  Object.keys(OF3.sp).forEach(k=>{if(!seen.has(k)){OF3.sp[k].sprite.visible=false;OF3.sp[k].shadow.visible=false}});
 }
-/* A monitor is lit while the person at that desk works, in the department's colour. */
+function of3Figure(p){
+  const T=OF3.T,src=p.recipe?avatarRecipeSrc(p.recipe,{body:1}):avatarSrc(p.key,{body:1});
+  let f=OF3.sp[p.key];
+  if(f&&f.src===src)return f;
+  if(f){OF3.scene.remove(f.root);OF3.scene.remove(f.shadow);f.tex.dispose();f.mat.dispose()}
+  const tex=new T.TextureLoader().load(src,()=>officeKick());
+  tex.magFilter=tex.minFilter=T.NearestFilter;tex.generateMipmaps=false;tex.colorSpace=T.SRGBColorSpace;
+  const mat=new T.MeshStandardMaterial({map:tex,roughness:.85});
+  const rec=p.recipe||((AVATARS.by||{})[p.key]||{}).recipe||{},style=rec.style||'short',P=OF3_PX;
+  const root=new T.Group(),body=new T.Group();root.add(body);
+  // only the head and body cast a shadow: arms and legs add draws for no visible shade
+  const mesh=(geo,par,cast)=>{const m=new T.Mesh(geo,mat);if(OF3.hq&&cast)m.castShadow=true;par.add(m);return m};
+  const piv=(x,y)=>{const g=new T.Group();g.position.set(x*P,y*P,0);body.add(g);return g};
+  mesh(of3BodyGeo('torso'),body,1);
+  const head=piv(0,13),armL=piv(-5,12),armR=piv(5,12),legL=piv(-1.5,6),legR=piv(1.5,6);
+  const face=mesh(of3HeadGeo(style,0),head,1),blink=mesh(of3HeadGeo(style,1),head,1);blink.visible=false;
+  mesh(of3BodyGeo('armL'),armL);mesh(of3BodyGeo('armR'),armR);mesh(of3BodyGeo('legL'),legL);mesh(of3BodyGeo('legR'),legR);
+  const shadow=new T.Mesh(new T.PlaneGeometry(.42,.2),new T.MeshBasicMaterial({map:of3Shadow(),transparent:true,depthWrite:false}));
+  shadow.rotation.x=-Math.PI/2;OF3.scene.add(shadow);OF3.scene.add(root);
+  return OF3.sp[p.key]={root,body,head,armL,armR,legL,legR,face,blink,mat,tex,src,shadow,yaw:null,cur:null};
+}
+/* Sitting down: at a desk (facing it, turned a little into the room when not working,
+   so you see who it is), at the meeting table, or the guard in the armchair. */
+function of3SeatOf(p){
+  const O=OFFICE;
+  if(p.recipe)return p.role==='guard'?{yaw:0}:null;
+  if(p.mode==='seat'&&!p.bench&&p.home&&p.home.fx!==undefined){
+    const r=p.room,k=r&&r.seats?r.seats.indexOf(p.key):-1,i=r?O.L.rooms.indexOf(r):-1;
+    let yaw=Math.atan2(p.home.fx,p.home.fy);
+    if(!(p.busy||p.hand||p.home.boss)&&r){
+      let d=Math.atan2(r.cx-p.x,r.cy-p.y)-yaw;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;
+      yaw+=Math.max(-.9,Math.min(.9,d*.5));
+    }
+    return {yaw,desk:true,chair:OF3.chairs[p.key==='@agent'?'lead':i+':'+k]};
+  }
+  const t=OF3.table;
+  if(t&&p.mode==='stand'){const s=t.spots.find(q=>Math.hypot(q.x-p.x,q.y-p.y)<8);if(s)return {yaw:s.yaw,chair:OF3.chairs['meet:'+s.k]}}
+  return null;
+}
+/* Who somebody standing about is looking at. */
+function of3LookAt(p){
+  const O=OFFICE,v=p.visit;
+  if(v&&v.to&&O.people[v.to]){const q=O.people[v.to];return {x:q.x,y:q.y}}
+  if(p.hand){const l=O.people['@agent'];if(l&&l!==p)return {x:l.x,y:l.y}}
+  if(p.role==='sitter'&&O.pet)return {x:O.pet.x,y:O.pet.y};
+  return null;
+}
+function of3Turn(a,b,k){let d=b-a;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;return a+d*Math.min(1,k)}
+function of3People(now){
+  const O=OFFICE,seen=new Set(),all=[...Object.values(O.people),...(O.extras||[])],t=now/1000,still=O.static;
+  const dt=Math.min(.1,Math.max(0,(now-(OF3.lastT||now))/1000));OF3.lastT=now;
+  all.forEach(p=>{
+    if(!(p.recipe||of3Shown(p))){const f=OF3.sp[p.key];if(f){f.root.visible=false;f.shadow.visible=false}return}
+    const f=of3Figure(p);seen.add(p.key);
+    const seat=of3SeatOf(p),walking=p.mode==='walk'&&!still,{frame,bob}=officeFrameOf(p,!!seat);
+    let yaw=f.yaw;
+    if(walking){const dx=p.x-(f.px===undefined?p.x:f.px),dz=p.y-(f.pz===undefined?p.y:f.pz);if(Math.hypot(dx,dz)>.05)yaw=Math.atan2(dx,dz)}
+    else if(seat)yaw=seat.yaw;
+    else{const q=of3LookAt(p);if(q&&Math.hypot(q.x-p.x,q.y-p.y)>1)yaw=Math.atan2(q.x-p.x,q.y-p.y)}
+    if(yaw===null||yaw===undefined)yaw=Math.PI/4;      // nothing to look at: towards you
+    f.px=p.x;f.pz=p.y;f.yaw=yaw;
+    f.cur=f.cur===null||still?yaw:of3Turn(f.cur,yaw,dt*7);
+    f.root.scale.setScalar(p.lead?1.1:1);
+    f.root.position.copy(of3W(p.x,p.y,OF3_SLAB));f.root.rotation.y=f.cur;
+    const ph=p.phase||0,sw=walking?Math.sin(t*11+ph):0;
+    f.body.position.y=(walking?Math.abs(sw)*.014:0)+bob*.012;
+    f.face.visible=frame!==1;f.blink.visible=frame===1;
+    if(seat){f.legL.rotation.x=f.legR.rotation.x=-Math.PI/2}
+    else{f.legL.rotation.x=sw*.6;f.legR.rotation.x=-sw*.6}
+    const busy=!!(p.busy&&seat&&seat.desk&&!still);
+    let aL=0,aR=0,zR=0;
+    if(p.hand){aR=-Math.PI+.3;zR=-.25;aL=seat?-.6:0}
+    else if(busy){aL=-1.2+Math.sin(t*17+ph)*.09;aR=-1.2+Math.sin(t*15+ph+1.7)*.09}
+    else if(seat&&seat.desk&&!p.home.boss)aL=aR=-.35;
+    else if(seat)aL=aR=-.6;
+    else if(walking){aL=-sw*.55;aR=sw*.55}
+    f.armL.rotation.set(aL,0,0);f.armR.rotation.set(aR,0,zR);
+    // the head: down at the screen while working, a slow look round when not, a nod
+    // while speaking. Small and slow, the World's rule for being alive at rest.
+    const look=busy||still?0:Math.sin(t*.35+ph)*.3;
+    f.head.rotation.set(busy?.16:(p.say&&!still?Math.sin(t*8)*.07:0),look,0);
+    if(seat&&seat.chair)seat.chair.rotation.y=f.cur;
+    f.root.visible=true;
+    f.shadow.visible=!seat;f.shadow.position.copy(of3W(p.x,p.y,OF3_SLAB+.012));
+  });
+  Object.keys(OF3.sp).forEach(k=>{if(!seen.has(k)){OF3.sp[k].root.visible=false;OF3.sp[k].shadow.visible=false}});
+  // an empty desk's chair faces its desk
+}
+/* A screen is bright and its code scrolls while the person at that desk works; asleep
+   it is dim. In the department's colour. */
 function of3Screens(now){
   const O=OFFICE;
   OF3.screens.forEach(s=>{
     const r=O.L.rooms[s.room];if(!r)return;
     const key=s.key||(r.seats||[])[s.seat],p=key&&O.people[key];
-    const lit=!!(p&&p.busy&&!p.bench),want=lit?.85+.2*Math.sin(now/160+(s.seat||0)):0;
-    s.mats.forEach(m=>{if(Math.abs(m.emissiveIntensity-want)>.01)m.emissiveIntensity=want});
+    const lit=!!(p&&p.busy&&!p.bench),want=lit?.95:.16;
+    s.mats.forEach(m=>{if(Math.abs(m.emissiveIntensity-want)>.01)m.emissiveIntensity=want;
+      if(lit&&!O.static)m.map.offset.y=(m.map.offset.y+.0035)%.45});
   });
 }
 /* Papers fly as little white sheets on an arc, from where they came to whoever gets them. */

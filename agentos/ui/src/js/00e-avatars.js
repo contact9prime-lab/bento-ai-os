@@ -55,7 +55,7 @@ function avatarSrc(key,o){
   o=o||{};
   const a=AVATARS.by[key],v=a?a.v:0;
   return '/api/avatar.png?key='+encodeURIComponent(key)
-    +(o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
+    +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
     +(o.frame?'&frame='+o.frame:'')
     // a scene's costume and the smooth drawing are asked for with the picture, never stored
     +(o.costume?'&costume='+encodeURIComponent(o.costume):'')+(o.draw?'&draw='+o.draw:'')+'&v='+v;
@@ -66,7 +66,7 @@ function avatarSrc(key,o){
 function avatarRecipeSrc(rec,o){
   o=o||{};
   return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))
-    +(o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'));
+    +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'));
 }
 function avatarRecipeImg(rec,cls,alt){
   if(AVATARS.off||!rec)return '';

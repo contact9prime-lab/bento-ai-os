@@ -22,6 +22,22 @@ it becomes really cluttered".
 - **Office HQ, a desktop scene.** The 3D office as your whole desktop, behind the prompt bar
   (Settings → Appearance → Scene). Its cards take taps, and a name there opens the Office.
 
+**An office, not a classroom.** Reported as "all of them are facing me, while they can be
+facing the wall".
+- **People face their work.** Desks stand against the walls under windows onto a city, so you
+  see people from behind with two screens over their shoulder. A screen lights and its code
+  scrolls while that person works; somebody between tasks turns their chair into the room.
+- **People are 3D now**, the same characters as in Chat, seen from the front, the side and
+  behind. They turn the way they walk, towards whoever they visit, and to the middle of the
+  meeting table, and the office chair turns with them. The painter draws the back and side
+  views (`bento`'s one painter, `?body=1`).
+- **Every room is furnished like one.** Your agent's desk faces the door with a laptop and two
+  visitors' chairs; the meeting room has a long table with a chair at every place; departments
+  have carpet under the desks, a board with sticky notes and a water cooler; the lounge has a
+  coffee bar and a foosball table.
+- Measured in Chromium with software rendering, nine rooms and twenty agents: 3.4 ms of CPU a
+  frame (3.3 before) and 152 ms for the whole picture (140 before), about 300 draw calls.
+
 **Apps that feel finished.** Asked for as "the apps App Studio makes don't have a serious jive
 to them: more engaging, more intuitive, more reliable".
 - **A new kit and a few helpers in every app.** Heroes, tabs, chips, toggles, progress, stats,

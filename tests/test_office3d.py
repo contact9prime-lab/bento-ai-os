@@ -103,7 +103,7 @@ def test_the_flat_office_decides_and_the_3d_one_draws():
     assert "if(O.L.radial)return of3Draw();" in FLAT
     assert "if(OFFICE.L&&OFFICE.L.radial)return of3Seat();" in FLAT
     # one rule for the frames, and one door for a tap
-    assert "function officeFrameOf(p,seated)" in FLAT and "officeFrameOf(p,seated)" in SRC
+    assert "function officeFrameOf(p,seated)" in FLAT and "officeFrameOf(p,!!seat)" in SRC
     assert "return officeTapPerson(best)" in SRC
     # nothing but the Office's own pulse sends a spark to the Brain
     assert re.findall(r"\bof3Tool\(", FLAT) == ["of3Tool("]
@@ -119,10 +119,13 @@ def test_work_finds_a_desk_before_anything_is_shown():
 
 
 def test_there_is_no_second_painter():
-    # every face is the server's sheet; the 3D file paints rooms and furniture, nobody
-    assert "avatarSrc(p.key,{sheet:1})" in SRC and "avatarRecipeSrc(p.recipe,{sheet:1})" in SRC
+    # every person is the server's body sheet wrapped round boxes; the 3D file paints
+    # rooms and furniture, and decides only which of the painter's pixels go where
+    assert "avatarSrc(p.key,{body:1})" in SRC and "avatarRecipeSrc(p.recipe,{body:1})" in SRC
     assert "/api/avatar.png" not in SRC
-    assert "getImageData" not in SRC and "putImageData" not in SRC
+    assert "getImageData" not in SRC and "putImageData" not in SRC and "fillStyle=sk" not in SRC
+    # every UV comes from the sheet's four frames: front, blink, back, side
+    assert "function of3UV(view,x0,y0,x1,y1,flip)" in SRC and "const o=view*16" in SRC
 
 
 def test_no_3d_graphics_means_the_flat_office_and_a_sentence():
@@ -182,6 +185,13 @@ r.doorPt={x:165,y:280};r.spoke={x:0,y:230};O.L.rooms.push(other);
 ctx.officeRoomAt=pt=>O.L.rooms.find(q=>pt.x>=q.x-2&&pt.x<=q.x+q.w+2&&pt.y>=q.y&&pt.y<=q.y+q.h+4);
 const p=O.people.debugger;p.mode='seat';p.bench=true;p.home=r.inside;
 out.route=ctx.of3Route(p,{x:700,y:150}).map(q=>[Math.round(q.x),Math.round(q.y)]);
+// which way each desk faces, and the step behind a chair a walk starts from
+ctx.officeStepOut=h=>h.fx!==undefined?ctx.of3Behind(h):{x:h.x+40,y:h.y+56};
+out.faces=[1,2,3,4].map(n=>Array.from({length:n},(_,k)=>{const s=ctx.of3SeatPos(r,k,n);return [s.fx,s.fy,Math.round(s.x),Math.round(s.y)]}));
+out.lead=ctx.of3LeadSeat({x:0,y:0,w:360,h:280});
+const e=O.people.engineer;e.mode='seat';e.bench=false;e.home=ctx.of3SeatPos(r,0,4);e.x=e.home.x;e.y=e.home.y;
+out.seatedRoute=ctx.of3Route(e,{x:700,y:150}).map(q=>[Math.round(q.x),Math.round(q.y)]);
+out.behind=ctx.of3Behind(e.home);
 console.log(JSON.stringify(out));
 """
 
@@ -211,6 +221,47 @@ def test_desks_follow_the_work_and_never_shuffle(tmp_path):
     assert route[-1] == [700, 150] and [600, 140] in route and [640, 120] in route
 
 
+def test_desks_face_the_walls_and_a_walk_starts_behind_the_chair(tmp_path):
+    """Reported with a screenshot: "all of them are facing me while they can be facing
+    the wall". Desks stand against the two back walls and face them, so you see people
+    from behind with their screens over their shoulder; only your agent's desk faces the
+    door, as a boss's does."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed here")
+    h = tmp_path / "h.js"
+    h.write_text(HARNESS)
+    out = json.loads(subprocess.run([node, str(h), str(JS / "24k-office3d.js")], capture_output=True,
+                                    text=True, timeout=60).stdout)
+    for n, seats in enumerate(out["faces"], start=1):
+        for k, (fx, fy, x, y) in enumerate(seats):
+            assert (fx, fy) == ((0, -1) if k < 2 else (-1, 0)), (n, k)    # the back wall, then the left
+            assert 0 < x < 330 and 0 < y < 280
+        assert len({(x, y) for _, _, x, y in seats}) == n                 # no two desks in one place
+    assert out["lead"]["fy"] == 1 and out["lead"]["boss"] == 1             # the boss faces the door
+    # standing up is a step back from the desk, never through it
+    b, home = out["behind"], out["faces"][3][0]
+    assert round(b["x"]) == home[2] and b["y"] > home[3]
+    assert out["seatedRoute"][0] == [round(b["x"]), round(b["y"])]
+
+
+def test_people_turn_to_their_work():
+    people = SRC[SRC.index("function of3People("):SRC.index("function of3Screens(")]
+    # walking: they face the way they go; at a desk: the desk; standing: whoever they visit
+    assert "yaw=Math.atan2(dx,dz)" in people and "else if(seat)yaw=seat.yaw;" in people
+    assert "of3LookAt(p)" in people and "if(v&&v.to&&O.people[v.to])" in SRC
+    # the chair turns with whoever sits in it, and an idle person turns a little into the room
+    assert "seat.chair.rotation.y=f.cur" in people
+    seat = SRC[SRC.index("function of3SeatOf("):SRC.index("function of3LookAt(")]
+    assert "if(!(p.busy||p.hand||p.home.boss)&&r)" in seat and "Math.min(.9,d*.5)" in seat
+    # typing only while really working; a screen lights only for a busy person at it
+    assert "const busy=!!(p.busy&&seat&&seat.desk&&!still);" in people
+    assert "const lit=!!(p&&p.busy&&!p.bench)" in SRC
+    # the visit spots and the step out of a desk are the flat office's, so every walk agrees
+    assert "function officeBeside(h,dx,dy)" in FLAT and "officeBeside(to.home,34,62)" in FLAT
+    assert "function officeStepOut(h)" in FLAT and "officeStepOut(p.home)" in SRC
+
+
 def test_office_hq_is_a_scene_of_its_own():
     imm = (JS / "01b-immersive.js").read_text()
     assert "'office','hq','world'" in imm and "OFFICE_SCENE.hq=hq;officeSceneStart()" in imm
@@ -232,3 +283,5 @@ def test_the_office_doc_shows_it():
     assert (ROOT / "docs/screenshots/office-3d.png").exists()
     assert (ROOT / "docs/screenshots/office-3d-room.png").exists()
     assert "screenshots/office-hq-scene.png" in doc and (ROOT / "docs/screenshots/office-hq-scene.png").exists()
+    for shot in ("office-3d-boss.png", "office-3d-meeting.png"):
+        assert f"screenshots/{shot}" in doc and (ROOT / "docs/screenshots" / shot).exists()

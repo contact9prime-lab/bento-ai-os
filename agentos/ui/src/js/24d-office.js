@@ -331,7 +331,7 @@ function officeWalk(p,to,mode,then){
   if(!p||!OFFICE.L)return;
   // somebody without a desk (the 3D office's big departments) goes back to the door
   const desk=mode==='seat'&&!p.bench;
-  const route=officeRoute(p,desk?{x:p.home.x+40,y:p.home.y+56}:to);
+  const route=officeRoute(p,desk?officeStepOut(p.home):to);
   if(desk)route.push({x:p.home.x,y:p.home.y,sit:1});
   p.path=route;p.mode='walk';p.then={mode,fn:then||null};
   // a walk across a big office at a stroll takes ten seconds, long after the thing it
@@ -346,6 +346,16 @@ function officeArrive(p){
   p.mode=t.mode||'stand';
   if(p.mode==='seat'){p.x=p.home.x;p.y=p.home.y}
   if(t.fn)t.fn();
+}
+/* The step beside a desk where somebody stands up to and sits down from. In the 3D
+   office a desk faces a wall (home.fx/fy), so the step is behind the chair. */
+function officeStepOut(h){return h.fx!==undefined?of3Behind(h):{x:h.x+40,y:h.y+56}}
+/* Where somebody stands to talk to a person at their desk: beside the chair, or in
+   front of the boss's desk, between the two visitors' chairs. */
+function officeBeside(h,dx,dy){
+  if(h.fx===undefined)return {x:h.x+dx,y:h.y+dy};
+  if(h.boss)return {x:h.x+h.fx*82,y:h.y+h.fy*82};
+  return {x:h.x-h.fx*46-h.fy*30,y:h.y-h.fy*46+h.fx*30};
 }
 function officeHome(p){if(p&&(p.mode!=='seat'||p.path.length)){p.visit=null;officeWalk(p,p.home,'seat')}}
 
@@ -494,7 +504,7 @@ function officeHandOver(from,to,task){
   if(!from||from===to||from.visit||from.mode!=='seat'||O.static)return officePaper(from?officeHead(from):officeBoardPoint(),to,start);
   O.handed[to.key]=from.key;
   const visit={to:to.key,handover:1};from.visit=visit;officeWork(from,true);
-  officeWalk(from,{x:to.home.x+34,y:to.home.y+62},'stand',()=>{
+  officeWalk(from,officeBeside(to.home,34,62),'stand',()=>{
     if(from.visit!==visit)return;
     officeSay(from,'@'+to.label+(task?' '+task:' this one is yours'),'say',2600);
     setTimeout(()=>{start();setTimeout(()=>{if(from.visit===visit)officeHome(from)},1400)},1300);
@@ -505,7 +515,7 @@ function officeReport(p,ok){
   const O=OFFICE,boss=O.people[O.handed[p.key]];delete O.handed[p.key];
   if(!boss||boss===p||p.visit||O.static)return false;
   const visit={to:boss.key,report:1};p.visit=visit;
-  officeWalk(p,{x:boss.home.x+44,y:boss.home.y+62},'stand',()=>{
+  officeWalk(p,officeBeside(boss.home,44,62),'stand',()=>{
     if(p.visit!==visit)return;
     officeSay(p,ok?'done ✓ here it is':'hit a snag ✗ have a look','say',2600);
     setTimeout(()=>{if(boss.mode==='seat')officeSay(boss,ok?'thanks!':'hm, ok','say',1600);
@@ -525,7 +535,7 @@ function officeMsg(ev){
     if(from&&from!==to){
       const visit={to:to.key,asked:false,reply:null};
       from.visit=visit;
-      officeWalk(from,{x:to.home.x+34,y:to.home.y+62},'stand',()=>{
+      officeWalk(from,officeBeside(to.home,34,62),'stand',()=>{
         if(from.visit!==visit)return;
         officeSay(from,'@'+to.label+' '+(ev.text||''),'say');
         visit.asked=true;
@@ -661,7 +671,7 @@ function officeEscalate(p,tool){
   if(p===lead||!lead||O.static)return;
   p.back=p.visit&&p.visit.meet?p.visit.meet:null;
   const visit={escalate:1};p.visit=visit;
-  officeWalk(p,{x:lead.home.x+64,y:lead.home.y+58},'stand');
+  officeWalk(p,officeBeside(lead.home,64,58),'stand');
 }
 function officeDeEscalate(p,ok){
   p.hand=0;p.waitSince=0;

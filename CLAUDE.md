@@ -1917,6 +1917,9 @@ things keep it true:
   answer (`teamlink.clean_identity`: a 40-char name, `avatars.clean`'d looks, nothing else) and
   is drawn by `/api/avatar.png?recipe=` through `avatarRecipeImg` — the one door, so still no
   surface builds its own face URL.
+- **A view is asked for with the picture too** (`paint(view=)`, `VIEWS`, the `BODY` sheet via
+  `?body=1`): back and side keep the front view's columns so a 3D figure lines up. A new hair
+  style or costume needs its back and side drawn as well; the test paints every combination.
 - **A costume and the smooth drawing are asked for with the picture, never stored.**
   `paint(rec, frame, costume)` dresses a figure for a scene (`COSTUMES`) over the same face, and
   the lead keeps the gold pin in every one; `image(draw="soft")` rounds the painter's own pixels
@@ -1998,6 +2001,15 @@ things keep it true:
   signature carries their positions (rebuilt once the window settles). With only the names in
   it, maximising left people and cards beside furniture that had not moved. Faces are
   `avatarSrc`/`avatarRecipeSrc`, no painter. No WebGL, or a renderer that will not start, is the flat office plus `OF3.why`.
+  **People face their work, and that is a layout rule** (`of3SeatPos`, `of3SeatOf`; reported
+  as "all of them are facing me"): desks stand against the two back walls and face them, so
+  you see people from behind with screens over their shoulder; only the boss's desk faces the
+  door. A person is a figure of boxes wrapped in the painter's BODY sheet (front, blink, back,
+  side; `of3UV`/`of3Part`), so it is still one painter. It turns: to the desk while working, a
+  little into the room when not, the way it walks, towards whoever it visits (`of3LookAt`).
+  Walks start and end a step behind the chair (`officeStepOut`), and visits stand beside it
+  (`officeBeside`), because a walk to `home+(40,56)` went through a desk that faces a wall.
+  Shared shapes are `of3Geo` (`userData.shared`), and every scene traverse must skip them.
   **Office HQ** (scene `hq`) is the same office scene full screen and always 3D (`of3HQ`); its
   words layer lives in `#desktop` (the World's tags argument: the wall cannot be tapped) and the
   prompt bar and dock are `of3Pads`, so the ring fits between them.

@@ -416,3 +416,29 @@ def test_a_waving_character_smiles():
         assert at(wave, 6, 10) == lip and at(wave, 9, 10) == lip, "corners up"
         assert at(wave, 7, 11) == lip and at(wave, 8, 11) == lip, "the curve"
         assert at(wave, 7, 10) != at(wave, 6, 7), "no dark bar where the mouth is"
+
+
+def test_the_painter_turns_people_round():
+    """The 3D office shows people from behind at their desks and from the side as they
+    walk past. Still one painter and one recipe: the back and side views are this
+    module's, and the body sheet is what the office wraps round its boxes."""
+    avatars = av
+    rec = avatars.clean({"style": "short", "skin": 4, "glasses": True})
+    w, h, px = avatars.image(rec, body=True)
+    assert (w, h) == (avatars.W * 4, avatars.H) and [v for v, _ in avatars.BODY] == ["front", "front", "back", "side"]
+    pixel = lambda view, x, y: bytes(avatars.paint(rec, 0, "", view)[(y * avatars.W + x) * 4:(y * avatars.W + x) * 4 + 4])
+    # the back of the head is hair where the front has eyes, and the side has one eye
+    assert pixel("front", 6, 8) != pixel("back", 6, 8) and pixel("front", 9, 8) != pixel("back", 9, 8)
+    assert pixel("back", 7, 4) == pixel("back", 8, 5)
+    assert pixel("side", 10, 8) == pixel("front", 6, 8)
+    # every view is outlined and stands in the same box, so the boxes line up
+    for view in avatars.VIEWS:
+        b = avatars.paint(rec, 0, "", view)
+        assert b[3] == 0 and b[(avatars.H - 1) * avatars.W * 4 + 3] == 0
+        assert b[(24 * avatars.W + 8) * 4 + 3] == 255          # standing on the same row
+    for style in avatars.STYLES:
+        for view in avatars.VIEWS:
+            avatars.paint({**rec, "style": style}, 0, "", view)
+    for costume in avatars.COSTUMES:
+        avatars.image(rec, body=True, costume=costume)
+    assert avatars.png_of(rec, body=True).startswith(b"\x89PNG")
