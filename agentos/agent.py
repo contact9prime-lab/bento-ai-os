@@ -1176,6 +1176,10 @@ class Agent:
                     elif ev["type"] == "usage":
                         tokens["input"] += ev.get("input", 0) or 0
                         tokens["output"] += ev.get("output", 0) or 0
+                        if getattr(self, "emit_usage", False):
+                            # the Arena's HUD counts as it goes; chat turns do not ask
+                            await self.emit({"type": "usage", "input": ev.get("input", 0) or 0,
+                                             "output": ev.get("output", 0) or 0})
             except providers.ProviderError as e:
                 await self.emit({"type": "error", "message": str(e)})
                 steps.append({"type": "error", "message": str(e)})

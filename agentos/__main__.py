@@ -4643,6 +4643,72 @@ def _provision_cli(args, cfg, a, rest, val, run):
         print(f"  ✓ {r['name']} is set up ({r['how']}) and is joining '{d['pool']['name']}'.")
 
 
+def _arena_cli(args):
+    """`bento arena` — the Arena from a terminal: the same task to two to four brains at
+    once, run by the server (the gate, the ledger and the folders are its), shown here as
+    a table that updates until every brain is done. `brains` lists what can be seated;
+    `show ID` reads a finished arena with the server down."""
+    from . import arena as ar
+    from . import users as usersmod
+    cfg, _store = _open_store(getattr(args, "user", ""))
+    uid = usersmod.current() if usersmod.enabled() else ""
+    port = int(cfg.get("port") or 8321)
+    a = args.action
+    if a == "show" or (a == "list" and args.arg):
+        got = ar.load(uid, args.arg)
+        print(ar.text(got) if got else f"no arena {args.arg!r}")
+        return
+    if a == "list":
+        rows = ar.recent(uid)
+        for r in rows:
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["created"]))
+            print(f"  {r['id']}  {when}  {r['status']:<8} {' vs '.join(r['brains'])}\n      {r['task']}")
+        if not rows:
+            print("no arenas yet: bento arena run \"a task\" --vs 1 --vs 2  (bento arena brains lists them)")
+        return
+    try:
+        info = _api_call(port, "/api/arena")
+    except OSError:
+        print("the Arena runs in the server, and it is not running. Start it with `bento serve`.")
+        sys.exit(1)
+    if info.get("error"):
+        print(info["error"])
+        sys.exit(1)
+    choices = info.get("choices") or []
+    if a == "brains":
+        for i, c in enumerate(choices, 1):
+            print(f"  {i:>2}. {c['label']:<40} --vs {c['executor']}:{c['model']}")
+        return
+    if a == "stop":
+        print(_api_call(port, f"/api/arena/{args.arg}/stop", "POST", {}))
+        return
+    # run
+    picks = []
+    for v in args.vs or []:
+        if v.isdigit() and 1 <= int(v) <= len(choices):
+            c = choices[int(v) - 1]
+            picks.append({"executor": c["executor"], "model": c["model"]})
+        else:
+            ex, _, model = v.partition(":")
+            picks.append({"executor": ex, "model": model})
+    got = _api_call(port, "/api/arena", "POST", {"task": args.arg, "contenders": picks})
+    if got.get("error"):
+        print(got["error"])
+        sys.exit(2)
+    aid = got["id"]
+    print(f"arena {aid}: every brain works in {got['folder']}/<n>-<brain>")
+    last = ""
+    while True:
+        cur = _api_call(port, f"/api/arena/{aid}")
+        txt = ar.text(cur)
+        if txt != last:
+            print(txt + "\n")
+            last = txt
+        if not cur.get("live"):
+            break
+        time.sleep(2)
+
+
 def _drama_cli(args):
     """`bento drama` — the crew's latest episode (drama.story): the argument, the
     tantrum, the fix, the ship, in words; `strip FILE.png` paints it as the four-panel
@@ -7687,6 +7753,12 @@ def main():
                                               " · picture: FILE.png · visit: LINK")
     p_of.add_argument("--color", default="", help="move: the colour of a NEW department")
     p_of.add_argument("--user", default="", help="whose office, on a machine with users")
+    p_ar = verb("arena", help="the same task to two to four brains at once, side by side")
+    p_ar.add_argument("action", nargs="?", default="list", choices=["list", "brains", "run", "show", "stop"])
+    p_ar.add_argument("arg", nargs="?", default="", help="run: the task · show/stop: the arena id")
+    p_ar.add_argument("--vs", action="append", help="a brain: its number from `bento arena brains`, "
+                                                    "or EXECUTOR:MODEL (repeat 2 to 4 times)")
+    p_ar.add_argument("--user", default="", help="whose arena, on a machine with users")
     p_dr = verb("drama", help="the crew's latest drama as a story; strip FILE.png paints it")
     p_dr.add_argument("action", nargs="?", default="show", choices=["show", "story", "beats", "strip", "clear"])
     p_dr.add_argument("file", nargs="?", default="", help="strip: where to write the PNG")
@@ -7998,6 +8070,8 @@ def main():
         _pool_cli(args)
     elif args.cmd == "face":
         _face_cli(args)
+    elif args.cmd == "arena":
+        _arena_cli(args)
     elif args.cmd == "drama":
         _drama_cli(args)
     elif args.cmd == "office":

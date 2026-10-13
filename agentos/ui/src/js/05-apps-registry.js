@@ -37,6 +37,8 @@ const APPS={
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   office:{id:'office',title:'Office',icon:'',w:1180,h:720,desc:'Watch your agents at work — a comic office where they get work, walk over to ask each other and huddle',
     render:renderOffice,onClose:officeClose},
+  arena:{id:'arena',title:'Arena',icon:'',w:1200,h:760,desc:'The same task to two or four brains at once, side by side, with a live HUD',
+    render:renderArena},
   drama:{id:'drama',title:'Drama reel',icon:'',w:760,h:720,desc:'Your crew’s latest drama as a 15 second clip or a 4-panel strip',
     render:renderDrama},
   teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},

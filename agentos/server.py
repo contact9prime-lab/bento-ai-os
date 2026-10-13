@@ -39,6 +39,7 @@ from . import brief as briefmod
 from . import avatars as avatarsmod
 from . import playground as playgroundmod
 from . import drama as dramamod
+from . import arena as arenamod
 from . import world as worldmod
 from . import vault as vaultmod
 from . import signin as signinmod
@@ -11003,6 +11004,225 @@ async def api_office_rollcall_png(style: str = "", name: str = ""):
     rows = playground.rollcall(state["store"], cfg, lead_busy=knowledge.active_turns() > 0)
     png = comic.rollcall_image(state["store"], cfg, rows, office.current(cfg)["name"])
     return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+# ---- the Arena: one task, two to four brains, side by side ---------------------------
+
+_ARENAS: dict = {}          # (uid, arena id) -> {"arena": record, "tasks": [...], "runs": {...}}
+
+
+def _arena_toolbox(base, folder: str):
+    """The machine's toolbox with the workspace moved to one contender's folder, so a
+    relative path (and a shell's default cwd) is that contender's. Everything else —
+    the gate, the bridges, the broadcaster — is the same object the chat uses."""
+    from .tools import Toolbox
+
+    resolve = usersmod._ScopedCfg()        # whose config, exactly as every toolbox reads it
+
+    class _SeatToolbox(Toolbox):
+        @property
+        def cfg(self):
+            return {**(resolve.__get__(self) or {}), "workspace": folder}
+
+        @cfg.setter
+        def cfg(self, value):
+            self._machine_cfg = value
+
+    tb = _SeatToolbox(base._machine_cfg if hasattr(base, "_machine_cfg") else base.cfg, base.store)
+    for k in ("scheduler", "mcp", "telegram", "whatsapp", "broadcast", "fabric", "pdp", "shell", "notifd"):
+        setattr(tb, k, getattr(base, k, None))
+    return tb
+
+
+async def _arena_seat(aid: str, c: dict, task: str, uid: str):
+    """One contender: its own conversation, its own folder, the same gate."""
+    import dataclasses
+    from . import executors as execmod
+    from . import usage as usagemod
+    from .agent import Agent
+    cfg, store = state["cfg"], state["store"]
+    folder = Path(c["folder"])
+    folder.mkdir(parents=True, exist_ok=True)
+    cid = store.create_conversation(title=f"Arena · {c['label']}", origin="arena")
+    c["conversation_id"], c["status"], c["started"] = cid, "running", time.time()
+    store.add_message(cid, "user", task)
+    said: list[str] = []
+
+    async def push(ev: dict | None = None):
+        await state["broadcast_user"]({"type": "arena", "id": aid, "slot": c["slot"], "status": c["status"],
+                                       "hud": arenamod.hud(c), **({"ev": ev} if ev else {})}, uid)
+
+    async def card(ev: dict):
+        await state["broadcast_user"]({**ev, "conversation_id": cid}, uid)
+
+    async def emit(ev: dict):
+        t = ev.get("type")
+        if t == "text_delta":
+            if not c["first_token"]:
+                c["first_token"] = time.time()
+            said.append(ev.get("text") or "")
+        elif t == "usage":
+            c["tokens_in"] += int(ev.get("input") or 0)
+            c["tokens_out"] += int(ev.get("output") or 0)
+            got = usagemod.cost(cfg, c["model"], c["tokens_in"], c["tokens_out"])
+            if got is None and not usagemod.is_local(c["model"]):
+                c["priced"] = False
+            c["cost"] = got or 0.0
+        elif t == "tool_start":
+            # a tool call is output too: speed counts from the brain's first output,
+            # whichever kind it was
+            c["first_token"] = c["first_token"] or time.time()
+            if ev.get("pending_approval"):
+                c["asked"] += 1
+        elif t == "tool_end":
+            # every step ends, a refused one included (a hard deny sends no tool_start)
+            c["first_token"] = c["first_token"] or time.time()
+            c["steps"] += 1
+            denied = str(ev.get("output") or "").startswith("[denied]")
+            if denied:
+                c["refused"] += 1
+            # the steps, kept with the record so a finished arena still shows them
+            c["log"] = (c.get("log") or [])[-(arenamod.LOG_KEEP - 1):] + [{
+                "name": ev.get("name", ""), "detail": str(ev.get("detail") or "")[:160],
+                "ok": ev.get("ok") is not False, "denied": denied}]
+        if t in ("approval_request", "approval_resolved"):
+            await card(ev)             # the card lives where cards live, named for this seat
+            return
+        slim = {k: (v[:600] if isinstance(v, str) else v) for k, v in ev.items() if k != "args"}
+        await push(slim)
+
+    async def approver(name, args, reason, offer=None):
+        return await request_approval(name, args, reason, offer=offer, evsend=card)
+
+    run = None
+    try:
+        await push()
+        if c["kind"] == "provider":
+            agent = Agent({**cfg, "workspace": str(folder)}, _arena_toolbox(state["toolbox"], str(folder)),
+                          c["model"], emit, approver, conversation_id=cid, surface="arena")
+            agent.emit_usage = True
+            _ARENAS[(uid, aid)]["agents"][c["slot"]] = agent
+            res = await agent.run([{"role": "user", "content": task}])
+            tk = res.get("tokens") or {}
+            c["tokens_in"], c["tokens_out"] = int(tk.get("input") or 0), int(tk.get("output") or 0)
+            got = usagemod.cost(cfg, c["model"], c["tokens_in"], c["tokens_out"])
+            c["priced"] = got is not None or usagemod.is_local(c["model"])
+            c["cost"] = got or 0.0
+            usagemod.record(store, cfg, c["model"], {"input": c["tokens_in"], "output": c["tokens_out"]},
+                            surface="arena", conversation_id=cid, kind="chat")
+            answer = res.get("content") or "".join(said)
+        else:
+            env = execmod.envelope_from(cfg, str(folder), c["engine"])
+            env = dataclasses.replace(env, workspace=str(folder), model=c["model"] or env.model)
+            run = execmod.Run(engine=c["engine"])
+            _ARENAS[(uid, aid)]["runs"][c["slot"]] = run
+            run = await execmod.run_task(task, env, emit, run)
+            c["tokens_in"], c["tokens_out"] = int(run.tokens_in or 0), int(run.tokens_out or 0)
+            c["cost"], c["priced"] = float(run.cost_usd or 0), run.cost_usd is not None
+            c["refused"] += len(run.denials or [])
+            if c["tokens_in"] or c["tokens_out"] or run.cost_usd:
+                store.usage_add(model=f"{c['engine']}/{run.model or c['model']}", tokens_in=c["tokens_in"],
+                                tokens_out=c["tokens_out"], cost_usd=run.cost_usd, surface="arena",
+                                conversation_id=cid, kind="chat")
+            answer = "".join(said)
+        c["answer"], c["status"] = answer[:4000], "done"
+        store.add_message(cid, "assistant", answer, {"model": c["model"], "arena": aid})
+    except asyncio.CancelledError:
+        c["status"] = "stopped"
+        c["answer"] = "".join(said)[:4000]
+    except Exception as e:
+        c["status"], c["error"] = "error", str(e)[:400]
+        c["answer"] = "".join(said)[:4000]
+    finally:
+        if run is not None:
+            with contextlib.suppress(Exception):
+                execmod.stop(run)
+        c["finished"] = time.time()
+        c["files"] = arenamod.files_in(c["folder"])
+        with contextlib.suppress(Exception):
+            await push({"type": "seat_end"})
+
+
+async def _arena_all(aid: str, uid: str):
+    live = _ARENAS[(uid, aid)]
+    a = live["arena"]
+    seats = [asyncio.create_task(_arena_seat(aid, c, a["task"], uid)) for c in a["contenders"]]
+    live["tasks"] = seats
+    await asyncio.gather(*seats, return_exceptions=True)
+    a["status"] = "stopped" if any(c["status"] == "stopped" for c in a["contenders"]) else "done"
+    arenamod.save(uid, a)
+    await state["broadcast_user"]({"type": "arena", "id": aid, "done": True, "summary": arenamod.summary(a)}, uid)
+    _ARENAS.pop((uid, aid), None)
+
+
+def _arena_view(a: dict) -> dict:
+    return {**a, "contenders": [{**c, "hud": arenamod.hud(c)} for c in a["contenders"]],
+            "summary": arenamod.summary(a), "live": a.get("status") == "running"}
+
+
+@app.get("/api/arena")
+async def api_arena_list():
+    """What the Arena can seat (every available brain and model) and the recent arenas."""
+    from . import executors as execmod
+    from . import providers
+    cfg, uid = state["cfg"], usersmod.current()
+    models = await providers.available_models(cfg)
+    brains = await asyncio.to_thread(execmod.brains, cfg, models)
+    live = [k[1] for k in _ARENAS if k[0] == uid]
+    return {"choices": arenamod.choices(brains), "recent": arenamod.recent(uid), "live": live,
+            "min": arenamod.MIN, "max": arenamod.MAX}
+
+
+@app.post("/api/arena")
+async def api_arena_start(body: dict):
+    """Start an arena: the same task to every contender at once. The person's act, so
+    it is a cookie door and there is no agent tool for it; one arena per person at a
+    time, because every seat is a model run."""
+    from . import executors as execmod
+    from . import providers
+    cfg, uid = state["cfg"], usersmod.current()
+    if any(k[0] == uid for k in _ARENAS):
+        return JSONResponse({"error": "An arena is already running. Stop it or let it finish first."},
+                            status_code=409)
+    models = await providers.available_models(cfg)
+    brains = await asyncio.to_thread(execmod.brains, cfg, models)
+    try:
+        seats = arenamod.contenders(brains, (body or {}).get("contenders"))
+        a = arenamod.new((body or {}).get("task", ""), seats, execmod.default_workspace(cfg))
+    except arenamod.ArenaError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ARENAS[(uid, a["id"])] = {"arena": a, "tasks": [], "runs": {}, "agents": {}}
+    arenamod.save(uid, a)
+    state["store"].log("system", f"arena {a['id']} started: " + " vs ".join(c["label"] for c in a["contenders"]))
+    asyncio.create_task(_arena_all(a["id"], uid))
+    return _arena_view(a)
+
+
+@app.get("/api/arena/{aid}")
+async def api_arena_get(aid: str):
+    uid = usersmod.current()
+    live = _ARENAS.get((uid, aid))
+    a = live["arena"] if live else arenamod.load(uid, aid)
+    if not a:
+        return JSONResponse({"error": "no such arena"}, status_code=404)
+    return _arena_view(a)
+
+
+@app.post("/api/arena/{aid}/stop")
+async def api_arena_stop(aid: str):
+    """Stop every seat still running. What each one said so far is kept."""
+    uid = usersmod.current()
+    live = _ARENAS.get((uid, aid))
+    if not live:
+        return {"stopped": 0}
+    n = 0
+    for agent in live["agents"].values():
+        agent.aborted = True
+    for t in live["tasks"]:
+        if not t.done():
+            t.cancel()
+            n += 1
+    return {"stopped": n}
 
 
 def _drama_story():
