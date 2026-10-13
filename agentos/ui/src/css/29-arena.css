@@ -84,3 +84,14 @@
   .tt-tick{min-height:var(--tap,40px)}
   .tt-actions .endbtn,.tt-fork select{min-height:var(--tap,40px)}
 }
+
+/* ---- guest passes: Settings, the huddle card, the World ---- */
+.tlk-pass{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;margin:8px 0 2px;
+  border-radius:10px;background:color-mix(in srgb,var(--acc) 12%,transparent);border:1px solid color-mix(in srgb,var(--acc) 30%,transparent)}
+.tlk-pass span{flex:1;min-width:180px}
+.tlk-left{font-variant-numeric:tabular-nums}
+.tlk-lend .tlk-actions select{min-height:var(--tap,36px)}
+.hud-row.guest .hud-who::after{content:'guest';margin-left:6px;font-size:10px;font-weight:600;padding:1px 7px;border-radius:8px;
+  background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff)}
+.wd-dept.wd-guest{--dc:var(--acc)}
+.wd-left{font-variant-numeric:tabular-nums}

@@ -5177,6 +5177,17 @@ body.kiosk #office-scene canvas{display:block}
   .tt-tick{min-height:var(--tap,40px)}
   .tt-actions .endbtn,.tt-fork select{min-height:var(--tap,40px)}
 }
+
+/* ---- guest passes: Settings, the huddle card, the World ---- */
+.tlk-pass{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;margin:8px 0 2px;
+  border-radius:10px;background:color-mix(in srgb,var(--acc) 12%,transparent);border:1px solid color-mix(in srgb,var(--acc) 30%,transparent)}
+.tlk-pass span{flex:1;min-width:180px}
+.tlk-left{font-variant-numeric:tabular-nums}
+.tlk-lend .tlk-actions select{min-height:var(--tap,36px)}
+.hud-row.guest .hud-who::after{content:'guest';margin-left:6px;font-size:10px;font-weight:600;padding:1px 7px;border-radius:8px;
+  background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff)}
+.wd-dept.wd-guest{--dc:var(--acc)}
+.wd-left{font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -5881,8 +5892,14 @@ function avatarKeyOf(principal){
   if(p.startsWith('subagent:'))return p.slice(9);
   return '';
 }
+/* A guest lent by a pass (name@link) is painted from the recipe that came with the
+   pass, wherever its name appears: the huddle, the play strip, the World, Settings.
+   Filled by whoever learns a guest's look first; never stored. */
+var AV_GUEST={};
+function avatarGuest(key,rec){if(key&&rec&&typeof rec==='object'&&Object.keys(rec).length)AV_GUEST[key]=rec}
 function avatarSrc(key,o){
   o=o||{};
+  if(AV_GUEST[key])return avatarRecipeSrc(AV_GUEST[key],o);
   const a=AVATARS.by[key],v=a?a.v:0;
   return '/api/avatar.png?key='+encodeURIComponent(key)
     +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
@@ -5896,7 +5913,8 @@ function avatarSrc(key,o){
 function avatarRecipeSrc(rec,o){
   o=o||{};
   return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))
-    +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'));
+    +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
+    +(o.costume?'&costume='+encodeURIComponent(o.costume):'')+(o.draw?'&draw='+o.draw:'');
 }
 function avatarRecipeImg(rec,cls,alt){
   if(AVATARS.off||!rec)return '';
@@ -8306,7 +8324,11 @@ function worldSpot(i){
 }
 
 /* ---------------- the people ---------------- */
-function worldCast(){return (WORLD.v&&WORLD.v.agents)||[]}
+function worldCast(){
+  const c=(WORLD.v&&WORLD.v.agents)||[];
+  c.forEach(a=>{if(a.guest)avatarGuest(a.name,a.guest.look)});
+  return c;
+}
 function worldSync(){
   if(!WORLD.on||!WORLD.v)return;
   worldChip();worldAsk();
@@ -8332,7 +8354,7 @@ function worldSync(){
         c=WORLD.chars[a.name]={sprite:sp,tex:null,src:'',shadow:sh,crystal:cr,i,vessel:null,home:null,phase:Math.random()*6};
       }
       // the sheet in this scene's costume and style; a new look swaps it in place
-      const src=worldSheet(a.name);
+      const src=worldSheet(a.name,a);
       if(c.src!==src){
         const soft=worldSoft(),tex=new T.TextureLoader().load(src,()=>worldKick());
         tex.magFilter=tex.minFilter=soft?T.LinearFilter:T.NearestFilter;tex.generateMipmaps=false;
@@ -8364,7 +8386,16 @@ function worldSync(){
 var WORLD_WEAR={yukata:'in yukata',spacesuit:'in spacesuits',overalls:'in overalls',chef:'in chef whites'};
 function worldCostume(){return (WORLD.v&&WORLD.v.world&&WORLD.v.world.costume)||''}
 function worldSoft(){try{return localStorage.getItem('world.soft')==='1'}catch(e){return false}}
-function worldSheet(name){return avatarSrc(name,{sheet:1,costume:worldCostume(),draw:worldSoft()?'soft':''})}
+function worldSheet(name,a){
+  const o={sheet:1,costume:worldCostume(),draw:worldSoft()?'soft':''};
+  // a guest lent by a pass wears its own face, painted from the recipe it came with
+  return a&&a.guest?avatarRecipeSrc(a.guest.look,o):avatarSrc(name,o);
+}
+/* A guest (server._world_guests): an agent another team lent you for a few minutes.
+   It stands here at the world's resting mood, feels nothing and grows nothing, and its
+   card says whose it is and how long is left. */
+function worldGuest(n){const a=worldCast().find(x=>x.name===n);return a&&a.guest||null}
+function worldLeft(g){const s=Math.max(0,Math.round(g.until-Date.now()/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function worldSetSoft(on){
   try{localStorage.setItem('world.soft',on?'1':'0')}catch(e){}
   worldSync();toast(on?'Characters are drawn smooth here':'Characters are pixel art again');
@@ -8374,7 +8405,11 @@ function worldSay(a,text){
   if(!text){const e=worldEmotion(a.mood.id);const ls=(e&&e.lines)||[];text=ls[Math.floor(Math.random()*ls.length)]||a.mood.name}
   WORLD.bubbles[a.name]={text,until:performance.now()+7000};worldTags();
 }
-function worldLabel(n){return n==='@agent'?(typeof agentName==='function'?agentName():'Your agent'):n}
+function worldLabel(n){
+  if(n==='@agent')return typeof agentName==='function'?agentName():'Your agent';
+  const g=String(n).includes('@')&&worldGuest(n);
+  return g?g.agent+' (guest)':n;
+}
 /* Which department somebody is in (company.membership, carried on the world's answer by
    the server): the tag wears its colour, and a head wears the star. The heads stand in the
    front row because the server orders the cast that way; nothing here decides it. */
@@ -8405,8 +8440,10 @@ function worldTags(){
     // while it worked read as an erratic person. Tapping it opens the work itself.
     const dots=a.busy&&!say?`<span class="wd-dots" title="See what ${esc(worldLabel(a.name))} is working on"><i></i><i></i><i></i></span>`:'';
     const html=(say?`<span class="wd-say">${esc(say)}</span>`:dots)+
-      (WORLD.flat?avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''}):'')+
+      (WORLD.flat?(a.guest?`<img class="av wd-flatav${worldSoft()?' soft':''}" src="${avatarRecipeSrc(a.guest.look,{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''})}" alt="" draggable="false">`
+        :avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''})):'')+
       `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`+
+      (a.guest?`<span class="wd-dept wd-guest">from ${esc(a.guest.team||a.guest.label)}</span>`:'')+
       (worldOrg(a.name)?`<span class="wd-dept" style="--dc:${esc(worldOrg(a.name).hex)}">${esc(worldDeptLine(a.name))}</span>`:'');
     if(el._h!==html){el.innerHTML=html;el._h=html}
     el.style.setProperty('--mh',m.hue);
@@ -8733,6 +8770,17 @@ function worldCard(name,quiet){
   if(!a){card.hidden=true;WORLD.open='';return}
   if(!quiet&&WORLD.open===name&&!card.hidden){card.hidden=true;WORLD.open='';return}
   WORLD.open=name;const m=a.mood,l=a.level;
+  if(a.guest){
+    const g=a.guest;card.hidden=false;card.style.setProperty('--mh',m.hue);
+    card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
+      <div class="wd-who">${avatarRecipeImg(g.look,'wd-face',g.agent)}<div><b>${esc(g.agent)}</b>
+        <div class="wd-feel">a guest from ${esc(g.team?g.team+'’s team':g.label)}</div></div></div>
+      <p class="wd-quiet">Lent to you for a little while. It answers in words only, from its own machine, and leaves when the pass ends.</p>
+      <div class="wd-grow"><span>Time left</span><small class="wd-left" data-pass-until="${+g.until}">${worldLeft(g)}</small></div>
+      <div class="wd-acts"><button class="endbtn" onclick="tlPassHuddle('${esc(g.agent)}','${esc(g.label)}')">Bring into a huddle</button></div>`;
+    if(typeof tlPassTick==='function')tlPassTick();
+    return;
+  }
   const ago=s=>s<60?'just now':s<3600?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago';
   card.hidden=false;card.style.setProperty('--mh',m.hue);
   card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
@@ -16208,7 +16256,7 @@ function brainChip(model,provider){
 }
 function huddleParse(text){
   const lines=String(text||'').split('\n'), out=[];
-  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
+  lines.forEach(l=>{const m=l.match(/^@([\w-]+(?:@[\w.-]+)?) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
     // Democracy mode ends a huddle with a vote, one line (fabric.vote_line)
     const v=l.match(/^\[vote\] (.*)$/);if(v)out.push({vote:true,text:v[1]})});
   return out;
@@ -16224,7 +16272,10 @@ function huddleVoteRow(e){
 }
 function huddleRow(e){
   if(e.vote)return huddleVoteRow(e);
-  return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
+  // a guest lent by a pass brings its own face (e.look); everybody else is painted here
+  if(e.look)avatarGuest(e.speaker,e.look);
+  const face=avatarImg(e.speaker,'av-who');
+  return `<div class="hud-row${String(e.speaker||'').includes('@')?' guest':''}" data-sp="${esc(e.speaker)}">${face||`<span class="hud-dot"></span>`}
     <div class="hud-say"><div class="hud-who">@${esc(e.speaker)}${e.to?` <span class="hud-to">→ @${esc(e.to)}</span>`:''} ${e.model||e.provider?brainChip(e.model,e.provider):''}</div>
     <div class="hud-text">${md(e.text||'')}</div></div></div>`;
 }
@@ -16244,6 +16295,7 @@ function huddleWho(names){
    Crew stage hears it too, so the one talking says so over its head. */
 function huddleLive(ev,isCur,kind){
   kind=kind||'huddle';
+  if(ev.look)avatarGuest(ev.speaker,ev.look);
   if(!ev.vote)scenePulse('say',ev.speaker,Object.assign({kind},ev));
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id&&!ev.vote)
@@ -18016,10 +18068,10 @@ async function paintTeamLinks(){
         <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
         <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
-      <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
+      ${l.pass?tlPassHTML(l):`<div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
       ${tlMissionsHTML(l)}
-      ${tlStandHTML(l,mine,d)}
+      ${tlStandHTML(l,mine,d)}`}
       <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
   const others=d.others||[];
   box.innerHTML=`${(d.incoming||[]).length?`<div class="tlk-waiting"><b>Waiting for you</b>${d.incoming.map(tlkReqHTML).join('')}</div>`:''}
@@ -18034,6 +18086,7 @@ async function paintTeamLinks(){
     ${d.can_listen?`<label class="tlk-chk"><input type="checkbox" id="tlk-listen" ${d.listening?'checked':''}><span>Let other machines ask to link (opens port ${esc(me.port)}, mutual TLS only)</span></label>`
       :`<p class="mut tlk-why">${d.listening?'Other machines can ask to link with this one.':'Other machines can’t ask to link with this one until an admin allows it. You can still ask them'+(d.accounts?', and link with another account here.':'.')}</p>`}
     ${d.can_listen&&!d.listening?'<p class="mut tlk-why">You can already ask other machines. Turn this on so they can ask you.</p>':''}
+    ${tlLendHTML(d,mine)}
     ${links||'<p class="mut">No linked teams yet.</p>'}
     <details class="tlk-more"${open?' open':''}><summary>Use an invite code instead</summary>
       <p class="mut tlk-why">For a machine with no screen to approve on. Make a code on one side and paste it on the other.</p>
@@ -18052,6 +18105,63 @@ async function paintTeamLinks(){
     await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
   box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
   box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+  tlPassTick();
+}
+/* Guest passes: lend one of your specialists to somebody for a few minutes. The pass is
+   an invite that carries the agent; once redeemed it is a link whose one cell is that
+   agent, expiring with the pass. The agent answers in words only (no tools on this
+   machine), and the link ends itself on both sides when the time is up. On the other
+   side the agent can sit in a huddle as name@link. Faces: TUI is `bento link pass`; SUI
+   is this page. */
+var TL_PASS=null;
+function tlLendHTML(d,mine){
+  const can=d.listening||d.accounts;
+  const p=TL_PASS;
+  return `<details class="tlk-more tlk-lend"${p?' open':''}><summary>Lend an agent for a few minutes</summary>
+    <p class="mut tlk-why">A guest pass. They can bring your agent into their huddles. ${pInfo('Your agent answers in words only. It cannot use tools, read your files or see your keys here, and the link ends itself when the time is up.')}</p>
+    ${mine.length?`<div class="tlk-actions"><select id="tlp-agent" aria-label="Which agent">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+      <select id="tlp-min" aria-label="For how long">${[5,10,15,30,60].map(m=>`<option value="${m}"${m===10?' selected':''}>${m} min</option>`).join('')}</select>
+      ${d.accounts?`<select id="tlp-kind" aria-label="To whom"><option value="machine"${d.listening?'':' disabled'}>another machine</option><option value="account"${d.listening?'':' selected'}>an account here</option></select>`:''}
+      <button class="pact" onclick="tlLend()" ${can?'':'disabled'}>Make a pass</button></div>
+      ${can?'':'<p class="mut tlk-why">To lend to another machine, first let other machines ask to link (above).</p>'}`
+      :'<p class="mut tlk-why">You have no specialists to lend yet.</p>'}
+    ${p?`<div class="tlk-invite"><b>${esc(p.guest.agent)} for ${p.guest.minutes} minutes</b> Share it privately. It works once, for ten minutes.
+      <div class="tlk-inv-row"><input readonly value="${esc(p.invite||p.code)}"><button class="endbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousElementSibling.value);toast('copied')">Copy</button></div>
+      <small class="mut">${esc(p.share||'')}</small></div>`:''}
+  </details>`;
+}
+async function tlLend(){
+  const g=id=>(document.getElementById(id)||{}).value;
+  const r=await teamApi('/api/team/pass','POST',{agent:g('tlp-agent'),minutes:+g('tlp-min')||10,kind:g('tlp-kind')||'machine'});
+  if(r){TL_PASS=r;paintTeamLinks()}
+}
+function tlPassHTML(l){
+  const p=l.pass, lab=esc(l.label), lent=p.role==='lender';
+  const left=`<b class="tlk-left" data-pass-until="${+p.until}"></b>`;
+  if(!lent)avatarGuest(p.agent+'@'+l.label,p.look);
+  const face=avatarImg(lent?p.agent:p.agent+'@'+l.label,'av-tool');
+  return `<div class="tlk-pass">${face}
+    <span>${lent?`You lent <b>${esc(p.agent)}</b>. It answers in words only.`:`<b>${esc(p.agent)}</b> is on loan to you.`} ${left} left</span>
+    ${lent?'':`<button class="endbtn" onclick="tlPassHuddle('${esc(p.agent)}','${lab}')">Bring into a huddle</button>`}</div>`;
+}
+async function tlPassHuddle(agent,label){
+  // a huddle seats two or more: the guest and one of yours. Prefilled, never sent.
+  let mine=[];
+  try{mine=((await apiJSON('/api/subagents')).subagents||[]).filter(s=>s.enabled!==false).map(s=>s.name)}catch(e){}
+  const host=mine[0]?'@'+mine[0]+' ':'';
+  openApp('chat');
+  setTimeout(()=>{const i=$('#input');if(i){i.value=`${host}@${agent}@${label} `;i.focus();i.dispatchEvent(new Event('input'))}},250);
+  toast(host?`ask them something, and ${agent} talks it through with ${mine[0]}`:'make a specialist first, so the huddle has one of yours in it');
+}
+/* The countdown: one timer while a pass is on screen, gone once none is. */
+var TL_PASS_T=0;
+function tlPassTick(){
+  clearTimeout(TL_PASS_T);
+  const els=[...document.querySelectorAll('[data-pass-until]')];if(!els.length)return;
+  let over=false;
+  els.forEach(e=>{const s=Math.max(0,Math.round(+e.dataset.passUntil-Date.now()/1000));
+    if(!s)over=true;e.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0')});
+  TL_PASS_T=setTimeout(over?()=>paintTeamLinks():tlPassTick,over?31000:1000);
 }
 /* Standing permissions: what a linked team may have one of YOUR agents change without a
    person here saying yes. A question from another team is untrusted, so by default it can

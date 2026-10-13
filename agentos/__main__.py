@@ -5583,7 +5583,39 @@ def _link_cli(args):
         except ValueError as e:
             print(f"  {e}")
             sys.exit(2)
+        theirs = got["theirs"]
+        if theirs.get("pass"):
+            # a guest pass: the lender's one expiring cell, in the LENDER's database
+            fabricmod.grant_pass(usersmod.store_for(theirs.get("owner") or ""), theirs)
+            p = got["mine"]["pass"]
+            print(f"  linked with {got['mine']['label']}: {p['agent']} is yours to ask for "
+                  f"{max(1, round((p['until'] - time.time()) / 60))} minutes "
+                  f"(seat it in a huddle: @YOURS @{p['agent']}@{got['mine']['label']} …)")
+            return
         print(f"  linked with {got['mine']['label']}")
+        return
+    if act == "pass":
+        # Lend one of your agents for a few minutes: an invite that carries the agent.
+        d = store.get_subagent((a1 or "").lstrip("@")) if a1 else None
+        if not d:
+            print("  bento link pass AGENT [machine|account] --minutes N   — lend one of your agents")
+            sys.exit(2)
+        kind = "account" if a2 == "account" else "machine"
+        mins = max(teamlink.PASS_MIN, min(teamlink.PASS_MAX, int(args.minutes or teamlink.PASS_DEFAULT)))
+        if kind == "machine" and not (cfg.get("team") or {}).get("listen"):
+            print("  this machine is not accepting linked teams: bento link listen on")
+            sys.exit(2)
+        from . import avatars as _av
+        inv = teamlink.invite(owner, kind, cfg=cfg, guest={"agent": d["name"], "minutes": mins,
+                                                            "look": _av.recipe_for(store, d["name"])})
+        fabricmod.audit_team(store, "link.invite", f"link:{kind}",
+                             f"a guest pass for {d['name']} ({mins} min, words only; bento link)")
+        line = inv.get("invite") or inv["code"]
+        how = f"bento link join '{line}'" if kind == "machine" else f"bento link redeem {line} --user THEM"
+        print(f"  {d['name']} on loan for {mins} minutes once it is redeemed:\n\n    {line}\n\n"
+              f"  They run: {how}\n"
+              f"  It works once, for ten minutes. {d['name']} answers in words only: no tools,\n"
+              f"  no files, no keys. The link ends itself when the time is up.")
         return
     if act == "remove":
         lk = teamlink.find(owner, a1 or "")
@@ -5599,6 +5631,10 @@ def _link_cli(args):
         lk = teamlink.find(owner, a1 or "")
         if not lk:
             print(f"  no link called '{a1}'")
+            sys.exit(2)
+        if lk.get("pass"):
+            print(f"  {lk['label']} is a guest pass: one agent, for a set time. "
+                  f"bento link remove {lk['label']} ends it")
             sys.exit(2)
         cur = fabricmod.link_access(store, lk["label"])
         if act == "mine":
@@ -5703,6 +5739,10 @@ def _link_cli(args):
         for m in fabricmod.linked_missions(store, lk["label"]):
             print(f"    their mission {m['mission']}: {', '.join(m['agents']) or '-'}"
                   + (" (stopped)" if m["stopped"] else ""))
+        p = teamlink.pass_state(lk)
+        if p:
+            who = (f"you lent {p['agent']}" if p["role"] == "lender" else f"{p['agent']} is on loan to you")
+            print(f"    guest pass: {who}, " + ("ended" if p["over"] else f"{p['left_s'] // 60} min {p['left_s'] % 60} s left"))
 
 
 def _hands_cli(args):
@@ -7814,20 +7854,23 @@ def main():
     p_link.add_argument("action", nargs="?", default="list",
                         choices=["list", "request", "requests", "approve", "deny", "say", "chat",
                                  "listen", "invite", "join", "redeem", "remove", "allow", "disallow", "mine",
-                                 "let", "unlet", "standing", "missions", "stop", "resume"])
+                                 "let", "unlet", "standing", "missions", "stop", "resume", "pass"])
     p_link.add_argument("arg1", nargs="?", default="",
                         help="request: the other machine's address, or 'account' · say/chat: the link · "
                              "approve/deny: the "
                              "request's id · listen: on|off · invite: machine|account · join: the invite · "
-                             "redeem: the code · remove/allow/disallow/mine/let/unlet/standing/missions/stop/"
+                             "redeem: the code · pass: the agent to lend · remove/allow/disallow/mine/let/unlet/standing/missions/stop/"
                              "resume: the link")
     p_link.add_argument("arg2", nargs="?", default="",
                         help="say: the message · request account: the account · invite/join/request: a label · "
+                             "pass: machine|account · "
                              "allow/disallow/let: one of your agents · mine: on|off · unlet: the id · "
                              "stop/resume: their mission")
     p_link.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
     p_link.add_argument("--days", type=float, default=None,
                         help="let: the standing permission ends after this many days")
+    p_link.add_argument("--minutes", type=int, default=None,
+                        help="pass: how long the agent is lent (1 to 60, default 10)")
     p_link.add_argument("--user", default="", help="whose links, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",

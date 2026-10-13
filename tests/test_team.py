@@ -191,8 +191,9 @@ def test_the_transcript_is_one_line_per_turn_the_page_can_read_back(world):
     assert lines[0] == "[huddle · a, b · 2 rounds]"
     # the SAME pattern 10b-huddle.js parses on reload
     js = (JS / "10b-huddle.js").read_text()
-    assert r"/^@([\w-]+) \(([^)]*)\): (.*)$/" in js
-    pat = re.compile(r"^@([\w-]+) \(([^)]*)\): (.*)$")
+    # (a guest lent by a pass speaks as name@link)
+    assert r"/^@([\w-]+(?:@[\w.-]+)?) \(([^)]*)\): (.*)$/" in js
+    pat = re.compile(r"^@([\w-]+(?:@[\w.-]+)?) \(([^)]*)\): (.*)$")
     assert [pat.match(x).groups() for x in lines[1:]] == [
         ("a", "openai/gpt-4o", "yes"), ("b", "ollama/qwen3", "no, because (x)")]
 

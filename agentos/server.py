@@ -641,6 +641,11 @@ async def _team_chat_sweep():
         await asyncio.sleep(30)
         with contextlib.suppress(Exception):
             for lk in teamlink.links(None):
+                if (teamlink.pass_state(lk) or {}).get("over"):
+                    # a guest pass's time is up: the link it made ends, on this side,
+                    # whatever the other side does (each side keeps its own clock)
+                    await _team_end_link(lk.get("owner") or "", lk, "the guest pass ended")
+                    continue
                 if lk.get("kind") != "machine" or not lk.get("url"):
                     continue
                 with usersmod.as_user(lk.get("owner") or ""):
@@ -690,6 +695,9 @@ async def _team_on_event(kind: str, lk: dict):
         fabricmod.audit_team(state["store"], "link.write", f"link:{lk.get('label')}",
                              f"linked with {lk.get('peer_name') or lk.get('label')} "
                              f"({lk.get('kind')}, {kind}); certificate {str(lk.get('peer_host_fp'))[:16]}…")
+        if lk.get("pass"):
+            # the lender's half of a guest pass writes its one expiring cell
+            fabricmod.grant_pass(state["store"], lk)
         await state["broadcast_user"]({"type": "team_links"}, owner)
 
 
@@ -10687,6 +10695,7 @@ def _world_org(v: dict) -> dict:
     inside their head's card."""
     if not v.get("live"):
         return v
+    _world_guests(v)
     from . import company as companymod
     m = companymod.membership(state["cfg"], state["store"])
     v["company"] = m
@@ -10709,6 +10718,29 @@ def _world_org(v: dict) -> dict:
     v["agents"] = sorted(shown, key=rank)
     v["staff"] = staff
     return v
+
+
+def _world_guests(v: dict) -> None:
+    """An agent lent to this account by a live guest pass stands in the world too, in its
+    own face, at the world's resting mood. It has no feelings here and nothing is
+    recorded about it: world.py never hears of it, so leaving the scene or the pass
+    ending leaves nothing behind."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    for lk in teamlink.links(owner):
+        p = teamlink.pass_state(lk)
+        if not p or p["role"] != "guest" or p["over"]:
+            continue
+        try:
+            rest = worldmod.mood(v["world"], {"feel": {}})
+        except Exception:
+            continue
+        v.setdefault("agents", []).append({
+            "name": f"{p['agent']}@{lk['label']}", "mood": rest, "busy": False, "work": None,
+            "why": [], "level": {"name": "Guest", "xp": 0, "next": "", "to_next": 0}, "friend": "",
+            "guest": {"label": lk["label"], "agent": p["agent"], "left_s": p["left_s"],
+                      "until": p["until"], "look": p.get("look") or {},
+                      "team": (lk.get("peer_identity") or {}).get("agent_name") or ""}})
 
 
 def _world_working(uid: str, store) -> dict:
@@ -12434,6 +12466,62 @@ async def api_team_link_invite(body: dict):
     return inv
 
 
+@app.post("/api/team/pass")
+async def api_team_pass(body: dict):
+    """Lend one of your specialists to somebody for a few minutes: a single-use invite
+    that carries the agent and the minutes. Redeemed, it is a link whose one cell is
+    that agent, expiring with the pass; the agent answers in words only (no tools here),
+    and the link ends itself when the time is up."""
+    from . import teamlink
+    b = body or {}
+    owner = usersmod.current() or ""
+    kind = "account" if b.get("kind") == "account" else "machine"
+    agent = str(b.get("agent") or "").strip().lstrip("@")
+    d = state["store"].get_subagent(agent) if agent else None
+    if not d:
+        return JSONResponse({"error": f"you have no agent called '{agent or '?'}' to lend"}, status_code=404)
+    try:
+        minutes = int(b.get("minutes") or teamlink.PASS_DEFAULT)
+    except (TypeError, ValueError):
+        minutes = teamlink.PASS_DEFAULT
+    minutes = max(teamlink.PASS_MIN, min(teamlink.PASS_MAX, minutes))
+    if kind == "account" and not usersmod.enabled():
+        return JSONResponse({"error": "this machine has no accounts, so lend to another machine"},
+                            status_code=400)
+    if kind == "machine" and not state.get("team_listener"):
+        return JSONResponse({"error": "switch on 'Accept linked teams' first, so the other "
+                                      "machine can reach this one"}, status_code=409)
+    inv = teamlink.invite(owner, kind, label=str(b.get("label") or ""),
+                          port=(state["team_listener"].port if state.get("team_listener") else 0),
+                          cfg=state["cfg"], guest={"agent": d["name"], "minutes": minutes,
+                                                   "look": avatarsmod.recipe_for(state["store"], d["name"])})
+    fabricmod.audit_team(state["store"], "link.invite", f"link:{kind}",
+                         f"a guest pass for {d['name']} ({minutes} min, words only) was made "
+                         f"(expires in {inv['expires_in']}s if unused)")
+    code = inv.get("invite") or inv.get("code")
+    how = ("bento link join" if kind == "machine" else "bento link redeem")
+    inv["share"] = (f"You're invited to borrow {d['name']} for {minutes} minutes. "
+                    f"In Bento: Settings → Team & Communications → Linked teams → paste this, "
+                    f"or run `{how} {code}`.")
+    return inv
+
+
+@app.get("/api/team/passes")
+async def api_team_passes():
+    """Every live guest pass, both ways: who you lent and who was lent to you."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    out = []
+    for lk in teamlink.links(owner):
+        p = teamlink.pass_state(lk)
+        if p:
+            out.append({"label": lk["label"], "kind": lk.get("kind"), "agent": p["agent"],
+                        "role": p["role"], "left_s": p["left_s"], "over": p["over"],
+                        "until": p["until"], "identity": _team_peer_identity(lk)})
+    return {"passes": out, "min": teamlink.PASS_MIN, "max": teamlink.PASS_MAX,
+            "default": teamlink.PASS_DEFAULT}
+
+
 @app.post("/api/team/links/join")
 async def api_team_link_join(body: dict):
     from . import teamlink
@@ -12703,29 +12791,44 @@ async def api_team_me(body: dict):
     return {"ok": True, "name": name or teamlink.machine_name(state["cfg"])}
 
 
-@app.delete("/api/team/links/{label}")
-async def api_team_link_remove(label: str):
+async def _team_end_link(owner: str, lk: dict, why: str = "link ended") -> bool:
+    """End one link: its row (both halves of an account link), every cell that named it
+    on each side, a ledger line each side, and a repaint. The remove route and the sweep
+    that ends a guest pass share it, so the two can never end a link differently."""
     from . import teamlink
-    owner = usersmod.current() or ""
-    lk = teamlink.find(owner, label)
     theirs = None
-    if lk and lk.get("kind") == "account":
+    if lk.get("kind") == "account":
         theirs = next((x for x in teamlink.links(lk.get("peer") or "")
                        if x.get("kind") == "account" and x.get("pair_id") == lk.get("pair_id")), None)
-    if not lk or not teamlink.remove(owner, label):
-        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
-    n = fabricmod.forget_link_grants(state["store"], lk["label"])
+    if not teamlink.remove(owner, lk["label"]):
+        return False
+    with usersmod.as_user(owner):
+        n = fabricmod.forget_link_grants(state["store"], lk["label"])
     if theirs:
         # an account link is one agreement: the other person's half ended with it, and
         # so do the cells that named it in THEIR database — with a line in their ledger
         with usersmod.as_user(lk.get("peer") or ""):
             m = fabricmod.forget_link_grants(state["store"], theirs["label"])
             fabricmod.audit_team(state["store"], "link.revoke", f"link:{theirs['label']}",
-                                 f"the other account ended this link; {m} permission(s) revoked")
+                                 f"{'the other account ended this link' if why == 'link ended' else why}; "
+                                 f"{m} permission(s) revoked")
         await state["broadcast_user"]({"type": "team_links"}, lk.get("peer") or "")
-    fabricmod.audit_team(state["store"], "link.revoke", f"link:{lk['label']}",
-                         f"link ended; {n} permission(s) that named it revoked")
+        _VISITS.pop((lk.get("peer") or "", theirs["label"]), None)
+    with usersmod.as_user(owner):
+        fabricmod.audit_team(state["store"], "link.revoke", f"link:{lk['label']}",
+                             f"{why}; {n} permission(s) that named it revoked")
+    _VISITS.pop((owner, lk["label"]), None)
     await state["broadcast_user"]({"type": "team_links"}, owner)
+    return True
+
+
+@app.delete("/api/team/links/{label}")
+async def api_team_link_remove(label: str):
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk or not await _team_end_link(owner, lk):
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
     return {"ok": True}
 
 
@@ -12918,6 +13021,9 @@ async def api_team_link_access(label: str, body: dict):
     lk = teamlink.find(owner, label)
     if not lk:
         return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    if lk.get("pass"):
+        return JSONResponse({"error": "a guest pass lends one agent for a set time; remove it "
+                                      "and link properly to change who may ask whom"}, status_code=409)
     b = body or {}
     got = fabricmod.set_link_access(state["store"], lk["label"],
                                     b.get("theirs_may_ask") if "theirs_may_ask" in b else None,

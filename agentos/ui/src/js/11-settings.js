@@ -1540,10 +1540,10 @@ async function paintTeamLinks(){
         <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
         <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
-      <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
+      ${l.pass?tlPassHTML(l):`<div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
       ${tlMissionsHTML(l)}
-      ${tlStandHTML(l,mine,d)}
+      ${tlStandHTML(l,mine,d)}`}
       <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
   const others=d.others||[];
   box.innerHTML=`${(d.incoming||[]).length?`<div class="tlk-waiting"><b>Waiting for you</b>${d.incoming.map(tlkReqHTML).join('')}</div>`:''}
@@ -1558,6 +1558,7 @@ async function paintTeamLinks(){
     ${d.can_listen?`<label class="tlk-chk"><input type="checkbox" id="tlk-listen" ${d.listening?'checked':''}><span>Let other machines ask to link (opens port ${esc(me.port)}, mutual TLS only)</span></label>`
       :`<p class="mut tlk-why">${d.listening?'Other machines can ask to link with this one.':'Other machines can’t ask to link with this one until an admin allows it. You can still ask them'+(d.accounts?', and link with another account here.':'.')}</p>`}
     ${d.can_listen&&!d.listening?'<p class="mut tlk-why">You can already ask other machines. Turn this on so they can ask you.</p>':''}
+    ${tlLendHTML(d,mine)}
     ${links||'<p class="mut">No linked teams yet.</p>'}
     <details class="tlk-more"${open?' open':''}><summary>Use an invite code instead</summary>
       <p class="mut tlk-why">For a machine with no screen to approve on. Make a code on one side and paste it on the other.</p>
@@ -1576,6 +1577,63 @@ async function paintTeamLinks(){
     await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
   box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
   box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+  tlPassTick();
+}
+/* Guest passes: lend one of your specialists to somebody for a few minutes. The pass is
+   an invite that carries the agent; once redeemed it is a link whose one cell is that
+   agent, expiring with the pass. The agent answers in words only (no tools on this
+   machine), and the link ends itself on both sides when the time is up. On the other
+   side the agent can sit in a huddle as name@link. Faces: TUI is `bento link pass`; SUI
+   is this page. */
+var TL_PASS=null;
+function tlLendHTML(d,mine){
+  const can=d.listening||d.accounts;
+  const p=TL_PASS;
+  return `<details class="tlk-more tlk-lend"${p?' open':''}><summary>Lend an agent for a few minutes</summary>
+    <p class="mut tlk-why">A guest pass. They can bring your agent into their huddles. ${pInfo('Your agent answers in words only. It cannot use tools, read your files or see your keys here, and the link ends itself when the time is up.')}</p>
+    ${mine.length?`<div class="tlk-actions"><select id="tlp-agent" aria-label="Which agent">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+      <select id="tlp-min" aria-label="For how long">${[5,10,15,30,60].map(m=>`<option value="${m}"${m===10?' selected':''}>${m} min</option>`).join('')}</select>
+      ${d.accounts?`<select id="tlp-kind" aria-label="To whom"><option value="machine"${d.listening?'':' disabled'}>another machine</option><option value="account"${d.listening?'':' selected'}>an account here</option></select>`:''}
+      <button class="pact" onclick="tlLend()" ${can?'':'disabled'}>Make a pass</button></div>
+      ${can?'':'<p class="mut tlk-why">To lend to another machine, first let other machines ask to link (above).</p>'}`
+      :'<p class="mut tlk-why">You have no specialists to lend yet.</p>'}
+    ${p?`<div class="tlk-invite"><b>${esc(p.guest.agent)} for ${p.guest.minutes} minutes</b> Share it privately. It works once, for ten minutes.
+      <div class="tlk-inv-row"><input readonly value="${esc(p.invite||p.code)}"><button class="endbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousElementSibling.value);toast('copied')">Copy</button></div>
+      <small class="mut">${esc(p.share||'')}</small></div>`:''}
+  </details>`;
+}
+async function tlLend(){
+  const g=id=>(document.getElementById(id)||{}).value;
+  const r=await teamApi('/api/team/pass','POST',{agent:g('tlp-agent'),minutes:+g('tlp-min')||10,kind:g('tlp-kind')||'machine'});
+  if(r){TL_PASS=r;paintTeamLinks()}
+}
+function tlPassHTML(l){
+  const p=l.pass, lab=esc(l.label), lent=p.role==='lender';
+  const left=`<b class="tlk-left" data-pass-until="${+p.until}"></b>`;
+  if(!lent)avatarGuest(p.agent+'@'+l.label,p.look);
+  const face=avatarImg(lent?p.agent:p.agent+'@'+l.label,'av-tool');
+  return `<div class="tlk-pass">${face}
+    <span>${lent?`You lent <b>${esc(p.agent)}</b>. It answers in words only.`:`<b>${esc(p.agent)}</b> is on loan to you.`} ${left} left</span>
+    ${lent?'':`<button class="endbtn" onclick="tlPassHuddle('${esc(p.agent)}','${lab}')">Bring into a huddle</button>`}</div>`;
+}
+async function tlPassHuddle(agent,label){
+  // a huddle seats two or more: the guest and one of yours. Prefilled, never sent.
+  let mine=[];
+  try{mine=((await apiJSON('/api/subagents')).subagents||[]).filter(s=>s.enabled!==false).map(s=>s.name)}catch(e){}
+  const host=mine[0]?'@'+mine[0]+' ':'';
+  openApp('chat');
+  setTimeout(()=>{const i=$('#input');if(i){i.value=`${host}@${agent}@${label} `;i.focus();i.dispatchEvent(new Event('input'))}},250);
+  toast(host?`ask them something, and ${agent} talks it through with ${mine[0]}`:'make a specialist first, so the huddle has one of yours in it');
+}
+/* The countdown: one timer while a pass is on screen, gone once none is. */
+var TL_PASS_T=0;
+function tlPassTick(){
+  clearTimeout(TL_PASS_T);
+  const els=[...document.querySelectorAll('[data-pass-until]')];if(!els.length)return;
+  let over=false;
+  els.forEach(e=>{const s=Math.max(0,Math.round(+e.dataset.passUntil-Date.now()/1000));
+    if(!s)over=true;e.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0')});
+  TL_PASS_T=setTimeout(over?()=>paintTeamLinks():tlPassTick,over?31000:1000);
 }
 /* Standing permissions: what a linked team may have one of YOUR agents change without a
    person here saying yes. A question from another team is untrusted, so by default it can

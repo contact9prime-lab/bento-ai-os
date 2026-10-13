@@ -415,25 +415,84 @@ def _hash(code: str) -> str:
     return hashlib.sha256(code.encode()).hexdigest()
 
 
+# ---- guest passes: one agent, lent for a few minutes ----------------------------------
+#
+# A pass is an invite that carries ONE agent and a number of minutes. Redeemed, it makes
+# an ordinary link whose two halves both carry `pass`: the lender's says which agent was
+# lent and until when, the guest's says the same. The lender's side writes ONE cell (that
+# agent, expiring with the pass, source "pass"), answers a pass with NO tools at all (the
+# agent's own knowledge, never this machine's files, keys or memory), and refuses once it
+# is over; the server's 30 s sweep ends both halves when the time is up. Nothing about a
+# pass is decided from what the other side claims: the minutes are the lender's.
+
+PASS_MIN, PASS_DEFAULT, PASS_MAX = 1, 10, 60
+
+
+def _look(rec) -> dict:
+    """The lent agent's face, held to the painter's closed set (as identity is)."""
+    if not isinstance(rec, dict) or not rec:
+        return {}
+    from . import avatars
+    try:
+        return avatars.clean(rec)
+    except Exception:
+        return {}
+
+
+def clean_pass(p, role: str) -> dict | None:
+    """A pass as the OTHER side described it: the agent's name and face, and an end no
+    later than PASS_MAX from now, whatever it claimed."""
+    if not isinstance(p, dict) or not p.get("agent"):
+        return None
+    try:
+        until = float(p.get("until") or 0)
+    except (TypeError, ValueError):
+        return None
+    until = min(until, time.time() + PASS_MAX * 60)
+    return {"agent": plain(p["agent"], 40, newlines=False), "until": until, "role": role,
+            "look": _look(p.get("look"))}
+
+
+def pass_state(lk: dict, now: float | None = None) -> dict | None:
+    p = (lk or {}).get("pass")
+    if not p:
+        return None
+    left = float(p.get("until") or 0) - (now or time.time())
+    return {**p, "left_s": max(0, int(left)), "over": left <= 0}
+
+
+def ended_passes(now: float | None = None) -> list[dict]:
+    """Every link whose pass is over, across owners: what the sweep ends."""
+    now = now or time.time()
+    return [lk for lk in _load()["links"] if (pass_state(lk, now) or {}).get("over")]
+
+
 def invite(owner: str, kind: str = "machine", label: str = "", address: str = "",
-           port: int = 0, cfg: dict | None = None) -> dict:
+           port: int = 0, cfg: dict | None = None, guest: dict | None = None) -> dict:
     """A single-use pairing code. For a machine link the invite also carries where to
-    connect and the fingerprint of the certificate the joiner must be shown there."""
+    connect and the fingerprint of the certificate the joiner must be shown there.
+    `guest` ({"agent", "minutes"}) makes it a guest pass: that agent, for that long."""
     if kind not in ("machine", "account"):
         raise ValueError("a link is to a machine or to an account")
     code = secrets.token_urlsafe(18)
     d = _load()
-    d["invites"].append({"hash": _hash(code), "owner": owner or "", "kind": kind,
-                         "label": _label(label) if label else "", "expires": time.time() + INVITE_TTL})
+    row = {"hash": _hash(code), "owner": owner or "", "kind": kind,
+           "label": _label(label) if label else "", "expires": time.time() + INVITE_TTL}
+    if guest:
+        mins = max(PASS_MIN, min(PASS_MAX, int(guest.get("minutes") or PASS_DEFAULT)))
+        row["guest"] = {"agent": plain(guest.get("agent") or "", 40, newlines=False), "minutes": mins,
+                        "look": _look(guest.get("look"))}
+    d["invites"].append(row)
     _save(d)
+    extra = {"guest": {k: row["guest"][k] for k in ("agent", "minutes")}} if guest else {}
     if kind == "account":
-        return {"kind": "account", "code": code, "expires_in": INVITE_TTL}
+        return {"kind": "account", "code": code, "expires_in": INVITE_TTL, **extra}
     ident = ensure_pki()
     host = address or guess_address()
     port = int(port or team_port(cfg))
     return {"kind": "machine", "code": code, "expires_in": INVITE_TTL,
             "invite": f"bento://link/{host}:{port}/{code}#{ident['host_fp']}",
-            "address": f"{host}:{port}", "fingerprint": ident["host_fp"]}
+            "address": f"{host}:{port}", "fingerprint": ident["host_fp"], **extra}
 
 
 def parse_invite(s: str) -> dict:
@@ -456,6 +515,15 @@ def _take_invite(d: dict, code: str, kind: str) -> dict | None:
     return None
 
 
+def _lent(inv: dict) -> dict | None:
+    """The pass an invite carried, with its clock started at the moment it is redeemed."""
+    g = inv.get("guest")
+    if not g:
+        return None
+    return {"agent": g["agent"], "until": time.time() + int(g.get("minutes") or PASS_DEFAULT) * 60,
+            "look": g.get("look") or {}}
+
+
 def redeem_account(code: str, redeemer: str, names: dict | None = None) -> dict:
     """The other half of an account link, redeemed while signed in. Both people get a
     link row; ending it from either side ends both."""
@@ -468,10 +536,13 @@ def redeem_account(code: str, redeemer: str, names: dict | None = None) -> dict:
         raise ValueError("that is your own code — the other account redeems it")
     names = names or {}
     pair = secrets.token_hex(6)
+    lent = _lent(inv)
     a = _add_link(d, kind="account", owner=inv["owner"], peer=redeemer, pair_id=pair,
-                  label=inv.get("label") or names.get(redeemer) or "account")
+                  label=inv.get("label") or names.get(redeemer) or "account",
+                  **({"pass": {**lent, "role": "lender"}} if lent else {}))
     b = _add_link(d, kind="account", owner=redeemer, peer=inv["owner"], pair_id=pair,
-                  label=names.get(inv["owner"]) or "account")
+                  label=names.get(inv["owner"]) or "account",
+                  **({"pass": {**lent, "role": "guest"}} if lent else {}))
     _save(d)
     return {"mine": b, "theirs": a}
 
@@ -938,17 +1009,20 @@ class Listener:
             if any(lk.get("peer_host_fp") == peer_fp for lk in d["links"]):
                 _save(d)
                 return {"ok": False, "error": "that machine is already linked here"}
+            lent = _lent(inv)
             lk = _add_link(d, kind="machine", owner=inv["owner"],
                            label=inv.get("label") or str(req.get("name") or "team"),
                            peer_ca=peer_ca, peer_host_fp=peer_fp, peer_name=_label(req.get("name")),
                            url=f"{addr}:{_port(req.get('port'))}" if _port(req.get("port")) else "",
-                           direction="they joined", peer_identity=clean_identity(req.get("identity")))
+                           direction="they joined", peer_identity=clean_identity(req.get("identity")),
+                           **({"pass": {**lent, "role": "lender"}} if lent else {}))
             _save(d)
             if self.on_event:
                 await self.on_event("paired", lk)
             ident = ensure_pki()
             return {"ok": True, "name": machine_name(self.cfg), "ca": ident["ca"],
-                    "host_fp": ident["host_fp"], "identity": self._ident(inv["owner"])}
+                    "host_fp": ident["host_fp"], "identity": self._ident(inv["owner"]),
+                    **({"pass": lent} if lent else {})}
         lk = _by_fp(fp) if fp else None
         if not lk:
             return {"ok": False, "error": "this machine does not know your certificate — pair first"}
@@ -1033,10 +1107,12 @@ async def join(invite_str: str, owner: str, label: str = "", cfg: dict | None = 
     if got.get("host_fp") != inv["fp"]:
         raise ValueError("the other machine answered with a different certificate — refused")
     d = _load()
+    lent = clean_pass(got.get("pass"), "guest")
     lk = _add_link(d, kind="machine", owner=owner or "", label=label or got.get("name") or "team",
                    peer_ca=got["ca"], peer_host_fp=got["host_fp"], peer_name=_label(got.get("name")),
                    url=f"{inv['host']}:{inv['port']}", direction="you joined",
-                   peer_identity=clean_identity(got.get("identity")))
+                   peer_identity=clean_identity(got.get("identity")),
+                   **({"pass": lent} if lent else {}))
     _save(d)
     return {k: v for k, v in lk.items() if k != "peer_ca"}
 
