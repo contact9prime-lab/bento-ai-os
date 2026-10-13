@@ -593,7 +593,9 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "office",
              # what MY company is called and what it does (company.py). The departments
              # live in `office`; the agents in my own database.
-             "company")
+             "company",
+             # my OTHER companies, each parked whole with its own office (company.py)
+             "companies")
 
 
 def machine_view(cfg: dict) -> dict:

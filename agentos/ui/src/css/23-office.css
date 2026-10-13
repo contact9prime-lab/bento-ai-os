@@ -278,3 +278,28 @@ body.imm-hq #wall.has::after{display:none}
 body.has-win .of3-ui.hq{display:none}
 @media (max-width:640px){.of3-ui.hq .of3-card .of3-k,.of3-ui.hq .of3-card .of3-w{display:none}
   .of3-ui.hq .of3-card{padding:3px 7px 3px 5px}.of3-ui.hq .of3-card b{font-size:10.5px}}
+
+/* several companies and the objective's work (24g-company.js) */
+.co-cos{display:flex;align-items:center;gap:8px;margin:2px 0 8px;flex-wrap:wrap}
+.co-cosl{display:flex;align-items:center;gap:6px;flex:1 1 220px;min-width:0;font-size:var(--fs-sm)}
+.co-cosl select{flex:1;min-width:0;font-size:var(--fs-sm)}
+.co-obj{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;margin:4px 0 10px;border-radius:var(--r-md);
+  border:1px solid color-mix(in srgb,var(--acc) 35%,var(--line));background:color-mix(in srgb,var(--acc) 8%,var(--bg3))}
+.co-objt{flex:1;min-width:12em;font-size:var(--fs-sm);overflow-wrap:anywhere}
+.co-objt>.mut{font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.06em;margin-right:4px}
+.co-wsub{font-size:var(--fs-xs);font-weight:700;margin:10px 0 2px}
+.co-wrow{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--hairline)}
+.co-wrow input{margin-top:3px;flex:none;align-self:flex-start}
+.co-wrow.off .co-wt{opacity:.55}.co-wrow.off .co-wt b{text-decoration:line-through}
+.co-wt{display:flex;flex-direction:column;gap:1px;min-width:0;font-size:var(--fs-sm);font-weight:400}
+.co-wt b{font-weight:700}
+.co-wm{font-size:var(--fs-xs)}.co-wd{font-size:var(--fs-xs);overflow-wrap:anywhere}
+.co-goalin{width:100%}
+.co-st.todo{color:var(--acc)}
+.co-todo{cursor:default}
+.co-tdo{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+.co-tdo .endbtn{font-size:var(--fs-xs);padding:3px 10px}
+body.dev-touch .co-cosl select,body.dev-touch .co-newco,body.dev-touch .co-plan,body.dev-touch .co-tdo .endbtn,
+body.dev-touch .co-wrow{min-height:var(--tap)}
+body.dev-touch .co-wrow input{width:22px;height:22px}
+.co-go .co-apply,.co-go .co-wapply{white-space:normal;text-align:left;line-height:1.3}

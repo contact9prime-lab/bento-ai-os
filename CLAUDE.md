@@ -20,6 +20,9 @@ rediscover, not style preferences.
   choice. `bento version bump` prints a reminder when it is older than `STALE_DAYS`. It is
   a SELECTION list: never rewrite anybody's saved models (`providers.<p>.models`,
   `default_model`, an agent's pin). The shipped prices in `usage.py` move with it.
+- **Every video is 9:16 and comes with its Instagram post.** 1080×1920, with sound, and
+  delivered with a caption (a hook line, what it shows, a call to action) and its hashtags,
+  ready to paste. That holds for every reel, demo or walk-through video, asked for or not.
 
 ---
 
@@ -524,6 +527,46 @@ boss; every boss acts like a gate". Six rules:
   the desk and the next boss's start overwrote the walk on its way (found live: Aria sat on
   "reading it…" forever). A review run's own `status` events carry `kind` and are skipped, or
   they lit a meeting and said "done ✓".
+
+**A company has an objective, and the objective drafts its work** (`company.normalize_work`,
+`work_prompt`/`read_work`/`work_from_words`, `preview_work`/`apply_work`, `/api/company/work/*`,
+`/api/company/todo/*`, `bento company objective|todo|start`; `tests/test_company_objective.py`).
+Asked for as "there has to be an objective defined by the user, and it would require missions,
+schedules and tasks; it should all open up when the companies are defined". Four rules:
+- **Work is read field by field**: a piece for a department that is not there is dropped and
+  named; a schedule is daily, weekly or by hand (anything else starts by hand and says so); a
+  bad time or day is corrected and named. `MAX_MISSIONS`/`MAX_TODO` cap it.
+- **A mission is a flow that lands OFF**, its department as roster, the objective in its brief,
+  its cron trigger declared and armed only on Enable (the flows rule). One that exists is kept.
+  A task is a to-do on `cfg["company"]["todo"]`, started as a run of the desk.
+- **Preview and save are one computation** (`apply_work` re-derives `preview_work`; the company
+  plan carries `work` through `normalize`/`preview`/`apply`), and the page recounts after every
+  untick.
+- **A mission is its department's work**: `work_flows` maps it to its department, so
+  `_task_rows`, the cards, `audit_scope` and therefore the review chain and the auditor all
+  treat it as the desk's. The lead hears the objective (`note`).
+
+**A person may keep several companies, each a whole setup** (`company.create`/`switch`/`remove`/
+`cfg_for`/`rename_for`, `/api/companies*`, `bento company companies|new|open|drop`). "A services
+company and a manufacturing company … a complete different setup altogether within the same
+user." Six rules:
+- **The open company lives where it always did** (`cfg["company"]`, `cfg["office"]`); the
+  others are PARKED whole under `cfg["companies"][id]` and switching swaps them. Every reader of
+  the two keys is unchanged. `companies` is a USER_KEY and in config DEFAULTS.
+- **Each company is its own space.** Its desks and missions carry it; `create` gives the first
+  company one too (`_ensure_identity`) and moves its flows and their task rows in. Rows made
+  before that stay global, and the docs say so. Switching moves only the surface that asked.
+- **People belong to one company** (`rename_for`, inside `preview`, so apply sees it too): a name
+  that works in another company gets `-<company>`; `office.view` leaves the other companies'
+  people off this floor and out of `agents`.
+- **Desks and missions are named for their company** once there are two (`_prefix`). Without it,
+  the second company's Sales desk was the FIRST company's flow ("a desk that exists keeps its
+  definition"), found by the first engine run.
+- **A parked company's work is checked by its own bosses**: `ControlPlane.review` and `audit`
+  read `companymod.cfg_for(self.cfg, flow["name"])`, never `self.cfg` alone.
+- **An empty plan field keeps what the company says** (`apply`): a company started with a line
+  and then set up from ticked departments lost the line. Removing a company switches its desks
+  and missions off (nothing would sign their work off) and keeps its agents and space.
 
 **Every scene draws the company from ONE answer, `company.membership()`** (who is in which
 department, its head, whether that head was NAMED, the colour's hex, each title). The Crew

@@ -4487,6 +4487,31 @@ body.imm-hq #wall.has::after{display:none}
 body.has-win .of3-ui.hq{display:none}
 @media (max-width:640px){.of3-ui.hq .of3-card .of3-k,.of3-ui.hq .of3-card .of3-w{display:none}
   .of3-ui.hq .of3-card{padding:3px 7px 3px 5px}.of3-ui.hq .of3-card b{font-size:10.5px}}
+
+/* several companies and the objective's work (24g-company.js) */
+.co-cos{display:flex;align-items:center;gap:8px;margin:2px 0 8px;flex-wrap:wrap}
+.co-cosl{display:flex;align-items:center;gap:6px;flex:1 1 220px;min-width:0;font-size:var(--fs-sm)}
+.co-cosl select{flex:1;min-width:0;font-size:var(--fs-sm)}
+.co-obj{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;margin:4px 0 10px;border-radius:var(--r-md);
+  border:1px solid color-mix(in srgb,var(--acc) 35%,var(--line));background:color-mix(in srgb,var(--acc) 8%,var(--bg3))}
+.co-objt{flex:1;min-width:12em;font-size:var(--fs-sm);overflow-wrap:anywhere}
+.co-objt>.mut{font-size:var(--fs-2xs);text-transform:uppercase;letter-spacing:.06em;margin-right:4px}
+.co-wsub{font-size:var(--fs-xs);font-weight:700;margin:10px 0 2px}
+.co-wrow{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--hairline)}
+.co-wrow input{margin-top:3px;flex:none;align-self:flex-start}
+.co-wrow.off .co-wt{opacity:.55}.co-wrow.off .co-wt b{text-decoration:line-through}
+.co-wt{display:flex;flex-direction:column;gap:1px;min-width:0;font-size:var(--fs-sm);font-weight:400}
+.co-wt b{font-weight:700}
+.co-wm{font-size:var(--fs-xs)}.co-wd{font-size:var(--fs-xs);overflow-wrap:anywhere}
+.co-goalin{width:100%}
+.co-st.todo{color:var(--acc)}
+.co-todo{cursor:default}
+.co-tdo{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+.co-tdo .endbtn{font-size:var(--fs-xs);padding:3px 10px}
+body.dev-touch .co-cosl select,body.dev-touch .co-newco,body.dev-touch .co-plan,body.dev-touch .co-tdo .endbtn,
+body.dev-touch .co-wrow{min-height:var(--tap)}
+body.dev-touch .co-wrow input{width:22px;height:22px}
+.co-go .co-apply,.co-go .co-wapply{white-space:normal;text-align:left;line-height:1.3}
 /* ================= The play strip and comic talk (24e-playstrip.js, 10b-huddle.js) =================
    The Office's comic language at the size of a line: ink outlines, white balloons, yellow
    bursts with a red word. Like the Office canvas these are a comic's own colours — a
@@ -28566,8 +28591,13 @@ function freeTalkEvent(ev){
    - So is the review chain (company.review_state): each boss's answer is read back from
      its review run. Who reports to whom is the office's, saved through
      /api/company/reports so a loop is refused by the server, not guessed at here.
+   - The objective's work (company.py preview_work/apply_work) is shown in full before it
+     is made, with the same counts the save re-derives; every mission lands switched off.
+   - A person may keep several companies. The switcher at the top opens another one: the
+     server parks the open company whole and brings that one's office, objective and space
+     back (company.switch), so nothing here keeps a second copy of any company.
    Faces: GUI and SUI are this page. TUI is `bento company` (show, setup, task, audit,
-   review, chain, check). */
+   review, chain, check, objective, todo, start, companies, new, open, drop). */
 var COMPANY={data:null,plan:null,preview:null,how:'',said:'',dropped:[],open:false,
   filter:'all',focus:'',arrival:null,timer:0,pv:0,talk:true,off:{}};
 
@@ -28653,17 +28683,86 @@ function companyPaint(){
   const d=COMPANY.data;
   if(!d){el.innerHTML=`<div class="of-dh"><b>Your company</b><button class="of-x" aria-label="Close">✕</button></div>
     <div class="mut">${esc(COMPANY.err||'loading…')}</div>`;el.querySelector('.of-x').onclick=()=>officeCompany(false);return}
+  if(COMPANY.newco)return companyNewPaint(el);
   if(COMPANY.plan)return companyPreviewPaint(el);
+  if(COMPANY.work)return companyWorkPaint(el);
   if(!d.departments.length||COMPANY.adding)return companySetupPaint(el);
   companyOverviewPaint(el);
+}
+
+/* ---------------- several companies (company.create / switch) ---------------- */
+function companyCos(){
+  const d=COMPANY.data,cs=(d&&d.companies)||[];
+  if(!cs.length)return '';
+  const full=cs.length>=(d.max_companies||8);
+  return `<div class="co-cos"><label class="co-cosl"><span class="mut">Company</span>
+    <select class="co-switch" aria-label="Open another company">${cs.map(c=>`<option value="${esc(c.id)}"${c.active?' selected':''}>${esc(c.name)}${
+      c.active?'':` · ${c.departments} ${c.departments===1?'department':'departments'}`}</option>`).join('')}</select></label>
+    <button class="endbtn co-newco"${full?' disabled title="You keep as many companies as you can here. Remove one with bento company drop."':''}>＋ New company</button></div>`;
+}
+function companyCosWire(el){
+  const sw=el.querySelector('.co-switch'),nc=el.querySelector('.co-newco');
+  if(sw)sw.onchange=()=>companySwitch(sw.value,sw);
+  if(nc)nc.onclick=()=>{COMPANY.newco=true;COMPANY.arrival=null;companyPaint()};
+}
+function companyReset(){
+  Object.assign(COMPANY,{plan:null,preview:null,work:null,arrival:null,adding:false,focus:'',
+    picked:new Set(),desc:'',goal:'',task:'',off:{},filter:'all'});
+}
+async function companySwitch(id,sel){
+  const cs=(COMPANY.data&&COMPANY.data.companies)||[],to=cs.find(c=>c.id===id);
+  if(!to||to.active)return;
+  if(sel)sel.disabled=true;
+  try{
+    const j=await apiJSON('/api/companies/active',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id})});
+    if(j.error)throw new Error(j.error);
+    companyReset();
+    officeLog(`opened ${j.company.name}`);toast(`✓ ${j.company.name} is open`);
+    await officeLoad();await companyLoad();
+  }catch(e){toast('could not open it: '+(e.message||e));if(sel){sel.disabled=false;companyPaint()}}
+}
+/* A new company: a name, a line, and what it is for. It opens empty, in its own office
+   and space, and the setup sheet follows with the line and the objective filled in. */
+function companyNewPaint(el){
+  const N=COMPANY.nc||(COMPANY.nc={name:'',about:'',goal:''});
+  el.innerHTML=`<div class="of-dh"><b>A new company</b><button class="of-x" aria-label="Close">✕</button></div>
+    <p class="co-lead">It gets its own office, its own people and its own space. The company you have now stays as it is, and you can open it again from the top of this panel.</p>
+    <div class="of-row"><input class="co-ncn" maxlength="48" placeholder="Name, e.g. Forgeline" value="${esc(N.name)}" aria-label="Company name"></div>
+    <div class="of-row"><input class="co-nca" maxlength="200" placeholder="What it does, e.g. a metal parts manufacturer" value="${esc(N.about)}" aria-label="What it does"></div>
+    <div class="of-sec">Objective <span class="mut">optional</span></div>
+    <textarea class="co-ncg" rows="2" maxlength="400" placeholder="What should it achieve? For example: cut defects in half by June" aria-label="Objective">${esc(N.goal)}</textarea>
+    <div class="of-row co-go"><button class="endbtn primary co-ncgo">Start it</button><button class="endbtn co-back">Back</button></div>
+    <div class="of-said mut" aria-live="polite"></div>`;
+  const q=s=>el.querySelector(s);
+  q('.of-x').onclick=()=>{COMPANY.newco=false;officeCompany(false)};
+  q('.co-ncn').oninput=e=>N.name=e.target.value;q('.co-nca').oninput=e=>N.about=e.target.value;
+  q('.co-ncg').oninput=e=>N.goal=e.target.value;
+  q('.co-back').onclick=()=>{COMPANY.newco=false;companyPaint()};
+  q('.co-ncgo').onclick=async()=>{
+    const b=q('.co-ncgo'),said=q('.of-said');
+    if(!N.name.trim()){toast('give the company a name');q('.co-ncn').focus();return}
+    b.disabled=true;said.textContent='starting it…';
+    try{
+      const j=await apiJSON('/api/companies',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:N.name,about:N.about,objective:N.goal})});
+      if(j.error)throw new Error(j.error);
+      companyReset();COMPANY.newco=false;COMPANY.desc=N.about?`${N.name}, ${N.about}`:N.name;COMPANY.goal=N.goal;COMPANY.nc=null;
+      officeLog(`started ${j.company.name}`);toast(`✓ ${j.company.name} is open. Now give it its departments.`);
+      await officeLoad();await companyLoad();
+    }catch(e){said.textContent='could not start it: '+(e.message||e);b.disabled=false}
+  };
 }
 
 /* Set it up: a sentence, and the departments as chips. None ticked lets the brain choose. */
 function companySetupPaint(el){
   const d=COMPANY.data,picked=COMPANY.picked||(COMPANY.picked=new Set());
   el.innerHTML=`<div class="of-dh"><b>${COMPANY.adding?'Add departments':'Set up your company'}</b><button class="of-x" aria-label="Close">✕</button></div>
+    ${COMPANY.adding?'':companyCos()}
     <p class="co-lead">Say what the business does. I'll draft the departments, a head and staff for each, and show you everything before anything is made.</p>
-    <textarea class="co-desc" rows="3" maxlength="1200" placeholder="A coffee subscription startup, twelve people, selling online and shipping across India">${esc(COMPANY.desc||'')}</textarea>
+    <textarea class="co-desc" rows="3" maxlength="1200" placeholder="A coffee subscription startup, twelve people, selling online and shipping across India" aria-label="What the business does">${esc(COMPANY.desc||'')}</textarea>
+    ${COMPANY.adding?'':`<div class="of-sec">Objective <span class="mut">optional</span>${typeof pInfo==='function'?pInfo('What the company is trying to achieve. With one, the draft also has the missions, schedules and tasks it needs, each given to a department. You see all of it before anything is made.'):''}</div>
+    <textarea class="co-goal" rows="2" maxlength="400" placeholder="What should it achieve? For example: win ten new clients this quarter" aria-label="Objective">${esc(COMPANY.goal!==undefined&&COMPANY.goal!==''?COMPANY.goal:(d.company&&d.company.objective)||'')}</textarea>`}
     <div class="of-sec">Departments <span class="mut">${picked.size?picked.size+' ticked':'leave empty to let it choose'}</span></div>
     <div class="of-chips co-chips">${d.catalogue.map(c=>`<button class="of-chip${picked.has(c.id)?' on':''}" data-id="${c.id}" aria-pressed="${picked.has(c.id)}"
       title="${esc(c.mandate)}"><i class="of-sw" style="background:${OFFICE.view&&OFFICE.view.colors[c.color]||'#888'}"></i>${esc(c.label)}</button>`).join('')}</div>
@@ -28674,6 +28773,8 @@ function companySetupPaint(el){
   const q=s=>el.querySelector(s);
   q('.of-x').onclick=()=>officeCompany(false);
   q('.co-desc').oninput=e=>COMPANY.desc=e.target.value;
+  if(q('.co-goal'))q('.co-goal').oninput=e=>COMPANY.goal=e.target.value;
+  companyCosWire(el);
   el.querySelectorAll('.co-chips .of-chip').forEach(b=>b.onclick=()=>{
     const id=b.dataset.id;picked.has(id)?picked.delete(id):picked.add(id);companyPaint()});
   q('.co-draft').onclick=()=>companyDraft(q('.co-draft'),q('.of-said'));
@@ -28681,11 +28782,12 @@ function companySetupPaint(el){
 }
 async function companyDraft(btn,said){
   const desc=(COMPANY.desc||'').trim(),ids=[...(COMPANY.picked||[])];
+  const gEl=companyWindow()&&companyWindow().el.querySelector('.co-goal'),goal=gEl?gEl.value.trim():'';
   if(desc.length<3&&!ids.length){toast('say what the company does, or tick some departments');return}
   btn.disabled=true;said.textContent='drafting your company… this can take a minute';
   try{
     const r=await fetch('/api/company/draft',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({description:desc,departments:ids,talk:COMPANY.talk})});
+      body:JSON.stringify({description:desc,departments:ids,talk:COMPANY.talk,objective:goal})});
     const j=await r.json();
     if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
     COMPANY.plan=j.plan;COMPANY.preview=j.preview;COMPANY.how=j.how;COMPANY.who=j.who;
@@ -28699,8 +28801,41 @@ async function companyDraft(btn,said){
    what saving does. Untick a person or a whole department; open a persona to edit it. */
 function companyPlanNow(){
   const p=COMPANY.plan;if(!p)return null;
-  return {company:p.company,departments:p.departments.filter(d=>!COMPANY.off['d:'+d.name]).map(d=>({...d,
-    people:d.people.filter(x=>!COMPANY.off['p:'+x.name])})).filter(d=>d.people.length)};
+  const departments=p.departments.filter(d=>!COMPANY.off['d:'+d.name]).map(d=>({...d,
+    people:d.people.filter(x=>!COMPANY.off['p:'+x.name])})).filter(d=>d.people.length);
+  const out={company:p.company,departments};
+  if(p.work)out.work=companyWorkNow(p.work,new Set(departments.map(d=>d.name)));
+  return out;
+}
+/* The work as ticked: an unticked mission or task, or one whose department is unticked,
+   is not sent, so the server's recount is what the save makes. */
+function companyWorkNow(W,keep){
+  return {missions:(W.missions||[]).filter(m=>(!keep||keep.has(m.department))&&!COMPANY.off['m:'+m.name]),
+    tasks:(W.tasks||[]).filter((t,i)=>(!keep||keep.has(t.department))&&!COMPANY.off['t:'+i])};
+}
+/* Missions (some on a schedule) and tasks, each with a tick. Shared by the company's
+   first setup and by "Plan the work" for a company that has its departments. */
+function companyWorkHTML(W,WV,goal,deptOff){
+  const pm={};((WV||{}).missions||[]).forEach(m=>pm[m.name]=m);
+  const ms=W.missions||[],ts=W.tasks||[];
+  return `<div class="of-sec">For the objective</div>
+    <div class="of-row"><input class="co-goalin" maxlength="400" placeholder="What should the company achieve?" value="${esc(goal||'')}" aria-label="Objective"></div>
+    ${ms.length?`<div class="co-wsub">Missions <span class="mut">${ms.filter(m=>m.every).length} on a schedule</span></div>`
+      +ms.map(m=>{const dOff=!!(deptOff&&deptOff(m.department)),off=dOff||!!COMPANY.off['m:'+m.name],q=pm[m.name]||{};
+      return `<label class="co-wrow${off?' off':''}"><input type="checkbox" data-m="${esc(m.name)}"${off?'':' checked'}${dOff?' disabled':''}>
+        <span class="co-wt"><b>${esc(m.title)}</b><span class="co-wm mut">${esc(m.department)} · ${esc(q.when||(m.every?m.every:'started by hand'))}${
+          q.status==='exists'?' · already here, kept as it is':''}</span>
+        <span class="co-wd mut">${esc(m.what)}</span></span></label>`}).join(''):''}
+    ${ts.length?`<div class="co-wsub">Tasks to start</div>`+ts.map((t,i)=>{const dOff=!!(deptOff&&deptOff(t.department)),off=dOff||!!COMPANY.off['t:'+i];
+      return `<label class="co-wrow${off?' off':''}"><input type="checkbox" data-t="${i}"${off?'':' checked'}${dOff?' disabled':''}>
+        <span class="co-wt"><span>${esc(t.text)}</span><span class="co-wm mut">${esc(t.department)}</span></span></label>`}).join(''):''}
+    ${!ms.length&&!ts.length?'<p class="mut co-small">Nothing drafted for it. Try saying more about the objective.</p>':''}
+    <p class="mut co-small">Missions start switched off, so a schedule runs only once you switch its mission on in Missions. Tasks wait on the task board until you start them.</p>`;
+}
+function companyWorkWire(el,onGoal,again){
+  el.querySelectorAll('[data-m]').forEach(c=>c.onchange=()=>{COMPANY.off['m:'+c.dataset.m]=!c.checked;again()});
+  el.querySelectorAll('[data-t]').forEach(c=>c.onchange=()=>{COMPANY.off['t:'+c.dataset.t]=!c.checked;again()});
+  const g=el.querySelector('.co-goalin');if(g)g.oninput=e=>onGoal(e.target.value);
 }
 function companyPreviewPaint(el){
   const P=COMPANY.plan,V=COMPANY.preview||{departments:[],notes:[]};
@@ -28726,6 +28861,7 @@ function companyPreviewPaint(el){
           <div class="co-tools">${(q.tools||x.tools).map(t=>`<code>${esc(t)}</code>`).join(' ')}</div>
           ${q.status==='exists'?'<div class="mut co-small">This agent exists already. It joins as it is and none of this is written over it.</div>':''}
         </details></div>`}).join('')}</div>`}).join('')}
+    ${P.work?companyWorkHTML(P.work,V.work,P.company.objective,n=>!!COMPANY.off['d:'+n]):''}
     <label class="co-talk"><input type="checkbox" class="co-talkcb"${COMPANY.talk?' checked':''}> Colleagues in a department can ask each other, and the heads can ask each other</label>
     ${(V.notes||[]).map(n=>`<p class="mut co-small">${esc(n)}</p>`).join('')}
     ${COMPANY.dropped.length?`<p class="mut co-small">Left out of the draft: ${esc(COMPANY.dropped.join('; '))}</p>`:''}
@@ -28741,14 +28877,16 @@ function companyPreviewPaint(el){
   el.querySelectorAll('[data-p]').forEach(c=>c.onchange=()=>{COMPANY.off['p:'+c.dataset.p]=!c.checked;companyRepreview()});
   el.querySelectorAll('.co-soul').forEach(t=>t.oninput=()=>{P.departments.forEach(d=>d.people.forEach(x=>{if(x.name===t.dataset.s)x.soul=t.value}))});
   q('.co-talkcb').onchange=e=>{COMPANY.talk=e.target.checked;companyRepreview()};
+  companyWorkWire(el,v=>{P.company.objective=v},companyRepreview);
   q('.co-again').onclick=()=>{COMPANY.plan=null;COMPANY.preview=null;companyPaint()};
   q('.co-apply').onclick=()=>companyApply(q('.co-apply'),q('.of-said'));
 }
 function companyButton(V){
-  const n=V.new||0,d=V.desks||0;
+  const n=V.new||0,d=V.desks||0,w=V.work||{},m=w.new_missions||0,t=(w.tasks||[]).length;
   if(!d)return 'Nothing to make';
-  return n?`Make ${n} ${n===1?'agent':'agents'} in ${d} ${d===1?'department':'departments'}`
-    :`Set up ${d} ${d===1?'department':'departments'}`;
+  const work=m||t?` with ${[m?`${m} ${m===1?'mission':'missions'}`:'',t?`${t} ${t===1?'task':'tasks'}`:''].filter(Boolean).join(' and ')}`:'';
+  return (n?`Make ${n} ${n===1?'agent':'agents'} in ${d} ${d===1?'department':'departments'}`
+    :`Set up ${d} ${d===1?'department':'departments'}`)+work;
 }
 /* An untick changes what saving does: ask the server again, so the button counts what
    the save will make (one computation), then repaint. */
@@ -28775,13 +28913,103 @@ async function companyApply(btn,said){
       body:JSON.stringify({plan,talk:COMPANY.talk})});
     const j=await r.json();
     if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
-    COMPANY.arrival=j;COMPANY.plan=null;COMPANY.preview=null;COMPANY.adding=false;COMPANY.picked=new Set();COMPANY.desc='';
+    COMPANY.arrival=j;COMPANY.plan=null;COMPANY.preview=null;COMPANY.adding=false;COMPANY.picked=new Set();COMPANY.desc='';COMPANY.goal='';
     officeLog(`company set up: ${j.departments.join(', ')}`);
     toast(`✓ ${j.departments.length} departments, ${j.made.length} new agents`);
     if(typeof avatarsLoad==='function')await avatarsLoad();
     await officeLoad();await companyLoad();
     const el=companyWindow()&&companyWindow().el.querySelector('.of-company');if(el)el.scrollTop=0;
   }catch(e){said.textContent='could not set it up: '+(e.message||e);btn.disabled=false}
+}
+
+/* "Plan the work": the objective, then what it calls for (company.preview_work), each
+   piece with a tick, then one button that makes exactly what is ticked. */
+function companyWorkPaint(el){
+  const W=COMPANY.work,d=COMPANY.data,dr=W.draft;
+  const who=(typeof EXEC_TITLES!=='undefined'&&EXEC_TITLES[(dr||{}).who])||(dr||{}).who||'your AI';
+  el.innerHTML=`<div class="of-dh"><b>${esc(d.company.name||'Your company')}: the work</b><button class="of-x" aria-label="Close">✕</button></div>
+    ${!dr?`<p class="co-lead">Say what the company is trying to achieve. I'll draft the missions, schedules and tasks it needs, each for one of your ${d.departments.length} departments, and show you all of it first.</p>
+    <textarea class="co-wgoal" rows="3" maxlength="400" placeholder="For example: win ten new clients this quarter" aria-label="Objective">${esc(W.goal||'')}</textarea>
+    <div class="of-row co-go"><button class="endbtn primary co-wdraft">Draft the work</button><button class="endbtn co-back">Back</button></div>`
+    :`<p class="co-lead">${dr.how==='brain'?`Drafted by ${esc(who)}.`:esc(dr.said||'Filled in from the catalogue.')} Nothing is made until you press the button at the bottom.</p>
+    ${companyWorkHTML(dr.work,dr.preview,W.goal)}
+    ${(dr.preview.notes||[]).map(n=>`<p class="mut co-small">${esc(n)}</p>`).join('')}
+    ${(dr.dropped||[]).length?`<p class="mut co-small">Left out of the draft: ${esc(dr.dropped.join('; '))}</p>`:''}
+    <div class="of-row co-go"><button class="endbtn primary co-wapply">${companyWorkButton(dr.preview)}</button>
+      <button class="endbtn co-wagain">Start over</button></div>`}
+    <div class="of-said mut" aria-live="polite"></div>`;
+  const q=s=>el.querySelector(s);
+  q('.of-x').onclick=()=>{COMPANY.work=null;officeCompany(false)};
+  if(!dr){
+    q('.co-wgoal').oninput=e=>W.goal=e.target.value;
+    q('.co-back').onclick=()=>{COMPANY.work=null;companyPaint()};
+    q('.co-wdraft').onclick=()=>companyWorkDraft(q('.co-wdraft'),q('.of-said'));
+    return;
+  }
+  companyWorkWire(el,v=>{W.goal=v},companyWorkRepreview);
+  q('.co-wagain').onclick=()=>{W.draft=null;COMPANY.off={};companyPaint()};
+  q('.co-wapply').onclick=()=>companyWorkApply(q('.co-wapply'),q('.of-said'));
+}
+function companyWorkButton(V){
+  const m=(V&&V.new_missions)||0,t=((V&&V.tasks)||[]).length;
+  if(!m&&!t)return 'Nothing to make';
+  return 'Make '+[m?`${m} ${m===1?'mission':'missions'}`:'',t?`${t} ${t===1?'task':'tasks'}`:''].filter(Boolean).join(' and ');
+}
+async function companyWorkDraft(btn,said){
+  const goal=(COMPANY.work.goal||'').trim();
+  if(goal.length<3){toast('say what the company is trying to achieve');return}
+  btn.disabled=true;said.textContent='drafting the work… this can take a minute';
+  try{
+    const j=await apiJSON('/api/company/work/draft',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({objective:goal})});
+    if(j.error)throw new Error(j.error);
+    if(!COMPANY.work)return;
+    COMPANY.off={};COMPANY.work.draft=j;companyPaint();
+  }catch(e){said.textContent='could not draft it: '+(e.message||e);if(btn.isConnected)btn.disabled=false}
+}
+function companyWorkRepreview(){
+  clearTimeout(COMPANY.pv);
+  COMPANY.pv=setTimeout(async()=>{
+    const W=COMPANY.work;if(!W||!W.draft)return;
+    try{
+      const j=await apiJSON('/api/company/work/preview',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({work:companyWorkNow(W.draft.work),objective:W.goal})});
+      // the recount is for the ticked work; the sheet keeps every row so a tick can come back
+      const keep=W.draft.preview,pm={};(j.preview.missions||[]).forEach(m=>pm[m.name]=m);
+      W.draft.preview={...j.preview,missions:(W.draft.work.missions||[]).map(m=>pm[m.name]||(keep.missions||[]).find(x=>x.name===m.name)||m)};
+      W.draft.count=j.preview;
+    }catch(e){}
+    const el=companyWindow()&&companyWindow().el.querySelector('.of-company');
+    if(el&&COMPANY.work){const top=el.scrollTop;companyWorkPaint(el);el.scrollTop=top;
+      const b=el.querySelector('.co-wapply');if(b&&W.draft.count)b.textContent=companyWorkButton(W.draft.count)}
+  },250);
+}
+async function companyWorkApply(btn,said){
+  const W=COMPANY.work,work=companyWorkNow(W.draft.work);
+  if(!work.missions.length&&!work.tasks.length){toast('tick at least one mission or task');return}
+  btn.disabled=true;said.textContent='making it…';
+  try{
+    const j=await apiJSON('/api/company/work/apply',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({work,objective:W.goal})});
+    if(j.error)throw new Error(j.error);
+    COMPANY.work=null;COMPANY.off={};COMPANY.filter=j.tasks?'todo':'all';
+    officeLog(`work for the objective: ${j.missions.length} missions, ${j.tasks} tasks`);
+    toast(`✓ ${j.missions.length} ${j.missions.length===1?'mission':'missions'} (off until you switch them on), ${j.tasks} ${j.tasks===1?'task':'tasks'} to start`);
+    await companyLoad();
+    const el=companyWindow()&&companyWindow().el.querySelector('.of-company');if(el)el.scrollTop=0;
+  }catch(e){said.textContent='could not make it: '+(e.message||e);btn.disabled=false}
+}
+/* Start one of the objective's tasks: a run of its department's desk, like any task. */
+async function companyTodo(id,drop,el){
+  if(el)el.style.pointerEvents='none';
+  try{
+    const j=drop?await apiJSON(`/api/company/todo/${encodeURIComponent(id)}`,{method:'DELETE'})
+      :await apiJSON(`/api/company/todo/${encodeURIComponent(id)}/start`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(j.error)throw new Error(j.error);
+    if(!drop){officeLog(`${j.department} started a task`);toast(`${j.department} is on it`)}
+    if(COMPANY.filter==='todo'&&!drop)COMPANY.filter='all';
+    companySoon();await companyLoad();
+  }catch(e){toast(e.message||String(e));if(el)el.style.pointerEvents=''}
 }
 
 /* The company at work: give a department a task, each department's line, and the board. */
@@ -28793,12 +29021,16 @@ function companyOverviewPaint(el){
     ||(f==='flagged'&&companyFlagged(t))||(f==='held'&&companyHeld(t)));
   const chip=(k,l)=>`<button class="of-chip${f===k?' on':''}" data-f="${k}" aria-pressed="${f===k}">${l}${k!=='all'&&b.counts[k]?' '+b.counts[k]:''}</button>`;
   const pill={in_progress:'working',waiting:'waiting for you',done:'done',failed:'failed',scheduled:'scheduled',
-    stale:'stopped answering',stopped:'stopped'};
+    stale:'stopped answering',stopped:'stopped',todo:'to do'};
   el.innerHTML=`<div class="of-dh"><b>${esc(d.company.name||'Your company')}</b><button class="of-x" aria-label="Close">✕</button></div>
+    ${companyCos()}
     ${d.company.about?`<p class="co-lead">${esc(d.company.about)}</p>`:''}
+    <div class="co-obj">${d.company.objective?`<span class="co-objt"><span class="mut">Objective</span> ${esc(d.company.objective)}</span>`
+      :'<span class="co-objt mut">No objective yet. Say what the company is for, and I will draft its missions, schedules and tasks.</span>'}
+      <button class="endbtn co-plan">${d.company.objective?'Plan the work':'Set an objective'}</button></div>
     ${A?`<div class="co-arrival"><b>✓ ${A.departments.length} departments set up.</b>
       ${A.made.length?` ${A.made.length} new agents.`:''}${A.joined.length?` ${esc(A.joined.join(', '))} joined as they were.`:''}
-      Each desk starts off. ${A.try?esc(A.try):''}
+      Each desk starts off.${A.work&&(A.work.missions.length||A.work.tasks)?` For the objective: ${A.work.missions.length} ${A.work.missions.length===1?'mission':'missions'}, off until you switch them on, and ${A.work.tasks} ${A.work.tasks===1?'task':'tasks'} to start below.`:''} ${A.try?esc(A.try):''}
       ${(A.errors||[]).map(e=>`<div class="co-bad">${esc(e)}</div>`).join('')}</div>`:''}
     <div class="of-sec">Give a department a task</div>
     <div class="of-row"><select class="co-dsel" aria-label="Department">${d.departments.map(x=>`<option${x.name===focus?' selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
@@ -28818,6 +29050,7 @@ function companyOverviewPaint(el){
       <div class="co-desk mut">${!x.has_desk?'No desk: tasks go to its head in chat.'
         :x.desk_on?'Desk on.':'Desk off, so gated steps ask you.'}
         ${x.has_desk?`<button class="co-link" data-desk="${esc(x.desk)}">${x.desk_on?'Open in Missions':'Switch on in Missions'}</button>`:''}</div>
+      ${(x.missions||[]).length?`<div class="co-desk mut">Missions: ${x.missions.map(m=>`<button class="co-link" data-desk="${esc(m.flow)}">${esc(m.title)}${m.on?'':' (off)'}</button>`).join(' ')}</div>`:''}
     </div>`).join('')}
     <div class="of-row"><button class="endbtn co-add">＋ Add departments</button></div>
     <div class="of-sec">Tasks</div>
@@ -28826,8 +29059,12 @@ function companyOverviewPaint(el){
         `<option value="${k}"${(b.review||'lead')===k?' selected':''}>${esc(l)}</option>`).join('')}</select>${typeof pInfo==='function'?pInfo('A finished task goes to its head, then to the head of each department it reports to, then to your agent. Each one approves it, sends it back to be fixed (twice at most) or passes a decision up. What is held goes to your Brief.'):''}</label>
     <label class="co-audit"><input type="checkbox" class="co-aud"${b.audit!==false?' checked':''}>
       <span>An independent auditor checks every finished task</span>${typeof pInfo==='function'?pInfo('The auditor did none of the work and no department can skip it. Anything it flags goes to your Brief.'):''}</label>
-    <div class="of-chips co-filter">${chip('all','All')}${chip('in_progress','Working')}${chip('waiting','Waiting')}${chip('scheduled','Scheduled')}${chip('done','Done')}${chip('held','Held')}${chip('flagged','Flagged')}${chip('failed','Failed')}</div>
-    <div class="co-board">${tasks.length?tasks.slice(0,40).map(t=>`<button class="co-task-row" ${t.run_id?`data-run="${esc(t.run_id)}"`:''} style="--dc:${colors[t.color]||'#888'}">
+    <div class="of-chips co-filter">${chip('all','All')}${b.counts.todo?chip('todo','To do'):''}${chip('in_progress','Working')}${chip('waiting','Waiting')}${chip('scheduled','Scheduled')}${chip('done','Done')}${chip('held','Held')}${chip('flagged','Flagged')}${chip('failed','Failed')}</div>
+    <div class="co-board">${tasks.length?tasks.slice(0,40).map(t=>t.status==='todo'?`<div class="co-task-row co-todo" style="--dc:${colors[t.color]||'#888'}">
+      <span class="co-st todo">to do</span><span class="co-tt">${esc(t.task)}</span><span class="co-tm mut">${esc(t.department)}</span>
+      <span class="co-tdo"><button class="endbtn primary co-start" data-start="${esc(t.todo)}">Start it</button>
+        <button class="endbtn co-drop" data-drop="${esc(t.todo)}" aria-label="Drop this task">Not now</button></span></div>`
+      :`<button class="co-task-row" ${t.run_id?`data-run="${esc(t.run_id)}"`:''} style="--dc:${colors[t.color]||'#888'}">
       <span class="co-st ${t.status}">${esc(pill[t.status]||t.status)}</span>
       <span class="co-tt">${esc(t.task)}</span>
       <span class="co-tm mut">${esc(t.department)}${t.who?' · '+esc(t.who):''}${t.handoffs?` · ${t.handoffs} ${t.handoffs===1?'hand-over':'hand-overs'}`:''}
@@ -28859,6 +29096,10 @@ function companyOverviewPaint(el){
     if(e.target.closest('[data-brief]'))return openApp('brief');
     if(typeof fgWatch==='function')fgWatch(b.dataset.run)});
   q('.co-add').onclick=()=>{COMPANY.adding=true;COMPANY.arrival=null;companyPaint()};
+  q('.co-plan').onclick=()=>{COMPANY.off={};COMPANY.arrival=null;COMPANY.work={goal:d.company.objective||'',draft:null};companyPaint()};
+  el.querySelectorAll('[data-start]').forEach(b=>b.onclick=()=>companyTodo(b.dataset.start,false,b));
+  el.querySelectorAll('[data-drop]').forEach(b=>b.onclick=()=>companyTodo(b.dataset.drop,true,b));
+  companyCosWire(el);
 }
 /* ---------------- the review chain (company.chain, fabric ControlPlane.review) ---------------- */
 function companyHeld(t){const o=(t.review||{}).outcome;return o==='sent_back'||o==='escalated'||o==='unchecked'}
@@ -28941,7 +29182,10 @@ function companyHint(name){
     marketing:"Draft this month's content plan: four posts and one email.",
     support:'What are customers asking most, and which answers are missing?',
     legal:'List the contracts in my workspace and what each commits us to.',
-    product:'Turn the feedback we have into the three things to build next.'}[String(name||'').toLowerCase()];
+    product:'Turn the feedback we have into the three things to build next.',
+    production:"Plan next week's production from the open orders in my workspace.",
+    quality:'List the defects logged this month and the likely cause of each.',
+    delivery:'Write a status note for each active client engagement.'}[String(name||'').toLowerCase()];
   return t||'What should this department do?';
 }
 async function companyTask(dept,input,btn,said){

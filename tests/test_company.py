@@ -94,7 +94,7 @@ def test_a_draft_is_read_field_by_field_and_what_is_dropped_is_named():
            ] + [{"id": "admin", "name": f"Dept {i}", "people": people(f"p{i}")[:1]} for i in range(12)]}
     plan, dropped = company.normalize(raw, _tools())
     said = " | ".join(dropped)
-    assert plan["company"] == {"name": "Acme[31m", "about": "makes anvils"}
+    assert plan["company"] == {"name": "Acme[31m", "about": "makes anvils", "objective": ""}
     money = plan["departments"][0]
     assert money["color"] in office.COLORS and money["id"] == "finance"
     head = money["people"][0]
