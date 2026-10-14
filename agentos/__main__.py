@@ -3923,6 +3923,126 @@ def _company_cli(args):
                           action="company.review")
         print(f"✓ {words[want]}.")
         return
+    if a == "permissions":
+        # bento company permissions agent|department   who decides who may ask whom
+        m = co.dept_matrix(cfg, store)
+        if not rest or rest[0] not in co.PERMISSION_MODES:
+            print(f"Who may ask whom is decided per {m['mode']}.")
+            if m["mode"] == "department":
+                print("  colleagues in one department may ask each other")
+                for k, v in sorted(m["cells"].items()):
+                    print(f"  {k.replace('>', ' → ')}: {'allow' if v == 'allow' else 'block'}")
+                print("  every other pair of departments: ask, swarm or vote, as the team's talk says")
+            print("  bento company permissions agent|department · bento company allow|block|ask DEPT DEPT")
+            return
+        if up:
+            d = _api_call(port, "/api/company/permissions", "PUT", {"mode": rest[0]})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            try:
+                co.set_permission_mode(cfg, store, rest[0])
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+            _cfgmod.save_config(cfg)
+        print(f"✓ who may ask whom is decided per {rest[0]}.")
+        return
+    if a in ("allow", "block", "ask"):
+        # bento company allow SALES FINANCE   Sales may ask Finance (department level)
+        if len(rest) < 2:
+            print(f"  bento company {a} DEPARTMENT DEPARTMENT   (the first asks, the second answers)")
+            sys.exit(2)
+        eff = {"allow": "allow", "block": "deny", "ask": "ask"}[a]
+        if up:
+            d = _api_call(port, "/api/team/matrix", "PUT",
+                          {"level": "department", "from": rest[0], "to": rest[1], "effect": eff})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            try:
+                co.set_dept_cell(cfg, store, rest[0], rest[1], eff)
+            except KeyError as e:
+                print(f"✗ there is no department called {e.args[0]}")
+                sys.exit(1)
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+        print(f"✓ {rest[0]} → {rest[1]}: {a}"
+              + ("" if co.permission_mode(cfg) == "department" else
+                 ". This counts once the company decides per department: "
+                 "bento company permissions department"))
+        return
+    if a == "kit":
+        # bento company kit SALES                       what teams like Sales commonly use
+        # bento company kit SALES crm=hubspot --yes     give it to Sales (every person in it)
+        if not rest:
+            print("  bento company kit DEPARTMENT [QUESTION=ANSWER ...] [--yes]")
+            sys.exit(2)
+        dept = next((x for x in co.departments(cfg, store) if x["name"].lower() == rest[0].lower()), None)
+        if not dept:
+            print(f"✗ there is no department called {rest[0]}")
+            sys.exit(1)
+        answers = dict(x.split("=", 1) for x in rest[1:] if "=" in x)
+        offer = co.recommend(dept, answers)
+        print(f"{dept['name']}: what teams like it commonly use ({offer['kind']})")
+        for q in offer["questions"]:
+            opts = " | ".join(f"{v}" for v, _ in q["options"])
+            print(f"  {q['ask']}  {q['id']}={offer['answers'][q['id']]}   ({opts})")
+        print(f"  tools:   {', '.join(offer['tools']) or '-'}")
+        print(f"  skills:  {', '.join(s['name'] for s in offer['skills']) or '-'}")
+        print("  servers: " + (", ".join(f"{m['name']} ({m['why']})" for m in offer["mcp"]) or "-"))
+        if not getattr(args, "yes", False):
+            print(f"\n  give it to {dept['name']}: bento company kit \"{dept['name']}\" "
+                  + " ".join(f"{k}={v}" for k, v in offer["answers"].items()) + " --yes")
+            print("  servers are never installed by a kit: set each one up in the MCP app with its own key.")
+            return
+        kit = {"tools": offer["tools"], "skills": [s["id"] for s in offer["skills"]],
+               "mcp": [m["id"] for m in offer["mcp"]]}
+        if up:
+            d = _api_call(port, "/api/company/kit", "POST", {"department": dept["name"], "kit": kit})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            d = co.apply_kit(cfg, store, dept["name"], kit)
+            _cfgmod.save_config(cfg)
+        print(f"✓ {dept['name']}: {len(kit['tools'])} tools and {len(kit['skills'])} skills for "
+              f"{len(d.get('agents') or [])} agents; {len(d.get('skills_made') or [])} new skills.")
+        for m in (d.get("kit") or {}).get("mcp") or []:
+            if not m.get("added"):
+                print(f"  set up {m['name']} in the MCP app ({m['why']})")
+        return
+    if a == "hands":
+        # bento company hands                    each department's executor
+        # bento company hands SALES research     Sales works with the 'research' executor
+        # bento company hands SALES own          each agent's own again
+        if not rest:
+            for s in co.stats(cfg, store):
+                print(f"  {s['name']:<16} {s.get('hands') or 'each agent’s own'}")
+            print("  bento company hands DEPARTMENT EXECUTOR|own   (bento hands lists the executors)")
+            return
+        prof = "" if len(rest) < 2 or rest[1].lower() in ("own", "none", "-") else rest[1]
+        if up:
+            d = _api_call(port, "/api/company/hands", "PUT", {"department": rest[0], "hands": prof})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            try:
+                co.set_hands(cfg, store, rest[0], prof)
+            except KeyError as e:
+                print(f"✗ there is no department called {e.args[0]}")
+                sys.exit(1)
+            except ValueError as e:
+                print(f"✗ {e}")
+                sys.exit(1)
+            _cfgmod.save_config(cfg)
+        print(f"✓ {rest[0]} " + (f"works with the '{prof}' executor." if prof
+                                  else "people each use their own executor."))
+        return
     if a == "chain":
         # bento company chain                 every department's line of bosses
         # bento company chain TECH OPS|lead   Tech reports to Ops (or to the lead)
@@ -4521,6 +4641,146 @@ def _provision_cli(args, cfg, a, rest, val, run):
         except Exception:
             pass
         print(f"  ✓ {r['name']} is set up ({r['how']}) and is joining '{d['pool']['name']}'.")
+
+
+def _timetravel_cli(args):
+    """`bento timetravel` — the checkpoints kept before each step that changed something,
+    what going back to one would undo (`plan`, the same computation the desktop's
+    scrubber shows), and `rewind ID --yes`. Reads the person's own database, so it works
+    with the server down; a running server would keep writing, so stop the turn first.
+    Forking onto another brain is the desktop's and the server's (it starts a turn)."""
+    from . import timetravel as tt
+    from . import users as usersmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    home = Path(store.path).parent
+    a = args.action
+    if a == "list":
+        print(tt.text(store.db, args.conv or "", int(args.n or 30)))
+        return
+    if not args.id:
+        print("say which checkpoint: bento timetravel list shows their ids")
+        sys.exit(2)
+    try:
+        pl = tt.plan(store.db, home, args.id)
+    except KeyError:
+        print(f"no checkpoint {args.id!r}")
+        sys.exit(2)
+    print(f"going back to before {pl['point']['tool']} ({pl['point']['detail']}) would undo {pl['steps']} step(s):")
+    for w in pl["words"]:
+        print("  - " + w)
+    for f in pl["restore"]:
+        print("    put back " + f)
+    for f in pl["remove"]:
+        print("    set aside " + f)
+    if pl["warning"]:
+        print("  ! " + pl["warning"])
+    if a == "rewind":
+        if not args.yes:
+            print("nothing changed: add --yes to rewind")
+            return
+        got = tt.rewind(store.db, home, args.id)
+        print("rewound." + (f" What it replaced is in {got['aside']}" if got["aside"] else ""))
+
+
+def _arena_cli(args):
+    """`bento arena` — the Arena from a terminal: the same task to two to four brains at
+    once, run by the server (the gate, the ledger and the folders are its), shown here as
+    a table that updates until every brain is done. `brains` lists what can be seated;
+    `show ID` reads a finished arena with the server down."""
+    from . import arena as ar
+    from . import users as usersmod
+    cfg, _store = _open_store(getattr(args, "user", ""))
+    uid = usersmod.current() if usersmod.enabled() else ""
+    port = int(cfg.get("port") or 8321)
+    a = args.action
+    if a == "show" or (a == "list" and args.arg):
+        got = ar.load(uid, args.arg)
+        print(ar.text(got) if got else f"no arena {args.arg!r}")
+        return
+    if a == "list":
+        rows = ar.recent(uid)
+        for r in rows:
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["created"]))
+            print(f"  {r['id']}  {when}  {r['status']:<8} {' vs '.join(r['brains'])}\n      {r['task']}")
+        if not rows:
+            print("no arenas yet: bento arena run \"a task\" --vs 1 --vs 2  (bento arena brains lists them)")
+        return
+    try:
+        info = _api_call(port, "/api/arena")
+    except OSError:
+        print("the Arena runs in the server, and it is not running. Start it with `bento serve`.")
+        sys.exit(1)
+    if info.get("error"):
+        print(info["error"])
+        sys.exit(1)
+    choices = info.get("choices") or []
+    if a == "brains":
+        for i, c in enumerate(choices, 1):
+            print(f"  {i:>2}. {c['label']:<40} --vs {c['executor']}:{c['model']}")
+        return
+    if a == "stop":
+        print(_api_call(port, f"/api/arena/{args.arg}/stop", "POST", {}))
+        return
+    # run
+    picks = []
+    for v in args.vs or []:
+        if v.isdigit() and 1 <= int(v) <= len(choices):
+            c = choices[int(v) - 1]
+            picks.append({"executor": c["executor"], "model": c["model"]})
+        else:
+            ex, _, model = v.partition(":")
+            picks.append({"executor": ex, "model": model})
+    got = _api_call(port, "/api/arena", "POST", {"task": args.arg, "contenders": picks})
+    if got.get("error"):
+        print(got["error"])
+        sys.exit(2)
+    aid = got["id"]
+    print(f"arena {aid}: every brain works in {got['folder']}/<n>-<brain>")
+    last = ""
+    while True:
+        cur = _api_call(port, f"/api/arena/{aid}")
+        txt = ar.text(cur)
+        if txt != last:
+            print(txt + "\n")
+            last = txt
+        if not cur.get("live"):
+            break
+        time.sleep(2)
+
+
+def _drama_cli(args):
+    """`bento drama` — the crew's latest episode (drama.story): the argument, the
+    tantrum, the fix, the ship, in words; `strip FILE.png` paints it as the four-panel
+    strip with the watermark (comic.manga), the same picture the desktop offers. What a
+    terminal cannot make is the clip with voices; that is recorded by the desktop page,
+    and this says so. Reads the person's own drama.json, so it works with the server down.
+    """
+    from . import comic, drama
+    from . import avatars as av
+    from . import users as usersmod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    uid = usersmod.current() if usersmod.enabled() else ""
+    beats = drama.load(uid)
+    st = drama.story(beats, cfg)
+    a = args.action
+    if a in ("show", "story"):
+        print(drama.text(st))
+        if st["panels"]:
+            print("\n  bento drama strip FILE.png paints it; the clip with voices is made on the desktop"
+                  " (Drama reel).")
+    elif a == "beats":
+        for b in beats[-int(args.n or 20):]:
+            when = time.strftime("%H:%M", time.localtime(b["ts"]))
+            print(f"  {when}  {b['kind']:<9} {drama.label(b['who'], cfg)}: {b.get('text', '')}")
+        if not beats:
+            print("no beats yet")
+    elif a == "strip":
+        out = Path(args.file or "drama.png").expanduser()
+        av.ensure(store, cfg)
+        out.write_bytes(comic.manga(store, cfg, st["panels"], st["title"]))
+        print(f"wrote {out} ({len(st['panels'])} panels)")
+    elif a == "clear":
+        print(f"forgot {drama.clear(uid)} beats")
 
 
 def _office_cli(args):
@@ -5323,7 +5583,39 @@ def _link_cli(args):
         except ValueError as e:
             print(f"  {e}")
             sys.exit(2)
+        theirs = got["theirs"]
+        if theirs.get("pass"):
+            # a guest pass: the lender's one expiring cell, in the LENDER's database
+            fabricmod.grant_pass(usersmod.store_for(theirs.get("owner") or ""), theirs)
+            p = got["mine"]["pass"]
+            print(f"  linked with {got['mine']['label']}: {p['agent']} is yours to ask for "
+                  f"{max(1, round((p['until'] - time.time()) / 60))} minutes "
+                  f"(seat it in a huddle: @YOURS @{p['agent']}@{got['mine']['label']} …)")
+            return
         print(f"  linked with {got['mine']['label']}")
+        return
+    if act == "pass":
+        # Lend one of your agents for a few minutes: an invite that carries the agent.
+        d = store.get_subagent((a1 or "").lstrip("@")) if a1 else None
+        if not d:
+            print("  bento link pass AGENT [machine|account] --minutes N   — lend one of your agents")
+            sys.exit(2)
+        kind = "account" if a2 == "account" else "machine"
+        mins = max(teamlink.PASS_MIN, min(teamlink.PASS_MAX, int(args.minutes or teamlink.PASS_DEFAULT)))
+        if kind == "machine" and not (cfg.get("team") or {}).get("listen"):
+            print("  this machine is not accepting linked teams: bento link listen on")
+            sys.exit(2)
+        from . import avatars as _av
+        inv = teamlink.invite(owner, kind, cfg=cfg, guest={"agent": d["name"], "minutes": mins,
+                                                            "look": _av.recipe_for(store, d["name"])})
+        fabricmod.audit_team(store, "link.invite", f"link:{kind}",
+                             f"a guest pass for {d['name']} ({mins} min, words only; bento link)")
+        line = inv.get("invite") or inv["code"]
+        how = f"bento link join '{line}'" if kind == "machine" else f"bento link redeem {line} --user THEM"
+        print(f"  {d['name']} on loan for {mins} minutes once it is redeemed:\n\n    {line}\n\n"
+              f"  They run: {how}\n"
+              f"  It works once, for ten minutes. {d['name']} answers in words only: no tools,\n"
+              f"  no files, no keys. The link ends itself when the time is up.")
         return
     if act == "remove":
         lk = teamlink.find(owner, a1 or "")
@@ -5339,6 +5631,10 @@ def _link_cli(args):
         lk = teamlink.find(owner, a1 or "")
         if not lk:
             print(f"  no link called '{a1}'")
+            sys.exit(2)
+        if lk.get("pass"):
+            print(f"  {lk['label']} is a guest pass: one agent, for a set time. "
+                  f"bento link remove {lk['label']} ends it")
             sys.exit(2)
         cur = fabricmod.link_access(store, lk["label"])
         if act == "mine":
@@ -5443,6 +5739,10 @@ def _link_cli(args):
         for m in fabricmod.linked_missions(store, lk["label"]):
             print(f"    their mission {m['mission']}: {', '.join(m['agents']) or '-'}"
                   + (" (stopped)" if m["stopped"] else ""))
+        p = teamlink.pass_state(lk)
+        if p:
+            who = (f"you lent {p['agent']}" if p["role"] == "lender" else f"{p['agent']} is on loan to you")
+            print(f"    guest pass: {who}, " + ("ended" if p["over"] else f"{p['left_s'] // 60} min {p['left_s'] % 60} s left"))
 
 
 def _hands_cli(args):
@@ -7473,13 +7773,17 @@ def main():
     p_co.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "templates", "setup", "task", "name", "audit",
                                "review", "chain", "check", "objective", "todo", "start",
-                               "companies", "new", "open", "drop"], metavar="ACTION")
+                               "companies", "new", "open", "drop", "permissions", "allow", "block",
+                               "ask", "hands", "kit"], metavar="ACTION")
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
                                               " · name: the company's name · audit: on|off"
                                               " · review: lead|heads|off"
                                               " · chain: [DEPARTMENT BOSS|lead] · check: RUN"
                                               " · objective: what it is for · start: TODO-ID"
-                                              " · new/open/drop: a company's name")
+                                              " · new/open/drop: a company's name"
+                                              " · permissions: agent|department"
+                                              " · allow/block/ask: DEPARTMENT DEPARTMENT"
+                                              " · hands: DEPARTMENT EXECUTOR|own · kit: DEPARTMENT")
     p_co.add_argument("--objective", default="", help="setup, new: what the company is trying to achieve")
     p_co.add_argument("--about", default="", help="new: what the company does, in one line")
     p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")
@@ -7528,24 +7832,51 @@ def main():
                                               " · picture: FILE.png · visit: LINK")
     p_of.add_argument("--color", default="", help="move: the colour of a NEW department")
     p_of.add_argument("--user", default="", help="whose office, on a machine with users")
+    p_tt = verb("timetravel", help="rewind files, memory and the graph to before an agent's step")
+    p_tt.add_argument("action", nargs="?", default="list", choices=["list", "plan", "rewind"])
+    p_tt.add_argument("id", nargs="?", default="", help="plan/rewind: the checkpoint id from `list`")
+    p_tt.add_argument("--conv", default="", help="list: one conversation's checkpoints")
+    p_tt.add_argument("-n", default="30", help="list: how many")
+    p_tt.add_argument("--yes", action="store_true", help="rewind: really do it")
+    p_tt.add_argument("--user", default="", help="whose timeline, on a machine with users")
+    p_tm = verb("terminal", help="terminal sessions that outlive their window; attach one over SSH")
+    p_tm.add_argument("action", nargs="?", default="list", choices=["list", "attach", "end"])
+    p_tm.add_argument("id", nargs="?", default="", help="attach: a session id or name, or 'new' · end: the id")
+    p_wn = verb("windows", help="the live windows: the shared browser, terminal sessions, apps in windows")
+    p_wn.add_argument("action", nargs="?", default="list", choices=["list", "end"])
+    p_wn.add_argument("id", nargs="?", default="", help="end: a terminal session or app window id")
+    p_ar = verb("arena", help="the same task to two to four brains at once, side by side")
+    p_ar.add_argument("action", nargs="?", default="list", choices=["list", "brains", "run", "show", "stop"])
+    p_ar.add_argument("arg", nargs="?", default="", help="run: the task · show/stop: the arena id")
+    p_ar.add_argument("--vs", action="append", help="a brain: its number from `bento arena brains`, "
+                                                    "or EXECUTOR:MODEL (repeat 2 to 4 times)")
+    p_ar.add_argument("--user", default="", help="whose arena, on a machine with users")
+    p_dr = verb("drama", help="the crew's latest drama as a story; strip FILE.png paints it")
+    p_dr.add_argument("action", nargs="?", default="show", choices=["show", "story", "beats", "strip", "clear"])
+    p_dr.add_argument("file", nargs="?", default="", help="strip: where to write the PNG")
+    p_dr.add_argument("-n", default="20", help="beats: how many")
+    p_dr.add_argument("--user", default="", help="whose crew, on a machine with users")
     p_link = verb("link", help="linked teams — another machine (mTLS) or another account here")
     p_link.add_argument("action", nargs="?", default="list",
                         choices=["list", "request", "requests", "approve", "deny", "say", "chat",
                                  "listen", "invite", "join", "redeem", "remove", "allow", "disallow", "mine",
-                                 "let", "unlet", "standing", "missions", "stop", "resume"])
+                                 "let", "unlet", "standing", "missions", "stop", "resume", "pass"])
     p_link.add_argument("arg1", nargs="?", default="",
                         help="request: the other machine's address, or 'account' · say/chat: the link · "
                              "approve/deny: the "
                              "request's id · listen: on|off · invite: machine|account · join: the invite · "
-                             "redeem: the code · remove/allow/disallow/mine/let/unlet/standing/missions/stop/"
+                             "redeem: the code · pass: the agent to lend · remove/allow/disallow/mine/let/unlet/standing/missions/stop/"
                              "resume: the link")
     p_link.add_argument("arg2", nargs="?", default="",
                         help="say: the message · request account: the account · invite/join/request: a label · "
+                             "pass: machine|account · "
                              "allow/disallow/let: one of your agents · mine: on|off · unlet: the id · "
                              "stop/resume: their mission")
     p_link.add_argument("rest", nargs="*", help=argparse.SUPPRESS)
     p_link.add_argument("--days", type=float, default=None,
                         help="let: the standing permission ends after this many days")
+    p_link.add_argument("--minutes", type=int, default=None,
+                        help="pass: how long the agent is lent (1 to 60, default 10)")
     p_link.add_argument("--user", default="", help="whose links, on a machine with users")
     p_team = verb("team", help="which AI provider each agent answers on — list, pin one, or the switch")
     p_team.add_argument("action", nargs="?", default="list",
@@ -7834,6 +8165,18 @@ def main():
         _pool_cli(args)
     elif args.cmd == "face":
         _face_cli(args)
+    elif args.cmd == "timetravel":
+        _timetravel_cli(args)
+    elif args.cmd == "terminal":
+        from .termcli import terminal_cli
+        sys.exit(terminal_cli(args))
+    elif args.cmd == "windows":
+        from .termcli import windows_cli
+        sys.exit(windows_cli(args))
+    elif args.cmd == "arena":
+        _arena_cli(args)
+    elif args.cmd == "drama":
+        _drama_cli(args)
     elif args.cmd == "office":
         _office_cli(args)
     elif args.cmd == "files":

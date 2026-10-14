@@ -12,10 +12,22 @@ function loadXterm(){
   });
   return xtermLoading;
 }
-async function renderTerminal(body,w){
-  body.innerHTML='<div style="flex:1;min-height:0;background:#0b0d10;padding:6px 2px 4px 8px"></div>';
-  const holder=body.firstChild;
+/* A Terminal window is a view onto a SESSION (agentos/ptyhub.py) that outlives it: close
+   the window and the shell keeps running; open the Terminal again and it reattaches to
+   the newest session nobody is watching, screen and all. The agent reads and types into
+   the same sessions (terminal_read / terminal_send, through the gate), and when it types
+   the window says so. Faces: GUI/SUI here; TUI `bento terminal` lists and ends sessions. */
+async function renderTerminal(body,w,want){
+  body.innerHTML='<div class="term-wrap"><div class="term-agent" hidden></div><div class="term-holder" style="flex:1;min-height:0;background:#0b0d10;padding:6px 2px 4px 8px"></div></div>';
+  const holder=body.querySelector('.term-holder'),agentLine=body.querySelector('.term-agent');
   try{await loadXterm()}catch(e){holder.innerHTML='<p class="mut" style="padding:16px">could not load terminal assets</p>';return}
+  if(want===undefined&&!w._session){
+    // reattach to the newest session nobody is watching, if there is one
+    try{const d=await apiJSON('/api/terminal/sessions');
+      const free=(d.sessions||[]).filter(x=>x.alive&&!x.watching).pop();
+      if(free){want=free.id;toast('Back in '+free.name+', still running')}}catch(e){}
+  }
+  want=want||w._session||'new';
   const term=new Terminal({fontSize:13,cursorBlink:true,scrollback:4000,
     fontFamily:"'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace",
     theme:{background:'#0b0d10',foreground:'#e6ebf2',cursor:'#5eead4',cursorAccent:'#0b0d10',
@@ -23,16 +35,39 @@ async function renderTerminal(body,w){
   const fit=new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(holder);
-  const tws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/terminal');
+  const tws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/terminal?session='+encodeURIComponent(want));
   const sendResize=()=>{if(tws.readyState===1)tws.send(JSON.stringify({type:'resize',cols:term.cols,rows:term.rows}))};
   tws.onopen=()=>{fit.fit();sendResize();term.focus()};
-  tws.onmessage=e=>term.write(e.data);
-  tws.onclose=()=>{try{term.write('\r\n\x1b[90m[session ended — close and reopen the Terminal to start a new one]\x1b[0m\r\n')}catch(e){}};
+  tws.onmessage=e=>{
+    if(e.data.charCodeAt(0)===0){            // control, never screen output
+      let m;try{m=JSON.parse(e.data.slice(1))}catch(err){return}
+      if(m.type==='session'){w._session=m.id;w._sname=m.name;const t=w.el.querySelector('.tname');if(t)t.textContent='Terminal · '+m.name}
+      else if(m.type==='agent'){agentLine.hidden=false;agentLine.textContent=(m.who||'Agent')+' typed: '+m.text;
+        clearTimeout(w._at);w._at=setTimeout(()=>{agentLine.hidden=true},6000)}
+      return;
+    }
+    term.write(e.data);
+  };
+  tws.onclose=()=>{try{term.write('\r\n\x1b[90m[detached; the session may still be running. Reopen the Terminal to attach]\x1b[0m\r\n')}catch(e){}};
   term.onData(d=>{if(tws.readyState===1)tws.send(JSON.stringify({type:'input',data:d}))});
   const ro=new ResizeObserver(()=>{try{fit.fit();sendResize()}catch(e){}});
   ro.observe(holder);
   w.term=term;w.tws=tws;w.ro=ro;
   setTimeout(()=>{try{fit.fit();sendResize();term.focus()}catch(e){}},80);
+}
+/* Switch this window to another session (or a new one), keeping the window. */
+function terminalAttach(w,id){
+  try{w.ro?.disconnect();w.tws?.close();w.term?.dispose()}catch(e){}
+  w._session=id==='new'?'':id;renderTerminal(w.el.querySelector('.wbody'),w,id);
+}
+async function terminalSessionsMenu(w){
+  let d={sessions:[]};try{d=await apiJSON('/api/terminal/sessions')}catch(e){}
+  const items=(d.sessions||[]).filter(x=>x.alive).map(x=>({label:esc((x.id===w._session?'● ':'')+x.name+
+      (x.by!=='you'?' · by '+x.by:'')+(x.foreground?' · '+x.foreground:'')+(x.watching&&x.id!==w._session?' · open elsewhere':'')),
+    fn:()=>terminalAttach(w,x.id)}));
+  return items.concat([{label:'New session',fn:()=>terminalAttach(w,'new')},
+    {label:'End this session',fn:async()=>{if(!w._session)return;
+      await fetch('/api/terminal/sessions/'+encodeURIComponent(w._session),{method:'DELETE'});toast('Session ended')}}]);
 }
 
 /* ================= about app ================= */

@@ -610,6 +610,11 @@ class Store:
         self.db.executescript(SCHEMA)
         self._migrate()
         self.db.commit()
+        # time travel's undo journal: triggers rebuilt from the live columns, so a column
+        # a migration just added is journalled too (agentos/timetravel.py)
+        from . import timetravel
+        with contextlib.suppress(sqlite3.Error):
+            timetravel.install(self.db)
         self.grants_version = 0  # bumped on every grant write so the PDP cache invalidates
         self.quarantine_version = 0  # ditto for holds — consulted on every capability call
 
@@ -1078,6 +1083,12 @@ class Store:
         # biggest writer here, and the run row itself is kept so the history of
         # WHAT ran is intact even once the trace has aged out.
         cut("fabric_events", "ts", events_days)
+        # time travel keeps a week of checkpoints and the copies they point at
+        from . import timetravel
+        with contextlib.suppress(Exception):
+            n = timetravel.prune(self.db, Path(self.path).parent)
+            if n:
+                gone["checkpoints"] = n
         if gone:
             self.db.commit()
             # The WAL is where the freed pages live until somebody checkpoints.

@@ -61,6 +61,8 @@ A big team doesn't turn into a crowd:
   Tap a name to ask them in the chat. **◂ All rooms**, Esc or a double tap goes back.
 - **The ring takes the shape of your window.** Wide windows spread it out, a phone stands
   it up, and the camera always fits the whole office. Scroll to zoom and drag to look around.
+- **Zoom right in.** Scroll, or use **＋ − ⤢** in the corner, to go from the whole office
+  down to one desk. **⤢** brings the whole office back.
 
 ![Inside Engineering: four desks against the windows, people at them seen from behind with their screens over their shoulders, one turned into the room, the team's board and the water cooler, and the list on the right with all seven people](screenshots/office-3d-room.png)
 
@@ -70,11 +72,22 @@ as everywhere else. On a screen with no 3D graphics the office is drawn flat and
 why. Switch looks in **✎ Design → Look**, or with `bento office look 3d` / `flat`.
 
 **Office HQ** is the same office as your desktop: Settings → Appearance → Scene → *Office
-HQ (3D)*. It fills the screen behind the prompt bar and is always 3D, whatever look the
-Office window uses. Tap a room's card to look inside, and tap a name there to open the Office
-with a message to them started.
+HQ (3D)*. It fills the screen and is always 3D, whatever look the Office window uses. Tap a
+room's card to look inside, and tap a name there to open the Office with a message to them
+started. Scroll over the desktop, or use **＋ − ⤢**, to zoom.
 
-![Office HQ as the desktop: the prompt bar at the top, the ring of rooms around the Brain below it, cards over every room, and the dock](screenshots/office-hq-scene.png)
+On a wide screen the prompt bar and its answers sit in a column on the right, and the office
+fits in the space on the left, so what you ask and what happens are side by side. When one
+department starts working, the camera moves to its room and comes back to the whole office a
+few seconds after it finishes. If you zoom or pan yourself, it stays where you put it until you
+press **⤢**.
+
+![Office HQ while Sales works: the Sales room fills the left, the conversation and its approval on the right](screenshots/office-hq-follow.png)
+
+![Office HQ as the desktop: the ring of rooms around the Brain, cards over every room, and the dock](screenshots/office-hq-scene.png)
+
+Opening the Office window while Office HQ is your desktop moves the 3D office into the
+window, and closing it gives it back. (It used to stay dark: the desktop kept drawing it.)
 
 ## What moves, and why
 

@@ -568,6 +568,49 @@ user." Six rules:
   and then set up from ticked departments lost the line. Removing a company switches its desks
   and missions off (nothing would sign their work off) and keeps its agents and space.
 
+**A department is reached by name, from every chat and by the lead** (`company.parse_department`,
+`ControlPlane.department_task`, the `department_task` tool, `fabric.department_reply`, `10d-mentions.js`;
+`tests/test_department_routing.py`). Reported with a screenshot: Aria on Claude Code ran WebSearch
+herself for "which products are viral", and "why are no agents invoked?" Four rules:
+- **`@Sales …` is a task for that department** in Chat, the prompt bar, an agent panel, the TUI,
+  Telegram and WhatsApp: a run of its desk through ONE door, `ControlPlane.department_task`, decided as
+  `agent.invoke` on the desk's flow (as `/api/company/task`). An agent's own name is checked first
+  (`parse_mention`), and the longest department name wins. Checked before the executor branch.
+- **The lead's tool resolves the desk in the agent loop** (`_desk`, never the model's, `_conv` too), so
+  `policy.action_of` decides the flow that actually runs. In `TEAM_TOOLS`, `toolscope.CORE` and
+  `SAFE_TOOLS`; `company.note(tool=)` tells the lead not to do a department's work itself.
+- **A run asked from a conversation answers there once**: origin surface `chat` is skipped by
+  `_flow_deliver`, or the desk announced the answer a second time.
+- **`/api/chat/addresses` is the one list `@` suggests**, and a parked company's people are not on it.
+
+**Who may ask whom can be decided per department, and a department can have hands** (`company.permissions`,
+`dept_cell_decision`, `set_dept_cell`, `set_hands`, `office.department_of`, `PDP._dept_level`;
+`tests/test_department_permissions.py`). Asked for as "PDP between the departments instead of just the
+agents, switchable, and executors at department level". Four rules:
+- **The gate decides it at 2e, after the agent-level blocks**: colleagues in one department may ask each
+  other (`department-same`), a department cell (principal `department:<company>/<Dept>`, resource
+  `department:<Dept>`) decides between departments, an empty one goes to `_default`. An agent-level
+  deny still refuses; inside a flow only the flow's consent counts.
+- **The mode is the company's** (`company.permissions`), so each company decides it for itself, and
+  `department_of` reads parked companies too: a mission of a parked company is still judged by its own.
+- **A department's `hands` is every member's unless the member has its own** (`hands.profile_name`).
+  `set_hands` bumps the hands generation, so the gate's reach cache sees it at once.
+- Faces: Company panel (Executor, Who may ask whom), Settings → Team & Communications (the department
+  grid, `paintDeptMatrix`), `bento company permissions|allow|block|ask|hands`.
+
+**A new department starts with a kit: asked, proposed, ticked** (`company.KITS`, `KIT_SKILLS`,
+`KIT_MCP`, `recommend`, `clean_kit`, `apply_kit`, `kit_status`; `tests/test_company_kit.py`). Asked for
+as "set up the skills, tools and MCP most widely used for that kind of department, asking questions".
+- **Every item is a closed set**: tools from `ALLOWED_TOOLS`, skills written out in `KIT_SKILLS`, servers
+  in `KIT_MCP`; every `if` condition names a real option. The test checks a `preset` is in the MCP app's
+  catalogue and a `curated` one in `mcp_catalog.py`. Add a kit by adding rows, never by free text.
+- **Preview and apply are one computation**: `preview` attaches `kit_offer` and the kit, the page sends
+  back the ticked kit (not while an answer is changing it, `kitStale`), and `apply` re-derives. Kit tools
+  go to NEW people; skills are made only when ticked and never over an existing name (`_kit_skills`).
+- **A kit never installs a server.** The department remembers it, its card says Set up (MCP app preset,
+  sign-in server, or the Store's search) until a server by that name is configured.
+- A department that exists gets the same sheet (`apply_kit`: everyone in it, one `company.kit` row).
+
 **Every scene draws the company from ONE answer, `company.membership()`** (who is in which
 department, its head, whether that head was NAMED, the colour's hex, each title). The Crew
 stage reads it off `/api/subagents`, the Mind off `mind.snapshot`, the World off the
@@ -2086,7 +2129,16 @@ things keep it true:
   Shared shapes are `of3Geo` (`userData.shared`), and every scene traverse must skip them.
   **Office HQ** (scene `hq`) is the same office scene full screen and always 3D (`of3HQ`); its
   words layer lives in `#desktop` (the World's tags argument: the wall cannot be tapped) and the
-  prompt bar and dock are `of3Pads`, so the ring fits between them.
+  prompt bar and dock are `of3Pads`, so the ring fits between them. On a wide screen the bar and
+  its answer cards are a right-hand column (`of3Docked`, CSS in 23-office.css), `of3Pads` gains a
+  right pad, a room's list moves left, and `#aibubble`/`.ap-float` move clear of the column.
+  **The camera follows the work there** (`of3Follow`, fed by the cards' run counts, never a timer):
+  one department working → its room (`of3RoomView(name, bare)`), back to the whole office 6 s after;
+  a person's wheel, drag or ＋/− (`OF3.userMoved`) stops it until ⤢. The wheel reaches HQ through a
+  document listener that only acts over `#desktop`/`#wall`. Zoom goes to `OF3_ZOOM_MIN` (one desk).
+  **The window takes the renderer from the scene**: `renderOffice` calls `of3Dispose()` before taking
+  OFFICE over, and `of3Layout` rebuilds when `OF3.cv` lives in another host. Without it the window
+  stayed dark while the scene's canvas kept drawing ("I cannot see the office").
 - **Rooms are painted once** into an offscreen layer per layout; a frame is a blit plus people
   (~1.1ms). 30fps while something moves, 6 at rest, none asleep (`winAwake`, `winTick(...,0)`
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a
@@ -2613,6 +2665,26 @@ things keep it honest (`tests/test_team_missions.py`):
   The name is the other machine's CLAIM; stopping a mission is for an honest partner, and the
   docs say that unticking the agent is what stops a machine.
 
+**A guest pass lends ONE agent for minutes, and the lent agent has no hands** (`teamlink.invite(guest=)`,
+`clean_pass`/`pass_state`/`ended_passes`, `fabric.grant_pass`/`guest_seat`/`_guest_turn`, `/api/team/pass(es)`,
+`bento link pass`; `docs/team.md`, `tests/test_guest_pass.py`). Asked for as "summon my Security Auditor into
+your Bento for 10 minutes, without exposing my keys or filesystem". Five rules:
+- **It is a link, not a second door.** An invite carrying `{agent, minutes, look}`; both halves of the link
+  carry `pass` (role lender/guest). The lender writes ONE `agent.message` cell with `source="pass"` and
+  `expires_at` (`set_link_access` leaves pass rows alone, the access route and `bento link allow` refuse a
+  pass link), so it never outlives the pass by being re-ticked.
+- **The lender answers with `no_tools=True`.** Words from the agent's soul and nothing it can reach. Only the
+  lent agent is answered, and `answer_linked` and `_message_linked` each refuse on their OWN clock.
+- **The sweep ends it** (`_team_chat_sweep` → `_team_end_link`, the remove route's one path): the row, the
+  cells on both sides, a `link.revoke` row each side, the visit cache.
+- **A guest in a huddle taints every local turn and never votes.** Its words reach the others' prompts.
+  `guest_seat` admits only a live guest-role pass for that agent; `parse_huddle` and `huddleParse` accept
+  `name@link`.
+- **What the other side says about a pass is held**: `until` to `PASS_MAX`, the name through `plain`, the
+  face through `avatars.clean`. The page paints a guest's face from `AV_GUEST` (`avatarGuest`), filled by the
+  huddle event, the World and Settings; it is never stored. The World's guest comes from
+  `server._world_guests` at the resting mood: world.py never hears of it.
+
 ## People on linked teams: messages, and no agent reads them
 
 `agentos/teamchat.py` + the `team_messages` table + Team Chat (`24c-teamchat.js`) + `bento link
@@ -2796,6 +2868,89 @@ be on and agents would be working in the office". Five rules:
   list). The wizard, Settings' Test it and `bento face test` (arecord) all use that one route
   or `_step_voice`. A wake word of the person's own (`face.wake_word`) never replaces the
   agent's name.
+
+## Drama, Arena, Watch me once, Time travel: four things a person shows somebody else
+
+Asked for as five features to share (the fifth is the guest pass, above). Each is a module free of HTTP and
+asyncio with a CLI verb, and a window.
+
+**The drama reel tells only what happened** (`agentos/drama.py`, `comic.manga`, `00g-drama.js`,
+`/api/drama*`, `bento drama`; `docs/drama.md`, `tests/test_drama.py`). Beats come from ONE place, `_drama_seen`
+inside `broadcast`/`broadcast_user`; nothing else writes them. `story()` is four acts and names a missing one
+rather than borrowing it. Balloon words are the agent's (a refusal shows the command and `detail`, which
+`tool_end` and fabric's step events now carry); act titles are captions. A person's no is never stamped
+(`STAMP["declined"]`, the World's GENTLE rule). Kept per person in `drama.json`, `KEEP` beats. The clip is the
+page's (MediaRecorder; voices only through a server speech engine, since speechSynthesis has no stream, and
+the window says so); the strip is the server's, so the terminal gets the same picture. Every output carries the
+`WATERMARK` footer. Nothing is sent anywhere.
+
+**The Arena measures and never judges** (`agentos/arena.py`, `00h-arena.js`, `/api/arena*`, `bento arena`;
+`docs/arena.md`, `tests/test_arena.py`). Contenders come only from `executors.brains` (`contenders()`), each
+works in its own folder through `_SeatToolbox` (a cfg override resolved through `usersmod._ScopedCfg`), every
+call passes the gate under the person's autonomy. Speed is counted from the FIRST output (a slow start is time),
+steps and refusals at `tool_end` (so a hard deny counts), cost only from `usage` events (`Agent.emit_usage`).
+`summary()` must never say won/winner/best.
+
+**Watch me once notes doors, never content** (`00i-watch.js`, `pinRoutine` in `07-widgets.js`, `place`/`view`
+routine steps; `docs/watch.md`, `tests/test_watch.py`). `watchNote` is called from openApp, a place, a Settings
+tab, a Missions tab and the Logs filter, and only for steps `navigator.userActivation` says a person caused, and
+never while `AUTO_RUNNING`. `watchFind` is pure (3 to 6 steps, two doors at least, twice in 45 minutes) and the
+test runs it in Node. Kept in page memory; a decline is remembered per browser. The daily option is an ordinary
+`/api/tasks` schedule running `run_automation`; it says "every day", because that is what the scheduler does.
+
+**Time travel journals by trigger and deletes nothing** (`agentos/timetravel.py`, `Agent._checkpoint`,
+`00j-timetravel.js`, `/api/timetravel*`, `bento timetravel`; `docs/timetravel.md`, `tests/test_timetravel.py`).
+- Memory, graph and skills are journalled by SQLite triggers into `_tt_undo` (rebuilt from live columns at every
+  `Store` start, `WHEN paused='0'` so a rewind is not journalled); files are content-addressed blobs taken by
+  `_checkpoint` AFTER the gate allowed the step and BEFORE it runs, and a checkpoint never fails a step.
+- `plan()` is what `rewind()` does (the jobs rule). A rewind moves what it replaces into
+  `.timetravel/rewound/<time>/`; it never deletes. A shell step is marked `unseen` and the plan says it cannot be
+  undone; an agent CLI's native edits are outside it, and the docs say so.
+- Home is the STORE's parent everywhere (`Path(store.path).parent`), or the agent and the route disagreed about
+  where the blobs were. Rewind is refused (409) while that conversation's turn runs. The ledger is never touched.
+- Window layouts are the page's (sessionStorage per checkpoint id); a fork is a new conversation with the history
+  before that turn and the same question on the chosen brain (validated against `arena.choices`).
+
+## Live windows: a window can be a real process, and the agent shares it
+
+`agentos/cdpbrowser.py` (Web: a real Chromium over CDP), `agentos/ptyhub.py` (Terminal sessions)
+and `agentos/appstream.py` (an installed app in a window), drawn by ONE canvas view, `streamView`
+in `04f-streams.js`; `docs/live-windows.md`, `tests/test_live_windows.py`. Asked for as "every
+window is a live stream of a real process that both you and the agent control", so a login wall
+or a CAPTCHA is handed to the person in the same session the agent then carries on in. Rules:
+- **The browser is driven over `--remote-debugging-pipe`, never a port**: a debugging port is a
+  door into the person's signed-in sessions for anything on the machine. Its profile is
+  `<home>/browser/profile` (0700, per account), web pages only (`allowed`), closed after `IDLE_S`.
+- **A browser step is decided per SITE**: `browser.act site:<host>` and `browser.read`, with
+  `_site` injected by the agent loop from what the tab shows, never the model's. The hands' web
+  list bounds `site:`. `_same_site_taint` lifts the untrusted-content ceiling ONLY when every
+  taint entry came from that same site in the shared browser: a page's own scripts can already
+  act on its site, words from anywhere else must not spend the session.
+- **A wall is the person's, and the agent waits for it** (`browser_wait_for_person`): the
+  window pulses (`winNeedsYou`), one toast per wall (`browserAttention` dedupes the open and the
+  wait), SUI raises the desktop (`suiAttention`). It ends on Done or when the wall goes away;
+  with nobody connected (`_someone_here`) it returns `[nobody here]` at once instead of holding
+  a turn for five minutes.
+- **A terminal session belongs to the server, a window only watches it.** Closing detaches;
+  opening the Terminal reattaches to the newest unwatched one with its scrollback;
+  `bento terminal attach` joins the same pty over SSH (Ctrl+] detaches). The argv is
+  `_terminal_argv`, jail included, for a window and for the agent's own session alike.
+- **Typing into a terminal is a command, and a program in the foreground is a person's call.**
+  `terminal_send` is classified like `run_command`; `_fg` (read from the pty's foreground
+  process group, injected by the loop) makes anything typed into vim, ssh or a `[y/N]` prompt
+  `must_person` at every autonomy level. In the jail an idle shell is bwrap's child in its own
+  group, so a shell name at the prompt counts as the shell (`SHELLS`); unsure is "a program".
+- **An app in a window gets its own headless display** (X11 first: Xvfb + xdotool + ffmpeg
+  x11grab; Wayland: headless sway + grim + wtype), never the person's screen. A bare Xvfb has no
+  window manager, so `_x11_fit` sizes and focuses the app's windows: without it xterm came up
+  80x24 in a corner and typing went to the root window. waypipe and PipeWire are not used, and
+  `status()` says why; a missing tool names its component (`COMPONENT`).
+- **The view uses the LAYOUT size** (`clientWidth`), never `getBoundingClientRect`: a window
+  opens under a scale transform, the transformed box made the remote page 320x240, and a
+  transform never fires the ResizeObserver to fix it. Keys typed in a `.sv` are the stream's:
+  the type-anywhere omnibar and the palette skip it, as they skip `.xterm`.
+- **A forwarded chat reaches them through the team door** (`executors.WORKSPACE_DOOR_TOOLS`,
+  `workspace_note`), each call through the gate; its own fetch sees only the anonymous web.
 
 ## Window chrome: the rules that keep a stack readable
 

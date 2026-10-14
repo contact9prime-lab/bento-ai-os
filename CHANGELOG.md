@@ -1,5 +1,76 @@
 # Changelog
 
+## 0.6.33 — 2026-10-13
+
+**Windows that are real processes, shared with your agent.** Asked for as "turn the window manager from
+a fake HTML desktop into a real session compositor": your own signed-in browser, terminals that stay, and
+native apps, each one a live window you and the agent both use.
+- **Web is a real Chromium**, streamed into its window and signed in where you signed in. Your agent reads,
+  clicks and types in the same tabs. When a page wants a password, a code from your phone or a CAPTCHA, the
+  window pulses and asks you; you do it in the window and the agent carries on in the same session. Clicks
+  are asked for per site, and words read on one site never spend your session on another.
+- **Terminal sessions stay.** Close the window and the shell keeps running; open the Terminal and you are
+  back with what it printed. Your agent can read a session and type into it. Typing into an editor, ssh or a
+  `[y/N]` prompt always asks you. `bento terminal attach` joins the same session over SSH.
+- **Installed apps in a window.** Tick *In a window* in the Apps launcher: the app runs in its own invisible
+  display on this machine and is drawn in a Bento window you can use from a phone. Your agent can look at
+  it and click in it, and asks first. Needs Xvfb, xdotool and ffmpeg (or sway, grim and wtype).
+- `bento windows` lists the browser's tabs, terminal sessions and app windows. An agent on Claude Code,
+  Gemini CLI or Codex reaches all three through the same door as its team.
+
+## 0.6.32 — 2026-10-13
+
+**Five things worth showing somebody else.** Asked for as a list: a drama reel, an arena, a desktop
+that notices your routines, a lent agent in a friend's huddle, and a time machine for what agents changed.
+- **Drama reel.** Your crew's real argument, the step the gate refused, the fix and the ship, told as four
+  acts. Save it as a 15 second clip (9:16 or square) with the agents' voices, record 15 seconds of the
+  scene you are in, or get a 4-panel strip. Every one carries a small `bento-ai-os` footer, and nothing is
+  sent anywhere. `bento drama strip reel.png` paints the strip from a terminal.
+- **Arena.** The same task to two or four brains at once, side by side: local models, cloud models or
+  agent CLIs. Each pane shows time, tokens a second, tokens, cost, refusals by the gate and steps, live.
+  It never says which answer is better. `bento arena run "…" --vs 1 --vs 2`.
+- **Watch me once.** Do the same few steps twice (open Logs on errors, then the Brief, then WhatsApp) and
+  a card offers to make them one click: a routine pinned to the desktop, and if you like, played every
+  day at 9. Only the doors you went through are noticed, never what you typed. Off in Settings →
+  Appearance.
+- **Time travel.** A checkpoint before every step that changes a file, the memory, the graph or a skill.
+  The scrubber shows what going back would undo, then rewinds files, memory and the open windows.
+  Nothing is deleted: what a rewind replaces is set aside. A shell step is marked as one it cannot undo.
+  **Fork** asks the same question again from that step on another brain. `bento timetravel`.
+- **Guest pass.** Lend one of your specialists to a friend for 1 to 60 minutes. It answers in words only,
+  with no tools on your machine, so your files and keys stay out of reach. On their side it can sit in a
+  huddle as `auditor@you` and stands in their World, and the link ends itself when the time is up.
+  `bento link pass auditor`.
+
+## 0.6.31 — 2026-10-13
+
+**Give work to a department by name, and Aria hands it on.** Asked for with three screenshots: the
+Office window blank, the HQ scene, and Aria searching the web herself for "which products are
+viral", with the question "why are no agents being invoked?"
+- **The Office window draws again.** With Office HQ as your desktop, opening the Office window
+  left it dark: the desktop kept the 3D office. The window now takes it, and gives it back when
+  it closes.
+- **`@Sales …` gives Sales the task**, in Chat, the prompt bar, an app's agent panel, the
+  terminal chat, Telegram and WhatsApp. Its head leads it, the bosses above sign it off, the
+  auditor checks it, and the answer comes back in the chat under the department's name. Typing
+  `@` suggests your agents and departments.
+- **Aria hands real work to the department that fits**, on the built-in brain and on Claude Code,
+  Gemini CLI or Codex, through a new `department_task` tool that goes through the permission gate
+  as starting that department's desk.
+- **Office HQ shows the conversation beside the action.** On a wide screen the prompt bar and its
+  answers are a column on the right, the office fits on the left, and the camera moves to the
+  department that is working. Zoom goes down to a single desk, with ＋ − ⤢ on the picture.
+- **Who may ask whom, per agent or per department.** Switch it in ▦ Company or Settings → Team &
+  Communications: colleagues in a department may ask each other, and a department grid decides
+  between departments. A block between two agents still holds.
+- **A department can have an executor**, used by everyone in it who has none of their own.
+- **A new department starts with a kit.** The setup asks a question or two (where are your
+  customers, where do questions arrive) and proposes the tools, skills and MCP servers teams like
+  it commonly use. Skills are shown in full and made only when ticked; servers are never
+  installed, and the department's card says **Set up** for each. A department you already have
+  gets the same sheet from its card.
+- Terminal: `bento company permissions|allow|block|ask|hands|kit`.
+
 ## 0.6.30 — 2026-10-13
 
 **Give the company an objective, and keep more than one company.** Asked for as "there has to be

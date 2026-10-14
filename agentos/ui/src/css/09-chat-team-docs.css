@@ -350,3 +350,12 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 .cp-attach{flex:none;width:30px;height:30px;border-radius:var(--r-full);color:var(--dim);display:flex;align-items:center;justify-content:center;font-size:var(--fs-md)}
 .cp-attach:hover{background:rgba(255,255,255,.08);color:var(--txt)}
 #composer.dropping,.cp-inbar.dropping{outline:2px dashed var(--acc);outline-offset:-2px}
+/* @ suggestions (10d-mentions.js): agents and departments, above the composer */
+.ats{position:fixed;z-index:9600;max-height:min(340px,50vh);overflow:auto;padding:4px;border-radius:var(--r-md,12px);
+  background:var(--bg2);border:1px solid var(--line);box-shadow:var(--el-4,0 10px 30px rgba(0,0,0,.35))}
+.ats-row{display:flex;align-items:center;gap:10px;min-height:var(--tap,40px);padding:4px 10px;border-radius:var(--r-sm,8px);cursor:pointer}
+.ats-row.on,.ats-row:hover{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+.ats-row .av,.ats-dot{width:26px;height:26px;flex:none;border-radius:50%;image-rendering:pixelated}
+.ats-dot{display:inline-grid;place-items:center;color:#fff;font-size:13px;background:var(--bg3)}
+.ats-name{font-weight:600;white-space:nowrap}
+.ats-sub{color:var(--dim);font-size:var(--fs-sm,12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}

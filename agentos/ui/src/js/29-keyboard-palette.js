@@ -443,7 +443,8 @@ function scRun(name,e){const f=SC_ACTIONS[name];if(f){f(e);return true}return fa
 
 document.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'||e.key==='Alt')switcherCommit()});
 document.addEventListener('keydown',e=>{
-  const inTerm=e.target.closest&&e.target.closest('.xterm');
+  // a terminal or a live window (04f-streams.js): its keys are the process's, not shortcuts
+  const inTerm=e.target.closest&&(e.target.closest('.xterm')||e.target.closest('.sv'));
   // "Typing" means a field with something in it. The prompt bar holds the caret
   // by default, so treating an EMPTY bar as typing would mute every desktop
   // shortcut on a fresh desktop — which is where you need them most.

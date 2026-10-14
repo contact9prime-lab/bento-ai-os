@@ -277,6 +277,15 @@ def test_office_hq_is_a_scene_of_its_own():
     assert "kiosk" in (JS / "24h-kiosk.js").read_text() and "IMMERSIVE.scene==='hq'" in (JS / "24h-kiosk.js").read_text()
 
 
+def test_the_window_takes_the_renderer_from_the_scene():
+    # Reported as "I cannot see the existing office": with Office HQ as the scene, the
+    # window opened dark because the scene's renderer kept drawing into the scene.
+    i = FLAT.index("function renderOffice(")
+    take = FLAT[i:FLAT.index("OFFICE.w=w;", i)]
+    assert "of3Dispose();" in take
+    assert "if(OF3.cv&&OF3.cv.parentElement!==sc)of3Dispose();" in SRC
+
+
 def test_the_office_doc_shows_it():
     doc = (ROOT / "docs/office.md").read_text()
     assert "screenshots/office-3d.png" in doc and "screenshots/office-3d-room.png" in doc
@@ -285,3 +294,16 @@ def test_the_office_doc_shows_it():
     assert "screenshots/office-hq-scene.png" in doc and (ROOT / "docs/screenshots/office-hq-scene.png").exists()
     for shot in ("office-3d-boss.png", "office-3d-meeting.png"):
         assert f"screenshots/{shot}" in doc and (ROOT / "docs/screenshots" / shot).exists()
+
+
+def test_hq_shows_the_conversation_beside_the_work():
+    # "when I chat I should see things in action with messages on the right side"
+    css = (ROOT / "agentos/ui/src/css/23-office.css").read_text()
+    assert "body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{" in css
+    assert "function of3Docked()" in SRC and "r:Math.max(0,box.right-r.left+16)" in SRC
+    # the camera follows one department at work, and a person's own move stops it
+    assert "function of3Follow(rows)" in SRC and "OF3.userMoved" in SRC and "of3Follow(rows);" in SRC
+    # zoom goes down to a desk, with buttons a finger can use
+    import re as _re
+    assert float(_re.search(r"var OF3_ZOOM_MIN=([0-9.]+)", SRC).group(1)) < 1.2
+    assert "function of3Controls()" in SRC and ".of3-zb{width:var(--tap,36px);height:var(--tap,36px)" in css

@@ -41,13 +41,20 @@ UNTRUSTED_TOOLS = {
     "mail_read",
     "calendar_events",    # an invitation's description is written by the inviter
     "community_recall",   # notes other machines' agents shared (pool.py)
+    # the shared browser: everything that hands back a page's words or picture
+    "browser_open", "browser_read", "browser_click", "browser_type", "browser_key",
+    "browser_scroll", "browser_screenshot", "browser_tabs", "browser_wait_for_person",
 }
+# Browser steps that change something on a page, and so carry the site they act on
+BROWSER_ACTS = ("browser_click", "browser_type", "browser_key")
 
 
 def _untrusted_source(name: str, args: dict) -> str:
     """Where this output came from, in a form worth showing the user."""
     if name == "fetch_url":
         return str(args.get("url") or "a web page")[:120]
+    if name.startswith("browser_"):
+        return f"{_browser_site() or 'a page'} (in the shared browser)"
     if name in ("mail_search", "mail_read"):
         return "your mailbox"
     if name == "calendar_events":
@@ -57,9 +64,9 @@ def _untrusted_source(name: str, args: dict) -> str:
         return f"MCP server ({name[4:].split('_')[0]})"
     if name.startswith("ocp_"):
         return f"OpenClaw plugin ({name[4:].split('_')[0]})"
-    if name in ("run_command", "run_python"):
+    if name in ("run_command", "run_python", "terminal_send"):
         from .tools import FETCHES
-        m = FETCHES.search(str(args.get("command") or args.get("code") or ""))
+        m = FETCHES.search(str(args.get("command") or args.get("code") or args.get("text") or ""))
         return f"a download in the shell ({(m.group(0).strip() if m else 'network')[:40]})"
     if name in ("git_clone", "git_pull"):
         return f"a git remote ({str(args.get('url') or args.get('remote') or 'origin')[:80]})"
@@ -73,6 +80,16 @@ def _untrusted_source(name: str, args: dict) -> str:
 _TAINT_MARK = '<untrusted source='
 
 
+def _browser_site() -> str:
+    """The site this person's shared browser shows now (cdpbrowser keeps it from CDP)."""
+    try:
+        from . import cdpbrowser
+        from . import users as usersmod
+        return cdpbrowser.site_now(usersmod.current() or "")
+    except Exception:
+        return ""
+
+
 def is_untrusted(name: str, args: dict | None = None) -> bool:
     """Is this tool's output somebody else's words? A shell command counts when it
     fetches from outside (curl, wget, a URL, git clone): its output is a web page as
@@ -84,6 +101,10 @@ def is_untrusted(name: str, args: dict | None = None) -> bool:
     if name in ("run_command", "run_python") and args:
         from .tools import FETCHES
         return bool(FETCHES.search(str(args.get("command") or args.get("code") or "")))
+    if name == "terminal_send" and args:
+        # a line typed into a shared terminal is a shell command like any other
+        from .tools import FETCHES
+        return bool(FETCHES.search(str(args.get("text") or "")))
     return False
 
 
@@ -805,6 +826,25 @@ class Agent:
         )
         return (base + "\n\n" + self.extra_system) if self.extra_system else base
 
+    async def _checkpoint(self, name: str, args: dict) -> None:
+        """Time travel: before a step that changes something, keep what it is about to
+        change (agentos/timetravel.py). Only here, at the one gate both loops pass, and
+        only after the step was allowed. Never fails the step it is guarding."""
+        from . import timetravel
+        if not timetravel.changes_things(name):
+            return
+        try:
+            from pathlib import Path as _P
+            from . import config as cfgmod
+            home = _P(self.toolbox.store.path).parent        # the store's own home: whoever's turn
+            files = timetravel.targets(name, args, self.toolbox._abs, cfgmod.soul_path(),
+                                       (self.toolbox.cfg or {}).get("workspace", ""))
+            pt = timetravel.checkpoint(self.toolbox.store.db, home, name, tool_detail(name, args), files,
+                                       self.conversation_id, getattr(self, "run_id", ""), self.steps_used)
+            await self.emit({"type": "checkpoint", "id": pt["id"], "tool": name, "unseen": bool(pt["unseen"])})
+        except Exception:
+            pass
+
     async def call_tool(self, name: str, args: dict, call_id: str = "") -> tuple:
         """ONE tool call through the whole gate: scope injection, risk, the PDP
         decision, approval, execution, the ledger row, the log, taint, and the
@@ -834,6 +874,16 @@ class Agent:
             # could name a conversation could file an app under somebody else's chat
             args = {**{k: v for k, v in args.items() if k != "_conv"},
                     "_conv": self.conversation_id or ""}
+        if name == "department_task":
+            # which desk, resolved here from the department named; a model that could
+            # name the desk could have the gate decide one flow and the tool run another
+            from . import company as _co
+            args = {k: v for k, v in args.items() if k not in ("_desk", "_conv")}
+            try:
+                desk = _co.desk_for(self.cfg, self.toolbox.store, str(args.get("department") or ""))["name"]
+            except Exception:
+                desk = ""
+            args.update({"_desk": desk, "_conv": self.conversation_id or ""})
         if name in APP_BOUND_TOOLS:
             # the app this run works for (App Studio building it, a schedule that belongs
             # to it): the agent's and never the model's, or a model could write another
@@ -872,6 +922,22 @@ class Agent:
             # `everywhere: true` stays the one honest way out, which the
             # gate can see and a grant can refuse.
             args = {**args, "space_id": self.space_id}
+        if name == "terminal_send":
+            # what is in the terminal's foreground, read here and never taken from the model:
+            # keys typed into a running program (an editor, ssh, a [y/N] prompt) are not a
+            # command the classifier can judge, so they always go to a person (below)
+            args = {k: v for k, v in args.items() if k != "_fg"}
+            try:
+                from . import ptyhub
+                from . import users as _um
+                _s = ptyhub.get(_um.current() or "", str(args.get("session") or ""))
+                args["_fg"] = _s.foreground() if _s else ""
+            except Exception:
+                args["_fg"] = "a program"
+        if name in BROWSER_ACTS:
+            # which site this click or keystroke lands on: the browser's, never the model's,
+            # or a model could name a harmless site to a grant and click somewhere else
+            args = {**{k: v for k, v in args.items() if k != "_site"}, "_site": _browser_site()}
         level, reason = self.toolbox.risk_of(name, args)
         base = self.toolbox.base_risk(name, args) if hasattr(self.toolbox, "base_risk") else level
         if self.toolbox.pdp:
@@ -901,6 +967,12 @@ class Agent:
             dec.effect = "ask"
             dec.grant_offer = None   # confirmed every time means no "remember" either
             must_person = "confirmed every time"
+        elif name == "terminal_send" and args.get("_fg") and dec.effect == "allow" \
+                and dec.rule in ("default", ""):
+            # keys into a running program in the person's terminal: a person says yes
+            dec.effect = "ask"
+            dec.grant_offer = None
+            must_person = f"typed into {args['_fg']}, not the shell"
         if dec.effect == "ask" and dec.rule == "taint":
             must_person = "after untrusted content"
 
@@ -946,6 +1018,7 @@ class Agent:
                     return await self._park_here(name, args, call_id, dec,
                                                  dec.reason or reason)
             if approved:
+                await self._checkpoint(name, args)
                 output = await self.toolbox.execute(name, args)
             elif verdict is not None:
                 why = "; ".join(f"{b['agent']}: {b['why']}" for b in verdict["ballots"]
@@ -967,6 +1040,7 @@ class Agent:
             await self.emit({"type": "tool_start", "call_id": call_id, "name": name,
                              "args": args, "detail": tool_detail(name, args),
                              "pending_approval": False})
+            await self._checkpoint(name, args)
             output = await self.toolbox.execute(name, args)
         if self.park_child is not None:
             # the tool started work that parked (a mission's `delegate` whose specialist
@@ -1015,7 +1089,12 @@ class Agent:
             output, untrusted = output[len(TAINTED_REPLY):], True
         if untrusted:
             src = _untrusted_source(name, args)
-            self.taint.append({"tool": name, "source": src})
+            entry = {"tool": name, "source": src}
+            if name.startswith("browser_"):
+                # the site a page's words came from, so the gate can tell a step on that
+                # same site apart from one somewhere else (policy: same-site)
+                entry["site"] = _browser_site()
+            self.taint.append(entry)
             if not any(t["source"] == src for t in self.taint[:-1]):
                 await self.emit({"type": "status",
                                  "message": f"read untrusted content from {src} — "
@@ -1023,6 +1102,9 @@ class Agent:
             output = fence(src, output)
         await self.emit({"type": "tool_end", "call_id": call_id, "name": name,
                          "output": output[:4000], "ok": ok,
+                         # what was refused or broke, in words: a hard deny never sent a
+                         # tool_start, so without this the refusal named no command
+                         **({"detail": tool_detail(name, args)[:200]} if not ok else {}),
                          **({"untrusted": True} if untrusted else {}),
                          **({"image": image_path} if image_path else {})})
         self._said = ""
@@ -1163,6 +1245,10 @@ class Agent:
                     elif ev["type"] == "usage":
                         tokens["input"] += ev.get("input", 0) or 0
                         tokens["output"] += ev.get("output", 0) or 0
+                        if getattr(self, "emit_usage", False):
+                            # the Arena's HUD counts as it goes; chat turns do not ask
+                            await self.emit({"type": "usage", "input": ev.get("input", 0) or 0,
+                                             "output": ev.get("output", 0) or 0})
             except providers.ProviderError as e:
                 await self.emit({"type": "error", "message": str(e)})
                 steps.append({"type": "error", "message": str(e)})

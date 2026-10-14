@@ -257,7 +257,7 @@ DEPARTMENTS: dict[str, dict] = {
         ]},
     "support": {
         "label": "Support", "color": "teal",
-        "words": ("support", "customer service", "helpdesk", "tickets", "customer success",
+        "words": ("support", "customer service", "customer care", "helpdesk", "tickets", "customer success",
                   "service", "complaints", "faq"),
         "mandate": "Answers customers: questions, problems and what they keep asking, "
                    "turned into better answers and better products.",
@@ -583,6 +583,12 @@ def normalize(plan: dict, tools: list[str] | None = None) -> tuple[dict, list[st
         seen_depts.add(name.lower())
         dept = {"id": did if tpl else "custom", "name": name, "color": color,
                 "about": about, "people": people}
+        # the kit the person ticked (recommend, clean_kit) and the answers that shaped it
+        if isinstance(d.get("kit"), dict):
+            dept["kit"], kd = clean_kit(d["kit"], tools)
+            dropped += [f"{name}'s {x}" for x in kd]
+        if isinstance(d.get("answers"), dict):
+            dept["answers"] = {str(k)[:24]: str(v)[:24] for k, v in list(d["answers"].items())[:6]}
         boss = officemod._plain(d.get("reports_to"))
         if boss:
             dept["reports_to"] = boss
@@ -733,11 +739,23 @@ def preview(cfg: dict, store, plan: dict, accounts: dict | None = None,
     notes, depts, new, reuse = [], [], 0, 0
     pre = _prefix(cfg, {**profile(cfg), **{k: v for k, v in (plan.get("company") or {}).items() if v}})
     missing_acc: dict[str, list[str]] = {}
+    kit_new = {"skills": set(), "tools": 0, "mcp": set()}
     for d in plan.get("departments") or []:
         people = []
+        offer = recommend(d, d.get("answers"))
+        for s in offer["skills"]:
+            s["exists"] = bool(store.get_skill(s["name"]))
+        kit = d["kit"] if isinstance(d.get("kit"), dict) else {
+            "tools": offer["tools"], "skills": [s["id"] for s in offer["skills"]],
+            "mcp": [m["id"] for m in offer["mcp"]]}
         for p in d["people"]:
             tools = []
-            for t in p["tools"]:
+            base = list(p["tools"])
+            if not existing.get(p["name"].lower()):
+                # the kit's tools go to the department's NEW people; one that exists joins as it is
+                base += [t for t in kit.get("tools") or [] if t not in base]
+                kit_new["tools"] += len([t for t in kit.get("tools") or [] if t not in p["tools"]])
+            for t in base:
                 acc = NEEDS_ACCOUNT.get(t)
                 if acc and not accounts.get(acc):
                     missing_acc.setdefault(acc, [])
@@ -755,7 +773,9 @@ def preview(cfg: dict, store, plan: dict, accounts: dict | None = None,
             else:
                 new += 1
             people.append(row)
-        dd = {**d, "people": people, "desk": desk_name(d["name"], pre)}
+        dd = {**d, "people": people, "desk": desk_name(d["name"], pre), "kit": kit, "kit_offer": offer}
+        kit_new["skills"] |= {s for s in kit.get("skills") or [] if not store.get_skill(s)}
+        kit_new["mcp"] |= set(kit.get("mcp") or [])
         desk = _desk_def(dd, plan.get("company") or {})
         dd["desk_exists"] = bool(store.get_flow(desk["name"]))
         # the desk lands off and holds nothing; this is what switching it on would grant
@@ -782,6 +802,8 @@ def preview(cfg: dict, store, plan: dict, accounts: dict | None = None,
             "new": new, "existing": reuse, "desks": len(depts), "kept_departments": kept,
             "talk_pairs": len(pairs), "fits": len(kept) + len(depts) <= MAX_DEPTS,
             "auditor": {"on": audit_on(cfg), "exists": bool(store.get_subagent(AUDITOR))},
+            "kit": {"skills": len(kit_new["skills"]), "tools": kit_new["tools"],
+                    "mcp": len(kit_new["mcp"])},
             "notes": notes}
 
 
@@ -800,6 +822,7 @@ def apply(cfg: dict, store, plan: dict, accounts: dict | None = None,
     made, joined, desks, errors = [], [], [], []
     company = pv["company"]
     shirt_of = {}
+    skills_made = _kit_skills(store, pv["departments"])
     for d in pv["departments"]:
         for p in d["people"]:
             if p["status"] == "exists":
@@ -810,7 +833,8 @@ def apply(cfg: dict, store, plan: dict, accounts: dict | None = None,
             shirt_of[p["name"]] = look
             try:
                 flowsmod.save_specialist(store, cfg, {
-                    "name": p["name"], "soul": p["soul"], "tools": p["tools"], "skills": [],
+                    "name": p["name"], "soul": p["soul"], "tools": p["tools"],
+                    "skills": list((d.get("kit") or {}).get("skills") or []),
                     "autonomy_cap": "balanced", "max_steps": 16, "max_seconds": 600,
                     "model": "", "look": look})
                 made.append(p["name"])
@@ -833,6 +857,7 @@ def apply(cfg: dict, store, plan: dict, accounts: dict | None = None,
         new_depts.append({"name": d["name"], "color": d["color"], "members": members,
                           "lead": lead, "about": d.get("about") or "", "desk": d["desk"],
                           **({"reports_to": d["reports_to"]} if d.get("reports_to") else {}),
+                          **({"kit": d["kit"]} if d.get("kit") else {}),
                           "titles": {p["name"]: p["title"] for p in d["people"]
                                      if p["name"] in members}})
     patch = {"departments": kept + new_depts}
@@ -889,7 +914,7 @@ def apply(cfg: dict, store, plan: dict, accounts: dict | None = None,
     return {"made": made, "joined": joined, "departments": [d["name"] for d in new_depts],
             "desks": desks, "talk_cells": cells, "errors": errors, "notes": pv["notes"],
             "auditor": "new" if auditor else ("exists" if store.get_subagent(AUDITOR) else "off"),
-            "work": work,
+            "work": work, "skills_made": skills_made,
             "try": (f"Give {first['name']} its first task, for example: "
                     f"\"{_first_task(first)}\"") if first else ""}
 
@@ -1094,7 +1119,9 @@ def stats(cfg: dict, store, waiting: list | None = None, now: float | None = Non
                     "reports_to": d.get("reports_to") or "",
                     "signed": sum((r.get("review") or {}).get("outcome") == "approved" for r in week),
                     "held": sum((r.get("review") or {}).get("outcome") in
-                                ("sent_back", "escalated", "unchecked") for r in week)})
+                                ("sent_back", "escalated", "unchecked") for r in week),
+                    # the executor its people work with, and the kit it was set up with
+                    "hands": d.get("hands") or "", "kit": kit_status(cfg, d.get("kit"))})
     return out
 
 
@@ -1154,6 +1181,49 @@ def desk_for(cfg: dict, store, department: str) -> dict:
             return flow
     names = ", ".join(d["name"] for d in departments(cfg, store)) or "none yet"
     raise ValueError(f"no department called '{department}'. Departments: {names}")
+
+
+def _dept_pattern(name: str) -> str:
+    """"Customer Care" is reached as @Customer Care, @customer-care, @customer_care or
+    @CustomerCare: the words in order, any of those between them, any case."""
+    words = [re.escape(w) for w in re.split(r"[\s_&-]+", name) if w]
+    return r"[\s_&-]*".join(words)
+
+
+def parse_department(cfg: dict, store, text: str):
+    """'@Sales find ten clinics' → (department, 'find ten clinics') when the words after
+    the @ name a department of the open company; None otherwise. The longest name
+    wins, so @Customer Care is not read as @Customer. A specialist's name is checked
+    before this (fabric.parse_mention): an agent addressed by name answers itself."""
+    t = (text or "").strip()
+    if not t.startswith("@"):
+        return None
+    best = None
+    for d in departments(cfg, store):
+        if not d["members"]:
+            continue
+        m = re.match(r"@" + _dept_pattern(d["name"]) + r"(?![A-Za-z0-9])[\s:,]*(.*)", t, re.S | re.I)
+        if m and m.group(1).strip() and (best is None or len(d["name"]) > len(best[0]["name"])):
+            best = (d, m.group(1).strip())
+    return best
+
+
+def addresses(cfg: dict, store) -> dict:
+    """Who can be addressed with @ in a chat: the specialists, then the departments of
+    the open company with their heads. One list for every composer's suggestions."""
+    mem = membership(cfg, store)
+    # people who work in another of the person's companies are that company's
+    away = {str(m).lower() for rec in (cfg.get("companies") or {}).values() if isinstance(rec, dict)
+            for d in ((rec.get("office") or {}).get("departments") or []) if isinstance(d, dict)
+            for m in d.get("members") or []} - {m.lower() for m in mem["of"]}
+    agents = [{"name": s["name"], "title": (mem["of"].get(s["name"]) or {}).get("title", ""),
+               "dept": (mem["of"].get(s["name"]) or {}).get("dept", "")}
+              for s in store.list_subagents()
+              if s["name"] != AUDITOR and s["name"].lower() not in away]
+    depts = [{"name": d["name"], "head": d["head"], "hex": d["hex"],
+              "people": len(d["members"]), "desk": bool(d["desk"])}
+             for d in mem["departments"]]
+    return {"agents": agents, "departments": depts}
 
 
 # ---------------------------------------------------------------------------
@@ -1535,7 +1605,7 @@ def review_line(r: dict) -> str:
 # Words: the lead's context and the terminal
 # ---------------------------------------------------------------------------
 
-def note(cfg: dict, store, desks: bool = True) -> str:
+def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") -> str:
     """One paragraph for the lead agent: the company and who heads what, so "ask
     Finance" means the finance desk and not a guess. `desks=False` for a forwarded
     turn's team door, which offers `delegate` and `huddle` and no `run_flow`."""
@@ -1552,9 +1622,16 @@ def note(cfg: dict, store, desks: bool = True) -> str:
     return ("\n\nYOUR COMPANY" + (f" ({pr['name']})" if pr["name"] else "")
             + (f". Its objective, in the person's words: {pr['objective']}" if pr["objective"] else "")
             + ". The specialists are organised in departments:\n" + "\n".join(lines)
-            + ("\nWork for a department goes to its head, or to its desk with run_flow and the "
-               "task as the input." if desks else "\nWork for a department goes to its head.")
-            + " Work that spans departments goes to each head."
+            # Reported as "when I asked Aria to do something, no agents were invoked":
+            # told only that work "goes to its head", a lead on Claude Code searched the
+            # web itself. The department is a tool now, and the lead is told to use it.
+            + (f"\nWhen a request is real work and a department fits it, hand it to that "
+               f"department with {tool} {{\"department\": name, \"task\": a self-contained "
+               f"brief}}: its head leads it, its people do it, and it comes back signed off. "
+               f"Do not do a department's work yourself. Work that spans departments goes to "
+               f"each one; then put the answers together and say which department did what. "
+               f"Answer yourself only small talk, questions about this conversation, or when "
+               f"no department fits or the person asks you to.")
             + (" When a department's desk finishes a task, an independent auditor checks it "
                "and the verdict comes back with the result; you do not need to ask for that "
                "check, and you cannot skip it." if audit_on(cfg) and desks else "")
@@ -2285,3 +2362,479 @@ def rename_for(cfg: dict, store, plan: dict) -> list[str]:
             p["name"] = new
             taken.add(new.lower())
     return said
+
+
+# ---------------------------------------------------------------------------
+# Permissions and hands at the department level
+# ---------------------------------------------------------------------------
+# "I should be able to build PDP between the departments instead of just the agents,
+# and switch between the two; and give a department executors instead of each agent."
+# Nothing new is stored beside the gate's own rows:
+#
+# - The MODE is the company's (`company.permissions`: "agent" or "department"). In
+#   department mode the gate (PDP, step 2e) decides an ask between two people of this
+#   company by their departments: colleagues in one department may ask each other, and
+#   between departments the department cell decides. An explicit block between two
+#   agents still refuses, so switching the mode never reopens what a person closed.
+# - A department CELL is an ordinary grant row: principal `department:<company>/<Dept>`,
+#   action agent.message, resource `department:<Dept>`. Permissions lists and revokes it.
+# - A department's HANDS are a field on its room (`hands`); hands.profile_name gives it to
+#   every member without hands of their own, so one choice fits a whole department.
+
+PERMISSION_MODES = ("agent", "department")
+
+
+def permission_mode(cfg: dict) -> str:
+    m = str(((cfg or {}).get("company") or {}).get("permissions") or "agent")
+    return m if m in PERMISSION_MODES else "agent"
+
+
+def _audit_row(store, action: str, resource: str, detail: str) -> None:
+    try:
+        from . import users as _users
+        uid = _users.current() or ""
+    except Exception:
+        uid = ""
+    store.audit_add(uid=uid, principal_kind="user", principal_id="", action=action,
+                    resource=resource, effect="allow", rule="person", outcome="ok",
+                    detail=detail[:1000])
+
+
+def set_permission_mode(cfg: dict, store, mode: str) -> str:
+    """Switch who-may-ask-whom between agents and departments. The caller saves config."""
+    mode = str(mode or "").strip().lower()
+    if mode not in PERMISSION_MODES:
+        raise ValueError("permissions are decided per agent or per department")
+    if mode == "department" and not departments(cfg, store):
+        raise ValueError("this company has no departments yet, so there is nothing to decide "
+                         "between them. Set the company up first.")
+    cur = dict(cfg.get("company") or {})
+    cur["permissions"] = mode
+    cfg["company"] = cur
+    _audit_row(store, "company.permissions", "company:" + (cur.get("id") or ""),
+               f"who may ask whom is decided per {mode}")
+    return mode
+
+
+def dept_key(cfg: dict, dept: str) -> str:
+    """The principal id of a department's cells: the company's id and the name, because
+    two companies may each have a Sales."""
+    return f"{profile(cfg)['id'] or 'company'}/{dept}"
+
+
+def dept_matrix(cfg: dict, store) -> dict:
+    """The department grid: rows ask, columns answer, read from the grant rows."""
+    names = [d["name"] for d in departments(cfg, store) if d["members"]]
+    pre = (profile(cfg)["id"] or "company") + "/"
+    cells: dict = {}
+    for g in store.list_grants(principal_kind="department"):
+        frm = str(g.get("principal_id") or "")
+        if g.get("action") != "agent.message" or not frm.startswith(pre):
+            continue
+        a, to = frm[len(pre):], str(g.get("resource") or "").partition(":")[2]
+        for b in ([n for n in names if n != a] if to == "*" else [to]):
+            k = f"{a}>{b}"
+            if g.get("effect") == "deny" or cells.get(k) != "deny":
+                cells[k] = "deny" if g.get("effect") == "deny" else "allow"
+    return {"mode": permission_mode(cfg), "departments": names, "cells": cells}
+
+
+def set_dept_cell(cfg: dict, store, frm: str, to: str, effect: str) -> dict:
+    """Write one department cell: 'allow', 'deny' or 'ask' (clear it)."""
+    if effect not in ("allow", "deny", "ask"):
+        raise ValueError("a cell is allow, deny or ask")
+    names = {d["name"].lower(): d["name"] for d in departments(cfg, store)}
+    a, b = names.get(str(frm or "").strip().lower()), names.get(str(to or "").strip().lower())
+    if not a or not b:
+        raise KeyError(frm if not a else to)
+    if a == b:
+        raise ValueError("people in one department may always ask each other")
+    pid, res = dept_key(cfg, a), f"department:{b}"
+    for g in store.list_grants(principal_kind="department", principal_id=pid):
+        if g.get("action") == "agent.message" and g.get("resource") == res:
+            store.revoke_grant(g["id"])
+    if effect != "ask":
+        store.add_grant("department", pid, "agent.message", res, effect=effect, source="matrix",
+                        note=f"{a} {'may' if effect == 'allow' else 'may not'} ask {b}")
+    return {"from": a, "to": b, "effect": effect}
+
+
+def dept_cell_decision(cfg: dict, store, asker: str, asked: str):
+    """What the department level says about `asker` asking `asked`, for the gate:
+    None when it does not apply (agent mode, someone outside a department, two
+    companies), ("allow", why, rule) / ("deny", why, rule), or ("empty", "", "") for an
+    unset cell, which the gate's default then answers (ask, swarm or a vote)."""
+    a = officemod.department_of(cfg, asker)
+    b = officemod.department_of(cfg, asked)
+    if not a or not b:
+        return None
+    (da, ca), (db, cb) = a, b
+    if str(ca.get("permissions") or "agent") != "department":
+        return None
+    if str(ca.get("id") or "") != str(cb.get("id") or ""):
+        return None
+    if da["name"] == db["name"]:
+        return ("allow", f"{asker} and {asked} work in {da['name']}", "department-same")
+    pid = f"{ca.get('id') or 'company'}/{da['name']}"
+    rows = [g for g in store.list_grants(principal_kind="department", principal_id=pid)
+            if g.get("action") == "agent.message"
+            and g.get("resource") in (f"department:{db['name']}", "department:*")]
+    for g in rows:
+        if g.get("effect") == "deny":
+            return ("deny", g.get("note") or f"{da['name']} may not ask {db['name']}", g["id"])
+    for g in rows:
+        if g.get("effect", "allow") == "allow":
+            return ("allow", g.get("note") or "", g["id"])
+    return ("empty", f"{da['name']} → {db['name']}", "")
+
+
+def set_hands(cfg: dict, store, department: str, profile_name_: str) -> dict:
+    """Give a department an executor: every member without hands of their own works with
+    it. '' clears it (members go back to the default). The caller saves config."""
+    from . import hands as handsmod
+    want = str(profile_name_ or "").strip()
+    if want and not handsmod.get(store, want):
+        names = ", ".join(p["name"] for p in handsmod.list_profiles(store))
+        raise ValueError(f"no executor called '{want}'. Executors: {names}")
+    office = officemod.current(cfg)
+    hit = next((d for d in office["departments"] if d["name"].lower() == str(department or "").strip().lower()), None)
+    if not hit:
+        raise KeyError(department)
+    depts = []
+    for d in office["departments"]:
+        d = dict(d)
+        if d["name"] == hit["name"]:
+            d.pop("hands", None)
+            if want:
+                d["hands"] = want
+        depts.append(d)
+    officemod.save(cfg, store, {"departments": depts})
+    handsmod._GEN[0] += 1
+    _audit_row(store, "agent.hands", f"department:{hit['name']}",
+               f"{hit['name']} works with the '{want or handsmod.DEFAULT}' executor"
+               + ("" if want else " (each agent's own, or the default)"))
+    return {"department": hit["name"], "hands": want}
+
+
+# ---------------------------------------------------------------------------
+# The kit a new department starts with: asked, then proposed, then ticked
+# ---------------------------------------------------------------------------
+# "When I set up a new department it should ask questions and set up the skills, tools
+# and MCP servers most widely used for that kind of team, even ones I have not used."
+# A kit is a PROPOSAL, read through a closed set like everything else in a plan:
+#
+# - TOOLS come from ALLOWED_TOOLS only and go to the department's NEW people (an agent
+#   that exists joins as it is, the apply rule).
+# - SKILLS are written here in full, shown before saving, and created only when ticked,
+#   never over a skill of the same name (flows.save_specialist's rule).
+# - MCP SERVERS are never installed by a kit: they need the person's own account and
+#   key. The department remembers which it wants, and its card says "Set it up", which
+#   opens the MCP app on that server, or the Store's search for it.
+# The questions change the proposal, nothing else; an answer is not stored.
+
+KIT_SKILLS: dict[str, dict] = {
+    "meeting-notes": {"name": "meeting-notes", "description": "Notes from a meeting: decisions, owners, dates",
+        "content": "Turn a meeting's notes or transcript into: the decisions made, each action with its "
+                   "owner and date, and the open questions. Quote numbers exactly. Nothing that was not said."},
+    "weekly-summary": {"name": "weekly-summary", "description": "A one-screen summary of the week",
+        "content": "Summarise the week in five lines: what got done, what slipped and why, what is next, "
+                   "what needs a decision and from whom. Link each line to its source."},
+    "job-description": {"name": "job-description", "description": "A clear job description from a role's needs",
+        "content": "Write a job description: the outcome the role owns in its first year, five "
+                   "responsibilities, must-have and nice-to-have skills kept apart, and how to apply. "
+                   "Plain words, no clichés, no age or gender wording."},
+    "candidate-screen": {"name": "candidate-screen", "description": "Screen a CV against a role",
+        "content": "Compare a CV with the role's must-haves, one line each: met, partly, not shown. "
+                   "Then three questions for the interview. Judge only what the CV shows."},
+    "invoice-check": {"name": "invoice-check", "description": "Check an invoice before it is paid",
+        "content": "Check an invoice: supplier, number, date, amounts and tax add up, it matches the "
+                   "order or contract, and it is not a duplicate. List anything that does not match."},
+    "cash-summary": {"name": "cash-summary", "description": "Where the money is and what is due",
+        "content": "From the figures given: cash now, what comes in and goes out in the next 30 days, "
+                   "overdue invoices by age, and the one thing to act on. Every number with its source."},
+    "supplier-compare": {"name": "supplier-compare", "description": "Compare suppliers on price, lead time and risk",
+        "content": "Compare suppliers in a table: unit price, minimum order, lead time, payment terms, "
+                   "and one risk each. Say which you would pick and why, and what you could not verify."},
+    "lead-qualify": {"name": "lead-qualify", "description": "Is this lead worth a call? (budget, need, timing)",
+        "content": "Qualify a lead: who they are, the need we would solve, signs of budget and timing, who "
+                   "decides. End with fit (high, medium, low) and the next step. Say what is a guess."},
+    "first-email": {"name": "first-email", "description": "A short first email that earns a reply",
+        "content": "Write a first email under 120 words: one line on why them, one on the problem we "
+                   "solve, one proof point, and one clear ask. No flattery, no attachments."},
+    "code-review": {"name": "code-review", "description": "Review a change for bugs and risk",
+        "content": "Review a diff: bugs first, then security, then what is missing a test, then style. "
+                   "Quote the line for each. Say what you could not check."},
+    "incident-summary": {"name": "incident-summary", "description": "What broke, the impact and the fix",
+        "content": "Write an incident summary: what happened when, who was affected, the cause, the fix, "
+                   "and two changes that stop it happening again. Facts from the logs only."},
+    "content-calendar": {"name": "content-calendar", "description": "A month of posts and emails",
+        "content": "Plan a month of content: four posts and one email, each with its audience, the one "
+                   "message, the format and the date. Tie each to a goal the person named."},
+    "campaign-brief": {"name": "campaign-brief", "description": "A one-page brief for a campaign",
+        "content": "Write a campaign brief: the goal and how it is measured, the audience, the message, "
+                   "the channels, the budget if given, and the dates. One page."},
+    "reply-draft": {"name": "reply-draft", "description": "A kind, exact reply to a customer",
+        "content": "Draft a reply: thank them, answer exactly what was asked, say what happens next and "
+                   "when. If we cannot help, say so plainly and offer the nearest thing. Under 150 words."},
+    "faq-gap": {"name": "faq-gap", "description": "Which questions keep coming with no good answer",
+        "content": "From the messages given, group the questions customers ask, count each, and mark "
+                   "the ones our help pages do not answer well. Suggest the missing answer for the top three."},
+    "contract-review": {"name": "contract-review", "description": "What a contract commits us to",
+        "content": "Read a contract and list: parties, term and renewal, what we must do, what they must "
+                   "do, payment, liability caps, termination, and anything unusual. Not legal advice; say so."},
+    "spec-from-feedback": {"name": "spec-from-feedback", "description": "Turn feedback into a short spec",
+        "content": "From feedback, write a short spec: the problem in the users' words, who has it, the "
+                   "smallest change that solves it, how we know it worked, and what is out of scope."},
+    "run-plan": {"name": "run-plan", "description": "Plan production runs from open orders",
+        "content": "From open orders and capacity, plan the runs: order, quantity, machine, start and "
+                   "finish, and what is late. Flag any order that cannot meet its date."},
+    "defect-trace": {"name": "defect-trace", "description": "Trace a defect to its cause",
+        "content": "For a defect: what was seen, where and when, the likely causes ranked, the check "
+                   "that tells them apart, and the fix. Use five whys; say where evidence is missing."},
+    "status-note": {"name": "status-note", "description": "A client status note: done, next, at risk",
+        "content": "Write a status note: done since last time, next with dates, at risk and what we need "
+                   "from the client. Five lines, plain words, no padding."},
+}
+
+#: MCP servers commonly used by teams of each kind. `preset` is a server in the MCP app's
+#: own catalogue (set up there with one tap and a key), `curated` one of its sign-in
+#: servers (mcp_catalog.py); otherwise `search` is what the Store's search is opened on,
+#: because nothing here vouches for one package over another.
+KIT_MCP: dict[str, dict] = {
+    "notion": {"name": "Notion", "preset": "notion", "why": "docs and wikis the team already keeps"},
+    "linear": {"name": "Linear", "preset": "linear", "why": "issues and projects"},
+    "atlassian": {"name": "Jira and Confluence", "preset": "atlassian", "why": "tickets and team pages"},
+    "slack": {"name": "Slack", "preset": "slack", "why": "what the team is talking about"},
+    "airtable": {"name": "Airtable", "preset": "airtable", "why": "the bases the team runs on"},
+    "stripe": {"name": "Stripe", "preset": "stripe", "why": "payments, invoices and refunds"},
+    "github": {"name": "GitHub", "preset": "github", "why": "code, pull requests and issues"},
+    "sentry": {"name": "Sentry", "preset": "sentry", "why": "errors in production"},
+    "figma": {"name": "Figma", "preset": "figma", "why": "designs and their comments"},
+    "canva": {"name": "Canva", "curated": "com.canva/canva", "why": "brand designs and posts"},
+    "tavily": {"name": "Tavily", "preset": "tavily", "why": "web research with sources"},
+    "zapier": {"name": "Zapier", "preset": "zapier", "why": "the apps the team already connects"},
+    "hubspot": {"name": "HubSpot", "search": "hubspot", "why": "contacts, deals and the pipeline"},
+    "salesforce": {"name": "Salesforce", "search": "salesforce", "why": "accounts, leads and opportunities"},
+    "pipedrive": {"name": "Pipedrive", "search": "pipedrive", "why": "the deal pipeline"},
+    "quickbooks": {"name": "QuickBooks", "search": "quickbooks", "why": "the books"},
+    "xero": {"name": "Xero", "search": "xero", "why": "the books"},
+    "zendesk": {"name": "Zendesk", "search": "zendesk", "why": "support tickets"},
+    "intercom": {"name": "Intercom", "search": "intercom", "why": "customer conversations"},
+    "shopify": {"name": "Shopify", "search": "shopify", "why": "orders, products and stock"},
+    "google-drive": {"name": "Google Drive", "search": "google drive", "why": "the files the team shares"},
+}
+
+#: Per kind of department: the questions, what is always proposed, and what an answer adds.
+KITS: dict[str, dict] = {
+    "admin": {"tools": ["calendar_events", "search_files", "read_file", "timeline"],
+              "skills": ["meeting-notes", "weekly-summary"],
+              "questions": [{"id": "docs", "ask": "Where does the team keep its documents?",
+                             "options": [["notion", "Notion"], ["drive", "Google Drive"], ["files", "Files on this machine"]]}],
+              "if": {"docs=notion": {"mcp": ["notion"]}, "docs=drive": {"mcp": ["google-drive"]}}},
+    "hr": {"tools": ["search_files", "read_file", "fetch_url"],
+           "skills": ["job-description", "candidate-screen"],
+           "questions": [{"id": "hiring", "ask": "Are you hiring now?", "options": [["yes", "Yes"], ["no", "Not yet"]]}],
+           "if": {"hiring=yes": {"tools": ["mail_search", "mail_read"]}}},
+    "finance": {"tools": ["read_file", "search_files", "timeline"],
+                "skills": ["invoice-check", "cash-summary"],
+                "questions": [{"id": "books", "ask": "Where are the books kept?",
+                               "options": [["quickbooks", "QuickBooks"], ["xero", "Xero"], ["sheets", "Spreadsheets"]]},
+                              {"id": "pay", "ask": "Do customers pay through Stripe?", "options": [["yes", "Yes"], ["no", "No"]]}],
+                "if": {"books=quickbooks": {"mcp": ["quickbooks"]}, "books=xero": {"mcp": ["xero"]},
+                       "pay=yes": {"mcp": ["stripe"]}}},
+    "supply": {"tools": ["fetch_url", "read_file", "search_files"],
+               "skills": ["supplier-compare"],
+               "questions": [{"id": "shop", "ask": "Do you sell through an online shop?",
+                              "options": [["shopify", "Shopify"], ["other", "Something else"], ["no", "No"]]}],
+               "if": {"shop=shopify": {"mcp": ["shopify"]}}},
+    "sales": {"tools": ["fetch_url", "search_docs", "kg_add"],
+              "skills": ["lead-qualify", "first-email"],
+              "mcp": ["tavily"],
+              "questions": [{"id": "crm", "ask": "Where do you keep your customers?",
+                             "options": [["hubspot", "HubSpot"], ["salesforce", "Salesforce"], ["pipedrive", "Pipedrive"], ["none", "Nowhere yet"]]},
+                            {"id": "mail", "ask": "Should the team read the company mailbox?", "options": [["yes", "Yes, read only"], ["no", "No"]]}],
+              "if": {"crm=hubspot": {"mcp": ["hubspot"]}, "crm=salesforce": {"mcp": ["salesforce"]},
+                     "crm=pipedrive": {"mcp": ["pipedrive"]}, "crm=none": {"mcp": ["airtable"]},
+                     "mail=yes": {"tools": ["mail_search", "mail_read", "calendar_events"]}}},
+    "tech": {"tools": ["git_status", "git_log", "git_diff", "run_tests", "read_file", "search_files"],
+             "skills": ["code-review", "incident-summary"],
+             "mcp": ["github"],
+             "questions": [{"id": "issues", "ask": "Where do you track work?",
+                            "options": [["linear", "Linear"], ["jira", "Jira"], ["github", "GitHub issues"]]},
+                           {"id": "errors", "ask": "Do you use Sentry for errors?", "options": [["yes", "Yes"], ["no", "No"]]}],
+             "if": {"issues=linear": {"mcp": ["linear"]}, "issues=jira": {"mcp": ["atlassian"]},
+                    "errors=yes": {"mcp": ["sentry"]}}},
+    "marketing": {"tools": ["fetch_url", "generate_image", "save_asset", "list_assets"],
+                  "skills": ["content-calendar", "campaign-brief"],
+                  "mcp": ["tavily"],
+                  "questions": [{"id": "design", "ask": "Where are your designs made?",
+                                 "options": [["canva", "Canva"], ["figma", "Figma"], ["none", "Nowhere yet"]]}],
+                  "if": {"design=canva": {"mcp": ["canva"]}, "design=figma": {"mcp": ["figma"]}}},
+    "support": {"tools": ["search_docs", "read_file", "kg_query"],
+                "skills": ["reply-draft", "faq-gap"],
+                "questions": [{"id": "desk", "ask": "Where do customer questions arrive?",
+                               "options": [["zendesk", "Zendesk"], ["intercom", "Intercom"], ["mail", "Email"]]}],
+                "if": {"desk=zendesk": {"mcp": ["zendesk"]}, "desk=intercom": {"mcp": ["intercom"]},
+                       "desk=mail": {"tools": ["mail_search", "mail_read"]}}},
+    "legal": {"tools": ["read_file", "search_files", "search_docs"],
+              "skills": ["contract-review"],
+              "questions": [{"id": "docs", "ask": "Where are the contracts?",
+                             "options": [["drive", "Google Drive"], ["files", "Files on this machine"]]}],
+              "if": {"docs=drive": {"mcp": ["google-drive"]}}},
+    "product": {"tools": ["fetch_url", "search_docs", "kg_add"],
+                "skills": ["spec-from-feedback", "meeting-notes"],
+                "questions": [{"id": "issues", "ask": "Where do you track work?",
+                               "options": [["linear", "Linear"], ["jira", "Jira"], ["notion", "Notion"]]},
+                              {"id": "design", "ask": "Do you design in Figma?", "options": [["yes", "Yes"], ["no", "No"]]}],
+                "if": {"issues=linear": {"mcp": ["linear"]}, "issues=jira": {"mcp": ["atlassian"]},
+                       "issues=notion": {"mcp": ["notion"]}, "design=yes": {"mcp": ["figma"]}}},
+    "production": {"tools": ["read_file", "search_files", "timeline"],
+                   "skills": ["run-plan", "weekly-summary"],
+                   "questions": [{"id": "orders", "ask": "Where are the open orders?",
+                                  "options": [["airtable", "Airtable"], ["sheets", "Spreadsheets"], ["files", "Files on this machine"]]}],
+                   "if": {"orders=airtable": {"mcp": ["airtable"]}}},
+    "quality": {"tools": ["read_file", "search_files", "kg_add"],
+                "skills": ["defect-trace"],
+                "questions": [{"id": "log", "ask": "Where are defects logged?",
+                               "options": [["airtable", "Airtable"], ["jira", "Jira"], ["sheets", "Spreadsheets"]]}],
+                "if": {"log=airtable": {"mcp": ["airtable"]}, "log=jira": {"mcp": ["atlassian"]}}},
+    "delivery": {"tools": ["read_file", "timeline", "calendar_events"],
+                 "skills": ["status-note", "meeting-notes"],
+                 "questions": [{"id": "pm", "ask": "Where are projects planned?",
+                                "options": [["jira", "Jira"], ["notion", "Notion"], ["linear", "Linear"], ["none", "Nowhere yet"]]}],
+                 "if": {"pm=jira": {"mcp": ["atlassian"]}, "pm=notion": {"mcp": ["notion"]},
+                        "pm=linear": {"mcp": ["linear"]}}},
+    "custom": {"tools": ["fetch_url", "read_file", "search_files"],
+               "skills": ["weekly-summary", "meeting-notes"],
+               "questions": [{"id": "chat", "ask": "Does the team talk in Slack?", "options": [["yes", "Yes"], ["no", "No"]]}],
+               "if": {"chat=yes": {"mcp": ["slack"]}}},
+}
+
+
+def kit_kind(dept: dict) -> str:
+    """Which kit fits a department: its catalogue id, else the catalogue entry whose
+    words its name or mandate uses, else the general one."""
+    did = str((dept or {}).get("id") or "")
+    if did in KITS:
+        return did
+    name = _words((dept or {}).get("name", ""))
+    for k in ORDER:                      # the department's own name first: "Sales Ops" is sales
+        if k in KITS and f" {DEPARTMENTS[k]['label'].lower()} " in name:
+            return k
+    t = _words(f"{(dept or {}).get('name', '')} {(dept or {}).get('about', '')}")
+    score = {k: sum(f" {w} " in t for w in DEPARTMENTS[k]["words"]) + 2 * sum(f" {w} " in name for w in DEPARTMENTS[k]["words"])
+             for k in ORDER if k in KITS}
+    best = max(score, key=lambda k: score[k]) if score else ""
+    return best if best and score[best] else "custom"
+
+
+def kit_questions(dept: dict) -> list[dict]:
+    """The questions for this department, each with its first option as the answer
+    until the person says otherwise."""
+    return [{**q, "default": q["options"][0][0]} for q in KITS[kit_kind(dept)].get("questions") or []]
+
+
+def recommend(dept: dict, answers: dict | None = None, tools: list[str] | None = None) -> dict:
+    """The kit for a department and these answers: {kind, questions, tools, skills, mcp},
+    every item from the closed sets above. Pure: the preview, the CLI and the page all
+    ask this one function."""
+    kind = kit_kind(dept)
+    k = KITS[kind]
+    allowed = set(t for t in ALLOWED_TOOLS if tools is None or t in tools)
+    qs = kit_questions(dept)
+    ans = {q["id"]: (str((answers or {}).get(q["id"]) or q["default"])) for q in qs}
+    ans = {q["id"]: (ans[q["id"]] if ans[q["id"]] in {o[0] for o in q["options"]} else q["default"])
+           for q in qs}
+    tl, sk, mc = list(k.get("tools") or []), list(k.get("skills") or []), list(k.get("mcp") or [])
+    for q, v in ans.items():
+        add = (k.get("if") or {}).get(f"{q}={v}") or {}
+        tl += [t for t in add.get("tools") or [] if t not in tl]
+        sk += [s for s in add.get("skills") or [] if s not in sk]
+        mc += [m for m in add.get("mcp") or [] if m not in mc]
+    return {"kind": kind, "questions": qs, "answers": ans,
+            "tools": [t for t in tl if t in allowed],
+            "skills": [dict(KIT_SKILLS[s], id=s) for s in sk if s in KIT_SKILLS],
+            "mcp": [dict(KIT_MCP[m], id=m) for m in mc if m in KIT_MCP]}
+
+
+def clean_kit(kit, tools: list[str] | None = None) -> tuple[dict, list[str]]:
+    """A kit coming back from the page or a brain, read field by field: tools from the
+    allow-list, skills and servers from the catalogue. What is dropped is named."""
+    if not isinstance(kit, dict):
+        return {}, []
+    allowed = set(t for t in ALLOWED_TOOLS if tools is None or t in tools)
+    out, dropped = {}, []
+    for field, ok in (("tools", allowed), ("skills", set(KIT_SKILLS)), ("mcp", set(KIT_MCP))):
+        got = []
+        for x in kit.get(field) or []:
+            x = str((x.get("id") if isinstance(x, dict) else x) or "").strip()
+            if x in ok:
+                if x not in got:
+                    got.append(x)
+            elif x:
+                dropped.append(f"{field[:-1] if field != 'mcp' else 'server'} {x}")
+        if got:
+            out[field] = got[:12]
+    return out, dropped
+
+
+def _kit_skills(store, depts: list[dict]) -> list[str]:
+    """Create the ticked kit skills that do not exist yet. Never through a name that
+    exists: save_skill updates by name and would replace a skill somebody relies on."""
+    made = []
+    for d in depts:
+        for sid in (d.get("kit") or {}).get("skills") or []:
+            sk = KIT_SKILLS.get(sid)
+            if not sk or store.get_skill(sk["name"]) or sk["name"] in made:
+                continue
+            store.save_skill(sk["name"], sk["description"], sk["content"],
+                             source=f"kit for {d['name']}")
+            made.append(sk["name"])
+    return made
+
+
+def kit_status(cfg: dict, kit: dict | None) -> dict:
+    """A department's kit as its card shows it: each server with whether one by that
+    name is already set up here (cfg mcp_servers), so "Set it up" is shown only where it
+    is still needed."""
+    have = {str(k).lower() for k in ((cfg or {}).get("mcp_servers") or {})}
+    kit = kit or {}
+    return {"tools": list(kit.get("tools") or []), "skills": list(kit.get("skills") or []),
+            "mcp": [{**KIT_MCP[m], "id": m,
+                     "added": m in have or str(KIT_MCP[m].get("preset") or "") in have
+                     or str(KIT_MCP[m].get("curated") or "").rsplit("/", 1)[-1] in have}
+                    for m in kit.get("mcp") or [] if m in KIT_MCP]}
+
+
+def apply_kit(cfg: dict, store, department: str, kit: dict) -> dict:
+    """Give a department that exists a kit: the ticked tools and skills go to everyone in
+    it (from the allow-list and the catalogue only), and the servers it wants are noted on
+    its card. The person's decision, with the list on screen, so it is one ledger row.
+    The caller saves config."""
+    kit, dropped = clean_kit(kit)
+    office = officemod.current(cfg)
+    hit = next((d for d in office["departments"] if d["name"].lower() == str(department or "").strip().lower()), None)
+    if not hit:
+        raise KeyError(department)
+    made = _kit_skills(store, [{"name": hit["name"], "kit": kit}])
+    names = [KIT_SKILLS[s]["name"] for s in kit.get("skills") or []]
+    changed = []
+    for m in hit["members"]:
+        a = store.get_subagent(m)
+        if not a:
+            continue
+        tl = list(a.get("tools") or [])
+        sk = list(a.get("skills") or [])
+        nt = tl + [t for t in kit.get("tools") or [] if t not in tl]
+        ns = sk + [s for s in names if s not in sk]
+        if nt != tl or ns != sk:
+            store.save_subagent({**a, "tools": nt, "skills": ns})
+            changed.append(a["name"])
+    depts = [dict(d, kit=kit) if d["name"] == hit["name"] else dict(d) for d in office["departments"]]
+    officemod.save(cfg, store, {"departments": depts})
+    _audit_row(store, "company.kit", f"department:{hit['name']}",
+               f"{hit['name']} kit: tools {', '.join(kit.get('tools') or []) or '-'}; skills "
+               f"{', '.join(names) or '-'}; servers {', '.join(kit.get('mcp') or []) or '-'}")
+    return {"department": hit["name"], "kit": kit_status(cfg, kit), "skills_made": made,
+            "agents": changed, "dropped": dropped}
+

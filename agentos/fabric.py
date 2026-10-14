@@ -23,6 +23,7 @@ setup") via the existing turn/error logs.
 import asyncio
 import json
 import re
+import secrets
 import time
 
 from .agent import Agent, PARK, fence
@@ -431,15 +432,51 @@ def link_access(store, label: str) -> dict:
     ask (principal team:<label>/*), and whether my agents may ask theirs without asking
     me each time (principal subagent:*, resource agent:subagent/*@<label>)."""
     theirs, mine = [], False
+    now = time.time()
     for g in store.list_grants():
         if g.get("action") != "agent.message" or g.get("effect") != "allow":
             continue
+        if g.get("expires_at") and g["expires_at"] <= now:
+            continue                    # an ended guest pass lists nobody
         if g.get("principal_kind") == "team" and g.get("principal_id") == f"{label}/*":
             theirs.append(str(g.get("resource") or "").rsplit("/", 1)[-1])
         if (g.get("principal_kind") == "subagent" and g.get("principal_id") == "*"
                 and g.get("resource") == f"agent:subagent/*@{label}"):
             mine = True
     return {"theirs_may_ask": sorted(theirs), "mine_may_ask": mine}
+
+
+def grant_pass(store, lk: dict) -> str | None:
+    """The lender's half of a guest pass (teamlink): ONE cell, that agent, for that link,
+    expiring with the pass. Its own source ("pass"), so the matrix editor's rewrite of the
+    link's cells never wipes it, and forget_link_grants ends it with the link."""
+    p = (lk or {}).get("pass") or {}
+    if p.get("role") != "lender" or not p.get("agent"):
+        return None
+    gid = store.add_grant("team", f"{lk['label']}/*", "agent.message", f"agent:subagent/{p['agent']}",
+                          effect="allow", source="pass", note=f"guest pass for {lk['label']}",
+                          expires_at=float(p["until"]), source_ref=f"pass:{lk['id']}")
+    audit_team(store, "link.pass", f"link:{lk['label']}",
+               f"lent {p['agent']} to {lk['label']} until "
+               f"{time.strftime('%H:%M', time.localtime(float(p['until'])))} (answers in words only)")
+    return gid
+
+
+def guest_seat(owner: str, name: str) -> dict | None:
+    """`auditor@friend` as a seat in a huddle here: only an agent a LIVE guest pass lent
+    to this account. Anything else on a link is asked one question at a time through the
+    matrix, never sat in a room."""
+    from . import teamlink
+    agent, _, where = str(name or "").strip().lstrip("@").partition("@")
+    if not agent or not where:
+        return None
+    lk = teamlink.find(owner, where)
+    p = teamlink.pass_state(lk) if lk else None
+    if not p or p["role"] != "guest" or p["over"] or p["agent"].lower() != agent.lower():
+        return None
+    return {"name": f"{p['agent']}@{lk['label']}", "linked": True, "label": lk["label"],
+            "left_s": p["left_s"], "identity": lk.get("peer_identity") or {},
+            "look": p.get("look") or {}}
 
 
 def office_for_link(store, cfg: dict, label: str) -> dict:
@@ -471,8 +508,8 @@ def set_link_access(store, label: str, theirs_may_ask: list | None = None,
     if theirs_may_ask is not None:
         want = {n for n in theirs_may_ask if n in names}
         for g in store.list_grants(principal_kind="team", principal_id=f"{label}/*"):
-            if g.get("action") == "agent.message":
-                store.revoke_grant(g["id"])
+            if g.get("action") == "agent.message" and g.get("source") != "pass":
+                store.revoke_grant(g["id"])     # a guest pass's cell ends with the pass
         for n in sorted(want):
             store.add_grant("team", f"{label}/*", "agent.message", f"agent:subagent/{n}",
                             source="matrix", note=f"agents on the linked team '{label}' may ask {n}")
@@ -1213,13 +1250,16 @@ class ControlPlane(usersmod.Scoped):
                     pass
             if ev["type"] == "tool_start":
                 nsteps["n"] += 1
-                await self._emit(run_id, "step", {"tool": ev["name"], "status": "start"})
+                await self._emit(run_id, "step", {"tool": ev["name"], "status": "start",
+                                                  "detail": str(ev.get("detail") or "")[:200]})
             elif ev["type"] == "tool_end":
                 # why a step did not go through (the gate, you, the team, a breakage) and
                 # whether it read untrusted content: the World scene's feelings read these
                 from .world import step_outcome
                 await self._emit(run_id, "step", {"tool": ev["name"], "status": "end",
                                                   "ok": ev.get("ok", True),
+                                                  **({"detail": str(ev.get("detail") or "")[:200]}
+                                                     if ev.get("ok") is False and ev.get("detail") else {}),
                                                   **({"outcome": step_outcome(ev.get("output", ""))}
                                                      if ev.get("ok") is False else {}),
                                                   **({"untrusted": True} if ev.get("untrusted") else {})})
@@ -1553,6 +1593,12 @@ class ControlPlane(usersmod.Scoped):
         if not lk:
             have = ", ".join(x["label"] for x in teamlink.links(owner)) or "(none yet)"
             return f"[error] no linked team called '{where}' — linked: {have}"
+        lent = teamlink.pass_state(lk)
+        if lent and lent.get("role") == "guest":
+            if lent["over"]:
+                return f"[refused] the guest pass from {where} has ended"
+            if name.lower() != lent["agent"].lower():
+                return f"[refused] {where} lent {lent['agent']} only"
         lim = team_limits(self.cfg)
         key = root or chain[0]
         if len(chain) >= 2 and target.lower() == chain[-2].lower():
@@ -1694,6 +1740,13 @@ class ControlPlane(usersmod.Scoped):
             return got
         to = re.sub(r"[^A-Za-z0-9_.-]", "", str(req.get("to") or ""))[:64]
         frm = re.sub(r"[^A-Za-z0-9_-]", "", str(req.get("from") or ""))[:40] or "agent"
+        lent = teamlink.pass_state(lk)
+        if lent and lent.get("role") == "lender":
+            # a guest pass: the one agent lent, while the pass lasts, and nothing else
+            if lent["over"]:
+                return {"ok": False, "error": "this guest pass has ended"}
+            if to.lower() != lent["agent"].lower():
+                return {"ok": False, "error": f"this pass lends {lent['agent']} only"}
         meta = req.get("mission") if isinstance(req.get("mission"), dict) else None
         if meta and mission_sender(meta.get("name") or "") == frm:
             # a mission's question with no record here — its announcement never arrived
@@ -1756,9 +1809,12 @@ class ControlPlane(usersmod.Scoped):
                 return bool(await ask(lk, frm, d["name"], name, args, reason, offer))
             except Exception:
                 return False
+        # A lent agent answers from what it knows and NOTHING it can reach: no tools at all,
+        # so a guest never touches this machine's files, keys, memory or shell
         res = await self.run_subagent(d, task, kind="linked", chain=chain, root=key,
                                       approver=here,
-                                      taint=[{"tool": "linked team", "source": lk["label"]}])
+                                      taint=[{"tool": "linked team", "source": lk["label"]}],
+                                      **({"no_tools": True} if lent else {}))
         back = self._clarify.pop(res.get("run_id") or "", None)
         if back is not None:
             return {"ok": True, "back": back}
@@ -1775,6 +1831,38 @@ class ControlPlane(usersmod.Scoped):
                 "provider": brain["provider_name"]}
 
     # -- huddles: agents talking to each other ---------------------------------------
+
+    async def department_task(self, department: str, task: str, conversation_id: str = "",
+                              approver=None, surface: str = "gui", ui_emit=None,
+                              agent_slot=None, decided: bool = False) -> dict:
+        """A task for a department of the open company: a run of its desk, led by its
+        head, signed off by the bosses above it and checked by the auditor. One door for
+        every way a department is reached by name: `@Sales …` in Chat, Telegram and
+        WhatsApp, and the lead's `department_task` tool (which the agent loop has already
+        put through the gate, `decided=True`). The person asking is the principal, and the
+        decision is `agent.invoke` on the desk's flow, as /api/company/task decides it.
+
+        Returns {"department", "head", "flow", "result"}; raises ValueError with a
+        sentence when there is no such department or desk, PermissionError on a deny."""
+        from . import company as _company
+        from .policy import MAIN
+        flow = _company.desk_for(self.cfg, self.store, department)
+        dept = next((d for d in _company.departments(self.cfg, self.store)
+                     if d.get("desk") == flow["name"]), {"name": department})
+        if not decided and self.toolbox is not None and getattr(self.toolbox, "pdp", None):
+            dec = self.toolbox.pdp.decide(MAIN, "agent.invoke", f"agent:flow/{flow['name']}",
+                                          {"surface": surface, "risk": "safe",
+                                           "conversation_id": conversation_id})
+            if dec.effect == "deny":
+                raise PermissionError(dec.reason or f"{dept['name']} may not be given work here")
+        # origin "chat": the answer is the reply in the conversation that asked, so the
+        # desk's own delivery never sends it a second time to the same phone
+        res = await self.run_flow(flow, str(task or "").strip(),
+                                  origin={"surface": "chat", "ref": dept["name"]},
+                                  conversation_id=conversation_id, approver=approver,
+                                  ui_emit=ui_emit, agent_slot=agent_slot)
+        return {"department": dept["name"], "head": dept.get("lead") or "",
+                "flow": flow["name"], "result": res}
 
     async def huddle(self, names: list, topic: str, rounds: int = 2,
                      conversation_id: str = "", space_id: str = "", say=None,
@@ -1797,7 +1885,9 @@ class ControlPlane(usersmod.Scoped):
         """
         seen, cast = set(), []
         for n in names or []:
-            d = self.store.get_subagent(str(n).strip().lstrip("@"))
+            n = str(n).strip().lstrip("@")
+            # a guest lent to this account by a pass sits in the room as `agent@link`
+            d = guest_seat(usersmod.current() or "", n) if "@" in n else self.store.get_subagent(n)
             if d and d["name"].lower() not in seen:
                 seen.add(d["name"].lower())
                 cast.append(d)
@@ -1809,6 +1899,10 @@ class ControlPlane(usersmod.Scoped):
         cast = cast[:lim["huddle_agents"]]
         rounds = max(1, min(lim["huddle_rounds"], int(rounds or 2)))
         transcript: list[dict] = []
+        huddle_id = f"huddle:{conversation_id or 'x'}:{secrets.token_hex(3)}"
+        # a guest's words reach everybody else's prompt: with one in the room, every
+        # local turn is tainted, so a risky step it talks somebody into needs a person
+        guest_taint = [{"tool": "linked team", "source": d["label"]} for d in cast if d.get("linked")]
         for r in range(1, rounds + 1):
             spoke = 0
             for d in cast:
@@ -1823,21 +1917,29 @@ class ControlPlane(usersmod.Scoped):
                           f"own expertise. Answer the others BY NAME — agree, push back or "
                           f"add what is missing — and never repeat what was already said. "
                           f"If you have nothing new, reply with exactly: pass")
-                res = await self.run_subagent(d, task, kind="huddle",
-                                              conversation_id=conversation_id,
-                                              space_id=space_id, approver=approver)
+                if d.get("linked"):
+                    # the guest answers on ITS machine, under ITS gate, with no tools; what
+                    # comes back is another team's words and is marked so
+                    res = await self._guest_turn(d, task, conversation_id, huddle_id)
+                    provider = "guest from " + d["label"]
+                else:
+                    res = await self.run_subagent(d, task, kind="huddle",
+                                                  conversation_id=conversation_id,
+                                                  space_id=space_id, approver=approver,
+                                                  **({"taint": guest_taint} if guest_taint else {}))
+                    provider = agent_brain(self.cfg, d)["provider_name"]
                 text = " ".join((res["content"] or res["fault"] or "").split())
                 if not text or text.lower().strip(" .!") == "pass":
                     continue
                 spoke += 1
-                brain = agent_brain(self.cfg, d)
                 entry = {"speaker": d["name"], "model": res["model"],
-                         "provider": brain["provider_name"],
+                         "provider": provider,
                          "text": text[:HUDDLE_WORDS * 9], "round": r}
                 transcript.append(entry)
                 if say:
                     try:
-                        await say(entry)
+                        # a guest's face travelled with its pass; the page paints it from that
+                        await say({**entry, "look": d["look"]} if d.get("linked") and d.get("look") else entry)
                     except Exception:
                         pass
             if not spoke:
@@ -1849,7 +1951,8 @@ class ControlPlane(usersmod.Scoped):
             # on the last word said (the latest proposal), and a majority adopts it.
             last = transcript[-1]
             ballots = await self.ballot(
-                cast, (f"Your team decides by majority vote. After talking about: "
+                [d for d in cast if not d.get("linked")],      # a guest advises; it does not vote here
+                (f"Your team decides by majority vote. After talking about: "
                        f"{topic.strip()[:600]}\n\n{last['speaker']} said last: "
                        f"\"{last['text']}\"\n\nVote YES to adopt that as the team's answer, "
                        f"NO if it is wrong or leaves out something important. Reply with YES "
@@ -1867,6 +1970,20 @@ class ControlPlane(usersmod.Scoped):
         return {"agents": [d["name"] for d in cast], "rounds": r, "transcript": transcript,
                 "vote": vote,
                 "text": huddle_text([d["name"] for d in cast], r, transcript, vote)}
+
+    async def _guest_turn(self, seat: dict, task: str, conversation_id: str, huddle_id: str) -> dict:
+        """One turn of a guest in a huddle: the question over the link, the answer read
+        back the way every linked answer is (cleaned, cut, marked as another team's)."""
+        got = await self._message_linked("huddle", seat["name"], task, ["huddle"], root=huddle_id,
+                                         conversation_id=conversation_id)
+        text = got[len(TAINTED_REPLY):] if got.startswith(TAINTED_REPLY) else got
+        model = ""
+        m = re.match(r"\[[^\]]*?·\s*([^\]]*)\]\n", text)
+        if m:
+            model, text = m.group(1).strip(), text[m.end():]
+        if text.startswith(("[refused]", "[error]")):
+            return {"content": "", "fault": "", "model": model}
+        return {"content": text, "fault": "", "model": model or "guest"}
 
     # -- free talk: the team talks among itself, because a person said it may ---------
 
@@ -3184,14 +3301,30 @@ def parse_huddle(store, text: str):
     when two or more leading names are agents here; None otherwise, so a single
     @name keeps meaning "this one agent, directly"."""
     import re
-    m = re.match(r"((?:@[A-Za-z0-9_-]+[\s,:]+(?:and\s+)?){2,})(.+)", (text or "").strip(), re.S)
+    m = re.match(r"((?:@[A-Za-z0-9_-]+(?:@[A-Za-z0-9_.-]+)?[\s,:]+(?:and\s+)?){2,})(.+)",
+                 (text or "").strip(), re.S)
     if not m:
         return None
-    names = re.findall(r"@([A-Za-z0-9_-]+)", m.group(1))
-    known = [n for n in names if store.get_subagent(n)]
+    names = re.findall(r"@([A-Za-z0-9_-]+(?:@[A-Za-z0-9_.-]+)?)", m.group(1))
+    known = [n for n in names if (guest_seat(usersmod.current() or "", n) if "@" in n else store.get_subagent(n))]
     if len(known) < 2 or len(known) != len(names):
         return None
     return known, m.group(2).strip()
+
+
+async def department_reply(control, department: str, task: str, conversation_id: str,
+                           approver, surface: str) -> str:
+    """`@Sales …` from a channel with no event stream (Telegram, WhatsApp): the
+    department's answer as one message, or the sentence saying why it could not run."""
+    try:
+        got = await control.department_task(department, task, conversation_id=conversation_id,
+                                            approver=approver, surface=surface)
+    except (ValueError, PermissionError) as e:
+        return f"▦ {department}: {e}"
+    res = got["result"]
+    return (f"▦ {got['department']} · {res['status']}"
+            + (f" · led by {got['head']}" if got["head"] else "") + "\n\n"
+            + (res["content"] or res["fault"] or "(no output)"))
 
 
 def parse_mention(store, text: str):

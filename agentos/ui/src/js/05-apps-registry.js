@@ -14,8 +14,18 @@ const APPS={
     menus:w=>[['Edit',[
       {label:'Clear the screen',fn:()=>{try{w.term.clear()}catch(e){}}},
       {label:'Copy the selection',fn:()=>{try{navigator.clipboard.writeText(w.term.getSelection()||'')}catch(e){}}},
+    ]],['Sessions',[
+      {label:'Switch session or start one…',fn:async()=>{const it=await terminalSessionsMenu(w);
+        const r=w.el.getBoundingClientRect();showCtxItems({clientX:r.left+40,clientY:r.top+48},it)}},
+      {label:'New session',fn:()=>terminalAttach(w,'new')},
+      {label:'End this session',fn:async()=>{if(!w._session)return;
+        await fetch('/api/terminal/sessions/'+encodeURIComponent(w._session),{method:'DELETE'});toast('Session ended')}},
     ]]]},
-  browser:{id:'browser',title:'Web',icon:'',w:520,h:440,desc:'Open the web in your system browser',render:renderBrowser},
+  browser:{id:'browser',title:'Web',icon:'',w:1100,h:760,desc:'A real browser you and your agent share; sign-ins stay',render:renderBrowser,
+    onClose(w){try{w.sv&&w.sv.destroy();winNeedsYou('browser',false)}catch(e){}return true}},
+  appwindow:{id:'appwindow',title:'App',icon:'',w:900,h:620,desc:'A native app on this machine, drawn in a window you and your agent can both use',
+    multi:true,hidden:true,render:renderAppWindow,
+    onClose(w){try{w.sv&&w.sv.destroy();if(w._sid)fetch('/api/appstreams/'+encodeURIComponent(w._sid),{method:'DELETE'})}catch(e){}return true}},
   files:{id:'files',title:'Files',icon:'',w:720,h:560,desc:'Your workspace files & reports',multi:true,render:renderFiles,
     menus:w=>[['File',[
       {label:'Go to workspace root',fn:()=>{w.path='';renderFiles(w.el.querySelector('.wbody'),w)}},
@@ -37,6 +47,12 @@ const APPS={
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   office:{id:'office',title:'Office',icon:'',w:1180,h:720,desc:'Watch your agents at work — a comic office where they get work, walk over to ask each other and huddle',
     render:renderOffice,onClose:officeClose},
+  timetravel:{id:'timetravel',title:'Time travel',icon:'',w:1100,h:330,desc:'Rewind what an agent changed, step by step, or fork from a step on another brain',
+    render:renderTimeTravel},
+  arena:{id:'arena',title:'Arena',icon:'',w:1200,h:760,desc:'The same task to two or four brains at once, side by side, with a live HUD',
+    render:renderArena},
+  drama:{id:'drama',title:'Drama reel',icon:'',w:760,h:720,desc:'Your crew’s latest drama as a 15 second clip or a 4-panel strip',
+    render:renderDrama},
   teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},

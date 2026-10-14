@@ -77,6 +77,16 @@ function suiRaise(on){
   return true;
 }
 
+/* A live window needs the person (a sign-in, a 2FA code, a CAPTCHA in the shared
+   browser). In SUI the page is the BACKGROUND layer and native windows cover it, so the
+   toast and the pulsing window would be under whatever the person is using: the desktop
+   comes to the front, by the one layer change suiRaise already is. Outside SUI the
+   toast and the pulse are enough, and nothing is raised. */
+function suiAttention(){
+  if(!suiActive()||SUI.raised)return false;
+  return suiRaise(true);
+}
+
 function suiInit(){
   if(!suiActive()) return;
   SUI.on = true;

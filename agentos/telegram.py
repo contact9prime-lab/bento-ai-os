@@ -346,7 +346,16 @@ class TelegramBridge(usersmod.Scoped):
             from . import fabric as fabricmod
             from . import knowledge as _k
             mention = fabricmod.parse_mention(self.store, text) if self.toolbox.fabric else None
-            if mention:  # '@researcher …' from the phone goes straight to that subagent
+            dept_hit = None
+            if not mention and self.toolbox.fabric:
+                from . import company as _companymod
+                dept_hit = _companymod.parse_department(self.cfg, self.store, text)
+            if dept_hit:  # '@Sales …' from the phone is a task for that department
+                dept, task = dept_hit
+                reply = await fabricmod.department_reply(self.toolbox.fabric, dept["name"], task,
+                                                         cid, approver, "telegram")
+                result = {"steps": []}
+            elif mention:  # '@researcher …' from the phone goes straight to that subagent
                 defn, task = mention
                 res = await self.toolbox.fabric.run_subagent(defn, task, conversation_id=cid,
                                                              approver=approver)

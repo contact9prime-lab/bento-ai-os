@@ -129,6 +129,10 @@ function approvalFloat(ev){
 var APPROVAL_WATCH=0;
 function approvalHome(id){
   const ev=APPROVALS[id];if(!ev)return;
+  // a placed card that is in view now makes its floating copy a second door to the same
+  // question (Office HQ: the answer card scrolled to it a moment after the float went up)
+  if([...document.querySelectorAll('[id="ap-'+id+'"]:not(.ap-float)')].some(approvalShown)){
+    document.querySelectorAll('[id="ap-'+id+'"].ap-float').forEach(f=>f.remove());return}
   if(approvalVisible(id))return;
   const feed=document.getElementById('feed');
   const chatOpen=feed&&ev.conversation_id&&ev.conversation_id===currentConv&&approvalShownArea(feed);
@@ -411,7 +415,7 @@ function handle(ev){
       if(_cur)CUR_ENGINE={engine:EXEC_TITLES[ev.model]?ev.model:'',
                           model:EXEC_TITLES[ev.model]?'':(ev.model||''),
                           // `@researcher …` is the researcher answering, in its own face
-                          speaker:ev.speaker||'',
+                          speaker:ev.speaker||'',department:ev.department||'',
                           // `@a @b …` is a huddle: the room answers, each in turn
                           huddle:ev.huddle||null};
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
@@ -758,6 +762,12 @@ function handle(ev){
       break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
+    case 'arena': arenaEvent(ev); break;
+    case 'checkpoint': ttLayoutSave(ev.id); if(TT.w&&TT.conv===ev.conversation_id)refreshApp('timetravel'); break;
+    case 'timetravel': if(TT.w)refreshApp('timetravel'); break;
+    case 'drama': dramaOffer(ev); if(typeof refreshApp==='function')refreshApp('drama'); break;
+    case 'browser_attention': browserAttention(ev); break;
+    case 'appstream': if(typeof showAppWindow==='function')showAppWindow(ev.id,ev.title); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'toast': toast(ev.text||''); break;   // the server has something short to say
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
@@ -821,7 +831,9 @@ function flushText(){
    its own face, or the agent labelled with whatever engine is running it. */
 function curWho(){
   if(CUR_ENGINE.huddle&&typeof huddleWho==='function')return huddleWho(CUR_ENGINE.huddle);
-  const sp=CUR_ENGINE.speaker;
+  const sp=CUR_ENGINE.speaker,dp=CUR_ENGINE.department;
+  // `@Sales …`: the department answers, in its head's face, under its own name
+  if(dp)return chatWho(sp||'@agent','▦ '+esc(dp)+(sp?' · @'+esc(sp):''));
   return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
     :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
 }

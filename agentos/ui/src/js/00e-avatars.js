@@ -51,8 +51,14 @@ function avatarKeyOf(principal){
   if(p.startsWith('subagent:'))return p.slice(9);
   return '';
 }
+/* A guest lent by a pass (name@link) is painted from the recipe that came with the
+   pass, wherever its name appears: the huddle, the play strip, the World, Settings.
+   Filled by whoever learns a guest's look first; never stored. */
+var AV_GUEST={};
+function avatarGuest(key,rec){if(key&&rec&&typeof rec==='object'&&Object.keys(rec).length)AV_GUEST[key]=rec}
 function avatarSrc(key,o){
   o=o||{};
+  if(AV_GUEST[key])return avatarRecipeSrc(AV_GUEST[key],o);
   const a=AVATARS.by[key],v=a?a.v:0;
   return '/api/avatar.png?key='+encodeURIComponent(key)
     +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
@@ -66,7 +72,8 @@ function avatarSrc(key,o){
 function avatarRecipeSrc(rec,o){
   o=o||{};
   return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))
-    +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'));
+    +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
+    +(o.costume?'&costume='+encodeURIComponent(o.costume):'')+(o.draw?'&draw='+o.draw:'');
 }
 function avatarRecipeImg(rec,cls,alt){
   if(AVATARS.off||!rec)return '';

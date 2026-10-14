@@ -38,6 +38,8 @@ from . import accounts as accountsmod
 from . import brief as briefmod
 from . import avatars as avatarsmod
 from . import playground as playgroundmod
+from . import drama as dramamod
+from . import arena as arenamod
 from . import world as worldmod
 from . import vault as vaultmod
 from . import signin as signinmod
@@ -161,6 +163,18 @@ async def startup():
     # single-user machine every socket's uid is '' and the map changes nothing.
     client_uids: dict = {}
 
+    def _drama_seen(event: dict, uid: str):
+        """The drama reel keeps the beats of a story (agentos/drama.py), and when one
+        finishes (work shipped after trouble) the person's page is told ONCE, so it can
+        offer a clip. Offered, never recorded: sharing is the person's act."""
+        if event.get("type") == "drama":
+            return
+        done = dramamod.observe(event, uid)
+        if done:
+            with contextlib.suppress(RuntimeError):
+                asyncio.get_running_loop().create_task(
+                    broadcast_user({"type": "drama", "episode": done["id"], "who": done["who"]}, uid))
+
     async def broadcast(event: dict):
         """Machine-wide: a fact true for the whole box (wallpaper, an MCP consent
         prompt). A turn is NOT machine-wide — use `broadcast_user` for it."""
@@ -170,6 +184,7 @@ async def startup():
         # the World scene feels it, for the account whose work this is, and only while
         # that account has a world live (returns at once otherwise)
         worldmod.observe(event, usersmod.current())
+        _drama_seen(event, usersmod.current())
         dead = []
         for ws in clients:
             try:
@@ -188,6 +203,7 @@ async def startup():
         every uid is '' and this is exactly `broadcast`."""
         playgroundmod.observe(event)
         worldmod.observe(event, uid)
+        _drama_seen(event, uid)
         dead = []
         for ws in clients:
             if client_uids.get(ws, "") != uid:
@@ -625,6 +641,11 @@ async def _team_chat_sweep():
         await asyncio.sleep(30)
         with contextlib.suppress(Exception):
             for lk in teamlink.links(None):
+                if (teamlink.pass_state(lk) or {}).get("over"):
+                    # a guest pass's time is up: the link it made ends, on this side,
+                    # whatever the other side does (each side keeps its own clock)
+                    await _team_end_link(lk.get("owner") or "", lk, "the guest pass ended")
+                    continue
                 if lk.get("kind") != "machine" or not lk.get("url"):
                     continue
                 with usersmod.as_user(lk.get("owner") or ""):
@@ -674,6 +695,9 @@ async def _team_on_event(kind: str, lk: dict):
         fabricmod.audit_team(state["store"], "link.write", f"link:{lk.get('label')}",
                              f"linked with {lk.get('peer_name') or lk.get('label')} "
                              f"({lk.get('kind')}, {kind}); certificate {str(lk.get('peer_host_fp'))[:16]}…")
+        if lk.get("pass"):
+            # the lender's half of a guest pass writes its one expiring cell
+            fabricmod.grant_pass(state["store"], lk)
         await state["broadcast_user"]({"type": "team_links"}, owner)
 
 
@@ -1006,6 +1030,13 @@ async def shutdown():
         await _keep_flush()
     with contextlib.suppress(Exception):
         await _standby_flush()
+    with contextlib.suppress(Exception):
+        await _cdpb.stop_all()
+    with contextlib.suppress(Exception):
+        from . import ptyhub as _ph
+        _ph.end_all()
+    with contextlib.suppress(Exception):
+        await _aps.stop_all()
     if state.get("notifd"):
         state["notifd"].stop()
     if state.get("team_listener"):
@@ -2231,6 +2262,13 @@ async def api_platform(request: Request):
     # screen attached to the machine (or a page opened with #kiosk) turns into the kiosk.
     from . import face as facemod
     state_["face"] = facemod.state(state.machine_cfg())
+    # The windows that are live streams of real processes: the shared browser, terminal
+    # sessions that outlive their window, and native apps projected into a window. Each
+    # says whether it can run here and, if not, why and which component would fix it.
+    state_["browser"] = _cdpb.status(state["cfg"])
+    from . import ptyhub as _ph
+    state_["terminal_sessions"] = {"ok": not _ph.available(), "why": _ph.available()}
+    state_["appstream"] = _aps.status()
     return state_
 
 
@@ -6781,6 +6819,11 @@ async def _flow_deliver(flow: dict, run: dict, origin: dict, text: str) -> list:
     digest = briefmod.digest(items, flow["name"]) if items else ""
     for sink in sinks:
         kind = sink.get("kind")
+        if kind == "origin" and surface == "chat":
+            # asked in a conversation (`@Sales …`, the lead's department_task): the answer
+            # is the reply there, so it is not announced a second time
+            done.append("chat")
+            continue
         if kind == "origin":
             kind = {"telegram": "telegram", "whatsapp": "whatsapp",
                     "webhook": "notify", "task": "notify",
@@ -8829,7 +8872,7 @@ async def api_wallpaper_system():
 # ---------------------------------------------------------------------------
 
 AUTOMATION_STEP_KINDS = {"app", "action", "theme", "wallpaper", "desktop",
-                         "agent", "tool", "python", "wait"}
+                         "agent", "tool", "python", "wait", "place"}
 
 
 def _clean_steps(steps) -> list[dict]:
@@ -8846,6 +8889,14 @@ def _clean_steps(steps) -> list[dict]:
         for k in ("app", "action", "theme", "wallpaper", "prompt", "tool", "code"):
             if s.get(k):
                 step[k] = str(s[k])[:20000]
+        # a place inside an app (by its label, 05b-places.js) and an app's view (a
+        # Settings tab, a Missions tab, a Logs filter): what Watch me once records
+        if kind == "place":
+            if not s.get("place"):
+                continue
+            step["place"] = str(s["place"])[:80]
+        if kind == "app" and s.get("view"):
+            step["view"] = re.sub(r"[^\w .:-]", "", str(s["view"]))[:60]
         if kind == "tool":
             if not step.get("tool"):
                 continue                      # a tool step without a tool is nothing
@@ -10658,6 +10709,7 @@ def _world_org(v: dict) -> dict:
     inside their head's card."""
     if not v.get("live"):
         return v
+    _world_guests(v)
     from . import company as companymod
     m = companymod.membership(state["cfg"], state["store"])
     v["company"] = m
@@ -10680,6 +10732,29 @@ def _world_org(v: dict) -> dict:
     v["agents"] = sorted(shown, key=rank)
     v["staff"] = staff
     return v
+
+
+def _world_guests(v: dict) -> None:
+    """An agent lent to this account by a live guest pass stands in the world too, in its
+    own face, at the world's resting mood. It has no feelings here and nothing is
+    recorded about it: world.py never hears of it, so leaving the scene or the pass
+    ending leaves nothing behind."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    for lk in teamlink.links(owner):
+        p = teamlink.pass_state(lk)
+        if not p or p["role"] != "guest" or p["over"]:
+            continue
+        try:
+            rest = worldmod.mood(v["world"], {"feel": {}})
+        except Exception:
+            continue
+        v.setdefault("agents", []).append({
+            "name": f"{p['agent']}@{lk['label']}", "mood": rest, "busy": False, "work": None,
+            "why": [], "level": {"name": "Guest", "xp": 0, "next": "", "to_next": 0}, "friend": "",
+            "guest": {"label": lk["label"], "agent": p["agent"], "left_s": p["left_s"],
+                      "until": p["until"], "look": p.get("look") or {},
+                      "team": (lk.get("peer_identity") or {}).get("agent_name") or ""}})
 
 
 def _world_working(uid: str, store) -> dict:
@@ -10985,6 +11060,376 @@ async def api_office_rollcall_png(style: str = "", name: str = ""):
     return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
+# ---- the Arena: one task, two to four brains, side by side ---------------------------
+
+_ARENAS: dict = {}          # (uid, arena id) -> {"arena": record, "tasks": [...], "runs": {...}}
+
+
+def _arena_toolbox(base, folder: str):
+    """The machine's toolbox with the workspace moved to one contender's folder, so a
+    relative path (and a shell's default cwd) is that contender's. Everything else —
+    the gate, the bridges, the broadcaster — is the same object the chat uses."""
+    from .tools import Toolbox
+
+    resolve = usersmod._ScopedCfg()        # whose config, exactly as every toolbox reads it
+
+    class _SeatToolbox(Toolbox):
+        @property
+        def cfg(self):
+            return {**(resolve.__get__(self) or {}), "workspace": folder}
+
+        @cfg.setter
+        def cfg(self, value):
+            self._machine_cfg = value
+
+    tb = _SeatToolbox(base._machine_cfg if hasattr(base, "_machine_cfg") else base.cfg, base.store)
+    for k in ("scheduler", "mcp", "telegram", "whatsapp", "broadcast", "fabric", "pdp", "shell", "notifd"):
+        setattr(tb, k, getattr(base, k, None))
+    return tb
+
+
+async def _arena_seat(aid: str, c: dict, task: str, uid: str):
+    """One contender: its own conversation, its own folder, the same gate."""
+    import dataclasses
+    from . import executors as execmod
+    from . import usage as usagemod
+    from .agent import Agent
+    cfg, store = state["cfg"], state["store"]
+    folder = Path(c["folder"])
+    folder.mkdir(parents=True, exist_ok=True)
+    cid = store.create_conversation(title=f"Arena · {c['label']}", origin="arena")
+    c["conversation_id"], c["status"], c["started"] = cid, "running", time.time()
+    store.add_message(cid, "user", task)
+    said: list[str] = []
+
+    async def push(ev: dict | None = None):
+        await state["broadcast_user"]({"type": "arena", "id": aid, "slot": c["slot"], "status": c["status"],
+                                       "hud": arenamod.hud(c), **({"ev": ev} if ev else {})}, uid)
+
+    async def card(ev: dict):
+        await state["broadcast_user"]({**ev, "conversation_id": cid}, uid)
+
+    async def emit(ev: dict):
+        t = ev.get("type")
+        if t == "text_delta":
+            if not c["first_token"]:
+                c["first_token"] = time.time()
+            said.append(ev.get("text") or "")
+        elif t == "usage":
+            c["tokens_in"] += int(ev.get("input") or 0)
+            c["tokens_out"] += int(ev.get("output") or 0)
+            got = usagemod.cost(cfg, c["model"], c["tokens_in"], c["tokens_out"])
+            if got is None and not usagemod.is_local(c["model"]):
+                c["priced"] = False
+            c["cost"] = got or 0.0
+        elif t == "tool_start":
+            # a tool call is output too: speed counts from the brain's first output,
+            # whichever kind it was
+            c["first_token"] = c["first_token"] or time.time()
+            if ev.get("pending_approval"):
+                c["asked"] += 1
+        elif t == "tool_end":
+            # every step ends, a refused one included (a hard deny sends no tool_start)
+            c["first_token"] = c["first_token"] or time.time()
+            c["steps"] += 1
+            denied = str(ev.get("output") or "").startswith("[denied]")
+            if denied:
+                c["refused"] += 1
+            # the steps, kept with the record so a finished arena still shows them
+            c["log"] = (c.get("log") or [])[-(arenamod.LOG_KEEP - 1):] + [{
+                "name": ev.get("name", ""), "detail": str(ev.get("detail") or "")[:160],
+                "ok": ev.get("ok") is not False, "denied": denied}]
+        if t in ("approval_request", "approval_resolved"):
+            await card(ev)             # the card lives where cards live, named for this seat
+            return
+        slim = {k: (v[:600] if isinstance(v, str) else v) for k, v in ev.items() if k != "args"}
+        await push(slim)
+
+    async def approver(name, args, reason, offer=None):
+        return await request_approval(name, args, reason, offer=offer, evsend=card)
+
+    run = None
+    try:
+        await push()
+        if c["kind"] == "provider":
+            agent = Agent({**cfg, "workspace": str(folder)}, _arena_toolbox(state["toolbox"], str(folder)),
+                          c["model"], emit, approver, conversation_id=cid, surface="arena")
+            agent.emit_usage = True
+            _ARENAS[(uid, aid)]["agents"][c["slot"]] = agent
+            res = await agent.run([{"role": "user", "content": task}])
+            tk = res.get("tokens") or {}
+            c["tokens_in"], c["tokens_out"] = int(tk.get("input") or 0), int(tk.get("output") or 0)
+            got = usagemod.cost(cfg, c["model"], c["tokens_in"], c["tokens_out"])
+            c["priced"] = got is not None or usagemod.is_local(c["model"])
+            c["cost"] = got or 0.0
+            usagemod.record(store, cfg, c["model"], {"input": c["tokens_in"], "output": c["tokens_out"]},
+                            surface="arena", conversation_id=cid, kind="chat")
+            answer = res.get("content") or "".join(said)
+        else:
+            env = execmod.envelope_from(cfg, str(folder), c["engine"])
+            env = dataclasses.replace(env, workspace=str(folder), model=c["model"] or env.model)
+            run = execmod.Run(engine=c["engine"])
+            _ARENAS[(uid, aid)]["runs"][c["slot"]] = run
+            run = await execmod.run_task(task, env, emit, run)
+            c["tokens_in"], c["tokens_out"] = int(run.tokens_in or 0), int(run.tokens_out or 0)
+            c["cost"], c["priced"] = float(run.cost_usd or 0), run.cost_usd is not None
+            c["refused"] += len(run.denials or [])
+            if c["tokens_in"] or c["tokens_out"] or run.cost_usd:
+                store.usage_add(model=f"{c['engine']}/{run.model or c['model']}", tokens_in=c["tokens_in"],
+                                tokens_out=c["tokens_out"], cost_usd=run.cost_usd, surface="arena",
+                                conversation_id=cid, kind="chat")
+            answer = "".join(said)
+        c["answer"], c["status"] = answer[:4000], "done"
+        store.add_message(cid, "assistant", answer, {"model": c["model"], "arena": aid})
+    except asyncio.CancelledError:
+        c["status"] = "stopped"
+        c["answer"] = "".join(said)[:4000]
+    except Exception as e:
+        c["status"], c["error"] = "error", str(e)[:400]
+        c["answer"] = "".join(said)[:4000]
+    finally:
+        if run is not None:
+            with contextlib.suppress(Exception):
+                execmod.stop(run)
+        c["finished"] = time.time()
+        c["files"] = arenamod.files_in(c["folder"])
+        with contextlib.suppress(Exception):
+            await push({"type": "seat_end"})
+
+
+async def _arena_all(aid: str, uid: str):
+    live = _ARENAS[(uid, aid)]
+    a = live["arena"]
+    seats = [asyncio.create_task(_arena_seat(aid, c, a["task"], uid)) for c in a["contenders"]]
+    live["tasks"] = seats
+    await asyncio.gather(*seats, return_exceptions=True)
+    a["status"] = "stopped" if any(c["status"] == "stopped" for c in a["contenders"]) else "done"
+    arenamod.save(uid, a)
+    await state["broadcast_user"]({"type": "arena", "id": aid, "done": True, "summary": arenamod.summary(a)}, uid)
+    _ARENAS.pop((uid, aid), None)
+
+
+def _arena_view(a: dict) -> dict:
+    return {**a, "contenders": [{**c, "hud": arenamod.hud(c)} for c in a["contenders"]],
+            "summary": arenamod.summary(a), "live": a.get("status") == "running"}
+
+
+@app.get("/api/arena")
+async def api_arena_list():
+    """What the Arena can seat (every available brain and model) and the recent arenas."""
+    from . import executors as execmod
+    from . import providers
+    cfg, uid = state["cfg"], usersmod.current()
+    models = await providers.available_models(cfg)
+    brains = await asyncio.to_thread(execmod.brains, cfg, models)
+    live = [k[1] for k in _ARENAS if k[0] == uid]
+    return {"choices": arenamod.choices(brains), "recent": arenamod.recent(uid), "live": live,
+            "min": arenamod.MIN, "max": arenamod.MAX}
+
+
+@app.post("/api/arena")
+async def api_arena_start(body: dict):
+    """Start an arena: the same task to every contender at once. The person's act, so
+    it is a cookie door and there is no agent tool for it; one arena per person at a
+    time, because every seat is a model run."""
+    from . import executors as execmod
+    from . import providers
+    cfg, uid = state["cfg"], usersmod.current()
+    if any(k[0] == uid for k in _ARENAS):
+        return JSONResponse({"error": "An arena is already running. Stop it or let it finish first."},
+                            status_code=409)
+    models = await providers.available_models(cfg)
+    brains = await asyncio.to_thread(execmod.brains, cfg, models)
+    try:
+        seats = arenamod.contenders(brains, (body or {}).get("contenders"))
+        a = arenamod.new((body or {}).get("task", ""), seats, execmod.default_workspace(cfg))
+    except arenamod.ArenaError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ARENAS[(uid, a["id"])] = {"arena": a, "tasks": [], "runs": {}, "agents": {}}
+    arenamod.save(uid, a)
+    state["store"].log("system", f"arena {a['id']} started: " + " vs ".join(c["label"] for c in a["contenders"]))
+    asyncio.create_task(_arena_all(a["id"], uid))
+    return _arena_view(a)
+
+
+@app.get("/api/arena/{aid}")
+async def api_arena_get(aid: str):
+    uid = usersmod.current()
+    live = _ARENAS.get((uid, aid))
+    a = live["arena"] if live else arenamod.load(uid, aid)
+    if not a:
+        return JSONResponse({"error": "no such arena"}, status_code=404)
+    return _arena_view(a)
+
+
+@app.post("/api/arena/{aid}/stop")
+async def api_arena_stop(aid: str):
+    """Stop every seat still running. What each one said so far is kept."""
+    uid = usersmod.current()
+    live = _ARENAS.get((uid, aid))
+    if not live:
+        return {"stopped": 0}
+    n = 0
+    for agent in live["agents"].values():
+        agent.aborted = True
+    for t in live["tasks"]:
+        if not t.done():
+            t.cancel()
+            n += 1
+    return {"stopped": n}
+
+
+# ---- time travel: rewind what an agent changed, fork from a step ----------------------
+
+def _tt_where():
+    # the copies live beside the database they belong to: each person's own home
+    return state["store"].db, Path(state["store"].path).parent
+
+
+@app.get("/api/timetravel")
+async def api_timetravel(conversation_id: str = ""):
+    """The checkpoints (agentos/timetravel.py), newest last, and the conversations they
+    belong to, so the scrubber can offer the ones with something to rewind."""
+    from . import timetravel
+    db, _ = _tt_where()
+    pts = timetravel.points(db, conversation_id, limit=300)
+    convs = {}
+    for cid, n in db.execute("SELECT conversation_id, COUNT(*) FROM _tt_points WHERE conversation_id!='' "
+                             "GROUP BY conversation_id ORDER BY MAX(ts) DESC LIMIT 20"):
+        c = state["store"].get_conversation(cid) or {}
+        convs[cid] = {"id": cid, "title": c.get("title") or "a conversation", "points": n}
+    return {"points": pts, "conversations": list(convs.values()),
+            "busy": [c for c, t in state["turns"].items() if t.get("uid", "") == usersmod.current()]}
+
+
+@app.get("/api/timetravel/{pid}/plan")
+async def api_timetravel_plan(pid: str):
+    from . import timetravel
+    db, home = _tt_where()
+    try:
+        return timetravel.plan(db, home, pid)
+    except KeyError:
+        return JSONResponse({"error": "no such checkpoint"}, status_code=404)
+
+
+@app.post("/api/timetravel/{pid}/rewind")
+async def api_timetravel_rewind(pid: str):
+    """Go back to just before a checkpoint: exactly what /plan showed. Refused while a turn
+    in that conversation is still running, because it would keep writing."""
+    from . import timetravel
+    db, home = _tt_where()
+    p = timetravel.get(db, pid)
+    if not p:
+        return JSONResponse({"error": "no such checkpoint"}, status_code=404)
+    if p["conversation_id"] and p["conversation_id"] in state["turns"]:
+        return JSONResponse({"error": "That conversation is still working. Stop it or let it finish, then rewind."},
+                            status_code=409)
+    got = await asyncio.to_thread(timetravel.rewind, db, home, pid)
+    state["store"].log("system", f"time travel: rewound to before {p['tool']} ({pid}): " + ", ".join(got["words"]))
+    await state["broadcast_user"]({"type": "timetravel", "rewound": pid, "conversation_id": p["conversation_id"]},
+                                  usersmod.current())
+    await state["broadcast_user"]({"type": "files"}, usersmod.current())
+    return got
+
+
+@app.post("/api/timetravel/{pid}/fork")
+async def api_timetravel_fork(pid: str, body: dict):
+    """A new conversation from a checkpoint, on another brain: the history before that
+    turn, the same question, and the steps that had already run, so the new brain carries
+    on from there. The person's act; the turn runs like any chat turn."""
+    from . import executors as execmod
+    from . import providers
+    from . import timetravel
+    db, _ = _tt_where()
+    p = timetravel.get(db, pid)
+    if not p or not p["conversation_id"]:
+        return JSONResponse({"error": "that checkpoint is not part of a conversation"}, status_code=404)
+    model = str((body or {}).get("model") or "")
+    if model:
+        brains = await asyncio.to_thread(execmod.brains, state["cfg"], await providers.available_models(state["cfg"]))
+        ok = {c["model"] if c["kind"] == "provider" else c["executor"] for c in arenamod.choices(brains)}
+        if model not in ok:
+            return JSONResponse({"error": f"{model!r} is not a brain this machine can run right now"}, status_code=400)
+    store = state["store"]
+    try:
+        fk = timetravel.fork_history(db, store.get_messages(p["conversation_id"]), pid)
+    except (KeyError, ValueError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    src = store.get_conversation(p["conversation_id"]) or {}
+    cid = store.create_conversation(title=f"Fork · {(src.get('title') or 'chat')[:60]}", origin="fork")
+    for m in fk["history"]:
+        store.add_message(cid, m["role"], m.get("content") or "", m.get("meta") or {})
+    note = ("This conversation was forked from an earlier one at a checkpoint. Files, memory and the graph "
+            "may have been rewound to that moment. Steps of this task that had already run before the fork:\n"
+            + "\n".join(f"- {s}" for s in fk["already"])) if fk["already"] else ""
+    uid = usersmod.current()
+    state["turns"][cid] = {"agent": None, "task": None, "model": "", "uid": uid}
+    asyncio.create_task(run_chat(cid, {"text": fk["ask"], "model": model, "uid": uid, "context": note,
+                                       "origin": "fork", "surface": "gui"}))
+    await state["broadcast_user"]({"type": "conversation", "id": cid, "title": f"Fork · {src.get('title') or ''}",
+                                   "origin": "fork"}, uid)
+    return {"conversation_id": cid, "ask": fk["ask"], "already": fk["already"], "model": model or "default"}
+
+
+def _drama_story():
+    cfg = state["cfg"]
+    beats = dramamod.load(usersmod.current())
+    return beats, dramamod.story(beats, cfg)
+
+
+@app.get("/api/drama")
+async def api_drama():
+    """The drama reel: the person's latest episode as four acts (drama.story) and the
+    beats it was made from. The clip, the strip and `bento drama` all read this."""
+    beats, st = _drama_story()
+    return {"story": st, "beats": beats[-40:], "text": dramamod.text(st),
+            "speech": (state["cfg"].get("speech") or {}).get("engine") or "browser"}
+
+
+@app.get("/api/drama/strip.png")
+async def api_drama_strip_png():
+    """The episode as a four-panel strip with the watermark (comic.manga)."""
+    from . import comic
+    avatarsmod.ensure(state["store"], state["cfg"])
+    _, st = _drama_story()
+    png = comic.manga(state["store"], state["cfg"], st["panels"], st["title"])
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+_CLIP_TYPES = {"video/mp4": "mp4", "video/webm": "webm", "image/png": "png"}
+CLIP_MAX = 60 * 1024 * 1024
+
+
+@app.post("/api/drama/clip")
+async def api_drama_clip(request: Request):
+    """Keep a clip the page recorded (or the strip) in the person's own workspace, under
+    clips/, where Files, chat chips and the channels' send_files can reach it. The body
+    is the file; nothing is sent anywhere else."""
+    kind = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    ext = _CLIP_TYPES.get(kind)
+    if not ext:
+        return JSONResponse({"error": "a clip is an mp4, a webm or a png"}, status_code=415)
+    raw = await request.body()
+    if not raw:
+        return JSONResponse({"error": "the clip is empty"}, status_code=400)
+    if len(raw) > CLIP_MAX:
+        return JSONResponse({"error": "that clip is over 60 MB"}, status_code=413)
+    from . import executors as execmod
+    folder = Path(execmod.default_workspace(state["cfg"])).expanduser() / "clips"
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y-%m-%d-%H%M%S")
+    target = folder / f"{stamp}-drama.{ext}"
+    target.write_bytes(raw)
+    state["store"].log("system", f"drama clip saved: clips/{target.name}")
+    await state["broadcast_user"]({"type": "files"}, usersmod.current())
+    return {"path": str(target), "name": f"clips/{target.name}", "bytes": len(raw)}
+
+
+@app.delete("/api/drama")
+async def api_drama_clear():
+    return {"cleared": dramamod.clear(usersmod.current())}
+
+
 @app.post("/api/office/snap")
 async def api_office_snap(body: dict | None = None):
     """Snap: the office right now, as the roll-call picture, sent to the person's phone —
@@ -11060,7 +11505,18 @@ async def api_company():
             "catalogue": companymod.catalogue(), "brain": execmod.has_brain(cfg),
             "accounts": _company_accounts(cfg), "max_departments": companymod.MAX_DEPTS,
             "brain_notes": companymod.brain(store),
-            "companies": companymod.companies(cfg), "max_companies": companymod.MAX_COMPANIES}
+            "companies": companymod.companies(cfg), "max_companies": companymod.MAX_COMPANIES,
+            "permissions": companymod.permission_mode(cfg),
+            "executors": [{"name": p["name"], "summary": p.get("summary", "")}
+                          for p in _hands_list(store)]}
+
+
+def _hands_list(store) -> list:
+    try:
+        from . import hands as handsmod
+        return handsmod.list_profiles(store)
+    except Exception:
+        return []
 
 
 @app.put("/api/company")
@@ -11259,6 +11715,14 @@ async def api_company_task(body: dict, request: Request):
                                conversation_id=b.get("conversation_id", ""))
     return {"ok": True, "run_id": run_id, "flow": flow["name"],
             "department": str(b.get("department") or "")}
+
+
+@app.get("/api/chat/addresses")
+async def api_chat_addresses():
+    """Who `@` reaches in a chat: the specialists and the open company's departments.
+    Every composer's suggestions read this one list (company.addresses)."""
+    from . import company as companymod
+    return companymod.addresses(state["cfg"], state["store"])
 
 
 @app.post("/api/company/audit")
@@ -12016,6 +12480,62 @@ async def api_team_link_invite(body: dict):
     return inv
 
 
+@app.post("/api/team/pass")
+async def api_team_pass(body: dict):
+    """Lend one of your specialists to somebody for a few minutes: a single-use invite
+    that carries the agent and the minutes. Redeemed, it is a link whose one cell is
+    that agent, expiring with the pass; the agent answers in words only (no tools here),
+    and the link ends itself when the time is up."""
+    from . import teamlink
+    b = body or {}
+    owner = usersmod.current() or ""
+    kind = "account" if b.get("kind") == "account" else "machine"
+    agent = str(b.get("agent") or "").strip().lstrip("@")
+    d = state["store"].get_subagent(agent) if agent else None
+    if not d:
+        return JSONResponse({"error": f"you have no agent called '{agent or '?'}' to lend"}, status_code=404)
+    try:
+        minutes = int(b.get("minutes") or teamlink.PASS_DEFAULT)
+    except (TypeError, ValueError):
+        minutes = teamlink.PASS_DEFAULT
+    minutes = max(teamlink.PASS_MIN, min(teamlink.PASS_MAX, minutes))
+    if kind == "account" and not usersmod.enabled():
+        return JSONResponse({"error": "this machine has no accounts, so lend to another machine"},
+                            status_code=400)
+    if kind == "machine" and not state.get("team_listener"):
+        return JSONResponse({"error": "switch on 'Accept linked teams' first, so the other "
+                                      "machine can reach this one"}, status_code=409)
+    inv = teamlink.invite(owner, kind, label=str(b.get("label") or ""),
+                          port=(state["team_listener"].port if state.get("team_listener") else 0),
+                          cfg=state["cfg"], guest={"agent": d["name"], "minutes": minutes,
+                                                   "look": avatarsmod.recipe_for(state["store"], d["name"])})
+    fabricmod.audit_team(state["store"], "link.invite", f"link:{kind}",
+                         f"a guest pass for {d['name']} ({minutes} min, words only) was made "
+                         f"(expires in {inv['expires_in']}s if unused)")
+    code = inv.get("invite") or inv.get("code")
+    how = ("bento link join" if kind == "machine" else "bento link redeem")
+    inv["share"] = (f"You're invited to borrow {d['name']} for {minutes} minutes. "
+                    f"In Bento: Settings → Team & Communications → Linked teams → paste this, "
+                    f"or run `{how} {code}`.")
+    return inv
+
+
+@app.get("/api/team/passes")
+async def api_team_passes():
+    """Every live guest pass, both ways: who you lent and who was lent to you."""
+    from . import teamlink
+    owner = usersmod.current() or ""
+    out = []
+    for lk in teamlink.links(owner):
+        p = teamlink.pass_state(lk)
+        if p:
+            out.append({"label": lk["label"], "kind": lk.get("kind"), "agent": p["agent"],
+                        "role": p["role"], "left_s": p["left_s"], "over": p["over"],
+                        "until": p["until"], "identity": _team_peer_identity(lk)})
+    return {"passes": out, "min": teamlink.PASS_MIN, "max": teamlink.PASS_MAX,
+            "default": teamlink.PASS_DEFAULT}
+
+
 @app.post("/api/team/links/join")
 async def api_team_link_join(body: dict):
     from . import teamlink
@@ -12285,29 +12805,44 @@ async def api_team_me(body: dict):
     return {"ok": True, "name": name or teamlink.machine_name(state["cfg"])}
 
 
-@app.delete("/api/team/links/{label}")
-async def api_team_link_remove(label: str):
+async def _team_end_link(owner: str, lk: dict, why: str = "link ended") -> bool:
+    """End one link: its row (both halves of an account link), every cell that named it
+    on each side, a ledger line each side, and a repaint. The remove route and the sweep
+    that ends a guest pass share it, so the two can never end a link differently."""
     from . import teamlink
-    owner = usersmod.current() or ""
-    lk = teamlink.find(owner, label)
     theirs = None
-    if lk and lk.get("kind") == "account":
+    if lk.get("kind") == "account":
         theirs = next((x for x in teamlink.links(lk.get("peer") or "")
                        if x.get("kind") == "account" and x.get("pair_id") == lk.get("pair_id")), None)
-    if not lk or not teamlink.remove(owner, label):
-        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
-    n = fabricmod.forget_link_grants(state["store"], lk["label"])
+    if not teamlink.remove(owner, lk["label"]):
+        return False
+    with usersmod.as_user(owner):
+        n = fabricmod.forget_link_grants(state["store"], lk["label"])
     if theirs:
         # an account link is one agreement: the other person's half ended with it, and
         # so do the cells that named it in THEIR database — with a line in their ledger
         with usersmod.as_user(lk.get("peer") or ""):
             m = fabricmod.forget_link_grants(state["store"], theirs["label"])
             fabricmod.audit_team(state["store"], "link.revoke", f"link:{theirs['label']}",
-                                 f"the other account ended this link; {m} permission(s) revoked")
+                                 f"{'the other account ended this link' if why == 'link ended' else why}; "
+                                 f"{m} permission(s) revoked")
         await state["broadcast_user"]({"type": "team_links"}, lk.get("peer") or "")
-    fabricmod.audit_team(state["store"], "link.revoke", f"link:{lk['label']}",
-                         f"link ended; {n} permission(s) that named it revoked")
+        _VISITS.pop((lk.get("peer") or "", theirs["label"]), None)
+    with usersmod.as_user(owner):
+        fabricmod.audit_team(state["store"], "link.revoke", f"link:{lk['label']}",
+                             f"{why}; {n} permission(s) that named it revoked")
+    _VISITS.pop((owner, lk["label"]), None)
     await state["broadcast_user"]({"type": "team_links"}, owner)
+    return True
+
+
+@app.delete("/api/team/links/{label}")
+async def api_team_link_remove(label: str):
+    from . import teamlink
+    owner = usersmod.current() or ""
+    lk = teamlink.find(owner, label)
+    if not lk or not await _team_end_link(owner, lk):
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
     return {"ok": True}
 
 
@@ -12500,6 +13035,9 @@ async def api_team_link_access(label: str, body: dict):
     lk = teamlink.find(owner, label)
     if not lk:
         return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    if lk.get("pass"):
+        return JSONResponse({"error": "a guest pass lends one agent for a set time; remove it "
+                                      "and link properly to change who may ask whom"}, status_code=409)
     b = body or {}
     got = fabricmod.set_link_access(state["store"], lk["label"],
                                     b.get("theirs_may_ask") if "theirs_may_ask" in b else None,
@@ -12826,8 +13364,12 @@ async def api_agent_hands(key: str, body: dict):
 
 @app.get("/api/team/matrix")
 async def api_team_matrix():
-    """Who may ask whom (fabric.matrix — grants rows, drawn as a grid)."""
-    return fabricmod.matrix(state["store"], state["cfg"])
+    """Who may ask whom (fabric.matrix — grants rows, drawn as a grid), and the same
+    question between the company's departments (company.dept_matrix), with the level
+    the company decides it at."""
+    from . import company as companymod
+    return {**fabricmod.matrix(state["store"], state["cfg"]),
+            "departments": companymod.dept_matrix(state["cfg"], state["store"])}
 
 
 @app.put("/api/team/matrix")
@@ -12836,15 +13378,97 @@ async def api_team_matrix_set(body: dict):
     not an agent-facing door — an agent that could write the matrix could grant
     itself colleagues (there is deliberately no tool for this)."""
     b = body or {}
+    from . import company as companymod
+    dept = str(b.get("level") or "") == "department"
     try:
-        cell = fabricmod.set_cell(state["store"], str(b.get("from") or ""),
-                                  str(b.get("to") or ""), str(b.get("effect") or ""))
+        if dept:
+            cell = companymod.set_dept_cell(state["cfg"], state["store"], str(b.get("from") or ""),
+                                            str(b.get("to") or ""), str(b.get("effect") or ""))
+        else:
+            cell = fabricmod.set_cell(state["store"], str(b.get("from") or ""),
+                                      str(b.get("to") or ""), str(b.get("effect") or ""))
     except KeyError as e:
-        return JSONResponse({"error": f"no agent called '{e.args[0]}'"}, status_code=404)
+        return JSONResponse({"error": f"no {'department' if dept else 'agent'} called '{e.args[0]}'"},
+                            status_code=404)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     await state["broadcast"]({"type": "grants"})
-    return {"ok": True, "cell": cell, **fabricmod.matrix(state["store"], state["cfg"])}
+    return {"ok": True, "cell": cell, **fabricmod.matrix(state["store"], state["cfg"]),
+            "departments": companymod.dept_matrix(state["cfg"], state["store"])}
+
+
+@app.put("/api/company/permissions")
+async def api_company_permissions(body: dict):
+    """Decide who may ask whom per agent or per department (company.set_permission_mode).
+    The person's choice, so a cookie door and no tool, like the matrix itself."""
+    from . import company as companymod
+    try:
+        mode = companymod.set_permission_mode(state["cfg"], state["store"], str((body or {}).get("mode") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "grants"})
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {"ok": True, "mode": mode, "departments": companymod.dept_matrix(state["cfg"], state["store"])}
+
+
+@app.post("/api/company/kit/offer")
+async def api_company_kit_offer(body: dict):
+    """The kit for a department and the answers so far (company.recommend): the
+    questions, then the tools, skills and MCP servers teams like it commonly use. Pure,
+    so the page asks again after every answer."""
+    from . import company as companymod
+    cfg, store = state["cfg"], state["store"]
+    b = body or {}
+    dept = next((d for d in companymod.departments(cfg, store)
+                 if d["name"].lower() == str(b.get("department") or "").strip().lower()), None)
+    if dept is None and isinstance(b.get("dept"), dict):
+        dept = {k: str(b["dept"].get(k) or "")[:200] for k in ("id", "name", "about")}
+    if dept is None:
+        return JSONResponse({"error": "there is no department by that name"}, status_code=404)
+    answers = b.get("answers") if isinstance(b.get("answers"), dict) else {}
+    have = {s["name"] for s in store.list_skills()} if hasattr(store, "list_skills") else set()
+    offer = companymod.recommend(dept, answers)
+    for s in offer["skills"]:
+        s["exists"] = s["name"] in have
+    return {"department": dept.get("name", ""), "offer": offer,
+            "current": companymod.kit_status(cfg, dept.get("kit"))}
+
+
+@app.post("/api/company/kit")
+async def api_company_kit(body: dict):
+    """Give a department that exists the kit the person ticked (company.apply_kit)."""
+    from . import company as companymod
+    b = body or {}
+    try:
+        got = companymod.apply_kit(state["cfg"], state["store"], str(b.get("department") or ""),
+                                   b.get("kit") if isinstance(b.get("kit"), dict) else {})
+    except KeyError as e:
+        return JSONResponse({"error": f"there is no department called {e.args[0] or '(none)'}"},
+                            status_code=404)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast"]({"type": "fabric_defs"})
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    return {"ok": True, **got}
+
+
+@app.put("/api/company/hands")
+async def api_company_hands(body: dict):
+    """Give a department an executor (hands profile) for every member without their own."""
+    from . import company as companymod
+    b = body or {}
+    try:
+        got = companymod.set_hands(state["cfg"], state["store"], str(b.get("department") or ""),
+                                   str(b.get("hands") or ""))
+    except KeyError as e:
+        return JSONResponse({"error": f"there is no department called {e.args[0] or '(none)'}"},
+                            status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, **got}
 
 
 @app.put("/api/subagents/{name}/brain")
@@ -13960,112 +14584,262 @@ async def ws_vnc(ws: WebSocket):
             await ws.close()
 
 
-@app.websocket("/ws/terminal")
-async def ws_terminal(ws: WebSocket):
-    """A real shell on the host, bridged to xterm.js in the Terminal app."""
+# ---------------------------------------------------------------------------
+# The shared browser (cdpbrowser.py): a real Chromium per person, drawn into a window
+# as a screencast, with the person's input sent back and the agent driving the same tab.
+# ---------------------------------------------------------------------------
+
+def _someone_here(uid: str) -> bool:
+    """Is this person at a screen right now (any desktop or phone connected)?"""
+    cu = state.get("client_uids") or {}
+    return any(cu.get(ws, "") == (uid or "") for ws in list(state.get("clients") or []))
+
+
+async def _browser_attention(uid: str, payload: dict):
+    """The browser needs the person: every screen of theirs is told, and the window pulses."""
+    with usersmod.as_user(uid):
+        state["store"].log("browser", f"needs you: {payload.get('why') or payload.get('reason')} "
+                                      f"on {payload.get('site') or 'a page'}")
+    await state["broadcast_user"]({"type": "browser_attention", **payload}, uid)
+
+
+from . import cdpbrowser as _cdpb  # noqa: E402
+_cdpb.bind(attention=_browser_attention, presence=_someone_here)
+
+
+@app.get("/api/browser")
+async def api_browser():
+    """Whether the shared browser can run here, and what it shows if it is running."""
+    uid = usersmod.current() or ""
+    st = _cdpb.status(state["cfg"])
+    b = _cdpb.current(uid)
+    return {**st, "running": bool(b), **({"state": b.snapshot_state()} if b else {})}
+
+
+@app.websocket("/ws/browser")
+async def ws_browser(ws: WebSocket):
+    """One window onto the person's shared browser: JPEG frames out (binary), state and the
+    agent's hand out (JSON), the person's pointer and keys in. Several windows (a desktop
+    and a phone) may watch one browser; they all see and steer the same tab."""
     if await _ws_reject(ws):
         return
-    import fcntl
-    import os
-    import pty
-    import signal
-    import struct
-    import termios
-
-    # On a machine with accounts the Terminal is a real shell, so it is exactly the
-    # place the data boundary would leak: without a jail, whoever opened it could
-    # read every other account's home. So it fails closed — a jail per account, or
-    # no shell — and it opens in the acting account's own home, not the OS user's.
-    ws_uid = _ws_user(ws) or ""
-    from .tools import bwrap_argv, folder_binds, sandbox_conf, sandbox_mechanism
-    # The same safe folders the agent's own tools use. The Terminal is the other
-    # half of "the agent may work here" — a folder the agent can read and the
-    # Terminal cannot is a difference nobody can explain from the outside.
-    sb_ro, sb_extra = folder_binds(state.machine_cfg(), ws_uid or None)
-    if usersmod.enabled():
-        if not sandbox_mechanism():
-            await ws.accept()
+    uid = _ws_user(ws) or ""
+    await ws.accept()
+    with usersmod.as_user(uid):
+        try:
+            hello = json.loads(await asyncio.wait_for(ws.receive_text(), 15))
+        except Exception:
+            hello = {}
+        try:
+            b = await _cdpb.get(uid, state["cfg"], usersmod.home_for(uid))
+        except Exception as e:
             with contextlib.suppress(Exception):
-                await ws.send_text("This machine has accounts, so the Terminal must run in a "
-                                   "per-account jail — install bubblewrap to enable it.\r\n")
+                await ws.send_text(json.dumps({"type": "error", "text": str(e)}))
                 await ws.close()
             return
-        home = os.path.realpath(str(usersmod.home_for(ws_uid)))
-        os.makedirs(home, exist_ok=True)
-        jail = bwrap_argv(home, ["/bin/bash", "-l"], chdir=home,
-                          hide=[os.path.realpath(str(usersmod.users_root()))],
-                          extra=sb_extra, ro_extra=sb_ro)
-    else:
-        sandboxed, sb_root = sandbox_conf(state.machine_cfg())
-        if sandboxed:
-            Path(sb_root).mkdir(parents=True, exist_ok=True)
-        jail = bwrap_argv(sb_root, ["/bin/bash", "-l"], extra=sb_extra,
-                          ro_extra=sb_ro) if sandboxed else None
+        lock = asyncio.Lock()   # frames and state come from different tasks: one send at a time
 
-    await ws.accept()
-    shell = os.environ.get("SHELL", "/bin/bash")
-    pid, fd = pty.fork()
-    if pid == 0:  # child: become the user's shell, jailed to their own home
-        env = dict(os.environ)
-        env["TERM"] = "xterm-256color"
-        if jail:
-            os.execvpe("bwrap", jail, env)
+        async def send_bytes(data):
+            async with lock:
+                await ws.send_bytes(data)
+
+        async def send_json(msg):
+            async with lock:
+                await ws.send_text(json.dumps(msg))
+        vid = await b.add_viewer(send_bytes, send_json,
+                                 int(hello.get("w") or 0), int(hello.get("h") or 0))
+        if hello.get("url"):
+            with contextlib.suppress(Exception):
+                await b.person({"type": "navigate", "url": hello["url"]})
         try:
-            os.chdir(os.path.expanduser("~"))
-        except OSError:
-            pass
-        os.execvpe(shell, [shell, "-l"], env)
-
-    with usersmod.as_user(ws_uid):
-        state["store"].log("system", f"terminal session opened (pid {pid})")
-    loop = asyncio.get_event_loop()
-    out_q: asyncio.Queue = asyncio.Queue()
-
-    def on_readable():
-        try:
-            data = os.read(fd, 65536)
-        except OSError:
-            data = b""
-        out_q.put_nowait(data)
-
-    loop.add_reader(fd, on_readable)
-
-    async def pump():
-        while True:
-            data = await out_q.get()
-            if not data:
+            while True:
+                op = json.loads(await ws.receive_text())
                 try:
-                    await ws.close()
-                except Exception:
-                    pass
-                return
-            try:
-                await ws.send_text(data.decode("utf-8", "replace"))
-            except Exception:
-                return
+                    await b.person(op)
+                except _cdpb.CDPError as e:
+                    await send_json({"type": "notice", "text": str(e)})
+        except (WebSocketDisconnect, RuntimeError, json.JSONDecodeError):
+            pass
+        finally:
+            await b.drop_viewer(vid)
 
-    pump_task = asyncio.create_task(pump())
+
+# ---------------------------------------------------------------------------
+# Native apps projected into a window (appstream.py): one installed app, its own headless
+# display, drawn in a Bento window and steered from there, by the person or the agent.
+# ---------------------------------------------------------------------------
+
+from . import appstream as _aps  # noqa: E402
+
+
+@app.get("/api/appstreams")
+async def api_appstreams():
+    uid = usersmod.current() or ""
+    return {**_aps.status(), "streams": [x.summary() for x in _aps.streams(uid)]}
+
+
+@app.post("/api/appstreams")
+async def api_appstream_open(body: dict):
+    """Open an installed app (by its id or name) in its own window here."""
+    uid = usersmod.current() or ""
+    b = body or {}
+    try:
+        s = await _aps.open_app(uid, str(b.get("app") or ""),
+                                (int(b.get("w") or _aps.SIZE[0]), int(b.get("h") or _aps.SIZE[1])))
+    except RuntimeError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    state["store"].log("system", f"app in a window: {s.title} ({s.backend})")
+    return {"ok": True, **s.summary()}
+
+
+@app.delete("/api/appstreams/{sid}")
+async def api_appstream_close(sid: str):
+    s = _aps.get(usersmod.current() or "", sid)
+    if not s:
+        return JSONResponse({"error": "no such app window"}, status_code=404)
+    await s.stop()
+    return {"ok": True}
+
+
+@app.websocket("/ws/appstream")
+async def ws_appstream(ws: WebSocket):
+    """One window onto a projected app: frames out (binary), the person's input in."""
+    if await _ws_reject(ws):
+        return
+    uid = _ws_user(ws) or ""
+    await ws.accept()
+    s = _aps.get(uid, ws.query_params.get("id") or "")
+    if not s:
+        with contextlib.suppress(Exception):
+            await ws.send_text(json.dumps({"type": "error", "text": "that app is no longer open"}))
+            await ws.close()
+        return
+    lock = asyncio.Lock()
+
+    async def send_bytes(data):
+        async with lock:
+            await ws.send_bytes(data)
+
+    async def send_json(msg):
+        async with lock:
+            await ws.send_text(json.dumps(msg))
+    vid = await s.add_viewer(send_bytes, send_json)
+    try:
+        while True:
+            op = json.loads(await ws.receive_text())
+            if op.get("type") == "hello":
+                continue
+            await s.person(op)
+    except (WebSocketDisconnect, RuntimeError, json.JSONDecodeError):
+        pass
+    finally:
+        s.drop_viewer(vid)
+
+
+def _terminal_argv(uid: str) -> tuple[list, str, str]:
+    """The Terminal's shell for this account: (argv, working folder, '' or why it cannot
+    run). The same for a window and for a session the agent starts.
+
+    On a machine with accounts the Terminal is a real shell, so it is exactly the place the
+    data boundary would leak: without a jail, whoever opened it could read every other
+    account's home. So it fails closed (a jail per account, or no shell) and it opens in the
+    acting account's own home, not the OS user's. The safe folders are the agent's own
+    (folder_binds): a folder the agent can read and the Terminal cannot is a difference
+    nobody can explain from the outside."""
+    import os
+    from .tools import bwrap_argv, folder_binds, sandbox_conf, sandbox_mechanism
+    sb_ro, sb_extra = folder_binds(state.machine_cfg(), uid or None)
+    shell = os.environ.get("SHELL", "/bin/bash")
+    if usersmod.enabled():
+        if not sandbox_mechanism():
+            return [], "", ("This machine has accounts, so the Terminal must run in a per-account "
+                            "jail. Install bubblewrap to enable it.")
+        home = os.path.realpath(str(usersmod.home_for(uid)))
+        os.makedirs(home, exist_ok=True)
+        return (bwrap_argv(home, ["/bin/bash", "-l"], chdir=home,
+                           hide=[os.path.realpath(str(usersmod.users_root()))],
+                           extra=sb_extra, ro_extra=sb_ro), home, "")
+    sandboxed, sb_root = sandbox_conf(state.machine_cfg())
+    if sandboxed:
+        Path(sb_root).mkdir(parents=True, exist_ok=True)
+        return bwrap_argv(sb_root, ["/bin/bash", "-l"], extra=sb_extra, ro_extra=sb_ro), sb_root, ""
+    return [shell, "-l"], os.path.expanduser("~"), ""
+
+
+def _terminal_spawn(uid: str, name: str = "", by: str = "you"):
+    from . import ptyhub
+    argv, cwd, why = _terminal_argv(uid)
+    if why:
+        raise RuntimeError(why)
+    s = ptyhub.spawn(uid, argv, cwd=cwd, name=name, by=by)
+    with usersmod.as_user(uid):
+        state["store"].log("system", f"terminal session started: {s.name} (pid {s.pid}, by {by})")
+    return s
+
+
+@app.get("/api/terminal/sessions")
+async def api_terminal_sessions():
+    """This person's terminal sessions: running, who started each, who is watching, and
+    what is in the foreground. The Terminal's Sessions menu and the agent read this."""
+    from . import ptyhub
+    uid = usersmod.current() or ""
+    return {"available": ptyhub.available() or _terminal_argv(uid)[2],
+            "sessions": [x.summary() for x in ptyhub.sessions(uid)]}
+
+
+@app.delete("/api/terminal/sessions/{sid}")
+async def api_terminal_end(sid: str):
+    from . import ptyhub
+    uid = usersmod.current() or ""
+    s = ptyhub.get(uid, sid)
+    if not s:
+        return JSONResponse({"error": "no such session"}, status_code=404)
+    s.end()
+    state["store"].log("system", f"terminal session ended: {s.name}")
+    return {"ok": True}
+
+
+@app.websocket("/ws/terminal")
+async def ws_terminal(ws: WebSocket):
+    """A window onto one terminal session (ptyhub): the screen so far, then live output;
+    keys and resizes back. Closing the window detaches; the session keeps running.
+    `?session=<id>` attaches to one, `?session=new` (or none) starts one. The first
+    message is control, marked by a leading NUL: which session this is."""
+    if await _ws_reject(ws):
+        return
+    from . import ptyhub
+    uid = _ws_user(ws) or ""
+    await ws.accept()
+    want = ws.query_params.get("session") or "new"
+    s = None if want == "new" else ptyhub.get(uid, want)
+    if s is None:
+        try:
+            s = _terminal_spawn(uid)
+        except RuntimeError as e:
+            with contextlib.suppress(Exception):
+                await ws.send_text(f"{e}\r\n")
+                await ws.close()
+            return
+    lock = asyncio.Lock()
+
+    async def send(data: bytes):
+        async with lock:
+            await ws.send_text(data.decode("utf-8", "replace"))
+    await ws.send_text("\x00" + json.dumps({"type": "session", **s.summary()}))
+    if s.buf:
+        await send(bytes(s.buf))
+    sub = s.attach(send)
     try:
         while True:
             msg = json.loads(await ws.receive_text())
             if msg.get("type") == "input":
-                os.write(fd, msg.get("data", "").encode())
+                s.write(str(msg.get("data", "")))
             elif msg.get("type") == "resize":
-                fcntl.ioctl(fd, termios.TIOCSWINSZ,
-                            struct.pack("HHHH", int(msg.get("rows", 24)), int(msg.get("cols", 80)), 0, 0))
-    except (WebSocketDisconnect, OSError, json.JSONDecodeError):
+                s.resize(int(msg.get("cols", 80)), int(msg.get("rows", 24)))
+    except (WebSocketDisconnect, OSError, RuntimeError, json.JSONDecodeError):
         pass
     finally:
-        loop.remove_reader(fd)
-        pump_task.cancel()
-        try:
-            os.kill(pid, signal.SIGHUP)
-        except ProcessLookupError:
-            pass
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+        s.detach(sub)
 
 
 # ---------------------------------------------------------------------------
@@ -14325,10 +15099,20 @@ async def _run_chat(cid: str, data: dict):
         # other, each on its own brain, and every turn lands as that agent's bubble
         huddle_hit = fabricmod.parse_huddle(store, text)
         mention = None if huddle_hit else fabricmod.parse_mention(store, text)
+        # '@Sales find ten clinics' gives the task to a DEPARTMENT: a run of its desk,
+        # led by its head, signed off and checked like any department task. A specialist
+        # addressed by name was checked first and answers itself.
+        dept_hit = None
+        if not (huddle_hit or mention):
+            from . import company as _companymod
+            try:
+                dept_hit = _companymod.parse_department(cfg, store, text)
+            except Exception:
+                dept_hit = None
         # A message trigger can start a flow from the chat too. `@name` is resolved first
         # and always wins: an explicit address is not a pattern to be second-guessed.
         flow_hit = None
-        if not mention and not huddle_hit:
+        if not mention and not huddle_hit and not dept_hit:
             try:
                 flow_hit = flowsmod.match_message(store, text, surface="gui")
             except Exception:
@@ -14337,7 +15121,7 @@ async def _run_chat(cid: str, data: dict):
         # trigger go to the specialist / the huddle / the flow even when the machine's
         # brain is Claude Code. Checked in the wrong order, every `@toolsmith build a
         # tool` was forwarded to Claude Code, which built it itself.
-        if model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit):
+        if model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit or dept_hit):
             # Engine = Claude Code: delegate the turn to the coding agent already
             # installed on this machine. It keeps AgentOS's turn lifecycle — working
             # indicator, global turn slot, Stop, persistence — because its stream is
@@ -14538,6 +15322,37 @@ async def _run_chat(cid: str, data: dict):
             usage = res.get("usage") or {}
             result = {"content": content, "steps": [],
                       "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
+        elif dept_hit:
+            dept, task = dept_hit
+            from . import company as _companymod
+            flow = _companymod.desk_for(cfg, store, dept["name"])   # a sentence when it has none
+            head = dept.get("lead") or ""
+            model = state["fabric"].resolve_model({"name": flow["name"],
+                                                   "model": flow.get("model") or ""})
+            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model,
+                          "uid": owner, "speaker": head}
+            knowledge.turn_started()
+            started = True
+            await evsend({"type": "turn_start", "model": model, "speaker": head,
+                          "department": dept["name"]})
+            await evsend({"type": "status", "message": f"{dept['name']} has it"
+                          + (f": {head} leads" if head else "")})
+            try:
+                got = await state["fabric"].department_task(
+                    dept["name"], task, conversation_id=cid, approver=approver,
+                    surface="gui", ui_emit=evsend, agent_slot=turns[cid])
+            except PermissionError as e:
+                raise RuntimeError(str(e))
+            res = got["result"]
+            content = res["content"] or (f"({res['status']}: {res['fault']})" if res["fault"]
+                                         else f"({res['status']})")
+            header = f"▦ {dept['name']} · {res['status']}\n\n"
+            if not res["content"]:
+                await evsend({"type": "text_delta", "text": header + content})
+            usage = res.get("usage") or {}
+            result = {"content": content, "steps": [], "speaker": head,
+                      "department": dept["name"],
+                      "tokens": {"input": usage.get("in", 0), "output": usage.get("out", 0)}}
         elif huddle_hit:
             names, topic = huddle_hit
             turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": "huddle",
@@ -14640,6 +15455,8 @@ async def _run_chat(cid: str, data: dict):
                                **({"model": model} if model and not result.get("engine") else {}),
                                # a specialist addressed by name answered, and wears its face
                                **({"speaker": result["speaker"]} if result.get("speaker") else {}),
+                               # a department answered: its head's face, its name on the bubble
+                               **({"department": result["department"]} if result.get("department") else {}),
                                # a huddle: the content is one line per turn (fabric.huddle_text)
                                **({"huddle": result["huddle"]} if result.get("huddle") else {})})
             store.touch_conversation(cid)

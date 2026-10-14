@@ -891,6 +891,15 @@ select.modelchip option{background:var(--bg2);color:var(--txt)}
 .cp-attach{flex:none;width:30px;height:30px;border-radius:var(--r-full);color:var(--dim);display:flex;align-items:center;justify-content:center;font-size:var(--fs-md)}
 .cp-attach:hover{background:rgba(255,255,255,.08);color:var(--txt)}
 #composer.dropping,.cp-inbar.dropping{outline:2px dashed var(--acc);outline-offset:-2px}
+/* @ suggestions (10d-mentions.js): agents and departments, above the composer */
+.ats{position:fixed;z-index:9600;max-height:min(340px,50vh);overflow:auto;padding:4px;border-radius:var(--r-md,12px);
+  background:var(--bg2);border:1px solid var(--line);box-shadow:var(--el-4,0 10px 30px rgba(0,0,0,.35))}
+.ats-row{display:flex;align-items:center;gap:10px;min-height:var(--tap,40px);padding:4px 10px;border-radius:var(--r-sm,8px);cursor:pointer}
+.ats-row.on,.ats-row:hover{background:color-mix(in srgb,var(--acc) 18%,transparent)}
+.ats-row .av,.ats-dot{width:26px;height:26px;flex:none;border-radius:50%;image-rendering:pixelated}
+.ats-dot{display:inline-grid;place-items:center;color:#fff;font-size:13px;background:var(--bg3)}
+.ats-name{font-weight:600;white-space:nowrap}
+.ats-sub{color:var(--dim);font-size:var(--fs-sm,12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 /* ===== gallery, spaces, timeline, audit =====
    Named 09a- deliberately: CSS parts are concatenated in filename order and
    16-glass.css must stay last, so anything numbered 17+ would land after it and
@@ -4512,6 +4521,46 @@ body.dev-touch .co-cosl select,body.dev-touch .co-newco,body.dev-touch .co-plan,
 body.dev-touch .co-wrow{min-height:var(--tap)}
 body.dev-touch .co-wrow input{width:22px;height:22px}
 .co-go .co-apply,.co-go .co-wapply{white-space:normal;text-align:left;line-height:1.3}
+
+/* zoom on the picture (24k-office3d.js of3Controls): in, out, the whole office */
+.of3-ui>.of3-zoom{left:12px;top:auto;bottom:12px;transform:none;will-change:auto;display:flex;flex-direction:column;gap:6px;pointer-events:auto;z-index:2}
+.of3-zb{width:var(--tap,36px);height:var(--tap,36px);border-radius:10px;border:1px solid var(--o3ln);background:var(--o3bg);color:#eef0ff;
+  font:700 17px/1 var(--font,inherit);display:grid;place-items:center;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.of3-zb:hover,.of3-zb:focus-visible{border-color:var(--acc,#8b5cf6)}
+#office-scene:not(.hq) .of3-zoom{display:none}
+.of3-ui.hq>.of3-zoom{bottom:110px;left:16px}
+/* Office HQ on a wide screen: the conversation is a column on the right, so the work
+   plays out in the room the camera follows on the left (of3Docked, of3Pads). The list of
+   a room's people moves left to stay clear of it. */
+@media (min-width:901px){
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar{top:44px;bottom:auto;left:auto;right:16px;
+    transform:none;width:min(440px,34vw)}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{width:min(440px,34vw)}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{text-overflow:ellipsis}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:112px;bottom:auto;left:auto;right:16px;
+    transform:none;width:min(440px,34vw);flex-direction:column}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{max-height:calc(100vh - 230px)}
+  body.immersive.imm-hq:not(.has-win):not(.deck-full) .approval.ap-float,
+  body.immersive.imm-hq:not(.has-win):not(.deck-full) #aibubble{right:calc(min(440px,34vw) + 32px)}
+  .of3-ui.hq>.of3-roster{right:auto;left:16px;top:56px;bottom:110px}
+  .of3-ui.hq.focused>.of3-zoom{left:282px}
+}
+
+/* the kit a department starts with (24g-company.js companyKitBlock) */
+.co-kit{margin:8px 0 2px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:color-mix(in srgb,var(--bg3) 60%,transparent)}
+.co-kit>summary{cursor:pointer;font-weight:650;font-size:var(--fs-sm);min-height:var(--tap,36px);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.co-kit>summary .mut{font-weight:400}
+.co-kq{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:var(--fs-sm);flex-wrap:wrap}
+.co-kq span{flex:1 1 180px}
+.co-kq select{flex:0 1 200px;min-height:var(--tap,36px)}
+.co-kh{font-size:var(--fs-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:10px 0 4px}
+.co-kt{display:flex;flex-wrap:wrap;gap:6px 12px}
+.co-kc{display:flex;align-items:center;gap:7px;min-height:var(--tap,36px);font-size:var(--fs-sm);flex-wrap:wrap}
+.co-kc input{flex:none}
+.co-ks{margin:2px 0}
+.co-ks .co-more{margin-left:26px}
+.co-kok{color:var(--ok,#22c55e);font-weight:600}
+.co-kitline{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 /* ================= The play strip and comic talk (24e-playstrip.js, 10b-huddle.js) =================
    The Office's comic language at the size of a line: ink outlines, white balloons, yellow
    bursts with a red word. Like the Office canvas these are a comic's own colours — a
@@ -5004,6 +5053,200 @@ body.kiosk #office-scene canvas{display:block}
 .dev-key{max-width:min(420px,60vw)}
 .dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
+/* ---- the drama reel (00g-drama.js) ---- */
+.dr-wrap{display:flex;flex-direction:column;gap:12px;padding:14px;max-width:760px}
+.dr-title{font-weight:750;font-size:var(--fs-lg,17px);display:flex;align-items:center;gap:6px}
+.dr-acts{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.dr-act{border-radius:var(--r-md,12px);padding:10px 12px;background:color-mix(in srgb,var(--bg2) 88%,var(--txt));
+  border:1px solid var(--hairline,rgba(255,255,255,.1));display:flex;flex-direction:column;gap:6px;min-width:0}
+.dr-act.trouble{border-color:color-mix(in srgb,#dc2626 60%,transparent)}
+.dr-act.ship{border-color:color-mix(in srgb,#10b981 60%,transparent)}
+.dr-cap{align-self:flex-start;background:#fde68a;color:#111;font-weight:800;font-size:11px;letter-spacing:.04em;
+  text-transform:uppercase;padding:2px 7px;border:2px solid #111}
+.dr-who{display:flex;align-items:center;gap:6px;min-width:0}
+.dr-who b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dr-av{width:22px;height:22px;border-radius:6px;image-rendering:pixelated}
+.dr-says{font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+.dr-cmd code{display:block;background:rgba(0,0,0,.55);color:#86efac;padding:6px 8px;border-radius:8px;font-size:12px;overflow-wrap:anywhere}
+.dr-stamp{display:inline-block;margin-top:6px;background:#dc2626;color:#fff;font-size:11px;padding:2px 8px;transform:rotate(-4deg);border:2px solid #fff}
+.dr-stamp.declined{background:#475569}
+.dr-why{font-size:12px;opacity:.8;margin-top:4px}
+.dr-missing,.dr-note{font-size:12.5px}
+.dr-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.dr-voice{display:flex;align-items:center;gap:6px;min-height:var(--tap,40px)}
+.dr-go{display:flex;gap:8px}
+.dr-out:empty{display:none}
+.dr-out video,.dr-out img{display:block;max-width:100%;max-height:440px;border-radius:12px;background:#000;margin:0 auto}
+.dr-acts-row{display:flex;gap:8px;justify-content:center;margin-top:8px}
+.dr-bar{height:8px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden;margin-bottom:6px}
+.dr-bar i{display:block;height:100%;background:var(--acc-grad,var(--acc))}
+.dr-scene{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px;
+  border-radius:var(--r-md,12px);border:1px dashed var(--hairline,rgba(255,255,255,.15));margin:0 14px 14px}
+.dr-scene>div:first-child{flex:1;min-width:200px}
+.dr-recpill{position:fixed;top:44px;left:50%;transform:translateX(-50%);z-index:9999;padding:8px 16px;border-radius:999px;
+  background:#dc2626;color:#fff;font-weight:800;letter-spacing:.04em;box-shadow:0 8px 30px rgba(0,0,0,.4);pointer-events:none}
+@media (max-width:560px){
+  .dr-acts{grid-template-columns:1fr 1fr}
+  .dr-go .endbtn,.dr-scene .endbtn,.dr-acts-row .endbtn{min-height:var(--tap,40px)}
+  #dr-fmt{max-width:100%;overflow-x:auto;scroll-snap-type:x mandatory}
+  #dr-fmt button{scroll-snap-align:start;min-height:var(--tap,40px)}
+}
+/* ---- the Arena (00h-arena.js) ---- */
+.ar-setup{display:flex;flex-direction:column;gap:12px;padding:16px;max-width:820px}
+.ar-lbl{font-weight:700}
+#ar-task{width:100%;box-sizing:border-box;resize:vertical;min-height:72px}
+.ar-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.ar-seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.ar-seat{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+.ar-seat select{min-height:var(--tap,40px)}
+.ar-note{font-size:12.5px;display:flex;gap:6px;align-items:center}
+.ar-recent{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.ar-past{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:8px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--bg2) 90%,var(--txt));border:1px solid var(--hairline,rgba(255,255,255,.1));min-height:var(--tap,40px)}
+.ar-top{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--hairline,rgba(255,255,255,.08))}
+.ar-top .sp{flex:1}
+.ar-task{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ar-grid{display:grid;gap:10px;padding:10px;flex:1;min-height:0;height:calc(100% - 100px)}
+.ar-grid.n2{grid-template-columns:1fr 1fr}
+.ar-grid.n3,.ar-grid.n4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+.ar-pane{display:flex;flex-direction:column;min-height:0;min-width:0;border-radius:var(--r-md,12px);
+  background:color-mix(in srgb,var(--bg2) 92%,var(--txt));border:1px solid var(--hairline,rgba(255,255,255,.1));overflow:hidden}
+.ar-pane header{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--hairline,rgba(255,255,255,.08))}
+.ar-pane header b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ar-st{font-size:11px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.1)}
+.ar-st.running{background:color-mix(in srgb,var(--acc) 35%,transparent)}
+.ar-st.done{background:rgba(16,185,129,.25);color:#6ee7b7}
+.ar-st.error,.ar-st.stopped{background:rgba(220,38,38,.25);color:#fca5a5}
+.ar-hud{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px;font-size:12px}
+.ar-chip{padding:3px 8px;border-radius:8px;background:rgba(0,0,0,.28);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ar-chip b{font-weight:800}
+.ar-chip.warn{background:rgba(220,38,38,.3)}
+.ar-log{flex:1;min-height:0;overflow:auto;padding:8px 12px;font-size:13px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.ar-tool{font:12px ui-monospace,Menlo,monospace;opacity:.85;margin:4px 0;white-space:normal}
+.ar-tool.ok::after{content:' ✓';color:#34d399}
+.ar-tool.bad::after{content:' ✗';color:#f87171}
+.ar-tool.denied{color:#fca5a5}
+.ar-tool.denied::after{content:' refused';font-weight:700}
+.ar-err{color:#f87171;font-size:12.5px}
+.ar-pane footer{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--hairline,rgba(255,255,255,.08));min-height:40px}
+.ar-sum{display:flex;flex-wrap:wrap;gap:8px 16px;padding:0 14px 12px;font-size:12.5px}
+@media (max-width:700px){
+  .ar-grid.n2,.ar-grid.n3,.ar-grid.n4{grid-template-columns:1fr;grid-template-rows:none;height:auto}
+  .ar-pane{min-height:320px}
+  .ar-top .endbtn,.ar-pane footer .endbtn{min-height:var(--tap,40px)}
+  #ar-n button{min-height:var(--tap,40px)}
+}
+
+/* ---- Watch me once (00i-watch.js) and a routine's desktop card ---- */
+.watchcard .pc-text{line-height:1.7}
+.wt-step{display:inline-block;padding:1px 8px;border-radius:8px;background:color-mix(in srgb,var(--acc) 22%,transparent);font-weight:600}
+.wt-arr{opacity:.6;margin:0 4px}
+.wt-daily{display:flex;align-items:center;gap:6px;font-size:12.5px;margin:4px 0;min-height:var(--tap,40px)}
+.routine-widget .rw-body{display:flex;flex-direction:column;gap:6px;padding:10px 12px;height:calc(100% - 34px);box-sizing:border-box}
+.rw-name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rw-steps{font-size:12px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rw-run{align-self:flex-start;min-height:var(--tap,40px)}
+
+/* ---- Time travel (00j-timetravel.js) ---- */
+.tt-wrap{display:flex;flex-direction:column;gap:10px;padding:12px 16px}
+.tt-track{display:grid;grid-template-columns:repeat(var(--n),minmax(10px,1fr));gap:4px;align-items:end;min-height:34px}
+.tt-tick{height:26px;border-radius:6px;border:0;padding:0;min-width:10px;background:var(--acc);opacity:.75;cursor:pointer}
+.tt-tick.mem{background:#a78bfa}
+.tt-tick.file{background:#38bdf8}
+.tt-tick.shell{background:repeating-linear-gradient(45deg,#f59e0b 0 4px,#78350f 4px 8px)}
+.tt-tick.gone{opacity:.25}
+.tt-tick.on{opacity:1;height:34px;box-shadow:0 0 0 2px #fff}
+/* the thumb's travel spans tick centre to tick centre, so it sits on the step it names */
+#tt-slide{width:calc(100% - 100% / var(--n,1));margin:0 calc(50% / var(--n,1))}
+.tt-legend{display:flex;align-items:center;gap:6px;font-size:12px;flex-wrap:wrap}
+.tt-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-left:6px}
+.tt-dot.file{background:#38bdf8}.tt-dot.mem{background:#a78bfa}
+.tt-dot.shell{background:repeating-linear-gradient(45deg,#f59e0b 0 3px,#78350f 3px 6px)}
+.tt-detail{display:flex;flex-direction:column;gap:8px}
+.tt-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.tt-what{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
+.tt-plan{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.tt-files{font-size:12px;overflow-wrap:anywhere}
+.tt-warn{color:#fbbf24;font-size:12.5px}
+.tt-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.tt-actions .sp{flex:1}
+.tt-fork{display:flex;align-items:center;gap:6px;font-size:13px}
+.tt-fork select{max-width:260px}
+@media (max-width:700px){
+  .tt-track{grid-template-columns:repeat(var(--n),minmax(18px,1fr));overflow-x:auto}
+  .tt-tick{min-height:var(--tap,40px)}
+  .tt-actions .endbtn,.tt-fork select{min-height:var(--tap,40px)}
+}
+
+/* ---- guest passes: Settings, the huddle card, the World ---- */
+.tlk-pass{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;margin:8px 0 2px;
+  border-radius:10px;background:color-mix(in srgb,var(--acc) 12%,transparent);border:1px solid color-mix(in srgb,var(--acc) 30%,transparent)}
+.tlk-pass span{flex:1;min-width:180px}
+.tlk-left{font-variant-numeric:tabular-nums}
+.tlk-lend .tlk-actions select{min-height:var(--tap,36px)}
+.hud-row.guest .hud-who::after{content:'guest';margin-left:6px;font-size:10px;font-weight:600;padding:1px 7px;border-radius:8px;
+  background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff)}
+.wd-dept.wd-guest{--dc:var(--acc)}
+.wd-left{font-variant-numeric:tabular-nums}
+/* ---- live windows (04f-streams.js): a real process drawn here and steered from here ---- */
+.sv{position:relative;flex:1;min-height:0;background:#0b0d10;overflow:hidden;touch-action:none}
+.sv-cv{display:block;width:100%;height:100%;object-fit:contain;outline:none;cursor:default;image-rendering:auto}
+.sv:not(.live)::after{content:'starting…';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:var(--txt3,#8892a6);font-size:13px}
+.sv-hand{position:absolute;inset:0;pointer-events:none}
+.sv-tap{position:absolute;transform:translate(-50%,-50%)}
+.sv-tap i{display:block;width:34px;height:34px;border-radius:50%;border:3px solid var(--acc);
+  box-shadow:0 0 18px color-mix(in srgb,var(--acc) 60%,transparent);animation:svTap 1.1s ease-out forwards}
+.sv-tap span{position:absolute;left:50%;top:26px;transform:translateX(-50%);white-space:nowrap;font-size:12px;font-weight:600;
+  padding:3px 9px;border-radius:999px;background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);animation:svSay 2.6s ease forwards}
+.sv-tap.nopos{transform:translateX(-50%)}.sv-tap.nopos i{display:none}.sv-tap.nopos span{top:0}
+@keyframes svTap{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.6);opacity:0}}
+@keyframes svSay{0%,80%{opacity:1}100%{opacity:0}}
+.sv-note{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);max-width:90%;padding:8px 14px;border-radius:10px;
+  background:var(--bg2);color:var(--txt);font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.sv-kb{position:absolute;left:-9999px;top:0;width:1px;height:1px;opacity:0}
+
+/* the browser's own chrome */
+.bw{display:flex;flex-direction:column;height:100%;min-height:0}
+.bw-bar{display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--bdr,rgba(255,255,255,.08))}
+.bw-b{min-width:var(--tap,34px);min-height:var(--tap,34px);border-radius:9px;background:transparent;border:1px solid transparent;
+  color:var(--txt);font-size:18px;line-height:1;cursor:pointer}
+.bw-b:hover{background:color-mix(in srgb,var(--txt) 8%,transparent)}
+.bw-url{flex:1;min-width:0;min-height:var(--tap,34px);border-radius:999px;padding:0 14px}
+.bw-kb{display:none}
+@media (pointer:coarse){.bw-kb{display:inline-block}}
+.bw-tabs{display:flex;gap:4px;padding:4px 8px 0;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.bw-tab{display:flex;align-items:center;gap:6px;max-width:220px;min-height:var(--tap,30px);padding:0 10px;border-radius:9px 9px 0 0;
+  background:color-mix(in srgb,var(--txt) 5%,transparent);color:var(--txt2,var(--txt));border:0;font-size:12px;cursor:pointer;scroll-snap-align:start}
+.bw-tab span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bw-tab.on{background:color-mix(in srgb,var(--acc) 18%,transparent);color:var(--txt)}
+.bw-tab i{font-style:normal;opacity:.6;padding:4px}
+.bw-ask{display:flex;align-items:center;gap:12px;padding:10px 14px;background:color-mix(in srgb,#f59e0b 18%,var(--bg2));
+  border-bottom:1px solid color-mix(in srgb,#f59e0b 45%,transparent)}
+.bw-ask[hidden]{display:none}
+.bw-ask-ic{font-size:22px}.bw-ask div{flex:1;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.bw-view{flex:1;min-height:0;display:flex}
+.bw-foot{padding:3px 10px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* a window that needs you (winNeedsYou in 04-wm.js) */
+.win.needs-you{animation:winNeeds 1.6s ease-in-out infinite}
+.win.needs-you .ttl::after{content:attr(data-needs);display:none}
+@keyframes winNeeds{0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,#f59e0b 70%,transparent),0 18px 50px rgba(0,0,0,.45)}
+  50%{box-shadow:0 0 0 6px color-mix(in srgb,#f59e0b 40%,transparent),0 18px 50px rgba(0,0,0,.45)}}
+.tbwin.needs-you,.dockb.needs-you{animation:dockNeeds 1.2s ease-in-out infinite}
+@keyframes dockNeeds{0%,100%{filter:none}50%{filter:drop-shadow(0 0 10px #f59e0b) brightness(1.15)}}
+@media (prefers-reduced-motion:reduce){.win.needs-you,.tbwin.needs-you,.dockb.needs-you{animation:none;outline:3px solid #f59e0b}}
+
+/* the Terminal: a session that outlives its window, and a line when the agent types */
+.term-wrap{display:flex;flex-direction:column;flex:1;min-height:0;height:100%}
+.term-agent{padding:5px 12px;font-size:12px;font-family:ui-monospace,Menlo,monospace;background:var(--acc-grad,var(--acc));
+  color:var(--on-acc,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.term-agent[hidden]{display:none}
+
+/* a native app's window (appstream.py): the app's own pixels and a line saying where it runs */
+.aw{display:flex;flex-direction:column;flex:1;min-height:0;height:100%}
+.aw-view{flex:1;display:flex;min-height:0}
+.aw-foot{padding:3px 10px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -5401,6 +5644,16 @@ function suiRaise(on){
   return true;
 }
 
+/* A live window needs the person (a sign-in, a 2FA code, a CAPTCHA in the shared
+   browser). In SUI the page is the BACKGROUND layer and native windows cover it, so the
+   toast and the pulsing window would be under whatever the person is using: the desktop
+   comes to the front, by the one layer change suiRaise already is. Outside SUI the
+   toast and the pulse are enough, and nothing is raised. */
+function suiAttention(){
+  if(!suiActive()||SUI.raised)return false;
+  return suiRaise(true);
+}
+
 function suiInit(){
   if(!suiActive()) return;
   SUI.on = true;
@@ -5708,8 +5961,14 @@ function avatarKeyOf(principal){
   if(p.startsWith('subagent:'))return p.slice(9);
   return '';
 }
+/* A guest lent by a pass (name@link) is painted from the recipe that came with the
+   pass, wherever its name appears: the huddle, the play strip, the World, Settings.
+   Filled by whoever learns a guest's look first; never stored. */
+var AV_GUEST={};
+function avatarGuest(key,rec){if(key&&rec&&typeof rec==='object'&&Object.keys(rec).length)AV_GUEST[key]=rec}
 function avatarSrc(key,o){
   o=o||{};
+  if(AV_GUEST[key])return avatarRecipeSrc(AV_GUEST[key],o);
   const a=AVATARS.by[key],v=a?a.v:0;
   return '/api/avatar.png?key='+encodeURIComponent(key)
     +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
@@ -5723,7 +5982,8 @@ function avatarSrc(key,o){
 function avatarRecipeSrc(rec,o){
   o=o||{};
   return '/api/avatar.png?recipe='+encodeURIComponent(JSON.stringify(rec||{}))
-    +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'));
+    +(o.body?'&body=1':o.sheet?'&sheet=1':o.crop===''?'':'&crop='+(o.crop||'face'))
+    +(o.costume?'&costume='+encodeURIComponent(o.costume):'')+(o.draw?'&draw='+o.draw:'');
 }
 function avatarRecipeImg(rec,cls,alt){
   if(AVATARS.off||!rec)return '';
@@ -5875,15 +6135,842 @@ var COMIC_WORDS={fetch_url:'FETCH!',web_search:'SEARCH!',read_file:'READ',write_
 function comicWord(tool){
   return COMIC_WORDS[tool]||String(tool||'').replace(/_/g,' ').toUpperCase().slice(0,12)+'!';
 }
+/* ---------------- the drama reel: real crew drama as a clip or a strip ----------------
+   agentos/drama.py keeps the beats of what the crew actually did (a huddle line, the
+   gate refusing an rm -rf, the retry that went through, the work shipped) and
+   /api/drama tells the latest episode as four acts. This file turns that story into
+   something a person can share:
+
+   - a 15 second CLIP, 9:16 or square, drawn on a canvas and recorded with the browser's
+     own MediaRecorder (canvas.captureStream + the agents' voices through a WebAudio
+     MediaStreamDestination). Voices are the machine's speech engine saying the agents'
+     own words; with the browser's voice there is nothing to record, so the clip has
+     sound effects only and the window says so.
+   - the scene, RECORDED: 15 seconds of whatever desktop scene is showing (the World,
+     Office HQ, the Mind), cropped to the format, with the same footer. The window steps
+     aside while it records, because a covered scene stops drawing.
+   - the 4-panel STRIP, painted by the server (comic.manga) so the terminal and the
+     page share one picture.
+
+   Every clip and strip carries the bento-ai-os footer. Nothing is sent anywhere: the
+   person downloads it or keeps it in Files (clips/).
+   Faces: GUI and SUI are this window (a browser without MediaRecorder gets the strip
+   and a sentence saying why there is no clip). TUI: `bento drama` and
+   `bento drama strip FILE.png`; a terminal cannot record a clip, and says so. */
+var DRAMA={data:null,fmt:'vertical',voices:true,busy:false,blob:null,url:'',kind:'',seen:'',w:null,note:''};
+var DRAMA_DUR=15;
+var DRAMA_FMT={vertical:[720,1280],square:[1080,1080]};
+var DRAMA_ACT_BG={argue:['#312e81','#1e1b4b'],trouble:['#7f1d1d','#3b0a0a'],fix:['#78350f','#3a1a06'],ship:['#065f46','#022c22']};
+var DRAMA_TITLE={argue:'The argument',trouble:'The tantrum',fix:'The fix',ship:'Shipped'};
+
+/* Can this browser make a clip at all? A sentence when not, never a dead button. */
+function dramaCan(){
+  try{
+    if(typeof MediaRecorder==='undefined')return 'This browser cannot record video. The 4-panel strip still works.';
+    if(!document.createElement('canvas').captureStream)return 'This browser cannot record a canvas. The 4-panel strip still works.';
+  }catch(e){return 'This browser cannot record video.'}
+  return '';
+}
+function dramaMime(){
+  const want=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  for(const t of want){try{if(MediaRecorder.isTypeSupported(t))return t}catch(e){}}
+  return '';
+}
+async function dramaLoad(){
+  DRAMA.data=await apiJSON('/api/drama');
+  return DRAMA.data;
+}
+
+/* ---- the window ---- */
+function renderDrama(body,w){
+  DRAMA.w=w;
+  const pb=panelShell(body,{title:'Drama reel',sub:'',actions:
+    `<button class="endbtn" id="dr-reload" title="Read the latest episode">Refresh</button>`});
+  pb.innerHTML='<div class="mut" style="padding:14px">reading what your crew did…</div>';
+  body.querySelector('#dr-reload').onclick=()=>renderDrama(body,w);
+  dramaLoad().then(()=>dramaPaint(pb)).catch(e=>{pb.innerHTML=emptyBox('Could not read the drama',esc(e.message))});
+}
+function dramaPanelHTML(p){
+  const face=(typeof avatarImg==='function'&&avatarImg(p.who,'dr-av'))||'';
+  const body=p.says?`<div class="dr-says">“${esc(p.says)}”</div>`
+    :p.command?`<div class="dr-cmd"><code>${p.shell?'$ ':''}${esc(p.command)}</code>${p.stamp?`<b class="dr-stamp ${p.kind}">${esc(p.stamp)}</b>`:''}
+      ${p.reason?`<div class="dr-why">${esc(p.reason)}</div>`:''}</div>`:'';
+  return `<div class="dr-act ${esc(p.act)}"><div class="dr-cap">${esc(p.title)}</div>
+    <div class="dr-who">${face}<b>${esc(p.name)}</b>${p.to_name?` <span class="mut">to ${esc(p.to_name)}</span>`:''}</div>${body}</div>`;
+}
+function dramaPaint(pb){
+  const d=DRAMA.data||{},st=d.story||{panels:[]};
+  const sub=DRAMA.w&&DRAMA.w.el.querySelector('.ps');if(sub)sub.textContent=st.title||'';
+  if(!st.panels.length){
+    pb.innerHTML=emptyBox('No drama yet',
+      'Start a huddle with two agents (<code>@a @b what should we do?</code>) or give your crew real work. '
+      +'When the gate refuses something and they try again, the story writes itself.')
+      +dramaSceneRow();
+    dramaWire(pb);return;
+  }
+  const can=dramaCan(),voiceNote=d.speech==='browser'
+    ?'Voices need a voice engine under Settings → Voice. With the browser’s voice the clip has sound effects only.':'';
+  const missing=(st.missing||[]).map(a=>DRAMA_TITLE[a].toLowerCase());
+  pb.innerHTML=`<div class="dr-wrap">
+    <div class="dr-title">${esc(st.title)}${pInfoSafe('Made from what really happened: each panel is one event your crew went through, in their own words. Nothing is shared until you share it.')}</div>
+    <div class="dr-acts">${st.panels.map(dramaPanelHTML).join('')}</div>
+    ${missing.length?`<div class="mut dr-missing">Not yet: ${esc(missing.join(', '))}. The story fills in as it happens.</div>`:''}
+    <div class="dr-ctl">
+      <span class="seg" id="dr-fmt">${[['vertical','9:16 clip'],['square','Square clip'],['strip','4-panel strip']].map(([k,l])=>
+        `<button data-f="${k}" class="${DRAMA.fmt===k?'on':''}">${l}</button>`).join('')}</span>
+      <label class="dr-voice"><input type="checkbox" id="dr-voices"${DRAMA.voices?' checked':''}> Voices</label>
+    </div>
+    ${voiceNote&&DRAMA.fmt!=='strip'?`<div class="mut dr-note">${esc(voiceNote)}</div>`:''}
+    <div class="dr-go">
+      ${DRAMA.fmt==='strip'
+        ?`<button class="endbtn primary" id="dr-strip">Make the strip</button>`
+        :`<button class="endbtn primary" id="dr-rec"${can?' disabled':''}>● Record the clip (15 s)</button>`}
+    </div>
+    ${can&&DRAMA.fmt!=='strip'?`<div class="mut dr-note">${esc(can)}</div>`:''}
+    <div class="dr-out" id="dr-out">${dramaOutHTML()}</div>
+    ${dramaSceneRow()}
+  </div>`;
+  dramaWire(pb);
+}
+function dramaSceneRow(){
+  const can=dramaCan(),cv=dramaSceneCanvas();
+  const why=can||(cv?'':'Switch the desktop to a scene first (the World, Office HQ or the Mind) and close the windows over it.');
+  return `<div class="dr-scene"><div><b>Record the scene</b><div class="mut">15 seconds of the desktop scene as it plays, with the footer. This window steps aside while it records.</div></div>
+    <button class="endbtn" id="dr-scene"${why?' disabled':''}>Record the scene</button>${why?`<div class="mut dr-note">${esc(why)}</div>`:''}</div>`;
+}
+function dramaOutHTML(){
+  if(!DRAMA.url)return DRAMA.note?`<div class="mut">${esc(DRAMA.note)}</div>`:'';
+  const media=DRAMA.kind==='image'
+    ?`<img src="${DRAMA.url}" alt="the strip">`
+    :`<video src="${DRAMA.url}" controls playsinline loop></video>`;
+  return `${media}<div class="dr-acts-row">
+    <a class="endbtn" id="dr-dl" href="${DRAMA.url}" download="${dramaFileName()}">Download</a>
+    <button class="endbtn" id="dr-keep">Keep in Files</button></div>
+    ${DRAMA.note?`<div class="mut dr-note">${esc(DRAMA.note)}</div>`:''}`;
+}
+function dramaFileName(){
+  const ext=DRAMA.kind==='image'?'png':((DRAMA.blob&&DRAMA.blob.type)||'').indexOf('mp4')>=0?'mp4':'webm';
+  return 'bento-drama.'+ext;
+}
+function dramaWire(pb){
+  const q=s=>pb.querySelector(s);
+  pb.querySelectorAll('#dr-fmt [data-f]').forEach(b=>b.onclick=()=>{DRAMA.fmt=b.dataset.f;dramaPaint(pb)});
+  if(q('#dr-voices'))q('#dr-voices').onchange=e=>DRAMA.voices=e.target.checked;
+  if(q('#dr-rec'))q('#dr-rec').onclick=()=>dramaRecord(pb);
+  if(q('#dr-strip'))q('#dr-strip').onclick=()=>dramaStrip(pb);
+  if(q('#dr-scene'))q('#dr-scene').onclick=()=>dramaSceneRecord(pb);
+  if(q('#dr-keep'))q('#dr-keep').onclick=()=>dramaKeep(q('#dr-keep'));
+}
+function dramaSet(blob,kind,note){
+  if(DRAMA.url)URL.revokeObjectURL(DRAMA.url);
+  DRAMA.blob=blob;DRAMA.kind=kind;DRAMA.note=note||'';
+  DRAMA.url=blob?URL.createObjectURL(blob):'';
+}
+async function dramaKeep(btn){
+  if(!DRAMA.blob)return;
+  btn.disabled=true;
+  try{
+    const d=await apiJSON('/api/drama/clip',{method:'POST',headers:{'Content-Type':DRAMA.blob.type.split(';')[0]||'video/webm'},body:DRAMA.blob});
+    toast('Kept in Files as '+d.name,{kind:'ok'});btn.textContent='Kept ✓';
+  }catch(e){toast('Could not keep it: '+e.message,{kind:'err'});btn.disabled=false}
+}
+async function dramaStrip(pb){
+  try{
+    const r=await fetch('/api/drama/strip.png',{cache:'no-store'});
+    if(!r.ok)throw new Error('the server could not paint the strip');
+    dramaSet(await r.blob(),'image');
+  }catch(e){dramaSet(null,'',e.message)}
+  const o=pb.querySelector('#dr-out');if(o){o.innerHTML=dramaOutHTML();dramaWire(pb)}
+}
+
+/* ---- the clip: four acts on a virtual clock ---- */
+function dramaPlan(st){
+  const ps=(st.clip||st.panels).slice(0,5),a=1.0,b=DRAMA_DUR-1.2,len=(b-a)/Math.max(1,ps.length);
+  return ps.map((p,i)=>({p,a:a+i*len,b:a+(i+1)*len}));
+}
+function dramaFaces(st){
+  const keys=[...new Set((st.clip||st.panels).flatMap(p=>[p.who,p.to].filter(Boolean)))];
+  return Promise.all(keys.map(k=>new Promise(res=>{
+    const im=new Image();im.onload=()=>res([k,im]);im.onerror=()=>res([k,null]);
+    im.src=avatarSrc(k,{sheet:1});
+  }))).then(rows=>Object.fromEntries(rows));
+}
+function dramaWrap(ctx,text,maxW){
+  const words=String(text||'').split(/\s+/),lines=[];let cur='';
+  for(const w of words){const t=cur?cur+' '+w:w;if(ctx.measureText(t).width>maxW&&cur){lines.push(cur);cur=w}else cur=t}
+  if(cur)lines.push(cur);
+  return lines;
+}
+function dramaRound(ctx,x,y,w,h,r){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+/* One frame of the clip at time t (seconds). Pure drawing: the same t always gives the
+   same picture, which is what lets the reel be checked frame by frame. */
+function dramaFrame(ctx,W,H,t,st,plan,faces){
+  const u=Math.min(W,H)/720,cur=plan.find(x=>t>=x.a&&t<x.b);
+  const act=cur?cur.p.act:(t<1?'argue':'ship');
+  const bg=DRAMA_ACT_BG[act]||DRAMA_ACT_BG.argue;
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,bg[0]);g.addColorStop(1,bg[1]);
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // halftone, the comic printer's dot
+  ctx.fillStyle='rgba(255,255,255,.06)';
+  for(let y=0,j=0;y<H;y+=18*u,j++)for(let x=(j%2)*9*u;x<W;x+=18*u){ctx.beginPath();ctx.arc(x,y,2.2*u,0,6.283);ctx.fill()}
+  const foot=86*u;
+  if(t<1.0||!cur){dramaCard(ctx,W,H,u,t,st,foot);dramaFooter(ctx,W,H,u,foot);return}
+  const p=cur.p,k=(t-cur.a)/(cur.b-cur.a);
+  // the narrator's caption: words nobody in the picture said
+  ctx.font=`800 ${34*u}px Geist,Inter,system-ui,sans-serif`;
+  const cap=(p.title||DRAMA_TITLE[p.act]).toUpperCase(),cw=ctx.measureText(cap).width+36*u;
+  ctx.fillStyle='#fde68a';ctx.fillRect(28*u,40*u,cw,58*u);
+  ctx.strokeStyle='#111';ctx.lineWidth=4*u;ctx.strokeRect(28*u,40*u,cw,58*u);
+  ctx.fillStyle='#111';ctx.fillText(cap,46*u,81*u);
+  // the person, from the one painter's sheet (four frames of 16x26)
+  const im=faces[p.who],s=Math.round((H>W?13:10)*u),pw=16*s,ph=26*s;
+  let px=W*0.5-pw/2,py=H-foot-ph-40*u,frame=0;
+  if(p.mood==='tantrum'){px+=Math.sin(t*48)*10*u;frame=Math.floor(t*8)%2?2:0}
+  else if(p.mood==='cheer'){py-=Math.abs(Math.sin(t*7))*40*u;frame=2+Math.floor(t*6)%2}
+  else if(p.mood==='pace'){px+=Math.sin(t*2.2)*60*u;frame=Math.floor(t*3)%2?2:0}
+  else frame=(Math.floor(t*10)%23===0)?1:0;
+  if(p.to){px-=W*0.18}
+  if(im){ctx.imageSmoothingEnabled=false;ctx.drawImage(im,frame*16,0,16,26,px,py,pw,ph)}
+  dramaTag(ctx,px+pw/2,py+ph+30*u,p.name,u);
+  if(p.to&&faces[p.to]){
+    const qx=W*0.5+W*0.16;ctx.drawImage(faces[p.to],0,0,16,26,qx,py,pw,ph);dramaTag(ctx,qx+pw/2,py+ph+30*u,p.to_name||p.to,u);
+  }
+  if(p.mood==='tantrum'){                         // the marks over a head, drawn, never words
+    ctx.strokeStyle='#ff4d4d';ctx.lineWidth=6*u;
+    for(let i=0;i<3;i++){const bx=px+pw*0.15+i*pw*0.3,by=py-30*u-Math.sin(t*20+i)*6*u;
+      ctx.beginPath();ctx.moveTo(bx,by);for(let z=1;z<5;z++)ctx.lineTo(bx+z*8*u,by+(z%2?-10:0)*u);ctx.stroke()}
+  }
+  const top=128*u,maxW=W-80*u;
+  if(p.says){
+    ctx.font=`600 ${(W>H?34:38)*u}px Geist,Inter,system-ui,sans-serif`;
+    const full=`“${p.says}”`,shown=full.slice(0,Math.ceil(full.length*Math.min(1,k/0.55)));
+    const lines=dramaWrap(ctx,shown,maxW-48*u).slice(0,6),lh=48*u,bh=lines.length*lh+40*u;
+    ctx.fillStyle='#fff';dramaRound(ctx,40*u,top,maxW,bh,26*u);ctx.fill();
+    ctx.strokeStyle='#111';ctx.lineWidth=4*u;ctx.stroke();
+    ctx.beginPath();ctx.moveTo(px+pw*0.5-18*u,top+bh-2*u);ctx.lineTo(px+pw*0.5,Math.min(py-14*u,top+bh+60*u));
+    ctx.lineTo(px+pw*0.5+20*u,top+bh-2*u);ctx.closePath();ctx.fillStyle='#fff';ctx.fill();ctx.stroke();
+    ctx.fillStyle='#fff';ctx.fillRect(px+pw*0.5-16*u,top+bh-6*u,34*u,6*u);
+    ctx.fillStyle='#111';lines.forEach((ln,i)=>ctx.fillText(ln,64*u,top+44*u+i*lh));
+    if(p.model){ctx.font=`500 ${20*u}px Geist,Inter,system-ui,sans-serif`;ctx.fillStyle='rgba(255,255,255,.75)';
+      ctx.fillText(p.name+' · '+p.model,44*u,top+bh+30*u)}
+  }else if(p.command){
+    ctx.font=`600 ${30*u}px ui-monospace,Menlo,monospace`;
+    const lines=dramaWrap(ctx,(p.shell?'$ ':'')+p.command,maxW-48*u).slice(0,3),lh=42*u,bh=lines.length*lh+36*u;
+    ctx.fillStyle='rgba(10,12,20,.92)';dramaRound(ctx,40*u,top,maxW,bh,18*u);ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=2*u;ctx.stroke();
+    ctx.fillStyle='#86efac';lines.forEach((ln,i)=>ctx.fillText(ln,62*u,top+46*u+i*lh));
+    if(p.stamp&&k>0.3){                            // the stamp slams in
+      const sk=Math.min(1,(k-0.3)/0.08),sc=1+(1-sk)*1.4;
+      ctx.save();ctx.translate(W/2,top+bh+80*u);ctx.rotate(-0.12);ctx.scale(sc,sc);ctx.globalAlpha=sk;
+      ctx.font=`900 ${64*u}px Geist,Inter,system-ui,sans-serif`;
+      const sw=ctx.measureText(p.stamp).width+40*u;
+      ctx.fillStyle=p.kind==='declined'?'#475569':'#dc2626';ctx.fillRect(-sw/2,-50*u,sw,84*u);
+      ctx.strokeStyle='#fff';ctx.lineWidth=5*u;ctx.strokeRect(-sw/2+8*u,-42*u,sw-16*u,68*u);
+      ctx.fillStyle='#fff';ctx.fillText(p.stamp,-sw/2+20*u,14*u);ctx.restore();
+      if(p.reason&&k>0.45){ctx.font=`500 ${24*u}px Geist,Inter,system-ui,sans-serif`;ctx.fillStyle='rgba(255,255,255,.9)';
+        dramaWrap(ctx,p.reason,maxW).slice(0,2).forEach((ln,i)=>ctx.fillText(ln,44*u,top+bh+170*u+i*32*u))}
+    }
+  }
+  if(p.act==='ship'){                              // confetti, from a fixed seed
+    for(let i=0;i<60;i++){const r=(i*9301+49297)%233280/233280,x=(r*W+t*40*(i%3+1))%W,y=((i*37)%H+t*(160+i*3)*u)%(H-foot);
+      ctx.fillStyle=['#fde047','#34d399','#60a5fa','#f472b6'][i%4];ctx.fillRect(x,y,10*u,16*u)}
+  }
+  dramaFooter(ctx,W,H,u,foot);
+}
+function dramaTag(ctx,cx,y,name,u){
+  ctx.font=`700 ${26*u}px Geist,Inter,system-ui,sans-serif`;
+  const w=ctx.measureText(name).width+28*u;
+  ctx.fillStyle='#fff';dramaRound(ctx,cx-w/2,y-28*u,w,40*u,20*u);ctx.fill();
+  ctx.fillStyle='#111';ctx.fillText(name,cx-w/2+14*u,y+2*u);
+}
+function dramaCard(ctx,W,H,u,t,st,foot){
+  const a=Math.min(1,t/0.35);
+  ctx.globalAlpha=a;ctx.fillStyle='#fff';
+  ctx.font=`900 ${58*u}px Geist,Inter,system-ui,sans-serif`;
+  dramaWrap(ctx,st.title||'',W-90*u).slice(0,3).forEach((ln,i)=>ctx.fillText(ln,46*u,H*0.42+i*66*u));
+  ctx.font=`500 ${28*u}px Geist,Inter,system-ui,sans-serif`;ctx.fillStyle='rgba(255,255,255,.8)';
+  ctx.fillText(t<1?'a true story from my AI crew':'recorded on my own machine',46*u,H*0.42-60*u);
+  ctx.globalAlpha=1;
+}
+function dramaFooter(ctx,W,H,u,foot){
+  ctx.fillStyle='rgba(8,8,16,.92)';ctx.fillRect(0,H-foot,W,foot);
+  ctx.fillStyle='#fff';ctx.font=`800 ${34*u}px Geist,Inter,system-ui,sans-serif`;
+  const wm='bento-ai-os',ww=ctx.measureText(wm).width;
+  ctx.fillText(wm,W-ww-30*u,H-foot/2+12*u);
+  ctx.font=`500 ${20*u}px Geist,Inter,system-ui,sans-serif`;ctx.fillStyle='rgba(255,255,255,.6)';
+  ctx.fillText('real agents · real events',30*u,H-foot/2+8*u);
+}
+
+/* The agents' own words in their own voices, plus a few sound effects, mixed into one
+   track the recorder can take. The words are asked of the machine's speech engine
+   (/api/speech/say), decoded, and scheduled at their act; the browser's voice cannot be
+   recorded, so with it the clip keeps only the effects. */
+async function dramaVoices(st,plan){
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return null;
+  const ctx=new AC(),dest=ctx.createMediaStreamDestination(),mix=ctx.createGain();
+  mix.gain.value=0.9;mix.connect(dest);mix.connect(ctx.destination);
+  const lines=[];
+  if(DRAMA.voices&&(DRAMA.data||{}).speech!=='browser'){
+    await Promise.all(plan.map(async x=>{
+      const words=(x.p.says||'').split(/(?<=[.!?])\s/)[0].slice(0,160);
+      if(!words)return;
+      try{
+        const lead=x.p.who==='@agent';
+        const r=await fetch('/api/speech/say',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({text:words,agent:lead?'':x.p.who,lead})});
+        if(!r.ok)return;
+        lines.push({at:x.a+0.25,buf:await ctx.decodeAudioData(await r.arrayBuffer())});
+      }catch(e){}
+    }));
+  }
+  const fx=(at,kind)=>({at,kind});
+  const effects=[fx(0.05,'whoosh')].concat(plan.map(x=>x.p.act==='trouble'?fx(x.a+(x.b-x.a)*0.3,'buzz')
+    :x.p.act==='fix'?fx(x.a+0.2,'keys'):x.p.act==='ship'?fx(x.a+0.15,'chime'):fx(x.a,'whoosh')));
+  return {dest,ctx,voiced:lines.length,start(){
+    const t0=ctx.currentTime+0.05;
+    lines.forEach(l=>{const s=ctx.createBufferSource();s.buffer=l.buf;s.connect(mix);s.start(t0+l.at)});
+    effects.forEach(e=>dramaFx(ctx,mix,t0+e.at,e.kind));
+  },close(){try{ctx.close()}catch(e){}}};
+}
+function dramaFx(ctx,out,at,kind){
+  const tone=(f,type,a,d,vol)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type=type;o.frequency.value=f;
+    g.gain.setValueAtTime(0,a);g.gain.linearRampToValueAtTime(vol,a+0.01);g.gain.exponentialRampToValueAtTime(0.0001,a+d);
+    o.connect(g);g.connect(out);o.start(a);o.stop(a+d+0.05)};
+  if(kind==='buzz'){tone(110,'square',at,0.45,0.18);tone(116,'square',at,0.45,0.12)}
+  else if(kind==='chime'){[880,1109,1319,1760].forEach((f,i)=>tone(f,'sine',at+i*0.09,0.7,0.14))}
+  else if(kind==='keys'){for(let i=0;i<10;i++)tone(2400+(i%3)*300,'square',at+i*0.07,0.03,0.04)}
+  else{const n=ctx.createBufferSource(),b=ctx.createBuffer(1,ctx.sampleRate*0.5,ctx.sampleRate),d=b.getChannelData(0);
+    for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.sin(Math.PI*i/d.length)*0.12;
+    const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(400,at);f.frequency.linearRampToValueAtTime(3000,at+0.5);
+    n.buffer=b;n.connect(f);f.connect(out);n.start(at)}
+}
+function dramaProgress(pb,t,label){
+  const b=pb.querySelector('#dr-rec,#dr-scene');
+  const el=pb.querySelector('#dr-out');
+  if(el)el.innerHTML=`<div class="dr-bar"><i style="width:${Math.min(100,t/DRAMA_DUR*100).toFixed(1)}%"></i></div><div class="mut">${esc(label)} ${Math.max(0,Math.ceil(DRAMA_DUR-t))} s</div>`;
+  if(b)b.disabled=true;
+}
+async function dramaRecord(pb){
+  const why=dramaCan();if(why){toast(why,{kind:'warn'});return}
+  const st=(DRAMA.data||{}).story;if(!st||!st.panels.length||DRAMA.busy)return;
+  DRAMA.busy=true;
+  const [W,H]=DRAMA_FMT[DRAMA.fmt]||DRAMA_FMT.vertical;
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d'),plan=dramaPlan(st);
+  let audio=null;
+  try{
+    dramaProgress(pb,0,'getting the voices ready…');
+    const faces=await dramaFaces(st);
+    audio=await dramaVoices(st,plan);
+    const stream=cv.captureStream(30);
+    if(audio)audio.dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
+    const mime=dramaMime(),chunks=[];
+    const rec=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:5e6}:{});
+    rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+    const stopped=new Promise(r=>rec.onstop=r);
+    dramaFrame(ctx,W,H,0,st,plan,faces);
+    rec.start(250);if(audio)audio.start();
+    const t0=performance.now();
+    await new Promise(res=>{const step=()=>{const t=(performance.now()-t0)/1000;
+      dramaFrame(ctx,W,H,Math.min(t,DRAMA_DUR-0.01),st,plan,faces);dramaProgress(pb,t,'recording');
+      if(t<DRAMA_DUR)requestAnimationFrame(step);else res()};requestAnimationFrame(step)});
+    rec.stop();await stopped;
+    const note=audio&&!audio.voiced&&DRAMA.voices?'No voices in this one: '
+      +((DRAMA.data||{}).speech==='browser'?'the browser’s voice cannot be recorded.':'the voice engine did not answer.'):'';
+    dramaSet(new Blob(chunks,{type:(mime||'video/webm').split(';')[0]}),'video',note);
+  }catch(e){dramaSet(null,'','Could not record: '+(e.message||e))}
+  finally{if(audio)audio.close();DRAMA.busy=false}
+  dramaPaint(pb);
+}
+
+/* ---- recording the scene that is playing ---- */
+function dramaSceneCanvas(){
+  // the largest visible canvas of the desktop scene, never one inside a window
+  let best=null,area=0;
+  document.querySelectorAll('#wall canvas,#desktop canvas,#world-scene canvas,#office-scene canvas').forEach(c=>{
+    if(c.closest('.win'))return;
+    const r=c.getBoundingClientRect(),a=r.width*r.height;
+    if(r.width<200||r.height<200||getComputedStyle(c).visibility==='hidden'||!c.checkVisibility||!c.checkVisibility())return;
+    if(a>area){area=a;best=c}
+  });
+  return best;
+}
+async function dramaSceneRecord(pb){
+  const why=dramaCan();if(why){toast(why,{kind:'warn'});return}
+  if(DRAMA.busy)return;
+  const w=DRAMA.w;
+  if(w&&typeof minimizeWin==='function')minimizeWin(w);
+  await new Promise(r=>setTimeout(r,450));       // the scene wakes once nothing covers it
+  const src=dramaSceneCanvas();
+  if(!src){if(w)restoreWin(w);toast('There is no scene showing to record.',{kind:'warn'});return}
+  DRAMA.busy=true;
+  const [W,H]=DRAMA_FMT[DRAMA.fmt==='square'?'square':'vertical'];
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d'),u=Math.min(W,H)/720,foot=86*u;
+  const vid=document.createElement('video');vid.muted=true;vid.playsInline=true;
+  const pill=document.createElement('div');pill.className='dr-recpill';document.body.appendChild(pill);
+  try{
+    vid.srcObject=src.captureStream(30);await vid.play();
+    const out=cv.captureStream(30),mime=dramaMime(),chunks=[];
+    const rec=new MediaRecorder(out,mime?{mimeType:mime,videoBitsPerSecond:5e6}:{});
+    rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+    const stopped=new Promise(r=>rec.onstop=r);
+    rec.start(250);
+    const t0=performance.now();
+    await new Promise(res=>{const step=()=>{const t=(performance.now()-t0)/1000;
+      const vw=vid.videoWidth||src.width,vh=vid.videoHeight||src.height;
+      // cover: crop the middle of the scene to the format
+      const s=Math.max(W/vw,(H-foot)/vh),dw=vw*s,dh=vh*s;
+      ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+      try{ctx.drawImage(vid,(W-dw)/2,(H-foot-dh)/2,dw,dh)}catch(e){}
+      dramaFooter(ctx,W,H,u,foot);
+      pill.textContent='● REC '+Math.max(0,Math.ceil(DRAMA_DUR-t))+' s';
+      if(t<DRAMA_DUR)requestAnimationFrame(step);else res()};requestAnimationFrame(step)});
+    rec.stop();await stopped;
+    dramaSet(new Blob(chunks,{type:(mime||'video/webm').split(';')[0]}),'video','Scene recordings are silent.');
+  }catch(e){dramaSet(null,'','Could not record the scene: '+(e.message||e))}
+  finally{
+    DRAMA.busy=false;pill.remove();
+    try{(vid.srcObject&&vid.srcObject.getTracks()||[]).forEach(t=>t.stop())}catch(e){}
+    if(w&&typeof restoreWin==='function')restoreWin(w);
+  }
+  dramaPaint(pb);
+}
+
+/* An episode just finished (the server says so once): offer the clip, never record it. */
+function dramaOffer(ev){
+  if(!ev||!ev.episode||ev.episode===DRAMA.seen)return;
+  DRAMA.seen=ev.episode;
+  toast('Your crew just had a moment: trouble, a fix, and it shipped.',{label:'Make a clip',go:()=>openApp('drama'),ms:9000,kind:'info'});
+}
+/* ---------------- the Arena: one task, two or four brains, side by side ----------------
+   agentos/arena.py + /api/arena. The window opens maximised and splits into two or four
+   panes, one per brain, each streaming its work with a live HUD: time, tokens a second
+   (from the first token, so a slow start is time and not speed), tokens, money, refusals
+   by the gate and steps. The numbers come from the server (`hud` on every `arena` event);
+   this page prices nothing and never says which answer is better.
+   Faces: GUI and SUI are this window; on a phone the panes stack. TUI: `bento arena run
+   "task" --vs 1 --vs 2` prints the same HUD as a table until every brain is done. */
+var ARENA={info:null,n:2,picks:[],cur:null,w:null,task:'',past:null};
+
+function renderArena(body,w){
+  ARENA.w=w;
+  if(!w.max&&typeof toggleMax==='function'&&innerWidth>700)setTimeout(()=>{if(!w.max)toggleMax(w)},60);
+  const pb=panelShell(body,{title:'Arena',sub:'',actions:''});
+  pb.innerHTML='<div class="mut" style="padding:14px">reading which brains can take part…</div>';
+  apiJSON('/api/arena').then(async info=>{
+    ARENA.info=info;
+    if(info.live&&info.live.length){ARENA.cur=await apiJSON('/api/arena/'+encodeURIComponent(info.live[0]))}
+    arenaPaint(pb);
+  }).catch(e=>{pb.innerHTML=emptyBox('Could not open the Arena',esc(e.message))});
+  winTick(w,()=>{if(ARENA.cur&&ARENA.cur.live)arenaClock(pb)},1000,{key:'arena'});
+}
+function arenaPaint(pb){
+  pb=pb||(ARENA.w&&ARENA.w.el.querySelector('.pbody'));if(!pb)return;
+  if(ARENA.cur)arenaPanes(pb);else arenaSetup(pb);
+}
+function arenaSetup(pb){
+  const ch=(ARENA.info||{}).choices||[];
+  if(ch.length<1){pb.innerHTML=emptyBox('No brains to put in the Arena yet',
+    'Add a model under Settings → AI providers (a local one is free), or install an agent CLI. The Arena seats two to four of them.');return}
+  // default picks: the first brains of different executors, so the first arena is a real contrast
+  if(ARENA.picks.length!==ARENA.n){
+    const seen=new Set(),first=[];
+    ch.forEach((c,i)=>{if(first.length<ARENA.n&&!seen.has(c.executor)){seen.add(c.executor);first.push(i)}});
+    for(let i=0;first.length<ARENA.n;i++)first.push(i%ch.length);
+    ARENA.picks=first;
+  }
+  const opt=sel=>ch.map((c,i)=>`<option value="${i}"${i===sel?' selected':''}>${esc(c.label)}</option>`).join('');
+  const recent=((ARENA.info||{}).recent||[]);
+  pb.innerHTML=`<div class="ar-setup">
+    <label class="ar-lbl" for="ar-task">The task every brain gets</label>
+    <textarea id="ar-task" rows="3" maxlength="4000" placeholder="Build a retro synth app in App Studio, or fix this broken Python script…">${esc(ARENA.task)}</textarea>
+    <div class="ar-row"><span class="seg" id="ar-n">${[2,4].map(n=>`<button data-n="${n}" class="${ARENA.n===n?'on':''}">${n} brains</button>`).join('')}</span></div>
+    <div class="ar-seats">${ARENA.picks.map((p,i)=>`<label class="ar-seat"><span>Brain ${i+1}</span><select data-seat="${i}">${opt(p)}</select></label>`).join('')}</div>
+    <div class="mut ar-note">Each brain works in its own folder and every step passes your permissions, as in chat.
+      ${pInfoSafe('A folder is not a jail: a shell command reaches what the machine’s sandbox allows. Every brain spends its own tokens.')}</div>
+    <div class="ar-row"><button class="endbtn primary" id="ar-go">Start the arena</button><span class="mut" id="ar-said"></span></div>
+    ${recent.length?`<div class="ar-recent"><div class="of-sec">Earlier arenas</div>${recent.map(r=>
+      `<button class="ar-past" data-id="${esc(r.id)}"><b>${esc(r.brains.join(' vs '))}</b><span class="mut">${esc(r.task)}</span></button>`).join('')}</div>`:''}
+  </div>`;
+  const q=s=>pb.querySelector(s);
+  q('#ar-task').oninput=e=>ARENA.task=e.target.value;
+  pb.querySelectorAll('#ar-n [data-n]').forEach(b=>b.onclick=()=>{ARENA.n=+b.dataset.n;ARENA.picks=[];arenaSetup(pb)});
+  pb.querySelectorAll('[data-seat]').forEach(s=>s.onchange=()=>{ARENA.picks[+s.dataset.seat]=+s.value});
+  q('#ar-go').onclick=()=>arenaStart(pb);
+  pb.querySelectorAll('.ar-past').forEach(b=>b.onclick=async()=>{
+    try{ARENA.cur=await apiJSON('/api/arena/'+encodeURIComponent(b.dataset.id));arenaPaint(pb)}catch(e){toast(e.message,{kind:'err'})}});
+}
+async function arenaStart(pb){
+  const ch=(ARENA.info||{}).choices||[],said=pb.querySelector('#ar-said'),btn=pb.querySelector('#ar-go');
+  const task=(pb.querySelector('#ar-task').value||'').trim();
+  if(!task){said.textContent='Give the arena a task first.';return}
+  btn.disabled=true;said.textContent='starting…';
+  try{
+    ARENA.cur=await apiJSON('/api/arena',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({task,contenders:ARENA.picks.map(i=>({executor:ch[i].executor,model:ch[i].model}))})});
+    arenaPaint(pb);
+  }catch(e){said.textContent=e.message;btn.disabled=false}
+}
+function arenaPanes(pb){
+  const a=ARENA.cur,n=a.contenders.length;
+  pb.innerHTML=`<div class="ar-top"><div class="ar-task" title="${esc(a.task)}">${esc(a.task)}</div>
+      <span class="sp"></span>${a.live?'<button class="endbtn danger" id="ar-stop">Stop</button>':'<button class="endbtn" id="ar-new">New arena</button>'}</div>
+    <div class="ar-grid n${n}">${a.contenders.map(c=>`<section class="ar-pane" data-slot="${c.slot}">
+      <header><b>${esc(c.label)}</b><span class="ar-st ${esc(c.status)}">${esc(c.status)}</span></header>
+      <div class="ar-hud">${arenaHud(c.hud,c)}</div>
+      <div class="ar-log">${(c.log||[]).map(l=>`<div class="ar-tool ${l.denied?'denied':l.ok?'ok':'bad'}">▸ ${esc(l.name)}${l.detail?' · '+esc(l.detail):''}</div>`).join('')}${c.answer?`<span class="ar-txt">${esc(c.answer)}</span>`:''}${c.error?`<div class="ar-err">${esc(c.error)}</div>`:''}</div>
+      <footer>${c.conversation_id?`<button class="endbtn" data-conv="${esc(c.conversation_id)}">Open in Chat</button>`:''}
+        <span class="mut ar-files">${(c.files||[]).length?esc((c.files||[]).length+((c.files||[]).length===1?' file':' files')+' in its folder'):''}</span></footer>
+    </section>`).join('')}</div>
+    <div class="ar-sum">${(a.summary&&a.summary.lines||[]).map(l=>`<span>${esc(l)}</span>`).join('')}
+      ${!a.live?'<span class="mut">Which answer is better is your call.</span>':''}</div>`;
+  const q=s=>pb.querySelector(s);
+  if(q('#ar-stop'))q('#ar-stop').onclick=()=>apiJSON('/api/arena/'+encodeURIComponent(a.id)+'/stop',{method:'POST'}).catch(e=>toast(e.message,{kind:'err'}));
+  if(q('#ar-new'))q('#ar-new').onclick=()=>{ARENA.cur=null;apiJSON('/api/arena').then(i=>{ARENA.info=i;arenaPaint(pb)})};
+  pb.querySelectorAll('[data-conv]').forEach(b=>b.onclick=()=>{openApp('chat');setTimeout(()=>openConv(b.dataset.conv),200)});
+}
+/* The HUD: numbers, each with what it means on hover. */
+function arenaHud(h,c){
+  h=h||{};
+  const chip=(v,l,t,cls)=>`<span class="ar-chip${cls?' '+cls:''}" title="${esc(t)}"><b>${v}</b> ${l}</span>`;
+  const secs=h.seconds!=null?h.seconds:0;
+  return chip(secs.toFixed?secs.toFixed(1)+'s':secs,'time','From start to finish')
+    +chip(h.tok_s!=null?h.tok_s:'—','tok/s','Output tokens a second, from its first output to the end')
+    +chip(h.tokens_out||0,'out','Tokens written ('+(h.tokens_in||0)+' read)')
+    +chip(h.priced===false?'?':('$'+(h.cost||0).toFixed(4)),'cost',h.priced===false?'No price set for this model':'What this brain spent')
+    +chip(h.refused||0,'refused','Steps your permissions refused',(h.refused?'warn':''))
+    +chip(h.steps||0,'steps','Tool calls it made');
+}
+function arenaClock(pb){
+  // between events the clock still runs: seconds since the seat started, nothing else
+  const a=ARENA.cur;if(!a)return;
+  a.contenders.forEach(c=>{
+    if(c.status!=='running'||!c.started)return;
+    const el=pb.querySelector(`.ar-pane[data-slot="${c.slot}"] .ar-hud b`);
+    if(el)el.textContent=(Date.now()/1000-c.started).toFixed(1)+'s';
+  });
+}
+function arenaEvent(ev){
+  const a=ARENA.cur;
+  if(!a||ev.id!==a.id){if(ARENA.w&&!a&&!ev.done)apiJSON('/api/arena/'+encodeURIComponent(ev.id)).then(x=>{ARENA.cur=x;arenaPaint()}).catch(()=>{});return}
+  const pb=ARENA.w&&ARENA.w.el.querySelector('.pbody');
+  if(ev.done){apiJSON('/api/arena/'+encodeURIComponent(a.id)).then(x=>{ARENA.cur=x;arenaPaint(pb)}).catch(()=>{});return}
+  const c=a.contenders[ev.slot];if(!c)return;
+  if(ev.hud)c.hud=ev.hud;
+  if(ev.status){c.status=ev.status;if(ev.status==='running'&&!c.started)c.started=Date.now()/1000-((ev.hud||{}).seconds||0)}
+  if(!pb)return;
+  const pane=pb.querySelector(`.ar-pane[data-slot="${ev.slot}"]`);if(!pane)return;
+  pane.querySelector('.ar-hud').innerHTML=arenaHud(c.hud,c);
+  const st=pane.querySelector('.ar-st');st.className='ar-st '+c.status;st.textContent=c.status;
+  const e=ev.ev,log=pane.querySelector('.ar-log');if(!e)return;
+  const stick=log.scrollTop+log.clientHeight>=log.scrollHeight-24;
+  if(e.type==='text_delta'){
+    let t=log.lastElementChild;
+    if(!t||!t.classList.contains('ar-txt')){t=document.createElement('span');t.className='ar-txt';log.appendChild(t)}
+    t.textContent+=e.text||'';
+  }else if(e.type==='tool_start'){
+    const d=document.createElement('div');d.className='ar-tool';d.dataset.call=e.call_id||'';
+    d.textContent='▸ '+(e.name||'')+(e.detail?' · '+e.detail:'');log.appendChild(d);
+  }else if(e.type==='tool_end'){
+    const d=log.querySelector(`.ar-tool[data-call="${CSS.escape(e.call_id||'')}"]`)||document.createElement('div');
+    if(!d.parentNode){d.className='ar-tool';d.textContent='▸ '+(e.name||'')+(e.detail?' · '+e.detail:'');log.appendChild(d)}
+    const denied=String(e.output||'').startsWith('[denied]');
+    d.classList.add(e.ok===false?(denied?'denied':'bad'):'ok');
+    if(denied)d.title=String(e.output||'').slice(9);
+  }else if(e.type==='error'){
+    const d=document.createElement('div');d.className='ar-err';d.textContent=e.message||'error';log.appendChild(d);
+  }else if(e.type==='seat_end'){
+    pane.querySelector('footer').innerHTML=(c.conversation_id?`<button class="endbtn" data-conv="${esc(c.conversation_id)}">Open in Chat</button>`:'')
+      +`<span class="mut">${esc(c.status)}</span>`;
+    pane.querySelectorAll('[data-conv]').forEach(b=>b.onclick=()=>{openApp('chat');setTimeout(()=>openConv(b.dataset.conv),200)});
+  }
+  if(log.childElementCount>400)log.firstElementChild.remove();
+  if(stick)log.scrollTop=log.scrollHeight;
+}
+/* ---------------- Watch me once: the desktop notices a routine ----------------
+   When the person does the same few steps twice (open Logs filtered to errors, then
+   the Brief, then WhatsApp), a card offers to make it one click: a Routine (the
+   desktop's own replayable sequence, 15a-automations.js) pinned to the desktop as a
+   card, and if they like, played every day at nine.
+
+   What is noted is the DOOR, never the content: which app, which tab, which place,
+   which Logs filter. Not a word typed, not a file, not a message. It is kept in this
+   page's memory only (a reload forgets it), only steps a person's own tap caused are
+   noted (navigator.userActivation), nothing a Routine itself replays, and a sequence
+   turned down is never offered again in this browser. Off is one switch in Settings →
+   Appearance, remembered per account.
+   Faces: GUI and SUI. A terminal has no desktop to watch; a Routine made here plays from
+   the prompt bar and Missions → Routines, and `run_automation` reaches it from any chat. */
+var WATCH={steps:[],quiet:0,offered:{},card:null};
+var WATCH_KEEP=60,WATCH_WINDOW=45*60*1000,WATCH_MIN=3,WATCH_MAX=6;
+
+function watchKey(){return 'watch.off'+((typeof AVATARS!=='undefined'&&AVATARS.uid)?':'+AVATARS.uid:'')}
+function watchOn(){try{return localStorage.getItem(watchKey())!=='1'}catch(e){return true}}
+function setWatchOn(on){try{localStorage.setItem(watchKey(),on?'0':'1')}catch(e){};if(!on)WATCH.steps=[]}
+function watchSeen(){try{return JSON.parse(localStorage.getItem('watch.declined')||'{}')}catch(e){return {}}}
+function watchDecline(sig){const d=watchSeen();d[sig]=Date.now();try{localStorage.setItem('watch.declined',JSON.stringify(d))}catch(e){}}
+
+/* One step. kind 'app' (a = app id), 'view' (a = app id, v = the tab or filter) or
+   'place' (a = a place's label, 05b-places.js). */
+function watchNote(kind,a,v){
+  try{
+    if(!watchOn()||!a)return;
+    if(typeof AUTO_RUNNING!=='undefined'&&AUTO_RUNNING)return;           // a routine replaying is not you
+    if(navigator.userActivation&&!navigator.userActivation.isActive)return;  // code opening things is not you
+    const now=Date.now();
+    if(kind!=='place'&&now<WATCH.quiet)return;     // a place opens its app; the place is the step
+    const last=WATCH.steps[WATCH.steps.length-1];
+    if(kind==='view'){
+      // a tab chosen right after its app opened is that same step, made precise
+      if(last&&last.app===a&&now-last.at<4000){last.view=String(v||'');last.key=watchStepKey(last);last.at=now}
+      else watchPush({app:a,view:String(v||''),at:now});
+    }else if(kind==='place'){
+      WATCH.quiet=now+1500;
+      watchPush({place:a,at:now});
+    }else{
+      if(last&&last.app===a&&!last.view&&now-last.at<1500)return;
+      watchPush({app:a,at:now});
+    }
+  }catch(e){}
+}
+function watchStepKey(s){return s.place?'place:'+s.place:'app:'+s.app+(s.view?'#'+s.view:'')}
+function watchPush(s){
+  s.key=watchStepKey(s);
+  const last=WATCH.steps[WATCH.steps.length-1];
+  if(last&&last.key===s.key)return;                // the same door twice in a row is one step
+  WATCH.steps.push(s);
+  if(WATCH.steps.length>WATCH_KEEP)WATCH.steps.shift();
+  const hit=watchFind(WATCH.steps,Date.now());
+  if(hit)watchOffer(hit);
+}
+/* The newest steps, if the same sequence of them happened earlier too. Longest first,
+   at least two different doors, both times within the last WATCH_WINDOW. Pure, so the
+   rule can be checked on its own. */
+function watchFind(steps,now){
+  const n=steps.length;
+  for(let L=Math.min(WATCH_MAX,Math.floor(n/2));L>=WATCH_MIN;L--){
+    const tail=steps.slice(n-L),keys=tail.map(s=>s.key);
+    if(new Set(keys).size<2)continue;
+    for(let j=n-2*L;j>=0;j--){
+      const prev=steps.slice(j,j+L);
+      if(prev[0].at<now-WATCH_WINDOW)break;
+      if(prev.every((s,i)=>s.key===keys[i]))return {steps:tail,sig:keys.join('>')};
+    }
+  }
+  return null;
+}
+function watchLabel(s){
+  if(s.place)return s.place;
+  const t=(APPS[s.app]&&APPS[s.app].title)||s.app;
+  return s.view?t+' · '+s.view:t;
+}
+function watchRoutineSteps(steps){
+  return steps.map(s=>s.place?{kind:'place',place:s.place}:(s.view?{kind:'app',app:s.app,view:s.view}:{kind:'app',app:s.app}));
+}
+function watchOffer(hit){
+  if(WATCH.offered[hit.sig]||watchSeen()[hit.sig])return;
+  WATCH.offered[hit.sig]=Date.now();
+  const words=hit.steps.map(watchLabel);
+  const old=document.getElementById('watchcard');if(old)old.remove();
+  const c=document.createElement('div');c.id='watchcard';c.className='procard watchcard';
+  c.innerHTML=`<div class="pc-head"><span data-ic="sparkles">✦</span> I just watched you do that twice</div>
+    <div class="pc-text">${words.map(w=>`<span class="wt-step">${esc(w)}</span>`).join('<span class="wt-arr">→</span>')}</div>
+    <div class="pc-text mut">Make it one click? It becomes a Routine with a card on your desktop.</div>
+    <label class="wt-daily"><input type="checkbox" id="wt-daily"> Also play it every day at 9:00 ${pInfoSafe('Played on this desktop by your agent when the desktop is open. Change or stop it in Missions → Schedule.')}</label>
+    <div class="pc-actions"><button class="pc-go" id="wt-yes">Make it one click</button><button class="pc-x" id="wt-no">Not this one</button></div>`;
+  ($('#desktop')||document.body).appendChild(c);
+  if(typeof popIn==='function')popIn(c,{origin:'bottom right'});
+  c.querySelector('#wt-yes').onclick=()=>watchMake(hit,words,c.querySelector('#wt-daily').checked,c);
+  c.querySelector('#wt-no').onclick=()=>{watchDecline(hit.sig);c.remove()};
+  setTimeout(()=>{if(c.isConnected)c.remove()},60000);
+}
+async function watchMake(hit,words,daily,card){
+  const name=watchName(words);
+  const btn=card.querySelector('#wt-yes');btn.disabled=true;
+  try{
+    const d=await saveAutomation(name,watchRoutineSteps(hit.steps));
+    if(!d||!d.id)throw new Error('the routine was not saved');
+    pinRoutine(d.id);
+    if(daily){
+      const r=await apiJSON('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({prompt:`Run my desktop routine "${name}" with run_automation.`,schedule_type:'daily',at_time:'09:00'})});
+      if(r&&r.ok===false)throw new Error(r.message||'the schedule was not saved');
+      toast('It plays every day at 9:00 on this desktop. Change it in Missions → Schedule.',{kind:'ok'});
+    }
+    watchDecline(hit.sig);            // made: never offered again
+    card.remove();
+  }catch(e){btn.disabled=false;toast('Could not make it: '+e.message,{kind:'err'})}
+}
+function watchName(words){
+  let s=words.join(' → ');
+  if(s.length>60)s=words[0]+' → … → '+words[words.length-1];
+  return s.slice(0,80);
+}
+/* ---------------- Time travel: a scrubber over what the agent changed ----------------
+   agentos/timetravel.py keeps a checkpoint before every step that changes a file, the
+   memory, the graph or a skill (and marks the shell steps it cannot see). This window is
+   the scrubber: a track of those checkpoints for one conversation, a slider along it,
+   and for the step under the slider exactly what going back would undo (/plan, the same
+   computation /rewind performs). Rewind goes back to just before that step: files put
+   back, new files set aside (never deleted), memory and graph restored, and the desktop's
+   windows put back as they were at that moment. Fork starts a new conversation from that
+   step on another brain.
+
+   The window layouts are this page's: each `checkpoint` event saves the open windows
+   under the checkpoint's id (this browser's session only), and a rewind restores them.
+   A checkpoint taken while this page was closed has no layout, and the window says so.
+   Faces: GUI and SUI are this window. TUI: `bento timetravel list|plan|rewind`; a
+   terminal has no windows to put back, and a fork starts a turn, which is the server's. */
+var TT={data:null,conv:'',sel:-1,plan:null,brains:[],w:null,planT:0};
+var TT_LAYOUTS_KEY='tt.layouts',TT_LAYOUTS_MAX=80;
+
+function ttLayouts(){try{return JSON.parse(sessionStorage.getItem(TT_LAYOUTS_KEY)||'{}')}catch(e){return {}}}
+function ttLayoutSave(id){
+  try{
+    const wins=[...WM.wins.values()].filter(w=>w.id!=='timetravel').map(w=>{
+      const r=w.el.getBoundingClientRect();
+      return {id:w.id,desk:w.desk||1,max:!!w.max,min:!!w.min,l:Math.round(r.left),t:Math.round(r.top),w:Math.round(r.width),h:Math.round(r.height)};
+    });
+    const all=ttLayouts();all[id]={at:Date.now(),desk:curDesk,wins};
+    const keys=Object.keys(all).sort((a,b)=>all[a].at-all[b].at);
+    while(keys.length>TT_LAYOUTS_MAX)delete all[keys.shift()];
+    sessionStorage.setItem(TT_LAYOUTS_KEY,JSON.stringify(all));
+  }catch(e){}
+}
+/* The windows as they were at a checkpoint: close what was not open, open what was,
+   and put each back where it stood. The scrubber's own window stays. */
+function ttLayoutRestore(id){
+  const lay=ttLayouts()[id];if(!lay)return false;
+  const want=new Set(lay.wins.map(x=>x.id));
+  [...WM.wins.values()].forEach(w=>{if(w.id!=='timetravel'&&!want.has(w.id))closeWin(w)});
+  lay.wins.forEach(x=>{
+    if(!APPS[x.id])return;
+    const w=WM.wins.get(x.id)||openApp(x.id);if(!w)return;
+    if(x.max&&!w.max)toggleMax(w);
+    if(!x.max){if(w.max)toggleMax(w);Object.assign(w.el.style,{left:x.l+'px',top:x.t+'px',width:x.w+'px',height:x.h+'px'})}
+    if(x.min&&!w.min)minimizeWin(w);
+    w.desk=x.desk;
+  });
+  if(typeof switchDesk==='function'&&lay.desk&&lay.desk!==curDesk)switchDesk(lay.desk);
+  return true;
+}
+
+function renderTimeTravel(body,w){
+  TT.w=w;
+  // a bar along the bottom of the desktop, the width of the screen
+  // (above the dock, which floats over the bottom of the screen)
+  // (after the window manager has placed it, which happens once render returns)
+  if(innerWidth>700&&!w.max&&!w.ttPlaced){w.ttPlaced=true;setTimeout(()=>{
+    const dk=document.querySelector('#dock'),r=dk&&dk.getBoundingClientRect();
+    const bottom=r&&r.height?r.top-10:innerHeight-10,h=Math.min(410,bottom-60);
+    Object.assign(w.el.style,{left:'8px',width:(innerWidth-16)+'px',height:h+'px',top:Math.max(40,bottom-h)+'px'})},60)}
+  const pb=panelShell(body,{title:'Time travel',sub:'',actions:`<select id="tt-conv" aria-label="Which conversation"></select>`});
+  pb.innerHTML='<div class="mut" style="padding:14px">reading the checkpoints…</div>';
+  Promise.all([apiJSON('/api/timetravel'+(TT.conv?'?conversation_id='+encodeURIComponent(TT.conv):'')),
+               apiJSON('/api/arena').catch(()=>({choices:[]}))]).then(([d,a])=>{
+    TT.brains=a.choices||[];
+    if(!TT.conv&&d.conversations.length){TT.conv=d.conversations[0].id;return renderTimeTravel(body,w)}
+    TT.data=d;TT.sel=d.points.length-1;ttPaint(body);
+  }).catch(e=>{pb.innerHTML=emptyBox('Could not read the timeline',esc(e.message))});
+}
+function ttPaint(body){
+  body=body||(TT.w&&TT.w.el.querySelector('.wbody'));if(!body)return;
+  const d=TT.data||{points:[],conversations:[]},pb=body.querySelector('.pbody'),sel=body.querySelector('#tt-conv');
+  sel.innerHTML=d.conversations.map(c=>`<option value="${esc(c.id)}"${c.id===TT.conv?' selected':''}>${esc(c.title)} · ${c.points}</option>`).join('')
+    ||'<option>no conversations yet</option>';
+  sel.onchange=()=>{TT.conv=sel.value;renderTimeTravel(body,TT.w)};
+  const pts=d.points;
+  if(!pts.length){pb.innerHTML=emptyBox('Nothing to go back to yet',
+    'A checkpoint is kept before every step where an agent changes a file, its memory or the graph. Ask it to do something and come back.');return}
+  const kind=p=>p.unseen?'shell':p.files&&p.files.length?'file':'mem';
+  pb.innerHTML=`<div class="tt-wrap" style="--n:${pts.length}">
+    <div class="tt-track" style="--n:${pts.length}">
+      ${pts.map((p,i)=>`<button class="tt-tick ${kind(p)}${p.state!=='live'?' gone':''}${i===TT.sel?' on':''}" data-i="${i}"
+         title="${esc(p.tool+' · '+p.detail)}" aria-label="${esc('Step '+(i+1)+': '+p.tool)}"></button>`).join('')}
+    </div>
+    <input type="range" id="tt-slide" min="0" max="${pts.length-1}" value="${Math.max(0,TT.sel)}" aria-label="Scrub through the steps">
+    <div class="tt-legend mut"><span class="tt-dot file"></span>a file <span class="tt-dot mem"></span>memory or graph <span class="tt-dot shell"></span>shell, cannot be undone</div>
+    <div class="tt-detail" id="tt-detail"></div>
+  </div>`;
+  pb.querySelectorAll('.tt-tick').forEach(b=>b.onclick=()=>ttSelect(+b.dataset.i));
+  pb.querySelector('#tt-slide').oninput=e=>ttSelect(+e.target.value);
+  ttSelect(TT.sel);
+}
+function ttSelect(i){
+  const pts=(TT.data||{}).points||[];if(!pts[i])return;
+  TT.sel=i;
+  const pb=TT.w&&TT.w.el.querySelector('.pbody');if(!pb)return;
+  pb.querySelectorAll('.tt-tick').forEach((b,k)=>b.classList.toggle('on',k===i));
+  const s=pb.querySelector('#tt-slide');if(s&&+s.value!==i)s.value=i;
+  const p=pts[i],det=pb.querySelector('#tt-detail');
+  det.innerHTML=`<div class="tt-head"><b>Step ${i+1} of ${pts.length}</b> <span class="mut">${esc(new Date(p.ts*1000).toLocaleTimeString())}</span>
+      <code>${esc(p.tool)}</code> <span class="tt-what">${esc(p.detail)}</span>${p.state!=='live'?' <span class="mut">(already rewound)</span>':''}</div>
+    <div class="tt-plan mut">reading what going back would undo…</div>`;
+  clearTimeout(TT.planT);
+  TT.planT=setTimeout(()=>apiJSON('/api/timetravel/'+encodeURIComponent(p.id)+'/plan').then(pl=>{
+    if(TT.sel!==i)return;TT.plan=pl;ttDetail(det,p,pl);
+  }).catch(e=>{det.querySelector('.tt-plan').textContent=e.message}),180);
+}
+function ttDetail(det,p,pl){
+  const busy=((TT.data||{}).busy||[]).indexOf(p.conversation_id)>=0;
+  const lay=!!ttLayouts()[p.id];
+  const opts=TT.brains.map(c=>`<option value="${esc(c.kind==='provider'?c.model:c.executor)}">${esc(c.label)}</option>`).join('');
+  det.querySelector('.tt-plan').outerHTML=`<div class="tt-plan">
+    <div>Going back to just before this step would <b>${esc(pl.words.join(', '))}</b>, across ${pl.steps} step${pl.steps===1?'':'s'}.</div>
+    ${pl.restore.length?`<div class="mut tt-files">put back: ${pl.restore.map(f=>esc(f.split('/').slice(-2).join('/'))).join(', ')}</div>`:''}
+    ${pl.remove.length?`<div class="mut tt-files">set aside: ${pl.remove.map(f=>esc(f.split('/').slice(-2).join('/'))).join(', ')}</div>`:''}
+    ${pl.warning?`<div class="tt-warn">${esc(pl.warning)}</div>`:''}
+    <div class="mut">${lay?'The windows go back to how they were at that moment.':'This page has no window layout for that moment, so the windows stay as they are.'}</div>
+  </div>
+  <div class="tt-actions">
+    <button class="endbtn danger" id="tt-rewind"${busy||p.state!=='live'?' disabled':''}>Rewind to before this step</button>
+    ${busy?'<span class="mut">That conversation is still working. Stop it first.</span>':''}
+    <span class="sp"></span>
+    <label class="tt-fork">Fork from here on <select id="tt-brain">${opts}</select></label>
+    <button class="endbtn" id="tt-forkgo"${p.conversation_id?'':' disabled'}>Fork</button>
+  </div>`;
+  const q=s=>det.querySelector(s);
+  if(q('#tt-rewind'))q('#tt-rewind').onclick=()=>ttRewind(p,pl);
+  if(q('#tt-forkgo'))q('#tt-forkgo').onclick=()=>ttFork(p,q('#tt-brain').value);
+}
+async function ttRewind(p,pl){
+  const ok=typeof osConfirm==='function'?await osConfirm('Rewind to before this step?',
+    'This will '+pl.words.join(', ')+'. What it replaces is moved aside, not deleted.'+(pl.warning?' '+pl.warning+'.':''),
+    {confirmText:'Rewind'}):confirm('Rewind?');
+  if(!ok)return;
+  try{
+    const got=await apiJSON('/api/timetravel/'+encodeURIComponent(p.id)+'/rewind',{method:'POST'});
+    const moved=ttLayoutRestore(p.id);
+    toast('Rewound: '+got.words.join(', ')+(moved?'. Windows put back.':'.'),{kind:'ok'});
+    renderTimeTravel(TT.w.el.querySelector('.wbody'),TT.w);
+  }catch(e){toast(e.message,{kind:'err'})}
+}
+async function ttFork(p,model){
+  try{
+    const got=await apiJSON('/api/timetravel/'+encodeURIComponent(p.id)+'/fork',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({model})});
+    toast('Forked: the same question on '+(got.model||'the default brain')+', from that step.',{kind:'ok'});
+    openApp('chat');setTimeout(()=>openConv(got.conversation_id),250);
+  }catch(e){toast(e.message,{kind:'err'})}
+}
 /* ================= app icon system =================
    Squircle tiles: a curated duotone gradient + a white SVG glyph per app.
    Unknown / user-built apps fall back to their emoji on a generated gradient tile. */
 const ICONS={
   chat:['#4AA9FF','#0A5FD9','<path d="M12 4.3c-4.5 0-8.1 2.9-8.1 6.5 0 2 1.1 3.9 2.9 5.1l-.6 3.6 3.6-1.9c.7.1 1.4.2 2.2.2 4.5 0 8.1-2.9 8.1-6.5S16.5 4.3 12 4.3Z"/><path d="M8.6 10.8h.01M12 10.8h.01M15.4 10.8h.01" stroke-width="2.3"/>'],
   office:['#FBBF24','#EA580C','<path d="M5.5 11.2h13v2.4h-13z"/><path d="M7.2 13.6V19M16.8 13.6V19"/><circle cx="9" cy="6.8" r="2"/><path d="M6.4 11.2c0-1.6 1.2-2.6 2.6-2.6s2.6 1 2.6 2.6"/><path d="M14.2 4.4h5.2a1.2 1.2 0 0 1 1.2 1.2v2.2a1.2 1.2 0 0 1-1.2 1.2h-2.6l-1.8 1.4V9h-.8A1.2 1.2 0 0 1 13 7.8V5.6a1.2 1.2 0 0 1 1.2-1.2Z"/>'],
+  timetravel:['#22D3EE','#0E7490','<circle cx="12" cy="12" r="7.6"/><path d="M12 7.6V12l3 2"/><path d="M3.6 9.4 4.4 12l2.6-.8"/>'],
+  arena:['#F59E0B','#B45309','<rect x="3.8" y="5" width="7.4" height="14" rx="1.6"/><rect x="12.8" y="5" width="7.4" height="14" rx="1.6"/><path d="M6 9h3M15 9h3M6 12h2M15 12h2.4"/>'],
+  drama:['#F472B6','#BE185D','<rect x="4" y="5.5" width="16" height="13" rx="2"/><path d="M4 9.5h16"/><path d="M7.5 5.5l1.6 4M12 5.5l1.6 4M16.5 5.5l1.6 4"/><path d="M10.4 12.6l3.8 2.1-3.8 2.1z"/>'],
   teamchat:['#34D399','#047857','<path d="M4 6.6c0-.9.7-1.6 1.6-1.6h8.2c.9 0 1.6.7 1.6 1.6v5.2c0 .9-.7 1.6-1.6 1.6H9.2L6 16v-2.6h-.4c-.9 0-1.6-.7-1.6-1.6Z"/><path d="M18.2 9.4h.2c.9 0 1.6.7 1.6 1.6v5c0 .9-.7 1.6-1.6 1.6H18V20l-3.2-2.4h-3.4c-.9 0-1.6-.7-1.6-1.6v-.4"/>'],
   taskmgr:['#6B7684','#39414E','<path d="M3.8 12.2h3.6l2.4-5.8 4.2 11.2 2.4-5.4h3.8"/>'],
   terminal:['#4A5160','#1E222B','<path d="M6.5 8.2l4 3.8-4 3.8"/><path d="M12.8 16.4h4.7"/>'],
+  appwindow:['#64748B','#334155','<rect x="4" y="5" width="16" height="13" rx="2"/><path d="M4 9h16"/><path d="M9 13.5l2 2 4-4"/>'],
   browser:['#38BDF8','#0369A1','<circle cx="12" cy="12" r="7.8"/><path d="M4.2 12h15.6"/><path d="M12 4.2c2.3 2.2 3.6 4.9 3.6 7.8s-1.3 5.6-3.6 7.8c-2.3-2.2-3.6-4.9-3.6-7.8S9.7 6.4 12 4.2Z"/>'],
   files:['#60A5FA','#2563EB','<path d="M4 7.3c0-.8.6-1.4 1.4-1.4h4.1l1.9 2.4h7.2c.8 0 1.4.6 1.4 1.4v7.9c0 .8-.6 1.4-1.4 1.4H5.4c-.8 0-1.4-.6-1.4-1.4Z"/><path d="M4 10.7h16"/>'],
   apps:['#A78BFA','#6D28D9','<rect x="4.6" y="4.6" width="6" height="6" rx="1.7"/><rect x="13.4" y="4.6" width="6" height="6" rx="1.7"/><rect x="4.6" y="13.4" width="6" height="6" rx="1.7"/><rect x="13.4" y="13.4" width="6" height="6" rx="1.7"/>'],
@@ -7307,7 +8394,11 @@ function worldSpot(i){
 }
 
 /* ---------------- the people ---------------- */
-function worldCast(){return (WORLD.v&&WORLD.v.agents)||[]}
+function worldCast(){
+  const c=(WORLD.v&&WORLD.v.agents)||[];
+  c.forEach(a=>{if(a.guest)avatarGuest(a.name,a.guest.look)});
+  return c;
+}
 function worldSync(){
   if(!WORLD.on||!WORLD.v)return;
   worldChip();worldAsk();
@@ -7333,7 +8424,7 @@ function worldSync(){
         c=WORLD.chars[a.name]={sprite:sp,tex:null,src:'',shadow:sh,crystal:cr,i,vessel:null,home:null,phase:Math.random()*6};
       }
       // the sheet in this scene's costume and style; a new look swaps it in place
-      const src=worldSheet(a.name);
+      const src=worldSheet(a.name,a);
       if(c.src!==src){
         const soft=worldSoft(),tex=new T.TextureLoader().load(src,()=>worldKick());
         tex.magFilter=tex.minFilter=soft?T.LinearFilter:T.NearestFilter;tex.generateMipmaps=false;
@@ -7365,7 +8456,16 @@ function worldSync(){
 var WORLD_WEAR={yukata:'in yukata',spacesuit:'in spacesuits',overalls:'in overalls',chef:'in chef whites'};
 function worldCostume(){return (WORLD.v&&WORLD.v.world&&WORLD.v.world.costume)||''}
 function worldSoft(){try{return localStorage.getItem('world.soft')==='1'}catch(e){return false}}
-function worldSheet(name){return avatarSrc(name,{sheet:1,costume:worldCostume(),draw:worldSoft()?'soft':''})}
+function worldSheet(name,a){
+  const o={sheet:1,costume:worldCostume(),draw:worldSoft()?'soft':''};
+  // a guest lent by a pass wears its own face, painted from the recipe it came with
+  return a&&a.guest?avatarRecipeSrc(a.guest.look,o):avatarSrc(name,o);
+}
+/* A guest (server._world_guests): an agent another team lent you for a few minutes.
+   It stands here at the world's resting mood, feels nothing and grows nothing, and its
+   card says whose it is and how long is left. */
+function worldGuest(n){const a=worldCast().find(x=>x.name===n);return a&&a.guest||null}
+function worldLeft(g){const s=Math.max(0,Math.round(g.until-Date.now()/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function worldSetSoft(on){
   try{localStorage.setItem('world.soft',on?'1':'0')}catch(e){}
   worldSync();toast(on?'Characters are drawn smooth here':'Characters are pixel art again');
@@ -7375,7 +8475,11 @@ function worldSay(a,text){
   if(!text){const e=worldEmotion(a.mood.id);const ls=(e&&e.lines)||[];text=ls[Math.floor(Math.random()*ls.length)]||a.mood.name}
   WORLD.bubbles[a.name]={text,until:performance.now()+7000};worldTags();
 }
-function worldLabel(n){return n==='@agent'?(typeof agentName==='function'?agentName():'Your agent'):n}
+function worldLabel(n){
+  if(n==='@agent')return typeof agentName==='function'?agentName():'Your agent';
+  const g=String(n).includes('@')&&worldGuest(n);
+  return g?g.agent+' (guest)':n;
+}
 /* Which department somebody is in (company.membership, carried on the world's answer by
    the server): the tag wears its colour, and a head wears the star. The heads stand in the
    front row because the server orders the cast that way; nothing here decides it. */
@@ -7406,8 +8510,10 @@ function worldTags(){
     // while it worked read as an erratic person. Tapping it opens the work itself.
     const dots=a.busy&&!say?`<span class="wd-dots" title="See what ${esc(worldLabel(a.name))} is working on"><i></i><i></i><i></i></span>`:'';
     const html=(say?`<span class="wd-say">${esc(say)}</span>`:dots)+
-      (WORLD.flat?avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''}):'')+
+      (WORLD.flat?(a.guest?`<img class="av wd-flatav${worldSoft()?' soft':''}" src="${avatarRecipeSrc(a.guest.look,{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''})}" alt="" draggable="false">`
+        :avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''})):'')+
       `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`+
+      (a.guest?`<span class="wd-dept wd-guest">from ${esc(a.guest.team||a.guest.label)}</span>`:'')+
       (worldOrg(a.name)?`<span class="wd-dept" style="--dc:${esc(worldOrg(a.name).hex)}">${esc(worldDeptLine(a.name))}</span>`:'');
     if(el._h!==html){el.innerHTML=html;el._h=html}
     el.style.setProperty('--mh',m.hue);
@@ -7734,6 +8840,17 @@ function worldCard(name,quiet){
   if(!a){card.hidden=true;WORLD.open='';return}
   if(!quiet&&WORLD.open===name&&!card.hidden){card.hidden=true;WORLD.open='';return}
   WORLD.open=name;const m=a.mood,l=a.level;
+  if(a.guest){
+    const g=a.guest;card.hidden=false;card.style.setProperty('--mh',m.hue);
+    card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
+      <div class="wd-who">${avatarRecipeImg(g.look,'wd-face',g.agent)}<div><b>${esc(g.agent)}</b>
+        <div class="wd-feel">a guest from ${esc(g.team?g.team+'’s team':g.label)}</div></div></div>
+      <p class="wd-quiet">Lent to you for a little while. It answers in words only, from its own machine, and leaves when the pass ends.</p>
+      <div class="wd-grow"><span>Time left</span><small class="wd-left" data-pass-until="${+g.until}">${worldLeft(g)}</small></div>
+      <div class="wd-acts"><button class="endbtn" onclick="tlPassHuddle('${esc(g.agent)}','${esc(g.label)}')">Bring into a huddle</button></div>`;
+    if(typeof tlPassTick==='function')tlPassTick();
+    return;
+  }
   const ago=s=>s<60?'just now':s<3600?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago';
   card.hidden=false;card.style.setProperty('--mh',m.hue);
   card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
@@ -9909,6 +11026,7 @@ function appAlias(id){
 function openApp(id,opts){
   opts=opts||{};
   const asked=id;
+  if(typeof watchNote==='function')watchNote('app',id);
   id=appAlias(id);
   const app=APPS[id];if(!app)return null;
   if(!(app.multi&&opts.fresh)){
@@ -10373,6 +11491,22 @@ function segTabs(id,labels,active,fn){
     `<button class="${i===active?'on':''}" onclick="${fn}(${i})">${esc(l)}</button>`).join('')}</span>`;
 }
 
+
+/* ---- a window that needs you ----------------------------------------------
+   A live window (the shared browser, a terminal session, a projected app) can stop
+   and wait for the person: a sign-in, a 2FA code, a CAPTCHA. The window, its taskbar
+   entry and its dock icon pulse until it is answered. One rule for every live window,
+   so a new kind of stream gets it for free. Never raises the window on its own: taking
+   focus away from what somebody is typing in is its own bug. */
+function winNeedsYou(appId,on,label){
+  winsOf(appId).forEach(w=>{
+    w.el.classList.toggle('needs-you',!!on);
+    w.tb&&w.tb.classList.toggle('needs-you',!!on);
+    if(on&&label)w.el.dataset.needs=label;else delete w.el.dataset.needs;
+  });
+  const d=document.querySelector(`#dock .dockb[data-app="${CSS.escape(appId)}"]`);
+  if(d)d.classList.toggle('needs-you',!!on);
+}
 /* ================= the ever-present agent: turn client + copilot panels =================
    One shared machinery for every embedded agent surface:
    - agentTurn(): send a turn on any conversation, with per-surface context and a sink
@@ -11366,6 +12500,203 @@ document.addEventListener('click',e=>{
     popClose(p.el);
   });
 },true);
+/* ---------------- live windows: a real process, drawn here, steered from here ----------------
+   A window on this desktop used to be HTML pretending to be an app. A LIVE window is a
+   picture of a real process (the shared Chromium, a native app on this machine) with the
+   person's pointer and keys sent back to it, and the agent's hand drawn on top when it
+   acts in the same window. `streamView` is that one component; the Browser and the app
+   streams (04g) are thin shells round it, so a new kind of stream gets pointer, keyboard,
+   touch, resize, the agent's cursor and "needs you" for free.
+
+   The wire: binary messages are JPEG/PNG frames, text messages are JSON (state, the
+   agent's hand, notices). Input goes back as JSON ops the server maps to the process
+   (cdpbrowser.Browser.person, appstream.Stream.person).
+
+   Faces: GUI and SUI are this. On a phone a tap is a click and the ⌨ button opens the
+   keyboard. TUI: a terminal cannot draw pixels; the agent's tools reach the same browser
+   and apps (`browser_*`), and `bento browser` says what it shows. */
+var STREAM_MODS={Alt:1,Control:2,Meta:4,Shift:8};
+var STREAM_KEYS=['Enter','Tab','Escape','Backspace','Delete','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
+  'Home','End','PageUp','PageDown'];
+
+function streamMods(e){return (e.altKey?1:0)|(e.ctrlKey?2:0)|(e.metaKey?4:0)|(e.shiftKey?8:0)}
+
+function streamView(holder,opts){
+  holder.classList.add('sv');
+  holder.innerHTML=`<canvas class="sv-cv" tabindex="0" aria-label="${esc(opts.label||'live window')}"></canvas>
+    <div class="sv-hand" aria-hidden="true"></div><div class="sv-note" hidden></div>
+    <input class="sv-kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-hidden="true">`;
+  const cv=holder.querySelector('.sv-cv'),ctx=cv.getContext('2d'),hand=holder.querySelector('.sv-hand'),
+        note=holder.querySelector('.sv-note'),kb=holder.querySelector('.sv-kb');
+  const S={remote:[0,0],closed:false,frames:0,lastMove:0};
+  const proto=location.protocol==='https:'?'wss://':'ws://';
+  const ws=new WebSocket(proto+location.host+opts.path);ws.binaryType='blob';
+  const send=op=>{if(ws.readyState===1)ws.send(JSON.stringify(op))};
+  // the LAYOUT size: a window opening is scaled by a transform, and the box it reports then
+  // made the remote page 320x240 for good (a transform never fires the ResizeObserver)
+  const size=()=>[Math.max(320,holder.clientWidth|0),Math.max(240,holder.clientHeight|0)];
+  ws.onopen=()=>{const [w,h]=size();ws.send(JSON.stringify(Object.assign({type:'hello',w,h},opts.hello||{})))};
+  ws.onmessage=async e=>{
+    if(typeof e.data!=='string'){
+      try{const bm=await createImageBitmap(e.data);
+        if(cv.width!==bm.width||cv.height!==bm.height){cv.width=bm.width;cv.height=bm.height}
+        S.remote=[bm.width,bm.height];ctx.drawImage(bm,0,0);bm.close&&bm.close();S.frames++;
+        holder.classList.add('live')}catch(err){}
+      return;
+    }
+    let m;try{m=JSON.parse(e.data)}catch(err){return}
+    if(m.type==='agent')streamHand(hand,cv,S,m);
+    else if(m.type==='notice'){note.textContent=m.text;note.hidden=false;clearTimeout(S.nt);S.nt=setTimeout(()=>{note.hidden=true},5000)}
+    else if(m.type==='error'){holder.classList.remove('live');opts.onError&&opts.onError(m.text)}
+    if(m.size)S.remote=m.size;
+    opts.onMessage&&opts.onMessage(m);
+  };
+  ws.onclose=()=>{S.closed=true;holder.classList.remove('live');opts.onClose&&opts.onClose()};
+  // where on the remote page a point on the canvas is
+  const at=e=>{const r=cv.getBoundingClientRect(),[W,H]=S.remote[0]?S.remote:[cv.width,cv.height];
+    return {x:Math.round((e.clientX-r.left)*W/r.width),y:Math.round((e.clientY-r.top)*H/r.height)}};
+  const btn=b=>b===2?'right':b===1?'middle':'left';
+  cv.addEventListener('pointerdown',e=>{cv.focus();cv.setPointerCapture&&cv.setPointerCapture(e.pointerId);
+    send(Object.assign({type:'mouse',kind:'mousePressed',button:btn(e.button),clicks:e.detail||1,mods:streamMods(e)},at(e)));e.preventDefault()});
+  cv.addEventListener('pointerup',e=>{send(Object.assign({type:'mouse',kind:'mouseReleased',button:btn(e.button),clicks:e.detail||1,mods:streamMods(e)},at(e)))});
+  cv.addEventListener('pointermove',e=>{const now=performance.now();if(now-S.lastMove<33)return;S.lastMove=now;
+    send(Object.assign({type:'mouse',kind:'mouseMoved',buttons:e.buttons,button:e.buttons?'left':'none'},at(e)))});
+  cv.addEventListener('wheel',e=>{send(Object.assign({type:'wheel',dx:e.deltaX,dy:e.deltaY},at(e)));e.preventDefault()},{passive:false});
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  const key=e=>{
+    if(STREAM_KEYS.includes(e.key)||((e.ctrlKey||e.metaKey)&&e.key.length===1)){send({type:'key',key:e.key,mods:streamMods(e)});e.preventDefault();return}
+    if(e.key===' '){send({type:'key',key:' '});e.preventDefault();return}
+    if(e.key.length===1&&!e.ctrlKey&&!e.metaKey&&!e.altKey){send({type:'text',text:e.key});e.preventDefault()}
+  };
+  cv.addEventListener('keydown',key);
+  cv.addEventListener('paste',e=>{const t=(e.clipboardData||window.clipboardData).getData('text');if(t)send({type:'text',text:t});e.preventDefault()});
+  // a phone's keyboard opens only for a real input: this one is off-screen and forwards
+  kb.addEventListener('input',()=>{if(kb.value){send({type:'text',text:kb.value});kb.value=''}});
+  kb.addEventListener('keydown',e=>{if(STREAM_KEYS.includes(e.key)){send({type:'key',key:e.key});e.preventDefault()}});
+  let rt=0;const ro=new ResizeObserver(()=>{clearTimeout(rt);rt=setTimeout(()=>{const [w,h]=size();send({type:'resize',w,h})},250)});
+  ro.observe(holder);
+  return {ws,send,keyboard:()=>{kb.focus()},frames:()=>S.frames,
+    destroy(){try{ro.disconnect();ws.close()}catch(e){}}};
+}
+/* The agent's hand: a ring where it clicked and a line saying what it did, so a page
+   that moves on its own is never a surprise. */
+function streamHand(hand,cv,S,m){
+  const r=cv.getBoundingClientRect(),hr=hand.getBoundingClientRect(),[W,H]=S.remote[0]?S.remote:[cv.width,cv.height];
+  const say=m.kind==='click'?`${m.who||'Agent'} clicked${m.label?' “'+m.label+'”':''}`:
+            m.kind==='type'?`${m.who||'Agent'} is typing`:`${m.who||'Agent'} pressed ${m.text||'a key'}`;
+  const d=document.createElement('div');d.className='sv-tap '+(m.kind||'');
+  if(m.x!=null&&m.y!=null){d.style.left=(r.left-hr.left+m.x*r.width/W)+'px';d.style.top=(r.top-hr.top+m.y*r.height/H)+'px'}
+  else{d.style.left='50%';d.style.top='18px';d.classList.add('nopos')}
+  d.innerHTML=`<i></i><span>${esc(say)}</span>`;
+  hand.appendChild(d);setTimeout(()=>d.remove(),2600);
+}
+
+/* ---------------- the shared browser window ---------------- */
+var BROWSER_STATE={status:null};
+async function renderBrowser(body,w){
+  let st=BROWSER_STATE.status;
+  if(!st){try{st=BROWSER_STATE.status=await apiJSON('/api/browser')}catch(e){st={ok:false,why:e.message}}}
+  if(!st.ok)return renderWebLauncher(body,w,st.why);
+  body.innerHTML=`<div class="bw">
+    <div class="bw-bar">
+      <button class="bw-b" data-op="back" title="Back" aria-label="Back">‹</button>
+      <button class="bw-b" data-op="forward" title="Forward" aria-label="Forward">›</button>
+      <button class="bw-b" data-op="reload" title="Reload" aria-label="Reload">⟳</button>
+      <input class="bw-url" placeholder="Search or type an address" aria-label="Address" autocapitalize="off" spellcheck="false">
+      <button class="bw-b bw-kb" title="Keyboard" aria-label="Open the keyboard">⌨</button>
+      <button class="bw-b bw-ext" title="Open this page in your own browser" aria-label="Open in your own browser">↗</button>
+    </div>
+    <div class="bw-tabs" role="tablist"></div>
+    <div class="bw-ask" hidden></div>
+    <div class="bw-view"></div>
+    <div class="bw-foot mut"><span class="bw-who"></span></div>
+  </div>`;
+  const q=s=>body.querySelector(s),view=q('.bw-view'),url=q('.bw-url'),ask=q('.bw-ask');
+  const start=w._pending||'';w._pending=null;
+  const sv=streamView(view,{path:'/ws/browser',label:'the shared browser',hello:start?{url:start}:{},
+    onMessage:m=>{if(m.type==='state')browserPaint(w,m)},
+    onError:t=>{view.innerHTML=emptyBox('The browser could not start',esc(t))}});
+  w.sv=sv;
+  body.querySelectorAll('[data-op]').forEach(b=>b.onclick=()=>sv.send({type:b.dataset.op}));
+  url.addEventListener('keydown',e=>{if(e.key==='Enter'){sv.send({type:'navigate',url:url.value});view.querySelector('.sv-cv')?.focus()}});
+  q('.bw-kb').onclick=()=>sv.keyboard();
+  q('.bw-ext').onclick=()=>{const u=w._url||'';if(/^https?:/.test(u))openHost({url:u});else toast('Nothing to open yet')};
+  ask.addEventListener('click',e=>{if(e.target.closest('.bw-done')){sv.send({type:'resume'})}});
+}
+function browserPaint(w,m){
+  const body=w.el.querySelector('.wbody');if(!body)return;
+  const q=s=>body.querySelector(s);
+  w._url=m.url||'';
+  const url=q('.bw-url');if(url&&document.activeElement!==url)url.value=m.url&&m.url!=='about:blank'?m.url:'';
+  const tabs=q('.bw-tabs');
+  if(tabs)tabs.innerHTML=(m.tabs||[]).map(t=>`<button class="bw-tab${t.active?' on':''}" role="tab" aria-selected="${t.active}" data-id="${esc(t.id)}" title="${esc(t.url)}">
+      <span>${esc(t.title||'New tab')}</span>${(m.tabs||[]).length>1?`<i data-close="${esc(t.id)}" aria-label="Close tab">✕</i>`:''}</button>`).join('')
+    +`<button class="bw-tab bw-new" aria-label="New tab">＋</button>`;
+  tabs&&tabs.querySelectorAll('.bw-tab').forEach(b=>b.onclick=e=>{
+    const c=e.target.closest('[data-close]');
+    if(c)w.sv.send({type:'tab_close',id:c.dataset.close});
+    else if(b.classList.contains('bw-new'))w.sv.send({type:'tab_new'});
+    else w.sv.send({type:'tab_switch',id:b.dataset.id})});
+  const ask=q('.bw-ask'),a=m.attention;
+  if(ask){
+    ask.hidden=!a;
+    if(a)ask.innerHTML=`<span class="bw-ask-ic">${a.kind==='captcha'?'🧩':a.kind==='code'?'🔢':a.kind==='login'?'🔐':'✋'}</span>
+      <div><b>${esc((typeof agentName==='function'&&agentName())||'Your agent')} needs you here</b>
+      <span>${esc(a.reason||('This page wants '+(a.why||'a person')+'.'))} Do it in the page below, then press Done.</span></div>
+      <button class="pact bw-done">Done, carry on</button>`;
+  }
+  winNeedsYou('browser',!!a,a&&(a.site||''));
+  const who=q('.bw-who');if(who)who.textContent=m.title?m.title:'';
+}
+/* The browser needs the person and its window may not be open: open it, or offer to. */
+function browserAttention(ev){
+  const open=winsOf('browser').length>0;
+  winNeedsYou('browser',true,ev.site||'');
+  // the same wall is announced when the agent meets it and again when it starts waiting:
+  // one toast, not a stack of the same sentence
+  const key=(ev.kind||'')+'|'+(ev.site||''),now=Date.now();
+  if(BROWSER_STATE.asked===key&&now-(BROWSER_STATE.askedAt||0)<60000)return;
+  BROWSER_STATE.asked=key;BROWSER_STATE.askedAt=now;
+  const what=ev.kind==='captcha'?'a CAPTCHA':ev.kind==='code'?'a sign-in code':ev.kind==='login'?'a sign-in':'your help';
+  toast(`${(typeof agentName==='function'&&agentName())||'Your agent'} needs ${what} in the browser${ev.site?' on '+ev.site:''}`,
+    {kind:'warn',label:open?'Show':'Open',go:()=>openApp('browser')});
+  if(typeof suiAttention==='function')suiAttention();
+}
+
+/* ---------------- a native app in a window (agentos/appstream.py) ---------------- */
+var APPWIN={next:null,status:null};
+async function appStreamStatus(){
+  if(APPWIN.status)return APPWIN.status;
+  try{APPWIN.status=await apiJSON('/api/appstreams')}catch(e){APPWIN.status={ok:false,why:e.message}}
+  return APPWIN.status;
+}
+/* Open an installed app in a Bento window: started in its own display on this machine,
+   drawn here. The way a phone or a laptop in another room sees a native app at all. */
+async function openAppWindow(app,title){
+  const st=await appStreamStatus();
+  if(!st.ok){toast(st.why||'Apps cannot be shown in windows here',{kind:'warn'});return null}
+  const box=document.getElementById('desktop')||document.body,r=box.getBoundingClientRect();
+  try{
+    const d=await apiJSON('/api/appstreams',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({app,w:Math.min(1280,Math.round(r.width*.7)),h:Math.min(800,Math.round(r.height*.7))})});
+    return showAppWindow(d.id,d.title||title||app);
+  }catch(e){toast('Could not open it: '+e.message,{kind:'err'});return null}
+}
+function showAppWindow(id,title){
+  const have=winsOf('appwindow').find(w=>w._sid===id);
+  if(have){focusWin(have);return have}
+  APPWIN.next={id,title};
+  return openApp('appwindow',{fresh:true});
+}
+function renderAppWindow(body,w){
+  if(!w._sid&&APPWIN.next){w._sid=APPWIN.next.id;w._title=APPWIN.next.title;APPWIN.next=null}
+  const t=w.el.querySelector('.tname');if(t&&w._title)t.textContent=w._title;
+  if(!w._sid){body.innerHTML=emptyBox('No app here','Open one from the Apps launcher with “In a window”.');return}
+  body.innerHTML='<div class="aw"><div class="aw-view"></div></div>';
+  w.sv=streamView(body.querySelector('.aw-view'),{path:'/ws/appstream?id='+encodeURIComponent(w._sid),label:w._title||'app',
+    onMessage:m=>{if(m.type==='ended'){body.innerHTML=emptyBox('This app has closed','Open it again from the Apps launcher.')}},
+    onError:t=>{body.innerHTML=emptyBox('This app is not open any more',esc(t))}});
+}
 /* ================= apps ================= */
 const APPS={
   chat:{id:'chat',title:'Agent Chat',icon:'',w:920,h:620,desc:'Talk to your machine',
@@ -11382,8 +12713,18 @@ const APPS={
     menus:w=>[['Edit',[
       {label:'Clear the screen',fn:()=>{try{w.term.clear()}catch(e){}}},
       {label:'Copy the selection',fn:()=>{try{navigator.clipboard.writeText(w.term.getSelection()||'')}catch(e){}}},
+    ]],['Sessions',[
+      {label:'Switch session or start one…',fn:async()=>{const it=await terminalSessionsMenu(w);
+        const r=w.el.getBoundingClientRect();showCtxItems({clientX:r.left+40,clientY:r.top+48},it)}},
+      {label:'New session',fn:()=>terminalAttach(w,'new')},
+      {label:'End this session',fn:async()=>{if(!w._session)return;
+        await fetch('/api/terminal/sessions/'+encodeURIComponent(w._session),{method:'DELETE'});toast('Session ended')}},
     ]]]},
-  browser:{id:'browser',title:'Web',icon:'',w:520,h:440,desc:'Open the web in your system browser',render:renderBrowser},
+  browser:{id:'browser',title:'Web',icon:'',w:1100,h:760,desc:'A real browser you and your agent share; sign-ins stay',render:renderBrowser,
+    onClose(w){try{w.sv&&w.sv.destroy();winNeedsYou('browser',false)}catch(e){}return true}},
+  appwindow:{id:'appwindow',title:'App',icon:'',w:900,h:620,desc:'A native app on this machine, drawn in a window you and your agent can both use',
+    multi:true,hidden:true,render:renderAppWindow,
+    onClose(w){try{w.sv&&w.sv.destroy();if(w._sid)fetch('/api/appstreams/'+encodeURIComponent(w._sid),{method:'DELETE'})}catch(e){}return true}},
   files:{id:'files',title:'Files',icon:'',w:720,h:560,desc:'Your workspace files & reports',multi:true,render:renderFiles,
     menus:w=>[['File',[
       {label:'Go to workspace root',fn:()=>{w.path='';renderFiles(w.el.querySelector('.wbody'),w)}},
@@ -11405,6 +12746,12 @@ const APPS={
   gallery:{id:'gallery',title:'Gallery',icon:'◧',w:860,h:640,desc:'Everything the agent made or was handed',render:renderGallery},
   office:{id:'office',title:'Office',icon:'',w:1180,h:720,desc:'Watch your agents at work — a comic office where they get work, walk over to ask each other and huddle',
     render:renderOffice,onClose:officeClose},
+  timetravel:{id:'timetravel',title:'Time travel',icon:'',w:1100,h:330,desc:'Rewind what an agent changed, step by step, or fork from a step on another brain',
+    render:renderTimeTravel},
+  arena:{id:'arena',title:'Arena',icon:'',w:1200,h:760,desc:'The same task to two or four brains at once, side by side, with a live HUD',
+    render:renderArena},
+  drama:{id:'drama',title:'Drama reel',icon:'',w:760,h:720,desc:'Your crew’s latest drama as a 15 second clip or a 4-panel strip',
+    render:renderDrama},
   teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
@@ -11644,6 +12991,9 @@ window.addEventListener('message',e=>{
 var APP_WORDS={
   jobs:['mission','missions','job','jobs','flow','flows','workflow','workflows','fabric','orchestrator','recipe'],
   settings:['preferences','prefs','config','configuration','options'],
+  timetravel:['undo','rewind','time machine','time travel','go back','revert','restore','fork','checkpoint','history of changes'],
+  arena:['benchmark','compare','versus','vs','cage match','race','side by side','models','speed','tokens per second'],
+  drama:['clip','reel','video','comic','manga','strip','share','tantrum','story','record'],
   office:['crew','team','playground','floor','lounge','meeting room','company','departments'],
   brief:['inbox','today','digest','summary'],
   permissions:['grants','grant','allow','deny','matrix','consent','policy','policies'],
@@ -11709,7 +13059,9 @@ var PLACES=[
   ['Rules','permissions','Permissions → Rules',['policies','policy','rules','always allow','always deny'],placeFold('policies')],
   ['Ledger','permissions','Permissions → Ledger',['audit','ledger','decisions','history of decisions','who did what'],placeFold('audit')],
   ['Quarantine','permissions','Permissions → Quarantine',['quarantine','held','stopped','blocked','suspended','runaway'],placeFold('quarantine')],
-].map(([label,app,hint,words,go])=>({label,app,hint,words,go}));
+].map(([label,app,hint,words,go])=>({label,app,hint,words,
+  // Watch me once notes a place as the step (00i-watch.js), not the app it opens
+  go:()=>{if(typeof watchNote==='function')watchNote('place',label);return go()}}));
 
 /* How well `q` names a place or an app by one of its words: 2.6 a whole word, 2.2 the
    start of one. The same scale as palScore, so a word hit ranks with a name hit. */
@@ -12988,16 +14340,17 @@ function renderWidgets(){
   const box=$('#widgets');if(!box)return;
   const apps={};(USERAPPS||[]).forEach(a=>apps[a.id]=a);
   renderPlacedWidgets();
-  // only free desktop widgets pinned to the CURRENT desktop are shown here
-  const here=WIDGETS.filter(w=>apps[w.app_id]&&!w.place&&(w.desk||1)===curDesk);
+  // only free desktop widgets pinned to the CURRENT desktop are shown here; a routine's
+  // card (kind 'routine', Watch me once) is drawn here too, while its routine exists
+  const here=WIDGETS.filter(w=>(apps[w.app_id]||routineOf(w))&&!w.place&&(w.desk||1)===curDesk);
   const want=new Set(here.map(w=>w.app_id));
   Object.keys(widgetEls).forEach(id=>{if(!want.has(id)){widgetEls[id].remove();delete widgetEls[id]}});
   here.forEach(wd=>{
-    const a=apps[wd.app_id];
+    const a=apps[wd.app_id],rt=routineOf(wd);
     let el=widgetEls[wd.app_id];
-    if(!el){el=createWidgetEl(a);widgetEls[wd.app_id]=el;box.appendChild(el)}
+    if(!el){el=rt?createRoutineWidgetEl(wd,rt):createWidgetEl(a);widgetEls[wd.app_id]=el;box.appendChild(el)}
     if(el._dragging||el._resizing)return;             // don't fight the user mid-gesture
-    const dim=widgetSizeOf(wd.app_id);
+    const dim=rt?{w:250,h:150}:widgetSizeOf(wd.app_id);
     el.style.left=(wd.x??40)+'px';el.style.top=(wd.y??40)+'px';
     el.style.width=(wd.w??dim.w)+'px';el.style.height=(wd.h??dim.h)+'px';
   });
@@ -13026,7 +14379,8 @@ function widgetDrag(el,handle,appId){
     e.preventDefault();
     const desk=$('#desktop'),sx=e.clientX,sy=e.clientY,ol=el.offsetLeft,ot=el.offsetTop;
     el._dragging=true;el.style.zIndex=50;
-    el.querySelector('iframe').style.pointerEvents='none';   // let the drag win over the page
+    const ifr=el.querySelector('iframe');
+    if(ifr)ifr.style.pointerEvents='none';   // let the drag win over the page
     handle.setPointerCapture(e.pointerId);
     const move=ev=>{
       let l=Math.max(0,Math.min(ol+ev.clientX-sx,desk.clientWidth-60));
@@ -13036,7 +14390,7 @@ function widgetDrag(el,handle,appId){
     };
     const up=()=>{
       handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);
-      el._dragging=false;el.style.zIndex='';el.querySelector('iframe').style.pointerEvents='';
+      el._dragging=false;el.style.zIndex='';if(ifr)ifr.style.pointerEvents='';
       const wd=widgetLayout(appId);if(wd){wd.x=el.offsetLeft;wd.y=el.offsetTop;queueWidgetSave()}
     };
     handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up);
@@ -13077,6 +14431,36 @@ function arrangeWidgets(){
   renderWidgets();saveWidgets();toast('▦ widgets arranged on Desktop '+curDesk);
 }
 
+
+/* ---- a routine's card: one tap plays it (Watch me once, 00i-watch.js) ----
+   A native card, not an app's iframe: the routine is the desktop's own steps, run by
+   runAutomation in this page. Its widget entry is {app_id:'routine:<id>', kind:'routine',
+   routine:<id>}, saved with the others (/api/widgets, a USER_KEY). */
+function routineOf(wd){
+  if(!wd||wd.kind!=='routine')return null;
+  try{return (AUTOMATIONS||[]).find(a=>a.id===wd.routine)||null}catch(e){return null}
+}
+function pinRoutine(id){
+  const key='routine:'+id;
+  if(WIDGETS.some(w=>w.app_id===key))return;
+  // top right, clear of the greeting and its chips: #home sits above the widgets and its
+  // chips take taps, so a routine pinned in the middle could not be played
+  const r=WIDGETS.filter(w=>w.kind==='routine'&&(w.desk||1)===curDesk).length;
+  WIDGETS.push({app_id:key,kind:'routine',routine:id,desk:curDesk,
+    x:Math.max(16,innerWidth-266-Math.floor(r/4)*266),y:44+(r%4)*164,w:250,h:150});
+  renderWidgets();saveWidgets();toast('pinned to Desktop '+curDesk,{kind:'ok'});
+}
+function createRoutineWidgetEl(wd,rt){
+  const el=document.createElement('div');el.className='widget routine-widget';el.dataset.app=wd.app_id;
+  el.innerHTML=`<div class="wgh"><span class="wgt">Routine</span><button class="x" title="unpin">✕</button></div>
+    <div class="rw-body"><div class="rw-name">${esc(rt.name)}</div>
+      <div class="rw-steps mut">${(rt.steps||[]).map(s=>esc(automationStepLabel(s))).join(' → ')}</div>
+      <button class="endbtn primary rw-run">▶ Play</button></div>`;
+  el.querySelector('.rw-run').onclick=()=>runAutomation(rt);
+  el.querySelector('.x').onclick=()=>unpinWidget(wd.app_id);
+  widgetDrag(el,el.querySelector('.wgh'),wd.app_id);
+  return el;
+}
 /* ================= wallpaper =================
    Four sources, most-specific first:
      1. a wallpaper file the user generated or adopted from the host,
@@ -13751,6 +15135,10 @@ function approvalFloat(ev){
 var APPROVAL_WATCH=0;
 function approvalHome(id){
   const ev=APPROVALS[id];if(!ev)return;
+  // a placed card that is in view now makes its floating copy a second door to the same
+  // question (Office HQ: the answer card scrolled to it a moment after the float went up)
+  if([...document.querySelectorAll('[id="ap-'+id+'"]:not(.ap-float)')].some(approvalShown)){
+    document.querySelectorAll('[id="ap-'+id+'"].ap-float').forEach(f=>f.remove());return}
   if(approvalVisible(id))return;
   const feed=document.getElementById('feed');
   const chatOpen=feed&&ev.conversation_id&&ev.conversation_id===currentConv&&approvalShownArea(feed);
@@ -14033,7 +15421,7 @@ function handle(ev){
       if(_cur)CUR_ENGINE={engine:EXEC_TITLES[ev.model]?ev.model:'',
                           model:EXEC_TITLES[ev.model]?'':(ev.model||''),
                           // `@researcher …` is the researcher answering, in its own face
-                          speaker:ev.speaker||'',
+                          speaker:ev.speaker||'',department:ev.department||'',
                           // `@a @b …` is a huddle: the room answers, each in turn
                           huddle:ev.huddle||null};
       if(_cid){RUNNING.add(_cid);STREAMS[_cid]={html:'',text:''};actBegin(_cid);
@@ -14380,6 +15768,12 @@ function handle(ev){
       break;
     case 'grants': refreshApp('permissions'); if(ev.revoked)reloadAppFrames(); break;
     case 'widgets': if(Date.now()>widgetEchoUntil)loadWidgets(); break;
+    case 'arena': arenaEvent(ev); break;
+    case 'checkpoint': ttLayoutSave(ev.id); if(TT.w&&TT.conv===ev.conversation_id)refreshApp('timetravel'); break;
+    case 'timetravel': if(TT.w)refreshApp('timetravel'); break;
+    case 'drama': dramaOffer(ev); if(typeof refreshApp==='function')refreshApp('drama'); break;
+    case 'browser_attention': browserAttention(ev); break;
+    case 'appstream': if(typeof showAppWindow==='function')showAppWindow(ev.id,ev.title); break;
     case 'snapshots': refreshApp('snapshots'); break;
     case 'toast': toast(ev.text||''); break;   // the server has something short to say
     case 'themes': loadThemes().then(()=>refreshApp('themes')); break;
@@ -14443,7 +15837,9 @@ function flushText(){
    its own face, or the agent labelled with whatever engine is running it. */
 function curWho(){
   if(CUR_ENGINE.huddle&&typeof huddleWho==='function')return huddleWho(CUR_ENGINE.huddle);
-  const sp=CUR_ENGINE.speaker;
+  const sp=CUR_ENGINE.speaker,dp=CUR_ENGINE.department;
+  // `@Sales …`: the department answers, in its head's face, under its own name
+  if(dp)return chatWho(sp||'@agent','▦ '+esc(dp)+(sp?' · @'+esc(sp):''));
   return sp?chatWho(sp,'@'+esc(sp)+(CUR_ENGINE.model?' '+brainChip(CUR_ENGINE.model):''))
     :chatWho('@agent',engineLabel(CUR_ENGINE.engine,CUR_ENGINE.model));
 }
@@ -14744,13 +16140,14 @@ async function openConv(cid){
     if(msg.meta&&msg.meta.freetalk&&typeof freeTalkRender==='function'&&freeTalkRender(msg))return;
     const m=document.createElement('div');m.className='msg '+msg.role;
     if(msg.role==='user'){m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
-    else{const sp=msg.meta&&msg.meta.speaker;
+    else{const sp=msg.meta&&msg.meta.speaker,dp=msg.meta&&msg.meta.department;
       // a specialist's reply is stored with a first line naming it and its model;
       // with its face in the header that line would say the same thing twice
       let body=msg.content||'', spModel='';
       if(sp){const h=body.match(/^@[\w-]+ · ([^\n]*)\n\n/);if(h){spModel=h[1];body=body.slice(h[0].length)}}
       const hud=msg.meta&&msg.meta.huddle;
-      m.innerHTML='<div class="who">'+(hud?huddleWho(hud):sp?chatWho(sp,'@'+esc(sp)+(spModel?' '+brainChip(spModel):'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
+      if(dp){const h=body.match(/^▦ [^\n]* · [^\n]*\n\n/);if(h)body=body.slice(h[0].length)}
+      m.innerHTML='<div class="who">'+(hud?huddleWho(hud):dp?chatWho(sp||'@agent','▦ '+esc(dp)+(sp?' · @'+esc(sp):'')):sp?chatWho(sp,'@'+esc(sp)+(spModel?' '+brainChip(spModel):'')):chatWho('@agent',msgWho(msg.meta)))+'</div>';
       if(hud){m.insertAdjacentHTML('beforeend',huddleCard(huddleParse(body),hud,true));feed.appendChild(m);return}
       (msg.meta?.steps||[]).forEach(s=>{
         if(s.type==='tool'){const card=document.createElement('div');card.className='tool';
@@ -15157,7 +16554,7 @@ function brainChip(model,provider){
 }
 function huddleParse(text){
   const lines=String(text||'').split('\n'), out=[];
-  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
+  lines.forEach(l=>{const m=l.match(/^@([\w-]+(?:@[\w.-]+)?) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
     // Democracy mode ends a huddle with a vote, one line (fabric.vote_line)
     const v=l.match(/^\[vote\] (.*)$/);if(v)out.push({vote:true,text:v[1]})});
   return out;
@@ -15173,7 +16570,10 @@ function huddleVoteRow(e){
 }
 function huddleRow(e){
   if(e.vote)return huddleVoteRow(e);
-  return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
+  // a guest lent by a pass brings its own face (e.look); everybody else is painted here
+  if(e.look)avatarGuest(e.speaker,e.look);
+  const face=avatarImg(e.speaker,'av-who');
+  return `<div class="hud-row${String(e.speaker||'').includes('@')?' guest':''}" data-sp="${esc(e.speaker)}">${face||`<span class="hud-dot"></span>`}
     <div class="hud-say"><div class="hud-who">@${esc(e.speaker)}${e.to?` <span class="hud-to">→ @${esc(e.to)}</span>`:''} ${e.model||e.provider?brainChip(e.model,e.provider):''}</div>
     <div class="hud-text">${md(e.text||'')}</div></div></div>`;
 }
@@ -15193,6 +16593,7 @@ function huddleWho(names){
    Crew stage hears it too, so the one talking says so over its head. */
 function huddleLive(ev,isCur,kind){
   kind=kind||'huddle';
+  if(ev.look)avatarGuest(ev.speaker,ev.look);
   if(!ev.vote)scenePulse('say',ev.speaker,Object.assign({kind},ev));
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id&&!ev.vote)
@@ -15330,6 +16731,99 @@ function fileChips(root){
     fileChipWire(b);
   });
 }
+/* ---------------- @ suggestions: an agent or a department, by name ----------------
+   Typing @ at the start of a message offers the people and the departments it can
+   reach: `@nora …` is the specialist answering itself (fabric.parse_mention), `@Sales …`
+   is a run of that department's desk (company.parse_department), `@a @b …` a huddle.
+   One list from the server (/api/chat/addresses → company.addresses), one popup, and
+   every composer gets it by delegation: Chat (#input), the prompt bar (#omni-in) and
+   every app's agent panel, the Office's included (.cp-in). Nothing is sent by picking;
+   it only writes the address.
+   Faces: GUI and SUI are this list. TUI and the channels type the same @ by hand, and
+   `bento company` lists the departments. */
+var ATS={data:null,at:0,el:null,box:null,items:[],sel:0,start:0,end:0};
+var ATS_TTL=30000;
+function atsLoad(){
+  if(ATS.data&&Date.now()-ATS.at<ATS_TTL)return Promise.resolve(ATS.data);
+  return fetch('/api/chat/addresses').then(r=>r.ok?r.json():null).then(j=>{
+    if(j&&Array.isArray(j.agents)){ATS.data=j;ATS.at=Date.now()}return ATS.data}).catch(()=>ATS.data);
+}
+function atsForget(){ATS.at=0}
+/* The address being typed: only in the leading run of @words, since only an address
+   at the start routes a message. */
+function atsToken(el){
+  const v=el.value||'',caret=el.selectionStart==null?v.length:el.selectionStart;
+  const head=v.slice(0,caret);
+  const m=head.match(/^((?:@[^@\s][^@]*?\s+)*)@([^@]*)$/);
+  if(!m)return null;
+  const q=m[2];
+  if(q.length>40||/\n/.test(q))return null;
+  return {q,start:m[1].length,end:caret};
+}
+function atsMatch(d,q){
+  const k=q.toLowerCase().replace(/[\s_-]+/g,'');
+  const has=s=>String(s||'').toLowerCase().replace(/[\s_&-]+/g,'').startsWith(k)
+    ||String(s||'').toLowerCase().split(/[\s_&-]+/).some(w=>w.startsWith(q.toLowerCase().trim()));
+  const out=[];
+  (d.departments||[]).forEach(x=>{if(!k||has(x.name))out.push({kind:'dept',name:x.name,
+    sub:(x.head?'head '+x.head+' · ':'')+x.people+' '+(x.people===1?'person':'people'),hex:x.hex,head:x.head,desk:x.desk})});
+  (d.agents||[]).forEach(x=>{if(!k||has(x.name)||has(x.title))out.push({kind:'agent',name:x.name,
+    sub:[x.title,x.dept].filter(Boolean).join(' · ')||'specialist'})});
+  return out.slice(0,8);
+}
+function atsClose(){if(ATS.box){ATS.box.remove();ATS.box=null}ATS.items=[];ATS.el=null}
+function atsPaint(){
+  const el=ATS.el;if(!el||!ATS.items.length){atsClose();return}
+  if(!ATS.box){ATS.box=document.createElement('div');ATS.box.className='ats';ATS.box.setAttribute('role','listbox');
+    document.body.appendChild(ATS.box);
+    // a tap chooses; pointerdown so the field keeps its focus and caret
+    ATS.box.addEventListener('pointerdown',e=>{const r=e.target.closest('[data-i]');if(!r)return;
+      e.preventDefault();atsPick(+r.dataset.i)})}
+  ATS.box.innerHTML=ATS.items.map((x,i)=>`<div class="ats-row${i===ATS.sel?' on':''}" data-i="${i}" role="option" aria-selected="${i===ATS.sel}">
+    ${x.kind==='dept'?`<span class="ats-dot" style="background:${esc(x.hex||'#64748b')}">▦</span>`
+      :(typeof avatarImg==='function'&&avatarImg(x.name,'ats-av'))||'<span class="ats-dot">@</span>'}
+    <span class="ats-name">${x.kind==='dept'?esc(x.name):'@'+esc(x.name)}</span>
+    <span class="ats-sub">${x.kind==='dept'?(x.desk?'department · ':'department, no desk · '):''}${esc(x.sub)}</span></div>`).join('');
+  const r=el.getBoundingClientRect(),w=Math.min(360,innerWidth-32);
+  ATS.box.style.width=w+'px';
+  ATS.box.style.left=Math.max(16,Math.min(r.left,innerWidth-w-16))+'px';
+  // above the field when there is room (composers sit at the bottom), else below it
+  const h=ATS.box.offsetHeight;
+  ATS.box.style.top=(r.top-h-6>8?r.top-h-6:r.bottom+6)+'px';
+}
+function atsPick(i){
+  const x=ATS.items[i],el=ATS.el;if(!x||!el)return;
+  const v=el.value,addr='@'+(x.kind==='dept'?x.name:x.name)+' ';
+  el.value=v.slice(0,ATS.start)+addr+v.slice(ATS.end).replace(/^\S*\s?/,'');
+  const p=ATS.start+addr.length;try{el.setSelectionRange(p,p)}catch(e){}
+  atsClose();el.focus();el.dispatchEvent(new Event('input',{bubbles:true}));
+}
+function atsInput(el){
+  const t=atsToken(el);if(!t){atsClose();return}
+  atsLoad().then(d=>{
+    if(!d||document.activeElement!==el){atsClose();return}
+    const t2=atsToken(el);if(!t2){atsClose();return}
+    ATS.el=el;ATS.start=t2.start;ATS.end=t2.end;
+    const items=atsMatch(d,t2.q);
+    if(!items.length){atsClose();return}
+    if(ATS.items.map(x=>x.name).join('|')!==items.map(x=>x.name).join('|'))ATS.sel=0;
+    ATS.items=items;atsPaint();
+  });
+}
+var ATS_FIELDS='#input,#omni-in,.cp-in';
+document.addEventListener('input',e=>{const el=e.target;if(el&&el.matches&&el.matches(ATS_FIELDS))atsInput(el)},true);
+// capture: while the list is open, the arrows and Enter belong to it, not to the send
+document.addEventListener('keydown',e=>{
+  if(!ATS.box||!ATS.el||e.target!==ATS.el)return;
+  const n=ATS.items.length;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ATS.sel=(ATS.sel+(e.key==='ArrowDown'?1:n-1))%n;atsPaint()}
+  else if(e.key==='Enter'||e.key==='Tab'){atsPick(ATS.sel)}
+  else if(e.key==='Escape'){atsClose()}
+  else return;
+  e.preventDefault();e.stopImmediatePropagation();
+},true);
+document.addEventListener('focusout',e=>{if(e.target===ATS.el)setTimeout(()=>{if(document.activeElement!==ATS.el)atsClose()},120)},true);
+addEventListener('resize',()=>{if(ATS.box)atsPaint()});
 /* ================= settings app ================= */
 /* ---- preference primitives: every row is label+description left, control right ---- */
 function pGroup(title,rows,o){
@@ -15475,6 +16969,7 @@ async function renderSettings(body){
     </div>`;
   body.querySelectorAll('.prefs-side button').forEach(b=>b.onclick=()=>{
     SETTAB=b.dataset.t;localStorage.setItem('settab',SETTAB);
+    if(typeof watchNote==='function')watchNote('view','settings',SETTAB);
     body.querySelectorAll('.prefs-side button').forEach(x=>x.classList.toggle('on',x===b));
     setTab(body);
   });
@@ -15881,6 +17376,10 @@ function setTab(body,all){
       pRow('Faces beside messages',pSwitch('s-av-on',!AVATARS.off),
         {desc:'Turn off to see plain names instead. Remembered by this browser.',
          f:'characters avatars faces off plain text chat logs'}),
+      pRow('Notice my routines',pSwitch('s-watch',watchOn()),
+        {desc:'When you do the same steps twice, offers to make them one click.',
+         more:'Only which apps, tabs and places you open is noted, in this browser, never what is in them.',
+         f:'watch routine repeat automation one click widget habits notice'}),
     ],{f:'characters avatars faces'}));
     /* The Office is the crew's scene, so its design lives beside the characters: the
        style, the name on the door, the pet — and "describe it", which the machine's
@@ -15993,6 +17492,8 @@ function setTab(body,all){
   if(im)im.onchange=()=>setImmersive(im.checked);
   const avs=main.querySelector('#s-av-on');
   if(avs)avs.onchange=()=>setAvatarsOff(!avs.checked);
+  const wch=main.querySelector('#s-watch');
+  if(wch)wch.onchange=()=>setWatchOn(wch.checked);
   const tt=main.querySelector('#s-team-talk');
   if(tt)tt.onchange=async()=>{
     await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({team:{talk:tt.value}})});
@@ -16739,6 +18240,10 @@ async function paintTeamMatrix(){
   if(names.length<2){box.textContent='You need at least two specialists before they can message each other.';return}
   if(talk==='off'){box.classList.add('mut');box.textContent='Off. Agents can’t message each other. Choose “Ask me first”, “Swarm” or “Democracy” above to turn it on.';return}
   box.classList.remove('mut');
+  // the company can decide this per department instead (company.dept_matrix): one grid
+  // of departments, colleagues free to ask each other, an agent-level block still holding
+  const dm=d.departments||{},dn=dm.departments||[];
+  if(dm.mode==='department'&&dn.length>=2){paintDeptMatrix(box,dm,talk);return}
   const blank=talk==='swarm'?'swarm':talk==='democracy'?'vote':'ask';
   const label=(v)=>v==='allow'?'allow':v==='deny'?'block':blank;
   box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>${avatarImg(n,'')}${esc(n)}</th>`).join('')}</tr>
@@ -16746,7 +18251,9 @@ async function paintTeamMatrix(){
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
       const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}</div>`;
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
+      ${dn.length>=2?` <button class="co-link tm-level" data-mode="department">Decide it per department instead</button>`:''}</div>`;
+  box.querySelector('.tm-level')?.addEventListener('click',e=>teamMatrixLevel(e.target.dataset.mode));
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
     const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
     const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
@@ -16756,6 +18263,33 @@ async function paintTeamMatrix(){
   });
 }
 
+/* The department grid: the same cells, one level up. Rows ask, columns answer. */
+function paintDeptMatrix(box,dm,talk){
+  const names=dm.departments,cells=dm.cells||{},blank=talk==='swarm'?'swarm':talk==='democracy'?'vote':'ask';
+  const label=v=>v==='allow'?'allow':v==='deny'?'block':blank;
+  box.innerHTML=`<table><tr><th></th>${names.map(n=>`<th>▦ ${esc(n)}</th>`).join('')}</tr>
+    ${names.map(a=>`<tr><th class="tm-row">▦ ${esc(a)}</th>${names.map(b=>{
+      if(a===b)return '<td><div class="tm-self" title="Colleagues in one department may always ask each other" aria-hidden="true"></div></td>';
+      const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
+      return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
+    <div class="tm-legend">Per department: people in one department may ask each other, and these cells decide between departments. A block between two agents still holds.
+      <button class="co-link tm-level" data-mode="agent">Decide it per agent instead</button></div>`;
+  box.querySelector('.tm-level').onclick=e=>teamMatrixLevel(e.target.dataset.mode);
+  box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
+    const next={'':'allow',allow:'deny',deny:'ask'}[b.dataset.v]||'ask';
+    const r=await fetch('/api/team/matrix',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({level:'department',from:b.dataset.a,to:b.dataset.b,effect:next})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+    if(r.error){toast(r.error);return}
+    paintTeamMatrix();
+  });
+}
+async function teamMatrixLevel(mode){
+  const r=await fetch('/api/company/permissions',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode})}).then(r=>r.json()).catch(()=>({error:'the server did not answer'}));
+  if(r.error){toast(r.error);return}
+  toast(mode==='department'?'Departments decide who may ask whom':'Each pair of agents decides who may ask whom');
+  paintTeamMatrix();
+}
 /* One number per limit, with its range from the server (fabric.LIMITS). Saved on
    change; a value out of range is refused with the sentence that says the range. */
 async function paintTeamLimits(){
@@ -16832,10 +18366,10 @@ async function paintTeamLinks(){
         <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
         <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
-      <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
+      ${l.pass?tlPassHTML(l):`<div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists yet</span>'}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
       ${tlMissionsHTML(l)}
-      ${tlStandHTML(l,mine,d)}
+      ${tlStandHTML(l,mine,d)}`}
       <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
   const others=d.others||[];
   box.innerHTML=`${(d.incoming||[]).length?`<div class="tlk-waiting"><b>Waiting for you</b>${d.incoming.map(tlkReqHTML).join('')}</div>`:''}
@@ -16850,6 +18384,7 @@ async function paintTeamLinks(){
     ${d.can_listen?`<label class="tlk-chk"><input type="checkbox" id="tlk-listen" ${d.listening?'checked':''}><span>Let other machines ask to link (opens port ${esc(me.port)}, mutual TLS only)</span></label>`
       :`<p class="mut tlk-why">${d.listening?'Other machines can ask to link with this one.':'Other machines can’t ask to link with this one until an admin allows it. You can still ask them'+(d.accounts?', and link with another account here.':'.')}</p>`}
     ${d.can_listen&&!d.listening?'<p class="mut tlk-why">You can already ask other machines. Turn this on so they can ask you.</p>':''}
+    ${tlLendHTML(d,mine)}
     ${links||'<p class="mut">No linked teams yet.</p>'}
     <details class="tlk-more"${open?' open':''}><summary>Use an invite code instead</summary>
       <p class="mut tlk-why">For a machine with no screen to approve on. Make a code on one side and paste it on the other.</p>
@@ -16868,6 +18403,63 @@ async function paintTeamLinks(){
     await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
   box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
   box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+  tlPassTick();
+}
+/* Guest passes: lend one of your specialists to somebody for a few minutes. The pass is
+   an invite that carries the agent; once redeemed it is a link whose one cell is that
+   agent, expiring with the pass. The agent answers in words only (no tools on this
+   machine), and the link ends itself on both sides when the time is up. On the other
+   side the agent can sit in a huddle as name@link. Faces: TUI is `bento link pass`; SUI
+   is this page. */
+var TL_PASS=null;
+function tlLendHTML(d,mine){
+  const can=d.listening||d.accounts;
+  const p=TL_PASS;
+  return `<details class="tlk-more tlk-lend"${p?' open':''}><summary>Lend an agent for a few minutes</summary>
+    <p class="mut tlk-why">A guest pass. They can bring your agent into their huddles. ${pInfo('Your agent answers in words only. It cannot use tools, read your files or see your keys here, and the link ends itself when the time is up.')}</p>
+    ${mine.length?`<div class="tlk-actions"><select id="tlp-agent" aria-label="Which agent">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
+      <select id="tlp-min" aria-label="For how long">${[5,10,15,30,60].map(m=>`<option value="${m}"${m===10?' selected':''}>${m} min</option>`).join('')}</select>
+      ${d.accounts?`<select id="tlp-kind" aria-label="To whom"><option value="machine"${d.listening?'':' disabled'}>another machine</option><option value="account"${d.listening?'':' selected'}>an account here</option></select>`:''}
+      <button class="pact" onclick="tlLend()" ${can?'':'disabled'}>Make a pass</button></div>
+      ${can?'':'<p class="mut tlk-why">To lend to another machine, first let other machines ask to link (above).</p>'}`
+      :'<p class="mut tlk-why">You have no specialists to lend yet.</p>'}
+    ${p?`<div class="tlk-invite"><b>${esc(p.guest.agent)} for ${p.guest.minutes} minutes</b> Share it privately. It works once, for ten minutes.
+      <div class="tlk-inv-row"><input readonly value="${esc(p.invite||p.code)}"><button class="endbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(this.previousElementSibling.value);toast('copied')">Copy</button></div>
+      <small class="mut">${esc(p.share||'')}</small></div>`:''}
+  </details>`;
+}
+async function tlLend(){
+  const g=id=>(document.getElementById(id)||{}).value;
+  const r=await teamApi('/api/team/pass','POST',{agent:g('tlp-agent'),minutes:+g('tlp-min')||10,kind:g('tlp-kind')||'machine'});
+  if(r){TL_PASS=r;paintTeamLinks()}
+}
+function tlPassHTML(l){
+  const p=l.pass, lab=esc(l.label), lent=p.role==='lender';
+  const left=`<b class="tlk-left" data-pass-until="${+p.until}"></b>`;
+  if(!lent)avatarGuest(p.agent+'@'+l.label,p.look);
+  const face=avatarImg(lent?p.agent:p.agent+'@'+l.label,'av-tool');
+  return `<div class="tlk-pass">${face}
+    <span>${lent?`You lent <b>${esc(p.agent)}</b>. It answers in words only.`:`<b>${esc(p.agent)}</b> is on loan to you.`} ${left} left</span>
+    ${lent?'':`<button class="endbtn" onclick="tlPassHuddle('${esc(p.agent)}','${lab}')">Bring into a huddle</button>`}</div>`;
+}
+async function tlPassHuddle(agent,label){
+  // a huddle seats two or more: the guest and one of yours. Prefilled, never sent.
+  let mine=[];
+  try{mine=((await apiJSON('/api/subagents')).subagents||[]).filter(s=>s.enabled!==false).map(s=>s.name)}catch(e){}
+  const host=mine[0]?'@'+mine[0]+' ':'';
+  openApp('chat');
+  setTimeout(()=>{const i=$('#input');if(i){i.value=`${host}@${agent}@${label} `;i.focus();i.dispatchEvent(new Event('input'))}},250);
+  toast(host?`ask them something, and ${agent} talks it through with ${mine[0]}`:'make a specialist first, so the huddle has one of yours in it');
+}
+/* The countdown: one timer while a pass is on screen, gone once none is. */
+var TL_PASS_T=0;
+function tlPassTick(){
+  clearTimeout(TL_PASS_T);
+  const els=[...document.querySelectorAll('[data-pass-until]')];if(!els.length)return;
+  let over=false;
+  els.forEach(e=>{const s=Math.max(0,Math.round(+e.dataset.passUntil-Date.now()/1000));
+    if(!s)over=true;e.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0')});
+  TL_PASS_T=setTimeout(over?()=>paintTeamLinks():tlPassTick,over?31000:1000);
 }
 /* Standing permissions: what a linked team may have one of YOUR agents change without a
    person here saying yes. A question from another team is untrusted, so by default it can
@@ -20991,7 +22583,7 @@ var JOB_TABS=['run','history','build','schedule','routines'];
 function jobTabs(){
   return `<div class="job-tabs">${segTabs('job-tabs',['Run','History','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
 }
-function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';refreshApp('jobs')}
+function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';if(typeof watchNote==='function')watchNote('view','jobs',JOBS.tab);refreshApp('jobs')}
 
 async function jobsLoad(){
   try{const d=await (await fetch('/api/jobs')).json();
@@ -22640,7 +24232,8 @@ const AUTO_ACTIONS=['deck','expose','showdesktop','launcher','control','notifica
                     'voice','fullscreen','copilot','agent.stop','help'];
 function automationStepLabel(s){
   switch(s.kind){
-    case 'app':return 'Open '+((APPS[s.app]&&APPS[s.app].title)||s.app);
+    case 'app':return 'Open '+((APPS[s.app]&&APPS[s.app].title)||s.app)+(s.view?' · '+s.view:'');
+    case 'place':return 'Go to '+s.place;
     // reuse the hot-corner vocabulary's wording so the same action reads the
     // same everywhere ("Show desktop", not "showdesktop")
     case 'action':{const hit=HC_ACTIONS.find(a=>a[0]===s.action);return hit?hit[1]:'Do '+s.action}
@@ -22657,7 +24250,9 @@ function automationStepLabel(s){
 
 async function runAutomationStep(s){
   switch(s.kind){
-    case 'app':      if(APPS[s.app])openApp(s.app); else toast('automation: no app "'+s.app+'"'); break;
+    case 'app':      if(APPS[s.app]){openApp(s.app);if(s.view)automationView(s.app,s.view)} else toast('automation: no app "'+s.app+'"'); break;
+    case 'place':    {const p=(typeof PLACES!=='undefined'?PLACES:[]).find(x=>x.label===s.place);
+                      if(p)p.go(); else toast('automation: no place "'+s.place+'"'); break}
     case 'action':   if(!scRun(s.action))toast('automation: unknown action "'+s.action+'"'); break;
     case 'theme':    if(allThemes()[s.theme])applyTheme(s.theme); else toast('automation: no theme "'+s.theme+'"'); break;
     case 'wallpaper':await setBuiltinWallpaper(s.wallpaper); break;
@@ -22669,6 +24264,13 @@ async function runAutomationStep(s){
     case 'tool':     await runAutomationTool(s.tool,s.args); break;
     case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code})); break;
   }
+}
+/* An app opened at a view: a Settings tab, a Missions tab, a Logs filter. The three a
+   Routine recorded by Watch me once can carry (00i-watch.js). */
+function automationView(app,view){
+  if(app==='settings'&&typeof settingsGo==='function')return setTimeout(()=>settingsGo(view),80);
+  if(app==='jobs'&&typeof JOB_TABS!=='undefined'&&JOB_TABS.indexOf(view)>=0){JOBS.tab=view;return refreshApp('jobs')}
+  if(app==='logs'){const w=winsOf('logs')[0];if(w){w.kind=view;w.app.render(w.el.querySelector('.wbody'),w)}}
 }
 async function runAutomationTool(name,args){
   let parsed={};
@@ -23354,7 +24956,7 @@ function renderLogs(body,w){
     </div>
     <div style="flex:1;overflow-y:auto;user-select:text"><table class="loglist"><tbody id="log-rows"></tbody></table></div>`;
   $('#log-kind').value=w.kind;$('#log-q').value=w.q;
-  $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;loadLogs(w)};
+  $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;if(typeof watchNote==='function')watchNote('view','logs',w.kind);loadLogs(w)};
   let deb;$('#log-q').oninput=e=>{clearTimeout(deb);deb=setTimeout(()=>{w.q=e.target.value;loadLogs(w)},300)};
   stopWinTicks(w);
   winTick(w,()=>loadLogs(w),5000,{key:'poll'});
@@ -24484,13 +26086,16 @@ async function openHost(opts){
   }catch(e){toast('open failed')}
 }
 function openInBrowser(url){openHost({url})}
-function renderBrowser(body,w){
+/* The system-browser launcher: what Web was before the shared browser, and what it
+   falls back to on a machine with no Chromium (renderBrowser in 04f-streams.js says why). */
+function renderWebLauncher(body,w,why){
   const links=[['DuckDuckGo','https://duckduckgo.com'],['Hacker News','https://news.ycombinator.com'],
     ['GitHub','https://github.com'],['Finance','https://finance.yahoo.com'],['Google','https://google.com']];
   body.innerHTML=`<div class="pad" style="display:flex;flex-direction:column;gap:14px">
     <div style="text-align:center;padding-top:6px">
       <div style="font-size:15px;font-weight:700">Web</div>
-      <p class="mut" style="margin-top:4px">Opens pages in your real system browser (Chrome/Firefox) — full sites, logins, extensions.</p>
+      <p class="mut" style="margin-top:4px">Opens pages in your real system browser (Chrome/Firefox): full sites, logins, extensions.</p>
+      ${why?`<p class="mut" style="margin-top:6px">The shared browser, which your agent can use with you, is not available here. ${esc(why)}</p>`:''}
     </div>
     <div class="apptop" style="border:none;padding:0">
       <input id="wb-url" placeholder="Search or type a URL, then Enter…" style="flex:1">
@@ -24514,8 +26119,11 @@ function renderBrowser(body,w){
 
 /* ================= native applications launcher ================= */
 async function renderNativeApps(body,w){
+  const st=await appStreamStatus();
   body.innerHTML=`<div class="apptop">
       <input id="na-q" placeholder="Search installed apps…" style="flex:1">
+      ${st.ok&&!nativeRunsElsewhere()?`<label class="na-inwin" title="Draw the app inside a Bento window that your agent can use with you"><input type="checkbox" id="na-inwin" ${NATIVE_IN_WINDOW?'checked':''}> In a window</label>`
+        :!st.ok&&st.why?`<span class="mut na-inwin" title="${esc(st.why)}">In a window: not set up ⓘ</span>`:''}
       <button class="endbtn" id="na-get">＋ Get apps…</button>
       <span class="mut" id="na-n"></span></div>
     <div id="na-store" style="display:none"></div>
@@ -24533,7 +26141,9 @@ async function renderNativeApps(body,w){
   draw('');
   $('#na-q').addEventListener('input',e=>draw(e.target.value.trim().toLowerCase()));
   $('#na-get').onclick=()=>naStore();
+  const iw=$('#na-inwin');if(iw)iw.onchange=()=>{NATIVE_IN_WINDOW=iw.checked};
 }
+var NATIVE_IN_WINDOW=false;
 
 /* ---- getting a NEW app ----------------------------------------------------
    A desktop you cannot install software on is a demo. This asks the machine's
@@ -24624,6 +26234,13 @@ function nativeRunsElsewhere(){return remoteClient()&&PLATFORM.mode!=='hosted'}
 
 async function launchNative(id,name){
   const label=name||id;
+  // From another room a native window is pixels nobody here can see: draw the app in a
+  // Bento window instead, when this machine can (appstream.py). At the machine it opens
+  // on the real screen, as it always did; "In a window" in the launcher asks for it there.
+  if(nativeRunsElsewhere()||NATIVE_IN_WINDOW){
+    const st=await appStreamStatus();
+    if(st.ok)return openAppWindow(id,label);
+  }
   toast('↗ starting '+label+'…');
   // The launch now WAITS for the window to map instead of returning instantly and
   // lying, so a heavy app leaves a real gap. Mark the tile as busy for that gap —
@@ -26710,7 +28327,9 @@ function renderOffice(el,w){
   if(OFFICE.w===w&&el.querySelector('.of-wrap')){officeLoad();return}
   // the desktop scene may be holding the Office: the window takes it over, and the
   // scene gets it back when the window closes (officeClose)
-  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;OFFICE.fit=false;
+  // The 3D renderer goes with the scene: left alive, it kept drawing into the scene's
+  // canvas while the window's stayed dark (reported as "I cannot see the office").
+  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;OFFICE.fit=false;of3Dispose();
   OFFICE.w=w;OFFICE.people={};OFFICE.papers=[];OFFICE.bursts=[];OFFICE.pops=[];OFFICE.sheets={};
   OFFICE.static=matchMedia('(prefers-reduced-motion: reduce)').matches;
   try{OFFICE.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){OFFICE.font='sans-serif'}
@@ -28684,6 +30303,7 @@ function companyPaint(){
   if(!d){el.innerHTML=`<div class="of-dh"><b>Your company</b><button class="of-x" aria-label="Close">✕</button></div>
     <div class="mut">${esc(COMPANY.err||'loading…')}</div>`;el.querySelector('.of-x').onclick=()=>officeCompany(false);return}
   if(COMPANY.newco)return companyNewPaint(el);
+  if(COMPANY.kit)return companyKitPaint(el);
   if(COMPANY.plan)return companyPreviewPaint(el);
   if(COMPANY.work)return companyWorkPaint(el);
   if(!d.departments.length||COMPANY.adding)return companySetupPaint(el);
@@ -28801,8 +30421,13 @@ async function companyDraft(btn,said){
    what saving does. Untick a person or a whole department; open a persona to edit it. */
 function companyPlanNow(){
   const p=COMPANY.plan;if(!p)return null;
-  const departments=p.departments.filter(d=>!COMPANY.off['d:'+d.name]).map(d=>({...d,
-    people:d.people.filter(x=>!COMPANY.off['p:'+x.name])})).filter(d=>d.people.length);
+  const pv={};((COMPANY.preview||{}).departments||[]).forEach(x=>pv[x.name]=x);
+  const departments=p.departments.filter(d=>!COMPANY.off['d:'+d.name]).map(d=>{
+    const o=(pv[d.name]||{}).kit_offer,out={...d,people:d.people.filter(x=>!COMPANY.off['p:'+x.name])};
+    // the kit as ticked: what the server offered for these answers, minus each untick
+    // (not while an answer changed it: the offer on screen is for the old answers)
+    if(o&&!(COMPANY.kitStale||{})[d.name])out.kit=companyKitTicked(d.name,o);
+    return out}).filter(d=>d.people.length);
   const out={company:p.company,departments};
   if(p.work)out.work=companyWorkNow(p.work,new Set(departments.map(d=>d.name)));
   return out;
@@ -28860,7 +30485,8 @@ function companyPreviewPaint(el){
           <textarea class="co-soul" data-s="${esc(x.name)}" rows="5" maxlength="1600" aria-label="Persona for ${esc(x.name)}">${esc(x.soul)}</textarea>
           <div class="co-tools">${(q.tools||x.tools).map(t=>`<code>${esc(t)}</code>`).join(' ')}</div>
           ${q.status==='exists'?'<div class="mut co-small">This agent exists already. It joins as it is and none of this is written over it.</div>':''}
-        </details></div>`}).join('')}</div>`}).join('')}
+        </details></div>`}).join('')}
+      ${doff?'':companyKitBlock(d,(V.departments||[]).find(x=>x.name===d.name))}</div>`}).join('')}
     ${P.work?companyWorkHTML(P.work,V.work,P.company.objective,n=>!!COMPANY.off['d:'+n]):''}
     <label class="co-talk"><input type="checkbox" class="co-talkcb"${COMPANY.talk?' checked':''}> Colleagues in a department can ask each other, and the heads can ask each other</label>
     ${(V.notes||[]).map(n=>`<p class="mut co-small">${esc(n)}</p>`).join('')}
@@ -28877,16 +30503,108 @@ function companyPreviewPaint(el){
   el.querySelectorAll('[data-p]').forEach(c=>c.onchange=()=>{COMPANY.off['p:'+c.dataset.p]=!c.checked;companyRepreview()});
   el.querySelectorAll('.co-soul').forEach(t=>t.oninput=()=>{P.departments.forEach(d=>d.people.forEach(x=>{if(x.name===t.dataset.s)x.soul=t.value}))});
   q('.co-talkcb').onchange=e=>{COMPANY.talk=e.target.checked;companyRepreview()};
+  companyKitWire(el,(dn,qid,v)=>{const d=P.departments.find(x=>x.name===dn);if(!d)return;
+    d.answers={...(d.answers||{}),[qid]:v};delete d.kit;
+    COMPANY.kitStale={...(COMPANY.kitStale||{}),[dn]:true};companyRepreview()},companyRepreview);
   companyWorkWire(el,v=>{P.company.objective=v},companyRepreview);
   q('.co-again').onclick=()=>{COMPANY.plan=null;COMPANY.preview=null;companyPaint()};
   q('.co-apply').onclick=()=>companyApply(q('.co-apply'),q('.of-said'));
+}
+/* ---------------- the kit a department starts with (company.recommend) ----------------
+   Questions first, then the tools, skills and MCP servers teams like it commonly use,
+   each with a tick. Skills show their full text. Servers are never installed here: the
+   department's card says "Set it up" until one is. One block for a new department in
+   the preview and for one that exists (the Kit sheet). */
+function companyN(n,w){return n+' '+w+(n===1?'':'s')}
+function companyKitTicked(dn,o){
+  const off=k=>!!COMPANY.off['k:'+dn+':'+k];
+  return {tools:(o.tools||[]).filter(t=>!off('t:'+t)),skills:(o.skills||[]).filter(s=>!off('s:'+s.id)).map(s=>s.id),
+    mcp:(o.mcp||[]).filter(m=>!off('m:'+m.id)).map(m=>m.id)};
+}
+function companyKitBlock(d,v,everyone){
+  const o=v&&v.kit_offer;if(!o)return '';
+  const dn=d.name,on=k=>!COMPANY.off['k:'+dn+':'+k];
+  const ans=o.answers||{};
+  return `<details class="co-kit"${COMPANY.kitOpen&&COMPANY.kitOpen[dn]?' open':''} data-kitd="${esc(dn)}"><summary>Kit: ${companyN(o.tools.length,'tool')}, ${companyN(o.skills.length,'skill')}, ${companyN(o.mcp.length,'server')}
+      <span class="mut">what teams like this commonly use</span></summary>
+    ${(o.questions||[]).map(q=>`<label class="co-kq"><span>${esc(q.ask)}</span><select data-kq="${esc(q.id)}" data-kd="${esc(dn)}">
+      ${q.options.map(([k,l])=>`<option value="${esc(k)}"${ans[q.id]===k?' selected':''}>${esc(l)}</option>`).join('')}</select></label>`).join('')}
+    ${o.tools.length?`<div class="co-kh">Tools <span class="mut">${everyone?'for everyone here':'for the new people here'}</span></div><div class="co-kt">${o.tools.map(t=>
+      `<label class="co-kc"><input type="checkbox" data-kk="${esc(dn)}|t:${esc(t)}"${on('t:'+t)?' checked':''}><code>${esc(t)}</code></label>`).join('')}</div>`:''}
+    ${o.skills.length?`<div class="co-kh">Skills</div>${o.skills.map(s=>`<div class="co-ks"><label class="co-kc"><input type="checkbox" data-kk="${esc(dn)}|s:${esc(s.id)}"${on('s:'+s.id)?' checked':''}>
+      <b>${esc(s.name)}</b><span class="mut">${esc(s.description)}${s.exists?' · you have this one, it is used as it is':''}</span></label>
+      <details class="co-more"><summary>What it says</summary><p class="co-small">${esc(s.content)}</p></details></div>`).join('')}`:''}
+    ${o.mcp.length?`<div class="co-kh">MCP servers <span class="mut">set up later with your own key</span></div><div class="co-kt">${o.mcp.map(m=>
+      `<label class="co-kc"><input type="checkbox" data-kk="${esc(dn)}|m:${esc(m.id)}"${on('m:'+m.id)?' checked':''}><b>${esc(m.name)}</b><span class="mut">${esc(m.why)}</span></label>`).join('')}</div>`:''}
+  </details>`;
+}
+function companyKitWire(el,onAnswer,again){
+  el.querySelectorAll('[data-kq]').forEach(s=>s.onchange=()=>{COMPANY.kitOpen={...(COMPANY.kitOpen||{}),[s.dataset.kd]:true};onAnswer(s.dataset.kd,s.dataset.kq,s.value)});
+  el.querySelectorAll('[data-kk]').forEach(c=>c.onchange=()=>{const [dn,k]=c.dataset.kk.split('|');
+    COMPANY.kitOpen={...(COMPANY.kitOpen||{}),[dn]:true};COMPANY.off['k:'+dn+':'+k]=!c.checked;again()});
+  el.querySelectorAll('details.co-kit').forEach(dt=>dt.ontoggle=()=>{COMPANY.kitOpen={...(COMPANY.kitOpen||{}),[dt.dataset.kitd]:dt.open}});
+}
+/* On a department's card: the servers its kit wants, and the way to set each one up. */
+function companyKitHTML(x){
+  const k=x.kit||{},ms=k.mcp||[];
+  return `<div class="co-desk mut co-kitline">${ms.length?`Servers: ${ms.map(m=>m.added?`<span class="co-kok">✓ ${esc(m.name)}</span>`
+      :`<button class="co-link" data-mcp="${esc(m.preset||'')}" data-mcpc="${esc(m.curated||'')}" data-mcpq="${esc(m.search||m.name)}" title="${esc(m.why)}">Set up ${esc(m.name)}</button>`).join(' ')}`
+      :(k.skills||[]).length||(k.tools||[]).length?'Kit given.':'No kit yet.'}
+    <button class="co-link" data-kit="${esc(x.name)}">${(k.skills||[]).length||(k.tools||[]).length||ms.length?'Change the kit':'Choose a kit'}</button></div>`;
+}
+function companyKitSetUp(preset,q,curated){
+  if(preset){openApp('mcp');setTimeout(()=>{if(typeof mcpPreset==='function')mcpPreset(preset)},400);return}
+  if(curated){openApp('mcp');setTimeout(()=>{if(typeof mcpConnectCurated==='function')mcpConnectCurated(curated)},400);return}
+  if(typeof STORE_TAB!=='undefined')STORE_TAB='discover';
+  openApp('store');refreshApp('store');
+  setTimeout(()=>{const i=document.getElementById('disc-q');if(i){i.value=q;i.focus()}
+    if(typeof storeDiscover==='function')storeDiscover(q)},500);
+}
+/* The Kit sheet, for a department that exists. */
+async function companyKitOpen(name){
+  COMPANY.kit={dept:name,answers:{},offer:null,err:''};COMPANY.kitOpen={[name]:true};
+  Object.keys(COMPANY.off).forEach(k=>{if(k.startsWith('k:'+name+':'))delete COMPANY.off[k]});
+  companyPaint();companyKitOffer();
+}
+async function companyKitOffer(){
+  const K=COMPANY.kit;if(!K)return;
+  try{const j=await apiJSON('/api/company/kit/offer',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({department:K.dept,answers:K.answers})});
+    if(j.error)throw new Error(j.error);K.offer=j.offer;K.current=j.current}
+  catch(e){K.err=e.message||String(e)}
+  companyPaint();
+}
+function companyKitPaint(el){
+  const K=COMPANY.kit,o=K.offer,dn=K.dept;
+  const kt=o?companyKitTicked(dn,o):null;
+  el.innerHTML=`<div class="of-dh"><b>${esc(dn)}: its kit</b><button class="of-x" aria-label="Close">✕</button></div>
+    <p class="co-lead">A few questions, then what teams like ${esc(dn)} commonly use. Untick what you do not want.</p>
+    ${!o?`<div class="mut">${esc(K.err||'loading…')}</div>`:companyKitBlock({name:dn},{kit_offer:o},true)}
+    ${o?`<p class="mut co-small">Ticked tools and skills go to everyone in ${esc(dn)}. Servers are never installed here: each needs your own account, and its card says Set it up.</p>
+    <div class="of-row co-go"><button class="endbtn primary co-kitgo">Give ${esc(dn)} ${companyN(kt.tools.length,'tool')} and ${companyN(kt.skills.length,'skill')}</button>
+      <button class="endbtn co-kitno">Not now</button></div><div class="of-said mut" aria-live="polite"></div>`:''}`;
+  const q=s=>el.querySelector(s);
+  const close=()=>{COMPANY.kit=null;companyPaint()};
+  q('.of-x').onclick=close;
+  if(!o)return;
+  const det=el.querySelector('details.co-kit');if(det)det.open=true;
+  companyKitWire(el,(d,qid,v)=>{K.answers={...K.answers,[qid]:v};companyKitOffer()},()=>companyPaint());
+  q('.co-kitno').onclick=close;
+  q('.co-kitgo').onclick=async()=>{const b=q('.co-kitgo'),said=q('.of-said');b.disabled=true;said.textContent='setting it up…';
+    try{const j=await apiJSON('/api/company/kit',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({department:dn,kit:companyKitTicked(dn,o)})});
+      if(j.error)throw new Error(j.error);
+      toast(`✓ ${dn}: ${j.skills_made.length} new skills, ${j.agents.length} agents given the kit`);
+      COMPANY.kit=null;await companyLoad();
+    }catch(e){said.textContent='could not: '+(e.message||e);b.disabled=false}};
 }
 function companyButton(V){
   const n=V.new||0,d=V.desks||0,w=V.work||{},m=w.new_missions||0,t=(w.tasks||[]).length;
   if(!d)return 'Nothing to make';
   const work=m||t?` with ${[m?`${m} ${m===1?'mission':'missions'}`:'',t?`${t} ${t===1?'task':'tasks'}`:''].filter(Boolean).join(' and ')}`:'';
-  return (n?`Make ${n} ${n===1?'agent':'agents'} in ${d} ${d===1?'department':'departments'}`
-    :`Set up ${d} ${d===1?'department':'departments'}`)+work;
+  const k=V.kit||{},kit=k.skills?` and ${k.skills} ${k.skills===1?'skill':'skills'}`:'';
+  return (n?`Make ${n} ${n===1?'agent':'agents'}${kit} in ${d} ${d===1?'department':'departments'}`
+    :`Set up ${d} ${d===1?'department':'departments'}${kit}`)+work;
 }
 /* An untick changes what saving does: ask the server again, so the button counts what
    the save will make (one computation), then repaint. */
@@ -28897,7 +30615,7 @@ function companyRepreview(){
     try{
       const j=await apiJSON('/api/company/preview',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({plan,talk:COMPANY.talk})});
-      COMPANY.preview=j.preview;
+      COMPANY.preview=j.preview;COMPANY.kitStale={};
     }catch(e){}
     const el=companyWindow()&&companyWindow().el.querySelector('.of-company');
     if(el&&COMPANY.plan){const open=[...el.querySelectorAll('details[open] .co-soul')].map(t=>t.dataset.s);
@@ -29047,12 +30765,20 @@ function companyOverviewPaint(el){
         <option value="">${esc(b.lead||'your agent')}</option>${d.departments.filter(y=>y.name!==x.name).map(y=>
           `<option value="${esc(y.name)}"${x.reports_to===y.name?' selected':''}>${esc(y.name)}</option>`).join('')}</select>
         ${x.signed||x.held?`<span>${x.signed} signed off${x.held?`, <b class="co-w">${x.held} held</b>`:''} this week</span>`:''}</label>
+      <label class="co-rep mut">Executor <select data-hands="${esc(x.name)}" aria-label="${esc(x.name)}'s executor">
+        <option value="">Each agent's own</option>${(d.executors||[]).map(p=>
+          `<option value="${esc(p.name)}"${x.hands===p.name?' selected':''}>${esc(p.name)}</option>`).join('')}</select>
+        ${typeof pInfo==='function'?pInfo('What the department’s people can reach: tools, folders, web and MCP servers. An agent with an executor of its own keeps it.'):''}</label>
+      ${companyKitHTML(x)}
       <div class="co-desk mut">${!x.has_desk?'No desk: tasks go to its head in chat.'
         :x.desk_on?'Desk on.':'Desk off, so gated steps ask you.'}
         ${x.has_desk?`<button class="co-link" data-desk="${esc(x.desk)}">${x.desk_on?'Open in Missions':'Switch on in Missions'}</button>`:''}</div>
       ${(x.missions||[]).length?`<div class="co-desk mut">Missions: ${x.missions.map(m=>`<button class="co-link" data-desk="${esc(m.flow)}">${esc(m.title)}${m.on?'':' (off)'}</button>`).join(' ')}</div>`:''}
     </div>`).join('')}
     <div class="of-row"><button class="endbtn co-add">＋ Add departments</button></div>
+    <label class="co-audit co-signoff"><span>Who may ask whom</span><select class="co-perm" aria-label="Who may ask whom is decided per">
+      ${[['agent','Per agent'],['department','Per department']].map(([k,l])=>`<option value="${k}"${(d.permissions||'agent')===k?' selected':''}>${l}</option>`).join('')}</select>
+      <button class="co-link co-grid">${(d.permissions||'agent')==='department'?'Department grid':'Agent grid'}</button>${typeof pInfo==='function'?pInfo('Per department: people in one department may ask each other, and the grid decides between departments. A block between two agents still holds.'):''}</label>
     <div class="of-sec">Tasks</div>
     <label class="co-audit co-signoff"><span>Sign-off</span><select class="co-rv" aria-label="Who signs finished work off">
       ${[['lead',`Every boss, up to ${b.lead||'your agent'}`],['heads',"The department's own head"],['off','Nobody']].map(([k,l])=>
@@ -29090,6 +30816,12 @@ function companyOverviewPaint(el){
   q('.co-aud').onchange=e=>companyAuditSwitch(e.target);
   q('.co-rv').onchange=e=>companyReviewMode(e.target);
   el.querySelectorAll('[data-rep]').forEach(x=>x.onchange=()=>companyReports(x));
+  el.querySelectorAll('[data-hands]').forEach(x=>x.onchange=()=>companyHands(x));
+  q('.co-perm').onchange=e=>companyPermMode(e.target);
+  q('.co-grid').onclick=()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
+    setTimeout(()=>document.getElementById('s-team-matrix')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)};
+  el.querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>companyKitOpen(b.dataset.kit));
+  el.querySelectorAll('[data-mcpq]').forEach(b=>b.onclick=()=>companyKitSetUp(b.dataset.mcp,b.dataset.mcpq,b.dataset.mcpc));
   el.querySelectorAll('[data-run]').forEach(b=>b.onclick=e=>{
     const ap=e.target.closest('[data-ap]');if(ap)return companyReview(ap.dataset.ap.split(','));
     const ck=e.target.closest('[data-check]');if(ck)return companyCheck(b.dataset.run,ck);
@@ -29134,6 +30866,29 @@ async function companyReports(sel){
       body:JSON.stringify({department:dept,reports_to:sel.value})});
     if(j.error)throw new Error(j.error);
     toast(`${dept} reports to ${j.reports_to}. Sign-off: ${(j.chain||[]).join(' → ')}`);
+    companyLoad();
+  }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
+  finally{sel.disabled=false}
+}
+/* ---------------- permissions and hands at the department level (company.py) ---------------- */
+async function companyHands(sel){
+  const dept=sel.dataset.hands;sel.disabled=true;
+  try{
+    const j=await apiJSON('/api/company/hands',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({department:dept,hands:sel.value})});
+    if(j.error)throw new Error(j.error);
+    toast(j.hands?`${dept} works with the ${j.hands} executor`:`${dept}'s people each use their own executor`);
+    companyLoad();
+  }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
+  finally{sel.disabled=false}
+}
+async function companyPermMode(sel){
+  sel.disabled=true;
+  try{
+    const j=await apiJSON('/api/company/permissions',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mode:sel.value})});
+    if(j.error)throw new Error(j.error);
+    toast(j.mode==='department'?'Departments decide who may ask whom. Colleagues may ask each other.':'Each pair of agents decides who may ask whom.');
     companyLoad();
   }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
   finally{sel.disabled=false}
@@ -30186,6 +31941,8 @@ function of3Layout(){
   companyCards();
   officeLine();
   OF3.dirty=true;
+  // a renderer bound to another host (the desktop scene, a closed window) is no use here
+  if(OF3.cv&&OF3.cv.parentElement!==sc)of3Dispose();
   if(OF3.r){of3Size();of3Build()}else of3Ensure();
   if(officeAwake())officeDraw();
   officeKick();
@@ -30322,7 +32079,7 @@ async function of3Ensure(){
     // the kiosk is a small machine's own screen (a Pi): no shadows there either
     OF3.hq=!document.body.classList.contains('kiosk')&&typeof worldQuality==='function'?worldQuality(OF3.r):false;
     if(OF3.hq){OF3.r.shadowMap.enabled=true;OF3.r.shadowMap.type=T.PCFSoftShadowMap}
-    of3Input(cv);
+    of3Input(cv);of3Controls();
     of3Size();of3Build();
   }catch(e){
     console.warn('office 3d',e);
@@ -30351,7 +32108,7 @@ function of3Dispose(){
   if(OF3.cv)OF3.cv.remove();if(OF3.ui)OF3.ui.remove();
   clearTimeout(OF3.rebuild);
   Object.assign(OF3,{r:null,scene:null,cam:null,cv:null,ui:null,sig:'',names:'',rooms:[],screens:[],sp:{},el:{},
-    view:null,target:null,fit:null,anim:null,focus:null,sparks:[],brain:null,papers:[],pet:null,ball:null,cardSig:'',
+    view:null,target:null,fit:null,anim:null,focus:null,follow:'',followAt:0,userMoved:false,sparks:[],brain:null,papers:[],pet:null,ball:null,cardSig:'',
     geo:{},chairs:{},table:null,texs:{}});
   if(T)OF3.T=T;
 }
@@ -30809,13 +32566,18 @@ function of3Frame(view){
   c.position.copy(t).addScaledVector(b.d,80);c.lookAt(t);c.updateProjectionMatrix();c.updateMatrixWorld();
   OF3.view={x:view.x,z:view.z,h};OF3.dirty=true;
 }
-/* What covers the picture, in pixels: in Office HQ the prompt bar above and the dock
-   below, so the ring fits in what is left. Nothing elsewhere. */
+/* What covers the picture, in pixels: in Office HQ the dock below, and the prompt bar
+   with its answers. On a wide screen those are a column on the right (of3Docked), so
+   the office plays out on the left while the conversation runs beside it; on a phone
+   the bar sits above the ring. Nothing elsewhere. */
+function of3Docked(){return of3HQ()&&innerWidth>900&&document.body.classList.contains('imm-hq')}
 function of3Pads(){
-  if(!of3HQ()||!OF3.cv)return {t:0,b:0};
-  const top=OF3.cv.getBoundingClientRect().top,bar=document.getElementById('omnibar'),dock=document.getElementById('taskbar');
+  if(!of3HQ()||!OF3.cv)return {t:0,b:0,l:0,r:0};
+  const box=OF3.cv.getBoundingClientRect(),top=box.top,bar=document.getElementById('omnibar'),dock=document.getElementById('taskbar');
   const r=bar&&bar.offsetParent?bar.getBoundingClientRect():null,d=dock&&dock.offsetParent?dock.getBoundingClientRect():null;
-  return {t:r?Math.max(0,r.bottom-top+18):60,b:d?Math.max(0,OF3.ch-(d.top-top)+10):100};
+  const b=d?Math.max(0,OF3.ch-(d.top-top)+10):100;
+  if(of3Docked()&&r)return {t:24,b,l:0,r:Math.max(0,box.right-r.left+16)};
+  return {t:r?Math.max(0,r.bottom-top+18):60,b,l:0,r:0};
 }
 /* The whole office in the window, with room above each room for its card. */
 function of3FitView(){
@@ -30828,12 +32590,16 @@ function of3FitView(){
   y1+=(y1-y0)*.05;      // the top rooms' cards stand above their walls
   const mx=(x1-x0)*.06;x0-=mx;x1+=mx;   // and the side rooms' cards stick out past them
   const pad=of3Pads(),fh=Math.max(.3,(OF3.ch-pad.t-pad.b)/Math.max(1,OF3.ch));
-  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/asp)*1.05,k=2*h/Math.max(1,OF3.ch);
+  const fw=Math.max(.3,(OF3.cw-pad.l-pad.r)/Math.max(1,OF3.cw));
+  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/(asp*fw))*1.05,k=2*h/Math.max(1,OF3.ch);
   // the picture's middle goes in the middle of what is left uncovered
-  const g=of3Ground((x0+x1)/2,(y0+y1)/2+(pad.t-pad.b)/2*k);
+  const g=of3Ground((x0+x1)/2+(pad.r-pad.l)/2*k,(y0+y1)/2+(pad.t-pad.b)/2*k);
   return {x:g.x,z:g.z,h};
 }
-function of3RoomView(name){
+/* One room filling what is left of the screen. `bare` leaves no space for the list of
+   who is in it (the camera following the work, of3Follow). In Office HQ with the
+   conversation docked on the right, the list goes on the left. */
+function of3RoomView(name,bare){
   const r=OFFICE.L.rooms.find(q=>q.name===name);if(!r)return OF3.fit;
   const b=of3Basis(),cw=OF3.cw,ch=OF3.ch,asp=cw/Math.max(1,ch);
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
@@ -30842,17 +32608,18 @@ function of3RoomView(name){
     x0=Math.min(x0,sx);x1=Math.max(x1,sx);y0=Math.min(y0,sy);y1=Math.max(y1,sy)}));
   // the list of who is in the room covers the right of a wide window, and the bottom of a
   // phone: the room fits in what is left, centred there
-  const pad=of3Pads(),phone=cw<=640,list=phone?0:Math.min(280,cw*.3),under=(phone?ch*.46:0)+pad.b,over=pad.t;
-  const fw=(cw-list-24)/cw,fh=Math.max(.25,(ch-under-over-16)/ch);
-  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/(asp*fw))*1.08;
+  const pad=of3Pads(),phone=cw<=640,list=phone||bare?0:Math.min(280,cw*.3),under=(phone&&!bare?ch*.46:0)+pad.b,over=pad.t;
+  const L=pad.l+(of3Docked()?list:0),R=pad.r+(of3Docked()?0:list);
+  const fw=Math.max(.25,(cw-L-R-24)/cw),fh=Math.max(.25,(ch-under-over-16)/ch);
+  const h=Math.max((y1-y0)/2/fh,(x1-x0)/2/(asp*fw))*(bare?1.3:1.08);
   const k=2*h/ch;   // world units per pixel
-  const g=of3Ground((x0+x1)/2+list/2*k,(y0+y1)/2-(under-over)/2*k);
+  const g=of3Ground((x0+x1)/2+(R-L)/2*k,(y0+y1)/2-(under-over)/2*k);
   return {x:g.x,z:g.z,h};
 }
 function of3Fit(){
   if(!OF3.T||!OFFICE.L)return;
   OF3.fit=of3FitView();
-  of3Frame(OF3.focus?of3RoomView(OF3.focus):OF3.fit);
+  of3Frame(OF3.focus?of3RoomView(OF3.focus):OF3.follow?of3RoomView(OF3.follow,true):OF3.fit);
 }
 function of3Go(view,ms){
   const from=OF3.view||view;
@@ -30860,7 +32627,7 @@ function of3Go(view,ms){
   OF3.anim={from:{...from},to:view,at:performance.now(),ms};officeKick();
 }
 function of3Focus(name){
-  OF3.focus=name||null;OF3.cardSig='';
+  OF3.focus=name||null;OF3.cardSig='';OF3.follow='';if(!name)OF3.userMoved=false;
   if(OF3.ui)OF3.ui.classList.toggle('focused',!!name);
   of3Roster();
   of3Go(name?of3RoomView(name):OF3.fit,OFFICE.static?0:650);
@@ -30872,16 +32639,59 @@ function of3Input(cv){
   if(O.w&&O.w.scene)return;           // the desktop scene is behind the windows: look, never touch
   cv.addEventListener('click',e=>{if(OF3.dragged){OF3.dragged=false;return}of3Tap(e)});
   cv.addEventListener('dblclick',()=>of3Focus(null));
-  cv.addEventListener('wheel',e=>{if(!OF3.view)return;e.preventDefault();
-    const v={...OF3.view,h:Math.max(1.2,Math.min((OF3.fit?OF3.fit.h:8)*1.6,OF3.view.h*(e.deltaY>0?1.1:1/1.1)))};
-    OF3.anim=null;of3Frame(v);officeKick()},{passive:false});
+  cv.addEventListener('wheel',e=>{if(!OF3.view)return;e.preventDefault();of3Wheel(e)},{passive:false});
   cv.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')return;OF3.drag={x:e.clientX,y:e.clientY,v:{...OF3.view}};OF3.dragged=false});
   addEventListener('pointerup',()=>{OF3.drag=null});
   cv.addEventListener('pointermove',e=>{const d=OF3.drag;if(!d||!OF3.view)return;
     const dx=e.clientX-d.x,dy=e.clientY-d.y;if(Math.hypot(dx,dy)>4)OF3.dragged=true;if(!OF3.dragged)return;
     const k=2*d.v.h/OF3.ch,g=of3Ground(-dx*k,dy*k);
-    OF3.anim=null;of3Frame({x:d.v.x+g.x,z:d.v.z+g.z,h:d.v.h});officeKick()});
+    OF3.anim=null;OF3.userMoved=true;OF3.follow='';of3Frame({x:d.v.x+g.x,z:d.v.z+g.z,h:d.v.h});officeKick()});
   if(O.w&&O.w.el)O.w.el.addEventListener('keydown',e=>{if(e.key==='Escape'&&OF3.focus){of3Focus(null);e.stopPropagation()}});
+}
+/* Zoom: in close enough to see one desk (OF3_ZOOM_MIN, was 1.2, a room at most), out to
+   a little past the whole office. Tapping a room's card is the way into a department. */
+var OF3_ZOOM_MIN=.55;
+function of3Zoom(f,ms){
+  if(!OF3.view)return;
+  const v={...OF3.view,h:Math.max(OF3_ZOOM_MIN,Math.min((OF3.fit?OF3.fit.h:8)*1.6,OF3.view.h*f))};
+  OF3.userMoved=true;OF3.follow='';
+  if(ms){of3Go(v,ms)}else{OF3.anim=null;of3Frame(v);officeKick()}
+}
+function of3Wheel(e){of3Zoom(e.deltaY>0?1.1:1/1.1)}
+/* ＋ − ⤢ on the picture: the same zoom for a finger, a keyboard and a screen reader. */
+function of3Controls(){
+  if(!OF3.ui||OF3.ui.querySelector('.of3-zoom'))return;
+  const z=document.createElement('div');z.className='of3-zoom';z.setAttribute('role','group');z.setAttribute('aria-label','Zoom the office');
+  z.innerHTML='<button class="of3-zb" data-z="in" title="Zoom in" aria-label="Zoom in">+</button>'
+    +'<button class="of3-zb" data-z="out" title="Zoom out" aria-label="Zoom out">−</button>'
+    +'<button class="of3-zb" data-z="fit" title="The whole office" aria-label="Show the whole office">⤢</button>';
+  z.onclick=e=>{const b=e.target.closest('[data-z]');if(!b)return;
+    const k=b.dataset.z;if(k==='fit'){of3Focus(null);return}of3Zoom(k==='in'?1/1.35:1.35,OFFICE.static?0:220)};
+  OF3.ui.appendChild(z);
+}
+/* Office HQ is under the desktop, so the canvas never sees the wheel: the desktop's own
+   background passes it on, while nothing else is under the pointer. */
+if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('wheel',e=>{
+  if(!of3HQ()||!OF3.view||document.body.classList.contains('has-win'))return;
+  if(typeof deckScrollOn==='function'&&deckScrollOn())return;    // the person chose wheel = faces
+  const t=e.target;if(!t||!t.closest||t.closest('#omnibar,#omnicards,#taskbar,#menubar,.win,.ats,.approval,#toasts,#deck,.of3-roster,.ctx'))return;
+  if(!t.closest('#desktop,#wall'))return;
+  e.preventDefault();of3Wheel(e);
+},{passive:false});
+/* The camera follows the work in Office HQ: when one department is working it glides to
+   that room, and back to the whole office a few seconds after the work ends. Several
+   at once, and it shows them all. Never when the person moved the camera themselves or
+   is looking inside a room. Only events move it: the room counts come from the cards. */
+function of3Follow(rows){
+  if(!of3HQ()||OF3.focus||OF3.userMoved||!OF3.fit||OFFICE.static)return;
+  const busy=rows.filter(x=>x.run&&x.r.kind!=='lead'&&x.r.kind!=='lounge'&&x.r.kind!=='meeting').map(x=>x.r.name);
+  const now=performance.now();
+  if(busy.length)OF3.followAt=now;
+  const want=busy.length===1?busy[0]:'';
+  if(!want&&!busy.length&&OF3.follow&&now-(OF3.followAt||0)<6000)return;   // hold a moment
+  if(want===(OF3.follow||''))return;
+  OF3.follow=want;
+  of3Go(want?of3RoomView(want,true):OF3.fit,900);
 }
 function of3Project(v3){
   const p=v3.clone().project(OF3.cam);
@@ -31236,6 +33046,7 @@ function of3Cards(force){
     Object.keys(OF3.el).forEach(k=>{if(k.startsWith('card:')&&+k.slice(5)>=rows.length){OF3.el[k].remove();delete OF3.el[k]}});
   }
   // over the room: centred on it, standing on its highest point (the back corner's wall)
+  of3Follow(rows);
   rows.forEach((x,i)=>{const r=x.r,e=OF3.el['card:'+i];if(!e)return;e._seen=1;
     const c=of3Project(of3W(r.cx,r.cy,0)),t=of3Project(of3W(r.x,r.y,OF3_SLAB+OF3_WALL));of3Place(e,c.x,t.y-6)});
 }
@@ -32607,10 +34418,22 @@ function loadXterm(){
   });
   return xtermLoading;
 }
-async function renderTerminal(body,w){
-  body.innerHTML='<div style="flex:1;min-height:0;background:#0b0d10;padding:6px 2px 4px 8px"></div>';
-  const holder=body.firstChild;
+/* A Terminal window is a view onto a SESSION (agentos/ptyhub.py) that outlives it: close
+   the window and the shell keeps running; open the Terminal again and it reattaches to
+   the newest session nobody is watching, screen and all. The agent reads and types into
+   the same sessions (terminal_read / terminal_send, through the gate), and when it types
+   the window says so. Faces: GUI/SUI here; TUI `bento terminal` lists and ends sessions. */
+async function renderTerminal(body,w,want){
+  body.innerHTML='<div class="term-wrap"><div class="term-agent" hidden></div><div class="term-holder" style="flex:1;min-height:0;background:#0b0d10;padding:6px 2px 4px 8px"></div></div>';
+  const holder=body.querySelector('.term-holder'),agentLine=body.querySelector('.term-agent');
   try{await loadXterm()}catch(e){holder.innerHTML='<p class="mut" style="padding:16px">could not load terminal assets</p>';return}
+  if(want===undefined&&!w._session){
+    // reattach to the newest session nobody is watching, if there is one
+    try{const d=await apiJSON('/api/terminal/sessions');
+      const free=(d.sessions||[]).filter(x=>x.alive&&!x.watching).pop();
+      if(free){want=free.id;toast('Back in '+free.name+', still running')}}catch(e){}
+  }
+  want=want||w._session||'new';
   const term=new Terminal({fontSize:13,cursorBlink:true,scrollback:4000,
     fontFamily:"'SF Mono',ui-monospace,'Cascadia Code',Menlo,Consolas,monospace",
     theme:{background:'#0b0d10',foreground:'#e6ebf2',cursor:'#5eead4',cursorAccent:'#0b0d10',
@@ -32618,16 +34441,39 @@ async function renderTerminal(body,w){
   const fit=new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(holder);
-  const tws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/terminal');
+  const tws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/terminal?session='+encodeURIComponent(want));
   const sendResize=()=>{if(tws.readyState===1)tws.send(JSON.stringify({type:'resize',cols:term.cols,rows:term.rows}))};
   tws.onopen=()=>{fit.fit();sendResize();term.focus()};
-  tws.onmessage=e=>term.write(e.data);
-  tws.onclose=()=>{try{term.write('\r\n\x1b[90m[session ended — close and reopen the Terminal to start a new one]\x1b[0m\r\n')}catch(e){}};
+  tws.onmessage=e=>{
+    if(e.data.charCodeAt(0)===0){            // control, never screen output
+      let m;try{m=JSON.parse(e.data.slice(1))}catch(err){return}
+      if(m.type==='session'){w._session=m.id;w._sname=m.name;const t=w.el.querySelector('.tname');if(t)t.textContent='Terminal · '+m.name}
+      else if(m.type==='agent'){agentLine.hidden=false;agentLine.textContent=(m.who||'Agent')+' typed: '+m.text;
+        clearTimeout(w._at);w._at=setTimeout(()=>{agentLine.hidden=true},6000)}
+      return;
+    }
+    term.write(e.data);
+  };
+  tws.onclose=()=>{try{term.write('\r\n\x1b[90m[detached; the session may still be running. Reopen the Terminal to attach]\x1b[0m\r\n')}catch(e){}};
   term.onData(d=>{if(tws.readyState===1)tws.send(JSON.stringify({type:'input',data:d}))});
   const ro=new ResizeObserver(()=>{try{fit.fit();sendResize()}catch(e){}});
   ro.observe(holder);
   w.term=term;w.tws=tws;w.ro=ro;
   setTimeout(()=>{try{fit.fit();sendResize();term.focus()}catch(e){}},80);
+}
+/* Switch this window to another session (or a new one), keeping the window. */
+function terminalAttach(w,id){
+  try{w.ro?.disconnect();w.tws?.close();w.term?.dispose()}catch(e){}
+  w._session=id==='new'?'':id;renderTerminal(w.el.querySelector('.wbody'),w,id);
+}
+async function terminalSessionsMenu(w){
+  let d={sessions:[]};try{d=await apiJSON('/api/terminal/sessions')}catch(e){}
+  const items=(d.sessions||[]).filter(x=>x.alive).map(x=>({label:esc((x.id===w._session?'● ':'')+x.name+
+      (x.by!=='you'?' · by '+x.by:'')+(x.foreground?' · '+x.foreground:'')+(x.watching&&x.id!==w._session?' · open elsewhere':'')),
+    fn:()=>terminalAttach(w,x.id)}));
+  return items.concat([{label:'New session',fn:()=>terminalAttach(w,'new')},
+    {label:'End this session',fn:async()=>{if(!w._session)return;
+      await fetch('/api/terminal/sessions/'+encodeURIComponent(w._session),{method:'DELETE'});toast('Session ended')}}]);
 }
 
 /* ================= about app ================= */
@@ -33037,7 +34883,8 @@ async function omniAsk(q){
     if(e.key.length!==1)return;                                   // printable only
     const t=document.activeElement;
     if(t&&(/^(input|textarea|select)$/i.test(t.tagName)||t.isContentEditable))return;
-    if(e.target.closest&&(e.target.closest('.xterm')||e.target.closest('#setup-wiz')))return;
+    // a terminal and a live window (the shared browser, a projected app) take their own keys
+    if(e.target.closest&&(e.target.closest('.xterm')||e.target.closest('.sv')||e.target.closest('#setup-wiz')))return;
     omniSummon(true);
     inp.focus();                                                  // the keypress lands in the bar
   });
@@ -33489,7 +35336,8 @@ function scRun(name,e){const f=SC_ACTIONS[name];if(f){f(e);return true}return fa
 
 document.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'||e.key==='Alt')switcherCommit()});
 document.addEventListener('keydown',e=>{
-  const inTerm=e.target.closest&&e.target.closest('.xterm');
+  // a terminal or a live window (04f-streams.js): its keys are the process's, not shortcuts
+  const inTerm=e.target.closest&&(e.target.closest('.xterm')||e.target.closest('.sv'));
   // "Typing" means a field with something in it. The prompt bar holds the caret
   // by default, so treating an EMPTY bar as typing would mute every desktop
   // shortcut on a fresh desktop — which is where you need them most.

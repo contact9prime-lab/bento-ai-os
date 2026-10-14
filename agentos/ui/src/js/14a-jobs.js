@@ -34,7 +34,7 @@ var JOB_TABS=['run','history','build','schedule','routines'];
 function jobTabs(){
   return `<div class="job-tabs">${segTabs('job-tabs',['Run','History','Build','Schedule','Routines'],Math.max(0,JOB_TABS.indexOf(JOBS.tab)),'jobSetTab')}</div>`;
 }
-function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';refreshApp('jobs')}
+function jobSetTab(i){JOBS.tab=JOB_TABS[i]||'run';if(typeof watchNote==='function')watchNote('view','jobs',JOBS.tab);refreshApp('jobs')}
 
 async function jobsLoad(){
   try{const d=await (await fetch('/api/jobs')).json();

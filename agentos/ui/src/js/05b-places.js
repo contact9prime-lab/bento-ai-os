@@ -23,6 +23,9 @@
 var APP_WORDS={
   jobs:['mission','missions','job','jobs','flow','flows','workflow','workflows','fabric','orchestrator','recipe'],
   settings:['preferences','prefs','config','configuration','options'],
+  timetravel:['undo','rewind','time machine','time travel','go back','revert','restore','fork','checkpoint','history of changes'],
+  arena:['benchmark','compare','versus','vs','cage match','race','side by side','models','speed','tokens per second'],
+  drama:['clip','reel','video','comic','manga','strip','share','tantrum','story','record'],
   office:['crew','team','playground','floor','lounge','meeting room','company','departments'],
   brief:['inbox','today','digest','summary'],
   permissions:['grants','grant','allow','deny','matrix','consent','policy','policies'],
@@ -88,7 +91,9 @@ var PLACES=[
   ['Rules','permissions','Permissions → Rules',['policies','policy','rules','always allow','always deny'],placeFold('policies')],
   ['Ledger','permissions','Permissions → Ledger',['audit','ledger','decisions','history of decisions','who did what'],placeFold('audit')],
   ['Quarantine','permissions','Permissions → Quarantine',['quarantine','held','stopped','blocked','suspended','runaway'],placeFold('quarantine')],
-].map(([label,app,hint,words,go])=>({label,app,hint,words,go}));
+].map(([label,app,hint,words,go])=>({label,app,hint,words,
+  // Watch me once notes a place as the step (00i-watch.js), not the app it opens
+  go:()=>{if(typeof watchNote==='function')watchNote('place',label);return go()}}));
 
 /* How well `q` names a place or an app by one of its words: 2.6 a whole word, 2.2 the
    start of one. The same scale as palScore, so a word hit ranks with a name hit. */

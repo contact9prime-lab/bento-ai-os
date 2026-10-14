@@ -39,7 +39,8 @@ const AUTO_ACTIONS=['deck','expose','showdesktop','launcher','control','notifica
                     'voice','fullscreen','copilot','agent.stop','help'];
 function automationStepLabel(s){
   switch(s.kind){
-    case 'app':return 'Open '+((APPS[s.app]&&APPS[s.app].title)||s.app);
+    case 'app':return 'Open '+((APPS[s.app]&&APPS[s.app].title)||s.app)+(s.view?' · '+s.view:'');
+    case 'place':return 'Go to '+s.place;
     // reuse the hot-corner vocabulary's wording so the same action reads the
     // same everywhere ("Show desktop", not "showdesktop")
     case 'action':{const hit=HC_ACTIONS.find(a=>a[0]===s.action);return hit?hit[1]:'Do '+s.action}
@@ -56,7 +57,9 @@ function automationStepLabel(s){
 
 async function runAutomationStep(s){
   switch(s.kind){
-    case 'app':      if(APPS[s.app])openApp(s.app); else toast('automation: no app "'+s.app+'"'); break;
+    case 'app':      if(APPS[s.app]){openApp(s.app);if(s.view)automationView(s.app,s.view)} else toast('automation: no app "'+s.app+'"'); break;
+    case 'place':    {const p=(typeof PLACES!=='undefined'?PLACES:[]).find(x=>x.label===s.place);
+                      if(p)p.go(); else toast('automation: no place "'+s.place+'"'); break}
     case 'action':   if(!scRun(s.action))toast('automation: unknown action "'+s.action+'"'); break;
     case 'theme':    if(allThemes()[s.theme])applyTheme(s.theme); else toast('automation: no theme "'+s.theme+'"'); break;
     case 'wallpaper':await setBuiltinWallpaper(s.wallpaper); break;
@@ -68,6 +71,13 @@ async function runAutomationStep(s){
     case 'tool':     await runAutomationTool(s.tool,s.args); break;
     case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code})); break;
   }
+}
+/* An app opened at a view: a Settings tab, a Missions tab, a Logs filter. The three a
+   Routine recorded by Watch me once can carry (00i-watch.js). */
+function automationView(app,view){
+  if(app==='settings'&&typeof settingsGo==='function')return setTimeout(()=>settingsGo(view),80);
+  if(app==='jobs'&&typeof JOB_TABS!=='undefined'&&JOB_TABS.indexOf(view)>=0){JOBS.tab=view;return refreshApp('jobs')}
+  if(app==='logs'){const w=winsOf('logs')[0];if(w){w.kind=view;w.app.render(w.el.querySelector('.wbody'),w)}}
 }
 async function runAutomationTool(name,args){
   let parsed={};

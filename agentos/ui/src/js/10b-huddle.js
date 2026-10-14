@@ -33,7 +33,7 @@ function brainChip(model,provider){
 }
 function huddleParse(text){
   const lines=String(text||'').split('\n'), out=[];
-  lines.forEach(l=>{const m=l.match(/^@([\w-]+) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
+  lines.forEach(l=>{const m=l.match(/^@([\w-]+(?:@[\w.-]+)?) \(([^)]*)\): (.*)$/);if(m)out.push({speaker:m[1],model:m[2],text:m[3]});
     // Democracy mode ends a huddle with a vote, one line (fabric.vote_line)
     const v=l.match(/^\[vote\] (.*)$/);if(v)out.push({vote:true,text:v[1]})});
   return out;
@@ -49,7 +49,10 @@ function huddleVoteRow(e){
 }
 function huddleRow(e){
   if(e.vote)return huddleVoteRow(e);
-  return `<div class="hud-row" data-sp="${esc(e.speaker)}">${avatarImg(e.speaker,'av-who')||`<span class="hud-dot"></span>`}
+  // a guest lent by a pass brings its own face (e.look); everybody else is painted here
+  if(e.look)avatarGuest(e.speaker,e.look);
+  const face=avatarImg(e.speaker,'av-who');
+  return `<div class="hud-row${String(e.speaker||'').includes('@')?' guest':''}" data-sp="${esc(e.speaker)}">${face||`<span class="hud-dot"></span>`}
     <div class="hud-say"><div class="hud-who">@${esc(e.speaker)}${e.to?` <span class="hud-to">→ @${esc(e.to)}</span>`:''} ${e.model||e.provider?brainChip(e.model,e.provider):''}</div>
     <div class="hud-text">${md(e.text||'')}</div></div></div>`;
 }
@@ -69,6 +72,7 @@ function huddleWho(names){
    Crew stage hears it too, so the one talking says so over its head. */
 function huddleLive(ev,isCur,kind){
   kind=kind||'huddle';
+  if(ev.look)avatarGuest(ev.speaker,ev.look);
   if(!ev.vote)scenePulse('say',ev.speaker,Object.assign({kind},ev));
   // the activity pill: a huddle has no tool calls to report, so say who just spoke
   if(typeof actMove==='function'&&ev.conversation_id&&!ev.vote)

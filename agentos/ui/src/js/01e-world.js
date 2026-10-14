@@ -196,7 +196,11 @@ function worldSpot(i){
 }
 
 /* ---------------- the people ---------------- */
-function worldCast(){return (WORLD.v&&WORLD.v.agents)||[]}
+function worldCast(){
+  const c=(WORLD.v&&WORLD.v.agents)||[];
+  c.forEach(a=>{if(a.guest)avatarGuest(a.name,a.guest.look)});
+  return c;
+}
 function worldSync(){
   if(!WORLD.on||!WORLD.v)return;
   worldChip();worldAsk();
@@ -222,7 +226,7 @@ function worldSync(){
         c=WORLD.chars[a.name]={sprite:sp,tex:null,src:'',shadow:sh,crystal:cr,i,vessel:null,home:null,phase:Math.random()*6};
       }
       // the sheet in this scene's costume and style; a new look swaps it in place
-      const src=worldSheet(a.name);
+      const src=worldSheet(a.name,a);
       if(c.src!==src){
         const soft=worldSoft(),tex=new T.TextureLoader().load(src,()=>worldKick());
         tex.magFilter=tex.minFilter=soft?T.LinearFilter:T.NearestFilter;tex.generateMipmaps=false;
@@ -254,7 +258,16 @@ function worldSync(){
 var WORLD_WEAR={yukata:'in yukata',spacesuit:'in spacesuits',overalls:'in overalls',chef:'in chef whites'};
 function worldCostume(){return (WORLD.v&&WORLD.v.world&&WORLD.v.world.costume)||''}
 function worldSoft(){try{return localStorage.getItem('world.soft')==='1'}catch(e){return false}}
-function worldSheet(name){return avatarSrc(name,{sheet:1,costume:worldCostume(),draw:worldSoft()?'soft':''})}
+function worldSheet(name,a){
+  const o={sheet:1,costume:worldCostume(),draw:worldSoft()?'soft':''};
+  // a guest lent by a pass wears its own face, painted from the recipe it came with
+  return a&&a.guest?avatarRecipeSrc(a.guest.look,o):avatarSrc(name,o);
+}
+/* A guest (server._world_guests): an agent another team lent you for a few minutes.
+   It stands here at the world's resting mood, feels nothing and grows nothing, and its
+   card says whose it is and how long is left. */
+function worldGuest(n){const a=worldCast().find(x=>x.name===n);return a&&a.guest||null}
+function worldLeft(g){const s=Math.max(0,Math.round(g.until-Date.now()/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 function worldSetSoft(on){
   try{localStorage.setItem('world.soft',on?'1':'0')}catch(e){}
   worldSync();toast(on?'Characters are drawn smooth here':'Characters are pixel art again');
@@ -264,7 +277,11 @@ function worldSay(a,text){
   if(!text){const e=worldEmotion(a.mood.id);const ls=(e&&e.lines)||[];text=ls[Math.floor(Math.random()*ls.length)]||a.mood.name}
   WORLD.bubbles[a.name]={text,until:performance.now()+7000};worldTags();
 }
-function worldLabel(n){return n==='@agent'?(typeof agentName==='function'?agentName():'Your agent'):n}
+function worldLabel(n){
+  if(n==='@agent')return typeof agentName==='function'?agentName():'Your agent';
+  const g=String(n).includes('@')&&worldGuest(n);
+  return g?g.agent+' (guest)':n;
+}
 /* Which department somebody is in (company.membership, carried on the world's answer by
    the server): the tag wears its colour, and a head wears the star. The heads stand in the
    front row because the server orders the cast that way; nothing here decides it. */
@@ -295,8 +312,10 @@ function worldTags(){
     // while it worked read as an erratic person. Tapping it opens the work itself.
     const dots=a.busy&&!say?`<span class="wd-dots" title="See what ${esc(worldLabel(a.name))} is working on"><i></i><i></i><i></i></span>`:'';
     const html=(say?`<span class="wd-say">${esc(say)}</span>`:dots)+
-      (WORLD.flat?avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''}):'')+
+      (WORLD.flat?(a.guest?`<img class="av wd-flatav${worldSoft()?' soft':''}" src="${avatarRecipeSrc(a.guest.look,{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''})}" alt="" draggable="false">`
+        :avatarImg(a.name,'wd-flatav'+(worldSoft()?' soft':''),{crop:'',costume:worldCostume(),draw:worldSoft()?'soft':''})):'')+
       `<span class="wd-name"><b>${esc(m.emoji)}</b> ${esc(worldLabel(a.name))}</span>`+
+      (a.guest?`<span class="wd-dept wd-guest">from ${esc(a.guest.team||a.guest.label)}</span>`:'')+
       (worldOrg(a.name)?`<span class="wd-dept" style="--dc:${esc(worldOrg(a.name).hex)}">${esc(worldDeptLine(a.name))}</span>`:'');
     if(el._h!==html){el.innerHTML=html;el._h=html}
     el.style.setProperty('--mh',m.hue);
@@ -623,6 +642,17 @@ function worldCard(name,quiet){
   if(!a){card.hidden=true;WORLD.open='';return}
   if(!quiet&&WORLD.open===name&&!card.hidden){card.hidden=true;WORLD.open='';return}
   WORLD.open=name;const m=a.mood,l=a.level;
+  if(a.guest){
+    const g=a.guest;card.hidden=false;card.style.setProperty('--mh',m.hue);
+    card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
+      <div class="wd-who">${avatarRecipeImg(g.look,'wd-face',g.agent)}<div><b>${esc(g.agent)}</b>
+        <div class="wd-feel">a guest from ${esc(g.team?g.team+'’s team':g.label)}</div></div></div>
+      <p class="wd-quiet">Lent to you for a little while. It answers in words only, from its own machine, and leaves when the pass ends.</p>
+      <div class="wd-grow"><span>Time left</span><small class="wd-left" data-pass-until="${+g.until}">${worldLeft(g)}</small></div>
+      <div class="wd-acts"><button class="endbtn" onclick="tlPassHuddle('${esc(g.agent)}','${esc(g.label)}')">Bring into a huddle</button></div>`;
+    if(typeof tlPassTick==='function')tlPassTick();
+    return;
+  }
   const ago=s=>s<60?'just now':s<3600?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago';
   card.hidden=false;card.style.setProperty('--mh',m.hue);
   card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>

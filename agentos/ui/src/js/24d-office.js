@@ -54,7 +54,9 @@ function renderOffice(el,w){
   if(OFFICE.w===w&&el.querySelector('.of-wrap')){officeLoad();return}
   // the desktop scene may be holding the Office: the window takes it over, and the
   // scene gets it back when the window closes (officeClose)
-  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;OFFICE.fit=false;
+  // The 3D renderer goes with the scene: left alive, it kept drawing into the scene's
+  // canvas while the window's stayed dark (reported as "I cannot see the office").
+  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;OFFICE.fit=false;of3Dispose();
   OFFICE.w=w;OFFICE.people={};OFFICE.papers=[];OFFICE.bursts=[];OFFICE.pops=[];OFFICE.sheets={};
   OFFICE.static=matchMedia('(prefers-reduced-motion: reduce)').matches;
   try{OFFICE.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){OFFICE.font='sans-serif'}
