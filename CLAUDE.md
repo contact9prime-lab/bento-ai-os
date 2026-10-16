@@ -568,6 +568,15 @@ user." Six rules:
   and then set up from ticked departments lost the line. Removing a company switches its desks
   and missions off (nothing would sign their work off) and keeps its agents and space.
 
+**What the forwarded lead reads first decides what it does** (`open_team_door`;
+`tests/test_department_routing.py`). Measured on the reporting machine with its real Claude
+Code: the preamble said "you cannot use AgentOS's own tools" (`NO_DOOR_LINE`, swapped for
+`DOOR_LINE` when the door opens), the department rule was the last of ~8,000 characters, and
+the flat team list named the parked company's people. It wrote the script and ran the
+backtest itself. Now the company note comes first, the flat list leaves out the open
+company's people, other companies' people and the auditor (`company.not_on_the_list`), and
+missions, windows and tool-finding follow. With that, the same question went to Research.
+
 **A department is reached by name, from every chat and by the lead** (`company.parse_department`,
 `ControlPlane.department_task`, the `department_task` tool, `fabric.department_reply`, `10d-mentions.js`;
 `tests/test_department_routing.py`). Reported with a screenshot: Aria on Claude Code ran WebSearch
@@ -1097,6 +1106,11 @@ audit rows. Five things are load-bearing:
   its own is written for a coding session with native tools, and handed an orchestrator's
   persona on top of it the model reaches for files it has not got. `BRIDGE_NOTE` tells it
   the tools arrive as `mcp__bento__<name>`.
+- **Claude Code waits `BRIDGE_CALL_MS` for one call** (the per-server `timeout` key in both
+  `--mcp-config`s). Its default is about a minute, measured on 2.1.301, and a hand-over runs
+  for minutes: a Research desk on Claude Code saw every `delegate` "time out" while the
+  specialists were still working, and the lead gave up on `department_task` the same way.
+  Gemini CLI and Codex have their own keys and were not installed where this was measured.
 - **Tool events come from the gate, not from the CLI's stream.** `_run_on_executor`'s sink
   forwards text, thinking, status and errors only; a second `tool_start` from the CLI's
   own stream counted every step twice.
@@ -2132,7 +2146,13 @@ things keep it true:
   why Chat draws the reply's name and face at `turn_start`, and why the presence bubble
   counts only turns not already on screen (`turnOnScreen`). `tests/test_chat_liveness.py`.
 - **The chat is the window's own agent panel moved into the layout** (`initCopilot(w, .of-chat)`),
-  and the window's ✦ is hidden — a second copy of the same thread would be two chats. A
+  and the window's ✦ is hidden — a second copy of the same thread would be two chats. It is
+  the person's CHAT, not an app copilot (`shared` in 04a, `OFFICE_CHAT`; `tests/test_office_chat.py`):
+  it sends with origin `user` into Chat's open conversation, a new one it starts becomes
+  Chat's (`officeChatAdopt`), Chat opening or starting a conversation moves it
+  (`officeChatFollow`), and a message sent from Chat is mirrored into it. Reported as "if I am
+  typing in the Office it is not appearing in the chat": it was a hidden `copilot:office`
+  thread, and its turns were framed "the copilot INSIDE the Office app, keep replies short". A
   huddle asked there is drawn there: `agent_say` reaches the panel's `miniFeed.say` as well as
   Chat, or the panel sat empty while the agents met at the table.
 - **The 3D look draws the same plan; it decides nothing** (`24k-office3d.js`, office.py `look`,

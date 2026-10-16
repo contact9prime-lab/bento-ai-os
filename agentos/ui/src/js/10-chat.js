@@ -159,6 +159,7 @@ function send(){
   // as the next turn. Either way the queue strip is the receipt, so no bubble yet.
   if(!wasRunning)userBubble(text,imgs);
   ws.send(JSON.stringify({type:'chat',text,images:imgs,conversation_id:currentConv,model:''}));
+  if(!wasRunning)officeChatMirror(currentConv,text);   // the Office shows this conversation too
   draftClear(currentConv);
   input.value='';input.style.height='auto';renderAttach();
   if(wasRunning){syncSend();scrollDown();return}
@@ -244,6 +245,7 @@ async function loadConvs(){
 async function openConv(cid){
   if(input&&currentConv!==cid)draftSave(currentConv,input.value);   // park the one you were typing
   currentConv=cid;
+  officeChatFollow();
   restoreDraft(cid);
   const r=await fetch('/api/conversations/'+cid);const d=await r.json();
   if(!feed)return;
@@ -303,6 +305,7 @@ async function openConv(cid){
 }
 function newChat(){
   currentConv=null;curBody=null;curThink=null;curText='';
+  officeChatFollow();
   if(feed){feed.innerHTML='';showWelcome()}
   setRunning(false);
   renderQueue();

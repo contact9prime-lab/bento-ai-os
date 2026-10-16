@@ -393,7 +393,7 @@ function handle(ev){
       // omnibar/copilot threads announce themselves with an origin — they must
       // never steal the Chat window's current conversation
       if(typeof claimConversation==='function'&&claimConversation(ev)){loadConvs();break}
-      currentConv=ev.id; loadConvs(); break;}
+      currentConv=ev.id; officeChatFollow(); loadConvs(); break;}
     case 'executor_install':
       if(typeof execInstallLine==='function')execInstallLine(ev);
       break;

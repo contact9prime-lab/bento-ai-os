@@ -19,6 +19,28 @@ function claimConversation(ev){
   }
   return !!(ev.origin&&ev.origin!=='user');
 }
+/* The Office's chat and the Chat window are one conversation (initCopilot, shared).
+   `var` because 09-websocket.js and 10-chat.js call these before or after this file
+   runs, and a `let` here would be in its dead zone for them. */
+var OFFICE_CHAT={cid:null,follow:null,mirror:null,retitle:null};
+function officeChatFollow(){try{if(OFFICE_CHAT.follow)OFFICE_CHAT.follow()}catch(e){}}
+function officeChatMirror(cid,text){try{if(OFFICE_CHAT.mirror)OFFICE_CHAT.mirror(cid,text)}catch(e){}}
+// A new conversation started from the Office is the person's chat: Chat opens on it.
+function officeChatAdopt(id){
+  currentConv=id;OFFICE_CHAT.cid=id;
+  try{if(OFFICE_CHAT.retitle)OFFICE_CHAT.retitle(id)}catch(e){}
+  if(typeof feed!=='undefined'&&feed&&typeof openConv==='function')openConv(id);
+  else if(typeof loadConvs==='function')loadConvs();
+}
+function chatMirrorUser(cid,text,imgs){
+  if(typeof feed==='undefined'||!feed||currentConv!==cid||typeof userBubble!=='function')return;
+  if(RUNNING.has(cid))return;                   // queued behind a turn: the queue strip shows it
+  userBubble(text,imgs||[]);showWorking();setRunning(true);scrollDown();
+}
+function officeChatContext(){
+  return `The person is writing to you from the Office, where they watch their team work. `
+    +`This is their ordinary chat with you as the lead: decide who does the work, as you would anywhere.`;
+}
 /* One turn at a time per conversation is a server rule, so a second ask while
    the agent is busy gets QUEUED (and says so) instead of being dropped. */
 const TURN_QUEUE=[];
@@ -353,15 +375,33 @@ async function initCopilot(w,panel){
   // starters: the panel invites action the moment it opens
   startersEl.innerHTML=copilotStarters(w.id).map(s=>`<button class="cp-chip">${esc(s)}</button>`).join('');
   startersEl.querySelectorAll('.cp-chip').forEach(b=>b.onclick=()=>{input.value=b.textContent;go()});
+  // The Office's chat is not an app's copilot: it is where the person talks to the
+  // team they are watching, so it IS their chat. Reported as "if I am typing in the
+  // Office it is not appearing in the chat": it was a hidden "✦ Office" thread, filed
+  // under Copilots, whose turns were framed as "the copilot inside the Office app".
+  // Shared, it follows Chat's open conversation (`currentConv`) both ways.
+  const shared=!!panel.closest('.of-chat');
+  if(shared){
+    const head=panel.querySelector('.cp-head');
+    const nb=document.createElement('button');nb.className='cp-new';nb.title='New chat';
+    nb.dataset.ic='plus';nb.textContent='＋';head.insertBefore(nb,panel.querySelector('.cp-open'));
+    nb.onclick=()=>{if(typeof newChat==='function')newChat(); else currentConv=null;officeChatFollow()};
+    input.placeholder='Ask '+agentName()+' or @a department';
+  }
   panel.querySelector('.cp-open').onclick=()=>{
-    if(COPILOT.cids[w.id]){openApp('chat');openConv(COPILOT.cids[w.id])}
+    const c=shared?currentConv:COPILOT.cids[w.id];
+    if(c){openApp('chat');openConv(c)}
     else{openApp('chat')}
   };
-  // prior thread: compact replay of the persistent per-app conversation
-  const cid=await copilotThread(w.id,w.app.title);
-  if(cid){
+  // prior thread: a compact replay of the conversation this panel shows
+  async function replay(cid){
+    feedEl.innerHTML='';
+    if(shared&&OFFICE_CHAT.retitle)OFFICE_CHAT.retitle(cid);
+    startersEl.style.display=cid?'none':'';
+    if(!cid)return;
     try{
       const d=await (await fetch('/api/conversations/'+cid)).json();
+      if(shared&&currentConv!==cid)return;      // the person moved on while it loaded
       const msgs=(d.messages||[]).slice(-12);
       feedEl.innerHTML=msgs.map(m=>m.role==='user'
         ?`<div class="mf-user">${esc(m.content)}</div>`
@@ -373,7 +413,7 @@ async function initCopilot(w,panel){
     }catch(e){}
     // re-attach to a live turn — and say so at once, rather than looking idle
     // until the next event happens to arrive
-    if(RUNNING.has(cid)){const s=mkSink();sinkOn(cid,s);s.start({conversation_id:cid})}
+    if(RUNNING.has(cid)){live=null;const s=mkSink();sinkOn(cid,s);s.start({conversation_id:cid})}
   }
   let live=null;
   const setBusy=on=>{
@@ -381,6 +421,25 @@ async function initCopilot(w,panel){
     sendBtn2.classList.toggle('stop',on);
     sendBtn2.title=on?'Stop this agent':'Send';
   };
+  if(shared){
+    OFFICE_CHAT.follow=()=>{const c=currentConv||null;if(OFFICE_CHAT.cid===c)return;
+      if(OFFICE_CHAT.cid)sinkOff(OFFICE_CHAT.cid);OFFICE_CHAT.cid=c;live=null;replay(c)};
+    // a message sent from Chat into the conversation this panel shows
+    OFFICE_CHAT.mirror=(cid,text)=>{if(!cid||cid!==OFFICE_CHAT.cid||!feedEl.isConnected)return;
+      const b=document.createElement('div');b.className='mf-user';b.textContent=text;feedEl.appendChild(b);
+      startersEl.style.display='none';live=null;const sk=mkSink();sinkOn(cid,sk);sk.start({conversation_id:cid})};
+    // the header names the conversation, including one the panel has just started
+    OFFICE_CHAT.retitle=async cid=>{const t=panel.querySelector('.cp-app');if(!t)return;
+      if(!cid){t.textContent='new chat';return}
+      // the conversation route carries messages only; the title is in the list
+      try{const d=await (await fetch('/api/conversations')).json();
+        const c=(d.conversations||[]).find(x=>x.id===cid);
+        if(OFFICE_CHAT.cid===cid)t.textContent=((c&&c.title)||'').slice(0,40)}catch(e){}};
+    OFFICE_CHAT.cid=currentConv||null;
+    replay(OFFICE_CHAT.cid);
+  }else{
+    replay(await copilotThread(w.id,w.app.title));
+  }
   function mkSink(){
     if(live)return live;
     live=miniFeed(feedEl,{scrollEl:feedEl,noStrip:!!panel.closest('.of-chat'),
@@ -403,12 +462,20 @@ async function initCopilot(w,panel){
     startersEl.style.display='none';
     feedEl.scrollTop=feedEl.scrollHeight;
     const sink=mkSink();
+    if(shared){
+      const cid=currentConv||null;
+      agentTurn({text:text||'What do you see here?',images:imgs,cid,origin:'user',title:'',
+        context:officeChatContext(),sink,onCid:id=>officeChatAdopt(id)});
+      // Chat showing this conversation draws the message too, as if typed there
+      if(cid)chatMirrorUser(cid,text,imgs);
+      return;
+    }
     agentTurn({text:text||'What do you see here?',images:imgs,cid:COPILOT.cids[w.id]||null,origin:'copilot:'+w.id,
       title:'✦ '+w.app.title,context:copilotContext(w)+'\n'+copilotVisionNote(),sink,
       onCid:id=>{COPILOT.cids[w.id]=id}});
   }
   sendBtn2.onclick=()=>{
-    const cid=COPILOT.cids[w.id];
+    const cid=shared?OFFICE_CHAT.cid:COPILOT.cids[w.id];
     if(cid&&RUNNING.has(cid)){stopAgent(cid);toast('stopping…');return}   // ◼ while it works
     go();
   };

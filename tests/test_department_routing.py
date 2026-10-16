@@ -16,6 +16,7 @@ the lead was told work "goes to its head" with no tool that did it. Pinned here:
   (ControlPlane.department_task), and every composer suggests agents and departments.
 """
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -25,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault("AGENTOS_HOME", tempfile.mkdtemp(prefix="agentos-test-home-"))
 os.environ.setdefault("AGENTOS_VAULT_KEYRING", "0")
 
-from agentos import company, executors, fabric, policy, toolscope, tools   # noqa: E402
+from agentos import company, executors, fabric, mcpbridge, policy, toolscope, tools   # noqa: E402
 from agentos.agent import Agent                                          # noqa: E402
 from agentos.memory import Store                                         # noqa: E402
 from agentos.policy import PDP                                           # noqa: E402
@@ -253,3 +254,54 @@ def test_the_desk_master_splits_work_by_job(tmp_path):
     flow = company.desk_for(c, store, "Sales")
     p = tb.fabric._master_persona(flow)
     assert "whose job" in p and "rather than handing the whole thing to one" in p
+
+
+def test_the_forwarded_lead_hears_who_does_the_work_first(tmp_path):
+    """Measured on the reporting machine: Claude Code was told first that it could not
+    use this OS's tools, then given them, with the department rule the last of ~8,000
+    characters, and a list naming another company's people. It did the work itself."""
+    c, store, tb = _company(tmp_path)
+    # a second company, parked, with its own person
+    c["companies"] = {"kids": {"company": {"name": "Kids"}, "office": {"departments": [
+        {"name": "Studio", "members": ["animator"]}]}}}
+    store.save_subagent({"name": "animator", "soul": "You animate."})
+    env = executors.envelope_from(c, str(tmp_path), "claude-code")
+    env.context = executors.context_for("")
+    assert executors.NO_DOOR_LINE in env.context
+
+    async def q(e):
+        pass
+
+    async def ap(*a, **k):
+        return True
+    tok = executors.open_team_door(env, c, tb, store, q, ap, conversation_id="x", text="x")
+    try:
+        ctx = env.context
+        assert executors.NO_DOOR_LINE not in ctx and executors.DOOR_LINE in ctx
+        assert ctx.index("YOUR COMPANY") < ctx.index("MISSIONS") < ctx.index("FINDING WHAT")
+        assert "- animator:" not in ctx, "another company's people are that company's"
+        assert "- auditor:" not in ctx
+        argv = executors.build_command("x", env)
+        conf = json.loads(argv[argv.index("--mcp-config") + 1])
+        assert conf["mcpServers"]["bento"]["timeout"] == executors.BRIDGE_CALL_MS >= 30 * 60 * 1000
+    finally:
+        mcpbridge.close_session(tok)
+
+
+def test_a_mission_on_claude_code_waits_for_its_specialists():
+    src = (ROOT / "agentos/executors.py").read_text()
+    assert src.count('"timeout": BRIDGE_CALL_MS') == 2
+
+
+def test_the_lead_signs_off_without_tools():
+    gate = {"lead": True, "who": "Aria", "department": ""}
+    text = company.review_task({"name": "Research"}, gate, "t", "d", "ok", "", [], [], [], [], True)
+    assert "no tools in this step" in text
+
+
+def test_a_verdict_after_a_preamble_is_read_but_never_as_a_pass():
+    v, f = company.read_verdict("I've checked the board. Verdict follows.\n\nFAIL\n- Nothing was delivered.")
+    assert v == "fail" and f == ["Nothing was delivered."]
+    assert company.read_verdict("Checked.\n**CONCERNS**\n- thin data")[0] == "concerns"
+    assert company.read_verdict("Checked it all.\nPASS\n- fine")[0] == "", "a pass must lead"
+    assert company.read_verdict("PASS\n- fine")[0] == "pass"
