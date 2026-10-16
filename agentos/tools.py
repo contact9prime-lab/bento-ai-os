@@ -184,6 +184,12 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               "install_skill"}
 
 
+# Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
+# somebody wrote an explicit grant (the card's "remember" is one). A department that can
+# run code was the owner's choice on exactly those terms (company.set_code).
+ASK_FROM_SPECIALISTS = {"run_python"}
+
+
 # Tools that change nothing outside this OS's own records, named one by one. risk_of
 # answers "safe" for these and "risky" for anything it has no line for: a new tool asks
 # until somebody decides otherwise. The old default was "safe", and run_python,
@@ -542,6 +548,21 @@ def folder_binds(cfg: dict, uid: str | None = None) -> tuple[list[str], list[str
     mine = shares_for(cfg, uid)
     return ([s["path"] for s in mine if s["mode"] == "ro"],
             [s["path"] for s in mine if s["mode"] == "rw"])
+
+
+def jail_python(exe: str) -> str:
+    """An interpreter the jail can see. The server's own is usually a venv under /home,
+    which bwrap blanks (`--tmpfs /home`), so run_python failed every time with "No such
+    file or directory": found when a Research quant tried to backtest. A venv's python
+    links to a real interpreter; use that when it is outside /home, else the system's.
+    The venv's packages do not come along, and nothing here promises they would."""
+    real = os.path.realpath(exe or "")
+    if real and os.path.exists(real) and not real.startswith("/home/"):
+        return real
+    for cand in ("/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3"):
+        if os.path.exists(cand):
+            return cand
+    return "python3"
 
 
 def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
@@ -3828,7 +3849,8 @@ class Toolbox(usersmod.Scoped):
         try:
             with open(path, "w") as fh:
                 fh.write(code)
-            out = await self.run_command(f"{shlex.quote(sys.executable)} {shlex.quote(path)}")
+            py = jail_python(sys.executable) if enabled else sys.executable
+            out = await self.run_command(f"{shlex.quote(py)} {shlex.quote(path)}")
         finally:
             with contextlib.suppress(OSError):
                 os.unlink(path)

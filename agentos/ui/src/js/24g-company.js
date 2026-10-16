@@ -576,6 +576,9 @@ function companyOverviewPaint(el){
         <option value="">Each agent's own</option>${(d.executors||[]).map(p=>
           `<option value="${esc(p.name)}"${x.hands===p.name?' selected':''}>${esc(p.name)}</option>`).join('')}</select>
         ${typeof pInfo==='function'?pInfo('What the department’s people can reach: tools, folders, web and MCP servers. An agent with an executor of its own keeps it.'):''}</label>
+      <label class="co-rep mut"><input type="checkbox" data-code="${esc(x.name)}"${x.code==='all'?' checked':''}
+        aria-label="${esc(x.name)} can run code"> Can run code${x.code==='some'?' (some of it)':''}
+        ${typeof pInfo==='function'?pInfo('Its people can run Python, for example to analyse data or test a strategy. You’re asked each time.'):''}</label>
       ${companyKitHTML(x)}
       <div class="co-desk mut">${!x.has_desk?'No desk: tasks go to its head in chat.'
         :x.desk_on?'Desk on.':'Desk off, so gated steps ask you.'}
@@ -624,6 +627,7 @@ function companyOverviewPaint(el){
   q('.co-rv').onchange=e=>companyReviewMode(e.target);
   el.querySelectorAll('[data-rep]').forEach(x=>x.onchange=()=>companyReports(x));
   el.querySelectorAll('[data-hands]').forEach(x=>x.onchange=()=>companyHands(x));
+  el.querySelectorAll('[data-code]').forEach(x=>x.onchange=()=>companyCode(x));
   q('.co-perm').onchange=e=>companyPermMode(e.target);
   q('.co-grid').onclick=()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
     setTimeout(()=>document.getElementById('s-team-matrix')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)};
@@ -688,6 +692,17 @@ async function companyHands(sel){
     companyLoad();
   }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
   finally{sel.disabled=false}
+}
+async function companyCode(box){
+  const dept=box.dataset.code;box.disabled=true;
+  try{
+    const j=await apiJSON('/api/company/code',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({department:dept,on:box.checked})});
+    if(j.error)throw new Error(j.error);
+    toast(j.code?`${dept} can run Python now. You're asked each time.`:`${dept} can't run code now.`);
+    companyLoad();
+  }catch(e){toast(e.message||String(e),{kind:'err'});companyLoad()}
+  finally{box.disabled=false}
 }
 async function companyPermMode(sel){
   sel.disabled=true;

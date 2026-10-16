@@ -13471,6 +13471,22 @@ async def api_company_hands(body: dict):
     return {"ok": True, **got}
 
 
+@app.put("/api/company/code")
+async def api_company_code(body: dict):
+    """Let a department's people run Python, asked each time (company.set_code)."""
+    from . import company as companymod
+    b = body or {}
+    try:
+        got = companymod.set_code(state["cfg"], state["store"], str(b.get("department") or ""),
+                                  bool(b.get("on")))
+    except KeyError as e:
+        return JSONResponse({"error": f"there is no department called {e.args[0] or '(none)'}"},
+                            status_code=404)
+    await state["broadcast_user"]({"type": "office"}, usersmod.current() or "")
+    await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+    return {"ok": True, **got}
+
+
 @app.put("/api/subagents/{name}/brain")
 async def api_subagent_brain(name: str, body: dict):
     """Pin one agent to a model — the Team list in AI providers, and `bento team set`.

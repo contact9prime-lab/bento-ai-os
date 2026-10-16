@@ -63,7 +63,13 @@ ALLOWED_TOOLS = (
     "mail_search", "mail_read", "calendar_events",
     "git_status", "git_log", "git_diff", "run_tests",
     "generate_image", "save_asset", "list_assets", "get_asset",
+    # Python, for people whose job is analysis (a quant's backtest). The owner's choice,
+    # after a live run where Research could only plan: "Python, asked each time". It
+    # passes the shell's jail, and a specialist's call asks a person every time
+    # (tools.ASK_FROM_SPECIALISTS), so no grant a plan writes can make it silent.
+    "run_python",
 )
+CODE_TOOL = "run_python"
 #: Which account a tool needs before it is worth giving.
 NEEDS_ACCOUNT = {"mail_search": "mail", "mail_read": "mail", "calendar_events": "calendar"}
 
@@ -1121,7 +1127,8 @@ def stats(cfg: dict, store, waiting: list | None = None, now: float | None = Non
                     "held": sum((r.get("review") or {}).get("outcome") in
                                 ("sent_back", "escalated", "unchecked") for r in week),
                     # the executor its people work with, and the kit it was set up with
-                    "hands": d.get("hands") or "", "kit": kit_status(cfg, d.get("kit"))})
+                    "hands": d.get("hands") or "", "kit": kit_status(cfg, d.get("kit")),
+                    "code": code_state(store, d["members"])})
     return out
 
 
@@ -2557,6 +2564,41 @@ def set_hands(cfg: dict, store, department: str, profile_name_: str) -> dict:
     return {"department": hit["name"], "hands": want}
 
 
+def code_state(store, members) -> str:
+    """'all', 'some' or 'none' of these people can run Python."""
+    have = [CODE_TOOL in ((store.get_subagent(m) or {}).get("tools") or []) for m in members or []]
+    return "all" if have and all(have) else "some" if any(have) else "none"
+
+
+def set_code(cfg: dict, store, department: str, on: bool) -> dict:
+    """Let a department's people run Python, or stop them. Each person's own tool list
+    changes; nothing is granted, so every run still asks (ASK_FROM_SPECIALISTS). The
+    desk's declared permissions are left alone for the same reason: a definition grant
+    would make a run silent once the desk is switched on."""
+    hit = next((d for d in departments(cfg, store)
+                if d["name"].lower() == str(department or "").strip().lower()), None)
+    if not hit:
+        raise KeyError(department)
+    changed = []
+    for m in hit["members"]:
+        defn = store.get_subagent(m)
+        if not defn:
+            continue
+        tools = list(defn.get("tools") or [])
+        if on and CODE_TOOL not in tools:
+            tools.append(CODE_TOOL)
+        elif not on and CODE_TOOL in tools:
+            tools.remove(CODE_TOOL)
+        else:
+            continue
+        store.save_subagent({**{k: v for k, v in defn.items() if k != "profile"}, "tools": tools})
+        changed.append(m)
+    _audit_row(store, "company.code", f"department:{hit['name']}",
+               f"{hit['name']} " + ("can run Python, asked each time" if on else "cannot run code")
+               + (f" ({', '.join(changed)})" if changed else " (no change)"))
+    return {"department": hit["name"], "code": on, "changed": changed}
+
+
 # ---------------------------------------------------------------------------
 # The kit a new department starts with: asked, then proposed, then ticked
 # ---------------------------------------------------------------------------
@@ -2697,7 +2739,7 @@ KITS: dict[str, dict] = {
               "if": {"crm=hubspot": {"mcp": ["hubspot"]}, "crm=salesforce": {"mcp": ["salesforce"]},
                      "crm=pipedrive": {"mcp": ["pipedrive"]}, "crm=none": {"mcp": ["airtable"]},
                      "mail=yes": {"tools": ["mail_search", "mail_read", "calendar_events"]}}},
-    "tech": {"tools": ["git_status", "git_log", "git_diff", "run_tests", "read_file", "search_files"],
+    "tech": {"tools": ["git_status", "git_log", "git_diff", "run_tests", "read_file", "search_files", "run_python"],
              "skills": ["code-review", "incident-summary"],
              "mcp": ["github"],
              "questions": [{"id": "issues", "ask": "Where do you track work?",
