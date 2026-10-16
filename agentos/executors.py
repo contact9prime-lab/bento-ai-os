@@ -482,6 +482,26 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
 _LOCAL_TOOLS_HINT = "Desktop control is available via"
 
 
+# How long Claude Code waits for ONE call over the bridge. Its own default is about a
+# minute (measured on 2.1.301: a 90 s tool failed at 68 s), and a department's task runs
+# for minutes: the lead gave up on Research and said "timed out" while the desk was
+# still working, with nowhere for the answer to go. The per-server `timeout` key lifts
+# it (measured: a 330 s answer came back). 45 minutes covers a desk's 30-minute budget
+# and its approvals. Gemini CLI and Codex have their own keys; neither was installed
+# where this was measured, so they are left at their defaults rather than guessed.
+BRIDGE_CALL_MS = 45 * 60 * 1000
+
+# The preamble's last line when nothing of this OS reaches the run. When the team door
+# opens, `open_team_door` swaps it for DOOR_LINE: the two together told Claude Code it
+# could not use this OS's tools and then listed them, and it believed the first.
+NO_DOOR_LINE = ("- You cannot use AgentOS's own tools (control_desktop, read_file, "
+                "write_file, create_app and the rest). You have only the tools you were "
+                "started with, inside the directories you were given.")
+DOOR_LINE = ("- AgentOS's own tools reach you as mcp__bento__*: your team, its departments, "
+             "missions and the person's windows. Use them for what they are for; your own "
+             "tools are for the work that is yours to do.")
+
+
 def context_for(ui_context: str) -> str:
     """Translate the UI's per-surface context for an executor.
 
@@ -504,9 +524,7 @@ def context_for(ui_context: str) -> str:
         "executor. Know your limits here:\n"
         "- You have no screen, no keyboard and no control of the desktop. AgentOS "
         "owns those. Do not claim to have clicked, opened or focused anything.\n"
-        "- You cannot use AgentOS's own tools (control_desktop, read_file, "
-        "write_file, create_app and the rest). You have only the tools you were "
-        "started with, inside the directories you were given."
+        + NO_DOOR_LINE
     )
     return (preamble + ("\n\n" + body if body else "")).strip()
 
@@ -1789,7 +1807,7 @@ def team_note(subagents: list, prefix: str = "mcp__bento__",
     # The lead MANAGES. Reported as "the work is not really managed by handing off to
     # sub agents when it is done in the chat": told only to hand over "when it is one of
     # those jobs", the lead judged almost nothing a fit and did it all itself.
-    return missions + ("\n\nYOU LEAD A TEAM. The person has specialists on this machine, each built for a job"
+    return ("\n\nYOU LEAD A TEAM. The person has specialists on this machine, each built for a job"
             + (" (these work outside the departments below)" if grouped else "") + ":\n"
             + "\n".join(rows)
             + f"\nWork like the lead of that team, not on your own. When a request is real work "
@@ -1803,7 +1821,7 @@ def team_note(subagents: list, prefix: str = "mcp__bento__",
               "about this conversation, or when nobody fits or the person asks you to do it "
               "yourself."
             + (" Those two tools are this OS's: every call is checked against its "
-               "permissions and recorded." if prefix else ""))
+               "permissions and recorded." if prefix else "")) + missions
 
 
 def team_hint(subagents: list) -> str:
@@ -1875,12 +1893,14 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     env.team_mcp = (f"http://127.0.0.1:{port}/api/mcp/run/{token}", token)
     try:
         from . import company as _company
-        grouped = _company.membership(cfg, store)["of"]
+        grouped = _company.not_on_the_list(cfg, store)
         dept_note = _company.note(cfg, store, desks=False, tool="mcp__bento__department_task")
     except Exception:
-        grouped, dept_note = {}, ""
-    env.context = (env.context or "") + team_note(subs, in_departments=grouped) \
-        + workspace_note() + capability_note() + dept_note
+        grouped, dept_note = set(), ""
+    # who does the work comes first: measured on the reporting machine, the department
+    # rule as the last of ~8,000 characters was never followed
+    env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) + dept_note \
+        + team_note(subs, in_departments=grouped) + workspace_note() + capability_note()
     return token
 
 
@@ -2004,7 +2024,8 @@ def build_command(task: str, env: Envelope) -> list[str]:
         # person's own chat session, and what their Claude Code already had stays.
         url, token = env.team_mcp
         cmd += ["--mcp-config", json.dumps({"mcpServers": {BRIDGE_SERVER: {
-                    "type": "http", "url": url, "headers": {"Authorization": f"Bearer {token}"}}}}),
+                    "type": "http", "url": url, "headers": {"Authorization": f"Bearer {token}"},
+                    "timeout": BRIDGE_CALL_MS}}}),
                 "--allowedTools", f"mcp__{BRIDGE_SERVER}"]
     if env.context:
         # The executor's equivalent of the local agent's extra_system: what the
@@ -2813,7 +2834,8 @@ def build_bridge_command(task: str, system: str, url: str, token: str,
     """
     exe = claude_exe() or "claude"
     mcp = {"mcpServers": {BRIDGE_SERVER: {"type": "http", "url": url,
-                                          "headers": {"Authorization": f"Bearer {token}"}}}}
+                                          "headers": {"Authorization": f"Bearer {token}"},
+                                          "timeout": BRIDGE_CALL_MS}}}
     cmd = [exe, "--print", as_prose(task),
            "--output-format", "stream-json", "--verbose",
            "--tools", "",

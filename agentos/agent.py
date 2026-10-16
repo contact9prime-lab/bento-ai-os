@@ -766,18 +766,19 @@ class Agent:
             # itself. One list, the same one a forwarded Claude Code turn gets.
             try:
                 from . import company as _company
-                grouped = _company.membership(self.cfg, store)["of"]
+                grouped = _company.not_on_the_list(self.cfg, store)
             except Exception:
-                grouped = {}
+                grouped = set()
             try:
-                from .executors import team_note
-                mem_text += team_note(store.list_subagents(), prefix="", in_departments=grouped)
+                # how they are organised first, when the person set up a company: which
+                # department does what is the first decision about any piece of work
+                from . import company as _company
+                mem_text += _company.note(self.cfg, store)
             except Exception:
                 pass
             try:
-                # and how they are organised, when the person set up a company
-                from . import company as _company
-                mem_text += _company.note(self.cfg, store)
+                from .executors import team_note
+                mem_text += team_note(store.list_subagents(), prefix="", in_departments=grouped)
             except Exception:
                 pass
             try:

@@ -1208,14 +1208,30 @@ def parse_department(cfg: dict, store, text: str):
     return best
 
 
+def elsewhere(cfg: dict, mem: dict | None = None, store=None) -> set[str]:
+    """Lower-cased names of the people who work in ANOTHER of the person's companies.
+    They are that company's: not addressed here, and not on the lead's list. Found
+    live: with a trading company open, the lead was offered the parked kids studio's
+    animator and scriptwriter as its team."""
+    mem = mem if mem is not None else membership(cfg, store)
+    return {str(m).lower() for rec in (cfg.get("companies") or {}).values() if isinstance(rec, dict)
+            for d in ((rec.get("office") or {}).get("departments") or []) if isinstance(d, dict)
+            for m in d.get("members") or []} - {m.lower() for m in mem["of"]}
+
+
+def not_on_the_list(cfg: dict, store) -> set[str]:
+    """Who the lead's flat team list leaves out: the open company's people (heard by
+    department, `note`), other companies' people, and the auditor (nobody hands work
+    to it; the control plane does)."""
+    mem = membership(cfg, store)
+    return {m.lower() for m in mem["of"]} | elsewhere(cfg, mem) | {AUDITOR}
+
+
 def addresses(cfg: dict, store) -> dict:
     """Who can be addressed with @ in a chat: the specialists, then the departments of
     the open company with their heads. One list for every composer's suggestions."""
     mem = membership(cfg, store)
-    # people who work in another of the person's companies are that company's
-    away = {str(m).lower() for rec in (cfg.get("companies") or {}).values() if isinstance(rec, dict)
-            for d in ((rec.get("office") or {}).get("departments") or []) if isinstance(d, dict)
-            for m in d.get("members") or []} - {m.lower() for m in mem["of"]}
+    away = elsewhere(cfg, mem)
     agents = [{"name": s["name"], "title": (mem["of"].get(s["name"]) or {}).get("title", ""),
                "dept": (mem["of"].get(s["name"]) or {}).get("dept", "")}
               for s in store.list_subagents()
@@ -1465,7 +1481,11 @@ def review_task(dept: dict, gate: dict, task: str, deliverable: str, status: str
         head = (f"You are {gate['who']}, the lead agent. Every department reports to you in the "
                 f"end. {name}'s finished task has come to you"
                 + (f" after {signed} signed it off" if signed else "")
-                + ". Sign it off only if it is ready to hand to the person.")
+                + ". Sign it off only if it is ready to hand to the person. You have no "
+                  "tools in this step and cannot open files or run anything: judge only what "
+                  "is written below.")
+        # found live: the lead on Claude Code, asked this with no tools, answered with a
+        # Bash call written out as text, and the sign-off read as "unchecked"
     elif gate["department"] == name:
         head = (f"You head {name}. Your team has finished a task and brought it to you before "
                 f"it goes any further. You are accountable for it: sign it off only if you "

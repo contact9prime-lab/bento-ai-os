@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.35 — 2026-10-16
+
+**The Office's chat is your chat, and work actually reaches the department.** Reported as "if I am typing on
+the Office it is not appearing in the chat" and "when I gave the work to Aria it is not giving to any other
+agent". Both were measured on a copy of the reporting machine, with its real Claude Code, before and after.
+- Typing in the Office continues the conversation open in Chat, or starts a normal chat that Chat opens
+  on. A message sent in either place shows in the other while it runs. It used to go into a hidden
+  "✦ Office" thread, filed under Copilots, where Aria was told she was a helper inside the Office app.
+- Aria now reads who does the work first: the company and its departments, then specialists outside
+  them, then the rest. Before, the first thing she read said she could not use Bento's tools, the
+  department rule was last, and the team list named the other company's people. With the same NIFTY
+  question she now hands it to Research.
+- A department's work is no longer cut off after a minute. Claude Code waited about 60 seconds for any
+  one hand-over, so Research's specialists "timed out" while still working. It now waits up to 45
+  minutes; in the test, the head of Research ran 8 minutes and came back.
+- When work reaches you for the final sign-off, you're told you have no tools in that step. The answer
+  had been a tool call written out as text, which counted as no sign-off.
+
 ## 0.6.34 — 2026-10-16
 
 **Work goes to the person whose job it is.** Reported as "even though I made an office, they are not
