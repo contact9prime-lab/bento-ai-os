@@ -17,6 +17,9 @@ agent". Both were measured on a copy of the reporting machine, with its real Cla
   minutes; in the test, the head of Research ran 8 minutes and came back.
 - When work reaches you for the final sign-off, you're told you have no tools in that step. The answer
   had been a tool call written out as text, which counted as no sign-off.
+- A department can be allowed to run code. In the Company panel, tick **Can run code** (or `bento company
+  code Research on`), and its people can run Python, for example to backtest a strategy. You're asked each
+  time, even at full autonomy, and the card lets you remember it. New Tech departments start with it.
 - The auditor's verdict counts when it comes after a short preamble ("Verdict follows." then FAIL). It
   was being recorded as unchecked. A pass still has to come first.
 

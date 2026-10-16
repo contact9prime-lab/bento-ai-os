@@ -21,7 +21,7 @@ from . import toolscope
 # package, so this direction cannot cycle.)
 from .executors import tool_detail
 from .policy import MAIN, Principal
-from .tools import ALWAYS_ASK, APP_BOUND_TOOLS, SPACE_SCOPED_TOOLS, Toolbox
+from .tools import ALWAYS_ASK, APP_BOUND_TOOLS, ASK_FROM_SPECIALISTS, SPACE_SCOPED_TOOLS, Toolbox
 
 TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"   # = fabric.TAINTED_REPLY
 
@@ -982,6 +982,11 @@ class Agent:
             dec.effect = "ask"
             dec.grant_offer = None   # confirmed every time means no "remember" either
             must_person = "confirmed every time"
+        elif name in ASK_FROM_SPECIALISTS and self.principal.kind == "subagent" \
+                and dec.effect == "allow" and dec.rule in ("default", ""):
+            # code from a specialist: a person says yes each time, and may remember it
+            dec.effect = "ask"
+            must_person = "code from a specialist"
         elif name == "terminal_send" and args.get("_fg") and dec.effect == "allow" \
                 and dec.rule in ("default", ""):
             # keys into a running program in the person's terminal: a person says yes

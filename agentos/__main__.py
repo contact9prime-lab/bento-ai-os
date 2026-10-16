@@ -4015,6 +4015,32 @@ def _company_cli(args):
             if not m.get("added"):
                 print(f"  set up {m['name']} in the MCP app ({m['why']})")
         return
+    if a == "code":
+        # bento company code                     who can run Python
+        # bento company code RESEARCH on|off     Research's people can run Python (asked each time)
+        if not rest:
+            for s in co.stats(cfg, store):
+                print(f"  {s['name']:<16} {dict(all='runs code', some='some of it runs code', none='read-only').get(s.get('code'), s.get('code'))}")
+            print("  bento company code DEPARTMENT on|off   (each run asks you)")
+            return
+        on = len(rest) > 1 and rest[1].lower() in ("on", "yes", "true", "1")
+        if len(rest) < 2 or rest[1].lower() not in ("on", "off", "yes", "no", "true", "false", "1", "0"):
+            print("✗ say on or off: bento company code DEPARTMENT on|off")
+            sys.exit(1)
+        if up:
+            d = _api_call(port, "/api/company/code", "PUT", {"department": rest[0], "on": on})
+            if d.get("error"):
+                print(f"✗ {d['error']}")
+                sys.exit(1)
+        else:
+            try:
+                d = co.set_code(cfg, store, rest[0], on)
+            except KeyError as e:
+                print(f"✗ there is no department called {e.args[0]}")
+                sys.exit(1)
+        print(f"✓ {d.get('department') or rest[0]} " + ("can run Python now. You're asked each time it does."
+                                                        if on else "can't run code now."))
+        return
     if a == "hands":
         # bento company hands                    each department's executor
         # bento company hands SALES research     Sales works with the 'research' executor
@@ -7774,7 +7800,7 @@ def main():
                       choices=["show", "list", "templates", "setup", "task", "name", "audit",
                                "review", "chain", "check", "objective", "todo", "start",
                                "companies", "new", "open", "drop", "permissions", "allow", "block",
-                               "ask", "hands", "kit"], metavar="ACTION")
+                               "ask", "hands", "kit", "code"], metavar="ACTION")
     p_co.add_argument("args", nargs="*", help="setup: what the company does · task: DEPARTMENT \"the task\""
                                               " · name: the company's name · audit: on|off"
                                               " · review: lead|heads|off"
@@ -7783,7 +7809,8 @@ def main():
                                               " · new/open/drop: a company's name"
                                               " · permissions: agent|department"
                                               " · allow/block/ask: DEPARTMENT DEPARTMENT"
-                                              " · hands: DEPARTMENT EXECUTOR|own · kit: DEPARTMENT")
+                                              " · hands: DEPARTMENT EXECUTOR|own · kit: DEPARTMENT"
+                                              " · code: DEPARTMENT on|off")
     p_co.add_argument("--objective", default="", help="setup, new: what the company is trying to achieve")
     p_co.add_argument("--about", default="", help="new: what the company does, in one line")
     p_co.add_argument("--departments", default="", help="setup: exactly these, e.g. admin,hr,finance,sales")

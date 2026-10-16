@@ -305,3 +305,39 @@ def test_a_verdict_after_a_preamble_is_read_but_never_as_a_pass():
     assert company.read_verdict("Checked.\n**CONCERNS**\n- thin data")[0] == "concerns"
     assert company.read_verdict("Checked it all.\nPASS\n- fine")[0] == "", "a pass must lead"
     assert company.read_verdict("PASS\n- fine")[0] == "pass"
+
+
+def test_a_department_can_run_code_and_a_person_is_asked_each_time(tmp_path):
+    """The owner's choice after a live run where Research could only plan: "Python,
+    asked each time". The switch changes each person's tools and grants nothing."""
+    c, store, tb = _company(tmp_path)
+    c["autonomy"] = "full"
+    dept = company.departments(c, store)[0]
+    got = company.set_code(c, store, dept["name"], True)
+    assert got["changed"] and all("run_python" in store.get_subagent(m)["tools"] for m in dept["members"])
+    assert company.stats(c, store)[0]["code"] == "all"
+    assert not [g for g in store.list_grants() if "run_python" in (g.get("resource") or "")]
+    asked, ran = [], []
+
+    async def approver(name, args, reason, offer=None):
+        asked.append(name)
+        return False
+
+    async def emit(ev):
+        pass
+
+    async def fake_cmd(command, **k):
+        ran.append(command)
+        return "ok"
+    tb.run_command = fake_cmd
+    from agentos.policy import Principal
+    sub = Agent(c, tb, "", emit, approver, principal=Principal("subagent", dept["members"][0]))
+    asyncio.run(sub.call_tool("run_python", {"code": "print(1)"}, "c1"))
+    assert asked == ["run_python"] and not ran, "full autonomy still asks a person"
+    company.set_code(c, store, dept["name"], False)
+    assert company.code_state(store, dept["members"]) == "none"
+    assert "run_python" in company.ALLOWED_TOOLS and "run_python" in company.KITS["tech"]["tools"]
+    assert "run_command" not in company.ALLOWED_TOOLS
+    src = (ROOT / "agentos/__main__.py").read_text()
+    assert '"/api/company/code"' in src and 'choices=["show"' in src and '"kit", "code"]' in src
+    assert "data-code=" in (JS / "24g-company.js").read_text()

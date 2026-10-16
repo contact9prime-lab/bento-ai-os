@@ -607,6 +607,14 @@ agents, switchable, and executors at department level". Four rules:
 - Faces: Company panel (Executor, Who may ask whom), Settings → Team & Communications (the department
   grid, `paintDeptMatrix`), `bento company permissions|allow|block|ask|hands`.
 
+**A department may run code, and a person says yes to each run** (`company.set_code`/`code_state`,
+`/api/company/code`, `bento company code`, the panel's "Can run code"; `tests/test_department_routing.py`).
+The owner's choice after a live run where Research could only plan a backtest: "Python, asked each time".
+`run_python` is in `ALLOWED_TOOLS` (never `run_command`) and the Tech kit. The switch edits each person's
+own tools and writes NO grant, and leaves the desk's declared permissions alone, because a definition grant
+would make a run silent once the desk is on. `tools.ASK_FROM_SPECIALISTS` turns a specialist's default
+allow into a person's ask at every autonomy level; only an explicit grant (the card's remember) skips it.
+
 **A new department starts with a kit: asked, proposed, ticked** (`company.KITS`, `KIT_SKILLS`,
 `KIT_MCP`, `recommend`, `clean_kit`, `apply_kit`, `kit_status`; `tests/test_company_kit.py`). Asked for
 as "set up the skills, tools and MCP most widely used for that kind of department, asking questions".

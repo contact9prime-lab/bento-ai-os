@@ -184,6 +184,12 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               "install_skill"}
 
 
+# Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
+# somebody wrote an explicit grant (the card's "remember" is one). A department that can
+# run code was the owner's choice on exactly those terms (company.set_code).
+ASK_FROM_SPECIALISTS = {"run_python"}
+
+
 # Tools that change nothing outside this OS's own records, named one by one. risk_of
 # answers "safe" for these and "risky" for anything it has no line for: a new tool asks
 # until somebody decides otherwise. The old default was "safe", and run_python,
