@@ -1127,6 +1127,37 @@ an `mcp__bento__*` tool event, because the gate already emits one. `delegate`/`h
 `toolscope.CORE`, so a narrowed set never names people the lead cannot reach. A scheduled
 turn gets no door: nobody is there to approve a hand-over.
 
+## Finding what a job needs: here first, then the open, and the person says yes
+
+`find_tools` (tools.py) is ONE answer to "what can do this here": tools ready now, skills,
+the specialists whose job it is (with their department), servers installed but not working,
+what memory says, and, only when nothing here fits, servers in the curated catalogue and the
+local registry index. It never calls the network and never installs. Beyond it is the open:
+`discover_skills`/`read_skill`/`install_skill` (`agentos/skillhub.py`) and
+`discover_mcp_servers`/`install_mcp_server`. Asked for as "if I say build a video of a
+certain type it should look into the memory, find the right MCP and ask to connect … and if
+something is not there, look for skills out there in the open". `tests/test_find_capability.py`.
+Five rules:
+- **Connecting is the person's, every time.** `install_mcp_server`, `add_mcp_server` and
+  `install_skill` are in ALWAYS_ASK, with their own actions (`mcp.install`, `skill.install`)
+  in `_DEFINE`, so no specialist, app, flow, peer or linked team can reach them at all. The
+  "ask the user first" in their descriptions was a sentence; at full autonomy it was nothing.
+- **A skill is installed as the bytes that were read.** `read_skill` pins a GitHub source to
+  a commit and keeps the text per user (`skillhub._SEEN`); the approval card's body IS that
+  text with its findings (`approvalcard.body` → `skillhub.card_text`); `install` refuses a
+  source not read first and never replaces a skill by the same name. Only the SKILL.md
+  arrives; a folder's scripts do not, and the findings say so.
+- **A skill's words are somebody else's.** `read_skill` and `discover_skills` are in
+  UNTRUSTED_TOOLS. Findings (`skillhub.FINDINGS`) are reasons to read, never a verdict.
+- **A repository is a skill only if it says it is for an agent** (`AGENT_WORDS`, whole
+  words): GitHub's search matched a hacking course and a whitepaper for "pdf form".
+- **A forwarded lead uses this OS's doors, never its own.** The team door adds
+  `CAPABILITY_DOOR_TOOLS` and `mcpbridge.CONNECTED` (`use_connected_tool`): a CLI reads its tool
+  list once, so a server connected mid-turn is called through that one tool, which hands the
+  gate the REAL `mcp_*` name (the ledger, hands and denies name it) and refuses anything that
+  is not a connected server's tool. `capability_note` tells it not to use its own MCP
+  settings, skills folder or a package install.
+
 ## OpenClaw plugins: the lifecycle is ours, the runtime is not
 
 `agentos/ocplugins.py` installs OpenClaw's plugins through this OS's review — scan,

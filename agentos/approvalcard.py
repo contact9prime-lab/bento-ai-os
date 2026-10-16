@@ -61,6 +61,7 @@ GOALS = {
     "fetch_url": "Open a web page",
     "run_python": "Run Python code",
     "install_mcp_server": "Install a tool server",
+    "install_skill": "Install a skill from the internet",
     "add_mcp_server": "Add a tool server",
     "install_openclaw_plugin": "Install a plugin",
     "enable_openclaw_plugin": "Switch a plugin on",
@@ -142,6 +143,10 @@ def body(name: str, args: dict) -> str:
     args = args if isinstance(args, dict) else {}
     if name in ("run_command", "Bash") and isinstance(args.get("command"), str):
         return args["command"]
+    if name == "install_skill":
+        # what is installed is the text read earlier, so that text is the body
+        from . import skillhub
+        return skillhub.card_text(str(args.get("source") or ""))
     rows = []
     for k, v in args.items():
         if str(k).startswith("_") or k == "description" and name == "Bash":

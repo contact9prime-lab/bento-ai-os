@@ -15624,6 +15624,7 @@ function handle(ev){
       loadPlatform().then(()=>{updateNativeWindows();refreshApp('syssettings');refreshApp('control')});
       break;
     case 'wallpaper': loadWallpaper(); toast('wallpaper updated'); break;
+    case 'skills': refreshApp('skills'); break;      // the agent installed one (install_skill), with your yes
     case 'shell_cmd': shellCmd(ev); break;   // the agent's hands on this desktop (contract: server shell_command())
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated
     case 'update': showUpdate(ev); break;            // a newer version exists; installing still asks
