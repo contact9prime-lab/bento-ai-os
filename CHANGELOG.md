@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.36 — 2026-10-16
+
+No release notes were written for this one; the commits since 0.6.35 are what changed (`bento update` lists them).
+
 ## 0.6.35 — 2026-10-16
 
 **The Office's chat is your chat, and work actually reaches the department.** Reported as "if I am typing on
