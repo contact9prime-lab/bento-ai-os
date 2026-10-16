@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.34 — 2026-10-16
+
+**Work goes to the person whose job it is.** Reported as "even though I made an office, they are not
+delegating the tasks to the most responsible". The lead heard every specialist in one flat list beside the
+departments, so it handed a whole video to the Studio's head, and the scriptwriter and animator never saw it.
+- People in a department are now heard only as that department's people, with their titles and what the
+  department does. The lead is told to pick a department by what it does and to send its work through the
+  desk, never to one person, not even the head.
+- Inside a desk or a mission, the orchestrator gives each piece to the person built for it rather than
+  handing the whole job to one of them.
+- A team of more than twenty specialists names the rest instead of leaving them out.
+
 ## 0.6.33 — 2026-10-13
 
 **Windows that are real processes, shared with your agent.** Asked for as "turn the window manager from

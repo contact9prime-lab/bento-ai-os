@@ -1716,14 +1716,22 @@ def workspace_note(prefix: str = "mcp__bento__") -> str:
             f"{prefix}app_window_open/look/act open and use an installed app in a window.")
 
 
-def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
+def team_note(subagents: list, prefix: str = "mcp__bento__",
+              in_departments=()) -> str:
     """Who the person's specialists are, for a forwarded chat turn that can reach them.
 
     Without it Claude Code answered "build me a tool" by building the tool itself,
     with the toolsmith the person made for exactly that sitting idle: nothing had
     told it the team existed, and the context even said it could not use this OS's
     tools. One line per specialist — its name and the first sentence of its soul,
-    which is how the person described the job."""
+    which is how the person described the job.
+
+    `in_departments` names the specialists who sit in a company department. They are
+    left out of this list: the company note (`company.note`) gives them by department,
+    with what each one does, and their work goes through the department's desk.
+    Listed here as well, they were one flat list beside a second instruction, and the
+    lead handed a whole episode to the Studio's head with `delegate`, where nobody
+    else in the Studio could take part (a specialist cannot hand work on)."""
     missions = (f"\n\nMISSIONS. Anything that should keep happening on its own — watch a folder, "
                 f"every morning, when a message arrives — is a mission: create it with "
                 f"{prefix}create_flow (a trigger such as {{\"kind\":\"os_event\",\"config\":"
@@ -1738,20 +1746,27 @@ def team_note(subagents: list, prefix: str = "mcp__bento__") -> str:
                 f"app=<the app's name>: it is shown with that app, and each run can save into the "
                 f"app's data. An app refreshing itself only while it is open is a setInterval in "
                 f"the app instead. Say which one you set up.")
+    grouped = {str(n).lower() for n in in_departments or ()}
     rows = []
     for sa in subagents or []:
         if sa.get("enabled") is False or not sa.get("name"):
+            continue
+        if sa["name"].lower() in grouped:
             continue
         soul = " ".join(str(sa.get("soul") or "").split())
         first = re.split(r"(?<=[.!?])\s", soul, maxsplit=1)[0][:160]
         rows.append(f"- {sa['name']}: {first}")
     if not rows:
         return missions
+    if len(rows) > 20:
+        # a name the lead never hears is a specialist it can never pick
+        rows = rows[:20] + ["- also: " + ", ".join(r[2:].split(":", 1)[0] for r in rows[20:])]
     # The lead MANAGES. Reported as "the work is not really managed by handing off to
     # sub agents when it is done in the chat": told only to hand over "when it is one of
     # those jobs", the lead judged almost nothing a fit and did it all itself.
-    return missions + ("\n\nYOU LEAD A TEAM. The person has specialists on this machine, each built for a job:\n"
-            + "\n".join(rows[:20])
+    return missions + ("\n\nYOU LEAD A TEAM. The person has specialists on this machine, each built for a job"
+            + (" (these work outside the departments below)" if grouped else "") + ":\n"
+            + "\n".join(rows)
             + f"\nWork like the lead of that team, not on your own. When a request is real work "
               f"(finding things out, writing, checking, building) and one of them fits a part of "
               f"it, hand that part over: call {prefix}delegate with {{\"subagent\": name, "
@@ -1832,12 +1847,14 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     token = mcpbridge.open_session(agent, schemas, label="chat team door", max_calls=40)
     port = int(os.environ.get("AGENTOS_BOUND_PORT") or (cfg or {}).get("port", 8321) or 8321)
     env.team_mcp = (f"http://127.0.0.1:{port}/api/mcp/run/{token}", token)
-    env.context = (env.context or "") + team_note(subs) + workspace_note()
     try:
         from . import company as _company
-        env.context += _company.note(cfg, store, desks=False, tool="mcp__bento__department_task")
+        grouped = _company.membership(cfg, store)["of"]
+        dept_note = _company.note(cfg, store, desks=False, tool="mcp__bento__department_task")
     except Exception:
-        pass
+        grouped, dept_note = {}, ""
+    env.context = (env.context or "") + team_note(subs, in_departments=grouped) \
+        + workspace_note() + dept_note
     return token
 
 

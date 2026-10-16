@@ -756,8 +756,13 @@ class Agent:
             # asked to "build a tool" with a toolsmith on the roster, it built the tool
             # itself. One list, the same one a forwarded Claude Code turn gets.
             try:
+                from . import company as _company
+                grouped = _company.membership(self.cfg, store)["of"]
+            except Exception:
+                grouped = {}
+            try:
                 from .executors import team_note
-                mem_text += team_note(store.list_subagents(), prefix="")
+                mem_text += team_note(store.list_subagents(), prefix="", in_departments=grouped)
             except Exception:
                 pass
             try:
