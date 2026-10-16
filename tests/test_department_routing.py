@@ -341,3 +341,26 @@ def test_a_department_can_run_code_and_a_person_is_asked_each_time(tmp_path):
     src = (ROOT / "agentos/__main__.py").read_text()
     assert '"/api/company/code"' in src and 'choices=["show"' in src and '"kit", "code"]' in src
     assert "data-code=" in (JS / "24g-company.js").read_text()
+
+
+def test_python_runs_inside_the_jail(tmp_path):
+    """Found live: every run_python failed with "No such file or directory", because the
+    server's venv python is under /home and bwrap blanks /home."""
+    import shutil
+    import pytest
+    if not shutil.which("bwrap") or not tools.sandbox_mechanism():
+        pytest.skip("no bwrap here")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    c = {"workspace": str(ws), "sandbox": {"enabled": True}, "autonomy": "full", "providers": {}}
+    store = Store(tmp_path / "t.db")
+    tb = Toolbox(c, store)
+    out = asyncio.run(tb.run_python("print(6 * 7)"))
+    assert "42" in out, out
+    assert not tools.jail_python(sys.executable).startswith("/home/")
+
+
+def test_the_jail_python_is_never_a_hidden_one(tmp_path):
+    fake = tmp_path / "venv-python"
+    fake.write_text("")
+    assert tools.jail_python(str(fake)) != str(fake) or not str(fake).startswith("/home/")

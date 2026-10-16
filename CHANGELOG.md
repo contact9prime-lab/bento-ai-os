@@ -20,6 +20,9 @@ agent". Both were measured on a copy of the reporting machine, with its real Cla
 - A department can be allowed to run code. In the Company panel, tick **Can run code** (or `bento company
   code Research on`), and its people can run Python, for example to backtest a strategy. You're asked each
   time, even at full autonomy, and the card lets you remember it. New Tech departments start with it.
+- Running Python works inside the sandbox. It used Bento's own Python, which lives in a folder the
+  sandbox hides, so every run failed with "No such file or directory". It now uses an interpreter the
+  sandbox can see.
 - The auditor's verdict counts when it comes after a short preamble ("Verdict follows." then FAIL). It
   was being recorded as unchecked. A pass still has to come first.
 
