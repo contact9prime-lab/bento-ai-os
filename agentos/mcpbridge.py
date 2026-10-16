@@ -75,6 +75,49 @@ class Session:
     listed: bool = False
 
 
+#: A tool on a server connected to this OS, called by name through the same gate. The
+#: chat team door offers it (executors.open_team_door): a CLI reads its tool list once,
+#: at start, so a server the person agreed to connect during the turn would otherwise
+#: be unreachable until the next message. Only `mcp_*` and `ocp_*` tools, the third
+#: parties' tools behind the gate; never a way into the built-in tools the door left out.
+CONNECTED = "use_connected_tool"
+CONNECTED_SCHEMA = {
+    "name": CONNECTED,
+    "description": ("Call a tool of an MCP server connected to this OS (names start with "
+                    "mcp_, as find_tools lists them). The call is checked against this "
+                    "machine's permissions and recorded, like any other."),
+    "parameters": {"type": "object", "properties": {
+        "tool": {"type": "string", "description": "the tool's full name, e.g. mcp_github_create_issue"},
+        "arguments": {"type": "object", "description": "the tool's own arguments"}},
+        "required": ["tool"]}}
+
+
+def _connected(agent, args: dict) -> tuple[str, dict, str]:
+    """(tool, its arguments, refusal) for a use_connected_tool call."""
+    inner = str(args.get("tool") or "").strip()
+    inner_args = args.get("arguments")
+    if isinstance(inner_args, str):
+        try:
+            inner_args = json.loads(inner_args or "{}")
+        except json.JSONDecodeError:
+            inner_args = {}
+    if not isinstance(inner_args, dict):
+        inner_args = {}
+    if not inner.startswith(("mcp_", "ocp_")):
+        return inner, inner_args, (f"[denied] '{inner}' is not a connected server's tool; "
+                                   f"this calls only mcp_* tools (find_tools lists them)")
+    try:
+        have = {t["name"] for t in agent.toolbox.schemas()}
+    except Exception:
+        have = set()
+    if inner not in have:
+        near = sorted(n for n in have if n.startswith(inner.rsplit("_", 1)[0]))[:12]
+        return inner, inner_args, (f"[denied] no connected tool called '{inner}'"
+                                   + (f"; that server has: {', '.join(near)}" if near else
+                                      "; find_tools shows what is connected"))
+    return inner, inner_args, ""
+
+
 def open_session(agent, schemas: list, run_id: str = "", label: str = "",
                  max_calls: int = 25) -> str:
     """Mint a token for one run and remember its Agent. Returns the token."""
@@ -169,9 +212,16 @@ async def handle(token: str, msg: dict) -> tuple[int, dict | None]:
     if getattr(s.agent, "aborted", False):
         return 200, _text(rid, "[denied] this run has been stopped", is_error=True)
     s.calls += 1
-    s.seen.append(name)
     call_id = f"mcp{s.calls}"
     with usersmod.as_user(s.uid):
+        if name == CONNECTED:
+            # the gate decides the REAL tool (mcp.use on mcp:<server>/<tool>), so the
+            # ledger row, the hands and any deny name it, never this wrapper
+            name, args, refusal = _connected(s.agent, args)
+            if refusal:
+                s.seen.append(CONNECTED)
+                return 200, _text(rid, refusal, is_error=True)
+        s.seen.append(name)
         output, ok, _image, _untrusted = await s.agent.call_tool(name, args, call_id)
     return 200, _text(rid, str(output or ""), is_error=not ok)
 

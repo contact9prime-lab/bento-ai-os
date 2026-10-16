@@ -1613,9 +1613,17 @@ def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") ->
     if not depts:
         return ""
     pr = profile(cfg)
-    lines = [f"- {d['name']}: head {d.get('lead') or d['members'][0]}"
-             + (f", with {', '.join(m for m in d['members'] if m != d.get('lead'))}"
+
+    def who(d: dict, m: str) -> str:
+        t = (d.get("titles") or {}).get(m) or ""
+        return f"{m} ({t})" if t else m
+
+    # What a department DOES and what each person is for: told only the names, the
+    # lead picked by the department's name ("Studio") and handed whole jobs to heads.
+    lines = [f"- {d['name']}: head {who(d, d.get('lead') or d['members'][0])}"
+             + (f", with {', '.join(who(d, m) for m in d['members'] if m != d.get('lead'))}"
                 if len(d["members"]) > 1 else "")
+             + (f". Does: {' '.join(str(d['about']).split())[:200]}" if d.get("about") else "")
              + (f". Desk: {d['desk']}" if d.get("desk") and desks else "")
              for d in depts]
     others = [c["name"] for c in companies(cfg) if not c["active"]]
@@ -1628,7 +1636,10 @@ def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") ->
             + (f"\nWhen a request is real work and a department fits it, hand it to that "
                f"department with {tool} {{\"department\": name, \"task\": a self-contained "
                f"brief}}: its head leads it, its people do it, and it comes back signed off. "
-               f"Do not do a department's work yourself. Work that spans departments goes to "
+               f"Pick the department by what it does, not by its name. Do not do a "
+               f"department's work yourself, and do not hand it to one of its people with "
+               f"delegate, not even the head: alone, the head does the whole job without the "
+               f"people whose job each part is. Work that spans departments goes to "
                f"each one; then put the answers together and say which department did what. "
                f"Answer yourself only small talk, questions about this conversation, or when "
                f"no department fits or the person asks you to.")

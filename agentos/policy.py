@@ -81,7 +81,14 @@ _NO_AGENT_WRITE = [("agent.write", "*")]
 # then `plugin.enable` is `risky` and the install lands DISABLED, because enabling
 # is what grants. See agentos/ocplugins.py.
 _NO_PLUGIN_WRITE = [("plugin.install", "*"), ("plugin.enable", "*")]
-_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE
+# Connecting an MCP server is the same size of decision: it downloads and runs a third
+# party's program on this machine, and every tool it brings is offered from then on.
+# Only the user's own agent may ask for it, and the person confirms every one
+# (tools.ALWAYS_ASK), full autonomy included.
+_NO_MCP_INSTALL = [("mcp.install", "*")]
+# And a skill from the open: a stranger's procedure the agent will follow from then on.
+_NO_SKILL_INSTALL = [("skill.install", "*")]
+_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE + _NO_MCP_INSTALL + _NO_SKILL_INSTALL
 # Convening a huddle is the user's agent's alone. A specialist that could start one
 # would be an agent invoking agents (the tree stays two deep); an app or a peer that
 # could would be spending on several models with nobody at the keyboard; and a flow's
@@ -187,6 +194,11 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         target = mcp.resolve(name) if mcp else None
         res = f"mcp:{target[0]}/{target[1]}" if target else f"mcp:{name[4:]}"
         return "mcp.use", res
+    # Adding, installing or removing an MCP server: its own action, so "may use GitHub's
+    # tools" never quietly becomes "may put new programs on this machine"
+    if name in ("add_mcp_server", "install_mcp_server"):
+        who = str(args.get("name") or args.get("registry_name") or "").strip()
+        return "mcp.install", f"mcp:{who or '*'}"
     if name in _FS_READ:
         return "fs.read", f"fs:{args.get('path', '') or '*'}"
     if name == "write_file":
@@ -261,6 +273,8 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return action, res
     if name == "use_skill":
         return "skill.use", f"skill:{args.get('name', '') or '*'}"
+    if name == "install_skill":
+        return "skill.install", f"skill:{str(args.get('source') or '').strip() or '*'}"
     # Writing a flow is its own capability, not another tool.use string: a flow definition
     # IS a set of standing permissions, so "may define a flow" and "may fetch a URL" are not
     # the same kind of question and must be grantable apart.

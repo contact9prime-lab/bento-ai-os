@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.34 — 2026-10-16
+
+**Work goes to the person whose job it is.** Reported as "even though I made an office, they are not
+delegating the tasks to the most responsible". The lead heard every specialist in one flat list beside the
+departments, so it handed a whole video to the Studio's head, and the scriptwriter and animator never saw it.
+- People in a department are now heard only as that department's people, with their titles and what the
+  department does. The lead is told to pick a department by what it does and to send its work through the
+  desk, never to one person, not even the head.
+- Inside a desk or a mission, the orchestrator gives each piece to the person built for it rather than
+  handing the whole job to one of them.
+- A team of more than twenty specialists names the rest instead of leaving them out.
+
+**Finding what a job needs, and asking before connecting it.** Asked for as "if I say build a video of a
+certain type, it should look in the memory, find the right MCP and ask to connect, and look for skills out
+in the open when something is not there".
+- Your agent looks in one place first: tools that are ready, skills, the people whose job it is, tool
+  servers installed but switched off, and what it remembers. When nothing here fits, it searches the open:
+  skills on GitHub (Anthropic's public collection first) and MCP servers.
+- Installing a skill or connecting a server asks you every time, full autonomy included. The card for a
+  skill shows its whole text and anything worth a second look, and what gets installed is exactly that
+  text. Only your own agent can ask; specialists, apps and missions can't.
+- An agent on Claude Code now does all of this through Bento, and can use a server you just connected in
+  the same turn, so every call is checked and recorded.
+
 ## 0.6.33 — 2026-10-13
 
 **Windows that are real processes, shared with your agent.** Asked for as "turn the window manager from

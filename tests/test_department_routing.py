@@ -214,3 +214,42 @@ def test_a_parked_companys_people_are_not_suggested(tmp_path):
     c["companies"] = {"x1": {"company": {"name": "Other"}, "office": {"departments": [
         {"name": "Ops", "members": ["zed"]}]}}}
     assert "zed" not in {a["name"] for a in company.addresses(c, store)["agents"]}
+
+
+def test_the_lead_picks_departments_not_heads(tmp_path):
+    """Reported as "they are not delegating the tasks to the most responsible": the
+    lead heard every specialist in one flat `delegate` list beside the departments,
+    and handed a whole episode to the Studio's head, where the scriptwriter and the
+    animator never took part. A department's people are heard only as its people now,
+    with their titles and what the department does."""
+    c, store, _ = _company(tmp_path)
+    store.save_subagent({"name": "loner", "soul": "You do odd jobs."})
+    grouped = company.membership(c, store)["of"]
+    assert grouped
+    team = executors.team_note(store.list_subagents(), in_departments=grouped)
+    assert "- loner:" in team and "outside the departments" in team
+    assert not any(f"- {m}:" in team for m in grouped)
+    # with nobody outside the departments there is no flat list to pick a head from
+    solo = executors.team_note([s for s in store.list_subagents() if s["name"] in grouped],
+                               in_departments=grouped)
+    assert "YOU LEAD A TEAM" not in solo
+    n = company.note(c, store)
+    d = company.departments(c, store)[0]
+    title = (d.get("titles") or {}).get(d["lead"])
+    assert title and f"{d['lead']} ({title})" in n
+    assert "not even the head" in n and "by what it does" in n
+    for src in ("agentos/agent.py", "agentos/executors.py"):
+        assert "in_departments=grouped" in (ROOT / src).read_text(), src
+
+
+def test_a_long_team_names_everyone(tmp_path):
+    subs = [{"name": f"a{i}", "soul": "x."} for i in range(23)]
+    team = executors.team_note(subs)
+    assert "a19:" in team and "also: a20, a21, a22" in team
+
+
+def test_the_desk_master_splits_work_by_job(tmp_path):
+    c, store, tb = _company(tmp_path)
+    flow = company.desk_for(c, store, "Sales")
+    p = tb.fabric._master_persona(flow)
+    assert "whose job" in p and "rather than handing the whole thing to one" in p
