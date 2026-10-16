@@ -297,3 +297,11 @@ def test_the_lead_signs_off_without_tools():
     gate = {"lead": True, "who": "Aria", "department": ""}
     text = company.review_task({"name": "Research"}, gate, "t", "d", "ok", "", [], [], [], [], True)
     assert "no tools in this step" in text
+
+
+def test_a_verdict_after_a_preamble_is_read_but_never_as_a_pass():
+    v, f = company.read_verdict("I've checked the board. Verdict follows.\n\nFAIL\n- Nothing was delivered.")
+    assert v == "fail" and f == ["Nothing was delivered."]
+    assert company.read_verdict("Checked.\n**CONCERNS**\n- thin data")[0] == "concerns"
+    assert company.read_verdict("Checked it all.\nPASS\n- fine")[0] == "", "a pass must lead"
+    assert company.read_verdict("PASS\n- fine")[0] == "pass"

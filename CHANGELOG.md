@@ -17,6 +17,8 @@ agent". Both were measured on a copy of the reporting machine, with its real Cla
   minutes; in the test, the head of Research ran 8 minutes and came back.
 - When work reaches you for the final sign-off, you're told you have no tools in that step. The answer
   had been a tool call written out as text, which counted as no sign-off.
+- The auditor's verdict counts when it comes after a short preamble ("Verdict follows." then FAIL). It
+  was being recorded as unchecked. A pass still has to come first.
 
 ## 0.6.34 — 2026-10-16
 

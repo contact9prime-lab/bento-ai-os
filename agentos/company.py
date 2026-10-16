@@ -1369,6 +1369,16 @@ def read_verdict(text: str) -> tuple[str, list[str]]:
         return "", []
     m = _VERDICT.match(lines[0])
     if not m:
+        # Found live: the auditor on Claude Code wrote "I've checked the board.
+        # Verdict follows." and FAIL on the next line, which read as unchecked. A FAIL
+        # or CONCERNS alone on one of the first lines is taken; a PASS never is, so a
+        # preamble can only ever make the record stricter, not turn into a pass.
+        for i, ln in enumerate(lines[1:3], start=1):
+            w = re.fullmatch(r"[*_#\s]*(fail|concerns)[*_.:!\s]*", ln, re.I)
+            if w:
+                verdict = w.group(1).lower()
+                found = [re.sub(r"^(?:[-*•]|\d+[.)])\s*", "", f)[:300] for f in lines[i + 1:]]
+                return verdict, [f for f in found if f][:6]
         return "", [" ".join(" ".join(lines).split())[:300]]
     word = m.group(1).lower()
     verdict = "pass" if word.startswith("pass") else "fail" if word.startswith("fail") else "concerns"
