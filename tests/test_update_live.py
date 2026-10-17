@@ -85,3 +85,31 @@ def test_the_server_names_its_home_on_every_answer():
     assert 'resp.headers.setdefault("X-Bento-Home", _HOME_ID)' in sh
     assert cfgmod.home_id(Path("/a")) != cfgmod.home_id(Path("/b"))
     assert len(cfgmod.home_id()) == 16 and os.sep not in cfgmod.home_id()
+
+
+def test_an_update_reaches_the_copy_the_server_runs():
+    """Reported as "my Bento has been updated but the UI doesn't have it": `bento` on the
+    PATH pulled the installed clone while the service ran a development tree (a systemd
+    drop-in), and restarted it into the old code. The command now asks the process that
+    holds the port where its code is, and updates that checkout too, before the restart,
+    even when its own copy was already current."""
+    src = (ROOT / "agentos/__main__.py").read_text()
+    up = src[src.index('    if result.get("unchanged"):\n        print("✓ already at the newest commit'):][:7000]
+    assert "desktop.served_root()" in up and "fall through" in up
+    assert '"update", "--apply"' in up and '"--no-restart"]' in up
+    assert up.index("other = desktop.served_root()") < up.index("desktop.service_restart()")
+    assert "if not moved:\n        return 0" in up, "no restart when nothing changed anywhere"
+    d = (ROOT / "agentos/desktop.py").read_text()
+    sr = d[d.index("def served_root("):][:1600]
+    sr = d[d.index("def served_root("):][:2600]
+    assert "/proc/{pid}/cwd" in sr and "return None if cand == mine else cand" in sr
+    # only a server serving THIS home: the suite once updated the live machine's checkout
+    assert "theirs != _c.home_id()" in sr and "if not theirs" in sr
+
+
+def test_the_page_asks_to_refresh_after_a_restart_into_new_code():
+    js = (ROOT / "agentos/ui/src/js/30-init.js").read_text()
+    chk = js[js.index("async function updateWaitingCheck(){"):][:900]
+    assert "if(!PAGE_BUILD)PAGE_BUILD=d.build" in chk and "location.reload()" in chk
+    ws = (ROOT / "agentos/ui/src/js/09-websocket.js").read_text()
+    assert "setTimeout(updateWaitingCheck,1500)" in ws[ws.index("ws.onopen="):][:400]

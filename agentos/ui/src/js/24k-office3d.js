@@ -282,6 +282,16 @@ function of3Size(){
    of the room cards bunched in one corner and the rooms, half as big again, elsewhere. */
 function of3Where(){
   if(!OF3.cv)return;
+  // The area the office was laid out for, against the one it has now. Office HQ and the
+  // office band share one element, so switching between them, or a layout measured while
+  // the area was hidden, changes its size with no window resize to say so: the picture
+  // was drawn three times too big with the cards packed in a corner. Lay it out again.
+  const sc=OFFICE.cv&&OFFICE.cv.parentElement;
+  const want=sc?Math.max(280,sc.clientWidth)+'x'+Math.max(200,sc.clientHeight):'';
+  if(sc&&sc.clientWidth&&!OF3.relaying&&want!==OF3.tried&&(Math.abs(Math.max(280,sc.clientWidth)-OF3.cw)>8||Math.abs(Math.max(200,sc.clientHeight)-OF3.ch)>8)){
+    OF3.relaying=true;OF3.tried=want;   // once per size: a size it cannot take is not a loop
+    setTimeout(()=>{OF3.relaying=false;try{officeLayout()}catch(e){}},120);
+  }
   const a=OF3.cv.getBoundingClientRect(),b=OF3.ui?OF3.ui.getBoundingClientRect():a;
   OF3.off={x:a.left-b.left,y:a.top-b.top,sx:a.width/Math.max(1,OF3.cw||a.width),sy:a.height/Math.max(1,OF3.ch||a.height)};
 }
