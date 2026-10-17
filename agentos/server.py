@@ -4369,6 +4369,7 @@ async def _stage_loop() -> None:
                     from . import standby as _sb
                     if not _sb.may_act():
                         continue
+                    _sweep_temp_agents(state["store"])
                     for bd in stagemod.due_boards(state["store"]):
                         stagemod.claim(state["store"], bd["id"])
                         asyncio.create_task(_stage_refresh(bd["id"], uid))
@@ -13748,6 +13749,40 @@ async def api_save_subagent(body: dict):
     sid = state["store"].save_subagent(body)
     await state["broadcast"]({"type": "fabric_defs"})
     return {"id": sid}
+
+
+@app.post("/api/agents/{name}/keep")
+async def api_agent_keep(name: str, body: dict | None = None):
+    """A temporary agent kept (Keep) or removed (Remove) by the person."""
+    store = state["store"]
+    defn = store.get_subagent(name)
+    if not defn:
+        return JSONResponse({"error": "no such agent"}, status_code=404)
+    store.db.execute("DELETE FROM temp_agents WHERE name=?", (name,))
+    store.db.commit()
+    if (body or {}).get("keep") is False:
+        store.delete_subagent(defn["id"])
+        await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+        return {"ok": True, "removed": name}
+    store.log("team", f"kept the agent {name}")
+    return {"ok": True, "kept": name}
+
+
+def _sweep_temp_agents(store, older_than: float = 86400) -> list[str]:
+    """Temporary agents nobody kept, a day after they were made."""
+    rows = store.db.execute("SELECT name FROM temp_agents WHERE created_at < ?",
+                            (time.time() - older_than,)).fetchall()
+    gone = []
+    for (name,) in rows:
+        d = store.get_subagent(name)
+        if d:
+            store.delete_subagent(d["id"])
+            gone.append(name)
+        store.db.execute("DELETE FROM temp_agents WHERE name=?", (name,))
+    store.db.commit()
+    if gone:
+        store.log("team", f"removed temporary agents nobody kept: {', '.join(gone)}")
+    return gone
 
 
 @app.delete("/api/subagents/{sid}")

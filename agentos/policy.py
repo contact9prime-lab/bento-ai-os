@@ -89,6 +89,9 @@ _NO_MCP_INSTALL = [("mcp.install", "*")]
 # And a skill from the open: a stranger's procedure the agent will follow from then on.
 _NO_SKILL_INSTALL = [("skill.install", "*")]
 _DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE + _NO_MCP_INSTALL + _NO_SKILL_INSTALL
+# Asking the person for an ability is the team's: the lead, a specialist, a mission's master.
+# Never an app's, a peer's, a linked team's or a pool's: none of them is on this team.
+_NO_CAPABILITY = [("capability.grant", "*")]
 # Convening a huddle is the user's agent's alone. A specialist that could start one
 # would be an agent invoking agents (the tree stays two deep); an app or a peer that
 # could would be spending on several models with nobody at the keyboard; and a flow's
@@ -99,9 +102,9 @@ _NO_HUDDLE = [("agent.huddle", "*")]
 # agent would be starting work under that agent's name with nobody's consent.
 _NO_MESSAGE = [("agent.message", "*")]
 BUILTIN_DENY = {
-    "app": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
+    "app": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
     "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
-    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
+    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
     # A flow's master orchestrator is the one principal in the OS that exists to invoke
     # other agents, so the blanket agent.invoke deny above would defeat its purpose. It
     # is still barred from rewriting the OS, and delegation is not free: `_default` gives
@@ -115,17 +118,17 @@ BUILTIN_DENY = {
     # when its key is minted, revoked with it — and `_default` denies a peer
     # everything ungranted, so these rows are belt on top of braces: even a
     # hand-written grant must never let a peer near the OS or another agent.
-    "peer": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
+    "peer": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
     # A linked team's agent (another machine over mTLS, or another account here). Its
     # whole legitimate reach is asking one of YOUR agents a question — agent.message,
     # granted cell by cell — and `_default` refuses everything else before any model
     # default. These rows are belt on top of braces, as for a peer.
-    "team": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
+    "team": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_CAPABILITY,
     # A machine of this machine's community (pool.py): on a leader, a member that thinks
     # with the leader's brain (model.use, granted at admission); on a member, the
     # community handing it work (pool.work, granted at joining). `_default` refuses a
     # pool principal everything else; these rows are the belt on top, as for a peer.
-    "pool": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE,
+    "pool": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -275,6 +278,10 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "skill.use", f"skill:{args.get('name', '') or '*'}"
     if name == "install_skill":
         return "skill.install", f"skill:{str(args.get('source') or '').strip() or '*'}"
+    # An ability for somebody: its own action, so apps, peers and linked teams are refused
+    # it outright (_NO_CAPABILITY) and a person decides every one (ALWAYS_ASK).
+    if name == "request_capability":
+        return "capability.grant", f"ability:{args.get('ability') or '*'}:{args.get('who') or 'self'}"
     # Writing a flow is its own capability, not another tool.use string: a flow definition
     # IS a set of standing permissions, so "may define a flow" and "may fetch a URL" are not
     # the same kind of question and must be grantable apart.
