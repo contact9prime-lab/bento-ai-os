@@ -1660,8 +1660,9 @@ def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") ->
     lines = [f"- {d['name']}: head {who(d, d.get('lead') or d['members'][0])}"
              + (f", with {', '.join(who(d, m) for m in d['members'] if m != d.get('lead'))}"
                 if len(d["members"]) > 1 else "")
-             + (f". Does: {' '.join(str(d['about']).split())[:200]}" if d.get("about") else "")
+             + (f". Does: {' '.join(str(d['about']).split())[:200].rstrip('.')}" if d.get("about") else "")
              + (f". Desk: {d['desk']}" if d.get("desk") and desks else "")
+             + (f". {abilities(store, d['members'])}" if abilities(store, d["members"]) else "")
              for d in depts]
     others = [c["name"] for c in companies(cfg) if not c["active"]]
     return ("\n\nYOUR COMPANY" + (f" ({pr['name']})" if pr["name"] else "")
@@ -1673,13 +1674,24 @@ def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") ->
             + (f"\nWhen a request is real work and a department fits it, hand it to that "
                f"department with {tool} {{\"department\": name, \"task\": a self-contained "
                f"brief}}: its head leads it, its people do it, and it comes back signed off. "
-               f"Pick the department by what it does, not by its name. Do not do a "
-               f"department's work yourself, and do not hand it to one of its people with "
-               f"delegate, not even the head: alone, the head does the whole job without the "
-               f"people whose job each part is. Work that spans departments goes to "
-               f"each one; then put the answers together and say which department did what. "
-               f"Answer yourself only small talk, questions about this conversation, or when "
-               f"no department fits or the person asks you to.")
+               f"Pick the department by what it does, not by its name. Hand it to the "
+               f"department, not to one of its people with delegate, not even the head: alone, "
+               f"the head does the whole job without the people whose job each part is. Work "
+               f"that spans departments goes to each one; then put the answers together and say "
+               f"which department did what. Answer yourself only small talk, questions about "
+               f"this conversation, or when no department fits or the person asks you to."
+               # Reported: Research came back "no specialist had a shell or Python, so no
+               # backtest was run", and the lead passed the memo on. A gap is a job too.
+               f"\nWHEN A DEPARTMENT CANNOT DO A STEP (it lacks a tool, such as running code), "
+               f"never stop at reporting that. In this order: ask the person for that ability "
+               f"with request_capability (for example {{\"ability\": \"run_code\", \"who\": "
+               f"\"Research\", \"why\": \"run the backtest\"}}) and, after the yes, give the "
+               f"department the step again; or hand that step to a specialist who has the tool; "
+               f"or build one with create_subagent (a name, its job, exactly the tools it needs, "
+               f"temporary: true for a one-off job; the person approves it the first time it "
+               f"works and is asked whether to keep it); or do that step yourself with "
+               f"your own tools in your own workspace, and give the department the result. Then "
+               f"finish the job.")
             + (" When a department's desk finishes a task, an independent auditor checks it "
                "and the verdict comes back with the result; you do not need to ask for that "
                "check, and you cannot skip it." if audit_on(cfg) and desks else "")
@@ -1692,6 +1704,48 @@ def note(cfg: dict, store, desks: bool = True, tool: str = "department_task") ->
             + (f"\nThe person also keeps other companies ({', '.join(others)}), each with its "
                f"own office and people; they switch between them in the Office."
                if others else ""))
+
+
+# What a person can do that matters for whether a step is possible: said beside each
+# department, so the lead knows before handing a backtest to people who cannot run code.
+_ABILITY_TOOLS = (("run_python", "run code"), ("run_command", "use a shell"),
+                  ("write_file", "write files"), ("fetch_url", "read the web"))
+
+
+def abilities(store, members: list) -> str:
+    have = set()
+    for m in members or []:
+        try:
+            have |= set((store.get_subagent(m) or {}).get("tools") or [])
+        except Exception:
+            pass
+    can = [w for t, w in _ABILITY_TOOLS if t in have]
+    cannot = [w for t, w in _ABILITY_TOOLS[:2] if t not in have]
+    if not can and not cannot:
+        return ""
+    return ("Can " + ", ".join(can) if can else "") + ("; " if can and cannot else "") \
+        + ("cannot " + " or ".join(cannot) if cannot else "")
+
+
+def profile_note(cfg: dict, store) -> str:
+    """Who the company is, with no instructions about tools: for a turn that has no door to
+    the departments (a scheduled run on an agent CLI), which should still work AS this
+    company. Reported as "is the persona of the company attached to the schedules?": on
+    Claude Code it was not."""
+    pr = profile(cfg)
+    if not pr.get("name"):
+        return ""
+    depts = [d for d in departments(cfg, store) if d["members"]]
+    out = f"\n\nYOUR COMPANY: {pr['name']}"
+    if pr.get("about"):
+        out += f". {' '.join(str(pr['about']).split())[:300].rstrip('.')}"
+    if pr.get("objective"):
+        out += f". Its objective, in the person's words: {' '.join(str(pr['objective']).split())[:400]}"
+    if depts:
+        out += ". Its departments: " + "; ".join(
+            d["name"] + (f" ({' '.join(str(d['about']).split())[:120].rstrip('.')})" if d.get("about") else "")
+            for d in depts)
+    return out + "."
 
 
 def text(cfg: dict, store, waiting: list | None = None, st: list | None = None) -> str:

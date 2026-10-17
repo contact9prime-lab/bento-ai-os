@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.42 — 2026-10-17
+## 0.6.45 — 2026-10-17
 
 **Telegram gets the Stage, you decide who else may talk to it, and phone chats are easy to find.** Reported
 as "on Telegram I am not getting the stage, I am not getting an option to authorize other people, and the
@@ -11,6 +11,30 @@ telegram chats are not visible in the Chats".
   an **Allow** on the desktop; they hear back when you let them in. Settings → Channels → Telegram has a
   **People** button for everyone who wrote.
 - Chats has an **On your phone** section, first, for your Telegram and WhatsApp threads.
+
+## 0.6.43 — 2026-10-17
+
+No release notes were written for this one; the commits since 0.6.42 are what changed (`bento update` lists them).
+
+## 0.6.42 — 2026-10-17
+
+**What you type while Claude Code works reaches it at its next step.** Reported as "when I queue a message,
+it should be taken into the run to see if it belongs to what it is doing". A chat turn on Claude Code now
+keeps its input open: a message sent while it works goes to it straight away, it is folded into the same
+answer, and the chat shows "took in: …". After the answer, a new message starts its own turn as before. A
+message with pictures still waits for its own turn.
+**When nobody can do a step, the team finds a way, and you say yes.** Reported with a Research memo that
+stopped at "no specialist had a shell or Python, so no backtest was run", then "Aria has a lot of other
+agents but isn't using them", "if it finds no one, it should build that", all within the permission check.
+- Any specialist, or Aria, can ask you for an ability it lacks (today: running Python). You answer on a card,
+  every time; a yes switches the department's "Can run code" on, and each run still asks.
+- Aria is told what each department can and cannot do, and what to do about a gap: ask you, hand the step to
+  someone who can, build a specialist for it, or do it herself, then finish the job.
+- Aria on Claude Code can build specialists. One built for a single job is offered to you with Keep / Remove,
+  and goes after a day if you don't keep it. Any new agent still asks you the first time it is given work.
+
+**Aria knows who she is on Claude Code, in schedules too.** A forwarded turn never heard her name, her soul
+or, in a schedule, the company it works for. It does now.
 
 ## 0.6.41 — 2026-10-17
 

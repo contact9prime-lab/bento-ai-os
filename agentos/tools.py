@@ -171,6 +171,11 @@ BUILTIN_THEMES = ["agentos", "ubuntu", "ubuntu-light", "dracula", "nord",
 # `enable_openclaw_plugin` joins it for the same reason and one more: the plugin
 # runs inside OpenClaw's own process, so this confirmation is the LAST point at
 # which this OS can refuse anything about it.
+# What request_capability can ask for: one closed set, each an ability and its one tool.
+ABILITIES = {"run_code": ("run_python", "run Python code, asked each time")}
+ABILITY_WORDS = {"run_code": "run_code", "code": "run_code", "python": "run_code",
+                 "run_python": "run_code", "run_code_(python)": "run_code"}
+
 ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               # a message in somebody's inbox cannot be unsent; full autonomy is
               # trust in the user's instructions, and no recipe grants this
@@ -181,7 +186,10 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               "add_mcp_server", "install_mcp_server",
               # a skill from the open is a stranger's instructions the agent will follow
               # from then on; the card shows its text (skillhub.card_text)
-              "install_skill"}
+              "install_skill",
+              # a department or an agent asking for an ability it lacks (running code):
+              # the person's yes, every time, whoever asks (agentos/tools.py ABILITIES)
+              "request_capability"}
 
 
 # Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
@@ -1069,6 +1077,40 @@ class Toolbox(usersmod.Scoped):
         if dropped:
             out += f" (not drawn: {', '.join(dropped)})"
         return out
+
+    async def request_capability(self, ability: str, who: str = "", why: str = "",
+                                 _from: str = "") -> str:
+        """Ask the person to give a department or an agent an ability it lacks. Reported
+        as a Research memo that said "no specialist had a shell or Python, so no backtest
+        was run" and stopped: the ability existed (the department's "Can run code"), and
+        nobody asked for it. ALWAYS_ASK, so the yes is a person's on a card; it writes no
+        grant, so every use still asks (ASK_FROM_SPECIALISTS)."""
+        key = ABILITY_WORDS.get(str(ability or "").strip().lower().replace(" ", "_"), "")
+        if key not in ABILITIES:
+            return f"[error] ability must be one of: {', '.join(ABILITIES)}"
+        tool, words = ABILITIES[key]
+        target = str(who or "").strip() or _from
+        if not target:
+            return "[error] say who needs it: a department's name or an agent's"
+        from . import company as companymod
+        try:
+            got = companymod.set_code(self.cfg, self.store, target, True)
+            return (f"[granted] {got['department']} can now {words}. A run already going "
+                    f"cannot pick it up: hand the step to {got['department']} again and its "
+                    f"next run has it.")
+        except KeyError:
+            pass
+        defn = self.store.get_subagent(target)
+        if not defn:
+            return f"[error] there is no department or agent called {target}"
+        tools = list(defn.get("tools") or [])
+        if tool not in tools:
+            tools.append(tool)
+            self.store.save_subagent({**{k: v for k, v in defn.items() if k != "profile"},
+                                      "tools": tools})
+        return (f"[granted] {defn['name']} can now {words}"
+                + (". You can use it from your next step." if target == _from else
+                   f". Hand the step to {defn['name']} again: its next run has it."))
 
     async def fetch_url(self, url: str) -> str:
         if not url.startswith(("http://", "https://")):
@@ -2704,7 +2746,8 @@ class Toolbox(usersmod.Scoped):
 
     async def create_subagent(self, name: str, soul: str, tools: list | None = None,
                               skills: list | None = None, model: str = "",
-                              max_steps: int = 12, max_seconds: int = 300) -> str:
+                              max_steps: int = 12, max_seconds: int = 300,
+                              temporary: bool = False, _conv: str = "") -> str:
         """Define a specialist agent.
 
         The counterpart to `create_flow` for the simple case: one agent, invoked from
@@ -2733,6 +2776,11 @@ class Toolbox(usersmod.Scoped):
         if self.broadcast:
             with contextlib.suppress(Exception):
                 await self.broadcast({"type": "fabric_defs"})
+        if temporary:
+            # built for one job: the person is asked to keep it, and it goes after a day
+            self.store.db.execute("INSERT OR REPLACE INTO temp_agents (name, conversation_id, created_at) "
+                                  "VALUES (?,?,?)", (name, _conv or "", time.time()))
+            self.store.db.commit()
         held = ", ".join(tools or []) or "the safe read-only tool set"
         return (f"agent '{name}' defined (it holds nothing yet). It would run on "
                 f"{model or 'the default model'} with: {held}"
@@ -3183,6 +3231,10 @@ class Toolbox(usersmod.Scoped):
             if rp == ws or rp.startswith(ws + os.sep):
                 return "safe", ""
             return "risky", f"Runs the test suite (arbitrary code) in {rp}."
+        if name == "request_capability":
+            who = str(args.get("who") or args.get("_from") or "an agent")
+            return "risky", (f"Gives {who} an ability it does not have: "
+                             f"{ABILITIES.get(str(args.get('ability') or ''), ('', 'run code'))[1]}.")
         if name == "open_app":
             return "risky", "Launches an application or URL on your desktop."
         if name in ("schedule_task", "create_trigger"):
@@ -4344,7 +4396,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene") else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -5149,6 +5201,7 @@ TOOL_SCHEMAS = [
                 "model": {"type": "string", "description": "'' inherits this machine's default model."},
                 "max_steps": {"type": "integer"},
                 "max_seconds": {"type": "integer"},
+                "temporary": {"type": "boolean", "description": "true for a one-off job: the person is asked whether to keep it, and it is removed after a day otherwise"},
             },
             "required": ["name", "soul"],
         },
@@ -6115,6 +6168,21 @@ STAGE_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(STAGE_TOOL_SCHEMAS)
+
+CAPABILITY_REQUEST_SCHEMAS = [{
+    "name": "request_capability",
+    "description": "Ask the person to give a department or an agent an ability it lacks, when a "
+                   "step cannot be done without it (today: run_code, to run Python for a "
+                   "backtest, an analysis or a chart from data). The person answers on a card. "
+                   "Use it instead of writing that the work could not be done. After a yes, "
+                   "hand the step to them again: a run already going cannot pick it up.",
+    "parameters": {"type": "object", "properties": {
+        "ability": {"type": "string", "enum": ["run_code"]},
+        "who": {"type": "string", "description": "a department's name or an agent's; empty means you"},
+        "why": {"type": "string", "description": "one sentence the person reads: what it is needed for"}},
+        "required": ["ability", "why"]},
+}]
+TOOL_SCHEMAS.extend(CAPABILITY_REQUEST_SCHEMAS)
 
 #: Tools whose reads and writes belong to the turn's space. The agent loop injects
 #: `space_id` for these; nothing else in the OS decides scope on the model's behalf.

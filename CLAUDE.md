@@ -615,6 +615,24 @@ own tools and writes NO grant, and leaves the desk's declared permissions alone,
 would make a run silent once the desk is on. `tools.ASK_FROM_SPECIALISTS` turns a specialist's default
 allow into a person's ask at every autonomy level; only an explicit grant (the card's remember) skips it.
 
+**A gap is a job, not a memo** (`request_capability`, `tools.ABILITIES`, `company.abilities`/`profile_note`,
+`executors.identity_note`, `temp_agents`; `tests/test_department_routing.py`). Reported with Research's "no
+shell or Python, so no backtest was run", passed on by the lead because the rule said "Do not do a
+department's work yourself". Five rules:
+- **Asking for an ability is its own action** (`capability.grant`), in ALWAYS_ASK, refused to apps, peers,
+  linked teams, pools and workflows (`_NO_CAPABILITY`), allowed to the lead, specialists and a flow's master: the
+  person answers every one. Yes runs `company.set_code` (or adds the tool to one agent) and writes NO grant.
+- **Every specialist has it** (added beside `brief_item` in `run_subagent`). A built-in run gets the tool from
+  its next step (`tool_filter` grows in `call_tool`); a CLI run read its list once, so the answer says to hand
+  the step back.
+- **The lead hears what each department can and cannot do** (`company.abilities` in `note`, `[runs code]` in
+  `team_note`) and the order to close a gap: ask, hand on, build (`create_subagent`, in TEAM_TOOLS now), or do it.
+- **A temporary agent** (`temporary: true`) is a `temp_agents` row; the chat chip (`handoffTempChip`) keeps or
+  removes it (`/api/agents/{name}/keep`), and `_sweep_temp_agents` removes it a day later. `agent.invoke` still asks
+  the first time.
+- **Every forwarded turn hears who it is** (`identity_note`: the name and soul; with no team door, the company
+  profile too). On Claude Code a schedule had only the generic preamble.
+
 **A new department starts with a kit: asked, proposed, ticked** (`company.KITS`, `KIT_SKILLS`,
 `KIT_MCP`, `recommend`, `clean_kit`, `apply_kit`, `kit_status`; `tests/test_company_kit.py`). Asked for
 as "set up the skills, tools and MCP most widely used for that kind of department, asking questions".
@@ -1108,6 +1126,12 @@ Three things that will bite whoever touches this next:
   conversation row (an in-memory dict lost every phone thread on restart). And `child_env`
   drops `PARENT_SESSION_VARS`: started from a Claude Code terminal, every run adopted THAT
   session's id. `tests/test_exec_context.py`.
+- **A chat turn on Claude Code takes what is typed while it works** (`Envelope.steerable`, `Run.steer`,
+  `_drive(first=)`). It starts with `--input-format stream-json`, the prompt as the first message and the
+  input kept open; a message sent then is written to it (measured on 2.1.302: folded into the same reply),
+  saved through `_steer_hook` and shown as a `steer` event. The input closes on the `result` event, so a later
+  message queues as before; one with pictures always queues. `sanitized()` must carry the flag (it once did
+  not, and nothing steered). Only Claude Code: the others read one prompt.
 - **Every driven CLI takes the bridge, each in its own words** (`bridge_parts`), and each
   way was checked against the real CLI, not the docs. Claude Code: `--mcp-config` JSON.
   Gemini CLI: a settings file named by `GEMINI_CLI_SYSTEM_SETTINGS_PATH` (`mcpServers` with

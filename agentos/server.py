@@ -4369,6 +4369,7 @@ async def _stage_loop() -> None:
                     from . import standby as _sb
                     if not _sb.may_act():
                         continue
+                    _sweep_temp_agents(state["store"])
                     for bd in stagemod.due_boards(state["store"]):
                         stagemod.claim(state["store"], bd["id"])
                         asyncio.create_task(_stage_refresh(bd["id"], uid))
@@ -13755,6 +13756,40 @@ async def api_save_subagent(body: dict):
     return {"id": sid}
 
 
+@app.post("/api/agents/{name}/keep")
+async def api_agent_keep(name: str, body: dict | None = None):
+    """A temporary agent kept (Keep) or removed (Remove) by the person."""
+    store = state["store"]
+    defn = store.get_subagent(name)
+    if not defn:
+        return JSONResponse({"error": "no such agent"}, status_code=404)
+    store.db.execute("DELETE FROM temp_agents WHERE name=?", (name,))
+    store.db.commit()
+    if (body or {}).get("keep") is False:
+        store.delete_subagent(defn["id"])
+        await state["broadcast_user"]({"type": "agents"}, usersmod.current() or "")
+        return {"ok": True, "removed": name}
+    store.log("team", f"kept the agent {name}")
+    return {"ok": True, "kept": name}
+
+
+def _sweep_temp_agents(store, older_than: float = 86400) -> list[str]:
+    """Temporary agents nobody kept, a day after they were made."""
+    rows = store.db.execute("SELECT name FROM temp_agents WHERE created_at < ?",
+                            (time.time() - older_than,)).fetchall()
+    gone = []
+    for (name,) in rows:
+        d = store.get_subagent(name)
+        if d:
+            store.delete_subagent(d["id"])
+            gone.append(name)
+        store.db.execute("DELETE FROM temp_agents WHERE name=?", (name,))
+    store.db.commit()
+    if gone:
+        store.log("team", f"removed temporary agents nobody kept: {', '.join(gone)}")
+    return gone
+
+
 @app.delete("/api/subagents/{sid}")
 async def api_delete_subagent(sid: str):
     state["store"].delete_subagent(sid)
@@ -15501,6 +15536,8 @@ async def _run_chat(cid: str, data: dict):
 
             turn_done = False
             commits: list[tuple[bool, str]] = []
+            # a message typed while it works reaches it at its next step (Run.steer)
+            env.steerable = model == "claude-code"
             try:
                 await execmod.run_task(text, env, _relay, run)
                 turn_done = True
@@ -16761,6 +16798,16 @@ async def ws_endpoint(ws: WebSocket):
                     if ag is not None:
                         ag.offer(item)   # triage starts now, not at the boundary
                     await _queue_broadcast(cid, added=item["id"])
+                    # A turn on Claude Code takes it at its next step, as the person's own
+                    # message, so the work in flight can fold it in. Reported as "when I
+                    # queue a message it should be taken into the run, like you do". One with
+                    # pictures waits for its own turn (the CLI's input here is text).
+                    ex = turns[cid].get("executor")
+                    if ag is None and ex is not None and not item["images"] and ex.steer(item["text"]):
+                        await _steer_hook(cid)(item, "now", "sent to the running turn")
+                        await send({"type": "steer", "conversation_id": cid, "id": item["id"],
+                                    "mode": "now", "text": item["text"],
+                                    "reason": "sent to the running turn"})
                     continue
                 if not cid:
                     title = (data.get("title") or "").strip()[:60] or text[:60] or "(image)"
