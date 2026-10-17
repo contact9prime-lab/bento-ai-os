@@ -69,6 +69,9 @@ class Envelope:
 
     workspace: str
     tools: tuple[str, ...] = DEFAULT_TOOLS
+    # a chat turn on Claude Code keeps its input open, so a message typed while it works
+    # reaches it at its next step (Run.steer); see build_command
+    steerable: bool = False
     model: str = ""                      # "" = the executor's own default
     budget_usd: float = DEFAULT_BUDGET_USD
     session_id: str = ""                 # resume a previous delegated run
@@ -148,7 +151,7 @@ class Envelope:
                         transcript=str(self.transcript or "")[-6000:],
                         fallback=str(self.fallback or "")[-6000:],
                         extra_env=dict(self.extra_env or {}), scratch=self.scratch,
-                        shares=_clean_shares(self.shares))
+                        shares=_clean_shares(self.shares), steerable=bool(self.steerable))
 
 
 def _clean_shares(raw) -> tuple:
@@ -240,6 +243,23 @@ class Run:
     tokens_in: int = 0             # from the result event's usage — what a mission row counts
     tokens_out: int = 0
     engine: str = "claude-code"    # whose stream this is: decides how a line is read
+    stdin: object = None           # the CLI's input, while a steerable run is open
+    steer_open: bool = False
+
+    def steer(self, text: str) -> bool:
+        """Hand a message the person typed to the running turn, as their own message.
+        Claude Code reads its input between steps, so it arrives at the next one and the
+        answer takes it in (measured on 2.1.302: a question sent mid-tool was answered in
+        the same reply). False once the turn has ended: the caller queues it instead."""
+        if not (self.steer_open and self.stdin and text.strip()):
+            return False
+        try:
+            self.stdin.write((json.dumps({"type": "user", "message": {"role": "user",
+                              "content": text}}) + "\n").encode())
+            return True
+        except Exception:
+            self.steer_open = False
+            return False
 
 
 # --- forwarding: the machine as a front end ---------------------------------
@@ -2016,7 +2036,8 @@ def build_command(task: str, env: Envelope) -> list[str]:
     if env.engine == "codex":
         return _codex_command(task, env)
     exe = claude_exe() or "claude"
-    cmd = [exe, "--print", _claude_prompt(task, env),
+    # A steerable turn sends its prompt on the input instead (run_task), and keeps it open
+    cmd = [exe, "--print", *(("--input-format", "stream-json") if env.steerable else (_claude_prompt(task, env),)),
            "--output-format", "stream-json", "--verbose",
            "--add-dir", env.workspace,
            *(("--add-dir", source_root()) if env.allow_source else ()),
@@ -2718,9 +2739,13 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     await emit({"type": "status",
                 "message": "starting up — waking the agent and its tools"})
 
+    # only Claude Code reads a stream of messages on its input
+    if env.steerable and env.engine not in ("claude-code", ""):
+        env = Envelope(**{**env.__dict__, "steerable": False})
+    first = _claude_prompt(task, env) if env.steerable else None
     try:
         cmd = build_command(task, env)
-        run = await _drive(cmd, env.workspace, emit, run, env.extra_env)
+        run = await _drive(cmd, env.workspace, emit, run, env.extra_env, first=first)
     finally:
         _drop_scratch(env.scratch)
     if run.resume_missing and not run.stopped:
@@ -2732,7 +2757,8 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
         env = Envelope(**{**env.__dict__, "session_id": "", "transcript": env.fallback})
         run.resume_missing = run.reported_error = False
         run.session_id = ""
-        run = await _drive(build_command(task, env), env.workspace, emit, run)
+        run = await _drive(build_command(task, env), env.workspace, emit, run,
+                           first=_claude_prompt(task, env) if env.steerable else None)
     return run
 
 
@@ -2743,7 +2769,8 @@ def _drop_scratch(path: str) -> None:
         shutil.rmtree(path, ignore_errors=True)
 
 
-async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | None = None) -> Run:
+async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | None = None,
+                 first: str | None = None) -> Run:
     """Start the CLI with `cmd` and stream its events through `emit` until it exits.
 
     The one subprocess loop for both kinds of run — a chat turn inside an envelope
@@ -2754,13 +2781,27 @@ async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | Non
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=cwd,
-        stdin=asyncio.subprocess.DEVNULL,
+        stdin=asyncio.subprocess.PIPE if first is not None else asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env={**child_env(), **(extra_env or {})},
         limit=STREAM_LINE_LIMIT,
     )
     run.proc = proc
+    if first is not None:
+        # the prompt is the first message on the input; the input stays open for more
+        run.stdin, run.steer_open = proc.stdin, True
+        run.stdin.write((json.dumps({"type": "user", "message": {"role": "user", "content": first}}) + "\n").encode())
+
+    def _close_input():
+        # the turn has its answer: no more messages go to it (a later one is queued as
+        # its own turn), and the CLI exits once its input ends
+        if run.steer_open:
+            run.steer_open = False
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
 
     assert proc.stdout is not None
     seen_output = False
@@ -2819,7 +2860,10 @@ async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | Non
             continue
         for out in TRANSLATORS.get(run.engine, translate)(event, run):
             await emit(out)
+        if event.get("type") == "result":
+            _close_input()
 
+    _close_input()
     await proc.wait()
     # A run that ended badly already said why on its result event; the non-zero
     # exit is the same failure seen from outside, and reporting it again reads as

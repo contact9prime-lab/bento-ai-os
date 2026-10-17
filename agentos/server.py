@@ -15496,6 +15496,8 @@ async def _run_chat(cid: str, data: dict):
 
             turn_done = False
             commits: list[tuple[bool, str]] = []
+            # a message typed while it works reaches it at its next step (Run.steer)
+            env.steerable = model == "claude-code"
             try:
                 await execmod.run_task(text, env, _relay, run)
                 turn_done = True
@@ -16756,6 +16758,16 @@ async def ws_endpoint(ws: WebSocket):
                     if ag is not None:
                         ag.offer(item)   # triage starts now, not at the boundary
                     await _queue_broadcast(cid, added=item["id"])
+                    # A turn on Claude Code takes it at its next step, as the person's own
+                    # message, so the work in flight can fold it in. Reported as "when I
+                    # queue a message it should be taken into the run, like you do". One with
+                    # pictures waits for its own turn (the CLI's input here is text).
+                    ex = turns[cid].get("executor")
+                    if ag is None and ex is not None and not item["images"] and ex.steer(item["text"]):
+                        await _steer_hook(cid)(item, "now", "sent to the running turn")
+                        await send({"type": "steer", "conversation_id": cid, "id": item["id"],
+                                    "mode": "now", "text": item["text"],
+                                    "reason": "sent to the running turn"})
                     continue
                 if not cid:
                     title = (data.get("title") or "").strip()[:60] or text[:60] or "(image)"
