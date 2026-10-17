@@ -381,6 +381,11 @@ async function initCopilot(w,panel){
   // under Copilots, whose turns were framed as "the copilot inside the Office app".
   // Shared, it follows Chat's open conversation (`currentConv`) both ways.
   const shared=!!panel.closest('.of-chat');
+  // A task window (24m-taskdesks.js) is pinned to ONE conversation: it shows that one,
+  // follows its live turn and sends into it, whatever Chat has open.
+  const pinned=panel.dataset.cid||'';
+  if(pinned){input.placeholder='Keep talking to this task…';
+    panel.querySelector('.cp-app').textContent=(panel.dataset.title||'task').slice(0,48)}
   if(shared){
     const head=panel.querySelector('.cp-head');
     const nb=document.createElement('button');nb.className='cp-new';nb.title='New chat';
@@ -390,7 +395,7 @@ async function initCopilot(w,panel){
     input.placeholder='Ask '+agentName()+'…';input.title='Ask '+agentName()+', or start with @ and a department';
   }
   panel.querySelector('.cp-open').onclick=()=>{
-    const c=shared?currentConv:COPILOT.cids[w.id];
+    const c=pinned||(shared?currentConv:COPILOT.cids[w.id]);
     if(c){openApp('chat');openConv(c)}
     else{openApp('chat')}
   };
@@ -450,6 +455,8 @@ async function initCopilot(w,panel){
         if(OFFICE_CHAT.cid===cid)t.textContent=((c&&c.title)||'').slice(0,40)}catch(e){}};
     OFFICE_CHAT.cid=currentConv||null;
     replay(OFFICE_CHAT.cid);
+  }else if(pinned){
+    replay(pinned);
   }else{
     replay(await copilotThread(w.id,w.app.title));
   }
@@ -475,6 +482,12 @@ async function initCopilot(w,panel){
     startersEl.style.display='none';
     feedEl.scrollTop=feedEl.scrollHeight;
     const sink=mkSink();
+    if(pinned){
+      agentTurn({text:text||'What do you see here?',images:imgs,cid:pinned,origin:'user',title:'',
+        context:'',sink});
+      if(typeof chatMirrorUser==='function')chatMirrorUser(pinned,text,imgs);
+      return;
+    }
     if(shared){
       const cid=currentConv||null;
       agentTurn({text:text||'What do you see here?',images:imgs,cid,origin:'user',title:'',
@@ -488,7 +501,7 @@ async function initCopilot(w,panel){
       onCid:id=>{COPILOT.cids[w.id]=id}});
   }
   sendBtn2.onclick=()=>{
-    const cid=shared?OFFICE_CHAT.cid:COPILOT.cids[w.id];
+    const cid=pinned||(shared?OFFICE_CHAT.cid:COPILOT.cids[w.id]);
     if(cid&&RUNNING.has(cid)){stopAgent(cid);toast('stopping…');return}   // ◼ while it works
     go();
   };

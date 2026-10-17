@@ -6,7 +6,12 @@ function buildPager(){
   for(let i=1;i<=DESKS;i++){
     const b=document.createElement('button');b.className='pgb'+(i===curDesk?' on':'');b.textContent=i;
     const names=[];WM.wins.forEach(w=>{if((w.desk||1)===i&&!w.min)names.push(w.app.title)});
-    b.title=`Desktop ${i}`+(names.length?` — ${names.join(', ')}`:' — empty')
+    // a task's desktop says which task, and whether it is still working (24m-taskdesks.js)
+    const td=typeof taskDeskOf==='function'?taskDeskOf(i):null;
+    if(td){b.classList.add('task');if(!td.done)b.classList.add('run');
+      const l=document.createElement('span');l.className='pgt';l.textContent=td.title.slice(0,14);b.append(l)}
+    b.title=(td?`Desktop ${i}: “${td.title}”, ${td.done?'done':'working'}`:`Desktop ${i}`)
+      +(names.length?` — ${names.join(', ')}`:' — empty')
       +'\nclick to switch · right-click to send the active window here · drop a window to move it';
     b.classList.toggle('has',names.length>0);
     b.onclick=()=>switchDesk(i);
@@ -24,6 +29,9 @@ function buildPager(){
     };
     p.appendChild(b);
   }
+  // the wheel over the pager scrolls the desktops, one notch at a time
+  if(!p._wheel){p._wheel=1;p.addEventListener('wheel',e=>{e.preventDefault();
+    const now=Date.now();if(now-(p._wt||0)<220)return;p._wt=now;switchDeskBy(e.deltaY>0||e.deltaX>0?1:-1)},{passive:false})}
   if(DESKS<6){const a=document.createElement('button');a.className='pgb add';a.textContent='+';a.title='add a desktop';
     a.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager()};p.appendChild(a)}
 }

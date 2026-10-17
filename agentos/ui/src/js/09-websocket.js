@@ -570,6 +570,7 @@ function handle(ev){
       flushText();
       curBody.parentNode.insertBefore(errBox(ev),curBody); scrollDown(); break;}
     case 'turn_end':{
+      if(typeof taskDeskDone==='function')taskDeskDone(_cid);   // ask whether to close its desktop
       if(typeof stageTurnEnd==='function')stageTurnEnd(_cid);   // a Go deeper that came back in words
       if(typeof movementPulse==='function')movementPulse('turnend',ev.conversation_id);
       if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];actDone(_cid);agentQueueFlush(_cid);}

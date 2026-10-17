@@ -5538,6 +5538,14 @@ body.dev-mobile .stg-cap{font-size:15px}
 .stg .st-steps.tall .st-arrow{display:none}
 .stg .st-steps.tall .st-step{flex:none;padding:10px 12px}
 .stg .st-steps.tall .st-step-x{font-size:12.5px}
+
+/* task desktops (24m-taskdesks.js): the pager names a task's desktop and pulses while it works */
+.pgb.task{width:auto;padding:0 8px;display:inline-flex;align-items:center;gap:5px}
+.pgb .pgt{font-size:11px;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85}
+.pgb.task.run::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--acc);
+  box-shadow:0 0 6px var(--acc);animation:st-fade 1.2s ease-in-out infinite alternate}
+.task-chat{display:flex;flex-direction:column;height:100%;min-height:0}
+.task-chat .cp-feed{flex:1;min-height:0}
 </style>
 </head>
 <body>
@@ -7269,6 +7277,7 @@ const ICONS={
   models:['#C084FC','#7C3AED','<rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2"/><path d="M10 4.2v3M14 4.2v3M10 16.8v3M14 16.8v3M4.2 10h3M4.2 14h3M16.8 10h3M16.8 14h3"/>'],
   profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
   flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
+  task:['#38BDF8','#0369A1','<rect x="3.6" y="5" width="16.8" height="14" rx="2"/><path d="M7.4 10l2.6 2.4-2.6 2.4"/><path d="M12.4 15h4.2"/>'],
   stage:['#FB7185','#BE123C','<rect x="3.6" y="5" width="16.8" height="11.4" rx="2"/><path d="M10.4 8.4v4.8l4-2.4z"/><path d="M8 19.4h8"/>'],
   brief:['#F59E0B','#B45309','<path d="M12 4l7 14H5z"/><path d="M12 10v4"/>'],
   jobs:['#34D399','#059669','<circle cx="12" cy="12.6" r="7.2"/><path d="M12 8.8v3.8l2.6 1.6"/><path d="M9.2 3.8h5.6"/>'],
@@ -11059,7 +11068,12 @@ function buildPager(){
   for(let i=1;i<=DESKS;i++){
     const b=document.createElement('button');b.className='pgb'+(i===curDesk?' on':'');b.textContent=i;
     const names=[];WM.wins.forEach(w=>{if((w.desk||1)===i&&!w.min)names.push(w.app.title)});
-    b.title=`Desktop ${i}`+(names.length?` — ${names.join(', ')}`:' — empty')
+    // a task's desktop says which task, and whether it is still working (24m-taskdesks.js)
+    const td=typeof taskDeskOf==='function'?taskDeskOf(i):null;
+    if(td){b.classList.add('task');if(!td.done)b.classList.add('run');
+      const l=document.createElement('span');l.className='pgt';l.textContent=td.title.slice(0,14);b.append(l)}
+    b.title=(td?`Desktop ${i}: “${td.title}”, ${td.done?'done':'working'}`:`Desktop ${i}`)
+      +(names.length?` — ${names.join(', ')}`:' — empty')
       +'\nclick to switch · right-click to send the active window here · drop a window to move it';
     b.classList.toggle('has',names.length>0);
     b.onclick=()=>switchDesk(i);
@@ -11077,6 +11091,9 @@ function buildPager(){
     };
     p.appendChild(b);
   }
+  // the wheel over the pager scrolls the desktops, one notch at a time
+  if(!p._wheel){p._wheel=1;p.addEventListener('wheel',e=>{e.preventDefault();
+    const now=Date.now();if(now-(p._wt||0)<220)return;p._wt=now;switchDeskBy(e.deltaY>0||e.deltaX>0?1:-1)},{passive:false})}
   if(DESKS<6){const a=document.createElement('button');a.className='pgb add';a.textContent='+';a.title='add a desktop';
     a.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager()};p.appendChild(a)}
 }
@@ -12182,6 +12199,11 @@ async function initCopilot(w,panel){
   // under Copilots, whose turns were framed as "the copilot inside the Office app".
   // Shared, it follows Chat's open conversation (`currentConv`) both ways.
   const shared=!!panel.closest('.of-chat');
+  // A task window (24m-taskdesks.js) is pinned to ONE conversation: it shows that one,
+  // follows its live turn and sends into it, whatever Chat has open.
+  const pinned=panel.dataset.cid||'';
+  if(pinned){input.placeholder='Keep talking to this task…';
+    panel.querySelector('.cp-app').textContent=(panel.dataset.title||'task').slice(0,48)}
   if(shared){
     const head=panel.querySelector('.cp-head');
     const nb=document.createElement('button');nb.className='cp-new';nb.title='New chat';
@@ -12191,7 +12213,7 @@ async function initCopilot(w,panel){
     input.placeholder='Ask '+agentName()+'…';input.title='Ask '+agentName()+', or start with @ and a department';
   }
   panel.querySelector('.cp-open').onclick=()=>{
-    const c=shared?currentConv:COPILOT.cids[w.id];
+    const c=pinned||(shared?currentConv:COPILOT.cids[w.id]);
     if(c){openApp('chat');openConv(c)}
     else{openApp('chat')}
   };
@@ -12251,6 +12273,8 @@ async function initCopilot(w,panel){
         if(OFFICE_CHAT.cid===cid)t.textContent=((c&&c.title)||'').slice(0,40)}catch(e){}};
     OFFICE_CHAT.cid=currentConv||null;
     replay(OFFICE_CHAT.cid);
+  }else if(pinned){
+    replay(pinned);
   }else{
     replay(await copilotThread(w.id,w.app.title));
   }
@@ -12276,6 +12300,12 @@ async function initCopilot(w,panel){
     startersEl.style.display='none';
     feedEl.scrollTop=feedEl.scrollHeight;
     const sink=mkSink();
+    if(pinned){
+      agentTurn({text:text||'What do you see here?',images:imgs,cid:pinned,origin:'user',title:'',
+        context:'',sink});
+      if(typeof chatMirrorUser==='function')chatMirrorUser(pinned,text,imgs);
+      return;
+    }
     if(shared){
       const cid=currentConv||null;
       agentTurn({text:text||'What do you see here?',images:imgs,cid,origin:'user',title:'',
@@ -12289,7 +12319,7 @@ async function initCopilot(w,panel){
       onCid:id=>{COPILOT.cids[w.id]=id}});
   }
   sendBtn2.onclick=()=>{
-    const cid=shared?OFFICE_CHAT.cid:COPILOT.cids[w.id];
+    const cid=pinned||(shared?OFFICE_CHAT.cid:COPILOT.cids[w.id]);
     if(cid&&RUNNING.has(cid)){stopAgent(cid);toast('stopping…');return}   // ◼ while it works
     go();
   };
@@ -13125,6 +13155,7 @@ const APPS={
   drama:{id:'drama',title:'Drama reel',icon:'',w:760,h:720,desc:'Your crew’s latest drama as a 15 second clip or a 4-panel strip',
     render:renderDrama},
   teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},
+  task:{id:'task',title:'Task',icon:'▸',w:640,h:600,desc:'One running task, on a desktop of its own',multi:true,hidden:true,render:renderTaskWin},
   stage:{id:'stage',title:'Stage',icon:'▶',w:1180,h:820,desc:'Your answers, shown: maps, charts, numbers and the story in between',render:renderStage},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
@@ -15950,6 +15981,7 @@ function handle(ev){
       flushText();
       curBody.parentNode.insertBefore(errBox(ev),curBody); scrollDown(); break;}
     case 'turn_end':{
+      if(typeof taskDeskDone==='function')taskDeskDone(_cid);   // ask whether to close its desktop
       if(typeof stageTurnEnd==='function')stageTurnEnd(_cid);   // a Go deeper that came back in words
       if(typeof movementPulse==='function')movementPulse('turnend',ev.conversation_id);
       if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];actDone(_cid);agentQueueFlush(_cid);}
@@ -16510,6 +16542,7 @@ async function loadConvs(){
   });
 }
 async function openConv(cid){
+  if(typeof taskDeskLeaving==='function')taskDeskLeaving(cid);   // a running task keeps its own desktop
   if(input&&currentConv!==cid)draftSave(currentConv,input.value);   // park the one you were typing
   currentConv=cid;
   officeChatFollow();
@@ -16572,6 +16605,7 @@ async function openConv(cid){
   loadConvs();scrollDown();
 }
 function newChat(){
+  if(typeof taskDeskLeaving==='function')taskDeskLeaving(null);
   currentConv=null;curBody=null;curThink=null;curText='';
   officeChatFollow();
   if(feed){feed.innerHTML='';showWelcome()}
@@ -34402,6 +34436,97 @@ function stageTable(art,sc){
   sc.rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.style.animationDelay=Math.min(i,20)*40+'ms';
     sc.columns.forEach((_,j)=>{const td=sEl('td','',r[j]==null?'':r[j]);if(/^[-+]?[\d,.]+%?$/.test(String(r[j]||'')))td.className='n';tr.append(td)});body.append(tr)});
   tb.append(body);wrap.append(tb);art.append(wrap);
+}
+/* ================= task desktops: one desktop per running task =================
+   Asked for as "use desktops for different chats, and scroll between them, given we can
+   give different tasks at the same time to the same or different company; as tasks get
+   completed the desktop can close, asking the user".
+
+   The moment it happens: you leave a conversation in Chat while its turn is still running
+   (you open another chat, or start a new one, to give a second task). That running task
+   moves to a desktop of its own, in a Task window pinned to it (initCopilot with
+   data-cid): its progress keeps streaming there and you can keep talking to it, while
+   Chat is free for the next task. The pager names each task desktop and shows a dot while
+   it works; the wheel over the pager scrolls the desktops. When the task finishes you are
+   asked whether to close its desktop; nothing is closed without a yes.
+
+   Per browser and on by default (`taskdesk.auto`); a desktop of its own is a change to
+   what is on your screen, so it is said in a toast with a way to go there. The TUI and
+   Telegram have no desktops: there the backend runs tasks side by side (telegram.py runs
+   each chat's turn on its own). */
+
+var TASKDESK=window.TASKDESK||{map:{},next:null};
+window.TASKDESK=TASKDESK;
+var TASKDESK_MAX=9;
+
+function taskDeskAuto(){try{return localStorage.getItem('taskdesk.auto')!=='0'}catch(e){return true}}
+
+function renderTaskWin(body,w){
+  if(!w._cid&&TASKDESK.next){w._cid=TASKDESK.next.cid;w._title=TASKDESK.next.title;TASKDESK.next=null}
+  const t=w.el.querySelector('.tname');if(t&&w._title)t.textContent='▸ '+w._title;
+  if(!w._cid){body.innerHTML=emptyBox('No task here','A running chat moves to its own desktop when you start another task.');return}
+  if(body.querySelector('.task-chat'))return;
+  body.innerHTML='<div class="task-chat"></div>';
+  const p=body.firstChild;p.dataset.cid=w._cid;p.dataset.title=w._title||'';
+  initCopilot(w,p);
+}
+
+/* The title Chat shows for a conversation, read from its own list. */
+function taskDeskTitle(cid){
+  const row=document.querySelector('#convs .conv.active .t');
+  const t=(row&&currentConv===cid?row.textContent:'')||'';
+  return t.replace(/^● /,'').trim()||'a task';
+}
+
+/* A running conversation gets a desktop of its own, with its task window. */
+function taskDeskOpen(cid,title){
+  if(!cid||TASKDESK.map[cid])return;
+  if(DESKS>=TASKDESK_MAX){toast('There is no room for another desktop. Close a finished one first.');return}
+  DESKS++;try{localStorage.setItem('desks',DESKS)}catch(e){}
+  const n=DESKS;
+  TASKDESK.next={cid,title};
+  const w=openApp('task',{fresh:true});
+  if(!w)return;
+  w.desk=n;
+  TASKDESK.map[cid]={desk:n,title,w,done:false};
+  applyDeskVisibility();buildPager();
+  toast(`“${title}” keeps working on Desktop ${n}`,{label:'Go there',go:()=>switchDesk(n)});
+}
+
+/* Leaving a running conversation in Chat: it gets its own desktop. */
+function taskDeskLeaving(nextCid){
+  if(!taskDeskAuto())return;
+  const cid=typeof currentConv!=='undefined'?currentConv:null;
+  if(!cid||cid===nextCid||!RUNNING.has(cid)||TASKDESK.map[cid])return;
+  taskDeskOpen(cid,taskDeskTitle(cid));
+}
+
+/* A task finished: ask, never close by ourselves. */
+function taskDeskDone(cid){
+  const d=TASKDESK.map[cid];if(!d||d.done)return;
+  d.done=true;buildPager();
+  toast(`“${d.title}” is done. Close its desktop?`,{kind:'ok',ms:120000,label:'Close',go:()=>taskDeskClose(cid)});
+}
+
+/* Close a task's desktop: its window goes, the desktops after it move down one. */
+function taskDeskClose(cid){
+  const d=TASKDESK.map[cid];if(!d)return;
+  delete TASKDESK.map[cid];
+  try{if(d.w&&WM.wins.get(d.w.key))closeWin(d.w)}catch(e){}
+  const n=d.desk;
+  WM.wins.forEach(w=>{if((w.desk||1)>n)w.desk=(w.desk||1)-1});
+  Object.values(TASKDESK.map).forEach(o=>{if(o.desk>n)o.desk--});
+  DESKS=Math.max(1,DESKS-1);try{localStorage.setItem('desks',DESKS)}catch(e){}
+  if(curDesk>DESKS||curDesk===n){curDesk=Math.min(curDesk>n?curDesk-1:curDesk,DESKS)||1;
+    try{localStorage.setItem('curDesk',curDesk)}catch(e){}}
+  else if(curDesk>n){curDesk--;try{localStorage.setItem('curDesk',curDesk)}catch(e){}}
+  applyDeskVisibility();buildPager();
+}
+
+/* What the pager draws for desktop i: a task's name and whether it is still working. */
+function taskDeskOf(i){
+  for(const cid in TASKDESK.map){const d=TASKDESK.map[cid];if(d.desk===i)return {cid,...d}}
+  return null;
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

@@ -243,6 +243,7 @@ async function loadConvs(){
   });
 }
 async function openConv(cid){
+  if(typeof taskDeskLeaving==='function')taskDeskLeaving(cid);   // a running task keeps its own desktop
   if(input&&currentConv!==cid)draftSave(currentConv,input.value);   // park the one you were typing
   currentConv=cid;
   officeChatFollow();
@@ -305,6 +306,7 @@ async function openConv(cid){
   loadConvs();scrollDown();
 }
 function newChat(){
+  if(typeof taskDeskLeaving==='function')taskDeskLeaving(null);
   currentConv=null;curBody=null;curThink=null;curText='';
   officeChatFollow();
   if(feed){feed.innerHTML='';showWelcome()}
