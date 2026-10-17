@@ -455,3 +455,19 @@ bento company kit Sales crm=hubspot --yes      # give it to Sales
 - **SUI:** the same page. The desktop scenes (Office, Crew, Mind, World) show the
   departments. The Office scene shows no cards, because nothing under the windows can be
   tapped; the Mind's and the World's tags can be.
+
+
+## When a department cannot do a step
+
+A department may lack what a step needs: Research cannot run code until it is allowed to. Nobody stops at
+saying so:
+
+- **Anyone on the team can ask you for the ability.** A card asks "Research asks to run Python code (each run
+  is still asked). Why: the backtest". Yes switches the department's *Can run code* on; nothing is granted, so
+  every run still asks. Only your agent, the specialists and a mission can ask; apps and other machines cannot.
+- **Aria hands the step on.** She is told what each department can and cannot do. When a department comes back
+  short she asks you, gives the step to someone who has the tool, builds a specialist for it, or does it
+  herself, and then the department finishes the job.
+- **A specialist built for one job** is offered to you under the answer: Keep makes it one of your
+  specialists; Remove, or a day without an answer, takes it away. Every new agent asks you the first time it is
+  given work.

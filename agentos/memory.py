@@ -67,6 +67,13 @@ CREATE TABLE IF NOT EXISTS stage_scenes (
     created_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_stage_conv ON stage_scenes(conversation_id, created_at);
+-- A specialist built for one job (create_subagent temporary=true): kept only if the
+-- person says Keep; swept a day after it was made otherwise.
+CREATE TABLE IF NOT EXISTS temp_agents (
+    name TEXT PRIMARY KEY,
+    conversation_id TEXT,
+    created_at REAL
+);
 CREATE TABLE IF NOT EXISTS stage_links (
     conversation_id TEXT,
     answer_to TEXT,          -- the deeper story

@@ -66,6 +66,8 @@ CORE = {
     # hand it to the team: the prompt names the specialists (executors.team_note), and a
     # narrowed set that dropped `delegate` would name people the lead cannot reach
     "delegate", "huddle", "department_task",
+    # and when nobody has what a step needs: build one, or ask the person for the ability
+    "create_subagent", "request_capability",
 }
 
 DEFAULTS = {

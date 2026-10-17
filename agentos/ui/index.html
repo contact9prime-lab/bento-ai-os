@@ -16837,6 +16837,13 @@ function handoffFor(name,args){
               note:args.enabled===false?'switched off':'switched on'};
     case 'save_automation':
       return {app:'automations',label:'Open in Missions',what:nm||'the routine',note:'under Routines'};
+    case 'create_subagent':
+      // a specialist built for this job: a temporary one is offered to keep, and goes in a
+      // day otherwise; a lasting one is a door to where agents are edited
+      return args.temporary?{kind:'temp',what:nm||'a new agent',
+        note:'built for this job'+((args.tools||[]).length?' · can use '+args.tools.slice(0,4).join(', '):'')+'. Keep it?'}
+        :{app:'settings',place:'agent',label:'Open in Agents',what:nm||'the agent',
+          note:'a new specialist; it asks you the first time it is given work'};
     case 'schedule_task':
       return {app:'tasks',label:'Open in Missions',
               what:String(args.prompt||'the task').slice(0,60),
@@ -16849,6 +16856,22 @@ function handoffFor(name,args){
 /* Opening it means SHOWING the thing, not the app that contains it. A button
    that lands you in App Studio with nothing selected is a redirection, not a
    handoff. */
+/* Keep or remove an agent built for one job. Text only: the name is the model's words. */
+function handoffTempChip(h){
+  const el=document.createElement('div');el.className='handoff';
+  const w=document.createElement('span');w.className='ho-what';w.textContent=h.what;
+  const n=document.createElement('span');n.className='ho-note';n.textContent=h.note;
+  const keep=document.createElement('button');keep.className='ho-go';keep.textContent='Keep';
+  const drop=document.createElement('button');drop.className='ho-go';drop.textContent='Remove';
+  const act=async on=>{keep.disabled=drop.disabled=true;
+    try{const r=await fetch('/api/agents/'+encodeURIComponent(h.what)+'/keep',{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({keep:on})});
+      const d=await r.json();if(!r.ok)throw new Error(d.error||r.status);
+      n.textContent=on?'kept: it is one of your specialists now':'removed';keep.remove();drop.remove();
+    }catch(e){toast('could not: '+(e.message||e));keep.disabled=drop.disabled=false}};
+  keep.onclick=()=>act(true);drop.onclick=()=>act(false);
+  el.append(w,n,keep,drop);return el;
+}
 async function handoffOpen(h){
   if(h.app==='studio'){
     const find=()=>(typeof USERAPPS!=='undefined'?USERAPPS:[]).find(a=>a.name===h.what);
@@ -16863,9 +16886,11 @@ async function handoffOpen(h){
     if(typeof fabTab!=='undefined')fabTab='flows';
     openApp('fabric');refreshApp('fabric');return;
   }
+  if(h.place&&typeof placeSettings==='function'){placeSettings(h.place)();return}
   openApp(h.app);refreshApp(h.app);
 }
 function handoffChip(h){
+  if(h.kind==='temp')return handoffTempChip(h);
   const el=document.createElement('div');
   el.className='handoff';
   el.innerHTML=`<span class="ho-what"></span><span class="ho-note"></span>`

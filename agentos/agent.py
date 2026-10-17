@@ -889,6 +889,13 @@ class Agent:
             # session scope flows through: saves attach to this conversation and
             # delegated subagents inherit its session memory
             args = {**args, "conversation_id": self.conversation_id}
+        if name == "request_capability":
+            # who is asking: the agent's own name, never the model's, so "me" means this agent
+            args = {**{k: v for k, v in args.items() if k != "_from"},
+                    "_from": self.principal.id if self.principal.kind == "subagent" else ""}
+        if name == "create_subagent":
+            # the chat a temporary agent was built in, where its "Keep it?" is asked
+            args = {**{k: v for k, v in args.items() if k != "_conv"}, "_conv": self.conversation_id or ""}
         if name == "show_scene":
             # the chat the scene is shown in and kept with: the agent's, never the model's
             args = {**{k: v for k, v in args.items() if k != "_conv"},
@@ -1071,6 +1078,15 @@ class Agent:
                              "pending_approval": False})
             await self._checkpoint(name, args)
             output = await self.toolbox.execute(name, args)
+        if (name == "request_capability" and isinstance(output, str) and output.startswith("[granted]")
+                and args.get("_from") and not (args.get("who") or "").strip()
+                and self.tool_filter is not None):
+            # the person said yes to this agent's own request: it has the tool from its next
+            # step (the loop rebuilds its tool list every step; a CLI run cannot, and says so)
+            from .tools import ABILITIES
+            t = ABILITIES.get(str(args.get("ability") or ""), ("",))[0]
+            if t and t not in self.tool_filter:
+                self.tool_filter = list(self.tool_filter) + [t]
         if self.park_child is not None:
             # the tool started work that parked (a mission's `delegate` whose specialist
             # is waiting for a person): this call waits with it
