@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.49 — 2026-10-17
+
+- **The Applications launcher's "In a window" tick sits beside its words again.** The checkbox was stretched to
+  90px by the toolbar's input rule and stood apart from its label.
+
 ## 0.6.48 — 2026-10-17
 
 **The test suite no longer uses the model running on your machine.** An in-process test server picked a
