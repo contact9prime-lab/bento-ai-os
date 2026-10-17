@@ -11895,7 +11895,8 @@ async function initCopilot(w,panel){
     const nb=document.createElement('button');nb.className='cp-new';nb.title='New chat';
     nb.dataset.ic='plus';nb.textContent='＋';head.insertBefore(nb,panel.querySelector('.cp-open'));
     nb.onclick=()=>{if(typeof newChat==='function')newChat(); else currentConv=null;officeChatFollow()};
-    input.placeholder='Ask '+agentName()+' or @a department';
+    // one line in a narrow panel: the @-department hint is the tooltip
+    input.placeholder='Ask '+agentName()+'…';input.title='Ask '+agentName()+', or start with @ and a department';
   }
   panel.querySelector('.cp-open').onclick=()=>{
     const c=shared?currentConv:COPILOT.cids[w.id];
@@ -11921,8 +11922,20 @@ async function initCopilot(w,panel){
       feedEl.scrollTop=feedEl.scrollHeight;
     }catch(e){}
     // re-attach to a live turn — and say so at once, rather than looking idle
-    // until the next event happens to arrive
-    if(RUNNING.has(cid)){live=null;const s=mkSink();sinkOn(cid,s);s.start({conversation_id:cid})}
+    // until the next event happens to arrive. What it has done so far is in the
+    // stream mirror Chat keeps (STREAMS): without it, the Office opened during a
+    // department's task showed the question and "Aria" with nothing under it.
+    if(RUNNING.has(cid)){
+      live=null;const s=mkSink();sinkOn(cid,s);s.start({conversation_id:cid});
+      const so=(typeof STREAMS!=='undefined'&&STREAMS[cid])||null;
+      if(so&&(so.html||so.text)){const d=document.createElement('div');d.className='mf-so-far';
+        d.innerHTML=(so.html||'')+(so.text?`<div class="mf-body body">${md(so.text)}</div>`:'');
+        d.querySelectorAll('.tool .head').forEach(h=>h.onclick=()=>h.parentNode.classList.toggle('open'));
+        const wk=[...feedEl.querySelectorAll('.mf-working')].pop();
+        if(wk)feedEl.insertBefore(d,wk);else feedEl.appendChild(d)}
+      // a question this turn is waiting on is drawn here too (approvalHome re-homes it)
+      if(typeof APPROVALS!=='undefined'&&Object.keys(APPROVALS).length&&typeof approvalWatch==='function')approvalWatch();
+      feedEl.scrollTop=feedEl.scrollHeight}
   }
   let live=null;
   const setBusy=on=>{

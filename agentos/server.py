@@ -6383,7 +6383,8 @@ def _lint_app_html(html: str, toolbox=None) -> list[str]:
 
 async def request_approval(name: str, args: dict, reason: str, offer: dict | None = None,
                            evsend=None, ws=None, timeout: float = 300,
-                           run_id: str = "", flow: str = "", unanswered=None) -> bool:
+                           run_id: str = "", flow: str = "", unanswered=None,
+                           conversation_id: str = "") -> bool:
     """Raise an approval card and wait for the user's answer. `offer` is a ready-to-write
     grant: when the user picks "allow & remember", it is persisted before resolving True.
     evsend routes the card to one chat's client; otherwise it broadcasts to every client.
@@ -6405,6 +6406,11 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
     state["pending_approvals"][aid] = entry
     ev = {"type": "approval_request", "id": aid, "name": name, "args": args,
           "reason": reason, "offer": offer, "run_id": run_id, "flow": flow, "card": card}
+    if conversation_id:
+        # the chat this step belongs to: the page draws the card there (Chat, or the
+        # Office's chat), and floats it when that place is not on screen
+        ev["conversation_id"] = conversation_id
+        entry["conversation_id"] = conversation_id
     if evsend is not None:
         await evsend(ev)
     else:
@@ -6747,6 +6753,20 @@ def _unanswered_to_brief(run_id: str, flow: str, name: str, args: dict, reason: 
     return filed
 
 
+def _run_conversation(run: dict) -> str:
+    """The conversation a run was asked from, '' for one nobody asked in a chat (a
+    schedule, a webhook, a linked team: that question belongs to no chat here)."""
+    if (run or {}).get("origin_surface") not in ("chat", "gui", "omni", "kiosk", ""):
+        return ""
+    cid = str((run or {}).get("conversation_id") or "")
+    if not cid:
+        return ""
+    try:
+        return cid if state["store"].get_conversation(cid) else ""
+    except Exception:
+        return ""
+
+
 async def _flow_approval(run_id: str, name: str, args: dict, reason: str,
                          offer: dict | None, origin: dict, park: bool = False):
     """A paused flow, asking. It goes back where the run came from when that is a place
@@ -6771,8 +6791,12 @@ async def _flow_approval(run_id: str, name: str, args: dict, reason: str,
                                                   reason, offer=offer, timeout=timeout,
                                                   unanswered=missed)
     else:
+        # A department's step asked from a chat belongs to that chat. Sent with no
+        # conversation, the card went to whatever Chat had open, and from the Office it
+        # was reported as "after I approve, the next one doesn't pop up".
         ok = await request_approval(name, args, reason, offer=offer, timeout=timeout,
-                                    run_id=run_id, flow=flow, unanswered=missed)
+                                    run_id=run_id, flow=flow, unanswered=missed,
+                                    conversation_id=_run_conversation(run))
     if park and nobody["hit"] and not ok:
         from .agent import PARK
         return PARK

@@ -45,3 +45,25 @@ def test_chat_and_the_office_follow_each_other():
 def test_the_office_still_mounts_the_panel():
     office = (JS / "24d-office.js").read_text()
     assert "initCopilot(w,chat)" in office and '<div class="of-chat"></div>' in office
+
+
+def test_a_departments_question_is_asked_in_the_chat_it_came_from():
+    """Reported as "when the approval is given and it moves to the next thing it doesn't
+    pop up": a desk's approval carried no conversation, so the page put it in whatever
+    Chat had open. Driven in headless Chrome afterwards: every card of a Research task
+    asked from the Office (department_task, delegate, 50+ run_python) was in the Office's
+    chat and on screen."""
+    src = (ROOT / "agentos/server.py").read_text()
+    fa = src[src.index("async def _flow_approval("):][:2400]
+    assert "conversation_id=_run_conversation(run)" in fa
+    ra = src[src.index("async def request_approval("):][:2200]
+    assert 'ev["conversation_id"] = conversation_id' in ra
+    rc = src[src.index("def _run_conversation("):][:700]
+    assert '"chat"' in rc and "get_conversation(cid)" in rc
+
+
+def test_the_office_shows_a_turn_already_running():
+    src = (JS / "04a-copilot.js").read_text()
+    rp = src[src.index("async function replay(cid){"):][:2600]
+    assert "STREAMS[cid]" in rp and "mf-so-far" in rp and "approvalWatch()" in rp
+    assert "input.placeholder='Ask '+agentName()+'…'" in src

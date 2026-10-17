@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.37 — 2026-10-17
+
+**A department's approvals show up in the chat you asked from.** Reported as "when the approval is given and
+it moves to the next thing it doesn't pop up", from the Office with Claude Code.
+- Each step a department asks about (handing work to someone, running code) is now drawn in the
+  conversation it belongs to, in Chat or in the Office's chat, and floats on top when that place is out of
+  sight. It used to be sent with no conversation, so it landed wherever Chat happened to be.
+- Opening the Office while a task runs shows what it's doing so far, not just your question.
+- The Office's message box hint fits on one line.
+
 ## 0.6.36 — 2026-10-16
 
 No release notes were written for this one; the commits since 0.6.35 are what changed (`bento update` lists them).
