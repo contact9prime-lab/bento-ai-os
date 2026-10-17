@@ -36,7 +36,7 @@ import re
 import time
 import uuid
 
-KINDS = ("chart", "map", "numbers", "timeline", "steps", "table")
+KINDS = ("chart", "map", "numbers", "timeline", "steps", "table", "image", "video")
 CHART_TYPES = ("line", "area", "bar", "scatter", "pie")
 NEEDS_SOURCE = ("chart", "map", "numbers", "table")   # the kinds that carry measurements
 
@@ -59,6 +59,8 @@ FIELDS = {
     "timeline": ("events",),
     "steps": ("items",),
     "table": ("columns", "rows"),
+    "image": ("url", "asset", "alt", "credit"),
+    "video": ("url", "start"),
 }
 VIEWS = ("world", "africa", "asia", "europe", "north america", "south america", "oceania",
          "middle east", "india")
@@ -239,6 +241,28 @@ class _KIND:
         sc["items"] = items
 
     @staticmethod
+    def image(spec, sc, dropped):
+        """A picture: an https address on the web, or an asset this machine made or keeps
+        (generate_image, save_asset), drawn from /api/assets/<id>/file."""
+        url, asset = str(spec.get("url") or "").strip(), str(spec.get("asset") or "").strip()
+        if asset and not _ASSET.match(asset):
+            raise ValueError("asset must be the id of one of your assets (list_assets shows them)")
+        if not asset and not (url.startswith("https://") and len(url) <= 2000 and " " not in url):
+            raise ValueError("an image needs url: an https address, or asset: one of your assets' ids")
+        sc.update(url="" if asset else url, asset=asset, alt=_s(spec.get("alt") or sc["title"], 160),
+                  credit=_s(spec.get("credit"), 120))
+
+    @staticmethod
+    def video(spec, sc, dropped):
+        """A YouTube video, played from youtube-nocookie.com: a tutorial, a talk, a clip."""
+        vid = youtube_id(str(spec.get("url") or ""))
+        if not vid:
+            raise ValueError("a video needs url: a YouTube address (watch, youtu.be, shorts or embed)")
+        start = _num(spec.get("start"))
+        sc.update(video=vid, start=int(start) if start and start > 0 else 0,
+                  url=f"https://www.youtube.com/watch?v={vid}")
+
+    @staticmethod
     def table(spec, sc, dropped):
         cols = [_s(c, 40) for c in _list(spec.get("columns"))[:MAX_COLS]]
         rows = []
@@ -250,6 +274,22 @@ class _KIND:
         if not cols or not rows:
             raise ValueError("a table needs columns: [...] and rows: [[...], …]")
         sc.update(columns=cols, rows=rows)
+
+
+_ASSET = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
+_YT = re.compile(r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})")
+
+
+def youtube_id(url: str) -> str:
+    """The 11-character id of a YouTube address, or ''. Nothing but YouTube is played."""
+    from urllib.parse import urlparse
+    u = (url or "").strip()
+    host = (urlparse(u if "://" in u else "https://" + u).hostname or "").lower()
+    if host not in ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
+                    "www.youtube-nocookie.com", "youtube-nocookie.com", "music.youtube.com"):
+        return ""
+    m = _YT.search(u)
+    return m.group(1) if m else ""
 
 
 # -- the terminal's face -----------------------------------------------------------------
@@ -315,6 +355,10 @@ def text(sc: dict) -> str:
     elif k == "steps":
         for i, it in enumerate(sc["items"], 1):
             out.append(f"  {i}. {it['title']}" + (f" — {it['text']}" if it["text"] else ""))
+    elif k == "image":
+        out.append(f"  🖼 {sc.get('alt') or 'a picture'}  {sc.get('url') or '(one of your assets: ' + sc.get('asset', '') + ')'}")
+    elif k == "video":
+        out.append(f"  ▶ https://youtu.be/{sc['video']}" + (f"?t={sc['start']}" if sc.get("start") else ""))
     elif k == "table":
         w = [max(len(c), *(len(r[i]) if i < len(r) else 0 for r in sc["rows"])) for i, c in enumerate(sc["columns"])]
         w = [min(x, 24) for x in w]
@@ -335,7 +379,7 @@ def _ensure(store) -> None:
     if getattr(store, "_stage_ready", False):
         return
     names = {r[0] for r in store.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    if "stage_scenes" not in names or "stage_boards" not in names:
+    if not {"stage_scenes", "stage_boards", "stage_links"} <= names:
         from .memory import SCHEMA
         store.db.executescript(SCHEMA)
     store._stage_ready = True
@@ -353,6 +397,13 @@ def add(store, conversation_id: str, scene: dict) -> dict:
                          (conversation_id, answer_to)).fetchone()[0]
     if n >= MAX_PER_ANSWER:
         raise ValueError(f"this answer already has {MAX_PER_ANSWER} scenes; say the rest in words")
+    if n == 0:
+        # the first scene of a new story: was it asked for by "Go deeper" on a scene?
+        ask = _DEEPER.pop((_who(), conversation_id), None)
+        if ask and time.time() - ask[2] < DEEPER_S and ask[0] != answer_to:
+            store.db.execute("INSERT OR REPLACE INTO stage_links (conversation_id, answer_to, "
+                             "parent_answer_to, parent_seq, created_at) VALUES (?,?,?,?,?)",
+                             (conversation_id, answer_to, ask[0], ask[1], time.time()))
     sid = uuid.uuid4().hex[:12]
     now = time.time()
     store.db.execute("INSERT INTO stage_scenes (id, conversation_id, answer_to, seq, scene, created_at) "
@@ -361,6 +412,44 @@ def add(store, conversation_id: str, scene: dict) -> dict:
     store.db.commit()
     return {"id": sid, "conversation_id": conversation_id, "answer_to": answer_to,
             "seq": n + 1, "scene": scene, "created_at": now}
+
+
+# "Go deeper" on a scene: the page asks for it, then sends the question as an ordinary chat
+# message. The story that answers it is linked to the scene when its first scene arrives,
+# whichever brain answers (Claude Code saves its messages in another place than the
+# built-in loop). Kept in memory per person and chat, for DEEPER_S.
+DEEPER_S = 1800
+_DEEPER: dict = {}
+
+
+def _who() -> str:
+    try:
+        from . import users
+        return users.current() or ""
+    except Exception:
+        return ""
+
+
+def ask_deeper(store, conversation_id: str, answer_to: str, seq: int) -> str:
+    """Remember that the next story in this chat goes deeper on that scene, and return
+    the question to send. Refused for a scene that is not there."""
+    scenes = story(store, conversation_id, answer_to)
+    hit = next((s for s in scenes if s["seq"] == int(seq)), None)
+    if not hit:
+        raise ValueError("that scene is not there")
+    sc = hit["scene"]
+    _DEEPER[(_who(), conversation_id)] = (answer_to, int(seq), time.time())
+    about = sc.get("title") or sc["kind"]
+    return (f"Go deeper on \"{about}\"" + (f" ({sc['caption']})" if sc.get("caption") else "")
+            + ". Explain it properly and show it as its own story on the Stage: what is behind it, "
+              "the numbers, places, pictures or videos that make it clear.")
+
+
+def links(store, conversation_id: str) -> dict:
+    _ensure(store)
+    rows = store.db.execute("SELECT answer_to, parent_answer_to, parent_seq FROM stage_links "
+                            "WHERE conversation_id=?", (conversation_id,)).fetchall()
+    return {a: {"answer_to": p, "seq": q} for a, p, q in rows}
 
 
 def stories(store, conversation_id: str) -> list[dict]:
@@ -376,6 +465,14 @@ def stories(store, conversation_id: str) -> list[dict]:
             continue
         st = out.setdefault(ans or "", {"answer_to": ans or "", "scenes": []})
         st["scenes"].append({"id": sid, "seq": seq, "scene": sc, "created_at": at})
+    ln = links(store, conversation_id)
+    for a, st in out.items():
+        st["parent"] = ln.get(a)
+        # which of its scenes others went deeper on: {seq: [answer_to, …]}
+        st["deeper"] = {}
+    for a, p in ln.items():
+        if p["answer_to"] in out:
+            out[p["answer_to"]]["deeper"].setdefault(str(p["seq"]), []).append(a)
     return list(out.values())
 
 
@@ -552,15 +649,23 @@ def settings(cfg: dict) -> dict:
     return {"big": bool(st.get("big", DEFAULTS["big"])), "app": str(st.get("app") or "")}
 
 
-BIG_LINE = ("Answer BIG: this person sees your answers on the Stage. When an answer has numbers, "
-            "places, a trend, a comparison, a sequence or a cause and its effects, SHOW it with "
-            "show_scene as you go (a chart, a map, key numbers, a timeline, steps or a table), "
-            "two to five scenes that tell the story in order, then write the answer. Use real "
+BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anything worth seeing is "
+            "SHOWN with show_scene before you write the text: three to six scenes, in story order. "
+            "A how-to or a tutorial: the steps, a picture, and a YouTube video (search the web for "
+            "the best tutorial on it and pass its youtube.com address as a video scene). A place: "
+            "a map, and a picture of it. Numbers or a trend: a chart or key numbers. A process or a "
+            "cause: steps or a timeline. A picture is an https image address you found (a photo "
+            "on Wikipedia or the maker's site) or one you made with generate_image. Use real "
             "figures you looked up and name the source; if a picture is only an example, set "
-            "illustrative: true. A plain question gets a plain answer and no scenes.")
-ASKED_LINE = ("show_scene puts a chart, a map, key numbers, a timeline, steps or a table on the "
+            "illustrative: true. A plain question (a fact, a yes or no, small talk) gets no scenes. "
+            "When the person asks to change what is on the Stage (add a place, another chart, "
+            "newer figures), show the whole story again with the change: it is kept as a new "
+            "version beside the old one.")
+ASKED_LINE = ("show_scene puts a chart, a map, key numbers, a timeline, steps, a table, a picture or a "
+              "YouTube video on the "
               "person's screen. Use it when they ask to see something; name the source of any "
-              "numbers, or set illustrative: true.")
+              "numbers, or set illustrative: true. Asked to change what is on the Stage, show the "
+              "whole story again with the change; the old version is kept.")
 
 
 def note(cfg: dict, tool: str = "show_scene") -> str:
@@ -579,15 +684,45 @@ REPORT_TOKENS = """:root{--bg:#0b0d1a;--bg2:#13162a;--bg3:#1b1f38;--bg4:#242a4a;
 --sans:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;--ease-out:cubic-bezier(.2,.8,.2,1);--el-4:0 10px 30px #0008}
 @media (prefers-color-scheme: light){:root{--bg:#f6f6fb;--bg2:#ffffff;--bg3:#eef0f7;--bg4:#e3e6f1;--txt:#14162b;
 --dim:#555b7d;--dim2:#7a809f;--line:#dadff0;--acc:#5b4dff;--warn:#b45309}}
-body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.5 var(--sans)}
+body{margin:0;background:#05060e;color:#eef1ff;font:16px/1.5 var(--sans)}
 .rp{max-width:980px;margin:0 auto;padding:22px 16px 60px}
-.rp-h{font-size:13px;color:var(--dim);letter-spacing:.04em;text-transform:uppercase}
+.rp-h{font-size:13px;color:rgba(238,241,255,.6);letter-spacing:.04em;text-transform:uppercase}
 .rp-q{font-size:26px;font-weight:800;line-height:1.25;margin:8px 0 22px}
-.rp .st-card{margin:0 0 18px;min-height:0}.rp .st-art{min-height:240px;overflow:visible}
-.rp .st-svg{height:auto;min-height:0}
-.rp-a{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px;white-space:pre-wrap;line-height:1.55}
-.rp-f{color:var(--dim2);font-size:12px;margin-top:22px;text-align:center}
+.rp .stg.rp-sc{display:block;container-type:normal;border-radius:22px;margin:0 0 18px;padding:18px 0 16px;contain:none;transform:none}
+.rp .stg-scene{display:block;padding:0 18px}
+.rp .stg-art{height:min(62vh,520px);min-height:260px}
+.rp .stg-scene.k-chart .stg-art,.rp .stg-scene.k-map .stg-art,.rp .stg-scene.k-video .stg-art,.rp .stg-scene.k-steps .stg-art,.rp .stg-scene.k-numbers .stg-art,.rp .stg-scene.k-timeline .stg-art,.rp .stg-scene.k-table .stg-art{height:auto}
+.rp .stg-foot{margin-top:10px}
+.rp .stg-cap span{opacity:1;animation:none}
+.rp .st-svg{height:auto}
+.rp .stg-vid{display:block}.rp .stg-vid-link{width:100%;height:auto}
+.rp-a{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:var(--r-lg);padding:16px 18px;white-space:pre-wrap;line-height:1.55}
+.rp-f{color:rgba(238,241,255,.45);font-size:12px;margin-top:22px;text-align:center}
 .st-card:not(.seen) .st-art{visibility:hidden}"""
+
+
+def _inline_asset(store, sc: dict) -> dict:
+    """A picture this machine keeps travels inside the page (a phone cannot reach it here);
+    one over REPORT_IMG_CAP stays out, and the page says the picture is on the machine."""
+    if sc.get("kind") != "image" or not sc.get("asset"):
+        return sc
+    import base64
+    try:
+        from . import assets as assetmod
+        row = store.asset_get(sc["asset"])
+        path = assetmod.path_of(row) if row else None
+        data = open(path, "rb").read() if path else b""
+    except Exception:
+        data, row = b"", None
+    if data and len(data) <= REPORT_IMG_CAP:
+        sc["url"] = f"data:{(row or {}).get('mime') or 'image/png'};base64," + base64.b64encode(data).decode()
+    else:
+        sc["url"], sc["credit"] = "", "The picture is on your machine, in Assets"
+    sc["asset"] = ""
+    return sc
+
+
+REPORT_IMG_CAP = 3 * 1024 * 1024
 
 
 def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
@@ -596,7 +731,7 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
     (24l-stage.js, so there is one painter), the written answer, and the map inline. It
     is what Telegram sends: opened on a phone it plays the story without this machine."""
     import html as _html
-    scenes = [s["scene"] for s in story(store, conversation_id, answer_to)]
+    scenes = [_inline_asset(store, dict(s["scene"])) for s in story(store, conversation_id, answer_to)]
     row = store.db.execute("SELECT content FROM messages WHERE id=?", (answer_to,)).fetchone()
     question = _question(row[0] if row else "")
     js = (_UI / "src/js/24l-stage.js").read_text(encoding="utf-8")
@@ -617,17 +752,25 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
 {f'<div class="rp-a">{_html.escape(answer)}</div>' if answer.strip() else ''}
 <div class="rp-f">Made by Bento Box AI. Numbers carry their source; scenes marked illustrative are examples, not data.</div>
 </div>
-<script>{js}
+<script>window.STAGE_REPORT=true;
+{js}
 (function(){{
   var D={data}, W={world};
   if(W)stageWorldIndex(W);
   var host=document.getElementById('scenes');
-  var cards=D.scenes.map(function(sc){{
-    var card=sEl('div','st-card k-'+sc.kind);card.append(sEl('div','st-title',sc.title||''));
-    var art=sEl('div','st-art');card.append(art);
-    if(sc.caption)card.append(sEl('div','st-cap',sc.caption));
-    if(sc.illustrative)card.append(sEl('div','st-src st-illus','Illustrative, not data'));
-    else if(sc.source)card.append(stageSource(sc.source));
+  // each scene is a room of its own, lit by its kind, as on the Stage
+  var cards=D.scenes.map(function(sc,i){{
+    var card=sEl('section','stg rp-sc');card.style.setProperty('--hue',STAGE_HUE[sc.kind]||250);
+    card.append(sEl('div','stg-bg'));
+    var box=sEl('div','stg-scene k-'+sc.kind);
+    box.append(sEl('div','stg-kicker',(i+1)+' of '+D.scenes.length+' · '+(STAGE_KIND[sc.kind]||sc.kind)));
+    box.append(sEl('div','stg-title',sc.title||''));
+    var art=sEl('div','stg-art st-art');box.append(art);
+    var foot=sEl('div','stg-foot');
+    if(sc.caption)foot.append(sEl('div','stg-cap',sc.caption));
+    if(sc.illustrative)foot.append(sEl('div','st-src st-illus','Illustrative, not data'));
+    else if(sc.source)foot.append(stageSource(sc.source));
+    box.append(foot);card.append(box);
     host.append(card);return [card,art,sc];
   }});
   // each scene draws as it scrolls into view, so its motion is seen

@@ -14,10 +14,26 @@ the chain of cause and effect. The written answer still comes too. The Stage pla
 | Timeline | Events in order |
 | Steps | A chain: this leads to that |
 | Table | Rows and columns |
+| Picture | A photo, a diagram or an image the agent made, slowly moving |
+| Video | A YouTube video, such as a tutorial, played on the Stage |
 
 Every scene with numbers says where they came from, or says "Illustrative, not data" when it is an
 example. A scene the agent can't back with a source is refused until it names one or says it is an
 example.
+
+## Watching a story
+
+The Now tab is a dark room. Each scene fills it: a title, the drawing, and the narrator's line underneath like
+a subtitle. ▶ plays the story from the start (read aloud when voice replies are on), ‹ and › step through it,
+and the bars at the top show where you are.
+
+- **♪** plays a soft background score made on your screen. It is off until you turn it on, and stops when the
+  Stage closes.
+- **⤵ Go deeper** asks for that scene as its own story. It is sent in the same chat, plays here next, and
+  **↖ Back** returns to where it came from. A scene you went deeper on shows its deeper story in the bar.
+- **Versions**: ask in the chat to change what is on the Stage ("add Japan", "use this year's figures") and
+  the agent shows the whole story again. The version before stays, one tap away at the top right.
+- **⛶** makes it full screen.
 
 ## Answer BIG
 
@@ -33,8 +49,9 @@ or with `bento stage big on|off`.
   Office's chat, or the prompt bar). Turn "Open by itself on this screen" off under Boards if you'd
   rather open it yourself.
 - **Chat** puts a ▶ Play chip under each answer that has a story, also when you reopen the chat later.
-- **Telegram** gets the reply, then one page with the whole story. It opens in the phone's browser and
-  plays without this machine.
+- **Telegram** gets the reply, then one page with the whole story in the same dark look. It opens in the
+  phone's browser and plays without this machine; a video there is a picture that opens YouTube, and a
+  picture the agent made travels inside the page.
 - **A terminal** prints each scene as text: a chart as a sparkline or bars, a map as its places. The TUI
   and the terminal chat print them as they arrive; `bento stage` shows the last chat's story, `bento stage
   list` everything.

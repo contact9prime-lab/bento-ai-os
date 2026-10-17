@@ -4408,6 +4408,14 @@ body.dev-touch .of-x{min-width:var(--tap)}
    words are HTML over it, placed by a transform each frame. Cards and the side list
    take taps; everything else lets them through to the canvas. */
 .of-scroll.of3{overflow:hidden;background:#0f1020}
+/* The office band on the desktop: it keeps its width (a flex item grows to its content,
+   so the cards layer stretched it across the whole screen), shows the wallpaper through,
+   and fades out at its edges. Office HQ and the window keep their own night. */
+body.immersive #office-scene:not(.hq) .of-scroll{min-width:0;flex:0 1 auto;background:transparent}
+body.immersive #office-scene:not(.hq) .of-scroll.of3{background:transparent;
+  -webkit-mask-image:radial-gradient(ellipse 58% 62% at 50% 52%,#000 58%,transparent 100%);
+  mask-image:radial-gradient(ellipse 58% 62% at 50% 52%,#000 58%,transparent 100%)}
+body.immersive #office-scene:not(.hq) canvas.of-cv3{box-shadow:none;border-radius:0}
 .of-cv3{position:absolute;inset:0;display:block;touch-action:none;cursor:grab}
 .of-cv3:active{cursor:grabbing}
 .of3-ui{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1;
@@ -5265,7 +5273,7 @@ body.kiosk #office-scene canvas{display:block}
 .st-src{font-size:var(--fs-xs);color:var(--dim2)}
 .st-src a{color:var(--dim)}
 .st-illus{color:var(--warn);font-weight:600}
-.st-art{position:relative;min-height:200px;flex:1 1 auto;display:flex;flex-direction:column;overflow:auto}
+.st-art{position:relative;min-height:200px;flex:1 1 auto;display:flex;flex-direction:column;overflow:auto;contain:layout paint}
 .st-note{font-size:var(--fs-xs);margin:4px 0 0}
 .st-svg{width:100%;flex:1 1 auto;min-height:180px;height:100%;display:block}
 .st-card.k-chart .st-art,.st-card.k-map .st-art{overflow:hidden}
@@ -5292,7 +5300,9 @@ body.kiosk #office-scene canvas{display:block}
 .st-country.on{fill:color-mix(in srgb,#F97316 calc(var(--t,1)*100%),var(--bg3));animation:st-fade .8s ease both}
 .st-pin{opacity:0;animation:st-pop .5s var(--ease-out) forwards}
 .st-pt{fill:#F43F5E;stroke:#fff;stroke-width:1.5}
-.st-pulse{fill:#F43F5E;opacity:.25;transform-box:fill-box;transform-origin:center;animation:st-pulse 2.2s ease-out infinite}
+/* Never forever inside a drawing: an SVG shape scaling without end was redrawn badly by Chrome on
+   Wayland (reported: the map and its caption painted twice, with the dock inside it). */
+.st-pulse{fill:#F43F5E;opacity:.25;transform-box:fill-box;transform-origin:center;animation:st-pulse 2.2s ease-out 3}
 .st-tag{fill:color-mix(in srgb,var(--bg) 82%,transparent);stroke:var(--line);opacity:0;animation:st-fade .4s ease forwards}
 .st-tagtext{fill:var(--txt);font-size:calc(13px * var(--k,1));font-weight:600;font-family:var(--sans);opacity:0;animation:st-fade .4s ease forwards}
 .st-scale{display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
@@ -5378,6 +5388,156 @@ body.kiosk #office-scene canvas{display:block}
 body.dev-mobile .st-main{padding:10px}
 body.dev-mobile .st-num-v{font-size:28px}
 body.dev-mobile .st-big span{font-size:var(--fs-xs)}
+
+/* ================= the theater (the Now tab) =================
+   A dark room whatever the theme, because a story is watched: the scene's hue lights a
+   slow field of colour behind it, the title is large, the narrator's line arrives word
+   by word, and the controls sit on glass at the bottom. */
+.st-main.now{padding:0;gap:0;overflow:hidden}
+/* a grid: the drawing takes every pixel the bars leave, at any window size */
+.stg{--hue:250;position:relative;flex:1;min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden;contain:paint;transform:translateZ(0);container-type:size;
+  color:#eef1ff;background:#05060e;isolation:isolate}
+.stg-bg{position:absolute;inset:-20%;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(40% 50% at 22% 28%,hsl(var(--hue) 85% 55% / .34),transparent 70%),
+    radial-gradient(45% 55% at 80% 72%,hsl(calc(var(--hue) + 60) 80% 50% / .26),transparent 70%),
+    radial-gradient(35% 40% at 70% 18%,hsl(calc(var(--hue) - 40) 90% 60% / .18),transparent 70%),
+    #05060e;
+  animation:stg-drift 26s ease-in-out infinite alternate;transition:background 1.2s ease;will-change:transform}
+.stg::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(120% 90% at 50% 40%,transparent 55%,rgba(0,0,0,.55))}
+@keyframes stg-drift{0%{transform:translate(0,0) scale(1)}50%{transform:translate(-3%,2%) scale(1.06)}100%{transform:translate(2%,-2%) scale(1.03)}}
+.stg-prog{display:flex;gap:6px;padding:14px 22px 0;flex:0 0 auto}
+.stg-prog button{flex:1;height:18px;padding:0;border:0;background:none;cursor:pointer;position:relative}
+.stg-prog button::before{content:"";position:absolute;left:0;right:0;top:7px;height:4px;border-radius:2px;background:rgba(255,255,255,.18)}
+.stg-prog button.done::before{background:rgba(255,255,255,.85)}
+.stg-prog button.on::before{background:linear-gradient(90deg,#fff 0 var(--p,100%),rgba(255,255,255,.18) 0)}
+.stg-prog button.on.run::before{animation:stg-fill 6s linear forwards}
+@property --p{syntax:'<percentage>';inherits:false;initial-value:0%}
+@keyframes stg-fill{from{--p:0%}to{--p:100%}}
+.stg-head{display:flex;align-items:center;gap:10px;padding:10px 24px 0;flex:0 0 auto;min-width:0}
+.stg-q{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:rgba(238,241,255,.62);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.stg-crumb{flex:0 0 auto;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;
+  border-radius:999px;padding:5px 12px;font:600 12px var(--sans);cursor:pointer;min-height:var(--tap,28px)}
+.stg-scene{min-height:0;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;padding:6px 24px 0;animation:stg-in .7s cubic-bezier(.2,.8,.2,1) both}
+@keyframes stg-in{from{opacity:0;transform:scale(1.035);filter:blur(10px)}to{opacity:1;transform:none;filter:none}}
+.stg-kicker{font:600 12px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:hsl(var(--hue) 90% 78%);
+  animation:st-fade .5s ease .1s both}
+.stg-title{font:800 clamp(20px,min(4.2cqw,7cqh),48px)/1.08 var(--sans);letter-spacing:-.025em;margin:6px 0 10px;
+  background:linear-gradient(180deg,#fff 30%,hsl(var(--hue) 70% 82%));-webkit-background-clip:text;background-clip:text;color:transparent;
+  text-wrap:balance;animation:stg-rise .7s cubic-bezier(.2,.8,.2,1) .15s both}
+@keyframes stg-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.stg-art{min-height:0;position:relative;display:flex;flex-direction:column;contain:layout paint;isolation:isolate}
+.stg .stg-art .st-svg{min-height:0;height:100%}
+.stg-foot{padding:8px 0 2px;display:flex;flex-direction:column;align-items:center;gap:4px;position:relative;z-index:2;margin-top:-34px}
+.stg-cap{max-width:900px;text-align:center;font:500 clamp(15px,1.5vw,20px)/1.45 var(--sans);color:#fff;
+  padding:10px 18px;border-radius:14px;background:rgba(8,10,22,.55);border:1px solid rgba(255,255,255,.08);
+  backdrop-filter:blur(8px);text-shadow:0 1px 8px rgba(0,0,0,.5)}
+.stg-cap span{opacity:0;animation:stg-word .35s ease forwards}
+@keyframes stg-word{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:none}}
+.stg .st-src{color:rgba(238,241,255,.5)}.stg .st-src a{color:rgba(238,241,255,.7)}
+.stg .st-illus{color:#fbbf24}
+.stg-bar{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 16px 14px;padding:8px;
+  border-radius:16px;background:rgba(12,14,30,.6);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(14px)}
+.stg-b{min-height:var(--tap,34px);min-width:var(--tap,34px);padding:0 14px;border-radius:11px;border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.07);color:#eef1ff;font:600 13px var(--sans);cursor:pointer}
+.stg-b:hover:not(:disabled){background:rgba(255,255,255,.16)}
+.stg-b:disabled{opacity:.35;cursor:default}
+.stg-play{background:#fff;color:#0b0d1a;border-color:#fff}
+.stg-deep{background:linear-gradient(135deg,hsl(var(--hue) 85% 58%),hsl(calc(var(--hue) + 50) 85% 58%));border:0;color:#fff}
+.stg-kid{border-style:dashed}
+.stg-sp{flex:1}
+.stg-wait{position:absolute;top:56px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;z-index:4;
+  padding:8px 16px;border-radius:999px;background:rgba(12,14,30,.75);border:1px solid rgba(255,255,255,.12);font:600 13px var(--sans)}
+.stg-wait i{width:10px;height:10px;border-radius:50%;background:hsl(var(--hue) 90% 70%);animation:st-pulse 1.4s ease-out infinite;box-shadow:0 0 12px hsl(var(--hue) 90% 70%)}
+.stg-empty{margin:auto;text-align:center;max-width:560px;padding:30px 20px}
+.stg-empty-h{font:800 clamp(26px,3vw,40px)/1.1 var(--sans);letter-spacing:-.02em;margin-bottom:12px;
+  background:linear-gradient(180deg,#fff,hsl(var(--hue) 70% 80%));-webkit-background-clip:text;background-clip:text;color:transparent}
+.stg-empty p{color:rgba(238,241,255,.7);line-height:1.55}
+.stg .st-keepbox{bottom:76px;background:#12152b;color:#eef1ff;border-color:rgba(255,255,255,.14)}
+.st-icon{min-height:var(--tap,30px);padding:0 10px;border-radius:9px;border:1px solid var(--line);background:var(--bg3);color:var(--txt);
+  font:600 12px var(--sans);cursor:pointer}
+.st-icon.on{background:color-mix(in srgb,var(--acc) 22%,var(--bg3));border-color:var(--acc)}
+/* the drawings, in the theater's light */
+.stg .st-axis text{fill:rgba(238,241,255,.6)}
+.stg .st-axis .st-axlabel{fill:rgba(238,241,255,.45)}
+.stg .st-grid{stroke:rgba(255,255,255,.08);stroke-dasharray:2 6}
+.stg .st-val{fill:#fff}
+.stg .st-pie-l{fill:#eef1ff}
+.st-area{opacity:0;animation:st-fade 1.2s ease .6s forwards;fill-opacity:1}
+.st-endglow{opacity:.25;transform-box:fill-box;transform-origin:center;animation:st-pulse 2.4s ease-out 1.4s 3}
+.stg .st-sea{fill:url(#none);fill:#070b1d}
+.st-grat line{stroke:rgba(140,170,255,.09);stroke-width:1}
+.stg .st-country{fill:rgba(140,160,255,.10);stroke:rgba(150,180,255,.35);stroke-width:.7}
+.stg .st-country.on{fill:color-mix(in srgb,#FB923C calc(var(--t,1)*100%),rgba(140,160,255,.12));stroke:#FDBA74;filter:drop-shadow(0 0 6px rgba(251,146,60,.55))}
+.stg .st-tag{fill:rgba(8,10,22,.82);stroke:rgba(255,255,255,.16)}
+.stg .st-tagtext{fill:#fff}
+.st-arcs path{fill:none;stroke:#FDE68A;stroke-width:2;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:.85;
+  filter:drop-shadow(0 0 4px rgba(253,230,138,.7));animation:st-dash 1.1s ease forwards}
+@keyframes st-dash{to{stroke-dashoffset:0}}
+.stg .st-num{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);backdrop-filter:blur(6px)}
+.stg .st-num-v{font-size:clamp(34px,4.4vw,64px);background:linear-gradient(180deg,#fff,hsl(var(--hue) 80% 78%));
+  -webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 18px hsl(var(--hue) 90% 60% / .35))}
+.stg .st-num-l{color:rgba(238,241,255,.7)}
+.stg .st-num-n{color:rgba(238,241,255,.5)}
+.stg .st-step{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1);backdrop-filter:blur(6px)}
+.stg .st-step-x{color:rgba(238,241,255,.65)}
+.stg .st-arrow{color:hsl(var(--hue) 90% 75%);text-shadow:0 0 12px hsl(var(--hue) 90% 60%)}
+.stg .st-tl-e::before{background:linear-gradient(90deg,transparent,hsl(var(--hue) 80% 65% / .6),transparent)}
+.stg .st-tl-w{color:hsl(var(--hue) 90% 78%)}
+.stg .st-tl-dot{background:#fff;box-shadow:0 0 0 4px hsl(var(--hue) 80% 60% / .35),0 0 16px hsl(var(--hue) 90% 65%)}
+.stg .st-tl-n{color:rgba(238,241,255,.6)}
+.stg .st-tablewrap{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.03)}
+.stg .st-table th{background:rgba(20,24,48,.95);color:#fff}
+.stg .st-table td{border-top-color:rgba(255,255,255,.08)}
+.stg .st-legend{color:rgba(238,241,255,.7)}
+/* a picture: slowly moving, cut to the room */
+.stg-pic{flex:1;min-height:0;position:relative;border-radius:18px;overflow:hidden;background:#000;
+  box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08)}
+.stg-pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:stg-kb 22s ease-in-out infinite alternate}
+@keyframes stg-kb{from{transform:scale(1.04) translate(0,0)}to{transform:scale(1.16) translate(-2%,-1.5%)}}
+.stg-credit{position:absolute;right:10px;bottom:8px;font:500 11px var(--sans);color:rgba(255,255,255,.8);
+  background:rgba(0,0,0,.45);padding:3px 8px;border-radius:6px}
+.stg-pic.broken{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:rgba(238,241,255,.7)}
+.stg-pic.broken a{color:#fff}
+/* a video: 16:9, as big as the room allows */
+.stg-vid{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.stg-vid iframe,.stg-vid-link{max-width:100%;max-height:100%;height:100%;aspect-ratio:16/9;border:0;border-radius:16px;
+  box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.1),0 0 60px hsl(var(--hue) 90% 55% / .25);background:#000}
+.stg-vid-link{position:relative;display:block;overflow:hidden}
+.stg-vid-link img{width:100%;height:100%;object-fit:cover;display:block}
+.stg-vid-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;
+  background:rgba(255,0,0,.88);color:#fff;font-size:28px;display:grid;place-items:center}
+body.dev-mobile .stg-scene{padding:6px 14px 0}
+body.dev-mobile .stg-foot{padding:8px 14px 2px}
+body.dev-mobile .stg-bar{margin:6px 10px 10px}
+body.dev-mobile .stg-cap{font-size:15px}
+@media (prefers-reduced-motion: reduce){.stg-bg,.stg-pic img{animation:none!important}}
+
+/* a short window: smaller words, so the drawing keeps its room */
+@container (max-height: 520px){
+  .stg-head{display:none}
+  .stg-prog{padding-top:10px}
+  .stg-kicker{display:none}
+  .stg-title{margin:4px 0 6px}
+  .stg-cap{font-size:14px;padding:6px 12px}
+  .stg-bar{margin:6px 12px 10px;padding:6px}
+}
+/* each part keeps its own row, so hiding the question in a short window moves nothing */
+.stg>.stg-prog{grid-row:1}.stg>.stg-head{grid-row:2}.stg>.stg-scene{grid-row:3}.stg>.stg-bar{grid-row:4}
+.stg>.stg-empty{grid-row:3}
+/* what does not fill the room sits in its middle */
+.stg-scene.k-steps .stg-art,.stg-scene.k-numbers .stg-art,.stg-scene.k-timeline .stg-art,.stg-scene.k-table .stg-art{justify-content:center;overflow:auto}
+.stg-ver{margin-left:auto;flex:0 0 auto;display:flex;align-items:center;gap:6px;font:600 12px var(--sans);color:rgba(238,241,255,.8)}
+.stg-ver button{min-width:var(--tap,28px);min-height:var(--tap,28px);border-radius:8px;border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.07);color:#fff;cursor:pointer}
+.stg-ver button:disabled{opacity:.3;cursor:default}
+/* many steps: a grid of compact cards, read left to right, never a column to scroll */
+.stg .st-steps.tall{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px;align-content:center}
+.stg .st-steps.tall .st-arrow{display:none}
+.stg .st-steps.tall .st-step{flex:none;padding:10px 12px}
+.stg .st-steps.tall .st-step-x{font-size:12.5px}
 </style>
 </head>
 <body>
@@ -15790,6 +15950,7 @@ function handle(ev){
       flushText();
       curBody.parentNode.insertBefore(errBox(ev),curBody); scrollDown(); break;}
     case 'turn_end':{
+      if(typeof stageTurnEnd==='function')stageTurnEnd(_cid);   // a Go deeper that came back in words
       if(typeof movementPulse==='function')movementPulse('turnend',ev.conversation_id);
       if(_cid){RUNNING.delete(_cid);delete STREAMS[_cid];actDone(_cid);agentQueueFlush(_cid);}
       updateSpin();
@@ -28726,10 +28887,23 @@ function officeLayout(){
   const kiosk=!!(O.w&&O.w.scene&&document.body.classList.contains('kiosk'));
   O.s=kiosk?Math.max(.9,Math.min(1.8,cw/720,sc.clientHeight/300))
     :phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
-  const W=cw/O.s, x0=OF_M+OF_SPINE, avail=W-x0-OF_M;
   // each room's natural width: a desk slot per member, and never narrower than a room
   const want=r=>r.kind==='lead'?300:r.kind==='meeting'?280:r.kind==='lounge'?250
     :Math.max(250,Math.max(1,r.members.length)*OF_DESK_W+40);
+  // The office band on the desktop is short and wide. Wrapped at the window's scale the
+  // plan grew row after row and was then shrunk to fit, which drew ten rooms as a
+  // sliver 142px wide (reported: "the 2D comic office I can't see"). So the band tries
+  // one to four rows and keeps the scale that draws people biggest.
+  if(O.fit&&!kiosk&&!phone&&sc.clientHeight>0){
+    const total=v.rooms.reduce((a,r)=>a+want(r)+OF_GAP,0),edge=OF_M*2+OF_SPINE;
+    let best=O.s;
+    for(let k=1;k<=4;k++){
+      const fit=Math.min(cw/(total/k*1.08+edge),sc.clientHeight/(OF_M*2+k*(OF_ROOM_H+OF_HALL)));
+      if(k===1||fit>best)best=fit;
+    }
+    O.s=Math.max(.2,Math.min(1.3,best));
+  }
+  const W=cw/O.s, x0=OF_M+OF_SPINE, avail=W-x0-OF_M;
   const rows=[];let row=[],used=0;
   v.rooms.forEach(r=>{
     const wn=Math.min(avail,want(r));
@@ -32132,6 +32306,10 @@ var OF3_SPARK=/remember|recall|memor|knowledge|kg_|forget/i;
 function of3Wanted(){
   const v=OFFICE.view;if(!v||OF3.failed)return false;
   if(of3HQ())return of3GL();        // the Office HQ scene is this look by definition
+  // The Office scene on the desktop is the comic: Office HQ is the 3D one, so the two scenes
+  // are the two looks. Reported as "the 2D comic office I can't see any more, in the scene
+  // where we had the boxes", after 3D became the office's default look.
+  if(OFFICE.w&&OFFICE.w.scene)return false;
   if(((v.office||{}).look||'3d')!=='3d')return false;
   return of3GL();
 }
@@ -32321,7 +32499,7 @@ async function of3Ensure(){
     const ui=document.createElement('div');ui.className='of3-ui';OF3.ui=ui;
     const desk=document.getElementById('desktop'),home=document.getElementById('home');
     if(of3HQ()&&desk){ui.classList.add('hq');desk.insertBefore(ui,home?home.nextSibling:null)}else host.appendChild(ui);
-    OF3.r=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'low-power'});
+    OF3.r=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:true,powerPreference:'low-power'});
     OF3.r.outputColorSpace=T.SRGBColorSpace;OF3.r.toneMapping=T.ACESFilmicToneMapping;OF3.r.toneMappingExposure=1.05;
     // the kiosk is a small machine's own screen (a Pi): no shadows there either
     OF3.hq=!document.body.classList.contains('kiosk')&&typeof worldQuality==='function'?worldQuality(OF3.r):false;
@@ -32405,7 +32583,7 @@ function of3Build(){
 function of3BuildNow(){
   const O=OFFICE,T=OF3.T,L=O.L,v=O.view;if(!T||!OF3.r||!L)return;
   const sig=JSON.stringify([L.rooms.map(r=>[r.kind,r.name,r.color,Math.min(OF3_SEATS,r.members.length),Math.round(r.x),Math.round(r.y)]),
-    v.office.style,v.office.decor,v.office.pet,OF3.hq]);
+    v.office.style,v.office.decor,v.office.pet,OF3.hq,!!(O.w&&O.w.scene)&&!of3HQ()]);
   if(sig===OF3.sig&&OF3.scene){of3Fit();return}
   // The ring follows the window's shape, so a resize moves the rooms. Rebuild once the
   // window has settled: dragging an edge fires this many times a second. Until then the
@@ -32422,7 +32600,11 @@ function of3BuildNow(){
   OF3.sig=sig;
   const S=OF3.scene=new T.Scene();
   // the dark the rooms float in, tinted by the office's style (a greenhouse is a green night)
-  S.background=of3Hex(v.style.wall||'#1b2233',['#0e0f1f',.86]);
+  // The office band on the desktop floats over the wallpaper; a window and Office HQ keep
+  // their night. Opaque, the band was a hard-edged dark slab across the wallpaper.
+  const band=!!(O.w&&O.w.scene)&&!of3HQ();
+  S.background=band?null:of3Hex(v.style.wall||'#1b2233',['#0e0f1f',.86]);
+  OF3.r.setClearColor(0,band?0:1);
   S.add(new T.HemisphereLight(0xcfd8ff,0x1a1b30,1.25));
   const sun=new T.DirectionalLight(0xfff1dc,1.55);
   const span=(L.R+300)/OF3_U;
@@ -33394,6 +33576,7 @@ function stageReduced(){try{return matchMedia('(prefers-reduced-motion: reduce)'
 /* ---------- which screen shows which chat ---------- */
 function stageMine(cid){
   if(!cid)return false;
+  if(STAGE.awaiting&&STAGE.awaiting.cid===cid)return true;     // a Go deeper from the Stage itself
   if(typeof currentConv!=='undefined'&&currentConv===cid&&typeof WM!=='undefined'&&WM.wins.get('chat'))return true;
   if(typeof OFFICE_CHAT!=='undefined'&&OFFICE_CHAT&&OFFICE_CHAT.cid===cid)return true;
   if(typeof OMNI!=='undefined'&&OMNI&&OMNI.cid===cid)return true;
@@ -33414,8 +33597,11 @@ function stageEvent(ev){
   if(app){stageToApp(app,ev);return}
   if(!stageMine(ev.conversation_id)){if(same)stagePaintIfOpen();return}
   if(!same){
-    STAGE.cur={cid:ev.conversation_id,answer_to:ev.answer_to||'',question:''};
-    STAGE.scenes=[{id:ev.id,seq:ev.seq,scene:ev.scene}];STAGE.at=0;STAGE.tab='now';
+    const was=STAGE.awaiting&&STAGE.awaiting.cid===ev.conversation_id&&STAGE.cur?{answer_to:STAGE.cur.answer_to,seq:(STAGE.scenes[STAGE.at]||{}).seq||1}:null;
+    STAGE.awaiting=null;
+    STAGE.cur={cid:ev.conversation_id,answer_to:ev.answer_to||'',question:'',parent:was,deeper:{},versions:[]};
+    stageVersions(STAGE.cur);
+    STAGE.scenes=[{id:ev.id,seq:ev.seq,scene:ev.scene}];STAGE.at=0;STAGE.tab='now';STAGE.held=0;
     stageQuestion();
   }
   const w=typeof WM!=='undefined'&&WM.wins.get('stage');
@@ -33445,7 +33631,9 @@ async function stageQuestion(){
     const m=(d.messages||[]).find(x=>x.id===c.answer_to);
     if(m&&STAGE.cur===c){c.question=stageStrip(m.content||'');stagePaintIfOpen()}}catch(e){}
 }
-function stageStrip(t){t=String(t||'').trim();while(t.startsWith('[')){const i=t.indexOf(']');if(i<0)break;t=t.slice(i+1).trim()}return t}
+function stageStrip(t){t=String(t||'').trim();while(t.startsWith('[')){const i=t.indexOf(']');if(i<0)break;t=t.slice(i+1).trim()}
+  // a Go deeper question reads as what it went deeper on, not the whole instruction
+  const m=t.match(/^Go deeper on "([^"]+)"/);return m?'Deeper: '+m[1]:t}
 
 /* ---------- voice: each scene's line, when voice replies are on ---------- */
 function stageSay(sc){
@@ -33455,11 +33643,8 @@ function stageSay(sc){
 
 /* ---------- opening a story ---------- */
 async function stageOpen(cid,answer_to,at){
-  try{const d=await apiJSON('/api/stage/story?conversation='+encodeURIComponent(cid)+'&answer_to='+encodeURIComponent(answer_to||''));
-    STAGE.cur={cid,answer_to:answer_to||'',question:''};
-    STAGE.scenes=d.scenes||[];STAGE.at=Math.max(0,Math.min(at||0,STAGE.scenes.length-1));
+  try{await stageFetch(cid,answer_to,at);
     STAGE.tab='now';STAGE.held=Date.now()+15000;
-    stageQuestion();
     const w=WM.wins.get('stage');if(w){focusWin(w);stagePaint()}else openApp('stage');
   }catch(e){toast('could not open that story: '+(e.message||e))}
 }
@@ -33498,18 +33683,26 @@ async function stageAttach(cid){
   });
 }
 
-/* ---------- the window ---------- */
-async function renderStage(body){
+/* ---------- the window: a theater ---------- */
+/* The Now tab is a dark, full-bleed room the story plays in: a moving field of light
+   behind each scene (its hue from the kind of scene), one progress segment per scene,
+   a big title, the drawing, and the narrator's line arriving word by word, like a
+   subtitle. "Go deeper" on any scene asks for its own story, which plays here next and
+   keeps a way back. Asked for as "the look and feel is really horrible, it needs a very
+   good immersive experience", with background sound, pictures and videos. */
+var STAGE_KIND={chart:'Chart',map:'Map',numbers:'Key numbers',timeline:'Timeline',steps:'How it works',
+  table:'Table',image:'Picture',video:'Video'};
+var STAGE_HUE={chart:255,map:200,numbers:280,timeline:170,steps:320,table:225,image:30,video:350};
+async function renderStage(body,w){
   body.classList.add('stage-body');
+  if(w&&w.app&&!w.app.onClose)w.app.onClose=()=>{stageMusic(false,true);STAGE.playing=false};
   if(!STAGE.lib)stageLoadLib();
   stagePaint(body);
 }
 async function stageLoadLib(){
   try{const d=await apiJSON('/api/stage/library');STAGE.lib=d;if(d.settings)STAGE.settings=d.settings;
     if(!STAGE.cur&&STAGE.tab==='now'&&(d.stories||[]).length){
-      const s=d.stories[0];STAGE.cur={cid:s.conversation_id,answer_to:s.answer_to,question:s.question};
-      const x=await apiJSON('/api/stage/story?conversation='+encodeURIComponent(s.conversation_id)+'&answer_to='+encodeURIComponent(s.answer_to));
-      STAGE.scenes=x.scenes||[];STAGE.at=0;
+      const s=d.stories[0];await stageFetch(s.conversation_id,s.answer_to,0);
     }
     stagePaintIfOpen();
   }catch(e){STAGE.lib={stories:[],boards:[],error:String(e.message||e)};stagePaintIfOpen()}
@@ -33529,43 +33722,98 @@ function stagePaint(body){
   sw.append(cb,sEl('span','','Answer BIG'));
   sw.title='On: answers with numbers, places or a story are shown here without being asked. Off: only when you ask to see something.';
   top.append(sw);
+  const mu=sEl('button','st-icon'+(stageMusicOn()?' on':''),stageMusicOn()?'♪ On':'♪ Off');
+  mu.title='Background music, made on this screen. Tap to play or pause.';mu.setAttribute('aria-pressed',String(stageMusicOn()));
+  mu.onclick=()=>{stageMusic(!stageMusicOn());stagePaint()};
+  const fs=sEl('button','st-icon','⛶');fs.title='Full screen';fs.setAttribute('aria-label','Full screen');
+  fs.onclick=()=>{const t=body.closest('.win')||body;try{document.fullscreenElement?document.exitFullscreen():t.requestFullscreen()}catch(e){}};
+  top.append(mu,fs);
   body.append(top);
-  const main=sEl('div','st-main');body.append(main);
+  const main=sEl('div','st-main'+(STAGE.tab==='now'?' now':''));body.append(main);
   if(STAGE.tab==='library')stageLibrary(main);
   else if(STAGE.tab==='boards')stageBoards(main);
   else stageNow(main);
 }
 
 function stageNow(main){
+  const th=sEl('div','stg');main.append(th);
+  const bg=sEl('div','stg-bg');th.append(bg);
   if(!STAGE.cur||!STAGE.scenes.length){
-    const e=sEl('div','st-empty');
-    e.append(sEl('div','st-empty-h','Ask something worth seeing.'),
-      sEl('p','mut','"Where are the hottest places on earth?" or "how does low implied volatility affect the market?". The answer is shown here as it is written: maps, charts, numbers and the steps in between.'));
-    main.append(e);return;
+    const e=sEl('div','stg-empty');
+    e.append(sEl('div','stg-empty-h','Ask something worth seeing.'),
+      sEl('p','','"Where are the hottest places on earth?", "how does El Niño work?" or "teach me to make a sourdough starter". The answer plays here as it is written: maps, charts, pictures, videos and the steps in between.'));
+    th.append(e);if(STAGE.awaiting)th.append(stageWaiting());return;
   }
-  const sc=STAGE.scenes[STAGE.at].scene;
-  if(STAGE.cur.question)main.append(sEl('div','st-q','» '+STAGE.cur.question));
-  const card=sEl('div','st-card k-'+sc.kind);
-  card.append(sEl('div','st-title',sc.title||''));
-  const art=sEl('div','st-art');card.append(art);
-  if(sc.caption)card.append(sEl('div','st-cap',sc.caption));
-  if(sc.illustrative)card.append(sEl('div','st-src st-illus','Illustrative, not data'));
-  else if(sc.source)card.append(stageSource(sc.source));
-  main.append(card);
+  const n=STAGE.scenes.length,cur=STAGE.scenes[STAGE.at],sc=cur.scene;
+  th.style.setProperty('--hue',STAGE_HUE[sc.kind]||250);
+  // one segment per scene, the current one filling while the story plays
+  const prog=sEl('div','stg-prog');
+  STAGE.scenes.forEach((s,i)=>{const b=sEl('button',i<STAGE.at?'done':i===STAGE.at?'on'+(STAGE.playing?' run':''):'');
+    b.title=(i+1)+'. '+(s.scene.title||STAGE_KIND[s.scene.kind]);b.setAttribute('aria-label','scene '+(i+1));
+    b.onclick=()=>stageGo(i);prog.append(b)});
+  th.append(prog);
+  const head=sEl('div','stg-head');
+  if(STAGE.cur.parent){
+    const up=sEl('button','stg-crumb','↖ Back to the story this came from');
+    up.onclick=()=>stageOpen(STAGE.cur.cid,STAGE.cur.parent.answer_to,(STAGE.cur.parent.seq||1)-1);
+    head.append(up);
+  }
+  if(STAGE.cur.question)head.append(sEl('div','stg-q',STAGE.cur.question));
+  const vs=STAGE.cur.versions||[],vi=vs.indexOf(STAGE.cur.answer_to);
+  if(vs.length>1&&vi>=0){
+    const v=sEl('div','stg-ver');
+    const a=sEl('button','','‹');a.title='The version before';a.disabled=vi===0;a.onclick=()=>stageOpen(STAGE.cur.cid,vs[vi-1],0);
+    const b=sEl('button','','›');b.title='The version after';b.disabled=vi===vs.length-1;b.onclick=()=>stageOpen(STAGE.cur.cid,vs[vi+1],0);
+    v.append(a,sEl('span','',`Version ${vi+1} of ${vs.length}`),b);head.append(v);
+  }
+  th.append(head);
+  const box=sEl('div','stg-scene k-'+sc.kind);
+  box.append(sEl('div','stg-kicker',`${STAGE.at+1} of ${n} · ${STAGE_KIND[sc.kind]||sc.kind}`));
+  box.append(sEl('div','stg-title',sc.title||STAGE_KIND[sc.kind]));
+  const art=sEl('div','stg-art st-art');box.append(art);
+  th.append(box);
+  // the narrator's line is a subtitle over the bottom of the picture, as in a film
+  const foot=sEl('div','stg-foot');
+  if(sc.caption){const cap=sEl('div','stg-cap');
+    // the narrator's line, word by word: CSS delays, no timers to leak
+    sc.caption.split(/\s+/).forEach((w,i)=>{const sp=sEl('span','',w+' ');sp.style.animationDelay=(250+i*55)+'ms';cap.append(sp)});
+    foot.append(cap)}
+  if(sc.illustrative)foot.append(sEl('div','st-src st-illus','Illustrative, not data'));
+  else if(sc.source)foot.append(stageSource(sc.source));
+  box.append(foot);
   try{stageDraw(art,sc)}catch(e){art.append(sEl('p','mut','Could not draw this scene: '+(e.message||e)))}
-  // the story's controls
-  const nav=sEl('div','st-nav');
-  const prev=sEl('button','endbtn','‹');prev.disabled=STAGE.at===0;prev.onclick=()=>stageGo(STAGE.at-1);
-  const next=sEl('button','endbtn','›');next.disabled=STAGE.at>=STAGE.scenes.length-1;next.onclick=()=>stageGo(STAGE.at+1);
-  const dots=sEl('div','st-dots');
-  STAGE.scenes.forEach((s,i)=>{const d=sEl('button',i===STAGE.at?'on':'');d.title=s.scene.title||s.scene.kind;
-    d.setAttribute('aria-label','scene '+(i+1));d.onclick=()=>stageGo(i);dots.append(d)});
-  const play=sEl('button','endbtn',STAGE.playing?'❚❚':'▶');play.title='Play the story';play.onclick=stagePlay;
-  const keep=sEl('button','endbtn st-keep','★ Keep');keep.title='Keep this story as a board, and refresh it if you like';
+  // the controls: a glass bar along the bottom
+  const bar=sEl('div','stg-bar');
+  const prev=sEl('button','stg-b','‹');prev.title='Previous scene';prev.disabled=STAGE.at===0;prev.onclick=()=>stageGo(STAGE.at-1);
+  const play=sEl('button','stg-b stg-play',STAGE.playing?'❚❚':'▶');play.title=STAGE.playing?'Pause':'Play the story';play.onclick=stagePlay;
+  const next=sEl('button','stg-b','›');next.title='Next scene';next.disabled=STAGE.at>=n-1;next.onclick=()=>stageGo(STAGE.at+1);
+  bar.append(prev,play,next);
+  const deep=sEl('button','stg-b stg-deep','⤵ Go deeper');deep.title='Ask for this scene as its own story';
+  deep.onclick=()=>stageDeeper(cur.seq);bar.append(deep);
+  const kids=(STAGE.cur.deeper||{})[String(cur.seq)]||[];
+  kids.forEach((a,i)=>{const k=sEl('button','stg-b stg-kid',kids.length>1?`Deeper story ${i+1} ›`:'The deeper story ›');
+    k.onclick=()=>stageOpen(STAGE.cur.cid,a,0);bar.append(k)});
+  const sp=sEl('span','stg-sp');bar.append(sp);
+  const keep=sEl('button','stg-b','★ Keep');keep.title='Keep this story as a board, and refresh it if you like';
   keep.onclick=()=>stageKeepMenu(keep);
-  const chat=sEl('button','endbtn','Open the chat');chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
-  nav.append(prev,dots,next,play,keep,chat);
-  main.append(nav);
+  const chat=sEl('button','stg-b','Chat');chat.title='Open the conversation';
+  chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
+  bar.append(keep,chat);
+  th.append(bar);
+  if(STAGE.awaiting)th.append(stageWaiting());
+  stageMusicMood(sc.kind);
+}
+/* Every story a chat showed, outside the deeper ones, is a version of its Stage: asking
+   "add Japan to the map" in the chat shows the story again with the change, and the one
+   before stays one tap away. Asked for as "update the stage or add a new face to the same
+   stage with the previous one there as well, like a new version". */
+async function stageVersions(c){
+  try{const d=await apiJSON('/api/stage?conversation='+encodeURIComponent(c.cid));
+    c.versions=(d.stories||[]).filter(s=>!s.parent).map(s=>s.answer_to);
+    if(STAGE.cur===c&&c.versions.length>1)stagePaintIfOpen()}catch(e){}
+}
+function stageWaiting(){
+  const w=sEl('div','stg-wait');w.append(sEl('i',''),sEl('span','','Going deeper…'));return w;
 }
 function stageSource(src){
   const d=sEl('div','st-src');
@@ -33574,10 +33822,18 @@ function stageSource(src){
   else d.textContent='Source: '+src;
   return d;
 }
+async function stageFetch(cid,answer_to,at){
+  const d=await apiJSON('/api/stage/story?conversation='+encodeURIComponent(cid)+'&answer_to='+encodeURIComponent(answer_to||''));
+  STAGE.cur={cid,answer_to:answer_to||'',question:'',parent:d.parent||null,deeper:d.deeper||{},versions:[]};
+  stageVersions(STAGE.cur);
+  STAGE.scenes=d.scenes||[];STAGE.at=Math.max(0,Math.min(at||0,STAGE.scenes.length-1));
+  stageQuestion();
+}
 function stageGo(i){if(i<0||i>=STAGE.scenes.length)return;STAGE.at=i;STAGE.held=Date.now()+20000;stagePaint();}
 function stagePlay(){
   if(STAGE.playing){STAGE.playing=false;stagePaint();return}
-  STAGE.playing=true;STAGE.at=0;STAGE.held=Date.now()+600000;stagePaint();
+  STAGE.playing=true;if(STAGE.at>=STAGE.scenes.length-1)STAGE.at=0;STAGE.held=Date.now()+600000;stagePaint();
+  if(stageMusicOn())stageMusic(true);
   const step=()=>{
     if(!STAGE.playing)return;
     const sc=STAGE.scenes[STAGE.at]&&STAGE.scenes[STAGE.at].scene;if(!sc){STAGE.playing=false;stagePaint();return}
@@ -33585,13 +33841,44 @@ function stagePlay(){
     const after=()=>setTimeout(()=>{if(!STAGE.playing)return;
       if(STAGE.at>=STAGE.scenes.length-1){STAGE.playing=false;STAGE.held=0;stagePaint();return}
       STAGE.at++;stagePaint();step()},900);
-    if(typeof VOICE!=='undefined'&&VOICE.tts&&typeof speakAs==='function'&&line)speakAs(agentName(),line,after);
-    else setTimeout(after,Math.max(3500,line.length*55));
+    // a video plays at its own pace: the story waits on it rather than cutting it off
+    const hold=sc.kind==='video'?20000:0;
+    if(typeof VOICE!=='undefined'&&VOICE.tts&&typeof speakAs==='function'&&line)speakAs(agentName(),line,()=>setTimeout(after,hold));
+    else setTimeout(after,Math.max(4500,line.length*60)+hold);
   };
   step();
 }
+/* Go deeper: the scene becomes a question in its own chat, sent as the person's message,
+   and the story that answers it plays here next with a way back up. */
+async function stageDeeper(seq){
+  const c=STAGE.cur;if(!c)return;
+  let d;
+  try{const r=await fetch('/api/stage/deeper',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({conversation_id:c.cid,answer_to:c.answer_to,seq})});
+    d=await r.json();if(!r.ok)throw new Error(d.error||r.status)}
+  catch(e){toast('could not go deeper: '+(e.message||e));return}
+  STAGE.awaiting={cid:c.cid,at:Date.now()};
+  const sw=WM.wins.get('stage');
+  if(typeof openConv==='function'&&typeof send==='function'){
+    if(!WM.wins.get('chat'))openApp('chat');
+    if(currentConv!==c.cid)await openConv(c.cid);
+    if(typeof input!=='undefined'&&input){input.value=d.text;send()}
+  }else if(typeof ws!=='undefined'&&ws&&ws.readyState===1){
+    ws.send(JSON.stringify({type:'chat',text:d.text,conversation_id:c.cid,model:''}));
+  }
+  if(sw)focusWin(sw);
+  stagePaint();
+}
+/* A turn that ended with no new story: say so, and stop waiting. */
+function stageTurnEnd(cid){
+  const a=STAGE.awaiting;if(!a||a.cid!==cid)return;
+  setTimeout(()=>{if(STAGE.awaiting===a){STAGE.awaiting=null;stagePaintIfOpen();
+    toast('The answer came back in words, without a new story. It is in the chat.')}},1500);
+}
 function stageKeepMenu(btn){
   const c=STAGE.cur;if(!c)return;
+  const host=btn.closest('.stg')||btn.closest('.st-main');
+  const old=host.querySelector('.st-keepbox');if(old){old.remove();return}
   const box=sEl('div','st-keepbox');
   box.append(sEl('div','st-keep-h','Keep this story'));
   const sel=document.createElement('select');
@@ -33607,7 +33894,7 @@ function stageKeepMenu(btn){
     }catch(e){toast('could not keep it: '+(e.message||e))}};
   const no=sEl('button','endbtn','Cancel');no.onclick=()=>box.remove();
   box.append(sel,sEl('p','mut','A refresh asks the same question again, looks the facts up afresh and shows the new story here.'),ok,no);
-  btn.closest('.st-main').append(box);
+  host.append(box);
 }
 async function stageSettings(patch){
   try{const r=await fetch('/api/stage/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
@@ -33617,6 +33904,62 @@ async function stageSettings(patch){
   }catch(e){toast('could not save: '+(e.message||e))}
 }
 
+/* ---------- the music: a soft score made on this screen ---------- */
+/* No files and nothing fetched: a pad of detuned voices through a slowly opening filter
+   and a little echo, moving through four chords, with a quiet bell now and then. The
+   mood follows the scene (brighter for numbers, darker for a map at night). Off until the
+   person turns it on (`stage.music`, per browser); a browser starts sound only after a
+   tap, so a scene arriving on its own waits for one. It stops with the window. */
+var STAGE_MU={ctx:null,master:null,voices:[],timer:0,chord:0,mood:''};
+var STAGE_CHORDS=[[57,64,67,71,72],[53,60,64,67,69],[48,55,59,62,64],[55,62,66,69,71]];
+function stageMusicOn(){try{return localStorage.getItem('stage.music')==='1'}catch(e){return false}}
+function stageMusic(on,closing){
+  try{if(!closing)localStorage.setItem('stage.music',on?'1':'0')}catch(e){}
+  const M=STAGE_MU;
+  if(!on){if(M.master&&M.ctx){M.master.gain.setTargetAtTime(0,M.ctx.currentTime,.4);
+      clearInterval(M.timer);M.timer=0;setTimeout(()=>{if(!stageMusicOn()||closing){try{M.ctx.suspend()}catch(e){}}},1600)}return}
+  try{
+    if(!M.ctx){
+      const C=window.AudioContext||window.webkitAudioContext;if(!C){toast('This browser cannot play sound.');return}
+      M.ctx=new C();
+      M.master=M.ctx.createGain();M.master.gain.value=0;
+      const lp=M.ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=900;lp.Q.value=.6;
+      const lfo=M.ctx.createOscillator(),lg=M.ctx.createGain();lfo.frequency.value=.05;lg.gain.value=420;lfo.connect(lg);lg.connect(lp.frequency);lfo.start();
+      const dl=M.ctx.createDelay(1),fb=M.ctx.createGain(),wet=M.ctx.createGain();dl.delayTime.value=.42;fb.gain.value=.33;wet.gain.value=.35;
+      lp.connect(M.master);lp.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(wet);wet.connect(M.master);
+      M.master.connect(M.ctx.destination);M.lp=lp;
+      for(let i=0;i<5;i++){
+        const g=M.ctx.createGain();g.gain.value=.05;g.connect(lp);
+        const a=M.ctx.createOscillator(),b=M.ctx.createOscillator();a.type='sawtooth';b.type='triangle';b.detune.value=7;a.detune.value=-6;
+        a.connect(g);b.connect(g);a.start();b.start();M.voices.push({a,b,g});
+      }
+    }
+    M.ctx.resume();
+    stageChord(true);
+    clearInterval(M.timer);M.timer=setInterval(()=>{stageChord();if(Math.random()<.5)stageBell()},8000);
+    M.master.gain.setTargetAtTime(.14,M.ctx.currentTime,1.2);
+  }catch(e){}
+}
+function stageMidi(n){return 440*Math.pow(2,(n-69)/12)}
+function stageChord(now){
+  const M=STAGE_MU;if(!M.ctx)return;
+  if(!now)M.chord=(M.chord+1)%STAGE_CHORDS.length;
+  const lift=M.mood==='bright'?12:M.mood==='low'?-12:0;
+  STAGE_CHORDS[M.chord].forEach((n,i)=>{const v=M.voices[i];if(!v)return;const f=stageMidi(n+(i===0?-12:0)+(i>2?lift:0));
+    v.a.frequency.setTargetAtTime(f,M.ctx.currentTime,now?.01:1.6);v.b.frequency.setTargetAtTime(f,M.ctx.currentTime,now?.01:1.6)});
+}
+function stageBell(){
+  const M=STAGE_MU;if(!M.ctx)return;
+  const o=M.ctx.createOscillator(),g=M.ctx.createGain(),t=M.ctx.currentTime;
+  const scale=[72,74,76,79,81,84];o.type='sine';o.frequency.value=stageMidi(scale[Math.floor(Math.random()*scale.length)]);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.05,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+3.2);
+  o.connect(g);g.connect(M.lp||M.master);o.start(t);o.stop(t+3.3);
+}
+function stageMusicMood(kind){
+  const M=STAGE_MU;const m=kind==='numbers'||kind==='chart'||kind==='steps'?'bright':kind==='map'||kind==='video'?'low':'';
+  if(m===M.mood)return;M.mood=m;if(M.ctx&&stageMusicOn())stageChord(true);
+}
+
 /* ---------- the library: every story you were shown ---------- */
 function stageLibrary(main){
   const lib=STAGE.lib;
@@ -33624,7 +33967,7 @@ function stageLibrary(main){
   const st=lib.stories||[];
   if(!st.length){main.append(sEl('p','mut st-pad','Nothing yet. Every story an answer shows is kept here, with the chat it came from.'));return}
   const grid=sEl('div','st-grid');
-  const KI={chart:'📈',map:'🗺',numbers:'#',timeline:'⟶',steps:'⇢',table:'▦'};
+  const KI={chart:'📈',map:'🗺',numbers:'#',timeline:'⟶',steps:'⇢',table:'▦',image:'🖼',video:'▶'};
   st.forEach(s=>{
     const c=sEl('button','st-tile');
     c.append(sEl('div','st-tile-k',(s.kinds||[]).map(k=>KI[k]||'·').join(' ')),
@@ -33680,8 +34023,61 @@ function stageBoards(main){
 
 /* ================= drawing ================= */
 function stageDraw(art,sc){
-  ({chart:stageChart,map:stageMap,numbers:stageNumbers,timeline:stageTimeline,steps:stageSteps,table:stageTable}[sc.kind]||(()=>{}))(art,sc);
+  ({chart:stageChart,map:stageMap,numbers:stageNumbers,timeline:stageTimeline,steps:stageSteps,table:stageTable,
+    image:stageImage,video:stageVideo}[sc.kind]||(()=>{}))(art,sc);
   if(stageReduced())art.classList.add('still');
+}
+
+/* Glow and gradients, shared by every drawing: defined once per SVG, by id. */
+var STAGE_UID=0;
+function stageDefs(svg,cols){
+  const id='sg'+(++STAGE_UID),d=sSvg('defs');
+  const f=sSvg('filter',{id:id+'-glow',x:'-50%',y:'-50%',width:'200%',height:'200%'});
+  f.append(sSvg('feGaussianBlur',{stdDeviation:'4',result:'b'}));
+  const m=sSvg('feMerge');m.append(sSvg('feMergeNode',{in:'b'}),sSvg('feMergeNode',{in:'SourceGraphic'}));f.append(m);d.append(f);
+  (cols||[]).forEach((c,i)=>{
+    const g=sSvg('linearGradient',{id:id+'-g'+i,x1:'0',y1:'0',x2:'0',y2:'1'});
+    const a=sSvg('stop',{offset:'0'});a.style.stopColor=c;a.style.stopOpacity='.55';
+    const b=sSvg('stop',{offset:'1'});b.style.stopColor=c;b.style.stopOpacity='0';g.append(a,b);d.append(g);
+    const h=sSvg('linearGradient',{id:id+'-b'+i,x1:'0',y1:'0',x2:'0',y2:'1'});
+    const p=sSvg('stop',{offset:'0'});p.style.stopColor=c;const q=sSvg('stop',{offset:'1'});q.style.stopColor=c;q.style.stopOpacity='.45';
+    h.append(p,q);d.append(h);
+  });
+  svg.append(d);return id;
+}
+
+/* --- a picture, slowly moving (Ken Burns), with its credit --- */
+function stageImage(art,sc){
+  const fr=sEl('div','stg-pic');
+  const img=document.createElement('img');
+  img.alt=sc.alt||sc.title||'';img.decoding='async';img.referrerPolicy='no-referrer';
+  img.src=sc.asset?'/api/assets/'+encodeURIComponent(sc.asset)+'/file':sc.url;
+  // a picture host may refuse a first request (busy, or rate-limited): ask once more first
+  let tries=0;
+  img.onerror=()=>{if(tries++<1){setTimeout(()=>{img.src=img.src.split('#')[0]+'#retry'},1500);return}
+    fr.textContent='';fr.classList.add('broken');
+    fr.append(sEl('div','stg-pic-x','This picture could not be loaded.'));
+    if(sc.url){const a=document.createElement('a');a.href=sc.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Open it where it lives';fr.append(a)}};
+  fr.append(img);
+  if(sc.credit)fr.append(sEl('div','stg-credit',sc.credit));
+  art.append(fr);
+}
+/* --- a YouTube video, played from youtube-nocookie.com. In the Telegram page (no
+   frames there), its picture links to YouTube instead. --- */
+function stageVideo(art,sc){
+  const fr=sEl('div','stg-vid');
+  if(window.STAGE_REPORT){
+    const a=document.createElement('a');a.href='https://www.youtube.com/watch?v='+encodeURIComponent(sc.video)+(sc.start?'&t='+sc.start:'');
+    a.target='_blank';a.rel='noopener noreferrer';a.className='stg-vid-link';
+    const img=document.createElement('img');img.alt=sc.title||'video';img.referrerPolicy='no-referrer';
+    img.src='https://i.ytimg.com/vi/'+encodeURIComponent(sc.video)+'/hqdefault.jpg';
+    a.append(img,sEl('span','stg-vid-play','▶'));fr.append(a);art.append(fr);return;
+  }
+  const f=document.createElement('iframe');
+  f.src='https://www.youtube-nocookie.com/embed/'+encodeURIComponent(sc.video)+'?rel=0&modestbranding=1&playsinline=1'+(sc.start?'&start='+sc.start:'');
+  f.title=sc.title||'video';f.allow='encrypted-media; picture-in-picture; fullscreen';f.allowFullscreen=true;
+  f.referrerPolicy='strict-origin-when-cross-origin';f.loading='lazy';
+  fr.append(f);art.append(fr);
 }
 
 /* --- numbers that read as numbers --- */
@@ -33700,6 +34096,13 @@ function stageTicks(lo,hi,n){
   const t0=Math.floor(lo/step)*step,out=[];
   for(let t=t0;t<=hi+step*0.001;t+=step)out.push(+t.toFixed(10));
   return out;
+}
+/* "2015-07" reads as "Jul 15", a day as "3 Jul 15": short enough for its slot. */
+function stageDateLabel(x){
+  const m=String(x).match(/^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?/);if(!m)return String(x);
+  if(!m[2])return m[1];
+  const mon=new Date(Date.UTC(2000,+m[2]-1,1)).toLocaleString(undefined,{month:'short',timeZone:'UTC'});
+  return (m[3]?(+m[3])+' ':'')+mon+' '+m[1].slice(2);
 }
 function stageDate(x){
   if(typeof x!=='string')return null;
@@ -33743,7 +34146,7 @@ function stageChart(art,sc){
   // x labels: at most eight, evenly picked
   let xl=[];
   if(isNum)xl=stageTicks(x0,x1,7).filter(t=>t>=x0&&t<=x1).map(t=>[t,stageFmt(t)]);
-  else if(dates){const pts=[...new Set(xs)];const k=Math.ceil(pts.length/8);xl=pts.filter((_,i)=>i%k===0).map(x=>[stageDate(x),x])}
+  else if(dates){const pts=[...new Set(xs)];const k=Math.ceil(pts.length/8);xl=pts.filter((_,i)=>i%k===0).map(x=>[stageDate(x),stageDateLabel(x)])}
   else{const k=Math.ceil(cats.length/10);xl=cats.map((c,i)=>[i,c]).filter((_,i)=>i%k===0)}
   // each name gets its slot and is cut to it, so neighbours never run into each other
   const room=xl.length>1?Math.abs(X(xl[1][0])-X(xl[0][0]))-6:W-L-R;
@@ -33759,13 +34162,14 @@ function stageChart(art,sc){
       svg.append(sSvg('text',{x:X(v)+6,y:T+14,class:'st-marktext'},m.text||''))}
   });
   const n=series.length;
+  const gid=stageDefs(svg,series.map((_,si)=>STAGE_PAL[si%STAGE_PAL.length]));
   series.forEach((s,si)=>{
     const col=STAGE_PAL[si%STAGE_PAL.length];
     const pts=s.points.map(p=>[xv(p[0]),p[1]]).sort((a,b)=>a[0]-b[0]);
     if(bar){
       const slot=(W-L-R)/((x1-x0)||1),bw=Math.max(2,slot*0.7/n);
       pts.forEach((p,i)=>{const x=X(p[0])-slot*0.35+si*bw,y=Y(Math.max(0,p[1])),h=Math.abs(Y(p[1])-Y(0));
-        const r=sSvg('rect',{x,y,width:bw-2,height:Math.max(1,h),fill:col,class:'st-bar',style:`animation-delay:${i*40}ms`});
+        const r=sSvg('rect',{x,y,width:bw-2,height:Math.max(1,h),rx:Math.min(8,(bw-2)/4),fill:`url(#${gid}-b${si})`,class:'st-bar',style:`animation-delay:${i*40}ms`});
         r.append(sSvg('title',{},`${s.name?s.name+': ':''}${stageFmt(p[1],sc.unit)}`));svg.append(r);
         // the value over its bar only when it fits the bar's slot
         const vt=stageFmt(p[1],tu);
@@ -33775,12 +34179,15 @@ function stageChart(art,sc){
     if(sc.chart_type==='scatter'){
       pts.forEach((p,i)=>svg.append(sSvg('circle',{cx:X(p[0]),cy:Y(p[1]),r:5,fill:col,class:'st-dot',style:`animation-delay:${Math.min(i,60)*15}ms`})));return}
     const d=pts.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join('');
-    if(sc.chart_type==='area'){
-      const a=d+`L${X(pts[pts.length-1][0]).toFixed(1)} ${Y(Math.max(y0,0))}L${X(pts[0][0]).toFixed(1)} ${Y(Math.max(y0,0))}Z`;
-      svg.append(sSvg('path',{d:a,fill:col,class:'st-area'}))}
-    svg.append(sSvg('path',{d,stroke:col,class:'st-line',pathLength:1000}));
+    // a line always stands on its own light: the area under it fades to nothing
+    if(sc.chart_type==='area'||n<=2){
+      const base=Y(Math.max(y0,Math.min(0,y1)));
+      const a=d+`L${X(pts[pts.length-1][0]).toFixed(1)} ${base}L${X(pts[0][0]).toFixed(1)} ${base}Z`;
+      svg.append(sSvg('path',{d:a,fill:`url(#${gid}-g${si})`,class:'st-area'}))}
+    svg.append(sSvg('path',{d,stroke:col,class:'st-line',pathLength:1000,filter:`url(#${gid}-glow)`}));
     const last=pts[pts.length-1];
-    svg.append(sSvg('circle',{cx:X(last[0]),cy:Y(last[1]),r:5,fill:col,class:'st-end'}));
+    svg.append(sSvg('circle',{cx:X(last[0]),cy:Y(last[1]),r:14,fill:col,class:'st-endglow'}));
+    svg.append(sSvg('circle',{cx:X(last[0]),cy:Y(last[1]),r:5.5,fill:col,class:'st-end',filter:`url(#${gid}-glow)`}));
     svg.append(sSvg('text',{x:Math.min(X(last[0])+8,W-R-4),y:Y(last[1])-8,'text-anchor':X(last[0])>W-140?'end':'start',class:'st-val'},stageFmt(last[1],sc.unit)));
   });
   if(n>1||series[0]&&series[0].name){
@@ -33853,6 +34260,12 @@ async function stageMap(art,sc){
   else{const nw=bh*aspect/kx,mid=(lo0+lo1)/2;lo0=mid-nw/2;lo1=mid+nw/2}
   const X=lon=>(lon-lo0)/(lo1-lo0)*W,Y=lat=>(la1-lat)/(la1-la0)*H;
   svg.append(sSvg('rect',{x:0,y:0,width:W,height:H,class:'st-sea'}));
+  const mid=stageDefs(svg,['#F43F5E']);
+  // the lines of latitude and longitude, faint, every 30 degrees
+  const gr=sSvg('g',{class:'st-grat'});
+  for(let lo=-180;lo<=180;lo+=30)gr.append(sSvg('line',{x1:X(lo),x2:X(lo),y1:0,y2:H}));
+  for(let la=-60;la<=90;la+=30)gr.append(sSvg('line',{x1:0,x2:W,y1:Y(la),y2:Y(la)}));
+  svg.append(gr);
   // shaded countries by value
   const vals=hits.map(h=>h.r.value).filter(v=>v!=null);
   const vmin=Math.min(...vals),vmax=Math.max(...vals);
@@ -33876,6 +34289,14 @@ async function stageMap(art,sc){
   // every pin's dot is kept clear of labels, so a label never hides a place
   pts.forEach(p=>{const x=X(p.lon),y=Y(p.lat);taken.push([x-9,y-9,x+9,y+9])});
   const order=pts.map((p,i)=>[p,i]).sort((a,b)=>(b[0].value||0)-(a[0].value||0));
+  // a few places in order are a journey: arcs join them, drawn one after another
+  if(pts.length>=2&&pts.length<=12){
+    const arcs=sSvg('g',{class:'st-arcs'});
+    for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],ax=X(a.lon),ay=Y(a.lat),bx=X(b.lon),by=Y(b.lat);
+      const mx=(ax+bx)/2,my=(ay+by)/2-Math.hypot(bx-ax,by-ay)*.25;
+      arcs.append(sSvg('path',{d:`M${ax} ${ay}Q${mx} ${my} ${bx} ${by}`,pathLength:100,style:`animation-delay:${400+i*250}ms`}))}
+    svg.append(arcs);
+  }
   const fits=(lx,ly,lw,th)=>lx>=2&&lx+lw<=W-2&&ly>=2&&ly+th<=H-2
     &&!taken.some(b=>lx<b[2]&&lx+lw>b[0]&&ly<b[3]&&ly+th>b[1]);
   order.forEach(([p],rank)=>{
@@ -33883,7 +34304,7 @@ async function stageMap(art,sc){
     const t=p.value!=null&&pv.length>1?(p.value-pmin)/((pmax-pmin)||1):0.5;
     const r=6+t*10,delay=Math.min(rank,30)*120;
     const g=sSvg('g',{class:'st-pin',style:`animation-delay:${delay}ms`});
-    g.append(sSvg('circle',{cx:x,cy:y,r:r*1.9,class:'st-pulse'}),sSvg('circle',{cx:x,cy:y,r,class:'st-pt'}));
+    g.append(sSvg('circle',{cx:x,cy:y,r:r*1.9,class:'st-pulse'}),sSvg('circle',{cx:x,cy:y,r,class:'st-pt',filter:`url(#${mid}-glow)`}));
     g.append(sSvg('title',{},(p.label||'')+(p.value!=null?': '+stageFmt(p.value,sc.unit):'')+(p.note?' · '+p.note:'')));
     svg.append(g);
     // the full name, then its first part ("Furnace Creek"), placed where it touches no

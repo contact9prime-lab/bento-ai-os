@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.41 — 2026-10-17
+
+**The Stage plays like a film.** Reported as "the look and feel is really horrible, it needs a very good
+immersive experience", with pictures, videos, sound, going deeper and versions.
+- The Now tab is a dark theater: a slow field of light behind each scene, one progress segment per scene, a
+  big title, and the narrator's line arriving word by word as a subtitle. Maps glow, with arcs between places;
+  charts have light under the line; numbers are large and lit.
+- **Pictures and YouTube videos** are scenes too. Asked how to do something, the agent now searches for a
+  good tutorial video and a photo, and shows them with the steps.
+- **♪ Music**: a soft score made on your screen, no files. Off until you turn it on; it stops with the window.
+- **⤵ Go deeper** on any scene asks for it as its own story, which plays next with a way back.
+- **Versions**: asking in the chat to change what is on the Stage shows the whole story again, and the
+  version before is one tap away.
+- The Telegram page uses the same look, and carries pictures you made.
+
+**The Office scene is the comic again.** It had become a 3D slab across the wallpaper; Office HQ is the 3D
+one. The comic now lays its rooms out to fit the band, so everybody is visible.
+
 ## 0.6.40 — 2026-10-17
 
 **An update reaches the Bento you are looking at, and the page asks you to refresh.** Reported as "my Bento

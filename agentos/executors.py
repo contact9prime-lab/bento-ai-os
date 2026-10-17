@@ -1908,11 +1908,15 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         grouped, dept_note = set(), ""
     # who does the work comes first: measured on the reporting machine, the department
     # rule as the last of ~8,000 characters was never followed
-    env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) + dept_note \
-        + team_note(subs, in_departments=grouped) + workspace_note() + capability_note()
+    # The Stage goes near the top, beside who does the work: measured on the owner's
+    # machine, a rule at the end of ~8,000 characters is the one that is not followed, and
+    # there a how-to came back as one timeline with no picture or video.
+    stage_note = ""
     if conversation_id:
         from . import stage as _stage
-        env.context += "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene")
+        stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene")
+    env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) + stage_note + dept_note \
+        + team_note(subs, in_departments=grouped) + workspace_note() + capability_note()
     return token
 
 

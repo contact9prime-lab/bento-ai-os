@@ -190,6 +190,14 @@ body.dev-touch .of-x{min-width:var(--tap)}
    words are HTML over it, placed by a transform each frame. Cards and the side list
    take taps; everything else lets them through to the canvas. */
 .of-scroll.of3{overflow:hidden;background:#0f1020}
+/* The office band on the desktop: it keeps its width (a flex item grows to its content,
+   so the cards layer stretched it across the whole screen), shows the wallpaper through,
+   and fades out at its edges. Office HQ and the window keep their own night. */
+body.immersive #office-scene:not(.hq) .of-scroll{min-width:0;flex:0 1 auto;background:transparent}
+body.immersive #office-scene:not(.hq) .of-scroll.of3{background:transparent;
+  -webkit-mask-image:radial-gradient(ellipse 58% 62% at 50% 52%,#000 58%,transparent 100%);
+  mask-image:radial-gradient(ellipse 58% 62% at 50% 52%,#000 58%,transparent 100%)}
+body.immersive #office-scene:not(.hq) canvas.of-cv3{box-shadow:none;border-radius:0}
 .of-cv3{position:absolute;inset:0;display:block;touch-action:none;cursor:grab}
 .of-cv3:active{cursor:grabbing}
 .of3-ui{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1;
