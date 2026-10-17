@@ -633,6 +633,17 @@ async def pending(cfg: dict, limit: int = 20) -> list[dict]:
 
 
 async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False) -> dict:
+    """`_apply` on a worker thread. Every step is a blocking subprocess (git, uv, the
+    whole test suite for minutes), and run on the server's loop they froze it: the
+    page sat on "Updating…", nothing answered, and the suite's own CLI tests timed out
+    against the frozen server, which the gate then read as the update's fault. `log`
+    is called from that thread, so a caller on a loop must hop back with
+    `call_soon_threadsafe`."""
+    import asyncio
+    return await asyncio.to_thread(_apply, cfg, run_tests, log, switch)
+
+
+def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False) -> dict:
     """Pull, sync dependencies, verify, and report what to do next.
 
     Restarting is deliberately NOT done here. This function's caller owns the

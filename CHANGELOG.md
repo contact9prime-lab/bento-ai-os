@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.38 — 2026-10-17
+
+**An update no longer freezes Bento while it checks itself.** Reported as "my Bento has been updated and
+restarted, but when it loads it shows the old 0.3.0".
+- Installing an update runs the test suite to check it, which takes minutes. That ran inside the server
+  and stopped it answering anything, so the page sat on "Updating…". It now runs alongside, and the desktop
+  keeps working.
+- `bento` in a terminal only talks to a running Bento that serves its own home. The suite's terminal tests
+  were reaching the live server, which during an update was the frozen one, and could fail because of it.
+
 ## 0.6.37 — 2026-10-17
 
 **A department's approvals show up in the chat you asked from.** Reported as "when the approval is given and
