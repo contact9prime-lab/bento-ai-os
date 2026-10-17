@@ -32,4 +32,10 @@ def _never_touch_the_real_config(tmp_path, monkeypatch):
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(cfgmod, "AGENTOS_HOME", home)
     monkeypatch.setattr(cfgmod, "CONFIG_PATH", home / "config.json")
+    # An in-process server picks a default model at start from whatever answers on this
+    # machine. On a developer's machine that is a real local model: tests that expect
+    # "no brain" got one, slowly, sometimes (test_company_objective::test_the_routes failed
+    # every time on a machine running Ollama; other route tests flickered). A test that
+    # wants a model sets one.
+    monkeypatch.setenv("AGENTOS_NO_AUTOPICK", "1")
     yield

@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.6.47 — 2026-10-17
+## 0.6.48 — 2026-10-17
+
+**The test suite no longer uses the model running on your machine.** An in-process test server picked a
+default model at start from whatever answered locally; on a machine running Ollama, tests that expected no
+AI got one, slowly and not every time. That was `test_company_objective::test_the_routes` failing on every run
+there and the route tests that flickered. `AGENTOS_NO_AUTOPICK` (set for every test) keeps the pick off; a
+running Bento still picks a model as before. The suite also runs in about two minutes instead of six.
+
+## 0.6.48 — 2026-10-17
 
 **Several tasks at once: each running one gets a desktop, and Telegram runs them side by side.** Asked for
 as "use desktops for different chats, scroll between them … as tasks complete the desktop can close, asking
