@@ -6046,6 +6046,32 @@ def _stage_cli(args) -> int:
     return 0
 
 
+def _trace_cli(args) -> int:
+    """`bento trace` — one execution as one JSON file. Reads the rows directly, so it works
+    with the server down, on a headless box, over SSH."""
+    from . import trace as tracemod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    ref = args.id
+    if not ref:
+        row = store.db.execute("SELECT id FROM conversations ORDER BY updated_at DESC LIMIT 1").fetchone()
+        ref = row[0] if row else ""
+    try:
+        doc = tracemod.conversation(store, cfg, ref)
+    except KeyError:
+        try:
+            doc = tracemod.run(store, cfg, ref)
+        except KeyError:
+            print(f"no chat or run called {ref!r}")
+            return 1
+    path = args.out or tracemod.filename(doc)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(tracemod.dumps(doc))
+    n = len(doc.get("runs") or [])
+    print(f"wrote {path}: {doc['kind']} {doc['ref']}, {n} run{'s' if n != 1 else ''}, "
+          f"{len(doc.get('ledger') or [])} gate decisions (secrets masked)")
+    return 0
+
+
 def _brief_cli(args):
     """`bento brief` — today's Brief in a terminal, and the same hands.
 
@@ -7903,6 +7929,10 @@ def main():
     p_st.add_argument("--every", default="", choices=["", "hour", "day", "week"],
                       help="keep: ask the question again this often (needs the server running)")
     p_st.add_argument("--user", default="", help="whose stage, on a machine with users")
+    p_tr = verb("trace", help="one execution as one JSON file: what happened, the office, what ran (secrets masked)")
+    p_tr.add_argument("id", nargs="?", default="", help="a chat id or a run id (the last chat by default)")
+    p_tr.add_argument("-o", "--out", default="", help="write it here (default: a file in this folder)")
+    p_tr.add_argument("--user", default="", help="whose, on a machine with users")
     p_mind = verb("mind", help="your agents and what they know, connected: the Mind scene's numbers")
     p_mind.add_argument("--json", action="store_true", help="the whole snapshot, as the scene reads it")
     p_av = verb("avatar", help="the crew's characters — see them in the terminal, restyle or reroll")
@@ -8297,6 +8327,8 @@ def main():
         raise SystemExit(_config_cli(args))
     elif args.cmd == "brief":
         _brief_cli(args)
+    elif args.cmd == "trace":
+        raise SystemExit(_trace_cli(args))
     elif args.cmd == "stage":
         raise SystemExit(_stage_cli(args))
     elif args.cmd == "mind":

@@ -4203,6 +4203,36 @@ def _stage_view(cfg: dict) -> dict:
             "app_name": next((a["name"] for a in apps if a["id"] == st["app"]), "")}
 
 
+# ---- One execution as one JSON file (trace.py) ----
+
+def _trace_response(doc: dict):
+    from . import trace as tracemod
+    return Response(tracemod.dumps(doc), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{tracemod.filename(doc)}"'})
+
+
+@app.get("/api/trace/conversation/{cid}")
+async def api_trace_conversation(cid: str):
+    """Everything a chat did, in one file: messages, runs, the gate's decisions, the setting."""
+    from . import trace as tracemod
+    try:
+        doc = await asyncio.to_thread(tracemod.conversation, state["store"], state["cfg"], cid)
+    except KeyError:
+        return JSONResponse({"error": "no such chat"}, status_code=404)
+    return _trace_response(doc)
+
+
+@app.get("/api/trace/run/{rid}")
+async def api_trace_run(rid: str):
+    """Everything a mission or department run did, from its top run down."""
+    from . import trace as tracemod
+    try:
+        doc = await asyncio.to_thread(tracemod.run, state["store"], state["cfg"], rid)
+    except KeyError:
+        return JSONResponse({"error": "no such run"}, status_code=404)
+    return _trace_response(doc)
+
+
 @app.get("/api/stage")
 async def api_stage(conversation: str = ""):
     """One chat's stories, each under the message it answers."""

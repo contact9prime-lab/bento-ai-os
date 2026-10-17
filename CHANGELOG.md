@@ -11,6 +11,14 @@ telegram chats are not visible in the Chats".
   an **Allow** on the desktop; they hear back when you let them in. Settings → Channels → Telegram has a
   **People** button for everyone who wrote.
 - Chats has an **On your phone** section, first, for your Telegram and WhatsApp threads.
+## 0.6.44 — 2026-10-17
+
+**Every execution as one JSON file.** Asked for as "for every execution I should be able to get the json file
+to see what happened, what the office was and what executed, so I can send it to the AI to analyse and fix the
+problem". **⤓ JSON** in Chat, on each run in Missions → History, and `bento trace` in a terminal give one file
+with the messages and each step, every run it started (a department's desk, its people, each review, the
+audit) with its events, every decision the permission gate made, the log lines, the scenes shown, and the
+setting: the brain, autonomy, the company, its departments and who had which tools. Secrets are masked.
 
 ## 0.6.43 — 2026-10-17
 
