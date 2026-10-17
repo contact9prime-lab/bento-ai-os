@@ -166,3 +166,33 @@ def test_a_stored_reply_keeps_the_break_where_a_tool_ran():
     brk = relay.index('collected.append("\\n\\n")')
     assert relay.index('"tool_start"') < brk < relay.index("BRIDGE_SERVER"), \
         "the break is kept for the bridge's own tool events too, before they are dropped"
+
+
+def test_a_message_typed_while_claude_code_works_reaches_the_run():
+    """Reported as "when I queue a message it should be taken into the next agentic run, to
+    see if it belongs to what it is doing, like you do". Claude Code reads messages on its
+    input between steps (measured on 2.1.302: a question sent mid-tool was answered in the
+    same reply). A chat turn on it keeps its input open; a message sent then is written to
+    it, saved as the person's (steered) and shown as "took in"; after the turn's result the
+    input closes, and a later message is queued as before."""
+    import asyncio
+    from agentos import executors as ex
+    env = ex.Envelope(workspace="/tmp", steerable=True)
+    assert env.sanitized().steerable, "the flag survives sanitising"
+    cmd = ex.build_command("hello", env)
+    assert "--input-format" in cmd and "stream-json" in cmd and "hello" not in cmd
+    assert "hello" in " ".join(ex.build_command("hello", ex.Envelope(workspace="/tmp")))
+    run = ex.Run()
+    assert run.steer("x") is False, "no open input: the caller queues it"
+
+    class W:
+        buf = b""
+        def write(self, b): W.buf += b
+    run.stdin, run.steer_open = W(), True
+    assert run.steer("also 17x3") and b'"content": "also 17x3"' in W.buf
+    src = (Path(__file__).parent.parent / "agentos/executors.py").read_text()
+    drive = src[src.index("async def _drive("):][:6000]
+    assert 'if event.get("type") == "result":\n            _close_input()' in drive
+    srv = (Path(__file__).parent.parent / "agentos/server.py").read_text()
+    assert 'env.steerable = model == "claude-code"' in srv
+    assert 'ex.steer(item["text"])' in srv and '_steer_hook(cid)(item, "now"' in srv
