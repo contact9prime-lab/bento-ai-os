@@ -2,6 +2,11 @@
 
 ## 0.6.42 — 2026-10-17
 
+**What you type while Claude Code works reaches it at its next step.** Reported as "when I queue a message,
+it should be taken into the run to see if it belongs to what it is doing". A chat turn on Claude Code now
+keeps its input open: a message sent while it works goes to it straight away, it is folded into the same
+answer, and the chat shows "took in: …". After the answer, a new message starts its own turn as before. A
+message with pictures still waits for its own turn.
 **When nobody can do a step, the team finds a way, and you say yes.** Reported with a Research memo that
 stopped at "no specialist had a shell or Python, so no backtest was run", then "Aria has a lot of other
 agents but isn't using them", "if it finds no one, it should build that", all within the permission check.
