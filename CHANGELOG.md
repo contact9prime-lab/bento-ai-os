@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.42 — 2026-10-17
+
+**Telegram gets the Stage, you decide who else may talk to it, and phone chats are easy to find.** Reported
+as "on Telegram I am not getting the stage, I am not getting an option to authorize other people, and the
+telegram chats are not visible in the Chats".
+- A turn from Telegram or WhatsApp is told that its scenes are sent to the phone as one page after the reply,
+  so it shows them; before, it answered in words. WhatsApp now gets that page too.
+- When somebody new writes to your bot, you get their message with **Allow** and **Block** on Telegram and
+  an **Allow** on the desktop; they hear back when you let them in. Settings → Channels → Telegram has a
+  **People** button for everyone who wrote.
+- Chats has an **On your phone** section, first, for your Telegram and WhatsApp threads.
+
 ## 0.6.41 — 2026-10-17
 
 **The Stage plays like a film.** Reported as "the look and feel is really horrible, it needs a very good
