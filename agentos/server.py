@@ -4798,8 +4798,13 @@ async def api_put_telegram(body: dict):
 @app.put("/api/telegram/chats/{chat_id}")
 async def api_telegram_chat(chat_id: int, body: dict):
     if "allowed" in body:
-        state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0)
-        state["store"].log("telegram", f"chat {chat_id} {'enabled' if body['allowed'] else 'disabled'}")
+        # the same door as the owner's phone buttons: the person is told when they're in
+        tg = state.get("telegram")
+        if tg is not None and hasattr(tg, "decide_newcomer"):
+            await tg.decide_newcomer(chat_id, bool(body["allowed"]))
+        else:
+            state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0)
+            state["store"].log("telegram", f"chat {chat_id} {'enabled' if body['allowed'] else 'disabled'}")
     return {"ok": True}
 
 

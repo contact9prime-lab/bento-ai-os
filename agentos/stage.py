@@ -668,10 +668,22 @@ ASKED_LINE = ("show_scene puts a chart, a map, key numbers, a timeline, steps, a
               "whole story again with the change; the old version is kept.")
 
 
-def note(cfg: dict, tool: str = "show_scene") -> str:
-    """What the lead is told, built-in or forwarded (`tool` is the name it calls it by)."""
+PHONE_LINE = ("This person is on their phone ({surface}). They do not see the Stage live: every scene "
+              "you show is sent to them as one page right after your reply, which plays the whole "
+              "story on the phone. So show it exactly as you would at the desk; it is how they see "
+              "charts, maps, pictures and videos there.")
+
+
+def note(cfg: dict, tool: str = "show_scene", surface: str = "") -> str:
+    """What the lead is told, built-in or forwarded (`tool` is the name it calls it by). On a
+    phone channel the Stage line said "the person watches your answers on the Stage", which
+    was not true there, and Claude Code answered a Nifty question in words: the phone line
+    says where the scenes go instead."""
     line = BIG_LINE if settings(cfg)["big"] else ASKED_LINE
-    return "THE STAGE. " + line.replace("show_scene", tool)
+    out = "THE STAGE. " + line.replace("show_scene", tool)
+    if surface in ("telegram", "whatsapp"):
+        out += " " + PHONE_LINE.format(surface={"telegram": "Telegram", "whatsapp": "WhatsApp"}[surface])
+    return out
 
 
 # -- the story as one file: what a phone channel sends ------------------------------------
