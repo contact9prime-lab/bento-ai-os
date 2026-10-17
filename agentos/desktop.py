@@ -573,6 +573,49 @@ def service_restart() -> tuple[bool, str]:
     return _spawn_server(port)
 
 
+def served_root(port: int | None = None) -> "Path | None":
+    """The checkout the RUNNING server's code comes from, when it is one and is not
+    the one this process runs from.
+
+    Reported as "my Bento has been updated and restarted, but it shows the old one":
+    `bento` on the PATH ran from the installed clone and pulled THAT, while the service
+    started from a development tree (a systemd drop-in). Read from the process that
+    holds the port, so it is right whatever started it. None when it cannot be told.
+    """
+    from pathlib import Path
+    port = port or _port()
+    # Only a server that says it serves THIS home: the test suite runs with a temporary
+    # home beside the person's live server, and updated the live machine's checkout
+    # (found by the suite). An older server, with no header, cannot say, so it is left.
+    import urllib.error
+    import urllib.request
+    from . import config as _c
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/platform", timeout=2) as r:
+            theirs = r.headers.get("X-Bento-Home") or ""
+    except urllib.error.HTTPError as e:
+        theirs = e.headers.get("X-Bento-Home") or ""
+    except Exception:
+        return None
+    if not theirs or theirs != _c.home_id():
+        return None
+    pid = _listening_pid(port)
+    if not pid or IS_WIN:
+        return None
+    try:
+        cwd = Path(os.readlink(f"/proc/{pid}/cwd")).resolve()
+        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return None
+    # the interpreter's venv says where the code is even when the cwd is elsewhere
+    for cand in [cwd] + [Path(a.decode(errors="ignore")).resolve().parent.parent.parent
+                         for a in argv[:1] if b"/.venv/bin/" in a]:
+        if (cand / ".git").exists() and (cand / "agentos" / "__init__.py").exists():
+            mine = Path(__file__).resolve().parent.parent
+            return None if cand == mine else cand
+    return None
+
+
 def _listening_pid(port: int) -> str:
     """Pid listening on `port`, or ''. Used to stop a server no supervisor owns."""
     if IS_WIN:

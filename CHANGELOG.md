@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.40 — 2026-10-17
+
+**An update reaches the Bento you are looking at, and the page asks you to refresh.** Reported as "my Bento
+has been updated but the UI doesn't have it" and "when I update Bento this should be done directly; if the UI
+doesn't have it, ask on the UI to refresh".
+- `bento` in a terminal updated the copy it runs from, then restarted a service that starts from a
+  different copy (a development tree). It now asks the running Bento where its code is and updates that
+  copy too, then restarts once, and only if something changed.
+- After Bento restarts into new code, an open page says so and offers Refresh.
+
+**Office HQ is drawn at the size it is shown.** Switching from the Office scene to Office HQ kept the
+Office's smaller layout, so the rooms came out three times too big with the cards in a corner. The office
+now lays itself out again whenever its area changes.
+
 ## 0.6.39 — 2026-10-17
 
 **Answers are shown, not only written: the Stage.** Asked for as "if I ask what are the hottest places on

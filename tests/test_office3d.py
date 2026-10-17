@@ -316,7 +316,7 @@ def test_the_cards_follow_where_the_picture_really_is():
     on the desktop; the offset was measured once, at sizing. It is measured every frame now,
     with the scale, and a tap is read in the picture's own pixels."""
     src = (Path(__file__).parent.parent / "agentos/ui/src/js/24k-office3d.js").read_text()
-    where = src[src.index("function of3Where(){"):][:500]
+    where = src[src.index("function of3Where(){"):][:1600]
     assert "sx:a.width/" in where and "sy:a.height/" in where
     ov = src[src.index("function of3Overlay(now){"):][:300]
     assert "of3Where();" in ov, "measured on every frame the words are placed"
@@ -324,3 +324,12 @@ def test_the_cards_follow_where_the_picture_really_is():
     assert "x*(o.sx||1)" in place and "y*(o.sy||1)" in place
     tap = src[src.index("function of3Tap(e){"):][:400]
     assert "OF3.cw/Math.max(1,r.width)" in tap
+
+
+def test_the_office_lays_out_again_when_its_area_changes():
+    """Office HQ and the office band share one element: a layout measured as the band (or
+    while hidden) drew HQ three times too big. of3Where compares the area with the one it
+    was laid out for, every frame, and lays out again once per new size."""
+    src = (Path(__file__).parent.parent / "agentos/ui/src/js/24k-office3d.js").read_text()
+    where = src[src.index("function of3Where(){"):][:1400]
+    assert "officeLayout()" in where and "want!==OF3.tried" in where

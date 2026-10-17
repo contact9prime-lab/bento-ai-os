@@ -8,7 +8,9 @@ var CUR_ENGINE={engine:'',model:''};
 var FWD_MODEL={};
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-  ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim()};
+  ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim();
+    // a reconnect is usually a restart: is this page the build that is now running?
+    if(typeof updateWaitingCheck==='function')setTimeout(updateWaitingCheck,1500)};
   ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
     for(const k in ACT)actDone(k);   // no socket, no honest "what it is doing"
     removeWorking(); // never leave "thinking…" on screen with no live socket behind it

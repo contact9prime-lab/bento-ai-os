@@ -117,9 +117,20 @@ connect();
    says why the new things are not here yet, with the one button that fixes it. A
    remote browser is told to restart it from the machine: restarting replaces the
    code that enforces every permission, so it is loopback-only like installing. */
+/* The build this page came with: noted the first time it asks, then compared on every
+   reconnect. Reported as "my Bento has been updated but the UI doesn't have it": the
+   server restarted into new code and the open page kept the old one, saying nothing. */
+var PAGE_BUILD='',PAGE_STALE_SAID='';
 async function updateWaitingCheck(){
   try{
     const d=await (await fetch('/api/update')).json();
+    if(!PAGE_BUILD)PAGE_BUILD=d.build||'';
+    else if(d.build&&d.build!==PAGE_BUILD&&PAGE_STALE_SAID!==d.build){
+      PAGE_STALE_SAID=d.build;
+      toast(`Bento was updated${d.current?' to '+d.current:''}. Refresh this page to use it.`,
+        {kind:'warn',ms:600000,label:'Refresh',go:()=>location.reload()});
+      return;
+    }
     if(!d.pending_restart)return;
     toast(`An update (build ${d.pending_restart}) is installed but not running yet — this is still build ${d.build}.`,
       {kind:'warn',ms:15000,label:'Restart now',go:async()=>{

@@ -6943,35 +6943,58 @@ def _update_cli(args) -> int:
     if result.get("unchanged"):
         print("✓ already at the newest commit — nothing changed")
         parked()
-        return 0
+        from . import desktop
+        if not desktop.served_root():
+            return 0
+        # this copy is current, the one the server runs may not be: fall through to it
     if result.get("switched"):
         print(f"  switched from '{result['switched']}' to '{state.get('tracks')}'")
     was = upd.current()
-    now = result.get("version") or "?"
-    print(f"✓ updated {result['from']} → {result['to']} "
-          f"({result['files']} files, from {result.get('source') or tracked})")
-    # The number a person reads, before and after — read from disk AFTER the pull,
-    # because this process imported the old one. Same number means the changes
-    # landed without a release bump (a push the version workflow has not caught up
-    # with yet), and saying so beats letting it read as "nothing happened".
-    print(f"  version {was} → {now} (build {result['to']})" if now != was else
-          f"  version {now}, build {result['from']} → {result['to']} — new code under the "
-          f"same number; the next release moves it")
-    # What actually landed. Printed after the fact as well as before it, because
-    # an unattended update (a watcher, a cron line) is one nobody read the preview
-    # of — this is the only place that machine's operator ever sees what changed.
-    for c in (result.get("changes") or []):
-        print(f"    {c['hash']}  {c['title'][:88]}")
-    parked()
+    if not result.get("unchanged"):
+        now = result.get("version") or "?"
+        print(f"✓ updated {result['from']} → {result['to']} "
+              f"({result['files']} files, from {result.get('source') or tracked})")
+        # The number a person reads, before and after — read from disk AFTER the pull,
+        # because this process imported the old one. Same number means the changes
+        # landed without a release bump (a push the version workflow has not caught up
+        # with yet), and saying so beats letting it read as "nothing happened".
+        print(f"  version {was} → {now} (build {result['to']})" if now != was else
+              f"  version {now}, build {result['from']} → {result['to']} — new code under the "
+              f"same number; the next release moves it")
+        # What actually landed. Printed after the fact as well as before it, because
+        # an unattended update (a watcher, a cron line) is one nobody read the preview
+        # of — this is the only place that machine's operator ever sees what changed.
+        for c in (result.get("changes") or []):
+            print(f"    {c['hash']}  {c['title'][:88]}")
+        parked()
 
     # An update that has not been loaded is a half-state: the files on disk and the
     # process answering turns disagree, and nothing on screen says which one you are
     # talking to. `apply()` deliberately leaves this to its caller — in the HTTP path
     # the response has to reach the browser first. Here there is no such constraint.
+    # The server may run from another checkout than this command (a systemd drop-in
+    # pointing at a development tree): that is the copy the person sees, so it is
+    # updated too, by its own code, before the one restart.
+    from . import desktop
+    other = desktop.served_root()
+    moved = not result.get("unchanged")
+    if other:
+        print(f"\n  Bento runs from {other}, not from this copy; updating that one too")
+        head = lambda: subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(other),
+                                      capture_output=True, text=True).stdout.strip()
+        before = head()
+        py = other / ".venv" / "bin" / "python"
+        cmd = [str(py if py.exists() else sys.executable), "-m", "agentos", "update", "--apply",
+               "--no-restart"] + (["--no-tests"] if args.no_tests else [])
+        rc = subprocess.run(cmd, cwd=str(other)).returncode
+        if rc:
+            print(f"✗ {other} could not be updated (exit {rc}); the server keeps running it as it is")
+        moved = moved or head() != before
+    if not moved:
+        return 0                     # nothing new anywhere: restarting for nothing is noise
     if args.no_restart:
         print("  load it:  bento service restart")
         return 0
-    from . import desktop
     started, msg = desktop.service_restart()
     print(("✓ " if started else "✗ ") + msg)
     return 0 if started else 1

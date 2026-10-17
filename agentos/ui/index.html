@@ -15228,7 +15228,9 @@ var CUR_ENGINE={engine:'',model:''};
 var FWD_MODEL={};
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-  ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim()};
+  ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim();
+    // a reconnect is usually a restart: is this page the build that is now running?
+    if(typeof updateWaitingCheck==='function')setTimeout(updateWaitingCheck,1500)};
   ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
     for(const k in ACT)actDone(k);   // no socket, no honest "what it is doing"
     removeWorking(); // never leave "thinking…" on screen with no live socket behind it
@@ -32350,6 +32352,16 @@ function of3Size(){
    of the room cards bunched in one corner and the rooms, half as big again, elsewhere. */
 function of3Where(){
   if(!OF3.cv)return;
+  // The area the office was laid out for, against the one it has now. Office HQ and the
+  // office band share one element, so switching between them, or a layout measured while
+  // the area was hidden, changes its size with no window resize to say so: the picture
+  // was drawn three times too big with the cards packed in a corner. Lay it out again.
+  const sc=OFFICE.cv&&OFFICE.cv.parentElement;
+  const want=sc?Math.max(280,sc.clientWidth)+'x'+Math.max(200,sc.clientHeight):'';
+  if(sc&&sc.clientWidth&&!OF3.relaying&&want!==OF3.tried&&(Math.abs(Math.max(280,sc.clientWidth)-OF3.cw)>8||Math.abs(Math.max(200,sc.clientHeight)-OF3.ch)>8)){
+    OF3.relaying=true;OF3.tried=want;   // once per size: a size it cannot take is not a loop
+    setTimeout(()=>{OF3.relaying=false;try{officeLayout()}catch(e){}},120);
+  }
   const a=OF3.cv.getBoundingClientRect(),b=OF3.ui?OF3.ui.getBoundingClientRect():a;
   OF3.off={x:a.left-b.left,y:a.top-b.top,sx:a.width/Math.max(1,OF3.cw||a.width),sy:a.height/Math.max(1,OF3.ch||a.height)};
 }
@@ -36388,9 +36400,20 @@ connect();
    says why the new things are not here yet, with the one button that fixes it. A
    remote browser is told to restart it from the machine: restarting replaces the
    code that enforces every permission, so it is loopback-only like installing. */
+/* The build this page came with: noted the first time it asks, then compared on every
+   reconnect. Reported as "my Bento has been updated but the UI doesn't have it": the
+   server restarted into new code and the open page kept the old one, saying nothing. */
+var PAGE_BUILD='',PAGE_STALE_SAID='';
 async function updateWaitingCheck(){
   try{
     const d=await (await fetch('/api/update')).json();
+    if(!PAGE_BUILD)PAGE_BUILD=d.build||'';
+    else if(d.build&&d.build!==PAGE_BUILD&&PAGE_STALE_SAID!==d.build){
+      PAGE_STALE_SAID=d.build;
+      toast(`Bento was updated${d.current?' to '+d.current:''}. Refresh this page to use it.`,
+        {kind:'warn',ms:600000,label:'Refresh',go:()=>location.reload()});
+      return;
+    }
     if(!d.pending_restart)return;
     toast(`An update (build ${d.pending_restart}) is installed but not running yet — this is still build ${d.build}.`,
       {kind:'warn',ms:15000,label:'Restart now',go:async()=>{

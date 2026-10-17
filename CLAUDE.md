@@ -3175,6 +3175,13 @@ Three things to keep:
   is pinned at startup, because the checkout can move under a server that has not restarted
   yet; `bento update` prints "version A → B (build X)", read from disk after the pull.
 
+**An update reaches the copy the server RUNS** (`desktop.served_root`, `_update_cli`): `bento` on the PATH
+ran the installed clone and pulled it, while a systemd drop-in started the service from a development tree,
+so "updated and restarted" showed the old Bento. The command asks the process holding the port where its
+code is (only a server whose `X-Bento-Home` is this home: the suite once updated the live machine's
+checkout), updates that checkout with its own Python, and restarts once, only when something moved. The
+page notes its build (`PAGE_BUILD`) and offers Refresh after a reconnect into another one.
+
 **The verify gate refuses REGRESSIONS, not a fragile machine.** `apply()` runs the
 suite on the new code, and if anything fails, runs those same tests on the OLD
 code before deciding. A test already red on this machine — pytest's temp dir
