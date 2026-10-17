@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.43 — 2026-10-17
+
+No release notes were written for this one; the commits since 0.6.42 are what changed (`bento update` lists them).
+
 ## 0.6.42 — 2026-10-17
 
 **What you type while Claude Code works reaches it at its next step.** Reported as "when I queue a message,
