@@ -1,0 +1,75 @@
+# The Stage
+
+Ask something worth seeing and your agent shows it as it answers. "Where are the hottest places on
+earth?" puts them on a world map. "How does the market behave when volatility is low?" gets a chart and
+the chain of cause and effect. The written answer still comes too. The Stage plays the story next to it.
+
+## What it can show
+
+| Scene | What it is for |
+|---|---|
+| Chart | A trend, a comparison or a share: line, area, bar, scatter or pie, with lines called out ("low IV below 12") |
+| Map | Places (dots sized by their value) and countries (shaded by their value), on a world map that works offline |
+| Numbers | Three to six key figures, counted up |
+| Timeline | Events in order |
+| Steps | A chain: this leads to that |
+| Table | Rows and columns |
+
+Every scene with numbers says where they came from, or says "Illustrative, not data" when it is an
+example. A scene the agent can't back with a source is refused until it names one or says it is an
+example.
+
+## Answer BIG
+
+On by default. The agent shows answers that have numbers, places, a trend or a story, two to five
+scenes in order, without being asked. A plain question still gets a plain answer.
+
+Off, it shows something only when you ask to see it. Switch it in the Stage, in Settings → Appearance,
+or with `bento stage big on|off`.
+
+## Where it plays
+
+- **The Stage app** opens by itself when a scene arrives for the chat on your screen (Chat, the
+  Office's chat, or the prompt bar). Turn "Open by itself on this screen" off under Boards if you'd
+  rather open it yourself.
+- **Chat** puts a ▶ Play chip under each answer that has a story, also when you reopen the chat later.
+- **Telegram** gets the reply, then one page with the whole story. It opens in the phone's browser and
+  plays without this machine.
+- **A terminal** prints each scene as text: a chart as a sparkline or bars, a map as its places. The TUI
+  and the terminal chat print them as they arrive; `bento stage` shows the last chat's story, `bento stage
+  list` everything.
+
+## Your stories are kept
+
+Every story stays with its chat. The Stage's **Library** lists everything you've been shown, newest
+first, by the question you asked.
+
+**★ Keep** makes a story a **board**. A board can stay as it is, or ask its question again every hour,
+day or week: the agent looks the facts up afresh and shows the new story, and the board points at it.
+If a refresh shows nothing, the board keeps the last story and says why. Refreshes are listed in
+Missions → History. With nobody watching, a refresh can show scenes and look things up; anything that
+needs your yes is refused, as for any scheduled run.
+
+## Your own app instead
+
+Under Boards, **Show answers in** can name one of your apps. That app receives each scene and the Stage
+stays closed. In the app:
+
+```js
+window.addEventListener('appstage', e => draw(e.detail.scene));
+```
+
+`e.detail.scene.kind` is one of `chart`, `map`, `numbers`, `timeline`, `steps` or `table`, with the
+same fields the agent's `show_scene` tool takes. App Studio knows this: ask it for "an app that draws my
+Stage".
+
+## For developers
+
+- `agentos/stage.py` reads each scene field by field (`clean`), files it under the person's message it
+  answers, keeps boards, and builds the Telegram page (`report_html`). It has no HTTP or asyncio.
+- `show_scene` is a safe tool: it draws on the person's own screen and stores a row. The conversation is
+  injected by the agent loop, never chosen by the model. A forwarded Claude Code chat reaches it through
+  the team door (`mcp__bento__show_scene`).
+- `24l-stage.js` draws everything with text nodes and SVG, never markup, because a scene's words are
+  often a web page's. The map is Natural Earth's 1:110m countries (public domain), loaded the first time
+  a map is drawn.

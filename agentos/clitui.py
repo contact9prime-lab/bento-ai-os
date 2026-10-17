@@ -175,6 +175,13 @@ async def run_tui():
                                 print(f"{C['dim']}  {ln[:_w()-2]}{C['r']}")
                             if len(out) > 6:
                                 print(f"{C['dim']}  … (+{len(out)-6} lines){C['r']}")
+                        elif t == "stage" and ev.get("conversation_id") == cid:
+                            # a scene of the answer (stage.py), drawn as text; its words
+                            # may be a web page's, so controls are stripped before printing
+                            from . import stage as stagemod
+                            from .teamlink import plain
+                            for ln in stagemod.text(ev.get("scene") or {}).splitlines():
+                                print(f"{C['acc'] if ln.startswith('▶') else C['dim']}{plain(ln)[:_w()-2]}{C['r']}")
                         elif t == "approval_request":
                             from . import approvalcard
                             card = ev.get("card") or approvalcard.card(ev["name"], ev.get("args") or {})

@@ -595,7 +595,10 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              # live in `office`; the agents in my own database.
              "company",
              # my OTHER companies, each parked whole with its own office (company.py)
-             "companies")
+             "companies",
+             # how MY answers are shown (stage.py): Answer BIG, and which of my apps
+             # draws them. It costs nothing and reaches nothing.
+             "stage")
 
 
 def machine_view(cfg: dict) -> dict:

@@ -646,6 +646,34 @@ server's `_world_org`; none of the three pages asks `/api/company` or decides me
 - A room somebody filled by hand has a FIRST person, not a head: `named` is false and no
   star is drawn.
 
+## The Stage: an answer shown, not only written
+
+`agentos/stage.py` (the closed set, the record, boards, the Telegram page) + `show_scene` (tools.py) +
+`24l-stage.js`/`31-stage.css` (the Stage app, the chat chip) + `/api/stage*` + `bento stage`; `docs/stage.md`,
+`tests/test_stage.py`. Asked for as "if I ask what are the hottest places on earth it shows them on the map
+… every answer becomes a story", then "a toggle that answers BIG and saves the stage … auto refreshed".
+Six rules:
+- **A scene is a closed set read field by field** (`clean`): six kinds, capped lists, an unknown field
+  dropped and NAMED in the tool's answer, controls and bidi stripped (`_CONTROLS`).
+- **Numbers say where they came from.** chart, map with values, numbers and table need `source` or
+  `illustrative: true`, which every face prints. A believable chart of numbers nobody measured is the
+  worst thing this could put on a screen.
+- **The chat is the agent's** (`_conv`, injected by the loop as for `create_app`), and a scene is filed
+  under the person's LAST message in it (`answer_to`), so a reopened chat puts each answer's chip after its
+  own reply (`stageAttach`, `data-mid`). No conversation is a refusal in words.
+- **One painter.** The page draws with text nodes and SVG (no `innerHTML`, the test checks), and the
+  Telegram page (`report_html`) embeds the SAME 24l-stage.js and CSS, with the map inline. The map
+  (`assets/world-110m.json`, Natural Earth 1:110m, public domain, 107 kB) is fetched on first use, never in
+  the bundle. Labels are measured and placed where they touch nothing, falling back to the name's first part.
+- **A forwarded lead gets it through the team door** (`STAGE_DOOR_TOOLS` in `DOOR_TOOLS`, `stage.note(tool=)`).
+  Measured on the owner's machine with Claude Code: the map arrived at 15 s, the text at 34 s. A board's
+  refresh opens a door with ONLY `show_scene` (`open_app_door` accepts that with a conversation and no app),
+  runs in a chat of its own, is a `task_runs` row (`task_id` `stage:<board>`), and keeps the old story when
+  the new run showed nothing (`refreshed`). `_stage_loop` checks due boards once a minute per account.
+- **Answer BIG is the person's** (`stage` USER_KEY: `big`, `app`). Off, the tool is still offered and the
+  note says "when they ask". `app` hands scenes to one of the person's apps (`appstage` event in APP_RUNTIME)
+  instead of the Stage; "Open by itself" is per browser (`stage.auto`).
+
 ## The Brief: a mission delivers ITEMS a person acts on, never a message
 
 `agentos/brief.py` is how a mission's result reaches somebody, and it is the reason
@@ -2195,6 +2223,10 @@ things keep it true:
   one department working → its room (`of3RoomView(name, bare)`), back to the whole office 6 s after;
   a person's wheel, drag or ＋/− (`OF3.userMoved`) stops it until ⤢. The wheel reaches HQ through a
   document listener that only acts over `#desktop`/`#wall`. Zoom goes to `OF3_ZOOM_MIN` (one desk).
+  **Cards are placed from where the picture IS** (`of3Where`, every frame, with the scale): in HQ the
+  canvas is in the wall (larger than the screen, moved by the parallax) and the cards are on the desktop, so
+  an offset measured once at sizing left them behind; reported as cards bunched in one corner. `of3Tap`
+  reads a tap in the picture's own pixels for the same reason.
   **The window takes the renderer from the scene**: `renderOffice` calls `of3Dispose()` before taking
   OFFICE over, and `of3Layout` rebuilds when `OF3.cv` lives in another host. Without it the window
   stayed dark while the scene's canvas kept drawing ("I cannot see the office").

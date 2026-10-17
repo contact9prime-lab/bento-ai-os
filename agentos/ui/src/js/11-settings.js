@@ -520,6 +520,11 @@ function setTab(body,all){
     P.push(pGroup('Look',[
       pRow('Desktop theme',pSelect('s-theme',Object.entries(allThemes()).map(([k,t])=>[k,(t.label||t.name||k)+(t.custom?' ·':'')]),CURRENT_THEME)
         +`<button class="endbtn" onclick="openApp('themes')">Gallery</button>`,{f:'theme appearance'}),
+      pRow('Answer BIG',pSwitch('s-stage-big',typeof STAGE==='undefined'||STAGE.settings.big!==false)
+        +`<button class="endbtn" onclick="openApp('stage')">Stage</button>`,
+        {desc:'Shows answers on the Stage as maps, charts and numbers while they are written.',
+         more:'Off, the agent shows something only when you ask to see it. Every story is kept in the Stage, and you can choose one of your own apps to draw them. In a terminal, bento stage shows them as text.',
+         f:'answer big stage show map chart visual story immersive answers'}),
       pRow('Immersive experience',pSwitch('s-imm',typeof immersiveOn==='function'&&immersiveOn()),
         {desc:'Adds depth, glass and richer colour on top of your theme.',
          more:'On by default and remembered by this browser. Themes → Effects tones it down on a slow machine. The TUI has no wallpaper or glass, so it has no switch.',
@@ -662,6 +667,9 @@ function setTab(body,all){
   main.innerHTML=P.join('');
   const th=main.querySelector('#s-theme');
   if(th)th.onchange=()=>{applyTheme(th.value);toast('theme applied')};
+  const sb=main.querySelector('#s-stage-big');
+  if(sb){sb.onchange=()=>stageSettings({big:sb.checked});
+    apiJSON('/api/stage').then(d=>{if(d.settings){STAGE.settings=d.settings;sb.checked=!!d.settings.big}}).catch(()=>{})}
   const im=main.querySelector('#s-imm');
   if(im)im.onchange=()=>setImmersive(im.checked);
   const avs=main.querySelector('#s-av-on');

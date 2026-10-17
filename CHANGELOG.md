@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.39 — 2026-10-17
+
+**Answers are shown, not only written: the Stage.** Asked for as "if I ask what are the hottest places on
+earth, it shows them on a map in front of me … every answer becomes a story".
+- While your agent answers, it can put scenes on the new Stage app: a chart, a world map with places and
+  countries, key numbers, a timeline, a chain of steps or a table. They arrive as it works, so with Claude
+  Code the map is up long before the written answer. Each scene is read aloud when voice replies are on.
+- **Answer BIG** (on by default, in the Stage and Settings → Appearance) has the agent show answers that
+  have numbers, places or a story without being asked. Off, it shows things when you ask.
+- Every story is kept with its chat: a ▶ Play chip sits under the answer, and the Stage's Library lists
+  everything you were shown.
+- ★ Keep makes a story a board, and a board can ask its question again every hour, day or week, so it
+  stays current. Refreshes show up in Missions → History.
+- Numbers carry their source, or say "Illustrative, not data".
+- You can hand the Stage to one of your own apps: it gets each scene as an `appstage` event.
+- On Telegram, an answer with a story is followed by one page that plays the whole story on your phone.
+- In a terminal, `bento stage` shows the stories as text, and `bento stage big on|off` sets Answer BIG.
+
+**Office HQ's room cards stay on their rooms.** Reported with a screenshot of the cards bunched in one corner
+and the rooms elsewhere. The 3D office sits in the wallpaper layer, which is drawn larger than the screen and
+moves with the mouse, while the cards sit on the desktop above it. Where the picture is now measured every
+frame, so the cards and taps follow it.
+
 ## 0.6.38 — 2026-10-17
 
 **An update no longer freezes Bento while it checks itself.** Reported as "my Bento has been updated and

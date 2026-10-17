@@ -788,6 +788,11 @@ class Agent:
                 mem_text += _pool.note()
             except Exception:
                 pass
+        if self.principal is MAIN and self.conversation_id:
+            # The Stage (stage.py): with Answer BIG on, the lead shows what it can; off, it
+            # shows when asked. A turn with no chat has nowhere to show anything.
+            from . import stage as _stage
+            mem_text += "\n\n" + _stage.note(self.cfg)
         if self.principal is MAIN:
             # The World scene's "agents feel it" (experimental): empty unless this
             # person's world is live AND they turned it on. world.py says why.
@@ -884,6 +889,10 @@ class Agent:
             # session scope flows through: saves attach to this conversation and
             # delegated subagents inherit its session memory
             args = {**args, "conversation_id": self.conversation_id}
+        if name == "show_scene":
+            # the chat the scene is shown in and kept with: the agent's, never the model's
+            args = {**{k: v for k, v in args.items() if k != "_conv"},
+                    "_conv": self.conversation_id or ""}
         if name == "create_app":
             # the chat that built it, the agent's and never the model's: a model that
             # could name a conversation could file an app under somebody else's chat

@@ -220,6 +220,8 @@ SAFE_TOOLS = {
     # untrusted content: see policy.TAINT_WATCH.
     "remember", "forget", "kg_add", "save_skill", "save_automation", "run_automation",
     "brief_item", "notify", "save_report", "create_space", "snapshot_os",
+    # the Stage: drawn on the person's own screen and kept with the chat (stage.py)
+    "show_scene",
     "set_avatar", "set_office", "set_wallpaper", "save_asset",
     "generate_image", "generate_wallpaper", "llm_generate",
     # to the owner's own chat; another chat or number is risky (see risk_of)
@@ -751,6 +753,7 @@ class Toolbox(usersmod.Scoped):
         self.telegram = None   # TelegramBridge, wired up in server startup
         self.whatsapp = None   # WhatsAppBridge, wired up in server startup
         self.broadcast = None  # UI event broadcaster, wired up in server startup
+        self.broadcast_user = None  # the same, to one account's sessions only
         self.fabric = None     # ControlPlane, wired up in server startup
         self.pdp = None        # policy.PDP — the permission gate, wired up in server startup
         self.shell = None      # server.shell_command — reaches the browser shell, wired up in server startup
@@ -1041,6 +1044,29 @@ class Toolbox(usersmod.Scoped):
             pass
         return (f"[{'added' if res['created'] else 'updated'} in the Brief · {res['kind']} · "
                 f"{res['title']}]")
+
+    async def show_scene(self, kind: str = "", title: str = "", _conv: str = "", **spec) -> str:
+        """One scene of the answer onto the person's Stage (agentos/stage.py). The chat is
+        the agent's (`_conv`, injected by the loop), never the model's."""
+        from . import stage as stagemod
+        try:
+            scene, dropped = stagemod.clean({"kind": kind, "title": title, **spec})
+            row = stagemod.add(self.store, _conv, scene)
+        except ValueError as e:
+            return f"[error] {e}"
+        ev = {"type": "stage", **row}
+        try:
+            send = getattr(self, "broadcast_user", None)
+            if send:
+                asyncio.create_task(send(ev, usersmod.current()))
+            elif self.broadcast:
+                asyncio.create_task(self.broadcast(ev))
+        except Exception:
+            pass
+        out = f"[on the Stage · scene {row['seq']} · {scene['kind']} · {scene['title'] or scene['kind']}]"
+        if dropped:
+            out += f" (not drawn: {', '.join(dropped)})"
+        return out
 
     async def fetch_url(self, url: str) -> str:
         if not url.startswith(("http://", "https://")):
@@ -4316,7 +4342,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task") else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene") else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -6033,6 +6059,52 @@ BRIEF_TOOL_SCHEMAS = [
     },
 ]
 TOOL_SCHEMAS.extend(BRIEF_TOOL_SCHEMAS)
+
+# The Stage (agentos/stage.py): an answer shown on the person's screen while it is
+# written. One tool, a closed set of kinds; the page draws them and the chat keeps them.
+_PT = {"type": "array", "items": {}, "description": "[x, y]: x a number, a date or a label; y a number"}
+STAGE_TOOL_SCHEMAS = [
+    {
+        "name": "show_scene",
+        "description": "Show ONE scene of your answer on the person's screen, on the Stage, while "
+                       "you answer: kind chart (series of [x, y] points; chart_type line, area, bar, "
+                       "scatter or pie), map (points with lat/lon, and/or regions by country name "
+                       "with a value), numbers (a few key figures), timeline (events in order), "
+                       "steps (a chain: this leads to that) or table. Call it once per scene, in "
+                       "story order, two to five scenes for an answer worth seeing. Numbers need a "
+                       "source, or illustrative: true when they are only an example.",
+        "parameters": {"type": "object", "properties": {
+            "kind": {"type": "string", "enum": ["chart", "map", "numbers", "timeline", "steps", "table"]},
+            "title": {"type": "string", "description": "the scene's headline, a few words"},
+            "caption": {"type": "string", "description": "one or two sentences: what to notice"},
+            "say": {"type": "string", "description": "the line read aloud with it, if different from the caption"},
+            "source": {"type": "string", "description": "where the numbers came from: a site, a dataset or a URL"},
+            "illustrative": {"type": "boolean", "description": "true when the numbers are an example, not data"},
+            "chart_type": {"type": "string", "enum": ["line", "area", "bar", "scatter", "pie"]},
+            "series": {"type": "array", "description": "chart: [{name, points: [[x, y], …]}]",
+                       "items": {"type": "object", "properties": {
+                           "name": {"type": "string"}, "points": {"type": "array", "items": _PT}}}},
+            "x_label": {"type": "string"}, "y_label": {"type": "string"},
+            "unit": {"type": "string", "description": "e.g. %, °C, $"},
+            "marks": {"type": "array", "description": "chart: lines to call out, [{y or x, text}]",
+                      "items": {"type": "object"}},
+            "points": {"type": "array", "description": "map: [{lat, lon, label, value?, note?}]",
+                       "items": {"type": "object"}},
+            "regions": {"type": "array", "description": "map: countries to shade, [{country, value?, label?}]",
+                        "items": {"type": "object"}},
+            "view": {"type": "string", "description": "map: world, africa, asia, europe, north america, "
+                                                      "south america, oceania, middle east or india"},
+            "items": {"type": "array", "description": "numbers: [{label, value, unit?, delta?, note?}]; "
+                                                       "steps: [{title, text?}] in order",
+                      "items": {"type": "object"}},
+            "events": {"type": "array", "description": "timeline: [{when, label, note?}]",
+                       "items": {"type": "object"}},
+            "columns": {"type": "array", "items": {"type": "string"}},
+            "rows": {"type": "array", "description": "table: [[cell, …], …]", "items": {"type": "array", "items": {}}}},
+            "required": ["kind", "title"]},
+    },
+]
+TOOL_SCHEMAS.extend(STAGE_TOOL_SCHEMAS)
 
 #: Tools whose reads and writes belong to the turn's space. The agent loop injects
 #: `space_id` for these; nothing else in the OS decides scope on the model's behalf.

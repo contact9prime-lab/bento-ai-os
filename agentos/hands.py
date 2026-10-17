@@ -56,7 +56,7 @@ GROUPS = {
             "git_remote_set", "git_push", "git_pull", "git_clone", "export_app_to_git"],
     "Memory": ["remember", "recall", "forget", "kg_add", "kg_query", "timeline"],
     "Mail & calendar": ["mail_search", "mail_read", "mail_send", "calendar_events"],
-    "Messages": ["notify", "telegram_send", "whatsapp_send", "brief_item"],
+    "Messages": ["notify", "telegram_send", "whatsapp_send", "brief_item", "show_scene"],
     "Images & assets": ["generate_image", "list_assets", "get_asset", "save_asset", "delete_asset",
                         "generate_wallpaper"],
     "Desktop": ["open_app", "launch_native_app", "list_windows", "focus_window", "manage_window",
@@ -79,7 +79,7 @@ SHELL_TOOLS = ("run_command", "run_python", "run_tests")
 READ_ONLY_TOOLS = ["read_file", "list_dir", "search_files", "list_folders", "fetch_url", "recall",
                    "kg_query", "timeline", "list_assets", "get_asset", "system_info", "search_docs",
                    "git_status", "git_log", "git_diff", "mail_search", "mail_read", "calendar_events",
-                   "list_flows", "brief_item", "notify", "ask_agent", "use_skill"]
+                   "list_flows", "brief_item", "notify", "ask_agent", "use_skill", "show_scene"]
 
 BUILTINS = {
     DEFAULT: {"description": "Everything this machine allows: every tool, any folder the "

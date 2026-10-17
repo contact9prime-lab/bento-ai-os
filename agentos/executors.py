@@ -452,7 +452,12 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     # per run: a turn with a team already has its tools, and none of them is the app's.
     if app and not token:
         token = open_app_door(env, cfg, app.get("toolbox"), app.get("app_id", ""),
-                              app.get("approver"), emit=sink)
+                              app.get("approver"), emit=sink,
+                              tools=tuple(app.get("tools") or APP_DOOR_TOOLS),
+                              conversation_id=app.get("conversation_id", ""),
+                              label=app.get("label", "app door"))
+        if token and app.get("note"):
+            env.context += "\n\n" + app["note"]
     run = Run(engine=engine)
     try:
         await run_task(text, env, sink, run)
@@ -1728,7 +1733,11 @@ WORKSPACE_DOOR_TOOLS = ("browser_open", "browser_read", "browser_click", "browse
 # reach until the next message.
 CAPABILITY_DOOR_TOOLS = ("find_tools", "discover_mcp_servers", "install_mcp_server",
                          "discover_skills", "read_skill", "install_skill", "use_skill")
-DOOR_TOOLS = TEAM_TOOLS + WORKSPACE_DOOR_TOOLS + CAPABILITY_DOOR_TOOLS
+# The Stage (stage.py): an answer shown on the person's screen while Claude Code is still
+# silent. Measured in chat: a forwarded brain says nothing for fifty seconds, and scenes
+# arrive over this door during them.
+STAGE_DOOR_TOOLS = ("show_scene",)
+DOOR_TOOLS = TEAM_TOOLS + WORKSPACE_DOOR_TOOLS + CAPABILITY_DOOR_TOOLS + STAGE_DOOR_TOOLS
 
 
 def capability_note(prefix: str = "mcp__bento__") -> str:
@@ -1901,6 +1910,9 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     # rule as the last of ~8,000 characters was never followed
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) + dept_note \
         + team_note(subs, in_departments=grouped) + workspace_note() + capability_note()
+    if conversation_id:
+        from . import stage as _stage
+        env.context += "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene")
     return token
 
 
@@ -1918,7 +1930,9 @@ def open_app_door(env: "Envelope", cfg: dict, toolbox, app_id: str, approver, em
     ever be a message), and App Studio changing an app (schedule_task, so a schedule
     asked for while building is set up for that app and shown in Missions). Returns the
     token to close, or '' when this executor has no door or the gate hides the tools."""
-    if toolbox is None or not app_id or env.engine not in MCP_ENGINES:
+    # an app's run needs its app; a Stage board's refresh needs only its chat
+    if toolbox is None or env.engine not in MCP_ENGINES or not (app_id or (
+            conversation_id and set(tools) <= set(STAGE_DOOR_TOOLS))):
         return ""
     from . import mcpbridge
     from .agent import Agent
@@ -1927,7 +1941,7 @@ def open_app_door(env: "Envelope", cfg: dict, toolbox, app_id: str, approver, em
         pass
     agent = Agent(cfg, toolbox, "", emit or _quiet, approver, conversation_id=conversation_id,
                   surface=surface, tool_filter=list(tools))
-    agent.app_id = app_id
+    agent.app_id = app_id or ""
     schemas = [t for t in agent._tools() if t["name"] in tools]
     if not schemas:
         return ""

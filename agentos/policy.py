@@ -458,7 +458,7 @@ PARANOID_FREE = {
     "mail_search", "mail_read", "calendar_events", "find_tools", "use_skill",
     "discover_mcp_servers", "list_openclaw_plugins", "openclaw_report",
     # talking to the person, and a mission's own bookkeeping: nothing outside changes
-    "notify", "brief_item", "finish", "note", "read_handle",
+    "notify", "brief_item", "finish", "note", "read_handle", "show_scene",
 }
 
 # What an app may do without a grant. An app is somebody's JavaScript, often a stranger's

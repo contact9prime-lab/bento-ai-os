@@ -5971,6 +5971,81 @@ def _mind_cli(args):
             print(f"    {k['a'].split(':', 1)[1]} ↔ {k['b'].split(':', 1)[1]}  ×{k['n']}")
 
 
+def _stage_cli(args) -> int:
+    """`bento stage` — the Stage in a terminal (stage.py). Reads the rows directly, so a
+    headless box can see what its answers showed with the server down. Each scene is drawn
+    as text: a chart as a sparkline or bars, a map as its places with their coordinates."""
+    import datetime as _dt
+
+    from . import stage as stagemod
+    cfg, store = _open_store(getattr(args, "user", ""))
+    act, what = args.action, args.what
+    when = lambda t: _dt.datetime.fromtimestamp(t).strftime("%d %b %H:%M") if t else "never"
+    if act == "big":
+        if what not in ("on", "off"):
+            st = stagemod.settings(cfg)
+            print(f"Answer BIG is {'on' if st['big'] else 'off'}: answers are "
+                  f"{'shown on the Stage without being asked' if st['big'] else 'shown when you ask'}.")
+            return 0
+        cfg.setdefault("stage", {})["big"] = what == "on"
+        from . import config as _cfgmod
+        _cfgmod.save_config(cfg)
+        print(f"Answer BIG is {what}. A running server reads it on the next turn.")
+        return 0
+    if act == "list":
+        rows = stagemod.library(store)
+        if not rows:
+            print("No stories yet. Ask something with numbers or places in it and the answer shows them.")
+        for r in rows:
+            print(f"{when(r['last_at'])}  {r['scenes']} scene{'s' if r['scenes'] != 1 else ''}  "
+                  f"{r['question'] or r['chat']}   [{r['conversation_id']}]")
+        return 0
+    if act == "boards":
+        bs = stagemod.boards(store)
+        if not bs:
+            print("No boards. Keep a story with `bento stage keep <chat-id>`, or ★ on the Stage.")
+        for b in bs:
+            print(f"{b['id']}  {b['title']}  · {b['when']} · last {when(b['last_run'])}"
+                  + (f" ({b['last_status']})" if b["last_status"] not in ("", "ok") else ""))
+        return 0
+    if act == "drop":
+        if not stagemod.drop_board(store, what):
+            print(f"no board {what!r}: `bento stage boards` lists them")
+            return 1
+        print("board removed; its stories stay with their chats")
+        return 0
+    cid = what or stagemod.latest_conversation(store)
+    if act == "keep":
+        st = stagemod.stories(store, cid) if cid else []
+        if not st:
+            print("that chat has no story to keep")
+            return 1
+        try:
+            b = stagemod.save_board(store, cid, st[-1]["answer_to"], every=args.every)
+        except ValueError as e:
+            print(e)
+            return 1
+        print(f"kept: {b['title']} · {b['when']}" + ("  (the server refreshes it while it runs)"
+                                                    if b["every"] else ""))
+        return 0
+    if not cid:
+        print("No stories yet. Ask something with numbers or places in it and the answer shows them.")
+        return 0
+    stories = stagemod.stories(store, cid)
+    if not stories:
+        print("that chat has no story")
+        return 1
+    conv = store.get_conversation(cid) or {}
+    print(f"{conv.get('title') or cid}")
+    for st in stories:
+        q = store.db.execute("SELECT content FROM messages WHERE id=?", (st["answer_to"],)).fetchone()
+        if q:
+            print(f"\n» {stagemod._s(stagemod._question(q[0]), 200)}")
+        for sc in st["scenes"]:
+            print(stagemod.text(sc["scene"]))
+    return 0
+
+
 def _brief_cli(args):
     """`bento brief` — today's Brief in a terminal, and the same hands.
 
@@ -7796,6 +7871,15 @@ def main():
                          choices=["show", "done", "later", "reopen", "decide"])
     p_brief.add_argument("id", nargs="?", default="", help="the item's id (from `bento brief`)")
     p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
+    p_st = verb("stage", help="answers shown, not only written: the Stage's stories, boards and Answer BIG")
+    p_st.add_argument("action", nargs="?", default="show",
+                      choices=["show", "list", "boards", "big", "keep", "drop"])
+    p_st.add_argument("what", nargs="?", default="",
+                      help="show: a chat id (the last chat with a story by default) · big: on|off · "
+                           "keep: the chat id · drop: a board id")
+    p_st.add_argument("--every", default="", choices=["", "hour", "day", "week"],
+                      help="keep: ask the question again this often (needs the server running)")
+    p_st.add_argument("--user", default="", help="whose stage, on a machine with users")
     p_mind = verb("mind", help="your agents and what they know, connected: the Mind scene's numbers")
     p_mind.add_argument("--json", action="store_true", help="the whole snapshot, as the scene reads it")
     p_av = verb("avatar", help="the crew's characters — see them in the terminal, restyle or reroll")
@@ -8190,6 +8274,8 @@ def main():
         raise SystemExit(_config_cli(args))
     elif args.cmd == "brief":
         _brief_cli(args)
+    elif args.cmd == "stage":
+        raise SystemExit(_stage_cli(args))
     elif args.cmd == "mind":
         _mind_cli(args)
     elif args.cmd == "link":

@@ -241,6 +241,7 @@ async def startup():
     whatsapp = WhatsAppBridge(cfg, store, toolbox, broadcast)
     toolbox.whatsapp = whatsapp
     toolbox.broadcast = broadcast
+    toolbox.broadcast_user = broadcast_user
     control = fabricmod.ControlPlane(cfg, store, toolbox, broadcast)
     toolbox.fabric = control
     # The control plane knows nothing about Telegram or about the UI; how a result is
@@ -351,6 +352,7 @@ async def startup():
     if not idle:
         asyncio.create_task(_resume_whatsapp_link())
         asyncio.create_task(scheduler.run_forever())
+        asyncio.create_task(_stage_loop())
         state["parked_task"] = asyncio.create_task(_parked_loop(time.time()))
         asyncio.create_task(mcp.start())
         asyncio.create_task(telegram.run_forever())
@@ -4191,6 +4193,169 @@ async def _brief_answer(bid: str, item: dict, choice: str) -> None:
                                   "answer": (text or "")[:300]})
 
 
+# ---- The Stage: an answer shown, and the boards that keep a story fresh (stage.py) ----
+
+def _stage_view(cfg: dict) -> dict:
+    from . import stage as stagemod
+    st = stagemod.settings(cfg)
+    apps = [{"id": a["id"], "name": a["name"]} for a in state["store"].list_apps()]
+    return {**st, "apps": apps,
+            "app_name": next((a["name"] for a in apps if a["id"] == st["app"]), "")}
+
+
+@app.get("/api/stage")
+async def api_stage(conversation: str = ""):
+    """One chat's stories, each under the message it answers."""
+    from . import stage as stagemod
+    store = state["store"]
+    if conversation and not store.get_conversation(conversation):
+        return JSONResponse({"error": "no such chat"}, status_code=404)
+    return {"conversation_id": conversation,
+            "stories": stagemod.stories(store, conversation) if conversation else [],
+            "settings": _stage_view(state["cfg"])}
+
+
+@app.get("/api/stage/library")
+async def api_stage_library():
+    """Every story this person has been shown, and the boards they kept."""
+    from . import stage as stagemod
+    store = state["store"]
+    return {"stories": stagemod.library(store), "boards": stagemod.boards(store),
+            "settings": _stage_view(state["cfg"])}
+
+
+@app.get("/api/stage/story")
+async def api_stage_story(conversation: str, answer_to: str = ""):
+    from . import stage as stagemod
+    return {"scenes": stagemod.story(state["store"], conversation, answer_to)}
+
+
+@app.put("/api/stage/settings")
+async def api_stage_settings(body: dict):
+    """Answer BIG, and which app draws the scenes ('' is the Stage)."""
+    b = body or {}
+    cfg = state["cfg"]
+    st = dict(cfg.get("stage") or {})
+    if "big" in b:
+        st["big"] = bool(b["big"])
+    if "app" in b:
+        aid = str(b.get("app") or "")
+        if aid and not state["store"].get_app(aid):
+            return JSONResponse({"error": "there is no app with that id"}, status_code=404)
+        st["app"] = aid
+    cfg["stage"] = st
+    cfgmod.save_config(cfg)
+    view = _stage_view(cfg)
+    await state["broadcast_user"]({"type": "stage_settings", "settings": view}, usersmod.current() or "")
+    return view
+
+
+@app.post("/api/stage/boards")
+async def api_stage_board_save(body: dict):
+    """Keep a story as a board, kept as it is or asked again every hour, day or week."""
+    from . import stage as stagemod
+    b = body or {}
+    try:
+        bd = stagemod.save_board(state["store"], str(b.get("conversation_id") or ""),
+                                 str(b.get("answer_to") or ""), title=str(b.get("title") or ""),
+                                 every=str(b.get("every") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    state["store"].log("stage", f"board kept: {bd['title']} ({bd['when']})", {"board": bd["id"]})
+    await state["broadcast_user"]({"type": "stage_board", "board": bd}, usersmod.current() or "")
+    return bd
+
+
+@app.delete("/api/stage/boards/{bid}")
+async def api_stage_board_drop(bid: str):
+    from . import stage as stagemod
+    if not stagemod.drop_board(state["store"], bid):
+        return JSONResponse({"error": "no such board"}, status_code=404)
+    await state["broadcast_user"]({"type": "stage_board", "dropped": bid}, usersmod.current() or "")
+    return {"ok": True}
+
+
+@app.post("/api/stage/boards/{bid}/refresh")
+async def api_stage_board_refresh(bid: str):
+    """Ask the board's question again now. Returns at once; the scenes arrive as they come."""
+    from . import stage as stagemod
+    bd = stagemod.board(state["store"], bid)
+    if not bd:
+        return JSONResponse({"error": "no such board"}, status_code=404)
+    if bd["last_status"] == "refreshing":
+        return JSONResponse({"error": "it is being refreshed now"}, status_code=409)
+    stagemod.claim(state["store"], bid)
+    asyncio.create_task(_stage_refresh(bid, usersmod.current() or ""))
+    return {"ok": True, "refreshing": bid}
+
+
+async def _stage_refresh(bid: str, uid: str) -> None:
+    """One board's question asked again in a chat of its own, with show_scene as the one
+    door, then the board pointed at the new story. A refresh is a run that happened on
+    its own, so it is a task_runs row too (Missions → History)."""
+    from . import stage as stagemod, executors as execmod
+    from .agent import Agent
+    with usersmod.as_user(uid):
+        store, cfg, toolbox = state["store"], state["cfg"], state["toolbox"]
+        bd = stagemod.board(store, bid)
+        if not bd:
+            return
+        stagemod.claim(store, bid)
+        trid = store.task_run_start({"id": f"stage:{bid}", "prompt": bd["question"]})
+        cid = store.create_conversation(f"▶ {bd['title']}"[:60], origin="stage")
+        prompt = f"{stagemod.REFRESH_LINE}\n\n{bd['question']}"
+        mid = store.add_message(cid, "user", prompt)
+
+        async def approver(_name, _args, _reason, _offer=None) -> bool:
+            from .policy import needs_person
+            return cfg.get("autonomy") == "full" and not needs_person()
+
+        async def quiet(_ev):
+            pass
+        text = ""
+        try:
+            engine = execmod.resolve_engine(cfg)
+            if engine != "aria":
+                text, _run = await execmod.forward(
+                    engine, prompt, cfg, execmod.default_workspace(cfg),
+                    app={"toolbox": toolbox, "app_id": "", "tools": execmod.STAGE_DOOR_TOOLS,
+                         "conversation_id": cid, "approver": approver, "label": "stage board",
+                         "note": stagemod.note({"stage": {"big": True}}, tool="mcp__bento__show_scene")})
+            else:
+                agent = Agent(cfg, toolbox, cfg.get("default_model") or "", quiet, approver,
+                              conversation_id=cid, surface="task")
+                res = await agent.run([{"role": "user", "content": prompt}])
+                text = res.get("content") or ""
+        except Exception as e:
+            text = f"[error] {type(e).__name__}: {e}"
+        store.add_message(cid, "assistant", text or "(no output)")
+        ok = bool(stagemod.story(store, cid, mid))
+        note = "" if ok else (text[:200] if text.startswith("[error]") else "")
+        bd = stagemod.refreshed(store, bid, cid, mid, ok, note)
+        store.task_run_finish(trid, "ok" if ok else "failed", text or "", conversation_id=cid)
+        with contextlib.suppress(Exception):
+            await state["broadcast_user"]({"type": "stage_board", "board": bd}, uid)
+
+
+async def _stage_loop() -> None:
+    """Boards that are due, for every account, once a minute."""
+    from . import stage as stagemod
+    while True:
+        await asyncio.sleep(60)
+        uids = [u["id"] for u in usersmod.list_users()] if usersmod.enabled() else [""]
+        for uid in uids:
+            with usersmod.as_user(uid):
+                try:
+                    from . import standby as _sb
+                    if not _sb.may_act():
+                        continue
+                    for bd in stagemod.due_boards(state["store"]):
+                        stagemod.claim(state["store"], bd["id"])
+                        asyncio.create_task(_stage_refresh(bd["id"], uid))
+                except Exception:
+                    pass
+
+
 # ---- Accounts: the mailbox and the calendar the person lets this machine read ----
 #
 # Not channels: nothing arrives through them. The agent reads them on the person's
@@ -5597,6 +5762,13 @@ window.addEventListener('message', e => {
   if (e.source !== parent || !e.data || e.data.agentos !== 'app_data') return;
   try{ window.dispatchEvent(new CustomEvent('appdata', {detail: {key: e.data.key || ''}})); }catch(_){}
 });
+// a scene of an answer (stage.py), when the person chose this app to draw their Stage:
+// window.addEventListener('appstage', e => draw(e.detail.scene)). Only from the desktop.
+window.addEventListener('message', e => {
+  if (e.source !== parent || !e.data || e.data.agentos !== 'stage' || !e.data.scene) return;
+  try{ window.dispatchEvent(new CustomEvent('appstage', {detail: {scene: e.data.scene,
+    seq: e.data.seq || 0, story: e.data.story || ''}})); }catch(_){}
+});
 // surface runtime errors to the host (App Studio shows them with a one-click fix)
 window.addEventListener('error', e => {
   try{ parent.postMessage({agentos:'app_error', app_id:window.APP_ID,
@@ -6305,6 +6477,11 @@ ALERTS & CHANNELS — bake delivery in; the user should not have to keep the win
   app's data: 'fetch <data>; save it with update_app_data key "<key>"'. The app reads that key
   with appData.get() when it opens, and window.addEventListener('appdata', e => reload()) fires
   while it is open when a schedule saved something (e.detail.key names what changed).
+- An app can draw the person's Stage (answers shown as scenes): when they choose it in the Stage's
+  "Show in", window.addEventListener('appstage', e => draw(e.detail.scene)) receives each scene,
+  e.detail.scene.kind one of chart, map, numbers, timeline, steps or table, with the fields
+  show_scene takes (title, caption, source, illustrative, series, points, regions, items, events,
+  columns, rows).
 - "Refresh every N minutes" while the app is open is setInterval in the app; while it is closed
   it is a schedule. Do both when the user wants it kept up to date.
 - Give such apps a small "Alerts" card in the UI: a threshold/condition input and an on/off toggle that
