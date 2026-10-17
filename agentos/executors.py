@@ -428,7 +428,8 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                   context: str = "", team: dict | None = None,
                   prior: list | None = None,
                   tools: tuple | None = None,
-                  app: dict | None = None) -> tuple[str, "Run | None"]:
+                  app: dict | None = None, run: "Run | None" = None,
+                  steerable: bool = False) -> tuple[str, "Run | None"]:
     """Send one turn to another agent and return what it said.
 
     Used by the surfaces that have no event stream of their own (Telegram, the
@@ -482,7 +483,10 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
                               label=app.get("label", "app door"))
         if token and app.get("note"):
             env.context += "\n\n" + app["note"]
-    run = Run(engine=engine)
+    # a caller that keeps the run can hand it more of the person's words while it works
+    # (Run.steer); Telegram does, so a second message reaches the turn in flight
+    env.steerable = bool(steerable) and engine == "claude-code"
+    run = run or Run(engine=engine)
     try:
         await run_task(text, env, sink, run)
     finally:
@@ -1987,7 +1991,7 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     stage_note = ""
     if conversation_id:
         from . import stage as _stage
-        stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene")
+        stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
         + identity_note(cfg, store, company=False) + stage_note + dept_note \
         + team_note(subs, in_departments=grouped) + workspace_note() + capability_note()

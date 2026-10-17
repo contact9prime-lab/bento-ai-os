@@ -1053,6 +1053,14 @@ async def shutdown():
                 await state[k].stop()
     if "scheduler" in state:
         state["scheduler"].stop()
+    # Say goodbye on every Telegram that came up (the machine's and each account's), briefly:
+    # a shutdown is never held up by a phone.
+    bridges = [state["telegram"]] if "telegram" in state else []
+    bridges += [b.get("telegram") for b in list(getattr(usersmod, "_services", {}).values())
+                if isinstance(b, dict) and b.get("telegram") is not None]
+    for tg in {id(b): b for b in bridges}.values():
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(tg.say_down(state.get("down_reason") or ""), 4)
     if "telegram" in state:
         state["telegram"].stop()
     if "whatsapp" in state:
@@ -1542,6 +1550,7 @@ async def api_restart(request: Request):
     async def _finish():
         await state["broadcast"]({"type": "reload", "delay": 6000})
         await asyncio.sleep(0.5)
+        state["down_reason"] = "to restart"   # said on Telegram as it goes (say_down)
         desktopmod.restart_service()
 
     state["store"].log("system", "restart requested")
@@ -1595,6 +1604,7 @@ async def api_update_apply(request: Request, body: dict | None = None):
         await state["broadcast"]({"type": "reload", "delay": 6000})
         await asyncio.sleep(0.5)
         from . import desktop as desktopmod
+        state["down_reason"] = "to install an update"   # said on Telegram as it goes (say_down)
         desktopmod.restart_service()
     asyncio.create_task(_finish())
     return {**res, "restarting": True}
@@ -1626,6 +1636,7 @@ async def api_update_rollback(request: Request):
         await state["broadcast"]({"type": "reload", "delay": 6000})
         await asyncio.sleep(0.5)
         from . import desktop as desktopmod
+        state["down_reason"] = "to undo the last update"   # said on Telegram as it goes (say_down)
         desktopmod.restart_service()
     asyncio.create_task(_finish())
     return {**res, "restarting": True}
@@ -1644,6 +1655,7 @@ async def api_update_restart(request: Request):
         await state["broadcast"]({"type": "reload", "delay": 6000})
         await asyncio.sleep(0.8)
         from . import desktop as desktopmod
+        state["down_reason"] = "to start the update"   # said on Telegram as it goes (say_down)
         desktopmod.restart_service()
     asyncio.create_task(_go())
     return {"ok": True, "restarting": True}
@@ -4801,8 +4813,13 @@ async def api_put_telegram(body: dict):
 @app.put("/api/telegram/chats/{chat_id}")
 async def api_telegram_chat(chat_id: int, body: dict):
     if "allowed" in body:
-        state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0)
-        state["store"].log("telegram", f"chat {chat_id} {'enabled' if body['allowed'] else 'disabled'}")
+        # the same door as the owner's phone buttons: the person is told when they're in
+        tg = state.get("telegram")
+        if tg is not None and hasattr(tg, "decide_newcomer"):
+            await tg.decide_newcomer(chat_id, bool(body["allowed"]))
+        else:
+            state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0)
+            state["store"].log("telegram", f"chat {chat_id} {'enabled' if body['allowed'] else 'disabled'}")
     return {"ok": True}
 
 

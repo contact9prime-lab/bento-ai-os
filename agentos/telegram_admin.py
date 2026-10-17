@@ -46,6 +46,7 @@ COMMANDS = [
     ("/logs", "[n|search]", "the operator diary, newest last"),
     ("/perms", "", "who has been granted what"),
     ("/clear", "", "wipe this conversation and start fresh"),
+    ("/updown", "[on|off]", "a message when I go offline or come back"),
 ]
 
 
@@ -156,6 +157,17 @@ class Console:
         return (True, "") if ok else (False, "not approved")
 
     # ------------------------------------------------------------- dispatch
+
+    async def _cmd_updown(self, chat_id: int, arg: str) -> str:
+        """The owner's switch for the up/down messages (TelegramBridge.say_up/say_down)."""
+        from . import config as cfgmod
+        t = self.tg._t()
+        if arg.lower() in ("on", "off"):
+            t["status_messages"] = arg.lower() == "on"
+            cfgmod.save_config(self.tg.cfg)
+        on = t.get("status_messages", True) is not False
+        return ("▲ I'll message you when I go offline and when I'm back." if on
+                else "▲ I won't message you when I go offline or come back. /updown on turns it back on.")
 
     async def handle(self, chat_id: int, text: str) -> bool:
         """Returns True if this text was a console command and has been answered."""

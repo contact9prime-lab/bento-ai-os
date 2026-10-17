@@ -220,10 +220,15 @@ async function loadConvs(){
   box.innerHTML='';
   // the agent's embedded threads (omnibar Desktop, per-app copilots) live in
   // their own sections so app-scoped exchanges never drown the real chats
-  const groups=[['From the prompt bar',c=>c.origin==='omni'],
+  // A chat from the phone is one long thread per person, and read like any other one it was
+  // lost in the list (reported: "the telegram chats are not visible in the Chats"). It has its
+  // own section, first, the way the prompt bar's threads do.
+  const phone=c=>c.origin==='telegram'||c.origin==='whatsapp'||/^(✈ )?(Telegram|WhatsApp) · /.test(c.title||'');
+  const groups=[['On your phone',phone],
+                ['From the prompt bar',c=>c.origin==='omni'],
                 ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
                 ['Your agents talking',c=>c.origin==='freetalk'],
-                ['',c=>c.origin!=='omni'&&c.origin!=='freetalk'&&!(c.origin||'').startsWith('copilot:')]];
+                ['',c=>!phone(c)&&c.origin!=='omni'&&c.origin!=='freetalk'&&!(c.origin||'').startsWith('copilot:')]];
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
@@ -252,6 +257,7 @@ function chatTrace(){
   a.download='';document.body.append(a);a.click();a.remove();
 }
 async function openConv(cid){
+  if(typeof taskDeskLeaving==='function')taskDeskLeaving(cid);   // a running task keeps its own desktop
   if(input&&currentConv!==cid)draftSave(currentConv,input.value);   // park the one you were typing
   currentConv=cid;
   officeChatFollow();
@@ -314,6 +320,7 @@ async function openConv(cid){
   loadConvs();scrollDown();
 }
 function newChat(){
+  if(typeof taskDeskLeaving==='function')taskDeskLeaving(null);
   currentConv=null;curBody=null;curThink=null;curText='';
   officeChatFollow();
   if(feed){feed.innerHTML='';showWelcome()}

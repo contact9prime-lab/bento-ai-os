@@ -18,6 +18,7 @@ const ICONS={
   models:['#C084FC','#7C3AED','<rect x="7.2" y="7.2" width="9.6" height="9.6" rx="2"/><path d="M10 4.2v3M14 4.2v3M10 16.8v3M14 16.8v3M4.2 10h3M4.2 14h3M16.8 10h3M16.8 14h3"/>'],
   profile:['#22D3EE','#0891B2','<rect x="3.8" y="5.8" width="16.4" height="12.4" rx="2"/><circle cx="9" cy="10.8" r="1.7"/><path d="M6.3 15.6c.5-1.4 1.5-2.1 2.7-2.1s2.2.7 2.7 2.1M14.6 9.8h3.6M14.6 13h3.6"/>'],
   flowrun:['#FDBA74','#C2410C','<circle cx="5.6" cy="12" r="2"/><circle cx="18.4" cy="7.4" r="2"/><circle cx="18.4" cy="16.6" r="2"/><path d="M7.5 11.2l9-3.2M7.5 12.8l9 3.2"/>'],
+  task:['#38BDF8','#0369A1','<rect x="3.6" y="5" width="16.8" height="14" rx="2"/><path d="M7.4 10l2.6 2.4-2.6 2.4"/><path d="M12.4 15h4.2"/>'],
   stage:['#FB7185','#BE123C','<rect x="3.6" y="5" width="16.8" height="11.4" rx="2"/><path d="M10.4 8.4v4.8l4-2.4z"/><path d="M8 19.4h8"/>'],
   brief:['#F59E0B','#B45309','<path d="M12 4l7 14H5z"/><path d="M12 10v4"/>'],
   jobs:['#34D399','#059669','<circle cx="12" cy="12.6" r="7.2"/><path d="M12 8.8v3.8l2.6 1.6"/><path d="M9.2 3.8h5.6"/>'],

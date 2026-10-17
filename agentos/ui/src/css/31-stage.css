@@ -281,3 +281,11 @@ body.dev-mobile .stg-cap{font-size:15px}
 .stg .st-steps.tall .st-arrow{display:none}
 .stg .st-steps.tall .st-step{flex:none;padding:10px 12px}
 .stg .st-steps.tall .st-step-x{font-size:12.5px}
+
+/* task desktops (24m-taskdesks.js): the pager names a task's desktop and pulses while it works */
+.pgb.task{width:auto;padding:0 8px;display:inline-flex;align-items:center;gap:5px}
+.pgb .pgt{font-size:11px;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.85}
+.pgb.task.run::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--acc);
+  box-shadow:0 0 6px var(--acc);animation:st-fade 1.2s ease-in-out infinite alternate}
+.task-chat{display:flex;flex-direction:column;height:100%;min-height:0}
+.task-chat .cp-feed{flex:1;min-height:0}

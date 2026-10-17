@@ -1685,6 +1685,17 @@ the start of a word, which keeps this a launcher. A place is a door to a pane th
 `bento help --all`. The wall read a tile's ICON span as its name for a long time; the label is
 `:scope > span:not([class])`.
 
+## Telegram says when the agent goes down and comes back
+
+`TelegramBridge.say_up`/`say_down`, `.telegram-alive.json` in the person's home, `/updown on|off`,
+`state["down_reason"]`; `tests/test_telegram_updown.py`. Asked for as "when the agent is coming up or going
+down, that message needs to be sent". Once per process on the first poll ("back online", the version, an
+update named); from the server's shutdown for EVERY bridge that came up (the machine's and each account's),
+each bounded to 4 s so a phone never holds a shutdown. A start after a stop that never said goodbye (a crash,
+the power) says when it was last seen: the heartbeat is written while polling (`ALIVE_EVERY`). The restart
+routes set `down_reason` ("to install an update"). Found live: telegram.py had no `import contextlib`, and the
+poller swallowed the NameError, so nothing was sent and nothing said why.
+
 ## WhatsApp is one channel with two transports
 
 `conf(cfg)["mode"]` decides which is live, and they fail in opposite directions:
@@ -3092,6 +3103,20 @@ or a CAPTCHA is handed to the person in the same session the agent then carries 
   the type-anywhere omnibar and the palette skip it, as they skip `.xterm`.
 - **A forwarded chat reaches them through the team door** (`executors.WORKSPACE_DOOR_TOOLS`,
   `workspace_note`), each call through the gate; its own fetch sees only the anonymous web.
+
+## Several tasks at once: a desktop per running task, and Telegram side by side
+
+`24m-taskdesks.js` (TASKDESK, `taskDeskLeaving`/`Done`/`Close`), the Task app (`initCopilot` pinned by
+`data-cid`), the pager's names and wheel; Telegram's `_busy_chats`/`_runs`/`_waiting` with `forward(run=,
+steerable=)`; `tests/test_task_desktops.py`. Four rules:
+- **The moment is leaving a running chat** (openConv to another, newChat): that conversation moves to a desktop
+  of its own. Nothing moves on its own otherwise, and `taskdesk.auto` (per browser) can turn it off.
+- **Closing is asked, never done** (`taskDeskDone` toasts; `taskDeskClose` closes the window and moves the
+  desktops after it down one).
+- **A pinned panel sends into ITS conversation**, origin `user`, whatever Chat has open; a message while it works
+  goes through the server's steering like any other.
+- **Telegram is per chat.** One bot-wide busy flag refused everybody while one chat worked. Now a second chat runs
+  at once; within a chat, a message steers the running Claude Code turn or waits in `_waiting` and runs next.
 
 ## Window chrome: the rules that keep a stack readable
 

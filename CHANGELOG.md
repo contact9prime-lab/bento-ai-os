@@ -8,6 +8,35 @@ AI got one, slowly and not every time. That was `test_company_objective::test_th
 there and the route tests that flickered. `AGENTOS_NO_AUTOPICK` (set for every test) keeps the pick off; a
 running Bento still picks a model as before. The suite also runs in about two minutes instead of six.
 
+## 0.6.48 — 2026-10-17
+
+**Several tasks at once: each running one gets a desktop, and Telegram runs them side by side.** Asked for
+as "use desktops for different chats, scroll between them … as tasks complete the desktop can close, asking
+the user; in Telegram mode the backend should handle it".
+- When you leave a chat while it is still working (to start another task), it moves to a desktop of its own
+  in a Task window that keeps showing its progress and takes more messages. The desktop switcher names it and
+  shows a dot while it works; scroll over the switcher to move between desktops. When it finishes you are
+  asked whether to close its desktop.
+- On Telegram, each chat works on its own: somebody else's message no longer waits for yours. A message you
+  send while it works is taken into what it is doing on Claude Code, or runs right after, in order; it no
+  longer says "still working".
+## 0.6.46 — 2026-10-17
+
+**Telegram tells you when it goes offline and when it is back.** Asked for as "when the agent is coming up
+or going down, that message needs to be sent". "▼ Aria is going offline to install an update" as it stops,
+"▲ Aria is back online, updated 0.6.43 → 0.6.46" as it starts, and after a crash or a power cut, when it was
+last seen. `/updown off` on Telegram turns it off.
+## 0.6.45 — 2026-10-17
+
+**Telegram gets the Stage, you decide who else may talk to it, and phone chats are easy to find.** Reported
+as "on Telegram I am not getting the stage, I am not getting an option to authorize other people, and the
+telegram chats are not visible in the Chats".
+- A turn from Telegram or WhatsApp is told that its scenes are sent to the phone as one page after the reply,
+  so it shows them; before, it answered in words. WhatsApp now gets that page too.
+- When somebody new writes to your bot, you get their message with **Allow** and **Block** on Telegram and
+  an **Allow** on the desktop; they hear back when you let them in. Settings → Channels → Telegram has a
+  **People** button for everyone who wrote.
+- Chats has an **On your phone** section, first, for your Telegram and WhatsApp threads.
 ## 0.6.44 — 2026-10-17
 
 **Every execution as one JSON file.** Asked for as "for every execution I should be able to get the json file
