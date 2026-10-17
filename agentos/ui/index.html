@@ -16297,6 +16297,7 @@ function renderChat(body){
           <option value="full">Full autonomy</option>
         </select>
         <button id="ttsbtn" class="endbtn" title="Speak replies aloud"></button>
+        <button id="tracebtn" class="endbtn" title="Download everything this chat did as one JSON file: messages, every run, the gate's decisions, the office and who had which tools (secrets masked). Give it to an AI to find what went wrong." onclick="chatTrace()">⤓ JSON</button>
         <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
         ${/* phone only: the three controls past the brain go behind one button —
               five controls in two rows before any content was the header. */''}
@@ -16508,6 +16509,14 @@ async function loadConvs(){
     if(label){const h=document.createElement('div');h.className='convgrp';h.textContent=label;box.appendChild(h)}
     items.forEach(c=>box.appendChild(row(c)));
   });
+}
+/* Everything this chat did, as one JSON file (agentos/trace.py), to read or hand to an AI.
+   Asked for as "for every execution I should be able to get the json file to see what
+   happened, what was the office and what executed". */
+function chatTrace(){
+  if(typeof currentConv==='undefined'||!currentConv){toast('Open a chat first.');return}
+  const a=document.createElement('a');a.href='/api/trace/conversation/'+encodeURIComponent(currentConv);
+  a.download='';document.body.append(a);a.click();a.remove();
 }
 async function openConv(cid){
   if(input&&currentConv!==cid)draftSave(currentConv,input.value);   // park the one you were typing
@@ -24441,6 +24450,9 @@ function jobHistRow(r){
     :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
   // a run that refreshed an app is read in the app itself
   const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${esc(r.app_id)}')">Open app</button>`:'';
+  // everything this run did as one JSON file, to read or hand to an AI (trace.py)
+  const tr=r.run_id?`<a class="endbtn" download href="/api/trace/run/${encodeURIComponent(r.run_id)}" title="Download what this run did as JSON">⤓ JSON</a>`
+    :r.conversation_id?`<a class="endbtn" download href="/api/trace/conversation/${encodeURIComponent(r.conversation_id)}" title="Download what this run did as JSON">⤓ JSON</a>`:'';
   return `<div class="item job-hrow ${esc(r.status)}">
     <div class="grow">
       <div class="job-hhead"><span class="job-hst ${esc(r.status)}">${esc(JOB_HIST_WORD[r.status]||r.status)}</span>
@@ -24448,7 +24460,7 @@ function jobHistRow(r){
       <div class="sub">${esc(jobHistWhen(r.started_at))}${r.seconds!=null&&r.status!=='skipped'?' · took '+esc(jobHistTook(r.seconds)):''} · ${esc(r.started_by)}${
         r.tokens?' · '+r.tokens.toLocaleString()+' tokens':''}</div>
       ${r.said?`<div class="sub job-hsaid">${esc(r.said)}</div>`:''}
-    </div>${app}${door}</div>`;
+    </div>${app}${door}${tr}</div>`;
 }
 async function renderJobHistory(body){
   const f=JOBS.hist||{};
