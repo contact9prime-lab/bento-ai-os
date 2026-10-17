@@ -507,7 +507,10 @@ async def startup():
 
     # pick a default model if none is set — but don't let this first write of
     # config.json disarm the setup wizard on a brand-new install
-    if not cfg.get("default_model"):
+    # AGENTOS_NO_AUTOPICK: the test suite's in-process servers must not find whatever model
+    # the developer's machine happens to run (a local Ollama answered a test that expected
+    # "no brain", slowly and not every time, and that was the suite's flaky route tests)
+    if not cfg.get("default_model") and not os.environ.get("AGENTOS_NO_AUTOPICK"):
         first = cfgmod.is_first_run()
         models = await providers.available_models(cfg)
         if models:
