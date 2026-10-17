@@ -51,7 +51,12 @@ class TelegramBridge(usersmod.Scoped):
         self.status = "off"          # off | polling | error
         self.error = ""
         self.bot_username = ""
-        self._busy = False
+        self._busy = False             # kept for callers that read it: any chat working
+        # Per chat, so two people (or two chats) work at once; and within a chat, what is
+        # said while it works reaches the running turn or waits for the next one.
+        self._busy_chats: set = set()
+        self._runs: dict = {}
+        self._waiting: dict = {}
         self._pending: dict[str, asyncio.Future] = {}   # approval id -> future
         # Operating the machine from the phone — owner-only, and every command
         # that DOES something goes through the same PDP the desktop uses.
@@ -394,9 +399,23 @@ class TelegramBridge(usersmod.Scoped):
             await self.send(f"▶ {flow['name']} started — I'll report back here.", chat_id)
             return
 
-        if self._busy:
-            await self.send("⏳ Still working on your previous message…", chat_id)
+        if chat_id in self._busy_chats:
+            # Reported as "different tasks at the same time … in Telegram mode the backend
+            # should handle it": a second message was refused with "still working". It goes
+            # into the running Claude Code turn when it can (Run.steer, as on the desktop),
+            # and otherwise waits and runs right after, in order.
+            run = self._runs.get(chat_id)
+            if run is not None and run.steer(text):
+                with contextlib.suppress(Exception):
+                    self.store.add_message(self._conversation(chat), "user", text, {"steered": True})
+                await self.send("↪ Taken into what I'm working on.", chat_id)
+            else:
+                self._waiting.setdefault(chat_id, []).append(msg)
+                n = len(self._waiting[chat_id])
+                await self.send(f"⏳ Got it. I'll do this right after the current one"
+                                + (f" ({n} waiting)." if n > 1 else "."), chat_id)
             return
+        self._busy_chats.add(chat_id)
         self._busy = True
         try:
             await self._api("sendChatAction", chat_id=chat_id, action="typing")
@@ -464,6 +483,7 @@ class TelegramBridge(usersmod.Scoped):
                     from . import config as _cfgmod
                     _k.turn_started()
                     try:
+                        self._runs[chat_id] = execmod.Run(engine=engine)
                         reply, _run = await execmod.forward(
                             engine, text, self.cfg,
                             execmod.default_workspace(self.cfg),
@@ -472,7 +492,8 @@ class TelegramBridge(usersmod.Scoped):
                             # the team door: "build me a tool" from the phone reaches
                             # the toolsmith as it does at the desk
                             team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
-                                  "conversation_id": cid, "surface": "telegram"})
+                                  "conversation_id": cid, "surface": "telegram"},
+                            run=self._runs[chat_id], steerable=True)
                         if _run and _run.session_id:
                             # kept in the conversation row, so a restart does not make every
                             # phone thread a stranger (an in-memory dict did)
@@ -506,7 +527,16 @@ class TelegramBridge(usersmod.Scoped):
         except Exception as e:
             await self.send(f"[error] {type(e).__name__}: {e}", chat_id)
         finally:
-            self._busy = False
+            self._busy_chats.discard(chat_id)
+            self._runs.pop(chat_id, None)
+            self._busy = bool(self._busy_chats)
+            # what waited for this turn runs next, one at a time, in the order it came
+            queue = self._waiting.get(chat_id) or []
+            if queue:
+                nxt = queue.pop(0)
+                if not queue:
+                    self._waiting.pop(chat_id, None)
+                asyncio.create_task(self._handle(nxt))
             if "tap" in locals():
                 _pg.close(cid, tap)          # idempotent: a failed turn must not leak a tap
 

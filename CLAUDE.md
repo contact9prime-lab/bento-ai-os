@@ -3104,6 +3104,20 @@ or a CAPTCHA is handed to the person in the same session the agent then carries 
 - **A forwarded chat reaches them through the team door** (`executors.WORKSPACE_DOOR_TOOLS`,
   `workspace_note`), each call through the gate; its own fetch sees only the anonymous web.
 
+## Several tasks at once: a desktop per running task, and Telegram side by side
+
+`24m-taskdesks.js` (TASKDESK, `taskDeskLeaving`/`Done`/`Close`), the Task app (`initCopilot` pinned by
+`data-cid`), the pager's names and wheel; Telegram's `_busy_chats`/`_runs`/`_waiting` with `forward(run=,
+steerable=)`; `tests/test_task_desktops.py`. Four rules:
+- **The moment is leaving a running chat** (openConv to another, newChat): that conversation moves to a desktop
+  of its own. Nothing moves on its own otherwise, and `taskdesk.auto` (per browser) can turn it off.
+- **Closing is asked, never done** (`taskDeskDone` toasts; `taskDeskClose` closes the window and moves the
+  desktops after it down one).
+- **A pinned panel sends into ITS conversation**, origin `user`, whatever Chat has open; a message while it works
+  goes through the server's steering like any other.
+- **Telegram is per chat.** One bot-wide busy flag refused everybody while one chat worked. Now a second chat runs
+  at once; within a chat, a message steers the running Claude Code turn or waits in `_waiting` and runs next.
+
 ## Window chrome: the rules that keep a stack readable
 
 - **A closing window gives up its ids at once** (`closeWin`, then `inert`). It stays on

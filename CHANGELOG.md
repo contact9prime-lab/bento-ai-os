@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.47 — 2026-10-17
+
+**Several tasks at once: each running one gets a desktop, and Telegram runs them side by side.** Asked for
+as "use desktops for different chats, scroll between them … as tasks complete the desktop can close, asking
+the user; in Telegram mode the backend should handle it".
+- When you leave a chat while it is still working (to start another task), it moves to a desktop of its own
+  in a Task window that keeps showing its progress and takes more messages. The desktop switcher names it and
+  shows a dot while it works; scroll over the switcher to move between desktops. When it finishes you are
+  asked whether to close its desktop.
+- On Telegram, each chat works on its own: somebody else's message no longer waits for yours. A message you
+  send while it works is taken into what it is doing on Claude Code, or runs right after, in order; it no
+  longer says "still working".
 ## 0.6.46 — 2026-10-17
 
 **Telegram tells you when it goes offline and when it is back.** Asked for as "when the agent is coming up
