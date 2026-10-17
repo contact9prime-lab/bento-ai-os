@@ -69,6 +69,76 @@ class TelegramBridge(usersmod.Scoped):
             raise RuntimeError(data.get("description", f"HTTP {r.status_code}"))
         return data["result"]
 
+    # -- going down and coming back ------------------------------------------------
+    # Asked for as "when the agent is coming up or going down, that message needs to be
+    # sent". A clean stop says goodbye (the server's shutdown calls say_down); a start says
+    # hello once per process, with the version and, if the last stop was not clean (a
+    # crash, the power), when it was last seen. The record is a small file in the person's
+    # own home, refreshed while polling.
+    ALIVE_EVERY = 60
+
+    def _alive_path(self):
+        from pathlib import Path
+        return Path(getattr(self.store, "path", "") or ".").parent / ".telegram-alive.json"
+
+    def _alive(self) -> dict:
+        import json as _j
+        try:
+            return _j.loads(self._alive_path().read_text())
+        except Exception:
+            return {}
+
+    def _alive_write(self, **kw) -> None:
+        import json as _j
+        try:
+            self._alive_path().write_text(_j.dumps({**self._alive(), **kw}))
+        except Exception:
+            pass
+
+    def _says_status(self) -> bool:
+        t = self._t()
+        return bool(t.get("enabled") and t.get("bot_token") and t.get("owner_chat_id")
+                    and t.get("status_messages", True) is not False)
+
+    async def say_up(self) -> None:
+        """Once per process, on the first successful poll."""
+        if getattr(self, "_said_up", False):
+            return
+        self._said_up = True
+        try:
+            from . import updates
+            version = updates.current()
+        except Exception:
+            version = ""
+        before = self._alive()
+        self._alive_write(up_at=time.time(), seen=time.time(), version=version, clean=False)
+        if not self._says_status():
+            return
+        name = self.cfg.get("agent_name") or "Aria"
+        msg = f"▲ {name} is back online"
+        if before.get("version") and version and before["version"] != version:
+            msg += f", updated {before['version']} → {version}"
+        elif version:
+            msg += f" (Bento {version})"
+        msg += "."
+        if before and before.get("clean") is False and before.get("seen"):
+            msg += (" I wasn't shut down cleanly: I was last seen at "
+                    + time.strftime("%H:%M on %d %b", time.localtime(before["seen"])) + ".")
+        with contextlib.suppress(Exception):
+            await self.send(msg)
+
+    async def say_down(self, reason: str = "") -> None:
+        """From the server's shutdown, before the poller stops."""
+        if not getattr(self, "_said_up", False):
+            return                        # it never came up in this process: nothing to say
+        self._alive_write(seen=time.time(), clean=True)
+        if not self._says_status():
+            return
+        name = self.cfg.get("agent_name") or "Aria"
+        with contextlib.suppress(Exception):
+            await self.send(f"▼ {name} is going offline{(' ' + reason) if reason else ''}. "
+                            f"I'll message you when I'm back.")
+
     async def publish_commands(self) -> None:
         """Register the command menu with Telegram (the blue Menu button and the
         `/` autocomplete).
@@ -684,8 +754,12 @@ class TelegramBridge(usersmod.Scoped):
                         pass
                     self.store.log("telegram", f"polling as @{self.bot_username}")
                     await self.publish_commands()
+                    await self.say_up()
                 self.status = "polling"
                 self.error = ""
+                if time.time() - getattr(self, "_seen_at", 0) > self.ALIVE_EVERY:
+                    self._seen_at = time.time()
+                    self._alive_write(seen=self._seen_at)
                 updates = await self._api("getUpdates", offset=self._offset, timeout=50,
                                           allowed_updates=["message", "channel_post",
                                                            "callback_query"])
