@@ -1672,6 +1672,17 @@ the start of a word, which keeps this a launcher. A place is a door to a pane th
 `bento help --all`. The wall read a tile's ICON span as its name for a long time; the label is
 `:scope > span:not([class])`.
 
+## Telegram says when the agent goes down and comes back
+
+`TelegramBridge.say_up`/`say_down`, `.telegram-alive.json` in the person's home, `/updown on|off`,
+`state["down_reason"]`; `tests/test_telegram_updown.py`. Asked for as "when the agent is coming up or going
+down, that message needs to be sent". Once per process on the first poll ("back online", the version, an
+update named); from the server's shutdown for EVERY bridge that came up (the machine's and each account's),
+each bounded to 4 s so a phone never holds a shutdown. A start after a stop that never said goodbye (a crash,
+the power) says when it was last seen: the heartbeat is written while polling (`ALIVE_EVERY`). The restart
+routes set `down_reason` ("to install an update"). Found live: telegram.py had no `import contextlib`, and the
+poller swallowed the NameError, so nothing was sent and nothing said why.
+
 ## WhatsApp is one channel with two transports
 
 `conf(cfg)["mode"]` decides which is live, and they fail in opposite directions:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.46 — 2026-10-17
+
+**Telegram tells you when it goes offline and when it is back.** Asked for as "when the agent is coming up
+or going down, that message needs to be sent". "▼ Aria is going offline to install an update" as it stops,
+"▲ Aria is back online, updated 0.6.43 → 0.6.46" as it starts, and after a crash or a power cut, when it was
+last seen. `/updown off` on Telegram turns it off.
+
 ## 0.6.43 — 2026-10-17
 
 No release notes were written for this one; the commits since 0.6.42 are what changed (`bento update` lists them).
