@@ -62,6 +62,7 @@ GOALS = {
     "run_python": "Run Python code",
     "install_mcp_server": "Install a tool server",
     "install_skill": "Install a skill from the internet",
+    "request_capability": "Give a department or an agent an ability it lacks",
     "add_mcp_server": "Add a tool server",
     "install_openclaw_plugin": "Install a plugin",
     "enable_openclaw_plugin": "Switch a plugin on",
@@ -143,6 +144,11 @@ def body(name: str, args: dict) -> str:
     args = args if isinstance(args, dict) else {}
     if name in ("run_command", "Bash") and isinstance(args.get("command"), str):
         return args["command"]
+    if name == "request_capability":
+        # what is asked, for whom and why, in words; the ability is one of a closed set
+        who = str(args.get("who") or args.get("_from") or "an agent")
+        what = {"run_code": "run Python code (each run is still asked)"}.get(str(args.get("ability") or ""), "")
+        return f"{who} asks to {what or args.get('ability')}.\nWhy: {args.get('why') or '(not said)'}"
     if name == "install_skill":
         # what is installed is the text read earlier, so that text is the body
         from . import skillhub

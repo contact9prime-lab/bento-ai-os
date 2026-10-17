@@ -1306,7 +1306,9 @@ class ControlPlane(usersmod.Scoped):
                  ("delegate", "configure_agentos", "update_soul",
                   "develop_agentos", "restart_agentos")]
         # every data plane can stand on the OS's shoulders: skills + memory + knowledge
-        for t in ("use_skill", "recall", "kg_query", "remember", "brief_item"):
+        # ...and every specialist may ask the person for an ability it lacks, rather than
+        # reporting that the work could not be done (request_capability, ALWAYS_ASK)
+        for t in ("use_skill", "recall", "kg_query", "remember", "brief_item", "request_capability"):
             if t not in tools:
                 tools.append(t)
         # ...and may ask a colleague, when the team talks at all: inside a mission only if
