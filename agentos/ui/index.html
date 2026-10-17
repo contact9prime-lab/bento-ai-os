@@ -16021,6 +16021,11 @@ function handle(ev){
       if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
       break;
     case 'telegram_chats': refreshApp('telegram'); break;
+    // somebody new wrote to the bot: the owner decides here as well as on their phone
+    case 'telegram_request':
+      toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on Telegram: “'+(ev.text||'')+'”',
+        {kind:'warn',ms:60000,label:'Allow',go:()=>{tgAllow(ev.chat_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
+      refreshApp('telegram');break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;
@@ -16297,6 +16302,7 @@ function renderChat(body){
           <option value="full">Full autonomy</option>
         </select>
         <button id="ttsbtn" class="endbtn" title="Speak replies aloud"></button>
+        <button id="tracebtn" class="endbtn" title="Download everything this chat did as one JSON file: messages, every run, the gate's decisions, the office and who had which tools (secrets masked). Give it to an AI to find what went wrong." onclick="chatTrace()">⤓ JSON</button>
         <button id="clearses" class="endbtn" title="Wipe this conversation's messages and start fresh">Clear session</button>
         ${/* phone only: the three controls past the brain go behind one button —
               five controls in two rows before any content was the header. */''}
@@ -16486,10 +16492,15 @@ async function loadConvs(){
   box.innerHTML='';
   // the agent's embedded threads (omnibar Desktop, per-app copilots) live in
   // their own sections so app-scoped exchanges never drown the real chats
-  const groups=[['From the prompt bar',c=>c.origin==='omni'],
+  // A chat from the phone is one long thread per person, and read like any other one it was
+  // lost in the list (reported: "the telegram chats are not visible in the Chats"). It has its
+  // own section, first, the way the prompt bar's threads do.
+  const phone=c=>c.origin==='telegram'||c.origin==='whatsapp'||/^(✈ )?(Telegram|WhatsApp) · /.test(c.title||'');
+  const groups=[['On your phone',phone],
+                ['From the prompt bar',c=>c.origin==='omni'],
                 ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
                 ['Your agents talking',c=>c.origin==='freetalk'],
-                ['',c=>c.origin!=='omni'&&c.origin!=='freetalk'&&!(c.origin||'').startsWith('copilot:')]];
+                ['',c=>!phone(c)&&c.origin!=='omni'&&c.origin!=='freetalk'&&!(c.origin||'').startsWith('copilot:')]];
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
@@ -16508,6 +16519,14 @@ async function loadConvs(){
     if(label){const h=document.createElement('div');h.className='convgrp';h.textContent=label;box.appendChild(h)}
     items.forEach(c=>box.appendChild(row(c)));
   });
+}
+/* Everything this chat did, as one JSON file (agentos/trace.py), to read or hand to an AI.
+   Asked for as "for every execution I should be able to get the json file to see what
+   happened, what was the office and what executed". */
+function chatTrace(){
+  if(typeof currentConv==='undefined'||!currentConv){toast('Open a chat first.');return}
+  const a=document.createElement('a');a.href='/api/trace/conversation/'+encodeURIComponent(currentConv);
+  a.download='';document.body.append(a);a.click();a.remove();
 }
 async function openConv(cid){
   if(input&&currentConv!==cid)draftSave(currentConv,input.value);   // park the one you were typing
@@ -18565,6 +18584,12 @@ function chanCard(c){
   // a built-in channel is always on, and its heading's chip already says so
   const onoff=c.builtin?''
     : pRow('Switched on',pSwitch(`ch-${c.id}-on`,c.enabled),{f:c.id+' enable'});
+  // who may talk to it: the people who wrote, each one switched on or off in its own app
+  const people=c.id==='telegram'?pRow('Who can talk to it',
+      `<button class="endbtn" onclick="openApp('telegram')">People</button>`,
+      {desc:'Everyone who wrote to your bot, each one allowed or blocked.',
+       more:'When somebody new writes, you get Allow and Block buttons on Telegram and an Allow on the desktop. To let somebody in before they write, add their @username or chat id under Also allow.',
+       f:c.id+' allow people authorize authorise users who can talk'}):'';
   /* The walkthrough, open exactly when it is needed. "Create a bot with @BotFather
      and paste its token" is a fine label for the BOX; it is not instructions, and it
      assumes you know BotFather is a Telegram account you message, that /newbot
@@ -18586,7 +18611,7 @@ function chanCard(c){
     ${pRow('Who can use it',`<span class="mut">${esc(c.reach)}</span>`,
       {desc:c.reach_panel?`Change that in ${esc(c.reach_panel)}.`:'',f:c.id+' who reach access'})}
     ${steps}
-    ${onoff}${posture}${fields}
+    ${onoff}${posture}${fields}${people}
     ${c.note?`<div class="ghint mut">${esc(c.note)}</div>`:''}
     ${/* WhatsApp's two facts a form cannot hold: the callback URL Meta needs, and
          whether the 24-hour window is open. Filled by waPanel() after render. */''}
@@ -24466,6 +24491,9 @@ function jobHistRow(r){
     :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
   // a run that refreshed an app is read in the app itself
   const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${esc(r.app_id)}')">Open app</button>`:'';
+  // everything this run did as one JSON file, to read or hand to an AI (trace.py)
+  const tr=r.run_id?`<a class="endbtn" download href="/api/trace/run/${encodeURIComponent(r.run_id)}" title="Download what this run did as JSON">⤓ JSON</a>`
+    :r.conversation_id?`<a class="endbtn" download href="/api/trace/conversation/${encodeURIComponent(r.conversation_id)}" title="Download what this run did as JSON">⤓ JSON</a>`:'';
   return `<div class="item job-hrow ${esc(r.status)}">
     <div class="grow">
       <div class="job-hhead"><span class="job-hst ${esc(r.status)}">${esc(JOB_HIST_WORD[r.status]||r.status)}</span>
@@ -24473,7 +24501,7 @@ function jobHistRow(r){
       <div class="sub">${esc(jobHistWhen(r.started_at))}${r.seconds!=null&&r.status!=='skipped'?' · took '+esc(jobHistTook(r.seconds)):''} · ${esc(r.started_by)}${
         r.tokens?' · '+r.tokens.toLocaleString()+' tokens':''}</div>
       ${r.said?`<div class="sub job-hsaid">${esc(r.said)}</div>`:''}
-    </div>${app}${door}</div>`;
+    </div>${app}${door}${tr}</div>`;
 }
 async function renderJobHistory(body){
   const f=JOBS.hist||{};

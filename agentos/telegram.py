@@ -288,7 +288,7 @@ class TelegramBridge(usersmod.Scoped):
         cid = chat.get("conversation_id")
         if cid and any(c["id"] == cid for c in self.store.list_conversations(limit=500)):
             return cid
-        cid = self.store.create_conversation(f"Telegram · {chat.get('title') or chat['chat_id']}")
+        cid = self.store.create_conversation(f"Telegram · {chat.get('title') or chat['chat_id']}", origin="telegram")
         self.store.tg_set_conversation(chat["chat_id"], cid)
         return cid
 
@@ -353,8 +353,9 @@ class TelegramBridge(usersmod.Scoped):
                             "type": ctype, "msg_count": chat["msg_count"],
                             "text": text[:160]})
             if chat["msg_count"] <= 1:
-                await self.send("▲ This chat is registered with AgentOS but not enabled yet. "
-                                "The owner can enable it in the Telegram app on the desktop.", chat_id)
+                await self.send("▲ I've asked the owner whether you can talk to me. You'll hear "
+                                "back here once they say yes.", chat_id)
+                await self.ask_owner_about(chat_id, title, username, text)
             await self.broadcast({"type": "telegram_chats"})
             return
         await self.broadcast({"type": "telegram_chats"})
@@ -587,6 +588,41 @@ class TelegramBridge(usersmod.Scoped):
                 pass
         return val in ("1", "2", "3")
 
+    async def ask_owner_about(self, chat_id: int, title: str, username: str, text: str) -> None:
+        """Somebody new wrote: the owner decides, with Allow / Block on their phone and an
+        Allow on the desktop. Reported as "I am not getting an option to authorize other
+        people on Telegram": the newcomer was told "the owner can enable it in the Telegram
+        app", and the owner was told nothing."""
+        owner = self._t().get("owner_chat_id") or 0
+        who = f"{title}" + (f" (@{username})" if username else "")
+        name = self.cfg.get("agent_name") or "Aria"
+        if owner and owner != chat_id:
+            try:
+                await self._api("sendMessage", chat_id=owner,
+                                text=(f"📩 {who} wants to talk to {name}. They wrote:\n“{text[:300]}”\n\n"
+                                      f"Allowing them lets them chat with {name} here, under your "
+                                      f"settings and permissions.")[:4000],
+                                reply_markup={"inline_keyboard": [[
+                                    {"text": "✓ Allow", "callback_data": f"who:{chat_id}:1"},
+                                    {"text": "✗ Block", "callback_data": f"who:{chat_id}:0"}]]})
+            except Exception as e:
+                self.store.log("telegram", f"could not ask the owner about {who}: {e}")
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "telegram_request", "chat_id": chat_id, "title": who,
+                                  "text": text[:160]})
+
+    async def decide_newcomer(self, chat_id: int, allow: bool) -> str:
+        """The owner's answer, from a button or the desktop: one door for both."""
+        self.store.tg_set_allowed(chat_id, 1 if allow else 0)
+        self.store.log("telegram", f"{'allowed' if allow else 'blocked'} chat {chat_id} (asked the owner)",
+                       {"chat_id": chat_id, "allowed": allow})
+        if allow:
+            name = self.cfg.get("agent_name") or "Aria"
+            await self.send(f"▲ You're in. I'm {name}. Send me anything; /clear resets our session.", chat_id)
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "telegram_chats"})
+        return "allowed" if allow else "blocked"
+
     async def _handle_callback(self, cq: dict):
         if cq.get("from", {}).get("id") != (self._t().get("owner_chat_id") or 0):
             return
@@ -595,6 +631,19 @@ class TelegramBridge(usersmod.Scoped):
             await self._api("answerCallbackQuery", callback_query_id=cq["id"])
         except Exception:
             pass
+        if data.startswith("who:"):
+            # the owner's answer about somebody new (ask_owner_about)
+            parts = data.split(":")
+            try:
+                said = await self.decide_newcomer(int(parts[1]), parts[2] == "1")
+            except (ValueError, IndexError):
+                return
+            msg = cq.get("message", {})
+            if msg:
+                with contextlib.suppress(Exception):
+                    await self._api("editMessageText", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
+                                    text=(msg.get("text") or "")[:3900] + f"\n\n→ {said}")
+            return
         if data.startswith("br:"):
             # a Brief button: Done / Later / a decision — the same act() the
             # desktop and `bento brief` use; a decision starts the agent's turn

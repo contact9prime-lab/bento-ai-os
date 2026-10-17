@@ -4215,6 +4215,36 @@ def _stage_view(cfg: dict) -> dict:
             "app_name": next((a["name"] for a in apps if a["id"] == st["app"]), "")}
 
 
+# ---- One execution as one JSON file (trace.py) ----
+
+def _trace_response(doc: dict):
+    from . import trace as tracemod
+    return Response(tracemod.dumps(doc), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{tracemod.filename(doc)}"'})
+
+
+@app.get("/api/trace/conversation/{cid}")
+async def api_trace_conversation(cid: str):
+    """Everything a chat did, in one file: messages, runs, the gate's decisions, the setting."""
+    from . import trace as tracemod
+    try:
+        doc = await asyncio.to_thread(tracemod.conversation, state["store"], state["cfg"], cid)
+    except KeyError:
+        return JSONResponse({"error": "no such chat"}, status_code=404)
+    return _trace_response(doc)
+
+
+@app.get("/api/trace/run/{rid}")
+async def api_trace_run(rid: str):
+    """Everything a mission or department run did, from its top run down."""
+    from . import trace as tracemod
+    try:
+        doc = await asyncio.to_thread(tracemod.run, state["store"], state["cfg"], rid)
+    except KeyError:
+        return JSONResponse({"error": "no such run"}, status_code=404)
+    return _trace_response(doc)
+
+
 @app.get("/api/stage")
 async def api_stage(conversation: str = ""):
     """One chat's stories, each under the message it answers."""
@@ -4780,8 +4810,13 @@ async def api_put_telegram(body: dict):
 @app.put("/api/telegram/chats/{chat_id}")
 async def api_telegram_chat(chat_id: int, body: dict):
     if "allowed" in body:
-        state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0)
-        state["store"].log("telegram", f"chat {chat_id} {'enabled' if body['allowed'] else 'disabled'}")
+        # the same door as the owner's phone buttons: the person is told when they're in
+        tg = state.get("telegram")
+        if tg is not None and hasattr(tg, "decide_newcomer"):
+            await tg.decide_newcomer(chat_id, bool(body["allowed"]))
+        else:
+            state["store"].tg_set_allowed(chat_id, 1 if body["allowed"] else 0)
+            state["store"].log("telegram", f"chat {chat_id} {'enabled' if body['allowed'] else 'disabled'}")
     return {"ok": True}
 
 

@@ -35,6 +35,9 @@ function jobHistRow(r){
     :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
   // a run that refreshed an app is read in the app itself
   const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${esc(r.app_id)}')">Open app</button>`:'';
+  // everything this run did as one JSON file, to read or hand to an AI (trace.py)
+  const tr=r.run_id?`<a class="endbtn" download href="/api/trace/run/${encodeURIComponent(r.run_id)}" title="Download what this run did as JSON">⤓ JSON</a>`
+    :r.conversation_id?`<a class="endbtn" download href="/api/trace/conversation/${encodeURIComponent(r.conversation_id)}" title="Download what this run did as JSON">⤓ JSON</a>`:'';
   return `<div class="item job-hrow ${esc(r.status)}">
     <div class="grow">
       <div class="job-hhead"><span class="job-hst ${esc(r.status)}">${esc(JOB_HIST_WORD[r.status]||r.status)}</span>
@@ -42,7 +45,7 @@ function jobHistRow(r){
       <div class="sub">${esc(jobHistWhen(r.started_at))}${r.seconds!=null&&r.status!=='skipped'?' · took '+esc(jobHistTook(r.seconds)):''} · ${esc(r.started_by)}${
         r.tokens?' · '+r.tokens.toLocaleString()+' tokens':''}</div>
       ${r.said?`<div class="sub job-hsaid">${esc(r.said)}</div>`:''}
-    </div>${app}${door}</div>`;
+    </div>${app}${door}${tr}</div>`;
 }
 async function renderJobHistory(body){
   const f=JOBS.hist||{};
