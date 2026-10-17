@@ -60,7 +60,7 @@ CORE = {
     # do things
     "write_file", "run_command", "run_python",
     # say things
-    "save_report", "llm_generate",
+    "save_report", "llm_generate", "show_scene",
     # find the other eighty
     "find_tools", "use_skill",
     # hand it to the team: the prompt names the specialists (executors.team_note), and a

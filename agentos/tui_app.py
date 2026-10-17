@@ -896,6 +896,11 @@ class AgentTUI(App):
                     # quoting a page, a linked team's question or answer, a person's
                     # message — and this log reads Rich markup: "[link=…]" would be a
                     # clickable link and "[red]" a forged error. `_esc` makes it text.
+                    elif t == "stage" and ecid == self.cid:
+                        # a scene of the answer (stage.py), in the form a log can carry
+                        from . import stage as stagemod
+                        for ln in stagemod.text(ev.get("scene") or {}).splitlines():
+                            log.write(f"[b]{_esc(ln)}[/]" if ln.startswith("▶") else f"[grey58]{_esc(ln)}[/]")
                     elif t == "agent_say":
                         # A huddle: agents talking to each other, each on its own
                         # brain. One line per turn, the speaker and the provider it

@@ -255,7 +255,7 @@ async function openConv(cid){
     // a free talk is one card that grows message by message (24f-freetalk.js)
     if(msg.meta&&msg.meta.freetalk&&typeof freeTalkRender==='function'&&freeTalkRender(msg))return;
     const m=document.createElement('div');m.className='msg '+msg.role;
-    if(msg.role==='user'){m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
+    if(msg.role==='user'){m.dataset.mid=msg.id||'';m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
     else{const sp=msg.meta&&msg.meta.speaker,dp=msg.meta&&msg.meta.department;
       // a specialist's reply is stored with a first line naming it and its model;
       // with its face in the header that line would say the same thing twice
@@ -299,6 +299,7 @@ async function openConv(cid){
     showWorking();
   }
   if(typeof fileChips==='function')fileChips(feed);
+  if(typeof stageAttach==='function')stageAttach(cid);   // each answer's story, after its reply
   setRunning(RUNNING.has(cid));
   renderQueue();
   loadConvs();scrollDown();

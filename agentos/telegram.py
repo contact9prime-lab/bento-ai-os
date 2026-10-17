@@ -175,6 +175,26 @@ class TelegramBridge(usersmod.Scoped):
         except Exception as e:
             self.store.log("telegram", f"could not send the reply's files: {e}")
 
+    async def send_stage(self, cid: str, reply: str, chat_id: int) -> None:
+        """The answer's story, when it showed one (stage.py): one page with every scene drawn
+        by the Stage's own code and the map inline, sent as a document after the reply, so
+        the phone gets the same story the desktop played. Never fatal."""
+        try:
+            from . import stage as stagemod, executors as _ex
+            ans = stagemod.last_question(self.store, cid)
+            n = len(stagemod.story(self.store, cid, ans)) if ans else 0
+            if not n:
+                return
+            p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
+                                      answer=reply, agent=self.cfg.get("agent_name") or "")
+            if p:
+                res = await self.send_document(str(p), f"▶ The story, {n} scene{'s' if n != 1 else ''}. "
+                                                       f"Open it to watch.", chat_id)
+                if res.startswith("[error]"):
+                    self.store.log("telegram", f"could not send the story: {res}")
+        except Exception as e:
+            self.store.log("telegram", f"could not send the story: {e}")
+
     async def send_talk(self, lines: list, chat_id: int) -> None:
         """Agents talked during this chat's turn: the exchange as a comic strip, the
         way the Office shows it on the desk. Only when they really talked (a turn
@@ -406,6 +426,7 @@ class TelegramBridge(usersmod.Scoped):
                           surface="telegram", conversation_id=cid)
             await self.send(reply, chat_id)
             await self.send_files(reply, chat_id)
+            await self.send_stage(cid, reply, chat_id)
             await self.send_talk(_pg.close(cid, tap), chat_id)
             await self.broadcast({"type": "telegram_out", "conversation_id": cid, "text": reply[:160]})
             from . import knowledge

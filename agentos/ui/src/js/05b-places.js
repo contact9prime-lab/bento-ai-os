@@ -28,6 +28,7 @@ var APP_WORDS={
   drama:['clip','reel','video','comic','manga','strip','share','tantrum','story','record'],
   office:['crew','team','playground','floor','lounge','meeting room','company','departments'],
   brief:['inbox','today','digest','summary'],
+  stage:['show','map','chart','story','visual','board','answer big','scenes'],
   permissions:['grants','grant','allow','deny','matrix','consent','policy','policies'],
   profile:['about me','what it knows','knowledge','memory','memories'],
   mcp:['tools','tool server','connectors'],

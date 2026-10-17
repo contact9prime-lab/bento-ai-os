@@ -272,9 +272,18 @@ function of3Size(){
   OF3.r.setPixelRatio(Math.min(devicePixelRatio||1,OF3.hq?1.5:1));
   OF3.r.setSize(cw,ch,false);OF3.cv.style.width=cw+'px';OF3.cv.style.height=ch+'px';
   OF3.cw=cw;OF3.ch=ch;OF3.dirty=true;
-  // where the canvas is, seen from the layer the words are placed in
+  of3Where();
+}
+/* Where the picture really is, seen from the layer the words are placed in, measured every
+   frame. In Office HQ the canvas is in the wall, which is drawn larger than the screen and
+   moves with the mouse (the parallax), while the cards are on the desktop above it; and a
+   canvas stretched by its host shows its picture bigger than it was drawn. Measured once,
+   at sizing, the cards were left behind by every one of those: reported with a screenshot
+   of the room cards bunched in one corner and the rooms, half as big again, elsewhere. */
+function of3Where(){
+  if(!OF3.cv)return;
   const a=OF3.cv.getBoundingClientRect(),b=OF3.ui?OF3.ui.getBoundingClientRect():a;
-  OF3.off={x:a.left-b.left,y:a.top-b.top};
+  OF3.off={x:a.left-b.left,y:a.top-b.top,sx:a.width/Math.max(1,OF3.cw||a.width),sy:a.height/Math.max(1,OF3.ch||a.height)};
 }
 function of3Dispose(){
   const T=OF3.T;
@@ -878,7 +887,8 @@ function of3Project(v3){
 function of3Head(p){return of3W(p.x,p.y,OF3_SLAB+.68*(p.lead?1.1:1))}
 function of3Tap(e){
   const O=OFFICE;if(!OF3.cam||!O.L)return;
-  const r=OF3.cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  // the tap in the picture's own pixels, however the canvas is stretched on screen
+  const r=OF3.cv.getBoundingClientRect(),x=(e.clientX-r.left)*OF3.cw/Math.max(1,r.width),y=(e.clientY-r.top)*OF3.ch/Math.max(1,r.height);
   // a person first (their head and body), then the files, the Brain, and the room itself
   let best=null,bd=1e9;
   Object.values(O.people).forEach(p=>{if(!of3Shown(p))return;
@@ -1138,13 +1148,14 @@ function of3El(key,cls,html){
    under feet), 'c' centre, '' top-left (balloons, placed by hand) */
 function of3Place(e,x,y,dx,dy,anchor){
   const an={b:' translate(-50%,-100%)',t:' translate(-50%,0)',c:' translate(-50%,-50%)'}[anchor===undefined?'b':anchor]||'';
-  const o=OF3.off||{x:0,y:0};
-  const t=`translate(${Math.round(x+(dx||0)+o.x)}px,${Math.round(y+(dy||0)+o.y)}px)${an}`;
+  const o=OF3.off||{x:0,y:0,sx:1,sy:1};
+  const t=`translate(${Math.round(x*(o.sx||1)+(dx||0)+o.x)}px,${Math.round(y*(o.sy||1)+(dy||0)+o.y)}px)${an}`;
   if(e._t!==t){e.style.transform=t;e._t=t}
 }
 function of3Overlay(now){
   const O=OFFICE;if(!OF3.ui)return;
   Object.values(OF3.el).forEach(e=>e._seen=0);
+  of3Where();
   of3Cards();
   const b=of3Project(new OF3.T.Vector3(0,1.55,0)),br=O.view.brain||{};
   of3Place(of3El('brain','of3-brain',`<b>THE BRAIN</b><span>${(br.memories||0).toLocaleString()} ${br.memories===1?'memory':'memories'} · ${(br.facts||0).toLocaleString()} facts</span>`),b.x,b.y);

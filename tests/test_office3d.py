@@ -307,3 +307,20 @@ def test_hq_shows_the_conversation_beside_the_work():
     import re as _re
     assert float(_re.search(r"var OF3_ZOOM_MIN=([0-9.]+)", SRC).group(1)) < 1.2
     assert "function of3Controls()" in SRC and ".of3-zb{width:var(--tap,36px);height:var(--tap,36px)" in css
+
+
+def test_the_cards_follow_where_the_picture_really_is():
+    """Reported with a screenshot of Office HQ: the room cards bunched in one corner and the
+    rooms half as big again elsewhere. The canvas lives in the wall (drawn larger than the
+    screen and moved by the parallax) and can be stretched by its host, while the cards are
+    on the desktop; the offset was measured once, at sizing. It is measured every frame now,
+    with the scale, and a tap is read in the picture's own pixels."""
+    src = (Path(__file__).parent.parent / "agentos/ui/src/js/24k-office3d.js").read_text()
+    where = src[src.index("function of3Where(){"):][:500]
+    assert "sx:a.width/" in where and "sy:a.height/" in where
+    ov = src[src.index("function of3Overlay(now){"):][:300]
+    assert "of3Where();" in ov, "measured on every frame the words are placed"
+    place = src[src.index("function of3Place("):][:400]
+    assert "x*(o.sx||1)" in place and "y*(o.sy||1)" in place
+    tap = src[src.index("function of3Tap(e){"):][:400]
+    assert "OF3.cw/Math.max(1,r.width)" in tap

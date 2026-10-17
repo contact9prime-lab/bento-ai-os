@@ -55,6 +55,30 @@ CREATE TABLE IF NOT EXISTS brief_items (
     updated_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_brief_day ON brief_items(day, state);
+-- The Stage (stage.py): scenes an answer showed, filed under the person's message
+-- they answer, so a reopened chat replays each answer's own story. A board is a
+-- saved story that can ask its question again on a schedule and show the new one.
+CREATE TABLE IF NOT EXISTS stage_scenes (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT,
+    answer_to TEXT,
+    seq INTEGER,
+    scene TEXT,
+    created_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_stage_conv ON stage_scenes(conversation_id, created_at);
+CREATE TABLE IF NOT EXISTS stage_boards (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    question TEXT,
+    conversation_id TEXT,
+    answer_to TEXT,
+    every TEXT DEFAULT '',
+    next_run REAL,
+    last_run REAL,
+    last_status TEXT DEFAULT '',
+    created_at REAL
+);
 -- Every agent's character (avatars.py): your agent, you, and each specialist. One row
 -- per person, generated the first time they are seen and then KEPT, so an edit sticks
 -- and a specialist's colour does not move when a colleague is added. No space_id on
@@ -806,6 +830,7 @@ class Store:
 
     def delete_conversation(self, cid: str):
         self.db.execute("DELETE FROM messages WHERE conversation_id=?", (cid,))
+        self.db.execute("DELETE FROM stage_scenes WHERE conversation_id=?", (cid,))
         self.db.execute("DELETE FROM memories WHERE scope='session' AND conversation_id=?", (cid,))
         self.db.execute("DELETE FROM conversations WHERE id=?", (cid,))
         self.db.commit()

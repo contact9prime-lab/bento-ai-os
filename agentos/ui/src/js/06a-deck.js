@@ -5,7 +5,7 @@
    move apps between them. Persisted in localStorage; nothing here is on the
    server, so it stays instant. */
 const DECK_DEFAULTS=[
-  ['Essentials',['brief','chat','office','teamchat','apps','hostscreen','remotedesk','browser','files','terminal']],
+  ['Essentials',['brief','stage','chat','office','teamchat','apps','hostscreen','remotedesk','browser','files','terminal']],
   ['Create',['store','studio','themes','personalize','gallery']],
   ['Intelligence',['models','profile','spaces','timeline']],
   ['Automation',['jobs','skills','mcp','telegram']],

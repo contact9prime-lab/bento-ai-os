@@ -54,6 +54,7 @@ const APPS={
   drama:{id:'drama',title:'Drama reel',icon:'',w:760,h:720,desc:'Your crew’s latest drama as a 15 second clip or a 4-panel strip',
     render:renderDrama},
   teamchat:{id:'teamchat',title:'Team Chat',icon:'',w:780,h:600,desc:'Write to the people on your linked teams',render:renderTeamChat},
+  stage:{id:'stage',title:'Stage',icon:'▶',w:1180,h:820,desc:'Your answers, shown: maps, charts, numbers and the story in between',render:renderStage},
   brief:{id:'brief',title:'Brief',icon:'▲',w:720,h:680,desc:'What your missions found — as things to act on',render:renderBrief},
   jobs:{id:'jobs',title:'Missions',icon:'◷',w:960,h:720,desc:'What this machine does for you every day, what it did — and, under Build, the flows, agents and runs behind it',render:renderJobs},
   flowrun:{id:'flowrun',title:'Run Inspector',icon:'',w:880,h:680,desc:'A flow run as it happens — graph, control-plane log, every tool call',render:renderFlowRun},
