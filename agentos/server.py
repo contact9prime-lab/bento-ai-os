@@ -4227,7 +4227,27 @@ async def api_stage_library():
 @app.get("/api/stage/story")
 async def api_stage_story(conversation: str, answer_to: str = ""):
     from . import stage as stagemod
-    return {"scenes": stagemod.story(state["store"], conversation, answer_to)}
+    st = next((x for x in stagemod.stories(state["store"], conversation)
+               if x["answer_to"] == (answer_to or "")), None)
+    return {"scenes": st["scenes"] if st else [], "parent": st.get("parent") if st else None,
+            "deeper": st.get("deeper", {}) if st else {}}
+
+
+@app.post("/api/stage/deeper")
+async def api_stage_deeper(body: dict):
+    """Go deeper on one scene: remembers which, and returns the question the page sends
+    into the chat as the person's own message. The answer's story is linked to the scene."""
+    from . import stage as stagemod
+    b = body or {}
+    cid = str(b.get("conversation_id") or "")
+    if not cid or not state["store"].get_conversation(cid):
+        return JSONResponse({"error": "no such chat"}, status_code=404)
+    try:
+        text = stagemod.ask_deeper(state["store"], cid, str(b.get("answer_to") or ""),
+                                   int(b.get("seq") or 0))
+    except (ValueError, TypeError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"text": text, "conversation_id": cid}
 
 
 @app.put("/api/stage/settings")

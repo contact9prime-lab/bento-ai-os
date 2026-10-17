@@ -37,7 +37,7 @@ def test_a_scene_is_a_closed_set():
     assert sc["chart_type"] == "line"
     assert sc["series"][0]["points"] == [["2024-01", 18.0], ["2024-02", 15.5]]
     with pytest.raises(ValueError, match="kind must be"):
-        stage.clean({"kind": "video"})
+        stage.clean({"kind": "hologram"})
     with pytest.raises(ValueError, match="series"):
         stage.clean({"kind": "chart", "series": [], "source": "x"})
     # controls a web page could carry never reach a terminal or the page
@@ -226,3 +226,77 @@ def test_telegram_gets_the_story_as_one_page(tmp_path):
     assert p.exists() and p.parent.name == "stage"
     tg = (ROOT / "agentos/telegram.py").read_text()
     assert "await self.send_stage(cid, reply, chat_id)" in tg
+
+
+def test_pictures_and_videos():
+    """Asked for as "the Stage doesn't have images … I should see YouTube videos for each of
+    the tutorials". A picture is an https address or one of the person's assets; a video is
+    only ever a YouTube id, played from youtube-nocookie.com."""
+    sc, _ = stage.clean({"kind": "image", "title": "Starter", "url": "https://upload.wikimedia.org/a.jpg"})
+    assert sc["url"].startswith("https://") and sc["alt"] == "Starter"
+    with pytest.raises(ValueError, match="https"):
+        stage.clean({"kind": "image", "url": "http://x/a.jpg"})
+    with pytest.raises(ValueError, match="asset"):
+        stage.clean({"kind": "image", "asset": "../../etc/passwd"})
+    assert stage.youtube_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1") == "dQw4w9WgXcQ"
+    assert stage.youtube_id("youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+    assert stage.youtube_id("https://evil.example/?u=youtube.com/watch?v=dQw4w9WgXcQ") == ""
+    v, _ = stage.clean({"kind": "video", "title": "How", "url": "https://youtu.be/dQw4w9WgXcQ", "start": 42})
+    assert (v["video"], v["start"]) == ("dQw4w9WgXcQ", 42)
+    js = JS.read_text()
+    assert "https://www.youtube-nocookie.com/embed/" in js and "img.referrerPolicy='no-referrer'" in js
+    assert "STAGE.awaiting" in js and "window.STAGE_REPORT" in js
+
+
+def test_going_deeper_links_the_new_story_to_its_scene(tmp_path):
+    """Asked for as "click a stage and ask it to go deeper, so it builds further stages and
+    the application evolves". The link is made on the Stage's side when the next story's
+    first scene arrives, whichever brain answered."""
+    from agentos.memory import Store
+    store = Store(tmp_path / "a.db")
+    cid = store.create_conversation("t")
+    q1 = store.add_message(cid, "user", "el nino?")
+    sc, _ = stage.clean({"kind": "steps", "title": "Warm water moves east", "items": ["a"]})
+    stage.add(store, cid, sc)
+    with pytest.raises(ValueError):
+        stage.ask_deeper(store, cid, q1, 9)
+    text = stage.ask_deeper(store, cid, q1, 1)
+    assert text.startswith('Go deeper on "Warm water moves east"')
+    q2 = store.add_message(cid, "user", text)
+    stage.add(store, cid, sc)
+    q3 = store.add_message(cid, "user", "now add Japan")     # not a Go deeper: a new version
+    stage.add(store, cid, sc)
+    by = {s["answer_to"]: s for s in stage.stories(store, cid)}
+    assert by[q2]["parent"] == {"answer_to": q1, "seq": 1} and by[q1]["deeper"] == {"1": [q2]}
+    assert by[q3]["parent"] is None, "only the next story after a Go deeper is its child"
+    srv = (ROOT / "agentos/server.py").read_text()
+    assert '@app.post("/api/stage/deeper")' in srv and '"parent": st.get("parent")' in srv
+
+
+def test_versions_and_a_story_that_holds_its_own():
+    """"When I ask in the chat to update the stage it should update it or add a new face
+    with the previous one there as well": every top-level story of a chat is a version."""
+    js = JS.read_text()
+    assert "c.versions=(d.stories||[]).filter(s=>!s.parent)" in js and "Version ${vi+1} of ${vs.length}" in js
+    assert "kept as a new version" in stage.note({})
+
+
+def test_the_theater_and_its_music():
+    js, css = JS.read_text(), (ROOT / "agentos/ui/src/css/31-stage.css").read_text()
+    assert "STAGE_CHORDS" in js and "localStorage.getItem('stage.music')==='1'" in js, "off until turned on"
+    assert "w.app.onClose=()=>{stageMusic(false,true)" in js, "the music stops with the window"
+    # nothing inside a drawing animates forever: Chrome on Wayland painted the map twice
+    import re
+    for rule in re.findall(r"\.st-[a-z-]+\{[^}]*animation:[^}]*infinite[^}]*\}", css):
+        raise AssertionError(f"an SVG part animates forever: {rule[:80]}")
+    assert ".stg>.stg-bar{grid-row:4}" in css, "each part keeps its row in a short window"
+
+
+def test_the_how_to_gets_a_picture_and_a_video_and_the_note_comes_first():
+    """Measured with the owner's Claude Code: told at the end of the door's context, a how-to
+    came back as one timeline; told first and by kind, it searched YouTube and Wikimedia and
+    showed steps, a picture, a video and a table."""
+    assert "YouTube video (search the web" in stage.BIG_LINE
+    door = (ROOT / "agentos/executors.py").read_text()
+    seg = door[door.index("stage_note = \"\""):][:900]
+    assert "+ stage_note + dept_note" in seg

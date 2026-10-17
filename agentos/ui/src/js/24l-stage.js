@@ -51,6 +51,7 @@ function stageReduced(){try{return matchMedia('(prefers-reduced-motion: reduce)'
 /* ---------- which screen shows which chat ---------- */
 function stageMine(cid){
   if(!cid)return false;
+  if(STAGE.awaiting&&STAGE.awaiting.cid===cid)return true;     // a Go deeper from the Stage itself
   if(typeof currentConv!=='undefined'&&currentConv===cid&&typeof WM!=='undefined'&&WM.wins.get('chat'))return true;
   if(typeof OFFICE_CHAT!=='undefined'&&OFFICE_CHAT&&OFFICE_CHAT.cid===cid)return true;
   if(typeof OMNI!=='undefined'&&OMNI&&OMNI.cid===cid)return true;
@@ -71,8 +72,11 @@ function stageEvent(ev){
   if(app){stageToApp(app,ev);return}
   if(!stageMine(ev.conversation_id)){if(same)stagePaintIfOpen();return}
   if(!same){
-    STAGE.cur={cid:ev.conversation_id,answer_to:ev.answer_to||'',question:''};
-    STAGE.scenes=[{id:ev.id,seq:ev.seq,scene:ev.scene}];STAGE.at=0;STAGE.tab='now';
+    const was=STAGE.awaiting&&STAGE.awaiting.cid===ev.conversation_id&&STAGE.cur?{answer_to:STAGE.cur.answer_to,seq:(STAGE.scenes[STAGE.at]||{}).seq||1}:null;
+    STAGE.awaiting=null;
+    STAGE.cur={cid:ev.conversation_id,answer_to:ev.answer_to||'',question:'',parent:was,deeper:{},versions:[]};
+    stageVersions(STAGE.cur);
+    STAGE.scenes=[{id:ev.id,seq:ev.seq,scene:ev.scene}];STAGE.at=0;STAGE.tab='now';STAGE.held=0;
     stageQuestion();
   }
   const w=typeof WM!=='undefined'&&WM.wins.get('stage');
@@ -102,7 +106,9 @@ async function stageQuestion(){
     const m=(d.messages||[]).find(x=>x.id===c.answer_to);
     if(m&&STAGE.cur===c){c.question=stageStrip(m.content||'');stagePaintIfOpen()}}catch(e){}
 }
-function stageStrip(t){t=String(t||'').trim();while(t.startsWith('[')){const i=t.indexOf(']');if(i<0)break;t=t.slice(i+1).trim()}return t}
+function stageStrip(t){t=String(t||'').trim();while(t.startsWith('[')){const i=t.indexOf(']');if(i<0)break;t=t.slice(i+1).trim()}
+  // a Go deeper question reads as what it went deeper on, not the whole instruction
+  const m=t.match(/^Go deeper on "([^"]+)"/);return m?'Deeper: '+m[1]:t}
 
 /* ---------- voice: each scene's line, when voice replies are on ---------- */
 function stageSay(sc){
@@ -112,11 +118,8 @@ function stageSay(sc){
 
 /* ---------- opening a story ---------- */
 async function stageOpen(cid,answer_to,at){
-  try{const d=await apiJSON('/api/stage/story?conversation='+encodeURIComponent(cid)+'&answer_to='+encodeURIComponent(answer_to||''));
-    STAGE.cur={cid,answer_to:answer_to||'',question:''};
-    STAGE.scenes=d.scenes||[];STAGE.at=Math.max(0,Math.min(at||0,STAGE.scenes.length-1));
+  try{await stageFetch(cid,answer_to,at);
     STAGE.tab='now';STAGE.held=Date.now()+15000;
-    stageQuestion();
     const w=WM.wins.get('stage');if(w){focusWin(w);stagePaint()}else openApp('stage');
   }catch(e){toast('could not open that story: '+(e.message||e))}
 }
@@ -155,18 +158,26 @@ async function stageAttach(cid){
   });
 }
 
-/* ---------- the window ---------- */
-async function renderStage(body){
+/* ---------- the window: a theater ---------- */
+/* The Now tab is a dark, full-bleed room the story plays in: a moving field of light
+   behind each scene (its hue from the kind of scene), one progress segment per scene,
+   a big title, the drawing, and the narrator's line arriving word by word, like a
+   subtitle. "Go deeper" on any scene asks for its own story, which plays here next and
+   keeps a way back. Asked for as "the look and feel is really horrible, it needs a very
+   good immersive experience", with background sound, pictures and videos. */
+var STAGE_KIND={chart:'Chart',map:'Map',numbers:'Key numbers',timeline:'Timeline',steps:'How it works',
+  table:'Table',image:'Picture',video:'Video'};
+var STAGE_HUE={chart:255,map:200,numbers:280,timeline:170,steps:320,table:225,image:30,video:350};
+async function renderStage(body,w){
   body.classList.add('stage-body');
+  if(w&&w.app&&!w.app.onClose)w.app.onClose=()=>{stageMusic(false,true);STAGE.playing=false};
   if(!STAGE.lib)stageLoadLib();
   stagePaint(body);
 }
 async function stageLoadLib(){
   try{const d=await apiJSON('/api/stage/library');STAGE.lib=d;if(d.settings)STAGE.settings=d.settings;
     if(!STAGE.cur&&STAGE.tab==='now'&&(d.stories||[]).length){
-      const s=d.stories[0];STAGE.cur={cid:s.conversation_id,answer_to:s.answer_to,question:s.question};
-      const x=await apiJSON('/api/stage/story?conversation='+encodeURIComponent(s.conversation_id)+'&answer_to='+encodeURIComponent(s.answer_to));
-      STAGE.scenes=x.scenes||[];STAGE.at=0;
+      const s=d.stories[0];await stageFetch(s.conversation_id,s.answer_to,0);
     }
     stagePaintIfOpen();
   }catch(e){STAGE.lib={stories:[],boards:[],error:String(e.message||e)};stagePaintIfOpen()}
@@ -186,43 +197,98 @@ function stagePaint(body){
   sw.append(cb,sEl('span','','Answer BIG'));
   sw.title='On: answers with numbers, places or a story are shown here without being asked. Off: only when you ask to see something.';
   top.append(sw);
+  const mu=sEl('button','st-icon'+(stageMusicOn()?' on':''),stageMusicOn()?'♪ On':'♪ Off');
+  mu.title='Background music, made on this screen. Tap to play or pause.';mu.setAttribute('aria-pressed',String(stageMusicOn()));
+  mu.onclick=()=>{stageMusic(!stageMusicOn());stagePaint()};
+  const fs=sEl('button','st-icon','⛶');fs.title='Full screen';fs.setAttribute('aria-label','Full screen');
+  fs.onclick=()=>{const t=body.closest('.win')||body;try{document.fullscreenElement?document.exitFullscreen():t.requestFullscreen()}catch(e){}};
+  top.append(mu,fs);
   body.append(top);
-  const main=sEl('div','st-main');body.append(main);
+  const main=sEl('div','st-main'+(STAGE.tab==='now'?' now':''));body.append(main);
   if(STAGE.tab==='library')stageLibrary(main);
   else if(STAGE.tab==='boards')stageBoards(main);
   else stageNow(main);
 }
 
 function stageNow(main){
+  const th=sEl('div','stg');main.append(th);
+  const bg=sEl('div','stg-bg');th.append(bg);
   if(!STAGE.cur||!STAGE.scenes.length){
-    const e=sEl('div','st-empty');
-    e.append(sEl('div','st-empty-h','Ask something worth seeing.'),
-      sEl('p','mut','"Where are the hottest places on earth?" or "how does low implied volatility affect the market?". The answer is shown here as it is written: maps, charts, numbers and the steps in between.'));
-    main.append(e);return;
+    const e=sEl('div','stg-empty');
+    e.append(sEl('div','stg-empty-h','Ask something worth seeing.'),
+      sEl('p','','"Where are the hottest places on earth?", "how does El Niño work?" or "teach me to make a sourdough starter". The answer plays here as it is written: maps, charts, pictures, videos and the steps in between.'));
+    th.append(e);if(STAGE.awaiting)th.append(stageWaiting());return;
   }
-  const sc=STAGE.scenes[STAGE.at].scene;
-  if(STAGE.cur.question)main.append(sEl('div','st-q','» '+STAGE.cur.question));
-  const card=sEl('div','st-card k-'+sc.kind);
-  card.append(sEl('div','st-title',sc.title||''));
-  const art=sEl('div','st-art');card.append(art);
-  if(sc.caption)card.append(sEl('div','st-cap',sc.caption));
-  if(sc.illustrative)card.append(sEl('div','st-src st-illus','Illustrative, not data'));
-  else if(sc.source)card.append(stageSource(sc.source));
-  main.append(card);
+  const n=STAGE.scenes.length,cur=STAGE.scenes[STAGE.at],sc=cur.scene;
+  th.style.setProperty('--hue',STAGE_HUE[sc.kind]||250);
+  // one segment per scene, the current one filling while the story plays
+  const prog=sEl('div','stg-prog');
+  STAGE.scenes.forEach((s,i)=>{const b=sEl('button',i<STAGE.at?'done':i===STAGE.at?'on'+(STAGE.playing?' run':''):'');
+    b.title=(i+1)+'. '+(s.scene.title||STAGE_KIND[s.scene.kind]);b.setAttribute('aria-label','scene '+(i+1));
+    b.onclick=()=>stageGo(i);prog.append(b)});
+  th.append(prog);
+  const head=sEl('div','stg-head');
+  if(STAGE.cur.parent){
+    const up=sEl('button','stg-crumb','↖ Back to the story this came from');
+    up.onclick=()=>stageOpen(STAGE.cur.cid,STAGE.cur.parent.answer_to,(STAGE.cur.parent.seq||1)-1);
+    head.append(up);
+  }
+  if(STAGE.cur.question)head.append(sEl('div','stg-q',STAGE.cur.question));
+  const vs=STAGE.cur.versions||[],vi=vs.indexOf(STAGE.cur.answer_to);
+  if(vs.length>1&&vi>=0){
+    const v=sEl('div','stg-ver');
+    const a=sEl('button','','‹');a.title='The version before';a.disabled=vi===0;a.onclick=()=>stageOpen(STAGE.cur.cid,vs[vi-1],0);
+    const b=sEl('button','','›');b.title='The version after';b.disabled=vi===vs.length-1;b.onclick=()=>stageOpen(STAGE.cur.cid,vs[vi+1],0);
+    v.append(a,sEl('span','',`Version ${vi+1} of ${vs.length}`),b);head.append(v);
+  }
+  th.append(head);
+  const box=sEl('div','stg-scene k-'+sc.kind);
+  box.append(sEl('div','stg-kicker',`${STAGE.at+1} of ${n} · ${STAGE_KIND[sc.kind]||sc.kind}`));
+  box.append(sEl('div','stg-title',sc.title||STAGE_KIND[sc.kind]));
+  const art=sEl('div','stg-art st-art');box.append(art);
+  th.append(box);
+  // the narrator's line is a subtitle over the bottom of the picture, as in a film
+  const foot=sEl('div','stg-foot');
+  if(sc.caption){const cap=sEl('div','stg-cap');
+    // the narrator's line, word by word: CSS delays, no timers to leak
+    sc.caption.split(/\s+/).forEach((w,i)=>{const sp=sEl('span','',w+' ');sp.style.animationDelay=(250+i*55)+'ms';cap.append(sp)});
+    foot.append(cap)}
+  if(sc.illustrative)foot.append(sEl('div','st-src st-illus','Illustrative, not data'));
+  else if(sc.source)foot.append(stageSource(sc.source));
+  box.append(foot);
   try{stageDraw(art,sc)}catch(e){art.append(sEl('p','mut','Could not draw this scene: '+(e.message||e)))}
-  // the story's controls
-  const nav=sEl('div','st-nav');
-  const prev=sEl('button','endbtn','‹');prev.disabled=STAGE.at===0;prev.onclick=()=>stageGo(STAGE.at-1);
-  const next=sEl('button','endbtn','›');next.disabled=STAGE.at>=STAGE.scenes.length-1;next.onclick=()=>stageGo(STAGE.at+1);
-  const dots=sEl('div','st-dots');
-  STAGE.scenes.forEach((s,i)=>{const d=sEl('button',i===STAGE.at?'on':'');d.title=s.scene.title||s.scene.kind;
-    d.setAttribute('aria-label','scene '+(i+1));d.onclick=()=>stageGo(i);dots.append(d)});
-  const play=sEl('button','endbtn',STAGE.playing?'❚❚':'▶');play.title='Play the story';play.onclick=stagePlay;
-  const keep=sEl('button','endbtn st-keep','★ Keep');keep.title='Keep this story as a board, and refresh it if you like';
+  // the controls: a glass bar along the bottom
+  const bar=sEl('div','stg-bar');
+  const prev=sEl('button','stg-b','‹');prev.title='Previous scene';prev.disabled=STAGE.at===0;prev.onclick=()=>stageGo(STAGE.at-1);
+  const play=sEl('button','stg-b stg-play',STAGE.playing?'❚❚':'▶');play.title=STAGE.playing?'Pause':'Play the story';play.onclick=stagePlay;
+  const next=sEl('button','stg-b','›');next.title='Next scene';next.disabled=STAGE.at>=n-1;next.onclick=()=>stageGo(STAGE.at+1);
+  bar.append(prev,play,next);
+  const deep=sEl('button','stg-b stg-deep','⤵ Go deeper');deep.title='Ask for this scene as its own story';
+  deep.onclick=()=>stageDeeper(cur.seq);bar.append(deep);
+  const kids=(STAGE.cur.deeper||{})[String(cur.seq)]||[];
+  kids.forEach((a,i)=>{const k=sEl('button','stg-b stg-kid',kids.length>1?`Deeper story ${i+1} ›`:'The deeper story ›');
+    k.onclick=()=>stageOpen(STAGE.cur.cid,a,0);bar.append(k)});
+  const sp=sEl('span','stg-sp');bar.append(sp);
+  const keep=sEl('button','stg-b','★ Keep');keep.title='Keep this story as a board, and refresh it if you like';
   keep.onclick=()=>stageKeepMenu(keep);
-  const chat=sEl('button','endbtn','Open the chat');chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
-  nav.append(prev,dots,next,play,keep,chat);
-  main.append(nav);
+  const chat=sEl('button','stg-b','Chat');chat.title='Open the conversation';
+  chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
+  bar.append(keep,chat);
+  th.append(bar);
+  if(STAGE.awaiting)th.append(stageWaiting());
+  stageMusicMood(sc.kind);
+}
+/* Every story a chat showed, outside the deeper ones, is a version of its Stage: asking
+   "add Japan to the map" in the chat shows the story again with the change, and the one
+   before stays one tap away. Asked for as "update the stage or add a new face to the same
+   stage with the previous one there as well, like a new version". */
+async function stageVersions(c){
+  try{const d=await apiJSON('/api/stage?conversation='+encodeURIComponent(c.cid));
+    c.versions=(d.stories||[]).filter(s=>!s.parent).map(s=>s.answer_to);
+    if(STAGE.cur===c&&c.versions.length>1)stagePaintIfOpen()}catch(e){}
+}
+function stageWaiting(){
+  const w=sEl('div','stg-wait');w.append(sEl('i',''),sEl('span','','Going deeper…'));return w;
 }
 function stageSource(src){
   const d=sEl('div','st-src');
@@ -231,10 +297,18 @@ function stageSource(src){
   else d.textContent='Source: '+src;
   return d;
 }
+async function stageFetch(cid,answer_to,at){
+  const d=await apiJSON('/api/stage/story?conversation='+encodeURIComponent(cid)+'&answer_to='+encodeURIComponent(answer_to||''));
+  STAGE.cur={cid,answer_to:answer_to||'',question:'',parent:d.parent||null,deeper:d.deeper||{},versions:[]};
+  stageVersions(STAGE.cur);
+  STAGE.scenes=d.scenes||[];STAGE.at=Math.max(0,Math.min(at||0,STAGE.scenes.length-1));
+  stageQuestion();
+}
 function stageGo(i){if(i<0||i>=STAGE.scenes.length)return;STAGE.at=i;STAGE.held=Date.now()+20000;stagePaint();}
 function stagePlay(){
   if(STAGE.playing){STAGE.playing=false;stagePaint();return}
-  STAGE.playing=true;STAGE.at=0;STAGE.held=Date.now()+600000;stagePaint();
+  STAGE.playing=true;if(STAGE.at>=STAGE.scenes.length-1)STAGE.at=0;STAGE.held=Date.now()+600000;stagePaint();
+  if(stageMusicOn())stageMusic(true);
   const step=()=>{
     if(!STAGE.playing)return;
     const sc=STAGE.scenes[STAGE.at]&&STAGE.scenes[STAGE.at].scene;if(!sc){STAGE.playing=false;stagePaint();return}
@@ -242,13 +316,44 @@ function stagePlay(){
     const after=()=>setTimeout(()=>{if(!STAGE.playing)return;
       if(STAGE.at>=STAGE.scenes.length-1){STAGE.playing=false;STAGE.held=0;stagePaint();return}
       STAGE.at++;stagePaint();step()},900);
-    if(typeof VOICE!=='undefined'&&VOICE.tts&&typeof speakAs==='function'&&line)speakAs(agentName(),line,after);
-    else setTimeout(after,Math.max(3500,line.length*55));
+    // a video plays at its own pace: the story waits on it rather than cutting it off
+    const hold=sc.kind==='video'?20000:0;
+    if(typeof VOICE!=='undefined'&&VOICE.tts&&typeof speakAs==='function'&&line)speakAs(agentName(),line,()=>setTimeout(after,hold));
+    else setTimeout(after,Math.max(4500,line.length*60)+hold);
   };
   step();
 }
+/* Go deeper: the scene becomes a question in its own chat, sent as the person's message,
+   and the story that answers it plays here next with a way back up. */
+async function stageDeeper(seq){
+  const c=STAGE.cur;if(!c)return;
+  let d;
+  try{const r=await fetch('/api/stage/deeper',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({conversation_id:c.cid,answer_to:c.answer_to,seq})});
+    d=await r.json();if(!r.ok)throw new Error(d.error||r.status)}
+  catch(e){toast('could not go deeper: '+(e.message||e));return}
+  STAGE.awaiting={cid:c.cid,at:Date.now()};
+  const sw=WM.wins.get('stage');
+  if(typeof openConv==='function'&&typeof send==='function'){
+    if(!WM.wins.get('chat'))openApp('chat');
+    if(currentConv!==c.cid)await openConv(c.cid);
+    if(typeof input!=='undefined'&&input){input.value=d.text;send()}
+  }else if(typeof ws!=='undefined'&&ws&&ws.readyState===1){
+    ws.send(JSON.stringify({type:'chat',text:d.text,conversation_id:c.cid,model:''}));
+  }
+  if(sw)focusWin(sw);
+  stagePaint();
+}
+/* A turn that ended with no new story: say so, and stop waiting. */
+function stageTurnEnd(cid){
+  const a=STAGE.awaiting;if(!a||a.cid!==cid)return;
+  setTimeout(()=>{if(STAGE.awaiting===a){STAGE.awaiting=null;stagePaintIfOpen();
+    toast('The answer came back in words, without a new story. It is in the chat.')}},1500);
+}
 function stageKeepMenu(btn){
   const c=STAGE.cur;if(!c)return;
+  const host=btn.closest('.stg')||btn.closest('.st-main');
+  const old=host.querySelector('.st-keepbox');if(old){old.remove();return}
   const box=sEl('div','st-keepbox');
   box.append(sEl('div','st-keep-h','Keep this story'));
   const sel=document.createElement('select');
@@ -264,7 +369,7 @@ function stageKeepMenu(btn){
     }catch(e){toast('could not keep it: '+(e.message||e))}};
   const no=sEl('button','endbtn','Cancel');no.onclick=()=>box.remove();
   box.append(sel,sEl('p','mut','A refresh asks the same question again, looks the facts up afresh and shows the new story here.'),ok,no);
-  btn.closest('.st-main').append(box);
+  host.append(box);
 }
 async function stageSettings(patch){
   try{const r=await fetch('/api/stage/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
@@ -274,6 +379,62 @@ async function stageSettings(patch){
   }catch(e){toast('could not save: '+(e.message||e))}
 }
 
+/* ---------- the music: a soft score made on this screen ---------- */
+/* No files and nothing fetched: a pad of detuned voices through a slowly opening filter
+   and a little echo, moving through four chords, with a quiet bell now and then. The
+   mood follows the scene (brighter for numbers, darker for a map at night). Off until the
+   person turns it on (`stage.music`, per browser); a browser starts sound only after a
+   tap, so a scene arriving on its own waits for one. It stops with the window. */
+var STAGE_MU={ctx:null,master:null,voices:[],timer:0,chord:0,mood:''};
+var STAGE_CHORDS=[[57,64,67,71,72],[53,60,64,67,69],[48,55,59,62,64],[55,62,66,69,71]];
+function stageMusicOn(){try{return localStorage.getItem('stage.music')==='1'}catch(e){return false}}
+function stageMusic(on,closing){
+  try{if(!closing)localStorage.setItem('stage.music',on?'1':'0')}catch(e){}
+  const M=STAGE_MU;
+  if(!on){if(M.master&&M.ctx){M.master.gain.setTargetAtTime(0,M.ctx.currentTime,.4);
+      clearInterval(M.timer);M.timer=0;setTimeout(()=>{if(!stageMusicOn()||closing){try{M.ctx.suspend()}catch(e){}}},1600)}return}
+  try{
+    if(!M.ctx){
+      const C=window.AudioContext||window.webkitAudioContext;if(!C){toast('This browser cannot play sound.');return}
+      M.ctx=new C();
+      M.master=M.ctx.createGain();M.master.gain.value=0;
+      const lp=M.ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=900;lp.Q.value=.6;
+      const lfo=M.ctx.createOscillator(),lg=M.ctx.createGain();lfo.frequency.value=.05;lg.gain.value=420;lfo.connect(lg);lg.connect(lp.frequency);lfo.start();
+      const dl=M.ctx.createDelay(1),fb=M.ctx.createGain(),wet=M.ctx.createGain();dl.delayTime.value=.42;fb.gain.value=.33;wet.gain.value=.35;
+      lp.connect(M.master);lp.connect(dl);dl.connect(fb);fb.connect(dl);dl.connect(wet);wet.connect(M.master);
+      M.master.connect(M.ctx.destination);M.lp=lp;
+      for(let i=0;i<5;i++){
+        const g=M.ctx.createGain();g.gain.value=.05;g.connect(lp);
+        const a=M.ctx.createOscillator(),b=M.ctx.createOscillator();a.type='sawtooth';b.type='triangle';b.detune.value=7;a.detune.value=-6;
+        a.connect(g);b.connect(g);a.start();b.start();M.voices.push({a,b,g});
+      }
+    }
+    M.ctx.resume();
+    stageChord(true);
+    clearInterval(M.timer);M.timer=setInterval(()=>{stageChord();if(Math.random()<.5)stageBell()},8000);
+    M.master.gain.setTargetAtTime(.14,M.ctx.currentTime,1.2);
+  }catch(e){}
+}
+function stageMidi(n){return 440*Math.pow(2,(n-69)/12)}
+function stageChord(now){
+  const M=STAGE_MU;if(!M.ctx)return;
+  if(!now)M.chord=(M.chord+1)%STAGE_CHORDS.length;
+  const lift=M.mood==='bright'?12:M.mood==='low'?-12:0;
+  STAGE_CHORDS[M.chord].forEach((n,i)=>{const v=M.voices[i];if(!v)return;const f=stageMidi(n+(i===0?-12:0)+(i>2?lift:0));
+    v.a.frequency.setTargetAtTime(f,M.ctx.currentTime,now?.01:1.6);v.b.frequency.setTargetAtTime(f,M.ctx.currentTime,now?.01:1.6)});
+}
+function stageBell(){
+  const M=STAGE_MU;if(!M.ctx)return;
+  const o=M.ctx.createOscillator(),g=M.ctx.createGain(),t=M.ctx.currentTime;
+  const scale=[72,74,76,79,81,84];o.type='sine';o.frequency.value=stageMidi(scale[Math.floor(Math.random()*scale.length)]);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.05,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+3.2);
+  o.connect(g);g.connect(M.lp||M.master);o.start(t);o.stop(t+3.3);
+}
+function stageMusicMood(kind){
+  const M=STAGE_MU;const m=kind==='numbers'||kind==='chart'||kind==='steps'?'bright':kind==='map'||kind==='video'?'low':'';
+  if(m===M.mood)return;M.mood=m;if(M.ctx&&stageMusicOn())stageChord(true);
+}
+
 /* ---------- the library: every story you were shown ---------- */
 function stageLibrary(main){
   const lib=STAGE.lib;
@@ -281,7 +442,7 @@ function stageLibrary(main){
   const st=lib.stories||[];
   if(!st.length){main.append(sEl('p','mut st-pad','Nothing yet. Every story an answer shows is kept here, with the chat it came from.'));return}
   const grid=sEl('div','st-grid');
-  const KI={chart:'📈',map:'🗺',numbers:'#',timeline:'⟶',steps:'⇢',table:'▦'};
+  const KI={chart:'📈',map:'🗺',numbers:'#',timeline:'⟶',steps:'⇢',table:'▦',image:'🖼',video:'▶'};
   st.forEach(s=>{
     const c=sEl('button','st-tile');
     c.append(sEl('div','st-tile-k',(s.kinds||[]).map(k=>KI[k]||'·').join(' ')),
@@ -337,8 +498,61 @@ function stageBoards(main){
 
 /* ================= drawing ================= */
 function stageDraw(art,sc){
-  ({chart:stageChart,map:stageMap,numbers:stageNumbers,timeline:stageTimeline,steps:stageSteps,table:stageTable}[sc.kind]||(()=>{}))(art,sc);
+  ({chart:stageChart,map:stageMap,numbers:stageNumbers,timeline:stageTimeline,steps:stageSteps,table:stageTable,
+    image:stageImage,video:stageVideo}[sc.kind]||(()=>{}))(art,sc);
   if(stageReduced())art.classList.add('still');
+}
+
+/* Glow and gradients, shared by every drawing: defined once per SVG, by id. */
+var STAGE_UID=0;
+function stageDefs(svg,cols){
+  const id='sg'+(++STAGE_UID),d=sSvg('defs');
+  const f=sSvg('filter',{id:id+'-glow',x:'-50%',y:'-50%',width:'200%',height:'200%'});
+  f.append(sSvg('feGaussianBlur',{stdDeviation:'4',result:'b'}));
+  const m=sSvg('feMerge');m.append(sSvg('feMergeNode',{in:'b'}),sSvg('feMergeNode',{in:'SourceGraphic'}));f.append(m);d.append(f);
+  (cols||[]).forEach((c,i)=>{
+    const g=sSvg('linearGradient',{id:id+'-g'+i,x1:'0',y1:'0',x2:'0',y2:'1'});
+    const a=sSvg('stop',{offset:'0'});a.style.stopColor=c;a.style.stopOpacity='.55';
+    const b=sSvg('stop',{offset:'1'});b.style.stopColor=c;b.style.stopOpacity='0';g.append(a,b);d.append(g);
+    const h=sSvg('linearGradient',{id:id+'-b'+i,x1:'0',y1:'0',x2:'0',y2:'1'});
+    const p=sSvg('stop',{offset:'0'});p.style.stopColor=c;const q=sSvg('stop',{offset:'1'});q.style.stopColor=c;q.style.stopOpacity='.45';
+    h.append(p,q);d.append(h);
+  });
+  svg.append(d);return id;
+}
+
+/* --- a picture, slowly moving (Ken Burns), with its credit --- */
+function stageImage(art,sc){
+  const fr=sEl('div','stg-pic');
+  const img=document.createElement('img');
+  img.alt=sc.alt||sc.title||'';img.decoding='async';img.referrerPolicy='no-referrer';
+  img.src=sc.asset?'/api/assets/'+encodeURIComponent(sc.asset)+'/file':sc.url;
+  // a picture host may refuse a first request (busy, or rate-limited): ask once more first
+  let tries=0;
+  img.onerror=()=>{if(tries++<1){setTimeout(()=>{img.src=img.src.split('#')[0]+'#retry'},1500);return}
+    fr.textContent='';fr.classList.add('broken');
+    fr.append(sEl('div','stg-pic-x','This picture could not be loaded.'));
+    if(sc.url){const a=document.createElement('a');a.href=sc.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Open it where it lives';fr.append(a)}};
+  fr.append(img);
+  if(sc.credit)fr.append(sEl('div','stg-credit',sc.credit));
+  art.append(fr);
+}
+/* --- a YouTube video, played from youtube-nocookie.com. In the Telegram page (no
+   frames there), its picture links to YouTube instead. --- */
+function stageVideo(art,sc){
+  const fr=sEl('div','stg-vid');
+  if(window.STAGE_REPORT){
+    const a=document.createElement('a');a.href='https://www.youtube.com/watch?v='+encodeURIComponent(sc.video)+(sc.start?'&t='+sc.start:'');
+    a.target='_blank';a.rel='noopener noreferrer';a.className='stg-vid-link';
+    const img=document.createElement('img');img.alt=sc.title||'video';img.referrerPolicy='no-referrer';
+    img.src='https://i.ytimg.com/vi/'+encodeURIComponent(sc.video)+'/hqdefault.jpg';
+    a.append(img,sEl('span','stg-vid-play','▶'));fr.append(a);art.append(fr);return;
+  }
+  const f=document.createElement('iframe');
+  f.src='https://www.youtube-nocookie.com/embed/'+encodeURIComponent(sc.video)+'?rel=0&modestbranding=1&playsinline=1'+(sc.start?'&start='+sc.start:'');
+  f.title=sc.title||'video';f.allow='encrypted-media; picture-in-picture; fullscreen';f.allowFullscreen=true;
+  f.referrerPolicy='strict-origin-when-cross-origin';f.loading='lazy';
+  fr.append(f);art.append(fr);
 }
 
 /* --- numbers that read as numbers --- */
@@ -357,6 +571,13 @@ function stageTicks(lo,hi,n){
   const t0=Math.floor(lo/step)*step,out=[];
   for(let t=t0;t<=hi+step*0.001;t+=step)out.push(+t.toFixed(10));
   return out;
+}
+/* "2015-07" reads as "Jul 15", a day as "3 Jul 15": short enough for its slot. */
+function stageDateLabel(x){
+  const m=String(x).match(/^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?/);if(!m)return String(x);
+  if(!m[2])return m[1];
+  const mon=new Date(Date.UTC(2000,+m[2]-1,1)).toLocaleString(undefined,{month:'short',timeZone:'UTC'});
+  return (m[3]?(+m[3])+' ':'')+mon+' '+m[1].slice(2);
 }
 function stageDate(x){
   if(typeof x!=='string')return null;
@@ -400,7 +621,7 @@ function stageChart(art,sc){
   // x labels: at most eight, evenly picked
   let xl=[];
   if(isNum)xl=stageTicks(x0,x1,7).filter(t=>t>=x0&&t<=x1).map(t=>[t,stageFmt(t)]);
-  else if(dates){const pts=[...new Set(xs)];const k=Math.ceil(pts.length/8);xl=pts.filter((_,i)=>i%k===0).map(x=>[stageDate(x),x])}
+  else if(dates){const pts=[...new Set(xs)];const k=Math.ceil(pts.length/8);xl=pts.filter((_,i)=>i%k===0).map(x=>[stageDate(x),stageDateLabel(x)])}
   else{const k=Math.ceil(cats.length/10);xl=cats.map((c,i)=>[i,c]).filter((_,i)=>i%k===0)}
   // each name gets its slot and is cut to it, so neighbours never run into each other
   const room=xl.length>1?Math.abs(X(xl[1][0])-X(xl[0][0]))-6:W-L-R;
@@ -416,13 +637,14 @@ function stageChart(art,sc){
       svg.append(sSvg('text',{x:X(v)+6,y:T+14,class:'st-marktext'},m.text||''))}
   });
   const n=series.length;
+  const gid=stageDefs(svg,series.map((_,si)=>STAGE_PAL[si%STAGE_PAL.length]));
   series.forEach((s,si)=>{
     const col=STAGE_PAL[si%STAGE_PAL.length];
     const pts=s.points.map(p=>[xv(p[0]),p[1]]).sort((a,b)=>a[0]-b[0]);
     if(bar){
       const slot=(W-L-R)/((x1-x0)||1),bw=Math.max(2,slot*0.7/n);
       pts.forEach((p,i)=>{const x=X(p[0])-slot*0.35+si*bw,y=Y(Math.max(0,p[1])),h=Math.abs(Y(p[1])-Y(0));
-        const r=sSvg('rect',{x,y,width:bw-2,height:Math.max(1,h),fill:col,class:'st-bar',style:`animation-delay:${i*40}ms`});
+        const r=sSvg('rect',{x,y,width:bw-2,height:Math.max(1,h),rx:Math.min(8,(bw-2)/4),fill:`url(#${gid}-b${si})`,class:'st-bar',style:`animation-delay:${i*40}ms`});
         r.append(sSvg('title',{},`${s.name?s.name+': ':''}${stageFmt(p[1],sc.unit)}`));svg.append(r);
         // the value over its bar only when it fits the bar's slot
         const vt=stageFmt(p[1],tu);
@@ -432,12 +654,15 @@ function stageChart(art,sc){
     if(sc.chart_type==='scatter'){
       pts.forEach((p,i)=>svg.append(sSvg('circle',{cx:X(p[0]),cy:Y(p[1]),r:5,fill:col,class:'st-dot',style:`animation-delay:${Math.min(i,60)*15}ms`})));return}
     const d=pts.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join('');
-    if(sc.chart_type==='area'){
-      const a=d+`L${X(pts[pts.length-1][0]).toFixed(1)} ${Y(Math.max(y0,0))}L${X(pts[0][0]).toFixed(1)} ${Y(Math.max(y0,0))}Z`;
-      svg.append(sSvg('path',{d:a,fill:col,class:'st-area'}))}
-    svg.append(sSvg('path',{d,stroke:col,class:'st-line',pathLength:1000}));
+    // a line always stands on its own light: the area under it fades to nothing
+    if(sc.chart_type==='area'||n<=2){
+      const base=Y(Math.max(y0,Math.min(0,y1)));
+      const a=d+`L${X(pts[pts.length-1][0]).toFixed(1)} ${base}L${X(pts[0][0]).toFixed(1)} ${base}Z`;
+      svg.append(sSvg('path',{d:a,fill:`url(#${gid}-g${si})`,class:'st-area'}))}
+    svg.append(sSvg('path',{d,stroke:col,class:'st-line',pathLength:1000,filter:`url(#${gid}-glow)`}));
     const last=pts[pts.length-1];
-    svg.append(sSvg('circle',{cx:X(last[0]),cy:Y(last[1]),r:5,fill:col,class:'st-end'}));
+    svg.append(sSvg('circle',{cx:X(last[0]),cy:Y(last[1]),r:14,fill:col,class:'st-endglow'}));
+    svg.append(sSvg('circle',{cx:X(last[0]),cy:Y(last[1]),r:5.5,fill:col,class:'st-end',filter:`url(#${gid}-glow)`}));
     svg.append(sSvg('text',{x:Math.min(X(last[0])+8,W-R-4),y:Y(last[1])-8,'text-anchor':X(last[0])>W-140?'end':'start',class:'st-val'},stageFmt(last[1],sc.unit)));
   });
   if(n>1||series[0]&&series[0].name){
@@ -510,6 +735,12 @@ async function stageMap(art,sc){
   else{const nw=bh*aspect/kx,mid=(lo0+lo1)/2;lo0=mid-nw/2;lo1=mid+nw/2}
   const X=lon=>(lon-lo0)/(lo1-lo0)*W,Y=lat=>(la1-lat)/(la1-la0)*H;
   svg.append(sSvg('rect',{x:0,y:0,width:W,height:H,class:'st-sea'}));
+  const mid=stageDefs(svg,['#F43F5E']);
+  // the lines of latitude and longitude, faint, every 30 degrees
+  const gr=sSvg('g',{class:'st-grat'});
+  for(let lo=-180;lo<=180;lo+=30)gr.append(sSvg('line',{x1:X(lo),x2:X(lo),y1:0,y2:H}));
+  for(let la=-60;la<=90;la+=30)gr.append(sSvg('line',{x1:0,x2:W,y1:Y(la),y2:Y(la)}));
+  svg.append(gr);
   // shaded countries by value
   const vals=hits.map(h=>h.r.value).filter(v=>v!=null);
   const vmin=Math.min(...vals),vmax=Math.max(...vals);
@@ -533,6 +764,14 @@ async function stageMap(art,sc){
   // every pin's dot is kept clear of labels, so a label never hides a place
   pts.forEach(p=>{const x=X(p.lon),y=Y(p.lat);taken.push([x-9,y-9,x+9,y+9])});
   const order=pts.map((p,i)=>[p,i]).sort((a,b)=>(b[0].value||0)-(a[0].value||0));
+  // a few places in order are a journey: arcs join them, drawn one after another
+  if(pts.length>=2&&pts.length<=12){
+    const arcs=sSvg('g',{class:'st-arcs'});
+    for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],ax=X(a.lon),ay=Y(a.lat),bx=X(b.lon),by=Y(b.lat);
+      const mx=(ax+bx)/2,my=(ay+by)/2-Math.hypot(bx-ax,by-ay)*.25;
+      arcs.append(sSvg('path',{d:`M${ax} ${ay}Q${mx} ${my} ${bx} ${by}`,pathLength:100,style:`animation-delay:${400+i*250}ms`}))}
+    svg.append(arcs);
+  }
   const fits=(lx,ly,lw,th)=>lx>=2&&lx+lw<=W-2&&ly>=2&&ly+th<=H-2
     &&!taken.some(b=>lx<b[2]&&lx+lw>b[0]&&ly<b[3]&&ly+th>b[1]);
   order.forEach(([p],rank)=>{
@@ -540,7 +779,7 @@ async function stageMap(art,sc){
     const t=p.value!=null&&pv.length>1?(p.value-pmin)/((pmax-pmin)||1):0.5;
     const r=6+t*10,delay=Math.min(rank,30)*120;
     const g=sSvg('g',{class:'st-pin',style:`animation-delay:${delay}ms`});
-    g.append(sSvg('circle',{cx:x,cy:y,r:r*1.9,class:'st-pulse'}),sSvg('circle',{cx:x,cy:y,r,class:'st-pt'}));
+    g.append(sSvg('circle',{cx:x,cy:y,r:r*1.9,class:'st-pulse'}),sSvg('circle',{cx:x,cy:y,r,class:'st-pt',filter:`url(#${mid}-glow)`}));
     g.append(sSvg('title',{},(p.label||'')+(p.value!=null?': '+stageFmt(p.value,sc.unit):'')+(p.note?' · '+p.note:'')));
     svg.append(g);
     // the full name, then its first part ("Furnace Creek"), placed where it touches no

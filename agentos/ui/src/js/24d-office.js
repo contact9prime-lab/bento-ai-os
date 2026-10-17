@@ -221,10 +221,23 @@ function officeLayout(){
   const kiosk=!!(O.w&&O.w.scene&&document.body.classList.contains('kiosk'));
   O.s=kiosk?Math.max(.9,Math.min(1.8,cw/720,sc.clientHeight/300))
     :phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
-  const W=cw/O.s, x0=OF_M+OF_SPINE, avail=W-x0-OF_M;
   // each room's natural width: a desk slot per member, and never narrower than a room
   const want=r=>r.kind==='lead'?300:r.kind==='meeting'?280:r.kind==='lounge'?250
     :Math.max(250,Math.max(1,r.members.length)*OF_DESK_W+40);
+  // The office band on the desktop is short and wide. Wrapped at the window's scale the
+  // plan grew row after row and was then shrunk to fit, which drew ten rooms as a
+  // sliver 142px wide (reported: "the 2D comic office I can't see"). So the band tries
+  // one to four rows and keeps the scale that draws people biggest.
+  if(O.fit&&!kiosk&&!phone&&sc.clientHeight>0){
+    const total=v.rooms.reduce((a,r)=>a+want(r)+OF_GAP,0),edge=OF_M*2+OF_SPINE;
+    let best=O.s;
+    for(let k=1;k<=4;k++){
+      const fit=Math.min(cw/(total/k*1.08+edge),sc.clientHeight/(OF_M*2+k*(OF_ROOM_H+OF_HALL)));
+      if(k===1||fit>best)best=fit;
+    }
+    O.s=Math.max(.2,Math.min(1.3,best));
+  }
+  const W=cw/O.s, x0=OF_M+OF_SPINE, avail=W-x0-OF_M;
   const rows=[];let row=[],used=0;
   v.rooms.forEach(r=>{
     const wn=Math.min(avail,want(r));

@@ -333,3 +333,19 @@ def test_the_office_lays_out_again_when_its_area_changes():
     src = (Path(__file__).parent.parent / "agentos/ui/src/js/24k-office3d.js").read_text()
     where = src[src.index("function of3Where(){"):][:1400]
     assert "officeLayout()" in where and "want!==OF3.tried" in where
+
+
+def test_the_office_scene_is_the_comic_and_hq_is_3d():
+    """Reported as "the 2D comic office I can't see, in the scene where we had the boxes",
+    then "in the office scene it looks really bad": the band followed the 3D look and was a
+    hard dark slab across the wallpaper. The Office scene is the comic, fitted to the band;
+    Office HQ is the 3D one."""
+    root = Path(__file__).parent.parent
+    o3 = (root / "agentos/ui/src/js/24k-office3d.js").read_text()
+    want = o3[o3.index("function of3Wanted(){"):][:700]
+    assert "if(OFFICE.w&&OFFICE.w.scene)return false;" in want
+    assert want.index("of3HQ()") < want.index("OFFICE.w.scene)return false")
+    od = (root / "agentos/ui/src/js/24d-office.js").read_text()
+    assert "for(let k=1;k<=4;k++)" in od, "the band picks the rows that draw people biggest"
+    css = (root / "agentos/ui/src/css/23-office.css").read_text()
+    assert "#office-scene:not(.hq) .of-scroll{min-width:0;flex:0 1 auto;background:transparent}" in css

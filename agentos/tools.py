@@ -1051,6 +1051,8 @@ class Toolbox(usersmod.Scoped):
         from . import stage as stagemod
         try:
             scene, dropped = stagemod.clean({"kind": kind, "title": title, **spec})
+            if scene.get("asset") and not self.store.asset_get(scene["asset"]):
+                raise ValueError(f"there is no asset {scene['asset']}; list_assets shows yours")
             row = stagemod.add(self.store, _conv, scene)
         except ValueError as e:
             return f"[error] {e}"
@@ -6070,11 +6072,14 @@ STAGE_TOOL_SCHEMAS = [
                        "you answer: kind chart (series of [x, y] points; chart_type line, area, bar, "
                        "scatter or pie), map (points with lat/lon, and/or regions by country name "
                        "with a value), numbers (a few key figures), timeline (events in order), "
-                       "steps (a chain: this leads to that) or table. Call it once per scene, in "
+                       "steps (a chain: this leads to that), table, image (a picture: a photo, a "
+                       "diagram, one you generated) or video (a YouTube video, e.g. a tutorial). Call "
+                       "it once per scene, in "
                        "story order, two to five scenes for an answer worth seeing. Numbers need a "
                        "source, or illustrative: true when they are only an example.",
         "parameters": {"type": "object", "properties": {
-            "kind": {"type": "string", "enum": ["chart", "map", "numbers", "timeline", "steps", "table"]},
+            "kind": {"type": "string", "enum": ["chart", "map", "numbers", "timeline", "steps", "table",
+                                                "image", "video"]},
             "title": {"type": "string", "description": "the scene's headline, a few words"},
             "caption": {"type": "string", "description": "one or two sentences: what to notice"},
             "say": {"type": "string", "description": "the line read aloud with it, if different from the caption"},
@@ -6100,6 +6105,11 @@ STAGE_TOOL_SCHEMAS = [
             "events": {"type": "array", "description": "timeline: [{when, label, note?}]",
                        "items": {"type": "object"}},
             "columns": {"type": "array", "items": {"type": "string"}},
+            "url": {"type": "string", "description": "image: an https picture address; video: a YouTube address"},
+            "asset": {"type": "string", "description": "image: the id of one of your assets (generate_image makes one)"},
+            "alt": {"type": "string", "description": "image: what the picture shows, in words"},
+            "credit": {"type": "string", "description": "image: who made or published it"},
+            "start": {"type": "integer", "description": "video: start at this second"},
             "rows": {"type": "array", "description": "table: [[cell, …], …]", "items": {"type": "array", "items": {}}}},
             "required": ["kind", "title"]},
     },

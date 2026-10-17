@@ -670,6 +670,19 @@ Six rules:
   refresh opens a door with ONLY `show_scene` (`open_app_door` accepts that with a conversation and no app),
   runs in a chat of its own, is a `task_runs` row (`task_id` `stage:<board>`), and keeps the old story when
   the new run showed nothing (`refreshed`). `_stage_loop` checks due boards once a minute per account.
+- **The Now tab is a theater, and nothing inside a drawing animates forever.** A grid (each part pinned to its
+  row, the drawing `minmax(0,1fr)`), the scene's hue on a moving field, the caption as a subtitle. Chrome on
+  Wayland painted the map twice (with the dock inside it) while SVG pins pulsed without end: pulses run three
+  times, and the drawing is `contain:layout paint`. The music is WebAudio (no files), off until the person turns
+  it on (`stage.music`), stopped by `onClose`.
+- **Pictures and videos are scenes.** An image is an https URL or an asset id (`asset_get`); a video keeps only
+  its 11-character YouTube id, from a YouTube host, played from youtube-nocookie. The Telegram page inlines
+  asset pictures (`REPORT_IMG_CAP`) and shows a video as a thumbnail (`STAGE_REPORT`).
+- **Go deeper links on the Stage's side** (`ask_deeper`, `_DEEPER`, `stage_links`): the next story's first scene
+  in that chat is filed as the scene's child, whichever brain answered. Every other top-level story of a chat is
+  a version of its Stage; the note tells the agent to re-show the whole story with the change.
+- **The note comes FIRST in the door's context, by kind of question.** Measured: placed last it gave a how-to one
+  timeline; placed first it searched YouTube and Wikimedia and showed steps, a picture, a video and a table.
 - **Answer BIG is the person's** (`stage` USER_KEY: `big`, `app`). Off, the tool is still offered and the
   note says "when they ask". `app` hands scenes to one of the person's apps (`appstage` event in APP_RUNTIME)
   instead of the Stage; "Open by itself" is per browser (`stage.auto`).

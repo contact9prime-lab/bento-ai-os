@@ -62,6 +62,10 @@ var OF3_SPARK=/remember|recall|memor|knowledge|kg_|forget/i;
 function of3Wanted(){
   const v=OFFICE.view;if(!v||OF3.failed)return false;
   if(of3HQ())return of3GL();        // the Office HQ scene is this look by definition
+  // The Office scene on the desktop is the comic: Office HQ is the 3D one, so the two scenes
+  // are the two looks. Reported as "the 2D comic office I can't see any more, in the scene
+  // where we had the boxes", after 3D became the office's default look.
+  if(OFFICE.w&&OFFICE.w.scene)return false;
   if(((v.office||{}).look||'3d')!=='3d')return false;
   return of3GL();
 }
@@ -251,7 +255,7 @@ async function of3Ensure(){
     const ui=document.createElement('div');ui.className='of3-ui';OF3.ui=ui;
     const desk=document.getElementById('desktop'),home=document.getElementById('home');
     if(of3HQ()&&desk){ui.classList.add('hq');desk.insertBefore(ui,home?home.nextSibling:null)}else host.appendChild(ui);
-    OF3.r=new T.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'low-power'});
+    OF3.r=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:true,powerPreference:'low-power'});
     OF3.r.outputColorSpace=T.SRGBColorSpace;OF3.r.toneMapping=T.ACESFilmicToneMapping;OF3.r.toneMappingExposure=1.05;
     // the kiosk is a small machine's own screen (a Pi): no shadows there either
     OF3.hq=!document.body.classList.contains('kiosk')&&typeof worldQuality==='function'?worldQuality(OF3.r):false;
@@ -335,7 +339,7 @@ function of3Build(){
 function of3BuildNow(){
   const O=OFFICE,T=OF3.T,L=O.L,v=O.view;if(!T||!OF3.r||!L)return;
   const sig=JSON.stringify([L.rooms.map(r=>[r.kind,r.name,r.color,Math.min(OF3_SEATS,r.members.length),Math.round(r.x),Math.round(r.y)]),
-    v.office.style,v.office.decor,v.office.pet,OF3.hq]);
+    v.office.style,v.office.decor,v.office.pet,OF3.hq,!!(O.w&&O.w.scene)&&!of3HQ()]);
   if(sig===OF3.sig&&OF3.scene){of3Fit();return}
   // The ring follows the window's shape, so a resize moves the rooms. Rebuild once the
   // window has settled: dragging an edge fires this many times a second. Until then the
@@ -352,7 +356,11 @@ function of3BuildNow(){
   OF3.sig=sig;
   const S=OF3.scene=new T.Scene();
   // the dark the rooms float in, tinted by the office's style (a greenhouse is a green night)
-  S.background=of3Hex(v.style.wall||'#1b2233',['#0e0f1f',.86]);
+  // The office band on the desktop floats over the wallpaper; a window and Office HQ keep
+  // their night. Opaque, the band was a hard-edged dark slab across the wallpaper.
+  const band=!!(O.w&&O.w.scene)&&!of3HQ();
+  S.background=band?null:of3Hex(v.style.wall||'#1b2233',['#0e0f1f',.86]);
+  OF3.r.setClearColor(0,band?0:1);
   S.add(new T.HemisphereLight(0xcfd8ff,0x1a1b30,1.25));
   const sun=new T.DirectionalLight(0xfff1dc,1.55);
   const span=(L.R+300)/OF3_U;

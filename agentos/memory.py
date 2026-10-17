@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS stage_scenes (
     created_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_stage_conv ON stage_scenes(conversation_id, created_at);
+CREATE TABLE IF NOT EXISTS stage_links (
+    conversation_id TEXT,
+    answer_to TEXT,          -- the deeper story
+    parent_answer_to TEXT,   -- the story it went deeper from
+    parent_seq INTEGER,      -- and which scene of it
+    created_at REAL,
+    PRIMARY KEY (conversation_id, answer_to)
+);
 CREATE TABLE IF NOT EXISTS stage_boards (
     id TEXT PRIMARY KEY,
     title TEXT,
