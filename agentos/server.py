@@ -1575,7 +1575,7 @@ async def api_update_apply(request: Request, body: dict | None = None):
     loop = asyncio.get_running_loop()
     res = await updmod.apply(
         state["cfg"], run_tests=bool(body.get("run_tests", True)),
-        log=lambda m: loop.call_soon(asyncio.ensure_future, say(m)),
+        log=lambda m: loop.call_soon_threadsafe(asyncio.ensure_future, say(m)),
         **({"switch": True} if body.get("switch") else {}))
     state["store"].log("system", f"update: {res}")
     if not res.get("ok"):
@@ -7334,6 +7334,9 @@ async def remote_access_gate(request: Request, call_next):
     return FileResponse(UI_DIR / "login.html", headers=NO_STORE)
 
 
+_HOME_ID = cfgmod.home_id()
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     """Headers that are cheap, safe, and were simply not being sent.
@@ -7359,6 +7362,9 @@ async def security_headers(request: Request, call_next):
     breaks the whole OS to add a header nobody measured is the wrong trade.
     """
     resp = await call_next(request)
+    # which home this server serves (config.home_id), on every answer, a locked 401
+    # included: `bento` started for another home must not drive this one
+    resp.headers.setdefault("X-Bento-Home", _HOME_ID)
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
     resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")

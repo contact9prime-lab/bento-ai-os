@@ -367,6 +367,15 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
+def home_id(home=None) -> str:
+    """A short fingerprint of the home a process serves, so a terminal can tell its own
+    server from another install's on the same port. A hash, never the path: it goes in a
+    header on every response."""
+    import hashlib
+    h = str(Path(home or AGENTOS_HOME).expanduser().resolve())
+    return hashlib.sha256(h.encode()).hexdigest()[:16]
+
+
 def load_config() -> dict:
     cfg = copy.deepcopy(DEFAULTS)
     if CONFIG_PATH.exists():

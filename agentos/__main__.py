@@ -227,12 +227,24 @@ def _server_answers(port: int, timeout: float = 1.5) -> bool:
     """
     import urllib.error
     import urllib.request
+
+    def ours(headers) -> bool:
+        # A server for ANOTHER home on this port (a second install, or the person's
+        # live machine while the test suite runs with a temporary home) is not this
+        # terminal's server: driving it changed the wrong machine, and during an update
+        # the suite's CLI tests hung on the very server running them. An older server
+        # sends no header and is trusted as before.
+        theirs = (headers or {}).get("X-Bento-Home") or ""
+        if not theirs:
+            return True
+        from . import config as _c
+        return theirs == _c.home_id()
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/platform",
                                     timeout=timeout) as r:
-            return r.status < 500
+            return r.status < 500 and ours(r.headers)
     except urllib.error.HTTPError as e:
-        return e.code < 500
+        return e.code < 500 and ours(e.headers)
     except Exception:
         return False
 
