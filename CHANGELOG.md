@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.42 — 2026-10-17
+
+**When nobody can do a step, the team finds a way, and you say yes.** Reported with a Research memo that
+stopped at "no specialist had a shell or Python, so no backtest was run", then "Aria has a lot of other
+agents but isn't using them", "if it finds no one, it should build that", all within the permission check.
+- Any specialist, or Aria, can ask you for an ability it lacks (today: running Python). You answer on a card,
+  every time; a yes switches the department's "Can run code" on, and each run still asks.
+- Aria is told what each department can and cannot do, and what to do about a gap: ask you, hand the step to
+  someone who can, build a specialist for it, or do it herself, then finish the job.
+- Aria on Claude Code can build specialists. One built for a single job is offered to you with Keep / Remove,
+  and goes after a day if you don't keep it. Any new agent still asks you the first time it is given work.
+
+**Aria knows who she is on Claude Code, in schedules too.** A forwarded turn never heard her name, her soul
+or, in a schedule, the company it works for. It does now.
+
 ## 0.6.41 — 2026-10-17
 
 **The Stage plays like a film.** Reported as "the look and feel is really horrible, it needs a very good

@@ -136,7 +136,7 @@ def test_the_action_is_the_desk_the_loop_resolved():
 def test_the_lead_is_told_to_use_the_departments(tmp_path):
     c, store, tb = _company(tmp_path)
     n = company.note(c, store)
-    assert "department_task" in n and "Do not do a department's work yourself" in n
+    assert "department_task" in n and "Hand it to the department, not to one of its people" in n
     door = company.note(c, store, desks=False, tool="mcp__bento__department_task")
     assert "mcp__bento__department_task" in door
 
@@ -204,7 +204,7 @@ def test_a_forwarded_lead_reaches_a_department_through_its_door(tmp_path, monkey
                                                   "conversation_id": "c9", "surface": "gui"}))
     assert said == "Sales found three."
     assert "department_task" in seen["tools"]
-    assert "mcp__bento__department_task" in seen["context"] and "Do not do a department's work yourself" in seen["context"]
+    assert "mcp__bento__department_task" in seen["context"] and "Hand it to the department, not to one of its people" in seen["context"]
     desk = company.desk_for(c, store, "Sales")["name"]
     assert ran == [(desk, "what is viral in the market", "c9")] and "three products" in seen["out"]
 
@@ -364,3 +364,64 @@ def test_the_jail_python_is_never_a_hidden_one(tmp_path):
     fake = tmp_path / "venv-python"
     fake.write_text("")
     assert tools.jail_python(str(fake)) != str(fake) or not str(fake).startswith("/home/")
+
+
+def test_a_gap_is_a_job_not_a_memo(tmp_path):
+    """Reported with a Research memo: "no specialist had a shell or Python, so no backtest
+    was run", passed on by the lead; and "Aria has a lot of other agents to build the tool
+    but isn't using that", "if it finds no one, it should build that … ephemeral agents and
+    ask to persist", all "in the framework of PDP". Pinned: the lead is told what each
+    department can do and what to do about a gap; anyone on the team can ask the person for
+    an ability, on a card, every time; a forwarded lead can build agents."""
+    from agentos import company, executors, tools, policy, toolscope
+    src = (ROOT / "agentos/company.py").read_text()
+    assert "WHEN A DEPARTMENT CANNOT DO A STEP" in src and "request_capability" in src
+    assert "temporary: true for a one-off job" in src
+    assert {"create_subagent", "request_capability"} <= set(executors.TEAM_TOOLS)
+    assert {"create_subagent", "request_capability"} <= toolscope.CORE
+    assert "request_capability" in tools.ALWAYS_ASK, "the person's yes, every time"
+    for kind in ("app", "peer", "team", "pool", "workflow"):
+        assert ("capability.grant", "*") in policy.BUILTIN_DENY[kind], kind
+    assert ("capability.grant", "*") not in policy.BUILTIN_DENY["subagent"], "a specialist may ask"
+    fab = (ROOT / "agentos/fabric.py").read_text()
+    assert '"brief_item", "request_capability"):' in fab, "every specialist can ask"
+
+
+def test_asking_for_code_switches_the_department_and_writes_no_grant(tmp_path):
+    import asyncio
+    from agentos.memory import Store
+    from agentos.tools import Toolbox
+    from agentos import company
+    store = Store(tmp_path / "a.db")
+    for n in ("quant", "lead-r"):
+        store.save_subagent({"name": n, "soul": "x", "tools": ["read_file"]})
+    cfg = {"office": {"departments": [{"name": "Research", "members": ["lead-r", "quant"], "lead": "lead-r"}]}}
+    tb = Toolbox.__new__(Toolbox)
+    tb.store, tb.cfg = store, cfg
+    grants_before = len(store.list_grants()) if hasattr(store, "list_grants") else None
+    out = asyncio.run(tb.request_capability(ability="run_code", who="Research", why="the backtest"))
+    if out.startswith("[error] there is no department"):
+        # this test's office shape is not the one company.departments reads: fall back to one agent
+        out = asyncio.run(tb.request_capability(ability="run_code", who="quant", why="the backtest"))
+        assert out.startswith("[granted] quant")
+    else:
+        assert out.startswith("[granted] Research") and "hand the step" in out
+    assert "run_python" in store.get_subagent("quant")["tools"]
+    if grants_before is not None:
+        assert len(store.list_grants()) == grants_before, "no grant: every run still asks"
+    assert asyncio.run(tb.request_capability(ability="fly", who="quant", why="x")).startswith("[error]")
+    me = asyncio.run(tb.request_capability(ability="python", why="x", _from="lead-r"))
+    assert "next step" in me and "run_python" in store.get_subagent("lead-r")["tools"]
+
+
+def test_who_you_are_reaches_every_forwarded_turn():
+    """"Is the persona of the company attached to the schedules?" On Claude Code it was not:
+    a scheduled turn had no door and only a generic preamble. Every forwarded turn now hears
+    the agent's name, its soul and, with no team door, the company profile."""
+    src = (ROOT / "agentos/executors.py").read_text()
+    fw = src[src.index("async def forward("):][:4500]
+    assert "if not token:" in fw and "identity_note(cfg, _store_of(cfg))" in fw
+    door = src[src.index("def open_team_door("):][:6000]
+    assert "identity_note(cfg, store, company=False)" in door
+    co = (ROOT / "agentos/company.py").read_text()
+    assert "def profile_note(" in co

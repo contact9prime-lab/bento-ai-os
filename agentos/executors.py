@@ -448,6 +448,10 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     token = open_team_door(env, cfg, team.get("toolbox"), team.get("store"), sink,
                            team.get("approver"), conversation_id=team.get("conversation_id", ""),
                            surface=team.get("surface", "gui"), text=text) if team else ""
+    if not token:
+        # no team door (a schedule, a board's refresh, an app's run): it still speaks as
+        # the person's agent, for their company
+        env.context += identity_note(cfg, _store_of(cfg))
     # `app`: {toolbox, app_id, approver} from a schedule that belongs to an app. One door
     # per run: a turn with a team already has its tools, and none of them is the app's.
     if app and not token:
@@ -532,6 +536,38 @@ def context_for(ui_context: str) -> str:
         + NO_DOOR_LINE
     )
     return (preamble + ("\n\n" + body if body else "")).strip()
+
+
+def _store_of(cfg: dict):
+    """The current account's store, for a caller that has none at hand (the scheduler)."""
+    try:
+        from . import users as _u
+        return _u.store_for(_u.current() or "")
+    except Exception:
+        return None
+
+
+def identity_note(cfg: dict, store=None, company: bool = True) -> str:
+    """Who the forwarded turn speaks as: the agent's name, its soul, and (for a turn with no
+    team door) the company it works for. A forwarded CLI's own prompt knows none of this,
+    and `context_for` only said what it cannot do: on Claude Code, Aria answered chat and
+    schedules without her name, her soul or the company's objective."""
+    from . import config as _cfgmod
+    name = (cfg or {}).get("agent_name") or "Aria"
+    try:
+        soul = " ".join(_cfgmod.load_soul().split())[:1500]
+    except Exception:
+        soul = ""
+    out = f"\n\nWHO YOU ARE: you are {name}, the person's lead agent in AgentOS."
+    if soul:
+        out += f" Your soul, in the person's words: {soul}"
+    if company and store is not None:
+        try:
+            from . import company as _company
+            out += _company.profile_note(cfg, store)
+        except Exception:
+            pass
+    return out
 
 
 def has_brain(cfg: dict) -> bool:
@@ -1717,7 +1753,12 @@ async def install(note=None) -> tuple[bool, str]:
 # schedule_task is the small case of the same thing: "check it every 10 minutes" asked in
 # Chat on Claude Code had no way to become a schedule this OS could see, so it became a
 # setInterval in an app or a sentence. It is risky, so the person approves it on the card.
-TEAM_TOOLS = ("delegate", "huddle", "department_task", "create_flow", "list_flows", "schedule_task")
+# create_subagent and request_capability: when nobody on the team has what a step needs,
+# the lead builds a specialist for it (the person approves it the first time it works) or
+# asks the person for the ability. Reported as "Aria has a lot of other agents to build the
+# tool but it isn't using that" and a Research memo that stopped at "no shell or Python".
+TEAM_TOOLS = ("delegate", "huddle", "department_task", "create_flow", "list_flows", "schedule_task",
+              "create_subagent", "request_capability")
 # The live windows (cdpbrowser, ptyhub, appstream) are the person's own, so a forwarded chat
 # reaches them through this door too: Claude Code's own WebFetch sees the anonymous web, and
 # "finish checking out on the site I'm signed in to" needs the browser the person signed in
@@ -1755,7 +1796,11 @@ def capability_note(prefix: str = "mcp__bento__") -> str:
             f"either, tell the person what it is and what it needs, then call "
             f"{prefix}install_skill or {prefix}install_mcp_server; they confirm it on a card. "
             f"Never set a capability up yourself through your own MCP settings, your own "
-            f"skills folder or a package install: this machine could not check or record it.")
+            f"skills folder or a package install: this machine could not check or record it. "
+            f"When nobody on the team can do a step, build a specialist for it with "
+            f"{prefix}create_subagent (exactly the tools it needs; temporary: true for a one-off "
+            f"job), or ask the person for an ability someone lacks with "
+            f"{prefix}request_capability. Never stop at saying it could not be done.")
 
 
 def workspace_note(prefix: str = "mcp__bento__") -> str:
@@ -1807,7 +1852,11 @@ def team_note(subagents: list, prefix: str = "mcp__bento__",
             continue
         soul = " ".join(str(sa.get("soul") or "").split())
         first = re.split(r"(?<=[.!?])\s", soul, maxsplit=1)[0][:160]
-        rows.append(f"- {sa['name']}: {first}")
+        # what they can do that decides whether a step is possible (company.abilities)
+        tl = set(sa.get("tools") or [])
+        can = [w for t, w in (("run_python", "runs code"), ("run_command", "has a shell"),
+                              ("write_file", "writes files")) if t in tl]
+        rows.append(f"- {sa['name']}: {first}" + (f" [{', '.join(can)}]" if can else ""))
     if not rows:
         return missions
     if len(rows) > 20:
@@ -1842,7 +1891,11 @@ def team_hint(subagents: list) -> str:
             continue
         soul = " ".join(str(sa.get("soul") or "").split())
         first = re.split(r"(?<=[.!?])\s", soul, maxsplit=1)[0][:160]
-        rows.append(f"- {sa['name']}: {first}")
+        # what they can do that decides whether a step is possible (company.abilities)
+        tl = set(sa.get("tools") or [])
+        can = [w for t, w in (("run_python", "runs code"), ("run_command", "has a shell"),
+                              ("write_file", "writes files")) if t in tl]
+        rows.append(f"- {sa['name']}: {first}" + (f" [{', '.join(can)}]" if can else ""))
     missions = ("\n\nMISSIONS. Anything that should keep happening on its own — watch a folder, "
                 "every morning — is a mission in this OS's Missions app. You cannot create one "
                 "from here: say so, and tell the person to describe it under Missions → Run → "
@@ -1915,7 +1968,8 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     if conversation_id:
         from . import stage as _stage
         stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene")
-    env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) + stage_note + dept_note \
+    env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
+        + identity_note(cfg, store, company=False) + stage_note + dept_note \
         + team_note(subs, in_departments=grouped) + workspace_note() + capability_note()
     return token
 
