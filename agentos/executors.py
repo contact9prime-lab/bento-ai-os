@@ -1991,7 +1991,7 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     stage_note = ""
     if conversation_id:
         from . import stage as _stage
-        stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene")
+        stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
         + identity_note(cfg, store, company=False) + stage_note + dept_note \
         + team_note(subs, in_departments=grouped) + workspace_note() + capability_note()

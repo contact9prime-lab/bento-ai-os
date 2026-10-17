@@ -12,6 +12,31 @@ the user; in Telegram mode the backend should handle it".
 - On Telegram, each chat works on its own: somebody else's message no longer waits for yours. A message you
   send while it works is taken into what it is doing on Claude Code, or runs right after, in order; it no
   longer says "still working".
+## 0.6.46 — 2026-10-17
+
+**Telegram tells you when it goes offline and when it is back.** Asked for as "when the agent is coming up
+or going down, that message needs to be sent". "▼ Aria is going offline to install an update" as it stops,
+"▲ Aria is back online, updated 0.6.43 → 0.6.46" as it starts, and after a crash or a power cut, when it was
+last seen. `/updown off` on Telegram turns it off.
+## 0.6.45 — 2026-10-17
+
+**Telegram gets the Stage, you decide who else may talk to it, and phone chats are easy to find.** Reported
+as "on Telegram I am not getting the stage, I am not getting an option to authorize other people, and the
+telegram chats are not visible in the Chats".
+- A turn from Telegram or WhatsApp is told that its scenes are sent to the phone as one page after the reply,
+  so it shows them; before, it answered in words. WhatsApp now gets that page too.
+- When somebody new writes to your bot, you get their message with **Allow** and **Block** on Telegram and
+  an **Allow** on the desktop; they hear back when you let them in. Settings → Channels → Telegram has a
+  **People** button for everyone who wrote.
+- Chats has an **On your phone** section, first, for your Telegram and WhatsApp threads.
+## 0.6.44 — 2026-10-17
+
+**Every execution as one JSON file.** Asked for as "for every execution I should be able to get the json file
+to see what happened, what the office was and what executed, so I can send it to the AI to analyse and fix the
+problem". **⤓ JSON** in Chat, on each run in Missions → History, and `bento trace` in a terminal give one file
+with the messages and each step, every run it started (a department's desk, its people, each review, the
+audit) with its events, every decision the permission gate made, the log lines, the scenes shown, and the
+setting: the brain, autonomy, the company, its departments and who had which tools. Secrets are masked.
 
 ## 0.6.43 — 2026-10-17
 

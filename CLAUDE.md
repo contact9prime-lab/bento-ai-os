@@ -768,6 +768,19 @@ Kept free of HTTP and asyncio, like `jobs.py`: `bento brief` reads and acts on t
 rows with the server down. Option labels cut at a word (`_short`) because a button that
 reads "higher seat cou" is a choice nobody can read back.
 
+## One execution as one JSON file: the trace
+
+`agentos/trace.py` + `/api/trace/conversation/{cid}`, `/api/trace/run/{rid}` + `bento trace` + ⤓ JSON in Chat
+and Missions → History; `tests/test_trace.py`. Asked for as "the json file of what happened, what was the
+office and what executed, to send to the AI". Three rules:
+- **One gathering, read-only.** A chat's messages (with `meta.steps`), every `fabric_runs` row it started and
+  their whole tree with events, the ledger rows for the chat or any of those runs, its log lines, its Stage, and
+  the setting (brain, autonomy, company, departments with `company.abilities`, each agent's tools). A run asked
+  by any of its runs is the whole task from its top. No HTTP or asyncio: `bento trace` works with the server down.
+- **Nothing secret leaves.** `trace.mask` masks any value under a key naming a key, token, secret, password,
+  passphrase, cookie or credential, at any depth (MCP `env` included); the vault is never opened.
+- **It says how to read itself** (`how_to_read`), because the reader is often another AI.
+
 ## The vault: config holds a REFERENCE, and nothing prints the value
 
 `agentos/vault.py`. A password or a sign-in's tokens never sit in `config.json`: config
@@ -1671,6 +1684,17 @@ the start of a word, which keeps this a launcher. A place is a door to a pane th
 `tests/test_places.py` checks every Settings tab and app it names. The TUI's equivalent is
 `bento help --all`. The wall read a tile's ICON span as its name for a long time; the label is
 `:scope > span:not([class])`.
+
+## Telegram says when the agent goes down and comes back
+
+`TelegramBridge.say_up`/`say_down`, `.telegram-alive.json` in the person's home, `/updown on|off`,
+`state["down_reason"]`; `tests/test_telegram_updown.py`. Asked for as "when the agent is coming up or going
+down, that message needs to be sent". Once per process on the first poll ("back online", the version, an
+update named); from the server's shutdown for EVERY bridge that came up (the machine's and each account's),
+each bounded to 4 s so a phone never holds a shutdown. A start after a stop that never said goodbye (a crash,
+the power) says when it was last seen: the heartbeat is written while polling (`ALIVE_EVERY`). The restart
+routes set `down_reason` ("to install an update"). Found live: telegram.py had no `import contextlib`, and the
+poller swallowed the NameError, so nothing was sent and nothing said why.
 
 ## WhatsApp is one channel with two transports
 

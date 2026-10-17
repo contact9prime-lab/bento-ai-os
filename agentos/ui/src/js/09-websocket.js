@@ -642,6 +642,11 @@ function handle(ev){
       if(typeof waPanel==='function'&&document.getElementById('wa-extra'))waPanel();
       break;
     case 'telegram_chats': refreshApp('telegram'); break;
+    // somebody new wrote to the bot: the owner decides here as well as on their phone
+    case 'telegram_request':
+      toast('📩 '+(ev.title||'Someone')+' wants to talk to '+agentName()+' on Telegram: “'+(ev.text||'')+'”',
+        {kind:'warn',ms:60000,label:'Allow',go:()=>{tgAllow(ev.chat_id,1);toast((ev.title||'They')+' can talk to '+agentName()+' now')}});
+      refreshApp('telegram');break;
     case 'knowledge_update': refreshApp('memory'); refreshApp('kg'); refreshApp('profile'); break;
     case 'assets_update': refreshApp('gallery'); refreshApp('timeline'); break;
     case 'spaces_update': loadSpaces(true).then(paintSpaceChip); refreshApp('spaces'); break;

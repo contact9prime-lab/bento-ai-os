@@ -1329,6 +1329,12 @@ function chanCard(c){
   // a built-in channel is always on, and its heading's chip already says so
   const onoff=c.builtin?''
     : pRow('Switched on',pSwitch(`ch-${c.id}-on`,c.enabled),{f:c.id+' enable'});
+  // who may talk to it: the people who wrote, each one switched on or off in its own app
+  const people=c.id==='telegram'?pRow('Who can talk to it',
+      `<button class="endbtn" onclick="openApp('telegram')">People</button>`,
+      {desc:'Everyone who wrote to your bot, each one allowed or blocked.',
+       more:'When somebody new writes, you get Allow and Block buttons on Telegram and an Allow on the desktop. To let somebody in before they write, add their @username or chat id under Also allow.',
+       f:c.id+' allow people authorize authorise users who can talk'}):'';
   /* The walkthrough, open exactly when it is needed. "Create a bot with @BotFather
      and paste its token" is a fine label for the BOX; it is not instructions, and it
      assumes you know BotFather is a Telegram account you message, that /newbot
@@ -1350,7 +1356,7 @@ function chanCard(c){
     ${pRow('Who can use it',`<span class="mut">${esc(c.reach)}</span>`,
       {desc:c.reach_panel?`Change that in ${esc(c.reach_panel)}.`:'',f:c.id+' who reach access'})}
     ${steps}
-    ${onoff}${posture}${fields}
+    ${onoff}${posture}${fields}${people}
     ${c.note?`<div class="ghint mut">${esc(c.note)}</div>`:''}
     ${/* WhatsApp's two facts a form cannot hold: the callback URL Meta needs, and
          whether the 24-hour window is open. Filled by waPanel() after render. */''}

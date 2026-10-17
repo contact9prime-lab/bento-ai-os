@@ -74,6 +74,76 @@ class TelegramBridge(usersmod.Scoped):
             raise RuntimeError(data.get("description", f"HTTP {r.status_code}"))
         return data["result"]
 
+    # -- going down and coming back ------------------------------------------------
+    # Asked for as "when the agent is coming up or going down, that message needs to be
+    # sent". A clean stop says goodbye (the server's shutdown calls say_down); a start says
+    # hello once per process, with the version and, if the last stop was not clean (a
+    # crash, the power), when it was last seen. The record is a small file in the person's
+    # own home, refreshed while polling.
+    ALIVE_EVERY = 60
+
+    def _alive_path(self):
+        from pathlib import Path
+        return Path(getattr(self.store, "path", "") or ".").parent / ".telegram-alive.json"
+
+    def _alive(self) -> dict:
+        import json as _j
+        try:
+            return _j.loads(self._alive_path().read_text())
+        except Exception:
+            return {}
+
+    def _alive_write(self, **kw) -> None:
+        import json as _j
+        try:
+            self._alive_path().write_text(_j.dumps({**self._alive(), **kw}))
+        except Exception:
+            pass
+
+    def _says_status(self) -> bool:
+        t = self._t()
+        return bool(t.get("enabled") and t.get("bot_token") and t.get("owner_chat_id")
+                    and t.get("status_messages", True) is not False)
+
+    async def say_up(self) -> None:
+        """Once per process, on the first successful poll."""
+        if getattr(self, "_said_up", False):
+            return
+        self._said_up = True
+        try:
+            from . import updates
+            version = updates.current()
+        except Exception:
+            version = ""
+        before = self._alive()
+        self._alive_write(up_at=time.time(), seen=time.time(), version=version, clean=False)
+        if not self._says_status():
+            return
+        name = self.cfg.get("agent_name") or "Aria"
+        msg = f"▲ {name} is back online"
+        if before.get("version") and version and before["version"] != version:
+            msg += f", updated {before['version']} → {version}"
+        elif version:
+            msg += f" (Bento {version})"
+        msg += "."
+        if before and before.get("clean") is False and before.get("seen"):
+            msg += (" I wasn't shut down cleanly: I was last seen at "
+                    + time.strftime("%H:%M on %d %b", time.localtime(before["seen"])) + ".")
+        with contextlib.suppress(Exception):
+            await self.send(msg)
+
+    async def say_down(self, reason: str = "") -> None:
+        """From the server's shutdown, before the poller stops."""
+        if not getattr(self, "_said_up", False):
+            return                        # it never came up in this process: nothing to say
+        self._alive_write(seen=time.time(), clean=True)
+        if not self._says_status():
+            return
+        name = self.cfg.get("agent_name") or "Aria"
+        with contextlib.suppress(Exception):
+            await self.send(f"▼ {name} is going offline{(' ' + reason) if reason else ''}. "
+                            f"I'll message you when I'm back.")
+
     async def publish_commands(self) -> None:
         """Register the command menu with Telegram (the blue Menu button and the
         `/` autocomplete).
@@ -223,7 +293,7 @@ class TelegramBridge(usersmod.Scoped):
         cid = chat.get("conversation_id")
         if cid and any(c["id"] == cid for c in self.store.list_conversations(limit=500)):
             return cid
-        cid = self.store.create_conversation(f"Telegram · {chat.get('title') or chat['chat_id']}")
+        cid = self.store.create_conversation(f"Telegram · {chat.get('title') or chat['chat_id']}", origin="telegram")
         self.store.tg_set_conversation(chat["chat_id"], cid)
         return cid
 
@@ -288,8 +358,9 @@ class TelegramBridge(usersmod.Scoped):
                             "type": ctype, "msg_count": chat["msg_count"],
                             "text": text[:160]})
             if chat["msg_count"] <= 1:
-                await self.send("▲ This chat is registered with AgentOS but not enabled yet. "
-                                "The owner can enable it in the Telegram app on the desktop.", chat_id)
+                await self.send("▲ I've asked the owner whether you can talk to me. You'll hear "
+                                "back here once they say yes.", chat_id)
+                await self.ask_owner_about(chat_id, title, username, text)
             await self.broadcast({"type": "telegram_chats"})
             return
         await self.broadcast({"type": "telegram_chats"})
@@ -547,6 +618,41 @@ class TelegramBridge(usersmod.Scoped):
                 pass
         return val in ("1", "2", "3")
 
+    async def ask_owner_about(self, chat_id: int, title: str, username: str, text: str) -> None:
+        """Somebody new wrote: the owner decides, with Allow / Block on their phone and an
+        Allow on the desktop. Reported as "I am not getting an option to authorize other
+        people on Telegram": the newcomer was told "the owner can enable it in the Telegram
+        app", and the owner was told nothing."""
+        owner = self._t().get("owner_chat_id") or 0
+        who = f"{title}" + (f" (@{username})" if username else "")
+        name = self.cfg.get("agent_name") or "Aria"
+        if owner and owner != chat_id:
+            try:
+                await self._api("sendMessage", chat_id=owner,
+                                text=(f"📩 {who} wants to talk to {name}. They wrote:\n“{text[:300]}”\n\n"
+                                      f"Allowing them lets them chat with {name} here, under your "
+                                      f"settings and permissions.")[:4000],
+                                reply_markup={"inline_keyboard": [[
+                                    {"text": "✓ Allow", "callback_data": f"who:{chat_id}:1"},
+                                    {"text": "✗ Block", "callback_data": f"who:{chat_id}:0"}]]})
+            except Exception as e:
+                self.store.log("telegram", f"could not ask the owner about {who}: {e}")
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "telegram_request", "chat_id": chat_id, "title": who,
+                                  "text": text[:160]})
+
+    async def decide_newcomer(self, chat_id: int, allow: bool) -> str:
+        """The owner's answer, from a button or the desktop: one door for both."""
+        self.store.tg_set_allowed(chat_id, 1 if allow else 0)
+        self.store.log("telegram", f"{'allowed' if allow else 'blocked'} chat {chat_id} (asked the owner)",
+                       {"chat_id": chat_id, "allowed": allow})
+        if allow:
+            name = self.cfg.get("agent_name") or "Aria"
+            await self.send(f"▲ You're in. I'm {name}. Send me anything; /clear resets our session.", chat_id)
+        with contextlib.suppress(Exception):
+            await self.broadcast({"type": "telegram_chats"})
+        return "allowed" if allow else "blocked"
+
     async def _handle_callback(self, cq: dict):
         if cq.get("from", {}).get("id") != (self._t().get("owner_chat_id") or 0):
             return
@@ -555,6 +661,19 @@ class TelegramBridge(usersmod.Scoped):
             await self._api("answerCallbackQuery", callback_query_id=cq["id"])
         except Exception:
             pass
+        if data.startswith("who:"):
+            # the owner's answer about somebody new (ask_owner_about)
+            parts = data.split(":")
+            try:
+                said = await self.decide_newcomer(int(parts[1]), parts[2] == "1")
+            except (ValueError, IndexError):
+                return
+            msg = cq.get("message", {})
+            if msg:
+                with contextlib.suppress(Exception):
+                    await self._api("editMessageText", chat_id=msg["chat"]["id"], message_id=msg["message_id"],
+                                    text=(msg.get("text") or "")[:3900] + f"\n\n→ {said}")
+            return
         if data.startswith("br:"):
             # a Brief button: Done / Later / a decision — the same act() the
             # desktop and `bento brief` use; a decision starts the agent's turn
@@ -665,8 +784,12 @@ class TelegramBridge(usersmod.Scoped):
                         pass
                     self.store.log("telegram", f"polling as @{self.bot_username}")
                     await self.publish_commands()
+                    await self.say_up()
                 self.status = "polling"
                 self.error = ""
+                if time.time() - getattr(self, "_seen_at", 0) > self.ALIVE_EVERY:
+                    self._seen_at = time.time()
+                    self._alive_write(seen=self._seen_at)
                 updates = await self._api("getUpdates", offset=self._offset, timeout=50,
                                           allowed_updates=["message", "channel_post",
                                                            "callback_query"])

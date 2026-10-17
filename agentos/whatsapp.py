@@ -341,6 +341,25 @@ class WhatsAppBridge(usersmod.Scoped):
         self.store.log("whatsapp", f"→ sent a file: {p.name}")
         return "sent via WhatsApp"
 
+    async def send_stage(self, cid: str, reply: str, wa_id: str) -> None:
+        """The answer's story as one page after the reply, as Telegram sends it (stage.py).
+        Never fatal: the reply has already gone."""
+        try:
+            from . import stage as stagemod, executors as _ex
+            ans = stagemod.last_question(self.store, cid)
+            n = len(stagemod.story(self.store, cid, ans)) if ans else 0
+            if not n:
+                return
+            p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
+                                      answer=reply, agent=self.cfg.get("agent_name") or "")
+            if p:
+                res = await self.send_document(str(p), f"▶ The story, {n} scene{'s' if n != 1 else ''}. "
+                                                       f"Open it to watch.", wa_id)
+                if str(res).startswith("[error]"):
+                    self.store.log("whatsapp", f"could not send the story: {res}")
+        except Exception as e:
+            self.store.log("whatsapp", f"could not send the story: {e}")
+
     async def send_files(self, reply: str, wa_id: str) -> None:
         """The files a reply names, after it, as Telegram does (whatsapp.files = false
         switches it off). A file too big to send is named with where it is instead."""
@@ -550,7 +569,7 @@ class WhatsAppBridge(usersmod.Scoped):
         cid = chat.get("conversation_id")
         if cid and any(c["id"] == cid for c in self.store.list_conversations(limit=500)):
             return cid
-        cid = self.store.create_conversation(f"WhatsApp · {chat.get('name') or chat['wa_id']}")
+        cid = self.store.create_conversation(f"WhatsApp · {chat.get('name') or chat['wa_id']}", origin="whatsapp")
         self.store.wa_set_conversation(chat["wa_id"], cid)
         return cid
 
@@ -663,6 +682,7 @@ class WhatsAppBridge(usersmod.Scoped):
                       surface="whatsapp", conversation_id=cid)
         await self.send(reply, wa_id)
         await self.send_files(reply, wa_id)
+        await self.send_stage(cid, reply, wa_id)
         await self.broadcast({"type": "whatsapp_out", "conversation_id": cid,
                               "text": reply[:160]})
         from . import knowledge
