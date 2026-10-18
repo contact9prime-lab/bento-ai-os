@@ -47,6 +47,7 @@ Three faces (per CLAUDE.md):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import hmac
 import time
@@ -604,19 +605,29 @@ class WhatsAppBridge(usersmod.Scoped):
         # phone must see what the thread saw at the desk, tool traces included. A
         # bespoke window here is how one conversation ends up with two memories of
         # itself.
-        history, _info = await _history.build(self.store, cid, self.cfg,
-                                              self.cfg.get("default_model", ""))
+        # Saved and shown first; the rebuild (which may compact with a model call) only for
+        # the built-in loop, which reads it. Telegram's reason, measured there.
         self.store.add_message(cid, "user", text)
         exec_meta: dict = {}          # the executor session a forwarded reply was given in
         await self.broadcast({"type": "whatsapp_in", "conversation_id": cid,
                               "text": text[:160]})
-        history.append({"role": "user", "content":
-                        "[Message arriving via WhatsApp — the user is away from the "
-                        "machine. Reply in plain text (no markdown tables). Keep it "
-                        "short enough to read on a phone.]\n\n" + text})
+        note = ("[Message arriving via WhatsApp — the user is away from the "
+                "machine. Reply in plain text (no markdown tables). Keep it "
+                "short enough to read on a phone.]\n\n")
 
-        async def emit(_ev):
-            pass
+        async def built_history():
+            h, _info = await _history.build(self.store, cid, self.cfg, self.cfg.get("default_model", ""))
+            if h and h[-1].get("role") == "user" and str(h[-1].get("content") or "").strip() == text:
+                h = h[:-1]
+            return h + [{"role": "user", "content": note + text}]
+
+        async def emit(ev):
+            # the turn is the screen's too (the Office, Chat), as Telegram's is
+            if isinstance(ev, dict) and str(ev.get("name") or "").startswith("mcp__bento__"):
+                return
+            if isinstance(ev, dict) and ev.get("type"):
+                with contextlib.suppress(Exception):
+                    await self.broadcast({**ev, "conversation_id": cid, "surface": "whatsapp"})
 
         async def approver(name, args, reason, offer=None) -> bool:
             # full autonomy answers for you — except a step that must be a
@@ -630,6 +641,19 @@ class WhatsAppBridge(usersmod.Scoped):
         from . import executors as execmod
         from . import fabric as fabricmod
         engine = execmod.resolve_engine(self.cfg)
+        await emit({"type": "turn_start", "model": engine if engine != "aria" else model})
+        try:
+            return await self._turn_body(chat, wa_id, text, cid, emit, approver, model, engine,
+                                         exec_meta, built_history)
+        finally:
+            await emit({"type": "turn_end"})
+
+    async def _turn_body(self, chat, wa_id, text, cid, emit, approver, model, engine,
+                         exec_meta, built_history):
+        from . import knowledge as _k
+        from . import usage as _usage
+        from . import executors as execmod
+        from . import fabric as fabricmod
         mention = (fabricmod.parse_mention(self.store, text)
                    if getattr(self.toolbox, "fabric", None) else None)
         dept_hit = None
@@ -663,7 +687,7 @@ class WhatsAppBridge(usersmod.Scoped):
             _k.turn_started()
             try:
                 reply, run = await execmod.forward(
-                    engine, text, self.cfg, execmod.default_workspace(self.cfg),
+                    engine, text, self.cfg, execmod.default_workspace(self.cfg), emit=emit,
                     session_id=self.store.exec_session(cid),
                     prior=self.store.get_messages(cid)[:-1],
                     team={"toolbox": self.toolbox, "store": self.store, "approver": approver,
@@ -682,7 +706,7 @@ class WhatsAppBridge(usersmod.Scoped):
                           conversation_id=cid, surface="whatsapp")
             _k.turn_started()
             try:
-                result = await agent.run(history)
+                result = await agent.run(await built_history())
             finally:
                 _k.turn_ended()
             reply = result["content"] or "(done — no text output)"

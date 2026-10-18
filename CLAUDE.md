@@ -1725,6 +1725,13 @@ after a boot with nobody signed in no account's bot polled. One poller per token
 `/allow` on a chat that never wrote goes on the channel's allow-list (`channels.save`), because
 `tg_set_allowed` only updates a row that exists.
 
+**A phone turn is saved first and shown like a desk turn** (`TelegramBridge._handle` `built_history`/`emit`,
+`WhatsAppBridge._turn_in`; `tests/test_telegram_turns.py`). The history rebuild (which can compact with a model
+call) ran before the message was saved, on every engine: measured 2 min 45 s on the owner's long thread, which
+read as "queuing them" beside a newer chat. Now the message is saved, then only the built-in loop rebuilds. Every
+event goes to the screens with the conversation id (turn_start, steps, turn_end before telegram_out), minus the
+CLI's own `mcp__bento__*` copies, so the Office and Chat see a phone turn.
+
 ## WhatsApp is one channel with two transports
 
 `conf(cfg)["mode"]` decides which is live, and they fail in opposite directions:

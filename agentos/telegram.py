@@ -493,19 +493,44 @@ class TelegramBridge(usersmod.Scoped):
             # must see what the thread saw at the desk, tool traces included. A
             # bespoke last-30 window here is how one conversation ends up with
             # two different memories of itself.
-            from . import history as _history
-            history, _hinfo = await _history.build(
-                self.store, cid, self.cfg, self.cfg.get("default_model", ""))
+            # Saved and shown FIRST. The history rebuild below can compact a long thread with
+            # a model call; it ran before the message was saved, so a long thread sat for
+            # minutes looking queued while a newer chat was answered (measured on the owner's
+            # machine: 2 min 45 s). And it runs only for the built-in loop, which reads it: a
+            # forwarded brain resumes its own session.
             self.store.add_message(cid, "user", text)
             exec_meta: dict = {}      # the executor session a forwarded reply was given in
             await self.broadcast({"type": "telegram_in", "conversation_id": cid, "text": text[:160]})
-            history.append({"role": "user", "content":
-                            "[Message arriving via Telegram — the user is away from the machine. "
-                            "Reply in plain text (no markdown tables). No one can click approval "
-                            "dialogs, so risky actions only run in full autonomy.]\n\n" + text})
+            note = ("[Message arriving via Telegram — the user is away from the machine. "
+                    "Reply in plain text (no markdown tables). No one can click approval "
+                    "dialogs, so risky actions only run in full autonomy.]\n\n")
 
-            async def emit(_ev):
-                pass
+            async def built_history():
+                from . import history as _history
+                h, _info = await _history.build(self.store, cid, self.cfg, self.cfg.get("default_model", ""))
+                if h and h[-1].get("role") == "user" and str(h[-1].get("content") or "").strip() == text:
+                    h = h[:-1]          # the message just saved goes in once, with its note
+                return h + [{"role": "user", "content": note + text}]
+
+            # The turn is the screen's too: the Office lights the lead's desk, a step shows
+            # as a burst and a hand-over as a walk, and Chat streams it when this thread is
+            # open. Reported as "when I'm sending the message with Telegram the office is
+            # generally quiet": every event of a phone turn was dropped here.
+            async def emit(ev):
+                # the CLI's own copy of a tool this OS ran is dropped: the gate sent one
+                if isinstance(ev, dict) and str(ev.get("name") or "").startswith("mcp__bento__"):
+                    return
+                if isinstance(ev, dict) and ev.get("type"):
+                    with contextlib.suppress(Exception):
+                        await self.broadcast({**ev, "conversation_id": cid, "surface": "telegram"})
+            ended = False
+
+            async def end_turn():
+                nonlocal ended
+                if not ended:
+                    ended = True
+                    with contextlib.suppress(Exception):
+                        await self.broadcast({"type": "turn_end", "conversation_id": cid})
 
             async def approver(name, args, reason, offer=None) -> bool:
                 # full autonomy answers for you — except a step that must be a
@@ -518,6 +543,9 @@ class TelegramBridge(usersmod.Scoped):
             model = self.cfg.get("default_model") or ""
             from . import fabric as fabricmod
             from . import knowledge as _k
+            from . import executors as _ex
+            _engine = _ex.resolve_engine(self.cfg)
+            await emit({"type": "turn_start", "model": _engine if _engine != "aria" else model})
             mention = fabricmod.parse_mention(self.store, text) if self.toolbox.fabric else None
             dept_hit = None
             if not mention and self.toolbox.fabric:
@@ -548,7 +576,7 @@ class TelegramBridge(usersmod.Scoped):
                         self._runs[chat_id] = execmod.Run(engine=engine)
                         reply, _run = await execmod.forward(
                             engine, text, self.cfg,
-                            execmod.default_workspace(self.cfg),
+                            execmod.default_workspace(self.cfg), emit=emit,
                             session_id=self.store.exec_session(cid),
                             prior=self.store.get_messages(cid)[:-1],
                             # the team door: "build me a tool" from the phone reaches
@@ -570,7 +598,7 @@ class TelegramBridge(usersmod.Scoped):
                                   conversation_id=cid, surface="telegram")
                     _k.turn_started()
                     try:
-                        result = await agent.run(history)
+                        result = await agent.run(await built_history())
                     finally:
                         _k.turn_ended()
                     reply = result["content"] or "(done — no text output)"
@@ -583,12 +611,15 @@ class TelegramBridge(usersmod.Scoped):
             await self.send_files(reply, chat_id)
             await self.send_stage(cid, reply, chat_id)
             await self.send_talk(_pg.close(cid, tap), chat_id)
+            await end_turn()
             await self.broadcast({"type": "telegram_out", "conversation_id": cid, "text": reply[:160]})
             from . import knowledge
             knowledge.schedule_extraction(self.cfg, self.store, cid, text, reply, self.broadcast)
         except Exception as e:
             await self.send(f"[error] {type(e).__name__}: {e}", chat_id)
         finally:
+            with contextlib.suppress(Exception):
+                await end_turn()
             self._busy_chats.discard(chat_id)
             self._runs.pop(chat_id, None)
             self._busy = bool(self._busy_chats)

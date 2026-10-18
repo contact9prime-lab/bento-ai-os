@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.55 — 2026-10-18
+
+**Two people on one Telegram bot are answered side by side, and the Office moves with a phone turn.** A message
+is saved and shown the moment it arrives. A long thread's history used to be rebuilt first, with a model call to
+shorten it, so it waited minutes while a newer, shorter chat was answered; on Claude Code that rebuild wasn't even
+used. And a turn from Telegram or WhatsApp now reaches your screens like a desktop chat: the lead's desk lights up,
+each step shows in the Office, and Chat streams it when that thread is open.
 ## 0.6.54 — 2026-10-18
 
 **The Brief comes to you on a schedule, and plays as a story.** At the times you choose (8:00 by default) it
