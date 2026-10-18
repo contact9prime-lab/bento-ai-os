@@ -65,7 +65,7 @@ CORE = {
     "find_tools", "use_skill",
     # hand it to the team: the prompt names the specialists (executors.team_note), and a
     # narrowed set that dropped `delegate` would name people the lead cannot reach
-    "delegate", "huddle", "department_task",
+    "delegate", "huddle", "department_task", "linked_teams",
     # and when nobody has what a step needs: build one, or ask the person for the ability
     "create_subagent", "request_capability",
 }

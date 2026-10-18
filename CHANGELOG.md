@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.50 — 2026-10-18
+
+**Your lead hands work to a linked team, and you can watch it go.** Aria can now give a whole task to the other
+team's lead (`lead@team`), who works it with their own specialists and departments, or one part to one of their
+agents (`name@team`). She's told which teams are linked and can list who on each she may ask. The first
+hand-over is asked, and *Allow & remember* makes it a rule in Permissions. The hand-over and the answer show in
+Chat, the Office (a paper out by the door and back) and the Telegram comic strip.
+
+**A machine with no agents can offload to another.** A link can now let the other team hand whole tasks to your
+lead: tick it on the link in Settings, or `bento link allow <team> lead`. Your lead works their task with your team
+only: it can't read your files or run your shell for them, and anything that needs a person comes to you.
+
 ## 0.6.49 — 2026-10-18
 
 **Every account's Telegram works after a restart, with nobody signed in.** Each account's bot used to start

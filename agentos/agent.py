@@ -885,6 +885,9 @@ class Agent:
             # rebuilt per step rather than once per turn
             self._pinned_tools |= set(toolscope.match_names(
                 self.toolbox.schemas(), str(args.get("need") or "")))
+        if name == "delegate":
+            # the loop's own fields are the loop's: a model's `_cross` or `_taint` is dropped
+            args = {k: v for k, v in args.items() if not str(k).startswith("_")}
         if name in ("remember", "delegate", "huddle") and self.conversation_id:
             # session scope flows through: saves attach to this conversation and
             # delegated subagents inherit its session memory
@@ -941,6 +944,10 @@ class Agent:
                     "_run_id": getattr(self, "run_id", "") or "",
                     "_conv": self.conversation_id or "", "_space": self.space_id or "",
                     "_taint": list(self.taint)}
+        elif name == "delegate" and "@" in str(args.get("subagent") or "") and not self.flow:
+            # the lead's hand-over to another team: decided as the matrix's question
+            # (policy.action_of reads _cross) and carrying what this turn has read
+            args = {**args, "_taint": list(self.taint), "_cross": True}
         elif name == "brief_item":
             # which mission and run wrote it: injected from the agent, never an
             # argument — a model must not be able to write into another mission's items

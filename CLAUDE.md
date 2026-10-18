@@ -2797,6 +2797,22 @@ resource `agent|action|scope`. Five things keep it narrow (`tests/test_team_stan
   by some other door still cannot cover what the save would have refused.
 - **`forget_link_grants` revokes them with the cells**, because they are `team:<label>/*` rows.
 
+**The lead hands work across a link, and a link may allow the other side's lead**
+(`delegate` to `name@team`/`lead@team`, `fabric.LEAD`/`LEAD_RESOURCE`, `ControlPlane._lead_for_link`,
+`executors.linked_note`/`LINKED_LEAD_TOOLS`, the `linked_teams` tool; `tests/test_linked_handoff.py`).
+Reported as "I linked the two machines but I can't see the hand-over", and "a 0-agent machine just
+offloads". Four rules:
+- **The lead's cross-team delegate is the matrix's question** (`_cross`, injected by the loop only
+  outside a flow, read by `policy.action_of`): agent.message, asked first, remembered as a cell. A
+  mission's delegate to its linked roster member stays `agent.invoke`, which its consent granted.
+- **The lead is a cell, `agent:main`** (`lead` in `link_access`/`set_link_access`, the roster, the
+  Settings tick). A machine with no specialists could be allowed nobody before.
+- **The other side's lead manages and touches nothing**: `LINKED_LEAD_TOOLS` only, a CLI with
+  `tools=()` and the team door narrowed by `only`, taint on the door's Agent, approvals to the link
+  owner's screens or refused. Kept as a `↔ <link>` conversation there.
+- **The Office draws a hand-over to a name it can't find** (`officeMsg`): paper out by the door, the
+  answer back on paper. It returned on any unknown name before, so nothing crossing a link showed.
+
 **A mission may put `agent@link` on its roster.** `flows.validate` needs the link to exist
 (`teamlink.find` under the current user); `declared_grants` writes `agent.invoke` with a
 sentence naming the other team and NO envelope for that member (it runs under their gate);
