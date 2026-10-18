@@ -482,9 +482,25 @@ var OB_WIRE={
     };
   },
 
-  company(){
+  company(s){
     const out=$('#ob-co-out'),desc=$('#ob-co-desc'),goal=$('#ob-co-goal');
     $('#ob-co-office').onclick=()=>{obClose();openApp('office')};
+    /* Made: say what exists and where it lives, rather than an empty form that reads as
+       if nothing happened. Drafting again is still offered, for a second look. */
+    if(s&&s.status==='done'&&!OB.coDraft){
+      const form=[...document.querySelectorAll('.ob-body > .job-q, .ob-body > .job-go')];
+      // style, not `hidden`: .job-q and .job-go set display, which outranks the attribute
+      form.forEach(el=>el.style.display='none');
+      out.textContent='';
+      const card=sEl('div','ob-card');
+      card.append(sEl('b','','Your company is set up'),
+        sEl('span','',(s.detail||'').replace(/[.…]$/,'')+'. Each desk is off until you switch it on in the Office.'));
+      const go=sEl('div','job-go'),open=sEl('button','wiz-next','Open the Office'),again=sEl('button','endbtn','Draft it again');
+      open.onclick=()=>{obClose();openApp('office')};
+      again.onclick=()=>{out.textContent='';form.forEach(el=>el.style.display='');desc.focus()};
+      go.append(open,again);out.append(card,go);
+      return;
+    }
     // kept across the refresh that ticks the rail, like the fork's arrival card
     const draw=d=>{
       const pv=d.preview||{};

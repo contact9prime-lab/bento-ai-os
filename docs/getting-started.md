@@ -21,6 +21,10 @@ The desktop opens at **http://127.0.0.1:8321**, and on a fresh install it opens 
   look over, and **Make it** creates them. It adds your crew's office and the accounts step.
 - A machine with **a small screen of its own** (a kiosk, a Pi) adds the screen and wake-word steps.
 
+![The first setup step, "One agent, or a company?": two cards, One agent and A company, then "Mostly for" with Just me, A founder, A coder and A consultant, and a box for a machine with a small screen of its own](screenshots/onboarding-0-question.png)
+
+![The "Set up your company" step after Draft it: the description "A bookkeeping service for dental clinics in Pune", and the drafted company with its departments and the people in each, 20 new agents and 7 desks, each off until switched on](screenshots/onboarding-company-drafted.png)
+
 The other steps are never gone: **＋ more steps you can do later** at the bottom of the rail shows
 them all, and each still lives in Settings. `bento setup` asks the same question, and `a` there
 shows every step.

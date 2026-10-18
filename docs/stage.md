@@ -34,8 +34,12 @@ Bars, a tower's height and a crowd's size are numbers, and need a source like a 
 how big an answer deserves: no scenes for a plain fact, a chart for a comparison, and at most one film,
 at the start or the end of a big story.
 
+![A film on the Stage, shot 3 of 4: four 3D bars rising for revenue in years one to four, each labelled with its value, and the line "Revenue climbs year on year" over the picture](screenshots/stage-film.png)
+
 Without 3D graphics, with reduced motion on, and on your phone, a film is a storyboard: one card per
 shot with its line.
+
+![The same film on a phone with reduced motion: a storyboard of cards, "1 · 5s · push, It starts in one small building" and "2 · 5s · orbit, 1,000, The first thousand customers find it"](screenshots/stage-film-storyboard.png)
 
 ## Watching a story
 

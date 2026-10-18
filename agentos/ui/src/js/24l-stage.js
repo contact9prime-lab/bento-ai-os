@@ -959,7 +959,7 @@ async function stageFilm(art,sc){
     bars(g,sh){const it=sh.items||[],n=it.length,w=2.2,tags=[];
       const bs=it.map((x,i)=>{const b=box(w,1,w,STAGE_FILM_COL[i%8]);b.position.x=(i-(n-1)/2)*(w+1.2);g.add(b);
         const t=new T.Object3D();g.add(t);tags.push([t,x.label+' '+stageWithUnit(stageFmt(x.value),sh.unit)]);return [b,t,Math.abs(x.value)/H*12]});
-      return {r:Math.max(22,n*4.2),y:5,tags,tick:u=>bs.forEach(([b,t,h],k)=>{const e=Math.min(1,Math.max(0,u*1.5-k*.08));const v=1-Math.pow(1-e,3);
+      return {r:Math.max(32,n*5.5),y:6,tags,tick:u=>bs.forEach(([b,t,h],k)=>{const e=Math.min(1,Math.max(0,u*1.5-k*.08));const v=1-Math.pow(1-e,3);
         b.scale.y=Math.max(.01,h*v);b.position.y=h*v/2;t.position.set(b.position.x,h*v+.8,0)})}},
     rocket(g){const pad=box(6,.6,6,0x9e9e9e);pad.position.y=.3;g.add(pad);
       const tw=box(.6,14,.6,0xd32f2f);tw.position.set(-2.4,7,0);g.add(tw);

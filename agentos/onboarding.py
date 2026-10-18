@@ -305,7 +305,10 @@ def state(cfg: dict, store=None, show_all: bool = False) -> dict:
             except Exception:
                 depts = []
             names = [d["name"] for d in depts]
-            return ("done", ", ".join(names[:3])) if names else ("todo", "")
+            if not names:
+                return "todo", ""
+            return "done", (f"{len(names)} departments · " if len(names) > 1 else "") + \
+                ", ".join(names[:3]) + ("…" if len(names) > 3 else "")
         if sid == "name":
             ok, n = _named(cfg)
             return ("done", n) if ok else ("todo", "")

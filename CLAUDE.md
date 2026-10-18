@@ -20,6 +20,11 @@ rediscover, not style preferences.
   choice. `bento version bump` prints a reminder when it is older than `STALE_DAYS`. It is
   a SELECTION list: never rewrite anybody's saved models (`providers.<p>.models`,
   `default_model`, an agent's pin). The shipped prices in `usage.py` move with it.
+- **Every feature comes with snapshots.** Whatever is built, the work ends with screenshots of it running:
+  each new screen at 1440x900 and on a 390px phone, the states that matter (before and after an action,
+  a fallback), and the terminal face as a rendered transcript. Taken from a real server on a throwaway
+  home, never mocked, and sent to the owner with the PR; the ones a guide needs go in `docs/screenshots`.
+  Looking at them is part of checking the work: they have caught layout bugs every test passed.
 - **Every video is 9:16 and comes with its Instagram post.** 1080×1920, with sound, and
   delivered with a caption (a hook line, what it shows, a call to action) and its hashtags,
   ready to paste. That holds for every reel, demo or walk-through video, asked for or not.
