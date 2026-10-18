@@ -10405,8 +10405,22 @@ async def api_unshare(kind: str, slug: str):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/onboarding")
-async def api_onboarding():
-    return onboardmod.state(state["cfg"], state["store"])
+async def api_onboarding(all: int = 0):
+    return onboardmod.state(state["cfg"], state["store"], show_all=bool(all))
+
+
+@app.post("/api/onboarding/shape")
+async def api_onboarding_shape(body: dict):
+    """The first answer: one agent or a company, what it's for, and whether this
+    machine has a screen of its own. It decides which steps the rest of setup asks."""
+    b = body or {}
+    try:
+        onboardmod.set_shape(state["cfg"], str(b.get("shape") or ""), str(b.get("use") or ""),
+                             bool(b.get("screen")))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    return onboardmod.state(state["cfg"], state["store"], show_all=bool(b.get("all")))
 
 
 @app.post("/api/onboarding/skip")

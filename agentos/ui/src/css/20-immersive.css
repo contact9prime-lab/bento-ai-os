@@ -267,7 +267,7 @@ body.immersive .psw input:checked + i{background:var(--acc)}
 body.immersive .psw input:checked + i::after{transform:translateX(18px);background:#fff}
 /* segmented control: a glass pill with a raised thumb */
 body.immersive .seg{background:color-mix(in srgb,var(--txt) 7%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent);border-radius:10px;padding:3px;gap:2px}
-body.immersive .seg button{padding:5px 13px;border-radius:8px;font-size:var(--fs-sm);font-weight:600;min-height:28px}
+body.immersive .seg button{padding:5px 13px;border-radius:8px;font-size:var(--fs-sm);font-weight:600;min-height:max(28px,var(--tap,0px))}
 body.immersive .seg button.on{background:color-mix(in srgb,var(--txt) 15%,transparent);box-shadow:0 1px 3px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.12)}
 /* cards and list rows */
 body.immersive .catcard,body.immersive .item,body.immersive .provbox,body.immersive .stat,body.immersive .teamcard,body.immersive .sawrow,

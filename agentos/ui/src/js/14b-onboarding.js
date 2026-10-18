@@ -22,7 +22,7 @@
    whoever opens the second one.
 
    `var`, not `let` — concatenated bundle, and 14-docs-setup calls into it. */
-var OB={state:null,open:'',busy:false,done:null,host:null};
+var OB={state:null,open:'',busy:false,done:null,host:null,all:false,coDraft:null};
 
 /* State is state only if it HAS STEPS. A server older than these routes answers
    404 with a JSON body, `{"detail":"Not Found"}` parses fine and is truthy, so the
@@ -32,7 +32,7 @@ var OB={state:null,open:'',busy:false,done:null,host:null};
    next. Check the status and the shape, not just that something came back. */
 async function obLoad(){
   try{
-    const r=await fetch('/api/onboarding');
+    const r=await fetch('/api/onboarding'+(OB.all?'?all=1':''));
     const d=r.ok?await r.json():null;
     OB.state=(d&&Array.isArray(d.steps)&&d.steps.length)?d:null;
   }catch(e){OB.state=null}
@@ -140,19 +140,27 @@ function obRender(){
     ${/* A blocked step is dimmed, not disabled: the row still opens, and the pane
           says what it needs and where. `disabled` answered a tap with nothing —
           on a phone, indistinguishable from the OS being broken. */''}
-    ${S.steps.map(s=>`<button class="ob-item ${s.status}${s.blocked.length?' blocked':''}${s.id===OB.open?' on':''}"
+    ${S.steps.map(s=>`<button class="ob-item ${s.status}${s.blocked.length?' blocked':''}${s.extra?' extra':''}${s.id===OB.open?' on':''}"
         data-step="${esc(s.id)}">
       <span class="ob-tick">${s.status==='done'?'✓':s.status==='skipped'?'–':esc(s.icon)}</span>
       <span class="ob-t">${esc(s.title)}
         ${s.detail?`<em>${esc(s.detail)}</em>`
           :s.blocked.length?`<em>needs ${esc(s.blocked.join(', '))}</em>`:''}</span>
     </button>`).join('')}
+    ${/* The steps the first answer left out are one tap away, never gone: each still
+          lives in Settings, and somebody with one agent may want a channel or a crew. */''}
+    ${(S.more||[]).length?`<button class="ob-more" id="ob-more">${OB.all
+        ?'Only the steps for my setup'
+        :`＋ ${S.more.length} more step${S.more.length===1?'':'s'} you can do later`}</button>`:''}
     ${inWin
       ? `<button class="ob-leave" id="ob-full">Open it full screen</button>
          <button class="ob-leave" id="ob-leave">Close</button>`
       : `<button class="ob-leave" id="ob-leave">${
            S.finished?'Done — take me in →':'Finish later'}</button>`}`;
   rail.querySelectorAll('.ob-item').forEach(b=>b.onclick=()=>{OB.open=b.dataset.step;obRender()});
+  const more=rail.querySelector('#ob-more');
+  if(more)more.onclick=async()=>{OB.all=!OB.all;await obLoad();
+    if(!obStep(OB.open))OB.open=OB.state.next||OB.state.steps[0].id;obRender()};
   /* Closing a WINDOW is not "I have finished setting this machine up". Marking it
      complete here would mean somebody who opened the app to look around, on a
      machine still half configured, silently never saw the first-run screen again. */
@@ -246,7 +254,41 @@ async function obRefresh(advance){
 }
 
 /* ---------- the panes ---------- */
+/* The first question's answers for "mostly for". The ids are the Missions catalogue's
+   personas (jobs.PERSONAS), so this answer also orders the missions offered later. */
+var OB_USES=[['everyone','Just me'],['founder','A founder'],['coder','A coder'],['consultant','A consultant']];
+
 var OB_PANES={
+  /* One agent or a company, asked first, because it decides how long the rest is:
+     one agent is eight steps, a company swaps "build a specialist" and "give it a
+     mission" for its departments drafted from a sentence. */
+  shape:()=>{const sh=(OB.state&&OB.state.shape)||{};
+    return `<div class="job-cards ob-shape">
+      <button class="job-card${sh.shape==='one'?' on':''}" data-shape="one"><span class="job-mark">◉</span>
+        <b>One agent</b><span class="job-blurb">An assistant that answers, keeps an eye on
+          things for you and reaches your phone. The short setup.</span></button>
+      <button class="job-card${sh.shape==='company'?' on':''}" data-shape="company"><span class="job-mark">▦</span>
+        <b>A company</b><span class="job-blurb">Departments of agents with a lead, a desk each
+          and sign-offs. You describe it in a sentence.</span></button>
+    </div>
+    <div class="job-q"><span>Mostly for</span>
+      <div class="seg ob-use">${OB_USES.map(([id,l])=>`<button data-use="${id}" class="${
+        (sh.use||'')===id?'on':''}">${esc(l)}</button>`).join('')}</div></div>
+    <label class="ob-check"><input type="checkbox" id="ob-screen"${sh.screen?' checked':''}>
+      <span>This machine has a small screen of its own, like a kiosk or a Pi</span></label>
+    <div class="job-go"><button class="wiz-next" id="ob-shape-go">Continue</button></div>`},
+
+  /* The company in one step: drafted from a sentence by the machine's brain, shown
+     whole, made only on "Make it". The same draft, preview and apply the Office's
+     Company panel uses, so there is one company setup, not two. */
+  company:()=>`<label class="job-q"><span>What does your company do?</span>
+      <textarea id="ob-co-desc" rows="3" placeholder="A bookkeeping service for dental clinics in Pune"></textarea></label>
+    <label class="job-q"><span>What is it trying to achieve? <em>optional</em></span>
+      <input id="ob-co-goal" placeholder="Sign ten clinics this quarter" autocomplete="off"></label>
+    <div class="job-go"><button class="wiz-next" id="ob-co-draft">Draft it</button>
+      <button class="endbtn" id="ob-co-office">Do it in the Office instead</button></div>
+    <div id="ob-co-out"></div>`,
+
   name:()=>`<label class="job-q"><span>What should it be called?</span>
       <input id="ob-name" value="${esc((typeof cfg!=='undefined'&&cfg.agent_name)||'Aria')}"
         spellcheck="false" autocomplete="off">
@@ -419,6 +461,78 @@ var OB_CLOUD=[
 
 /* ---------- the wiring ---------- */
 var OB_WIRE={
+  shape(){
+    const sh=(OB.state&&OB.state.shape)||{};
+    let pick=sh.shape||'',use=sh.use||'';
+    const cards=[...document.querySelectorAll('.ob-shape .job-card')];
+    cards.forEach(c=>c.onclick=()=>{pick=c.dataset.shape;
+      cards.forEach(x=>x.classList.toggle('on',x===c))});
+    const uses=[...document.querySelectorAll('.ob-use button')];
+    uses.forEach(b=>b.onclick=()=>{use=b.dataset.use;
+      uses.forEach(x=>x.classList.toggle('on',x===b))});
+    $('#ob-shape-go').onclick=async()=>{
+      if(!pick)return obMsg('choose one agent or a company','warn');
+      obMsg('…');
+      let d=null;
+      try{d=await (await fetch('/api/onboarding/shape',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({shape:pick,use,screen:$('#ob-screen').checked,all:OB.all})})).json()}catch(e){}
+      if(!d||d.error)return obMsg((d&&d.error)||'could not save that','warn');
+      OB.state=d;OB.open=d.next||'name';obRender();
+    };
+  },
+
+  company(){
+    const out=$('#ob-co-out'),desc=$('#ob-co-desc'),goal=$('#ob-co-goal');
+    $('#ob-co-office').onclick=()=>{obClose();openApp('office')};
+    // kept across the refresh that ticks the rail, like the fork's arrival card
+    const draw=d=>{
+      const pv=d.preview||{};
+      out.innerHTML=`<div class="ob-card ob-co">
+          <b>${esc((d.plan.company||{}).name||'Your company')}</b>
+          <span class="mut">${esc(d.how==='brain'?'Designed by '+(d.who||'your brain'):(d.said||'From the catalogue'))}</span>
+          ${(pv.departments||[]).map(x=>`<span><b>${esc(x.name)}</b> · ${
+            (x.people||[]).map(p=>esc(p.name)+(p.lead?' (head)':'')).join(', ')}</span>`).join('')}
+          <span class="mut">${pv.new||0} new agents · ${pv.desks||0} desks, each off until you switch it on${
+            (pv.work&&pv.work.missions||[]).length?' · '+pv.work.missions.length+' missions':''}</span>
+          ${(pv.notes||[]).map(n=>`<span class="mut">${esc(n)}</span>`).join('')}
+        </div>
+        <div class="job-go">${pv.fits===false?'':'<button class="wiz-next" id="ob-co-make">Make it</button>'}
+          <button class="endbtn" id="ob-co-again">Draft it again</button></div>`;
+      const mk=$('#ob-co-make');
+      if(mk)mk.onclick=async()=>{
+        mk.disabled=true;obMsg('making your company…');
+        let r=null;
+        try{r=await (await fetch('/api/company/apply',{method:'POST',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:d.plan})})).json()}catch(e){}
+        mk.disabled=false;
+        if(!r||r.error)return obMsg((r&&r.error)||'could not make it','warn');
+        OB.coDraft=null;
+        obMsg(`${(r.departments||[]).length} departments, ${(r.made||[]).length} new agents`,'ok');
+        setTimeout(()=>obRefresh(true),900);
+      };
+      $('#ob-co-again').onclick=()=>{OB.coDraft=null;out.innerHTML='';desc.focus()};
+    };
+    if(OB.coDraft){desc.value=OB.coDraft.desc||'';goal.value=OB.coDraft.goal||'';draw(OB.coDraft)}
+    $('#ob-co-draft').onclick=async()=>{
+      const v=desc.value.trim();
+      if(v.length<3)return obMsg('say what the company does','warn');
+      const btn=$('#ob-co-draft');btn.disabled=true;
+      obMsg('drafting it, this can take a minute…');out.innerHTML='';
+      let d=null;
+      try{d=await (await fetch('/api/company/draft',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({description:v,objective:goal.value.trim()})})).json()}catch(e){}
+      btn.disabled=false;
+      if(!d||d.error)return obMsg((d&&d.error)||'could not draft it','warn');
+      obMsg('');
+      OB.coDraft={...d,desc:v,goal:goal.value.trim()};
+      // the pane may have been redrawn while the draft was out: look the box up again
+      if(document.getElementById('ob-co-out'))draw(OB.coDraft);
+    };
+    desc.focus();
+  },
+
   name(){
     const go=$('#ob-name-go'),inp=$('#ob-name');
     const save=async()=>{

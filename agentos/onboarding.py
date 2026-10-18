@@ -67,6 +67,16 @@ class Step:
 
 
 STEPS: list[Step] = [
+    # First, because the answer decides how long the rest is. Asked for as "at the start
+    # of onboarding ask if they need a company or one agent is sufficient … and simplify
+    # the onboarding based on the use case". One agent gets a short arc; a company gets
+    # its departments drafted from a sentence instead of building a specialist and a
+    # flow by hand. The other steps are still there, one tap away (`state(show_all=True)`).
+    Step("shape", "One agent, or a company?", icon="◇", optional=False,
+         blurb="One agent that does things for you, or a company of departments that "
+               "work together. And what it's mostly for.",
+         produces="a setup that only asks what this answer needs",
+         panel=""),
     Step("name", "Name your agent", icon="▲", optional=False,
          blurb="What you will call it, and what it calls itself.",
          produces="the name on the menu bar and in every reply",
@@ -103,6 +113,16 @@ STEPS: list[Step] = [
                "it lands on your desktop as a real app you can open, keep and edit.",
          produces="an app with your name on it, on the desktop",
          panel="studio"),
+    # The company's whole team in one step: departments, their people and a desk each,
+    # drafted from a sentence by the machine's brain (company.py), previewed, then made.
+    # Only offered to somebody who said company; it replaces "build a specialist" and
+    # "give it a mission" for them, because a company's desks ARE its missions.
+    Step("company", "Set up your company", icon="▦", needs=("model",),
+         blurb="Say what the company does and what it's for. The departments, the people "
+               "in them and their desks are drafted for you to look over before anything "
+               "is made.",
+         produces="departments with people in them, each with a desk you switch on",
+         panel="office"),
     Step("agent", "Build a specialist", icon="◈", needs=("model",),
          blurb="A named agent with its own persona and its own short list of tools. "
                "This is the unit everything else is assembled from.",
@@ -172,6 +192,55 @@ STEPS: list[Step] = [
 
 BY_ID = {s.id: s for s in STEPS}
 
+#: What the first step can say. `use` is the persona the Missions catalogue already
+#: filters by (jobs.PERSONAS), so the answer also orders the missions offered later.
+SHAPES = ("one", "company")
+
+#: The arc for each answer. A step not listed is not hidden for good: `state(show_all=True)`
+#: shows every step, and each one still lives in Settings. Kept as data so the wizard,
+#: `bento setup` and the tests read one table.
+PLANS = {
+    "one": ("shape", "name", "model", "hello", "app", "schedule", "channel", "look"),
+    "company": ("shape", "name", "model", "hello", "company", "crew", "schedule",
+                "channel", "look", "account"),
+}
+#: Added to either plan when the machine has a screen of its own (a kiosk, a Pi).
+SCREEN_STEPS = ("crew", "screen", "voice")
+
+
+def shape_of(cfg: dict) -> dict:
+    """The first step's answer: {shape, use, screen}, or {} when it was never given."""
+    ob = (cfg or {}).get("onboarding") or {}
+    sh = ob.get("shape")
+    if sh not in SHAPES:
+        return {}
+    return {"shape": sh, "use": str(ob.get("use") or ""), "screen": bool(ob.get("screen"))}
+
+
+def plan(cfg: dict) -> list[str]:
+    """The step ids this setup walks, in catalogue order. On a new machine, before the
+    first question is answered, it is that question alone: sixteen steps on the rail is
+    the long setup this replaces. A machine that finished setup before this existed sees
+    every step, as it always did."""
+    sh = shape_of(cfg)
+    if not sh:
+        return [s.id for s in STEPS] if (cfg or {}).get("setup_complete") else ["shape"]
+    want = set(PLANS[sh["shape"]]) | (set(SCREEN_STEPS) if sh["screen"] else set())
+    return [s.id for s in STEPS if s.id in want]
+
+
+def set_shape(cfg: dict, shape: str, use: str = "", screen: bool = False) -> dict:
+    """Record the first answer. `use` is a persona from the Missions catalogue (or ''),
+    written through `jobs.set_persona` so the mission list is ordered by it too."""
+    shape = str(shape or "").strip().lower()
+    if shape not in SHAPES:
+        raise ValueError("choose one agent or a company")
+    from . import jobs
+    use = jobs.set_persona(cfg, use) if use else str(cfg.get("persona") or "")
+    ob = cfg.setdefault("onboarding", {})
+    ob.update(shape=shape, use=use, screen=bool(screen))
+    return shape_of(cfg)
+
 
 # ---------------------------------------------------------------------------
 # What is already true
@@ -207,17 +276,36 @@ def _named(cfg: dict) -> tuple[bool, str]:
     return (bool(n) and (n != DEFAULT_NAME or "name" in _confirmed(cfg))), n
 
 
-def state(cfg: dict, store=None) -> dict:
-    """Every step, and whether the machine already satisfies it.
+def state(cfg: dict, store=None, show_all: bool = False) -> dict:
+    """The steps of this setup, and whether the machine already satisfies each.
 
     Probed, never remembered — see rule 1 in the module docstring. The only stored
-    thing is which steps were deliberately SKIPPED, because "I do not want a
-    channel" is a decision the machine cannot infer by looking at itself.
+    things are which steps were deliberately SKIPPED and the first step's answer,
+    because "I do not want a channel" and "one agent is enough" are decisions the
+    machine cannot infer by looking at itself.
+
+    `show_all` shows every step, not only the ones the first answer kept (`plan`); the
+    steps left out are listed in `more` either way, so a surface can offer them.
     """
     skipped = set((cfg.get("onboarding") or {}).get("skipped") or [])
+    keep = plan(cfg)
     out, done_ids = [], set()
 
     def probe(sid: str) -> tuple[str, str]:
+        if sid == "shape":
+            sh = shape_of(cfg)
+            if not sh:
+                return "todo", ""
+            return "done", ("one agent" if sh["shape"] == "one" else "a company") + (
+                f" · {sh['use']}" if sh["use"] else "") + (" · its own screen" if sh["screen"] else "")
+        if sid == "company":
+            try:
+                from . import company as companymod
+                depts = companymod.departments(cfg, store) if store is not None else []
+            except Exception:
+                depts = []
+            names = [d["name"] for d in depts]
+            return ("done", ", ".join(names[:3])) if names else ("todo", "")
         if sid == "name":
             ok, n = _named(cfg)
             return ("done", n) if ok else ("todo", "")
@@ -296,26 +384,39 @@ def state(cfg: dict, store=None) -> dict:
             return "todo", ""
         return "todo", ""
 
+    more = []
     for s in STEPS:
         status, detail = probe(s.id)
         if status == "todo" and s.id in skipped:
             status = "skipped"
+        d = s.as_dict(status, detail)
+        d["extra"] = s.id not in keep
+        if d["extra"]:
+            more.append({"id": s.id, "title": s.title, "status": status, "detail": detail})
+            if not show_all:
+                continue
         if status == "done":
             done_ids.add(s.id)
-        out.append(s.as_dict(status, detail))
+        out.append(d)
 
     # A step whose prerequisite is not met is not offered as the next thing to do —
     # "build a flow" before there is an agent is a dead end with a confusing error.
+    # A prerequisite this setup left out does not block: one agent schedules a
+    # mission without building a specialist first (a mission brings its own people).
     for d in out:
+        d["needs"] = [n for n in d["needs"] if n in keep or show_all]
         d["blocked"] = [n for n in d["needs"] if n not in done_ids]
 
-    remaining = [d for d in out if d["status"] == "todo" and not d["blocked"]]
+    # the count is this setup's steps, so "4 of 8" means what it says
+    mine = [d for d in out if not d["extra"]]
+    remaining = [d for d in mine if d["status"] == "todo" and not d["blocked"]]
     return {"steps": out,
             "next": remaining[0]["id"] if remaining else "",
-            "done": len(done_ids), "total": len(STEPS),
+            "done": sum(d["status"] == "done" for d in mine), "total": len(mine),
             "complete": bool(cfg.get("setup_complete")),
-            # every step either done or deliberately skipped
-            "finished": all(d["status"] != "todo" for d in out)}
+            "shape": shape_of(cfg), "more": more,
+            # every step of this setup either done or deliberately skipped
+            "finished": all(d["status"] != "todo" for d in mine)}
 
 
 def _count(store, table: str) -> int:
@@ -415,6 +516,10 @@ def restart(cfg: dict) -> dict:
     # being asked again. Leaving them would tick the name step from a decision made
     # on a machine the user is now deliberately reconsidering.
     ob["confirmed"] = []
+    # and the first question is asked again: "walk me through it" may well mean "I
+    # want a company now", and the old answer would hide the steps for it
+    for k in ("shape", "use", "screen"):
+        ob.pop(k, None)
     cfg["setup_complete"] = False
     return {"ok": True}
 

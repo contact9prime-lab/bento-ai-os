@@ -3077,6 +3077,19 @@ body.dev-touch .ob-face,body.dev-touch .ob-crew-name input,body.dev-touch #ob-cr
 #ob-voice-out.warn{color:var(--warn,#f59e0b)}
 .ob-hear-fix{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .ob-hear-fix .sp-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* the first question, and the steps it left out */
+.ob-more{margin-top:var(--sp-2);padding:var(--sp-2) 11px;font-size:var(--fs-sm);color:var(--dim);text-align:left;
+  min-height:var(--tap,0)}
+.ob-more:hover{color:var(--txt)}
+.ob-item.extra{opacity:.72}
+.ob-shape{margin-bottom:var(--sp-4)}
+.ob-use{flex-wrap:wrap;max-width:100%}
+.ob-use button{min-height:var(--tap,0)}
+.ob-check{display:flex;align-items:center;gap:10px;margin:var(--sp-3) 0;font-size:var(--fs-sm);color:var(--dim);
+  min-height:var(--tap,0);cursor:pointer}
+.ob-check input{width:18px;height:18px;flex:none}
+.ob-co{gap:6px}
 /* ================= users =================
    Two shapes: an offer (prose, because the decision is consequential and needs
    reading) and a roster (rows, because it is a list). They share the form.
@@ -3496,7 +3509,7 @@ body.immersive .psw input:checked + i{background:var(--acc)}
 body.immersive .psw input:checked + i::after{transform:translateX(18px);background:#fff}
 /* segmented control: a glass pill with a raised thumb */
 body.immersive .seg{background:color-mix(in srgb,var(--txt) 7%,transparent);border-color:color-mix(in srgb,var(--txt) 9%,transparent);border-radius:10px;padding:3px;gap:2px}
-body.immersive .seg button{padding:5px 13px;border-radius:8px;font-size:var(--fs-sm);font-weight:600;min-height:28px}
+body.immersive .seg button{padding:5px 13px;border-radius:8px;font-size:var(--fs-sm);font-weight:600;min-height:max(28px,var(--tap,0px))}
 body.immersive .seg button.on{background:color-mix(in srgb,var(--txt) 15%,transparent);box-shadow:0 1px 3px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.12)}
 /* cards and list rows */
 body.immersive .catcard,body.immersive .item,body.immersive .provbox,body.immersive .stat,body.immersive .teamcard,body.immersive .sawrow,
@@ -5592,6 +5605,32 @@ body.dev-mobile .stg-cap{font-size:15px}
   background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);animation:st-fade .5s ease both}
 .st-mapnotes b{font-size:var(--fs-sm);color:#fff}
 .st-mapnotes span{font-size:var(--fs-sm);line-height:1.4;color:rgba(238,241,255,.78)}
+
+/* a film: the canvas fills the drawing; words and numbers sit over it as in a film */
+.stg-film{position:relative;width:100%;height:100%;min-height:240px;border-radius:var(--r-lg);overflow:hidden;
+  background:#0b1020;contain:layout paint}
+.stg-film canvas{display:block;width:100%;height:100%}
+.stg-film .film-labels{position:absolute;inset:0;pointer-events:none}
+.stg-film .film-labels span{position:absolute;transform:translate(-50%,-100%);padding:3px 8px;border-radius:999px;
+  background:rgba(8,10,24,.72);color:#fff;font:600 12px/1.3 var(--sans);white-space:nowrap}
+.stg-film .film-val{position:absolute;top:14px;left:16px;font:800 clamp(28px,5vw,56px)/1 var(--sans);color:#fff;
+  text-shadow:0 2px 18px rgba(0,0,0,.45);letter-spacing:-.02em}
+.stg-film .film-sub{position:absolute;left:5%;right:5%;bottom:56px;text-align:center;font:650 clamp(15px,2.2vw,22px)/1.35 var(--sans);
+  color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.stg-film .film-sub span{opacity:0;animation:stg-word .4s ease forwards}
+.stg-film .film-dots{position:absolute;left:0;right:0;top:16px;display:flex;gap:6px;justify-content:center}
+.stg-film .film-dots i{width:22px;height:3px;border-radius:2px;background:rgba(255,255,255,.3)}
+.stg-film .film-dots i.on{background:#fff}.stg-film .film-dots i.done{background:rgba(255,255,255,.7)}
+.stg-film .film-again{position:absolute;top:14px;right:14px;padding:8px 14px;border-radius:999px;min-height:var(--tap,0);
+  background:rgba(8,10,24,.7);color:#fff;font:600 13px var(--sans)}
+.stg-film.board{background:transparent;overflow:auto}
+.film-board{display:flex;gap:12px;padding:6px;overflow-x:auto;scroll-snap-type:x mandatory}
+.film-card{flex:0 0 min(220px,70%);scroll-snap-align:start;display:flex;flex-direction:column;gap:6px;padding:16px;
+  border-radius:var(--r-lg);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1)}
+.film-glyph{font-size:34px;line-height:1;color:var(--acc,#8b5cf6)}
+.film-n{font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;opacity:.6}
+.film-v{font:800 26px/1 var(--sans)}
+.film-t{font-size:14px;line-height:1.45}
 </style>
 </head>
 <body>
@@ -23545,7 +23584,7 @@ async function jobRunNow(name){
    whoever opens the second one.
 
    `var`, not `let` — concatenated bundle, and 14-docs-setup calls into it. */
-var OB={state:null,open:'',busy:false,done:null,host:null};
+var OB={state:null,open:'',busy:false,done:null,host:null,all:false,coDraft:null};
 
 /* State is state only if it HAS STEPS. A server older than these routes answers
    404 with a JSON body, `{"detail":"Not Found"}` parses fine and is truthy, so the
@@ -23555,7 +23594,7 @@ var OB={state:null,open:'',busy:false,done:null,host:null};
    next. Check the status and the shape, not just that something came back. */
 async function obLoad(){
   try{
-    const r=await fetch('/api/onboarding');
+    const r=await fetch('/api/onboarding'+(OB.all?'?all=1':''));
     const d=r.ok?await r.json():null;
     OB.state=(d&&Array.isArray(d.steps)&&d.steps.length)?d:null;
   }catch(e){OB.state=null}
@@ -23663,19 +23702,27 @@ function obRender(){
     ${/* A blocked step is dimmed, not disabled: the row still opens, and the pane
           says what it needs and where. `disabled` answered a tap with nothing —
           on a phone, indistinguishable from the OS being broken. */''}
-    ${S.steps.map(s=>`<button class="ob-item ${s.status}${s.blocked.length?' blocked':''}${s.id===OB.open?' on':''}"
+    ${S.steps.map(s=>`<button class="ob-item ${s.status}${s.blocked.length?' blocked':''}${s.extra?' extra':''}${s.id===OB.open?' on':''}"
         data-step="${esc(s.id)}">
       <span class="ob-tick">${s.status==='done'?'✓':s.status==='skipped'?'–':esc(s.icon)}</span>
       <span class="ob-t">${esc(s.title)}
         ${s.detail?`<em>${esc(s.detail)}</em>`
           :s.blocked.length?`<em>needs ${esc(s.blocked.join(', '))}</em>`:''}</span>
     </button>`).join('')}
+    ${/* The steps the first answer left out are one tap away, never gone: each still
+          lives in Settings, and somebody with one agent may want a channel or a crew. */''}
+    ${(S.more||[]).length?`<button class="ob-more" id="ob-more">${OB.all
+        ?'Only the steps for my setup'
+        :`＋ ${S.more.length} more step${S.more.length===1?'':'s'} you can do later`}</button>`:''}
     ${inWin
       ? `<button class="ob-leave" id="ob-full">Open it full screen</button>
          <button class="ob-leave" id="ob-leave">Close</button>`
       : `<button class="ob-leave" id="ob-leave">${
            S.finished?'Done — take me in →':'Finish later'}</button>`}`;
   rail.querySelectorAll('.ob-item').forEach(b=>b.onclick=()=>{OB.open=b.dataset.step;obRender()});
+  const more=rail.querySelector('#ob-more');
+  if(more)more.onclick=async()=>{OB.all=!OB.all;await obLoad();
+    if(!obStep(OB.open))OB.open=OB.state.next||OB.state.steps[0].id;obRender()};
   /* Closing a WINDOW is not "I have finished setting this machine up". Marking it
      complete here would mean somebody who opened the app to look around, on a
      machine still half configured, silently never saw the first-run screen again. */
@@ -23769,7 +23816,41 @@ async function obRefresh(advance){
 }
 
 /* ---------- the panes ---------- */
+/* The first question's answers for "mostly for". The ids are the Missions catalogue's
+   personas (jobs.PERSONAS), so this answer also orders the missions offered later. */
+var OB_USES=[['everyone','Just me'],['founder','A founder'],['coder','A coder'],['consultant','A consultant']];
+
 var OB_PANES={
+  /* One agent or a company, asked first, because it decides how long the rest is:
+     one agent is eight steps, a company swaps "build a specialist" and "give it a
+     mission" for its departments drafted from a sentence. */
+  shape:()=>{const sh=(OB.state&&OB.state.shape)||{};
+    return `<div class="job-cards ob-shape">
+      <button class="job-card${sh.shape==='one'?' on':''}" data-shape="one"><span class="job-mark">◉</span>
+        <b>One agent</b><span class="job-blurb">An assistant that answers, keeps an eye on
+          things for you and reaches your phone. The short setup.</span></button>
+      <button class="job-card${sh.shape==='company'?' on':''}" data-shape="company"><span class="job-mark">▦</span>
+        <b>A company</b><span class="job-blurb">Departments of agents with a lead, a desk each
+          and sign-offs. You describe it in a sentence.</span></button>
+    </div>
+    <div class="job-q"><span>Mostly for</span>
+      <div class="seg ob-use">${OB_USES.map(([id,l])=>`<button data-use="${id}" class="${
+        (sh.use||'')===id?'on':''}">${esc(l)}</button>`).join('')}</div></div>
+    <label class="ob-check"><input type="checkbox" id="ob-screen"${sh.screen?' checked':''}>
+      <span>This machine has a small screen of its own, like a kiosk or a Pi</span></label>
+    <div class="job-go"><button class="wiz-next" id="ob-shape-go">Continue</button></div>`},
+
+  /* The company in one step: drafted from a sentence by the machine's brain, shown
+     whole, made only on "Make it". The same draft, preview and apply the Office's
+     Company panel uses, so there is one company setup, not two. */
+  company:()=>`<label class="job-q"><span>What does your company do?</span>
+      <textarea id="ob-co-desc" rows="3" placeholder="A bookkeeping service for dental clinics in Pune"></textarea></label>
+    <label class="job-q"><span>What is it trying to achieve? <em>optional</em></span>
+      <input id="ob-co-goal" placeholder="Sign ten clinics this quarter" autocomplete="off"></label>
+    <div class="job-go"><button class="wiz-next" id="ob-co-draft">Draft it</button>
+      <button class="endbtn" id="ob-co-office">Do it in the Office instead</button></div>
+    <div id="ob-co-out"></div>`,
+
   name:()=>`<label class="job-q"><span>What should it be called?</span>
       <input id="ob-name" value="${esc((typeof cfg!=='undefined'&&cfg.agent_name)||'Aria')}"
         spellcheck="false" autocomplete="off">
@@ -23942,6 +24023,78 @@ var OB_CLOUD=[
 
 /* ---------- the wiring ---------- */
 var OB_WIRE={
+  shape(){
+    const sh=(OB.state&&OB.state.shape)||{};
+    let pick=sh.shape||'',use=sh.use||'';
+    const cards=[...document.querySelectorAll('.ob-shape .job-card')];
+    cards.forEach(c=>c.onclick=()=>{pick=c.dataset.shape;
+      cards.forEach(x=>x.classList.toggle('on',x===c))});
+    const uses=[...document.querySelectorAll('.ob-use button')];
+    uses.forEach(b=>b.onclick=()=>{use=b.dataset.use;
+      uses.forEach(x=>x.classList.toggle('on',x===b))});
+    $('#ob-shape-go').onclick=async()=>{
+      if(!pick)return obMsg('choose one agent or a company','warn');
+      obMsg('…');
+      let d=null;
+      try{d=await (await fetch('/api/onboarding/shape',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({shape:pick,use,screen:$('#ob-screen').checked,all:OB.all})})).json()}catch(e){}
+      if(!d||d.error)return obMsg((d&&d.error)||'could not save that','warn');
+      OB.state=d;OB.open=d.next||'name';obRender();
+    };
+  },
+
+  company(){
+    const out=$('#ob-co-out'),desc=$('#ob-co-desc'),goal=$('#ob-co-goal');
+    $('#ob-co-office').onclick=()=>{obClose();openApp('office')};
+    // kept across the refresh that ticks the rail, like the fork's arrival card
+    const draw=d=>{
+      const pv=d.preview||{};
+      out.innerHTML=`<div class="ob-card ob-co">
+          <b>${esc((d.plan.company||{}).name||'Your company')}</b>
+          <span class="mut">${esc(d.how==='brain'?'Designed by '+(d.who||'your brain'):(d.said||'From the catalogue'))}</span>
+          ${(pv.departments||[]).map(x=>`<span><b>${esc(x.name)}</b> · ${
+            (x.people||[]).map(p=>esc(p.name)+(p.lead?' (head)':'')).join(', ')}</span>`).join('')}
+          <span class="mut">${pv.new||0} new agents · ${pv.desks||0} desks, each off until you switch it on${
+            (pv.work&&pv.work.missions||[]).length?' · '+pv.work.missions.length+' missions':''}</span>
+          ${(pv.notes||[]).map(n=>`<span class="mut">${esc(n)}</span>`).join('')}
+        </div>
+        <div class="job-go">${pv.fits===false?'':'<button class="wiz-next" id="ob-co-make">Make it</button>'}
+          <button class="endbtn" id="ob-co-again">Draft it again</button></div>`;
+      const mk=$('#ob-co-make');
+      if(mk)mk.onclick=async()=>{
+        mk.disabled=true;obMsg('making your company…');
+        let r=null;
+        try{r=await (await fetch('/api/company/apply',{method:'POST',
+          headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:d.plan})})).json()}catch(e){}
+        mk.disabled=false;
+        if(!r||r.error)return obMsg((r&&r.error)||'could not make it','warn');
+        OB.coDraft=null;
+        obMsg(`${(r.departments||[]).length} departments, ${(r.made||[]).length} new agents`,'ok');
+        setTimeout(()=>obRefresh(true),900);
+      };
+      $('#ob-co-again').onclick=()=>{OB.coDraft=null;out.innerHTML='';desc.focus()};
+    };
+    if(OB.coDraft){desc.value=OB.coDraft.desc||'';goal.value=OB.coDraft.goal||'';draw(OB.coDraft)}
+    $('#ob-co-draft').onclick=async()=>{
+      const v=desc.value.trim();
+      if(v.length<3)return obMsg('say what the company does','warn');
+      const btn=$('#ob-co-draft');btn.disabled=true;
+      obMsg('drafting it, this can take a minute…');out.innerHTML='';
+      let d=null;
+      try{d=await (await fetch('/api/company/draft',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({description:v,objective:goal.value.trim()})})).json()}catch(e){}
+      btn.disabled=false;
+      if(!d||d.error)return obMsg((d&&d.error)||'could not draft it','warn');
+      obMsg('');
+      OB.coDraft={...d,desc:v,goal:goal.value.trim()};
+      // the pane may have been redrawn while the draft was out: look the box up again
+      if(document.getElementById('ob-co-out'))draw(OB.coDraft);
+    };
+    desc.focus();
+  },
+
   name(){
     const go=$('#ob-name-go'),inp=$('#ob-name');
     const save=async()=>{
@@ -33929,8 +34082,8 @@ async function stageAttach(cid){
    keeps a way back. Asked for as "the look and feel is really horrible, it needs a very
    good immersive experience", with background sound, pictures and videos. */
 var STAGE_KIND={chart:'Chart',map:'Map',numbers:'Key numbers',timeline:'Timeline',steps:'How it works',
-  table:'Table',image:'Picture',video:'Video'};
-var STAGE_HUE={chart:255,map:200,numbers:280,timeline:170,steps:320,table:225,image:30,video:350};
+  table:'Table',image:'Picture',video:'Video',film:'Film'};
+var STAGE_HUE={chart:255,map:200,numbers:280,timeline:170,steps:320,table:225,image:30,video:350,film:265};
 async function renderStage(body,w){
   body.classList.add('stage-body');
   if(w&&w.app&&!w.app.onClose)w.app.onClose=()=>{stageMusic(false,true);STAGE.playing=false};
@@ -34080,7 +34233,7 @@ function stagePlay(){
       if(STAGE.at>=STAGE.scenes.length-1){STAGE.playing=false;STAGE.held=0;stagePaint();return}
       STAGE.at++;stagePaint();step()},900);
     // a video plays at its own pace: the story waits on it rather than cutting it off
-    const hold=sc.kind==='video'?20000:0;
+    const hold=sc.kind==='video'?20000:sc.kind==='film'?stageFilmSeconds(sc)*1000:0;
     if(typeof VOICE!=='undefined'&&VOICE.tts&&typeof speakAs==='function'&&line)speakAs(agentName(),line,()=>setTimeout(after,hold));
     else setTimeout(after,Math.max(4500,line.length*60)+hold);
   };
@@ -34262,7 +34415,7 @@ function stageBoards(main){
 /* ================= drawing ================= */
 function stageDraw(art,sc){
   ({chart:stageChart,map:stageMap,numbers:stageNumbers,timeline:stageTimeline,steps:stageSteps,table:stageTable,
-    image:stageImage,video:stageVideo}[sc.kind]||(()=>{}))(art,sc);
+    image:stageImage,video:stageVideo,film:stageFilm}[sc.kind]||(()=>{}))(art,sc);
   if(stageReduced())art.classList.add('still');
 }
 
@@ -34649,6 +34802,158 @@ function stageTable(art,sc){
   sc.rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.style.animationDelay=Math.min(i,20)*40+'ms';
     sc.columns.forEach((_,j)=>{const td=sEl('td','',r[j]==null?'':r[j]);if(numCol[j]||isN(r[j]))td.className='n';tr.append(td)});body.append(tr)});
   tb.append(body);wrap.append(tb);art.append(wrap);
+}
+
+/* --- a film: a short 3D animation played from the agent's shot list ---
+   The model picks each shot's subject and camera from a closed set (stage.FILM_*) and this
+   builds and moves the scene with three.js (vendored, MIT, imported on first use, as the
+   World does). Nothing the model wrote runs here. One small renderer per film, at most 30
+   frames a second, none while the window is hidden, stopped the moment the drawing leaves
+   the page. With no WebGL, under reduced motion, or on the Telegram page (no server to load
+   three.js from), it is a storyboard: the shots as cards, which is also what a phone's
+   picture shows. */
+var STAGE_FILM_COL=[0x8b5cf6,0xf59e0b,0x22d3ee,0xf472b6,0x34d399,0xa78bfa,0xf87171,0x94a3b8];
+var STAGE_FILM_GLYPH={city:'▦',tower:'▮',bars:'▥',rocket:'⬆',factory:'⌂',solar:'▤',road:'⇢',
+  conveyor:'⇉',crowd:'⁂',globe:'◍'};
+function stageFilmSeconds(sc){return (sc.shots||[]).reduce((t,s)=>t+(s.seconds||4),0)}
+function stageFilmBoard(fr,sc){
+  fr.classList.add('board');
+  const row=sEl('div','film-board');
+  (sc.shots||[]).forEach((sh,i)=>{
+    const c=sEl('div','film-card');
+    c.append(sEl('div','film-glyph',STAGE_FILM_GLYPH[sh.subject]||'◇'),
+      sEl('div','film-n',`${i+1} · ${sh.seconds}s · ${sh.camera}`));
+    if(sh.value!=null)c.append(sEl('div','film-v',stageWithUnit(stageFmt(sh.value),sh.unit)));
+    if(sh.text)c.append(sEl('div','film-t',sh.text));
+    row.append(c)});
+  fr.append(row);
+}
+function stageFilmGL(){try{const c=document.createElement('canvas');return !!(c.getContext('webgl2')||c.getContext('webgl'))}catch(e){return false}}
+async function stageFilm(art,sc){
+  const fr=sEl('div','stg-film');art.append(fr);
+  if(window.STAGE_REPORT||stageReduced()||!stageFilmGL()){stageFilmBoard(fr,sc);return}
+  let T;
+  try{T=(typeof WORLD!=='undefined'&&WORLD.T)||(typeof OF3!=='undefined'&&OF3.T)||await import('/assets/three.module.min.js')}
+  catch(e){stageFilmBoard(fr,sc);return}
+  if(!fr.isConnected)return;
+  const cv=document.createElement('canvas');fr.append(cv);
+  const labels=sEl('div','film-labels'),sub=sEl('div','film-sub'),val=sEl('div','film-val'),
+        dots=sEl('div','film-dots'),again=sEl('button','film-again','↻ Play again');
+  again.hidden=true;fr.append(labels,val,sub,dots,again);
+  (sc.shots||[]).forEach(()=>dots.append(sEl('i','')));
+  let R;
+  try{R=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:false,powerPreference:'low-power'})}
+  catch(e){cv.remove();labels.remove();sub.remove();val.remove();dots.remove();again.remove();stageFilmBoard(fr,sc);return}
+  R.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+  const LOOK={day:{sky:0xcfe0f5,ground:0xf4f5f8,sun:1.25,amb:.9,fog:0xcfe0f5},
+              dusk:{sky:0x6a4a7e,ground:0xe9d9e4,sun:1.05,amb:.8,fog:0x6a4a7e},
+              night:{sky:0x0a1024,ground:0x232a44,sun:.45,amb:.45,fog:0x0a1024}}[sc.look||'day'];
+  // the ground runs out past the fog, so no edge of the world is ever on screen
+  const S=new T.Scene();S.background=new T.Color(LOOK.sky);S.fog=new T.Fog(LOOK.fog,45,110);
+  const cam=new T.PerspectiveCamera(40,1,.1,400);
+  S.add(new T.HemisphereLight(0xffffff,LOOK.ground,LOOK.amb));
+  const sun=new T.DirectionalLight(0xffffff,LOOK.sun);sun.position.set(30,50,20);S.add(sun);
+  const ground=new T.Mesh(new T.CircleGeometry(400,48),new T.MeshLambertMaterial({color:LOOK.ground}));
+  ground.rotation.x=-Math.PI/2;S.add(ground);
+  const night=sc.look==='night';
+  const M=c=>new T.MeshLambertMaterial({color:c,emissive:night?c:0,emissiveIntensity:night?.25:0});
+  const box=(w,h,d,c)=>{const m=new T.Mesh(new T.BoxGeometry(w,h,d),M(c));return m};
+  const tree=(x,z)=>{const g=new T.Group();const t=new T.Mesh(new T.CylinderGeometry(.15,.15,.8,6),M(0x8d6e63));t.position.y=.4;
+    const l=new T.Mesh(new T.ConeGeometry(.7,1.6,8),M(0x4caf50));l.position.y=1.5;g.add(t,l);g.position.set(x,0,z);return g};
+  // a seeded random, so a film looks the same every time it is played
+  let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  const H=Math.max(...(sc.shots||[]).flatMap(s=>(s.items||[]).map(i=>Math.abs(i.value))).concat([1]));
+  /* each builder makes its subject in `g` and returns {tick(u), r (how far the camera
+     stands), y (where it looks), tags: [[Object3D, text]]} — u runs 0→1 over the shot */
+  const B={
+    city(g){seed=11;const bs=[];for(let i=-3;i<=3;i++)for(let j=-3;j<=3;j++){if(rnd()<.18){g.add(tree(i*3.2,j*3.2));continue}
+        const h=1+rnd()*8,b=box(2.2,h,2.2,[0xffffff,0xe8ecf4,0x3949ab][rnd()<.15?2:rnd()<.5?1:0]);b.position.set(i*3.2,h/2,j*3.2);g.add(b);bs.push([b,h])}
+      return {r:30,y:2,tick:u=>bs.forEach(([b,h],k)=>{const e=Math.min(1,Math.max(0,u*1.6-k/bs.length*.6));b.scale.y=Math.max(.01,e);b.position.y=h*e/2})}},
+    tower(g,sh){const b=box(3,1,3,0x3949ab);g.add(b);for(let i=0;i<8;i++){const a=i/8*Math.PI*2;g.add(tree(Math.cos(a)*7,Math.sin(a)*7))}
+      const top=16;return {r:30,y:6,tick:u=>{const e=1-Math.pow(1-u,3);b.scale.y=Math.max(.01,top*e);b.position.y=top*e/2;
+        if(sh.value!=null)val.textContent=stageWithUnit(stageFmt(sh.value*e),sh.unit)}}},
+    bars(g,sh){const it=sh.items||[],n=it.length,w=2.2,tags=[];
+      const bs=it.map((x,i)=>{const b=box(w,1,w,STAGE_FILM_COL[i%8]);b.position.x=(i-(n-1)/2)*(w+1.2);g.add(b);
+        const t=new T.Object3D();g.add(t);tags.push([t,x.label+' '+stageWithUnit(stageFmt(x.value),sh.unit)]);return [b,t,Math.abs(x.value)/H*12]});
+      return {r:Math.max(22,n*4.2),y:5,tags,tick:u=>bs.forEach(([b,t,h],k)=>{const e=Math.min(1,Math.max(0,u*1.5-k*.08));const v=1-Math.pow(1-e,3);
+        b.scale.y=Math.max(.01,h*v);b.position.y=h*v/2;t.position.set(b.position.x,h*v+.8,0)})}},
+    rocket(g){const pad=box(6,.6,6,0x9e9e9e);pad.position.y=.3;g.add(pad);
+      const tw=box(.6,14,.6,0xd32f2f);tw.position.set(-2.4,7,0);g.add(tw);
+      const r=new T.Group(),body=new T.Mesh(new T.CylinderGeometry(.8,.8,7,16),M(0xffffff)),nose=new T.Mesh(new T.ConeGeometry(.8,2,16),M(0x3949ab));
+      body.position.y=3.5;nose.position.y=8;r.add(body,nose);
+      for(let i=0;i<4;i++){const f=box(.12,1.6,1.2,0x3949ab);const a=i*Math.PI/2;f.position.set(Math.cos(a)*.85,.8,Math.sin(a)*.85);f.rotation.y=-a;r.add(f)}
+      r.position.y=.6;g.add(r);const puffs=[];
+      for(let i=0;i<26;i++){const p=new T.Mesh(new T.SphereGeometry(.7,8,6),new T.MeshLambertMaterial({color:0xf5f5f5,transparent:true,opacity:.85}));p.visible=false;g.add(p);puffs.push(p)}
+      const out={r:30,y:6,tick:u=>{const lift=u<.2?0:Math.pow((u-.2)/.8,2)*26;r.position.y=.6+lift;out.y=6+lift*.8;
+        puffs.forEach((p,k)=>{const age=(u*26-k);p.visible=u>.15&&age>0;const s=1+age*.25;p.scale.setScalar(s);
+          p.position.set(Math.sin(k*1.7)*age*.4,Math.max(.5,r.position.y-(k%6)*1.2-1),Math.cos(k*2.3)*age*.4);p.material.opacity=Math.max(0,.85-age*.05)})}};
+      return out},
+    factory(g){const f=box(10,4,6,0xffffff);f.position.y=2;g.add(f);const st=box(10.1,.6,6.1,0x3949ab);st.position.y=3.2;g.add(st);
+      const ch=[-3,0,3].map(x=>{const c=new T.Mesh(new T.CylinderGeometry(.5,.6,5,10),M(0xb0bec5));c.position.set(x,6.5,-1.5);g.add(c);return c});
+      for(let i=-2;i<=2;i++){const p=box(1.6,.1,1,0x1a237e);p.position.set(i*1.9,4.1,1.5);p.rotation.x=-.3;g.add(p)}
+      for(let i=0;i<6;i++)g.add(tree(-9+i*3.6,7));
+      const puffs=[];ch.forEach(c=>{for(let i=0;i<6;i++){const p=new T.Mesh(new T.SphereGeometry(.6,8,6),new T.MeshLambertMaterial({color:0xeceff1,transparent:true,opacity:.7}));
+        g.add(p);puffs.push([p,c,i/6])}});
+      return {r:26,y:3,tick:u=>puffs.forEach(([p,c,o])=>{const k=(u*3+o)%1;p.position.set(c.position.x+k*1.5,9+k*6,c.position.z);p.scale.setScalar(.6+k*1.6);p.material.opacity=.75*(1-k)})}},
+    solar(g){const ps=[];for(let r=-3;r<=3;r++)for(let c=-4;c<=4;c++){const p=box(2,.12,1.2,0x1a237e);p.position.set(c*2.4,.8,r*2.2);p.rotation.x=-.45;p.visible=false;g.add(p);ps.push(p)}
+      return {r:28,y:0,tick:u=>ps.forEach((p,k)=>{p.visible=k/ps.length<u*1.3})}},
+    road(g){const rd=box(60,.05,4,0x424242);rd.position.y=.03;g.add(rd);
+      for(let i=-6;i<=6;i++){const m=box(1.5,.06,.15,0xffffff);m.position.set(i*4.5,.06,0);g.add(m)}
+      for(let i=0;i<8;i++)g.add(tree(-24+i*7,5));
+      const cars=[...Array(7)].map((_,k)=>{const c=box(1.8,.9,1,STAGE_FILM_COL[k%8]);c.position.set(0,.5,k%2?-1:1);g.add(c);return [c,k]});
+      return {r:24,y:0,tick:u=>cars.forEach(([c,k])=>{const d=k%2?-1:1;c.position.x=((u*60*d+k*9)%60+60)%60-30})}},
+    conveyor(g){const belt=box(30,.5,2.4,0x37474f);belt.position.y=1;g.add(belt);
+      const items=[...Array(9)].map((_,k)=>{const b=box(1.2,1.2,1.2,[0xffb74d,0xa1887f,0xffffff][k%3]);b.position.y=1.85;g.add(b);return [b,k]});
+      const mk=box(5,4,4,0x3949ab);mk.position.set(-15,2,0);g.add(mk);const tr=box(4,3,3,0xffffff);tr.position.set(15,1.5,0);g.add(tr);
+      return {r:22,y:1,tick:u=>items.forEach(([b,k])=>{b.position.x=((u*30+k*3.4)%30)-15})}},
+    crowd(g,sh){seed=5;const ppl=[];for(let i=0;i<120;i++){const a=rnd()*Math.PI*2,d=Math.sqrt(rnd())*12;
+        const p=new T.Group(),b=new T.Mesh(new T.CylinderGeometry(.28,.34,1.1,8),M(STAGE_FILM_COL[i%8])),h=new T.Mesh(new T.SphereGeometry(.28,10,8),M(0xffcc80));
+        b.position.y=.55;h.position.y=1.35;p.add(b,h);p.position.set(Math.cos(a)*d,0,Math.sin(a)*d);p.visible=false;g.add(p);ppl.push(p)}
+      return {r:26,y:0,tick:u=>{ppl.forEach((p,k)=>{p.visible=k/ppl.length<u*1.2});
+        if(sh.value!=null)val.textContent=stageWithUnit(stageFmt(Math.round(sh.value*Math.min(1,u*1.2))),sh.unit)}}},
+    globe(g,sh){const R=7,e=new T.Mesh(new T.SphereGeometry(R,48,32),new T.MeshLambertMaterial({color:0x1e3a8a,emissive:0x0b1a4a,emissiveIntensity:.4}));
+      e.position.y=R+1;g.add(e);const ring=new T.Mesh(new T.TorusGeometry(R+.2,.05,6,96),new T.MeshBasicMaterial({color:0x93c5fd}));ring.rotation.x=Math.PI/2;e.add(ring);
+      const tags=[];(sh.points||[]).forEach((pt,i)=>{const la=pt.lat*Math.PI/180,lo=pt.lon*Math.PI/180;
+        const m=new T.Mesh(new T.SphereGeometry(.28,10,8),new T.MeshBasicMaterial({color:STAGE_FILM_COL[(i+1)%8]}));
+        m.position.set(R*Math.cos(la)*Math.sin(lo),R*Math.sin(la),R*Math.cos(la)*Math.cos(lo));e.add(m);if(pt.label)tags.push([m,pt.label])});
+      return {r:24,y:R+1,tags,tick:u=>{e.rotation.y=-.6+u*1.6}}},
+  };
+  const shots=sc.shots||[];let i=-1,t0=0,cur=null,grp=null,stopped=false,last=0;
+  const CAM={orbit:(u,r,y)=>[Math.cos(.6+u*1.1)*r,y+r*.45,Math.sin(.6+u*1.1)*r],
+    push:(u,r,y)=>{const d=r*(1.35-u*.55);return [d*.62,y+d*.4,d*.78]},
+    rise:(u,r,y)=>[r*.7,y+.5+u*r*.9,r*.7],
+    fly:(u,r,y)=>[-r*.7+u*r*1.4,y+r*.35,r*.85],
+    top:(u,r,y)=>[r*.5*(1-u),y+r*(.6+u*.7),r*.8*(1-u)+.01]};
+  const show=k=>{
+    if(grp){S.remove(grp);grp.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose()})}
+    i=k;const sh=shots[k];grp=new T.Group();S.add(grp);val.textContent='';labels.textContent='';
+    cur=(B[sh.subject]||B.city)(grp,sh)||{r:28,y:2,tick:()=>{}};
+    (cur.tags||[]).forEach(t=>{t.el=sEl('span','',t[1]);labels.append(t.el)});
+    if(sh.value!=null&&!['tower','crowd'].includes(sh.subject))val.textContent=stageWithUnit(stageFmt(sh.value),sh.unit);
+    sub.textContent='';(sh.text||'').split(/\s+/).filter(Boolean).forEach((w,j)=>{const s=sEl('span','',w+' ');s.style.animationDelay=(150+j*60)+'ms';sub.append(s)});
+    [...dots.children].forEach((d,j)=>d.className=j<k?'done':j===k?'on':'');
+    t0=performance.now();
+  };
+  const size=()=>{const w=fr.clientWidth||640,h=fr.clientHeight||360;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()};
+  const v=new T.Vector3();
+  const frame=now=>{
+    if(stopped)return;
+    if(!fr.isConnected){stopped=true;R.dispose();if(grp)grp.traverse(o=>{if(o.geometry)o.geometry.dispose()});return}
+    requestAnimationFrame(frame);
+    if(document.hidden||now-last<33)return;last=now;
+    const sh=shots[i],u=Math.min(1,(now-t0)/(sh.seconds*1000));
+    cur.tick(u);
+    // a wide, short drawing would leave the subject small in the middle: come closer
+    const near=Math.min(1,Math.max(.7,1.5/cam.aspect));
+    const p=(CAM[sh.camera]||CAM.orbit)(u,cur.r*near,cur.y);cam.position.set(p[0],p[1],p[2]);cam.lookAt(0,cur.y,0);
+    if(cv.width!==Math.round(fr.clientWidth*R.getPixelRatio()))size();
+    R.render(S,cam);
+    (cur.tags||[]).forEach(t=>{t[0].getWorldPosition(v);v.project(cam);
+      t.el.style.left=((v.x+1)/2*100)+'%';t.el.style.top=((1-v.y)/2*100)+'%';t.el.style.opacity=v.z<1?'1':'0'});
+    if(u>=1){if(i<shots.length-1)show(i+1);else if(again.hidden){again.hidden=false;[...dots.children].forEach(d=>d.className='done')}}
+  };
+  again.onclick=()=>{again.hidden=true;show(0)};
+  size();show(0);requestAnimationFrame(frame);
 }
 /* ================= task desktops: one desktop per running task =================
    Asked for as "use desktops for different chats, and scroll between them, given we can

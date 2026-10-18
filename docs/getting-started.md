@@ -11,7 +11,19 @@ bento                   # from a git checkout: uv run bento
 ```
 
 The desktop opens at **http://127.0.0.1:8321**, and on a fresh install it opens onto
-**setup** — fourteen steps down the left, one at a time on the right.
+**setup**. It asks one thing first: **one agent, or a company?**, and what it's mostly for
+(just you, a founder, a coder or a consultant). The answer decides the steps down the left:
+
+- **One agent** is eight steps: the question, a name, a brain, a first answer, an app, a mission on
+  a schedule, your phone and the look.
+- **A company** swaps building a specialist and a flow by hand for **Set up your company**: you say
+  what it does in a sentence, the departments, their people and a desk each are drafted for you to
+  look over, and **Make it** creates them. It adds your crew's office and the accounts step.
+- A machine with **a small screen of its own** (a kiosk, a Pi) adds the screen and wake-word steps.
+
+The other steps are never gone: **＋ more steps you can do later** at the bottom of the rail shows
+them all, and each still lives in Settings. `bento setup` asks the same question, and `a` there
+shows every step.
 
 ![The first-run setup screen: the rail of setup steps down the left with the first one selected, and on the right "Name your agent" with the line "You will end up with: the name on the menu bar and in every reply" above the field](screenshots/onboarding-1-name.png)
 
@@ -21,9 +33,11 @@ anything:
 
 | Step | What exists afterwards |
 |---|---|
+| One agent, or a company? | a setup that only asks what that answer needs |
 | Name your agent | the name on the menu bar and in every reply |
 | Give it a brain | a model this machine can actually reach |
 | Watch it answer | a real reply, from your model, in front of you |
+| Set up your company | departments with people in them, each with a desk you switch on — see [Your company](company.md) |
 | Build a specialist | an agent you can call by name with `@` |
 | Meet your crew and set up the office | everyone's pixel-art character and an office they work in — see [The Office](office.md) |
 | Choose what this screen shows | the desktop, or a kiosk that listens; one agent drawn or the crew — see [Small screens](small-screens.md) |

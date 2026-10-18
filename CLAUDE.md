@@ -707,6 +707,14 @@ Six rules:
   Wayland painted the map twice (with the dock inside it) while SVG pins pulsed without end: pulses run three
   times, and the drawing is `contain:layout paint`. The music is WebAudio (no files), off until the person turns
   it on (`stage.music`), stopped by `onClose`.
+- **A film is a shot list, never code** (`kind: film`, `FILM_SUBJECTS`/`FILM_CAMERAS`/`FILM_LOOKS`,
+  `stageFilm` in 24l-stage.js; `tests/test_stage.py`). Asked for as "stage generation should have video
+  generation … let the AI decide the level". The model picks a subject and a camera per shot; the page's
+  own three.js builds and moves it, so nothing it wrote runs. Numbers in a shot need a source. The renderer
+  stops when the drawing leaves the page and skips frames while hidden; no WebGL, reduced motion and the
+  Telegram page get the storyboard. `BIG_LINE` tells the agent to choose the level: no scenes for a fact,
+  at most one film, for something that moves, grows or gets built. A new subject needs a builder in `B`,
+  a glyph, and its name in the tool's `shots` description (the test checks all three).
 - **Pictures and videos are scenes.** An image is an https URL or an asset id (`asset_get`); a video keeps only
   its 11-character YouTube id, from a YouTube host, played from youtube-nocookie. The Telegram page inlines
   asset pictures (`REPORT_IMG_CAP`) and shows a video as a thumbnail (`STAGE_REPORT`).
@@ -3367,6 +3375,19 @@ failing the same way — by telling the truth at a volume nobody can read.
   to the URL rather than after it. The browser wizard already opens itself
   (`14-docs-setup.js`); the headless half had nothing, and "it is set up when you
   open it" is not true on a machine nobody is sitting in front of.
+
+**Setup asks one agent or a company first, and the answer decides the rest** (`onboarding.PLANS`,
+`shape_of`/`set_shape`/`plan`, `/api/onboarding/shape`, the wizard's `shape` and `company` panes,
+`setup_tui._step_shape`/`_step_company`; `tests/test_onboarding.py`). Asked for as "ask if they need a
+company or one agent is sufficient … simplify the onboarding based on the use case". Four rules:
+- **A new machine sees the question alone** until it is answered; a machine that finished setup before
+  the question existed (`setup_complete`) sees every step, as it always did.
+- **A step left out is still probed and one tap away** (`more`, `state(show_all=True)`, the rail's
+  "＋ more steps", `a` in `bento setup`). Counts are this setup's steps; a prerequisite outside the plan
+  does not block (one agent schedules a mission without building a specialist; missions bring people).
+- **`use` is the Missions persona** (`jobs.set_persona`), so the answer also orders the missions offered.
+- **The company step is the Company panel's draft, preview and apply**, never a second company setup.
+  `restart` clears the answer, because "walk me through it" may mean "I want a company now".
 
 ## The README is eleven files now
 

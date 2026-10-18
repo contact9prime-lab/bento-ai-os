@@ -31,7 +31,12 @@ def machine(tmp_path, monkeypatch):
     monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "config.json")
     usersmod.reset_caches()
     usersmod.set_current("")
-    yield cfgmod.load_config(), Store(tmp_path / "agentos.db")
+    # A machine that finished setup before the first question existed: every step is on
+    # the rail, so the step numbers below are the catalogue's (`n`). A new machine is
+    # asked one thing first; `test_a_new_machine_is_asked_one_agent_or_a_company` walks it.
+    cfg = cfgmod.load_config()
+    cfg["setup_complete"] = True
+    yield cfg, Store(tmp_path / "agentos.db")
     usersmod.reset_caches()
     usersmod.set_current("")
 
@@ -188,7 +193,7 @@ def test_the_account_step_ticks_once_somebody_exists(machine, monkeypatch):
     cfg, store = machine
     drive(monkeypatch, [n("account"), "ada", "Ada", "q"], ["hunter2hunter"])
     setup_tui.run(cfg, store)
-    st = {s["id"]: s for s in ob.state(cfgmod.load_config(), store)["steps"]}
+    st = {s["id"]: s for s in ob.state(cfgmod.load_config(), store, show_all=True)["steps"]}
     assert st["account"]["status"] == "done" and st["account"]["detail"] == "ada"
 
 
@@ -215,5 +220,19 @@ def test_the_second_account_is_an_executor_unless_asked_otherwise(machine, monke
     setup_tui.run(cfg, store)
     usersmod.set_current("")
     drive(monkeypatch, [n("account"), "bob", "Bob", "executor", "q"], ["hunter2hunter"])
-    setup_tui.run(cfgmod.load_config(), store)
+    again = cfgmod.load_config()
+    again["setup_complete"] = True          # the whole rail, so `n` counts the catalogue
+    setup_tui.run(again, store)
     assert usersmod.by_name("bob")["role"] == "executor"
+
+
+def test_a_new_machine_is_asked_one_agent_or_a_company(machine, monkeypatch, capsys):
+    cfg, store = machine
+    cfg["setup_complete"] = False
+    # step 1 is the question; one agent, mostly for a founder, no screen of its own
+    drive(monkeypatch, ["1", "1", "1", "n", "q"])
+    setup_tui.run(cfg, store)
+    saved = cfgmod.load_config()
+    assert saved["onboarding"]["shape"] == "one" and saved["persona"] == "founder"
+    assert [s["id"] for s in ob.state(saved, store)["steps"]] == list(ob.PLANS["one"])
+    assert "a shows them" in capsys.readouterr().out

@@ -78,12 +78,82 @@ def _draw(st: dict, agent_name: str) -> None:
     if nxt:
         n = next(i for i, s in enumerate(st["steps"], 1) if s["id"] == nxt)
         print(f"  next: {n}. {ob.BY_ID[nxt].title}")
+    if any(s.get("extra") for s in st["steps"]):
+        print("  showing every step · a for only the ones in this setup")
+    elif st.get("more"):
+        print(f"  {len(st['more'])} more step(s) are not part of this setup · a shows them")
     print("  a number to do a step · s<n> to skip one · q to finish")
 
 
 # ---------------------------------------------------------------------------
 # The steps
 # ---------------------------------------------------------------------------
+
+def _step_shape(cfg, store) -> None:
+    from . import jobs
+    print("\n    1. One agent   an assistant that answers and keeps an eye on things")
+    print("    2. A company   departments of agents, drafted from a sentence")
+    cur = ob.shape_of(cfg)
+    pick = _ask("Which", "2" if cur.get("shape") == "company" else "1")
+    shape = "company" if pick.strip() in ("2", "c", "company") else "one"
+    print("\n  Mostly for:  " + "   ".join(f"{i}. {p['label']}" for i, p in enumerate(jobs.PERSONAS, 1)))
+    u = _ask("Which", "")
+    use = jobs.PERSONAS[int(u) - 1]["id"] if u.isdigit() and 1 <= int(u) <= len(jobs.PERSONAS) else ""
+    screen = _yes("Does this machine have a small screen of its own (a kiosk, a Pi)?", False)
+    ob.set_shape(cfg, shape, use, screen)
+    _save(cfg)
+    n = len(ob.plan(cfg))
+    print(f"  ✓ {'one agent' if shape == 'one' else 'a company'}: {n} steps. "
+          f"`a` shows the rest any time.")
+
+
+def _step_company(cfg, store) -> None:
+    """The same draft the Office's Company panel and `bento company setup` make: the
+    brain designs it from the sentence, the catalogue when nothing answers."""
+    from . import accounts as _acc
+    from . import company as co
+    from . import executors as _ex
+    from . import tools as _tools
+    desc = _ask("\n  What does your company do?")
+    if len(desc) < 3:
+        return
+    goal = _ask("What is it trying to achieve? (optional)")
+    names = [t["name"] for t in _tools.TOOL_SCHEMAS]
+    plan, how = {}, ""
+    if _ex.has_brain(cfg):
+        print("  drafting it, this can take a minute…")
+        system, prompt = co.design_prompt(desc, names, goal)
+        try:
+            raw, who = asyncio.run(_ex.ask_once(cfg, system, prompt, timeout=240))
+        except Exception:
+            raw, who = "", ""
+        plan, _ = co.read_plan(raw, names) if raw else ({}, [])
+        how = f"designed by {who}" if plan and plan.get("departments") else ""
+    if not how:
+        raw_plan = co.from_words(desc, [])
+        plan, _ = co.normalize(raw_plan, names)
+        how = "filled in from the catalogue"
+    if goal:
+        plan["company"]["objective"] = goal
+        if "work" not in plan:
+            plan["work"] = co.work_from_words(goal, plan["departments"])
+    accts = {k: bool(v.get("ready")) for k, v in _acc.readiness(cfg).items()}
+    pv = co.preview(cfg, store, plan, accts)
+    print(f"  {how[0].upper() + how[1:]}.")
+    for d in pv["departments"]:
+        print(f"    {d['name']:<14} " + ", ".join(p["name"] + (" (head)" if p["lead"] else "")
+                                           for p in d["people"]))
+    print(f"  {pv['new']} new agents, {pv['desks']} desks (each off until you switch it on).")
+    for n in pv.get("notes") or []:
+        print(_wrap(n, "    "))
+    if not pv["fits"] or not _yes("Make it?"):
+        print("  Nothing was changed.")
+        return
+    rep = co.apply(cfg, store, plan, accts)
+    _save(cfg)
+    co.record(store, f"company set up in bento setup: {', '.join(rep['departments'])}")
+    print(f"  ✓ {len(rep['departments'])} departments, {len(rep['made'])} agents made")
+
 
 def _step_name(cfg, store) -> None:
     v = _ask("\n  Name", cfg.get("agent_name") or "Aria")
@@ -599,6 +669,7 @@ def _step_account(cfg, store) -> None:
 
 
 HANDLERS = {
+    "shape": _step_shape, "company": _step_company,
     "name": _step_name, "model": _step_model, "hello": _step_hello,
     "fork": _step_fork, "app": _step_app,
     "agent": _step_agent, "crew": _step_crew, "screen": _step_screen, "voice": _step_voice,
@@ -628,12 +699,13 @@ def run(cfg=None, store=None) -> None:
 
     from . import users as usersmod
     machine = (cfg, store)
+    show_all = False
     while True:
         # Re-resolved every pass, not bound once: the account step can change WHO
         # this session is half way through the arc, and the steps after it must
         # then be configuring that person rather than the machine.
         cfg, store = usersmod.resolve(*machine)
-        st = ob.state(cfg, store)
+        st = ob.state(cfg, store, show_all=show_all)
         _draw(st, cfg.get("agent_name") or "your agent")
         if st["finished"]:
             print("\n  Everything is answered. `q` writes that down and leaves.")
@@ -641,6 +713,9 @@ def run(cfg=None, store=None) -> None:
             next(i for i, s in enumerate(st["steps"], 1) if s["id"] == st["next"])) or "q")
         if not raw or raw.lower() in ("q", "quit", "done", "exit"):
             break
+        if raw.lower() == "a":
+            show_all = not show_all
+            continue
         skip = raw.lower().startswith("s") and raw[1:].strip().isdigit()
         num = raw[1:].strip() if skip else raw
         if not num.isdigit() or not (1 <= int(num) <= len(st["steps"])):

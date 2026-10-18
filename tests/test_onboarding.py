@@ -27,7 +27,8 @@ def store(tmp_path):
 
 
 def by_id(st):
-    return {s["id"]: s for s in st["steps"]}
+    # a step this setup leaves out (`more`) is still probed: its status is real
+    return {**{m["id"]: m for m in st.get("more", [])}, **{s["id"]: s for s in st["steps"]}}
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +69,8 @@ def test_an_account_ticks_the_step_and_removing_it_unticks_it(store, tmp_path,
 def test_the_two_steps_the_machine_cannot_work_without_are_not_skippable():
     assert not ob.BY_ID["name"].optional
     assert not ob.BY_ID["model"].optional
-    assert all(s.optional for s in ob.STEPS if s.id not in ("name", "model"))
+    assert not ob.BY_ID["shape"].optional, "the first answer decides the rest"
+    assert all(s.optional for s in ob.STEPS if s.id not in ("shape", "name", "model"))
 
 
 def test_prerequisites_point_at_steps_that_exist():
@@ -78,9 +80,9 @@ def test_prerequisites_point_at_steps_that_exist():
 
 
 def test_a_step_whose_prerequisite_is_missing_is_not_offered(store):
-    st = ob.state({}, store)
+    st = ob.state({"setup_complete": True}, store)
     assert by_id(st)["flow"]["blocked"] == ["agent"]
-    assert st["next"] == "name", "the next thing to do is never a blocked step"
+    assert st["next"] == "shape", "the next thing to do is never a blocked step"
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +210,8 @@ def test_everything_answered_counts_as_finished(store):
     ob.skip(cfg, "fork")
     # and a desktop with no microphone passes over the wake word on purpose
     ob.skip(cfg, "voice")
+    # one agent, on a machine with its own screen: every step it keeps is answered
+    ob.set_shape(cfg, "one", "everyone", screen=True)
     store.create_conversation("hi")
     store.save_app("Scratchpad", "", "notes that stay", "<p>notes</p>")
     store.save_subagent({"name": "mine"})
@@ -249,7 +253,8 @@ def test_every_optional_step_says_where_it_lives_afterwards_or_is_self_contained
     afraid to leave. Steps with no panel create a thing (an agent, a flow, a job)
     that has its own app."""
     homeless = [s.id for s in ob.STEPS if not s.panel]
-    assert set(homeless) <= {"agent", "flow", "schedule"}, homeless
+    # `shape` is the question that shapes setup itself; running setup again asks it
+    assert set(homeless) <= {"shape", "agent", "flow", "schedule"}, homeless
 
 
 # ---------------------------------------------------------------------------
@@ -299,9 +304,13 @@ def api():
 
 def test_the_state_route_answers_with_the_whole_arc(api):
     c, _ = api
-    d = c.get("/api/onboarding").json()
+    d = c.get("/api/onboarding?all=1").json()
     assert {s["id"] for s in d["steps"]} == {s.id for s in ob.STEPS}
-    assert d["total"] == len(ob.STEPS)
+    d = c.get("/api/onboarding").json()
+    assert [s["id"] for s in d["steps"]] == ["shape"], "a new machine is asked one thing first"
+    d = c.post("/api/onboarding/shape", json={"shape": "one", "use": "founder"}).json()
+    assert [s["id"] for s in d["steps"]] == list(ob.PLANS["one"]) and d["next"] == "name"
+    assert c.post("/api/onboarding/shape", json={"shape": "army"}).status_code == 400
 
 
 def test_skipping_over_http_comes_back_with_fresh_state(api):
@@ -375,3 +384,76 @@ def test_a_machine_that_is_not_set_up_says_so_when_the_server_starts(monkeypatch
     cli.serve("127.0.0.1", 8399, False, "fail")
     assert "bento setup" not in capsys.readouterr().out, (
         "a machine that has been set up is still being told to set itself up")
+
+
+# ---------------------------------------------------------------------------
+# The first question: one agent or a company, and setup follows the answer
+# ---------------------------------------------------------------------------
+
+def test_before_the_first_answer_a_new_machine_sees_only_the_question(store):
+    st = ob.state({}, store)
+    assert [s["id"] for s in st["steps"]] == ["shape"] and st["next"] == "shape"
+    assert len(st["more"]) == len(ob.STEPS) - 1 and st["shape"] == {}
+
+
+def test_a_machine_set_up_before_the_question_still_sees_every_step(store):
+    st = ob.state({"setup_complete": True}, store)
+    assert [s["id"] for s in st["steps"]] == [s.id for s in ob.STEPS]
+    assert st["more"] == []
+
+
+def test_one_agent_is_a_short_setup_and_the_rest_is_one_tap_away(store):
+    cfg: dict = {}
+    ob.set_shape(cfg, "one", "coder")
+    st = ob.state(cfg, store)
+    ids = [s["id"] for s in st["steps"]]
+    assert ids == list(ob.PLANS["one"])
+    assert st["total"] == len(ob.PLANS["one"])
+    assert {"company", "agent", "flow", "account"} <= {m["id"] for m in st["more"]}
+    # a mission brings its own people, so it is not held behind "build a specialist"
+    assert by_id(st)["schedule"]["blocked"] == []
+    assert cfg["persona"] == "coder", "the answer orders the missions offered later"
+    every = ob.state(cfg, store, show_all=True)
+    assert [s["id"] for s in every["steps"]] == [s.id for s in ob.STEPS]
+    assert by_id(every)["agent"]["extra"] is True
+    assert every["total"] == st["total"], "the count is this setup's, whatever is shown"
+
+
+def test_a_company_drafts_its_team_instead_of_building_one_by_hand(store):
+    from agentos import company
+    cfg: dict = {"agent_name": "Aria"}
+    ob.set_shape(cfg, "company", "founder")
+    st = ob.state(cfg, store)
+    ids = [s["id"] for s in st["steps"]]
+    assert "company" in ids and "agent" not in ids and "flow" not in ids
+    assert by_id(st)["company"]["status"] == "todo"
+    raw = company.from_words("a design studio", ["sales"])
+    plan, _ = company.normalize(raw, ["fetch_url", "save_report", "recall"])
+    company.apply(cfg, store, plan, {})
+    assert by_id(ob.state(cfg, store))["company"]["status"] == "done"
+
+
+def test_a_screen_of_its_own_adds_the_kiosk_steps(store):
+    cfg: dict = {}
+    ob.set_shape(cfg, "one", screen=True)
+    ids = [s["id"] for s in ob.state(cfg, store)["steps"]]
+    assert {"crew", "screen", "voice"} <= set(ids)
+
+
+def test_the_first_answer_is_checked_and_asked_again_on_restart(store):
+    cfg: dict = {}
+    with pytest.raises(ValueError):
+        ob.set_shape(cfg, "a franchise")
+    with pytest.raises(ValueError):
+        ob.set_shape(cfg, "one", "astronaut")
+    ob.set_shape(cfg, "company")
+    ob.restart(cfg)
+    assert ob.shape_of(cfg) == {}
+    assert ob.state(cfg, store)["next"] == "shape"
+
+
+def test_every_plan_names_real_steps_and_the_terminal_can_walk_them():
+    from agentos import setup_tui
+    for steps in list(ob.PLANS.values()) + [ob.SCREEN_STEPS]:
+        assert set(steps) <= set(ob.BY_ID)
+    assert set(ob.BY_ID) <= set(setup_tui.HANDLERS)

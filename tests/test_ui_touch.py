@@ -178,3 +178,12 @@ def test_a_checkbox_label_is_a_real_target_on_touch():
         "checkbox labels are back under the touch floor")
     box = _exact("body.dev-touch .win label.ck input[type=checkbox]")
     assert box, "the checkbox itself no longer grows on touch"
+
+
+def test_the_immersive_look_never_shrinks_a_segment_below_the_floor():
+    """Measured on the setup question on a 390px phone: `body.immersive .seg button`
+    set min-height:28px, loads after 15-responsive.css at the same specificity, and so
+    beat the touch floor for every segmented control in the default look."""
+    imm = (CSS / "20-immersive.css").read_text()
+    rule = next(r for r in imm.split("}") if r.strip().startswith("body.immersive .seg button{"))
+    assert "var(--tap" in rule, rule
