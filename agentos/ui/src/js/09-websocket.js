@@ -797,9 +797,11 @@ function handle(ev){
     case 'models': refreshApp('models'); loadModels(); loadBrains(); break;
     case 'model_pull':{const p=$('#mdl-prog');if(p)p.textContent=ev.done?'':(''+ev.name+': '+ev.status);
       if(ev.done){refreshApp('models');toast(''+ev.name+' '+(String(ev.status).startsWith('error')?ev.status:'ready'))} break;}
+    case 'whatsapp_in':
     case 'telegram_in':{
-      toast('Telegram: '+ev.text); jarvisOn(3);
+      toast((ev.type==='whatsapp_in'?'WhatsApp: ':'Telegram: ')+ev.text); jarvisOn(3);
       loadConvs(); if(feed&&currentConv===ev.conversation_id&&!RUNNING.has(currentConv))openConv(currentConv); break;}
+    case 'whatsapp_out':
     case 'telegram_out':{
       jarvisOff();
       loadConvs(); if(feed&&currentConv===ev.conversation_id&&!RUNNING.has(currentConv))openConv(currentConv); break;}

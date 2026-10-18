@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.55 — 2026-10-18
+
+**Two people on one Telegram bot are answered side by side, and the Office moves with a phone turn.** A message
+is saved and shown the moment it arrives. A long thread's history used to be rebuilt first, with a model call to
+shorten it, so it waited minutes while a newer, shorter chat was answered; on Claude Code that rebuild wasn't even
+used. And a turn from Telegram or WhatsApp now reaches your screens like a desktop chat: the lead's desk lights up,
+each step shows in the Office, and Chat streams it when that thread is open.
+
 ## 0.6.53 — 2026-10-18
 
 **Bento starts again on Python 3.10.** The Telegram story page put a backslash inside an f-string expression, which
