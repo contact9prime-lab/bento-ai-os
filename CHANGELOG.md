@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.56 — 2026-10-18
+
+**The Stage on Telegram says something.** A map now numbers its places and lists what happened at each one
+under it, where before those notes showed only on hover and a phone never saw them. Lines join places only when
+they're a journey. Telegram sends the story before the words, with your question on top, and tells it aloud as an
+audio message when this machine has a speech engine. Your agent is asked for a story with a point: what matters
+most first, then the detail, ending on what it means for you, with every caption a takeaway.
+
 ## 0.6.55 — 2026-10-18
 
 **Two people on one Telegram bot are answered side by side, and the Office moves with a phone turn.** A message

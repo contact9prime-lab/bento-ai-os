@@ -691,6 +691,12 @@ Six rules:
   (`tgformat.to_html`), resent plain when Telegram cannot parse them. A long category name wraps to two lines
   (`stageTwoLines`) and a unit is placed as written (`stageWithUnit`: "$2.6 billion"), because a picture has
   no hover.
+- **A story has a point, and a picture shows it all** (`BIG_LINE`'s story shape, map `route`, `.st-mapnotes`,
+  `still_caption`'s map notes, `send_narration`; `tests/test_telegram_stage.py`). Reported with the owner's India
+  news map: "bland … STAGE is IMPACT". The agent had written a note per place; the map showed notes only on hover,
+  and joined unrelated places with arcs. Notes are numbered and listed under the map, arcs only when `route`, the
+  guidance asks for a hook, the detail and what it means for the person, and captions that are takeaways.
+  Telegram sends the story before the text, and narrates it when the machine has a server voice.
 - **A forwarded lead gets it through the team door** (`STAGE_DOOR_TOOLS` in `DOOR_TOOLS`, `stage.note(tool=)`).
   Measured on the owner's machine with Claude Code: the map arrived at 15 s, the text at 34 s. A board's
   refresh opens a door with ONLY `show_scene` (`open_app_door` accepts that with a conversation and no app),

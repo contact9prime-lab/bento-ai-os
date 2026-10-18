@@ -49,11 +49,16 @@ or with `bento stage big on|off`.
   Office's chat, or the prompt bar). Turn "Open by itself on this screen" off under Boards if you'd
   rather open it yourself.
 - **Chat** puts a ▶ Play chip under each answer that has a story, also when you reopen the chat later.
-- **Telegram** gets the reply, formatted (bold, bullets, links), then the story as pictures in the chat:
-  one album, a picture per scene, with its title, caption and source under each. A video scene follows as
-  its YouTube link, which Telegram plays in place. The pictures are drawn by the Stage's own code in a
-  headless Chromium on this machine, about a second for a story. With no Chromium here, the story goes
-  as one page to open in the phone's browser instead. **WhatsApp** gets the same pictures, one at a time.
+- **Telegram** gets the story first, then the words: one album, a picture per scene, with the question on
+  top and each scene's title, takeaway and source under it. A map lists what happened at each place, numbered
+  on the map and written out under it, so a phone sees the notes a desk sees on hover. With a speech engine
+  on this machine (Settings → Voice: ElevenLabs, OpenAI, Google, Piper…), the story follows as one audio
+  message, told in your agent's voice; the browser voice can't, because it lives in a browser
+  (`telegram.narrate: false` turns it off). A video scene follows as its YouTube link, which Telegram plays
+  in place. The pictures are drawn by the Stage's own code in a headless Chromium on this machine. With no
+  Chromium here, the story goes as one page instead. **WhatsApp** gets the same pictures, one at a time.
+
+  ![A news map on Telegram: five numbered places, each with what happened there listed under the map](screenshots/stage-telegram-map-notes.png)
 - **A terminal** prints each scene as text: a chart as a sparkline or bars, a map as its places. The TUI
   and the terminal chat print them as they arrive; `bento stage` shows the last chat's story, `bento stage
   list` everything.

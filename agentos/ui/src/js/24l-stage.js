@@ -773,13 +773,14 @@ async function stageMap(art,sc){
   pts.forEach(p=>{const x=X(p.lon),y=Y(p.lat);taken.push([x-9,y-9,x+9,y+9])});
   const order=pts.map((p,i)=>[p,i]).sort((a,b)=>(b[0].value||0)-(a[0].value||0));
   // a few places in order are a journey: arcs join them, drawn one after another
-  if(pts.length>=2&&pts.length<=12){
+  if(sc.route&&pts.length>=2&&pts.length<=12){
     const arcs=sSvg('g',{class:'st-arcs'});
     for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],ax=X(a.lon),ay=Y(a.lat),bx=X(b.lon),by=Y(b.lat);
       const mx=(ax+bx)/2,my=(ay+by)/2-Math.hypot(bx-ax,by-ay)*.25;
       arcs.append(sSvg('path',{d:`M${ax} ${ay}Q${mx} ${my} ${bx} ${by}`,pathLength:100,style:`animation-delay:${400+i*250}ms`}))}
     svg.append(arcs);
   }
+  const noted=pts.filter(p=>p.note);
   const fits=(lx,ly,lw,th)=>lx>=2&&lx+lw<=W-2&&ly>=2&&ly+th<=H-2
     &&!taken.some(b=>lx<b[2]&&lx+lw>b[0]&&ly<b[3]&&ly+th>b[1]);
   order.forEach(([p],rank)=>{
@@ -789,6 +790,10 @@ async function stageMap(art,sc){
     const g=sSvg('g',{class:'st-pin',style:`animation-delay:${delay}ms`});
     g.append(sSvg('circle',{cx:x,cy:y,r:r*1.9,class:'st-pulse'}),sSvg('circle',{cx:x,cy:y,r,class:'st-pt',filter:`url(#${mid}-glow)`}));
     g.append(sSvg('title',{},(p.label||'')+(p.value!=null?': '+stageFmt(p.value,sc.unit):'')+(p.note?' · '+p.note:'')));
+    // a place with a note is numbered, and its note is listed under the map: a picture has
+    // no hover, and the note is what happened there
+    const n=noted.indexOf(p);
+    if(n>=0)g.append(sSvg('text',{x,y:y+4*K,'text-anchor':'middle',class:'st-pinno'},String(n+1)));
     svg.append(g);
     // the full name, then its first part ("Furnace Creek"), placed where it touches no
     // other label: right, left, above, below. A place with no room keeps its dot and title.
@@ -811,6 +816,10 @@ async function stageMap(art,sc){
       break;
     }
   });
+  if(noted.length){const ol=sEl('ol','st-mapnotes');
+    noted.forEach((p,i)=>{const li=sEl('li','');li.style.animationDelay=(600+i*160)+'ms';
+      li.append(sEl('b','',(i+1)+' · '+(p.label||'')+(p.value!=null?' '+stageFmt(p.value,sc.unit):'')),sEl('span','',p.note));ol.append(li)});
+    art.append(ol)}
   if(missing.length)art.append(sEl('p','mut st-note','Not on this map: '+missing.join(', ')));
   if(vals.length>1){const lg=sEl('div','st-scale');lg.append(sEl('span','',stageFmt(vmin,sc.unit)),sEl('i',''),sEl('span','',stageFmt(vmax,sc.unit)));art.append(lg)}
 }

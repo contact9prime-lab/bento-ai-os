@@ -202,7 +202,10 @@ class _KIND:
         if view and view not in VIEWS:
             dropped.append(f"view {view!r}")
             view = ""
-        sc.update(points=pts, regions=regions, view=view or "", unit=_s(spec.get("unit"), 12))
+        # lines join the places only when they are a journey (route: true); a set of places
+        # that are each their own story is pins with notes, never a route nobody took
+        sc.update(points=pts, regions=regions, view=view or "", unit=_s(spec.get("unit"), 12),
+                  route=bool(spec.get("route")))
 
     @staticmethod
     def numbers(spec, sc, dropped):
@@ -651,6 +654,14 @@ def settings(cfg: dict) -> dict:
 
 BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anything worth seeing is "
             "SHOWN with show_scene before you write the text: three to six scenes, in story order. "
+            "Tell a story, not a slide: open on what matters most (the headline numbers, or a "
+            "picture of the main thing), then the detail, and END on what it means for this person "
+            "(what to do, what to watch, how it touches what they told you about themselves). Every "
+            "caption is the takeaway as a sentence with a verb ('A stampede in Kolkata and a red "
+            "alert in Chennai lead the day'), never a label ('Stories by location'). On a map, give "
+            "every point a note saying what happened there, in a few words; set route: true only when "
+            "the places are a journey. News: the top stories' key numbers, a map with a note on each "
+            "place, a picture of the biggest story, and what it means for them. "
             "A how-to or a tutorial: the steps, a picture, and a YouTube video (search the web for "
             "the best tutorial on it and pass its youtube.com address as a video scene). A place: "
             "a map, and a picture of it. Numbers or a trend: a chart or key numbers. A process or a "
@@ -722,6 +733,10 @@ def still_caption(sc: dict, i: int, n: int) -> str:
     out = [head]
     if sc.get("caption"):
         out.append(sc["caption"])
+    if sc.get("kind") == "map":
+        # the notes the picture lists, so a caption read aloud says them too
+        out += [f"{k}. {p['label']}: {p['note']}" for k, p in
+                enumerate([p for p in sc.get("points") or [] if p.get("note")], 1)][:8]
     if sc.get("illustrative"):
         out.append("Illustrative, not data.")
     elif sc.get("source"):
@@ -863,6 +878,12 @@ def write_report(store, folder, conversation_id: str, answer_to: str, answer: st
     p = d / f"{slug}-{(answer_to or conversation_id)[:6]}.html"
     p.write_text(report_html(store, conversation_id, answer_to, answer, agent), encoding="utf-8")
     return p
+
+
+def question_of(store, answer_to: str) -> str:
+    """The person's question a story answers, in their words (without channel notes)."""
+    row = store.db.execute("SELECT content FROM messages WHERE id=?", (answer_to,)).fetchone() if answer_to else None
+    return _s(_question(row[0] if row else ""), 200)
 
 
 def last_question(store, conversation_id: str) -> str:

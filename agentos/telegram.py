@@ -279,8 +279,11 @@ class TelegramBridge(usersmod.Scoped):
             pngs = await stagestill.render(
                 stagemod.report_html(self.store, cid, ans, agent=agent, still=True), self.cfg)
             if len(pngs) == len(scenes):
-                res = await self.send_album(pngs, [stagemod.still_caption(sc, i, len(scenes))
-                                                   for i, sc in enumerate(scenes)], chat_id)
+                caps = [stagemod.still_caption(sc, i, len(scenes)) for i, sc in enumerate(scenes)]
+                q = stagemod.question_of(self.store, ans)
+                if q:
+                    caps[0] = (f"▶ {q}\n\n" + caps[0])[:1024]   # what the story answers, on top
+                res = await self.send_album(pngs, caps, chat_id)
                 if not res.startswith("[error]"):
                     for sc in scenes:
                         if sc.get("kind") == "video" and sc.get("video"):
@@ -288,6 +291,7 @@ class TelegramBridge(usersmod.Scoped):
                                             text=f"▶ {sc.get('title') or 'Video'}\n"
                                                  f"https://www.youtube.com/watch?v={sc['video']}"
                                                  + (f"&t={int(sc['start'])}" if sc.get("start") else ""))
+                    await self.send_narration(scenes, chat_id)
                     return
                 self.store.log("telegram", f"could not send the story as pictures: {res}")
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
@@ -300,6 +304,38 @@ class TelegramBridge(usersmod.Scoped):
                     self.store.log("telegram", f"could not send the story: {res}")
         except Exception as e:
             self.store.log("telegram", f"could not send the story: {e}")
+
+    async def send_narration(self, scenes: list, chat_id: int) -> str:
+        """The story told aloud, as one audio message after the pictures: each scene's line,
+        in the agent's voice. Only with a speech engine on the server (Settings → Voice): the
+        browser voice lives in a browser. Never fatal, and silent when there is none."""
+        from . import speech
+        if speech.conf(self.cfg).get("engine") in ("", "browser") or self._t().get("narrate") is False:
+            return ""
+        lines = [str(sc.get("say") or sc.get("caption") or sc.get("title") or "").strip() for sc in scenes]
+        text = " ".join(x if x.endswith((".", "!", "?")) else x + "." for x in lines if x)
+        if not text:
+            return ""
+        try:
+            audio, mime, _info = await speech.speak(self.cfg, text, agent=self.cfg.get("agent_name") or "",
+                                                    lead=True)
+        except Exception as e:
+            self.store.log("telegram", f"no narration: {e}")
+            return ""
+        token = self._t().get("bot_token", "")
+        ext = "mp3" if "mpeg" in (mime or "") or "mp3" in (mime or "") else "wav" if "wav" in (mime or "") else "ogg"
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                r = await client.post(api_url(token, "sendAudio"),
+                                      data={"chat_id": str(chat_id), "title": "The story, told",
+                                            "performer": self.cfg.get("agent_name") or "Aria"},
+                                      files={"audio": (f"story.{ext}", audio, mime or "audio/mpeg")})
+            if not r.json().get("ok"):
+                raise RuntimeError(r.json().get("description", f"HTTP {r.status_code}"))
+        except Exception as e:
+            self.store.log("telegram", f"could not send the narration: {e}")
+            return ""
+        return "sent"
 
     async def send_album(self, pngs: list, captions: list, chat_id: int | None = None) -> str:
         """Pictures as one album (sendMediaGroup, ten at most each), a caption under each.
@@ -607,9 +643,12 @@ class TelegramBridge(usersmod.Scoped):
             from . import usage as _usage
             _usage.record(self.store, self.cfg, model, result.get("tokens") or {},
                           surface="telegram", conversation_id=cid)
+            # The story first, then the words: the Stage is what the answer looks like, and
+            # a long text above it pushed the pictures off the screen ("it is not giving an
+            # impression of the Stage")
+            await self.send_stage(cid, reply, chat_id)
             await self.send(reply, chat_id)
             await self.send_files(reply, chat_id)
-            await self.send_stage(cid, reply, chat_id)
             await self.send_talk(_pg.close(cid, tap), chat_id)
             await end_turn()
             await self.broadcast({"type": "telegram_out", "conversation_id": cid, "text": reply[:160]})
