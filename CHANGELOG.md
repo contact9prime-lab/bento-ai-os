@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.51 — 2026-10-18
+
+No release notes were written for this one; the commits since 0.6.50 are what changed (`bento update` lists them).
+
 ## 0.6.50 — 2026-10-18
 
 **The Stage on Telegram is pictures in the chat.** It was an .html file to download and open somewhere else, and
