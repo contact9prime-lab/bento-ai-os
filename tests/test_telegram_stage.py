@@ -88,7 +88,7 @@ def test_the_story_goes_as_an_album_with_words_under_each(tmp_path, monkeypatch)
     asyncio.run(b.send_stage(cid, "reply", 5))
     assert "window.STAGE_STILL=true" in seen["html"] and "still-card" in seen["html"]
     pngs, caps = seen["album"]
-    assert pngs == [b"png1", b"png2"] and caps[0] == "1/2 · How"
+    assert pngs == [b"png1", b"png2"] and caps[0] == "▶ show me the funnel\n\n1/2 · How", "the question on top"
     assert caps[1] == "2/2 · Funnel\nFew get out.\nSource: PhRMA" and "doc" not in seen
 
     async def none(html, cfg=None):
@@ -109,3 +109,67 @@ def test_a_real_browser_draws_one_picture_per_scene(tmp_path):
     html = stage.report_html(store, cid, stage.last_question(store, cid), agent="Aria", still=True)
     pngs = asyncio.run(stagestill.render(html))
     assert len(pngs) == 2 and all(p[:8] == b"\x89PNG\r\n\x1a\n" and len(p) > 20000 for p in pngs)
+
+
+def test_a_map_says_what_happened_at_each_place():
+    """The owner's India news map came through as pins with lines between them and nothing
+    about what happened anywhere: the agent HAD written a note per place, and the map showed
+    notes only on hover. Lines between unrelated places read as a route nobody took."""
+    sc, dropped = stage.clean({"kind": "map", "title": "India today", "source": "DT Next",
+                               "points": [{"lat": 22.57, "lon": 88.36, "label": "Kolkata",
+                                           "note": "stampede: 19 dead"},
+                                          {"lat": 13.08, "lon": 80.27, "label": "Chennai",
+                                           "note": "red alert for rain"}]})
+    assert not dropped and sc["route"] is False
+    cap = stage.still_caption(sc, 0, 1)
+    assert "1. Kolkata: stampede: 19 dead" in cap and "2. Chennai: red alert for rain" in cap
+    assert stage.clean({"kind": "map", "points": [{"lat": 1, "lon": 2, "label": "a"}],
+                        "route": True})[0]["route"] is True
+    js = (Path(__file__).parent.parent / "agentos/ui/src/js/24l-stage.js").read_text()
+    assert "if(sc.route&&pts.length>=2" in js, "lines only for a journey"
+    assert "'st-mapnotes'" in js and "st-pinno" in js, "numbered pins, notes listed under the map"
+    big = stage.BIG_LINE
+    assert "END on what it means for this person" in big and "never a label" in big
+    assert "give every point a note" in big
+
+
+def test_the_story_comes_first_and_is_told_aloud(tmp_path, monkeypatch):
+    from agentos import speech
+    b, calls = _bridge(tmp_path)
+    src = (Path(__file__).parent.parent / "agentos/telegram.py").read_text()
+    turn = src[src.index("await self.send_stage(cid, reply, chat_id)") - 300:][:600]
+    assert turn.index("send_stage(") < turn.index("self.send(reply, chat_id)"), "the pictures, then the words"
+    scenes = [{"kind": "map", "title": "India today", "say": "Here is India today."},
+              {"kind": "numbers", "title": "Toll", "caption": "Nineteen dead in Kolkata"}]
+    # the browser voice lives in a browser: nothing is sent
+    assert asyncio.run(b.send_narration(scenes, 5)) == ""
+    b.cfg["speech"] = {"engine": "openai"}
+    said = {}
+
+    async def speak(cfg, text, agent="", lead=False, **k):
+        said["text"] = text
+        return b"ID3audio", "audio/mpeg", {}
+    monkeypatch.setattr(speech, "speak", speak)
+
+    class R:
+        def json(self):
+            return {"ok": True}
+
+    class C:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, data=None, files=None):
+            said["url"], said["file"] = url, files["audio"][0]
+            return R()
+    import agentos.telegram as tgmod
+    monkeypatch.setattr(tgmod.httpx, "AsyncClient", C)
+    assert asyncio.run(b.send_narration(scenes, 5)) == "sent"
+    assert said["text"] == "Here is India today. Nineteen dead in Kolkata."
+    assert said["url"].endswith("/sendAudio") and said["file"] == "story.mp3"

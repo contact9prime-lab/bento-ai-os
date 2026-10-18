@@ -289,3 +289,11 @@ body.dev-mobile .stg-cap{font-size:15px}
   box-shadow:0 0 6px var(--acc);animation:st-fade 1.2s ease-in-out infinite alternate}
 .task-chat{display:flex;flex-direction:column;height:100%;min-height:0}
 .task-chat .cp-feed{flex:1;min-height:0}
+
+/* a map's places, each with what happened there: numbered on the map, listed under it */
+.st-pinno{font:800 calc(11px*var(--k,1)) var(--sans);fill:#fff;pointer-events:none}
+.st-mapnotes{list-style:none;margin:10px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+.st-mapnotes li{display:flex;flex-direction:column;gap:2px;padding:8px 12px;border-radius:var(--r-md);
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);animation:st-fade .5s ease both}
+.st-mapnotes b{font-size:var(--fs-sm);color:#fff}
+.st-mapnotes span{font-size:var(--fs-sm);line-height:1.4;color:rgba(238,241,255,.78)}
