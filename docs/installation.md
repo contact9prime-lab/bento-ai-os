@@ -68,8 +68,8 @@ AgentOS runs on a Pi. What that's like depends entirely on where the model lives
 ```bash
 sudo apt install python3 python3-venv git
 curl -LsSf https://astral.sh/uv/install.sh | sh
-git clone <your fork> agentic-os && cd agentic-os
-uv sync && uv run agentos
+git clone https://github.com/contact9prime-lab/bento-ai-os && cd bento-ai-os
+uv sync && uv run bento
 ```
 
 > **The interpreter is pinned in `.python-version`.** `requires-python` has no upper bound, so left
@@ -163,10 +163,13 @@ the fewest moving parts and is what to use there.
 ## Run from source
 
 ```bash
-cd agentic-os
+git clone https://github.com/contact9prime-lab/bento-ai-os && cd bento-ai-os
 uv sync                 # install dependencies (or: pip install -e .)
-uv run agentos          # start the server and open the desktop in your browser
+uv run bento            # start the server and open the desktop in your browser
 ```
+
+From a checkout, every `bento …` command in these docs is `uv run bento …`. The installer
+puts the same program on your PATH as `bento` (its copy lives in `~/.local/src/agentic-os`).
 
 That's it. The desktop opens at **http://127.0.0.1:8321**. If Ollama is running, your models are
 detected automatically.
@@ -174,7 +177,7 @@ detected automatically.
 ### Make it permanent
 
 ```bash
-uv run agentos install
+uv run bento install
 ```
 
 This:
@@ -190,7 +193,7 @@ Flags:
 To remove everything (your data in `~/.agentos` is preserved):
 
 ```bash
-uv run agentos uninstall
+uv run bento uninstall
 ```
 
 ---

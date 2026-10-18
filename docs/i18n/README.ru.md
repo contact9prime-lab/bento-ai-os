@@ -43,6 +43,8 @@ Bento — это самостоятельно размещаемый AI-рабо
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+> **Чтобы что-то делать, ему нужен «мозг».** Настройка спросит о нём: [Ollama](https://ollama.com) с моделью, умеющей вызывать инструменты (например, `qwen3.5:9b`), облачный API-ключ или Claude Code, Gemini CLI или Codex, в которые вы уже вошли.
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
 
 Затем откройте **http://127.0.0.1:8321**. Пока вы сами не включите

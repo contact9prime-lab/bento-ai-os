@@ -42,6 +42,8 @@ Telegram、WhatsApp に届きます。どのエージェントのどの操作も
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+> **何かをさせるには「頭脳」が必要です。** セットアップで尋ねられます：ツールを呼び出せるモデル（`qwen3.5:9b` など）を入れた [Ollama](https://ollama.com)、クラウドの API キー、またはサインイン済みの Claude Code、Gemini CLI、Codex のいずれか。
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
 
 あとは **http://127.0.0.1:8321** を開くだけです。自分で[リモートアクセス](../remote-access.md)を

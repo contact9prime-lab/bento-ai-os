@@ -5,7 +5,7 @@ machine without a browser. If Textual isn't installed it falls back to a plain R
 (`clitui`) with the same chat + approval flow.
 
 ```bash
-uv run agentos tui        # or just: agentos tui (installed package)
+uv run bento tui          # from a checkout; installed, it is just: bento tui
 ```
 
 The TUI talks to the same server and the same WebSocket event stream as the browser desktop,
