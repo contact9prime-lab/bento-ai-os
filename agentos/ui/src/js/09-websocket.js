@@ -10,7 +10,9 @@ function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim();
     // a reconnect is usually a restart: is this page the build that is now running?
-    if(typeof updateWaitingCheck==='function')setTimeout(updateWaitingCheck,1500)};
+    if(typeof updateWaitingCheck==='function')setTimeout(updateWaitingCheck,1500);
+    // a Brief that came while nobody was looking is offered once, with Play (24b-brief.js)
+    if(typeof briefWelcome==='function'&&!window._briefWelcomed){window._briefWelcomed=1;setTimeout(briefWelcome,2500)}};
   ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
     for(const k in ACT)actDone(k);   // no socket, no honest "what it is doing"
     removeWorking(); // never leave "thinking…" on screen with no live socket behind it
@@ -749,6 +751,7 @@ function handle(ev){
       refreshApp('jobs'); break;      // a mission's row shows what it just said
     case 'brief':
       // the answer to a decision lands here, minutes after the tap that asked for it
+      if(ev.action==='ready'&&ev.scheduled&&typeof briefReady==='function'){briefReady(ev);try{localStorage.setItem('brief.played',String(Date.now()/1000))}catch(e){}}
       if(ev.action==='answered')toast('▲ '+(ev.title||'').slice(0,40)+' — the reply is in the Brief',6000);
       // a mission stopped to wait for an answer, and later carried on because of one
       if(ev.action==='asked')toast('▲ A mission is waiting for your answer in the Brief',{label:'Open',go:()=>openApp('brief')});

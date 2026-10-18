@@ -231,6 +231,7 @@ DEFAULTS = {
     "companies": {},
     # the Stage (stage.py): Answer BIG shows answers without being asked; app "" is the Stage
     "stage": {"big": True, "app": ""},
+    "brief": {"times": ["08:00"], "days": "daily", "summary": "plain", "telegram": True},
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight
     # (fold it in) or is a separate ask (leave it queued for the next turn). Off = every

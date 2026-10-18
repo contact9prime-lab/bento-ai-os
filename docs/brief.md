@@ -49,6 +49,33 @@ Three rules make it a page rather than a feed:
 - **A decision stays in view after you make it**, with what you decided and,
   when it lands, the reply. Only Done goes under "handled".
 
+## The Brief comes to you, and you can watch it
+
+The Brief comes at the times you choose: 8:00 every day unless you change it. Set it on the
+Brief page (*Change* under the Play button) or with `bento brief schedule 08:00,18:00`
+(`--weekdays`, `--ai on`, `off` to stop). At each time Bento gathers what is waiting and what came
+in since the last Brief, and delivers it:
+
+- **On your screen**, a card: *Your 08:00 Brief: 3 need you · 2 decisions*, with **▶ Play**. If you
+  weren't looking, it's offered once when you come back.
+- **On Telegram**, the digest with its buttons, then the story as pictures.
+- **In Missions → History**, as a run, so you can see it happened.
+
+**▶ Play your Brief** turns it into a Stage story, narrated when voice is on: how much is waiting,
+what needs you, the decisions with their choices, which missions it came from, and what's worth
+knowing. It is built from the items alone, so it's there at once and costs nothing. Every number
+says it came from your Brief. Tick *AI summary on top* and your agent adds two sentences on what
+matters most, from the same list, one short model call per Brief. **Walk me through it** asks your
+agent to tell it in a chat, as a story of its own. `bento brief play` prints the same story.
+
+Two quiet rules: the first check after you install or update only notes the time, so you don't
+get "your 08:00 Brief" at 11 at night; and when nothing is waiting, nothing interrupts you. A
+machine that was off at 8:00 gives that morning's Brief when it wakes, the same day, never
+yesterday's.
+
+The same item filed by several runs (an audit on each run, say) is **one card**, marked ×2. Done or
+Later on it answers all of them.
+
 ## Every item has hands
 
 Done and Later are one tap. A draft can be sent — through the same gate, as

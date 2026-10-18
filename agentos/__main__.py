@@ -6120,6 +6120,39 @@ def _brief_cli(args):
             print(f"\n  {len(handled)} handled")
         print("\n  bento brief done <id> | later <id> | reopen <id> | decide <id> <choice>")
         return
+    if act == "schedule":
+        # when the Brief comes (brief.schedule): the same setting the Brief page edits
+        import time as _t
+        try:
+            if args.id:
+                import re as _re
+                times = [] if args.id == "off" else [x for x in _re.split(r"[,\s]+", args.id) if x]
+                sch = briefmod.set_schedule(cfg, times=times, days="weekdays" if args.weekdays else "daily",
+                                            summary=("ai" if args.ai == "on" else "plain") if args.ai else None)
+                from . import config as _cfgmod
+                _cfgmod.save_config(cfg)
+            else:
+                sch = briefmod.schedule(cfg)
+        except ValueError as e:
+            print(f"✗ {e}")
+            sys.exit(2)
+        if not sch["times"]:
+            print("  no scheduled Brief. bento brief schedule 08:00,18:00 sets one")
+            return
+        nxt = briefmod.next_at(sch, _t.time())
+        print(f"  the Brief comes at {', '.join(sch['times'])} {'on weekdays' if sch['days'] == 'weekdays' else 'every day'}"
+              f"{', with an AI summary' if sch['summary'] == 'ai' else ''}"
+              + (f"; next {_t.strftime('%a %H:%M', _t.localtime(nxt))}" if nxt else ""))
+        return
+    if act == "play":
+        # the story the Brief page plays, as the terminal prints a scene
+        import time as _t
+        from . import stage as stagemod
+        for sc in briefmod.story(store.brief_items(day=briefmod.today(), open_only=True), _t.time(),
+                                 since=briefmod.schedule(cfg)["last_at"], agent=cfg.get("agent_name") or ""):
+            print(stagemod.text(stagemod.clean(sc)[0]))
+            print()
+        return
     if act in ("done", "later", "reopen"):
         if not args.id:
             print("which item? (bento brief)")
@@ -7917,9 +7950,12 @@ def main():
 
     p_brief = verb("brief", help="today's Brief — what your missions found, as things to act on")
     p_brief.add_argument("action", nargs="?", default="show",
-                         choices=["show", "done", "later", "reopen", "decide"])
-    p_brief.add_argument("id", nargs="?", default="", help="the item's id (from `bento brief`)")
+                         choices=["show", "done", "later", "reopen", "decide", "play", "schedule"])
+    p_brief.add_argument("id", nargs="?", default="",
+                         help="the item's id (from `bento brief`); schedule: times like 08:00,18:00, or off")
     p_brief.add_argument("choice", nargs="?", default="", help="decide: the choice, in the item's words")
+    p_brief.add_argument("--weekdays", action="store_true", help="schedule: on weekdays only")
+    p_brief.add_argument("--ai", choices=["on", "off"], help="schedule: an AI summary on top")
     p_st = verb("stage", help="answers shown, not only written: the Stage's stories, boards and Answer BIG")
     p_st.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "boards", "big", "keep", "drop"])

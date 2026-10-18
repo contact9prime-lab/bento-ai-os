@@ -577,6 +577,9 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              # machine-wide. The share route finds a key's owner by searching
              # accounts, the same way a flow webhook finds its trigger's.
              "agent_share",
+             # when MY Brief comes and how (brief.py schedule): my times, my phone. It
+             # spends nothing unless I ask for the AI summary, which is my own call.
+             "brief",
              # who I am, as the Missions catalogue asks it (founder / coder /
              # consultant). A filter over which standing jobs are offered first —
              # personal by the same test: it costs nothing and reconfigures nothing.

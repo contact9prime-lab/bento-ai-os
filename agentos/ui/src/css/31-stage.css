@@ -272,6 +272,9 @@ body.dev-mobile .stg-cap{font-size:15px}
 .stg>.stg-empty{grid-row:3}
 /* what does not fill the room sits in its middle */
 .stg-scene.k-steps .stg-art,.stg-scene.k-numbers .stg-art,.stg-scene.k-timeline .stg-art,.stg-scene.k-table .stg-art{justify-content:center;overflow:auto}
+/* a subtitle may sit over a picture, never over the last row of a list or a table */
+.stg-scene.k-steps .stg-foot,.stg-scene.k-numbers .stg-foot,.stg-scene.k-timeline .stg-foot,.stg-scene.k-table .stg-foot{margin-top:6px}
+.st-table th.n{text-align:right}
 .stg-ver{margin-left:auto;flex:0 0 auto;display:flex;align-items:center;gap:6px;font:600 12px var(--sans);color:rgba(238,241,255,.8)}
 .stg-ver button{min-width:var(--tap,28px);min-height:var(--tap,28px);border-radius:8px;border:1px solid rgba(255,255,255,.16);
   background:rgba(255,255,255,.07);color:#fff;cursor:pointer}

@@ -7,6 +7,19 @@ is saved and shown the moment it arrives. A long thread's history used to be reb
 shorten it, so it waited minutes while a newer, shorter chat was answered; on Claude Code that rebuild wasn't even
 used. And a turn from Telegram or WhatsApp now reaches your screens like a desktop chat: the lead's desk lights up,
 each step shows in the Office, and Chat streams it when that thread is open.
+## 0.6.54 — 2026-10-18
+
+**The Brief comes to you on a schedule, and plays as a story.** At the times you choose (8:00 by default) it
+gathers what's waiting and what's new, and delivers it: a card on your screen with ▶ Play, the digest and the
+story on Telegram, and a line in Missions → History. ▶ Play turns your Brief into a narrated Stage story built from
+its items: how much is waiting, what needs you, the decisions, where it comes from. An AI summary on top is one
+tick away. Set the times on the Brief page or with `bento brief schedule 08:00,18:00`.
+
+**The Brief page reads at a glance.** A greeting, the counts as tiles, and long notes folded to a line. The same
+item filed by several runs is one card, and Done answers all of them.
+
+**Stage tables keep their last row.** The caption no longer covers a table's, a list's or a number grid's
+bottom row, and number columns line up under their headings.
 
 ## 0.6.53 — 2026-10-18
 
