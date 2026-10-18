@@ -9,6 +9,7 @@ Commands: /start pairs, /clear wipes the Telegram session, /status pings.
 
 import asyncio
 import contextlib
+import json
 import os
 import time
 from pathlib import Path
@@ -407,6 +408,15 @@ class TelegramBridge(usersmod.Scoped):
         text = (msg.get("text") or "").strip()
         if not chat_id or not text:
             return
+        # A sign-in wall this chat is being asked about (cdpbrowser.reach): a code goes into
+        # the page, and is never logged or saved in the conversation. Only a chat whose own
+        # turn registered itself can answer, so a stranger cannot type into the page.
+        from . import cdpbrowser as _cdpb
+        said = await _cdpb.from_phone(usersmod.current() or "", f"tg:{chat_id}", text)
+        if said:
+            self.store.log("telegram", f"a reply from {chat_id} answered the browser")
+            await self.send("✓ " + said, chat_id)
+            return
         frm = msg.get("from", {})
         title = (chat_info.get("title")
                  or " ".join(filter(None, [frm.get("first_name", ""), frm.get("last_name", "")])).strip()
@@ -515,6 +525,10 @@ class TelegramBridge(usersmod.Scoped):
             return
         self._busy_chats.add(chat_id)
         self._busy = True
+        # a sign-in wall met during this turn is asked here, on the phone
+        from . import cdpbrowser as _cdpb
+        _wall_uid = usersmod.current() or ""
+        _cdpb.reach(_wall_uid, f"tg:{chat_id}", lambda att, png: self.ask_wall(chat_id, att, png))
         try:
             await self._api("sendChatAction", chat_id=chat_id, action="typing")
         except Exception:
@@ -659,6 +673,7 @@ class TelegramBridge(usersmod.Scoped):
         finally:
             with contextlib.suppress(Exception):
                 await end_turn()
+            _cdpb.unreach(_wall_uid, f"tg:{chat_id}")
             self._busy_chats.discard(chat_id)
             self._runs.pop(chat_id, None)
             self._busy = bool(self._busy_chats)
@@ -671,6 +686,28 @@ class TelegramBridge(usersmod.Scoped):
                 asyncio.create_task(self._handle(nxt))
             if "tap" in locals():
                 _pg.close(cid, tap)          # idempotent: a failed turn must not leak a tap
+
+    async def ask_wall(self, chat_id: int, att: dict, png: bytes) -> None:
+        """The shared browser met a page only a person can get past, during this chat's turn:
+        a picture of the page and one question, with Done under it (cdpbrowser.tool_wait)."""
+        from . import cdpbrowser as _cdpb
+        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria")
+        kb = {"inline_keyboard": [[{"text": "Done, carry on", "callback_data": "bw:done"}]]}
+        token = self._t().get("bot_token", "")
+        if png and token:
+            try:
+                async with httpx.AsyncClient(timeout=70) as client:
+                    r = await client.post(api_url(token, "sendPhoto"),
+                                          data={"chat_id": str(chat_id), "caption": text[:1024],
+                                                "reply_markup": json.dumps(kb)},
+                                          files={"photo": ("page.png", png, "image/png")})
+                if (r.json() or {}).get("ok"):
+                    self.store.log("telegram", f"→ asked about a page: {att.get('site') or ''}")
+                    return
+            except Exception:
+                pass
+        with contextlib.suppress(Exception):
+            await self._api("sendMessage", chat_id=chat_id, text=text, reply_markup=kb)
 
     async def send_brief(self, text: str, rows: list, chat_id: int | None = None) -> str:
         """The Brief's digest with Done / Later / decision buttons under it — the
@@ -793,6 +830,14 @@ class TelegramBridge(usersmod.Scoped):
             await self._api("answerCallbackQuery", callback_query_id=cq["id"])
         except Exception:
             pass
+        if data == "bw:done":
+            # "Done, carry on" under a page the browser was waiting on
+            from . import cdpbrowser as _cdpb
+            msg = cq.get("message", {})
+            chat_id = (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id")
+            said = await _cdpb.from_phone(usersmod.current() or "", f"tg:{chat_id}", "done")
+            await self.send("✓ " + (said or "Nothing is waiting on that page now."), chat_id)
+            return
         if data.startswith("co:"):
             # a company's Open button (telegram_admin /companies)
             said = await self._console.open_company(data[3:])

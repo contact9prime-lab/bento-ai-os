@@ -13058,7 +13058,7 @@ function streamView(holder,opts){
 function streamHand(hand,cv,S,m){
   const r=cv.getBoundingClientRect(),hr=hand.getBoundingClientRect(),[W,H]=S.remote[0]?S.remote:[cv.width,cv.height];
   const say=m.kind==='click'?`${m.who||'Agent'} clicked${m.label?' “'+m.label+'”':''}`:
-            m.kind==='type'?`${m.who||'Agent'} is typing`:`${m.who||'Agent'} pressed ${m.text||'a key'}`;
+            m.kind==='type'?(m.who==='phone'?'Typing the code from your phone':`${m.who||'Agent'} is typing`):`${m.who||'Agent'} pressed ${m.text||'a key'}`;
   const d=document.createElement('div');d.className='sv-tap '+(m.kind||'');
   if(m.x!=null&&m.y!=null){d.style.left=(r.left-hr.left+m.x*r.width/W)+'px';d.style.top=(r.top-hr.top+m.y*r.height/H)+'px'}
   else{d.style.left='50%';d.style.top='18px';d.classList.add('nopos')}
