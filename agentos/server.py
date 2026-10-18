@@ -138,6 +138,51 @@ def _build_user_services(uid: str, toolbox, broadcast) -> dict:
     return bag
 
 
+def _start_account_bridges() -> list[str]:
+    """Every account whose Telegram is switched on starts polling when the server does.
+
+    Reported as "I opened the system and the Telegram listener didn't start for the
+    users who have it enabled": the bridges were built on demand, the first time a
+    request from that person touched one, so after a boot nobody had signed in and no
+    account's bot answered. A phone is exactly the door that must work with nobody at
+    the screen.
+
+    One poller per bot token: Telegram answers a second getUpdates on the same token
+    with a conflict, and two homes sharing a bot would fight over every message. The
+    first account keeps it and the rest are logged in a sentence. Returns the uids
+    started, for the test.
+    """
+    if not usersmod.enabled():
+        return []                       # the machine's own bridge already runs
+    started, seen = [], {}
+    try:
+        machine = state.machine_cfg()
+    except KeyError:
+        machine = None
+    m = (machine or {}).get("telegram") or {}
+    machine_tok = m.get("bot_token", "") if m.get("enabled") else ""
+    for u in usersmod.list_users():
+        uid = u["id"]
+        try:
+            t = (usersmod.cfg_for(uid, machine=machine).get("telegram") or {})
+        except Exception:
+            continue
+        tok = t.get("bot_token", "")
+        if not (t.get("enabled") and tok):
+            continue
+        if tok == machine_tok or tok in seen:
+            other = seen.get(tok, "the machine")
+            with contextlib.suppress(Exception):
+                usersmod.store_for(uid).log(
+                    "telegram", f"not started: {u.get('name') or uid} uses the same bot as "
+                                f"{other}, and one bot can only be polled once")
+            continue
+        seen[tok] = u.get("name") or uid
+        usersmod.services(uid)          # builds the bridges and starts their loops
+        started.append(uid)
+    return started
+
+
 @app.on_event("startup")
 async def startup():
     cfg = cfgmod.load_config()
@@ -360,6 +405,8 @@ async def startup():
     # first time somebody's request or scheduled job reaches for one.
     usersmod.set_service_factory(
         lambda uid: _build_user_services(uid, toolbox, broadcast))
+    if not idle:
+        _start_account_bridges()
     from . import attention
     if not idle:
         asyncio.create_task(knowledge.maintenance_loop(cfg, store, broadcast))

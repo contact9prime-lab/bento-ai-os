@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.49 — 2026-10-18
+
+**Every account's Telegram works after a restart, with nobody signed in.** Each account's bot used to start
+only when that person first used Bento after a boot, so a phone got no answer until somebody signed in. Now
+every account with Telegram switched on starts polling with the server. Two accounts sharing one bot token
+start it once, and the second account's log says why.
+
+**Add people from your phone.** The owner's Telegram console has `/people`, `/allow @name` (or a chat id) and
+`/block`. Somebody allowed before they've written is let in on their first message.
+
 ## 0.6.48 — 2026-10-17
 
 **The test suite no longer uses the model running on your machine.** An in-process test server picked a

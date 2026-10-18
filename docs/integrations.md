@@ -35,6 +35,10 @@ commands; every other enabled chat can only converse.
 | `/logs [n\|search]` | the operator diary, plus what was recently denied or asked about |
 | `/perms` | who has been granted what |
 | `/clear` | wipe this conversation and start fresh |
+| `/updown [on\|off]` | a message when the agent goes offline or comes back |
+| `/people` | who may talk to the agent here, and who wrote and is waiting |
+| `/allow <@name\|chat id>` | let somebody in. Somebody who hasn't written yet is let in on their first message |
+| `/block <@name\|chat id>` | stop somebody talking to the agent |
 
 The commands appear as Telegram's **Menu** button and `/` autocomplete — AgentOS registers them
 itself (`setMyCommands`) when the bridge starts and again when a chat becomes the owner, so there
@@ -51,6 +55,21 @@ console that bypassed policy would be a second, unaudited way to use the machine
 works while it is busy**, because "what is it doing" is exactly the question you ask when it is
 in the middle of something.
 
+
+**Adding people.** There are three ways, and they all end in the same allowed chat:
+
+- They write to the bot. You get a message with **Allow** and **Block** buttons, and a toast on the
+  desktop.
+- You name them first, with `/allow @theirname` on Telegram or under Settings → Channels →
+  Telegram → *Also allow*. They're let in on their first message.
+- You tick them in the People list on the Telegram card.
+
+An allowed person talks to your agent under your settings and permissions, in a conversation of
+their own. Only the owner can run the console.
+
+**With accounts on the machine**, each account's bot starts polling when the server starts, so a
+phone works after a restart with nobody signed in. One bot can only be polled once: if two
+accounts use the same bot token, the first keeps it and the other's log says why.
 
 **Chat management:** the Telegram app shows every user, group and **channel** that has reached the
 bot, with the owner badged and an enable/disable toggle for each. Only enabled chats can talk to the
