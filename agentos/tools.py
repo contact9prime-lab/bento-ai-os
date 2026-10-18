@@ -221,6 +221,8 @@ SAFE_TOOLS = {
     # the team: each of these is its own action, decided by the gate (agent.invoke,
     # agent.message, agent.huddle, skill.use)
     "delegate", "huddle", "ask_agent", "run_flow", "department_task", "use_skill",
+    # who on a linked team may be given work: a read over the link, nothing changes
+    "linked_teams",
     # the community's shared notes (pool.py): read only, and UNTRUSTED (agent.py)
     "community_recall",
     # this OS's own records and looks. The ones that write something an agent reads
@@ -1270,11 +1272,25 @@ class Toolbox(usersmod.Scoped):
             for m in mems
         )
 
-    async def delegate(self, subagent: str, task: str, conversation_id: str = "") -> str:
+    async def delegate(self, subagent: str, task: str, conversation_id: str = "",
+                       _taint=None) -> str:
         """Hand a task to a specialist subagent; its steps run in a separate data plane
-        with its own model, tool allow-list, and budget (see the Workflows app)."""
+        with its own model, tool allow-list, and budget (see the Workflows app).
+
+        `name@team` hands it to another team over a link (fabric.message): `lead@team` is
+        their lead, who takes it to their own team. The gate decided it as agent.message,
+        the matrix's question, so the first hand-over to each is asked."""
         if not self.fabric:
             return "[error] fabric not available"
+        sub = (subagent or "").strip().lstrip("@")
+        if "@" in sub:
+            me = re.sub(r"[^A-Za-z0-9_-]", "", str(self.cfg.get("agent_name") or "")) or "lead"
+
+            async def say(e):
+                if self.broadcast:
+                    await self.broadcast({"type": "agent_msg", "conversation_id": conversation_id, **e})
+            return await self.fabric.message(me, sub, task, [me], conversation_id=conversation_id,
+                                             taint=list(_taint or []), say=say)
         defn = self.store.get_subagent(subagent)
         if not defn:
             names = ", ".join(s["name"] for s in self.store.list_subagents()) or "(none)"
@@ -1283,6 +1299,34 @@ class Toolbox(usersmod.Scoped):
         head = f"[subagent {defn['name']} · {res['status']} · model {res['model']}]"
         body = res["content"] or res["fault"] or "(no output)"
         return f"{head}\n{body[:3500]}"
+
+    async def linked_teams(self) -> str:
+        """Each linked team and who there this team may give work to, asked over the link."""
+        from . import teamlink, users as usersmod
+        lks = [x for x in teamlink.links(usersmod.current() or "") if x.get("kind") in ("machine", "account")]
+        if not lks:
+            return ("No team is linked to this one. Link one in Settings → Team & Communications "
+                    "→ Linked teams.")
+        out = []
+        for view in lks[:8]:
+            lk = teamlink.find(usersmod.current() or "", view["label"]) or view   # with its keys
+            try:
+                got = (await teamlink.call(lk, {"op": "roster"}, timeout=8) if lk.get("kind") == "machine"
+                       else await self.fabric._ask_account(lk, {"op": "roster"}))
+            except Exception as e:
+                got = {"ok": False, "error": str(e) or type(e).__name__}
+            if not got.get("ok"):
+                out.append(f"- {lk['label']}: could not reach it ({teamlink.plain(got.get('error'), 160)})")
+                continue
+            names = []
+            for a in got.get("agents") or []:
+                n = teamlink.plain(a.get("name"), 40)
+                names.append(f"lead@{lk['label']} ({n}, their lead: takes whole tasks)" if a.get("lead")
+                             else f"{n}@{lk['label']}")
+            out.append(f"- {lk['label']}: " + (", ".join(names) if names else
+                       "nobody yet. Its owner chooses who your team may ask, in Settings → Team & "
+                       "Communications → Linked teams on that machine."))
+        return "Linked teams:\n" + "\n".join(out)
 
     async def huddle(self, agents: list, topic: str, rounds: int = 2,
                      conversation_id: str = "") -> str:
@@ -4396,7 +4440,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_taint"} if name == "delegate" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -4665,11 +4709,20 @@ TOOL_SCHEMAS = [
         "parameters": {
             "type": "object",
             "properties": {
-                "subagent": {"type": "string", "description": "Subagent name, e.g. 'researcher'."},
+                "subagent": {"type": "string", "description": "Subagent name, e.g. 'researcher'. "
+                             "For another team linked to this one, 'name@team', or 'lead@team' for "
+                             "their lead, who takes the whole task to their own team (linked_teams lists them)."},
                 "task": {"type": "string", "description": "Self-contained task description — the subagent sees nothing else."},
             },
             "required": ["subagent", "task"],
         },
+    },
+    {
+        "name": "linked_teams",
+        "description": "The other teams linked to this one (other machines or accounts), and who "
+                       "on each you may give work to. Hand a whole task to their lead with delegate "
+                       "'lead@team', or a part to one of their agents with 'name@team'.",
+        "parameters": {"type": "object", "properties": {}},
     },
     {
         "name": "huddle",

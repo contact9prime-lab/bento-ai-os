@@ -345,7 +345,14 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         # deny on the desk's flow decides a department's task the way it decides run_flow
         return "agent.invoke", f"agent:flow/{args.get('_desk', '') or '*'}"
     if name == "delegate":
-        return "agent.invoke", f"agent:subagent/{args.get('subagent', '') or '*'}"
+        sub = str(args.get("subagent", "") or "").strip().lstrip("@")
+        if "@" in sub and args.get("_cross"):
+            # the lead handing work to ANOTHER team crosses a link: the matrix decides it,
+            # asked the first time and remembered as a cell, as a specialist's ask_agent is.
+            # `_cross` is the agent loop's (never inside a mission, whose consent block
+            # already granted agent.invoke on its linked roster member).
+            return "agent.message", f"agent:subagent/{sub}"
+        return "agent.invoke", f"agent:subagent/{sub or '*'}"
     # default: same "<tool> <command-or-args>" string the legacy Policies app matches,
     # so patterns like "tool:run_command git *" work the way users already expect
     desc = args.get("command", "") if name == "run_command" else json.dumps(args)
