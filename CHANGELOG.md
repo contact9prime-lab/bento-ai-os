@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.52 — 2026-10-18
+
+**Bento starts again on Python 3.10.** The Telegram story page put a backslash inside an f-string expression, which
+Python 3.10 refuses, so `agentos.stage` would not import there. 3.12 and later were fine.
+
 ## 0.6.51 — 2026-10-18
 
 No release notes were written for this one; the commits since 0.6.50 are what changed (`bento update` lists them).
