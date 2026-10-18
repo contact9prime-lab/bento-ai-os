@@ -4184,7 +4184,83 @@ async def api_brief(day: str = ""):
     pg = briefmod.page(store, day)
     pg["headline"] = briefmod.headline(pg["counts"])
     pg["spoken"] = briefmod.spoken(pg["items"])
+    sched = briefmod.schedule(state["cfg"])
+    pg["schedule"] = {**sched, "next_at": briefmod.next_at(sched, time.time())}
+    pg["last_story"] = (state["cfg"].get("brief") or {}).get("last_story") or None
     return pg
+
+
+async def _brief_deliver(scheduled_at: float = 0, why: str = "asked") -> dict:
+    """One Brief, now: the rows as a Stage story in today's Brief chat, an AI summary on
+    top when the person chose one, then where it goes. `scheduled_at` is the schedule's
+    moment (0 when somebody pressed Play), and it is what `last_at` records, so one
+    scheduled Brief is delivered once. A scheduled one is a task_runs row (History)."""
+    from . import stage as stagemod, executors as execmod
+    store, cfg = state["store"], state["cfg"]
+    sched = briefmod.schedule(cfg)
+    now = time.time()
+    trid = store.task_run_start({"id": "brief", "prompt": "Brief"}) if scheduled_at else None
+    items = store.brief_items(day=briefmod.today(), open_only=True)
+    summary = ""
+    if sched["summary"] == "ai" and any(i["state"] in ("open", "later") for i in items):
+        with contextlib.suppress(Exception):
+            text, _who, why_not = await execmod.ask_brain(
+                cfg, "You write a two-sentence spoken summary of a to-do list. Plain words.",
+                briefmod.summary_prompt(items), timeout=90)
+            summary = "" if why_not else " ".join(str(text or "").split())[:400]
+    scenes = briefmod.story(items, now, since=sched["last_at"], agent=cfg.get("agent_name") or "",
+                            summary=summary)
+    title = f"Brief · {time.strftime('%a %d %b')}"
+    cid = next((c["id"] for c in store.list_conversations(limit=200)
+                if c.get("origin") == "brief" and c.get("title") == title), "") \
+        or store.create_conversation(title, origin="brief")
+    when = time.strftime("%H:%M", time.localtime(scheduled_at or now))
+    mid = store.add_message(cid, "user", f"Your {when} Brief")
+    for sc in scenes:
+        with contextlib.suppress(ValueError):
+            stagemod.add(store, cid, stagemod.clean(sc)[0])
+    pg = briefmod.page(store)
+    head = briefmod.headline(pg["counts"])
+    store.add_message(cid, "assistant", (summary + "\n\n" if summary else "") + briefmod.digest(items))
+    b = cfg.setdefault("brief", {})
+    if scheduled_at:
+        b["last_at"] = scheduled_at
+    b["last_story"] = {"cid": cid, "answer_to": mid, "at": now, "when": when, "headline": head}
+    cfgmod.save_config(cfg)
+    with contextlib.suppress(Exception):
+        await state["broadcast"]({"type": "brief", "action": "ready", "cid": cid, "answer_to": mid,
+                                  "when": when, "headline": head, "scheduled": bool(scheduled_at)})
+    sent = ""
+    if scheduled_at and sched["telegram"] and pg["open"]:
+        tg = state.get("telegram")
+        with contextlib.suppress(Exception):
+            t = tg._t() if tg else {}
+            if t.get("enabled") and t.get("bot_token") and t.get("owner_chat_id"):
+                await tg.send_brief(f"▲ Your {when} Brief\n" + briefmod.digest(items),
+                                    briefmod.telegram_rows(items))
+                await tg.send_stage(cid, "", tg._t().get("owner_chat_id"))
+                sent = "telegram"
+    if trid:
+        store.task_run_finish(trid, "ok", f"{head}" + (f" · sent to {sent}" if sent else ""),
+                              conversation_id=cid)
+    return {"cid": cid, "answer_to": mid, "headline": head, "scenes": len(scenes), "sent": sent}
+
+
+@app.post("/api/brief/story")
+async def api_brief_story():
+    """Play the Brief now: the story from what is in it at this moment."""
+    return await _brief_deliver()
+
+
+@app.put("/api/brief/schedule")
+async def api_brief_schedule(body: dict):
+    try:
+        sched = briefmod.set_schedule(state["cfg"], times=body.get("times"), days=body.get("days"),
+                                      summary=body.get("summary"), telegram=body.get("telegram"))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(state["cfg"])
+    return {**sched, "next_at": briefmod.next_at(sched, time.time())}
 
 
 @app.post("/api/brief/{bid}/act")
@@ -4449,6 +4525,21 @@ async def _stage_refresh(bid: str, uid: str) -> None:
             await state["broadcast_user"]({"type": "stage_board", "board": bd}, uid)
 
 
+async def _brief_scheduled(due: float, uid: str, first: bool = False) -> None:
+    """A scheduled Brief. The first check after the schedule exists only marks the time
+    (an update at 23:00 is not "your 08:00 Brief"), and with nothing open nobody is
+    interrupted: the time is noted and the next one comes as usual."""
+    with usersmod.as_user(uid):
+        try:
+            if first or not briefmod.page(state["store"])["open"]:
+                cfgmod.save_config(state["cfg"])
+                return
+            await _brief_deliver(scheduled_at=due, why="schedule")
+        except Exception as e:
+            with contextlib.suppress(Exception):
+                state["store"].log("error", f"brief: {type(e).__name__}: {e}")
+
+
 async def _stage_loop() -> None:
     """Boards that are due, for every account, once a minute."""
     from . import stage as stagemod
@@ -4462,6 +4553,12 @@ async def _stage_loop() -> None:
                     if not _sb.may_act():
                         continue
                     _sweep_temp_agents(state["store"])
+                    # the Brief at the times the person chose (brief.schedule)
+                    sched = briefmod.schedule(state["cfg"])
+                    due = briefmod.due_at(sched, time.time())
+                    if due:
+                        state["cfg"].setdefault("brief", {})["last_at"] = due   # claimed: once
+                        asyncio.create_task(_brief_scheduled(due, uid, first=not sched["last_at"]))
                     for bd in stagemod.due_boards(state["store"]):
                         stagemod.claim(state["store"], bd["id"])
                         asyncio.create_task(_stage_refresh(bd["id"], uid))

@@ -868,10 +868,13 @@ function stageSteps(art,sc){
 }
 function stageTable(art,sc){
   const wrap=sEl('div','st-tablewrap'),tb=document.createElement('table');tb.className='st-table';
-  const hr=document.createElement('tr');sc.columns.forEach(c=>hr.append(sEl('th','',c)));
+  // a column of numbers is right-aligned, its heading with it
+  const isN=v=>/^[-+]?[\d,.]+%?$/.test(String(v==null?'':v));
+  const numCol=sc.columns.map((_,j)=>sc.rows.length>0&&sc.rows.every(r=>r[j]==null||r[j]===''||isN(r[j])));
+  const hr=document.createElement('tr');sc.columns.forEach((c,j)=>hr.append(sEl('th',numCol[j]?'n':'',c)));
   const th=document.createElement('thead');th.append(hr);tb.append(th);
   const body=document.createElement('tbody');
   sc.rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.style.animationDelay=Math.min(i,20)*40+'ms';
-    sc.columns.forEach((_,j)=>{const td=sEl('td','',r[j]==null?'':r[j]);if(/^[-+]?[\d,.]+%?$/.test(String(r[j]||'')))td.className='n';tr.append(td)});body.append(tr)});
+    sc.columns.forEach((_,j)=>{const td=sEl('td','',r[j]==null?'':r[j]);if(numCol[j]||isN(r[j]))td.className='n';tr.append(td)});body.append(tr)});
   tb.append(body);wrap.append(tb);art.append(wrap);
 }

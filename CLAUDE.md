@@ -772,6 +772,20 @@ specialist parked parks the master too (`park_child`). Five rules:
   counted as a failure in Missions, and Stop (`cancel`) ends it. A run left `running` by a
   stop is swept to `interrupted` at boot.
 
+**The Brief comes on a schedule, as a story** (`brief.schedule`/`due_at`/`next_at`/`fold`/`story`,
+`server._brief_deliver`/`_brief_scheduled`, `/api/brief/story`, `/api/brief/schedule`, `24b-brief.js`
+`briefPlay`/`briefReady`/`briefWelcome`, `bento brief schedule|play`; `tests/test_brief_story.py`).
+Asked for as "if that is the first thing I need to hear after a while, it must be immersive" and "the
+brief should periodically check on the schedule". Four rules:
+- **The story is the rows**, in the Stage's closed set, every count sourced "your Brief", a `say` for
+  the narrator. The AI summary is the person's opt-in (`brief.summary`), fenced to the list.
+- **A scheduled moment is delivered once**: `_stage_loop` claims `last_at` before the task runs; the
+  first check after the schedule exists only marks it; an empty Brief interrupts nobody.
+- **One chat a day** (`Brief · <day>`, origin `brief`), a new user message per play, so each play is
+  its own story and the trace has them all. A scheduled one is a `task_runs` row (`task_id` brief).
+- **A card is the item, not the run** (`fold`, in `page()`): twins ride on `twins` and the page's
+  Done/Later answers them too; a decision is answered once.
+
 Kept free of HTTP and asyncio, like `jobs.py`: `bento brief` reads and acts on the same
 rows with the server down. Option labels cut at a word (`_short`) because a button that
 reads "higher seat cou" is a choice nobody can read back.
