@@ -84,7 +84,8 @@ def add(store, mission: str, run_id: str, kind: str, title: str, body: str = "",
 def page(store, day: str = "") -> dict:
     """Today's Brief, grouped and counted — what every surface renders."""
     day = day or today()
-    items = store.brief_items(day=day, open_only=True)
+    # the same item filed by several runs is one card (fold), and counted once
+    items = fold(store.brief_items(day=day, open_only=True))
     items.sort(key=lambda i: (0 if i["state"] in ("open", "later") else 1,
                               ORDER.get(i["kind"], 9), -(i.get("updated_at") or 0)))
     groups = {k: [] for k in KINDS}
@@ -238,3 +239,180 @@ def telegram_rows(items: list, limit: int = 6) -> list[list[dict]]:
             rows.append([{"text": f"✓ {n} done", "callback_data": f"br:{i['id']}:done"},
                          {"text": f"⏸ {n} later", "callback_data": f"br:{i['id']}:later"}])
     return rows
+
+
+# -- the Brief as something you watch, on a schedule ----------------------------------------
+#
+# Asked for as "the brief experience is not very good: if that is the first thing I hear after
+# a while it must be immersive", then "the brief should periodically check, on a schedule, and
+# give a brief, which is what the brief is about". So the Brief comes at the times the person
+# chose (`brief.times`, `brief.days`), and when it comes it is a Stage story built from the
+# rows: what needs you, what to decide, each mission at a glance, what's worth knowing. Built
+# from the rows and nothing else, so it is there at once, costs nothing and invents nothing;
+# an AI summary on top is the person's choice (`brief.summary`).
+
+SCHEDULE_DEFAULT = {"times": ["08:00"], "days": "daily", "summary": "plain", "telegram": True}
+DAYS = ("daily", "weekdays")
+SHOW = 4               # cards per list scene: one row on a wide screen, nothing cut off
+_HHMM = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+
+def schedule(cfg: dict) -> dict:
+    """The person's Brief schedule, every field checked."""
+    raw = {**SCHEDULE_DEFAULT, **((cfg or {}).get("brief") or {})}
+    times = []
+    for t in raw.get("times") or []:
+        m = _HHMM.match(str(t).strip())
+        if m:
+            hhmm = f"{int(m.group(1)):02d}:{m.group(2)}"
+            if hhmm not in times:
+                times.append(hhmm)
+    return {"times": sorted(times)[:6], "days": raw.get("days") if raw.get("days") in DAYS else "daily",
+            "summary": "ai" if raw.get("summary") == "ai" else "plain",
+            "telegram": raw.get("telegram") is not False, "last_at": float(raw.get("last_at") or 0)}
+
+
+def set_schedule(cfg: dict, times=None, days=None, summary=None, telegram=None) -> dict:
+    """Write the schedule; a bad time is refused in a sentence. [] switches it off."""
+    cur = cfg.setdefault("brief", {})
+    if times is not None:
+        bad = [t for t in times if not _HHMM.match(str(t).strip())]
+        if bad:
+            raise ValueError(f"times are HH:MM, like 08:00 or 18:30 (not {', '.join(map(str, bad))})")
+        cur["times"] = [str(t).strip() for t in times]
+    if days is not None:
+        if days not in DAYS:
+            raise ValueError("days is daily or weekdays")
+        cur["days"] = days
+    if summary is not None:
+        cur["summary"] = "ai" if summary == "ai" else "plain"
+    if telegram is not None:
+        cur["telegram"] = bool(telegram)
+    return schedule(cfg)
+
+
+def due_at(sched: dict, now: float) -> float:
+    """The scheduled moment that is due now (the latest one passed today and not yet
+    delivered), or 0. A machine that was off at 08:00 gives the 08:00 Brief when it wakes,
+    the same day; it never gives yesterday's."""
+    if not sched["times"]:
+        return 0
+    t = dt.datetime.fromtimestamp(now)
+    if sched["days"] == "weekdays" and t.weekday() >= 5:
+        return 0
+    passed = []
+    for hhmm in sched["times"]:
+        h, m = map(int, hhmm.split(":"))
+        at = t.replace(hour=h, minute=m, second=0, microsecond=0).timestamp()
+        if at <= now:
+            passed.append(at)
+    at = max(passed) if passed else 0
+    return at if at and at > sched["last_at"] else 0
+
+
+def next_at(sched: dict, now: float) -> float:
+    """When the next Brief comes, for the page and the terminal (0 when switched off)."""
+    if not sched["times"]:
+        return 0
+    base = dt.datetime.fromtimestamp(now)
+    for d in range(8):
+        day = base + dt.timedelta(days=d)
+        if sched["days"] == "weekdays" and day.weekday() >= 5:
+            continue
+        for hhmm in sched["times"]:
+            h, m = map(int, hhmm.split(":"))
+            at = day.replace(hour=h, minute=m, second=0, microsecond=0).timestamp()
+            if at > now:
+                return at
+    return 0
+
+
+def fold(items: list) -> list:
+    """The same item filed by several runs (one per run: an audit, a review, a parked
+    question) shown once, newest kept, with `twins` naming the others so one tap acts on
+    all of them. Found on the owner's Brief: "The auditor failed Research's task" twice."""
+    seen: dict = {}
+    out = []
+    for i in sorted(items, key=lambda x: -(x.get("updated_at") or 0)):
+        k = (i.get("mission") or "", i["kind"], i["title"].strip().lower(), i["state"])
+        if k in seen:
+            seen[k].setdefault("twins", []).append(i["id"])
+            continue
+        seen[k] = i
+        out.append(i)
+    return out
+
+
+def _greeting(now: float) -> str:
+    h = dt.datetime.fromtimestamp(now).hour
+    return "Good morning" if 5 <= h < 12 else "Good afternoon" if h < 17 else "Good evening"
+
+
+def _line(i: dict) -> dict:
+    bits = [b for b in (i.get("who"), f"by {i['due']}" if i.get("due") else "", i.get("mission")) if b]
+    return {"title": i["title"][:80], "text": " · ".join(bits)[:200]}
+
+
+def story(items: list, now: float, since: float = 0, agent: str = "", summary: str = "") -> list[dict]:
+    """The Brief as Stage scenes (stage.clean's shapes), from the rows alone.
+
+    Numbers carry their source ("your Brief"), because they are counts of rows here, and
+    every scene says its line for the narrator. `since` marks what is new since the last
+    Brief; `summary` is an AI's two sentences when the person asked for one."""
+    live = fold([i for i in items if i["state"] in ("open", "later")])
+    c = counts_of(live)
+    new = [i for i in live if (i.get("created_at") or 0) > since] if since else []
+    who = agent or "your agent"
+    scenes = []
+    nums = [{"label": LABELS[k], "value": str(c[k])} for k in KINDS if c.get(k)]
+    if new:
+        nums.append({"label": "New since the last Brief", "value": str(len(new))})
+    head = f"{_greeting(now)}. " + (headline(c).replace(" · ", ", ") + "." if live else "Nothing is waiting for you.")
+    scenes.append({"kind": "numbers", "title": "Your Brief", "source": "your Brief",
+                   "caption": summary or head,
+                   "say": (summary or head) + (f" {len(new)} of them came in since the last Brief." if new else ""),
+                   "items": nums or [{"label": "Waiting for you", "value": "0"}]})
+    need = [i for i in live if i["kind"] == "needs_you"]
+    if need:
+        scenes.append({"kind": "steps", "title": "What needs you", "items": [_line(i) for i in need[:SHOW]],
+                       "caption": f"{len(need)} thing{'s' if len(need) != 1 else ''} only you can do"
+                                  + (f", {len(need) - SHOW} more in the Brief" if len(need) > SHOW else "") + ".",
+                       "say": "What needs you. " + " ".join(i["title"].rstrip(".") + "." for i in need[:3])})
+    dec = [i for i in live if i["kind"] == "decide"]
+    if dec:
+        scenes.append({"kind": "steps", "title": "Decisions waiting",
+                       "items": [{"title": i["title"][:80], "text": " / ".join(i.get("options") or [])[:200]}
+                                 for i in dec[:SHOW]],
+                       "caption": (f"{len(dec) - SHOW} more in the Brief. " if len(dec) > SHOW else "")
+                                  + "Each answer goes back to the agent that asked.",
+                       "say": f"{len(dec)} decision{'s' if len(dec) != 1 else ''} waiting. "
+                              + " ".join(i["title"].rstrip(".?") + "?" for i in dec[:2])})
+    by: dict = {}
+    for i in live:
+        m = i.get("mission") or "Other"
+        by.setdefault(m, {k: 0 for k in KINDS})[i["kind"]] += 1
+    if len(by) > 1:
+        top = sorted(by.items(), key=lambda kv: -sum(kv[1].values()))[:6]
+        scenes.append({"kind": "chart", "chart_type": "bar", "title": "Where it comes from", "source": "your Brief",
+                       "y_label": "items",
+                       "series": [{"name": LABELS[k], "points": [[m[:28], v[k]] for m, v in top]}
+                                  for k in ("needs_you", "decide", "fyi") if any(v[k] for _, v in top)],
+                       "caption": f"{len(by)} missions filed what is waiting for you.",
+                       "say": f"It comes from {len(by)} missions; {top[0][0]} filed the most."})
+    fyi = [i for i in live if i["kind"] == "fyi"]
+    if fyi:
+        scenes.append({"kind": "steps", "title": "Worth knowing", "items": [_line(i) for i in fyi[:SHOW]],
+                       "say": "Worth knowing. " + " ".join(i["title"].rstrip(".") + "." for i in fyi[:2])})
+    done = [i for i in live if i["kind"] == "done"]
+    if done:
+        scenes.append({"kind": "steps", "title": f"Done for you by {who}", "items": [_line(i) for i in done[:SHOW]],
+                       "say": f"And {len(done)} thing{'s' if len(done) != 1 else ''} done for you."})
+    return scenes
+
+
+def summary_prompt(items: list) -> str:
+    """What the brain is asked when the person wants an AI summary: the digest, and two
+    sentences back. The rows are the missions' words, so the answer is fenced to them."""
+    return ("Here is my Brief, the items my missions filed:\n\n" + digest(items, limit=20)
+            + "\n\nIn two short sentences, tell me what matters most and what to do first. Use only "
+              "what is in the list. No preamble, no markdown.")

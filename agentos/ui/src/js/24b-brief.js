@@ -44,10 +44,10 @@ function briefItemHTML(it,idx){
   if(src.type==='report'&&src.ref)hands+=`<button class="endbtn" onclick="openApp('files')">Open report</button>`;
   if(it.answer_cid)hands+=`<button class="endbtn" onclick="openApp('chat');setTimeout(()=>openConv('${esc(it.answer_cid)}'),500)">The reply</button>`;
   return `<div class="br-item k-${esc(it.kind)} s-${esc(it.state)}" data-id="${esc(it.id)}">
-    <div class="br-head"><span class="br-kind">${esc(kindTag)}</span>${idx!=null?`<span class="br-n">${idx+1}</span>`:''}</div>
+    <div class="br-head"><span class="br-kind">${esc(kindTag)}</span>${(it.twins||[]).length?`<span class="br-twins" title="Filed by ${it.twins.length+1} runs; one tap answers all of them">×${it.twins.length+1}</span>`:''}${idx!=null?`<span class="br-n">${idx+1}</span>`:''}</div>
     <b class="br-title">${esc(it.title)}</b>
     ${meta?`<div class="br-meta">${meta}</div>`:''}
-    ${it.body?`<div class="br-body">${esc(it.body)}</div>`:''}
+    ${it.body?(it.body.length>220?`<details class="br-more"><summary><span class="br-body">${esc(it.body.slice(0,200).trim())}…</span></summary><div class="br-body">${esc(it.body)}</div></details>`:`<div class="br-body">${esc(it.body)}</div>`):''}
     ${it.draft?`<details class="br-draft"><summary>Draft</summary><pre>${esc(it.draft)}</pre></details>`:''}
     <div class="br-hands">${hands}</div>
   </div>`;
@@ -79,16 +79,93 @@ async function renderBrief(body){
     if(rest.length)main+=`<details class="br-done"><summary>${rest.length} handled</summary>${rest.map(i=>briefItemHTML(i)).join('')}</details>`;
   }else{
     main=pg.groups.map(g=>{const its=g.items.filter(shown);if(!its.length)return '';
-      return `<h3>${esc(g.label)} <span class="br-count">${its.length}</span></h3><div class="br-list">${its.map(i=>briefItemHTML(i)).join('')}</div>`}).join('');
+      return `<h3 data-k="${esc(g.kind)}">${esc(g.label)} <span class="br-count">${its.length}</span></h3><div class="br-list">${its.map(i=>briefItemHTML(i)).join('')}</div>`}).join('');
     if(rest.length)main+=`<details class="br-done"><summary>${rest.length} handled</summary><div class="br-list">${rest.map(i=>briefItemHTML(i)).join('')}</div></details>`;
     if(!live.length)main=`<p class="mut br-empty">Everything is handled.</p>`+main;
   }
+  const c=pg.counts||{};
+  const tiles=[['needs_you','Need you'],['decide','Decide'],['fyi','FYI'],['done','Done for you']]
+    .map(([k,l])=>`<button class="br-tile k-${k}" onclick="briefJump('${k}')" ${c[k]?'':'disabled'}><b>${c[k]||0}</b><span>${l}</span></button>`).join('');
+  const h=new Date().getHours(),greet=h<5?'Good evening':h<12?'Good morning':h<17?'Good afternoon':'Good evening';
   body.innerHTML=`<div class="pad br-app">
-    <div class="br-top"><div><div class="br-day">${esc(day)}</div><h2 class="br-hl">${esc(pg.headline)}</h2>
-      ${pg.missions.length?`<div class="mut">from ${pg.missions.map(esc).join(', ')}</div>`:''}</div>
-      <div class="br-tools"><button class="endbtn" data-ic="mic" onclick="briefSpeak()">Read it</button>
-        <button class="endbtn" onclick="openApp('jobs')">Missions</button></div></div>
+    <div class="br-hero"><div class="br-glow"></div>
+      <div class="br-day">${esc(day)}</div>
+      <h2 class="br-hl">${esc(greet)}. ${pg.open?esc(pg.headline):'Nothing is waiting for you.'}</h2>
+      ${pg.missions.length?`<div class="br-from">from ${pg.missions.map(esc).join(', ')}</div>`:''}
+      <div class="br-tiles">${tiles}</div>
+      <div class="br-actions">
+        <button class="br-play" onclick="briefPlay()" ${pg.items.length?'':'disabled'}><span>▶</span> Play your Brief</button>
+        <button class="endbtn" onclick="briefWalk()" title="${esc(agentName())} talks you through it, as a story">Walk me through it</button>
+        <button class="endbtn" data-ic="mic" onclick="briefSpeak()">Read it</button>
+        <button class="endbtn" onclick="openApp('jobs')">Missions</button></div>
+      <div class="br-sched">${briefSchedLine(pg.schedule)}</div>
+    </div>
     ${main}</div>`;
+}
+function briefJump(k){const h=[...document.querySelectorAll('.br-app h3')].find(x=>x.dataset.k===k);if(h)h.scrollIntoView({behavior:'smooth',block:'start'})}
+function briefWhen(ts){if(!ts)return '';const d=new Date(ts*1000),t=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  const today=new Date();return d.toDateString()===today.toDateString()?t:d.toLocaleDateString(undefined,{weekday:'short'})+' '+t}
+/* When the Brief comes: the schedule line, and its editor in place. */
+function briefSchedLine(s){
+  if(!s)return '';
+  const on=s.times&&s.times.length;
+  return `<span>${on?`Your Brief comes at ${s.times.map(esc).join(', ')}${s.days==='weekdays'?' on weekdays':' every day'}${s.next_at?' · next '+esc(briefWhen(s.next_at)):''}`:'No scheduled Brief'}</span>
+    <button class="linkbtn" onclick="briefSchedEdit(this)">${on?'Change':'Set times'}</button>`;
+}
+function briefSchedEdit(btn){
+  const s=(BRIEF.page&&BRIEF.page.schedule)||{times:[],days:'daily'};
+  const box=btn.closest('.br-sched');
+  box.innerHTML=`<label>Times <input class="br-times" value="${esc((s.times||[]).join(', '))}" placeholder="08:00, 18:00"></label>
+    <label class="tlk-chk"><input type="checkbox" class="br-wk" ${s.days==='weekdays'?'checked':''}> weekdays only</label>
+    <label class="tlk-chk"><input type="checkbox" class="br-ai" ${s.summary==='ai'?'checked':''}> AI summary on top${pInfoB('One short model call per Brief, from your brain.')}</label>
+    <label class="tlk-chk"><input type="checkbox" class="br-tg" ${s.telegram!==false?'checked':''}> on Telegram too</label>
+    <button class="endbtn" onclick="briefSchedSave(this)">Save</button>`;
+}
+function pInfoB(t){return typeof pInfo==='function'?pInfo(t):''}
+async function briefSchedSave(btn){
+  const box=btn.closest('.br-sched');
+  const times=box.querySelector('.br-times').value.split(/[,\s]+/).map(x=>x.trim()).filter(Boolean);
+  try{const r=await fetch('/api/brief/schedule',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      times,days:box.querySelector('.br-wk').checked?'weekdays':'daily',summary:box.querySelector('.br-ai').checked?'ai':'plain',
+      telegram:box.querySelector('.br-tg').checked})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
+    toast(j.times.length?'The Brief comes at '+j.times.join(', '):'No more scheduled Briefs');
+    await briefLoad();refreshApp('brief');
+  }catch(e){toast('could not save: '+(e.message||e))}
+}
+/* ▶ Play: the Brief as a Stage story, built now from what is in it, narrated. */
+async function briefPlay(){
+  try{const r=await fetch('/api/brief/story',{method:'POST'});const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
+    briefPlayStory(j.cid,j.answer_to)}
+  catch(e){toast('could not play the Brief: '+(e.message||e))}
+}
+async function briefPlayStory(cid,answer_to){
+  try{localStorage.setItem('brief.played',String(Date.now()/1000))}catch(e){}
+  if(typeof stageOpen!=='function')return;
+  await stageOpen(cid,answer_to,0);
+  if(typeof stagePlay==='function'&&!STAGE.playing)stagePlay();
+}
+/* Walk me through it: the agent's own telling, in a chat, with the Stage. One turn, asked for. */
+function briefWalk(){
+  const pg=BRIEF.page;if(!pg)return;
+  const lines=(pg.items||[]).filter(i=>i.state==='open'||i.state==='later').slice(0,20)
+    .map(i=>`- [${i.kind}] ${i.title}${i.who?' ('+i.who+')':''}${i.due?' by '+i.due:''}`).join('\n');
+  const text=`Walk me through my Brief as a short story on the Stage: what matters most, what to decide, and what to do first. Here it is:\n${lines}`;
+  openApp('chat');
+  setTimeout(()=>{if(typeof newChat==='function')newChat();
+    setTimeout(()=>{if(typeof input!=='undefined'&&input){input.value=text;if(typeof send==='function')send()}},300)},400);
+}
+/* A Brief that came while you were away: said once, with Play. */
+function briefReady(ev){
+  toast(`▲ Your ${ev.when||''} Brief: ${ev.headline||''}`,{label:'▶ Play',go:()=>briefPlayStory(ev.cid,ev.answer_to),ms:30000});
+}
+async function briefWelcome(){
+  const pg=await briefLoad();const ls=pg&&pg.last_story;if(!ls||!pg.open)return;
+  let played=0;try{played=+localStorage.getItem('brief.played')||0}catch(e){}
+  if(ls.at>played&&Date.now()/1000-ls.at<20*3600){
+    try{localStorage.setItem('brief.played',String(ls.at))}catch(e){}
+    briefReady({...ls,cid:ls.cid,answer_to:ls.answer_to});
+  }
 }
 function briefStep(d){BRIEF.i=Math.max(0,BRIEF.i+d);refreshApp('brief')}
 function briefSpeak(){
@@ -102,6 +179,11 @@ async function briefAct(id,action,choice){
   try{
     const r=await fetch(`/api/brief/${encodeURIComponent(id)}/act`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,choice:choice||''})});
     const j=await r.json();
+    // the same item filed by other runs goes with it (brief.fold); a decision is answered once
+    const it=(BRIEF.page&&BRIEF.page.items||[]).find(x=>x.id===id);
+    if(!j.error&&it&&(it.twins||[]).length&&action!=='decide')
+      await Promise.all(it.twins.map(t=>fetch(`/api/brief/${encodeURIComponent(t)}/act`,{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({action:action==='decide'?'done':action})}).catch(()=>{})));
     // a mission that stopped waiting closes its question, so the page is read again
     if(j.error){toast(j.error);await briefLoad();refreshApp('brief');return}
     if(action==='decide'&&j.resumed)toast(`→ ${choice}. The mission carries on from where it stopped.`);

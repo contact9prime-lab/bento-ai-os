@@ -3894,6 +3894,37 @@ body.immersive.dev-mobile #taskbar{border-left:none;border-right:none;border-bot
 .br-nav .endbtn{min-height:var(--tap,40px);min-width:var(--tap,40px);font-size:var(--fs-lg)}
 /* the home scene's line is a door */
 body.immersive .hm-now.br-open{pointer-events:auto;cursor:pointer;color:var(--txt);font-weight:600}
+
+/* the top of the Brief: a greeting, the counts as tiles, Play (asked for as "if that is the
+   first thing I hear after a while, it must be immersive") */
+.br-hero{position:relative;overflow:hidden;padding:22px 22px 16px;margin:-4px -4px var(--sp-4);border-radius:var(--r-lg);
+  background:radial-gradient(120% 140% at 0 0,color-mix(in srgb,var(--acc) 26%,transparent),transparent 60%),
+             radial-gradient(90% 120% at 100% 100%,color-mix(in srgb,var(--warn) 14%,transparent),transparent 60%),var(--bg2);
+  border:1px solid var(--hairline)}
+.br-glow{position:absolute;inset:-40%;background:conic-gradient(from 0deg,transparent,color-mix(in srgb,var(--acc) 12%,transparent),transparent 40%);
+  animation:br-spin 24s linear infinite;pointer-events:none}
+@keyframes br-spin{to{transform:rotate(1turn)}}
+@media (prefers-reduced-motion:reduce){.br-glow{animation:none}}
+.br-hero>*{position:relative}
+.br-hero h2.br-hl{font-size:clamp(22px,3.2vw,34px);font-weight:750;letter-spacing:-.02em;line-height:1.15;margin:6px 0 4px}
+.br-from{font-size:var(--fs-sm);color:var(--dim)}
+.br-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0 14px}
+.br-tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:12px 14px;border-radius:var(--r-md);cursor:pointer;
+  border:1px solid var(--hairline);background:color-mix(in srgb,var(--bg) 55%,transparent);color:var(--txt);text-align:left;min-height:var(--tap,40px)}
+.br-tile b{font-size:28px;font-weight:800;line-height:1}
+.br-tile span{font-size:var(--fs-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.br-tile:disabled{opacity:.45;cursor:default}
+.br-tile.k-needs_you b{color:var(--acc)}.br-tile.k-decide b{color:var(--warn)}.br-tile.k-done b{color:var(--ok)}
+.br-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.br-play{display:inline-flex;align-items:center;gap:8px;padding:0 18px;min-height:var(--tap,40px);border:0;border-radius:999px;cursor:pointer;
+  font:700 var(--fs-base) var(--sans);background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);box-shadow:0 6px 22px color-mix(in srgb,var(--acc) 35%,transparent)}
+.br-play:disabled{opacity:.5;cursor:default}
+.br-sched{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:12px;font-size:var(--fs-sm);color:var(--dim)}
+.br-sched input.br-times{width:12em}
+.br-twins{font:700 var(--fs-xs) var(--mono);padding:0 6px;border-radius:999px;background:var(--bg3);color:var(--dim)}
+.br-more summary{list-style:none;cursor:pointer}.br-more summary::-webkit-details-marker{display:none}
+.br-more[open] summary{display:none}
+@media (max-width:560px){.br-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* ================= Characters (00e-avatars.js) =================
    Every face on the desktop is the server's PNG of one stored recipe, and it is
    pixel art: never smoothed, whatever size it is shown at. These rules are NOT
@@ -5533,6 +5564,9 @@ body.dev-mobile .stg-cap{font-size:15px}
 .stg>.stg-empty{grid-row:3}
 /* what does not fill the room sits in its middle */
 .stg-scene.k-steps .stg-art,.stg-scene.k-numbers .stg-art,.stg-scene.k-timeline .stg-art,.stg-scene.k-table .stg-art{justify-content:center;overflow:auto}
+/* a subtitle may sit over a picture, never over the last row of a list or a table */
+.stg-scene.k-steps .stg-foot,.stg-scene.k-numbers .stg-foot,.stg-scene.k-timeline .stg-foot,.stg-scene.k-table .stg-foot{margin-top:6px}
+.st-table th.n{text-align:right}
 .stg-ver{margin-left:auto;flex:0 0 auto;display:flex;align-items:center;gap:6px;font:600 12px var(--sans);color:rgba(238,241,255,.8)}
 .stg-ver button{min-width:var(--tap,28px);min-height:var(--tap,28px);border-radius:8px;border:1px solid rgba(255,255,255,.16);
   background:rgba(255,255,255,.07);color:#fff;cursor:pointer}
@@ -15425,7 +15459,9 @@ function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
   ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim();
     // a reconnect is usually a restart: is this page the build that is now running?
-    if(typeof updateWaitingCheck==='function')setTimeout(updateWaitingCheck,1500)};
+    if(typeof updateWaitingCheck==='function')setTimeout(updateWaitingCheck,1500);
+    // a Brief that came while nobody was looking is offered once, with Play (24b-brief.js)
+    if(typeof briefWelcome==='function'&&!window._briefWelcomed){window._briefWelcomed=1;setTimeout(briefWelcome,2500)}};
   ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
     for(const k in ACT)actDone(k);   // no socket, no honest "what it is doing"
     removeWorking(); // never leave "thinking…" on screen with no live socket behind it
@@ -16164,6 +16200,7 @@ function handle(ev){
       refreshApp('jobs'); break;      // a mission's row shows what it just said
     case 'brief':
       // the answer to a decision lands here, minutes after the tap that asked for it
+      if(ev.action==='ready'&&ev.scheduled&&typeof briefReady==='function'){briefReady(ev);try{localStorage.setItem('brief.played',String(Date.now()/1000))}catch(e){}}
       if(ev.action==='answered')toast('▲ '+(ev.title||'').slice(0,40)+' — the reply is in the Brief',6000);
       // a mission stopped to wait for an answer, and later carried on because of one
       if(ev.action==='asked')toast('▲ A mission is waiting for your answer in the Brief',{label:'Open',go:()=>openApp('brief')});
@@ -28532,10 +28569,10 @@ function briefItemHTML(it,idx){
   if(src.type==='report'&&src.ref)hands+=`<button class="endbtn" onclick="openApp('files')">Open report</button>`;
   if(it.answer_cid)hands+=`<button class="endbtn" onclick="openApp('chat');setTimeout(()=>openConv('${esc(it.answer_cid)}'),500)">The reply</button>`;
   return `<div class="br-item k-${esc(it.kind)} s-${esc(it.state)}" data-id="${esc(it.id)}">
-    <div class="br-head"><span class="br-kind">${esc(kindTag)}</span>${idx!=null?`<span class="br-n">${idx+1}</span>`:''}</div>
+    <div class="br-head"><span class="br-kind">${esc(kindTag)}</span>${(it.twins||[]).length?`<span class="br-twins" title="Filed by ${it.twins.length+1} runs; one tap answers all of them">×${it.twins.length+1}</span>`:''}${idx!=null?`<span class="br-n">${idx+1}</span>`:''}</div>
     <b class="br-title">${esc(it.title)}</b>
     ${meta?`<div class="br-meta">${meta}</div>`:''}
-    ${it.body?`<div class="br-body">${esc(it.body)}</div>`:''}
+    ${it.body?(it.body.length>220?`<details class="br-more"><summary><span class="br-body">${esc(it.body.slice(0,200).trim())}…</span></summary><div class="br-body">${esc(it.body)}</div></details>`:`<div class="br-body">${esc(it.body)}</div>`):''}
     ${it.draft?`<details class="br-draft"><summary>Draft</summary><pre>${esc(it.draft)}</pre></details>`:''}
     <div class="br-hands">${hands}</div>
   </div>`;
@@ -28567,16 +28604,93 @@ async function renderBrief(body){
     if(rest.length)main+=`<details class="br-done"><summary>${rest.length} handled</summary>${rest.map(i=>briefItemHTML(i)).join('')}</details>`;
   }else{
     main=pg.groups.map(g=>{const its=g.items.filter(shown);if(!its.length)return '';
-      return `<h3>${esc(g.label)} <span class="br-count">${its.length}</span></h3><div class="br-list">${its.map(i=>briefItemHTML(i)).join('')}</div>`}).join('');
+      return `<h3 data-k="${esc(g.kind)}">${esc(g.label)} <span class="br-count">${its.length}</span></h3><div class="br-list">${its.map(i=>briefItemHTML(i)).join('')}</div>`}).join('');
     if(rest.length)main+=`<details class="br-done"><summary>${rest.length} handled</summary><div class="br-list">${rest.map(i=>briefItemHTML(i)).join('')}</div></details>`;
     if(!live.length)main=`<p class="mut br-empty">Everything is handled.</p>`+main;
   }
+  const c=pg.counts||{};
+  const tiles=[['needs_you','Need you'],['decide','Decide'],['fyi','FYI'],['done','Done for you']]
+    .map(([k,l])=>`<button class="br-tile k-${k}" onclick="briefJump('${k}')" ${c[k]?'':'disabled'}><b>${c[k]||0}</b><span>${l}</span></button>`).join('');
+  const h=new Date().getHours(),greet=h<5?'Good evening':h<12?'Good morning':h<17?'Good afternoon':'Good evening';
   body.innerHTML=`<div class="pad br-app">
-    <div class="br-top"><div><div class="br-day">${esc(day)}</div><h2 class="br-hl">${esc(pg.headline)}</h2>
-      ${pg.missions.length?`<div class="mut">from ${pg.missions.map(esc).join(', ')}</div>`:''}</div>
-      <div class="br-tools"><button class="endbtn" data-ic="mic" onclick="briefSpeak()">Read it</button>
-        <button class="endbtn" onclick="openApp('jobs')">Missions</button></div></div>
+    <div class="br-hero"><div class="br-glow"></div>
+      <div class="br-day">${esc(day)}</div>
+      <h2 class="br-hl">${esc(greet)}. ${pg.open?esc(pg.headline):'Nothing is waiting for you.'}</h2>
+      ${pg.missions.length?`<div class="br-from">from ${pg.missions.map(esc).join(', ')}</div>`:''}
+      <div class="br-tiles">${tiles}</div>
+      <div class="br-actions">
+        <button class="br-play" onclick="briefPlay()" ${pg.items.length?'':'disabled'}><span>▶</span> Play your Brief</button>
+        <button class="endbtn" onclick="briefWalk()" title="${esc(agentName())} talks you through it, as a story">Walk me through it</button>
+        <button class="endbtn" data-ic="mic" onclick="briefSpeak()">Read it</button>
+        <button class="endbtn" onclick="openApp('jobs')">Missions</button></div>
+      <div class="br-sched">${briefSchedLine(pg.schedule)}</div>
+    </div>
     ${main}</div>`;
+}
+function briefJump(k){const h=[...document.querySelectorAll('.br-app h3')].find(x=>x.dataset.k===k);if(h)h.scrollIntoView({behavior:'smooth',block:'start'})}
+function briefWhen(ts){if(!ts)return '';const d=new Date(ts*1000),t=d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  const today=new Date();return d.toDateString()===today.toDateString()?t:d.toLocaleDateString(undefined,{weekday:'short'})+' '+t}
+/* When the Brief comes: the schedule line, and its editor in place. */
+function briefSchedLine(s){
+  if(!s)return '';
+  const on=s.times&&s.times.length;
+  return `<span>${on?`Your Brief comes at ${s.times.map(esc).join(', ')}${s.days==='weekdays'?' on weekdays':' every day'}${s.next_at?' · next '+esc(briefWhen(s.next_at)):''}`:'No scheduled Brief'}</span>
+    <button class="linkbtn" onclick="briefSchedEdit(this)">${on?'Change':'Set times'}</button>`;
+}
+function briefSchedEdit(btn){
+  const s=(BRIEF.page&&BRIEF.page.schedule)||{times:[],days:'daily'};
+  const box=btn.closest('.br-sched');
+  box.innerHTML=`<label>Times <input class="br-times" value="${esc((s.times||[]).join(', '))}" placeholder="08:00, 18:00"></label>
+    <label class="tlk-chk"><input type="checkbox" class="br-wk" ${s.days==='weekdays'?'checked':''}> weekdays only</label>
+    <label class="tlk-chk"><input type="checkbox" class="br-ai" ${s.summary==='ai'?'checked':''}> AI summary on top${pInfoB('One short model call per Brief, from your brain.')}</label>
+    <label class="tlk-chk"><input type="checkbox" class="br-tg" ${s.telegram!==false?'checked':''}> on Telegram too</label>
+    <button class="endbtn" onclick="briefSchedSave(this)">Save</button>`;
+}
+function pInfoB(t){return typeof pInfo==='function'?pInfo(t):''}
+async function briefSchedSave(btn){
+  const box=btn.closest('.br-sched');
+  const times=box.querySelector('.br-times').value.split(/[,\s]+/).map(x=>x.trim()).filter(Boolean);
+  try{const r=await fetch('/api/brief/schedule',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      times,days:box.querySelector('.br-wk').checked?'weekdays':'daily',summary:box.querySelector('.br-ai').checked?'ai':'plain',
+      telegram:box.querySelector('.br-tg').checked})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
+    toast(j.times.length?'The Brief comes at '+j.times.join(', '):'No more scheduled Briefs');
+    await briefLoad();refreshApp('brief');
+  }catch(e){toast('could not save: '+(e.message||e))}
+}
+/* ▶ Play: the Brief as a Stage story, built now from what is in it, narrated. */
+async function briefPlay(){
+  try{const r=await fetch('/api/brief/story',{method:'POST'});const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);
+    briefPlayStory(j.cid,j.answer_to)}
+  catch(e){toast('could not play the Brief: '+(e.message||e))}
+}
+async function briefPlayStory(cid,answer_to){
+  try{localStorage.setItem('brief.played',String(Date.now()/1000))}catch(e){}
+  if(typeof stageOpen!=='function')return;
+  await stageOpen(cid,answer_to,0);
+  if(typeof stagePlay==='function'&&!STAGE.playing)stagePlay();
+}
+/* Walk me through it: the agent's own telling, in a chat, with the Stage. One turn, asked for. */
+function briefWalk(){
+  const pg=BRIEF.page;if(!pg)return;
+  const lines=(pg.items||[]).filter(i=>i.state==='open'||i.state==='later').slice(0,20)
+    .map(i=>`- [${i.kind}] ${i.title}${i.who?' ('+i.who+')':''}${i.due?' by '+i.due:''}`).join('\n');
+  const text=`Walk me through my Brief as a short story on the Stage: what matters most, what to decide, and what to do first. Here it is:\n${lines}`;
+  openApp('chat');
+  setTimeout(()=>{if(typeof newChat==='function')newChat();
+    setTimeout(()=>{if(typeof input!=='undefined'&&input){input.value=text;if(typeof send==='function')send()}},300)},400);
+}
+/* A Brief that came while you were away: said once, with Play. */
+function briefReady(ev){
+  toast(`▲ Your ${ev.when||''} Brief: ${ev.headline||''}`,{label:'▶ Play',go:()=>briefPlayStory(ev.cid,ev.answer_to),ms:30000});
+}
+async function briefWelcome(){
+  const pg=await briefLoad();const ls=pg&&pg.last_story;if(!ls||!pg.open)return;
+  let played=0;try{played=+localStorage.getItem('brief.played')||0}catch(e){}
+  if(ls.at>played&&Date.now()/1000-ls.at<20*3600){
+    try{localStorage.setItem('brief.played',String(ls.at))}catch(e){}
+    briefReady({...ls,cid:ls.cid,answer_to:ls.answer_to});
+  }
 }
 function briefStep(d){BRIEF.i=Math.max(0,BRIEF.i+d);refreshApp('brief')}
 function briefSpeak(){
@@ -28590,6 +28704,11 @@ async function briefAct(id,action,choice){
   try{
     const r=await fetch(`/api/brief/${encodeURIComponent(id)}/act`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,choice:choice||''})});
     const j=await r.json();
+    // the same item filed by other runs goes with it (brief.fold); a decision is answered once
+    const it=(BRIEF.page&&BRIEF.page.items||[]).find(x=>x.id===id);
+    if(!j.error&&it&&(it.twins||[]).length&&action!=='decide')
+      await Promise.all(it.twins.map(t=>fetch(`/api/brief/${encodeURIComponent(t)}/act`,{method:'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({action:action==='decide'?'done':action})}).catch(()=>{})));
     // a mission that stopped waiting closes its question, so the page is read again
     if(j.error){toast(j.error);await briefLoad();refreshApp('brief');return}
     if(action==='decide'&&j.resumed)toast(`→ ${choice}. The mission carries on from where it stopped.`);
@@ -34502,11 +34621,14 @@ function stageSteps(art,sc){
 }
 function stageTable(art,sc){
   const wrap=sEl('div','st-tablewrap'),tb=document.createElement('table');tb.className='st-table';
-  const hr=document.createElement('tr');sc.columns.forEach(c=>hr.append(sEl('th','',c)));
+  // a column of numbers is right-aligned, its heading with it
+  const isN=v=>/^[-+]?[\d,.]+%?$/.test(String(v==null?'':v));
+  const numCol=sc.columns.map((_,j)=>sc.rows.length>0&&sc.rows.every(r=>r[j]==null||r[j]===''||isN(r[j])));
+  const hr=document.createElement('tr');sc.columns.forEach((c,j)=>hr.append(sEl('th',numCol[j]?'n':'',c)));
   const th=document.createElement('thead');th.append(hr);tb.append(th);
   const body=document.createElement('tbody');
   sc.rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.style.animationDelay=Math.min(i,20)*40+'ms';
-    sc.columns.forEach((_,j)=>{const td=sEl('td','',r[j]==null?'':r[j]);if(/^[-+]?[\d,.]+%?$/.test(String(r[j]||'')))td.className='n';tr.append(td)});body.append(tr)});
+    sc.columns.forEach((_,j)=>{const td=sEl('td','',r[j]==null?'':r[j]);if(numCol[j]||isN(r[j]))td.className='n';tr.append(td)});body.append(tr)});
   tb.append(body);wrap.append(tb);art.append(wrap);
 }
 /* ================= task desktops: one desktop per running task =================
