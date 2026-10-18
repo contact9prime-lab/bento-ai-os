@@ -5480,7 +5480,7 @@ def _link_cli(args):
         fabricmod.audit_team(store, "link.write", f"link:{lk['label']}",
                              f"{p['name']} approved (bento link); certificate {lk['peer_host_fp'][:16]}…")
         print(f"  ✓ linked with {lk['label']}. Nothing is allowed yet:\n"
-              f"    bento link allow {lk['label']} AGENT   — let their agents ask one of yours")
+              f"    bento link allow {lk['label']} AGENT   — let their agents ask one of yours (lead: hand your lead whole tasks)")
         return
     if act in ("say", "chat"):
         # People on a linked team, from a terminal. Straight to the other side — over
@@ -5609,7 +5609,7 @@ def _link_cli(args):
         fabricmod.audit_team(store, "link.write", f"link:{lk['label']}",
                              f"joined {lk.get('peer_name')} (bento link); certificate {lk['peer_host_fp'][:16]}…")
         print(f"  linked with {lk['label']} ({lk['url']}). Nothing is allowed yet:\n"
-              f"  bento link allow {lk['label']} AGENT   — let their agents ask one of yours")
+              f"  bento link allow {lk['label']} AGENT   — let their agents ask one of yours (lead: hand your lead whole tasks)")
         return
     if act == "redeem":
         if not usersmod.enabled() or not owner:

@@ -384,6 +384,9 @@ function officeMatch(label){
   if(!label)return null;
   const k=String(label).toLowerCase().replace(/[^a-z0-9@]/g,'');
   if(k==='@agent'||k==='agent')return OFFICE.people['@agent']||null;
+  // the lead by its own name: a hand-over to another team is said as "Aria asks lead@…"
+  const lead=OFFICE.people['@agent'];
+  if(lead&&typeof agentName==='function'&&agentName().toLowerCase().replace(/[^a-z0-9@]/g,'')===k)return lead;
   for(const n in OFFICE.people){const q=n.toLowerCase().replace(/[^a-z0-9@]/g,'');if(q&&q===k)return OFFICE.people[n]}
   // One agent on screen (buddy): a specialist's work lights the lead's desk, since the
   // lead is the only one drawn. Nothing else is invented: no label, no second figure.
@@ -596,6 +599,15 @@ function officeReport(p,ok){
 function officeMsg(ev){
   const O=OFFICE,from=officeMatch(ev.from),to=officeMatch(ev.to);
   if(ev.phase==='ask'){
+    if(!to&&String(ev.to||'').includes('@')){
+      // work going to ANOTHER team: nobody here to walk to, so it leaves on paper by the
+      // door, with the words over the one who sent it (the lead, or the specialist asking)
+      const f=from||OFFICE.people['@agent'];
+      if(f){officeWork(f,true);officeSay(f,'→ '+ev.to+': '+(ev.text||''),'say',OF_SAY_MS+2000);
+        officePaper(f,officeBoardPoint(),()=>{})}
+      officeLog(`${ev.from} handed ${ev.to} on a linked team: ${String(ev.text||'').slice(0,90)}`);
+      return;
+    }
     if(!to)return;
     officeWork(to,true);
     if(from&&from!==to){
@@ -619,6 +631,11 @@ function officeMsg(ev){
   // the reply: said by the one who was asked, at its own desk
   const who=officeMatch(ev.from),asker=officeMatch(ev.to);
   officeLog(`${ev.from} answered ${ev.to}: ${String(ev.text||'').slice(0,90)}`);
+  if(!who&&String(ev.from||'').includes('@')){
+    // the other team's answer comes back on paper to whoever sent the work
+    if(asker)officePaper(officeBoardPoint(),asker,()=>officeSay(asker,ev.from+': '+(ev.text||''),'say',OF_SAY_MS+2000));
+    return;
+  }
   if(asker&&asker.visit&&asker.visit.to===(who&&who.key)&&!asker.visit.asked){asker.visit.reply=ev.text;return}
   officeReply(asker,who,ev.text);
 }

@@ -620,6 +620,32 @@ What still holds while one is in place:
   every change is an audit row (`grant.write`, `grant.revoke`), it can expire, and
   **ending the link revokes it** with every cell that named it.
 
+### Handing work to a linked team, and a machine with no agents
+
+Your lead can hand work across a link itself. Ask it to, or let it decide: it's told which
+teams are linked, and `linked_teams` lists who on each one it may give work to.
+
+- **A whole task to their lead**: `delegate` to `lead@<team>`. Their lead takes it to their own
+  specialists and departments and answers. This is how a machine with no agents of its own
+  offloads its work: everything that needs more than the lead goes across.
+- **One part to one of their agents**: `delegate` to `name@<team>`, the same question a
+  specialist asks with `ask_agent`.
+
+Both sides decide. Here, the first hand-over to each is asked, and *Allow & remember* writes it
+as a rule you can see and remove in Permissions. There, the owner ticks **They may hand whole
+tasks to <lead>** on the link (or `bento link allow <team> lead`), also a rule in Permissions.
+
+Their lead works your task with its team and nothing else: on Claude Code every one of its own
+tools is off for that run, it can't read that machine's files or run its shell for you, and the
+task is marked as coming from outside, so anything that needs a person goes to the owner's
+screen there or is refused. The task and its answer are kept there as a chat titled
+`↔ <your team>: …`.
+
+You can watch it happen. In Chat the hand-over and the answer appear under your message, in the
+Office a paper leaves the lead's desk for the other team and the answer comes back on paper, and
+on Telegram the exchange is in the comic strip after the reply. Every step is in the ledger on
+both machines, and in the trace (`⤓ JSON`).
+
 ### A mission with an agent on a linked team
 
 A mission's roster can name an agent on another team: `analyst@office`. In the Missions

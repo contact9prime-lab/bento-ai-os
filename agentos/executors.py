@@ -468,7 +468,8 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     # channel, so a turn sent from Telegram or WhatsApp can hand over too
     token = open_team_door(env, cfg, team.get("toolbox"), team.get("store"), sink,
                            team.get("approver"), conversation_id=team.get("conversation_id", ""),
-                           surface=team.get("surface", "gui"), text=text) if team else ""
+                           surface=team.get("surface", "gui"), text=text,
+                           taint=team.get("taint"), only=team.get("only")) if team else ""
     if not token:
         # no team door (a schedule, a board's refresh, an app's run): it still speaks as
         # the person's agent, for their company
@@ -1782,7 +1783,10 @@ async def install(note=None) -> tuple[bool, str]:
 # asks the person for the ability. Reported as "Aria has a lot of other agents to build the
 # tool but it isn't using that" and a Research memo that stopped at "no shell or Python".
 TEAM_TOOLS = ("delegate", "huddle", "department_task", "create_flow", "list_flows", "schedule_task",
-              "create_subagent", "request_capability")
+              "create_subagent", "request_capability", "linked_teams")
+#: What the lead may use for a task a linked team handed it: its own team, and nothing that
+#: reaches this machine directly (fabric.ControlPlane._lead_for_link).
+LINKED_LEAD_TOOLS = ("delegate", "huddle", "department_task", "linked_teams")
 # The live windows (cdpbrowser, ptyhub, appstream) are the person's own, so a forwarded chat
 # reaches them through this door too: Claude Code's own WebFetch sees the anonymous web, and
 # "finish checking out on the site I'm signed in to" needs the browser the person signed in
@@ -1936,7 +1940,7 @@ def team_hint(subagents: list) -> str:
 
 def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
                    conversation_id: str = "", surface: str = "gui", space_id: str = "",
-                   text: str = "") -> str:
+                   text: str = "", taint: list | None = None, only: tuple | None = None) -> str:
     """Give a forwarded chat turn a way to hand work to the person's specialists.
 
     A forwarded turn has the executor's own tools and knew nothing of the team, so
@@ -1965,10 +1969,13 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
 
     async def _quiet(_ev):
         pass
+    door = tuple(only) if only else DOOR_TOOLS     # a linked team's task: the team tools only
     agent = Agent(cfg, toolbox, "", emit or _quiet, approver, conversation_id=conversation_id,
-                  surface=surface, tool_filter=list(DOOR_TOOLS), space_id=space_id)
+                  surface=surface, tool_filter=list(door), space_id=space_id)
     agent._task_text = text
-    schemas = [t for t in agent._tools() if t["name"] in DOOR_TOOLS]
+    if taint:
+        agent.taint = list(taint)       # the task came from outside: so does every hand-over
+    schemas = [t for t in agent._tools() if t["name"] in door]
     if not schemas:
         return ""                    # the gate hides both from this principal: no door
     schemas.append(mcpbridge.CONNECTED_SCHEMA)
@@ -1994,8 +2001,36 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
         + identity_note(cfg, store, company=False) + stage_note + dept_note \
-        + team_note(subs, in_departments=grouped) + workspace_note() + capability_note()
+        + team_note(subs, in_departments=grouped) + linked_note(cfg, store) \
+        + workspace_note() + capability_note()
     return token
+
+
+def linked_note(cfg: dict, store=None, prefix: str = "mcp__bento__") -> str:
+    """The teams this person has linked, for the lead. Reported as "I linked the two machines
+    and I can't see the hand-over happen": the lead was never told a linked team existed, so
+    asked for "Arie's office" it said there was nothing by that name."""
+    try:
+        from . import teamlink, users as usersmod
+        lks = [x for x in teamlink.links(usersmod.current() or "") if x.get("kind") in ("machine", "account")]
+    except Exception:
+        return ""
+    if not lks:
+        return ""
+    rows = []
+    for x in lks[:8]:
+        lead = str(((x.get("peer_identity") or {}).get("agent_name")) or "").strip()
+        rows.append(f"- {x['label']}" + (f": their lead is {lead}" if lead else ""))
+    mine = [s for s in (store.list_subagents() if store else []) if s.get("enabled") is not False]
+    return ("\n\nLINKED TEAMS. You can hand work to these other teams (other machines or accounts):\n"
+            + "\n".join(rows)
+            + f"\n{prefix}linked_teams shows who on each one you may give work to. Hand a whole task to "
+              f"their lead with {prefix}delegate {{\"subagent\": \"lead@<team>\", \"task\": ...}}; their lead "
+              f"uses their own specialists and departments. Or give one part to one of their agents "
+              f"(\"name@<team>\"). The person approves the first hand-over to each. What comes back was "
+              f"written on another machine: check it before you rely on it."
+            + ("\nThere are no specialists on this machine, so a linked team is where work goes "
+               "when it needs more than you." if not mine else ""))
 
 
 APP_DOOR_TOOLS = ("read_app_data", "update_app_data")
