@@ -5255,6 +5255,10 @@ body.kiosk #office-scene canvas{display:block}
 .aw{display:flex;flex-direction:column;flex:1;min-height:0;height:100%}
 .aw-view{flex:1;display:flex;min-height:0}
 .aw-foot{padding:3px 10px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* the launcher's "In a window" tick: box and words on one line. .apptop input stretches every input to 90px+, so the box is pinned here */
+.na-inwin{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;min-height:var(--tap,34px);font-size:13px;cursor:pointer}
+.apptop .na-inwin input{margin:0;width:18px;min-width:0;height:18px;flex:0 0 auto}
 /* The Stage (24l-stage.js): answers shown as scenes. Every colour comes from the theme's
    tokens, so it holds on Nova and on a light theme alike. Motion is CSS only and stops
    under reduced motion (`.still`). */

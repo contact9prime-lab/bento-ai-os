@@ -13,6 +13,12 @@ stars and dashes.
 **Charts and numbers read better everywhere.** A long category name wraps to a second line instead of ending in
 "…", and a unit sits where people write it: "10–15 years", "$2.6 billion".
 
+No release notes were written for this one; the commits since 0.6.49 are what changed (`bento update` lists them).
+
+## 0.6.49 — 2026-10-17
+
+- **The Applications launcher's "In a window" tick sits beside its words again.** The checkbox was stretched to
+  90px by the toolbar's input rule and stood apart from its label.
 ## 0.6.49 — 2026-10-18
 
 **Every account's Telegram works after a restart, with nobody signed in.** Each account's bot used to start
