@@ -49,9 +49,11 @@ or with `bento stage big on|off`.
   Office's chat, or the prompt bar). Turn "Open by itself on this screen" off under Boards if you'd
   rather open it yourself.
 - **Chat** puts a ▶ Play chip under each answer that has a story, also when you reopen the chat later.
-- **Telegram** gets the reply, then one page with the whole story in the same dark look. It opens in the
-  phone's browser and plays without this machine; a video there is a picture that opens YouTube, and a
-  picture the agent made travels inside the page.
+- **Telegram** gets the reply, formatted (bold, bullets, links), then the story as pictures in the chat:
+  one album, a picture per scene, with its title, caption and source under each. A video scene follows as
+  its YouTube link, which Telegram plays in place. The pictures are drawn by the Stage's own code in a
+  headless Chromium on this machine, about a second for a story. With no Chromium here, the story goes
+  as one page to open in the phone's browser instead. **WhatsApp** gets the same pictures, one at a time.
 - **A terminal** prints each scene as text: a chart as a sparkline or bars, a map as its places. The TUI
   and the terminal chat print them as they arrive; `bento stage` shows the last chat's story, `bento stage
   list` everything.

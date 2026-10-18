@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.50 — 2026-10-18
+
+**The Stage on Telegram is pictures in the chat.** It was an .html file to download and open somewhere else, and
+on some phones it drew nothing. Each scene is now drawn on this machine and sent as an album, with its title,
+caption and source under each picture; a video comes as a YouTube link Telegram plays in place. WhatsApp gets the
+same pictures. Without a Chromium on the machine, the page is sent as before.
+
+**Telegram replies are formatted.** Bold, bullets, headings, code and links show as Telegram shows them, instead of
+stars and dashes.
+
+**Charts and numbers read better everywhere.** A long category name wraps to a second line instead of ending in
+"…", and a unit sits where people write it: "10–15 years", "$2.6 billion".
+
 ## 0.6.49 — 2026-10-18
 
 **Every account's Telegram works after a restart, with nobody signed in.** Each account's bot used to start
