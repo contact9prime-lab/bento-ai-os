@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.58 — 2026-10-18
+
+**A company set up from Telegram opens on Telegram.** When the agent you're talking to on your phone
+starts or opens a company, your Telegram chat moves to it. Before, only the desktop moved and the phone
+stayed in the old company. `bento company` also no longer writes a company behind a running server (it
+showed up only after a restart); on a machine with accounts it now says to use the Office or /companies.
+
+**The install docs match the repo.** The clone folder is `bento-ai-os`, every command is `bento` (or
+`uv run bento` from a checkout), and the README says near the top that Bento needs a model before it
+can do anything.
+
 ## 0.6.57 — 2026-10-18
 
 **A linked team's request asks you, instead of being refused.** When agents on a linked machine want your lead

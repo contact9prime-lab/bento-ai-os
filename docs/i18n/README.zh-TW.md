@@ -39,6 +39,8 @@ Bento 是一套自我託管的 AI 桌面，跑在你自己的硬體上。它有�
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+> **它需要一個「大腦」才能做事。** 設定時會請你提供一個：[Ollama](https://ollama.com) 搭配會呼叫工具的模型（例如 `qwen3.5:9b`）、一組雲端 API 金鑰，或已登入的 Claude Code、Gemini CLI 或 Codex。
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
 
 然後打開 **http://127.0.0.1:8321**。在你自己開啟[遠端存取](../remote-access.md)之前，它只會監聽 localhost。

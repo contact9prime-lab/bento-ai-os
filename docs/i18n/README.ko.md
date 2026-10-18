@@ -41,6 +41,8 @@ WhatsApp으로 당신에게 연락합니다. 어떤 에이전트가 무엇을 �
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+> **무엇이든 하려면 '두뇌'가 필요합니다.** 설정에서 하나를 묻습니다: 도구를 호출할 수 있는 모델(예: `qwen3.5:9b`)을 갖춘 [Ollama](https://ollama.com), 클라우드 API 키, 또는 로그인된 Claude Code, Gemini CLI, Codex 중 하나.
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
 
 그다음 **http://127.0.0.1:8321** 을 여세요. [원격 접속](../remote-access.md)을 직접 켜기 전까지는

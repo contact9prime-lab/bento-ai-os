@@ -44,6 +44,8 @@ manipulaciones.
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+> **Necesita un cerebro para hacer cualquier cosa.** La configuración te pide uno: [Ollama](https://ollama.com) con un modelo que sepa usar herramientas, como `qwen3.5:9b`, una clave de API en la nube, o Claude Code, Gemini CLI o Codex con la sesión ya iniciada.
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
 
 Luego abre **http://127.0.0.1:8321**. Solo escucha en localhost hasta que tú mismo actives el

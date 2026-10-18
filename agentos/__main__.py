@@ -3070,6 +3070,14 @@ def _job_cli(args):
         return
 
 
+def _cli_surface() -> str:
+    """The surface a terminal command acts for: the one a forwarded agent was asked
+    from (AGENTOS_SURFACE, set by the team door), else the desktop's."""
+    from .policy import SURFACES
+    s = os.environ.get("AGENTOS_SURFACE", "").strip().lower()
+    return s if s in SURFACES else "cli"
+
+
 def _api_call(port: int, path: str, method: str = "GET", body: dict | None = None) -> dict:
     """One call to the running server on loopback; OSError when it is not there."""
     data = json.dumps(body).encode() if body is not None else None
@@ -3669,7 +3677,11 @@ def _company_cli(args):
     cfg, store = _open_store(getattr(args, "user", ""))
     a, rest = args.action, list(args.args or [])
     port = int(cfg.get("port") or 8321)
-    up = _server_answers(port) and not getattr(args, "user", "")
+    # With the server up, the change goes through it even for `--user`: writing that
+    # account's file under a running server was kept only in the file, and the server's
+    # copy in memory overwrote it at its next save (found as "restart AgentOS first").
+    up = _server_answers(port)
+    surface = _cli_surface()
 
     def show_plan(pv):
         pr = pv.get("company") or {}
@@ -3702,6 +3714,17 @@ def _company_cli(args):
         for n in w.get("notes") or []:
             print(f"  note: {n}")
 
+    def refused(d):
+        # a machine with accounts refuses a terminal with no sign-in; writing the files
+        # under the running server instead is lost at its next save, so say where to go
+        if d.get("login"):
+            print("✗ AgentOS is running and this machine has accounts, so the change has to "
+                  "come from a signed-in screen: the Office's ▦ Company panel, or /companies "
+                  "on Telegram. Nothing was changed.")
+        else:
+            print(f"✗ {d['error']}")
+        sys.exit(1)
+
     def confirm(q):
         if getattr(args, "yes", False):
             return True
@@ -3715,16 +3738,15 @@ def _company_cli(args):
         if a == "new":
             name = " ".join(rest).strip()
             body = {"name": name, "about": getattr(args, "about", "") or "",
-                    "objective": getattr(args, "objective", "") or "", "surface": "cli"}
+                    "objective": getattr(args, "objective", "") or "", "surface": surface}
             if up:
                 d = _api_call(port, "/api/companies", "POST", body)
                 if d.get("error"):
-                    print(f"✗ {d['error']}")
-                    sys.exit(1)
+                    refused(d)
                 row = d["company"]
             else:
                 try:
-                    row = co.create(cfg, store, name, body["about"], body["objective"], surface="cli")
+                    row = co.create(cfg, store, name, body["about"], body["objective"], surface=surface)
                 except ValueError as e:
                     print(f"✗ {e}")
                     sys.exit(1)
@@ -3743,15 +3765,14 @@ def _company_cli(args):
                 print("  Nothing was changed.")
                 return
             if up:
-                d = (_api_call(port, "/api/companies/active", "PUT", {"id": hit["id"], "surface": "cli"})
+                d = (_api_call(port, "/api/companies/active", "PUT", {"id": hit["id"], "surface": surface})
                      if a == "open" else _api_call(port, f"/api/companies/{hit['id']}", "DELETE"))
                 if d.get("error"):
-                    print(f"✗ {d['error']}")
-                    sys.exit(1)
+                    refused(d)
             else:
                 try:
                     if a == "open":
-                        co.switch(cfg, store, hit["id"], surface="cli")
+                        co.switch(cfg, store, hit["id"], surface=surface)
                     else:
                         co.remove(cfg, store, hit["id"])
                 except ValueError as e:

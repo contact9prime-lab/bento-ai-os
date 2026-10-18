@@ -10082,8 +10082,14 @@ def _me() -> dict:
 CLIENT_SURFACES = ("gui", "tui", "api")
 
 
-def _client_surface(v) -> str:
-    return v if v in CLIENT_SURFACES else "gui"
+def _client_surface(v, also: tuple = ()) -> str:
+    return v if v in CLIENT_SURFACES + tuple(also) else "gui"
+
+
+# A company opened by the agent a phone is talking to moves that phone's space, not the
+# desktop's (`bento company new` from a Telegram turn sends `surface: telegram`). It is
+# only which space the person's own next chat there starts in.
+COMPANY_SURFACES = ("telegram", "whatsapp")
 
 
 def _require_admin():
@@ -12310,7 +12316,7 @@ async def api_companies_create(body: dict):
         row = companymod.create(cfg, store, teamlink.plain(b.get("name"), 48, newlines=False),
                                 teamlink.plain(b.get("about"), companymod.ABOUT_MAX, newlines=False),
                                 teamlink.plain(b.get("objective"), companymod.OBJECTIVE_MAX, newlines=False),
-                                surface=_client_surface(b.get("surface")))
+                                surface=_client_surface(b.get("surface"), COMPANY_SURFACES))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     cfgmod.save_config(cfg)
@@ -12330,7 +12336,8 @@ async def api_companies_switch(body: dict):
     if not hit:
         return JSONResponse({"error": "no company with that id or name"}, status_code=404)
     try:
-        row = companymod.switch(cfg, store, hit["id"], surface=_client_surface(b.get("surface")))
+        row = companymod.switch(cfg, store, hit["id"],
+                                surface=_client_surface(b.get("surface"), COMPANY_SURFACES))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     cfgmod.save_config(cfg)
