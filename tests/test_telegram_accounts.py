@@ -78,3 +78,25 @@ def test_the_owner_adds_and_removes_people(tmp_path, monkeypatch):
     # a colleague cannot run them
     say(222, "/allow @eve")
     assert "owner of this machine only" in sent[-1][1]
+
+
+def test_the_owner_opens_a_company_from_the_phone(tmp_path, monkeypatch):
+    """"With Telegram I should be able to open the companies.\""""
+    from agentos import config as cfgmod, company as companymod
+    monkeypatch.setattr(cfgmod, "save_config", lambda *a, **k: None)
+    b, sent = _bridge(tmp_path)
+    say = lambda chat, text: asyncio.run(b._console.handle(chat, text))
+    say(111, "/companies")
+    assert "No company yet" in sent[-1][1]
+    companymod.create(b.cfg, b.store, "Bhav Capital", "trading research")
+    companymod.create(b.cfg, b.store, "Kids Studio", "videos for children")
+    assert companymod.companies(b.cfg)[0]["name"] == "Kids Studio"
+    say(111, "/companies")
+    assert "▶ Kids Studio" in sent[-1][1] or any("▶ Kids Studio" in t for _, t in sent[-2:])
+    say(111, "/company bhav capital")
+    assert "Bhav Capital is open" in sent[-1][1]
+    assert companymod.companies(b.cfg)[0]["name"] == "Bhav Capital"
+    say(111, "/company")
+    assert sent[-1][1].startswith("▲ Bhav Capital")
+    say(222, "/companies")
+    assert "owner of this machine only" in sent[-1][1]

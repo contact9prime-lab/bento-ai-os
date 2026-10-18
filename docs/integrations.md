@@ -36,6 +36,8 @@ commands; every other enabled chat can only converse.
 | `/perms` | who has been granted what |
 | `/clear` | wipe this conversation and start fresh |
 | `/updown [on\|off]` | a message when the agent goes offline or comes back |
+| `/companies` | your companies, with a button to open each |
+| `/company [name]` | the open company and its departments; with a name, open that one |
 | `/people` | who may talk to the agent here, and who wrote and is waiting |
 | `/allow <@name\|chat id>` | let somebody in. Somebody who hasn't written yet is let in on their first message |
 | `/block <@name\|chat id>` | stop somebody talking to the agent |

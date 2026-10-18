@@ -635,6 +635,13 @@ Both sides decide. Here, the first hand-over to each is asked, and *Allow & reme
 as a rule you can see and remove in Permissions. There, the owner ticks **They may hand whole
 tasks to <lead>** on the link (or `bento link allow <team> lead`), also a rule in Permissions.
 
+When their agents ask one of yours and nobody here has decided that pair yet, **you're asked**: a
+card on your screens names the team, who they want and what they wrote, with Allow, Deny and
+*Allow & remember*, which writes the same rule as the tick on the link. It needs the link, so a
+stranger never puts a card on your screen. A pair you blocked is refused without asking, and
+with none of your screens open the answer is no, at once. Each card is a `link.ask` line in the
+ledger.
+
 Their lead works your task with its team and nothing else: on Claude Code every one of its own
 tools is off for that run, it can't read that machine's files or run its shell for you, and the
 task is marked as coming from outside, so anything that needs a person goes to the owner's
