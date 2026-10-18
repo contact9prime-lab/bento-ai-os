@@ -93,3 +93,38 @@ def test_whatsapp_does_the_same():
     body = src[src.index("async def _turn_in"):]
     assert body.index('self.store.add_message(cid, "user", text)') < body.index("async def built_history")
     assert 'await emit({"type": "turn_start"' in body and 'await emit({"type": "turn_end"})' in body
+
+
+def test_two_people_in_two_chats_run_at_the_same_time_in_their_own_sessions(tmp_path, monkeypatch):
+    """"If two people are talking on the same account in different sessions, or on different
+    Telegram chats, they are different sessions." Each chat is its own conversation with its own
+    Claude Code session, and neither waits for the other."""
+    import time as _t
+    b, events, sent = _bridge(tmp_path)
+    b.store.tg_upsert_chat(7, "Pankaj", "", "private")
+    b.store.tg_set_allowed(7, 1)
+    monkeypatch.setattr(executors, "resolve_engine", lambda cfg, requested="": "claude-code")
+    runs = []
+
+    async def slow_forward(engine, text, cfg, ws, emit=None, session_id="", **kw):
+        runs.append((text, _t.monotonic(), session_id))
+        await asyncio.sleep(0.5)
+
+        class R:
+            pass
+        r = R()
+        r.session_id = "sess-" + text
+        return "answer to " + text, r
+    monkeypatch.setattr(executors, "forward", slow_forward)
+
+    async def both():
+        t0 = _t.monotonic()
+        await asyncio.gather(
+            b._handle({"chat": {"id": 5, "type": "private"}, "from": {"first_name": "PC"}, "text": "news"}),
+            b._handle({"chat": {"id": 7, "type": "private"}, "from": {"first_name": "Pankaj"}, "text": "trade"}))
+        return _t.monotonic() - t0
+    took = asyncio.run(both())
+    assert took < 0.9, f"side by side, not one after the other ({took:.2f}s)"
+    convs = {c["chat_id"]: c["conversation_id"] for c in b.store.tg_list_chats()}
+    assert convs[5] != convs[7], "a conversation each"
+    assert b.store.exec_session(convs[5]) == "sess-news" and b.store.exec_session(convs[7]) == "sess-trade"
