@@ -1696,6 +1696,13 @@ the power) says when it was last seen: the heartbeat is written while polling (`
 routes set `down_reason` ("to install an update"). Found live: telegram.py had no `import contextlib`, and the
 poller swallowed the NameError, so nothing was sent and nothing said why.
 
+**Every account's bot starts with the server, and the owner adds people from the phone**
+(`server._start_account_bridges`, `/people` `/allow` `/block` in telegram_admin.py;
+`tests/test_telegram_accounts.py`). Per-user bridges were built on a person's first request, so
+after a boot with nobody signed in no account's bot polled. One poller per token, first account wins.
+`/allow` on a chat that never wrote goes on the channel's allow-list (`channels.save`), because
+`tg_set_allowed` only updates a row that exists.
+
 ## WhatsApp is one channel with two transports
 
 `conf(cfg)["mode"]` decides which is live, and they fail in opposite directions:

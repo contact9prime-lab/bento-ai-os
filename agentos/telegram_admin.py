@@ -47,6 +47,9 @@ COMMANDS = [
     ("/perms", "", "who has been granted what"),
     ("/clear", "", "wipe this conversation and start fresh"),
     ("/updown", "[on|off]", "a message when I go offline or come back"),
+    ("/people", "", "who may talk to me here, and who is waiting"),
+    ("/allow", "<@name|chat id>", "let somebody talk to me"),
+    ("/block", "<@name|chat id>", "stop somebody talking to me"),
 ]
 
 
@@ -168,6 +171,79 @@ class Console:
         on = t.get("status_messages", True) is not False
         return ("▲ I'll message you when I go offline and when I'm back." if on
                 else "▲ I won't message you when I go offline or come back. /updown on turns it back on.")
+
+    # ------------------------------------------------------------ people
+    # "How can I add new users to talk to the Telegram session?" Somebody who writes
+    # first is asked about (TelegramBridge.ask_owner_about); these let the owner name
+    # somebody BEFORE they write, by @username or chat id, from the phone itself.
+
+    def _find(self, who: str) -> dict | None:
+        from . import channels as chanmod
+        h = chanmod.norm_handle(who)
+        for c in self.tg.store.tg_list_chats():
+            if h and (h == str(c["chat_id"]) or h == chanmod.norm_handle(c.get("username") or "")):
+                return c
+        return None
+
+    def _allow_list(self, who: str, add: bool) -> None:
+        """Add or remove one entry on the channel's standing allow-list."""
+        from . import channels as chanmod
+        from . import config as cfgmod
+        h = chanmod.norm_handle(who)
+        rows = [x for x in chanmod.allow_list(chanmod.conf_of(self.tg.cfg, "telegram")) if x != h]
+        if add and h:
+            rows.append(h)
+        chanmod.save(self.tg.cfg, "telegram",
+                     {"allow": ", ".join(x if x.isdigit() else "@" + x for x in rows)})
+        cfgmod.save_config(self.tg.cfg)
+
+    async def _cmd_people(self, chat_id: int, arg: str) -> str:
+        from . import channels as chanmod
+        owner = self.tg._t().get("owner_chat_id") or 0
+        ok, waiting = [], []
+        for c in self.tg.store.tg_list_chats():
+            name = (c.get("title") or str(c["chat_id"])) + (f" @{c['username']}" if c.get("username") else "")
+            line = f"• {name} ({c['chat_id']})" + (" — owner" if c["chat_id"] == owner else "")
+            (ok if c["allowed"] else waiting).append(line)
+        ahead = chanmod.allow_list(chanmod.conf_of(self.tg.cfg, "telegram"))
+        out = _lines("▲ Can talk to me", ok, "only you")
+        if waiting:
+            out += "\n\n" + _lines("Wrote, not allowed (/allow <id>)", waiting, "")
+        if ahead:
+            out += "\n\nLet in when they first write: " + ", ".join(
+                x if x.isdigit() else "@" + x for x in ahead)
+        return out + "\n\n/allow @name or /allow <chat id> adds somebody."
+
+    async def _cmd_allow(self, chat_id: int, arg: str) -> str:
+        who = arg.split()[0] if arg else ""
+        if not who:
+            return "▲ Who? /allow @username or /allow <chat id>. They can also just write to me and I'll ask you."
+        c = self._find(who)
+        if c:
+            await self.tg.decide_newcomer(int(c["chat_id"]), True)
+            return f"▲ {c.get('title') or c['chat_id']} can talk to me now. I've told them."
+        self._allow_list(who, True)
+        name = self.tg.bot_username and f"@{self.tg.bot_username}" or "me"
+        return (f"▲ {who} is on the list. When they send {name} a message they're in, "
+                f"with no need to ask you.")
+
+    async def _cmd_block(self, chat_id: int, arg: str) -> str:
+        who = arg.split()[0] if arg else ""
+        if not who:
+            return "▲ Who? /block @username or /block <chat id>. /people lists them."
+        c = self._find(who)
+        owner = self.tg._t().get("owner_chat_id") or 0
+        if (c and c["chat_id"] == owner) or who.strip() == str(owner):
+            return "▲ That's you, the owner. I can't block the owner."
+        self._allow_list(who, False)
+        if c:
+            for h in (str(c["chat_id"]), c.get("username") or ""):
+                if h:
+                    self._allow_list(h, False)      # however they were written down
+            self.tg.store.tg_set_allowed(int(c["chat_id"]), 0)
+            self.tg.store.log("telegram", f"blocked chat {c['chat_id']} (owner's /block)")
+            return f"▲ {c.get('title') or c['chat_id']} can no longer talk to me."
+        return f"▲ {who} is off the list."
 
     async def handle(self, chat_id: int, text: str) -> bool:
         """Returns True if this text was a console command and has been answered."""
