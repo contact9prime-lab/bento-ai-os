@@ -34208,7 +34208,7 @@ function stageChart(art,sc){
   const svg=sSvg('svg',{viewBox:`0 0 ${W} ${H}`,class:'st-svg',role:'img','aria-label':sc.title||'chart'});
   art.append(svg);const K=stageK(svg);svg.style.setProperty('--k',K);
   // the margins make room for the text at the size it is drawn
-  const T=Math.round(18*K)+8,B=Math.round((sc.x_label?40:22)*K)+14;
+  const T=Math.round(18*K)+8;let B=Math.round((sc.x_label?40:22)*K)+14;
   let L=72;
   const series=sc.series||[];
   if(sc.chart_type==='pie'){stagePie(svg,series[0],sc,W,H);return}
@@ -34217,6 +34217,10 @@ function stageChart(art,sc){
   const isNum=xs.every(x=>typeof x==='number'), dates=!isNum&&xs.every(x=>stageDate(x)!=null);
   const cats=[];if(!isNum&&!dates)xs.forEach(x=>{if(!cats.includes(x))cats.push(x)});
   const xv=x=>isNum?x:dates?stageDate(x):cats.indexOf(x);
+  // a long category name gets a second line rather than an ellipsis (a picture on a phone
+  // has no hover to read the rest), and the bottom margin makes room for it
+  const twoLines=cats.length>0&&cats.some(c=>String(c).length*7.2*K>(W-72-R)/cats.length-6);
+  if(twoLines)B+=Math.round(16*K);
   const bar=sc.chart_type==='bar';
   let x0=Math.min(...all.map(p=>xv(p[0]))),x1=Math.max(...all.map(p=>xv(p[0])));
   if(bar||(!isNum&&!dates)){x0-=0.5;x1+=0.5}
@@ -34241,7 +34245,11 @@ function stageChart(art,sc){
   else{const k=Math.ceil(cats.length/10);xl=cats.map((c,i)=>[i,c]).filter((_,i)=>i%k===0)}
   // each name gets its slot and is cut to it, so neighbours never run into each other
   const room=xl.length>1?Math.abs(X(xl[1][0])-X(xl[0][0]))-6:W-L-R;
-  xl.forEach(([v,label])=>{const t=fitText(label,room);if(t)g.append(sSvg('text',{x:X(v),y:H-B+18*K,'text-anchor':'middle'},t))});
+  xl.forEach(([v,label])=>{
+    const lines=twoLines?stageTwoLines(label,Math.floor(room/(7.2*K))):[fitText(label,room)];
+    const t=sSvg('text',{x:X(v),y:H-B+18*K,'text-anchor':'middle'});
+    lines.filter(Boolean).forEach((ln,i)=>t.append(sSvg('tspan',{x:X(v),dy:i?16*K:0},ln)));
+    if(t.childNodes.length)g.append(t)});
   if(sc.x_label)g.append(sSvg('text',{x:(L+W-R)/2,y:H-6*K,'text-anchor':'middle',class:'st-axlabel'},sc.x_label));
   if(ylab)g.append(sSvg('text',{x:14*K,y:(T+H-B)/2,'text-anchor':'middle',class:'st-axlabel',transform:`rotate(-90 ${14*K} ${(T+H-B)/2})`},ylab));
   // marks: the lines the answer is about ("low IV under 12")
@@ -34424,6 +34432,20 @@ async function stageMap(art,sc){
 }
 
 /* --- numbers, timeline, steps, table --- */
+/* A name on two lines at most, broken at a space, each line cut to n characters. */
+function stageTwoLines(text,n){
+  const s=String(text);if(n<3)return [];if(s.length<=n)return [s];
+  let cut=s.lastIndexOf(' ',n);if(cut<=0)cut=n;
+  const a=s.slice(0,cut).trim(),b=s.slice(cut).trim();
+  return [a.length>n?a.slice(0,n-1)+'…':a,b.length>n?b.slice(0,n-1)+'…':b];
+}
+/* A value and its unit as people write them: "$2.6 billion", "10–15 years", "45%". */
+function stageWithUnit(value,unit){
+  const v=String(value),u=String(unit||'');if(!u)return v;
+  const cur=u.match(/^([$€£₹¥])\s*(.*)$/);
+  if(cur)return cur[1]+v+(cur[2]?' '+cur[2]:'');
+  return /^[A-Za-z]/.test(u)?v+' '+u:v+u;
+}
 function stageNumbers(art,sc){
   const g=sEl('div','st-nums');
   sc.items.forEach((it,i)=>{
@@ -34434,10 +34456,10 @@ function stageNumbers(art,sc){
     if(m&&!stageReduced()){
       const target=parseFloat(m[1].replace(/,/g,'')),rest=m[2],dec=(m[1].split('.')[1]||'').length,t0=performance.now()+i*120;
       const tick=now=>{const k=Math.min(1,Math.max(0,(now-t0)/900)),e=1-Math.pow(1-k,3);
-        v.textContent=(target*e).toLocaleString(undefined,{minimumFractionDigits:dec,maximumFractionDigits:dec})+rest+unit;
+        v.textContent=stageWithUnit((target*e).toLocaleString(undefined,{minimumFractionDigits:dec,maximumFractionDigits:dec})+rest,unit);
         if(k<1&&v.isConnected)requestAnimationFrame(tick)};
       requestAnimationFrame(tick);
-    }else v.textContent=it.value+unit;
+    }else v.textContent=stageWithUnit(it.value,unit);
     c.append(sEl('div','st-num-l',it.label));
     if(it.delta){const d=sEl('div','st-num-d',it.delta);if(/^[-−▼↓]/.test(it.delta))d.classList.add('down');c.append(d)}
     if(it.note)c.append(sEl('div','st-num-n',it.note));

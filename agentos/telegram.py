@@ -178,9 +178,18 @@ class TelegramBridge(usersmod.Scoped):
             bot = ("@" + self.bot_username) if self.bot_username else "your bot"
             return f"[error] Not paired yet — send any message to {bot} on Telegram first"
         text = text or "(empty)"
+        from . import tgformat
         try:
-            for i in range(0, len(text), CHUNK):
-                await self._api("sendMessage", chat_id=chat_id, text=text[i:i + CHUNK])
+            # The agent writes markdown; Telegram shows a small HTML set. A piece Telegram
+            # cannot parse goes again as the plain text it was, never lost.
+            for piece in tgformat.chunks(text, CHUNK - 900):
+                try:
+                    await self._api("sendMessage", chat_id=chat_id, text=tgformat.to_html(piece),
+                                    parse_mode="HTML", link_preview_options={"is_disabled": True})
+                except RuntimeError as e:
+                    if "parse" not in str(e).lower() and "entit" not in str(e).lower():
+                        raise
+                    await self._api("sendMessage", chat_id=chat_id, text=piece)
         except Exception as e:
             return f"[error] telegram send failed: {e}"
         self.store.log("telegram", f"→ sent: {text[:200]}")
@@ -252,24 +261,77 @@ class TelegramBridge(usersmod.Scoped):
             self.store.log("telegram", f"could not send the reply's files: {e}")
 
     async def send_stage(self, cid: str, reply: str, chat_id: int) -> None:
-        """The answer's story, when it showed one (stage.py): one page with every scene drawn
-        by the Stage's own code and the map inline, sent as a document after the reply, so
-        the phone gets the same story the desktop played. Never fatal."""
+        """The answer's story, when it showed one (stage.py), as pictures in the chat.
+
+        Reported as "the stage experience in Telegram is really bad": it was one .html file
+        to download and open elsewhere, and a phone's viewer that runs no script showed no
+        scene at all. Now each scene is photographed (stagestill.py, the Stage's own drawing)
+        and sent as an album with its title, caption and source under each picture; a video
+        scene follows as its YouTube link, which Telegram plays in place. With no browser on
+        this machine to draw them, the page goes as before. Never fatal."""
         try:
-            from . import stage as stagemod, executors as _ex
+            from . import stage as stagemod, stagestill, executors as _ex
             ans = stagemod.last_question(self.store, cid)
-            n = len(stagemod.story(self.store, cid, ans)) if ans else 0
-            if not n:
+            scenes = [s["scene"] for s in stagemod.story(self.store, cid, ans)] if ans else []
+            if not scenes:
                 return
+            agent = self.cfg.get("agent_name") or ""
+            pngs = await stagestill.render(
+                stagemod.report_html(self.store, cid, ans, agent=agent, still=True), self.cfg)
+            if len(pngs) == len(scenes):
+                res = await self.send_album(pngs, [stagemod.still_caption(sc, i, len(scenes))
+                                                   for i, sc in enumerate(scenes)], chat_id)
+                if not res.startswith("[error]"):
+                    for sc in scenes:
+                        if sc.get("kind") == "video" and sc.get("video"):
+                            await self._api("sendMessage", chat_id=chat_id,
+                                            text=f"▶ {sc.get('title') or 'Video'}\n"
+                                                 f"https://www.youtube.com/watch?v={sc['video']}"
+                                                 + (f"&t={int(sc['start'])}" if sc.get("start") else ""))
+                    return
+                self.store.log("telegram", f"could not send the story as pictures: {res}")
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
-                                      answer=reply, agent=self.cfg.get("agent_name") or "")
+                                      answer=reply, agent=agent)
             if p:
+                n = len(scenes)
                 res = await self.send_document(str(p), f"▶ The story, {n} scene{'s' if n != 1 else ''}. "
-                                                       f"Open it to watch.", chat_id)
+                                                       f"Open it in your browser to watch.", chat_id)
                 if res.startswith("[error]"):
                     self.store.log("telegram", f"could not send the story: {res}")
         except Exception as e:
             self.store.log("telegram", f"could not send the story: {e}")
+
+    async def send_album(self, pngs: list, captions: list, chat_id: int | None = None) -> str:
+        """Pictures as one album (sendMediaGroup, ten at most each), a caption under each.
+        A single picture is an ordinary photo."""
+        chat_id = chat_id or self._t().get("owner_chat_id")
+        token = self._t().get("bot_token", "")
+        if not token or not chat_id or not pngs:
+            return "[error] Telegram is not set up"
+        if len(pngs) == 1:
+            return await self.send_photo(pngs[0], captions[0] if captions else "", chat_id)
+        import json as _j
+        try:
+            for at in range(0, len(pngs), 10):
+                part = pngs[at:at + 10]
+                if len(part) == 1:
+                    await self.send_photo(part[0], captions[at], chat_id)
+                    continue
+                media = [{"type": "photo", "media": f"attach://p{i}",
+                          "caption": (captions[at + i] if at + i < len(captions) else "")[:1024]}
+                         for i in range(len(part))]
+                async with httpx.AsyncClient(timeout=120) as client:
+                    r = await client.post(api_url(token, "sendMediaGroup"),
+                                          data={"chat_id": str(chat_id), "media": _j.dumps(media)},
+                                          files={f"p{i}": (f"scene{at + i + 1}.png", b, "image/png")
+                                                 for i, b in enumerate(part)})
+                data = r.json()
+                if not data.get("ok"):
+                    raise RuntimeError(data.get("description", f"HTTP {r.status_code}"))
+        except Exception as e:
+            return f"[error] telegram album failed: {e}"
+        self.store.log("telegram", f"→ sent {len(pngs)} pictures: {(captions[0] if captions else '')[:100]}")
+        return "sent via Telegram"
 
     async def send_talk(self, lines: list, chat_id: int) -> None:
         """Agents talked during this chat's turn: the exchange as a comic strip, the
