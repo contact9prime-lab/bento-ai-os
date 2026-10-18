@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.58 — 2026-10-18
+
+**The Stage fits a phone.** On a 390px screen the Stage's top and its controls each take one row now, with short
+labels, so the answer gets the room: the map is drawn in the frame's own shape instead of a thin strip, and two
+numbers sit side by side where the third one used to fall out of view. A map's numbered places are one row of
+cards you swipe through, under a map that keeps at least half the room: on a phone the list had pushed the map
+out entirely, and in a desktop window it was a thin strip. The narrator's line no longer covers a
+card's text; it sits over a map, a picture or a video only. Full screen is offered only where the browser has
+it, so an iPhone no longer shows a button that does nothing.
+
 ## 0.6.57 — 2026-10-18
 
 **A linked team's request asks you, instead of being refused.** When agents on a linked machine want your lead

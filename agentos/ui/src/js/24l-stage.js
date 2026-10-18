@@ -37,11 +37,13 @@ function stageSetAuto(on){try{localStorage.setItem('stage.auto',on?'1':'0')}catc
 
 function sEl(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=String(text);return e}
 var SVGNS='http://www.w3.org/2000/svg';
-/* How much a 960x500 drawing is shrunk where it is shown, so its text is drawn that much
-   larger: the SVG keeps its shape, so the scale is the tighter of width and height. */
-function stageK(svg){
+/* How much a 960x500 drawing (or the map's own w x h) is shrunk where it is shown, so its
+   text is drawn that much larger: the SVG keeps its shape, so the scale is the tighter of
+   width and height. */
+function stageK(svg,w,h){
+  w=w||960;h=h||500;
   const b=svg.getBoundingClientRect();
-  const s=Math.min((b.width||960)/960,(b.height||500)/500);
+  const s=Math.min((b.width||w)/w,(b.height||h)/h);
   return Math.max(1,Math.min(2.8,1/Math.max(.2,s)));
 }
 function sSvg(tag,attrs,text){const e=document.createElementNS(SVGNS,tag);
@@ -194,15 +196,21 @@ function stagePaint(body){
   top.append(seg);
   const sw=sEl('label','st-big');const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!STAGE.settings.big;
   cb.onchange=()=>stageSettings({big:cb.checked});
-  sw.append(cb,sEl('span','','Answer BIG'));
+  // on a phone the label is one word, so the whole bar fits one row
+  sw.append(cb,sEl('span','stg-long','Answer BIG'),sEl('span','stg-short','BIG'));
   sw.title='On: answers with numbers, places or a story are shown here without being asked. Off: only when you ask to see something.';
   top.append(sw);
-  const mu=sEl('button','st-icon'+(stageMusicOn()?' on':''),stageMusicOn()?'♪ On':'♪ Off');
-  mu.title='Background music, made on this screen. Tap to play or pause.';mu.setAttribute('aria-pressed',String(stageMusicOn()));
+  const mu=sEl('button','st-icon'+(stageMusicOn()?' on':''),'♪');mu.append(sEl('span','stg-long',stageMusicOn()?' On':' Off'));
+  mu.title='Background music, made on this screen. Tap to play or pause.';mu.setAttribute('aria-label','Background music');mu.setAttribute('aria-pressed',String(stageMusicOn()));
   mu.onclick=()=>{stageMusic(!stageMusicOn());stagePaint()};
-  const fs=sEl('button','st-icon','⛶');fs.title='Full screen';fs.setAttribute('aria-label','Full screen');
-  fs.onclick=()=>{const t=body.closest('.win')||body;try{document.fullscreenElement?document.exitFullscreen():t.requestFullscreen()}catch(e){}};
-  top.append(mu,fs);
+  top.append(mu);
+  // offered only where the browser can do it: an iPhone has no full screen for a page, and a
+  // button that does nothing there reads as the Stage being broken
+  if(document.fullscreenEnabled){
+    const fs=sEl('button','st-icon','⛶');fs.title='Full screen';fs.setAttribute('aria-label','Full screen');
+    fs.onclick=()=>{const t=body.closest('.win')||body;try{document.fullscreenElement?document.exitFullscreen():t.requestFullscreen()}catch(e){}};
+    top.append(fs);
+  }
   body.append(top);
   const main=sEl('div','st-main'+(STAGE.tab==='now'?' now':''));body.append(main);
   if(STAGE.tab==='library')stageLibrary(main);
@@ -263,13 +271,15 @@ function stageNow(main){
   const play=sEl('button','stg-b stg-play',STAGE.playing?'❚❚':'▶');play.title=STAGE.playing?'Pause':'Play the story';play.onclick=stagePlay;
   const next=sEl('button','stg-b','›');next.title='Next scene';next.disabled=STAGE.at>=n-1;next.onclick=()=>stageGo(STAGE.at+1);
   bar.append(prev,play,next);
-  const deep=sEl('button','stg-b stg-deep','⤵ Go deeper');deep.title='Ask for this scene as its own story';
+  const deep=sEl('button','stg-b stg-deep','⤵ ');deep.append(sEl('span','stg-long','Go deeper'),sEl('span','stg-short','Deeper'));
+  deep.title='Ask for this scene as its own story';
   deep.onclick=()=>stageDeeper(cur.seq);bar.append(deep);
   const kids=(STAGE.cur.deeper||{})[String(cur.seq)]||[];
   kids.forEach((a,i)=>{const k=sEl('button','stg-b stg-kid',kids.length>1?`Deeper story ${i+1} ›`:'The deeper story ›');
     k.onclick=()=>stageOpen(STAGE.cur.cid,a,0);bar.append(k)});
   const sp=sEl('span','stg-sp');bar.append(sp);
-  const keep=sEl('button','stg-b','★ Keep');keep.title='Keep this story as a board, and refresh it if you like';
+  const keep=sEl('button','stg-b','★');keep.append(sEl('span','stg-long',' Keep'));
+  keep.title='Keep this story as a board, and refresh it if you like';keep.setAttribute('aria-label','Keep');
   keep.onclick=()=>stageKeepMenu(keep);
   const chat=sEl('button','stg-b','Chat');chat.title='Open the conversation';
   chat.onclick=()=>{if(typeof openConv==='function'){openApp('chat');openConv(STAGE.cur.cid)}};
@@ -716,18 +726,29 @@ async function stageWorld(){
 var STAGE_VIEW={world:[-180,-58,180,84],africa:[-20,-36,53,38],asia:[25,-12,150,60],europe:[-25,34,45,72],
   'north america':[-170,7,-50,75],'south america':[-85,-57,-32,14],oceania:[110,-50,180,5],'middle east':[25,10,65,42],india:[66,5,98,37]};
 async function stageMap(art,sc){
-  const W=960,H=500;
-  const svg=sSvg('svg',{viewBox:`0 0 ${W} ${H}`,class:'st-svg st-mapsvg',role:'img','aria-label':sc.title||'map'});
-  art.append(svg);const K=stageK(svg);svg.style.setProperty('--k',K);
+  // the world first: awaiting it lets the scene finish laying out (the controls bar is added
+  // after this returns), so the room measured below is the room the map really gets
   let world;
   try{world=await stageWorld()}catch(e){art.textContent='';art.append(sEl('p','mut',String(e.message||e)));return}
+  // The drawing takes the shape of the room it really gets: the places' notes go in first and
+  // the map has what they leave. A fixed 960x500 left the world a thin strip on a phone held
+  // upright, and sized before the notes it came out a quarter of its box.
+  let ol=null;const notes=(sc.points||[]).filter(p=>p.note);
+  if(notes.length){ol=sEl('ol','st-mapnotes');
+    notes.forEach((p,i)=>{const li=sEl('li','');li.style.animationDelay=(600+i*160)+'ms';
+      li.append(sEl('b','',(i+1)+' · '+(p.label||'')+(p.value!=null?' '+stageFmt(p.value,sc.unit):'')),sEl('span','',p.note));ol.append(li)});
+    art.append(ol)}
+  const W=960,fw=art.clientWidth,fh=art.clientHeight-(ol?ol.offsetHeight+10:0);
+  const H=fw>40&&fh>40?Math.round(Math.min(1400,Math.max(320,W*fh/fw))):500;
+  const svg=sSvg('svg',{viewBox:`0 0 ${W} ${H}`,class:'st-svg st-mapsvg',role:'img','aria-label':sc.title||'map'});
+  art.insertBefore(svg,ol);const K=stageK(svg,W,H);svg.style.setProperty('--k',K);
   // the box: the view named, else the places and countries shown, padded, else the world
   let box=STAGE_VIEW[sc.view]||null;
   const hits=(sc.regions||[]).map(r=>({r,c:world.idx[String(r.country).toLowerCase()]}));
+  const lons=[],lats=[];
+  (sc.points||[]).forEach(p=>{lons.push(p.lon);lats.push(p.lat)});
+  hits.forEach(h=>{if(h.c)h.c.r.forEach(ring=>{for(let i=0;i<ring.length;i+=2){lons.push(ring[i]/10);lats.push(ring[i+1]/10)}})});
   if(!box){
-    const lons=[],lats=[];
-    (sc.points||[]).forEach(p=>{lons.push(p.lon);lats.push(p.lat)});
-    hits.forEach(h=>{if(h.c)h.c.r.forEach(ring=>{for(let i=0;i<ring.length;i+=2){lons.push(ring[i]/10);lats.push(ring[i+1]/10)}})});
     if(lons.length){
       let a=Math.min(...lons),b=Math.max(...lons),c=Math.min(...lats),d=Math.max(...lats);
       const pw=Math.max(12,(b-a)*0.15),ph=Math.max(8,(d-c)*0.15);
@@ -735,8 +756,15 @@ async function stageMap(art,sc){
       if(box[2]-box[0]>230)box=STAGE_VIEW.world;
     }else box=STAGE_VIEW.world;
   }
-  // keep the shape: widen the shorter side to the frame's aspect
   let [lo0,la0,lo1,la1]=box;const aspect=W/H;
+  // an upright frame cannot show every longitude at a size anybody can read, so it keeps
+  // the longitudes the places are in (never wider than the view asked for)
+  if(aspect<1.6&&lons.length){
+    const pw=Math.max(12,(Math.max(...lons)-Math.min(...lons))*0.12);
+    const a=Math.max(lo0,Math.min(...lons)-pw),b=Math.min(lo1,Math.max(...lons)+pw);
+    if(b-a>=20){lo0=a;lo1=b}
+  }
+  // keep the shape: widen the shorter side to the frame's aspect
   const midLat=(la0+la1)/2,kx=Math.cos(midLat*Math.PI/180)||1;
   let bw=(lo1-lo0)*kx,bh=la1-la0;
   if(bw/bh>aspect){const nh=bw/aspect;la0=midLat-nh/2;la1=midLat+nh/2}
@@ -816,10 +844,6 @@ async function stageMap(art,sc){
       break;
     }
   });
-  if(noted.length){const ol=sEl('ol','st-mapnotes');
-    noted.forEach((p,i)=>{const li=sEl('li','');li.style.animationDelay=(600+i*160)+'ms';
-      li.append(sEl('b','',(i+1)+' · '+(p.label||'')+(p.value!=null?' '+stageFmt(p.value,sc.unit):'')),sEl('span','',p.note));ol.append(li)});
-    art.append(ol)}
   if(missing.length)art.append(sEl('p','mut st-note','Not on this map: '+missing.join(', ')));
   if(vals.length>1){const lg=sEl('div','st-scale');lg.append(sEl('span','',stageFmt(vmin,sc.unit)),sEl('i',''),sEl('span','',stageFmt(vmax,sc.unit)));art.append(lg)}
 }
