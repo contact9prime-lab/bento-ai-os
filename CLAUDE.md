@@ -2831,6 +2831,10 @@ offloads". Four rules:
 - **The other side's lead manages and touches nothing**: `LINKED_LEAD_TOOLS` only, a CLI with
   `tools=()` and the team door narrowed by `only`, taint on the door's Agent, approvals to the link
   owner's screens or refused. Kept as a `↔ <link>` conversation there.
+- **An undecided pair is asked of the person on the answering side** (`ControlPlane._ask_here`, called only
+  on the gate's `team-default`, so a principal on a link): the link owner's screens get the card
+  (`linked_approvals`), Allow & remember writes the cell, a deny row refuses without asking, no screen is no
+  at once, and every card is a `link.ask` ledger row. No card for an agent that does not exist.
 - **The Office draws a hand-over to a name it can't find** (`officeMsg`): paper out by the door, the
   answer back on paper. It returned on any unknown name before, so nothing crossing a link showed.
 

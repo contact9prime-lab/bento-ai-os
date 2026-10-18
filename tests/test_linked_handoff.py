@@ -128,3 +128,33 @@ def test_the_gate_and_the_page():
     assert "handed ${ev.to} on a linked team" in office, "the Office draws work leaving for another team"
     settings = (ROOT / "agentos/ui/src/js/11-settings.js").read_text()
     assert 'data-agent="lead"' in settings, "the link card can let the other team hand tasks to your lead"
+
+
+def test_the_other_machine_asks_its_person_when_nobody_decided(pair, monkeypatch):
+    """Asked for as "the other machine should also get a popup to authorize, only if there is
+    a link between them": an undecided pair is asked of the person there, Allow & remember is
+    the link's cell, a block written there still refuses without asking."""
+    A, B, inv, loop = pair
+    monkeypatch.setattr(providers, "chat", _brains({}))
+    asked = []
+
+    async def person(lk, frm, agent, name, args, reason, offer):
+        asked.append((lk["label"], frm, agent, args["to"], offer["resource"]))
+        return True
+    A["cp"].linked_approvals = person
+    res = _home_turn(B, loop, [])
+    assert res["content"].startswith("HOME GOT") and "Churn is 4%" in res["content"]
+    assert asked == [("home", "Aria", "Aria", "your lead Aria", "agent:main")]
+    rows = [tuple(r) for r in A["store"].db.execute(
+        "SELECT action, detail FROM audit WHERE action='link.ask'").fetchall()]
+    assert rows and "allowed by the person here" in rows[0][1]
+
+    async def no(*a):
+        asked.append("no")
+        return False
+    A["cp"].linked_approvals = no
+    assert "not allowed" in _home_turn(B, loop, [])["content"]
+    # a block written here: refused, nobody asked
+    asked.clear()
+    A["store"].add_grant("team", "home/*", "agent.message", "agent:main", effect="deny", source="user")
+    assert "not allowed" in _home_turn(B, loop, [])["content"] and asked == []

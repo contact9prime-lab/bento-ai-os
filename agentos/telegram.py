@@ -793,6 +793,12 @@ class TelegramBridge(usersmod.Scoped):
             await self._api("answerCallbackQuery", callback_query_id=cq["id"])
         except Exception:
             pass
+        if data.startswith("co:"):
+            # a company's Open button (telegram_admin /companies)
+            said = await self._console.open_company(data[3:])
+            msg = cq.get("message", {})
+            await self.send(said, (msg.get("chat") or {}).get("id") or cq.get("from", {}).get("id"))
+            return
         if data.startswith("who:"):
             # the owner's answer about somebody new (ask_owner_about)
             parts = data.split(":")

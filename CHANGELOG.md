@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.57 — 2026-10-18
+
+**A linked team's request asks you, instead of being refused.** When agents on a linked machine want your lead
+or one of your agents and you haven't decided that yet, your screen shows who it is and what they want, with
+Allow, Deny and Allow & remember (which writes the link's rule). Only for a linked team; a block you set still
+refuses, and every card is in the ledger.
+
+**Open your companies from Telegram.** `/companies` lists them with a button to open each, and `/company <name>`
+opens one; `/company` shows the open one's departments. Your desktop follows.
+
 ## 0.6.56 — 2026-10-18
 
 **The Stage on Telegram says something.** A map now numbers its places and lists what happened at each one

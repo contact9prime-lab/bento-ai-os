@@ -28,6 +28,7 @@ panels. This is the surface that had no way in.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import time
 
@@ -47,6 +48,8 @@ COMMANDS = [
     ("/perms", "", "who has been granted what"),
     ("/clear", "", "wipe this conversation and start fresh"),
     ("/updown", "[on|off]", "a message when I go offline or come back"),
+    ("/companies", "", "your companies, with a button to open each"),
+    ("/company", "[name]", "the open company and its departments; with a name, open that one"),
     ("/people", "", "who may talk to me here, and who is waiting"),
     ("/allow", "<@name|chat id>", "let somebody talk to me"),
     ("/block", "<@name|chat id>", "stop somebody talking to me"),
@@ -171,6 +174,61 @@ class Console:
         on = t.get("status_messages", True) is not False
         return ("▲ I'll message you when I go offline and when I'm back." if on
                 else "▲ I won't message you when I go offline or come back. /updown on turns it back on.")
+
+    # --------------------------------------------------------- companies
+    # "With Telegram I should be able to open the companies." The same company.switch the
+    # desktop's picker calls, a ledger line, and the desktop repaints.
+
+    async def _cmd_companies(self, chat_id: int, arg: str) -> str:
+        from . import company as companymod
+        rows = companymod.companies(self.tg.cfg)
+        if not rows:
+            return "▲ No company yet. Set one up in the Office (▦ Company) or with `bento company new`."
+        lines = [f"{'▶' if c['active'] else '•'} {c['name']} — {c['departments']} departments, {c['people']} people"
+                 + (f"\n   {c['about']}" if c.get("about") else "") for c in rows]
+        buttons = [[{"text": f"Open {c['name']}"[:40], "callback_data": f"co:{c['id']}"[:64]}]
+                   for c in rows if not c["active"] and c.get("id")]
+        text = _lines("▲ Your companies (▶ is open)", lines, "")
+        if buttons:
+            with contextlib.suppress(Exception):
+                await self.tg._api("sendMessage", chat_id=chat_id, text=text[:4000],
+                                   reply_markup={"inline_keyboard": buttons})
+                return ""
+        return text
+
+    async def _cmd_company(self, chat_id: int, arg: str) -> str:
+        from . import company as companymod
+        if arg:
+            return await self.open_company(arg)
+        rows = companymod.companies(self.tg.cfg)
+        cur = next((c for c in rows if c["active"]), None)
+        if not cur:
+            return "▲ No company is open. /companies lists yours."
+        depts = companymod.departments(self.tg.cfg, self.tg.store)
+        lines = [f"• {d['name']}" + (f" — head {d['lead']}" if d.get("lead") else "")
+                 + (f", {len(d['members'])} people" if d.get("members") else "") for d in depts]
+        return (_lines(f"▲ {cur['name']}" + (f"\n{cur['about']}" if cur.get("about") else ""), lines,
+                       "no departments yet")
+                + "\n\n@<department> <task> gives a department work. /companies to switch.")
+
+    async def open_company(self, ref: str) -> str:
+        from . import company as companymod
+        from . import config as cfgmod
+        hit = companymod.find(self.tg.cfg, ref)
+        if not hit:
+            names = ", ".join(c["name"] for c in companymod.companies(self.tg.cfg)) or "none yet"
+            return f"▲ No company called '{ref}'. Yours: {names}"
+        try:
+            row = companymod.switch(self.tg.cfg, self.tg.store, hit["id"], surface="telegram")
+        except ValueError as e:
+            return f"▲ {e}"
+        cfgmod.save_config(self.tg.cfg)
+        companymod.record(self.tg.store, f"opened company from Telegram: {row['name']}")
+        for t in ("office", "agents", "avatars", "fabric_defs", "spaces_update"):
+            with contextlib.suppress(Exception):
+                await self.tg.broadcast({"type": t})     # the desktop repaints, as for its own picker
+        return (f"▲ {row['name']} is open: {row['departments']} departments, {row['people']} people. "
+                f"/company shows them.")
 
     # ------------------------------------------------------------ people
     # "How can I add new users to talk to the Telegram session?" Somebody who writes

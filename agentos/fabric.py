@@ -1799,8 +1799,9 @@ class ControlPlane(usersmod.Scoped):
                 # said plainly: their mission was stopped HERE, by a person, on purpose
                 return {"ok": False, "error": f"this team stopped your mission "
                                               f"'{frm.removesuffix('-master')}' from asking its agents"}
-            return {"ok": False, "error": "not allowed here — the other side chooses which of "
-                                          "its agents your team may ask"}
+            if not (dec.rule == "team-default" and await self._ask_here(lk, frm, to, to_lead, req)):
+                return {"ok": False, "error": "not allowed here — the other side chooses which of "
+                                              "its agents your team may ask"}
         if to_lead:
             if lent:
                 return {"ok": False, "error": "a guest pass lends one agent, not the lead"}
@@ -1861,6 +1862,38 @@ class ControlPlane(usersmod.Scoped):
                 pass
         return {"ok": True, "text": text[:6000], "model": res["model"],
                 "provider": brain["provider_name"]}
+
+    async def _ask_here(self, lk: dict, frm: str, to: str, to_lead: bool, req: dict) -> bool:
+        """Nobody decided this pair yet (the gate's `team-default`): the person HERE is asked,
+        on their own screens, with Allow & remember writing the link's cell. Asked for as
+        "the other machine should also get a popup to authorize, only if there is a link
+        between them": a link is the precondition (this runs only for a principal on one),
+        a block written here still refuses at once, and with no screen of the owner's open it
+        is no, at once, as a linked team's other questions are."""
+        ask = getattr(self, "linked_approvals", None)
+        if not ask:
+            return False
+        if not to_lead and not self.store.get_subagent(to):
+            return False                    # nobody by that name: no card about nobody
+        from . import teamlink
+        name = self.cfg.get("agent_name") or "your lead"
+        whom = f"your lead {name}" if to_lead else to
+        question = teamlink.plain(req.get("question"), 400, newlines=False)
+        what = "hand a task to" if to_lead else "ask"
+        offer = {"principal_kind": "team", "principal_id": f"{lk['label']}/*", "action": "agent.message",
+                 "resource": LEAD_RESOURCE if to_lead else f"agent:subagent/{to}",
+                 "note": f"the linked team '{lk['label']}' may {what} {whom}"}
+        try:
+            ok = bool(await ask(lk, frm, name if to_lead else to, "agent.message",
+                                {"team": lk["label"], "to": whom, "question": question},
+                                f"They want to {what} {whom}: “{question}”. Their agent answers to "
+                                f"their own person; yours works with your permissions.", offer))
+        except Exception:
+            ok = False
+        audit_team(self.store, "link.ask", f"link:{lk['label']}",
+                   f"{frm} on '{lk['label']}' asked to {what} {whom}; "
+                   + ("allowed by the person here" if ok else "not allowed (no, or nobody here)"))
+        return ok
 
     async def _lead_for_link(self, lk: dict, frm: str, req: dict, say=None) -> dict:
         """A whole task from a linked team, handed to this machine's lead (the link's cell
