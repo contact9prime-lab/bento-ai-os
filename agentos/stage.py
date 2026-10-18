@@ -713,6 +713,44 @@ body{margin:0;background:#05060e;color:#eef1ff;font:16px/1.5 var(--sans)}
 .st-card:not(.seen) .st-art{visibility:hidden}"""
 
 
+def still_caption(sc: dict, i: int, n: int) -> str:
+    """The words under a scene's picture in Telegram: where it is in the story, its title,
+    its caption, and where the numbers came from (the picture shows them too, but a caption
+    is what a phone reads aloud and searches)."""
+    head = f"{i + 1}/{n} · {sc.get('title') or STILL_KIND.get(sc.get('kind'), 'Scene')}" if n > 1 \
+        else (sc.get("title") or "")
+    out = [head]
+    if sc.get("caption"):
+        out.append(sc["caption"])
+    if sc.get("illustrative"):
+        out.append("Illustrative, not data.")
+    elif sc.get("source"):
+        out.append(f"Source: {sc['source']}")
+    if sc.get("kind") == "video" and sc.get("video"):
+        out.append(f"https://www.youtube.com/watch?v={sc['video']}")
+    return "\n".join(x for x in out if x)[:1024]
+
+
+STILL_KIND = {"chart": "Chart", "map": "Map", "numbers": "Numbers", "timeline": "Timeline",
+              "steps": "How it works", "table": "Table", "image": "Picture", "video": "Video"}
+
+
+# A photograph per scene (stagestill.py): the page's chrome goes, each card stands alone with
+# the question over it, and nothing moves.
+STILL_CSS = """
+body.still{background:#05060e}
+body.still .rp{padding:0;max-width:none}
+body.still .rp-h,body.still .rp-q,body.still .rp-f{display:none}
+.still-card{padding:22px 18px 16px;background:radial-gradient(120% 80% at 0 0,#141a3a,#05060e 70%)}
+.still-q{font:700 17px/1.3 var(--sans);color:rgba(238,241,255,.78);margin:0 2px 14px}
+.still-f{font:600 11px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:rgba(238,241,255,.4);
+  margin:12px 2px 0;text-align:right}
+body.still .stg.rp-sc{margin:0}
+body.still .rp .stg-art{height:420px}
+body.still *,body.still *::before,body.still *::after{animation:none!important;transition:none!important}
+"""
+
+
 def _inline_asset(store, sc: dict) -> dict:
     """A picture this machine keeps travels inside the page (a phone cannot reach it here);
     one over REPORT_IMG_CAP stays out, and the page says the picture is on the machine."""
@@ -738,11 +776,16 @@ REPORT_IMG_CAP = 3 * 1024 * 1024
 
 
 def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
-                agent: str = "") -> str:
+                agent: str = "", still: bool = False) -> str:
     """One self-contained page: the question, every scene drawn by the Stage's own code
     (24l-stage.js, so there is one painter), the written answer, and the map inline. It
-    is what Telegram sends: opened on a phone it plays the story without this machine."""
+    is what Telegram sends when it cannot send pictures: opened on a phone it plays the
+    story without this machine.
+
+    `still` is the same page laid out for photographs (stagestill.py): each scene a card of
+    its own with the question over it, drawn at once, and `STAGE_STILL_DONE` set when it is."""
     import html as _html
+    from . import tgformat
     scenes = [_inline_asset(store, dict(s["scene"])) for s in story(store, conversation_id, answer_to)]
     row = store.db.execute("SELECT content FROM messages WHERE id=?", (answer_to,)).fetchone()
     question = _question(row[0] if row else "")
@@ -757,14 +800,14 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{_html.escape(_s(question or 'The story', 70))}</title>
 <style>{REPORT_TOKENS}
-{css}</style></head><body><div class="rp">
+{css}{STILL_CSS if still else ''}</style></head><body class="{'still' if still else ''}"><div class="rp">
 <div class="rp-h">{_html.escape(agent or 'Your agent')} · {when} · {len(scenes)} scene{'s' if len(scenes) != 1 else ''}</div>
 <div class="rp-q">{_html.escape(question)}</div>
 <div id="scenes"></div>
-{f'<div class="rp-a">{_html.escape(answer)}</div>' if answer.strip() else ''}
+{f'<div class="rp-a">{tgformat.to_html(answer)}</div>' if answer.strip() and not still else ''}
 <div class="rp-f">Made by Bento Box AI. Numbers carry their source; scenes marked illustrative are examples, not data.</div>
 </div>
-<script>window.STAGE_REPORT=true;
+<script>window.STAGE_REPORT=true;window.STAGE_STILL={'true' if still else 'false'};
 {js}
 (function(){{
   var D={data}, W={world};
@@ -774,6 +817,9 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
   var cards=D.scenes.map(function(sc,i){{
     var card=sEl('section','stg rp-sc');card.style.setProperty('--hue',STAGE_HUE[sc.kind]||250);
     card.append(sEl('div','stg-bg'));
+    if(window.STAGE_STILL){{var wrap=sEl('div','still-card');
+      wrap.append(sEl('div','still-q',{json.dumps(_s(question, 140)).replace("<", "\\u003c")}));wrap.append(card);
+      wrap.append(sEl('div','still-f',{json.dumps((agent or 'Your agent') + ' · Bento Box AI').replace("<", "\\u003c")}));host.append(wrap)}}
     var box=sEl('div','stg-scene k-'+sc.kind);
     box.append(sEl('div','stg-kicker',(i+1)+' of '+D.scenes.length+' · '+(STAGE_KIND[sc.kind]||sc.kind)));
     box.append(sEl('div','stg-title',sc.title||''));
@@ -783,13 +829,16 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
     if(sc.illustrative)foot.append(sEl('div','st-src st-illus','Illustrative, not data'));
     else if(sc.source)foot.append(stageSource(sc.source));
     box.append(foot);card.append(box);
-    host.append(card);return [card,art,sc];
+    if(!window.STAGE_STILL)host.append(card);return [card,art,sc];
   }});
   // each scene draws as it scrolls into view, so its motion is seen
   var io=('IntersectionObserver' in window)?new IntersectionObserver(function(es){{es.forEach(function(e){{
     if(!e.isIntersecting)return;var c=cards.find(function(x){{return x[0]===e.target}});io.unobserve(e.target);
     c[0].classList.add('seen');try{{stageDraw(c[1],c[2])}}catch(err){{c[1].textContent='Could not draw this scene.'}}
   }})}},{{threshold:.25}}):null;
+  if(window.STAGE_STILL){{cards.forEach(function(c){{c[0].classList.add('seen');
+    try{{stageDraw(c[1],c[2])}}catch(err){{c[1].textContent='Could not draw this scene.'}}}});
+    window.STAGE_STILL_DONE=true;return}}
   cards.forEach(function(c){{if(io)io.observe(c[0]);else{{c[0].classList.add('seen');stageDraw(c[1],c[2])}}}});
 }})();
 </script></body></html>"""

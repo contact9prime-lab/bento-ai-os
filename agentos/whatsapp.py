@@ -342,14 +342,25 @@ class WhatsAppBridge(usersmod.Scoped):
         return "sent via WhatsApp"
 
     async def send_stage(self, cid: str, reply: str, wa_id: str) -> None:
-        """The answer's story as one page after the reply, as Telegram sends it (stage.py).
+        """The answer's story after the reply, as Telegram sends it: a picture per scene
+        (stagestill.py), or the page when this machine has no browser to draw them.
         Never fatal: the reply has already gone."""
         try:
-            from . import stage as stagemod, executors as _ex
+            from . import stage as stagemod, stagestill, executors as _ex
             ans = stagemod.last_question(self.store, cid)
-            n = len(stagemod.story(self.store, cid, ans)) if ans else 0
+            scenes = [s["scene"] for s in stagemod.story(self.store, cid, ans)] if ans else []
+            n = len(scenes)
             if not n:
                 return
+            pngs = await stagestill.render(stagemod.report_html(
+                self.store, cid, ans, agent=self.cfg.get("agent_name") or "", still=True), self.cfg)
+            if len(pngs) == n:
+                ok = True
+                for i, (png, sc) in enumerate(zip(pngs, scenes)):
+                    res = await self.send_photo(png, stagemod.still_caption(sc, i, n), wa_id)
+                    ok = ok and not str(res).startswith("[error]")
+                if ok:
+                    return
             p = stagemod.write_report(self.store, _ex.default_workspace(self.cfg), cid, ans,
                                       answer=reply, agent=self.cfg.get("agent_name") or "")
             if p:

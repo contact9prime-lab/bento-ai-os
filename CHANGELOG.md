@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.50 — 2026-10-18
+## 0.6.52 — 2026-10-18
 
 **Your lead hands work to a linked team, and you can watch it go.** Aria can now give a whole task to the other
 team's lead (`lead@team`), who works it with their own specialists and departments, or one part to one of their
@@ -12,6 +12,29 @@ Chat, the Office (a paper out by the door and back) and the Telegram comic strip
 lead: tick it on the link in Settings, or `bento link allow <team> lead`. Your lead works their task with your team
 only: it can't read your files or run your shell for them, and anything that needs a person comes to you.
 
+## 0.6.51 — 2026-10-18
+
+No release notes were written for this one; the commits since 0.6.50 are what changed (`bento update` lists them).
+
+## 0.6.50 — 2026-10-18
+
+**The Stage on Telegram is pictures in the chat.** It was an .html file to download and open somewhere else, and
+on some phones it drew nothing. Each scene is now drawn on this machine and sent as an album, with its title,
+caption and source under each picture; a video comes as a YouTube link Telegram plays in place. WhatsApp gets the
+same pictures. Without a Chromium on the machine, the page is sent as before.
+
+**Telegram replies are formatted.** Bold, bullets, headings, code and links show as Telegram shows them, instead of
+stars and dashes.
+
+**Charts and numbers read better everywhere.** A long category name wraps to a second line instead of ending in
+"…", and a unit sits where people write it: "10–15 years", "$2.6 billion".
+
+No release notes were written for this one; the commits since 0.6.49 are what changed (`bento update` lists them).
+
+## 0.6.49 — 2026-10-17
+
+- **The Applications launcher's "In a window" tick sits beside its words again.** The checkbox was stretched to
+  90px by the toolbar's input rule and stood apart from its label.
 ## 0.6.49 — 2026-10-18
 
 **Every account's Telegram works after a restart, with nobody signed in.** Each account's bot used to start

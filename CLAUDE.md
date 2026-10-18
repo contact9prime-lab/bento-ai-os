@@ -683,6 +683,14 @@ Six rules:
   Telegram page (`report_html`) embeds the SAME 24l-stage.js and CSS, with the map inline. The map
   (`assets/world-110m.json`, Natural Earth 1:110m, public domain, 107 kB) is fetched on first use, never in
   the bundle. Labels are measured and placed where they touch nothing, falling back to the name's first part.
+- **A phone gets pictures, not a page** (`stagestill.py`, `report_html(still=True)`, `still_caption`,
+  `TelegramBridge.send_album`; `tests/test_telegram_stage.py`). Reported as "the stage experience in Telegram
+  is really bad": an .html attachment had to be downloaded and opened elsewhere, and a viewer with no script
+  drew nothing. A throwaway headless Chromium (cdpbrowser's binary and CDP pipe, a temp profile) photographs
+  each `.still-card` at 2x; the page is the fallback when there is no browser. Replies go as Telegram HTML
+  (`tgformat.to_html`), resent plain when Telegram cannot parse them. A long category name wraps to two lines
+  (`stageTwoLines`) and a unit is placed as written (`stageWithUnit`: "$2.6 billion"), because a picture has
+  no hover.
 - **A forwarded lead gets it through the team door** (`STAGE_DOOR_TOOLS` in `DOOR_TOOLS`, `stage.note(tool=)`).
   Measured on the owner's machine with Claude Code: the map arrived at 15 s, the text at 34 s. A board's
   refresh opens a door with ONLY `show_scene` (`open_app_door` accepts that with a conversation and no app),
