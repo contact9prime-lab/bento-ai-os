@@ -43,6 +43,8 @@ OpenRouter या कोई भी OpenAI-compatible endpoint), या कोई
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+> **कुछ भी करने के लिए इसे एक दिमाग़ चाहिए।** सेटअप यही पूछता है: टूल चलाने वाले मॉडल (जैसे `qwen3.5:9b`) के साथ [Ollama](https://ollama.com), किसी क्लाउड का API key, या पहले से साइन-इन किया हुआ Claude Code, Gemini CLI या Codex।
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
 
 फिर **http://127.0.0.1:8321** खोलें। जब तक आप खुद [remote access](../remote-access.md) चालू नहीं

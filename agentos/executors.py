@@ -1955,6 +1955,10 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     Chat, Telegram and WhatsApp call this; a scheduled turn does not (nobody is there
     to approve a hand-over, and a mission is the way to give a schedule a team)."""
     subs = [sa for sa in (store.list_subagents() if store else []) if sa.get("enabled") is not False]
+    # Where the person is asking from, for a `bento …` the agent runs in its shell: a
+    # company started from Telegram moves Telegram to it, not the desktop.
+    from .policy import SURFACES as _SURFACES
+    env.extra_env["AGENTOS_SURFACE"] = surface if surface in _SURFACES else "gui"
     if toolbox is None:
         return ""
     if env.engine not in MCP_ENGINES:

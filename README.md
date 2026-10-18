@@ -43,6 +43,8 @@ Then open **http://127.0.0.1:8321**. It listens on localhost only until you turn
 [remote access](docs/remote-access.md) yourself. There's no account to create, no telemetry, and
 no cloud unless you add a key.
 
+> **It needs a brain before it can do anything.** Setup asks for one: [Ollama](https://ollama.com) with a tool-capable model such as `qwen3.5:9b`, a cloud API key, or Claude Code, Gemini CLI or Codex already signed in.
+
 ![The Bento home screen: "Good morning", the prompt bar with suggestions, today's Brief in one line, and a chip with the crew's faces that opens the Office](docs/screenshots/readme-home.png)
 
 The full manual is in [`docs/`](docs/README.md), and it ships inside the OS as the Docs app.
@@ -164,6 +166,8 @@ as root isn't advised.
 uv sync                 # install dependencies (or: pip install -e .)
 uv run bento            # start the server and open the desktop in your browser
 ```
+
+From a checkout, every `bento …` command in these docs is `uv run bento …`.
 </details>
 
 <details>

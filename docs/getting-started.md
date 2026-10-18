@@ -7,7 +7,7 @@ This walks you from a fresh launch to giving the agent real work.
 ## 1. Launch
 
 ```bash
-uv run agentos
+bento                   # from a git checkout: uv run bento
 ```
 
 The desktop opens at **http://127.0.0.1:8321**, and on a fresh install it opens onto

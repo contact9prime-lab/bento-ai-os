@@ -39,6 +39,8 @@ WhatsApp 上找到你。任何智能体迈出的每一步都要经过同一道�
 curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
 ```
 
+> **它需要一个“大脑”才能做事。** 设置时会问你要一个：[Ollama](https://ollama.com) 加一个会调用工具的模型（如 `qwen3.5:9b`）、一个云端 API 密钥，或已登录的 Claude Code、Gemini CLI 或 Codex。
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/contact9prime-lab/bento-ai-os)
 
 然后打开 **http://127.0.0.1:8321**。在你亲自开启[远程访问](../remote-access.md)之前，它只监听 localhost。
