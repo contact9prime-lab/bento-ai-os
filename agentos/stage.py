@@ -796,6 +796,10 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
     data = json.dumps({"scenes": scenes}).replace("</", "<\\/")
     world = world.replace("</", "<\\/")
     when = time.strftime("%d %b %Y, %H:%M")
+    # outside the f-string: Python 3.10 refuses a backslash inside an f-string expression
+    lt = "\\u003c"
+    still_q = json.dumps(_s(question, 140)).replace("<", lt)
+    still_f = json.dumps((agent or "Your agent") + " · Bento Box AI").replace("<", lt)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{_html.escape(_s(question or 'The story', 70))}</title>
@@ -818,8 +822,8 @@ def report_html(store, conversation_id: str, answer_to: str, answer: str = "",
     var card=sEl('section','stg rp-sc');card.style.setProperty('--hue',STAGE_HUE[sc.kind]||250);
     card.append(sEl('div','stg-bg'));
     if(window.STAGE_STILL){{var wrap=sEl('div','still-card');
-      wrap.append(sEl('div','still-q',{json.dumps(_s(question, 140)).replace("<", "\\u003c")}));wrap.append(card);
-      wrap.append(sEl('div','still-f',{json.dumps((agent or 'Your agent') + ' · Bento Box AI').replace("<", "\\u003c")}));host.append(wrap)}}
+      wrap.append(sEl('div','still-q',{still_q}));wrap.append(card);
+      wrap.append(sEl('div','still-f',{still_f}));host.append(wrap)}}
     var box=sEl('div','stg-scene k-'+sc.kind);
     box.append(sEl('div','stg-kicker',(i+1)+' of '+D.scenes.length+' · '+(STAGE_KIND[sc.kind]||sc.kind)));
     box.append(sEl('div','stg-title',sc.title||''));
