@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.50 — 2026-10-18
+
+No release notes were written for this one; the commits since 0.6.49 are what changed (`bento update` lists them).
+
 ## 0.6.49 — 2026-10-17
 
 - **The Applications launcher's "In a window" tick sits beside its words again.** The checkbox was stretched to
