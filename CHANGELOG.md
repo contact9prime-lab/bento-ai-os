@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.59 — 2026-10-18
+## 0.6.60 — 2026-10-19
 
 **Setup starts with one question: one agent, or a company?** It also asks what it's mostly for and
 whether the machine has a small screen of its own. One agent is eight steps. A company gets **Set up
@@ -12,6 +12,9 @@ bottom of the rail, and in Settings as before. `bento setup` asks the same thing
 short 3D animation: a few shots of a city, a rocket, a factory, rising bars, a crowd or a globe, with the
 camera moving and a line said over each. The agent decides how big an answer deserves, and numbers in a
 film need a source like a chart. On a phone, or without 3D graphics, it's a storyboard.
+
+## 0.6.59 — 2026-10-18
+
 **Stuck at a sign-in code, your agent texts you.** When the agent's browser reaches a page that wants a
 code while you're talking to it on Telegram or WhatsApp, it sends you a picture of the page and asks. Reply
 with the code and it types it into the page and carries on, in the same signed-in session. The code is never
