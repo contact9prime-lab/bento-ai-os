@@ -9976,8 +9976,8 @@ async def api_audit(limit: int = 300, effect: str = "", action: str = "",
 
 
 @app.get("/api/audit/summary")
-async def api_audit_summary(since: float = 0.0):
-    return state["store"].audit_summary(since=since)
+async def api_audit_summary(since: float = 0.0, space: str = ""):
+    return state["store"].audit_summary(since=since, space=space)
 
 
 @app.get("/api/audit/verify")
