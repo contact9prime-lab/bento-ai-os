@@ -6,7 +6,7 @@
    same thing.
 
    `var`, not `let` — see the note at the top of 25a-gallery.js. */
-var audFilter={effect:'',action:'',principal_kind:'',surface:'',q:'',since:24};
+var audFilter={effect:'',action:'',principal_kind:'',surface:'',q:'',since:24,here:false};
 
 /* The ledger is hash-chained (memory.audit_verify); this asks the server to walk it.
    Admin-only on a machine with accounts, and the refusal says so. */
@@ -26,11 +26,16 @@ async function renderAudit(body,w){
     if(k==='since')qs.set('since',String(Math.floor(Date.now()/1000-v*3600)));
     else qs.set(k,v);
   });
-  if(activeSpace&&activeSpace())qs.set('space',activeSpace());
+  // The ledger is the whole record, so it shows every space unless you narrow it to the
+  // one you are in; the counts above and the list below always use the same filter
+  // (they did not, and "2 denied" sat over "Nothing in this period").
+  qs.delete('here');
+  const sp=audFilter.here&&typeof activeSpace==='function'?activeSpace():'';
+  if(sp)qs.set('space',sp);
   const since=audFilter.since?Math.floor(Date.now()/1000-audFilter.since*3600):0;
   const [d,sum]=await Promise.all([
     fetch('/api/audit?limit=400&'+qs).then(r=>r.json()).catch(()=>({entries:[]})),
-    fetch('/api/audit/summary?since='+since).then(r=>r.json()).catch(()=>({effects:{}}))]);
+    fetch('/api/audit/summary?since='+since+(sp?'&space='+encodeURIComponent(sp):'')).then(r=>r.json()).catch(()=>({effects:{}}))]);
   const e=sum.effects||{};
   const RANGE=[[1,'1h'],[24,'24h'],[168,'7d'],[720,'30d'],[0,'All']];
   const pb=panelShell(body,{
@@ -55,11 +60,14 @@ async function renderAudit(body,w){
         ${['gui','tui','telegram','whatsapp','api','task','webhook','team'].map(k=>
           `<option value="${k}" ${audFilter.surface===k?'selected':''}>${k}</option>`).join('')}
       </select>
+      ${typeof activeSpace==='function'&&activeSpace()?`<span class="seg" title="Which space's decisions to show"><button class="${audFilter.here?'':'on'}" onclick="audSet('here',false)">Every space</button><button class="${audFilter.here?'on':''}" onclick="audSet('here',true)">This space</button></span>`:''}
       <button class="endbtn" onclick="audVerify(this)" title="Every row is chained to the one before it, so an edited or deleted row shows up here">Check the chain</button>`,
   });
   const q=$('#aud-q');
   if(q){q.value=audFilter.q;q.oninput=audSearch}
   const stat=(n,l,cls)=>`<div class="stat" style="text-align:center"><div class="val ${cls||''}">${n||0}</div><div class="lbl">${l}</div></div>`;
+  // "denied" or "asked" means decisions: a rule written as a deny is a change, not a refusal
+  if(audFilter.effect)d.entries=(d.entries||[]).filter(a=>!String(a.action||'').startsWith('grant.'));
   AUD_ROWS=d.entries||[];
   const rows=(d.entries||[]).map(a=>{
     // a permission change records the rule it wrote; it is not a decision allowed or refused
@@ -67,13 +75,18 @@ async function renderAudit(body,w){
     const cls=change?'':a.effect==='deny'?'audden':a.effect==='ask'?'audask':'audok';
     const who=a.principal_id?`${a.principal_kind}:${a.principal_id}`:a.principal_kind;
     const out=a.outcome&&a.outcome!=='ok'?`<span class="badge">${esc(a.outcome)}</span>`:'';
-    return `<div class="item">
+    const t=new Date(a.ts*1000),today=new Date().toDateString()===t.toDateString();
+    const yest=new Date(Date.now()-864e5).toDateString()===t.toDateString();
+    const day=today?'today':yest?'yesterday':t.toLocaleDateString([],{day:'numeric',month:'short'});
+    const where=!audFilter.here&&a.space_id&&typeof spaceName==='function'?`<span class="badge" title="the space it happened in">${esc(spaceName(a.space_id))}</span>`:'';
+    return `<div class="item aud-row">
+      <div class="aud-when" title="${esc(t.toLocaleString())}"><b>${esc(t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</b><span>${esc(day)}</span></div>
       <span class="audpill ${cls}"${change?` title="a ${esc(a.effect||'')} rule was ${a.action==='grant.revoke'?'removed':'written'}"`:''}>${change?'changed':esc(a.effect||'?')}</span>
-      <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out}
+      <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out} ${where}
         <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · ${a.stage
           ?`<a href="#" class="aud-at" onclick="audPath(event,'${esc(a.id)}')" title="see the path it took through the gate">decided at ${esc(audStage(a.stage))}</a>`
           :'rule '+esc(a.rule||'default')}
-          ${a.duration_ms?' · '+a.duration_ms+'ms':''} · ${new Date(a.ts*1000).toLocaleString()}
+          ${a.duration_ms?' · '+a.duration_ms+'ms':''}
           ${a.reason?'<br>'+esc(a.reason):''}${a.detail?'<br>'+esc(a.detail.slice(0,200)):''}</div></div></div>`;
   }).join('');
   const denied=(sum.top_denied||[]).slice(0,5);

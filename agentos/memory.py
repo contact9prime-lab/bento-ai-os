@@ -1315,14 +1315,27 @@ class Store:
         rows = self.db.execute(sql + " ORDER BY ts DESC LIMIT ?", (*params, limit)).fetchall()
         return [dict(r) for r in rows]
 
-    def audit_summary(self, since: float = 0.0) -> dict:
+    def audit_summary(self, since: float = 0.0, space: str = "") -> dict:
         """Counts for the Audit app's header: what was allowed, denied and asked,
-        and which resources were refused most. Cheap enough to poll."""
+        and which resources were refused most. Cheap enough to poll.
+
+        `space` narrows exactly as `audit_list` does. The header counted every space
+        while the list showed one: "2 denied" above "Nothing in this period" when the
+        refusals happened in another company's space."""
         # A permission CHANGE (grant.write / grant.revoke) is a row in the ledger too,
         # and its effect is the effect of the rule it wrote. Counted with the decisions,
         # a mission writing its "may not remember" deny rows read as the most refused
         # thing on the machine when nothing had been refused. Found by the walk.
-        where, params = ("WHERE ts>=?", [since]) if since else ("", [])
+        conds, params = [], []
+        if since:
+            conds.append("ts>=?")
+            params.append(since)
+        if space == self.GLOBAL_ONLY:
+            conds.append("COALESCE(space_id,'')=''")
+        elif space:
+            conds.append("COALESCE(space_id,'') IN ('', ?)")
+            params.append(space)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
         dec = where + (" AND" if where else "WHERE") + " action NOT LIKE 'grant.%'"
         effects = {r["effect"]: r["n"] for r in self.db.execute(
             f"SELECT effect, COUNT(*) n FROM audit {dec} GROUP BY effect", params).fetchall()}

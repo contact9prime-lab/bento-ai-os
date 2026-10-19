@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.62 — 2026-10-19
+
+- **The policy map is a map.** Who has rules is on the left (your agent, specialists,
+  missions, apps, linked teams), what they reach is on the right (tools, files, the web,
+  agents, memory, connections…), and a line joins each pair: green when it only allows, red
+  when it only refuses, amber for both. Tap a name or a place and its rules are listed beside
+  the map in plain words ("may run git status…", "may not write files in /etc"), with where
+  each came from and the switches to flip or remove it. Everyone with no rules is one line,
+  a full-access app and apps waiting for review are a note at the top, and the places stay
+  in view while the names scroll. "Trace a request" opens Flow with that agent picked.
+- **The rest of Permissions, redone.** The tabs are one compact row (Flow, Map, Rules, Apps,
+  Quarantine, Ledger, Patterns) with counts as badges, and "＋ Add a rule" is a button.
+  **Rules** (was All grants) lists every rule as a sentence, grouped by agent or app, with
+  filters for allows or refuses and for where a rule came from (you, missions, team matrix,
+  app manifests, remembered); a long run of team-matrix cells folds into one line. **Apps**
+  (was Review) puts the apps waiting for you first, then approved, then those with no
+  manifest, folded. Every rule says when it was approved.
+- **The Ledger's counts and list agree.** The list showed only the open space while the
+  counts covered every space, so "2 denied" sat above "Nothing in this period". It now shows
+  every space by default, with a This space switch, a space tag on each row, and the time
+  first on every row. "Denied" and "asked" list decisions only, not rule changes.
+
 ## 0.6.61 — 2026-10-19
 
 - **Permissions opens on Flow: how a request is decided.** The gate's ten steps in the order it
