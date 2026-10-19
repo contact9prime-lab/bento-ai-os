@@ -38,6 +38,7 @@ Faces: Settings → Team & Communications → Linked teams (GUI/SUI), ``bento li
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import contextvars
 import datetime
 import hashlib
@@ -60,6 +61,27 @@ MAX_LINE = 256 * 1024           # one request or answer, in bytes
 GUESS_LIMIT = 10                # wrong codes from one address before it is refused
 GUESS_WINDOW = 600
 ASK_TIMEOUT = 900               # how long an asker waits for the other team's answer
+# With progress (an asker that sends "progress": 1, and an answerer new enough to send it),
+# the wait is for SILENCE, not for the whole job: the answering side says where it is
+# ("asking the person here", "deck-builder is working") and beats every PROGRESS_EVERY
+# seconds while it works, so a deck that takes twenty minutes is never cut off, and a
+# machine that went away is noticed in ASK_IDLE. Reported as "the permission was given on
+# the other machine and the first machine is still waiting": it was working, and nothing
+# said so. ASK_MAX is the outer bound either way.
+PROGRESS_EVERY = 15
+ASK_IDLE = 120
+ASK_MAX = 4 * 3600
+_REPORT: contextvars.ContextVar = contextvars.ContextVar("teamlink_report", default=None)
+
+
+def report(text: str) -> None:
+    """Tell the machine that asked where its question is. Does nothing unless this task is
+    answering a linked request that asked for progress (see Listener._handle)."""
+    q = _REPORT.get()
+    if q is not None:
+        with contextlib.suppress(Exception):
+            text = plain(text, 300, newlines=False)
+            q(text) if callable(q) else q.put_nowait(text)
 REQUEST_TTL = 600               # seconds a link request waits for somebody to answer it
 REQUEST_LIMIT = 5               # link requests one address may make per GUESS_WINDOW
 MAX_PENDING = 8                 # requests waiting on this machine at once
@@ -975,6 +997,8 @@ class Listener:
             req = await _read_line(reader, limit=POOL_LINE if known else MAX_LINE, timeout=FIRST_LINE)
             if fp and _by_fp(fp) and self._peer_busy(fp):
                 out = {"ok": False, "error": "too many requests from your team — slow down"}
+            elif req.get("op") == "ask" and req.get("progress") and fp and _by_fp(fp):
+                out = await self._with_progress(writer, self._dispatch(req, fp, addr))
             else:
                 out = await self._dispatch(req, fp, addr)
         except Exception as e:           # a malformed request gets a sentence, never a trace
@@ -987,6 +1011,38 @@ class Listener:
         finally:
             self._open -= 1
             writer.close()
+
+    async def _with_progress(self, writer, work) -> dict:
+        """Answer an ask while saying where it is: every report() from the work, and a beat
+        every PROGRESS_EVERY seconds, go back as {"progress": …} lines before the answer."""
+        q: asyncio.Queue = asyncio.Queue()
+        tok = _REPORT.set(q)
+        try:
+            task = asyncio.ensure_future(work)     # copies the context, so report() reaches q
+        finally:
+            _REPORT.reset(tok)
+        t0 = time.time()
+
+        async def line(text: str):
+            writer.write((json.dumps({"progress": text, "secs": int(time.time() - t0)}) + "\n").encode())
+            await writer.drain()
+        try:
+            await line("received")
+            while not task.done():
+                getter = asyncio.ensure_future(q.get())
+                done, _ = await asyncio.wait({task, getter}, timeout=PROGRESS_EVERY,
+                                             return_when=asyncio.FIRST_COMPLETED)
+                if getter in done:
+                    await line(getter.result())
+                else:
+                    getter.cancel()
+                    if task not in done:
+                        await line("")             # a beat: still working
+            while not q.empty():
+                await line(q.get_nowait())
+        except (OSError, ConnectionError):
+            pass                                   # the asker went away; the work still ends
+        return await task
 
     async def _dispatch(self, req: dict, fp: str, addr: str) -> dict:
         op = str(req.get("op") or "")
@@ -1047,10 +1103,17 @@ class Listener:
         return {"ok": False, "error": f"unknown request '{op}'"}
 
 
-async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT, limit: int = MAX_LINE) -> dict:
+async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT, limit: int = MAX_LINE,
+               on_progress=None) -> dict:
     """One request to a linked machine over mTLS, pinned to the certificate recorded at
     pairing. A certificate that chains to their CA but is not THE one paired with is
-    refused before anything is sent."""
+    refused before anything is sent.
+
+    With `on_progress`, the request asks for progress and each {"progress": …} line is
+    handed to it (text, seconds) until the answer. Before the first one the old `timeout`
+    holds (an older machine sends none); after it, only silence of ASK_IDLE ends the wait."""
+    if on_progress is not None:
+        req = {**req, "progress": 1}
     host, _, port = str(lk.get("url") or "").rpartition(":")
     if not host or not port:
         return {"ok": False, "error": f"no address for {lk.get('label')} — they can reach you, "
@@ -1069,6 +1132,19 @@ async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT, limit: int = M
         writer.write((json.dumps(req) + "\n").encode())
         await writer.drain()
         got = await _read_line(reader, limit=limit, timeout=timeout)
+        heard, end = False, time.time() + ASK_MAX
+        while on_progress is not None and isinstance(got, dict) and "progress" in got \
+                and "ok" not in got:
+            heard = True
+            with contextlib.suppress(Exception):
+                await on_progress(plain(got.get("progress"), 300, newlines=False),
+                                  int(got.get("secs") or 0))
+            left = end - time.time()
+            if left <= 0:
+                raise asyncio.TimeoutError
+            got = await _read_line(reader, limit=limit, timeout=min(ASK_IDLE, left))
+        if heard and isinstance(got, dict) and "progress" in got and "ok" not in got:
+            got = {"ok": False, "error": "no answer"}
         if isinstance(got, dict) and isinstance(got.get("identity"), dict):
             note_identity(lk.get("owner") or "", lk.get("label") or "", got["identity"])
         return got

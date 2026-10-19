@@ -95,8 +95,11 @@ def test_the_lead_hands_a_whole_task_to_the_other_teams_lead(pair, monkeypatch):
                                  "WHERE action='agent.message'").fetchall()
     assert ("team", "home/Aria", "agent:main", "allow") in [tuple(r) for r in rows]
     # and home's screens heard both halves: Chat, the Office and Telegram all read agent_msg
-    talk = [e for e in B["events"] if e.get("type") == "agent_msg"]
+    talk = [e for e in B["events"] if e.get("type") == "agent_msg" and e.get("phase") != "progress"]
     assert [(e["phase"], e["conversation_id"]) for e in talk] == [("ask", "c-home"), ("reply", "c-home")]
+    # and where it was in between: office said its lead took it on (teamlink progress)
+    prog = [e["text"] for e in B["events"] if e.get("type") == "agent_msg" and e.get("phase") == "progress"]
+    assert any("the lead here, is working on it" in t for t in prog), prog
     assert talk[0]["to"] == "lead@office"
 
 

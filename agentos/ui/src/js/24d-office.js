@@ -598,6 +598,13 @@ function officeReport(p,ok){
    arrives on paper instead. */
 function officeMsg(ev){
   const O=OFFICE,from=officeMatch(ev.from),to=officeMatch(ev.to);
+  if(ev.phase==='progress'){
+    // the other machine saying where our question is: over whoever is waiting for it
+    const w=to||OFFICE.people['@agent'];
+    if(w)officeSay(w,ev.from+': '+(ev.text||''),'think',OF_SAY_MS+4000);
+    officeLog(`${ev.from}: ${String(ev.text||'').slice(0,90)}`);
+    return;
+  }
   if(ev.phase==='ask'){
     if(!to&&String(ev.to||'').includes('@')){
       // work going to ANOTHER team: nobody here to walk to, so it leaves on paper by the

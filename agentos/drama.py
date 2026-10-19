@@ -163,6 +163,8 @@ def observe(event: dict, uid: str = "") -> dict | None:
                 add(uid, "argue", event["speaker"], event["text"], model=event.get("model", ""),
                     conv=event.get("conversation_id", ""))
             return None
+        if t == "agent_msg" and event.get("phase") == "progress":
+            return None                         # where a question is, not something said
         if t == "agent_msg":
             kind = "ask" if event.get("phase") == "ask" else "answer"
             add(uid, kind, event.get("from") or "", event.get("text", ""), to=event.get("to", ""),

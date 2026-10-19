@@ -2874,6 +2874,17 @@ offloads". Four rules:
 - **The Office draws a hand-over to a name it can't find** (`officeMsg`): paper out by the door, the
   answer back on paper. It returned on any unknown name before, so nothing crossing a link showed.
 
+**A question to another machine says where it is** (`teamlink.report`/`_with_progress`,
+`call(on_progress=)`, phase `progress` on `agent_msg`; `tests/test_teamlink.py`). Reported as
+"the permission was given on the other machine and the first machine is still waiting": one
+line in, one line out, so asking a person and a long run read as a dead link, and a job past
+`ASK_TIMEOUT` lost its answer. An asker that sends `progress: 1` gets `{"progress": …}` lines
+(what `report()` said, and a beat every `PROGRESS_EVERY`) and waits for SILENCE (`ASK_IDLE`),
+up to `ASK_MAX`; before the first line the old timeout holds, for an older machine. Account
+links hear the same reports through `_REPORT` holding a callable. Every reader of `agent_msg`
+treats `progress` as progress (the Office's thought, Chat's live row, the TUI), and the drama
+reel and the comic strip skip it: nobody said it.
+
 **A mission may put `agent@link` on its roster.** `flows.validate` needs the link to exist
 (`teamlink.find` under the current user); `declared_grants` writes `agent.invoke` with a
 sentence naming the other team and NO envelope for that member (it runs under their gate);

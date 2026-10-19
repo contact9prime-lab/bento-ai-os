@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.63 — 2026-10-19
+
+- **Asking another machine says where the question is.** The other machine reports as it goes
+  ("waiting for the person on this machine to allow deck-builder", "allowed by the person
+  here", "deck-builder is working on it", each tool the lead uses) and beats every 15 seconds.
+  Your Chat's live row, the Office (a thought over whoever is waiting), the TUI and the run's
+  events show it. The wait is now for silence, not for the whole job: a twenty-minute deck is
+  never cut off, and a machine that goes quiet for two minutes is noticed. Reported as "the
+  permission was given on the other machine and the first machine is still waiting". An older
+  machine that sends no progress still gets the old fifteen-minute wait.
+
 ## 0.6.61 — 2026-10-19
 
 - **Permissions opens on Flow: how a request is decided.** The gate's ten steps in the order it

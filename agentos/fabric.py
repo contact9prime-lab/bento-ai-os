@@ -1647,10 +1647,24 @@ class ControlPlane(usersmod.Scoped):
                "chain": chain, "root": key}
         if mission:
             req["mission"] = mission    # so the other side can record it on first use
+        last = {"t": ""}
+
+        async def progress(text: str, secs: int):
+            # where the question is on the other machine, shown here as it happens: in the
+            # asking run's events, and to the screens (Chat's live row, the Office)
+            if not text:
+                return                      # a beat: the wait goes on, nothing to say
+            last["t"] = text
+            await self._emit(parent_run, "log", {"level": "info",
+                                                 "text": f"{target}: {text} ({secs}s)"})
+            if say:
+                with contextlib.suppress(Exception):
+                    await say({"phase": "progress", "from": target, "to": sender, "text": text,
+                               "secs": secs})
         if lk.get("kind") == "machine":
-            got = await teamlink.call(lk, req)
+            got = await teamlink.call(lk, req, on_progress=progress)
         else:
-            got = await self._ask_account(lk, req)
+            got = await self._ask_account(lk, req, progress)
         # Everything below came from ANOTHER team — a refusal's wording included, which is
         # text they chose and once reached this agent unmarked. All of it is cleaned
         # (teamlink.plain: no control codes, no bidi tricks), cut, and marked untrusted.
@@ -1714,7 +1728,7 @@ class ControlPlane(usersmod.Scoped):
                        + ("recorded there" if got.get("ok") else f"not delivered — {got.get('error')}"))
         return out
 
-    async def _ask_account(self, lk: dict, req: dict) -> dict:
+    async def _ask_account(self, lk: dict, req: dict, progress=None) -> dict:
         """The same question to another account on THIS machine: no network — the
         server already knows who both people are — so it is answered in-process, in
         the other person's context (their database, their grants), under the label
@@ -1725,8 +1739,17 @@ class ControlPlane(usersmod.Scoped):
                        if x.get("kind") == "account" and x.get("pair_id") == lk.get("pair_id")), None)
         if not theirs:
             return {"ok": False, "error": "the other account has ended this link"}
-        with usersmod.as_user(lk.get("peer") or ""):
-            return await self.answer_linked(theirs, req)
+        t0 = time.time()
+
+        def said(text):                 # their side's teamlink.report(), heard here
+            if progress:
+                asyncio.ensure_future(progress(text, int(time.time() - t0)))
+        tok = teamlink._REPORT.set(said)
+        try:
+            with usersmod.as_user(lk.get("peer") or ""):
+                return await self.answer_linked(theirs, req)
+        finally:
+            teamlink._REPORT.reset(tok)
 
     async def _ui(self, ev: dict) -> None:
         """An event for this person's open screens; nothing here waits on one."""
@@ -1838,10 +1861,14 @@ class ControlPlane(usersmod.Scoped):
             ask = getattr(self, "linked_approvals", None)
             if not ask:
                 return False
+            teamlink.report(f"{d['name']} needs the person here to allow {name}")
             try:
-                return bool(await ask(lk, frm, d["name"], name, args, reason, offer))
+                ok = bool(await ask(lk, frm, d["name"], name, args, reason, offer))
             except Exception:
-                return False
+                ok = False
+            teamlink.report(f"{name}: {'allowed' if ok else 'not allowed'} by the person here")
+            return ok
+        teamlink.report(f"{d['name']} is working on it")
         # A lent agent answers from what it knows and NOTHING it can reach: no tools at all,
         # so a guest never touches this machine's files, keys, memory or shell
         res = await self.run_subagent(d, task, kind="linked", chain=chain, root=key,
@@ -1883,6 +1910,7 @@ class ControlPlane(usersmod.Scoped):
         offer = {"principal_kind": "team", "principal_id": f"{lk['label']}/*", "action": "agent.message",
                  "resource": LEAD_RESOURCE if to_lead else f"agent:subagent/{to}",
                  "note": f"the linked team '{lk['label']}' may {what} {whom}"}
+        teamlink.report(f"waiting for the person on this machine to allow {whom}")
         try:
             ok = bool(await ask(lk, frm, name if to_lead else to, "agent.message",
                                 {"team": lk["label"], "to": whom, "question": question},
@@ -1890,6 +1918,7 @@ class ControlPlane(usersmod.Scoped):
                                 f"their own person; yours works with your permissions.", offer))
         except Exception:
             ok = False
+        teamlink.report("allowed by the person here" if ok else "not allowed here")
         audit_team(self.store, "link.ask", f"link:{lk['label']}",
                    f"{frm} on '{lk['label']}' asked to {what} {whom}; "
                    + ("allowed by the person here" if ok else "not allowed (no, or nobody here)"))
@@ -1941,7 +1970,10 @@ class ControlPlane(usersmod.Scoped):
 
         async def emit(ev):
             ev = {**ev, "conversation_id": cid}
+            if ev.get("type") == "tool_start":
+                teamlink.report(f"{name} is using {str(ev.get('name') or 'a tool').removeprefix('mcp__bento__')}")
             await self._ui(ev)
+        teamlink.report(f"{name}, the lead here, is working on it")
         engine = execmod.resolve_engine(self.cfg)
         try:
             if engine != "aria":
