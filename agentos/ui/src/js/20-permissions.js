@@ -1,10 +1,7 @@
 /* ================= permissions app: the policy console ================= */
 var PERM={tab:'flow',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[],held:[],qhistory:[]};
-const PERM_FAMS=[['Tools','tool.'],['MCP','mcp.'],['Skills','skill.'],['Models','model.'],['Files','fs.'],['Net','net.'],['Memory','memory.','kg.'],['Agents','agent.'],['App data','app.data.']];
 function globMatch(pat,val){pat=(pat==null||pat==='')?'*':String(pat);
   return new RegExp('^'+pat.split('*').map(s=>s.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$').test(val||'')}
-function permFamOf(action){if(action==='*')return 'Full access';if(action==='legacy policy')return 'Legacy rules';
-  for(const f of PERM_FAMS)for(let i=1;i<f.length;i++)if(action.startsWith(f[i]))return f[0];return 'Other'}
 async function renderPermissions(body,w){
   PERM.w=w||null;       // the Ledger tab ticks on the window, and sleeps with it
   try{PERM.grants=(await (await fetch('/api/grants'+(PERM.showRevoked?'?all=1':''))).json()).grants||[]}catch(e){PERM.grants=[]}
@@ -15,7 +12,7 @@ async function renderPermissions(body,w){
   await loadConfig();
   const pending=PERM.apps.filter(a=>(a.manifest_status||'none')==='proposed').length;
   body.innerHTML=`<div class="apptop" style="gap:6px">
-    ${[['flow','Flow'],['map','Policy map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
+    ${[['flow','Flow'],['map','Map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
        ['quarantine','Quarantine'+(PERM.held.length?' ('+PERM.held.length+')':'')],
        ['rules','Rules'],['ledger','Ledger'],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${(t==='review'&&pending)||(t==='quarantine'&&PERM.held.length)?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
     <input id="perm-q" placeholder="search apps, agents, rules…" style="flex:1;max-width:250px;margin-left:auto" value="${esc(PERM.q)}">
@@ -48,87 +45,7 @@ function permPrincipals(){
               resource:p.match,effect:p.action==='deny'?'deny':'allow',source:'Rules tab',readonly:true}))]});
   return out;
 }
-function permMap(box){
-  const q=PERM.q.toLowerCase();
-  const ps=permPrincipals().filter(p=>!q||p.label.toLowerCase().includes(q)||p.kind.includes(q));
-  PERM._mapPs=ps;
-  const famChip=(p,f)=>{
-    const gs=p.grants.filter(g=>permFamOf(g.action)===f);
-    if(!gs.length)return '';
-    const d=gs.filter(g=>g.effect==='deny').length,a=gs.length-d;
-    const col=d&&a?'#f2c94c':d?'var(--err,#f87171)':'var(--ok,#5eead4)';
-    return `<span style="font-size:10px;padding:2px 7px;border-radius:9px;border:1px solid ${col};color:${col}">${esc(f)} ${gs.length}</span>`;
-  };
-  const fams=['Full access','Legacy rules',...PERM_FAMS.map(f=>f[0]),'Other'];
-  box.innerHTML=`<p class="mut" style="margin-bottom:10px">Who may do what, at a glance. Click a card for its policy map — toggle any permission between allow/deny, or revoke it.</p>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
-    ${ps.map((p,i)=>{
-      const full=p.grants.some(g=>g.action==='*'&&g.resource==='*'&&g.effect!=='deny');
-      const sel=PERM.sel===p.kind+':'+p.id;
-      const st=p.status==='proposed'?'<span class="badge err">review pending</span>':p.status==='approved'?'<span class="badge ok">manifest</span>':'';
-      return `<div class="perm-card" data-i="${i}" style="cursor:pointer;background:var(--card,#171b22);border:1px solid ${sel?'var(--acc,#5eead4)':'var(--line,#232a35)'};border-radius:12px;padding:12px">
-      <div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">
-        <span style="width:30px;height:30px;border-radius:8px;background:${tileBg(p.id||p.kind)};display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 30px">${esc((p.label[0]||'?').toUpperCase())}</span>
-        <div style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.label)}</b>
-        <div class="mut" style="font-size:10.5px">${esc(p.kind)} · ${p.grants.length} rule${p.grants.length===1?'':'s'}</div></div>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px">${full?'<span class="badge err">FULL ACCESS</span>':''}${st}
-        ${fams.map(f=>famChip(p,f)).join('')||'<span class="mut" style="font-size:11px">no rules — every capability asks first</span>'}</div>
-    </div>`}).join('')||'<p class="mut">no apps or agents yet</p>'}
-  </div>
-  <div id="perm-chart" style="margin-top:18px"></div>`;
-  box.querySelectorAll('.perm-card').forEach(c=>c.onclick=()=>{
-    const p=PERM._mapPs[+c.dataset.i];const k=p.kind+':'+p.id;
-    PERM.sel=PERM.sel===k?null:k;permMap(box);
-  });
-  const selP=ps.find(p=>PERM.sel===p.kind+':'+p.id);
-  if(selP)permChartInto($('#perm-chart'),selP);
-}
-function permChartInto(el,p){
-  if(!el)return;
-  const fams={};
-  p.grants.forEach(g=>{const f=permFamOf(g.action);(fams[f]=fams[f]||[]).push(g)});
-  const chip=g=>{
-    const col=g.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)';
-    return `<div class="pm-chip" data-eff="${g.effect}" style="display:flex;align-items:center;gap:8px;background:var(--card,#171b22);border:1px solid ${col};border-radius:9px;padding:6px 10px;margin-bottom:5px;max-width:560px">
-      ${g.readonly
-        ?`<span style="color:${col};font-weight:700;font-size:12px;padding:0 4px">${g.effect==='deny'?'✕ deny':'✓ allow'}</span>`
-        :`<button title="click to flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')" style="border:none;background:transparent;color:${col};font-weight:700;padding:0 4px;font-size:12px;cursor:pointer">${g.effect==='deny'?'✕ deny':'✓ allow'}</button>`}
-      <div class="grow" style="font-family:var(--mono);font-size:12px;word-break:break-all">${esc(g.action)} · ${esc(g.resource)}</div>
-      <span class="badge" title="${esc(g.note||'')}">${esc(g.source||'user')}</span>
-      ${g.readonly?'':permSurfBadge(g)}
-      ${g.readonly?`<button class="endbtn" style="font-size:10px" onclick="openApp('policies')">edit</button>`
-                  :`<button onclick="permRevoke('${g.id}')" title="revoke">✕</button>`}</div>`;
-  };
-  el.innerHTML=`<div class="tmsec" style="margin:4px 0 10px">Policy map — ${esc(p.label)}</div>
-  <div id="pm-wrap" style="position:relative;display:flex;gap:80px;align-items:flex-start">
-    <svg id="pm-svg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></svg>
-    <div id="pm-left" style="flex:0 0 190px;background:var(--card,#171b22);border:1px solid var(--line,#232a35);border-radius:12px;padding:14px;text-align:center;position:relative;z-index:1">
-      <span style="width:44px;height:44px;border-radius:11px;background:${tileBg(p.id||p.kind)};display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:18px">${esc((p.label[0]||'?').toUpperCase())}</span>
-      <div style="margin-top:8px"><b>${esc(p.label)}</b></div><div class="mut" style="font-size:11px">${esc(p.kind)}</div>
-    </div>
-    <div style="flex:1;position:relative;z-index:1">
-      ${Object.keys(fams).length?Object.entries(fams).map(([f,gs])=>`<div style="margin-bottom:12px">
-        <div class="mut" style="font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px">${esc(f)}</div>
-        ${gs.map(chip).join('')}</div>`).join('')
-      :'<p class="mut">No rules yet — every capability this principal touches will raise a consent prompt. Use ＋ Attach to pre-approve or block things.</p>'}
-      ${p.system?'<p class="mut" style="font-size:11px;margin-top:8px">Hard-blocked commands (disk wipes, shutdown) stay blocked regardless of any rule. Legacy rules apply globally and are edited in the Policies app.</p>':''}
-    </div>
-  </div>`;
-  requestAnimationFrame(()=>{
-    const svg=$('#pm-svg'),wrap=$('#pm-wrap'),src=$('#pm-left');
-    if(!svg||!wrap||!src)return;
-    const wr=wrap.getBoundingClientRect(),sr=src.getBoundingClientRect();
-    const x1=sr.right-wr.left,y1=sr.top+sr.height/2-wr.top;
-    svg.setAttribute('viewBox',`0 0 ${wr.width} ${wr.height}`);
-    svg.innerHTML=[...wrap.querySelectorAll('.pm-chip')].map(ch=>{
-      const r=ch.getBoundingClientRect();
-      const x2=r.left-wr.left,y2=r.top+r.height/2-wr.top;
-      const col=ch.dataset.eff==='deny'?'#f87171':'#5eead4';
-      return `<path d="M${x1},${y1} C${x1+50},${y1} ${x2-50},${y2} ${x2},${y2}" fill="none" stroke="${col}" stroke-width="1.5" opacity=".5"/>`;
-    }).join('');
-  });
-}
+/* The policy map is 20c-permmap.js. */
 /* How long a remembered grant lasts: one chat, until a time, or (no badge) until revoked. */
 function permLasts(g){
   if(String(g.source_ref||'').startsWith('conv:'))return '<span class="badge" title="applies inside one conversation">one chat</span>';
@@ -233,7 +150,7 @@ async function permAttachGo(){
         resource:r,effect:att.effect,surfaces,note:'attached from the policy console'})});
   toast(resources.length+' rule(s) attached to '+att.p.label+(surfaces!=='*'?' (gates: '+surfaces+')':''));
   PERM.att={p:att.p,action:att.action,res:new Set(),effect:att.effect,surf:new Set()};
-  PERM.tab='map';PERM.sel=att.p.kind+':'+att.p.id;
+  PERM.tab='map';PERM.sel='who:'+att.p.kind+':'+att.p.id;
   refreshApp('permissions');
 }
 async function permToggle(gid,effect){
