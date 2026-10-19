@@ -57,7 +57,8 @@ def close(cid: str, buf: list) -> list:
 def observe(event: dict) -> None:
     """Called by the server's broadcast with every event; keeps only agents talking,
     and only for a conversation somebody is listening to. Cheap when nobody is."""
-    if not _TAPS or not isinstance(event, dict) or event.get("type") not in TALK:
+    if not _TAPS or not isinstance(event, dict) or event.get("type") not in TALK \
+            or event.get("phase") == "progress":
         return
     taps = _TAPS.get(event.get("conversation_id") or "")
     if not taps:

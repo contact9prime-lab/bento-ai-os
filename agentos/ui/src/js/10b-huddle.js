@@ -108,6 +108,14 @@ function huddleLive(ev,isCur,kind){
    (the matrix, or swarm). Live only: each answer is its own run, and a reloaded
    conversation finds it in Observability rather than a second store here. */
 function agentMsgLive(ev,isCur){
+  // where a question to another machine is (teamlink progress): the live row says it,
+  // the Office shows it over the one waiting, and nothing is written into the thread
+  if(ev.phase==='progress'){
+    scenePulse('msg',ev.from,ev);       // the Office, the strip and the Mind, through the one seam
+    if(isCur&&typeof running!=='undefined'&&running){WORK_MSG=ev.from+': '+(ev.text||'');showWorking()}
+    if(typeof actMove==='function'&&ev.conversation_id)try{actMove(ev.conversation_id,(ACT[ev.conversation_id]||{}).phase||'start',{msg:ev.from+': '+(ev.text||'')})}catch(e){}
+    return;
+  }
   // A question from a LINKED team belongs to no conversation here: it was asked on
   // another machine or account. Treating "no conversation" as "the open one" put a
   // stranger's question inside whatever chat the person was reading. The stage shows

@@ -912,6 +912,8 @@ class AgentTUI(App):
                         # the answer — the same two lines the chat card shows
                         if ev.get("phase") == "ask":
                             log.write(f"[b]@{_esc(ev.get('from', '?'))}[/] [grey58]→ @{_esc(ev.get('to', '?'))}[/]  {_esc(ev.get('text', ''))}")
+                        elif ev.get("phase") == "progress":
+                            log.write(f"[grey58]⋯ {_esc(ev.get('from', '?'))}: {_esc(ev.get('text', ''))}[/]")
                         else:
                             log.write(f"[b]@{_esc(ev.get('from', '?'))}[/] [grey58]({_esc(ev.get('provider') or ev.get('model', ''))})[/]  "
                                       f"{_esc(ev.get('text', ''))}")

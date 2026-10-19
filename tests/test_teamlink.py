@@ -385,3 +385,114 @@ def test_a_question_from_another_team_is_not_written_into_the_open_chat():
     assert body.index("if(!ev.conversation_id)") < body.index("huddleLive("), body
     guard = body[body.index("if(!ev.conversation_id)"):body.index("huddleLive(")]
     assert "return" in guard and "crewPulse" in guard
+
+
+# ---- progress: a slow answer is never mistaken for none ---------------------------------
+# Reported as "the permission was given on the other machine and the first machine is still
+# waiting": the other side was asking its person, then working, and nothing said so; a job
+# past ASK_TIMEOUT was cut off and its answer lost.
+
+def test_a_slow_answer_reports_where_it_is_and_is_waited_for(pair, monkeypatch):
+    A, B, inv, loop = pair
+    monkeypatch.setattr(teamlink, "PROGRESS_EVERY", 0.2)
+    monkeypatch.setattr(teamlink, "ASK_IDLE", 1.0)
+
+    async def slow(lk, req):
+        teamlink.report("waiting for the person on this machine to allow analyst")
+        await asyncio.sleep(0.3)
+        teamlink.report("allowed by the person here")
+        await asyncio.sleep(2.0)            # longer than ASK_IDLE: only the beats keep it open
+        return {"ok": True, "text": "done after a while"}
+    A["lst"].on_ask = slow
+    heard = []
+
+    async def go():
+        async def prog(text, secs):
+            heard.append(text)
+        with teamlink.at(B["home"]):
+            return await teamlink.call(teamlink.find("", "office"), {"op": "ask", "to": "analyst"},
+                                       timeout=1.0, on_progress=prog)
+    got = loop.run_until_complete(go())
+    assert got["ok"] and got["text"] == "done after a while", got
+    words = [h for h in heard if h]
+    assert words[:3] == ["received", "waiting for the person on this machine to allow analyst",
+                         "allowed by the person here"]
+    assert heard.count("") >= 3, "beats while it worked, so the wait outlived ASK_IDLE"
+
+
+def test_a_machine_that_goes_quiet_is_noticed_and_an_old_one_still_answers(pair, monkeypatch):
+    A, B, inv, loop = pair
+    monkeypatch.setattr(teamlink, "ASK_IDLE", 0.5)
+    monkeypatch.setattr(teamlink, "PROGRESS_EVERY", 60)      # no beats: it went quiet
+
+    async def stuck(lk, req):
+        await asyncio.sleep(3)
+        return {"ok": True, "text": "too late"}
+    A["lst"].on_ask = stuck
+
+    async def go(**kw):
+        with teamlink.at(B["home"]):
+            return await teamlink.call(teamlink.find("", "office"), {"op": "ask", "to": "analyst"}, **kw)
+
+    async def prog(t, s):
+        pass
+    got = loop.run_until_complete(go(timeout=10, on_progress=prog))
+    assert not got["ok"] and "did not answer" in got["error"], "quiet past ASK_IDLE after a first line"
+
+    async def plain(lk, req):
+        return {"ok": True, "text": "no progress asked"}
+    A["lst"].on_ask = plain
+    got = loop.run_until_complete(go(timeout=5))
+    assert got == {**got, "ok": True, "text": "no progress asked"}, "an asker that asks no progress gets one line"
+
+
+def test_the_answering_side_says_when_its_person_is_asked(pair, monkeypatch):
+    """answer_linked's own reports, end to end: the card here, the decision, the work."""
+    A, B, inv, loop = pair
+    monkeypatch.setattr(teamlink, "PROGRESS_EVERY", 0.2)
+    monkeypatch.setattr(providers, "chat", _scripted())
+
+    async def person_says_yes(*a, **k):
+        return True
+    A["cp"].linked_approvals = person_says_yes
+    heard = []
+
+    async def go():
+        async def prog(text, secs):
+            heard.append(text)
+        with teamlink.at(B["home"]):
+            return await teamlink.call(teamlink.find("", "office"),
+                                       {"op": "ask", "from": "researcher", "to": "analyst",
+                                        "question": "what is Pro churn?", "chain": ["researcher"]},
+                                       on_progress=prog)
+    got = loop.run_until_complete(go())
+    assert got.get("ok"), got
+    said = [h for h in heard if h]
+    assert "waiting for the person on this machine to allow analyst" in said
+    assert "allowed by the person here" in said and "analyst is working on it" in said
+
+
+def test_the_asking_side_shows_each_progress_line(pair, monkeypatch):
+    A, B, inv, loop = pair
+    monkeypatch.setattr(teamlink, "PROGRESS_EVERY", 0.2)
+    monkeypatch.setattr(providers, "chat", _scripted())
+
+    async def person_says_yes(*a, **k):
+        return True
+    A["cp"].linked_approvals = person_says_yes
+    shown = []
+
+    async def say(ev):
+        shown.append(ev)
+
+    async def go():
+        with teamlink.at(B["home"]):
+            return await B["cp"].message("researcher", "analyst@office", "what is Pro churn?",
+                                         ["researcher"], root="progress-test", say=say)
+    text = loop.run_until_complete(go())
+    assert "Churn is 4%" in text
+    phases = [e["phase"] for e in shown]
+    assert phases[0] == "ask" and phases[-1] == "reply" and "progress" in phases
+    prog = [e for e in shown if e["phase"] == "progress"]
+    assert all(e["from"] == "analyst@office" and e["to"] == "researcher" and e["text"] for e in prog)
+    assert any("allowed by the person here" in e["text"] for e in prog)
