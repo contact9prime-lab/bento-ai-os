@@ -1,0 +1,80 @@
+/* Permissions → Flow (20b-permflow.js): the gate's steps as a path a request walks.
+   Colours are mixed from the theme's tokens, so it holds up on light themes too. */
+/* two columns that wrap into one when the window is narrow (no container query: that
+   would make #perm-body a containing block for every other tab's fixed layers) */
+.pf{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+.pf-left{flex:1 1 320px;max-width:460px;min-width:0}
+.pf-right{flex:999 1 340px;min-width:0}
+.pf-lead{margin:0 0 12px}
+.pf-h{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.pf-h .mut{text-transform:none;letter-spacing:0;font-weight:400}
+.pf-try{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:12px;
+  background:color-mix(in srgb,var(--txt) 4%,transparent);border:1px solid var(--line,#232a35)}
+.pf .pf-try label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--dim);min-width:0;flex:1;margin:0}
+.pf-try select,.pf-try input{margin:0}
+.pf-try select,.pf-try input:not([type=checkbox]){min-height:var(--tap,32px);width:100%;min-width:0;max-width:100%}
+.pf-pair{display:flex;gap:10px;align-items:flex-end}
+.pf-try .pf-chk{flex-direction:row;align-items:center;gap:6px;min-height:var(--tap,32px)}
+.pf-try .save{margin:0;min-height:var(--tap,32px);flex:0 0 auto}
+.pf-ends{display:flex;gap:6px;margin:8px 0 0 38px}
+
+.pf-steps{display:flex;flex-direction:column;align-items:stretch}
+.pf-step{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:11px;
+  border:1px solid var(--line,#232a35);background:var(--card,#171b22);transition:opacity .2s,border-color .2s}
+.pf-num{flex:0 0 24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;background:color-mix(in srgb,var(--txt) 9%,transparent);color:var(--dim)}
+.pf-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pf-txt b{font-size:12.5px}
+.pf-txt span{font-size:11px;color:var(--dim);line-height:1.3}
+.pf-n{flex:0 0 auto;font-size:11px;padding:2px 8px;border-radius:9px;color:var(--dim);
+  background:color-mix(in srgb,var(--txt) 7%,transparent)}
+.pf-arrow{width:2px;height:7px;margin-left:21px;background:color-mix(in srgb,var(--txt) 18%,transparent);position:relative}
+.pf-arrow::after{content:'';position:absolute;left:-3px;bottom:-2px;border:4px solid transparent;
+  border-top-color:color-mix(in srgb,var(--txt) 30%,transparent);border-bottom:0}
+
+/* a lit path: passed steps go green, the deciding one takes the outcome's colour, the rest fade */
+.pf-step.passed .pf-num{background:color-mix(in srgb,var(--ok) 22%,transparent);color:var(--ok)}
+.pf-step.passed{border-color:color-mix(in srgb,var(--ok) 35%,var(--line,#232a35))}
+.pf-step.skipped{opacity:.38}
+.pf-step.decided{border-width:2px;padding:5px 9px}
+.pf-step.decided.pf-allow{border-color:var(--ok)}
+.pf-step.decided.pf-ask{border-color:var(--warn)}
+.pf-step.decided.pf-deny{border-color:var(--err)}
+.pf-step.decided .pf-num{color:var(--bg,#0b0e13)}
+.pf-step.decided.pf-allow .pf-num{background:var(--ok)}
+.pf-step.decided.pf-ask .pf-num{background:var(--warn)}
+.pf-step.decided.pf-deny .pf-num{background:var(--err)}
+.pf-out{flex:0 0 auto;font-size:12px;font-weight:700;padding:3px 10px;border-radius:9px}
+.pf-out.pf-allow{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.pf-out.pf-ask{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.pf-out.pf-deny{background:color-mix(in srgb,var(--err) 18%,transparent);color:var(--err)}
+
+.pf-why{margin-top:12px;padding:12px 14px;border-radius:12px;border-left:4px solid var(--line,#232a35);
+  background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.pf-why.pf-allow{border-left-color:var(--ok)}
+.pf-why.pf-ask{border-left-color:var(--warn)}
+.pf-why.pf-deny{border-left-color:var(--err)}
+.pf-verdict{font-size:14px;margin-bottom:4px}
+.pf-what{font-size:12px;color:var(--dim);word-break:break-all}
+.pf-reason{font-size:12.5px;margin-top:6px}
+.pf-rule{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;font-size:12px}
+.pf-rule code{word-break:break-all}
+
+.pf-recent{display:flex;flex-direction:column;gap:4px}
+.pf-row{display:flex;align-items:center;gap:10px;text-align:left;width:100%;min-height:var(--tap,32px);
+  padding:6px 10px;border-radius:9px;border:1px solid transparent;background:transparent;color:inherit;cursor:pointer}
+.pf-row:hover{background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.pf-row.on{border-color:var(--acc)}
+.pf-rw{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-at{flex:0 0 auto;font-size:11px;color:var(--dim)}
+.aud-at{color:var(--acc);text-decoration:none}
+.aud-at:hover{text-decoration:underline}
+
+.pf-why:empty{display:none}
+body.dev-mobile .pf{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
+body.dev-mobile .pf-left{max-width:none;order:2}
+body.dev-mobile .pf-right{display:contents}
+body.dev-mobile .pf-try{order:0}
+body.dev-mobile #pf-why{order:1}
+body.dev-mobile .pf-right>.pf-h,body.dev-mobile .pf-recent{order:3}
+body.dev-mobile .pf-at{display:none}

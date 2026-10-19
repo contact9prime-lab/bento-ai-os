@@ -1983,6 +1983,15 @@ and keeps them out of the allowed/denied totals and "Most refused"; the Ledger d
 as `changed`. Counted with the decisions, a mission writing its own deny rows was the most
 refused thing on a machine where nothing had been refused.
 
+**The gate's steps are one list, and Permissions opens on it** (`policy.STAGES`/`stage_of`,
+`/api/policy/trace`, `/api/policy/stages`, `20b-permflow.js`, `bento grants why`;
+`tests/test_permissions_flow.py`). Reported as "the look is good but it is not intuitive to see
+the flow": every tab listed rules, none said in what ORDER they are read. `STAGES` is
+`_decide`'s order in words; a new step there, or a new named `rule=`, needs its row (the test
+scans policy.py for every `rule="…"`). The trace is a probe (`audit=False`) and applies the agent
+loop's last word (ALWAYS_ASK, code from a specialist) as the loop does, so it answers what a real
+call would get. The Ledger route adds `stage` to each row; the page never maps rules itself.
+
 New capabilities get their own **action**, not another `tool.use` string — `media.read`,
 `media.generate` and `space.write` exist because "may look at the gallery but may not bill
 my image provider" has to be expressible as one grant.

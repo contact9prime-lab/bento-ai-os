@@ -60,6 +60,7 @@ async function renderAudit(body,w){
   const q=$('#aud-q');
   if(q){q.value=audFilter.q;q.oninput=audSearch}
   const stat=(n,l,cls)=>`<div class="stat" style="text-align:center"><div class="val ${cls||''}">${n||0}</div><div class="lbl">${l}</div></div>`;
+  AUD_ROWS=d.entries||[];
   const rows=(d.entries||[]).map(a=>{
     // a permission change records the rule it wrote; it is not a decision allowed or refused
     const change=String(a.action||'').startsWith('grant.');
@@ -69,7 +70,9 @@ async function renderAudit(body,w){
     return `<div class="item">
       <span class="audpill ${cls}"${change?` title="a ${esc(a.effect||'')} rule was ${a.action==='grant.revoke'?'removed':'written'}"`:''}>${change?'changed':esc(a.effect||'?')}</span>
       <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out}
-        <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · rule ${esc(a.rule||'default')}
+        <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · ${a.stage
+          ?`<a href="#" class="aud-at" onclick="audPath(event,'${esc(a.id)}')" title="see the path it took through the gate">decided at ${esc(audStage(a.stage))}</a>`
+          :'rule '+esc(a.rule||'default')}
           ${a.duration_ms?' · '+a.duration_ms+'ms':''} · ${new Date(a.ts*1000).toLocaleString()}
           ${a.reason?'<br>'+esc(a.reason):''}${a.detail?'<br>'+esc(a.detail.slice(0,200)):''}</div></div></div>`;
   }).join('');
@@ -91,3 +94,15 @@ function audRange(h){audFilter.since=h;refreshApp('audit')}
 var _audT=null;
 function audSearch(ev){clearTimeout(_audT);const v=ev.target.value;
   _audT=setTimeout(()=>{audFilter.q=v;refreshApp('audit')},220)}
+/* "decided at <step>": the Flow tab, with this row's path lit (20b-permflow.js). */
+var AUD_ROWS=[];
+function audStage(k){const s=((typeof PF!=='undefined'&&PF.stages)||[]).find(x=>x.key===k);
+  return s?s.label:({hard:'hard blocks',builtin:'built-in protection',reach:'hands',channel:'channel',
+    taint:'outside content',rate:'speed limit',team:'team matrix',rules:'your rules',
+    default:'default',person:'always a person'}[k]||k)}
+function audPath(ev,id){
+  if(ev)ev.preventDefault();
+  const a=AUD_ROWS.find(x=>x.id===id);if(!a)return;
+  PF.trace=null;PF.pick=a;PF.recent=[a,...PF.recent.filter(x=>x.id!==a.id)].slice(0,12);
+  PERM.tab='flow';openApp('permissions');refreshApp('permissions');
+}

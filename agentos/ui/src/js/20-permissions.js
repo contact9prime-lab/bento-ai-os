@@ -1,5 +1,5 @@
 /* ================= permissions app: the policy console ================= */
-var PERM={tab:'map',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[],held:[],qhistory:[]};
+var PERM={tab:'flow',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[],held:[],qhistory:[]};
 const PERM_FAMS=[['Tools','tool.'],['MCP','mcp.'],['Skills','skill.'],['Models','model.'],['Files','fs.'],['Net','net.'],['Memory','memory.','kg.'],['Agents','agent.'],['App data','app.data.']];
 function globMatch(pat,val){pat=(pat==null||pat==='')?'*':String(pat);
   return new RegExp('^'+pat.split('*').map(s=>s.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$').test(val||'')}
@@ -15,7 +15,7 @@ async function renderPermissions(body,w){
   await loadConfig();
   const pending=PERM.apps.filter(a=>(a.manifest_status||'none')==='proposed').length;
   body.innerHTML=`<div class="apptop" style="gap:6px">
-    ${[['map','Policy map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
+    ${[['flow','Flow'],['map','Policy map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
        ['quarantine','Quarantine'+(PERM.held.length?' ('+PERM.held.length+')':'')],
        ['rules','Rules'],['ledger','Ledger'],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${(t==='review'&&pending)||(t==='quarantine'&&PERM.held.length)?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
     <input id="perm-q" placeholder="search apps, agents, rules…" style="flex:1;max-width:250px;margin-left:auto" value="${esc(PERM.q)}">
@@ -29,9 +29,9 @@ function permBody(){
   const box=$('#perm-body');if(!box)return;
   // Rules (the old Policies app) and Ledger (the old Audit app) are tabs here now:
   // one place answers "what may it do, and what did it do" (APP_FOLD in 04-wm.js)
-  ({map:permMap,grants:permGrantsView,review:permReview,quarantine:permQuarantine,
+  ({flow:permFlow,map:permMap,grants:permGrantsView,review:permReview,quarantine:permQuarantine,
     rules:b=>renderPolicies(b),ledger:b=>renderAudit(b,PERM.w),
-    attach:permAttachView}[PERM.tab]||permMap)(box);
+    attach:permAttachView}[PERM.tab]||permFlow)(box);
 }
 function permPrincipals(){
   const map=new Map();
