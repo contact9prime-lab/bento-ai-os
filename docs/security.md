@@ -48,6 +48,12 @@ decided it, or write one). Nothing runs and nothing is recorded. Tap a recent de
 
 ![Permissions → Flow: a file write after reading a web page stops at Outside content](screenshots/permissions-flow.png)
 
+**Permissions → Map** shows the rules themselves: who has them on the left, what they reach
+on the right, a green, red or amber line per pair. Tap either end to read its rules in plain
+words and change them.
+
+![Permissions → Map: the specialist director's rules, all about asking other agents](screenshots/permissions-map.png)
+
 From a terminal, with the server running:
 
 ```bash
