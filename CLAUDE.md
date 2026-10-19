@@ -3178,6 +3178,14 @@ or a CAPTCHA is handed to the person in the same session the agent then carries 
   the type-anywhere omnibar and the palette skip it, as they skip `.xterm`.
 - **A forwarded chat reaches them through the team door** (`executors.WORKSPACE_DOOR_TOOLS`,
   `workspace_note`), each call through the gate; its own fetch sees only the anonymous web.
+- **A wall met during a phone turn is asked of that phone** (`cdpbrowser.reach`/`unreach`/`from_phone`/
+  `phone_words`/`phone_shot`, `TelegramBridge.ask_wall`, `WhatsAppBridge.ask_wall`; `tests/test_phone_wall.py`).
+  Asked for as "every AI agent dies at the login screen; mine texts me". A channel's turn registers its chat
+  while it runs, so `tool_wait` is not "[nobody here]" and sends a picture cropped to the form plus one question.
+  A reply that answers the page is caught BEFORE the bridge logs or saves anything: a code is typed into the
+  code field (`person_code`) and is never in the conversation, the diary or the model's context. Only the
+  registered chat answers, a non-code message goes on to the agent, and a password is never taken from a chat
+  (history keeps it): "done" after signing in on a screen. WhatsApp has no Done button, so it says reply "done".
 
 ## Several tasks at once: a desktop per running task, and Telegram side by side
 

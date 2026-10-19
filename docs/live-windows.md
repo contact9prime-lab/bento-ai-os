@@ -28,6 +28,28 @@ reads the page in the same tab, with your session, and answers.
 
 ![The agent's answer in Chat, read from the orders page after you signed in](screenshots/live-browser-answer.png)
 
+### When you're on your phone
+
+If you asked from Telegram or WhatsApp, the agent asks you there. It sends a picture of the
+page and what it wants. For a code, reply with the code: the agent types it into the code
+field, submits it, and carries on in the same session. The Web window shows "Typing the code
+from your phone", never the digits.
+
+![What the phone gets: the code page, cropped so the field is readable](screenshots/live-browser-phone-photo.png)
+
+![The whole exchange on Telegram: the question, the page, the code, the answer](screenshots/live-browser-phone-chat.png)
+
+*The chat above is redrawn from the messages the bot sent in a test run against a stand-in for Telegram.*
+
+- **The code is never kept.** A reply that answers the page goes into the page and nowhere
+  else: it is not saved in the conversation, not written to the log, and not seen by the model.
+- **Only the chat that was asked can answer.** The wall is asked of the chat whose turn met
+  it, while that turn runs. A message from anyone else, or anything that isn't a code,
+  goes to the agent as usual.
+- **A password is never taken from a chat.** Chat history would keep it. For a password or a
+  CAPTCHA the phone is told to sign in on a screen and tap **Done, carry on** (on WhatsApp,
+  reply "done").
+
 Things to know:
 
 - **Only web pages.** The browser opens http and https and nothing else, so a page cannot
@@ -39,8 +61,8 @@ Things to know:
 - **Untrusted words don't spend your session somewhere else.** Anything the agent read
   marks the turn. A click on the same site as everything it read is allowed. Once it has
   read anything else (another site, a mail, a fetched page), the next click asks you.
-- **Nobody here, nobody waits.** If no desktop or phone has Bento open when a page needs
-  you, the agent stops and tells you what is needed instead of waiting.
+- **Nobody here, nobody waits.** If no screen has Bento open and you didn't ask from your
+  phone, the agent stops and tells you what is needed instead of waiting.
 - The browser keeps its own profile in your home (`browser/profile`), apart from any
   browser you use yourself. It closes after 20 idle minutes and opens again on use.
 
@@ -100,7 +122,8 @@ you to pick a window every time.
 - **Terminal (TUI):** `bento terminal attach` is the same session. `bento windows` lists
   the browser's tabs (and whether it needs you), terminal sessions and app windows. A web
   page or an app is a picture, so a terminal lists them and says to open them on a
-  screen.
+  screen. On a machine with no screen at all, Telegram or WhatsApp is where a code page
+  reaches you.
 - **Session (SUI):** the same windows. When the browser needs you, the desktop also comes
   to the front, above native windows.
 

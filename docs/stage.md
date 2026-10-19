@@ -68,6 +68,12 @@ or with `bento stage big on|off`.
 - **The Stage app** opens by itself when a scene arrives for the chat on your screen (Chat, the
   Office's chat, or the prompt bar). Turn "Open by itself on this screen" off under Boards if you'd
   rather open it yourself.
+- **On a phone** the Stage's top and its controls take one row each, with short labels, so the answer
+  gets the room. A map is drawn in the frame's own shape and its numbered places are one row of cards you
+  swipe through. Before (left) and after (right), at 390px:
+
+  ![Before, on a 390px phone: the map's notes list with no map, and the numbers cut to one card](screenshots/stage-phone-before.png)
+  ![After: the map with its places and one row of notes, and all three numbers](screenshots/stage-phone-after.png)
 - **Chat** puts a ▶ Play chip under each answer that has a story, also when you reopen the chat later.
 - **Telegram** gets the story first, then the words: one album, a picture per scene, with the question on
   top and each scene's title, takeaway and source under it. A map lists what happened at each place, numbered

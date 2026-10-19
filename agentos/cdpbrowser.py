@@ -41,6 +41,7 @@ import base64
 import contextlib
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -74,6 +75,82 @@ def bind(attention=None, presence=None):
         _ATTENTION[0] = attention
     if presence is not None:
         _PRESENCE[0] = presence
+
+
+# A phone the person is talking from right now (a Telegram or WhatsApp turn), per account.
+# Asked for as "every AI agent dies at the login screen; mine texts me": a wall met during a
+# phone turn with no screen open used to end the turn with "[nobody here]". A channel's turn
+# registers here while it runs (`reach`), and the wall is asked of that phone instead: a
+# picture of the page, what it wants, and a code typed in the chat goes into the page
+# (`from_phone`) without ever being saved in the conversation.
+_REACH: dict[str, dict] = {}
+CODE_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9 -]{2,14}[A-Za-z0-9])\s*$")
+DONE_WORDS = {"done", "carry on", "continue", "ok", "okay", "signed in", "go on"}
+
+
+def reach(uid: str, key: str, ask) -> None:
+    """While a phone turn runs, a wall is asked of that phone. `ask(attention, png)` sends
+    the picture and the question; `key` names the chat (`unreach` takes it out)."""
+    _REACH.setdefault(uid or "", {})[key] = ask
+
+
+def unreach(uid: str, key: str) -> None:
+    got = _REACH.get(uid or "") or {}
+    got.pop(key, None)
+    if not got:
+        _REACH.pop(uid or "", None)
+
+
+def phone_waiting(uid: str, key: str) -> dict | None:
+    """The wall this chat is being asked about, if the browser is waiting on it."""
+    b = _BROWSERS.get(uid or "")
+    if not b or not b.running or not b.attention or key not in (_REACH.get(uid or "") or {}):
+        return None
+    return dict(b.attention)
+
+
+def phone_words(att: dict, agent: str = "Aria", button: bool = True) -> str:
+    """What the phone is told about a wall: who needs what, on which site, and the one thing
+    to do. One function for every channel, so Telegram and WhatsApp say the same thing.
+    `button` is False where the message carries no Done button: the person replies "done"."""
+    site = att.get("site") or "a page"
+    tap = "tap Done" if button else "reply “done”"
+    kind = att.get("kind") or "ask"
+    head = f"🔐 {agent} needs you on {site}."
+    if kind == "code":
+        do = "Reply here with the code and I'll type it into the page."
+    elif kind == "login":
+        do = (f"It wants your password. Sign in on a screen in the Web window, then {tap}. "
+              "Passwords don't go through chat.")
+    elif kind == "captcha":
+        do = f"It wants to check you're a person. Do that on a screen in the Web window, then {tap}."
+    else:
+        do = f"Do it on a screen in the Web window, then {tap}."
+    said = str(att.get("reason") or "").strip()
+    return head + ("\n“" + said[:300] + "”" if said else "") + "\n" + do
+
+
+async def from_phone(uid: str, key: str, text: str) -> str:
+    """A message from the phone while the browser waits on a wall. Returns what to tell the
+    phone, or '' when the message is not an answer to the wall (it goes to the agent).
+
+    A code page takes the code: it is typed into the code field and submitted by the person,
+    not by the agent, and it is never written to the conversation. "done" carries on, as the
+    window's button does. A password is never taken from a chat: chat history keeps it."""
+    att = phone_waiting(uid, key)
+    if not att:
+        return ""
+    b = _BROWSERS[uid or ""]
+    words = str(text or "").strip()
+    if words.lower().rstrip(".!") in DONE_WORDS:
+        await b.person({"type": "resume"})
+        return "Carrying on."
+    if att.get("kind") == "code" and CODE_RE.match(words) and sum(c.isdigit() for c in words) >= 4:
+        ok = await b.person_code(words.replace(" ", ""))
+        if not ok:
+            return "I couldn't find where the code goes on that page. Open the Web window on a screen."
+        return f"Typed into {att.get('site') or 'the page'}. Carrying on."
+    return ""
 
 
 # ---- which browser, and can it run here ------------------------------------------------
@@ -677,6 +754,31 @@ class Browser:
             await self._key(s, "Enter")
         return box
 
+    async def person_code(self, code: str) -> bool:
+        """A code the person sent from their phone, typed into the page's code field and
+        submitted. The window shows that a code went in, never the code itself."""
+        s = self.tab().get("session")
+        if not s:
+            return False
+        ref = await self._eval(r"""(() => {
+          const vis = e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
+          const ins = [...document.querySelectorAll('input')].filter(i => vis(i) && !/hidden|password|checkbox|radio|submit|button/i.test(i.type));
+          const hit = ins.find(i => i.autocomplete === 'one-time-code')
+            || ins.find(i => /otp|2fa|totp|mfa|verification|one.?time|passcode|code/i.test((i.name||'') + ' ' + (i.id||'') + ' ' + (i.placeholder||'') + ' ' + (i.getAttribute('aria-label')||'')))
+            || (ins.length === 1 ? ins[0] : null);
+          if (!hit) return '';
+          hit.setAttribute('data-bento-code', '1'); hit.focus();
+          if ('select' in hit) hit.select();
+          return '1';
+        })()""")
+        if not ref:
+            return False
+        await self._tell({"type": "agent", "kind": "type", "text": "a code from your phone", "who": "phone"})
+        await self.cdp.send("Input.insertText", {"text": code}, s)
+        await self._key(s, "Enter")
+        self.touch()
+        return True
+
     async def agent_key(self, key: str, who: str = "agent"):
         await self._tell({"type": "agent", "kind": "key", "text": key, "who": who})
         await self._key(self.tab().get("session"), key)
@@ -686,6 +788,41 @@ class Browser:
         if bad:
             raise CDPError(bad)
         r = await self.cdp.send("Page.captureScreenshot", {"format": "png"}, self.tab().get("session"))
+        return base64.b64decode(r.get("data") or "")
+
+    async def phone_shot(self) -> bytes:
+        """The page as a phone should see it: cropped to what is on it, at twice the size. A
+        whole 1280x800 frame of a sign-in form is mostly margin, and on a phone the code box
+        was a thin strip (found in the live run). Falls back to the whole frame."""
+        box = None
+        with contextlib.suppress(Exception):
+            box = await self._eval(r"""(() => {
+              // the words themselves (a paragraph's box is as wide as the page) and the controls
+              let x0 = 1e9, y0 = 1e9, x1 = 0, y1 = 0;
+              const add = r => {
+                if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > innerHeight) return;
+                x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top);
+                x1 = Math.max(x1, r.right); y1 = Math.max(y1, Math.min(r.bottom, innerHeight));
+              };
+              const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+              for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+                if (!n.textContent.trim()) continue;
+                const rg = document.createRange(); rg.selectNodeContents(n); add(rg.getBoundingClientRect());
+              }
+              document.body.querySelectorAll('input:not([type=hidden]),button,select,textarea,img,svg').forEach(e => add(e.getBoundingClientRect()));
+              if (x1 <= x0 || y1 <= y0) return null;
+              const pad = 24;
+              return {x: Math.max(0, x0 - pad), y: Math.max(0, y0 - pad),
+                      w: Math.min(innerWidth, x1 + pad) - Math.max(0, x0 - pad),
+                      h: Math.min(innerHeight, y1 + pad) - Math.max(0, y0 - pad)};
+            })()""")
+        if not box or box.get("w", 0) < 120 or box.get("h", 0) < 60:
+            return await self.screenshot()
+        # never narrower than a phone's picture is wide, so a short form is not blown up
+        w = max(float(box["w"]), 360.0)
+        r = await self.cdp.send("Page.captureScreenshot", {
+            "format": "png", "clip": {"x": float(box["x"]), "y": float(box["y"]), "width": w,
+                                      "height": float(box["h"]), "scale": 2}}, self.tab().get("session"))
         return base64.b64decode(r.get("data") or "")
 
     async def need_person(self, wall: dict, reason: str = ""):
@@ -818,13 +955,22 @@ async def tool_scroll(b: Browser, direction: str = "down") -> str:
 
 async def tool_wait(b: Browser, reason: str, timeout: int = WAIT_S) -> str:
     """Hand the window to the person and wait for "Done", or for the wall to go away."""
-    if not _PRESENCE[0](b.uid):
+    phones = dict(_REACH.get(b.uid or "") or {})
+    if not _PRESENCE[0](b.uid) and not phones:
         return ("[nobody here] Nobody has this desktop open, so nobody can do that part now. "
                 "Stop here and tell the person, in your answer, what the browser needs them to do.")
     snap = {}
     with contextlib.suppress(Exception):
         snap = await b.read()
     await b.need_person(snap.get("wall") or {"kind": "ask", "why": "a person"}, reason)
+    if phones:
+        # the person is on their phone: show them the page and ask there
+        png = b""
+        with contextlib.suppress(Exception):
+            png = await b.phone_shot()
+        for ask in phones.values():
+            with contextlib.suppress(Exception):
+                await ask(dict(b.attention or {}), png)
     timeout = max(10, min(WAIT_MAX_S, int(timeout or WAIT_S)))
     had_wall = bool(snap.get("wall"))
     end = time.time() + timeout
