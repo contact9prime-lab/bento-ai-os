@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.62 — 2026-10-19
+
+- **The policy map is a map.** Who has rules is on the left (your agent, specialists,
+  missions, apps, linked teams), what they reach is on the right (tools, files, the web,
+  agents, memory, connections…), and a line joins each pair: green when it only allows, red
+  when it only refuses, amber for both. Tap a name or a place and its rules are listed beside
+  the map in plain words ("may run git status…", "may not write files in /etc"), with where
+  each came from and the switches to flip or remove it. Everyone with no rules is one line,
+  a full-access app and apps waiting for review are a note at the top, and the places stay
+  in view while the names scroll. "Trace a request" opens Flow with that agent picked.
+
 ## 0.6.61 — 2026-10-19
 
 - **Permissions opens on Flow: how a request is decided.** The gate's ten steps in the order it
