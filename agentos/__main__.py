@@ -7357,6 +7357,9 @@ def _grants_cli(args):
                   f"{g['resource'][:48]}{scope}{when}{chat}{gone}  ({g.get('source') or 'user'})")
         print("\n  bento grants revoke <id>   ·   bento grants allow|deny <who> <action> <resource>")
         return
+    if act == "why":
+        _grants_why(args)
+        return
     if act == "revoke":
         if not args.who:
             print("say which: bento grants revoke <id>")
@@ -7382,6 +7385,43 @@ def _grants_cli(args):
         print(f"✓ {act} {args.who} {args.what} {args.resource}"
               + (f" for {args.hours:g}h" if args.hours else "") + f"  ({gid})")
         return
+
+
+def _grants_why(args):
+    """`bento grants why <who> <tool> [detail]` — the Permissions app's Flow tab: a
+    pretend call walked through the gate on the running server, step by step. Nothing
+    runs and nothing is recorded. It needs the server, because the gate it asks is the
+    one in that process (its grants cache, its hands, its channels)."""
+    cfg, _ = _open_store(getattr(args, "user", ""))
+    port = int(cfg.get("port") or 8321)
+    if not (args.who and args.what):
+        print("say who and which tool: bento grants why subagent:researcher run_command 'git push'")
+        sys.exit(2)
+    if not _server_answers(port):
+        print("✗ AgentOS is not running here, and the gate lives in the server. Start it with `bento serve`.")
+        sys.exit(1)
+    kind, _, pid = args.who.partition(":")
+    r = _api_call(port, "/api/policy/trace", "POST",
+                  {"principal_kind": kind, "principal_id": pid, "tool": args.what,
+                   "detail": args.resource, "surface": args.surface,
+                   "after_web": bool(args.after_web)})
+    if r.get("error"):
+        print(f"✗ {r['error']}")
+        sys.exit(1)
+    print(f"  {args.who} → {args.what} {args.resource}".rstrip())
+    print(f"  asks for {r['action']} on {r['resource']} · risk {r['risk']} · via {args.surface}\n")
+    mark = {"passed": "✓", "decided": "●", "skipped": "·"}
+    for st in r["steps"]:
+        line = f"  {mark[st['state']]} {st['label']:<20}"
+        if st["state"] == "decided":
+            line += f" → {r['effect'].upper()}"
+        print(line)
+    print()
+    if r.get("reason"):
+        print(f"  {r['reason']}")
+    g = r.get("grant")
+    if g:
+        print(f"  rule {g['id']}: {g['effect']} {g['action']} {g['resource']} ({g.get('source') or 'user'})")
 
 
 def _audit_cli(args):
@@ -7412,11 +7452,15 @@ def _audit_cli(args):
         print("\n(no matching decisions)")
         return
     print()
+    from .policy import STAGES, stage_of
+    words = {k: l.lower() for k, l, _ in STAGES}
     for a in rows:
         who = f"{a['principal_kind']}:{a['principal_id']}" if a["principal_id"] else a["principal_kind"]
+        stage = "changed" if str(a["action"]).startswith("grant.") \
+            else words[stage_of(a["rule"], a["action"])]
         print(f"{time.strftime('%d %b %H:%M:%S', time.localtime(a['ts']))}  "
               f"{a['effect']:<5} {a['action']:<14} {a['resource'][:44]:<44} "
-              f"{who} via {a['surface'] or '?'} · {a['rule']}")
+              f"{who} via {a['surface'] or '?'} · {stage} ({a['rule']})")
 
 
 def _help_cli(parser, sub, verbs: dict, everyday, args) -> int:
@@ -7794,7 +7838,7 @@ def main():
 
     p_grants = verb("grants", help="who may do what without asking — list, add, revoke")
     p_grants.add_argument("action", nargs="?", default="list",
-                          choices=["list", "allow", "deny", "revoke"])
+                          choices=["list", "allow", "deny", "revoke", "why"])
     p_grants.add_argument("who", nargs="?", default="",
                           help="kind:id (subagent:researcher, app:<id>, user), or a grant id to revoke")
     p_grants.add_argument("what", nargs="?", default="", help="the action (fs.write, net.fetch, tool.use…)")
@@ -7802,6 +7846,10 @@ def main():
     p_grants.add_argument("--hours", type=float, default=0, help="with allow/deny: expire after this long")
     p_grants.add_argument("--surfaces", default="", help="only on these ways in (gui,telegram…)")
     p_grants.add_argument("--all", action="store_true", help="with list: revoked ones too")
+    p_grants.add_argument("--surface", default="gui",
+                          help="with why: the way in the pretend call arrives on (default gui)")
+    p_grants.add_argument("--after-web", action="store_true",
+                          help="with why: as if the turn had read a web page first")
 
     p_reg = verb("registry", help="the app registry — package, scan, sign and verify apps")
     p_reg.add_argument("action", nargs="?", default="verify",

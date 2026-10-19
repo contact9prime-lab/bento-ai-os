@@ -20,6 +20,42 @@ AgentOS is built to be the opposite of that story.
 | Self-modification | snapshot + AST + **test gate** | the OS snapshots itself before any source write, refuses syntax errors, and refuses to restart if the test suite fails |
 | Managed services | loopback-only | TrainForge (no auth of its own) is always started on `127.0.0.1` |
 
+## How a request is decided
+
+Every capability call goes down the same steps, in this order, and stops at the first one
+that decides. **Permissions → Flow** draws them, with how many of the last day's decisions
+each step made.
+
+1. **Hard blocks.** Commands that would wreck the machine are always refused.
+2. **Built-in protection.** Apps, agents and other machines may never change the OS's own rules.
+3. **Hands.** The tools, folders and sites this agent can reach at all (Settings → Executors).
+4. **Channel.** A read-only channel may look but not change anything.
+5. **Outside content.** After reading a web page or a mail, a change goes to you first.
+6. **Speed limit.** Too many calls in a short time and it waits in Quarantine.
+7. **Team matrix.** Who may ask whom, between your agents and linked teams.
+8. **Your rules.** Allow and deny rules, from you, a mission or a remembered approval.
+9. **Default.** Nothing matched, so autonomy decides or a person is asked.
+10. **Always a person.** Power, installs and code from a specialist are confirmed every time.
+
+That order is why a rule can't undo a step above it: "allow fetch_url" doesn't let a fetched
+page spend that permission, and allowing a folder doesn't reach past an agent's hands.
+
+To see where something would land, fill in **Try a request** (who, which tool, the command or
+file, and the way in) and press **Trace it**. The steps it passed turn green and the one that
+decided takes its colour, with the reason and a way to change it (remove the rule that
+decided it, or write one). Nothing runs and nothing is recorded. Tap a recent decision, or
+"decided at …" on any Ledger row, to see the path it took.
+
+![Permissions → Flow: a file write after reading a web page stops at Outside content](screenshots/permissions-flow.png)
+
+From a terminal, with the server running:
+
+```bash
+bento grants why subagent:researcher run_command "git push"
+bento grants why user write_file notes.md --after-web
+bento audit            # each row names the step that decided it
+```
+
 ## IO gates: surface-scoped permissions
 
 Every capability call arrives via one of the OS's **surfaces** — `gui` (the desktop and its

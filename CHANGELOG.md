@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.61 — 2026-10-19
+
+- **Permissions opens on Flow: how a request is decided.** The gate's ten steps in the order it
+  reads them, each with how many of the last day's decisions it made. Try a request (who, which
+  tool, the command or file, the way in) and the steps it passed turn green and the one that
+  decided takes its colour, with the reason and a way to change it. Nothing runs and nothing is
+  recorded. Every Ledger row now says "decided at …" and opens its own path.
+- `bento grants why <who> <tool> [detail]` traces the same from a terminal, and `bento audit`
+  names the step on each row.
+
 ## 0.6.60 — 2026-10-19
 
 No release notes were written for this one; the commits since 0.6.59 are what changed (`bento update` lists them).

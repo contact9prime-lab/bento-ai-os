@@ -5658,6 +5658,86 @@ body.dev-mobile .stg-cap{font-size:15px}
 .film-n{font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;opacity:.6}
 .film-v{font:800 26px/1 var(--sans)}
 .film-t{font-size:14px;line-height:1.45}
+/* Permissions → Flow (20b-permflow.js): the gate's steps as a path a request walks.
+   Colours are mixed from the theme's tokens, so it holds up on light themes too. */
+/* two columns that wrap into one when the window is narrow (no container query: that
+   would make #perm-body a containing block for every other tab's fixed layers) */
+.pf{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+.pf-left{flex:1 1 320px;max-width:460px;min-width:0}
+.pf-right{flex:999 1 340px;min-width:0}
+.pf-lead{margin:0 0 12px}
+.pf-h{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.pf-h .mut{text-transform:none;letter-spacing:0;font-weight:400}
+.pf-try{display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:12px;
+  background:color-mix(in srgb,var(--txt) 4%,transparent);border:1px solid var(--line,#232a35)}
+.pf .pf-try label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--dim);min-width:0;flex:1;margin:0}
+.pf-try select,.pf-try input{margin:0}
+.pf-try select,.pf-try input:not([type=checkbox]){min-height:var(--tap,32px);width:100%;min-width:0;max-width:100%}
+.pf-pair{display:flex;gap:10px;align-items:flex-end}
+.pf-try .pf-chk{flex-direction:row;align-items:center;gap:6px;min-height:var(--tap,32px)}
+.pf-try .save{margin:0;min-height:var(--tap,32px);flex:0 0 auto}
+.pf-ends{display:flex;gap:6px;margin:8px 0 0 38px}
+
+.pf-steps{display:flex;flex-direction:column;align-items:stretch}
+.pf-step{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:11px;
+  border:1px solid var(--line,#232a35);background:var(--card,#171b22);transition:opacity .2s,border-color .2s}
+.pf-num{flex:0 0 24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;background:color-mix(in srgb,var(--txt) 9%,transparent);color:var(--dim)}
+.pf-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pf-txt b{font-size:12.5px}
+.pf-txt span{font-size:11px;color:var(--dim);line-height:1.3}
+.pf-n{flex:0 0 auto;font-size:11px;padding:2px 8px;border-radius:9px;color:var(--dim);
+  background:color-mix(in srgb,var(--txt) 7%,transparent)}
+.pf-arrow{width:2px;height:7px;margin-left:21px;background:color-mix(in srgb,var(--txt) 18%,transparent);position:relative}
+.pf-arrow::after{content:'';position:absolute;left:-3px;bottom:-2px;border:4px solid transparent;
+  border-top-color:color-mix(in srgb,var(--txt) 30%,transparent);border-bottom:0}
+
+/* a lit path: passed steps go green, the deciding one takes the outcome's colour, the rest fade */
+.pf-step.passed .pf-num{background:color-mix(in srgb,var(--ok) 22%,transparent);color:var(--ok)}
+.pf-step.passed{border-color:color-mix(in srgb,var(--ok) 35%,var(--line,#232a35))}
+.pf-step.skipped{opacity:.38}
+.pf-step.decided{border-width:2px;padding:5px 9px}
+.pf-step.decided.pf-allow{border-color:var(--ok)}
+.pf-step.decided.pf-ask{border-color:var(--warn)}
+.pf-step.decided.pf-deny{border-color:var(--err)}
+.pf-step.decided .pf-num{color:var(--bg,#0b0e13)}
+.pf-step.decided.pf-allow .pf-num{background:var(--ok)}
+.pf-step.decided.pf-ask .pf-num{background:var(--warn)}
+.pf-step.decided.pf-deny .pf-num{background:var(--err)}
+.pf-out{flex:0 0 auto;font-size:12px;font-weight:700;padding:3px 10px;border-radius:9px}
+.pf-out.pf-allow{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.pf-out.pf-ask{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.pf-out.pf-deny{background:color-mix(in srgb,var(--err) 18%,transparent);color:var(--err)}
+
+.pf-why{margin-top:12px;padding:12px 14px;border-radius:12px;border-left:4px solid var(--line,#232a35);
+  background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.pf-why.pf-allow{border-left-color:var(--ok)}
+.pf-why.pf-ask{border-left-color:var(--warn)}
+.pf-why.pf-deny{border-left-color:var(--err)}
+.pf-verdict{font-size:14px;margin-bottom:4px}
+.pf-what{font-size:12px;color:var(--dim);word-break:break-all}
+.pf-reason{font-size:12.5px;margin-top:6px}
+.pf-rule{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;font-size:12px}
+.pf-rule code{word-break:break-all}
+
+.pf-recent{display:flex;flex-direction:column;gap:4px}
+.pf-row{display:flex;align-items:center;gap:10px;text-align:left;width:100%;min-height:var(--tap,32px);
+  padding:6px 10px;border-radius:9px;border:1px solid transparent;background:transparent;color:inherit;cursor:pointer}
+.pf-row:hover{background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.pf-row.on{border-color:var(--acc)}
+.pf-rw{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-at{flex:0 0 auto;font-size:11px;color:var(--dim)}
+.aud-at{color:var(--acc);text-decoration:none}
+.aud-at:hover{text-decoration:underline}
+
+.pf-why:empty{display:none}
+body.dev-mobile .pf{flex-direction:column;flex-wrap:nowrap;align-items:stretch}
+body.dev-mobile .pf-left{max-width:none;order:2}
+body.dev-mobile .pf-right{display:contents}
+body.dev-mobile .pf-try{order:0}
+body.dev-mobile #pf-why{order:1}
+body.dev-mobile .pf-right>.pf-h,body.dev-mobile .pf-recent{order:3}
+body.dev-mobile .pf-at{display:none}
 </style>
 </head>
 <body>
@@ -26289,6 +26369,7 @@ async function renderAudit(body,w){
   const q=$('#aud-q');
   if(q){q.value=audFilter.q;q.oninput=audSearch}
   const stat=(n,l,cls)=>`<div class="stat" style="text-align:center"><div class="val ${cls||''}">${n||0}</div><div class="lbl">${l}</div></div>`;
+  AUD_ROWS=d.entries||[];
   const rows=(d.entries||[]).map(a=>{
     // a permission change records the rule it wrote; it is not a decision allowed or refused
     const change=String(a.action||'').startsWith('grant.');
@@ -26298,7 +26379,9 @@ async function renderAudit(body,w){
     return `<div class="item">
       <span class="audpill ${cls}"${change?` title="a ${esc(a.effect||'')} rule was ${a.action==='grant.revoke'?'removed':'written'}"`:''}>${change?'changed':esc(a.effect||'?')}</span>
       <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out}
-        <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · rule ${esc(a.rule||'default')}
+        <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · ${a.stage
+          ?`<a href="#" class="aud-at" onclick="audPath(event,'${esc(a.id)}')" title="see the path it took through the gate">decided at ${esc(audStage(a.stage))}</a>`
+          :'rule '+esc(a.rule||'default')}
           ${a.duration_ms?' · '+a.duration_ms+'ms':''} · ${new Date(a.ts*1000).toLocaleString()}
           ${a.reason?'<br>'+esc(a.reason):''}${a.detail?'<br>'+esc(a.detail.slice(0,200)):''}</div></div></div>`;
   }).join('');
@@ -26320,8 +26403,20 @@ function audRange(h){audFilter.since=h;refreshApp('audit')}
 var _audT=null;
 function audSearch(ev){clearTimeout(_audT);const v=ev.target.value;
   _audT=setTimeout(()=>{audFilter.q=v;refreshApp('audit')},220)}
+/* "decided at <step>": the Flow tab, with this row's path lit (20b-permflow.js). */
+var AUD_ROWS=[];
+function audStage(k){const s=((typeof PF!=='undefined'&&PF.stages)||[]).find(x=>x.key===k);
+  return s?s.label:({hard:'hard blocks',builtin:'built-in protection',reach:'hands',channel:'channel',
+    taint:'outside content',rate:'speed limit',team:'team matrix',rules:'your rules',
+    default:'default',person:'always a person'}[k]||k)}
+function audPath(ev,id){
+  if(ev)ev.preventDefault();
+  const a=AUD_ROWS.find(x=>x.id===id);if(!a)return;
+  PF.trace=null;PF.pick=a;PF.recent=[a,...PF.recent.filter(x=>x.id!==a.id)].slice(0,12);
+  PERM.tab='flow';openApp('permissions');refreshApp('permissions');
+}
 /* ================= permissions app: the policy console ================= */
-var PERM={tab:'map',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[],held:[],qhistory:[]};
+var PERM={tab:'flow',sel:null,q:'',showRevoked:false,grants:[],apps:[],opts:{principals:[],actions:[],resources:{}},att:null,_attPs:[],_mapPs:[],held:[],qhistory:[]};
 const PERM_FAMS=[['Tools','tool.'],['MCP','mcp.'],['Skills','skill.'],['Models','model.'],['Files','fs.'],['Net','net.'],['Memory','memory.','kg.'],['Agents','agent.'],['App data','app.data.']];
 function globMatch(pat,val){pat=(pat==null||pat==='')?'*':String(pat);
   return new RegExp('^'+pat.split('*').map(s=>s.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$').test(val||'')}
@@ -26337,7 +26432,7 @@ async function renderPermissions(body,w){
   await loadConfig();
   const pending=PERM.apps.filter(a=>(a.manifest_status||'none')==='proposed').length;
   body.innerHTML=`<div class="apptop" style="gap:6px">
-    ${[['map','Policy map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
+    ${[['flow','Flow'],['map','Policy map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
        ['quarantine','Quarantine'+(PERM.held.length?' ('+PERM.held.length+')':'')],
        ['rules','Rules'],['ledger','Ledger'],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${(t==='review'&&pending)||(t==='quarantine'&&PERM.held.length)?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
     <input id="perm-q" placeholder="search apps, agents, rules…" style="flex:1;max-width:250px;margin-left:auto" value="${esc(PERM.q)}">
@@ -26351,9 +26446,9 @@ function permBody(){
   const box=$('#perm-body');if(!box)return;
   // Rules (the old Policies app) and Ledger (the old Audit app) are tabs here now:
   // one place answers "what may it do, and what did it do" (APP_FOLD in 04-wm.js)
-  ({map:permMap,grants:permGrantsView,review:permReview,quarantine:permQuarantine,
+  ({flow:permFlow,map:permMap,grants:permGrantsView,review:permReview,quarantine:permQuarantine,
     rules:b=>renderPolicies(b),ledger:b=>renderAudit(b,PERM.w),
-    attach:permAttachView}[PERM.tab]||permMap)(box);
+    attach:permAttachView}[PERM.tab]||permFlow)(box);
 }
 function permPrincipals(){
   const map=new Map();
@@ -26717,6 +26812,169 @@ async function permRelease(qid,mode){
   if(r.error)return toast(r.error);
   toast({once:'released — still watched',forever:'allowed forever',deleted:'deleted'}[mode]);
   refreshApp('permissions');refreshApp('quarantine');refreshApp('apps');refreshApp('fabric');
+}
+/* ================= Permissions → Flow: how a request is decided =================
+   The gate (policy.PDP._decide) takes the same steps every time and stops at the first
+   one that decides. The other tabs list rules; this one draws the steps in order, so a
+   person can see WHERE something was allowed, asked or refused:
+   - the steps, each with how many of the last day's decisions it made (from the Ledger)
+   - Try it: a pretend call traced through them (/api/policy/trace, nothing runs or is
+     recorded), lighting the steps it passed and the one that decided
+   - the latest decisions, each one tap from its own path.
+   The steps come from the server (policy.STAGES), never a second list on the page.
+   TUI: `bento grants why <who> <tool> [detail]`, and `bento audit` names the step.
+   SUI: the same page. `var` state: the bundle's TDZ rule. */
+var PF={stages:null,recent:[],counts:{},trace:null,pick:null,
+  who:'user:',tool:'run_command',detail:'',surface:'gui',web:false,busy:false};
+
+async function permFlow(box){
+  box.innerHTML='<p class="mut">Reading the gate…</p>';
+  const since=Math.floor(Date.now()/1000-24*3600);
+  const [st,au]=await Promise.all([
+    PF.stages?Promise.resolve({stages:PF.stages}):fetch('/api/policy/stages').then(r=>r.json()).catch(()=>({stages:[]})),
+    fetch('/api/audit?limit=400&since='+since).then(r=>r.json()).catch(()=>({entries:[]}))]);
+  PF.stages=st.stages||[];
+  const rows=(au.entries||[]).filter(a=>a.stage);
+  PF.recent=rows.slice(0,12);
+  if(PF.pick&&!PF.recent.some(x=>x.id===PF.pick.id))PF.recent.unshift(PF.pick);
+  PF.counts={};rows.forEach(a=>{PF.counts[a.stage]=(PF.counts[a.stage]||0)+1});
+  pfPaint(box);
+}
+
+/* What a lit path shows: a trace, or a ledger row picked from the list. */
+function pfPath(){
+  if(PF.trace)return {stage:PF.trace.stage,effect:PF.trace.effect};
+  if(PF.pick)return {stage:PF.pick.stage,effect:PF.pick.effect};
+  return null;
+}
+function pfEffWord(e){return {allow:'Allowed',ask:'Asks you',deny:'Refused'}[e]||e}
+function pfEffCls(e){return e==='deny'?'pf-deny':e==='ask'?'pf-ask':'pf-allow'}
+
+function pfPaint(box){
+  box=box||$('#perm-body');if(!box)return;
+  const path=pfPath();
+  const at=path?PF.stages.findIndex(s=>s.key===path.stage):-1;
+  const steps=PF.stages.map((s,i)=>{
+    const state=at<0?'':i<at?' passed':i===at?' decided '+pfEffCls(path.effect):' skipped';
+    const n=PF.counts[s.key]||0;
+    return `<div class="pf-step${state}" data-k="${esc(s.key)}">
+      <div class="pf-num">${i<at?'✓':i+1}</div>
+      <div class="pf-txt"><b>${esc(s.label)}</b><span>${esc(s.about)}</span></div>
+      ${i===at?`<span class="pf-out ${pfEffCls(path.effect)}">${esc(pfEffWord(path.effect))}</span>`
+        :n?`<span class="pf-n" title="decisions made at this step in the last 24 hours">${n}</span>`:''}
+    </div>`}).join('<div class="pf-arrow" aria-hidden="true"></div>');
+  const ps=[{kind:'user',id:'',label:(typeof agentName==='function'?agentName():'Your agent')+' (your agent)'},
+    ...(PERM.opts.principals||[]).map(p=>({kind:p.kind,id:p.id,label:p.label+' · '+(p.kind==='subagent'?'specialist':p.kind)}))];
+  const tools=((PERM.opts.resources||{})['tool.use']||[]).map(r=>r.label);
+  if(tools.length&&!tools.includes(PF.tool))PF.tool=tools[0];
+  const opt=(v,l,on)=>`<option value="${esc(v)}" ${on?'selected':''}>${esc(l)}</option>`;
+  const recent=PF.recent.map((a,i)=>{
+      const who=a.principal_id?a.principal_id:(a.principal_kind==='user'?'your agent':a.principal_kind);
+      const st=(PF.stages.find(s=>s.key===a.stage)||{}).label||a.stage;
+      return `<button class="pf-row${PF.pick&&PF.pick.id===a.id?' on':''}" data-i="${i}">
+        <span class="audpill ${a.effect==='deny'?'audden':a.effect==='ask'?'audask':'audok'}">${esc(a.effect)}</span>
+        <span class="pf-rw"><b>${esc(who)}</b> ${esc(a.action)} <code>${esc(String(a.resource||'').slice(0,60))}</code></span>
+        <span class="pf-at">at ${esc(st)}</span></button>`}).join('')
+      ||'<p class="mut">Nothing decided in the last day yet.</p>';
+  box.innerHTML=`<p class="mut pf-lead">Every request goes down these steps in order and stops at the first one that decides. Try one, or tap a recent decision to see its path.</p>
+  <div class="pf">
+    <div class="pf-left">
+      <div class="pf-h">The steps <span class="mut">· decided in the last day</span></div>
+      <div class="pf-steps">${steps}</div>
+      <div class="pf-ends"><span class="pf-out pf-allow">Allowed</span><span class="pf-out pf-ask">Asks you</span><span class="pf-out pf-deny">Refused</span></div>
+    </div>
+    <div class="pf-right">
+      <div class="pf-try">
+        <div class="pf-h">Try a request</div>
+        <label>Who<select id="pf-who">${ps.map(p=>opt(p.kind+':'+p.id,p.label,PF.who===p.kind+':'+p.id)).join('')}</select></label>
+        <div class="pf-pair"><label>Does<select id="pf-tool">${tools.map(t=>opt(t,t,PF.tool===t)).join('')}</select></label>
+          <label>Via<select id="pf-surf">${PERM_SURFACES.map(s=>opt(s,s,PF.surface===s)).join('')}</select></label></div>
+        <label>On<input id="pf-detail" placeholder="a command, file or address (optional)" value="${esc(PF.detail)}"></label>
+        <div class="pf-pair"><label class="pf-chk"><input type="checkbox" id="pf-web" ${PF.web?'checked':''}> after reading a web page</label>
+          <button class="save" id="pf-go" ${PF.busy?'disabled':''}>Trace it</button></div>
+      </div>
+      <div id="pf-why">${pfWhy()}</div>
+      <div class="pf-h" style="margin-top:14px">Latest decisions</div>
+      <div class="pf-recent">${recent}</div>
+    </div>
+  </div>`;
+  const g=id=>box.querySelector(id);
+  g('#pf-who').onchange=e=>{PF.who=e.target.value};
+  g('#pf-tool').onchange=e=>{PF.tool=e.target.value};
+  g('#pf-detail').oninput=e=>{PF.detail=e.target.value};
+  g('#pf-detail').onkeydown=e=>{if(e.key==='Enter')pfTrace()};
+  g('#pf-surf').onchange=e=>{PF.surface=e.target.value};
+  g('#pf-web').onchange=e=>{PF.web=e.target.checked};
+  g('#pf-go').onclick=pfTrace;
+  box.querySelectorAll('.pf-row').forEach(b=>b.onclick=()=>{
+    const a=PF.recent[+b.dataset.i];PF.trace=null;PF.pick=PF.pick&&PF.pick.id===a.id?null:a;pfPaint(box)});
+}
+
+/* The sentence under the steps: what decided it, and the door to change it. */
+function pfWhy(){
+  const t=PF.trace,a=PF.pick;
+  if(!t&&!a)return '';
+  const eff=t?t.effect:a.effect,stage=t?t.stage:a.stage;
+  const label=(PF.stages.find(s=>s.key===stage)||{}).label||stage;
+  const reason=(t?t.reason:a.reason)||{allow:'Nothing stopped it.',ask:'A person is asked first.',deny:'It was refused.'}[eff]||'';
+  const what=t?`${esc(t.action)} <code>${esc(t.resource)}</code> · risk ${esc(t.risk)}${t.autonomy?' · autonomy '+esc(t.autonomy):''}`
+    :`${esc(a.action)} <code>${esc(a.resource)}</code> · via ${esc(a.surface||'?')} · ${new Date(a.ts*1000).toLocaleString()}`;
+  let doors='';
+  const gid=t?(t.grant&&t.grant.id):(/^[0-9a-f]{12}$/.test(a.rule||'')?a.rule:'');
+  if(gid){
+    const g=t&&t.grant;
+    doors=`<div class="pf-rule">Decided by a rule${g?`: <b>${esc(g.effect)}</b> ${esc(g.action)} <code>${esc(g.resource)}</code> <span class="badge">${esc(g.source||'user')}</span>`:''}
+      <button class="endbtn" onclick="permRevoke('${esc(gid)}')">Remove this rule</button></div>`;
+  }else if(stage==='default'){
+    doors=`<div class="pf-rule">No rule covers this yet.
+      <button class="endbtn" onclick="pfAttach('allow')">Always allow it</button>
+      <button class="endbtn" onclick="pfAttach('deny')">Always refuse it</button></div>`;
+  }else if(stage==='reach'){
+    doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('executors')()">Change its hands</button></div>`;
+  }else if(stage==='channel'){
+    doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('channels')()">Channel settings</button></div>`;
+  }else if(stage==='rate'){
+    doors=`<div class="pf-rule"><button class="endbtn" onclick="PERM.tab='quarantine';refreshApp('permissions')">Open Quarantine</button></div>`;
+  }else if(stage==='team'){
+    doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('team')()">Who may ask whom</button></div>`;
+  }
+  return `<div class="pf-why ${pfEffCls(eff)}">
+    <div class="pf-verdict"><b>${esc(pfEffWord(eff))}</b> at <b>${esc(label)}</b></div>
+    <div class="pf-what">${what}</div>
+    <div class="pf-reason">${esc(reason)}</div>${doors}</div>`;
+}
+
+async function pfTrace(){
+  if(PF.busy)return;PF.busy=true;
+  const [kind,...rest]=PF.who.split(':');
+  try{
+    const r=await fetch('/api/policy/trace',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({principal_kind:kind,principal_id:rest.join(':'),tool:PF.tool,
+        detail:PF.detail,surface:PF.surface,after_web:PF.web})});
+    const j=await r.json();
+    if(j.error)toast(j.error);else{PF.trace=j;PF.pick=null}
+  }catch(e){toast('could not reach the server')}
+  PF.busy=false;pfPaint();
+}
+
+/* "Always allow / refuse it": the Attach tab with who and the exact resource filled in. */
+function pfAttach(effect){
+  const t=PF.trace,a=PF.pick;
+  const kind=t?PF.who.split(':')[0]:a.principal_kind;
+  const id=t?PF.who.split(':').slice(1).join(':'):(a.principal_id||'');
+  const action=t?t.action:a.action,res=t?t.resource:a.resource;
+  if(kind==='user'&&!id){
+    // the main agent is not in the Attach list; write the rule directly
+    fetch('/api/grants',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({principal_kind:'user',principal_id:'',action,resource:res,effect,
+        note:'written from the Flow tab'})}).then(()=>{toast(effect==='deny'?'refused from now on':'allowed from now on');
+        PF.trace=null;PF.pick=null;refreshApp('permissions')});
+    return;
+  }
+  const p=(PERM.opts.principals||[]).find(x=>x.kind===kind&&x.id===id)||{kind,id,label:id||kind};
+  PERM.att={p,action,res:new Set(),effect,surf:new Set()};
+  PERM.tab='attach';refreshApp('permissions');
+  setTimeout(()=>{const c=$('#att-custom');if(c)c.value=res},50);
 }
 /* ================= skills app ================= */
 /* Curated open-source skills — every entry is MIT or Apache-2.0 licensed.

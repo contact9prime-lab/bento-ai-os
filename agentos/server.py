@@ -7997,6 +7997,79 @@ async def api_revoke_grant(gid: str):
     return {"ok": ok}
 
 
+def _trace_args(toolbox, tool: str, detail: str) -> dict:
+    """The one detail a person types (a command, a path, an address) under the
+    argument name this tool actually takes, so action_of reads it as a real call."""
+    if not detail:
+        return {}
+    props = {}
+    for t in toolbox.schemas():
+        if t["name"] == tool:
+            props = ((t.get("input_schema") or t.get("parameters") or {}).get("properties") or {})
+            break
+    for key in ("command", "path", "url", "query", "name", "agent", "to"):
+        if key in props:
+            return {key: detail}
+    return {next(iter(props)): detail} if props else {}
+
+
+@app.post("/api/policy/trace")
+async def api_policy_trace(body: dict):
+    """Walk one pretend tool call through the gate and say which step decided it.
+    It is a probe (audit=False): nothing runs, nothing is metered, no ledger row.
+    The agent loop's last word (ALWAYS_ASK, code from a specialist) is applied
+    here as it is there, so the answer is what a real call would get."""
+    from .policy import Principal, STAGES, stage_of
+    from .tools import ALWAYS_ASK, ASK_FROM_SPECIALISTS
+    toolbox, cfg, store = state["toolbox"], state["cfg"], state["store"]
+    pdp = getattr(toolbox, "pdp", None)
+    if pdp is None:
+        return JSONResponse({"error": "no permission engine is running"}, status_code=503)
+    kind = str(body.get("principal_kind") or "user")
+    if kind not in ("user", "app", "subagent", "flow", "team", "peer"):
+        return JSONResponse({"error": f"unknown kind of asker '{kind}'"}, status_code=400)
+    pid = "" if kind == "user" else str(body.get("principal_id") or "")
+    tool = str(body.get("tool") or "")
+    if tool not in {t["name"] for t in toolbox.schemas()}:
+        return JSONResponse({"error": f"no tool called '{tool}' here"}, status_code=400)
+    surface = str(body.get("surface") or "gui")
+    args = _trace_args(toolbox, tool, str(body.get("detail") or "")[:500])
+    taint = ([{"tool": "fetch_url", "source": "a web page it read"}]
+             if body.get("after_web") else [])
+    level, reason = toolbox.risk_of(tool, args)
+    base = toolbox.base_risk(tool, args) if hasattr(toolbox, "base_risk") else level
+    principal = Principal(kind, pid)
+    dec = pdp.decide_tool(principal, tool, args, level, reason=reason, base_risk=base,
+                          autonomy=cfg.get("autonomy", ""), surface=surface,
+                          taint=taint, audit=False)
+    effect, rule, why = dec.effect, dec.rule, dec.reason
+    if dec.effect == "allow" and dec.rule in ("default", "") and (
+            tool in ALWAYS_ASK or (tool in ASK_FROM_SPECIALISTS and kind == "subagent")):
+        effect, rule = "ask", "person"
+        why = "This is confirmed by a person every time, whatever the autonomy."
+    stage = stage_of(rule, dec.action)
+    grant = None
+    if re.fullmatch(r"[0-9a-f]{12}", rule or ""):
+        g = next((g for g in store.list_grants() if g.get("id") == rule), None)
+        if g:
+            grant = {k: g.get(k) for k in ("id", "principal_kind", "principal_id", "action",
+                                           "resource", "effect", "source", "note", "surfaces")}
+    keys = [s[0] for s in STAGES]
+    at = keys.index(stage)
+    steps = [{"key": k, "label": l, "about": a,
+              "state": "passed" if i < at else "decided" if i == at else "skipped"}
+             for i, (k, l, a) in enumerate(STAGES)]
+    return {"effect": effect, "rule": rule, "reason": why, "stage": stage,
+            "action": dec.action, "resource": dec.resource, "risk": base,
+            "autonomy": cfg.get("autonomy", "balanced"), "grant": grant, "steps": steps}
+
+
+@app.get("/api/policy/stages")
+async def api_policy_stages():
+    from .policy import STAGES
+    return {"stages": [{"key": k, "label": l, "about": a} for k, l, a in STAGES]}
+
+
 @app.get("/api/policy/options")
 async def api_policy_options():
     """Everything the Permissions composer can pick from: principals (apps, subagents,
@@ -9891,10 +9964,15 @@ async def api_media_capability():
 async def api_audit(limit: int = 300, effect: str = "", action: str = "",
                     principal_kind: str = "", surface: str = "", space: str = "",
                     since: float = 0.0, q: str = ""):
-    return {"entries": state["store"].audit_list(
+    from .policy import stage_of
+    rows = state["store"].audit_list(
         limit=min(int(limit), 2000), effect=effect, action=action,
         principal_kind=principal_kind, surface=surface, space=space,
-        since=since, q=q)}
+        since=since, q=q)
+    for r in rows:      # which step of the gate decided it (policy.STAGES)
+        r["stage"] = "" if str(r.get("action") or "").startswith("grant.") \
+            else stage_of(r.get("rule") or "", r.get("action") or "")
+    return {"entries": rows}
 
 
 @app.get("/api/audit/summary")

@@ -30,6 +30,7 @@ principal-scoped superset layered on top.
 import fnmatch
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
@@ -58,6 +59,44 @@ class Decision:
     action: str = ""    # stamped by decide() so enforcement sites can log verbosely
     resource: str = ""
     audit_id: str = ""  # the ledger row for this decision; stamp its outcome when the call returns
+
+
+# The gate's steps in the order `_decide` takes them, in words a person reads. The
+# Permissions app draws them as the flow a request goes through, and the Ledger says
+# which one decided each row. A request stops at the first step that decides, so
+# everything before it was passed and everything after it never looked.
+STAGES = (
+    ("hard", "Hard blocks", "Commands that would wreck the machine are always refused."),
+    ("builtin", "Built-in protection", "Apps, agents and other machines may never change the OS's own rules."),
+    ("reach", "Hands", "The tools, folders and sites this agent can reach at all."),
+    ("channel", "Channel", "A read-only channel may look but not change anything."),
+    ("taint", "Outside content", "After reading a web page or a mail, a change goes to you first."),
+    ("rate", "Speed limit", "Too many calls in a short time and it waits in Quarantine."),
+    ("team", "Team matrix", "Who may ask whom, between your agents and linked teams."),
+    ("rules", "Your rules", "Allow and deny rules, from you, a mission or a remembered approval."),
+    ("default", "Default", "Nothing matched, so autonomy decides or a person is asked."),
+    ("person", "Always a person", "Power, installs and code from a specialist are confirmed every time."),
+)
+_STAGE_OF_RULE = {
+    "hard-block": "hard", "audit-unavailable": "hard",
+    "builtin-deny": "builtin", "reach": "reach", "channel-read-only": "channel",
+    "taint": "taint", "quarantined": "rate", "steered": "rate",
+    "message-off": "team", "message-flow": "team", "department-same": "team",
+    "swarm": "default", "democracy": "default", "io-gate": "rules",
+    "person": "person",
+}
+
+
+def stage_of(rule: str, action: str = "") -> str:
+    """Which step of the gate a decision's rule belongs to (see STAGES). A grant id is
+    'your rules', except a matrix cell, which is the team's; any other named rule is a
+    default (default, roster, team-default, account-undeclared…)."""
+    rule = rule or "default"
+    if rule in _STAGE_OF_RULE:
+        return _STAGE_OF_RULE[rule]
+    if re.fullmatch(r"[0-9a-f]{12}", rule):       # a grants row (memory.add_grant)
+        return "team" if action == "agent.message" else "rules"
+    return "default"
 
 
 # Non-user principals may never do these, regardless of grants (same spirit as
