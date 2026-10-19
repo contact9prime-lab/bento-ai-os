@@ -57,7 +57,7 @@ def test_a_folded_app_is_not_a_window_or_a_tile():
 
 def test_each_host_draws_the_tab():
     perm, profile, jobs = _js("20-permissions.js"), _js("12-memory-profile.js"), _js("14a-jobs.js")
-    assert "['rules','Rules'],['ledger','Ledger']" in perm
+    assert "['ledger','Ledger'],['rules','Patterns']" in perm, "the old Policies app is the Patterns tab"
     assert "rules:b=>renderPolicies(b),ledger:b=>renderAudit(b,PERM.w)" in perm
     assert "['memory','Memory'],['graph','Graph'],['soul','Soul']" in profile
     assert "{memory:renderMemory,graph:renderKG,soul:renderSoul}" in profile

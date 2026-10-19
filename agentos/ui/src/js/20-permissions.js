@@ -11,14 +11,17 @@ async function renderPermissions(body,w){
       PERM.held=q.held||[];PERM.qhistory=(q.history||[]).filter(r=>r.released_at)}catch(e){PERM.held=[]}
   await loadConfig();
   const pending=PERM.apps.filter(a=>(a.manifest_status||'none')==='proposed').length;
-  body.innerHTML=`<div class="apptop" style="gap:6px">
-    ${[['flow','Flow'],['map','Map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
-       ['quarantine','Quarantine'+(PERM.held.length?' ('+PERM.held.length+')':'')],
-       ['rules','Rules'],['ledger','Ledger'],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${(t==='review'&&pending)||(t==='quarantine'&&PERM.held.length)?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
-    <input id="perm-q" placeholder="search apps, agents, rules…" style="flex:1;max-width:250px;margin-left:auto" value="${esc(PERM.q)}">
+  // Seven views and one action. The tabs are a segmented control (one row, scrolls on a
+  // phone), the counts are badges, and adding a rule is a button, not a tab.
+  const tabs=[['flow','Flow'],['map','Map'],['grants','Rules',PERM.grants.filter(g=>!g.revoked_at).length+((cfg&&cfg.policies)||[]).length,''],
+    ['review','Apps',pending,'warn'],['quarantine','Quarantine',PERM.held.length,'err'],['ledger','Ledger'],['rules','Patterns']];
+  body.innerHTML=`<div class="apptop perm-top">
+    <span class="seg perm-seg" role="tablist">${tabs.map(([t,l,n,tone])=>`<button class="perm-tab${PERM.tab===t?' on':''}" data-t="${t}" role="tab" aria-selected="${PERM.tab===t}">${l}${n?`<i class="perm-n ${tone||''}">${n}</i>`:''}</button>`).join('')}</span>
+    <input id="perm-q" class="perm-q" placeholder="Search apps, agents, rules…" value="${esc(PERM.q)}">
+    <button class="endbtn perm-add${PERM.tab==='attach'?' on':''}" data-t="attach">＋ Add a rule</button>
   </div>
   <div id="perm-body" style="flex:1;overflow-y:auto;padding:12px 14px"></div>`;
-  body.querySelectorAll('.perm-tab').forEach(b=>b.onclick=()=>{PERM.tab=b.dataset.t;renderPermissions(body)});
+  body.querySelectorAll('.perm-tab,.perm-add').forEach(b=>b.onclick=()=>{PERM.tab=b.dataset.t;renderPermissions(body)});
   $('#perm-q').oninput=e=>{PERM.q=e.target.value;permBody()};
   permBody();
 }
@@ -54,47 +57,78 @@ function permLasts(g){
   if(g.expires_at*1000<Date.now())return '<span class="badge err">expired</span>';
   return `<span class="badge" title="${esc(t.toLocaleString())}">until ${esc(t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</span>`;
 }
+/* Rules: every grant, grouped by who it is for, each a sentence (pmRuleRow, shared with
+   the map). Filters are by effect and by where the rule came from, which is the
+   question people actually ask ("what did that mission give itself?"). A group of
+   team-matrix cells is folded, because they are most of the rows on a machine with a
+   company and say one thing: who may ask whom. */
+var PERM_SRC=[['all','Everything'],['user','You'],['definition','Missions'],['matrix','Team matrix'],['manifest','App manifests'],['remembered','Remembered']];
+function permSrcKey(g){const ref=String(g.source_ref||'');
+  if(ref.startsWith('conv:')||g.source==='remembered')return 'remembered';
+  return ['user','definition','matrix','manifest'].includes(g.source||'user')?(g.source||'user'):'other'}
 function permGrantsView(box){
-  const q=PERM.q.toLowerCase();
-  const gs=PERM.grants.filter(g=>{
-    const s=(permPrincipalLabel(g.principal_kind,g.principal_id)+' '+g.action+' '+g.resource+' '+(g.note||'')+' '+(g.source||'')).toLowerCase();
-    return !q||s.includes(q)});
-  box.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-    <span class="mut">${gs.length} rule${gs.length===1?'':'s'} — click an effect pill to flip allow/deny</span>
-    <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);cursor:pointer"><input type="checkbox" id="perm-rev" ${PERM.showRevoked?'checked':''}> show revoked</label></div>
-  ${gs.map(g=>{
-    const dead=!!g.revoked_at;
-    const lbl=permPrincipalLabel(g.principal_kind,g.principal_id);
-    return `<div class="item" style="${dead?'opacity:.45':''}">
-      <span style="width:22px;height:22px;border-radius:6px;background:${tileBg(g.principal_id||g.principal_kind)};flex:0 0 22px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${esc((lbl.replace(/^[a-z]+ "/,'')[0]||'?').toUpperCase())}</span>
-      <div class="grow" style="min-width:0"><b style="font-size:12.5px">${esc(lbl)}</b>
-        <div style="font-family:var(--mono);font-size:12px;word-break:break-all">${esc(g.action)} · ${esc(g.resource)}</div>
-        ${g.note?`<div class="mut" style="font-size:11px">${esc(g.note)}</div>`:''}</div>
-      ${permLasts(g)}<span class="badge">${esc(g.source||'user')}</span>
-      ${dead?'<span class="badge err">revoked</span>'
-        :`${permSurfBadge(g)}
-         <button class="badge ${g.effect==='deny'?'err':'ok'}" style="cursor:pointer" title="flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')">${g.effect}</button>
-         <button onclick="permRevoke('${g.id}')" title="revoke">✕</button>`}
-    </div>`}).join('')||'<p class="mut">nothing matches</p>'}`;
+  PERM.gf=PERM.gf||{eff:'all',src:'all'};
+  const f=PERM.gf,q=PERM.q.toLowerCase();
+  const ps=permPrincipals().map(p=>({...p,name:pmWhoLabel(p)}));
+  // revoked rows are only in PERM.grants when "show removed" is on; permPrincipals drops them
+  const dead=PERM.showRevoked?PERM.grants.filter(g=>g.revoked_at):[];
+  const keep=g=>(f.eff==='all'||(f.eff==='deny')===(g.effect==='deny'))&&(f.src==='all'||permSrcKey(g)===f.src)
+    &&(!q||(pmSay(g)+' '+g.action+' '+g.resource+' '+(g.note||'')+' '+pmSource(g)).toLowerCase().includes(q));
+  const counts={};PERM_SRC.forEach(([k])=>counts[k]=0);
+  ps.forEach(p=>p.grants.forEach(g=>{counts.all++;counts[permSrcKey(g)]=(counts[permSrcKey(g)]||0)+1}));
+  const groups=ps.map(p=>{
+    const mine=dead.filter(g=>g.principal_kind===p.kind&&(g.principal_id||'')===(p.id||''));
+    const gs=[...p.grants,...mine].filter(g=>keep(g)||(q&&p.name.toLowerCase().includes(q)&&(f.eff==='all'||(f.eff==='deny')===(g.effect==='deny'))));
+    return {p,gs}}).filter(x=>x.gs.length);
+  const total=groups.reduce((n,x)=>n+x.gs.length,0);
+  const openAll=!!q||groups.length<=4||f.src!=='all'||f.eff!=='all';
+  const kind={user:'your agent',subagent:'specialist',flow:'mission',app:'app',team:'linked team'};
+  box.innerHTML=`<div class="pr-bar">
+      <span class="seg">${[['all','All'],['allow','Allows'],['deny','Refuses']].map(([k,l])=>`<button class="${f.eff===k?'on':''}" onclick="PERM.gf.eff='${k}';permBody()">${l}</button>`).join('')}</span>
+      <span class="pr-chips">${PERM_SRC.filter(([k])=>k==='all'||counts[k]).map(([k,l])=>`<button class="pr-chip${f.src===k?' on':''}" onclick="PERM.gf.src='${k}';permBody()">${l} <i>${counts[k]}</i></button>`).join('')}</span>
+      <label class="pr-rev"><input type="checkbox" id="perm-rev" ${PERM.showRevoked?'checked':''}> show removed</label>
+    </div>
+    <p class="mut pr-sum">${total} rule${total===1?'':'s'} for ${groups.length} ${groups.length===1?'agent or app':'agents and apps'}. Tap ✓ or ✕ to switch a rule; anything not listed asks first.</p>
+    ${groups.map(({p,gs},i)=>{
+      const live=gs.filter(g=>!g.revoked_at),d=live.filter(g=>g.effect==='deny').length;
+      const cells=gs.filter(g=>g.source==='matrix'),rest=gs.filter(g=>g.source!=='matrix');
+      const fold=cells.length>6&&f.src!=='matrix';
+      return `<details class="pr-grp"${openAll||i<2?' open':''}>
+        <summary><span class="pm-av" style="background:${tileBg(p.id||p.kind)}">${esc((p.name[0]||'?').toUpperCase())}</span>
+          <b>${esc(p.name)}</b><span class="mut">${esc(kind[p.kind]||p.kind)}</span>
+          <span class="pm-ct">${live.length-d?`<i class="ok">${live.length-d} allow</i>`:''}${d?`<i class="no">${d} refuse</i>`:''}</span></summary>
+        <div class="pr-rows">${(fold?rest:gs).map(g=>pmRuleRow(g)).join('')}
+          ${fold?`<details class="pr-cells"><summary>Team matrix: may ask ${cells.filter(g=>g.effect!=='deny').length} agent${cells.length===1?'':'s'}${cells.some(g=>g.effect==='deny')?`, may not ask ${cells.filter(g=>g.effect==='deny').length}`:''}</summary>${cells.map(g=>pmRuleRow(g)).join('')}</details>`:''}</div>
+      </details>`}).join('')||emptyBox('Nothing matches','Try another filter, or clear the search.')}`;
   const cb=$('#perm-rev');if(cb)cb.onchange=e=>{PERM.showRevoked=e.target.checked;refreshApp('permissions')};
 }
+/* Apps: what each app asked for. Waiting for you first (that is the only thing here that
+   needs a decision), then approved, then the ones that never declared anything, folded. */
 function permReview(box){
   const q=PERM.q.toLowerCase();
-  const apps=PERM.apps.filter(a=>!q||(a.name||'').toLowerCase().includes(q));
-  box.innerHTML=`<p class="mut" style="margin-bottom:10px">Each app's declared permissions. Review pending proposals, or (re)scan an app's source to draft its manifest.</p>
-  ${apps.map(a=>{
-    const st=a.manifest_status||'none';
-    const legacy=PERM.grants.some(g=>!g.revoked_at&&g.principal_kind==='app'&&g.principal_id===a.id&&g.source==='legacy');
-    const n=PERM.grants.filter(g=>!g.revoked_at&&g.principal_kind==='app'&&g.principal_id===a.id).length;
-    const stBadge=st==='approved'?'<span class="badge ok">approved</span>':st==='proposed'?'<span class="badge err">awaiting review</span>':'<span class="badge">no manifest</span>';
-    return `<div class="item">
-      <span style="width:26px;height:26px;border-radius:7px;background:${tileBg(a.id)};flex:0 0 26px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${esc((a.name[0]||'?').toUpperCase())}</span>
-      <div class="grow" style="min-width:0"><b>${esc(a.name)}</b> ${stBadge} ${legacy?'<span class="badge err">legacy full access</span>':''}
-        <div class="mut" style="font-size:11px">${n} active rule${n===1?'':'s'}${a.description?' · '+esc(a.description):''}</div></div>
-      ${st==='proposed'?`<button class="save" style="margin:0" onclick="reviewManifest('${a.id}')">Review</button>`:''}
-      <button class="endbtn" onclick="permRescan('${a.id}')">${st==='none'?'Scan':'Rescan'}</button>
-      <button class="endbtn" onclick="window.open('/api/apps/${a.id}/export')">Export</button>
-    </div>`}).join('')||'<p class="mut">no apps installed</p>'}`;
+  const apps=PERM.apps.filter(a=>!q||(a.name||'').toLowerCase().includes(q)||(a.description||'').toLowerCase().includes(q));
+  const live=a=>PERM.grants.filter(g=>!g.revoked_at&&g.principal_kind==='app'&&g.principal_id===a.id);
+  const row=(a,kind)=>{
+    const gs=live(a),full=gs.some(g=>g.action==='*'&&g.source==='legacy');
+    return `<div class="pa-row">
+      <span class="pm-av" style="background:${tileBg(a.id)}">${esc(((a.name||'?')[0]).toUpperCase())}</span>
+      <div class="pa-txt"><span class="pa-name"><b>${esc(a.name)}</b>${full?'<span class="badge err">full access</span>':''}</span>
+        <span class="mut">${a.description?esc(a.description):''}</span>
+        <span class="pa-meta">${gs.length?gs.length+' rule'+(gs.length===1?'':'s')+' · '+esc(pmSay(gs[0]).replace(/^may /,'can '))+(gs.length>1?' and more':''):'no rules: asks first for everything'}</span></div>
+      <span class="pa-acts">
+        ${kind==='wait'?`<button class="endbtn pa-go" onclick="reviewManifest('${a.id}')">Review</button>`:''}
+        ${gs.length?`<button class="endbtn" onclick="PERM.sel='who:app:${a.id}';PERM.tab='map';refreshApp('permissions')">Its rules</button>`:''}
+        <button class="endbtn" title="${kind==='none'?'Read the app and draft the permissions it needs':'Read the app again and draft its permissions'}" onclick="permRescan('${a.id}')">${kind==='none'?'Scan':'Rescan'}</button>
+        <button class="pm-x" title="Export ${esc(a.name)}" aria-label="Export" onclick="window.open('/api/apps/${a.id}/export')">⤓</button>
+      </span></div>`};
+  const wait=apps.filter(a=>(a.manifest_status||'none')==='proposed');
+  const ok=apps.filter(a=>a.manifest_status==='approved');
+  const none=apps.filter(a=>!['proposed','approved'].includes(a.manifest_status||'none'));
+  box.innerHTML=`<p class="mut pr-sum">Each app says what it needs in a manifest. You approve it once, and it can then do exactly that and nothing more.</p>
+    ${wait.length?`<div class="pa-sec warn"><div class="pm-sech">Waiting for you <span class="mut">${wait.length}</span></div>${wait.map(a=>row(a,'wait')).join('')}</div>`:''}
+    ${ok.length?`<div class="pa-sec"><div class="pm-sech">Approved <span class="mut">${ok.length}</span></div>${ok.map(a=>row(a,'ok')).join('')}</div>`:''}
+    ${none.length?`<details class="pa-sec"${q||(!wait.length&&!ok.length)?' open':''}><summary class="pm-sech">No manifest yet <span class="mut">${none.length}</span></summary>${none.map(a=>row(a,'none')).join('')}</details>`:''}
+    ${apps.length?'':emptyBox('No apps','Apps you build or install show up here with what they asked for.')}`;
 }
 async function permRescan(aid){
   const r=await fetch('/api/apps/'+aid+'/manifest/propose',{method:'POST'});

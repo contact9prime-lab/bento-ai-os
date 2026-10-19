@@ -5807,6 +5807,63 @@ body.dev-mobile .pm-what .pm-node{width:auto;flex:1 1 140px}
 .pm-x{flex:0 0 auto;width:var(--tap,28px);height:var(--tap,28px);border-radius:8px;border:1px solid transparent;
   background:transparent;color:var(--dim);cursor:pointer}
 .pm-x:hover{color:var(--err);border-color:color-mix(in srgb,var(--err) 50%,transparent)}
+
+/* ---- the Permissions header: one row of tabs, search, and the one action ---- */
+.perm-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.perm-seg{max-width:100%;overflow-x:auto;scrollbar-width:none}
+.perm-seg button{display:inline-flex;align-items:center;gap:6px;min-height:var(--tap,30px)}
+.perm-n{font-style:normal;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:8px;
+  background:color-mix(in srgb,var(--txt) 12%,transparent);color:var(--dim)}
+.perm-n.warn{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
+.perm-n.err{background:color-mix(in srgb,var(--err) 22%,transparent);color:var(--err)}
+.perm-q{flex:1 1 180px;max-width:280px;margin-left:auto}
+.perm-add{flex:0 0 auto;color:var(--acc);border-color:color-mix(in srgb,var(--acc) 45%,var(--line,#232a35))}
+.perm-add.on{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+
+/* ---- Rules: filters, then one folding group per agent or app ---- */
+.pr-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.pr-chips{display:flex;gap:6px;flex-wrap:wrap}
+.pr-chip{display:inline-flex;align-items:center;gap:6px;min-height:var(--tap,28px);padding:3px 10px;border-radius:14px;
+  font-size:12px;border:1px solid var(--line,#232a35);background:transparent;color:var(--dim);cursor:pointer}
+.pr-chip i{font-style:normal;font-size:10.5px;opacity:.8}
+.pr-chip.on{color:var(--txt);border-color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.pr-rev{display:flex;align-items:center;gap:6px;margin:0 0 0 auto;font-size:12px;font-weight:400}
+.pr-sum{font-size:12px;margin:2px 0 10px}
+.pr-grp{border:1px solid var(--line,#232a35);border-radius:12px;background:var(--card,#171b22);margin-bottom:8px}
+.pr-grp>summary{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;list-style:none;min-height:var(--tap,36px)}
+.pr-grp>summary::-webkit-details-marker{display:none}
+.pr-grp>summary::before{content:'›';color:var(--dim);transition:transform .15s;display:inline-block;width:10px}
+.pr-grp[open]>summary::before{transform:rotate(90deg)}
+.pr-grp>summary .pm-ct{margin-left:auto}
+.pr-grp>summary .mut{font-size:11.5px}
+.pr-rows{padding:0 10px 8px}
+.pr-cells{margin-top:4px}
+.pr-cells>summary{font-size:12px;color:var(--dim);cursor:pointer;padding:6px 4px;min-height:var(--tap,28px)}
+.pm-rule.dead{opacity:.5}
+
+/* ---- Apps: waiting for you, approved, no manifest ---- */
+.pa-sec{margin-bottom:14px}
+.pa-sec>summary{cursor:pointer;list-style:none;min-height:var(--tap,28px)}
+.pa-sec.warn .pa-row{border-color:color-mix(in srgb,var(--warn) 40%,var(--line,#232a35))}
+.pa-row{display:flex;align-items:center;gap:12px;padding:9px 12px;margin-bottom:6px;border-radius:12px;
+  border:1px solid var(--line,#232a35);background:var(--card,#171b22)}
+.pa-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pa-txt b{font-size:13px}
+.pa-txt .mut{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pa-meta{font-size:11px;color:var(--dim)}
+.pa-acts{flex:0 0 auto;display:flex;align-items:center;gap:6px}
+.pa-go{color:var(--acc);border-color:var(--acc)}
+body.dev-mobile .pa-row{flex-wrap:wrap}
+body.dev-mobile .pa-acts{width:100%;justify-content:flex-end}
+body.dev-mobile .perm-q{max-width:none;margin-left:0}
+
+/* ---- Ledger rows: the time first, so "when" is read before "what" ---- */
+.aud-row{align-items:flex-start}
+.aud-when{flex:0 0 64px;display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;padding-top:1px}
+.aud-when b{font-size:13px;font-variant-numeric:tabular-nums}
+.aud-when span{font-size:10.5px;color:var(--dim)}
+.pa-name{display:flex;align-items:center;gap:8px;min-width:0}
+.pa-name b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -26384,7 +26441,7 @@ async function delPolicy(i){
    same thing.
 
    `var`, not `let` — see the note at the top of 25a-gallery.js. */
-var audFilter={effect:'',action:'',principal_kind:'',surface:'',q:'',since:24};
+var audFilter={effect:'',action:'',principal_kind:'',surface:'',q:'',since:24,here:false};
 
 /* The ledger is hash-chained (memory.audit_verify); this asks the server to walk it.
    Admin-only on a machine with accounts, and the refusal says so. */
@@ -26404,11 +26461,16 @@ async function renderAudit(body,w){
     if(k==='since')qs.set('since',String(Math.floor(Date.now()/1000-v*3600)));
     else qs.set(k,v);
   });
-  if(activeSpace&&activeSpace())qs.set('space',activeSpace());
+  // The ledger is the whole record, so it shows every space unless you narrow it to the
+  // one you are in; the counts above and the list below always use the same filter
+  // (they did not, and "2 denied" sat over "Nothing in this period").
+  qs.delete('here');
+  const sp=audFilter.here&&typeof activeSpace==='function'?activeSpace():'';
+  if(sp)qs.set('space',sp);
   const since=audFilter.since?Math.floor(Date.now()/1000-audFilter.since*3600):0;
   const [d,sum]=await Promise.all([
     fetch('/api/audit?limit=400&'+qs).then(r=>r.json()).catch(()=>({entries:[]})),
-    fetch('/api/audit/summary?since='+since).then(r=>r.json()).catch(()=>({effects:{}}))]);
+    fetch('/api/audit/summary?since='+since+(sp?'&space='+encodeURIComponent(sp):'')).then(r=>r.json()).catch(()=>({effects:{}}))]);
   const e=sum.effects||{};
   const RANGE=[[1,'1h'],[24,'24h'],[168,'7d'],[720,'30d'],[0,'All']];
   const pb=panelShell(body,{
@@ -26433,11 +26495,14 @@ async function renderAudit(body,w){
         ${['gui','tui','telegram','whatsapp','api','task','webhook','team'].map(k=>
           `<option value="${k}" ${audFilter.surface===k?'selected':''}>${k}</option>`).join('')}
       </select>
+      ${typeof activeSpace==='function'&&activeSpace()?`<span class="seg" title="Which space's decisions to show"><button class="${audFilter.here?'':'on'}" onclick="audSet('here',false)">Every space</button><button class="${audFilter.here?'on':''}" onclick="audSet('here',true)">This space</button></span>`:''}
       <button class="endbtn" onclick="audVerify(this)" title="Every row is chained to the one before it, so an edited or deleted row shows up here">Check the chain</button>`,
   });
   const q=$('#aud-q');
   if(q){q.value=audFilter.q;q.oninput=audSearch}
   const stat=(n,l,cls)=>`<div class="stat" style="text-align:center"><div class="val ${cls||''}">${n||0}</div><div class="lbl">${l}</div></div>`;
+  // "denied" or "asked" means decisions: a rule written as a deny is a change, not a refusal
+  if(audFilter.effect)d.entries=(d.entries||[]).filter(a=>!String(a.action||'').startsWith('grant.'));
   AUD_ROWS=d.entries||[];
   const rows=(d.entries||[]).map(a=>{
     // a permission change records the rule it wrote; it is not a decision allowed or refused
@@ -26445,13 +26510,18 @@ async function renderAudit(body,w){
     const cls=change?'':a.effect==='deny'?'audden':a.effect==='ask'?'audask':'audok';
     const who=a.principal_id?`${a.principal_kind}:${a.principal_id}`:a.principal_kind;
     const out=a.outcome&&a.outcome!=='ok'?`<span class="badge">${esc(a.outcome)}</span>`:'';
-    return `<div class="item">
+    const t=new Date(a.ts*1000),today=new Date().toDateString()===t.toDateString();
+    const yest=new Date(Date.now()-864e5).toDateString()===t.toDateString();
+    const day=today?'today':yest?'yesterday':t.toLocaleDateString([],{day:'numeric',month:'short'});
+    const where=!audFilter.here&&a.space_id&&typeof spaceName==='function'?`<span class="badge" title="the space it happened in">${esc(spaceName(a.space_id))}</span>`:'';
+    return `<div class="item aud-row">
+      <div class="aud-when" title="${esc(t.toLocaleString())}"><b>${esc(t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</b><span>${esc(day)}</span></div>
       <span class="audpill ${cls}"${change?` title="a ${esc(a.effect||'')} rule was ${a.action==='grant.revoke'?'removed':'written'}"`:''}>${change?'changed':esc(a.effect||'?')}</span>
-      <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out}
+      <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out} ${where}
         <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · ${a.stage
           ?`<a href="#" class="aud-at" onclick="audPath(event,'${esc(a.id)}')" title="see the path it took through the gate">decided at ${esc(audStage(a.stage))}</a>`
           :'rule '+esc(a.rule||'default')}
-          ${a.duration_ms?' · '+a.duration_ms+'ms':''} · ${new Date(a.ts*1000).toLocaleString()}
+          ${a.duration_ms?' · '+a.duration_ms+'ms':''}
           ${a.reason?'<br>'+esc(a.reason):''}${a.detail?'<br>'+esc(a.detail.slice(0,200)):''}</div></div></div>`;
   }).join('');
   const denied=(sum.top_denied||[]).slice(0,5);
@@ -26497,14 +26567,17 @@ async function renderPermissions(body,w){
       PERM.held=q.held||[];PERM.qhistory=(q.history||[]).filter(r=>r.released_at)}catch(e){PERM.held=[]}
   await loadConfig();
   const pending=PERM.apps.filter(a=>(a.manifest_status||'none')==='proposed').length;
-  body.innerHTML=`<div class="apptop" style="gap:6px">
-    ${[['flow','Flow'],['map','Map'],['grants','All grants'],['review','Review'+(pending?' ('+pending+')':'')],
-       ['quarantine','Quarantine'+(PERM.held.length?' ('+PERM.held.length+')':'')],
-       ['rules','Rules'],['ledger','Ledger'],['attach','＋ Attach']].map(([t,l])=>`<button class="endbtn perm-tab${PERM.tab===t?' on':''}" data-t="${t}" ${(t==='review'&&pending)||(t==='quarantine'&&PERM.held.length)?'style="color:var(--err,#f87171)"':''}>${l}</button>`).join('')}
-    <input id="perm-q" placeholder="search apps, agents, rules…" style="flex:1;max-width:250px;margin-left:auto" value="${esc(PERM.q)}">
+  // Seven views and one action. The tabs are a segmented control (one row, scrolls on a
+  // phone), the counts are badges, and adding a rule is a button, not a tab.
+  const tabs=[['flow','Flow'],['map','Map'],['grants','Rules',PERM.grants.filter(g=>!g.revoked_at).length+((cfg&&cfg.policies)||[]).length,''],
+    ['review','Apps',pending,'warn'],['quarantine','Quarantine',PERM.held.length,'err'],['ledger','Ledger'],['rules','Patterns']];
+  body.innerHTML=`<div class="apptop perm-top">
+    <span class="seg perm-seg" role="tablist">${tabs.map(([t,l,n,tone])=>`<button class="perm-tab${PERM.tab===t?' on':''}" data-t="${t}" role="tab" aria-selected="${PERM.tab===t}">${l}${n?`<i class="perm-n ${tone||''}">${n}</i>`:''}</button>`).join('')}</span>
+    <input id="perm-q" class="perm-q" placeholder="Search apps, agents, rules…" value="${esc(PERM.q)}">
+    <button class="endbtn perm-add${PERM.tab==='attach'?' on':''}" data-t="attach">＋ Add a rule</button>
   </div>
   <div id="perm-body" style="flex:1;overflow-y:auto;padding:12px 14px"></div>`;
-  body.querySelectorAll('.perm-tab').forEach(b=>b.onclick=()=>{PERM.tab=b.dataset.t;renderPermissions(body)});
+  body.querySelectorAll('.perm-tab,.perm-add').forEach(b=>b.onclick=()=>{PERM.tab=b.dataset.t;renderPermissions(body)});
   $('#perm-q').oninput=e=>{PERM.q=e.target.value;permBody()};
   permBody();
 }
@@ -26540,47 +26613,78 @@ function permLasts(g){
   if(g.expires_at*1000<Date.now())return '<span class="badge err">expired</span>';
   return `<span class="badge" title="${esc(t.toLocaleString())}">until ${esc(t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</span>`;
 }
+/* Rules: every grant, grouped by who it is for, each a sentence (pmRuleRow, shared with
+   the map). Filters are by effect and by where the rule came from, which is the
+   question people actually ask ("what did that mission give itself?"). A group of
+   team-matrix cells is folded, because they are most of the rows on a machine with a
+   company and say one thing: who may ask whom. */
+var PERM_SRC=[['all','Everything'],['user','You'],['definition','Missions'],['matrix','Team matrix'],['manifest','App manifests'],['remembered','Remembered']];
+function permSrcKey(g){const ref=String(g.source_ref||'');
+  if(ref.startsWith('conv:')||g.source==='remembered')return 'remembered';
+  return ['user','definition','matrix','manifest'].includes(g.source||'user')?(g.source||'user'):'other'}
 function permGrantsView(box){
-  const q=PERM.q.toLowerCase();
-  const gs=PERM.grants.filter(g=>{
-    const s=(permPrincipalLabel(g.principal_kind,g.principal_id)+' '+g.action+' '+g.resource+' '+(g.note||'')+' '+(g.source||'')).toLowerCase();
-    return !q||s.includes(q)});
-  box.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-    <span class="mut">${gs.length} rule${gs.length===1?'':'s'} — click an effect pill to flip allow/deny</span>
-    <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);cursor:pointer"><input type="checkbox" id="perm-rev" ${PERM.showRevoked?'checked':''}> show revoked</label></div>
-  ${gs.map(g=>{
-    const dead=!!g.revoked_at;
-    const lbl=permPrincipalLabel(g.principal_kind,g.principal_id);
-    return `<div class="item" style="${dead?'opacity:.45':''}">
-      <span style="width:22px;height:22px;border-radius:6px;background:${tileBg(g.principal_id||g.principal_kind)};flex:0 0 22px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${esc((lbl.replace(/^[a-z]+ "/,'')[0]||'?').toUpperCase())}</span>
-      <div class="grow" style="min-width:0"><b style="font-size:12.5px">${esc(lbl)}</b>
-        <div style="font-family:var(--mono);font-size:12px;word-break:break-all">${esc(g.action)} · ${esc(g.resource)}</div>
-        ${g.note?`<div class="mut" style="font-size:11px">${esc(g.note)}</div>`:''}</div>
-      ${permLasts(g)}<span class="badge">${esc(g.source||'user')}</span>
-      ${dead?'<span class="badge err">revoked</span>'
-        :`${permSurfBadge(g)}
-         <button class="badge ${g.effect==='deny'?'err':'ok'}" style="cursor:pointer" title="flip to ${g.effect==='deny'?'allow':'deny'}" onclick="permToggle('${g.id}','${g.effect==='deny'?'allow':'deny'}')">${g.effect}</button>
-         <button onclick="permRevoke('${g.id}')" title="revoke">✕</button>`}
-    </div>`}).join('')||'<p class="mut">nothing matches</p>'}`;
+  PERM.gf=PERM.gf||{eff:'all',src:'all'};
+  const f=PERM.gf,q=PERM.q.toLowerCase();
+  const ps=permPrincipals().map(p=>({...p,name:pmWhoLabel(p)}));
+  // revoked rows are only in PERM.grants when "show removed" is on; permPrincipals drops them
+  const dead=PERM.showRevoked?PERM.grants.filter(g=>g.revoked_at):[];
+  const keep=g=>(f.eff==='all'||(f.eff==='deny')===(g.effect==='deny'))&&(f.src==='all'||permSrcKey(g)===f.src)
+    &&(!q||(pmSay(g)+' '+g.action+' '+g.resource+' '+(g.note||'')+' '+pmSource(g)).toLowerCase().includes(q));
+  const counts={};PERM_SRC.forEach(([k])=>counts[k]=0);
+  ps.forEach(p=>p.grants.forEach(g=>{counts.all++;counts[permSrcKey(g)]=(counts[permSrcKey(g)]||0)+1}));
+  const groups=ps.map(p=>{
+    const mine=dead.filter(g=>g.principal_kind===p.kind&&(g.principal_id||'')===(p.id||''));
+    const gs=[...p.grants,...mine].filter(g=>keep(g)||(q&&p.name.toLowerCase().includes(q)&&(f.eff==='all'||(f.eff==='deny')===(g.effect==='deny'))));
+    return {p,gs}}).filter(x=>x.gs.length);
+  const total=groups.reduce((n,x)=>n+x.gs.length,0);
+  const openAll=!!q||groups.length<=4||f.src!=='all'||f.eff!=='all';
+  const kind={user:'your agent',subagent:'specialist',flow:'mission',app:'app',team:'linked team'};
+  box.innerHTML=`<div class="pr-bar">
+      <span class="seg">${[['all','All'],['allow','Allows'],['deny','Refuses']].map(([k,l])=>`<button class="${f.eff===k?'on':''}" onclick="PERM.gf.eff='${k}';permBody()">${l}</button>`).join('')}</span>
+      <span class="pr-chips">${PERM_SRC.filter(([k])=>k==='all'||counts[k]).map(([k,l])=>`<button class="pr-chip${f.src===k?' on':''}" onclick="PERM.gf.src='${k}';permBody()">${l} <i>${counts[k]}</i></button>`).join('')}</span>
+      <label class="pr-rev"><input type="checkbox" id="perm-rev" ${PERM.showRevoked?'checked':''}> show removed</label>
+    </div>
+    <p class="mut pr-sum">${total} rule${total===1?'':'s'} for ${groups.length} ${groups.length===1?'agent or app':'agents and apps'}. Tap ✓ or ✕ to switch a rule; anything not listed asks first.</p>
+    ${groups.map(({p,gs},i)=>{
+      const live=gs.filter(g=>!g.revoked_at),d=live.filter(g=>g.effect==='deny').length;
+      const cells=gs.filter(g=>g.source==='matrix'),rest=gs.filter(g=>g.source!=='matrix');
+      const fold=cells.length>6&&f.src!=='matrix';
+      return `<details class="pr-grp"${openAll||i<2?' open':''}>
+        <summary><span class="pm-av" style="background:${tileBg(p.id||p.kind)}">${esc((p.name[0]||'?').toUpperCase())}</span>
+          <b>${esc(p.name)}</b><span class="mut">${esc(kind[p.kind]||p.kind)}</span>
+          <span class="pm-ct">${live.length-d?`<i class="ok">${live.length-d} allow</i>`:''}${d?`<i class="no">${d} refuse</i>`:''}</span></summary>
+        <div class="pr-rows">${(fold?rest:gs).map(g=>pmRuleRow(g)).join('')}
+          ${fold?`<details class="pr-cells"><summary>Team matrix: may ask ${cells.filter(g=>g.effect!=='deny').length} agent${cells.length===1?'':'s'}${cells.some(g=>g.effect==='deny')?`, may not ask ${cells.filter(g=>g.effect==='deny').length}`:''}</summary>${cells.map(g=>pmRuleRow(g)).join('')}</details>`:''}</div>
+      </details>`}).join('')||emptyBox('Nothing matches','Try another filter, or clear the search.')}`;
   const cb=$('#perm-rev');if(cb)cb.onchange=e=>{PERM.showRevoked=e.target.checked;refreshApp('permissions')};
 }
+/* Apps: what each app asked for. Waiting for you first (that is the only thing here that
+   needs a decision), then approved, then the ones that never declared anything, folded. */
 function permReview(box){
   const q=PERM.q.toLowerCase();
-  const apps=PERM.apps.filter(a=>!q||(a.name||'').toLowerCase().includes(q));
-  box.innerHTML=`<p class="mut" style="margin-bottom:10px">Each app's declared permissions. Review pending proposals, or (re)scan an app's source to draft its manifest.</p>
-  ${apps.map(a=>{
-    const st=a.manifest_status||'none';
-    const legacy=PERM.grants.some(g=>!g.revoked_at&&g.principal_kind==='app'&&g.principal_id===a.id&&g.source==='legacy');
-    const n=PERM.grants.filter(g=>!g.revoked_at&&g.principal_kind==='app'&&g.principal_id===a.id).length;
-    const stBadge=st==='approved'?'<span class="badge ok">approved</span>':st==='proposed'?'<span class="badge err">awaiting review</span>':'<span class="badge">no manifest</span>';
-    return `<div class="item">
-      <span style="width:26px;height:26px;border-radius:7px;background:${tileBg(a.id)};flex:0 0 26px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${esc((a.name[0]||'?').toUpperCase())}</span>
-      <div class="grow" style="min-width:0"><b>${esc(a.name)}</b> ${stBadge} ${legacy?'<span class="badge err">legacy full access</span>':''}
-        <div class="mut" style="font-size:11px">${n} active rule${n===1?'':'s'}${a.description?' · '+esc(a.description):''}</div></div>
-      ${st==='proposed'?`<button class="save" style="margin:0" onclick="reviewManifest('${a.id}')">Review</button>`:''}
-      <button class="endbtn" onclick="permRescan('${a.id}')">${st==='none'?'Scan':'Rescan'}</button>
-      <button class="endbtn" onclick="window.open('/api/apps/${a.id}/export')">Export</button>
-    </div>`}).join('')||'<p class="mut">no apps installed</p>'}`;
+  const apps=PERM.apps.filter(a=>!q||(a.name||'').toLowerCase().includes(q)||(a.description||'').toLowerCase().includes(q));
+  const live=a=>PERM.grants.filter(g=>!g.revoked_at&&g.principal_kind==='app'&&g.principal_id===a.id);
+  const row=(a,kind)=>{
+    const gs=live(a),full=gs.some(g=>g.action==='*'&&g.source==='legacy');
+    return `<div class="pa-row">
+      <span class="pm-av" style="background:${tileBg(a.id)}">${esc(((a.name||'?')[0]).toUpperCase())}</span>
+      <div class="pa-txt"><span class="pa-name"><b>${esc(a.name)}</b>${full?'<span class="badge err">full access</span>':''}</span>
+        <span class="mut">${a.description?esc(a.description):''}</span>
+        <span class="pa-meta">${gs.length?gs.length+' rule'+(gs.length===1?'':'s')+' · '+esc(pmSay(gs[0]).replace(/^may /,'can '))+(gs.length>1?' and more':''):'no rules: asks first for everything'}</span></div>
+      <span class="pa-acts">
+        ${kind==='wait'?`<button class="endbtn pa-go" onclick="reviewManifest('${a.id}')">Review</button>`:''}
+        ${gs.length?`<button class="endbtn" onclick="PERM.sel='who:app:${a.id}';PERM.tab='map';refreshApp('permissions')">Its rules</button>`:''}
+        <button class="endbtn" title="${kind==='none'?'Read the app and draft the permissions it needs':'Read the app again and draft its permissions'}" onclick="permRescan('${a.id}')">${kind==='none'?'Scan':'Rescan'}</button>
+        <button class="pm-x" title="Export ${esc(a.name)}" aria-label="Export" onclick="window.open('/api/apps/${a.id}/export')">⤓</button>
+      </span></div>`};
+  const wait=apps.filter(a=>(a.manifest_status||'none')==='proposed');
+  const ok=apps.filter(a=>a.manifest_status==='approved');
+  const none=apps.filter(a=>!['proposed','approved'].includes(a.manifest_status||'none'));
+  box.innerHTML=`<p class="mut pr-sum">Each app says what it needs in a manifest. You approve it once, and it can then do exactly that and nothing more.</p>
+    ${wait.length?`<div class="pa-sec warn"><div class="pm-sech">Waiting for you <span class="mut">${wait.length}</span></div>${wait.map(a=>row(a,'wait')).join('')}</div>`:''}
+    ${ok.length?`<div class="pa-sec"><div class="pm-sech">Approved <span class="mut">${ok.length}</span></div>${ok.map(a=>row(a,'ok')).join('')}</div>`:''}
+    ${none.length?`<details class="pa-sec"${q||(!wait.length&&!ok.length)?' open':''}><summary class="pm-sech">No manifest yet <span class="mut">${none.length}</span></summary>${none.map(a=>row(a,'none')).join('')}</details>`:''}
+    ${apps.length?'':emptyBox('No apps','Apps you build or install show up here with what they asked for.')}`;
 }
 async function permRescan(aid){
   const r=await fetch('/api/apps/'+aid+'/manifest/propose',{method:'POST'});
@@ -26988,19 +27092,27 @@ var PM_AREAS=[
 function pmArea(action){const a=PM_AREAS.find(x=>x[2](action||''));return a?a[0]:'Other'}
 var PM_GROUPS=[['user','Your agent'],['subagent','Specialists'],['flow','Missions'],['app','Apps'],['team','Linked teams']];
 
+/* An old command pattern ("run_command git *", "mcp_memory_*") as words. */
+function pmPattern(m){
+  m=String(m||'').trim();const sp=m.indexOf(' ');
+  const tool=sp<0?m:m.slice(0,sp),rest=sp<0?'':m.slice(sp+1).trim();
+  const tidy=x=>x.replace(/\s+\*$/,' …').replace(/\*$/,'…');
+  if(tool==='run_command')return rest&&rest!=='*'?'run '+tidy(rest):'run any command';
+  return 'use '+tidy(tool)+(rest&&rest!=='*'?' with '+tidy(rest):'');
+}
 /* One rule in a sentence: "may run git status…", "may not write files in /etc". */
 function pmSay(g){
-  const a=g.action||'',r=String(g.resource||''),v=r.replace(/^[a-z.]+:/,'');
+  const a=g.action||'',r=String(g.resource||''),v=r.replace(/^(tool|fs|net|agent|mcp|skill|model|memory|kg|app|mail|calendar|site):/,'');
   const glob=x=>x.replace(/\*$/,'…')||'anything';
   const tool=v.replace(/\*$/,'');
   const what=
     a==='*'?'do anything'
-    :a==='legacy policy'?'commands matching '+r
+    :a==='legacy policy'?pmPattern(r)
     :a==='tool.use'?(tool.startsWith('run_command ')?'run '+glob(tool.slice(12)+(v.endsWith('*')?'*':''))
       :tool==='run_command'?'run any command':tool?'use '+tool:'use any tool')
     :a==='fs.read'?'read files in '+glob(v)
     :a==='fs.write'?'write files in '+glob(v)
-    :a==='net.fetch'?(v==='*'?'fetch any web address':'fetch '+glob(v))
+    :a==='net.fetch'?(v==='*'?'fetch any web address':'fetch '+glob(v.replace(/^https?:\/\//,'')))
     :a==='agent.invoke'?(v==='main'?'start your agent':'hand work to '+glob(v.replace(/^subagent\//,'')))
     :a==='agent.message'?'ask '+glob(v.replace(/^subagent\//,''))
     :a==='memory.read'?'read memory':a==='memory.write'?'write memory'
@@ -27018,7 +27130,7 @@ function pmSource(g){
   if(ref.startsWith('conv:'))return 'remembered in a chat';
   if(s==='definition'&&ref.startsWith('flow:'))return 'mission '+ref.slice(5);
   return ({user:'you',manifest:'its manifest',matrix:'team matrix',legacy:'old full access',
-    definition:'its definition',remembered:'remembered',pass:'guest pass','Rules tab':'Rules tab'})[s]||s;
+    definition:'its definition',remembered:'remembered',pass:'guest pass','Rules tab':'a pattern'})[s]||s;
 }
 function pmWhoLabel(p){
   if(p.kind==='user')return (typeof agentName==='function'?agentName():'Your agent');
@@ -27121,17 +27233,7 @@ function pmDetail(){
   const el=$('#pm-detail');if(!el)return;
   const sel=PERM.sel||'';
   if(!sel){el.innerHTML='<p class="mut pm-empty">Tap a name or a place to see its rules.</p>';return}
-  const row=(g,whoName)=>{
-    const ro=g.readonly||String(g.id||'').startsWith('legacy:');
-    const deny=g.effect==='deny';
-    return `<div class="pm-rule ${deny?'deny':'allow'}">
-      ${ro?`<span class="pm-eff">${deny?'✕':'✓'}</span>`
-        :`<button class="pm-eff" title="switch to ${deny?'allow':'refuse'}" onclick="permToggle('${g.id}','${deny?'allow':'deny'}')">${deny?'✕':'✓'}</button>`}
-      <div class="pm-say">${whoName?`<b>${esc(whoName)}</b> `:''}${esc(pmSay(g))}
-        <span class="pm-src">${esc(pmSource(g))}</span>${permLasts(g)}</div>
-      ${ro?`<button class="endbtn" onclick="PERM.tab='rules';refreshApp('permissions')">Edit in Rules</button>`
-        :`${g.surfaces&&g.surfaces!=='*'?permSurfBadge(g):''}<button class="pm-x" title="Remove this rule" aria-label="Remove this rule" onclick="permRevoke('${g.id}')">✕</button>`}
-    </div>`};
+  const row=pmRuleRow;
   const CAP=40;
   const block=(title,gs,whoOf)=>{
     const more=gs.length>CAP&&!PERM._pmAll;
@@ -27155,6 +27257,31 @@ function pmDetail(){
     el.innerHTML=`<div class="pm-card"><div class="pm-cardh"><b>${esc(a)}</b> <span class="mut">who has a rule here · ${gs.length}</span></div>
       ${block('Rules',gs.map(x=>x[1]),g=>{const x=gs.find(y=>y[1]===g);return x?pmWhoLabel(x[0]):''})}</div>`;
   }
+}
+/* One rule as a row: the switch, the sentence, where it came from, remove. Shared by
+   the map and the Rules tab so a rule reads the same wherever it is shown; the raw
+   action and resource are the tooltip, for whoever needs them. */
+function pmRuleRow(g,whoName){
+  const ro=g.readonly||String(g.id||'').startsWith('legacy:');
+  const dead=!!g.revoked_at;
+  const deny=g.effect==='deny';
+  const tech=(g.action||'')+' · '+(g.resource||'')+(g.note?' — '+g.note:'');
+  return `<div class="pm-rule ${deny?'deny':'allow'}${dead?' dead':''}" title="${esc(tech)}">
+    ${ro||dead?`<span class="pm-eff">${deny?'✕':'✓'}</span>`
+      :`<button class="pm-eff" title="switch to ${deny?'allow':'refuse'}" aria-label="switch to ${deny?'allow':'refuse'}" onclick="permToggle('${g.id}','${deny?'allow':'deny'}')">${deny?'✕':'✓'}</button>`}
+    <div class="pm-say">${whoName?`<b>${esc(whoName)}</b> `:''}${esc(pmSay(g))}
+      <span class="pm-src">${esc(pmSource(g))}${g.created_at?` · <span title="${esc(new Date(g.created_at*1000).toLocaleString())}">${deny?'set':'approved'} ${esc(pmWhen(g.created_at))}</span>`:''}</span>${permLasts(g)}${dead?`<span class="badge" title="${esc(new Date(g.revoked_at*1000).toLocaleString())}">removed ${esc(pmWhen(g.revoked_at))}</span>`:''}</div>
+    ${dead?'':ro?`<button class="pm-x" title="Edit in Patterns" aria-label="Edit in Patterns" onclick="PERM.tab='rules';refreshApp('permissions')">↗</button>`
+      :`${g.surfaces&&g.surfaces!=='*'?permSurfBadge(g):''}<button class="pm-x" title="Remove this rule" aria-label="Remove this rule" onclick="permRevoke('${g.id}')">✕</button>`}
+  </div>`;
+}
+/* "today 20:41", "yesterday 09:12", "18 Oct", "3 Mar 2025": when a rule was made. */
+function pmWhen(ts){
+  const t=new Date(ts*1000),now=new Date();
+  const hm=t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  if(t.toDateString()===now.toDateString())return 'today '+hm;
+  if(new Date(now-864e5).toDateString()===t.toDateString())return 'yesterday '+hm;
+  return t.toLocaleDateString([],t.getFullYear()===now.getFullYear()?{day:'numeric',month:'short'}:{day:'numeric',month:'short',year:'numeric'});
 }
 function pmSelP(){return PERM._mapPs.find(p=>'who:'+p.kind+':'+p.id===PERM.sel)}
 function pmTrace(){

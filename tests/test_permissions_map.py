@@ -28,6 +28,8 @@ def test_each_rule_reads_as_a_sentence():
         ({"action": "tool.use", "resource": "tool:fetch_url*", "effect": "allow"}, "may use fetch_url"),
         ({"action": "fs.write", "resource": "fs:/etc/*", "effect": "deny"}, "may not write files in /etc/…"),
         ({"action": "net.fetch", "resource": "net:*", "effect": "allow"}, "may fetch any web address"),
+        ({"action": "net.fetch", "resource": "net:https://query1.finance.yahoo.com/*", "effect": "allow"},
+         "may fetch query1.finance.yahoo.com/…"),
         ({"action": "agent.message", "resource": "agent:subagent/writer", "effect": "allow"}, "may ask writer"),
         ({"action": "agent.invoke", "resource": "agent:main", "effect": "allow"}, "may start your agent"),
         ({"action": "memory.write", "resource": "memory:*", "effect": "deny"}, "may not write memory"),
@@ -60,3 +62,37 @@ def test_the_map_replaced_the_cards():
     assert "function permMap" not in perm and "perm-card" not in perm, "one map, in 20c"
     assert "['map','Map']" in perm
     assert "function permMap(box)" in JS and "pmLines" in JS
+
+
+def test_an_old_pattern_reads_as_words():
+    got = _run('[pmPattern("run_command python3 *"),pmPattern("mcp_memory_*"),pmPattern("create_app *"),'
+               'pmPattern("run_command *")]')
+    assert got == ["run python3 …", "use mcp_memory_…", "use create_app", "run any command"]
+
+
+def test_every_rule_says_when_it_was_approved():
+    js = JS + "\nfunction esc(x){return String(x)}function permLasts(){return ''}function permSurfBadge(){return ''}"
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    import time
+    ts = time.time()
+    src = js + f"\nconsole.log(pmRuleRow({{id:'0123456789ab',action:'fs.read',resource:'fs:/x/*',effect:'allow',source:'user',created_at:{ts}}}))"
+    out = subprocess.run(["node", "-e", src], capture_output=True, text=True, timeout=30).stdout
+    assert "approved today" in out, out
+
+
+def test_the_ledgers_counts_and_list_use_the_same_space(tmp_path):
+    """'2 denied' sat above 'Nothing in this period': the list was narrowed to the open
+    space and the counts were not."""
+    import sys
+    sys.path.insert(0, str(ROOT))
+    from agentos.memory import Store
+    s = Store(tmp_path / "t.db")
+    for sp, eff in (("other", "deny"), ("other", "deny"), ("mine", "allow"), ("", "allow")):
+        s.audit_add(principal_kind="user", principal_id="", surface="gui", action="tool.use",
+                    resource="tool:x", effect=eff, rule="default", space_id=sp)
+    mine = s.audit_summary(space="mine")
+    assert mine["effects"] == {"allow": 2}
+    assert len(s.audit_list(space="mine")) == sum(mine["effects"].values())
+    every = s.audit_summary()
+    assert every["effects"] == {"allow": 2, "deny": 2} and len(s.audit_list()) == 4

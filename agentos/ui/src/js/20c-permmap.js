@@ -24,19 +24,27 @@ var PM_AREAS=[
 function pmArea(action){const a=PM_AREAS.find(x=>x[2](action||''));return a?a[0]:'Other'}
 var PM_GROUPS=[['user','Your agent'],['subagent','Specialists'],['flow','Missions'],['app','Apps'],['team','Linked teams']];
 
+/* An old command pattern ("run_command git *", "mcp_memory_*") as words. */
+function pmPattern(m){
+  m=String(m||'').trim();const sp=m.indexOf(' ');
+  const tool=sp<0?m:m.slice(0,sp),rest=sp<0?'':m.slice(sp+1).trim();
+  const tidy=x=>x.replace(/\s+\*$/,' …').replace(/\*$/,'…');
+  if(tool==='run_command')return rest&&rest!=='*'?'run '+tidy(rest):'run any command';
+  return 'use '+tidy(tool)+(rest&&rest!=='*'?' with '+tidy(rest):'');
+}
 /* One rule in a sentence: "may run git status…", "may not write files in /etc". */
 function pmSay(g){
-  const a=g.action||'',r=String(g.resource||''),v=r.replace(/^[a-z.]+:/,'');
+  const a=g.action||'',r=String(g.resource||''),v=r.replace(/^(tool|fs|net|agent|mcp|skill|model|memory|kg|app|mail|calendar|site):/,'');
   const glob=x=>x.replace(/\*$/,'…')||'anything';
   const tool=v.replace(/\*$/,'');
   const what=
     a==='*'?'do anything'
-    :a==='legacy policy'?'commands matching '+r
+    :a==='legacy policy'?pmPattern(r)
     :a==='tool.use'?(tool.startsWith('run_command ')?'run '+glob(tool.slice(12)+(v.endsWith('*')?'*':''))
       :tool==='run_command'?'run any command':tool?'use '+tool:'use any tool')
     :a==='fs.read'?'read files in '+glob(v)
     :a==='fs.write'?'write files in '+glob(v)
-    :a==='net.fetch'?(v==='*'?'fetch any web address':'fetch '+glob(v))
+    :a==='net.fetch'?(v==='*'?'fetch any web address':'fetch '+glob(v.replace(/^https?:\/\//,'')))
     :a==='agent.invoke'?(v==='main'?'start your agent':'hand work to '+glob(v.replace(/^subagent\//,'')))
     :a==='agent.message'?'ask '+glob(v.replace(/^subagent\//,''))
     :a==='memory.read'?'read memory':a==='memory.write'?'write memory'
@@ -54,7 +62,7 @@ function pmSource(g){
   if(ref.startsWith('conv:'))return 'remembered in a chat';
   if(s==='definition'&&ref.startsWith('flow:'))return 'mission '+ref.slice(5);
   return ({user:'you',manifest:'its manifest',matrix:'team matrix',legacy:'old full access',
-    definition:'its definition',remembered:'remembered',pass:'guest pass','Rules tab':'Rules tab'})[s]||s;
+    definition:'its definition',remembered:'remembered',pass:'guest pass','Rules tab':'a pattern'})[s]||s;
 }
 function pmWhoLabel(p){
   if(p.kind==='user')return (typeof agentName==='function'?agentName():'Your agent');
@@ -157,17 +165,7 @@ function pmDetail(){
   const el=$('#pm-detail');if(!el)return;
   const sel=PERM.sel||'';
   if(!sel){el.innerHTML='<p class="mut pm-empty">Tap a name or a place to see its rules.</p>';return}
-  const row=(g,whoName)=>{
-    const ro=g.readonly||String(g.id||'').startsWith('legacy:');
-    const deny=g.effect==='deny';
-    return `<div class="pm-rule ${deny?'deny':'allow'}">
-      ${ro?`<span class="pm-eff">${deny?'✕':'✓'}</span>`
-        :`<button class="pm-eff" title="switch to ${deny?'allow':'refuse'}" onclick="permToggle('${g.id}','${deny?'allow':'deny'}')">${deny?'✕':'✓'}</button>`}
-      <div class="pm-say">${whoName?`<b>${esc(whoName)}</b> `:''}${esc(pmSay(g))}
-        <span class="pm-src">${esc(pmSource(g))}</span>${permLasts(g)}</div>
-      ${ro?`<button class="endbtn" onclick="PERM.tab='rules';refreshApp('permissions')">Edit in Rules</button>`
-        :`${g.surfaces&&g.surfaces!=='*'?permSurfBadge(g):''}<button class="pm-x" title="Remove this rule" aria-label="Remove this rule" onclick="permRevoke('${g.id}')">✕</button>`}
-    </div>`};
+  const row=pmRuleRow;
   const CAP=40;
   const block=(title,gs,whoOf)=>{
     const more=gs.length>CAP&&!PERM._pmAll;
@@ -191,6 +189,31 @@ function pmDetail(){
     el.innerHTML=`<div class="pm-card"><div class="pm-cardh"><b>${esc(a)}</b> <span class="mut">who has a rule here · ${gs.length}</span></div>
       ${block('Rules',gs.map(x=>x[1]),g=>{const x=gs.find(y=>y[1]===g);return x?pmWhoLabel(x[0]):''})}</div>`;
   }
+}
+/* One rule as a row: the switch, the sentence, where it came from, remove. Shared by
+   the map and the Rules tab so a rule reads the same wherever it is shown; the raw
+   action and resource are the tooltip, for whoever needs them. */
+function pmRuleRow(g,whoName){
+  const ro=g.readonly||String(g.id||'').startsWith('legacy:');
+  const dead=!!g.revoked_at;
+  const deny=g.effect==='deny';
+  const tech=(g.action||'')+' · '+(g.resource||'')+(g.note?' — '+g.note:'');
+  return `<div class="pm-rule ${deny?'deny':'allow'}${dead?' dead':''}" title="${esc(tech)}">
+    ${ro||dead?`<span class="pm-eff">${deny?'✕':'✓'}</span>`
+      :`<button class="pm-eff" title="switch to ${deny?'allow':'refuse'}" aria-label="switch to ${deny?'allow':'refuse'}" onclick="permToggle('${g.id}','${deny?'allow':'deny'}')">${deny?'✕':'✓'}</button>`}
+    <div class="pm-say">${whoName?`<b>${esc(whoName)}</b> `:''}${esc(pmSay(g))}
+      <span class="pm-src">${esc(pmSource(g))}${g.created_at?` · <span title="${esc(new Date(g.created_at*1000).toLocaleString())}">${deny?'set':'approved'} ${esc(pmWhen(g.created_at))}</span>`:''}</span>${permLasts(g)}${dead?`<span class="badge" title="${esc(new Date(g.revoked_at*1000).toLocaleString())}">removed ${esc(pmWhen(g.revoked_at))}</span>`:''}</div>
+    ${dead?'':ro?`<button class="pm-x" title="Edit in Patterns" aria-label="Edit in Patterns" onclick="PERM.tab='rules';refreshApp('permissions')">↗</button>`
+      :`${g.surfaces&&g.surfaces!=='*'?permSurfBadge(g):''}<button class="pm-x" title="Remove this rule" aria-label="Remove this rule" onclick="permRevoke('${g.id}')">✕</button>`}
+  </div>`;
+}
+/* "today 20:41", "yesterday 09:12", "18 Oct", "3 Mar 2025": when a rule was made. */
+function pmWhen(ts){
+  const t=new Date(ts*1000),now=new Date();
+  const hm=t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  if(t.toDateString()===now.toDateString())return 'today '+hm;
+  if(new Date(now-864e5).toDateString()===t.toDateString())return 'yesterday '+hm;
+  return t.toLocaleDateString([],t.getFullYear()===now.getFullYear()?{day:'numeric',month:'short'}:{day:'numeric',month:'short',year:'numeric'});
 }
 function pmSelP(){return PERM._mapPs.find(p=>'who:'+p.kind+':'+p.id===PERM.sel)}
 function pmTrace(){

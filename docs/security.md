@@ -48,6 +48,13 @@ decided it, or write one). Nothing runs and nothing is recorded. Tap a recent de
 
 ![Permissions → Flow: a file write after reading a web page stops at Outside content](screenshots/permissions-flow.png)
 
+**Permissions → Rules** lists every rule as a sentence, grouped by agent or app, with when it
+was approved and where it came from. **Apps** shows what each app asked for, waiting-for-you
+first. The **Ledger** shows every space unless you switch it to This space, and its counts
+always match its list.
+
+![Permissions → Rules: each rule a sentence, grouped by who it is for](screenshots/permissions-rules.png)
+
 **Permissions → Map** shows the rules themselves: who has them on the left, what they reach
 on the right, a green, red or amber line per pair. Tap either end to read its rules in plain
 words and change them.
