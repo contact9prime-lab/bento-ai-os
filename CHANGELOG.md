@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.60 — 2026-10-19
+
+No release notes were written for this one; the commits since 0.6.59 are what changed (`bento update` lists them).
+
 ## 0.6.59 — 2026-10-18
 
 **Setup starts with one question: one agent, or a company?** It also asks what it's mostly for and
