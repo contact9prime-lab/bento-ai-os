@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.59 — 2026-10-18
+
+**Stuck at a sign-in code, your agent texts you.** When the agent's browser reaches a page that wants a
+code while you're talking to it on Telegram or WhatsApp, it sends you a picture of the page and asks. Reply
+with the code and it types it into the page and carries on, in the same signed-in session. The code is never
+saved in the chat or written to the log. A password page still asks you to sign in on a screen and tap Done,
+because chat history would keep a password. Before, a phone turn with no screen open stopped there with
+"nobody here".
+
+**The Stage fits a phone.** On a 390px screen the Stage's top and its controls each take one row now, with short
+labels, so the answer gets the room: the map is drawn in the frame's own shape instead of a thin strip, and two
+numbers sit side by side where the third one used to fall out of view. A map's numbered places are one row of
+cards you swipe through, under a map that keeps at least half the room: on a phone the list had pushed the map
+out entirely, and in a desktop window it was a thin strip. The narrator's line no longer covers a
+card's text; it sits over a map, a picture or a video only. Full screen is offered only where the browser has
+it, so an iPhone no longer shows a button that does nothing.
+
 ## 0.6.58 — 2026-10-18
 
 **A company set up from Telegram opens on Telegram.** When the agent you're talking to on your phone

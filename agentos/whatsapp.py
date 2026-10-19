@@ -485,6 +485,16 @@ class WhatsAppBridge(usersmod.Scoped):
                                 f"a {kind}.", wa_id)
             return
 
+        # A sign-in wall this chat is being asked about (cdpbrowser.reach), as on Telegram:
+        # a code goes into the page and is never logged or saved in the conversation. Only
+        # a chat whose own turn registered itself can answer.
+        from . import cdpbrowser as _cdpb
+        said = await _cdpb.from_phone(usersmod.current() or "", f"wa:{wa_id}", text)
+        if said:
+            self.store.log("whatsapp", f"a reply from {wa_id} answered the browser")
+            await self.send("✓ " + said, wa_id)
+            return
+
         name = self._profile_name(val, wa_id)
         chat = self.store.wa_upsert_chat(wa_id, name)
         self.store.log("whatsapp", f"← {name} ({wa_id}): {text[:160]}")
@@ -570,12 +580,29 @@ class WhatsAppBridge(usersmod.Scoped):
             await self.send("⏳ Still working on your previous message…", wa_id)
             return
         self._busy = True
+        # a sign-in wall met during this turn is asked here, on the phone
+        from . import cdpbrowser as _cdpb
+        _wall_uid = usersmod.current() or ""
+        _cdpb.reach(_wall_uid, f"wa:{wa_id}", lambda att, png: self.ask_wall(wa_id, att, png))
         try:
             await self._turn(chat, wa_id, text)
         except Exception as e:
             await self.send(f"[error] {type(e).__name__}: {e}", wa_id)
         finally:
+            _cdpb.unreach(_wall_uid, f"wa:{wa_id}")
             self._busy = False
+
+    async def ask_wall(self, wa_id: str, att: dict, png: bytes) -> None:
+        """The shared browser met a page only a person can get past during this chat's
+        turn: a picture of the page and one question (cdpbrowser.tool_wait). No button: a
+        reply of "done" carries on, which works on both transports."""
+        from . import cdpbrowser as _cdpb
+        text = _cdpb.phone_words(att, self.cfg.get("agent_name") or "Aria", button=False)
+        if png:
+            out = await self.send_photo(png, text, wa_id)
+            if out == "sent via WhatsApp":
+                return
+        await self.send(text, wa_id)
 
     def _conversation(self, chat: dict) -> str:
         cid = chat.get("conversation_id")

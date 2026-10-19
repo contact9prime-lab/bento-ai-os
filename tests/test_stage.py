@@ -300,3 +300,28 @@ def test_the_how_to_gets_a_picture_and_a_video_and_the_note_comes_first():
     door = (ROOT / "agentos/executors.py").read_text()
     seg = door[door.index("stage_note = \"\""):][:900]
     assert "+ stage_note + dept_note" in seg
+
+
+def test_a_phone_gives_the_story_the_room():
+    """Measured at 390x844 with touch emulation: two rows of chrome left the map a 200px strip,
+    the subtitle covered the last number card's note, and a third number fell out of the frame."""
+    css = (ROOT / "agentos/ui/src/css/31-stage.css").read_text()
+    js = JS.read_text()
+    # the subtitle goes over a picture, never over words
+    assert ".stg-scene:not(.k-map):not(.k-image):not(.k-video) .stg-foot{margin-top:0}" in css
+    # one row each on a phone, with short labels, and two numbers a row
+    for rule in ("body.dev-mobile .st-top{flex-wrap:nowrap", "body.dev-mobile .stg-bar{flex-wrap:nowrap",
+                 "body.dev-mobile .stg-long{display:none}", "body.dev-mobile .st-nums{grid-template-columns"):
+        assert rule in css, rule
+    # full screen is offered only where the browser has it (an iPhone does not)
+    assert "if(document.fullscreenEnabled){" in js
+    # the map takes the frame's shape, and an upright frame keeps the places' longitudes
+    i = js.index("async function stageMap(")
+    body = js[i:i + 2600]
+    assert "W*fh/fw" in body and "stageK(svg,W,H)" in body and "aspect<1.6&&lons.length" in body
+    # measured after the scene laid out, and after the places' notes took their row
+    assert body.index("await stageWorld()") < body.index("art.clientHeight")
+    assert body.index("st-mapnotes") < body.index("art.clientHeight") and "art.insertBefore(svg,ol)" in body
+    # the notes are one scrolling row on the Stage, so the map keeps its half
+    assert ".stg .st-mapnotes{display:flex;overflow-x:auto;scroll-snap-type:x mandatory" in css
+    assert ".stg-scene.k-map:has(.st-mapnotes) .stg-foot{margin-top:0}" in css
