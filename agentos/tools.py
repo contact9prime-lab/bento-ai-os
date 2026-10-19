@@ -6179,13 +6179,15 @@ STAGE_TOOL_SCHEMAS = [
                        "scatter or pie), map (points with lat/lon, and/or regions by country name "
                        "with a value), numbers (a few key figures), timeline (events in order), "
                        "steps (a chain: this leads to that), table, image (a picture: a photo, a "
-                       "diagram, one you generated) or video (a YouTube video, e.g. a tutorial). Call "
+                       "diagram, one you generated), video (a YouTube video, e.g. a tutorial) or film "
+                       "(a short 3D animation the screen plays from your shot list: for something "
+                       "that moves, grows or gets built). Call "
                        "it once per scene, in "
                        "story order, two to five scenes for an answer worth seeing. Numbers need a "
                        "source, or illustrative: true when they are only an example.",
         "parameters": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": ["chart", "map", "numbers", "timeline", "steps", "table",
-                                                "image", "video"]},
+                                                "image", "video", "film"]},
             "title": {"type": "string", "description": "the scene's headline, a few words"},
             "caption": {"type": "string", "description": "one or two sentences: what to notice"},
             "say": {"type": "string", "description": "the line read aloud with it, if different from the caption"},
@@ -6216,7 +6218,14 @@ STAGE_TOOL_SCHEMAS = [
             "alt": {"type": "string", "description": "image: what the picture shows, in words"},
             "credit": {"type": "string", "description": "image: who made or published it"},
             "start": {"type": "integer", "description": "video: start at this second"},
-            "rows": {"type": "array", "description": "table: [[cell, …], …]", "items": {"type": "array", "items": {}}}},
+            "rows": {"type": "array", "description": "table: [[cell, …], …]", "items": {"type": "array", "items": {}}},
+            "shots": {"type": "array", "description":
+                      "film: 3 to 6 shots, [{subject, camera, seconds (2-8), text (the line said over "
+                      "it), value?, unit?, items? (bars: [{label, value}]), points? (globe: [{lat, lon, "
+                      "label}])}]. subject: city, tower, bars, rocket, factory, solar, road, conveyor, "
+                      "crowd or globe. camera: orbit, push, rise, fly or top. Numbers need a source.",
+                      "items": {"type": "object"}},
+            "look": {"type": "string", "enum": ["day", "dusk", "night"], "description": "film: the light"}},
             "required": ["kind", "title"]},
     },
 ]

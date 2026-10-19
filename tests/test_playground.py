@@ -162,14 +162,14 @@ def test_setup_creates_the_crew_and_the_office(tmp_path):
     store = Store(tmp_path / "s.db")
     store.save_subagent({"name": "researcher", "soul": "r"})
     cfg = {"agent_name": "Aria"}
-    step = next(s for s in onboarding.state(cfg, store)["steps"] if s["id"] == "crew")
+    step = next(s for s in onboarding.state(cfg, store, show_all=True)["steps"] if s["id"] == "crew")
     assert step["status"] == "todo" and step["blocked"] == []
     out = onboarding.crew(cfg, store, "garden", "The Greenhouse")
     keys = {p["key"] for p in out["people"]}
     assert {avatars.AGENT, avatars.ME, "researcher"} <= keys
     stored = {r["key"] for r in store.db.execute("SELECT key FROM avatars").fetchall()}
     assert {avatars.AGENT, avatars.ME, "researcher"} <= stored, "characters are STORED, not re-derived"
-    step = next(s for s in onboarding.state(cfg, store)["steps"] if s["id"] == "crew")
+    step = next(s for s in onboarding.state(cfg, store, show_all=True)["steps"] if s["id"] == "crew")
     assert step["status"] == "done" and step["detail"] == "The Greenhouse · Greenhouse"
     from agentos import setup_tui
     assert setup_tui.HANDLERS["crew"] is setup_tui._step_crew

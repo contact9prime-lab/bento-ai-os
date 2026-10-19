@@ -327,10 +327,10 @@ def test_onboarding_offers_the_fork_step(machine):
     from agentos import onboarding as ob_mod
     step = ob_mod.BY_ID.get("fork")
     assert step and step.optional and not step.needs
-    st = ob_mod.state({}, machine)
+    st = ob_mod.state({}, machine, show_all=True)
     row = next(s for s in st["steps"] if s["id"] == "fork")
     assert row["status"] == "todo"
-    st = ob_mod.state({"registry": {"agents": {"invoicer": {"at": 1}}}}, machine)
+    st = ob_mod.state({"registry": {"agents": {"invoicer": {"at": 1}}}}, machine, show_all=True)
     row = next(s for s in st["steps"] if s["id"] == "fork")
     assert row["status"] == "done" and "invoicer" in row["detail"]
 

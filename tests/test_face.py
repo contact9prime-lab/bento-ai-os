@@ -280,7 +280,7 @@ def test_a_wake_word_of_your_own_and_the_name_both_wake_it():
 
 def test_the_screen_step_is_a_decision_either_way():
     from agentos import onboarding as ob
-    st = lambda c: {s["id"]: s for s in ob.state(c)["steps"]}       # noqa: E731
+    st = lambda c: {s["id"]: s for s in ob.state(c, show_all=True)["steps"]}       # noqa: E731
     assert st({})["screen"]["status"] == "todo"
     assert st({"face": {"kiosk": False}})["screen"]["detail"] == "desktop", "the desktop is an answer too"
     assert st({"face": {"kiosk": True, "buddy": "on"}})["screen"]["detail"] == "kiosk · one agent"
@@ -306,7 +306,7 @@ def test_the_voice_step_ticks_only_when_the_wake_word_was_really_heard(client, m
     assert d["matched"] and d["word"] == "Aria" and d["after"] == "what time is it?" and d["engine"] == "openai"
     h = face.heard(servermod.state.machine_cfg())
     assert h["word"] == "Aria" and h["engine"] == "openai"
-    steps = {s["id"]: s for s in ob.state(servermod.state.machine_cfg())["steps"]}
+    steps = {s["id"]: s for s in ob.state(servermod.state.machine_cfg(), show_all=True)["steps"]}
     assert steps["voice"]["status"] == "done"
     assert servermod.state["store"].audit_list(action="face.write"), "hearing it is a ledger row"
     servermod.state.machine_cfg()["face"].pop("heard", None)

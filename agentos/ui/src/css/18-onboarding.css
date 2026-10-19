@@ -174,3 +174,16 @@ body.dev-touch .ob-face,body.dev-touch .ob-crew-name input,body.dev-touch #ob-cr
 #ob-voice-out.warn{color:var(--warn,#f59e0b)}
 .ob-hear-fix{display:flex;flex-direction:column;gap:8px;margin-top:10px}
 .ob-hear-fix .sp-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* the first question, and the steps it left out */
+.ob-more{margin-top:var(--sp-2);padding:var(--sp-2) 11px;font-size:var(--fs-sm);color:var(--dim);text-align:left;
+  min-height:var(--tap,0)}
+.ob-more:hover{color:var(--txt)}
+.ob-item.extra{opacity:.72}
+.ob-shape{margin-bottom:var(--sp-4)}
+.ob-use{flex-wrap:wrap;max-width:100%}
+.ob-use button{min-height:var(--tap,0)}
+.ob-check{display:flex;align-items:center;gap:10px;margin:var(--sp-3) 0;font-size:var(--fs-sm);color:var(--dim);
+  min-height:var(--tap,0);cursor:pointer}
+.ob-check input{width:18px;height:18px;flex:none}
+.ob-co{gap:6px}

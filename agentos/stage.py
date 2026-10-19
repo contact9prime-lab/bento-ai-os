@@ -36,7 +36,7 @@ import re
 import time
 import uuid
 
-KINDS = ("chart", "map", "numbers", "timeline", "steps", "table", "image", "video")
+KINDS = ("chart", "map", "numbers", "timeline", "steps", "table", "image", "video", "film")
 CHART_TYPES = ("line", "area", "bar", "scatter", "pie")
 NEEDS_SOURCE = ("chart", "map", "numbers", "table")   # the kinds that carry measurements
 
@@ -61,7 +61,20 @@ FIELDS = {
     "table": ("columns", "rows"),
     "image": ("url", "asset", "alt", "credit"),
     "video": ("url", "start"),
+    "film": ("shots", "look"),
 }
+
+# A film is a short 3D animation the page plays from a shot list, asked for as "stage
+# generation should have video generation too … the AI should decide the level". The model
+# never writes code for it: it picks each shot's subject and camera from these closed sets,
+# and the page's own three.js painter (24l-stage.js `stageFilm`) builds and moves the scene.
+# A picture somebody can believe is drawn from what the model said, and nothing it wrote runs.
+FILM_SUBJECTS = ("city", "tower", "bars", "rocket", "factory", "solar", "road", "conveyor",
+                 "crowd", "globe")
+FILM_CAMERAS = ("orbit", "push", "rise", "fly", "top")
+FILM_LOOKS = ("day", "dusk", "night")
+MAX_SHOTS = 6
+SHOT_S = (2, 8)          # seconds a shot may last; a film is under half a minute
 VIEWS = ("world", "africa", "asia", "europe", "north america", "south america", "oceania",
          "middle east", "india")
 # lon_min, lat_min, lon_max, lat_max
@@ -129,8 +142,10 @@ def clean(spec: dict) -> tuple[dict, list[str]]:
                 "source": _s(spec.get("source"), 200),
                 "illustrative": bool(spec.get("illustrative"))}
     getattr(_KIND, kind)(spec, sc, dropped)
-    measured = kind in NEEDS_SOURCE and not (kind == "map" and not any(
-        r.get("value") is not None for r in sc.get("regions", []) + sc.get("points", [])))
+    measured = (kind in NEEDS_SOURCE and not (kind == "map" and not any(
+        r.get("value") is not None for r in sc.get("regions", []) + sc.get("points", [])))) or (
+        kind == "film" and any(sh.get("value") is not None or sh.get("items")
+                               for sh in sc.get("shots", [])))
     if measured and not sc["source"] and not sc["illustrative"]:
         raise ValueError("say where these numbers came from (source: a site, a dataset or "
                          "a URL), or set illustrative: true when they are an example")
@@ -266,6 +281,50 @@ class _KIND:
                   url=f"https://www.youtube.com/watch?v={vid}")
 
     @staticmethod
+    def film(spec, sc, dropped):
+        """A short 3D animation, as a shot list: each shot a subject and a camera move from
+        the closed sets, a few seconds, and the line said over it. Numbers in a shot (a bar
+        each, a tower's height, a crowd's size) need a source like any chart."""
+        look = str(spec.get("look") or "day").strip().lower()
+        if look not in FILM_LOOKS:
+            dropped.append(f"look {look!r}")
+            look = "day"
+        shots = []
+        for sh in _list(spec.get("shots"))[:MAX_SHOTS]:
+            if not isinstance(sh, dict):
+                continue
+            subj = str(sh.get("subject") or "").strip().lower()
+            if subj not in FILM_SUBJECTS:
+                dropped.append(f"subject {subj!r}")
+                continue
+            cam = str(sh.get("camera") or "orbit").strip().lower()
+            if cam not in FILM_CAMERAS:
+                dropped.append(f"camera {cam!r}")
+                cam = "orbit"
+            secs = _num(sh.get("seconds"))
+            secs = int(min(SHOT_S[1], max(SHOT_S[0], secs))) if secs is not None else 4
+            out = {"subject": subj, "camera": cam, "seconds": secs,
+                   "text": _s(sh.get("text"), 120), "unit": _s(sh.get("unit"), 12),
+                   "value": _num(sh.get("value"))}
+            if subj == "bars":
+                out["items"] = [{"label": _s(it.get("label"), 24), "value": v}
+                                for it in _list(sh.get("items"))[:8]
+                                if isinstance(it, dict) and (v := _num(it.get("value"))) is not None]
+                if not out["items"]:
+                    dropped.append("a bars shot with no items")
+                    continue
+            if subj == "globe":
+                out["points"] = [{"lat": round(la, 3), "lon": round(lo, 3), "label": _s(pt.get("label"), 32)}
+                                 for pt in _list(sh.get("points"))[:12] if isinstance(pt, dict)
+                                 and (la := _num(pt.get("lat"))) is not None and (lo := _num(pt.get("lon"))) is not None
+                                 and -90 <= la <= 90 and -180 <= lo <= 180]
+            shots.append(out)
+        if not shots:
+            raise ValueError("a film needs shots: [{subject, camera, seconds, text}], subject one of "
+                             + ", ".join(FILM_SUBJECTS) + "; camera one of " + ", ".join(FILM_CAMERAS))
+        sc.update(shots=shots, look=look)
+
+    @staticmethod
     def table(spec, sc, dropped):
         cols = [_s(c, 40) for c in _list(spec.get("columns"))[:MAX_COLS]]
         rows = []
@@ -362,6 +421,16 @@ def text(sc: dict) -> str:
         out.append(f"  🖼 {sc.get('alt') or 'a picture'}  {sc.get('url') or '(one of your assets: ' + sc.get('asset', '') + ')'}")
     elif k == "video":
         out.append(f"  ▶ https://youtu.be/{sc['video']}" + (f"?t={sc['start']}" if sc.get("start") else ""))
+    elif k == "film":
+        for i, sh in enumerate(sc["shots"], 1):
+            v = f" {_fmt(sh['value'])}{sh['unit']}" if sh.get("value") is not None else ""
+            out.append(f"  {i}. [{sh['seconds']}s {sh['camera']} · {sh['subject']}]{v}"
+                       + (f" {sh['text']}" if sh["text"] else ""))
+            for it in sh.get("items") or []:
+                out.append(f"       {it['label']}: {_fmt(it['value'])}{sh['unit']}")
+            if sh.get("points"):
+                out.append("       " + ", ".join(p["label"] or f"{p['lat']:.1f}, {p['lon']:.1f}"
+                                                for p in sh["points"]))
     elif k == "table":
         w = [max(len(c), *(len(r[i]) if i < len(r) else 0 for r in sc["rows"])) for i, c in enumerate(sc["columns"])]
         w = [min(x, 24) for x in w]
@@ -665,15 +734,21 @@ BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anythi
             "A how-to or a tutorial: the steps, a picture, and a YouTube video (search the web for "
             "the best tutorial on it and pass its youtube.com address as a video scene). A place: "
             "a map, and a picture of it. Numbers or a trend: a chart or key numbers. A process or a "
-            "cause: steps or a timeline. A picture is an https image address you found (a photo "
+            "cause: steps or a timeline. "
+            "Choose how big each answer is yourself: a fact gets none, a comparison a chart, and "
+            "something that moves, grows or gets built (a launch, a factory, a city growing, a "
+            "supply chain, a startup's first year) earns a film: a short 3D animation you write "
+            "as three to six shots, each a subject and a camera move with the line said over "
+            "it. Open or close a big story with one; never more than one film per answer. "
+            "A picture is an https image address you found (a photo "
             "on Wikipedia or the maker's site) or one you made with generate_image. Use real "
             "figures you looked up and name the source; if a picture is only an example, set "
             "illustrative: true. A plain question (a fact, a yes or no, small talk) gets no scenes. "
             "When the person asks to change what is on the Stage (add a place, another chart, "
             "newer figures), show the whole story again with the change: it is kept as a new "
             "version beside the old one.")
-ASKED_LINE = ("show_scene puts a chart, a map, key numbers, a timeline, steps, a table, a picture or a "
-              "YouTube video on the "
+ASKED_LINE = ("show_scene puts a chart, a map, key numbers, a timeline, steps, a table, a picture, a "
+              "YouTube video or a film (a short 3D animation from a shot list) on the "
               "person's screen. Use it when they ask to see something; name the source of any "
               "numbers, or set illustrative: true. Asked to change what is on the Stage, show the "
               "whole story again with the change; the old version is kept.")
@@ -743,11 +818,15 @@ def still_caption(sc: dict, i: int, n: int) -> str:
         out.append(f"Source: {sc['source']}")
     if sc.get("kind") == "video" and sc.get("video"):
         out.append(f"https://www.youtube.com/watch?v={sc['video']}")
+    if sc.get("kind") == "film":
+        # the picture is the storyboard; the caption says each shot, so it reads aloud
+        out += [f"{k}. {sh['text']}" for k, sh in enumerate(sc.get("shots") or [], 1) if sh.get("text")]
     return "\n".join(x for x in out if x)[:1024]
 
 
 STILL_KIND = {"chart": "Chart", "map": "Map", "numbers": "Numbers", "timeline": "Timeline",
-              "steps": "How it works", "table": "Table", "image": "Picture", "video": "Video"}
+              "steps": "How it works", "table": "Table", "image": "Picture", "video": "Video",
+              "film": "Film"}
 
 
 # A photograph per scene (stagestill.py): the page's chrome goes, each card stands alone with

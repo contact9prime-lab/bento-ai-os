@@ -124,7 +124,7 @@ def test_a_seeded_agent_still_does_not_tick_the_onboarding_step(two):
     the one moment that explains what a specialist is."""
     from agentos import onboarding as ob
     _, b = two
-    st = {s["id"]: s for s in ob.state({}, usersmod.store_for(b["id"]))["steps"]}
+    st = {s["id"]: s for s in ob.state({}, usersmod.store_for(b["id"]), show_all=True)["steps"]}
     assert st["agent"]["status"] == "todo" and st["flow"]["status"] == "todo"
 
 
@@ -933,7 +933,7 @@ def test_remote_access_can_be_turned_on_without_inventing_a_passphrase(api):
 
 def test_the_onboarding_account_step_exists_and_is_reachable_over_http(api):
     from agentos import onboarding as ob
-    d = api.get("/api/onboarding").json()
+    d = api.get("/api/onboarding?all=1").json()
     assert d["steps"][-1]["id"] == "account"
     assert ob.BY_ID["account"].panel == "users", "it has somewhere to live afterwards"
 

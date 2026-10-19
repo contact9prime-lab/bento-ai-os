@@ -2,6 +2,16 @@
 
 ## 0.6.59 — 2026-10-18
 
+**Setup starts with one question: one agent, or a company?** It also asks what it's mostly for and
+whether the machine has a small screen of its own. One agent is eight steps. A company gets **Set up
+your company** instead of building a specialist and a flow by hand: say what it does in a sentence, look
+over the departments and people drafted for you, and make them. The other steps are one tap away at the
+bottom of the rail, and in Settings as before. `bento setup` asks the same thing.
+
+**The Stage can play a film.** For something that moves, grows or gets built, your agent can show a
+short 3D animation: a few shots of a city, a rocket, a factory, rising bars, a crowd or a globe, with the
+camera moving and a line said over each. The agent decides how big an answer deserves, and numbers in a
+film need a source like a chart. On a phone, or without 3D graphics, it's a storyboard.
 **Stuck at a sign-in code, your agent texts you.** When the agent's browser reaches a page that wants a
 code while you're talking to it on Telegram or WhatsApp, it sends you a picture of the page and asks. Reply
 with the code and it types it into the page and carries on, in the same signed-in session. The code is never

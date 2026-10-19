@@ -228,19 +228,18 @@ def test_the_sign_in_page_is_the_same_product():
 
 
 def test_the_docs_step_count_matches_the_wizard():
+    """Setup's length depends on the first answer (onboarding.PLANS), so the docs give the
+    counts per answer, and they must be the wizard's."""
     from agentos import onboarding
-    n = len(onboarding.STEPS)
-    words = {9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen",
-             15: "fifteen"}
-    word = words[n]
+    words = {6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+             13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen"}
     readme = (ROOT / "README.md").read_text()
     started = (ROOT / "docs" / "getting-started.md").read_text()
-    assert f"Setup is {word} steps" in readme
-    assert f"{word} steps" in started
-    for stale, w in words.items():
-        if stale != n:
-            assert f"{w} steps" not in readme and f"{w}-step" not in readme, f"README still says {w}"
-
+    assert "one agent, or a company?" in readme
+    assert f"**One agent** is {words[len(onboarding.PLANS['one'])]} steps" in started
+    for w in words.values():
+        assert f"Setup is {w} steps" not in readme, f"README still gives one count: {w}"
+        assert f"{w} steps down the left" not in started
 
 def test_the_expose_hint_is_above_the_dock():
     assert "#expose-hint{position:absolute;bottom:calc(var(--tbh)" in css("13-motion.css")

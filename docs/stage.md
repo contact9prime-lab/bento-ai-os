@@ -16,10 +16,30 @@ the chain of cause and effect. The written answer still comes too. The Stage pla
 | Table | Rows and columns |
 | Picture | A photo, a diagram or an image the agent made, slowly moving |
 | Video | A YouTube video, such as a tutorial, played on the Stage |
+| Film | A short 3D animation, such as a rocket launch, a city growing or revenue rising, played from a shot list |
 
 Every scene with numbers says where they came from, or says "Illustrative, not data" when it is an
 example. A scene the agent can't back with a source is refused until it names one or says it is an
 example.
+
+## Films
+
+For something that moves, grows or gets built, the agent can make a film: three to six shots of two to
+eight seconds, each a subject and a camera move with the line said over it. The subjects are a city, a
+tower, bars, a rocket, a factory, solar panels, a road, a conveyor, a crowd and a globe. The camera can
+orbit, push in, rise, fly across or look down. The light is day, dusk or night.
+
+The agent writes the shot list and your screen builds the scene, so nothing the agent wrote runs as code.
+Bars, a tower's height and a crowd's size are numbers, and need a source like a chart. The agent decides
+how big an answer deserves: no scenes for a plain fact, a chart for a comparison, and at most one film,
+at the start or the end of a big story.
+
+![A film on the Stage, shot 3 of 4: four 3D bars rising for revenue in years one to four, each labelled with its value, and the line "Revenue climbs year on year" over the picture](screenshots/stage-film.png)
+
+Without 3D graphics, with reduced motion on, and on your phone, a film is a storyboard: one card per
+shot with its line.
+
+![The same film on a phone with reduced motion: a storyboard of cards, "1 · 5s · push, It starts in one small building" and "2 · 5s · orbit, 1,000, The first thousand customers find it"](screenshots/stage-film-storyboard.png)
 
 ## Watching a story
 

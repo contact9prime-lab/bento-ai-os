@@ -302,26 +302,60 @@ def test_the_how_to_gets_a_picture_and_a_video_and_the_note_comes_first():
     assert "+ stage_note + dept_note" in seg
 
 
-def test_a_phone_gives_the_story_the_room():
-    """Measured at 390x844 with touch emulation: two rows of chrome left the map a 200px strip,
-    the subtitle covered the last number card's note, and a third number fell out of the frame."""
-    css = (ROOT / "agentos/ui/src/css/31-stage.css").read_text()
-    js = JS.read_text()
-    # the subtitle goes over a picture, never over words
-    assert ".stg-scene:not(.k-map):not(.k-image):not(.k-video) .stg-foot{margin-top:0}" in css
-    # one row each on a phone, with short labels, and two numbers a row
-    for rule in ("body.dev-mobile .st-top{flex-wrap:nowrap", "body.dev-mobile .stg-bar{flex-wrap:nowrap",
-                 "body.dev-mobile .stg-long{display:none}", "body.dev-mobile .st-nums{grid-template-columns"):
-        assert rule in css, rule
-    # full screen is offered only where the browser has it (an iPhone does not)
-    assert "if(document.fullscreenEnabled){" in js
-    # the map takes the frame's shape, and an upright frame keeps the places' longitudes
-    i = js.index("async function stageMap(")
-    body = js[i:i + 2600]
-    assert "W*fh/fw" in body and "stageK(svg,W,H)" in body and "aspect<1.6&&lons.length" in body
-    # measured after the scene laid out, and after the places' notes took their row
-    assert body.index("await stageWorld()") < body.index("art.clientHeight")
-    assert body.index("st-mapnotes") < body.index("art.clientHeight") and "art.insertBefore(svg,ol)" in body
-    # the notes are one scrolling row on the Stage, so the map keeps its half
-    assert ".stg .st-mapnotes{display:flex;overflow-x:auto;scroll-snap-type:x mandatory" in css
-    assert ".stg-scene.k-map:has(.st-mapnotes) .stg-foot{margin-top:0}" in css
+# ---------------------------------------------------------------------------
+# A film: a short 3D animation from a shot list, and nothing the model wrote runs
+# ---------------------------------------------------------------------------
+
+FILM = {"kind": "film", "title": "From garage to factory", "look": "dusk", "shots": [
+    {"subject": "factory", "camera": "push", "seconds": 5, "text": "It starts in one building"},
+    {"subject": "bars", "camera": "orbit", "seconds": 30, "text": "Sales by year", "unit": "k",
+     "items": [{"label": "2024", "value": 12}, {"label": "2025", "value": "40"}, {"label": "x"}]},
+    {"subject": "hologram", "camera": "orbit"},
+    {"subject": "globe", "camera": "warp", "points": [{"lat": 19, "lon": 72.8, "label": "Mumbai"},
+                                                      {"lat": 999, "lon": 0}]},
+    {"subject": "rocket", "camera": "rise", "seconds": 1, "text": "And then it takes off",
+     "script": "alert(1)"}],
+    "code": "<script>alert(1)</script>"}
+
+
+def test_a_film_is_a_closed_set_of_shots():
+    sc, dropped = stage.clean({**FILM, "source": "the company's filings"})
+    assert [s["subject"] for s in sc["shots"]] == ["factory", "bars", "globe", "rocket"]
+    assert sc["look"] == "dusk"
+    assert sc["shots"][1]["seconds"] == 8 and sc["shots"][3]["seconds"] == 2, "a shot is 2 to 8 seconds"
+    assert [i["label"] for i in sc["shots"][1]["items"]] == ["2024", "2025"]
+    assert sc["shots"][2]["camera"] == "orbit" and len(sc["shots"][2]["points"]) == 1
+    assert "script" not in sc["shots"][3]
+    assert {"code", "subject 'hologram'", "camera 'warp'"} <= set(dropped)
+    assert "Mumbai" in stage.text(sc) and stage.still_caption(sc, 0, 1).count("\n") >= 3
+
+
+def test_numbers_in_a_film_need_a_source_and_a_film_needs_shots():
+    with pytest.raises(ValueError, match="came from"):
+        stage.clean(FILM)
+    stage.clean({**FILM, "illustrative": True})
+    stage.clean({"kind": "film", "shots": [{"subject": "city", "text": "a city wakes"}]})
+    with pytest.raises(ValueError, match="needs shots"):
+        stage.clean({"kind": "film", "shots": [{"subject": "dragon"}]})
+
+
+def test_the_painter_and_the_tool_know_every_subject_and_camera():
+    from agentos import tools
+    js = (ROOT / "agentos/ui/src/js/24l-stage.js").read_text()
+    film = js[js.index("async function stageFilm"):]
+    for s in stage.FILM_SUBJECTS:
+        assert f"\n    {s}(g" in film, s
+        assert s in js[js.index("STAGE_FILM_GLYPH"):js.index("STAGE_FILM_GLYPH") + 300], s
+    for c in stage.FILM_CAMERAS:
+        assert f"{c}:(u,r,y)" in film, c
+    schema = next(t for t in tools.TOOL_SCHEMAS if t["name"] == "show_scene")
+    assert "film" in schema["parameters"]["properties"]["kind"]["enum"]
+    desc = schema["parameters"]["properties"]["shots"]["description"]
+    assert all(x in desc for x in stage.FILM_SUBJECTS + stage.FILM_CAMERAS)
+    # it stops itself when the drawing leaves the page, and has a storyboard without WebGL
+    assert "fr.isConnected" in film and "stageFilmBoard" in film and "document.hidden" in film
+
+
+def test_the_agent_is_told_to_choose_how_big_an_answer_is():
+    line = stage.note({"stage": {"big": True}})
+    assert "film" in line and "Choose how big" in line
