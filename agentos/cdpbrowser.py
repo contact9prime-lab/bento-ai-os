@@ -63,6 +63,10 @@ WAIT_S, WAIT_MAX_S = 300, 900
 TEXT_MAX = 6000             # what browser_read hands the model of a page's words
 ELEMENTS_MAX = 120
 CACHE_BYTES = 50 * 1024 * 1024
+# How long a starting browser has to answer. A first start is slow on a cold machine (a
+# Pi's first boot, a fresh CI runner builds its font cache): at 20 s it failed with an
+# empty "()" for a browser that was still on its way.
+START_WAIT = 60
 
 # Wired by the server: who gets told when the browser needs a person, and whether anyone
 # is at a screen to be told. Unwired, nobody is (a test, a terminal).
@@ -397,10 +401,12 @@ class Browser:
             stderr=asyncio.subprocess.DEVNULL, limit=64 * 1024 * 1024)
         self.cdp = CDP(self.proc)
         try:
-            ver = await self.cdp.send("Browser.getVersion", timeout=20)
+            ver = await self.cdp.send("Browser.getVersion", timeout=START_WAIT)
         except Exception as e:
             await self.stop()
-            raise CDPError(f"the browser did not start ({e})") from None
+            why = str(e) or (f"no answer in {START_WAIT} s" if isinstance(e, asyncio.TimeoutError)
+                             else type(e).__name__)
+            raise CDPError(f"the browser did not start ({why})") from None
         self.ua = str(ver.get("userAgent") or "").replace("HeadlessChrome", "Chrome")
         self.cdp.on("Page.screencastFrame", self._on_frame)
         self.cdp.on("Target.targetInfoChanged", self._on_target)

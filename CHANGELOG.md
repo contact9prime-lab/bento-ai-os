@@ -8,6 +8,10 @@ it ends. Before, the Office sat still while they talked and showed "done ✓" ov
 On a phone, a balloon by the edge of the screen stays on it, and names crowded round one table stay in the
 room.
 
+**A slow first start of the shared browser is waited for.** On a cold machine (a Pi's first boot, a
+fresh test runner) Chromium can take more than 20 seconds to answer, and the browser window failed with
+"the browser did not start ()". It now waits up to a minute, and says so when that runs out.
+
 ## 0.6.64 — 2026-10-20
 
 **A market's day reads right on the Stage.** When numbers both rise and fall, rises are green and falls

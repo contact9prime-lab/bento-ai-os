@@ -267,3 +267,23 @@ def test_the_terminal_from_ssh_is_the_same_session():
     assert "/ws/terminal?session=" in src
     assert termcli._base({"port": 9}) == "http://127.0.0.1:9"     # loopback only
 
+
+
+def test_a_slow_first_start_says_so(tmp_path, monkeypatch):
+    """Found on a fresh CI runner: Chromium's first start took longer than the wait, and the
+    refusal read "the browser did not start ()". It waits START_WAIT now (60 s, for a cold Pi
+    too), and running out says it ran out."""
+    slow = tmp_path / "chromium"
+    slow.write_text("#!/bin/sh\nsleep 3\n")
+    slow.chmod(0o755)
+    monkeypatch.setenv("AGENTOS_CHROMIUM", str(slow))
+    monkeypatch.setattr(cdpbrowser, "START_WAIT", 1)
+    assert cdpbrowser.START_WAIT == 1
+
+    async def go():
+        try:
+            await cdpbrowser.get("", {}, tmp_path)
+        finally:
+            await cdpbrowser.stop_all()
+    with pytest.raises(cdpbrowser.CDPError, match=r"did not start \(no answer in 1 s\)"):
+        asyncio.run(go())
