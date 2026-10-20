@@ -22,8 +22,11 @@ When a set of numbers both rises and falls, like a market's day, the Stage reads
 are green and falls are red, every value carries its + or -, and a place on the map is as big as its
 move, so the biggest fall is the biggest pin.
 
-![A market's day on the Stage, as Telegram receives it: green for New York, red for Europe and Asia](screenshots/stage-market-chart.png)
-![The same story's map: every market numbered, coloured by its move, with what happened listed under it](screenshots/stage-market-map.png)
+A market's day as Telegram receives it, before this (first) and after: the falls in red, the rises in
+green, every value signed, the names whole, and every place's note in the picture.
+
+![Before: one colour for rises and falls, names broken mid-word, two of eight notes](screenshots/stage-market-before.png)
+![After: rises green, falls red, every value signed, whole names, all eight notes](screenshots/stage-market-after.png)
 
 Every scene with numbers says where they came from, or says "Illustrative, not data" when it is an
 example. A scene the agent can't back with a source is refused until it names one or says it is an
