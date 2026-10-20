@@ -1295,7 +1295,8 @@ class Toolbox(usersmod.Scoped):
         if not defn:
             names = ", ".join(s["name"] for s in self.store.list_subagents()) or "(none)"
             return f"[error] no subagent named '{subagent}'. Available: {names}"
-        res = await self.fabric.run_subagent(defn, task, conversation_id=conversation_id)
+        res = await self.fabric.run_subagent(defn, task, conversation_id=conversation_id,
+                                             taint=list(_taint or []) or None)
         head = f"[subagent {defn['name']} · {res['status']} · model {res['model']}]"
         body = res["content"] or res["fault"] or "(no output)"
         return f"{head}\n{body[:3500]}"

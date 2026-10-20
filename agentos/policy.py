@@ -1171,7 +1171,10 @@ class PDP(usersmod.Scoped):
                     and g.get("action") == "team.act" and g.get("effect", "allow") == "allow"):
                 agent, _, rest = str(g.get("resource") or "").partition("|")
                 act, _, scope = rest.partition("|")
-                if agent == principal.id and act == action and scope and \
+                # agent '*' only on a row provisioning wrote for a Zero this machine set
+                # up (provision.zero_standing): any of my agents, this one folder or tool
+                anyone = agent == "*" and g.get("source") == "provision"
+                if (agent == principal.id or anyone) and act == action and scope and \
                         not standing_refusal(act, scope) and _match(scope, resource) and \
                         not (action == "fs.write" and _hidden(resource)):
                     return g

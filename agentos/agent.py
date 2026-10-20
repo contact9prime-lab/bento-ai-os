@@ -788,6 +788,15 @@ class Agent:
                 mem_text += _pool.note()
             except Exception:
                 pass
+            try:
+                # the teams linked to this one, and on a Zero (zero.py) where its work runs:
+                # only a lead forwarded to a CLI heard either, so a Zero's own lead (the
+                # built-in loop on the hub's model) did not know its hub was there
+                from .executors import linked_note
+                from . import zero as _zero
+                mem_text += linked_note(self.cfg, store, prefix="") + _zero.note(self.cfg, prefix="")
+            except Exception:
+                pass
         if self.principal is MAIN and self.conversation_id:
             # The Stage (stage.py): with Answer BIG on, the lead shows what it can; off, it
             # shows when asked. A turn with no chat has nowhere to show anything.
@@ -948,6 +957,11 @@ class Agent:
             # the lead's hand-over to another team: decided as the matrix's question
             # (policy.action_of reads _cross) and carrying what this turn has read
             args = {**args, "_taint": list(self.taint), "_cross": True}
+        elif name == "delegate" and not self.flow:
+            # a hand-over to one of our own specialists carries what this turn has read:
+            # a linked team's task handed on was otherwise answered by a specialist that
+            # had never seen it came from outside
+            args = {**args, "_taint": list(self.taint)}
         elif name == "brief_item":
             # which mission and run wrote it: injected from the agent, never an
             # argument — a model must not be able to write into another mission's items

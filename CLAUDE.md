@@ -3048,6 +3048,40 @@ the network, we should be able to check if we need to provision it". Six rules:
   spends this one's model budget on it. `AGENTOS_PI_MODEL`, `AGENTOS_DISCOVER_UDP/PORT/TARGETS`
   stand in for a board and a LAN in tests, the `AGENTOS_SIGNIN_BASE` idea.
 
+## A Zero: one curl line, set up from the hub, its work run there
+
+`agentos/zero.py` + provision.py's standard profile (`STANDARD`, `standard`/`set_standard`/
+`profile_for`/`add_agent_from`, `apply_people`, `zero_key`, `hubs`) + `install.sh --zero/--hub/
+--tailscale-key` + the Make a Zero, Standard setup and Its agents rows in `24j-provision.js` +
+`/api/provision/zero|standard*` + `bento pool zero|standard|hub`; `docs/zero.md`, `tests/test_zero.py`,
+live run `packaging/dev/provision-e2e/zero_run.py`. Asked for as "a curl line that installs the zero
+agent and Tailscale and connects to the hub … zero touch … a provisioning profile that is always
+standardized … the hub becomes the point of execution and files are shipped back". Six rules:
+- **It is provisioning, not beside it.** The line carries the hub's automatic key (`zero_key`), so a
+  heard Zero is set up by `enable` with no code; the claim is the same proof both ways. The Tailscale
+  key goes into the line only, never into a file (the test greps the home for it).
+- **`via` is read from the address a beacon came FROM** (`zero.via`, Tailscale's 100.64/10 and
+  fd7a:115c:a1e0::/48), never from the beacon. Tailscale has no broadcast, so `Door.announce` also
+  sends to each address in `provision.hubs()`.
+- **The standard profile is a closed set** (`clean_profile`): agents' tools from
+  `company.ALLOWED_TOOLS`, executors copied by value and never a built-in name, what is dropped named.
+  Layering is standard < key profile < what the person chose (`profile_for`, the one computation).
+- **`execution: hub` is three writes, in two places.** On the Zero (`apply_people`, `_provision_claimed`):
+  the seeded built-in specialists go (never a person's own agents; `seed_builtins` skips a Zero) and
+  MAIN gets `agent.message` on `lead@<hub>`. On the hub (`zero.hub_side`, called by the route AND the
+  CLI): the link's LEAD cell, and ONE standing permission, `team:<zero>/*` `team.act`
+  `*|fs.write|fs:<workspace>/for-<zero>/*`, `source="provision"`. `policy._standing` honours agent `*`
+  ONLY on a provision row; a hand-written `*` row is ignored. `save_report` is safe already and needs none.
+- **The hub's lead answers its own Zero's hand-over, and only that** (`_lead_for_link`'s `here`:
+  `zero.ships_to(lk)`, a tool in `HUB_HANDOVERS`, a local target, `needs_person()` false). Found by the
+  live run: at the default autonomy `agent.invoke` asks and nobody sits at the hub, so the unit test at
+  full had passed while the real thing made no file. Any other link still asks the owner's screens.
+- **A hand-over to a local specialist carries the turn's taint** (`agent.py` injects `_taint` for every
+  `delegate` outside a flow, `tools.delegate` passes it to `run_subagent`). It did not, so a linked
+  team's task ran on a specialist that had never seen it came from outside. Files go back only to a
+  machine this hub set up to run here (`ships_to`), capped (`SHIP_*`), as plain names under
+  `from-<hub>/` (`unpack`), a `link.files` row each time.
+
 ## Machines WITHOUT Bento: heard, offered, installed over SSH or from the SD card
 
 `agentos/netscan.py` (the passive mDNS ear + a scan on request) + `agentos/remoteinstall.py`

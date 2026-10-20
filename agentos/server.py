@@ -935,18 +935,19 @@ async def _provision_new(b: dict):
     road), which is still a ledger row and still a toast."""
     from . import provision as provmod
     hw = b.get("hw") or {}
+    from . import zero as zeromod
     _sys_ledger("provision.seen", f"provision:{b['fp'][:16]}",
                 f"{b['name']} ({hw.get('board') or hw.get('arch') or 'a machine'}) at {b.get('addr')} "
-                f"is waiting to be set up")
+                f"is waiting to be set up, heard {zeromod.via_words(b.get('via', ''))}")
     auto = next((k for k in provmod.load()["keys"] if k.get("auto") and k["id"] == b.get("key_id")), None)
     if auto:
         res = await _provision_enable([{"fp": b["fp"]}], {}, by=f"the automatic key '{auto.get('label')}'")
         r = (res.get("results") or [{}])[0]
         await _provision_admins({"type": "provision", "kind": "enabled" if r.get("ok") else "failed",
-                                 "name": b["name"], "error": r.get("error", "")})
+                                 "name": b["name"], "error": r.get("error", ""), "via": b.get("via", "")})
         return
     await _provision_admins({"type": "provision", "kind": "new", "name": b["name"],
-                             "board": hw.get("board") or "", "fp": b["fp"]})
+                             "board": hw.get("board") or "", "fp": b["fp"], "via": b.get("via", "")})
 
 
 async def _provision_claimed(got: dict):
@@ -975,6 +976,19 @@ async def _provision_claimed(got: dict):
             poolmod.ensure_worker(state["store"])
             if not poolmod.has_brain(cfg):
                 poolmod.set_use_brain(cfg, True)
+        prof = got.get("profile") or {}
+        if not got.get("retry") and (prof.get("agents") or prof.get("hands") or prof.get("execution")):
+            from . import provision as provmod
+            try:
+                people = provmod.apply_people(state["store"], cfg, prof, got.get("link", ""))
+                _sys_ledger("provision.profile", "provision:this-machine",
+                            f"the standard profile from {got.get('link')}: "
+                            + (f"made {', '.join(people['made'])}" if people["made"] else "nothing new")
+                            + (f"; kept {', '.join(people['kept'])}" if people["kept"] else "")
+                            + (f"; removed the built-in {', '.join(people['removed'])} (work runs on the hub)"
+                               if people["removed"] else ""))
+            except Exception as e:                                   # noqa: BLE001
+                _sys_ledger("provision.profile", "provision:this-machine", f"could not apply it: {e}")
         if not cfg.get("office"):
             with contextlib.suppress(Exception):
                 obmod.crew(cfg, state["store"])
@@ -1026,8 +1040,13 @@ async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
                 _sys_ledger("provision.failed", f"provision:{target['fp'][:16]}", f"{target.get('name')}: {e}")
                 return {"ok": False, "fp": target["fp"], "name": target.get("name"), "error": str(e)}
             _ledger("provision.enable", f"pool:{target['fp'][:16]}",
-                    f"set up {r['name']} ({target.get('hw', {}).get('board') or 'machine'}, {r['how']})"
+                    f"set up {r['name']} ({target.get('hw', {}).get('board') or 'machine'}, {r['how']}, "
+                    f"heard {_zero().via_words(r.get('via', ''))})"
                     + (f" by {by}" if by else "") + f"; profile {json.dumps(r['profile'])}")
+            if r["profile"].get("execution") == "hub":
+                # its work runs here: the lead cell and the two standing permissions
+                done = _zero().hub_side(state["store"], cfg, r["label"])
+                _ledger("provision.hub", f"team:{r['label']}/*", "; ".join(done))
             return {**r, "fp": target["fp"]}
 
         results = await asyncio.gather(*[one(it) for it in items[:provmod.MAX_SEEN]])
@@ -1050,12 +1069,19 @@ def _provision_view() -> dict:
             "role": poolmod.load().get("role") or "", "has_brain": poolmod.has_brain(cfg),
             "can_change": can, "devices": _device_rows(), "ear": bool(state.get("device_ear")),
             "ssh_missing": _ri().missing(), "pubkey": _ri().public_key(),
-            "installs": dict(state.get("device_installs") or {})}
+            "installs": dict(state.get("device_installs") or {}),
+            "standard": provmod.standard(), "hubs": provmod.hubs(),
+            "zero": _zero().state(cfg)}
 
 
 def _ri():
     from . import remoteinstall
     return remoteinstall
+
+
+def _zero():
+    from . import zero
+    return zero
 
 
 def _device_rows() -> list:
@@ -12683,6 +12709,69 @@ async def api_provision_enable(body: dict):
     if out.get("error"):
         return JSONResponse(out, status_code=400)
     return {**out, **_provision_view()}
+
+
+@app.put("/api/provision/standard")
+async def api_provision_standard(body: dict):
+    """The one profile every machine set up from here gets (a Zero's agents, executors and
+    where its work runs). Read field by field; what was dropped is said."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    prof, dropped = provmod.set_standard((body or {}).get("profile"))
+    _ledger("provision.standard", "provision:standard",
+            f"the standard profile is now {json.dumps(prof)}" + (f"; dropped {', '.join(dropped)}" if dropped else ""))
+    return {**_provision_view(), "dropped": dropped}
+
+
+@app.post("/api/provision/standard/agent")
+async def api_provision_standard_agent(body: dict):
+    """Give every machine set up from here a copy of one of this machine's agents, with its
+    executor. The copy is made when each machine is set up; this one keeps its own."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    try:
+        prof, dropped = provmod.add_agent_from(state["store"], str((body or {}).get("name") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ledger("provision.standard", "provision:standard",
+            f"the standard profile gives each machine {', '.join(a['name'] for a in prof.get('agents') or [])}"
+            + (f"; dropped {', '.join(dropped)}" if dropped else ""))
+    return {**_provision_view(), "dropped": dropped}
+
+
+@app.delete("/api/provision/standard/agent/{name}")
+async def api_provision_standard_agent_drop(name: str):
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    provmod.drop_agent(name)
+    _ledger("provision.standard", "provision:standard", f"took {name} out of the standard profile")
+    return _provision_view()
+
+
+@app.post("/api/provision/zero")
+async def api_provision_zero(body: dict):
+    """The one line that makes a Zero: install.sh with this hub's automatic key and its
+    addresses. A Tailscale auth key, when given, goes into the line and is not kept."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    b = body or {}
+    addrs = _zero().hub_addresses()
+    hubs = _zero().clean_hubs(b.get("hubs")) or [a["addr"] for a in addrs]
+    key = provmod.zero_key()
+    try:
+        line = _zero().one_line(state.machine_cfg(), key["text"], hubs, str(b.get("tailscale_key") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ledger("provision.zero", "provision:zero",
+            f"showed the Zero install line (hubs {', '.join(hubs) or 'none'}"
+            + (", with a Tailscale key" if b.get("tailscale_key") else "") + ")")
+    await _provision_sync()
+    return {"line": line, "hubs": hubs, "addresses": addrs, "key": {k: key[k] for k in ("id", "label", "auto")},
+            "standard": provmod.standard()}
 
 
 @app.post("/api/provision/ignore")

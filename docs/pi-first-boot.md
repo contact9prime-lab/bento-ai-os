@@ -125,6 +125,11 @@ bento pool install 192.168.1.40 --user ada --key-only      # the card carries th
 bento pool sshkey                           # the leader's public key, for Imager's SSH box
 ```
 
+### A Pi you can type one line on
+
+If you can reach a shell on it (a keyboard, SSH), paste the hub's *Make a Zero* line instead.
+See [A Zero](zero.md).
+
 ### 3. Bento already on it
 
 If you installed Bento on the Pi yourself (`install.sh`, or a card you prepared another way),

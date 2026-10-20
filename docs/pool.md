@@ -71,6 +71,12 @@ A Pi that doesn't run Bento yet can be found and given it too: the leader hears 
 network and offers to install Bento over SSH, or you write an SD card that installs it on first
 boot. See [A new machine with no Bento](pi-first-boot.md).
 
+### One line on the Pi: a Zero
+
+*Make a Zero* gives you a curl line to paste on a Pi. It installs Bento, joins Tailscale when you
+add a key, and is set up here the moment it is heard, with the standard setup. Its work can run
+on this machine, with the files sent back. The whole story is in [A Zero](zero.md).
+
 ### Without typing codes: enrolment keys
 
 For Pis nobody will stand in front of, make an **enrolment key** (*Make a key* in the same

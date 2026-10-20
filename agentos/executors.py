@@ -2005,9 +2005,14 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
         + identity_note(cfg, store, company=False) + stage_note + dept_note \
-        + team_note(subs, in_departments=grouped) + linked_note(cfg, store) \
+        + team_note(subs, in_departments=grouped) + linked_note(cfg, store) + _zero_note(cfg) \
         + workspace_note() + capability_note()
     return token
+
+
+def _zero_note(cfg: dict) -> str:
+    from . import zero as zeromod
+    return zeromod.note(cfg)
 
 
 def linked_note(cfg: dict, store=None, prefix: str = "mcp__bento__") -> str:

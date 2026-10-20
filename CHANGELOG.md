@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.66 — 2026-10-20
+
+**Make a Zero with one line.** On your main machine, *Settings → Team & Communications → New
+machines → Make a Zero* (or `bento pool zero`) gives you a curl line to paste on a Raspberry Pi. It
+installs Bento in Light mode with no questions, joins your Tailscale network when you add a key, and
+tells your main machine it's there, over Tailscale or your own network. Your main machine sets it up
+the moment it hears it, with nobody pressing anything, and says which way it heard it. The Tailscale
+key is only in the line, never stored.
+
+**One standard setup for every machine.** *Standard setup* and *Its agents* (or `bento pool
+standard`) decide what every machine set up from here gets: Light mode, kiosk, its agent's name,
+where its work runs, and copies of your agents with their executors. Only the tools a company
+department may have travel with them.
+
+**Its work can run on your main machine, and the files come back.** With *work runs on this hub*,
+what you ask the Pi is handed to your main machine's lead, who gives it to its team. Files the answer
+names come back to the Pi, into `from-<hub>/` in its workspace, up to 8 files and 2.5 MB. Your main
+machine may hand that Pi's tasks to its own specialists and write into one folder for it without
+asking you; anything else still waits for a person.
+
+**A task from another team stays marked when it's handed on.** When your lead handed a linked team's
+task to one of your own specialists, the specialist didn't know the task came from outside, so it
+could change things without the usual check. It now carries that mark.
+
 ## 0.6.65 — 2026-10-20
 
 **A free talk happens in the Office.** When you let your team talk, the people in it now meet at the

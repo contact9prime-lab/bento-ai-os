@@ -98,7 +98,7 @@ def path() -> Path:
 def _blank() -> dict:
     return {"wait": None, "pin": "", "pin_bad": 0, "pin_rounds": 0, "locked_until": 0.0,
             "key": "", "claimed": {}, "watch": None, "keys": [], "seen": {}, "enabled": {},
-            "devices": {}}
+            "devices": {}, "hubs": [], "standard": None}
 
 
 def load() -> dict:
@@ -207,6 +207,21 @@ def make_key(label: str = "", auto: bool = False, profile: dict | None = None,
     return {**key_view(k), "text": key_text(k)}
 
 
+def zero_key() -> dict:
+    """The automatic key every Zero's one line carries (zero.py), made the first time it is
+    asked for. Its text is rebuilt each time the line is asked for, by an admin, on the hub
+    that holds its secret anyway; a Zero that carries it is set up the moment it is heard."""
+    d = load()
+    k = next((k for k in d["keys"] if k.get("zero")), None)
+    if not k:
+        made = make_key("Zero", auto=True)
+        d = load()
+        k = next(x for x in d["keys"] if x["id"] == made["id"])
+        k["zero"] = True
+        save(d)
+    return {**key_view(k), "text": key_text(k)}
+
+
 def key_view(k: dict) -> dict:
     return {"id": k["id"], "label": k.get("label", ""), "auto": bool(k.get("auto")),
             "profile": k.get("profile") or {}, "created": k.get("created", 0),
@@ -276,14 +291,79 @@ def adopt_boot_key() -> bool:
 
 # ---- the profile a new machine is set up with -------------------------------------------
 
-PROFILE_KEYS = ("name", "agent_name", "kiosk", "buddy", "lite", "wake_word")
+PROFILE_KEYS = ("name", "agent_name", "kiosk", "buddy", "lite", "wake_word",
+                "execution", "agents", "hands")
+MAX_PROFILE_AGENTS = 6          # agents one profile gives a machine (each is a model call when it works)
+MAX_PROFILE_HANDS = 6           # executor profiles it carries for them
+_AGENT_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
+#: What a machine set up from here gets when nobody said otherwise: a Zero. Light mode, its
+#: work run on the hub, and no agents of its own.
+STANDARD = {"lite": True, "execution": "hub", "agents": [], "hands": []}
 
 
-def clean_profile(p) -> dict:
-    """The closed set a claim may carry, read field by field. An unknown field is dropped;
-    what is kept is bounded and plain, because the new machine writes it into its config."""
-    from . import face as facemod
+def _clean_hands(items, dropped: list) -> list[dict]:
+    from . import hands as handsmod
+    out = []
+    for h in (items if isinstance(items, list) else [])[:MAX_PROFILE_HANDS]:
+        if not isinstance(h, dict):
+            continue
+        name = str(h.get("name") or "").strip()
+        if not handsmod._NAME.fullmatch(name) or name in handsmod.BUILTINS:
+            dropped.append(f"executor '{name or '?'}' (no usable name, or a built-in one)")
+            continue
+        try:
+            spec = handsmod.normalize(h.get("spec") if isinstance(h.get("spec"), dict) else {})
+        except ValueError as e:
+            dropped.append(f"executor '{name}' ({e})")
+            continue
+        out.append({"name": name, "spec": spec,
+                    "description": " ".join(str(h.get("description") or "").split())[:300]})
+    return out
+
+
+def _clean_agents(items, hands_names: set, dropped: list) -> list[dict]:
+    """The agents a profile gives a machine: the closed tool list a company department may
+    have (company.ALLOWED_TOOLS: no shell, push, send or reconfigure), one executor each,
+    names unique. What is dropped is named, as in company.normalize."""
+    from . import company as companymod
     from . import teamlink
+    out, seen = [], set()
+    for a in (items if isinstance(items, list) else []):
+        if not isinstance(a, dict):
+            continue
+        name = str(a.get("name") or "").strip().lower()
+        if not _AGENT_NAME.fullmatch(name) or name in seen:
+            dropped.append(f"agent '{name or '?'}' (no usable name, or named twice)")
+            continue
+        if len(out) >= MAX_PROFILE_AGENTS:
+            dropped.append(f"agent '{name}' (a profile gives at most {MAX_PROFILE_AGENTS})")
+            continue
+        want = [str(t) for t in (a.get("tools") or []) if isinstance(t, str)]
+        bad = [t for t in want if t not in companymod.ALLOWED_TOOLS]
+        if bad:
+            dropped.append(f"{name}'s tools {', '.join(bad)}")
+        hands = str(a.get("hands") or "").strip()
+        if hands and hands not in hands_names:
+            dropped.append(f"{name}'s executor '{hands}' (not in this profile)")
+            hands = ""
+        out.append({"name": name, "title": teamlink.plain(a.get("title") or name, 40, newlines=False),
+                    "soul": " ".join(str(a.get("soul") or "").split())[:1500]
+                            or f"You are {name}, set up on this machine by its hub.",
+                    "tools": [t for t in want if t in companymod.ALLOWED_TOOLS],
+                    "hands": hands})
+        seen.add(name)
+    return out
+
+
+def clean_profile(p, dropped: list | None = None) -> dict:
+    """The closed set a claim may carry, read field by field. An unknown field is dropped;
+    what is kept is bounded and plain, because the new machine writes it into its config.
+    `dropped`, when given, collects the sentence for each value refused."""
+    from . import face as facemod
+    from . import hands as handsmod
+    from . import teamlink
+    from . import zero as zeromod
+    dropped = dropped if dropped is not None else []
     p = p if isinstance(p, dict) else {}
     out: dict = {}
     if p.get("name"):
@@ -300,7 +380,119 @@ def clean_profile(p) -> dict:
         out["lite"] = bool(p["lite"])
     if p.get("wake_word") and not facemod.wake_word_problem(str(p["wake_word"])):
         out["wake_word"] = " ".join(str(p["wake_word"]).split())
+    if p.get("execution") in zeromod.EXECUTIONS:
+        out["execution"] = p["execution"]
+    if "hands" in p:
+        out["hands"] = _clean_hands(p["hands"], dropped)
+    if "agents" in p:
+        names = set(handsmod.BUILTINS) | {h["name"] for h in out.get("hands") or []}
+        out["agents"] = _clean_agents(p["agents"], names, dropped)
     return out
+
+
+def standard() -> dict:
+    """The profile every machine set up from here gets: the hub's one setup (STANDARD until
+    somebody changes it). A key's own profile and a person's choices go over it."""
+    d = load()
+    return clean_profile(d["standard"] if isinstance(d.get("standard"), dict) else STANDARD)
+
+
+def set_standard(p) -> tuple[dict, list[str]]:
+    """Save the standard profile, field by field; returns it and what was dropped."""
+    dropped: list[str] = []
+    prof = clean_profile(p, dropped)
+    d = load()
+    d["standard"] = prof
+    save(d)
+    return prof, dropped
+
+
+def profile_for(key: dict | None, given: dict | None) -> dict:
+    """What a claim carries: the standard, then the key's profile, then what the person (or
+    the route) chose, each field later winning. One computation for enable() and the screen."""
+    return clean_profile({**standard(), **((key or {}).get("profile") or {}), **(given or {})})
+
+
+def add_agent_from(store, name: str) -> tuple[dict, list[str]]:
+    """Put one of THIS machine's agents into the standard profile: its persona, the tools it
+    may have in a profile (company.ALLOWED_TOOLS), and its executor, copied by value when it
+    is one of this machine's own. Every machine set up from here gets a copy."""
+    from . import hands as handsmod
+    d = store.get_subagent(name)
+    if not d:
+        raise ValueError(f"no agent called '{name}' here")
+    prof = standard()
+    hands = [h for h in prof.get("hands") or [] if h["name"]]
+    hname = str(d.get("profile") or "")
+    if hname and hname not in handsmod.BUILTINS:
+        h = handsmod.get(store, hname)
+        if h and not any(x["name"] == h["name"] for x in hands):
+            hands.append({"name": h["name"], "spec": h["spec"], "description": h.get("description", "")})
+    agents = [a for a in prof.get("agents") or [] if a["name"] != d["name"].lower()]
+    agents.append({"name": d["name"].lower(), "title": d["name"], "soul": d.get("soul") or "",
+                   "tools": d.get("tools") or [], "hands": hname})
+    return set_standard({**prof, "agents": agents, "hands": hands})
+
+
+def drop_agent(name: str) -> dict:
+    prof = standard()
+    agents = [a for a in prof.get("agents") or [] if a["name"] != str(name or "").lower()]
+    used = {a.get("hands") for a in agents}
+    hands = [h for h in prof.get("hands") or [] if h["name"] in used]
+    return set_standard({**prof, "agents": agents, "hands": hands})[0]
+
+
+def hubs() -> list[str]:
+    return list(load().get("hubs") or [])
+
+
+def set_hubs(items) -> list[str]:
+    """The hub addresses a waiting machine announces to as well as its LAN's broadcast:
+    Tailscale carries no broadcasts, so a Zero on a tailnet is heard only by being sent to."""
+    from . import zero as zeromod
+    d = load()
+    d["hubs"] = zeromod.clean_hubs(items)
+    save(d)
+    return d["hubs"]
+
+
+def apply_people(store, cfg: dict, prof: dict, hub: str = "") -> dict:
+    """The agents and executors a claim brought, made here. An executor or agent that already
+    exists is kept as it is; with `execution: hub` the built-in specialists seeded at first
+    start go (only those: a person's own agents are never touched), because a Zero's work
+    runs on the hub, and the lead may hand tasks to the hub's lead without a card."""
+    from . import hands as handsmod
+    from .policy import MAIN
+    made, kept, removed = [], [], []
+    for h in prof.get("hands") or []:
+        if handsmod.get(store, h["name"]):
+            kept.append(h["name"])
+            continue
+        handsmod.save(store, h["name"], h["spec"], h.get("description", ""))
+        made.append(f"executor {h['name']}")
+    mine = {a["name"].lower(): a for a in store.list_subagents()}
+    if prof.get("execution") == "hub":
+        want = {a["name"] for a in prof.get("agents") or []}
+        for a in list(mine.values()):
+            if a.get("builtin") and a["name"].lower() not in want:
+                store.delete_subagent(a["id"])
+                removed.append(a["name"])
+                mine.pop(a["name"].lower(), None)
+    for a in prof.get("agents") or []:
+        if a["name"] in mine:
+            kept.append(a["name"])
+            continue
+        store.save_subagent({"name": a["name"], "soul": a["soul"], "tools": a["tools"], "model": "",
+                             "profile": a.get("hands") or ""})
+        made.append(a["name"])
+    if prof.get("execution") == "hub" and hub:
+        res = f"agent:subagent/lead@{hub}"
+        if not any(g.get("principal_id") == MAIN.id and g.get("action") == "agent.message"
+                   and g.get("resource") == res for g in store.list_grants(principal_kind=MAIN.kind)):
+            store.add_grant(MAIN.kind, MAIN.id, "agent.message", res, source="provision",
+                            note=f"this Zero's lead hands tasks to the lead of {hub}, the hub that set it up")
+            made.append(f"hand-overs to lead@{hub}")
+    return {"made": made, "kept": kept, "removed": removed}
 
 
 # ---- the waiting side ----------------------------------------------------------------------
@@ -446,6 +638,8 @@ def apply_claim(cfg: dict, req: dict, peer_addr: str) -> dict:
             cfg["onboarding"]["confirmed"].append("name")
     if prof.get("lite"):
         cfg["profile"] = "lite"
+    if prof.get("execution"):
+        cfg["zero"] = {"hub": lk["label"], "execution": prof["execution"]}
     facemod.set_face(cfg, kiosk=prof.get("kiosk") if "kiosk" in prof else None,
                      buddy=prof.get("buddy"), wake_word=prof.get("wake_word"))
     cfg["setup_complete"] = True
@@ -483,7 +677,12 @@ def clean_beacon(b, addr: str = "") -> dict | None:
             "version": teamlink.plain(b.get("version") or "", 20, newlines=False),
             "waiting": bool(b.get("waiting")),
             "key_id": str(b.get("key_id") or "") if re.fullmatch(r"[0-9a-f]{8}", str(b.get("key_id") or "")) else "",
-            "id": id_code(fp)}
+            "id": id_code(fp), "via": _via(addr)}
+
+
+def _via(addr: str) -> str:
+    from . import zero as zeromod
+    return zeromod.via(addr)
 
 
 # ---- the listening side -----------------------------------------------------------------------
@@ -521,7 +720,7 @@ def note_seen(b: dict) -> bool:
     elif e.get("state") == "enabled" and b["waiting"]:
         e["state"] = "new"                # set up again from scratch: ask again
         new = True
-    fields = {k: b[k] for k in ("name", "addr", "port", "hw", "version", "waiting", "key_id", "id")}
+    fields = {k: b.get(k) for k in ("name", "addr", "port", "hw", "version", "waiting", "key_id", "id", "via")}
     if not new and all(e.get(k) == v for k, v in fields.items()) and now - e.get("last", 0) < RESAVE_S:
         return False          # heard again, nothing changed: no write (an SD card wears out)
     e.update(fields)
@@ -724,7 +923,7 @@ class Door:
             msg = here(self.cfg())
             msg["op"] = "announce"
             raw = json.dumps(msg).encode()
-            for a in broadcast_addresses():
+            for a in broadcast_addresses() + hubs():
                 try:
                     self.udp.sendto(raw, (a, udp_port()))
                 except OSError:
@@ -905,13 +1104,13 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
         nonce2 = secrets.token_hex(16)
         if key:
             how, secret = "key", key["secret"]
-            prof = clean_profile({**(key.get("profile") or {}), **(profile or {})})
+            prof = profile_for(key, profile)
         else:
             code = re.sub(r"\D", "", str(code or ""))
             if len(code) != 6:
                 raise ValueError(f"{target.get('name') or 'that machine'} shows a six-digit code on its "
                                  f"screen (or `bento pool wait` there) — type it in")
-            how, secret, prof = "code", code, clean_profile(profile or {})
+            how, secret, prof = "code", code, profile_for(None, profile)
         out = await say({"op": "claim", "nonce": nonce, "nonce2": nonce2, "how": how,
                          "key_id": key["id"] if key else "",
                          "proof": proof(secret, ident["host_fp"], fp, nonce),
@@ -935,7 +1134,9 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
                             direction="set up from here")
     teamlink._save(td)
     d = load()
-    d["enabled"][fp] = {"name": name, "at": time.time(), "how": how}
+    d["enabled"][fp] = {"name": name, "at": time.time(), "how": how,
+                        "execution": prof.get("execution", "here"),
+                        "via": target.get("via") or _via(addr), "label": lk["label"]}
     if key and key.get("single"):
         # a key made for one machine (an SSH install, one SD card) is spent on it
         d["keys"] = [k for k in d["keys"] if k["id"] != key["id"]]
@@ -943,4 +1144,4 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
         d["seen"][fp].update(state="enabled", name=name)
     save(d)
     return {"ok": True, "name": name, "label": lk["label"], "how": how, "profile": prof,
-            "hw": out.get("hw") or {}}
+            "hw": out.get("hw") or {}, "via": target.get("via") or _via(addr)}
