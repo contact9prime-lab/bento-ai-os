@@ -60,7 +60,8 @@ def _reply(msgs):
     if m:
         if tool is None:
             return _call("delegate", {"subagent": m.group(1), "task": user.strip()})
-        return f"The hub did it. {tool[:600]}", None
+        kept = " [its memory came from the hub]" if "Your memory is kept on" in system else ""
+        return f"The hub did it.{kept} {tool[:600]}", None
     return f"heard: {user.strip()[:200]}", None
 
 

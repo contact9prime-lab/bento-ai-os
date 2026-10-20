@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.67 — 2026-10-20
+
+**A Zero's memory, knowledge graph and soul live on the hub.** A Pi set up to run its work on your
+main machine keeps nothing of its own mind: everything it remembers, the facts it learns and its soul
+are kept on the main machine, in a section of their own called *Zero · <name>*. The Pi can be lost or
+reflashed and its agent still knows what it knew. A Zero sees only its own section, never your main
+machine's memory or another Zero's, and when your main machine's team works a task for it, they work
+inside that section. What a Pi knew before moves there once. On the main machine, each Zero's soul is
+under Profile → Soul (*Whose soul*), and its memories carry a label in Profile → Memory. From a
+terminal, `bento pool mind`.
+
 ## 0.6.66 — 2026-10-20
 
 **Make a Zero with one line.** On your main machine, *Settings → Team & Communications → New

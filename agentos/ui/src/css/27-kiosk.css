@@ -98,3 +98,6 @@ body.kiosk #office-scene canvas{display:block}
 .dev-key{max-width:min(420px,60vw)}
 .dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
+
+/* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
+.mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}

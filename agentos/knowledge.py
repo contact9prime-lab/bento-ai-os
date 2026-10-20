@@ -249,6 +249,11 @@ async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
     model = mc.get("model") or cfg.get("default_model") or ""
     if not model or not (assistant_text or "").strip():
         return
+    from . import zeromind
+    if zeromind.on_hub(cfg):
+        # a Zero learns into its section on its hub, never into the copy left here
+        await _learn_on_hub(cfg, store, cid, user_text, assistant_text, model, broadcast)
+        return
     try:
         await wait_model_idle(model)  # never make a live conversation queue behind us
         # The space this conversation lives in decides where what we learn is
@@ -333,6 +338,38 @@ async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
             await backfill_embeddings(cfg, store)
         except Exception:
             pass
+    except Exception as e:
+        try:
+            store.log("error", f"knowledge extraction failed: {type(e).__name__}: {e}")
+        except Exception:
+            pass
+
+
+async def _learn_on_hub(cfg: dict, store, cid: str, user_text: str, assistant_text: str,
+                        model: str, broadcast=None):
+    """extract_from_turn on a Zero: the same extraction, read against and written into
+    its section on the hub (zeromind.py)."""
+    from . import zeromind
+    try:
+        await wait_model_idle(model)
+        got = await zeromind.ask(cfg, "recall", query="")
+        existing = "\n".join(f"- {m['content']}" for m in (got.get("memories") or [])[:40]) or "(none yet)"
+        prompt = EXTRACT_PROMPT.format(
+            space_header="Current space: none — the user is not working inside a particular project right now.\n",
+            existing=existing, user_text=(user_text or "")[:4000],
+            assistant_text=(assistant_text or "")[:4000])
+        data = _parse_json(await providers.complete(cfg, model, prompt))
+        if not data:
+            return
+        r = await zeromind.ask(cfg, "learn", conversation_id=cid,
+                               updates=data.get("updates") or [], retractions=data.get("retractions") or [],
+                               user_memories=list(data.get("user_memories") or []) + list(data.get("space_memories") or []),
+                               session_memories=data.get("session_memories") or [],
+                               facts=data.get("facts") or [])
+        if not r.get("ok"):
+            store.log("error", f"knowledge extraction could not reach the hub: {r.get('error')}")
+        elif broadcast:
+            await broadcast({"type": "knowledge_update"})
     except Exception as e:
         try:
             store.log("error", f"knowledge extraction failed: {type(e).__name__}: {e}")

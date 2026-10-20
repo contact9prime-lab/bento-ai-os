@@ -3082,6 +3082,26 @@ standardized … the hub becomes the point of execution and files are shipped ba
   machine this hub set up to run here (`ships_to`), capped (`SHIP_*`), as plain names under
   `from-<hub>/` (`unpack`), a `link.files` row each time.
 
+**A Zero's mind is on its hub, in a section of its own** (`agentos/zeromind.py`, `Store.only`,
+op `zero_mind`, `bento pool mind`; `tests/test_zero_mind.py`, live run step 5). Asked for as "in zero
+mode the souls and memory and kb should be with the hub and sectioned". Five rules:
+- **The section is a space, read EXACTLY.** `Store.only(sid)` is the other half of the visibility rule,
+  kept in `_space_clause`/`search_memories` beside it: one space's rows and nothing global. A Zero reads
+  and writes only its section (never the hub's global rows, never another Zero's); the hub's own team
+  working a Zero's task runs in that space (`_lead_for_link`'s `space`, `delegate` carries `_space`) and
+  sees section + global, the ordinary rule. Every write from a Zero is filed in its space whatever it asked.
+- **Answered only for a machine this hub set up to run there** (`zero.ships_to`), in the link owner's
+  account; the space id is kept on the machine's `provision.enabled` entry so a renamed space is not split.
+  Its soul is a file under the soul's folder (`zeros/<label>.md`); a change is a `zero.soul` ledger row.
+- **Every door on the Zero goes to the hub**: the tools (`remember`, `recall`, `forget`, `kg_add`,
+  `kg_query`, `update_soul`), the lead's prompt (`zeromind.context`, with the Zero's own budget), the
+  forwarded lead's soul (`soul_now`), auto-learn (`knowledge._learn_on_hub`, one `learn` request whose
+  corrections only touch the section) and the routes the screens use (`_zero_mind` in server.py). A new
+  memory/KG/soul door must branch on `zeromind.on_hub` too, or it writes a local copy nobody reads.
+- **Unreachable is said, never filled in.** No local fallback write; the prompt says the hub is away.
+- **What it kept before moves once** (`move_local`, `cfg.zero.moved`, a `zero.moved` row); the local rows
+  are left and not read again. Found by the live run: the hub's `bento pool mind` opened no database.
+
 ## Machines WITHOUT Bento: heard, offered, installed over SSH or from the SD card
 
 `agentos/netscan.py` (the passive mDNS ear + a scan on request) + `agentos/remoteinstall.py`

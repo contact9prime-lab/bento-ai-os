@@ -469,7 +469,8 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     token = open_team_door(env, cfg, team.get("toolbox"), team.get("store"), sink,
                            team.get("approver"), conversation_id=team.get("conversation_id", ""),
                            surface=team.get("surface", "gui"), text=text,
-                           taint=team.get("taint"), only=team.get("only")) if team else ""
+                           taint=team.get("taint"), only=team.get("only"),
+                           space_id=team.get("space_id", "")) if team else ""
     if not token:
         # no team door (a schedule, a board's refresh, an app's run): it still speaks as
         # the person's agent, for their company
@@ -580,7 +581,10 @@ def identity_note(cfg: dict, store=None, company: bool = True) -> str:
     from . import config as _cfgmod
     name = (cfg or {}).get("agent_name") or "Aria"
     try:
-        soul = " ".join(_cfgmod.load_soul().split())[:1500]
+        from . import zeromind
+        # a Zero's soul is on its hub: the hub's last word, or the copy here while it is away
+        soul = " ".join((zeromind.soul_now(cfg) if zeromind.on_hub(cfg or {})
+                         else _cfgmod.load_soul()).split())[:1500]
     except Exception:
         soul = ""
     out = f"\n\nWHO YOU ARE: you are {name}, the person's lead agent in AgentOS."

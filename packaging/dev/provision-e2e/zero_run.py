@@ -11,7 +11,10 @@ up). What it checks, in order:
      pressing anything: no seeded agents, the hub's "scout" with its executor, Light mode
   4. a task typed on the Zero is handed to the hub's lead, who gives it to the hub's
      writer; the file the writer makes comes back into the Zero's from-<hub>/ folder
-  5. the ledger on both sides says what happened
+  5. its memory, graph and soul are on the hub, in its own section: what it knew before
+     moved there once, what it remembers now is written there, the Zero sees nothing of
+     the hub's own memory, and the hub's screens and terminal show the section
+  6. the ledger on both sides says what happened
 
     python zero_run.py [WORKDIR] [--keep]
 """
@@ -172,6 +175,17 @@ def main():
         hubs = re.search(r"--hub=(\S+)", z["line"]).group(1)
         set_hub = bento("pi-zero", "pool", "hub", hubs)
         assert set_hub.returncode == 0, set_hub.stderr
+        # what the Pi knew before it was set up: it moves to the hub once
+        sys.path.insert(0, str(REPO))
+        os.environ["AGENTOS_HOME"] = str(home("pi-zero"))
+        from agentos.memory import Store
+        before = Store(home("pi-zero") / "agentos.db")
+        before.add_memory("before the hub: the kettle is left of the sink")
+        before.kg_add("Kettle", "is left of", "sink")
+        before.db.close()
+        (home("pi-zero") / "soul.md").write_text("You are Pip, the kitchen's helper. You keep answers short and warm.\n")
+        os.environ.pop("AGENTOS_HOME")
+        http("big-box", "POST", "/api/memories", {"content": "HUB-PRIVATE: the hub owner's own note"})
         t_on = time.time()
         up["pi-zero"] = start("pi-zero", {"AGENTOS_ENROLL": enroll})
         took, seen = wait("the hub hears the Zero", lambda: (lambda s: s or None)(
@@ -211,8 +225,42 @@ def main():
         assert came, got
         REPORT["file"] = (home("pi-zero") / came[0]).read_text()
 
-        step("5. the ledger on both sides",
-             hub=[f"{a}: {d[:110]}" for a, d in ledger("big-box", "provision.%") + ledger("big-box", "link.%")],
+        assert "[its memory came from the hub]" in ans.get("content", ""), ans
+        st, rem = http("pi-zero", "POST", "/api/memories", {"content": "the user likes green tea"})
+        assert st == 200 and rem.get("kept_on") == "big-box", rem
+        st, zm = http("pi-zero", "GET", "/api/memories")
+        st, zs = http("pi-zero", "GET", "/api/soul")
+        st, hm = http("big-box", "GET", "/api/memories")
+        st, hs = http("big-box", "GET", "/api/soul?zero=pi-zero")
+        con = sqlite3.connect(home("pi-zero") / "agentos.db")
+        local = [r[0] for r in con.execute("select content from memories")]
+        con.close()
+        con = sqlite3.connect(home("big-box") / "agentos.db")
+        hub_conv = con.execute("select c.space_id, s.name from conversations c join spaces s on s.id = c.space_id "
+                               "where c.title like '↔ pi-zero%'").fetchall()
+        con.close()
+        mine = [m["content"] for m in zm["memories"]]
+        assert "HUB-PRIVATE: the hub owner's own note" not in mine
+        assert "before the hub: the kettle is left of the sink" in mine and "the user likes green tea" in mine
+        assert zs["kept_on"] == "big-box" and zs["content"].startswith("You are Pip")
+        assert hs["content"].startswith("You are Pip") and "pi-zero" in hs["zeros"]
+        hub_cli = bento("big-box", "pool", "mind")
+        hub_one = bento("big-box", "pool", "mind", "pi-zero")
+        zero_cli = bento("pi-zero", "pool", "mind")
+        assert "pi-zero" in hub_cli.stdout and "the user likes green tea" in hub_one.stdout, \
+            (hub_cli.stdout + hub_cli.stderr, hub_one.stderr)
+        (WORK / "pool-mind.txt").write_text("$ bento pool mind            (on the hub)\n" + hub_cli.stdout
+                                            + "\n$ bento pool mind pi-zero    (on the hub)\n" + hub_one.stdout
+                                            + "\n$ bento pool mind            (on the Zero)\n" + zero_cli.stdout)
+        step("5. its memory, graph and soul are on the hub, in its own section",
+             zero_prompt="the Zero's lead was told its memory is on big-box",
+             zero_sees=mine, zero_soul=zs["content"][:60], kept_on=zs["kept_on"],
+             hub_rows_for_zero=[f"{m['content']} ({m['zero']})" for m in hm["memories"] if m.get("zero")],
+             hub_task_section=hub_conv, rows_left_on_the_zero=local,
+             hub_cli=hub_cli.stdout.strip().splitlines()[:3], zero_cli=zero_cli.stdout.strip().splitlines()[:2])
+        step("6. the ledger on both sides",
+             hub=[f"{a}: {d[:110]}" for a, d in ledger("big-box", "provision.%") + ledger("big-box", "link.%")
+                  + ledger("big-box", "zero.%")],
              zero=[f"{a}: {d[:110]}" for a, d in ledger("pi-zero", "provision.%")])
         REPORT["ok"] = True
     finally:

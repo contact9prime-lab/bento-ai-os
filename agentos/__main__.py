@@ -4463,7 +4463,7 @@ def _pool_cli(args):
                 print(f"\n  ## {r['machine']}{'' if r['ok'] else ' (could not)'}\n  {r['text']}")
             return
         if a in ("discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll",
-                 "zero", "standard", "hub"):
+                 "zero", "standard", "hub", "mind"):
             return _provision_cli(args, cfg, a, rest, val, run)
         if a in ("devices", "install", "sshkey", "sdcard"):
             return _devices_cli(args, cfg, a, rest, run)
@@ -4472,7 +4472,8 @@ def _pool_cli(args):
     sys.exit("  bento pool [status | create NAME | join MACHINE [--brain] | approve M | remove M | leave"
              " | lead on|off | brain on|off | pin MACHINE|auto | notes [Q] | share TEXT | forget ID | task PIECE..."
              " | discover | enable MACHINE... [--code N] | ignore M | key [LABEL] [--auto] | keys"
-             " | wait [on|off|auto] | enroll KEY | zero [--tailscale-key K] | standard [set FILE] | hub ADDR,...]")
+             " | wait [on|off|auto] | enroll KEY | zero [--tailscale-key K] | standard [set FILE] | hub ADDR,..."
+             " | mind [ZERO] [--soul FILE]]")
 
 
 def _devices_cli(args, cfg, a, rest, run):
@@ -4691,6 +4692,8 @@ def _provision_cli(args, cfg, a, rest, val, run):
         if val != "set":
             print("  Change it with `bento pool standard set profile.json`, or in Settings → Team & Communications.")
         return
+    if a == "mind":
+        return _zero_mind_cli(cfg, rest, getattr(args, "soul", "") or "", run)
     if a == "hub":
         if val:
             got = prov.set_hubs(rest)
@@ -4762,6 +4765,57 @@ def _provision_cli(args, cfg, a, rest, val, run):
                                 reason="; ".join(done))
         print(f"  ✓ {r['name']} is set up ({r['how']}, heard {_zero_words(r.get('via'))}) and is joining "
               f"'{d['pool']['name']}'.")
+
+
+def _zero_mind_cli(cfg, rest, soul_file, run):
+    """`bento pool mind`: a Zero's memory, graph and soul, kept on its hub (zeromind.py).
+    On the hub, every Zero's section, or one of them; `--soul FILE` replaces its soul. On a
+    Zero, what its hub keeps for it (that one needs the hub to answer)."""
+    from . import zeromind
+    from .memory import Store
+    if zeromind.on_hub(cfg):
+        r = run(zeromind.ask(cfg, "list"))
+        if not r.get("ok"):
+            sys.exit("  " + r["error"])
+        hub = (zeromind.hub_link(cfg) or {}).get("label")
+        print(f"  This machine's memory, graph and soul are kept on {hub}, in '{r['section']}':")
+        print(f"    {len(r['memories'])} memories · {len(r['graph']['edges'])} facts · soul "
+              f"{len(r['soul'])} characters")
+        for m in r["memories"][:12]:
+            print(f"    - {m['content'][:100]}")
+        return
+    from . import config as _cfgmod
+    store = Store(_cfgmod.DB_PATH)
+    secs = zeromind.sections(store)
+    if not rest:
+        if not secs:
+            print("  No Zero keeps its mind here yet. A Zero set up with its work on this hub does.")
+            return
+        print("  The Zeros whose minds are kept here, each in its own section:")
+        for x in secs:
+            only = Store.only(x["space"])
+            print(f"    {x['label']:<18} {len(store.search_memories('', limit=10**6, space=only))} memories · "
+                  f"{len(store.kg_query('', limit=10**6, space=only))} facts")
+        print("  `bento pool mind NAME` shows one; `--soul FILE` replaces its soul.")
+        return
+    x = next((s for s in secs if s["label"] == rest[0]), None)
+    if not x:
+        sys.exit(f"  No Zero called {rest[0]} keeps its mind here.")
+    if soul_file:
+        text = Path(soul_file).read_text()
+        if len(text.strip()) < 40:
+            sys.exit("  That soul is too short to replace one with.")
+        zeromind.set_soul(store, x["label"], text[:zeromind.MAX_SOUL], by="a person at the hub's terminal")
+        print(f"  The soul of {x['label']} is replaced.")
+        return
+    only = Store.only(x["space"])
+    print(f"  {zeromind.SECTION.format(label=x['label'])}")
+    soul = " ".join(zeromind.soul_of(x["label"]).split())
+    print(f"    soul      {soul[:160]}{'…' if len(soul) > 160 else ''}")
+    for m in store.search_memories("", limit=20, space=only):
+        print(f"    memory    {m['content'][:100]}")
+    for f in store.kg_query("", limit=20, space=only):
+        print(f"    fact      {f[:100]}")
 
 
 def _zero_words(v) -> str:
@@ -8144,13 +8198,13 @@ def main():
                         choices=["status", "show", "create", "join", "approve", "remove", "leave",
                                  "lead", "brain", "pin", "notes", "share", "forget", "task",
                                  "discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll",
-                                 "zero", "standard", "hub",
+                                 "zero", "standard", "hub", "mind",
                                  "devices", "install", "sshkey", "sdcard"],
                         metavar="ACTION",
                         help="status | create NAME | join MACHINE | approve M | remove M | leave | "
                              "lead on|off | brain on|off | pin M|auto | notes [Q] | share TEXT | forget ID | task PIECE... | "
                              "discover | machines | enable M... | ignore M | key [LABEL] | keys | wait [on|off|auto] | enroll KEY | "
-                             "zero | standard [set FILE] | hub ADDR,... | "
+                             "zero | standard [set FILE] | hub ADDR,... | mind [ZERO] [--soul FILE] | "
                              "devices | install IP --user U | sshkey | sdcard PATH")
     p_pool.add_argument("args", nargs="*", help="the value")
     p_pool.add_argument("--brain", action="store_true", help="join: think with the leader's brain")
@@ -8159,6 +8213,7 @@ def main():
     p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
     p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
     p_pool.add_argument("--tailscale-key", default="", help="zero: put this Tailscale auth key in the line (not kept)")
+    p_pool.add_argument("--soul", default="", help="mind ZERO: replace that Zero's soul with this file")
     p_pool.add_argument("--user", default="", help="install / sdcard: the user on the other machine")
     p_pool.add_argument("--password-stdin", action="store_true", help="install / sdcard: read the password from stdin")
     p_pool.add_argument("--key-only", action="store_true", help="install: log in with this machine's SSH key")

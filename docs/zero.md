@@ -84,6 +84,44 @@ hub's workspace, travels back and lands in the Zero's workspace under `from-<hub
 files, 1.5 MB each and 2.5 MB in all; what's too big is named in the answer and stays on the
 hub. Each time, the hub writes a `link.files` row.
 
+## Its memory, graph and soul live on the hub
+
+A Zero that runs its work on the hub keeps nothing of its own mind. Its memory, its knowledge
+graph and its soul are on the hub, in a section of their own called *Zero · &lt;name&gt;*. A
+Pi can be lost, wiped or reflashed, and its agent still knows what it knew.
+
+![On the Zero: Profile → Memory says where its memory is kept](screenshots/zero-mind-on-the-zero.png)
+
+- **On the Zero,** Profile → Memory, Graph and Soul read and write the hub. A line under each
+  says where it's kept. When its agent remembers something, adds a fact, or changes its own
+  soul, that goes to the hub too. So does what the after-turn pass learns.
+- **On the hub,** the soul of each Zero is under Profile → Soul, in *Whose soul*. Its memories
+  are in Profile → Memory with a *Zero · &lt;name&gt;* label, and its facts are in the graph.
+
+![On the hub: the soul of the Zero, picked under Whose soul](screenshots/zero-mind-hub-soul.png)
+
+![On the hub: the Zero's memories, labelled, beside the hub's own](screenshots/zero-mind-hub-memory.png)
+
+- **A Zero sees only its own section.** It never sees the hub's own memory or another Zero's,
+  and it can't change or forget anything outside its section. When the hub's team works a
+  task for it, they work inside that section, so what they learn stays with it.
+- **What it knew before moves once.** A machine that kept memories, facts or a soul before it
+  ran on its hub sends them to its section the first time it needs them. The copies on the Pi
+  are left where they are and not read again.
+- **When the hub can't be reached,** the Zero says so. It doesn't make up an answer about what
+  it remembers, and it doesn't keep a local copy in the meantime.
+
+From a terminal:
+
+```sh
+bento pool mind                  # on the hub: every Zero's section, with counts
+bento pool mind pi-kitchen       # on the hub: one Zero's soul, memories and facts
+bento pool mind pi-kitchen --soul soul.md   # on the hub: replace that Zero's soul
+bento pool mind                  # on a Zero: what its hub keeps for it
+```
+
+![bento pool mind on the hub and on the Zero](screenshots/zero-mind-terminal.png)
+
 ## What keeps it safe
 
 - **The hub only hears a Zero, it never trusts one.** An announcement is a stranger's words,
@@ -101,6 +139,9 @@ hub. Each time, the hub writes a `link.files` row.
 - **Files go back only to a machine the hub set up to run its work there.** Any other linked
   team gets words only.
 - **The Tailscale key is never stored by Bento.** It's in the line you copy and nowhere else.
+- **A Zero's mind is kept only by the hub that set it up to run there.** Any other machine that
+  asks for its memory is refused. Changing a Zero's soul is a ledger row on the hub, and so is
+  the one-time move.
 
 ## The three faces
 
@@ -120,6 +161,13 @@ hub. Each time, the hub writes a `link.files` row.
   The Zero's own broadcast goes nowhere, so the hub hears it only through the address in the
   line. It is set up by the key with the standard setup (one agent with its own executor), and a
   task typed on the Zero comes back with the file the hub's writer made.
+
+- `tests/test_zero_mind.py`: a hub and a Zero over real mTLS. What the Zero remembers, the facts
+  it adds and its soul land in its section and nothing on the Zero. It can't see or change the
+  hub's own rows or another Zero's. Its lead's prompt is built from the hub. What it kept
+  before moves once. An unreachable hub is said. The hub's `bento pool mind` was found
+  printing nothing by the live run, and is tested now.
+- The live run's step 5 does the same on real servers, through the routes the screens use.
 
 Not tested: a real tailnet. The run can't give a process a `100.x` address, so *over Tailscale*
 is covered by the unit tests on the address ranges, and the run's Zero is heard *on your

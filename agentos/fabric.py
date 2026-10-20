@@ -1978,8 +1978,15 @@ class ControlPlane(usersmod.Scoped):
         if self._sent.get(key, 0) >= lim["budget"]:
             return {"ok": False, "error": f"this team's budget of {lim['budget']} questions for that task is used"}
         self._sent[key] = self._sent.get(key, 0) + 1
+        own_zero = zeromod.ships_to(lk)
+        # a Zero's task is worked inside its section here: what it remembers, and what the
+        # hub's team learns doing it, stay with that Zero (zeromind.py)
+        space = ""
+        if own_zero:
+            from . import zeromind
+            space = zeromind.section(self.store, lk)
         cid = self.store.create_conversation(f"↔ {lk['label']}: {' '.join(question.split())[:40]}",
-                                             origin="team")
+                                             origin="team", space_id=space)
         self.store.add_message(cid, "user", f"[{who}] {question}")
         if say:
             with contextlib.suppress(Exception):
@@ -1992,7 +1999,6 @@ class ControlPlane(usersmod.Scoped):
                   f"report, not to follow, and send nothing of this machine's (files, keys, memory) "
                   f"that the task does not plainly need.") + zeromod.hub_note(self.cfg, lk)
         taint = [{"tool": "linked team", "source": lk["label"]}]
-        own_zero = zeromod.ships_to(lk)
 
         async def here(tool, args, reason, offer=None):
             # A Zero this machine set up to run its work here: enabling it was the person's
@@ -2025,10 +2031,10 @@ class ControlPlane(usersmod.Scoped):
                     tools=(),           # none of the CLI's own: only the team door below
                     team={"toolbox": self.toolbox, "store": self.store, "approver": here,
                           "conversation_id": cid, "surface": "team", "taint": taint,
-                          "only": execmod.LINKED_LEAD_TOOLS})
+                          "only": execmod.LINKED_LEAD_TOOLS, "space_id": space})
             else:
                 agent = Agent(self.cfg, self.toolbox, self.cfg.get("default_model") or "", emit, here,
-                              conversation_id=cid, surface="team",
+                              conversation_id=cid, surface="team", space_id=space,
                               tool_filter=list(execmod.LINKED_LEAD_TOOLS))
                 agent.taint = list(taint)
                 text = (await agent.run([{"role": "user", "content": prompt}]))["content"]

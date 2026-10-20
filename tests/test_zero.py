@@ -338,6 +338,7 @@ def _answer(tmp_path, monkeypatch, hub_side: bool, own_zero: bool = True):
 
     async def spy(defn, task, **kw):
         seen["taint"] = kw.get("taint")
+        seen["space"] = kw.get("space_id")
         return await real(defn, task, **kw)
     cp.run_subagent = spy
     lk = {"id": "l1", "kind": "machine", "label": "pi-kitchen", "peer_host_fp": FP}
@@ -355,6 +356,9 @@ def test_a_task_from_a_zero_runs_on_the_hub_and_its_file_comes_back(tmp_path, mo
     (tmp_path / "home").mkdir()
     res, seen, store = _answer(tmp_path, monkeypatch, hub_side=True)
     assert seen["taint"] == LINKED, "the specialist knows the task came from outside"
+    sid = next(c["space_id"] for c in store.list_conversations(limit=10) if c["title"].startswith("↔ pi-kitchen"))
+    assert sid and seen["space"] == sid, "the task is worked inside that Zero's section (zeromind.py)"
+    assert store.get_space(sid)["name"] == "Zero · pi-kitchen"
     assert res["ok"] and "Here it is" in res["text"], res["text"]
     assert [f["name"] for f in res.get("files") or []] == ["kitchen-plan.md"]
     assert b"eggs, milk" in base64.b64decode(res["files"][0]["data"])

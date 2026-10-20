@@ -1,21 +1,33 @@
 /* ================= soul app ================= */
+// A Zero's mind is on its hub (zeromind.py): on the Zero this page says where; on the hub,
+// "Whose soul" picks this machine's or one of its Zeros', each kept in that Zero's section.
+var SOUL_ZERO='';
+function mindKeptOn(d){
+  return `<p class="mut mind-kept">Kept on ${esc(d.kept_on)}, in this machine's own section${d.section?' ('+esc(d.section)+')':''}.</p>`;
+}
 async function renderSoul(body){
-  const r=await fetch('/api/soul');const d=await r.json();
+  const r=await fetch('/api/soul'+(SOUL_ZERO?'?zero='+encodeURIComponent(SOUL_ZERO):''));const d=await r.json();
+  if(!r.ok){SOUL_ZERO='';toast(d.error||'could not read that soul');return renderSoul(body)}
+  const zeros=d.zeros||[];
+  const pick=zeros.length?`<select id="soul-who" aria-label="Whose soul" onchange="SOUL_ZERO=this.value;renderSoul(this.closest('.pshell').parentNode)">
+      <option value="">This machine's agent</option>${zeros.map(z=>`<option value="${esc(z)}"${z===SOUL_ZERO?' selected':''}>Zero · ${esc(z)}</option>`).join('')}</select>`:'';
   body.innerHTML=`<div class="pshell">
     <div class="phead">
       <span class="pt">Soul</span>
-      <span class="ps">the agent's persistent identity — injected into every conversation; it can evolve it itself via <code>update_soul</code></span>
-      <span class="sp"></span>
+      <span class="ps">${SOUL_ZERO?`the soul of the Zero ${esc(SOUL_ZERO)}, kept here in its section`:"the agent's persistent identity — injected into every conversation; it can evolve it itself via <code>update_soul</code>"}</span>
+      <span class="sp"></span>${pick}
       <button class="pact" style="flex:0 0 90px" onclick="soulSave()">Save</button>
     </div>
+    ${d.kept_on?mindKeptOn(d):''}
     <textarea id="soul-ta" spellcheck="false"></textarea>
   </div>`;
   $('#soul-ta').value=d.content;
 }
 async function soulSave(){
-  await fetch('/api/soul',{method:'PUT',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({content:$('#soul-ta').value})});
-  toast('soul saved');
+  const r=await fetch('/api/soul',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({content:$('#soul-ta').value,...(SOUL_ZERO?{zero:SOUL_ZERO}:{})})});
+  const d=await r.json().catch(()=>({}));
+  toast(r.ok?(SOUL_ZERO?'the soul of '+SOUL_ZERO+' saved':'soul saved'):(d.error||'could not save the soul'));
 }
 
 /* ================= knowledge graph app ================= */
@@ -35,6 +47,8 @@ async function renderKG(body,w){
   {const qi=$('#kg-q');let t;
    qi.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{w._kgq=qi.value;renderKG(body,w).then(()=>{const q2=$('#kg-q');if(q2){q2.focus();q2.setSelectionRange(q2.value.length,q2.value.length)}})},250)};}
   const r=await fetch('/api/kg');const g=await r.json();
+  if(!r.ok){$('#kg-empty').style.display='flex';$('#kg-empty').textContent=g.error||'The graph could not be read.';return}
+  if(g.kept_on&&!body.querySelector('.mind-kept'))body.querySelector('.apptop').insertAdjacentHTML('afterend',mindKeptOn(g));
   const q=(w._kgq||'').toLowerCase().trim();
   if(q){
     const keep=new Set(g.nodes.filter(n=>(n.name||'').toLowerCase().includes(q)).map(n=>n.id));

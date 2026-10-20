@@ -710,56 +710,64 @@ class Agent:
         mc = self.cfg.get("memory") or {}
         mem_text = ""
         n_user = int(mc.get("inject_user", 15))
-        # Scoped to the space this turn happens in: what is true here, plus what is
-        # true everywhere. Injecting three clients' constraints into one answer is
-        # exactly what spaces exist to stop.
-        user_mems = store.search_memories("", limit=500, scope="user", space=self.space_id)
-        if len(user_mems) > n_user:
-            # over budget: pinned always make the cut; the rest of the slots go to the
-            # memories most relevant to the user's message (semantic), else most recent
-            pinned = [m for m in user_mems if m.get("pinned")]
-            rest = [m for m in user_mems if not m.get("pinned")]
-            take = max(0, n_user - len(pinned))
-            picked = rest[:take]
-            if query and take > 0:
+        from . import zeromind
+        zctx = None
+        if zeromind.on_hub(self.cfg):
+            # A Zero's memory, graph and soul are on its hub, in its own section: asked for
+            # once a turn, and said plainly when the hub can't be reached.
+            zctx = await zeromind.context(self.cfg, store, query, self.conversation_id or "")
+            mem_text = zeromind.mem_text(zctx, (zeromind.hub_link(self.cfg) or {}).get("label") or "the hub")
+        else:
+            # Scoped to the space this turn happens in: what is true here, plus what is
+            # true everywhere. Injecting three clients' constraints into one answer is
+            # exactly what spaces exist to stop.
+            user_mems = store.search_memories("", limit=500, scope="user", space=self.space_id)
+            if len(user_mems) > n_user:
+                # over budget: pinned always make the cut; the rest of the slots go to the
+                # memories most relevant to the user's message (semantic), else most recent
+                pinned = [m for m in user_mems if m.get("pinned")]
+                rest = [m for m in user_mems if not m.get("pinned")]
+                take = max(0, n_user - len(pinned))
+                picked = rest[:take]
+                if query and take > 0:
+                    try:
+                        from . import knowledge
+                        ranked = await knowledge.semantic_rank(self.cfg, rest, query)
+                        if ranked is not None:
+                            picked = ranked[:take]
+                    except Exception:
+                        pass
+                user_mems = pinned + picked
+            if self.space_id:
+                # The agent has to know which space it is in, or it cannot decide where
+                # to file what it learns, and "save this" becomes ambiguous.
                 try:
-                    from . import knowledge
-                    ranked = await knowledge.semantic_rank(self.cfg, rest, query)
-                    if ranked is not None:
-                        picked = ranked[:take]
+                    from . import spaces as spacemod
+                    info = spacemod.describe(store, self.space_id)
+                    desc = f" — {info['description']}" if info.get("description") else ""
+                    mem_text += (f"\n=== Current space: {info['name']}{desc} ===\n"
+                                 "What you remember and produce belongs to this space unless it "
+                                 "would still be true after this project ends. Memory and facts "
+                                 "below are this space's plus what is true everywhere.\n")
                 except Exception:
                     pass
-            user_mems = pinned + picked
-        if self.space_id:
-            # The agent has to know which space it is in, or it cannot decide where
-            # to file what it learns, and "save this" becomes ambiguous.
-            try:
-                from . import spaces as spacemod
-                info = spacemod.describe(store, self.space_id)
-                desc = f" — {info['description']}" if info.get("description") else ""
-                mem_text += (f"\n=== Current space: {info['name']}{desc} ===\n"
-                             "What you remember and produce belongs to this space unless it "
-                             "would still be true after this project ends. Memory and facts "
-                             "below are this space's plus what is true everywhere.\n")
-            except Exception:
-                pass
-        if user_mems:
-            mem_text += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
-                f"- {'📌 ' if m.get('pinned') else ''}{m['content']}" for m in user_mems) + \
-                "\n=== end user memory ===\n"
-        if self.conversation_id:
-            sess_mems = store.search_memories("", limit=int(mc.get("inject_session", 10)),
-                                              scope="session", conversation_id=self.conversation_id)
-            if sess_mems:
-                mem_text += "\n=== Session memory (context of THIS conversation) ===\n" + "\n".join(
-                    f"- {m['content']}" for m in sess_mems) + "\n=== end session memory ===\n"
-        n_facts = int(mc.get("inject_facts", 12))
-        if n_facts > 0:
-            facts = store.kg_query("", limit=10**6, space=self.space_id)
-            if facts:
-                mem_text += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
-                             + "\n".join(f"- {f}" for f in facts[-n_facts:])
-                             + "\n=== end knowledge graph ===\n")
+            if user_mems:
+                mem_text += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
+                    f"- {'📌 ' if m.get('pinned') else ''}{m['content']}" for m in user_mems) + \
+                    "\n=== end user memory ===\n"
+            if self.conversation_id:
+                sess_mems = store.search_memories("", limit=int(mc.get("inject_session", 10)),
+                                                  scope="session", conversation_id=self.conversation_id)
+                if sess_mems:
+                    mem_text += "\n=== Session memory (context of THIS conversation) ===\n" + "\n".join(
+                        f"- {m['content']}" for m in sess_mems) + "\n=== end session memory ===\n"
+            n_facts = int(mc.get("inject_facts", 12))
+            if n_facts > 0:
+                facts = store.kg_query("", limit=10**6, space=self.space_id)
+                if facts:
+                    mem_text += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
+                                 + "\n".join(f"- {f}" for f in facts[-n_facts:])
+                                 + "\n=== end knowledge graph ===\n")
         if self.principal is MAIN and self.tool_filter is None:
             # The lead knows WHO its specialists are, not only that `delegate` exists:
             # asked to "build a tool" with a toolsmith on the roster, it built the tool
@@ -849,7 +857,8 @@ class Agent:
             locale=localeinfo.describe(self.cfg),
             workspace=self.cfg["workspace"],
             sandbox=sb_text,
-            soul=cfgmod.load_soul()[:4000],
+            soul=((zctx or {}).get("soul") or (zeromind.soul_now(self.cfg) if zctx is not None
+                                                 else cfgmod.load_soul()))[:4000],
             memories=mem_text,
             machine=await _machine_state(self.toolbox),
         )
@@ -960,8 +969,9 @@ class Agent:
         elif name == "delegate" and not self.flow:
             # a hand-over to one of our own specialists carries what this turn has read:
             # a linked team's task handed on was otherwise answered by a specialist that
-            # had never seen it came from outside
-            args = {**args, "_taint": list(self.taint)}
+            # had never seen it came from outside. And the space it happens in: a Zero's
+            # task on its hub is worked inside that Zero's section (zeromind.py).
+            args = {**args, "_taint": list(self.taint), "_space": self.space_id or ""}
         elif name == "brief_item":
             # which mission and run wrote it: injected from the agent, never an
             # argument — a model must not be able to write into another mission's items

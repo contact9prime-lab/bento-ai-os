@@ -5113,6 +5113,9 @@ body.kiosk #office-scene canvas{display:block}
 .dev-key{max-width:min(420px,60vw)}
 .dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
+
+/* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
+.mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}
 /* ---- the drama reel (00g-drama.js) ---- */
 .dr-wrap{display:flex;flex-direction:column;gap:12px;padding:14px;max-width:760px}
 .dr-title{font-weight:750;font-size:var(--fs-lg,17px);display:flex;align-items:center;gap:6px}
@@ -21072,8 +21075,10 @@ let memTab='user';
 async function renderMemory(body){
   await loadConfig();
   const r=await fetch('/api/memories');const d=await r.json();
+  if(!r.ok){body.innerHTML=emptyBox('Memory is out of reach',esc(d.error||'It could not be read.'));return}
   const auto=(cfg.memory||{}).auto_extract!==false;
-  const srcBadge=m=>m.source==='auto'?'<span class="badge" title="learned automatically" style="font-size:9px;padding:1px 6px;margin-right:4px">auto</span>':'';
+  const srcBadge=m=>(m.zero?`<span class="badge" title="kept here for the Zero ${esc(m.zero)}, in its own section" style="font-size:9px;padding:1px 6px;margin-right:4px">Zero · ${esc(m.zero)}</span>`:'')
+    +(m.source==='auto'?'<span class="badge" title="learned automatically" style="font-size:9px;padding:1px 6px;margin-right:4px">auto</span>':'');
   const when=m=>new Date(m.created_at*1000).toLocaleString();
   const user=d.memories.filter(m=>(m.scope||'user')==='user');
   const sess=d.memories.filter(m=>m.scope==='session');
@@ -21104,6 +21109,7 @@ async function renderMemory(body){
       <button class="pghost" title="merge duplicate entities, roll up idle sessions, re-index memory" onclick="tidyKnowledge()">Tidy</button>`,
   });
   pb.innerHTML=`
+    ${d.kept_on?mindKeptOn(d):''}
     ${items}
     <div class="sect">Add a ${memTab==='user'?'user':'session'} memory</div>
     <div class="row"><input id="mem-new" placeholder="${memTab==='user'?'e.g. My name is Piyush; I work at Accacia.':'e.g. We decided to use SQLite for this project.'}">
@@ -25943,23 +25949,35 @@ function logExpand(tr){const p=tr.querySelector('.log-full');if(p)p.style.displa
 async function logsClear(){await fetch('/api/logs',{method:'DELETE'});refreshApp('logs')}
 
 /* ================= soul app ================= */
+// A Zero's mind is on its hub (zeromind.py): on the Zero this page says where; on the hub,
+// "Whose soul" picks this machine's or one of its Zeros', each kept in that Zero's section.
+var SOUL_ZERO='';
+function mindKeptOn(d){
+  return `<p class="mut mind-kept">Kept on ${esc(d.kept_on)}, in this machine's own section${d.section?' ('+esc(d.section)+')':''}.</p>`;
+}
 async function renderSoul(body){
-  const r=await fetch('/api/soul');const d=await r.json();
+  const r=await fetch('/api/soul'+(SOUL_ZERO?'?zero='+encodeURIComponent(SOUL_ZERO):''));const d=await r.json();
+  if(!r.ok){SOUL_ZERO='';toast(d.error||'could not read that soul');return renderSoul(body)}
+  const zeros=d.zeros||[];
+  const pick=zeros.length?`<select id="soul-who" aria-label="Whose soul" onchange="SOUL_ZERO=this.value;renderSoul(this.closest('.pshell').parentNode)">
+      <option value="">This machine's agent</option>${zeros.map(z=>`<option value="${esc(z)}"${z===SOUL_ZERO?' selected':''}>Zero · ${esc(z)}</option>`).join('')}</select>`:'';
   body.innerHTML=`<div class="pshell">
     <div class="phead">
       <span class="pt">Soul</span>
-      <span class="ps">the agent's persistent identity — injected into every conversation; it can evolve it itself via <code>update_soul</code></span>
-      <span class="sp"></span>
+      <span class="ps">${SOUL_ZERO?`the soul of the Zero ${esc(SOUL_ZERO)}, kept here in its section`:"the agent's persistent identity — injected into every conversation; it can evolve it itself via <code>update_soul</code>"}</span>
+      <span class="sp"></span>${pick}
       <button class="pact" style="flex:0 0 90px" onclick="soulSave()">Save</button>
     </div>
+    ${d.kept_on?mindKeptOn(d):''}
     <textarea id="soul-ta" spellcheck="false"></textarea>
   </div>`;
   $('#soul-ta').value=d.content;
 }
 async function soulSave(){
-  await fetch('/api/soul',{method:'PUT',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({content:$('#soul-ta').value})});
-  toast('soul saved');
+  const r=await fetch('/api/soul',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({content:$('#soul-ta').value,...(SOUL_ZERO?{zero:SOUL_ZERO}:{})})});
+  const d=await r.json().catch(()=>({}));
+  toast(r.ok?(SOUL_ZERO?'the soul of '+SOUL_ZERO+' saved':'soul saved'):(d.error||'could not save the soul'));
 }
 
 /* ================= knowledge graph app ================= */
@@ -25979,6 +25997,8 @@ async function renderKG(body,w){
   {const qi=$('#kg-q');let t;
    qi.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{w._kgq=qi.value;renderKG(body,w).then(()=>{const q2=$('#kg-q');if(q2){q2.focus();q2.setSelectionRange(q2.value.length,q2.value.length)}})},250)};}
   const r=await fetch('/api/kg');const g=await r.json();
+  if(!r.ok){$('#kg-empty').style.display='flex';$('#kg-empty').textContent=g.error||'The graph could not be read.';return}
+  if(g.kept_on&&!body.querySelector('.mind-kept'))body.querySelector('.apptop').insertAdjacentHTML('afterend',mindKeptOn(g));
   const q=(w._kgq||'').toLowerCase().trim();
   if(q){
     const keep=new Set(g.nodes.filter(n=>(n.name||'').toLowerCase().includes(q)).map(n=>n.id));

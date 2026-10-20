@@ -713,6 +713,14 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
     if req.get("op") in ("chat", "chat_pull"):
         return await _team_chat_in(lk, req)
     owner = lk.get("owner") or ""
+    if req.get("op") == "zero_mind":
+        # a Zero this machine set up reads and writes its own section of this home
+        from . import zeromind
+        with usersmod.as_user(owner):
+            out = await zeromind.answer(state["store"], state["cfg"], lk, req)
+            if out.get("ok") and req.get("action") not in ("context", "recall", "kg_query", "soul_get", "list"):
+                await state["broadcast_user"]({"type": "knowledge_update"}, owner)
+            return out
     with usersmod.as_user(owner):
         async def say(e):
             await state["broadcast_user"]({"type": "agent_msg", "conversation_id": "", **e}, owner)
@@ -5190,13 +5198,33 @@ async def api_clear_logs():
 
 # ---- Knowledge graph ---------------------------------------------------------
 
+async def _zero_mind(action: str, **kw):
+    """On a Zero whose mind is on its hub (zeromind.py): the screens read and write its
+    section there. None when this machine keeps its own."""
+    from . import zeromind
+    if not zeromind.on_hub(state["cfg"]):
+        return None
+    await zeromind.move_local(state["cfg"], state["store"])
+    r = await zeromind.ask(state["cfg"], action, **kw)
+    if not r.get("ok"):
+        return JSONResponse({"error": r.get("error")}, status_code=502)
+    r["kept_on"] = (zeromind.hub_link(state["cfg"]) or {}).get("label") or ""
+    return r
+
+
 @app.get("/api/kg")
 async def api_kg():
+    if (r := await _zero_mind("list")) is not None:
+        return r if isinstance(r, JSONResponse) else {**r["graph"], "kept_on": r["kept_on"],
+                                                     "section": r.get("section")}
     return state["store"].kg_graph()
 
 
 @app.post("/api/kg")
 async def api_kg_add(body: dict):
+    if (r := await _zero_mind("kg_add", **{k: body.get(k, "") for k in (
+            "subject", "relation", "object", "subject_type", "object_type")})) is not None:
+        return r
     eid = state["store"].kg_add(
         body.get("subject", ""), body.get("relation", ""), body.get("object", ""),
         body.get("subject_type", ""), body.get("object_type", ""))
@@ -5205,6 +5233,8 @@ async def api_kg_add(body: dict):
 
 @app.delete("/api/kg")
 async def api_kg_clear():
+    if (r := await _zero_mind("kg_forget")) is not None:
+        return r
     state["store"].kg_clear()
     state["store"].log("system", "knowledge graph cleared")
     return {"ok": True}
@@ -5212,6 +5242,8 @@ async def api_kg_clear():
 
 @app.delete("/api/kg/nodes/{nid}")
 async def api_kg_delete_node(nid: str):
+    if (r := await _zero_mind("kg_forget", node=nid)) is not None:
+        return r            # on a Zero: what its section said about it, never the entity
     state["store"].kg_delete_node(nid)
     return {"ok": True}
 
@@ -9731,13 +9763,42 @@ async def api_wallpaper_reset():
 
 # ---- Soul ---------------------------------------------------------------------
 
+def _zero_soul_label(zero: str) -> str:
+    """A Zero's section named by the hub's screens, '' when it is not one kept here."""
+    from . import zeromind
+    return next((x["label"] for x in zeromind.sections(state["store"]) if x["label"] == zero), "")
+
+
 @app.get("/api/soul")
-async def api_soul():
-    return {"content": cfgmod.load_soul()}
+async def api_soul(zero: str = ""):
+    """This agent's soul. On a Zero, its soul on the hub; on a hub, `zero` names one of
+    its Zeros' souls, kept in that Zero's section (zeromind.py)."""
+    from . import zeromind
+    if (r := await _zero_mind("soul_get")) is not None:
+        return r if isinstance(r, JSONResponse) else {"content": r["soul"], "kept_on": r["kept_on"],
+                                                     "section": r.get("section")}
+    zeros = [x["label"] for x in zeromind.sections(state["store"])]
+    if zero:
+        if not _zero_soul_label(zero):
+            return JSONResponse({"error": f"no Zero called {zero} keeps its mind here"}, status_code=404)
+        return {"content": zeromind.soul_of(zero), "zero": zero, "zeros": zeros}
+    return {"content": cfgmod.load_soul(), "zeros": zeros}
 
 
 @app.put("/api/soul")
 async def api_put_soul(body: dict):
+    from . import zeromind
+    if (r := await _zero_mind("soul_set", content=body.get("content", ""))) is not None:
+        return r
+    zero = str((body or {}).get("zero") or "")
+    if zero:
+        if not _zero_soul_label(zero):
+            return JSONResponse({"error": f"no Zero called {zero} keeps its mind here"}, status_code=404)
+        if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+            return JSONResponse({"error": "only an admin can change a Zero's soul"}, status_code=403)
+        zeromind.set_soul(state["store"], zero, str(body.get("content") or "")[:zeromind.MAX_SOUL],
+                          by="a person on the hub")
+        return {"ok": True}
     cfgmod.save_soul(body.get("content", ""))
     state["store"].log("system", "soul updated via UI")
     return {"ok": True}
@@ -10021,17 +10082,34 @@ async def api_audit_verify():
 async def api_memories(scope: str = "", conversation_id: str = "", q: str = "",
                        space: str = ""):
     store = state["store"]
+    titles = {c["id"]: c["title"] for c in store.list_conversations(limit=1000)}
+    if (r := await _zero_mind("list")) is not None:
+        if isinstance(r, JSONResponse):
+            return r
+        mems = [m for m in r["memories"] if (not scope or m["scope"] == scope)
+                and (not conversation_id or m["conversation_id"] == conversation_id)
+                and (not q or any(w.lower() in m["content"].lower() for w in q.split()))]
+        for m in mems:
+            m["conversation_title"] = titles.get(m.get("conversation_id") or "", "")
+        return {"memories": mems, "kept_on": r["kept_on"], "section": r.get("section")}
     mems = store.search_memories(q, limit=500, scope=scope,
                                  conversation_id=conversation_id, space=space)
-    titles = {c["id"]: c["title"] for c in store.list_conversations(limit=1000)}
+    from . import zeromind
+    zsec = {x["space"]: x["label"] for x in zeromind.sections(store)}
     for m in mems:
         m["conversation_title"] = titles.get(m.get("conversation_id") or "", "")
         m["embedded"] = bool(m.pop("embedding", None))  # vectors are internal; ship a flag only
+        if zsec.get(m.get("space_id") or ""):
+            m["zero"] = zsec[m["space_id"]]             # kept here for one of this hub's Zeros
     return {"memories": mems}
 
 
 @app.post("/api/memories")
 async def api_add_memory(body: dict):
+    if (r := await _zero_mind("remember", content=body.get("content", ""), scope=body.get("scope", "user"),
+                              conversation_id=body.get("conversation_id") or "",
+                              pinned=bool(body.get("pinned")))) is not None:
+        return r
     mid = state["store"].add_memory(
         body.get("content", ""),
         scope=body.get("scope", "user"),
@@ -10045,6 +10123,9 @@ async def api_add_memory(body: dict):
 @app.put("/api/memories/{mid}")
 async def api_update_memory(mid: str, body: dict):
     """Edit content, toggle pin, or change scope (scope='user' promotes a session memory)."""
+    if (r := await _zero_mind("memory_edit", id=mid, **{k: body[k] for k in ("content", "pinned", "scope")
+                                                        if k in body})) is not None:
+        return r
     state["store"].update_memory(
         mid,
         content=body.get("content") if "content" in body else None,
@@ -10056,6 +10137,8 @@ async def api_update_memory(mid: str, body: dict):
 
 @app.delete("/api/memories/{mid}")
 async def api_delete_memory(mid: str):
+    if (r := await _zero_mind("forget", id=mid)) is not None:
+        return r
     state["store"].delete_memory(mid)
     return {"ok": True}
 
