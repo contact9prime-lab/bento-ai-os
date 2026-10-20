@@ -666,6 +666,50 @@ Office a paper leaves the lead's desk for the other team and the answer comes ba
 on Telegram the exchange is in the comic strip after the reply. Every step is in the ledger on
 both machines, and in the trace (`⤓ JSON`).
 
+### Files go with the task, and what they make comes back
+
+A hand-over to another team can carry files, and the files the other side makes for it come
+back. Say your lead asks `analyst@office` to build a deck from `data.csv`:
+
+1. **Sending is its own yes.** Asking office and sending it your files are two things you agree
+   to. The send is asked like any other step, and the card names the team and every file. Allow
+   it once, for this chat, for an hour, or always for that team. After your agent has read a web
+   page or a mail in that turn, a person always decides it.
+2. **The file lands on office** in `from-home/` in its workspace, and the analyst's task says
+   where.
+3. **The analyst makes the deck** in `for-home/`. A linked team's task is untrusted there, so
+   writing normally waits for a person; this one folder is open for that team's work.
+4. **The deck comes back** into `from-office/` in your workspace, and your lead's answer names
+   it there, with a chip to open it.
+
+![The card for sending a file to another team](screenshots/link-files-approve.png)
+
+![The deck came back, and the older file stayed where it was](screenshots/link-files-back.png)
+
+Only what was made for the task comes back. If the answer names a file that was already there
+before (an old plan, a key, anything), it stays on that machine, and the answer says so. A hand-over
+can't be used to fetch whatever the other machine has.
+
+**The other side decides whether files go back.** It's on for a link as soon as you let their
+agents ask one of yours, and it's one switch on the link's card: *Send back the files my agents
+make for their tasks*. Switched off, their team gets words only, and your agents can't write in
+`for-<team>/` either.
+
+![The switch on the link's card](screenshots/link-files-switch.png)
+
+From a terminal:
+
+```sh
+bento link files office          # whether files go back to office
+bento link files office off      # words only
+bento link                       # every link, with its files setting
+```
+
+What can go: files in your workspace or a folder you share with your agents, up to 8 files and
+2.5 MB at a time, never a hidden file. What arrives is the other team's bytes, saved under plain
+names in `from-<team>/`, never as something that runs. Each send and receive is a `link.files` row
+on that machine, and each decision is a `file.send` row.
+
 ### A mission with an agent on a linked team
 
 A mission's roster can name an agent on another team: `analyst@office`. In the Missions

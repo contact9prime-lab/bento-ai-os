@@ -1281,7 +1281,8 @@ class Toolbox(usersmod.Scoped):
         )
 
     async def delegate(self, subagent: str, task: str, conversation_id: str = "",
-                       _taint=None, _space: str = "") -> str:
+                       files=None, _taint=None, _space: str = "", _files=None,
+                       _files_note: str = "", _root: str = "") -> str:
         """Hand a task to a specialist subagent; its steps run in a separate data plane
         with its own model, tool allow-list, and budget (see the Workflows app).
 
@@ -1297,12 +1298,18 @@ class Toolbox(usersmod.Scoped):
             async def say(e):
                 if self.broadcast:
                     await self.broadcast({"type": "agent_msg", "conversation_id": conversation_id, **e})
-            return await self.fabric.message(me, sub, task, [me], conversation_id=conversation_id,
-                                             taint=list(_taint or []), say=say)
+            # `_files` are the paths the loop's file.send decision allowed (agent._files_out);
+            # the model's own `files` never reach the wire unchecked
+            out = await self.fabric.message(me, sub, task, [me], root=_root, conversation_id=conversation_id,
+                                            taint=list(_taint or []), say=say, files=list(_files or []))
+            return out + (f"\n\n{_files_note}" if _files_note else "")
         defn = self.store.get_subagent(subagent)
         if not defn:
             names = ", ".join(s["name"] for s in self.store.list_subagents()) or "(none)"
             return f"[error] no subagent named '{subagent}'. Available: {names}"
+        if files:
+            # one of our own specialists reads them where they are
+            task = f"{task}\n\nFiles for this: " + ", ".join(str(f) for f in list(files)[:16])
         res = await self.fabric.run_subagent(defn, task, conversation_id=conversation_id,
                                              taint=list(_taint or []) or None, space_id=_space or "")
         head = f"[subagent {defn['name']} · {res['status']} · model {res['model']}]"
@@ -4462,7 +4469,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_taint", "_space"} if name == "delegate" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -4735,6 +4742,11 @@ TOOL_SCHEMAS = [
                              "For another team linked to this one, 'name@team', or 'lead@team' for "
                              "their lead, who takes the whole task to their own team (linked_teams lists them)."},
                 "task": {"type": "string", "description": "Self-contained task description — the subagent sees nothing else."},
+                "files": {"type": "array", "items": {"type": "string"},
+                          "description": "Files the work needs, by path in your workspace or a shared "
+                                         "folder. For another team ('name@team') they are sent with the "
+                                         "task (asked first, like any other step); files they make "
+                                         "come back to your workspace, in from-<team>/."},
             },
             "required": ["subagent", "task"],
         },

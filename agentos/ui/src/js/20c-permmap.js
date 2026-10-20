@@ -54,6 +54,8 @@ function pmSay(g){
     :a==='model.use'?'use the model '+glob(v)
     :a.startsWith('app.data')?(a.endsWith('read')?'read':a.endsWith('write')?'write':'read and write')+' its own data'
     :a==='mail.read'?'read your mail':a==='calendar.read'?'read your calendar'
+    :a==='file.send'?(r==='files:made'?'get back the files made for their tasks'
+      :r.startsWith('team:')?'send files to '+r.slice(5)+' with a hand-over':'send files')
     :a+' '+r;
   return (g.effect==='deny'?'may not ':'may ')+what;
 }

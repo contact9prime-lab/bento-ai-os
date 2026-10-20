@@ -5807,6 +5807,20 @@ def _link_cli(args):
                              f"link ended (bento link); {n} permission(s) revoked")
         print(f"  removed {lk['label']}; {n} permission(s) that named it revoked")
         return
+    if act == "files":
+        # files my agents make for their tasks go back with the answer (linkfiles.py)
+        from . import linkfiles
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        if a2 in ("on", "off"):
+            linkfiles.set_back(store, lk["label"], a2 == "on", cfg)
+        on = linkfiles.back_state(store, lk["label"])
+        print(f"  {lk['label']}: files your agents make for their tasks "
+              + ("go back with the answer." if on else "stay here; they get words only."))
+        print(f"  Files they send you land in from-{lk['label']}/ in your workspace.")
+        return
     if act in ("allow", "disallow", "mine"):
         lk = teamlink.find(owner, a1 or "")
         if not lk:
@@ -5914,6 +5928,8 @@ def _link_cli(args):
               f"    their agents may ask: {', '.join(acc['theirs_may_ask']) or 'nobody'}\n"
               f"    mine ask theirs: {'freely' if acc['mine_may_ask'] else 'after asking me'}   "
               f"(as NAME@{lk['label']})")
+        from . import linkfiles as _lf
+        print(f"    files made for their tasks: {'go back with the answer' if _lf.back_state(store, lk['label']) else 'stay here'}")
         for x in fabricmod.standing(store, lk["label"]):
             print(f"    without asking: {'any agent' if x['agent'] == '*' else x['agent']} {x['action']} {x['scope']}")
         for m in fabricmod.linked_missions(store, lk["label"]):
@@ -8266,13 +8282,13 @@ def main():
     p_link.add_argument("action", nargs="?", default="list",
                         choices=["list", "request", "requests", "approve", "deny", "say", "chat",
                                  "listen", "invite", "join", "redeem", "remove", "allow", "disallow", "mine",
-                                 "let", "unlet", "standing", "missions", "stop", "resume", "pass"])
+                                 "let", "unlet", "standing", "missions", "stop", "resume", "pass", "files"])
     p_link.add_argument("arg1", nargs="?", default="",
                         help="request: the other machine's address, or 'account' · say/chat: the link · "
                              "approve/deny: the "
                              "request's id · listen: on|off · invite: machine|account · join: the invite · "
                              "redeem: the code · pass: the agent to lend · remove/allow/disallow/mine/let/unlet/standing/missions/stop/"
-                             "resume: the link")
+                             "resume/files: the link")
     p_link.add_argument("arg2", nargs="?", default="",
                         help="say: the message · request account: the account · invite/join/request: a label · "
                              "pass: machine|account · "

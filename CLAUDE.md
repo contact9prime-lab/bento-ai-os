@@ -2899,6 +2899,28 @@ links hear the same reports through `_REPORT` holding a callable. Every reader o
 treats `progress` as progress (the Office's thought, Chat's live row, the TUI), and the drama
 reel and the comic strip skip it: nobody said it.
 
+**Files go with a hand-over and come back, each under its own consent** (`agentos/linkfiles.py`,
+`Agent._files_out`, `delegate(files=)`, `ControlPlane._files_in`/`_files_note`/`_ship_back`, `bento link files`,
+the link card's switch; `docs/team.md`, `tests/test_link_files.py`, live run `packaging/dev/link-files-e2e/run.py`).
+Asked for as "if the main agent asks an agent on another machine to build a ppt, the file has to come back". Five rules:
+- **Sending is a second decision on the same call** (`Agent._execute` → `_files_out`): the matrix decided
+  `agent.message`; the files are `file.send` on `team:<label>`, risky, asked with a `send_files` card naming every
+  file, rememberable per team, a person's after untrusted content. The model's `files` become the loop's
+  `_want_files`; only `_files` the decision allowed reach the wire. Never fold it into the delegate's one decision.
+- **Only real files under `outputs.roots`, never a hidden one judged inside its root** (a workspace under
+  `~/.agentos` is not hidden), capped by `zero.SHIP_*`.
+- **Back is the answering side's `file.send` on `files:made` for `team:<label>/*`**, on with the link's cells
+  (written lazily by `ensure_back` before the task is worked), a deny row when switched off. Only files MADE during
+  the task (mtime since it started) come back; one the answer names that is older stays and is named as kept. A Zero's
+  own hub keeps its wider rule (`zero.ships_to`).
+- **The switch also opens one folder**: any agent may write in `<workspace>/for-<label>/` for that team (a standing
+  row with agent `*` and source `files`; `policy._standing` honours `*` only on `provision`/`files` rows). Without
+  it a linked task, being untrusted, could make nothing to send.
+- **What arrives is somebody else's bytes**: `from-<label>/`, plain names, 0644, a `link.files` row each side.
+- **A lead's cross-team delegate carries `_root`** (the run, or `Agent._turn_key` per turn). Without one,
+  `fabric.message` budgeted every hand-over under the sender's NAME in the class-level `_sent`, so the seventh
+  hand-over of the server's life was refused. Found by running the two test files together.
+
 **A mission may put `agent@link` on its roster.** `flows.validate` needs the link to exist
 (`teamlink.find` under the current user); `declared_grants` writes `agent.invoke` with a
 sentence naming the other team and NO envelope for that member (it runs under their gate);

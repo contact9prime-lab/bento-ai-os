@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.68 — 2026-10-20
+
+**Files go with a hand-over to another team, and what they make comes back.** When your agent hands
+a task to an agent on a linked machine, it can send the files the work needs, and the files made for
+it come back to your workspace, in `from-<team>/`. Ask for a deck built from `data.csv`, and the deck
+lands back with you. Sending your files is asked like any other step, naming every file, and you can
+allow it once, for a chat, an hour or always for that team. Only files made for the task come back:
+an older file the answer mentions stays where it is, and the answer says so. The other side decides
+whether files go back, with one switch on the link's card, or `bento link files`.
+
+**Your agent's hand-overs to another team no longer stop after six.** They were all counted under
+your agent's name, so after six hand-overs to linked teams, in any chats, every later one was refused
+until Bento restarted. Each turn now has its own budget.
+
+**A file sent with a task can be worked on there.** Files another team sends land in `from-<team>/`,
+and the agent working the task is told where. The agents may make what goes back in one folder per
+team, `for-<team>/`, without waiting for a person.
+
 ## 0.6.67 — 2026-10-20
 
 **A Zero's memory, knowledge graph and soul live on the hub.** A Pi set up to run its work on your

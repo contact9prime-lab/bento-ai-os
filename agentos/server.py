@@ -13106,7 +13106,9 @@ async def api_team_links():
     ident = teamlink.ensure_pki()
     out = []
     for lk in teamlink.links(owner):
+        from . import linkfiles as _lf
         out.append({**lk, **fabricmod.link_access(state["store"], lk["label"]),
+                    "files_back": _lf.back_state(state["store"], lk["label"]),
                     "peer_identity": _team_peer_identity(lk),
                     "standing": fabricmod.standing(state["store"], lk["label"]),
                     "missions": fabricmod.linked_missions(state["store"], lk["label"])})
@@ -13735,7 +13737,11 @@ async def api_team_link_access(label: str, body: dict):
     got = fabricmod.set_link_access(state["store"], lk["label"],
                                     b.get("theirs_may_ask") if "theirs_may_ask" in b else None,
                                     b.get("mine_may_ask") if "mine_may_ask" in b else None)
-    return {"ok": True, **got}
+    from . import linkfiles
+    if "files_back" in b:
+        # files your agents make for their tasks go back with the answer (linkfiles.py)
+        linkfiles.set_back(state["store"], lk["label"], bool(b["files_back"]), state["cfg"])
+    return {"ok": True, **got, "files_back": linkfiles.back_state(state["store"], lk["label"])}
 
 
 @app.get("/api/team/limits")

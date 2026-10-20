@@ -475,6 +475,10 @@ class Agent:
         # them from HERE, never from its arguments)
         self.chain: list[str] = []
         self.root_run = ""
+        # what a lead's hand-overs in THIS turn are budgeted under (fabric.message's root):
+        # with no run they were all keyed on the sender's name, so six hand-overs to linked
+        # teams, in any chats, refused every later one until the server restarted
+        self._turn_key = f"turn:{time.time_ns():x}"
         # Tools this turn has used or explicitly unlocked with `find_tools`. They
         # stay on the table for the rest of the turn even when the user's words
         # never mentioned them — see toolscope.py.
@@ -964,8 +968,11 @@ class Agent:
                     "_taint": list(self.taint)}
         elif name == "delegate" and "@" in str(args.get("subagent") or "") and not self.flow:
             # the lead's hand-over to another team: decided as the matrix's question
-            # (policy.action_of reads _cross) and carrying what this turn has read
-            args = {**args, "_taint": list(self.taint), "_cross": True}
+            # (policy.action_of reads _cross) and carrying what this turn has read. Files it
+            # carries are their own decision just before it runs (_files_out)
+            args = {**args, "_taint": list(self.taint), "_cross": True,
+                    "_root": self.root_run or getattr(self, "run_id", "") or self._turn_key,
+                    **({"_want_files": list(args.get("files") or [])[:16]} if args.get("files") else {})}
         elif name == "delegate" and not self.flow:
             # a hand-over to one of our own specialists carries what this turn has read:
             # a linked team's task handed on was otherwise answered by a specialist that
@@ -1086,7 +1093,7 @@ class Agent:
                                                  dec.reason or reason)
             if approved:
                 await self._checkpoint(name, args)
-                output = await self.toolbox.execute(name, args)
+                output = await self._execute(name, args)
             elif verdict is not None:
                 why = "; ".join(f"{b['agent']}: {b['why']}" for b in verdict["ballots"]
                                 if not b["yes"] and b["why"])
@@ -1108,7 +1115,7 @@ class Agent:
                              "args": args, "detail": tool_detail(name, args),
                              "pending_approval": False})
             await self._checkpoint(name, args)
-            output = await self.toolbox.execute(name, args)
+            output = await self._execute(name, args)
         if (name == "request_capability" and isinstance(output, str) and output.startswith("[granted]")
                 and args.get("_from") and not (args.get("who") or "").strip()
                 and self.tool_filter is not None):
@@ -1185,6 +1192,58 @@ class Agent:
                          **({"image": image_path} if image_path else {})})
         self._said = ""
         return output, ok, image_path, untrusted
+
+    async def _execute(self, name: str, args: dict):
+        """Run a tool the gate allowed. A hand-over to another team that carries files is
+        a second decision first (_files_out): asking a team and sending it this machine's
+        files are two consents, and the matrix's cell is only the first."""
+        if name == "delegate" and args.get("_cross") and args.get("files"):
+            args = await self._files_out(args)
+        return await self.toolbox.execute(name, args)
+
+    async def _files_out(self, args: dict) -> dict:
+        """`file.send` on `team:<label>` (linkfiles.py): decided by the same gate, asked
+        like any other step (a person's after untrusted content), remembered per team.
+        What may go is only real files under this machine's roots, never a hidden one."""
+        from . import linkfiles
+        from .policy import _NEEDS_PERSON, _SAID
+        label = str(args.get("subagent") or "").partition("@")[2]
+        args = {k: v for k, v in args.items() if k != "files"}
+        paths, refused = linkfiles.resolve_out(self.cfg, args.get("_want_files") or [])
+        args.pop("_want_files", None)
+        note = ("Not sent: " + "; ".join(refused) + ".") if refused else ""
+        if not paths:
+            return {**args, "_files_note": note}
+        names = [p.name for p in paths]
+        card = {"to": label, "files": names, "refused": refused}
+        pdp = self.toolbox.pdp
+        if pdp is None:
+            return {**args, "_files_note": note + " Files were not sent: no permission gate here."}
+        dec = pdp.decide(self.principal, linkfiles.ACTION, linkfiles.team_resource(label),
+                         {"risk": "risky", "base_risk": "risky", "tool": "send_files", "args": card,
+                          "reason": f"Sends {len(names)} file(s) to the linked team {label}: "
+                                    + ", ".join(names),
+                          "autonomy": self.cfg.get("autonomy", ""), "surface": self.surface,
+                          "space_id": self.space_id, "conversation_id": self.conversation_id,
+                          "taint": self.taint, "flow": self.flow,
+                          "run_id": getattr(self, "run_id", "")})
+        ok = dec.effect == "allow"
+        if dec.effect == "ask":
+            must = "after untrusted content" if dec.rule == "taint" else ""
+            tok = _NEEDS_PERSON.set(must) if must else None
+            tok_said = _SAID.set(getattr(self, "_said", "") or "")
+            try:
+                ok = bool(await self.approver("send_files", card, dec.reason, dec.grant_offer))
+            except Exception:
+                ok = False
+            finally:
+                _SAID.reset(tok_said)
+                if tok is not None:
+                    _NEEDS_PERSON.reset(tok)
+        if not ok:
+            return {**args, "_files_note": (note + f" The files ({', '.join(names)}) were not sent: "
+                                            f"{dec.reason if dec.effect == 'deny' else 'nobody said yes'}.").strip()}
+        return {**args, "_files": [str(p) for p in paths], "_files_note": note}
 
     async def _park_here(self, name: str, args: dict, call_id: str, dec, reason: str,
                          child: dict | None = None) -> tuple:
