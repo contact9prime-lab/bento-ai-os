@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.64 — 2026-10-20
+
+**A market's day reads right on the Stage.** When numbers both rise and fall, rises are green and falls
+are red, on the chart and on the map, and every value shows its + or -. A place on the map is as big as its
+move, so the biggest fall is no longer the smallest pin. Every bar gets its value. Chart labels never break
+a word in two: names that can't fit lie at an angle instead. On Telegram, a map's notes are all in the
+picture as a grid, where only two showed before.
+
+**Play works on a phone again.** In a short window the scene's source line slid over the controls and took
+the taps meant for Play, so the story never started.
+
 ## 0.6.63 — 2026-10-19
 
 - **Asking another machine says where the question is.** The other machine reports as it goes

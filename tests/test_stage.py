@@ -359,3 +359,64 @@ def test_the_painter_and_the_tool_know_every_subject_and_camera():
 def test_the_agent_is_told_to_choose_how_big_an_answer_is():
     line = stage.note({"stage": {"big": True}})
     assert "film" in line and "Choose how big" in line
+
+def test_a_phone_gives_the_story_the_room():
+    """Measured at 390x844 with touch emulation: two rows of chrome left the map a 200px strip,
+    the subtitle covered the last number card's note, and a third number fell out of the frame."""
+    css = (ROOT / "agentos/ui/src/css/31-stage.css").read_text()
+    js = JS.read_text()
+    # the subtitle goes over a picture, never over words
+    assert ".stg-scene:not(.k-map):not(.k-image):not(.k-video) .stg-foot{margin-top:0}" in css
+    # one row each on a phone, with short labels, and two numbers a row
+    for rule in ("body.dev-mobile .st-top{flex-wrap:nowrap", "body.dev-mobile .stg-bar{flex-wrap:nowrap",
+                 "body.dev-mobile .stg-long{display:none}", "body.dev-mobile .st-nums{grid-template-columns"):
+        assert rule in css, rule
+    # full screen is offered only where the browser has it (an iPhone does not)
+    assert "if(document.fullscreenEnabled){" in js
+    # the map takes the frame's shape, and an upright frame keeps the places' longitudes
+    i = js.index("async function stageMap(")
+    body = js[i:i + 2600]
+    assert "W*fh/fw" in body and "stageK(svg,W,H)" in body and "aspect<1.6&&lons.length" in body
+    # measured after the scene laid out, and after the places' notes took their row
+    assert body.index("await stageWorld()") < body.index("art.clientHeight")
+    assert body.index("st-mapnotes") < body.index("art.clientHeight") and "art.insertBefore(svg,ol)" in body
+    # the notes are one scrolling row on the Stage, so the map keeps its half
+    assert ".stg .st-mapnotes{display:flex;overflow-x:auto;scroll-snap-type:x mandatory" in css
+    assert ".stg-scene.k-map:has(.st-mapnotes) .stg-foot{margin-top:0}" in css
+
+
+def test_a_market_day_reads_on_the_stage():
+    """Filmed as "how's the market today?" with ten indexes, rises and falls: the labels broke
+    mid-word ("Nasda q"), every bar and pin was one colour, the biggest fall was the smallest pin,
+    the Kospi bar had no value, and a phone's map scene spilled its source line over Play."""
+    css = (ROOT / "agentos/ui/src/css/31-stage.css").read_text()
+    js = JS.read_text()
+    # a scene's parts keep their rows, so a short window hiding the kicker moves nothing
+    for rule in (".stg-scene>.stg-kicker{grid-row:1}", ".stg-scene>.stg-title{grid-row:2}",
+                 ".stg-scene>.stg-art{grid-row:3}", ".stg-scene>.stg-foot{grid-row:4}"):
+        assert rule in css, rule
+    chart = js[js.index("function stageChart("):js.index("function stagePie(")]
+    # a word too long for its slot turns the labels to an angle, never splits
+    assert "const tilt=" in chart and "rotate(-35" in chart
+    # rises and falls: coloured by sign, every value shown at one size, signed
+    assert "const tones=bar&&signed&&n===1" in chart and "STAGE_UP" in chart and "STAGE_DOWN" in chart
+    assert "const valFs=" in chart and "stageFmtS(p[1],tu,signed)" in chart
+    m = js[js.index("async function stageMap("):js.index("function stageTwoLines(")]
+    # a pin is as big as the move, and coloured by its sign
+    assert "Math.abs(v)" in m and "' down'" in m and "' up'" in m
+    # the picture for a phone has no scrolling: the notes are a grid there
+    assert "body.still .stg .st-mapnotes{display:grid" in stage.STILL_CSS
+
+
+@pytest.mark.skipif(not __import__("shutil").which("node"), reason="no node here")
+def test_signed_values_say_their_sign():
+    import subprocess
+    js = JS.read_text()
+    def fn(name):          # one top-level function, up to the next one
+        i = js.index(f"function {name}(")
+        return js[i:js.index("\nfunction ", i + 1)]
+    src = "\n".join(fn(f) for f in ("stageFmt", "stageSigned", "stageFmtS"))
+    out = subprocess.run(["node", "-e", src + """
+console.log(JSON.stringify([stageSigned([1.11,-3.73]),stageSigned([1,2]),stageFmtS(1.11,'%',true),
+  stageFmtS(-3.73,'%',true),stageFmtS(1.11,'%',false)]))"""], capture_output=True, text=True, check=True).stdout
+    assert json.loads(out) == [True, False, "+1.11%", "-3.73%", "1.11%"]

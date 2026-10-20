@@ -728,6 +728,11 @@ Six rules:
   a version of its Stage; the note tells the agent to re-show the whole story with the change.
 - **The note comes FIRST in the door's context, by kind of question.** Measured: placed last it gave a how-to one
   timeline; placed first it searched YouTube and Wikimedia and showed steps, a picture, a video and a table.
+- **Rises and falls are read by sign, and a scene's parts keep their rows** (`stageSigned`, `stageFmtS`,
+  `STAGE_UP`/`STAGE_DOWN`; `test_a_market_day_reads_on_the_stage`). Filmed as a market check: labels broke
+  mid-word (a word that cannot fit now tilts the labels), every bar and pin was one colour, a pin sized by raw
+  value made the biggest fall the smallest pin, and on a phone a short window hid the kicker, the unpinned
+  scene grid slid up a row, and the source line covered Play. `.stg-scene>*` rows are pinned like `.stg>*`.
 - **Answer BIG is the person's** (`stage` USER_KEY: `big`, `app`). Off, the tool is still offered and the
   note says "when they ask". `app` hands scenes to one of the person's apps (`appstage` event in APP_RUNTIME)
   instead of the Stage; "Open by itself" is per browser (`stage.auto`).

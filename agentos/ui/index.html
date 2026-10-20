@@ -5351,6 +5351,11 @@ body.kiosk #office-scene canvas{display:block}
 /* Never forever inside a drawing: an SVG shape scaling without end was redrawn badly by Chrome on
    Wayland (reported: the map and its caption painted twice, with the dock inside it). */
 .st-pulse{fill:#F43F5E;opacity:.25;transform-box:fill-box;transform-origin:center;animation:st-pulse 2.2s ease-out 3}
+/* a set of rises and falls: up green, down red (pins, notes); bars take STAGE_DOWN in the js */
+.st-pt.up,.st-pulse.up{fill:#34D399}
+.st-pt.down,.st-pulse.down{fill:#F43F5E}
+.st-mapnotes li.up b{color:#6EE7B7}
+.st-mapnotes li.down b{color:#FDA4AF}
 .st-tag{fill:color-mix(in srgb,var(--bg) 82%,transparent);stroke:var(--line);opacity:0;animation:st-fade .4s ease forwards}
 .st-tagtext{fill:var(--txt);font-size:calc(13px * var(--k,1));font-weight:600;font-family:var(--sans);opacity:0;animation:st-fade .4s ease forwards}
 .st-scale{display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
@@ -5602,6 +5607,10 @@ body.dev-mobile .stg-cap{font-size:15px}
 /* each part keeps its own row, so hiding the question in a short window moves nothing */
 .stg>.stg-prog{grid-row:1}.stg>.stg-head{grid-row:2}.stg>.stg-scene{grid-row:3}.stg>.stg-bar{grid-row:4}
 .stg>.stg-empty{grid-row:3}
+/* and so does each part of a scene: a short window hides the kicker, and unpinned the picture
+   slid into the title's auto row while the caption took the shrinking one, so the source line
+   spilled over the controls and took Play's taps (found filming a market check on a phone) */
+.stg-scene>.stg-kicker{grid-row:1}.stg-scene>.stg-title{grid-row:2}.stg-scene>.stg-art{grid-row:3}.stg-scene>.stg-foot{grid-row:4}
 /* what does not fill the room sits in its middle */
 .stg-scene.k-steps .stg-art,.stg-scene.k-numbers .stg-art,.stg-scene.k-timeline .stg-art,.stg-scene.k-table .stg-art{justify-content:center;overflow:auto}
 /* a subtitle may sit over a picture, never over the last row of a list or a table */
@@ -34580,6 +34589,7 @@ var STAGE=window.STAGE||{
   lib:null,
 };
 window.STAGE=STAGE;
+var STAGE_DOWN='#F43F5E',STAGE_UP='#34D399';
 var STAGE_PAL=['var(--acc)','#F59E0B','#22D3EE','#F472B6','#34D399','#A78BFA','#F87171','#94A3B8'];
 
 function stageAuto(){try{return localStorage.getItem('stage.auto')!=='0'}catch(e){return true}}
@@ -35124,6 +35134,9 @@ function stageFmt(n,unit){
   // a word is a word apart ("8 billion"); a symbol sits on the number ("56.7°C", "12%")
   return s+(unit?(/^[A-Za-z]{2}/.test(unit)?' ':'')+unit:'');
 }
+/* A move is read by its sign: when a set of values has both, a rise says "+" as a fall says "-". */
+function stageSigned(vals){const v=(vals||[]).filter(x=>x!=null&&isFinite(x));return v.some(x=>x>0)&&v.some(x=>x<0)}
+function stageFmtS(n,unit,signed){const s=stageFmt(n,unit);return signed&&n>0?'+'+s:s}
 function stageTicks(lo,hi,n){
   if(lo===hi){lo-=1;hi+=1}
   const span=hi-lo,raw=span/Math.max(1,n),mag=Math.pow(10,Math.floor(Math.log10(raw)));
@@ -35163,8 +35176,13 @@ function stageChart(art,sc){
   const xv=x=>isNum?x:dates?stageDate(x):cats.indexOf(x);
   // a long category name gets a second line rather than an ellipsis (a picture on a phone
   // has no hover to read the rest), and the bottom margin makes room for it
-  const twoLines=cats.length>0&&cats.some(c=>String(c).length*7.2*K>(W-72-R)/cats.length-6);
+  // A name whose one word cannot fit its slot is drawn at an angle instead: cut, "Nasdaq"
+  // became "Nasda q" (found with a market's ten indexes on a phone).
+  const slotW=(W-72-R)/Math.max(1,cats.length)-6;
+  const tilt=cats.length>0&&cats.some(c=>String(c).split(/\s+/).some(w=>w.length*7.2*K>slotW));
+  const twoLines=!tilt&&cats.length>0&&cats.some(c=>String(c).length*7.2*K>slotW);
   if(twoLines)B+=Math.round(16*K);
+  if(tilt)B+=Math.round(Math.min(18,Math.max(...cats.map(c=>String(c).length)))*7.2*K*0.62+8*K);
   const bar=sc.chart_type==='bar';
   let x0=Math.min(...all.map(p=>xv(p[0]))),x1=Math.max(...all.map(p=>xv(p[0])));
   if(bar||(!isNum&&!dates)){x0-=0.5;x1+=0.5}
@@ -35190,6 +35208,8 @@ function stageChart(art,sc){
   // each name gets its slot and is cut to it, so neighbours never run into each other
   const room=xl.length>1?Math.abs(X(xl[1][0])-X(xl[0][0]))-6:W-L-R;
   xl.forEach(([v,label])=>{
+    if(tilt){const s=String(label),ln=s.length>18?s.slice(0,17)+'…':s,ty=H-B+16*K;
+      g.append(sSvg('text',{x:X(v),y:ty,'text-anchor':'end',transform:`rotate(-35 ${X(v)} ${ty})`},ln));return}
     const lines=twoLines?stageTwoLines(label,Math.floor(room/(7.2*K))):[fitText(label,room)];
     const t=sSvg('text',{x:X(v),y:H-B+18*K,'text-anchor':'middle'});
     lines.filter(Boolean).forEach((ln,i)=>t.append(sSvg('tspan',{x:X(v),dy:i?16*K:0},ln)));
@@ -35205,18 +35225,28 @@ function stageChart(art,sc){
       svg.append(sSvg('text',{x:X(v)+6,y:T+14,class:'st-marktext'},m.text||''))}
   });
   const n=series.length;
-  const gid=stageDefs(svg,series.map((_,si)=>STAGE_PAL[si%STAGE_PAL.length]));
+  const signed=stageSigned(all.map(p=>p[1]));
+  // one series that rises and falls (a market's day): rises green, falls red, as the map
+  const tones=bar&&signed&&n===1;
+  const gid=stageDefs(svg,series.map((_,si)=>STAGE_PAL[si%STAGE_PAL.length]).concat([STAGE_DOWN,STAGE_UP]));
+  // one size for every value on the bars, the size the tightest one needs
+  const barSlot=bar?(W-L-R)/((x1-x0)||1)*0.95/n:0;
+  const valFs=bar?Math.min(...all.map(p=>{const need=stageFmtS(p[1],tu,signed).length*7.2*K;return need<=barSlot?1:need*0.75<=barSlot?0.75:0})):1;
   series.forEach((s,si)=>{
     const col=STAGE_PAL[si%STAGE_PAL.length];
     const pts=s.points.map(p=>[xv(p[0]),p[1]]).sort((a,b)=>a[0]-b[0]);
     if(bar){
       const slot=(W-L-R)/((x1-x0)||1),bw=Math.max(2,slot*0.7/n);
       pts.forEach((p,i)=>{const x=X(p[0])-slot*0.35+si*bw,y=Y(Math.max(0,p[1])),h=Math.abs(Y(p[1])-Y(0));
-        const r=sSvg('rect',{x,y,width:bw-2,height:Math.max(1,h),rx:Math.min(8,(bw-2)/4),fill:`url(#${gid}-b${si})`,class:'st-bar',style:`animation-delay:${i*40}ms`});
+        const tone=tones?(p[1]<0?n:p[1]>0?n+1:si):si;
+        const r=sSvg('rect',{x,y,width:bw-2,height:Math.max(1,h),rx:Math.min(8,(bw-2)/4),fill:`url(#${gid}-b${tone})`,class:'st-bar',style:`animation-delay:${i*40}ms`});
         r.append(sSvg('title',{},`${s.name?s.name+': ':''}${stageFmt(p[1],sc.unit)}`));svg.append(r);
         // the value over its bar only when it fits the bar's slot
-        const vt=stageFmt(p[1],tu);
-        if(vt.length*7.2*K<=slot*0.95/n)svg.append(sSvg('text',{x:x+(bw-2)/2,y:y-6*K,'text-anchor':'middle',class:'st-val'},vt))});
+        // every value is shown, smaller when its slot is tight, and a fall's under its bar
+        const vt=stageFmtS(p[1],tu,signed),fs=valFs;
+        if(fs){const vy=p[1]<0?Y(p[1])+15*K*fs:y-6*K;
+          const t=sSvg('text',{x:x+(bw-2)/2,y:vy,'text-anchor':'middle',class:'st-val'},vt);
+          if(fs<1)t.style.fontSize=`calc(${13*fs}px * var(--k,1))`;svg.append(t)}});
       return;
     }
     if(sc.chart_type==='scatter'){
@@ -35233,7 +35263,8 @@ function stageChart(art,sc){
     svg.append(sSvg('circle',{cx:X(last[0]),cy:Y(last[1]),r:5.5,fill:col,class:'st-end',filter:`url(#${gid}-glow)`}));
     svg.append(sSvg('text',{x:Math.min(X(last[0])+8,W-R-4),y:Y(last[1])-8,'text-anchor':X(last[0])>W-140?'end':'start',class:'st-val'},stageFmt(last[1],sc.unit)));
   });
-  if(n>1||series[0]&&series[0].name){
+  // a rising-and-falling single series is coloured by sign, so one swatch would mislead
+  if(n>1||series[0]&&series[0].name&&!tones){
     const lg=sEl('div','st-legend');
     series.forEach((s,si)=>{const it=sEl('span','');const sw=sEl('i','');sw.style.background=STAGE_PAL[si%STAGE_PAL.length];it.append(sw,document.createTextNode(s.name||('series '+(si+1))));lg.append(it)});
     art.append(lg);
@@ -35284,9 +35315,11 @@ async function stageMap(art,sc){
   // the map has what they leave. A fixed 960x500 left the world a thin strip on a phone held
   // upright, and sized before the notes it came out a quarter of its box.
   let ol=null;const notes=(sc.points||[]).filter(p=>p.note);
+  const nsigned=stageSigned((sc.points||[]).map(p=>p.value));
   if(notes.length){ol=sEl('ol','st-mapnotes');
     notes.forEach((p,i)=>{const li=sEl('li','');li.style.animationDelay=(600+i*160)+'ms';
-      li.append(sEl('b','',(i+1)+' · '+(p.label||'')+(p.value!=null?' '+stageFmt(p.value,sc.unit):'')),sEl('span','',p.note));ol.append(li)});
+      li.append(sEl('b','',(i+1)+' · '+(p.label||'')+(p.value!=null?' '+stageFmtS(p.value,sc.unit,nsigned):'')),sEl('span','',p.note));
+      if(nsigned&&p.value)li.classList.add(p.value<0?'down':'up');ol.append(li)});
     art.append(ol)}
   const W=960,fw=art.clientWidth,fh=art.clientHeight-(ol?ol.offsetHeight+10:0);
   const H=fw>40&&fh>40?Math.round(Math.min(1400,Math.max(320,W*fh/fw))):500;
@@ -35345,11 +35378,15 @@ async function stageMap(art,sc){
   const missing=hits.filter(h=>!h.c).map(h=>h.r.country);
   // places: sized by value, labelled where the label fits
   const pts=(sc.points||[]).slice();
-  const pv=pts.map(p=>p.value).filter(v=>v!=null),pmin=Math.min(...pv),pmax=Math.max(...pv);
+  const pv0=pts.map(p=>p.value).filter(v=>v!=null),signed=stageSigned(pv0);
+  // with rises and falls, a pin is as big as the move: by raw value the biggest fall was the
+  // smallest pin on the map
+  const mag=v=>signed?Math.abs(v):v;
+  const pv=pv0.map(mag),pmin=Math.min(...pv),pmax=Math.max(...pv);
   const taken=[];
   // every pin's dot is kept clear of labels, so a label never hides a place
   pts.forEach(p=>{const x=X(p.lon),y=Y(p.lat);taken.push([x-9,y-9,x+9,y+9])});
-  const order=pts.map((p,i)=>[p,i]).sort((a,b)=>(b[0].value||0)-(a[0].value||0));
+  const order=pts.map((p,i)=>[p,i]).sort((a,b)=>mag(b[0].value||0)-mag(a[0].value||0));
   // a few places in order are a journey: arcs join them, drawn one after another
   if(sc.route&&pts.length>=2&&pts.length<=12){
     const arcs=sSvg('g',{class:'st-arcs'});
@@ -35363,11 +35400,12 @@ async function stageMap(art,sc){
     &&!taken.some(b=>lx<b[2]&&lx+lw>b[0]&&ly<b[3]&&ly+th>b[1]);
   order.forEach(([p],rank)=>{
     const x=X(p.lon),y=Y(p.lat);if(x<-10||x>W+10||y<-10||y>H+10)return;
-    const t=p.value!=null&&pv.length>1?(p.value-pmin)/((pmax-pmin)||1):0.5;
+    const t=p.value!=null&&pv.length>1?(mag(p.value)-pmin)/((pmax-pmin)||1):0.5;
+    const tone=signed&&p.value!=null?(p.value<0?' down':p.value>0?' up':''):'';
     const r=6+t*10,delay=Math.min(rank,30)*120;
     const g=sSvg('g',{class:'st-pin',style:`animation-delay:${delay}ms`});
-    g.append(sSvg('circle',{cx:x,cy:y,r:r*1.9,class:'st-pulse'}),sSvg('circle',{cx:x,cy:y,r,class:'st-pt',filter:`url(#${mid}-glow)`}));
-    g.append(sSvg('title',{},(p.label||'')+(p.value!=null?': '+stageFmt(p.value,sc.unit):'')+(p.note?' · '+p.note:'')));
+    g.append(sSvg('circle',{cx:x,cy:y,r:r*1.9,class:'st-pulse'+tone}),sSvg('circle',{cx:x,cy:y,r,class:'st-pt'+tone,filter:`url(#${mid}-glow)`}));
+    g.append(sSvg('title',{},(p.label||'')+(p.value!=null?': '+stageFmtS(p.value,sc.unit,signed):'')+(p.note?' · '+p.note:'')));
     // a place with a note is numbered, and its note is listed under the map: a picture has
     // no hover, and the note is what happened there
     const n=noted.indexOf(p);
@@ -35375,7 +35413,7 @@ async function stageMap(art,sc){
     svg.append(g);
     // the full name, then its first part ("Furnace Creek"), placed where it touches no
     // other label: right, left, above, below. A place with no room keeps its dot and title.
-    const val=p.value!=null?' '+stageFmt(p.value,sc.unit):'';
+    const val=p.value!=null?' '+stageFmtS(p.value,sc.unit,signed):'';
     const names=[(p.label||'')+val];
     const short=String(p.label||'').split(',')[0].trim();
     if(short&&short!==p.label)names.push(short+val);
