@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.65 — 2026-10-20
+
+**A free talk happens in the Office.** When you let your team talk, the people in it now meet at the
+meeting-room table and say each line there in a balloon, one at a time, and go back to their desks when
+it ends. Before, the Office sat still while they talked and showed "done ✓" over a desk after every line.
+On a phone, a balloon by the edge of the screen stays on it, and names crowded round one table stay in the
+room.
+
 ## 0.6.64 — 2026-10-20
 
 **A market's day reads right on the Stage.** When numbers both rise and fall, rises are green and falls

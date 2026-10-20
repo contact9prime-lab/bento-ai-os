@@ -298,6 +298,11 @@ function of3Where(){
   }
   const a=OF3.cv.getBoundingClientRect(),b=OF3.ui?OF3.ui.getBoundingClientRect():a;
   OF3.off={x:a.left-b.left,y:a.top-b.top,sx:a.width/Math.max(1,OF3.cw||a.width),sy:a.height/Math.max(1,OF3.ch||a.height)};
+  // what can be seen of the picture, in its own units: the area it sits in, cut by the
+  // screen. A balloon over somebody near the edge is kept inside it (on a phone the
+  // meeting room is at the edge, and every line said there ran off the screen)
+  const o=OF3.off,v=sc?sc.getBoundingClientRect():a;
+  o.vis={l:(Math.max(v.left,0)-b.left-o.x)/(o.sx||1),r:(Math.min(v.right,innerWidth)-b.left-o.x)/(o.sx||1)};
 }
 function of3Dispose(){
   const T=OF3.T;
@@ -1187,8 +1192,10 @@ function of3Overlay(now){
     if(!(moving||here))return;
     const f=of3Project(of3W(p.x,p.y,OF3_SLAB)),label=(p.head?'★ ':'')+p.label;
     const e=of3El('tag:'+p.key,'of3-tag'+(p.busy?' busy':''),esc(label.length>16?label.slice(0,15)+'…':label));
-    let y=f.y+(p.mode==='seat'&&!p.bench?14:4);const w=e.offsetWidth||60;
-    for(let n=0;n<4&&tags.some(q=>Math.abs(q.x-f.x)<(q.w+w)/2&&Math.abs(q.y-y)<15);n++)y+=15;
+    const y0=f.y+(p.mode==='seat'&&!p.bench?14:4),w=e.offsetWidth||60;
+    // a crowd round one table steps its names up as well as down, so they stay in the room
+    const hit=y=>tags.some(q=>Math.abs(q.x-f.x)<(q.w+w)/2&&Math.abs(q.y-y)<15);
+    let y=y0;for(const dy of [15,-15,30,-30])if(hit(y))y=y0+dy;else break;
     tags.push({x:f.x,y,w});of3Place(e,f.x,y,0,0,'t');
   });
   // balloons, newest on top, each placed clear of the ones already placed
@@ -1198,7 +1205,8 @@ function of3Overlay(now){
     let t=s.text;if(t.length>110)t=t.slice(0,108).replace(/\s+\S*$/,'')+'…';
     const e=of3El('say:'+p.key,'of3-say '+s.kind,esc(t));
     e.style.opacity=age>.85?Math.max(0,(1-age)/.15):1;
-    const w=e.offsetWidth||120,hh=e.offsetHeight||30;let x=h.x-w/2,y=h.y-hh-12;
+    const w=e.offsetWidth||120,hh=e.offsetHeight||30,vis=(OF3.off||{}).vis;let x=h.x-w/2,y=h.y-hh-12;
+    if(vis&&vis.r-vis.l>w+12)x=Math.max(vis.l+6,Math.min(x,vis.r-w-6));
     for(let n=0,o;n<6&&(o=placed.find(q=>x<q.x+q.w+4&&x+w+4>q.x&&y<q.y+q.h+4&&y+hh+4>q.y));n++)y=o.y-hh-6;
     placed.push({x,y,w,h:hh});of3Place(e,x,y,0,0,'');
     e.style.setProperty('--tail',Math.round(Math.max(10,Math.min(w-10,h.x-x)))+'px');

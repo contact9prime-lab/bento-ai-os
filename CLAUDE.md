@@ -2645,6 +2645,11 @@ Full story in `docs/team.md`. Two features, five rules.
   `ask_agent` (`kind == "freetalk"`): they are already talking.
 - **The floor is fair** (`free_talk_next`): the one spoken to answers, but nobody waits more than a
   lap of the room. Found live: two agents answering each other held the floor for ten messages.
+- **The Office draws a free talk as the team at the table** (`officeFreeTalk`, kind `freetalk` on
+  `scenePulse`; `test_the_office_gathers_a_free_talk_at_the_table`). It used to pulse kind `talk`,
+  which the Office drops because an ask arrives as `msg`, so four agents talked while the Office
+  sat still with a "done ✓" after every line (found filming it). A message's run ends with no
+  balloon, the line before fades, and the 3D balloons stay on screen (`OF3.off.vis`).
 - **Kept first, shown second, in three places that cannot disagree**: each message is a run under
   the session and a `talk` event on it, then a Chat message (meta `freetalk`, so a server that
   dies mid-talk keeps what was said), then a broadcast. The start and end are `team.freetalk`

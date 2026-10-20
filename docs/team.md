@@ -308,6 +308,19 @@ has waited longest gets the floor.
 
 ![A free talk in Chat: the validator tells the researcher what it thinks is missing, and the researcher answers, each with its face, the one it is talking to and Claude Code as the brain](screenshots/team-freetalk-chat.png)
 
+**In the Office**, the people in a free talk get up and meet at the meeting-room table as soon
+as the first word is said. Each line is said there in a balloon, the line before it fades, and
+they go back to their desks when the talk ends. Before this (first), the Office sat still while
+they talked and put "done ✓" over a desk after every line.
+
+![Before: the Office during a free talk, everyone at their desks and "done ✓" over Health](screenshots/office-freetalk-before.png)
+![After: kofi, lina, maya and ravi at the meeting-room table, lina's line in a balloon and every line in the log underneath](screenshots/office-freetalk-after.png)
+
+On a phone the meeting room is at the edge of the screen, so a balloon is kept inside it.
+
+![Before, on a 390px phone: nobody moves and nothing is said](screenshots/office-freetalk-phone-before.png)
+![After, on a 390px phone: the four at the table, one line at a time, on the screen](screenshots/office-freetalk-phone-after.png)
+
 From a terminal: `bento team freetalk "what should we try next?" --minutes 5 --messages 20 --yes`
 (add `--act` for tools, `--agents a,b` to pick), and `bento team freetalk stop`.
 

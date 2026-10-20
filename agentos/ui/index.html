@@ -8493,7 +8493,7 @@ function crewPulse(kind,label,ev){
   if(kind==='say'){const w=crewMatch(label);
     // a question to a colleague says who it is for, so the stage reads as a conversation
     if(w){CREW.busy[w]=now;crewWorker(w,label);
-      crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
+      crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to&&!/^\s*@/.test((ev&&ev.text)||'')?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
     crewKick();return}
   if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
   if(kind==='tool'&&label){
@@ -30172,6 +30172,7 @@ function officePulse(kind,label,ev){
   }
   if(kind==='say'){
     if(ev.kind==='talk')return;              // agents asking each other arrive as 'msg'
+    if(ev.kind==='freetalk')return officeFreeTalk(label,ev);
     const p=officeMatch(label);if(!p)return;
     if(!O.huddle||O.huddle.until<performance.now())officeHuddle([label],ev.conversation_id||'');
     officeHuddleJoin(p);officeSay(p,ev.text,'say',OF_SAY_MS+1500);
@@ -30357,6 +30358,9 @@ function officeFabric(ev){
     // a boss's sign-off run: officeReview draws it from the review events, so the run's
     // own start and end must not also light a meeting or send a "done ✓"
     if(ev.kind==='review')return;
+    // a free-talk message is a run too, but saying something is not finishing a task:
+    // its words are drawn at the table (officeFreeTalk), so its end draws no "done ✓"
+    if(ev.kind==='freetalk'&&ev.status!=='running'){delete O.runs[ev.run_id];return}
     if(ev.status==='running'){O.runs[ev.run_id]=p.key;officeWork(p,true);p.stuck=0;
       if(ev.parent_run&&O.flowRuns[ev.parent_run]){(O.meet[ev.parent_run]=O.meet[ev.parent_run]||new Set()).add(p.key);
         officeMeetSync(ev.parent_run)}
@@ -30453,6 +30457,24 @@ function officeDeEscalate(p,ok){
       p.visit={meet:back};officeWalk(p,officeTableSpot([...set].indexOf(p.key)),'stand')}
     else setTimeout(()=>officeHome(p),OFFICE.static?0:900);
   }
+}
+/* Free talk (24f) is the team hanging out: everybody in it gathers at the meeting table
+   when the first word is said, each message is said there, and they go back to their
+   desks when it ends. It used to be dropped here with the agents' asks, so the Office
+   sat still while four of them talked, with a "done ✓" over a desk after each line.
+   No end heard (a dropped socket) still ends it after OF_FT_QUIET with nothing said. */
+var OF_FT_QUIET=90000;
+function officeFreeTalk(label,ev){
+  const O=OFFICE;
+  if(ev.end){if(O.huddle&&O.huddle.ft===ev.id)officeHuddleEnd();return}
+  if(!O.huddle||O.huddle.ft!==ev.id){officeHuddle(ev.agents&&ev.agents.length?ev.agents:[label],'');O.huddle.ft=ev.id}
+  O.huddle.until=performance.now()+OF_FT_QUIET;
+  const p=officeMatch(label);if(!p)return;
+  // one line at a time: whoever spoke before fades as the next one starts
+  const now=performance.now();
+  O.huddle.who.forEach(q=>{if(q!==p&&q.say&&q.say.kind==='say')q.say.ms=Math.min(q.say.ms,now-q.say.at+1200)});
+  officeHuddleJoin(p);officeSay(p,ev.text,'say',OF_SAY_MS+2500);
+  officeLog(`${p.label} (free talk): ${String(ev.text||'').slice(0,90)}`);
 }
 function officeHuddleEnd(){
   const O=OFFICE,h=O.huddle;if(!h)return;O.huddle=null;
@@ -31409,6 +31431,7 @@ function playPulse(kind,label,ev){
   }
   if(kind==='say'){
     if(ev.kind==='talk')return;             // asks and answers arrive as 'msg'
+    if(ev.kind==='freetalk')return;         // a free talk is its own card in Chat (24f)
     const s=playStripOf(cid,true);if(!s)return;
     playSay(s,ev.speaker||label,ev.text||'');playWork(s,ev.speaker||label,true);
     return;
@@ -31606,7 +31629,7 @@ function freeTalkEvent(ev){
   const t=(FREETALK.talks||[]).find(x=>x.id===ev.id);
   if(ev.phase==='say'){
     if(t)t.messages=ev.n||t.messages+1;
-    if(typeof scenePulse==='function')scenePulse('say',ev.speaker,{kind:'talk',text:ev.text,to:ev.to});
+    if(typeof scenePulse==='function')scenePulse('say',ev.speaker,{kind:'freetalk',id:ev.id,agents:t?t.agents:[ev.speaker],text:ev.text,to:ev.to,conversation_id:ev.conversation_id});
     const here=ev.conversation_id===currentConv;
     if(here&&typeof voiceAgentLine==='function')voiceAgentLine(ev.speaker,ev.text);
     if(here&&feed){
@@ -31621,6 +31644,7 @@ function freeTalkEvent(ev){
   }
   if(ev.phase==='end'){
     if(t){t.status='ended';t.reason=ev.reason}
+    if(typeof scenePulse==='function')scenePulse('say','',{kind:'freetalk',id:ev.id,end:true});
     if(ev.conversation_id===currentConv&&feed){
       const card=freeTalkCard(ev.id,{},false);
       if(card){card.insertAdjacentHTML('beforeend',`<div class="ft-end">free talk ended: ${esc(ev.reason)}, ${ev.count} message${ev.count===1?'':'s'}</div>`);
@@ -33576,6 +33600,11 @@ function of3Where(){
   }
   const a=OF3.cv.getBoundingClientRect(),b=OF3.ui?OF3.ui.getBoundingClientRect():a;
   OF3.off={x:a.left-b.left,y:a.top-b.top,sx:a.width/Math.max(1,OF3.cw||a.width),sy:a.height/Math.max(1,OF3.ch||a.height)};
+  // what can be seen of the picture, in its own units: the area it sits in, cut by the
+  // screen. A balloon over somebody near the edge is kept inside it (on a phone the
+  // meeting room is at the edge, and every line said there ran off the screen)
+  const o=OF3.off,v=sc?sc.getBoundingClientRect():a;
+  o.vis={l:(Math.max(v.left,0)-b.left-o.x)/(o.sx||1),r:(Math.min(v.right,innerWidth)-b.left-o.x)/(o.sx||1)};
 }
 function of3Dispose(){
   const T=OF3.T;
@@ -34465,8 +34494,10 @@ function of3Overlay(now){
     if(!(moving||here))return;
     const f=of3Project(of3W(p.x,p.y,OF3_SLAB)),label=(p.head?'★ ':'')+p.label;
     const e=of3El('tag:'+p.key,'of3-tag'+(p.busy?' busy':''),esc(label.length>16?label.slice(0,15)+'…':label));
-    let y=f.y+(p.mode==='seat'&&!p.bench?14:4);const w=e.offsetWidth||60;
-    for(let n=0;n<4&&tags.some(q=>Math.abs(q.x-f.x)<(q.w+w)/2&&Math.abs(q.y-y)<15);n++)y+=15;
+    const y0=f.y+(p.mode==='seat'&&!p.bench?14:4),w=e.offsetWidth||60;
+    // a crowd round one table steps its names up as well as down, so they stay in the room
+    const hit=y=>tags.some(q=>Math.abs(q.x-f.x)<(q.w+w)/2&&Math.abs(q.y-y)<15);
+    let y=y0;for(const dy of [15,-15,30,-30])if(hit(y))y=y0+dy;else break;
     tags.push({x:f.x,y,w});of3Place(e,f.x,y,0,0,'t');
   });
   // balloons, newest on top, each placed clear of the ones already placed
@@ -34476,7 +34507,8 @@ function of3Overlay(now){
     let t=s.text;if(t.length>110)t=t.slice(0,108).replace(/\s+\S*$/,'')+'…';
     const e=of3El('say:'+p.key,'of3-say '+s.kind,esc(t));
     e.style.opacity=age>.85?Math.max(0,(1-age)/.15):1;
-    const w=e.offsetWidth||120,hh=e.offsetHeight||30;let x=h.x-w/2,y=h.y-hh-12;
+    const w=e.offsetWidth||120,hh=e.offsetHeight||30,vis=(OF3.off||{}).vis;let x=h.x-w/2,y=h.y-hh-12;
+    if(vis&&vis.r-vis.l>w+12)x=Math.max(vis.l+6,Math.min(x,vis.r-w-6));
     for(let n=0,o;n<6&&(o=placed.find(q=>x<q.x+q.w+4&&x+w+4>q.x&&y<q.y+q.h+4&&y+hh+4>q.y));n++)y=o.y-hh-6;
     placed.push({x,y,w,h:hh});of3Place(e,x,y,0,0,'');
     e.style.setProperty('--tail',Math.round(Math.max(10,Math.min(w-10,h.x-x)))+'px');
