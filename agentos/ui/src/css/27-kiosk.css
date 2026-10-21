@@ -66,6 +66,14 @@ body.kiosk #office-scene canvas{display:block}
   background:color-mix(in srgb,var(--bg3) 70%,transparent)}
 .prov-keytext code{word-break:break-all;user-select:all}
 #prov-out .ok{color:var(--ok,#4ade80)}#prov-out .warn{color:var(--warn,#f59e0b)}
+/* a Zero: the one line, how a machine was heard, the standard setup */
+.prov-via{white-space:nowrap}.prov-via.ts{color:var(--acc)}
+.zero-out{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-radius:10px;margin:6px 0 10px;
+  background:color-mix(in srgb,var(--bg3) 70%,transparent)}
+.zero-out .zero-line{flex:1 1 100%;word-break:break-all;user-select:all;font-size:var(--fs-sm,12px)}
+.zero-out p{flex:1 1 100%;margin:0;font-size:var(--fs-sm,12px)}
+.zero-std,.zero-ags{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+@media (max-width:600px){#zero-ts,#std-agent,#std-add{flex:1 1 100%;max-width:none!important;min-height:var(--tap,40px)}}
 /* the waiting machine's own card: above the setup wizard, readable across a room */
 #prov-wait{position:fixed;right:16px;bottom:16px;z-index:100000;max-width:min(340px,calc(100vw - 32px));
   padding:14px 16px;border-radius:14px;background:var(--bg2);color:var(--txt);
@@ -90,3 +98,6 @@ body.kiosk #office-scene canvas{display:block}
 .dev-key{max-width:min(420px,60vw)}
 .dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
+
+/* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
+.mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}

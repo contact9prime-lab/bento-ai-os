@@ -728,6 +728,11 @@ Six rules:
   a version of its Stage; the note tells the agent to re-show the whole story with the change.
 - **The note comes FIRST in the door's context, by kind of question.** Measured: placed last it gave a how-to one
   timeline; placed first it searched YouTube and Wikimedia and showed steps, a picture, a video and a table.
+- **Rises and falls are read by sign, and a scene's parts keep their rows** (`stageSigned`, `stageFmtS`,
+  `STAGE_UP`/`STAGE_DOWN`; `test_a_market_day_reads_on_the_stage`). Filmed as a market check: labels broke
+  mid-word (a word that cannot fit now tilts the labels), every bar and pin was one colour, a pin sized by raw
+  value made the biggest fall the smallest pin, and on a phone a short window hid the kicker, the unpinned
+  scene grid slid up a row, and the source line covered Play. `.stg-scene>*` rows are pinned like `.stg>*`.
 - **Answer BIG is the person's** (`stage` USER_KEY: `big`, `app`). Off, the tool is still offered and the
   note says "when they ask". `app` hands scenes to one of the person's apps (`appstage` event in APP_RUNTIME)
   instead of the Stage; "Open by itself" is per browser (`stage.auto`).
@@ -2640,6 +2645,11 @@ Full story in `docs/team.md`. Two features, five rules.
   `ask_agent` (`kind == "freetalk"`): they are already talking.
 - **The floor is fair** (`free_talk_next`): the one spoken to answers, but nobody waits more than a
   lap of the room. Found live: two agents answering each other held the floor for ten messages.
+- **The Office draws a free talk as the team at the table** (`officeFreeTalk`, kind `freetalk` on
+  `scenePulse`; `test_the_office_gathers_a_free_talk_at_the_table`). It used to pulse kind `talk`,
+  which the Office drops because an ask arrives as `msg`, so four agents talked while the Office
+  sat still with a "done ✓" after every line (found filming it). A message's run ends with no
+  balloon, the line before fades, and the 3D balloons stay on screen (`OF3.off.vis`).
 - **Kept first, shown second, in three places that cannot disagree**: each message is a run under
   the session and a `talk` event on it, then a Chat message (meta `freetalk`, so a server that
   dies mid-talk keeps what was said), then a broadcast. The start and end are `team.freetalk`
@@ -2889,6 +2899,28 @@ links hear the same reports through `_REPORT` holding a callable. Every reader o
 treats `progress` as progress (the Office's thought, Chat's live row, the TUI), and the drama
 reel and the comic strip skip it: nobody said it.
 
+**Files go with a hand-over and come back, each under its own consent** (`agentos/linkfiles.py`,
+`Agent._files_out`, `delegate(files=)`, `ControlPlane._files_in`/`_files_note`/`_ship_back`, `bento link files`,
+the link card's switch; `docs/team.md`, `tests/test_link_files.py`, live run `packaging/dev/link-files-e2e/run.py`).
+Asked for as "if the main agent asks an agent on another machine to build a ppt, the file has to come back". Five rules:
+- **Sending is a second decision on the same call** (`Agent._execute` → `_files_out`): the matrix decided
+  `agent.message`; the files are `file.send` on `team:<label>`, risky, asked with a `send_files` card naming every
+  file, rememberable per team, a person's after untrusted content. The model's `files` become the loop's
+  `_want_files`; only `_files` the decision allowed reach the wire. Never fold it into the delegate's one decision.
+- **Only real files under `outputs.roots`, never a hidden one judged inside its root** (a workspace under
+  `~/.agentos` is not hidden), capped by `zero.SHIP_*`.
+- **Back is the answering side's `file.send` on `files:made` for `team:<label>/*`**, on with the link's cells
+  (written lazily by `ensure_back` before the task is worked), a deny row when switched off. Only files MADE during
+  the task (mtime since it started) come back; one the answer names that is older stays and is named as kept. A Zero's
+  own hub keeps its wider rule (`zero.ships_to`).
+- **The switch also opens one folder**: any agent may write in `<workspace>/for-<label>/` for that team (a standing
+  row with agent `*` and source `files`; `policy._standing` honours `*` only on `provision`/`files` rows). Without
+  it a linked task, being untrusted, could make nothing to send.
+- **What arrives is somebody else's bytes**: `from-<label>/`, plain names, 0644, a `link.files` row each side.
+- **A lead's cross-team delegate carries `_root`** (the run, or `Agent._turn_key` per turn). Without one,
+  `fabric.message` budgeted every hand-over under the sender's NAME in the class-level `_sent`, so the seventh
+  hand-over of the server's life was refused. Found by running the two test files together.
+
 **A mission may put `agent@link` on its roster.** `flows.validate` needs the link to exist
 (`teamlink.find` under the current user); `declared_grants` writes `agent.invoke` with a
 sentence naming the other team and NO envelope for that member (it runs under their gate);
@@ -3037,6 +3069,60 @@ the network, we should be able to check if we need to provision it". Six rules:
   on the leader, `provision.claimed/refused/joined` on the new machine). Enabling a machine
   spends this one's model budget on it. `AGENTOS_PI_MODEL`, `AGENTOS_DISCOVER_UDP/PORT/TARGETS`
   stand in for a board and a LAN in tests, the `AGENTOS_SIGNIN_BASE` idea.
+
+## A Zero: one curl line, set up from the hub, its work run there
+
+`agentos/zero.py` + provision.py's standard profile (`STANDARD`, `standard`/`set_standard`/
+`profile_for`/`add_agent_from`, `apply_people`, `zero_key`, `hubs`) + `install.sh --zero/--hub/
+--tailscale-key` + the Make a Zero, Standard setup and Its agents rows in `24j-provision.js` +
+`/api/provision/zero|standard*` + `bento pool zero|standard|hub`; `docs/zero.md`, `tests/test_zero.py`,
+live run `packaging/dev/provision-e2e/zero_run.py`. Asked for as "a curl line that installs the zero
+agent and Tailscale and connects to the hub … zero touch … a provisioning profile that is always
+standardized … the hub becomes the point of execution and files are shipped back". Six rules:
+- **It is provisioning, not beside it.** The line carries the hub's automatic key (`zero_key`), so a
+  heard Zero is set up by `enable` with no code; the claim is the same proof both ways. The Tailscale
+  key goes into the line only, never into a file (the test greps the home for it).
+- **`via` is read from the address a beacon came FROM** (`zero.via`, Tailscale's 100.64/10 and
+  fd7a:115c:a1e0::/48), never from the beacon. Tailscale has no broadcast, so `Door.announce` also
+  sends to each address in `provision.hubs()`.
+- **The standard profile is a closed set** (`clean_profile`): agents' tools from
+  `company.ALLOWED_TOOLS`, executors copied by value and never a built-in name, what is dropped named.
+  Layering is standard < key profile < what the person chose (`profile_for`, the one computation).
+- **`execution: hub` is three writes, in two places.** On the Zero (`apply_people`, `_provision_claimed`):
+  the seeded built-in specialists go (never a person's own agents; `seed_builtins` skips a Zero) and
+  MAIN gets `agent.message` on `lead@<hub>`. On the hub (`zero.hub_side`, called by the route AND the
+  CLI): the link's LEAD cell, and ONE standing permission, `team:<zero>/*` `team.act`
+  `*|fs.write|fs:<workspace>/for-<zero>/*`, `source="provision"`. `policy._standing` honours agent `*`
+  ONLY on a provision row; a hand-written `*` row is ignored. `save_report` is safe already and needs none.
+- **The hub's lead answers its own Zero's hand-over, and only that** (`_lead_for_link`'s `here`:
+  `zero.ships_to(lk)`, a tool in `HUB_HANDOVERS`, a local target, `needs_person()` false). Found by the
+  live run: at the default autonomy `agent.invoke` asks and nobody sits at the hub, so the unit test at
+  full had passed while the real thing made no file. Any other link still asks the owner's screens.
+- **A hand-over to a local specialist carries the turn's taint** (`agent.py` injects `_taint` for every
+  `delegate` outside a flow, `tools.delegate` passes it to `run_subagent`). It did not, so a linked
+  team's task ran on a specialist that had never seen it came from outside. Files go back only to a
+  machine this hub set up to run here (`ships_to`), capped (`SHIP_*`), as plain names under
+  `from-<hub>/` (`unpack`), a `link.files` row each time.
+
+**A Zero's mind is on its hub, in a section of its own** (`agentos/zeromind.py`, `Store.only`,
+op `zero_mind`, `bento pool mind`; `tests/test_zero_mind.py`, live run step 5). Asked for as "in zero
+mode the souls and memory and kb should be with the hub and sectioned". Five rules:
+- **The section is a space, read EXACTLY.** `Store.only(sid)` is the other half of the visibility rule,
+  kept in `_space_clause`/`search_memories` beside it: one space's rows and nothing global. A Zero reads
+  and writes only its section (never the hub's global rows, never another Zero's); the hub's own team
+  working a Zero's task runs in that space (`_lead_for_link`'s `space`, `delegate` carries `_space`) and
+  sees section + global, the ordinary rule. Every write from a Zero is filed in its space whatever it asked.
+- **Answered only for a machine this hub set up to run there** (`zero.ships_to`), in the link owner's
+  account; the space id is kept on the machine's `provision.enabled` entry so a renamed space is not split.
+  Its soul is a file under the soul's folder (`zeros/<label>.md`); a change is a `zero.soul` ledger row.
+- **Every door on the Zero goes to the hub**: the tools (`remember`, `recall`, `forget`, `kg_add`,
+  `kg_query`, `update_soul`), the lead's prompt (`zeromind.context`, with the Zero's own budget), the
+  forwarded lead's soul (`soul_now`), auto-learn (`knowledge._learn_on_hub`, one `learn` request whose
+  corrections only touch the section) and the routes the screens use (`_zero_mind` in server.py). A new
+  memory/KG/soul door must branch on `zeromind.on_hub` too, or it writes a local copy nobody reads.
+- **Unreachable is said, never filled in.** No local fallback write; the prompt says the hub is away.
+- **What it kept before moves once** (`move_local`, `cfg.zero.moved`, a `zero.moved` row); the local rows
+  are left and not read again. Found by the live run: the hub's `bento pool mind` opened no database.
 
 ## Machines WITHOUT Bento: heard, offered, installed over SSH or from the SD card
 

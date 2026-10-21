@@ -201,7 +201,7 @@ function crewPulse(kind,label,ev){
   if(kind==='say'){const w=crewMatch(label);
     // a question to a colleague says who it is for, so the stage reads as a conversation
     if(w){CREW.busy[w]=now;crewWorker(w,label);
-      crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
+      crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to&&!/^\s*@/.test((ev&&ev.text)||'')?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
     crewKick();return}
   if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
   if(kind==='tool'&&label){

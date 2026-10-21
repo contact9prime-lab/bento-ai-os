@@ -5081,6 +5081,14 @@ body.kiosk #office-scene canvas{display:block}
   background:color-mix(in srgb,var(--bg3) 70%,transparent)}
 .prov-keytext code{word-break:break-all;user-select:all}
 #prov-out .ok{color:var(--ok,#4ade80)}#prov-out .warn{color:var(--warn,#f59e0b)}
+/* a Zero: the one line, how a machine was heard, the standard setup */
+.prov-via{white-space:nowrap}.prov-via.ts{color:var(--acc)}
+.zero-out{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-radius:10px;margin:6px 0 10px;
+  background:color-mix(in srgb,var(--bg3) 70%,transparent)}
+.zero-out .zero-line{flex:1 1 100%;word-break:break-all;user-select:all;font-size:var(--fs-sm,12px)}
+.zero-out p{flex:1 1 100%;margin:0;font-size:var(--fs-sm,12px)}
+.zero-std,.zero-ags{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+@media (max-width:600px){#zero-ts,#std-agent,#std-add{flex:1 1 100%;max-width:none!important;min-height:var(--tap,40px)}}
 /* the waiting machine's own card: above the setup wizard, readable across a room */
 #prov-wait{position:fixed;right:16px;bottom:16px;z-index:100000;max-width:min(340px,calc(100vw - 32px));
   padding:14px 16px;border-radius:14px;background:var(--bg2);color:var(--txt);
@@ -5105,6 +5113,9 @@ body.kiosk #office-scene canvas{display:block}
 .dev-key{max-width:min(420px,60vw)}
 .dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
+
+/* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
+.mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}
 /* ---- the drama reel (00g-drama.js) ---- */
 .dr-wrap{display:flex;flex-direction:column;gap:12px;padding:14px;max-width:760px}
 .dr-title{font-weight:750;font-size:var(--fs-lg,17px);display:flex;align-items:center;gap:6px}
@@ -5351,6 +5362,11 @@ body.kiosk #office-scene canvas{display:block}
 /* Never forever inside a drawing: an SVG shape scaling without end was redrawn badly by Chrome on
    Wayland (reported: the map and its caption painted twice, with the dock inside it). */
 .st-pulse{fill:#F43F5E;opacity:.25;transform-box:fill-box;transform-origin:center;animation:st-pulse 2.2s ease-out 3}
+/* a set of rises and falls: up green, down red (pins, notes); bars take STAGE_DOWN in the js */
+.st-pt.up,.st-pulse.up{fill:#34D399}
+.st-pt.down,.st-pulse.down{fill:#F43F5E}
+.st-mapnotes li.up b{color:#6EE7B7}
+.st-mapnotes li.down b{color:#FDA4AF}
 .st-tag{fill:color-mix(in srgb,var(--bg) 82%,transparent);stroke:var(--line);opacity:0;animation:st-fade .4s ease forwards}
 .st-tagtext{fill:var(--txt);font-size:calc(13px * var(--k,1));font-weight:600;font-family:var(--sans);opacity:0;animation:st-fade .4s ease forwards}
 .st-scale{display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
@@ -5602,6 +5618,10 @@ body.dev-mobile .stg-cap{font-size:15px}
 /* each part keeps its own row, so hiding the question in a short window moves nothing */
 .stg>.stg-prog{grid-row:1}.stg>.stg-head{grid-row:2}.stg>.stg-scene{grid-row:3}.stg>.stg-bar{grid-row:4}
 .stg>.stg-empty{grid-row:3}
+/* and so does each part of a scene: a short window hides the kicker, and unpinned the picture
+   slid into the title's auto row while the caption took the shrinking one, so the source line
+   spilled over the controls and took Play's taps (found filming a market check on a phone) */
+.stg-scene>.stg-kicker{grid-row:1}.stg-scene>.stg-title{grid-row:2}.stg-scene>.stg-art{grid-row:3}.stg-scene>.stg-foot{grid-row:4}
 /* what does not fill the room sits in its middle */
 .stg-scene.k-steps .stg-art,.stg-scene.k-numbers .stg-art,.stg-scene.k-timeline .stg-art,.stg-scene.k-table .stg-art{justify-content:center;overflow:auto}
 /* a subtitle may sit over a picture, never over the last row of a list or a table */
@@ -8484,7 +8504,7 @@ function crewPulse(kind,label,ev){
   if(kind==='say'){const w=crewMatch(label);
     // a question to a colleague says who it is for, so the stage reads as a conversation
     if(w){CREW.busy[w]=now;crewWorker(w,label);
-      crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
+      crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to&&!/^\s*@/.test((ev&&ev.text)||'')?'@'+ev.to+' ':'')+String((ev&&ev.text)||''),true)}
     crewKick();return}
   if(kind==='turnend'){CREW.turns=Math.max(0,CREW.turns-1);crewKick();return}
   if(kind==='tool'&&label){
@@ -16401,10 +16421,10 @@ function handle(ev){
     // new machines (provision.py): one heard waiting is asked about, here, at once
     case 'provision': if(typeof provPaint==='function')provPaint();
       if(typeof provWaitCheck==='function')provWaitCheck();
-      if(ev.kind==='new')toast(`A new machine turned on: ${ev.name||'a machine'}${ev.board?' ('+ev.board+')':''}. Set it up?`,
+      if(ev.kind==='new')toast(`A new machine turned on${ev.via==='tailscale'?' on your tailnet':''}: ${ev.name||'a machine'}${ev.board?' ('+ev.board+')':''}. Set it up?`,
         {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
           setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
-      else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up`);
+      else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up${ev.via==='tailscale'?' over Tailscale':''}`);
       else if(ev.kind==='failed')toast(`${ev.name||'A machine'} could not be set up: ${ev.error||'it refused'}`);
       else if(ev.kind==='claimed')setTimeout(()=>location.reload(),1500);   // this machine was just set up
       else if(ev.kind==='device')toast(`A Raspberry Pi joined your network: ${ev.name||ev.ip}. Install Bento on it?`,
@@ -19177,6 +19197,7 @@ async function paintTeamLinks(){
       ${l.pass?tlPassHTML(l):`<label class="tlk-sub tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="lead" ${(l.theirs_may_ask||[]).includes('lead')?'checked':''}> ${avatarImg('@agent','av-tool')}<span>They may hand whole tasks to ${esc(agentName())}, who works them with your team${pInfo('Your lead takes the task, hands parts to your specialists and departments, and answers. It can’t touch this machine’s files or shell for them, and anything that needs a person comes to you.')}</span></label>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists here, so their work comes to your lead</span>'}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
+      <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-files="${esc(l.label)}" ${l.files_back?'checked':''}><span>Send back the files my agents make for their tasks${pInfo('Only files made while working their task, named in the answer, from your workspace or shared folders. Older files and hidden ones stay here. Files they send you land in from-'+esc(l.label)+' in your workspace.')}</span></label>
       ${tlMissionsHTML(l)}
       ${tlStandHTML(l,mine,d)}`}
       <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
@@ -19212,6 +19233,7 @@ async function paintTeamLinks(){
     await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
   box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
   box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+  box.querySelectorAll('input[data-link-files]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkFiles)+'/access','PUT',{files_back:cb.checked}).then(r=>r&&toast(cb.checked?'Files made for '+cb.dataset.linkFiles+' go back with the answer':'Files stay here; '+cb.dataset.linkFiles+' gets words only')));
   tlPassTick();
 }
 /* Guest passes: lend one of your specialists to somebody for a few minutes. The pass is
@@ -19287,7 +19309,7 @@ function tlStandHTML(l,mine,d){
   return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
     <p class="mut tlk-why">Questions from ${lab} can make your agents read and answer, but any change needs a person here to say yes. ${pInfo('Allow one thing ahead of time: one agent, one action, in one folder. If the agent also read a web page or an email on the way, you’re asked again.')}</p>
     ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
-    ${rows.map(x=>`<div class="tlk-stand-row">${avatarImg(x.agent,'av-tool')}<span><b>${esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
+    ${rows.map(x=>`<div class="tlk-stand-row">${x.agent==='*'?'':avatarImg(x.agent,'av-tool')}<span><b>${x.agent==='*'?'Any agent here':esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
     ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
       <select data-sa="action" aria-label="May do">${(d.standing_actions||[]).map(a=>`<option value="${esc(a)}">${esc(TL_ACT_WORDS[a]||a)}</option>`).join('')}</select>
       <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -21055,8 +21077,10 @@ let memTab='user';
 async function renderMemory(body){
   await loadConfig();
   const r=await fetch('/api/memories');const d=await r.json();
+  if(!r.ok){body.innerHTML=emptyBox('Memory is out of reach',esc(d.error||'It could not be read.'));return}
   const auto=(cfg.memory||{}).auto_extract!==false;
-  const srcBadge=m=>m.source==='auto'?'<span class="badge" title="learned automatically" style="font-size:9px;padding:1px 6px;margin-right:4px">auto</span>':'';
+  const srcBadge=m=>(m.zero?`<span class="badge" title="kept here for the Zero ${esc(m.zero)}, in its own section" style="font-size:9px;padding:1px 6px;margin-right:4px">Zero · ${esc(m.zero)}</span>`:'')
+    +(m.source==='auto'?'<span class="badge" title="learned automatically" style="font-size:9px;padding:1px 6px;margin-right:4px">auto</span>':'');
   const when=m=>new Date(m.created_at*1000).toLocaleString();
   const user=d.memories.filter(m=>(m.scope||'user')==='user');
   const sess=d.memories.filter(m=>m.scope==='session');
@@ -21087,6 +21111,7 @@ async function renderMemory(body){
       <button class="pghost" title="merge duplicate entities, roll up idle sessions, re-index memory" onclick="tidyKnowledge()">Tidy</button>`,
   });
   pb.innerHTML=`
+    ${d.kept_on?mindKeptOn(d):''}
     ${items}
     <div class="sect">Add a ${memTab==='user'?'user':'session'} memory</div>
     <div class="row"><input id="mem-new" placeholder="${memTab==='user'?'e.g. My name is Piyush; I work at Accacia.':'e.g. We decided to use SQLite for this project.'}">
@@ -25926,23 +25951,35 @@ function logExpand(tr){const p=tr.querySelector('.log-full');if(p)p.style.displa
 async function logsClear(){await fetch('/api/logs',{method:'DELETE'});refreshApp('logs')}
 
 /* ================= soul app ================= */
+// A Zero's mind is on its hub (zeromind.py): on the Zero this page says where; on the hub,
+// "Whose soul" picks this machine's or one of its Zeros', each kept in that Zero's section.
+var SOUL_ZERO='';
+function mindKeptOn(d){
+  return `<p class="mut mind-kept">Kept on ${esc(d.kept_on)}, in this machine's own section${d.section?' ('+esc(d.section)+')':''}.</p>`;
+}
 async function renderSoul(body){
-  const r=await fetch('/api/soul');const d=await r.json();
+  const r=await fetch('/api/soul'+(SOUL_ZERO?'?zero='+encodeURIComponent(SOUL_ZERO):''));const d=await r.json();
+  if(!r.ok){SOUL_ZERO='';toast(d.error||'could not read that soul');return renderSoul(body)}
+  const zeros=d.zeros||[];
+  const pick=zeros.length?`<select id="soul-who" aria-label="Whose soul" onchange="SOUL_ZERO=this.value;renderSoul(this.closest('.pshell').parentNode)">
+      <option value="">This machine's agent</option>${zeros.map(z=>`<option value="${esc(z)}"${z===SOUL_ZERO?' selected':''}>Zero · ${esc(z)}</option>`).join('')}</select>`:'';
   body.innerHTML=`<div class="pshell">
     <div class="phead">
       <span class="pt">Soul</span>
-      <span class="ps">the agent's persistent identity — injected into every conversation; it can evolve it itself via <code>update_soul</code></span>
-      <span class="sp"></span>
+      <span class="ps">${SOUL_ZERO?`the soul of the Zero ${esc(SOUL_ZERO)}, kept here in its section`:"the agent's persistent identity — injected into every conversation; it can evolve it itself via <code>update_soul</code>"}</span>
+      <span class="sp"></span>${pick}
       <button class="pact" style="flex:0 0 90px" onclick="soulSave()">Save</button>
     </div>
+    ${d.kept_on?mindKeptOn(d):''}
     <textarea id="soul-ta" spellcheck="false"></textarea>
   </div>`;
   $('#soul-ta').value=d.content;
 }
 async function soulSave(){
-  await fetch('/api/soul',{method:'PUT',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({content:$('#soul-ta').value})});
-  toast('soul saved');
+  const r=await fetch('/api/soul',{method:'PUT',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({content:$('#soul-ta').value,...(SOUL_ZERO?{zero:SOUL_ZERO}:{})})});
+  const d=await r.json().catch(()=>({}));
+  toast(r.ok?(SOUL_ZERO?'the soul of '+SOUL_ZERO+' saved':'soul saved'):(d.error||'could not save the soul'));
 }
 
 /* ================= knowledge graph app ================= */
@@ -25962,6 +25999,8 @@ async function renderKG(body,w){
   {const qi=$('#kg-q');let t;
    qi.oninput=()=>{clearTimeout(t);t=setTimeout(()=>{w._kgq=qi.value;renderKG(body,w).then(()=>{const q2=$('#kg-q');if(q2){q2.focus();q2.setSelectionRange(q2.value.length,q2.value.length)}})},250)};}
   const r=await fetch('/api/kg');const g=await r.json();
+  if(!r.ok){$('#kg-empty').style.display='flex';$('#kg-empty').textContent=g.error||'The graph could not be read.';return}
+  if(g.kept_on&&!body.querySelector('.mind-kept'))body.querySelector('.apptop').insertAdjacentHTML('afterend',mindKeptOn(g));
   const q=(w._kgq||'').toLowerCase().trim();
   if(q){
     const keep=new Set(g.nodes.filter(n=>(n.name||'').toLowerCase().includes(q)).map(n=>n.id));
@@ -27130,6 +27169,8 @@ function pmSay(g){
     :a==='model.use'?'use the model '+glob(v)
     :a.startsWith('app.data')?(a.endsWith('read')?'read':a.endsWith('write')?'write':'read and write')+' its own data'
     :a==='mail.read'?'read your mail':a==='calendar.read'?'read your calendar'
+    :a==='file.send'?(r==='files:made'?'get back the files made for their tasks'
+      :r.startsWith('team:')?'send files to '+r.slice(5)+' with a hand-over':'send files')
     :a+' '+r;
   return (g.effect==='deny'?'may not ':'may ')+what;
 }
@@ -30163,6 +30204,7 @@ function officePulse(kind,label,ev){
   }
   if(kind==='say'){
     if(ev.kind==='talk')return;              // agents asking each other arrive as 'msg'
+    if(ev.kind==='freetalk')return officeFreeTalk(label,ev);
     const p=officeMatch(label);if(!p)return;
     if(!O.huddle||O.huddle.until<performance.now())officeHuddle([label],ev.conversation_id||'');
     officeHuddleJoin(p);officeSay(p,ev.text,'say',OF_SAY_MS+1500);
@@ -30348,6 +30390,9 @@ function officeFabric(ev){
     // a boss's sign-off run: officeReview draws it from the review events, so the run's
     // own start and end must not also light a meeting or send a "done ✓"
     if(ev.kind==='review')return;
+    // a free-talk message is a run too, but saying something is not finishing a task:
+    // its words are drawn at the table (officeFreeTalk), so its end draws no "done ✓"
+    if(ev.kind==='freetalk'&&ev.status!=='running'){delete O.runs[ev.run_id];return}
     if(ev.status==='running'){O.runs[ev.run_id]=p.key;officeWork(p,true);p.stuck=0;
       if(ev.parent_run&&O.flowRuns[ev.parent_run]){(O.meet[ev.parent_run]=O.meet[ev.parent_run]||new Set()).add(p.key);
         officeMeetSync(ev.parent_run)}
@@ -30444,6 +30489,24 @@ function officeDeEscalate(p,ok){
       p.visit={meet:back};officeWalk(p,officeTableSpot([...set].indexOf(p.key)),'stand')}
     else setTimeout(()=>officeHome(p),OFFICE.static?0:900);
   }
+}
+/* Free talk (24f) is the team hanging out: everybody in it gathers at the meeting table
+   when the first word is said, each message is said there, and they go back to their
+   desks when it ends. It used to be dropped here with the agents' asks, so the Office
+   sat still while four of them talked, with a "done ✓" over a desk after each line.
+   No end heard (a dropped socket) still ends it after OF_FT_QUIET with nothing said. */
+var OF_FT_QUIET=90000;
+function officeFreeTalk(label,ev){
+  const O=OFFICE;
+  if(ev.end){if(O.huddle&&O.huddle.ft===ev.id)officeHuddleEnd();return}
+  if(!O.huddle||O.huddle.ft!==ev.id){officeHuddle(ev.agents&&ev.agents.length?ev.agents:[label],'');O.huddle.ft=ev.id}
+  O.huddle.until=performance.now()+OF_FT_QUIET;
+  const p=officeMatch(label);if(!p)return;
+  // one line at a time: whoever spoke before fades as the next one starts
+  const now=performance.now();
+  O.huddle.who.forEach(q=>{if(q!==p&&q.say&&q.say.kind==='say')q.say.ms=Math.min(q.say.ms,now-q.say.at+1200)});
+  officeHuddleJoin(p);officeSay(p,ev.text,'say',OF_SAY_MS+2500);
+  officeLog(`${p.label} (free talk): ${String(ev.text||'').slice(0,90)}`);
 }
 function officeHuddleEnd(){
   const O=OFFICE,h=O.huddle;if(!h)return;O.huddle=null;
@@ -31400,6 +31463,7 @@ function playPulse(kind,label,ev){
   }
   if(kind==='say'){
     if(ev.kind==='talk')return;             // asks and answers arrive as 'msg'
+    if(ev.kind==='freetalk')return;         // a free talk is its own card in Chat (24f)
     const s=playStripOf(cid,true);if(!s)return;
     playSay(s,ev.speaker||label,ev.text||'');playWork(s,ev.speaker||label,true);
     return;
@@ -31597,7 +31661,7 @@ function freeTalkEvent(ev){
   const t=(FREETALK.talks||[]).find(x=>x.id===ev.id);
   if(ev.phase==='say'){
     if(t)t.messages=ev.n||t.messages+1;
-    if(typeof scenePulse==='function')scenePulse('say',ev.speaker,{kind:'talk',text:ev.text,to:ev.to});
+    if(typeof scenePulse==='function')scenePulse('say',ev.speaker,{kind:'freetalk',id:ev.id,agents:t?t.agents:[ev.speaker],text:ev.text,to:ev.to,conversation_id:ev.conversation_id});
     const here=ev.conversation_id===currentConv;
     if(here&&typeof voiceAgentLine==='function')voiceAgentLine(ev.speaker,ev.text);
     if(here&&feed){
@@ -31612,6 +31676,7 @@ function freeTalkEvent(ev){
   }
   if(ev.phase==='end'){
     if(t){t.status='ended';t.reason=ev.reason}
+    if(typeof scenePulse==='function')scenePulse('say','',{kind:'freetalk',id:ev.id,end:true});
     if(ev.conversation_id===currentConv&&feed){
       const card=freeTalkCard(ev.id,{},false);
       if(card){card.insertAdjacentHTML('beforeend',`<div class="ft-end">free talk ended: ${esc(ev.reason)}, ${ev.count} message${ev.count===1?'':'s'}</div>`);
@@ -33011,9 +33076,14 @@ async function poolNotes(){
    - On a machine that is WAITING: a card in the corner of its own screen with the code
      and the id to read out, and "Set it up here instead".
 
-   TUI: `bento pool discover | enable | key | wait`. SUI: identical, a page; nothing here
-   touches the compositor. */
-var PROV={v:null,sel:{}};
+   A Zero (zero.py) is the same road with the questions taken out: "Make a Zero" shows the one
+   line to paste on a Pi (this hub's automatic key and addresses, a Tailscale key if one is
+   typed, which is used for the line and kept nowhere), and "Standard setup" is what every
+   machine set up from here gets: where its work runs, Light mode, kiosk, and its agents.
+
+   TUI: `bento pool discover | enable | key | wait | zero | standard`. SUI: identical, a page;
+   nothing here touches the compositor. */
+var PROV={v:null,sel:{},zero:null,agents:null};
 
 async function provPaint(){
   const box=document.getElementById('s-prov');if(!box)return;
@@ -33043,7 +33113,8 @@ async function provPaint(){
       return `<div class="prov-m${m.state==='enabled'?' done':''}">
         <label class="prov-pick"><input type="checkbox" data-pick="${esc(m.fp)}" ${on?'checked':''}${m.state==='enabled'||!can?' disabled':''}>
           <b>${esc(m.name)}</b></label>
-        <span class="mut">${esc(hw.board||hw.arch||'a machine')} · ${hw.ram_mb||0} MB · id ${esc(m.id)} · ${esc(state)}</span>
+        <span class="mut">${esc(hw.board||hw.arch||'a machine')} · ${hw.ram_mb||0} MB · id ${esc(m.id)} · ${esc(state)}
+          · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span></span>
         <input class="prov-name" data-name="${esc(m.fp)}" maxlength="32" placeholder="${esc(m.name)}" aria-label="Name for ${esc(m.name)}"${m.state==='enabled'?' disabled':''}>
         ${proof}
         ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Not this one</button>`:''}</div>`}).join('')}</div>`);
@@ -33059,6 +33130,7 @@ async function provPaint(){
   }else{
     rows.push(`<p class="mut prov-empty">No machine is waiting right now. Turn one on, or press Look now.</p>`);
   }
+  rows.push(provZeroHTML(v,can));
   rows.push(provDevicesHTML(v,can));
   const ks=(v.keys||[]).filter(k=>!k.single);
   rows.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
@@ -33077,6 +33149,52 @@ async function provPaint(){
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
     if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
   provWire(box);
+}
+/* ---------------- a Zero: the one line, and the standard setup every machine gets ---------------- */
+function provZeroHTML(v,can){
+  const st=v.standard||{},z=PROV.zero,ags=st.agents||[],rows=[];
+  rows.push(pRow('Make a Zero',`<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
+      placeholder="Tailscale auth key (optional)" aria-label="Tailscale auth key" style="max-width:230px">
+      <button class="endbtn" data-prov="zeroline"${can?'':' disabled'}>Show the line</button>`,
+    {desc:'Paste one line on a Pi and it is set up from here, with nobody at it.',
+     more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
+     f:'zero pi curl one line install tailscale zero touch hub'}));
+  if(z)rows.push(`<div class="zero-out"><code class="zero-line">${esc(z.line)}</code>
+      <button class="endbtn" data-prov="zerocopy">Copy</button>
+      <p class="mut">${(z.addresses||[]).map(a=>`${esc(a.addr)} ${a.via==='tailscale'?'over Tailscale':'on your network'}`).join(' · ')
+        ||'This hub has no address another machine can reach.'}${(z.addresses||[]).some(a=>a.via==='tailscale')?'':
+        '. This hub is not on Tailscale, so a Zero has to be on the same network.'}</p></div>`);
+  const opts=(PROV.agents||[]).filter(a=>!ags.some(x=>x.name===a.name.toLowerCase()));
+  rows.push(pRow('Standard setup',`<span class="zero-std">
+      ${pSelect('std-exec',[['hub','Work runs on this hub'],['here','Work runs on the machine']],st.execution||'here')}
+      <label class="prov-opt">${pSwitch('std-lite',!!st.lite)} Light mode</label>
+      <label class="prov-opt">${pSwitch('std-kiosk',!!st.kiosk)} Kiosk</label>
+      <input id="std-agent" maxlength="32" placeholder="Agent’s name" value="${esc(st.agent_name||'')}" style="max-width:140px"></span>`,
+    {desc:'Every machine set up from here gets this, with no questions.',
+     more:'With work on this hub, a machine’s agent hands its tasks to yours and the files come back to it. A key’s own setup and what you choose when enabling go on top.',
+     f:'standard setup profile provisioning zero agents executors execution hub'}));
+  rows.push(pRow('Its agents',`<span class="zero-ags">${ags.map(a=>`<span class="prov-k">${esc(a.name)}${a.hands?` <span class="mut">· ${esc(a.hands)}</span>`:''}
+        <button class="endbtn" data-prov="stdrm" data-name="${esc(a.name)}" aria-label="Take ${esc(a.name)} out">✕</button></span>`).join('')
+      ||'<span class="mut">None of its own</span>'}</span>
+      ${opts.length&&can?`<select id="std-add" aria-label="Add one of your agents"><option value="">＋ Add one of your agents</option>
+        ${opts.map(a=>`<option value="${esc(a.name)}">${esc(a.name)}</option>`).join('')}</select>`:''}`,
+    {desc:'A copy of each, with its executor, is made on every machine set up from here.',
+     more:'Only the tools a department may have travel (no shell, push or send). A machine whose work runs on this hub keeps no other agents.',
+     f:'standard agents executors hands copy zero'}));
+  return rows.join('');
+}
+async function provStdSave(patch){
+  const st=Object.assign({},(PROV.v||{}).standard||{},patch);
+  const r=await fetch('/api/provision/standard',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:st})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){toast(d.error||'could not save that');return}
+  if((d.dropped||[]).length)toast('Not kept: '+d.dropped.join('; '));
+  provPaint();
+}
+async function provAgents(){
+  if(PROV.agents)return;
+  try{PROV.agents=(await apiJSON('/api/subagents')).subagents||[]}catch(e){PROV.agents=[]}
+  provPaint();
 }
 /* ---------------- machines without Bento (netscan.py, remoteinstall.py, sdcard.py) ----------------
    A Pi or any Linux box that answers SSH but runs nothing of ours: heard when it says its name
@@ -33177,6 +33295,17 @@ function provWire(box){
   (PROV.v.keys||[]).forEach(k=>{const s=box.querySelector('#prov-auto-'+k.id);if(s)s.onchange=async()=>{
     const r=await fetch('/api/provision/key/'+encodeURIComponent(k.id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto:s.checked})});
     if(!r.ok)toast('could not change that');provPaint()}});
+  const g=q=>box.querySelector(q);
+  if(g('#std-exec'))g('#std-exec').onchange=e=>provStdSave({execution:e.target.value});
+  if(g('#std-lite'))g('#std-lite').onchange=e=>provStdSave({lite:e.target.checked});
+  if(g('#std-kiosk'))g('#std-kiosk').onchange=e=>provStdSave({kiosk:e.target.checked});
+  if(g('#std-agent'))g('#std-agent').onchange=e=>provStdSave({agent_name:e.target.value.trim()});
+  if(g('#std-add'))g('#std-add').onchange=async e=>{const n=e.target.value;if(!n)return;
+    const r=await fetch('/api/provision/standard/agent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});
+    const d=await r.json().catch(()=>({}));if(!r.ok)toast(d.error||'could not add that');
+    else if((d.dropped||[]).length)toast(`✓ ${n} added. Not kept: ${d.dropped.join('; ')}`);else toast(`✓ ${n} added`);
+    provPaint()};
+  if(g('.zero-ags'))provAgents();
   const save=()=>{PROV.form={kiosk:!!(box.querySelector('#prov-kiosk')||{}).checked,
     buddy:(box.querySelector('#prov-buddy')||{}).value||'auto',agent:((box.querySelector('#prov-agent')||{}).value||'').trim()}};
   ['#prov-kiosk','#prov-buddy','#prov-agent'].forEach(q=>{const e=box.querySelector(q);if(e)e.onchange=save});
@@ -33205,6 +33334,11 @@ async function provAct(act,b){
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/provision/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
     if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
+    if(act==='zeroline'){const ts=((document.getElementById('zero-ts')||{}).value||'').trim();
+      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts})}finally{b.disabled=false}
+      const i=document.getElementById('zero-ts');if(i)i.value='';return provPaint()}
+    if(act==='zerocopy'){navigator.clipboard&&navigator.clipboard.writeText((PROV.zero||{}).line||'');toast('✓ copied');return}
+    if(act==='stdrm'){await fetch('/api/provision/standard/agent/'+encodeURIComponent(b.dataset.name),{method:'DELETE'});return provPaint()}
     if(act==='nowait'){await post('/api/provision',{wait:false},'PUT');toast('✓ This machine is set up here');return provPaint()}
     if(act==='dropkey'){if(!confirm('Revoke this key? Machines that carry it can no longer be set up with it.'))return;
       await fetch('/api/provision/key/'+encodeURIComponent(b.dataset.kid),{method:'DELETE'});return provPaint()}
@@ -33567,6 +33701,11 @@ function of3Where(){
   }
   const a=OF3.cv.getBoundingClientRect(),b=OF3.ui?OF3.ui.getBoundingClientRect():a;
   OF3.off={x:a.left-b.left,y:a.top-b.top,sx:a.width/Math.max(1,OF3.cw||a.width),sy:a.height/Math.max(1,OF3.ch||a.height)};
+  // what can be seen of the picture, in its own units: the area it sits in, cut by the
+  // screen. A balloon over somebody near the edge is kept inside it (on a phone the
+  // meeting room is at the edge, and every line said there ran off the screen)
+  const o=OF3.off,v=sc?sc.getBoundingClientRect():a;
+  o.vis={l:(Math.max(v.left,0)-b.left-o.x)/(o.sx||1),r:(Math.min(v.right,innerWidth)-b.left-o.x)/(o.sx||1)};
 }
 function of3Dispose(){
   const T=OF3.T;
@@ -34456,8 +34595,10 @@ function of3Overlay(now){
     if(!(moving||here))return;
     const f=of3Project(of3W(p.x,p.y,OF3_SLAB)),label=(p.head?'★ ':'')+p.label;
     const e=of3El('tag:'+p.key,'of3-tag'+(p.busy?' busy':''),esc(label.length>16?label.slice(0,15)+'…':label));
-    let y=f.y+(p.mode==='seat'&&!p.bench?14:4);const w=e.offsetWidth||60;
-    for(let n=0;n<4&&tags.some(q=>Math.abs(q.x-f.x)<(q.w+w)/2&&Math.abs(q.y-y)<15);n++)y+=15;
+    const y0=f.y+(p.mode==='seat'&&!p.bench?14:4),w=e.offsetWidth||60;
+    // a crowd round one table steps its names up as well as down, so they stay in the room
+    const hit=y=>tags.some(q=>Math.abs(q.x-f.x)<(q.w+w)/2&&Math.abs(q.y-y)<15);
+    let y=y0;for(const dy of [15,-15,30,-30])if(hit(y))y=y0+dy;else break;
     tags.push({x:f.x,y,w});of3Place(e,f.x,y,0,0,'t');
   });
   // balloons, newest on top, each placed clear of the ones already placed
@@ -34467,7 +34608,8 @@ function of3Overlay(now){
     let t=s.text;if(t.length>110)t=t.slice(0,108).replace(/\s+\S*$/,'')+'…';
     const e=of3El('say:'+p.key,'of3-say '+s.kind,esc(t));
     e.style.opacity=age>.85?Math.max(0,(1-age)/.15):1;
-    const w=e.offsetWidth||120,hh=e.offsetHeight||30;let x=h.x-w/2,y=h.y-hh-12;
+    const w=e.offsetWidth||120,hh=e.offsetHeight||30,vis=(OF3.off||{}).vis;let x=h.x-w/2,y=h.y-hh-12;
+    if(vis&&vis.r-vis.l>w+12)x=Math.max(vis.l+6,Math.min(x,vis.r-w-6));
     for(let n=0,o;n<6&&(o=placed.find(q=>x<q.x+q.w+4&&x+w+4>q.x&&y<q.y+q.h+4&&y+hh+4>q.y));n++)y=o.y-hh-6;
     placed.push({x,y,w,h:hh});of3Place(e,x,y,0,0,'');
     e.style.setProperty('--tail',Math.round(Math.max(10,Math.min(w-10,h.x-x)))+'px');
@@ -34580,6 +34722,7 @@ var STAGE=window.STAGE||{
   lib:null,
 };
 window.STAGE=STAGE;
+var STAGE_DOWN='#F43F5E',STAGE_UP='#34D399';
 var STAGE_PAL=['var(--acc)','#F59E0B','#22D3EE','#F472B6','#34D399','#A78BFA','#F87171','#94A3B8'];
 
 function stageAuto(){try{return localStorage.getItem('stage.auto')!=='0'}catch(e){return true}}
@@ -35124,6 +35267,9 @@ function stageFmt(n,unit){
   // a word is a word apart ("8 billion"); a symbol sits on the number ("56.7°C", "12%")
   return s+(unit?(/^[A-Za-z]{2}/.test(unit)?' ':'')+unit:'');
 }
+/* A move is read by its sign: when a set of values has both, a rise says "+" as a fall says "-". */
+function stageSigned(vals){const v=(vals||[]).filter(x=>x!=null&&isFinite(x));return v.some(x=>x>0)&&v.some(x=>x<0)}
+function stageFmtS(n,unit,signed){const s=stageFmt(n,unit);return signed&&n>0?'+'+s:s}
 function stageTicks(lo,hi,n){
   if(lo===hi){lo-=1;hi+=1}
   const span=hi-lo,raw=span/Math.max(1,n),mag=Math.pow(10,Math.floor(Math.log10(raw)));
@@ -35163,8 +35309,13 @@ function stageChart(art,sc){
   const xv=x=>isNum?x:dates?stageDate(x):cats.indexOf(x);
   // a long category name gets a second line rather than an ellipsis (a picture on a phone
   // has no hover to read the rest), and the bottom margin makes room for it
-  const twoLines=cats.length>0&&cats.some(c=>String(c).length*7.2*K>(W-72-R)/cats.length-6);
+  // A name whose one word cannot fit its slot is drawn at an angle instead: cut, "Nasdaq"
+  // became "Nasda q" (found with a market's ten indexes on a phone).
+  const slotW=(W-72-R)/Math.max(1,cats.length)-6;
+  const tilt=cats.length>0&&cats.some(c=>String(c).split(/\s+/).some(w=>w.length*7.2*K>slotW));
+  const twoLines=!tilt&&cats.length>0&&cats.some(c=>String(c).length*7.2*K>slotW);
   if(twoLines)B+=Math.round(16*K);
+  if(tilt)B+=Math.round(Math.min(18,Math.max(...cats.map(c=>String(c).length)))*7.2*K*0.62+8*K);
   const bar=sc.chart_type==='bar';
   let x0=Math.min(...all.map(p=>xv(p[0]))),x1=Math.max(...all.map(p=>xv(p[0])));
   if(bar||(!isNum&&!dates)){x0-=0.5;x1+=0.5}
@@ -35190,6 +35341,8 @@ function stageChart(art,sc){
   // each name gets its slot and is cut to it, so neighbours never run into each other
   const room=xl.length>1?Math.abs(X(xl[1][0])-X(xl[0][0]))-6:W-L-R;
   xl.forEach(([v,label])=>{
+    if(tilt){const s=String(label),ln=s.length>18?s.slice(0,17)+'…':s,ty=H-B+16*K;
+      g.append(sSvg('text',{x:X(v),y:ty,'text-anchor':'end',transform:`rotate(-35 ${X(v)} ${ty})`},ln));return}
     const lines=twoLines?stageTwoLines(label,Math.floor(room/(7.2*K))):[fitText(label,room)];
     const t=sSvg('text',{x:X(v),y:H-B+18*K,'text-anchor':'middle'});
     lines.filter(Boolean).forEach((ln,i)=>t.append(sSvg('tspan',{x:X(v),dy:i?16*K:0},ln)));
@@ -35205,18 +35358,28 @@ function stageChart(art,sc){
       svg.append(sSvg('text',{x:X(v)+6,y:T+14,class:'st-marktext'},m.text||''))}
   });
   const n=series.length;
-  const gid=stageDefs(svg,series.map((_,si)=>STAGE_PAL[si%STAGE_PAL.length]));
+  const signed=stageSigned(all.map(p=>p[1]));
+  // one series that rises and falls (a market's day): rises green, falls red, as the map
+  const tones=bar&&signed&&n===1;
+  const gid=stageDefs(svg,series.map((_,si)=>STAGE_PAL[si%STAGE_PAL.length]).concat([STAGE_DOWN,STAGE_UP]));
+  // one size for every value on the bars, the size the tightest one needs
+  const barSlot=bar?(W-L-R)/((x1-x0)||1)*0.95/n:0;
+  const valFs=bar?Math.min(...all.map(p=>{const need=stageFmtS(p[1],tu,signed).length*7.2*K;return need<=barSlot?1:need*0.75<=barSlot?0.75:0})):1;
   series.forEach((s,si)=>{
     const col=STAGE_PAL[si%STAGE_PAL.length];
     const pts=s.points.map(p=>[xv(p[0]),p[1]]).sort((a,b)=>a[0]-b[0]);
     if(bar){
       const slot=(W-L-R)/((x1-x0)||1),bw=Math.max(2,slot*0.7/n);
       pts.forEach((p,i)=>{const x=X(p[0])-slot*0.35+si*bw,y=Y(Math.max(0,p[1])),h=Math.abs(Y(p[1])-Y(0));
-        const r=sSvg('rect',{x,y,width:bw-2,height:Math.max(1,h),rx:Math.min(8,(bw-2)/4),fill:`url(#${gid}-b${si})`,class:'st-bar',style:`animation-delay:${i*40}ms`});
+        const tone=tones?(p[1]<0?n:p[1]>0?n+1:si):si;
+        const r=sSvg('rect',{x,y,width:bw-2,height:Math.max(1,h),rx:Math.min(8,(bw-2)/4),fill:`url(#${gid}-b${tone})`,class:'st-bar',style:`animation-delay:${i*40}ms`});
         r.append(sSvg('title',{},`${s.name?s.name+': ':''}${stageFmt(p[1],sc.unit)}`));svg.append(r);
         // the value over its bar only when it fits the bar's slot
-        const vt=stageFmt(p[1],tu);
-        if(vt.length*7.2*K<=slot*0.95/n)svg.append(sSvg('text',{x:x+(bw-2)/2,y:y-6*K,'text-anchor':'middle',class:'st-val'},vt))});
+        // every value is shown, smaller when its slot is tight, and a fall's under its bar
+        const vt=stageFmtS(p[1],tu,signed),fs=valFs;
+        if(fs){const vy=p[1]<0?Y(p[1])+15*K*fs:y-6*K;
+          const t=sSvg('text',{x:x+(bw-2)/2,y:vy,'text-anchor':'middle',class:'st-val'},vt);
+          if(fs<1)t.style.fontSize=`calc(${13*fs}px * var(--k,1))`;svg.append(t)}});
       return;
     }
     if(sc.chart_type==='scatter'){
@@ -35233,7 +35396,8 @@ function stageChart(art,sc){
     svg.append(sSvg('circle',{cx:X(last[0]),cy:Y(last[1]),r:5.5,fill:col,class:'st-end',filter:`url(#${gid}-glow)`}));
     svg.append(sSvg('text',{x:Math.min(X(last[0])+8,W-R-4),y:Y(last[1])-8,'text-anchor':X(last[0])>W-140?'end':'start',class:'st-val'},stageFmt(last[1],sc.unit)));
   });
-  if(n>1||series[0]&&series[0].name){
+  // a rising-and-falling single series is coloured by sign, so one swatch would mislead
+  if(n>1||series[0]&&series[0].name&&!tones){
     const lg=sEl('div','st-legend');
     series.forEach((s,si)=>{const it=sEl('span','');const sw=sEl('i','');sw.style.background=STAGE_PAL[si%STAGE_PAL.length];it.append(sw,document.createTextNode(s.name||('series '+(si+1))));lg.append(it)});
     art.append(lg);
@@ -35284,9 +35448,11 @@ async function stageMap(art,sc){
   // the map has what they leave. A fixed 960x500 left the world a thin strip on a phone held
   // upright, and sized before the notes it came out a quarter of its box.
   let ol=null;const notes=(sc.points||[]).filter(p=>p.note);
+  const nsigned=stageSigned((sc.points||[]).map(p=>p.value));
   if(notes.length){ol=sEl('ol','st-mapnotes');
     notes.forEach((p,i)=>{const li=sEl('li','');li.style.animationDelay=(600+i*160)+'ms';
-      li.append(sEl('b','',(i+1)+' · '+(p.label||'')+(p.value!=null?' '+stageFmt(p.value,sc.unit):'')),sEl('span','',p.note));ol.append(li)});
+      li.append(sEl('b','',(i+1)+' · '+(p.label||'')+(p.value!=null?' '+stageFmtS(p.value,sc.unit,nsigned):'')),sEl('span','',p.note));
+      if(nsigned&&p.value)li.classList.add(p.value<0?'down':'up');ol.append(li)});
     art.append(ol)}
   const W=960,fw=art.clientWidth,fh=art.clientHeight-(ol?ol.offsetHeight+10:0);
   const H=fw>40&&fh>40?Math.round(Math.min(1400,Math.max(320,W*fh/fw))):500;
@@ -35345,11 +35511,15 @@ async function stageMap(art,sc){
   const missing=hits.filter(h=>!h.c).map(h=>h.r.country);
   // places: sized by value, labelled where the label fits
   const pts=(sc.points||[]).slice();
-  const pv=pts.map(p=>p.value).filter(v=>v!=null),pmin=Math.min(...pv),pmax=Math.max(...pv);
+  const pv0=pts.map(p=>p.value).filter(v=>v!=null),signed=stageSigned(pv0);
+  // with rises and falls, a pin is as big as the move: by raw value the biggest fall was the
+  // smallest pin on the map
+  const mag=v=>signed?Math.abs(v):v;
+  const pv=pv0.map(mag),pmin=Math.min(...pv),pmax=Math.max(...pv);
   const taken=[];
   // every pin's dot is kept clear of labels, so a label never hides a place
   pts.forEach(p=>{const x=X(p.lon),y=Y(p.lat);taken.push([x-9,y-9,x+9,y+9])});
-  const order=pts.map((p,i)=>[p,i]).sort((a,b)=>(b[0].value||0)-(a[0].value||0));
+  const order=pts.map((p,i)=>[p,i]).sort((a,b)=>mag(b[0].value||0)-mag(a[0].value||0));
   // a few places in order are a journey: arcs join them, drawn one after another
   if(sc.route&&pts.length>=2&&pts.length<=12){
     const arcs=sSvg('g',{class:'st-arcs'});
@@ -35363,11 +35533,12 @@ async function stageMap(art,sc){
     &&!taken.some(b=>lx<b[2]&&lx+lw>b[0]&&ly<b[3]&&ly+th>b[1]);
   order.forEach(([p],rank)=>{
     const x=X(p.lon),y=Y(p.lat);if(x<-10||x>W+10||y<-10||y>H+10)return;
-    const t=p.value!=null&&pv.length>1?(p.value-pmin)/((pmax-pmin)||1):0.5;
+    const t=p.value!=null&&pv.length>1?(mag(p.value)-pmin)/((pmax-pmin)||1):0.5;
+    const tone=signed&&p.value!=null?(p.value<0?' down':p.value>0?' up':''):'';
     const r=6+t*10,delay=Math.min(rank,30)*120;
     const g=sSvg('g',{class:'st-pin',style:`animation-delay:${delay}ms`});
-    g.append(sSvg('circle',{cx:x,cy:y,r:r*1.9,class:'st-pulse'}),sSvg('circle',{cx:x,cy:y,r,class:'st-pt',filter:`url(#${mid}-glow)`}));
-    g.append(sSvg('title',{},(p.label||'')+(p.value!=null?': '+stageFmt(p.value,sc.unit):'')+(p.note?' · '+p.note:'')));
+    g.append(sSvg('circle',{cx:x,cy:y,r:r*1.9,class:'st-pulse'+tone}),sSvg('circle',{cx:x,cy:y,r,class:'st-pt'+tone,filter:`url(#${mid}-glow)`}));
+    g.append(sSvg('title',{},(p.label||'')+(p.value!=null?': '+stageFmtS(p.value,sc.unit,signed):'')+(p.note?' · '+p.note:'')));
     // a place with a note is numbered, and its note is listed under the map: a picture has
     // no hover, and the note is what happened there
     const n=noted.indexOf(p);
@@ -35375,7 +35546,7 @@ async function stageMap(art,sc){
     svg.append(g);
     // the full name, then its first part ("Furnace Creek"), placed where it touches no
     // other label: right, left, above, below. A place with no room keeps its dot and title.
-    const val=p.value!=null?' '+stageFmt(p.value,sc.unit):'';
+    const val=p.value!=null?' '+stageFmtS(p.value,sc.unit,signed):'';
     const names=[(p.label||'')+val];
     const short=String(p.label||'').split(',')[0].trim();
     if(short&&short!==p.label)names.push(short+val);

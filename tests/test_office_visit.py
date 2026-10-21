@@ -162,7 +162,7 @@ def test_the_visit_has_a_door_on_every_face():
     assert "CREW_GUEST_MS=300000" in crew, "their roster is a call to another machine"
     home = (JS / "01b-immersive.js").read_text()
     assert "officeVisit(b.dataset.l)" in home
-    assert '"chat_pull", "office")' in (ROOT / "agentos/teamlink.py").read_text(), "the listener allows the op"
+    assert '"chat_pull", "office"' in (ROOT / "agentos/teamlink.py").read_text(), "the listener allows the op"
     assert '"visit"' in (ROOT / "agentos/__main__.py").read_text()
     assert "/api/team/visitors" in (ROOT / "agentos/tui_app.py").read_text()
     # a visit is keyed on the user as well as the link (CLAUDE.md: caches keyed on the user)

@@ -45,6 +45,13 @@
 #                             leader hears it. Same as bento-enroll.txt on a Pi's SD card.
 #   --wait                    wait to be set up by another Bento on this network,
 #                             showing a code to type there (a fresh Pi does this anyway)
+#   --zero                    a Zero: Light mode, no questions, its work run by the hub
+#                             that sets it up (agentos/zero.py). The hub prints the whole
+#                             line: Settings → Team & Communications, or `bento pool zero`.
+#   --hub=ADDR[,ADDR]         the hub's addresses: this machine announces itself to them
+#                             as well as on its own network (Tailscale has no broadcast)
+#   --tailscale-key=KEY       install Tailscale and join the tailnet with this auth key
+#                             (or TS_AUTHKEY). Nothing keeps it after the join.
 #   --no-service              do not install the launcher/login service (containers, CI)
 #   --no-verify               skip the "prove it works" step
 #
@@ -104,6 +111,10 @@ PROFILE="${AGENTOS_PROFILE:-}"
 # Set up by another Bento (provision.py): a key to carry, or just "wait and show a code".
 ENROLL="${AGENTOS_ENROLL:-}"
 WAIT_SETUP=""
+# A Zero (zero.py): set up by the hub with its standard profile, nobody at it.
+ZERO=""
+HUBS="${AGENTOS_HUBS:-}"
+TS_KEY="${TS_AUTHKEY:-}"
 
 for a in "$@"; do
   case "$a" in
@@ -117,7 +128,10 @@ for a in "$@"; do
     --full) PROFILE=full ;;
     --enroll=*) ENROLL="${a#--enroll=}" ;;
     --wait) WAIT_SETUP=1 ;;
-    -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
+    --zero) ZERO=1; PROFILE=lite ;;
+    --hub=*) HUBS="${a#--hub=}" ;;
+    --tailscale-key=*) TS_KEY="${a#--tailscale-key=}" ;;
+    -h|--help) sed -n '2,65p' "$0"; exit 0 ;;
     -*) printf 'unknown flag: %s  (try --help)\n' "$a" >&2; exit 2 ;;
   esac
 done
@@ -179,6 +193,9 @@ if [ -t 0 ]; then
 elif [ -c /dev/tty ] && (: </dev/tty) 2>/dev/null; then
   INTERACTIVE=1
 fi
+# A Zero is zero-touch: every question takes its safe default (no optional extras, the
+# desktop page stays on this machine), so a pasted line never stops to wait for somebody.
+[ -n "$ZERO" ] && INTERACTIVE=""
 
 ask() {   # ask "question" -> 0 for yes. Non-interactive installs answer no.
   [ -n "$ASSUME_YES" ] && return 0
@@ -404,7 +421,7 @@ ensure_build_deps() {
     if sudo -n true 2>/dev/null; then
       sudo apt-get update >/dev/null 2>&1
       sudo apt-get install -y $APT_BUILD_DEPS && return 0
-    elif ask "install the build tools with sudo (you may be asked for your password)?"; then
+    elif [ -n "$ZERO" ] || ask "install the build tools with sudo (you may be asked for your password)?"; then
       sudo apt-get update >/dev/null 2>&1
       sudo apt-get install -y $APT_BUILD_DEPS && return 0
     fi
@@ -971,6 +988,48 @@ if [ -n "$PROFILE" ]; then
   else
     warn "could not set the profile — the machine will decide on first run"
     gap "set it yourself:  bento profile $PROFILE"
+  fi
+fi
+
+# Tailscale, when the line carries an auth key: the way a Zero on another network
+# reaches its hub. Its own installer and `tailscale up` need root; the ladder is the
+# usual one (passwordless sudo, a sudo prompt when somebody is at it, else the command
+# handed back). The key is passed once and kept by nothing here.
+if [ -n "$TS_KEY" ]; then
+  say "joining your tailnet (Tailscale)"
+  ts_root() {
+    if [ "$(id -u)" = 0 ]; then "$@"
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then sudo "$@"
+    elif command -v sudo >/dev/null 2>&1 && [ -c /dev/tty ] && (: </dev/tty) 2>/dev/null; then sudo "$@" </dev/tty
+    else return 1; fi
+  }
+  if ! command -v tailscale >/dev/null 2>&1; then
+    if curl -fsSL https://tailscale.com/install.sh | sh; then
+      ok "Tailscale installed (BSD-3-Clause)"
+    else
+      warn "could not install Tailscale"
+      gap "install it yourself: curl -fsSL https://tailscale.com/install.sh | sh"
+    fi
+  fi
+  if command -v tailscale >/dev/null 2>&1; then
+    TS_NAME="bento-$(hostname 2>/dev/null | tr -cd 'A-Za-z0-9-' | cut -c1-40)"
+    if ts_root tailscale up --authkey="$TS_KEY" --hostname="$TS_NAME" >/dev/null 2>&1; then
+      ok "on your tailnet as $TS_NAME ($(tailscale ip -4 2>/dev/null | head -n1))"
+    else
+      warn "Tailscale did not accept that key (or needs root)"
+      gap "join yourself: sudo tailscale up --hostname=$TS_NAME"
+    fi
+  fi
+fi
+
+# A Zero announces itself to its hub as well as on its own network: Tailscale carries no
+# broadcasts, so on a tailnet the hub hears it only by being sent to.
+if [ -n "$HUBS" ]; then
+  if uv run bento pool hub "$HUBS" >/dev/null 2>&1; then
+    ok "this machine announces itself to $HUBS"
+  else
+    warn "could not record the hub's addresses"
+    gap "record them yourself:  bento pool hub $HUBS"
   fi
 fi
 

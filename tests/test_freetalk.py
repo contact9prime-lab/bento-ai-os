@@ -287,3 +287,62 @@ def test_a_spoken_request_opens_with_addresses():
                          capture_output=True, text=True, timeout=20).stdout.splitlines()
     assert out == ["@researcher @writer should we ship?", "@writer draft it",
                    "look at writer's draft", "what time is it"]
+
+
+# ---- the Office: a free talk is the team at the table, not four desks saying "done" ----
+
+UI = Path(__file__).parent.parent / "agentos" / "ui" / "src" / "js"
+
+
+def _fn(js: str, name: str) -> str:
+    i = js.index(f"function {name}(")
+    return js[i:js.index("\nfunction ", i + 1)]
+
+
+def test_the_office_gathers_a_free_talk_at_the_table():
+    """Found filming it: free talk pulsed `say` as kind 'talk', which the Office drops (an
+    agent's ask arrives as 'msg'), so four agents talked while the Office sat still with a
+    "done ✓" over a desk after every line. Now the cast gathers at the meeting table, each
+    line is said there, the one before fades, and the end sends them back to their desks."""
+    import json
+    import subprocess
+    ft = (UI / "24f-freetalk.js").read_text()
+    assert "scenePulse('say',ev.speaker,{kind:'freetalk',id:ev.id,agents:" in ft
+    assert "scenePulse('say','',{kind:'freetalk',id:ev.id,end:true})" in ft
+    office = (UI / "24d-office.js").read_text()
+    assert "if(ev.kind==='freetalk')return officeFreeTalk(label,ev);" in office
+    # a line said is not a task finished: no "done ✓" at the end of a free-talk message
+    assert "if(ev.kind==='freetalk'&&ev.status!=='running'){delete O.runs[ev.run_id];return}" in office
+    assert "if(ev.kind==='freetalk')return;" in (UI / "24e-playstrip.js").read_text()
+    stub = """
+var OF_SAY_MS=5200,OF_FT_QUIET=90000,OFFICE={huddle:null,people:{}},log=[];
+['kofi','lina','maya','ravi'].forEach(n=>OFFICE.people[n]={label:n});
+function officeMatch(n){return OFFICE.people[n]}
+function officeHuddle(names,cid){OFFICE.huddle={cid,who:[]};names.forEach(n=>officeHuddleJoin(officeMatch(n)));log.push('gather:'+names.join(','))}
+function officeHuddleJoin(p){if(!OFFICE.huddle.who.includes(p))OFFICE.huddle.who.push(p)}
+function officeHuddleEnd(){log.push('home:'+OFFICE.huddle.who.map(p=>p.label).join(','));OFFICE.huddle=null}
+function officeSay(p,text,kind,ms){p.say={text,kind,at:performance.now(),ms}}
+function officeLog(){}
+"""
+    src = stub + _fn(office, "officeFreeTalk")
+    out = subprocess.run(["node", "-e", src + """
+const A=['kofi','lina','maya','ravi'];
+officeFreeTalk('kofi',{kind:'freetalk',id:'s1',agents:A,text:'@lina, who pays?'});
+officeFreeTalk('lina',{kind:'freetalk',id:'s1',agents:A,text:'@maya, health does.'});
+const P=OFFICE.people,mid=[P.kofi.say.ms<2000,P.lina.say.text,OFFICE.huddle.ft,OFFICE.huddle.who.length];
+officeFreeTalk('',{kind:'freetalk',id:'other',end:true});      // another talk ending changes nothing
+const still=!!OFFICE.huddle;
+officeFreeTalk('',{kind:'freetalk',id:'s1',end:true});
+console.log(JSON.stringify({log,mid,still,after:OFFICE.huddle}))"""],
+                         capture_output=True, text=True, check=True).stdout
+    got = json.loads(out)
+    assert got["log"] == ["gather:kofi,lina,maya,ravi", "home:kofi,lina,maya,ravi"]
+    assert got["mid"] == [True, "@maya, health does.", "s1", 4]
+    assert got["still"] is True and got["after"] is None
+
+
+def test_a_balloon_stays_on_the_screen_in_the_3d_office():
+    """On a phone the meeting room is at the edge, and every line said there ran off it."""
+    js = (UI / "24k-office3d.js").read_text()
+    assert "o.vis={l:" in js
+    assert "if(vis&&vis.r-vis.l>w+12)x=Math.max(vis.l+6,Math.min(x,vis.r-w-6));" in js

@@ -46,6 +46,11 @@
 /* Never forever inside a drawing: an SVG shape scaling without end was redrawn badly by Chrome on
    Wayland (reported: the map and its caption painted twice, with the dock inside it). */
 .st-pulse{fill:#F43F5E;opacity:.25;transform-box:fill-box;transform-origin:center;animation:st-pulse 2.2s ease-out 3}
+/* a set of rises and falls: up green, down red (pins, notes); bars take STAGE_DOWN in the js */
+.st-pt.up,.st-pulse.up{fill:#34D399}
+.st-pt.down,.st-pulse.down{fill:#F43F5E}
+.st-mapnotes li.up b{color:#6EE7B7}
+.st-mapnotes li.down b{color:#FDA4AF}
 .st-tag{fill:color-mix(in srgb,var(--bg) 82%,transparent);stroke:var(--line);opacity:0;animation:st-fade .4s ease forwards}
 .st-tagtext{fill:var(--txt);font-size:calc(13px * var(--k,1));font-weight:600;font-family:var(--sans);opacity:0;animation:st-fade .4s ease forwards}
 .st-scale{display:flex;align-items:center;gap:8px;font-size:var(--fs-xs);color:var(--dim);margin-top:6px}
@@ -297,6 +302,10 @@ body.dev-mobile .stg-cap{font-size:15px}
 /* each part keeps its own row, so hiding the question in a short window moves nothing */
 .stg>.stg-prog{grid-row:1}.stg>.stg-head{grid-row:2}.stg>.stg-scene{grid-row:3}.stg>.stg-bar{grid-row:4}
 .stg>.stg-empty{grid-row:3}
+/* and so does each part of a scene: a short window hides the kicker, and unpinned the picture
+   slid into the title's auto row while the caption took the shrinking one, so the source line
+   spilled over the controls and took Play's taps (found filming a market check on a phone) */
+.stg-scene>.stg-kicker{grid-row:1}.stg-scene>.stg-title{grid-row:2}.stg-scene>.stg-art{grid-row:3}.stg-scene>.stg-foot{grid-row:4}
 /* what does not fill the room sits in its middle */
 .stg-scene.k-steps .stg-art,.stg-scene.k-numbers .stg-art,.stg-scene.k-timeline .stg-art,.stg-scene.k-table .stg-art{justify-content:center;overflow:auto}
 /* a subtitle may sit over a picture, never over the last row of a list or a table */

@@ -394,7 +394,7 @@ def test_every_face_shows_agents_messaging():
     assert "s-team-talk" in st and "function paintTeamMatrix(" in st and "/api/team/matrix" in st
     for mode in ("'matrix'", "'swarm'", "'off'"):
         assert mode in st
-    assert "ev.to?'@'+ev.to+' '" in crew, "a question on the stage says who it is for"
+    assert "?'@'+ev.to+' '" in crew, "a question on the stage says who it is for"
     assert 't == "agent_msg"' in (ROOT / "agentos" / "tui_app.py").read_text()
     css = (ROOT / "agentos" / "ui" / "src" / "css" / "22-avatars.css").read_text()
     assert "body.dev-touch .tm-cell{min-height:var(--tap);min-width:var(--tap)}" in css

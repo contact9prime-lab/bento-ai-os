@@ -66,9 +66,18 @@ jobs:
         # Each run gets its own cache prefix. Two checkouts resolving in the same
         # second otherwise let Python reuse one run's .pyc while executing the
         # other's source — the trap tests/test_update_gate.py documents.
+        # A failure also names each failing test as an annotation: the job's log is
+        # stored on another host, and an annotation is readable through the API by
+        # whoever has only that, which is how a red run once said nothing at all.
         env:
           PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pyc-${{ matrix.python }}
-        run: uv run --python ${{ matrix.python }} pytest -q
+        run: |
+          set -o pipefail
+          uv run --python ${{ matrix.python }} pytest -q -rfE 2>&1 | tee "$RUNNER_TEMP/pytest.log" || {
+            grep -E '^(FAILED|ERROR) ' "$RUNNER_TEMP/pytest.log" | head -20 \
+              | sed -e 's/::/ · /g' -e 's/^/::error title=pytest::/'
+            exit 1
+          }
 
   licences:
     # AgentOS ships permissively, and what it depends on it is effectively

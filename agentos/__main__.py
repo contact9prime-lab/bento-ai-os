@@ -4462,7 +4462,8 @@ def _pool_cli(args):
             for r in res:
                 print(f"\n  ## {r['machine']}{'' if r['ok'] else ' (could not)'}\n  {r['text']}")
             return
-        if a in ("discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll"):
+        if a in ("discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll",
+                 "zero", "standard", "hub", "mind"):
             return _provision_cli(args, cfg, a, rest, val, run)
         if a in ("devices", "install", "sshkey", "sdcard"):
             return _devices_cli(args, cfg, a, rest, run)
@@ -4471,7 +4472,8 @@ def _pool_cli(args):
     sys.exit("  bento pool [status | create NAME | join MACHINE [--brain] | approve M | remove M | leave"
              " | lead on|off | brain on|off | pin MACHINE|auto | notes [Q] | share TEXT | forget ID | task PIECE..."
              " | discover | enable MACHINE... [--code N] | ignore M | key [LABEL] [--auto] | keys"
-             " | wait [on|off|auto] | enroll KEY]")
+             " | wait [on|off|auto] | enroll KEY | zero [--tailscale-key K] | standard [set FILE] | hub ADDR,..."
+             " | mind [ZERO] [--soul FILE]]")
 
 
 def _devices_cli(args, cfg, a, rest, run):
@@ -4644,6 +4646,61 @@ def _provision_cli(args, cfg, a, rest, val, run):
         print("  Save it as bento-enroll.txt on a new Pi's SD card (the boot partition), or run")
         print("  `bento pool enroll KEY` there. It is shown once.")
         return
+    if a == "zero":
+        # the one line that makes a Zero (zero.py): this hub's automatic key and addresses
+        from . import zero as zeromod
+        addrs = zeromod.hub_addresses()
+        hubs = zeromod.clean_hubs(rest) or [x["addr"] for x in addrs]
+        key = prov.zero_key()
+        try:
+            line = zeromod.one_line(cfg, key["text"], hubs, getattr(args, "tailscale_key", "") or "")
+        except ValueError as e:
+            sys.exit("  " + str(e))
+        print("  Paste this on the Pi (any Pi or small Linux machine, as a user that can sudo):\n")
+        print(f"    {line}\n")
+        for x in addrs:
+            print(f"  This hub is {x['addr']} {zeromod.via_words(x['via'])}.")
+        if not any(x["via"] == "tailscale" for x in addrs):
+            print("  This hub is not on Tailscale, so a Zero must be on the same network as it.")
+        print("  It installs Bento in Light mode, joins Tailscale when the line has a key, and is set up")
+        print("  here with the standard profile the moment it is heard (`bento pool standard` shows it).")
+        if not getattr(args, "tailscale_key", ""):
+            print("  Add --tailscale-key tskey-auth-… for a Pi on another network. The key is put in the")
+            print("  line only; this machine keeps no copy.")
+        return
+    if a == "standard":
+        if val == "set":
+            src = rest[1] if len(rest) > 1 else ""
+            try:
+                raw = json.loads(Path(src).read_text() if src and Path(src).is_file() else (src or "{}"))
+            except (OSError, ValueError) as e:
+                sys.exit(f"  bento pool standard set FILE.json (or the JSON itself): {e}")
+            prof, dropped = prov.set_standard(raw.get("profile", raw) if isinstance(raw, dict) else {})
+            if dropped:
+                print("  Dropped: " + "; ".join(dropped))
+        prof = prov.standard()
+        print(f"  The standard profile (every machine set up from here gets it):")
+        print(f"    work runs     {'on this hub' if prof.get('execution') == 'hub' else 'on the machine'}")
+        print(f"    Light mode    {'yes' if prof.get('lite') else 'no'}")
+        for k in ("name", "agent_name", "kiosk", "wake_word"):
+            if k in prof:
+                print(f"    {k.replace('_', ' '):<13} {prof[k]}")
+        ags = prof.get("agents") or []
+        print(f"    agents        {', '.join(a['name'] + (' (' + a['hands'] + ')' if a.get('hands') else '') for a in ags) or 'none of its own'}")
+        for h in prof.get("hands") or []:
+            print(f"    executor      {h['name']}: tools {', '.join(h['spec']['tools']) or 'none'}")
+        if val != "set":
+            print("  Change it with `bento pool standard set profile.json`, or in Settings → Team & Communications.")
+        return
+    if a == "mind":
+        return _zero_mind_cli(cfg, rest, getattr(args, "soul", "") or "", run)
+    if a == "hub":
+        if val:
+            got = prov.set_hubs(rest)
+            print(f"  This machine announces itself to {', '.join(got) or 'nobody but its network'} as well.")
+        else:
+            print(f"  Hub addresses: {', '.join(prov.hubs()) or 'none (it is heard on its own network only)'}")
+        return
     if a == "enroll":
         if not val:
             sys.exit("  bento pool enroll bento-enroll-1.…")
@@ -4699,7 +4756,71 @@ def _provision_cli(args, cfg, a, rest, val, run):
                             reason=f"set up {r['name']} ({r['how']})")
         except Exception:
             pass
-        print(f"  ✓ {r['name']} is set up ({r['how']}) and is joining '{d['pool']['name']}'.")
+        if r["profile"].get("execution") == "hub":
+            from . import zero as _z
+            done = _z.hub_side(store, cfg, r["label"])
+            with contextlib.suppress(Exception):
+                store.audit_add(principal_kind="user", principal_id="", surface="cli", action="provision.hub",
+                                resource=f"team:{r['label']}/*", effect="allow", rule="person", outcome="ok",
+                                reason="; ".join(done))
+        print(f"  ✓ {r['name']} is set up ({r['how']}, heard {_zero_words(r.get('via'))}) and is joining "
+              f"'{d['pool']['name']}'.")
+
+
+def _zero_mind_cli(cfg, rest, soul_file, run):
+    """`bento pool mind`: a Zero's memory, graph and soul, kept on its hub (zeromind.py).
+    On the hub, every Zero's section, or one of them; `--soul FILE` replaces its soul. On a
+    Zero, what its hub keeps for it (that one needs the hub to answer)."""
+    from . import zeromind
+    from .memory import Store
+    if zeromind.on_hub(cfg):
+        r = run(zeromind.ask(cfg, "list"))
+        if not r.get("ok"):
+            sys.exit("  " + r["error"])
+        hub = (zeromind.hub_link(cfg) or {}).get("label")
+        print(f"  This machine's memory, graph and soul are kept on {hub}, in '{r['section']}':")
+        print(f"    {len(r['memories'])} memories · {len(r['graph']['edges'])} facts · soul "
+              f"{len(r['soul'])} characters")
+        for m in r["memories"][:12]:
+            print(f"    - {m['content'][:100]}")
+        return
+    from . import config as _cfgmod
+    store = Store(_cfgmod.DB_PATH)
+    secs = zeromind.sections(store)
+    if not rest:
+        if not secs:
+            print("  No Zero keeps its mind here yet. A Zero set up with its work on this hub does.")
+            return
+        print("  The Zeros whose minds are kept here, each in its own section:")
+        for x in secs:
+            only = Store.only(x["space"])
+            print(f"    {x['label']:<18} {len(store.search_memories('', limit=10**6, space=only))} memories · "
+                  f"{len(store.kg_query('', limit=10**6, space=only))} facts")
+        print("  `bento pool mind NAME` shows one; `--soul FILE` replaces its soul.")
+        return
+    x = next((s for s in secs if s["label"] == rest[0]), None)
+    if not x:
+        sys.exit(f"  No Zero called {rest[0]} keeps its mind here.")
+    if soul_file:
+        text = Path(soul_file).read_text()
+        if len(text.strip()) < 40:
+            sys.exit("  That soul is too short to replace one with.")
+        zeromind.set_soul(store, x["label"], text[:zeromind.MAX_SOUL], by="a person at the hub's terminal")
+        print(f"  The soul of {x['label']} is replaced.")
+        return
+    only = Store.only(x["space"])
+    print(f"  {zeromind.SECTION.format(label=x['label'])}")
+    soul = " ".join(zeromind.soul_of(x["label"]).split())
+    print(f"    soul      {soul[:160]}{'…' if len(soul) > 160 else ''}")
+    for m in store.search_memories("", limit=20, space=only):
+        print(f"    memory    {m['content'][:100]}")
+    for f in store.kg_query("", limit=20, space=only):
+        print(f"    fact      {f[:100]}")
+
+
+def _zero_words(v) -> str:
+    from . import zero as zeromod
+    return zeromod.via_words(v or "")
 
 
 def _timetravel_cli(args):
@@ -5686,6 +5807,20 @@ def _link_cli(args):
                              f"link ended (bento link); {n} permission(s) revoked")
         print(f"  removed {lk['label']}; {n} permission(s) that named it revoked")
         return
+    if act == "files":
+        # files my agents make for their tasks go back with the answer (linkfiles.py)
+        from . import linkfiles
+        lk = teamlink.find(owner, a1 or "")
+        if not lk:
+            print(f"  no link called '{a1}'")
+            sys.exit(2)
+        if a2 in ("on", "off"):
+            linkfiles.set_back(store, lk["label"], a2 == "on", cfg)
+        on = linkfiles.back_state(store, lk["label"])
+        print(f"  {lk['label']}: files your agents make for their tasks "
+              + ("go back with the answer." if on else "stay here; they get words only."))
+        print(f"  Files they send you land in from-{lk['label']}/ in your workspace.")
+        return
     if act in ("allow", "disallow", "mine"):
         lk = teamlink.find(owner, a1 or "")
         if not lk:
@@ -5793,8 +5928,10 @@ def _link_cli(args):
               f"    their agents may ask: {', '.join(acc['theirs_may_ask']) or 'nobody'}\n"
               f"    mine ask theirs: {'freely' if acc['mine_may_ask'] else 'after asking me'}   "
               f"(as NAME@{lk['label']})")
+        from . import linkfiles as _lf
+        print(f"    files made for their tasks: {'go back with the answer' if _lf.back_state(store, lk['label']) else 'stay here'}")
         for x in fabricmod.standing(store, lk["label"]):
-            print(f"    without asking: {x['agent']} {x['action']} {x['scope']}")
+            print(f"    without asking: {'any agent' if x['agent'] == '*' else x['agent']} {x['action']} {x['scope']}")
         for m in fabricmod.linked_missions(store, lk["label"]):
             print(f"    their mission {m['mission']}: {', '.join(m['agents']) or '-'}"
                   + (" (stopped)" if m["stopped"] else ""))
@@ -8077,11 +8214,13 @@ def main():
                         choices=["status", "show", "create", "join", "approve", "remove", "leave",
                                  "lead", "brain", "pin", "notes", "share", "forget", "task",
                                  "discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll",
+                                 "zero", "standard", "hub", "mind",
                                  "devices", "install", "sshkey", "sdcard"],
                         metavar="ACTION",
                         help="status | create NAME | join MACHINE | approve M | remove M | leave | "
                              "lead on|off | brain on|off | pin M|auto | notes [Q] | share TEXT | forget ID | task PIECE... | "
                              "discover | machines | enable M... | ignore M | key [LABEL] | keys | wait [on|off|auto] | enroll KEY | "
+                             "zero | standard [set FILE] | hub ADDR,... | mind [ZERO] [--soul FILE] | "
                              "devices | install IP --user U | sshkey | sdcard PATH")
     p_pool.add_argument("args", nargs="*", help="the value")
     p_pool.add_argument("--brain", action="store_true", help="join: think with the leader's brain")
@@ -8089,6 +8228,8 @@ def main():
     p_pool.add_argument("--kiosk", action="store_true", help="enable / key: set the new machine up as a kiosk")
     p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
     p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
+    p_pool.add_argument("--tailscale-key", default="", help="zero: put this Tailscale auth key in the line (not kept)")
+    p_pool.add_argument("--soul", default="", help="mind ZERO: replace that Zero's soul with this file")
     p_pool.add_argument("--user", default="", help="install / sdcard: the user on the other machine")
     p_pool.add_argument("--password-stdin", action="store_true", help="install / sdcard: read the password from stdin")
     p_pool.add_argument("--key-only", action="store_true", help="install: log in with this machine's SSH key")
@@ -8141,13 +8282,13 @@ def main():
     p_link.add_argument("action", nargs="?", default="list",
                         choices=["list", "request", "requests", "approve", "deny", "say", "chat",
                                  "listen", "invite", "join", "redeem", "remove", "allow", "disallow", "mine",
-                                 "let", "unlet", "standing", "missions", "stop", "resume", "pass"])
+                                 "let", "unlet", "standing", "missions", "stop", "resume", "pass", "files"])
     p_link.add_argument("arg1", nargs="?", default="",
                         help="request: the other machine's address, or 'account' · say/chat: the link · "
                              "approve/deny: the "
                              "request's id · listen: on|off · invite: machine|account · join: the invite · "
                              "redeem: the code · pass: the agent to lend · remove/allow/disallow/mine/let/unlet/standing/missions/stop/"
-                             "resume: the link")
+                             "resume/files: the link")
     p_link.add_argument("arg2", nargs="?", default="",
                         help="say: the message · request account: the account · invite/join/request: a label · "
                              "pass: machine|account · "

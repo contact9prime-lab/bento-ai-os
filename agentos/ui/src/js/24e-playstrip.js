@@ -123,6 +123,7 @@ function playPulse(kind,label,ev){
   }
   if(kind==='say'){
     if(ev.kind==='talk')return;             // asks and answers arrive as 'msg'
+    if(ev.kind==='freetalk')return;         // a free talk is its own card in Chat (24f)
     const s=playStripOf(cid,true);if(!s)return;
     playSay(s,ev.speaker||label,ev.text||'');playWork(s,ev.speaker||label,true);
     return;

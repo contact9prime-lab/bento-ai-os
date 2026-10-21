@@ -1203,6 +1203,11 @@ class Toolbox(usersmod.Scoped):
                     f"shared with the community (note {got['id']}; the leader takes it on the next heartbeat)")
         if scope == "session" and not conversation_id:
             scope = "user"  # headless contexts have no session to attach to
+        from . import zeromind
+        if zeromind.on_hub(self.cfg):
+            # a Zero's memory is on its hub, in its section (zeromind.py)
+            return await zeromind.tool(self.cfg, self.store, "remember", content=content,
+                                       scope=scope, conversation_id=conversation_id or "")
         target_space = "" if everywhere else (space_id or "")
         mid = self.store.add_memory(content, scope=scope,
                                     conversation_id=conversation_id or None, source="agent",
@@ -1249,6 +1254,9 @@ class Toolbox(usersmod.Scoped):
                          for r in res)
 
     async def recall(self, query: str = "", space_id: str = "") -> str:
+        from . import zeromind
+        if zeromind.on_hub(self.cfg):
+            return await zeromind.tool(self.cfg, self.store, "recall", query=query)
         mems = self.store.search_memories(query, limit=15, space=space_id)
         if query:
             # semantic recall finds what keyword LIKE misses ("job" → "works at Accacia").
@@ -1273,7 +1281,8 @@ class Toolbox(usersmod.Scoped):
         )
 
     async def delegate(self, subagent: str, task: str, conversation_id: str = "",
-                       _taint=None) -> str:
+                       files=None, _taint=None, _space: str = "", _files=None,
+                       _files_note: str = "", _root: str = "") -> str:
         """Hand a task to a specialist subagent; its steps run in a separate data plane
         with its own model, tool allow-list, and budget (see the Workflows app).
 
@@ -1289,13 +1298,20 @@ class Toolbox(usersmod.Scoped):
             async def say(e):
                 if self.broadcast:
                     await self.broadcast({"type": "agent_msg", "conversation_id": conversation_id, **e})
-            return await self.fabric.message(me, sub, task, [me], conversation_id=conversation_id,
-                                             taint=list(_taint or []), say=say)
+            # `_files` are the paths the loop's file.send decision allowed (agent._files_out);
+            # the model's own `files` never reach the wire unchecked
+            out = await self.fabric.message(me, sub, task, [me], root=_root, conversation_id=conversation_id,
+                                            taint=list(_taint or []), say=say, files=list(_files or []))
+            return out + (f"\n\n{_files_note}" if _files_note else "")
         defn = self.store.get_subagent(subagent)
         if not defn:
             names = ", ".join(s["name"] for s in self.store.list_subagents()) or "(none)"
             return f"[error] no subagent named '{subagent}'. Available: {names}"
-        res = await self.fabric.run_subagent(defn, task, conversation_id=conversation_id)
+        if files:
+            # one of our own specialists reads them where they are
+            task = f"{task}\n\nFiles for this: " + ", ".join(str(f) for f in list(files)[:16])
+        res = await self.fabric.run_subagent(defn, task, conversation_id=conversation_id,
+                                             taint=list(_taint or []) or None, space_id=_space or "")
         head = f"[subagent {defn['name']} · {res['status']} · model {res['model']}]"
         body = res["content"] or res["fault"] or "(no output)"
         return f"{head}\n{body[:3500]}"
@@ -1389,6 +1405,9 @@ class Toolbox(usersmod.Scoped):
                 f"{agent} is pinned to {model}, but for now answers on {where}: {b['note']}.")
 
     async def forget(self, memory_id: str) -> str:
+        from . import zeromind
+        if zeromind.on_hub(self.cfg):
+            return await zeromind.tool(self.cfg, self.store, "forget", id=memory_id)
         mems = {m["id"] for m in self.store.search_memories("", limit=10**6)}
         if memory_id not in mems:
             return f"[error] no memory with id {memory_id} — use recall to find the right id"
@@ -1583,6 +1602,10 @@ class Toolbox(usersmod.Scoped):
         """Record an assertion. It belongs to the current space unless `everywhere`
         marks it as true regardless of what the user is working on. Entities are
         shared across spaces — only the assertion is scoped."""
+        from . import zeromind
+        if zeromind.on_hub(self.cfg):
+            return await zeromind.tool(self.cfg, self.store, "kg_add", subject=subject, relation=relation,
+                                       object=object, subject_type=subject_type, object_type=object_type)
         target_space = "" if everywhere else (space_id or "")
         eid = self.store.kg_add(subject, relation, object, subject_type, object_type,
                                 space_id=target_space)
@@ -1590,6 +1613,9 @@ class Toolbox(usersmod.Scoped):
         return f"added to knowledge graph {where}: {subject} —{relation}→ {object} (edge {eid})"
 
     async def kg_query(self, query: str = "", space_id: str = "") -> str:
+        from . import zeromind
+        if zeromind.on_hub(self.cfg):
+            return await zeromind.tool(self.cfg, self.store, "kg_query", query=query)
         lines = self.store.kg_query(query, space=space_id)
         if not lines:
             return "(knowledge graph has no matching facts)"
@@ -1741,6 +1767,9 @@ class Toolbox(usersmod.Scoped):
         from . import config as cfgmod
         if len(content.strip()) < 40:
             return "[error] refusing to overwrite the soul with something that short — pass the full new soul text"
+        from . import zeromind
+        if zeromind.on_hub(self.cfg):
+            return await zeromind.tool(self.cfg, self.store, "update_soul", content=content)
         cfgmod.save_soul(content)
         return f"soul updated ({len(content)} chars)"
 
@@ -4440,7 +4469,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_taint"} if name == "delegate" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -4713,6 +4742,11 @@ TOOL_SCHEMAS = [
                              "For another team linked to this one, 'name@team', or 'lead@team' for "
                              "their lead, who takes the whole task to their own team (linked_teams lists them)."},
                 "task": {"type": "string", "description": "Self-contained task description — the subagent sees nothing else."},
+                "files": {"type": "array", "items": {"type": "string"},
+                          "description": "Files the work needs, by path in your workspace or a shared "
+                                         "folder. For another team ('name@team') they are sent with the "
+                                         "task (asked first, like any other step); files they make "
+                                         "come back to your workspace, in from-<team>/."},
             },
             "required": ["subagent", "task"],
         },

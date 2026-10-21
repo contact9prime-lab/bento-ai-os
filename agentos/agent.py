@@ -475,6 +475,10 @@ class Agent:
         # them from HERE, never from its arguments)
         self.chain: list[str] = []
         self.root_run = ""
+        # what a lead's hand-overs in THIS turn are budgeted under (fabric.message's root):
+        # with no run they were all keyed on the sender's name, so six hand-overs to linked
+        # teams, in any chats, refused every later one until the server restarted
+        self._turn_key = f"turn:{time.time_ns():x}"
         # Tools this turn has used or explicitly unlocked with `find_tools`. They
         # stay on the table for the rest of the turn even when the user's words
         # never mentioned them — see toolscope.py.
@@ -710,56 +714,64 @@ class Agent:
         mc = self.cfg.get("memory") or {}
         mem_text = ""
         n_user = int(mc.get("inject_user", 15))
-        # Scoped to the space this turn happens in: what is true here, plus what is
-        # true everywhere. Injecting three clients' constraints into one answer is
-        # exactly what spaces exist to stop.
-        user_mems = store.search_memories("", limit=500, scope="user", space=self.space_id)
-        if len(user_mems) > n_user:
-            # over budget: pinned always make the cut; the rest of the slots go to the
-            # memories most relevant to the user's message (semantic), else most recent
-            pinned = [m for m in user_mems if m.get("pinned")]
-            rest = [m for m in user_mems if not m.get("pinned")]
-            take = max(0, n_user - len(pinned))
-            picked = rest[:take]
-            if query and take > 0:
+        from . import zeromind
+        zctx = None
+        if zeromind.on_hub(self.cfg):
+            # A Zero's memory, graph and soul are on its hub, in its own section: asked for
+            # once a turn, and said plainly when the hub can't be reached.
+            zctx = await zeromind.context(self.cfg, store, query, self.conversation_id or "")
+            mem_text = zeromind.mem_text(zctx, (zeromind.hub_link(self.cfg) or {}).get("label") or "the hub")
+        else:
+            # Scoped to the space this turn happens in: what is true here, plus what is
+            # true everywhere. Injecting three clients' constraints into one answer is
+            # exactly what spaces exist to stop.
+            user_mems = store.search_memories("", limit=500, scope="user", space=self.space_id)
+            if len(user_mems) > n_user:
+                # over budget: pinned always make the cut; the rest of the slots go to the
+                # memories most relevant to the user's message (semantic), else most recent
+                pinned = [m for m in user_mems if m.get("pinned")]
+                rest = [m for m in user_mems if not m.get("pinned")]
+                take = max(0, n_user - len(pinned))
+                picked = rest[:take]
+                if query and take > 0:
+                    try:
+                        from . import knowledge
+                        ranked = await knowledge.semantic_rank(self.cfg, rest, query)
+                        if ranked is not None:
+                            picked = ranked[:take]
+                    except Exception:
+                        pass
+                user_mems = pinned + picked
+            if self.space_id:
+                # The agent has to know which space it is in, or it cannot decide where
+                # to file what it learns, and "save this" becomes ambiguous.
                 try:
-                    from . import knowledge
-                    ranked = await knowledge.semantic_rank(self.cfg, rest, query)
-                    if ranked is not None:
-                        picked = ranked[:take]
+                    from . import spaces as spacemod
+                    info = spacemod.describe(store, self.space_id)
+                    desc = f" — {info['description']}" if info.get("description") else ""
+                    mem_text += (f"\n=== Current space: {info['name']}{desc} ===\n"
+                                 "What you remember and produce belongs to this space unless it "
+                                 "would still be true after this project ends. Memory and facts "
+                                 "below are this space's plus what is true everywhere.\n")
                 except Exception:
                     pass
-            user_mems = pinned + picked
-        if self.space_id:
-            # The agent has to know which space it is in, or it cannot decide where
-            # to file what it learns, and "save this" becomes ambiguous.
-            try:
-                from . import spaces as spacemod
-                info = spacemod.describe(store, self.space_id)
-                desc = f" — {info['description']}" if info.get("description") else ""
-                mem_text += (f"\n=== Current space: {info['name']}{desc} ===\n"
-                             "What you remember and produce belongs to this space unless it "
-                             "would still be true after this project ends. Memory and facts "
-                             "below are this space's plus what is true everywhere.\n")
-            except Exception:
-                pass
-        if user_mems:
-            mem_text += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
-                f"- {'📌 ' if m.get('pinned') else ''}{m['content']}" for m in user_mems) + \
-                "\n=== end user memory ===\n"
-        if self.conversation_id:
-            sess_mems = store.search_memories("", limit=int(mc.get("inject_session", 10)),
-                                              scope="session", conversation_id=self.conversation_id)
-            if sess_mems:
-                mem_text += "\n=== Session memory (context of THIS conversation) ===\n" + "\n".join(
-                    f"- {m['content']}" for m in sess_mems) + "\n=== end session memory ===\n"
-        n_facts = int(mc.get("inject_facts", 12))
-        if n_facts > 0:
-            facts = store.kg_query("", limit=10**6, space=self.space_id)
-            if facts:
-                mem_text += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
-                             + "\n".join(f"- {f}" for f in facts[-n_facts:])
-                             + "\n=== end knowledge graph ===\n")
+            if user_mems:
+                mem_text += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
+                    f"- {'📌 ' if m.get('pinned') else ''}{m['content']}" for m in user_mems) + \
+                    "\n=== end user memory ===\n"
+            if self.conversation_id:
+                sess_mems = store.search_memories("", limit=int(mc.get("inject_session", 10)),
+                                                  scope="session", conversation_id=self.conversation_id)
+                if sess_mems:
+                    mem_text += "\n=== Session memory (context of THIS conversation) ===\n" + "\n".join(
+                        f"- {m['content']}" for m in sess_mems) + "\n=== end session memory ===\n"
+            n_facts = int(mc.get("inject_facts", 12))
+            if n_facts > 0:
+                facts = store.kg_query("", limit=10**6, space=self.space_id)
+                if facts:
+                    mem_text += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
+                                 + "\n".join(f"- {f}" for f in facts[-n_facts:])
+                                 + "\n=== end knowledge graph ===\n")
         if self.principal is MAIN and self.tool_filter is None:
             # The lead knows WHO its specialists are, not only that `delegate` exists:
             # asked to "build a tool" with a toolsmith on the roster, it built the tool
@@ -786,6 +798,15 @@ class Agent:
                 # never its notes, which are other machines' words (community_recall)
                 from . import pool as _pool
                 mem_text += _pool.note()
+            except Exception:
+                pass
+            try:
+                # the teams linked to this one, and on a Zero (zero.py) where its work runs:
+                # only a lead forwarded to a CLI heard either, so a Zero's own lead (the
+                # built-in loop on the hub's model) did not know its hub was there
+                from .executors import linked_note
+                from . import zero as _zero
+                mem_text += linked_note(self.cfg, store, prefix="") + _zero.note(self.cfg, prefix="")
             except Exception:
                 pass
         if self.principal is MAIN and self.conversation_id:
@@ -840,7 +861,8 @@ class Agent:
             locale=localeinfo.describe(self.cfg),
             workspace=self.cfg["workspace"],
             sandbox=sb_text,
-            soul=cfgmod.load_soul()[:4000],
+            soul=((zctx or {}).get("soul") or (zeromind.soul_now(self.cfg) if zctx is not None
+                                                 else cfgmod.load_soul()))[:4000],
             memories=mem_text,
             machine=await _machine_state(self.toolbox),
         )
@@ -946,8 +968,17 @@ class Agent:
                     "_taint": list(self.taint)}
         elif name == "delegate" and "@" in str(args.get("subagent") or "") and not self.flow:
             # the lead's hand-over to another team: decided as the matrix's question
-            # (policy.action_of reads _cross) and carrying what this turn has read
-            args = {**args, "_taint": list(self.taint), "_cross": True}
+            # (policy.action_of reads _cross) and carrying what this turn has read. Files it
+            # carries are their own decision just before it runs (_files_out)
+            args = {**args, "_taint": list(self.taint), "_cross": True,
+                    "_root": self.root_run or getattr(self, "run_id", "") or self._turn_key,
+                    **({"_want_files": list(args.get("files") or [])[:16]} if args.get("files") else {})}
+        elif name == "delegate" and not self.flow:
+            # a hand-over to one of our own specialists carries what this turn has read:
+            # a linked team's task handed on was otherwise answered by a specialist that
+            # had never seen it came from outside. And the space it happens in: a Zero's
+            # task on its hub is worked inside that Zero's section (zeromind.py).
+            args = {**args, "_taint": list(self.taint), "_space": self.space_id or ""}
         elif name == "brief_item":
             # which mission and run wrote it: injected from the agent, never an
             # argument — a model must not be able to write into another mission's items
@@ -1062,7 +1093,7 @@ class Agent:
                                                  dec.reason or reason)
             if approved:
                 await self._checkpoint(name, args)
-                output = await self.toolbox.execute(name, args)
+                output = await self._execute(name, args)
             elif verdict is not None:
                 why = "; ".join(f"{b['agent']}: {b['why']}" for b in verdict["ballots"]
                                 if not b["yes"] and b["why"])
@@ -1084,7 +1115,7 @@ class Agent:
                              "args": args, "detail": tool_detail(name, args),
                              "pending_approval": False})
             await self._checkpoint(name, args)
-            output = await self.toolbox.execute(name, args)
+            output = await self._execute(name, args)
         if (name == "request_capability" and isinstance(output, str) and output.startswith("[granted]")
                 and args.get("_from") and not (args.get("who") or "").strip()
                 and self.tool_filter is not None):
@@ -1161,6 +1192,58 @@ class Agent:
                          **({"image": image_path} if image_path else {})})
         self._said = ""
         return output, ok, image_path, untrusted
+
+    async def _execute(self, name: str, args: dict):
+        """Run a tool the gate allowed. A hand-over to another team that carries files is
+        a second decision first (_files_out): asking a team and sending it this machine's
+        files are two consents, and the matrix's cell is only the first."""
+        if name == "delegate" and args.get("_cross") and args.get("files"):
+            args = await self._files_out(args)
+        return await self.toolbox.execute(name, args)
+
+    async def _files_out(self, args: dict) -> dict:
+        """`file.send` on `team:<label>` (linkfiles.py): decided by the same gate, asked
+        like any other step (a person's after untrusted content), remembered per team.
+        What may go is only real files under this machine's roots, never a hidden one."""
+        from . import linkfiles
+        from .policy import _NEEDS_PERSON, _SAID
+        label = str(args.get("subagent") or "").partition("@")[2]
+        args = {k: v for k, v in args.items() if k != "files"}
+        paths, refused = linkfiles.resolve_out(self.cfg, args.get("_want_files") or [])
+        args.pop("_want_files", None)
+        note = ("Not sent: " + "; ".join(refused) + ".") if refused else ""
+        if not paths:
+            return {**args, "_files_note": note}
+        names = [p.name for p in paths]
+        card = {"to": label, "files": names, "refused": refused}
+        pdp = self.toolbox.pdp
+        if pdp is None:
+            return {**args, "_files_note": note + " Files were not sent: no permission gate here."}
+        dec = pdp.decide(self.principal, linkfiles.ACTION, linkfiles.team_resource(label),
+                         {"risk": "risky", "base_risk": "risky", "tool": "send_files", "args": card,
+                          "reason": f"Sends {len(names)} file(s) to the linked team {label}: "
+                                    + ", ".join(names),
+                          "autonomy": self.cfg.get("autonomy", ""), "surface": self.surface,
+                          "space_id": self.space_id, "conversation_id": self.conversation_id,
+                          "taint": self.taint, "flow": self.flow,
+                          "run_id": getattr(self, "run_id", "")})
+        ok = dec.effect == "allow"
+        if dec.effect == "ask":
+            must = "after untrusted content" if dec.rule == "taint" else ""
+            tok = _NEEDS_PERSON.set(must) if must else None
+            tok_said = _SAID.set(getattr(self, "_said", "") or "")
+            try:
+                ok = bool(await self.approver("send_files", card, dec.reason, dec.grant_offer))
+            except Exception:
+                ok = False
+            finally:
+                _SAID.reset(tok_said)
+                if tok is not None:
+                    _NEEDS_PERSON.reset(tok)
+        if not ok:
+            return {**args, "_files_note": (note + f" The files ({', '.join(names)}) were not sent: "
+                                            f"{dec.reason if dec.effect == 'deny' else 'nobody said yes'}.").strip()}
+        return {**args, "_files": [str(p) for p in paths], "_files_note": note}
 
     async def _park_here(self, name: str, args: dict, call_id: str, dec, reason: str,
                          child: dict | None = None) -> tuple:

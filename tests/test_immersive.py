@@ -418,7 +418,8 @@ def test_a_bubble_says_only_what_happened():
     # specialist in no department says it plainly, as before
     assert "crewSay(who,(crewDeptOf(who)&&w&&w!==who?w+': ':'')+'done" in CREW_CODE
     assert "crewSay(c.name,'hello!')" in CREW_CODE
-    assert ("crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to?'@'+ev.to+' ':'')"
+    # a line that already opens with its "@name" (free talk) is not given a second one
+    assert ("crewSay(w,(crewDeptOf(w)&&label!==w?label+': ':'')+(ev&&ev.to&&!/^\\s*@/.test((ev&&ev.text)||'')?'@'+ev.to+' ':'')"
             "+String((ev&&ev.text)||''),true)") in CREW_CODE
     assert CREW_CODE.count("crewSay(") == 4, "one definition, three sayings — nothing else talks"
     step = CREW_CODE.split("function crewStep(")[1].split("\nfunction ")[0]

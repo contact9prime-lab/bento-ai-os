@@ -1557,6 +1557,7 @@ async function paintTeamLinks(){
       ${l.pass?tlPassHTML(l):`<label class="tlk-sub tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="lead" ${(l.theirs_may_ask||[]).includes('lead')?'checked':''}> ${avatarImg('@agent','av-tool')}<span>They may hand whole tasks to ${esc(agentName())}, who works them with your team${pInfo('Your lead takes the task, hands parts to your specialists and departments, and answers. It can’t touch this machine’s files or shell for them, and anything that needs a person comes to you.')}</span></label>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists here, so their work comes to your lead</span>'}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
+      <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-files="${esc(l.label)}" ${l.files_back?'checked':''}><span>Send back the files my agents make for their tasks${pInfo('Only files made while working their task, named in the answer, from your workspace or shared folders. Older files and hidden ones stay here. Files they send you land in from-'+esc(l.label)+' in your workspace.')}</span></label>
       ${tlMissionsHTML(l)}
       ${tlStandHTML(l,mine,d)}`}
       <div class="tlk-roster mut" id="tlk-r-${esc(l.label)}"></div></div>`}).join('');
@@ -1592,6 +1593,7 @@ async function paintTeamLinks(){
     await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
   box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
   box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
+  box.querySelectorAll('input[data-link-files]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkFiles)+'/access','PUT',{files_back:cb.checked}).then(r=>r&&toast(cb.checked?'Files made for '+cb.dataset.linkFiles+' go back with the answer':'Files stay here; '+cb.dataset.linkFiles+' gets words only')));
   tlPassTick();
 }
 /* Guest passes: lend one of your specialists to somebody for a few minutes. The pass is
@@ -1667,7 +1669,7 @@ function tlStandHTML(l,mine,d){
   return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
     <p class="mut tlk-why">Questions from ${lab} can make your agents read and answer, but any change needs a person here to say yes. ${pInfo('Allow one thing ahead of time: one agent, one action, in one folder. If the agent also read a web page or an email on the way, you’re asked again.')}</p>
     ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
-    ${rows.map(x=>`<div class="tlk-stand-row">${avatarImg(x.agent,'av-tool')}<span><b>${esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
+    ${rows.map(x=>`<div class="tlk-stand-row">${x.agent==='*'?'':avatarImg(x.agent,'av-tool')}<span><b>${x.agent==='*'?'Any agent here':esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
     ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
       <select data-sa="action" aria-label="May do">${(d.standing_actions||[]).map(a=>`<option value="${esc(a)}">${esc(TL_ACT_WORDS[a]||a)}</option>`).join('')}</select>
       <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">

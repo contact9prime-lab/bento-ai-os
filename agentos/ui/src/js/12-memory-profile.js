@@ -3,8 +3,10 @@ let memTab='user';
 async function renderMemory(body){
   await loadConfig();
   const r=await fetch('/api/memories');const d=await r.json();
+  if(!r.ok){body.innerHTML=emptyBox('Memory is out of reach',esc(d.error||'It could not be read.'));return}
   const auto=(cfg.memory||{}).auto_extract!==false;
-  const srcBadge=m=>m.source==='auto'?'<span class="badge" title="learned automatically" style="font-size:9px;padding:1px 6px;margin-right:4px">auto</span>':'';
+  const srcBadge=m=>(m.zero?`<span class="badge" title="kept here for the Zero ${esc(m.zero)}, in its own section" style="font-size:9px;padding:1px 6px;margin-right:4px">Zero · ${esc(m.zero)}</span>`:'')
+    +(m.source==='auto'?'<span class="badge" title="learned automatically" style="font-size:9px;padding:1px 6px;margin-right:4px">auto</span>':'');
   const when=m=>new Date(m.created_at*1000).toLocaleString();
   const user=d.memories.filter(m=>(m.scope||'user')==='user');
   const sess=d.memories.filter(m=>m.scope==='session');
@@ -35,6 +37,7 @@ async function renderMemory(body){
       <button class="pghost" title="merge duplicate entities, roll up idle sessions, re-index memory" onclick="tidyKnowledge()">Tidy</button>`,
   });
   pb.innerHTML=`
+    ${d.kept_on?mindKeptOn(d):''}
     ${items}
     <div class="sect">Add a ${memTab==='user'?'user':'session'} memory</div>
     <div class="row"><input id="mem-new" placeholder="${memTab==='user'?'e.g. My name is Piyush; I work at Accacia.':'e.g. We decided to use SQLite for this project.'}">

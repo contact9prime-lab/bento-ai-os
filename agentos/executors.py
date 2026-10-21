@@ -469,7 +469,8 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     token = open_team_door(env, cfg, team.get("toolbox"), team.get("store"), sink,
                            team.get("approver"), conversation_id=team.get("conversation_id", ""),
                            surface=team.get("surface", "gui"), text=text,
-                           taint=team.get("taint"), only=team.get("only")) if team else ""
+                           taint=team.get("taint"), only=team.get("only"),
+                           space_id=team.get("space_id", "")) if team else ""
     if not token:
         # no team door (a schedule, a board's refresh, an app's run): it still speaks as
         # the person's agent, for their company
@@ -580,7 +581,10 @@ def identity_note(cfg: dict, store=None, company: bool = True) -> str:
     from . import config as _cfgmod
     name = (cfg or {}).get("agent_name") or "Aria"
     try:
-        soul = " ".join(_cfgmod.load_soul().split())[:1500]
+        from . import zeromind
+        # a Zero's soul is on its hub: the hub's last word, or the copy here while it is away
+        soul = " ".join((zeromind.soul_now(cfg) if zeromind.on_hub(cfg or {})
+                         else _cfgmod.load_soul()).split())[:1500]
     except Exception:
         soul = ""
     out = f"\n\nWHO YOU ARE: you are {name}, the person's lead agent in AgentOS."
@@ -2005,9 +2009,14 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
         + identity_note(cfg, store, company=False) + stage_note + dept_note \
-        + team_note(subs, in_departments=grouped) + linked_note(cfg, store) \
+        + team_note(subs, in_departments=grouped) + linked_note(cfg, store) + _zero_note(cfg) \
         + workspace_note() + capability_note()
     return token
+
+
+def _zero_note(cfg: dict) -> str:
+    from . import zero as zeromod
+    return zeromod.note(cfg)
 
 
 def linked_note(cfg: dict, store=None, prefix: str = "mcp__bento__") -> str:

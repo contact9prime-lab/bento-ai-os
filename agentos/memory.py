@@ -910,6 +910,13 @@ class Store:
 
     #: ask for global-only memories (the Profile app's "regardless of project" view)
     GLOBAL_ONLY = "__global__"
+    #: ask for ONE space's rows and nothing global: a Zero's section on its hub
+    #: (zeromind.py). The other half of the visibility rule, kept beside it.
+    ONLY = "__only__:"
+
+    @classmethod
+    def only(cls, sid: str) -> str:
+        return f"{cls.ONLY}{sid}"
 
     def search_memories(self, query: str = "", limit: int = 20, scope: str = "",
                         conversation_id: str = "", space: str = "") -> list[dict]:
@@ -925,6 +932,9 @@ class Store:
             params.append(conversation_id)
         if space == self.GLOBAL_ONLY:
             where.append("COALESCE(space_id,'')=''")
+        elif space.startswith(self.ONLY):
+            where.append("COALESCE(space_id,'')=?")
+            params.append(space[len(self.ONLY):] or "\x00")
         elif space:
             where.append("COALESCE(space_id,'') IN ('', ?)")
             params.append(space)
@@ -1388,6 +1398,8 @@ class Store:
         global ones. Returns ('', []) when no space was asked for."""
         if space == self.GLOBAL_ONLY:
             return f" AND COALESCE({col},'')=''", []
+        if space.startswith(self.ONLY):
+            return f" AND COALESCE({col},'')=?", [space[len(self.ONLY):] or "\x00"]
         if space:
             return f" AND COALESCE({col},'') IN ('', ?)", [space]
         return "", []
@@ -1409,9 +1421,23 @@ class Store:
             n = dict(r)
             attached = self.db.execute(
                 "SELECT 1 FROM kg_edges WHERE src=? OR dst=? LIMIT 1", (n["id"], n["id"])).fetchone()
-            if n["id"] in touched or not attached:
+            if n["id"] in touched or (not attached and not space.startswith(self.ONLY)):
                 nodes.append(n)
         return {"nodes": nodes, "edges": edges}
+
+    def kg_delete_edges(self, space: str, node_id: str = "") -> int:
+        """Remove the assertions one space made (optionally only those touching one
+        entity). Entities are shared across spaces, so a section forgets what IT said
+        about a thing and never the thing itself."""
+        clause, params = self._space_clause(space, "space_id")
+        if not clause:
+            return 0
+        if node_id:
+            clause += " AND (src=? OR dst=?)"
+            params = params + [node_id, node_id]
+        n = self.db.execute(f"DELETE FROM kg_edges WHERE 1=1{clause}", params).rowcount
+        self.db.commit()
+        return n
 
     def kg_query(self, query: str, limit: int = 40, space: str = "") -> list[str]:
         """Return 'subject —relation→ object' lines whose endpoints or relation match

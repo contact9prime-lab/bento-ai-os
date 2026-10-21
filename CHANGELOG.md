@@ -1,5 +1,81 @@
 # Changelog
 
+## 0.6.68 — 2026-10-20
+
+**Files go with a hand-over to another team, and what they make comes back.** When your agent hands
+a task to an agent on a linked machine, it can send the files the work needs, and the files made for
+it come back to your workspace, in `from-<team>/`. Ask for a deck built from `data.csv`, and the deck
+lands back with you. Sending your files is asked like any other step, naming every file, and you can
+allow it once, for a chat, an hour or always for that team. Only files made for the task come back:
+an older file the answer mentions stays where it is, and the answer says so. The other side decides
+whether files go back, with one switch on the link's card, or `bento link files`.
+
+**Your agent's hand-overs to another team no longer stop after six.** They were all counted under
+your agent's name, so after six hand-overs to linked teams, in any chats, every later one was refused
+until Bento restarted. Each turn now has its own budget.
+
+**A file sent with a task can be worked on there.** Files another team sends land in `from-<team>/`,
+and the agent working the task is told where. The agents may make what goes back in one folder per
+team, `for-<team>/`, without waiting for a person.
+
+## 0.6.67 — 2026-10-20
+
+**A Zero's memory, knowledge graph and soul live on the hub.** A Pi set up to run its work on your
+main machine keeps nothing of its own mind: everything it remembers, the facts it learns and its soul
+are kept on the main machine, in a section of their own called *Zero · <name>*. The Pi can be lost or
+reflashed and its agent still knows what it knew. A Zero sees only its own section, never your main
+machine's memory or another Zero's, and when your main machine's team works a task for it, they work
+inside that section. What a Pi knew before moves there once. On the main machine, each Zero's soul is
+under Profile → Soul (*Whose soul*), and its memories carry a label in Profile → Memory. From a
+terminal, `bento pool mind`.
+
+## 0.6.66 — 2026-10-20
+
+**Make a Zero with one line.** On your main machine, *Settings → Team & Communications → New
+machines → Make a Zero* (or `bento pool zero`) gives you a curl line to paste on a Raspberry Pi. It
+installs Bento in Light mode with no questions, joins your Tailscale network when you add a key, and
+tells your main machine it's there, over Tailscale or your own network. Your main machine sets it up
+the moment it hears it, with nobody pressing anything, and says which way it heard it. The Tailscale
+key is only in the line, never stored.
+
+**One standard setup for every machine.** *Standard setup* and *Its agents* (or `bento pool
+standard`) decide what every machine set up from here gets: Light mode, kiosk, its agent's name,
+where its work runs, and copies of your agents with their executors. Only the tools a company
+department may have travel with them.
+
+**Its work can run on your main machine, and the files come back.** With *work runs on this hub*,
+what you ask the Pi is handed to your main machine's lead, who gives it to its team. Files the answer
+names come back to the Pi, into `from-<hub>/` in its workspace, up to 8 files and 2.5 MB. Your main
+machine may hand that Pi's tasks to its own specialists and write into one folder for it without
+asking you; anything else still waits for a person.
+
+**A task from another team stays marked when it's handed on.** When your lead handed a linked team's
+task to one of your own specialists, the specialist didn't know the task came from outside, so it
+could change things without the usual check. It now carries that mark.
+
+## 0.6.65 — 2026-10-20
+
+**A free talk happens in the Office.** When you let your team talk, the people in it now meet at the
+meeting-room table and say each line there in a balloon, one at a time, and go back to their desks when
+it ends. Before, the Office sat still while they talked and showed "done ✓" over a desk after every line.
+On a phone, a balloon by the edge of the screen stays on it, and names crowded round one table stay in the
+room.
+
+**A slow first start of the shared browser is waited for.** On a cold machine (a Pi's first boot, a
+fresh test runner) Chromium can take more than 20 seconds to answer, and the browser window failed with
+"the browser did not start ()". It now waits up to a minute, and says so when that runs out.
+
+## 0.6.64 — 2026-10-20
+
+**A market's day reads right on the Stage.** When numbers both rise and fall, rises are green and falls
+are red, on the chart and on the map, and every value shows its + or -. A place on the map is as big as its
+move, so the biggest fall is no longer the smallest pin. Every bar gets its value. Chart labels never break
+a word in two: names that can't fit lie at an angle instead. On Telegram, a map's notes are all in the
+picture as a grid, where only two showed before.
+
+**Play works on a phone again.** In a short window the scene's source line slid over the controls and took
+the taps meant for Play, so the story never started.
+
 ## 0.6.63 — 2026-10-19
 
 - **Asking another machine says where the question is.** The other machine reports as it goes

@@ -841,6 +841,10 @@ body.still .rp-h,body.still .rp-q,body.still .rp-f{display:none}
   margin:12px 2px 0;text-align:right}
 body.still .stg.rp-sc{margin:0}
 body.still .rp .stg-art{height:420px}
+/* a picture has no scrolling: a map's notes are a grid under it, and the card grows to hold them */
+body.still .stg .st-mapnotes{display:grid;overflow:visible;grid-template-columns:1fr 1fr}
+body.still .stg .st-mapnotes li{flex:none}
+body.still .rp .stg-art:has(.st-mapnotes){height:auto;min-height:420px}
 body.still *,body.still *::before,body.still *::after{animation:none!important;transition:none!important}
 """
 

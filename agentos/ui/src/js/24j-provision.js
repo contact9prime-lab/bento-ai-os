@@ -11,9 +11,14 @@
    - On a machine that is WAITING: a card in the corner of its own screen with the code
      and the id to read out, and "Set it up here instead".
 
-   TUI: `bento pool discover | enable | key | wait`. SUI: identical, a page; nothing here
-   touches the compositor. */
-var PROV={v:null,sel:{}};
+   A Zero (zero.py) is the same road with the questions taken out: "Make a Zero" shows the one
+   line to paste on a Pi (this hub's automatic key and addresses, a Tailscale key if one is
+   typed, which is used for the line and kept nowhere), and "Standard setup" is what every
+   machine set up from here gets: where its work runs, Light mode, kiosk, and its agents.
+
+   TUI: `bento pool discover | enable | key | wait | zero | standard`. SUI: identical, a page;
+   nothing here touches the compositor. */
+var PROV={v:null,sel:{},zero:null,agents:null};
 
 async function provPaint(){
   const box=document.getElementById('s-prov');if(!box)return;
@@ -43,7 +48,8 @@ async function provPaint(){
       return `<div class="prov-m${m.state==='enabled'?' done':''}">
         <label class="prov-pick"><input type="checkbox" data-pick="${esc(m.fp)}" ${on?'checked':''}${m.state==='enabled'||!can?' disabled':''}>
           <b>${esc(m.name)}</b></label>
-        <span class="mut">${esc(hw.board||hw.arch||'a machine')} · ${hw.ram_mb||0} MB · id ${esc(m.id)} · ${esc(state)}</span>
+        <span class="mut">${esc(hw.board||hw.arch||'a machine')} · ${hw.ram_mb||0} MB · id ${esc(m.id)} · ${esc(state)}
+          · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span></span>
         <input class="prov-name" data-name="${esc(m.fp)}" maxlength="32" placeholder="${esc(m.name)}" aria-label="Name for ${esc(m.name)}"${m.state==='enabled'?' disabled':''}>
         ${proof}
         ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Not this one</button>`:''}</div>`}).join('')}</div>`);
@@ -59,6 +65,7 @@ async function provPaint(){
   }else{
     rows.push(`<p class="mut prov-empty">No machine is waiting right now. Turn one on, or press Look now.</p>`);
   }
+  rows.push(provZeroHTML(v,can));
   rows.push(provDevicesHTML(v,can));
   const ks=(v.keys||[]).filter(k=>!k.single);
   rows.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
@@ -77,6 +84,52 @@ async function provPaint(){
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
     if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
   provWire(box);
+}
+/* ---------------- a Zero: the one line, and the standard setup every machine gets ---------------- */
+function provZeroHTML(v,can){
+  const st=v.standard||{},z=PROV.zero,ags=st.agents||[],rows=[];
+  rows.push(pRow('Make a Zero',`<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
+      placeholder="Tailscale auth key (optional)" aria-label="Tailscale auth key" style="max-width:230px">
+      <button class="endbtn" data-prov="zeroline"${can?'':' disabled'}>Show the line</button>`,
+    {desc:'Paste one line on a Pi and it is set up from here, with nobody at it.',
+     more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
+     f:'zero pi curl one line install tailscale zero touch hub'}));
+  if(z)rows.push(`<div class="zero-out"><code class="zero-line">${esc(z.line)}</code>
+      <button class="endbtn" data-prov="zerocopy">Copy</button>
+      <p class="mut">${(z.addresses||[]).map(a=>`${esc(a.addr)} ${a.via==='tailscale'?'over Tailscale':'on your network'}`).join(' · ')
+        ||'This hub has no address another machine can reach.'}${(z.addresses||[]).some(a=>a.via==='tailscale')?'':
+        '. This hub is not on Tailscale, so a Zero has to be on the same network.'}</p></div>`);
+  const opts=(PROV.agents||[]).filter(a=>!ags.some(x=>x.name===a.name.toLowerCase()));
+  rows.push(pRow('Standard setup',`<span class="zero-std">
+      ${pSelect('std-exec',[['hub','Work runs on this hub'],['here','Work runs on the machine']],st.execution||'here')}
+      <label class="prov-opt">${pSwitch('std-lite',!!st.lite)} Light mode</label>
+      <label class="prov-opt">${pSwitch('std-kiosk',!!st.kiosk)} Kiosk</label>
+      <input id="std-agent" maxlength="32" placeholder="Agent’s name" value="${esc(st.agent_name||'')}" style="max-width:140px"></span>`,
+    {desc:'Every machine set up from here gets this, with no questions.',
+     more:'With work on this hub, a machine’s agent hands its tasks to yours and the files come back to it. A key’s own setup and what you choose when enabling go on top.',
+     f:'standard setup profile provisioning zero agents executors execution hub'}));
+  rows.push(pRow('Its agents',`<span class="zero-ags">${ags.map(a=>`<span class="prov-k">${esc(a.name)}${a.hands?` <span class="mut">· ${esc(a.hands)}</span>`:''}
+        <button class="endbtn" data-prov="stdrm" data-name="${esc(a.name)}" aria-label="Take ${esc(a.name)} out">✕</button></span>`).join('')
+      ||'<span class="mut">None of its own</span>'}</span>
+      ${opts.length&&can?`<select id="std-add" aria-label="Add one of your agents"><option value="">＋ Add one of your agents</option>
+        ${opts.map(a=>`<option value="${esc(a.name)}">${esc(a.name)}</option>`).join('')}</select>`:''}`,
+    {desc:'A copy of each, with its executor, is made on every machine set up from here.',
+     more:'Only the tools a department may have travel (no shell, push or send). A machine whose work runs on this hub keeps no other agents.',
+     f:'standard agents executors hands copy zero'}));
+  return rows.join('');
+}
+async function provStdSave(patch){
+  const st=Object.assign({},(PROV.v||{}).standard||{},patch);
+  const r=await fetch('/api/provision/standard',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:st})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){toast(d.error||'could not save that');return}
+  if((d.dropped||[]).length)toast('Not kept: '+d.dropped.join('; '));
+  provPaint();
+}
+async function provAgents(){
+  if(PROV.agents)return;
+  try{PROV.agents=(await apiJSON('/api/subagents')).subagents||[]}catch(e){PROV.agents=[]}
+  provPaint();
 }
 /* ---------------- machines without Bento (netscan.py, remoteinstall.py, sdcard.py) ----------------
    A Pi or any Linux box that answers SSH but runs nothing of ours: heard when it says its name
@@ -177,6 +230,17 @@ function provWire(box){
   (PROV.v.keys||[]).forEach(k=>{const s=box.querySelector('#prov-auto-'+k.id);if(s)s.onchange=async()=>{
     const r=await fetch('/api/provision/key/'+encodeURIComponent(k.id),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto:s.checked})});
     if(!r.ok)toast('could not change that');provPaint()}});
+  const g=q=>box.querySelector(q);
+  if(g('#std-exec'))g('#std-exec').onchange=e=>provStdSave({execution:e.target.value});
+  if(g('#std-lite'))g('#std-lite').onchange=e=>provStdSave({lite:e.target.checked});
+  if(g('#std-kiosk'))g('#std-kiosk').onchange=e=>provStdSave({kiosk:e.target.checked});
+  if(g('#std-agent'))g('#std-agent').onchange=e=>provStdSave({agent_name:e.target.value.trim()});
+  if(g('#std-add'))g('#std-add').onchange=async e=>{const n=e.target.value;if(!n)return;
+    const r=await fetch('/api/provision/standard/agent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});
+    const d=await r.json().catch(()=>({}));if(!r.ok)toast(d.error||'could not add that');
+    else if((d.dropped||[]).length)toast(`✓ ${n} added. Not kept: ${d.dropped.join('; ')}`);else toast(`✓ ${n} added`);
+    provPaint()};
+  if(g('.zero-ags'))provAgents();
   const save=()=>{PROV.form={kiosk:!!(box.querySelector('#prov-kiosk')||{}).checked,
     buddy:(box.querySelector('#prov-buddy')||{}).value||'auto',agent:((box.querySelector('#prov-agent')||{}).value||'').trim()}};
   ['#prov-kiosk','#prov-buddy','#prov-agent'].forEach(q=>{const e=box.querySelector(q);if(e)e.onchange=save});
@@ -205,6 +269,11 @@ async function provAct(act,b){
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/provision/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
     if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
+    if(act==='zeroline'){const ts=((document.getElementById('zero-ts')||{}).value||'').trim();
+      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts})}finally{b.disabled=false}
+      const i=document.getElementById('zero-ts');if(i)i.value='';return provPaint()}
+    if(act==='zerocopy'){navigator.clipboard&&navigator.clipboard.writeText((PROV.zero||{}).line||'');toast('✓ copied');return}
+    if(act==='stdrm'){await fetch('/api/provision/standard/agent/'+encodeURIComponent(b.dataset.name),{method:'DELETE'});return provPaint()}
     if(act==='nowait'){await post('/api/provision',{wait:false},'PUT');toast('✓ This machine is set up here');return provPaint()}
     if(act==='dropkey'){if(!confirm('Revoke this key? Machines that carry it can no longer be set up with it.'))return;
       await fetch('/api/provision/key/'+encodeURIComponent(b.dataset.kid),{method:'DELETE'});return provPaint()}

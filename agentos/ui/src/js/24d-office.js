@@ -496,6 +496,7 @@ function officePulse(kind,label,ev){
   }
   if(kind==='say'){
     if(ev.kind==='talk')return;              // agents asking each other arrive as 'msg'
+    if(ev.kind==='freetalk')return officeFreeTalk(label,ev);
     const p=officeMatch(label);if(!p)return;
     if(!O.huddle||O.huddle.until<performance.now())officeHuddle([label],ev.conversation_id||'');
     officeHuddleJoin(p);officeSay(p,ev.text,'say',OF_SAY_MS+1500);
@@ -681,6 +682,9 @@ function officeFabric(ev){
     // a boss's sign-off run: officeReview draws it from the review events, so the run's
     // own start and end must not also light a meeting or send a "done ✓"
     if(ev.kind==='review')return;
+    // a free-talk message is a run too, but saying something is not finishing a task:
+    // its words are drawn at the table (officeFreeTalk), so its end draws no "done ✓"
+    if(ev.kind==='freetalk'&&ev.status!=='running'){delete O.runs[ev.run_id];return}
     if(ev.status==='running'){O.runs[ev.run_id]=p.key;officeWork(p,true);p.stuck=0;
       if(ev.parent_run&&O.flowRuns[ev.parent_run]){(O.meet[ev.parent_run]=O.meet[ev.parent_run]||new Set()).add(p.key);
         officeMeetSync(ev.parent_run)}
@@ -777,6 +781,24 @@ function officeDeEscalate(p,ok){
       p.visit={meet:back};officeWalk(p,officeTableSpot([...set].indexOf(p.key)),'stand')}
     else setTimeout(()=>officeHome(p),OFFICE.static?0:900);
   }
+}
+/* Free talk (24f) is the team hanging out: everybody in it gathers at the meeting table
+   when the first word is said, each message is said there, and they go back to their
+   desks when it ends. It used to be dropped here with the agents' asks, so the Office
+   sat still while four of them talked, with a "done ✓" over a desk after each line.
+   No end heard (a dropped socket) still ends it after OF_FT_QUIET with nothing said. */
+var OF_FT_QUIET=90000;
+function officeFreeTalk(label,ev){
+  const O=OFFICE;
+  if(ev.end){if(O.huddle&&O.huddle.ft===ev.id)officeHuddleEnd();return}
+  if(!O.huddle||O.huddle.ft!==ev.id){officeHuddle(ev.agents&&ev.agents.length?ev.agents:[label],'');O.huddle.ft=ev.id}
+  O.huddle.until=performance.now()+OF_FT_QUIET;
+  const p=officeMatch(label);if(!p)return;
+  // one line at a time: whoever spoke before fades as the next one starts
+  const now=performance.now();
+  O.huddle.who.forEach(q=>{if(q!==p&&q.say&&q.say.kind==='say')q.say.ms=Math.min(q.say.ms,now-q.say.at+1200)});
+  officeHuddleJoin(p);officeSay(p,ev.text,'say',OF_SAY_MS+2500);
+  officeLog(`${p.label} (free talk): ${String(ev.text||'').slice(0,90)}`);
 }
 function officeHuddleEnd(){
   const O=OFFICE,h=O.huddle;if(!h)return;O.huddle=null;

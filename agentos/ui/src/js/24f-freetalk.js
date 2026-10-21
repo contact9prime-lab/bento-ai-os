@@ -162,7 +162,7 @@ function freeTalkEvent(ev){
   const t=(FREETALK.talks||[]).find(x=>x.id===ev.id);
   if(ev.phase==='say'){
     if(t)t.messages=ev.n||t.messages+1;
-    if(typeof scenePulse==='function')scenePulse('say',ev.speaker,{kind:'talk',text:ev.text,to:ev.to});
+    if(typeof scenePulse==='function')scenePulse('say',ev.speaker,{kind:'freetalk',id:ev.id,agents:t?t.agents:[ev.speaker],text:ev.text,to:ev.to,conversation_id:ev.conversation_id});
     const here=ev.conversation_id===currentConv;
     if(here&&typeof voiceAgentLine==='function')voiceAgentLine(ev.speaker,ev.text);
     if(here&&feed){
@@ -177,6 +177,7 @@ function freeTalkEvent(ev){
   }
   if(ev.phase==='end'){
     if(t){t.status='ended';t.reason=ev.reason}
+    if(typeof scenePulse==='function')scenePulse('say','',{kind:'freetalk',id:ev.id,end:true});
     if(ev.conversation_id===currentConv&&feed){
       const card=freeTalkCard(ev.id,{},false);
       if(card){card.insertAdjacentHTML('beforeend',`<div class="ft-end">free talk ended: ${esc(ev.reason)}, ${ev.count} message${ev.count===1?'':'s'}</div>`);

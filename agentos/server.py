@@ -713,6 +713,14 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
     if req.get("op") in ("chat", "chat_pull"):
         return await _team_chat_in(lk, req)
     owner = lk.get("owner") or ""
+    if req.get("op") == "zero_mind":
+        # a Zero this machine set up reads and writes its own section of this home
+        from . import zeromind
+        with usersmod.as_user(owner):
+            out = await zeromind.answer(state["store"], state["cfg"], lk, req)
+            if out.get("ok") and req.get("action") not in ("context", "recall", "kg_query", "soul_get", "list"):
+                await state["broadcast_user"]({"type": "knowledge_update"}, owner)
+            return out
     with usersmod.as_user(owner):
         async def say(e):
             await state["broadcast_user"]({"type": "agent_msg", "conversation_id": "", **e}, owner)
@@ -935,18 +943,19 @@ async def _provision_new(b: dict):
     road), which is still a ledger row and still a toast."""
     from . import provision as provmod
     hw = b.get("hw") or {}
+    from . import zero as zeromod
     _sys_ledger("provision.seen", f"provision:{b['fp'][:16]}",
                 f"{b['name']} ({hw.get('board') or hw.get('arch') or 'a machine'}) at {b.get('addr')} "
-                f"is waiting to be set up")
+                f"is waiting to be set up, heard {zeromod.via_words(b.get('via', ''))}")
     auto = next((k for k in provmod.load()["keys"] if k.get("auto") and k["id"] == b.get("key_id")), None)
     if auto:
         res = await _provision_enable([{"fp": b["fp"]}], {}, by=f"the automatic key '{auto.get('label')}'")
         r = (res.get("results") or [{}])[0]
         await _provision_admins({"type": "provision", "kind": "enabled" if r.get("ok") else "failed",
-                                 "name": b["name"], "error": r.get("error", "")})
+                                 "name": b["name"], "error": r.get("error", ""), "via": b.get("via", "")})
         return
     await _provision_admins({"type": "provision", "kind": "new", "name": b["name"],
-                             "board": hw.get("board") or "", "fp": b["fp"]})
+                             "board": hw.get("board") or "", "fp": b["fp"], "via": b.get("via", "")})
 
 
 async def _provision_claimed(got: dict):
@@ -975,6 +984,19 @@ async def _provision_claimed(got: dict):
             poolmod.ensure_worker(state["store"])
             if not poolmod.has_brain(cfg):
                 poolmod.set_use_brain(cfg, True)
+        prof = got.get("profile") or {}
+        if not got.get("retry") and (prof.get("agents") or prof.get("hands") or prof.get("execution")):
+            from . import provision as provmod
+            try:
+                people = provmod.apply_people(state["store"], cfg, prof, got.get("link", ""))
+                _sys_ledger("provision.profile", "provision:this-machine",
+                            f"the standard profile from {got.get('link')}: "
+                            + (f"made {', '.join(people['made'])}" if people["made"] else "nothing new")
+                            + (f"; kept {', '.join(people['kept'])}" if people["kept"] else "")
+                            + (f"; removed the built-in {', '.join(people['removed'])} (work runs on the hub)"
+                               if people["removed"] else ""))
+            except Exception as e:                                   # noqa: BLE001
+                _sys_ledger("provision.profile", "provision:this-machine", f"could not apply it: {e}")
         if not cfg.get("office"):
             with contextlib.suppress(Exception):
                 obmod.crew(cfg, state["store"])
@@ -1026,8 +1048,13 @@ async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
                 _sys_ledger("provision.failed", f"provision:{target['fp'][:16]}", f"{target.get('name')}: {e}")
                 return {"ok": False, "fp": target["fp"], "name": target.get("name"), "error": str(e)}
             _ledger("provision.enable", f"pool:{target['fp'][:16]}",
-                    f"set up {r['name']} ({target.get('hw', {}).get('board') or 'machine'}, {r['how']})"
+                    f"set up {r['name']} ({target.get('hw', {}).get('board') or 'machine'}, {r['how']}, "
+                    f"heard {_zero().via_words(r.get('via', ''))})"
                     + (f" by {by}" if by else "") + f"; profile {json.dumps(r['profile'])}")
+            if r["profile"].get("execution") == "hub":
+                # its work runs here: the lead cell and the two standing permissions
+                done = _zero().hub_side(state["store"], cfg, r["label"])
+                _ledger("provision.hub", f"team:{r['label']}/*", "; ".join(done))
             return {**r, "fp": target["fp"]}
 
         results = await asyncio.gather(*[one(it) for it in items[:provmod.MAX_SEEN]])
@@ -1050,12 +1077,19 @@ def _provision_view() -> dict:
             "role": poolmod.load().get("role") or "", "has_brain": poolmod.has_brain(cfg),
             "can_change": can, "devices": _device_rows(), "ear": bool(state.get("device_ear")),
             "ssh_missing": _ri().missing(), "pubkey": _ri().public_key(),
-            "installs": dict(state.get("device_installs") or {})}
+            "installs": dict(state.get("device_installs") or {}),
+            "standard": provmod.standard(), "hubs": provmod.hubs(),
+            "zero": _zero().state(cfg)}
 
 
 def _ri():
     from . import remoteinstall
     return remoteinstall
+
+
+def _zero():
+    from . import zero
+    return zero
 
 
 def _device_rows() -> list:
@@ -5164,13 +5198,33 @@ async def api_clear_logs():
 
 # ---- Knowledge graph ---------------------------------------------------------
 
+async def _zero_mind(action: str, **kw):
+    """On a Zero whose mind is on its hub (zeromind.py): the screens read and write its
+    section there. None when this machine keeps its own."""
+    from . import zeromind
+    if not zeromind.on_hub(state["cfg"]):
+        return None
+    await zeromind.move_local(state["cfg"], state["store"])
+    r = await zeromind.ask(state["cfg"], action, **kw)
+    if not r.get("ok"):
+        return JSONResponse({"error": r.get("error")}, status_code=502)
+    r["kept_on"] = (zeromind.hub_link(state["cfg"]) or {}).get("label") or ""
+    return r
+
+
 @app.get("/api/kg")
 async def api_kg():
+    if (r := await _zero_mind("list")) is not None:
+        return r if isinstance(r, JSONResponse) else {**r["graph"], "kept_on": r["kept_on"],
+                                                     "section": r.get("section")}
     return state["store"].kg_graph()
 
 
 @app.post("/api/kg")
 async def api_kg_add(body: dict):
+    if (r := await _zero_mind("kg_add", **{k: body.get(k, "") for k in (
+            "subject", "relation", "object", "subject_type", "object_type")})) is not None:
+        return r
     eid = state["store"].kg_add(
         body.get("subject", ""), body.get("relation", ""), body.get("object", ""),
         body.get("subject_type", ""), body.get("object_type", ""))
@@ -5179,6 +5233,8 @@ async def api_kg_add(body: dict):
 
 @app.delete("/api/kg")
 async def api_kg_clear():
+    if (r := await _zero_mind("kg_forget")) is not None:
+        return r
     state["store"].kg_clear()
     state["store"].log("system", "knowledge graph cleared")
     return {"ok": True}
@@ -5186,6 +5242,8 @@ async def api_kg_clear():
 
 @app.delete("/api/kg/nodes/{nid}")
 async def api_kg_delete_node(nid: str):
+    if (r := await _zero_mind("kg_forget", node=nid)) is not None:
+        return r            # on a Zero: what its section said about it, never the entity
     state["store"].kg_delete_node(nid)
     return {"ok": True}
 
@@ -9705,13 +9763,42 @@ async def api_wallpaper_reset():
 
 # ---- Soul ---------------------------------------------------------------------
 
+def _zero_soul_label(zero: str) -> str:
+    """A Zero's section named by the hub's screens, '' when it is not one kept here."""
+    from . import zeromind
+    return next((x["label"] for x in zeromind.sections(state["store"]) if x["label"] == zero), "")
+
+
 @app.get("/api/soul")
-async def api_soul():
-    return {"content": cfgmod.load_soul()}
+async def api_soul(zero: str = ""):
+    """This agent's soul. On a Zero, its soul on the hub; on a hub, `zero` names one of
+    its Zeros' souls, kept in that Zero's section (zeromind.py)."""
+    from . import zeromind
+    if (r := await _zero_mind("soul_get")) is not None:
+        return r if isinstance(r, JSONResponse) else {"content": r["soul"], "kept_on": r["kept_on"],
+                                                     "section": r.get("section")}
+    zeros = [x["label"] for x in zeromind.sections(state["store"])]
+    if zero:
+        if not _zero_soul_label(zero):
+            return JSONResponse({"error": f"no Zero called {zero} keeps its mind here"}, status_code=404)
+        return {"content": zeromind.soul_of(zero), "zero": zero, "zeros": zeros}
+    return {"content": cfgmod.load_soul(), "zeros": zeros}
 
 
 @app.put("/api/soul")
 async def api_put_soul(body: dict):
+    from . import zeromind
+    if (r := await _zero_mind("soul_set", content=body.get("content", ""))) is not None:
+        return r
+    zero = str((body or {}).get("zero") or "")
+    if zero:
+        if not _zero_soul_label(zero):
+            return JSONResponse({"error": f"no Zero called {zero} keeps its mind here"}, status_code=404)
+        if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+            return JSONResponse({"error": "only an admin can change a Zero's soul"}, status_code=403)
+        zeromind.set_soul(state["store"], zero, str(body.get("content") or "")[:zeromind.MAX_SOUL],
+                          by="a person on the hub")
+        return {"ok": True}
     cfgmod.save_soul(body.get("content", ""))
     state["store"].log("system", "soul updated via UI")
     return {"ok": True}
@@ -9995,17 +10082,34 @@ async def api_audit_verify():
 async def api_memories(scope: str = "", conversation_id: str = "", q: str = "",
                        space: str = ""):
     store = state["store"]
+    titles = {c["id"]: c["title"] for c in store.list_conversations(limit=1000)}
+    if (r := await _zero_mind("list")) is not None:
+        if isinstance(r, JSONResponse):
+            return r
+        mems = [m for m in r["memories"] if (not scope or m["scope"] == scope)
+                and (not conversation_id or m["conversation_id"] == conversation_id)
+                and (not q or any(w.lower() in m["content"].lower() for w in q.split()))]
+        for m in mems:
+            m["conversation_title"] = titles.get(m.get("conversation_id") or "", "")
+        return {"memories": mems, "kept_on": r["kept_on"], "section": r.get("section")}
     mems = store.search_memories(q, limit=500, scope=scope,
                                  conversation_id=conversation_id, space=space)
-    titles = {c["id"]: c["title"] for c in store.list_conversations(limit=1000)}
+    from . import zeromind
+    zsec = {x["space"]: x["label"] for x in zeromind.sections(store)}
     for m in mems:
         m["conversation_title"] = titles.get(m.get("conversation_id") or "", "")
         m["embedded"] = bool(m.pop("embedding", None))  # vectors are internal; ship a flag only
+        if zsec.get(m.get("space_id") or ""):
+            m["zero"] = zsec[m["space_id"]]             # kept here for one of this hub's Zeros
     return {"memories": mems}
 
 
 @app.post("/api/memories")
 async def api_add_memory(body: dict):
+    if (r := await _zero_mind("remember", content=body.get("content", ""), scope=body.get("scope", "user"),
+                              conversation_id=body.get("conversation_id") or "",
+                              pinned=bool(body.get("pinned")))) is not None:
+        return r
     mid = state["store"].add_memory(
         body.get("content", ""),
         scope=body.get("scope", "user"),
@@ -10019,6 +10123,9 @@ async def api_add_memory(body: dict):
 @app.put("/api/memories/{mid}")
 async def api_update_memory(mid: str, body: dict):
     """Edit content, toggle pin, or change scope (scope='user' promotes a session memory)."""
+    if (r := await _zero_mind("memory_edit", id=mid, **{k: body[k] for k in ("content", "pinned", "scope")
+                                                        if k in body})) is not None:
+        return r
     state["store"].update_memory(
         mid,
         content=body.get("content") if "content" in body else None,
@@ -10030,6 +10137,8 @@ async def api_update_memory(mid: str, body: dict):
 
 @app.delete("/api/memories/{mid}")
 async def api_delete_memory(mid: str):
+    if (r := await _zero_mind("forget", id=mid)) is not None:
+        return r
     state["store"].delete_memory(mid)
     return {"ok": True}
 
@@ -12685,6 +12794,69 @@ async def api_provision_enable(body: dict):
     return {**out, **_provision_view()}
 
 
+@app.put("/api/provision/standard")
+async def api_provision_standard(body: dict):
+    """The one profile every machine set up from here gets (a Zero's agents, executors and
+    where its work runs). Read field by field; what was dropped is said."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    prof, dropped = provmod.set_standard((body or {}).get("profile"))
+    _ledger("provision.standard", "provision:standard",
+            f"the standard profile is now {json.dumps(prof)}" + (f"; dropped {', '.join(dropped)}" if dropped else ""))
+    return {**_provision_view(), "dropped": dropped}
+
+
+@app.post("/api/provision/standard/agent")
+async def api_provision_standard_agent(body: dict):
+    """Give every machine set up from here a copy of one of this machine's agents, with its
+    executor. The copy is made when each machine is set up; this one keeps its own."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    try:
+        prof, dropped = provmod.add_agent_from(state["store"], str((body or {}).get("name") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ledger("provision.standard", "provision:standard",
+            f"the standard profile gives each machine {', '.join(a['name'] for a in prof.get('agents') or [])}"
+            + (f"; dropped {', '.join(dropped)}" if dropped else ""))
+    return {**_provision_view(), "dropped": dropped}
+
+
+@app.delete("/api/provision/standard/agent/{name}")
+async def api_provision_standard_agent_drop(name: str):
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    provmod.drop_agent(name)
+    _ledger("provision.standard", "provision:standard", f"took {name} out of the standard profile")
+    return _provision_view()
+
+
+@app.post("/api/provision/zero")
+async def api_provision_zero(body: dict):
+    """The one line that makes a Zero: install.sh with this hub's automatic key and its
+    addresses. A Tailscale auth key, when given, goes into the line and is not kept."""
+    if (r := _require_admin()):
+        return r
+    from . import provision as provmod
+    b = body or {}
+    addrs = _zero().hub_addresses()
+    hubs = _zero().clean_hubs(b.get("hubs")) or [a["addr"] for a in addrs]
+    key = provmod.zero_key()
+    try:
+        line = _zero().one_line(state.machine_cfg(), key["text"], hubs, str(b.get("tailscale_key") or ""))
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ledger("provision.zero", "provision:zero",
+            f"showed the Zero install line (hubs {', '.join(hubs) or 'none'}"
+            + (", with a Tailscale key" if b.get("tailscale_key") else "") + ")")
+    await _provision_sync()
+    return {"line": line, "hubs": hubs, "addresses": addrs, "key": {k: key[k] for k in ("id", "label", "auto")},
+            "standard": provmod.standard()}
+
+
 @app.post("/api/provision/ignore")
 async def api_provision_ignore(body: dict):
     if (r := _require_admin()):
@@ -12934,7 +13106,9 @@ async def api_team_links():
     ident = teamlink.ensure_pki()
     out = []
     for lk in teamlink.links(owner):
+        from . import linkfiles as _lf
         out.append({**lk, **fabricmod.link_access(state["store"], lk["label"]),
+                    "files_back": _lf.back_state(state["store"], lk["label"]),
                     "peer_identity": _team_peer_identity(lk),
                     "standing": fabricmod.standing(state["store"], lk["label"]),
                     "missions": fabricmod.linked_missions(state["store"], lk["label"])})
@@ -13563,7 +13737,11 @@ async def api_team_link_access(label: str, body: dict):
     got = fabricmod.set_link_access(state["store"], lk["label"],
                                     b.get("theirs_may_ask") if "theirs_may_ask" in b else None,
                                     b.get("mine_may_ask") if "mine_may_ask" in b else None)
-    return {"ok": True, **got}
+    from . import linkfiles
+    if "files_back" in b:
+        # files your agents make for their tasks go back with the answer (linkfiles.py)
+        linkfiles.set_back(state["store"], lk["label"], bool(b["files_back"]), state["cfg"])
+    return {"ok": True, **got, "files_back": linkfiles.back_state(state["store"], lk["label"])}
 
 
 @app.get("/api/team/limits")

@@ -50,6 +50,7 @@ GOALS = {
     "create_subagent": "Add a specialist to your team",
     "set_agent_brain": "Move an agent to another model",
     "delegate": "Hand work to a specialist",
+    "send_files": "Send files to another team",
     "huddle": "Call a huddle with the team",
     "ask_agent": "Ask a colleague",
     "schedule_task": "Set up a schedule",
@@ -144,6 +145,12 @@ def body(name: str, args: dict) -> str:
     args = args if isinstance(args, dict) else {}
     if name in ("run_command", "Bash") and isinstance(args.get("command"), str):
         return args["command"]
+    if name == "send_files":
+        # what leaves this machine, by name, and for whom (linkfiles.py)
+        names = [str(x) for x in (args.get("files") or [])][:12]
+        return (f"To {args.get('to') or 'another team'}, with the task:\n"
+                + "\n".join(f"- {n}" for n in names)
+                + (f"\nNot sent: {'; '.join(args['refused'])}" if args.get("refused") else ""))
     if name == "request_capability":
         # what is asked, for whom and why, in words; the ability is one of a closed set
         who = str(args.get("who") or args.get("_from") or "an agent")

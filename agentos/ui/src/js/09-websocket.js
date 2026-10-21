@@ -672,10 +672,10 @@ function handle(ev){
     // new machines (provision.py): one heard waiting is asked about, here, at once
     case 'provision': if(typeof provPaint==='function')provPaint();
       if(typeof provWaitCheck==='function')provWaitCheck();
-      if(ev.kind==='new')toast(`A new machine turned on: ${ev.name||'a machine'}${ev.board?' ('+ev.board+')':''}. Set it up?`,
+      if(ev.kind==='new')toast(`A new machine turned on${ev.via==='tailscale'?' on your tailnet':''}: ${ev.name||'a machine'}${ev.board?' ('+ev.board+')':''}. Set it up?`,
         {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
           setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
-      else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up`);
+      else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up${ev.via==='tailscale'?' over Tailscale':''}`);
       else if(ev.kind==='failed')toast(`${ev.name||'A machine'} could not be set up: ${ev.error||'it refused'}`);
       else if(ev.kind==='claimed')setTimeout(()=>location.reload(),1500);   // this machine was just set up
       else if(ev.kind==='device')toast(`A Raspberry Pi joined your network: ${ev.name||ev.ip}. Install Bento on it?`,
