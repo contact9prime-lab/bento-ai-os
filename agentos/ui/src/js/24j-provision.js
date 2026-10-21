@@ -141,7 +141,7 @@ async function provAgents(){
    used once (or this machine's key), shows what the machine is and the exact command, and runs
    the real installer with a key made for that one machine, so it is set up the moment it is
    heard. The SD card writer is for the screen the card is plugged into. */
-var DEV={open:'',check:{},log:{}};
+var DEV={open:'',check:{},log:{},err:{}};
 function provDevicesHTML(v,can){
   /* The machines themselves (with Install Bento) are the inventory above, in Network
      (24n-network.js); this keeps the two ways in that need no machine yet. */
@@ -164,12 +164,13 @@ function provDevForm(d){
   // the port SSH answered on in the scan (its first port), which is 22 on a real Pi
   const sshPort=d.ssh&&(d.ports||[]).length?Number(d.ports[0])||22:22;
   return `<div class="dev-form">
-    <label>User there <input id="dev-user" maxlength="32" placeholder="pi" value="${esc((c&&c.user)||'')}"></label>
+    <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
     <label>Password <input id="dev-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
     <label class="prov-opt">${pSwitch('dev-kiosk',false)} Kiosk</label></div>
     <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">Check it</button>
       ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
+    ${DEV.err[d.ip]?`<p class="warn dev-err">✗ ${esc(DEV.err[d.ip])}</p>`:''}
     ${c?`<div class="dev-facts">${esc([c.board||c.arch,c.os,c.ram_mb+' MB memory',c.free_mb+' MB free'].filter(Boolean).join(' · '))}
       ${c.bento?'<br>Bento is already there.':''}${c.host_key?`<br><span class="mut">Its key: ${esc(c.host_key)}</span>`:''}
       ${c.problems.map(p=>`<br><span class="warn">✗ ${esc(p)}</span>`).join('')}
@@ -249,8 +250,9 @@ async function provAct(act,b){
     if(act==='devcard')return provDevCard();
     if(act==='devcheck'){const c=provDevCreds();if(!c.user){toast('Who logs in there? Type the user name.');return}
       b.disabled=true;b.textContent='Checking…';
-      try{DEV.check[b.dataset.ip]=Object.assign(await post('/api/devices/check',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c}),{user:c.user})}
-      catch(e){delete DEV.check[b.dataset.ip];throw e}
+      // a refusal stays in the form under Check it: a toast is gone before it is read
+      try{DEV.check[b.dataset.ip]=Object.assign(await post('/api/devices/check',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c}),{user:c.user});delete DEV.err[b.dataset.ip]}
+      catch(e){delete DEV.check[b.dataset.ip];DEV.err[b.dataset.ip]=String(e.message||e);throw e}
       finally{provPaint()}
       return}
     if(act==='devinstall'){const c=provDevCreds();
@@ -297,7 +299,7 @@ async function provAct(act,b){
       if(typeof poolPaint==='function')poolPaint();
       return;
     }
-  }catch(e){toast(String(e.message||e));provPaint()}
+  }catch(e){toast(String(e.message||e),{kind:'err'});provPaint()}
 }
 
 /* ---------------- the waiting machine's own screen ---------------- */

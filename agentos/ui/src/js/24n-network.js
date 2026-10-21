@@ -76,7 +76,7 @@ function netSecureForm(r){
   const c=NET.check[r.ip],steps=(NET.v||{}).steps||[];
   const sel=NET.steps[r.ip]||{};
   return `<div class="dev-form net-form">
-    <label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc((c&&c.user)||r.user||'')}"></label>
+    <label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
     <label>Password <input id="net-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
       ${c&&!c.problems.length&&steps.some(s=>!c.done[s.id])?`<button class="wiz-next" data-net="go" data-key="${esc(r.key)}">Secure it</button>`:''}</div>
@@ -97,7 +97,7 @@ function netUnlinkForm(r){
   return `<div class="dev-form net-form">
     <div class="net-steps">${cs.map(c=>`<label class="net-step"><input type="checkbox" data-unlink="${esc(c.id)}" checked>
       <div><b>${esc(netConnTitle(c))}</b><br><span class="mut">${esc(netConnWhy(c))}</span></div></label>`).join('')}</div>
-    ${needUser?`<label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc(r.user||'')}"></label>`:''}
+    ${needUser?`<label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc(r.user||'')}"></label>`:''}
     <div class="dev-acts"><button class="wiz-next" data-net="unlinkgo" data-key="${esc(r.key)}">Disconnect</button></div>
   </div>`;
 }

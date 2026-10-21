@@ -92,7 +92,8 @@ body.kiosk #office-scene canvas{display:block}
 .dev-acts{display:flex;gap:8px;flex:1 1 100%}
 .dev-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;flex:1 1 100%;min-height:var(--tap,32px)}
 .dev-facts{flex:1 1 100%;font-size:var(--fs-sm,12px);line-height:1.5}
-.dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}#card-out.ok{color:var(--ok,#4ade80)}
+.dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}
+.dev-err{color:var(--warn,#f59e0b);margin:2px 0 0;font-size:var(--fs-sm,12px)}#card-out.ok{color:var(--ok,#4ade80)}
 .dev-plan,.dev-key{display:block;word-break:break-all;font-size:11px;padding:6px 8px;border-radius:8px;
   background:color-mix(in srgb,var(--bg) 60%,transparent);margin-top:4px;user-select:all}
 .dev-key{max-width:min(420px,60vw)}

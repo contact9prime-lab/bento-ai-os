@@ -152,17 +152,40 @@ def _base(host: str, user: str, port: int, password: str) -> tuple[list, dict, s
                 "-o", "PubkeyAuthentication=no", "-o", "NumberOfPasswordPrompts=1"]
     else:
         if not key_path().exists():
-            raise InstallError("this machine has no SSH key yet, and no password was given")
+            raise InstallError("type the password for that machine: this machine has no SSH key yet, so it "
+                               "has nothing else to log in with")
         cmd += ["-i", str(key_path()), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes"]
     cmd += ["-T", f"{user}@{host}"]
     return cmd, env, scratch
 
 
-def _why(stderr: str, code: int) -> str:
+NEW_PI_USER = ("Raspberry Pi OS has had no ‘pi’ user since 2022: use the user name you set in "
+               "Raspberry Pi Imager")
+
+
+def _why(stderr: str, code: int, password: bool = True) -> str:
+    """ssh's refusal as a sentence. "Permission denied (publickey,password)" lists the ways
+    the other machine takes a login, which tells a wrong password from a Pi that takes keys
+    only (Imager's "Allow public-key authentication only")."""
     s = (stderr or "").strip()
     low = s.lower()
     if "permission denied" in low:
-        return "the user name or password was refused"
+        m = re.search(r"permission denied \(([^)]*)\)", low)
+        ways = set((m.group(1) if m else "").replace(" ", "").split(",")) - {""}
+        takes_pw = not ways or bool(ways & {"password", "keyboard-interactive"})
+        if not password and not takes_pw:
+            return ("that machine takes SSH keys only, and this machine's key is not on it. Add this "
+                    "machine's key in Raspberry Pi Imager (Settings → Network → This machine’s SSH key), "
+                    "or turn password logins on there")
+        if not password:
+            return ("this machine's key is not on that machine. Type the password, or add this "
+                    "machine's key in Raspberry Pi Imager when you flash it")
+        if not takes_pw:
+            return ("that machine takes SSH keys only, so a password cannot log in (Raspberry Pi "
+                    "Imager's “Allow public-key authentication only”). Add this machine's key there "
+                    "(Settings → Network → This machine’s SSH key), or flash it with password "
+                    "authentication on")
+        return "the user name or password was refused. " + NEW_PI_USER
     if "host key verification failed" in low or "remote host identification has changed" in low:
         return ("that machine's key is not the one seen last time, so it was refused. If it was "
                 "reinstalled, forget it in this machine's known hosts and try again")
@@ -239,7 +262,7 @@ async def check(host: str, user: str, password: str = "", port: int = 22) -> dic
         raise InstallError(bad)
     code, out, err = await _run(host, user, port, password, CHECK_SCRIPT, CHECK_TIMEOUT)
     if code != 0:
-        raise InstallError(_why(err, code))
+        raise InstallError(_why(err, code, bool(password)))
     facts = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
     from . import teamlink
 
@@ -307,7 +330,7 @@ async def install(cfg: dict, host: str, user: str, password: str, key_text: str,
         said = [clean_line(ln) for ln in (err or "").splitlines() if clean_line(ln)]
         tail = [ln for ln in out.splitlines() if ln.strip()]
         if code == 255 or not (said or tail):
-            raise InstallError(_why(err, code))     # ssh itself failed: it never ran
+            raise InstallError(_why(err, code, bool(password)))     # ssh itself failed: it never ran
         raise InstallError(f"the installer stopped: {(said or tail)[-1][:200]}")
     return {"ok": True, "host": host, "host_key": fingerprint(host, port),
             "authorized": bool(authorize and public_key())}

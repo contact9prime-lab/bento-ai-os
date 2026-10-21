@@ -119,9 +119,9 @@ installed from the leader:
 From a terminal:
 
 ```sh
-bento pool devices                          # look at the network
-bento pool install 192.168.1.40 --user ada --authorize     # asks for the password
-bento pool install 192.168.1.40 --user ada --key-only      # the card carries the leader's key
+bento network look                          # look at the network (or bento pool devices)
+bento network install 192.168.1.40 --user ada --authorize  # asks for the password
+bento network install pi-kitchen --user ada --key-only     # the card carries the leader's key
 bento pool sshkey                           # the leader's public key, for Imager's SSH box
 ```
 

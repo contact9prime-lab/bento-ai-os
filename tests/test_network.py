@@ -288,7 +288,7 @@ def test_taking_the_key_off_with_another_way_in(pi):
     assert _state(pi)["authorized"] is False
     with pytest.raises(Exception) as e:          # gone for real: this machine's key no longer gets in
         run(harden.check("127.0.0.2", "pi"))
-    assert "refused" in str(e.value)
+    assert "key is not on that machine" in str(e.value)
 
 
 # ---- the inventory: one row per machine -------------------------------------------------------

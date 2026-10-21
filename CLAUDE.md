@@ -3168,6 +3168,13 @@ Six rules:
 - **The system's `ssh`, never a Python SSH library** (LGPL/EPL). The password reaches it
   through `SSH_ASKPASS` in that child's environment and is never written anywhere; Bento keeps
   its own `known_hosts` with `accept-new`, so a changed host key is refused by ssh itself.
+- **A refused login says which refusal it was** (`remoteinstall._why(password=)`, reading the ways
+  ssh lists in "Permission denied (publickey,password)"): a Pi flashed keys-only, a wrong user or
+  password (new Pi OS has no `pi`), or a key the Pi lacks. Reported as "it says not authenticated".
+  The form keeps it under Check it (`DEV.err`), because a toast is gone before it is read.
+  `bento network look|install` are `_devices_cli` with the scan's SSH port, never a second path.
+  `memory.Store()` with no path is the machine's database: the terminal verbs called it that way,
+  and every ledger row they wrote raised inside a try and was lost.
 - **What runs is what was shown.** `plan()` is the command on the consent screen and the one
   `install()` sends; the test reads the fake ssh's log for it. NEVER `--yes` on a remote
   install: it answers every optional extra (Claude Code, Codex…), which nobody agreed to here.

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.72 — 2026-10-21
+
+**Installing Bento on a Pi says why a login was refused.** It used to say the user name or password
+was refused whatever happened. Now it tells a Pi flashed with Imager's *public-key only* (a password
+can't log in; add this machine's key) from a wrong user or password (new Raspberry Pi OS has no `pi`
+user) and from a blank password the Pi has no key for. The reason stays in the form under *Check it*
+instead of only a toast, and the user box no longer suggests `pi`.
+
+**`bento network look` and `bento network install`.** The terminal can now look at the network and
+install Bento on a machine from its list, by address, name or MAC, on the SSH port the scan found.
+
+**The terminal's ledger rows are written.** `bento network`, `bento pool` and `bento face` opened the
+database in a way that failed quietly, so none of their steps reached the ledger.
+
 ## 0.6.71 — 2026-10-21
 
 **A Pi with SSH off is found.** *Look at the network* listed a machine only when SSH or Bento's port

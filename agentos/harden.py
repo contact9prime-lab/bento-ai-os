@@ -189,7 +189,7 @@ async def check(host: str, user: str, password: str = "", port: int = 22) -> dic
         else:
             err = err or err2
     if code != 0:
-        raise ri.InstallError(ri._why(err, code))
+        raise ri.InstallError(ri._why(err, code, bool(password)))
     facts = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
     done = {s: facts.get(s) == "ok" for s in IDS}
     sudo, apt = facts.get("sudo") == "ok", facts.get("apt") == "ok"
@@ -288,7 +288,7 @@ async def remove_key(host: str, user: str, password: str = "", port: int = 22, f
              "echo pwoff=$(grep -qi '^PasswordAuthentication no' " + DROPIN + " 2>/dev/null && echo yes || echo no)")
     code, out, err = await ri._run(host, user, port, password, probe, ri.CHECK_TIMEOUT)
     if code != 0:
-        raise ri.InstallError(ri._why(err, code))
+        raise ri.InstallError(ri._why(err, code, bool(password)))
     f = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
     if (f.get("ours") or "0").strip() in ("", "0"):
         return {"ok": True, "removed": False, "why": "this machine's key is not on it"}
@@ -300,5 +300,5 @@ async def remove_key(host: str, user: str, password: str = "", port: int = 22, f
            "chmod 600 $t && mv $t $f")
     code, out, err = await ri._run(host, user, port, password, cmd, ri.CHECK_TIMEOUT)
     if code != 0:
-        raise ri.InstallError(ri._why(err, code))
+        raise ri.InstallError(ri._why(err, code, bool(password)))
     return {"ok": True, "removed": True}
