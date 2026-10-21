@@ -2,20 +2,27 @@ version = 1
 revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform != 'win32'",
-    "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version < '3.11' and sys_platform == 'win32'",
-    "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform != 'win32'",
-    "python_full_version < '3.11' and sys_platform != 'win32'",
+    "python_full_version >= '3.14' and platform_machine == 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and platform_machine != 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and platform_machine == 'armv7l' and sys_platform != 'win32'",
+    "python_full_version >= '3.14' and platform_machine != 'armv7l' and sys_platform != 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine == 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine != 'armv7l' and sys_platform == 'win32'",
+    "python_full_version < '3.11' and platform_machine == 'armv7l' and sys_platform == 'win32'",
+    "python_full_version < '3.11' and platform_machine != 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine == 'armv7l' and sys_platform != 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine != 'armv7l' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and platform_machine == 'armv7l' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and platform_machine != 'armv7l' and sys_platform != 'win32'",
 ]
 
 [[package]]
 name = "agentos"
-version = "0.6.68"
+version = "0.6.69"
 source = { editable = "." }
 dependencies = [
-    { name = "cryptography" },
+    { name = "cryptography", version = "46.0.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'armv7l'" },
+    { name = "cryptography", version = "49.0.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'armv7l'" },
     { name = "dbus-fast" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -36,6 +43,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cryptography", specifier = ">=41" },
+    { name = "cryptography", marker = "platform_machine == 'armv7l'", specifier = ">=41,<46.0.4" },
     { name = "dbus-fast", specifier = ">=2.24" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "httpx", specifier = ">=0.27" },
@@ -245,11 +253,51 @@ wheels = [
 
 [[package]]
 name = "cryptography"
+version = "46.0.3"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and platform_machine == 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and platform_machine == 'armv7l' and sys_platform != 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine == 'armv7l' and sys_platform == 'win32'",
+    "python_full_version < '3.11' and platform_machine == 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine == 'armv7l' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and platform_machine == 'armv7l' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "cffi", marker = "platform_machine == 'armv7l' and platform_python_implementation != 'PyPy'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11' and platform_machine == 'armv7l'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/33/c00162f49c0e2fe8064a62cb92b93e50c74a72bc370ab92f86112b33ff62/cryptography-46.0.3.tar.gz", hash = "sha256:a8b17438104fed022ce745b362294d9ce35b4c2e45c1d958ad4a4b019285f4a1", size = 749258, upload-time = "2025-10-15T23:18:31.74Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/42/9c391dd801d6cf0d561b5890549d4b27bafcc53b39c31a817e69d87c625b/cryptography-46.0.3-cp311-abi3-macosx_10_9_universal2.whl", hash = "sha256:109d4ddfadf17e8e7779c39f9b18111a09efb969a301a31e987416a0191ed93a", size = 7225004, upload-time = "2025-10-15T23:16:52.239Z" },
+    { url = "https://files.pythonhosted.org/packages/64/02/b73a533f6b64a69f3cd3872acb6ebc12aef924d8d103133bb3ea750dc703/cryptography-46.0.3-cp311-abi3-manylinux_2_28_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:e5bf0ed4490068a2e72ac03d786693adeb909981cc596425d09032d372bcc849", size = 4016800, upload-time = "2025-10-15T23:17:00.378Z" },
+    { url = "https://files.pythonhosted.org/packages/25/d5/16e41afbfa450cde85a3b7ec599bebefaef16b5c6ba4ec49a3532336ed72/cryptography-46.0.3-cp311-abi3-manylinux_2_28_ppc64le.whl", hash = "sha256:5ecfccd2329e37e9b7112a888e76d9feca2347f12f37918facbb893d7bb88ee8", size = 4984707, upload-time = "2025-10-15T23:17:01.98Z" },
+    { url = "https://files.pythonhosted.org/packages/00/de/d8e26b1a855f19d9994a19c702fa2e93b0456beccbcfe437eda00e0701f2/cryptography-46.0.3-cp311-abi3-manylinux_2_34_ppc64le.whl", hash = "sha256:c0a7bb1a68a5d3471880e264621346c48665b3bf1c3759d682fc0864c540bd9e", size = 4950838, upload-time = "2025-10-15T23:17:07.425Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/e2/a510aa736755bffa9d2f75029c229111a1d02f8ecd5de03078f4c18d91a3/cryptography-46.0.3-cp314-cp314t-macosx_10_9_universal2.whl", hash = "sha256:00a5e7e87938e5ff9ff5447ab086a5706a957137e6e433841e9d24f38a065217", size = 7158012, upload-time = "2025-10-15T23:17:19.982Z" },
+    { url = "https://files.pythonhosted.org/packages/26/e9/e23e7900983c2b8af7a08098db406cf989d7f09caea7897e347598d4cd5b/cryptography-46.0.3-cp314-cp314t-manylinux_2_28_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:78a97cf6a8839a48c49271cdcbd5cf37ca2c1d6b7fdd86cc864f302b5e9bf459", size = 3995237, upload-time = "2025-10-15T23:17:26.449Z" },
+    { url = "https://files.pythonhosted.org/packages/91/15/af68c509d4a138cfe299d0d7ddb14afba15233223ebd933b4bbdbc7155d3/cryptography-46.0.3-cp314-cp314t-manylinux_2_28_ppc64le.whl", hash = "sha256:dfb781ff7eaa91a6f7fd41776ec37c5853c795d3b358d4896fdbb5df168af422", size = 4967344, upload-time = "2025-10-15T23:17:28.06Z" },
+    { url = "https://files.pythonhosted.org/packages/42/f9/2f8fefdb1aee8a8e3256a0568cffc4e6d517b256a2fe97a029b3f1b9fe7e/cryptography-46.0.3-cp314-cp314t-manylinux_2_34_ppc64le.whl", hash = "sha256:b419ae593c86b87014b9be7396b385491ad7f320bde96826d0dd174459e54665", size = 4931457, upload-time = "2025-10-15T23:17:33.478Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/23/45fe7f376a7df8daf6da3556603b36f53475a99ce4faacb6ba2cf3d82021/cryptography-46.0.3-cp38-abi3-macosx_10_9_universal2.whl", hash = "sha256:cb3d760a6117f621261d662bccc8ef5bc32ca673e037c83fbe565324f5c46936", size = 7218248, upload-time = "2025-10-15T23:17:46.294Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/cf/da9502c4e1912cb1da3807ea3618a6829bee8207456fbbeebc361ec38ba3/cryptography-46.0.3-cp38-abi3-manylinux_2_28_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:10ca84c4668d066a9878890047f03546f3ae0a6b8b39b697457b7757aaf18dbc", size = 4012280, upload-time = "2025-10-15T23:17:52.964Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/8f/9adb86b93330e0df8b3dcf03eae67c33ba89958fc2e03862ef1ac2b42465/cryptography-46.0.3-cp38-abi3-manylinux_2_28_ppc64le.whl", hash = "sha256:36e627112085bb3b81b19fed209c05ce2a52ee8b15d161b7c643a7d5a88491f3", size = 4978958, upload-time = "2025-10-15T23:17:54.965Z" },
+    { url = "https://files.pythonhosted.org/packages/78/06/5663ed35438d0b09056973994f1aec467492b33bd31da36e468b01ec1097/cryptography-46.0.3-cp38-abi3-manylinux_2_34_ppc64le.whl", hash = "sha256:71e842ec9bc7abf543b47cf86b9a743baa95f4677d22baa4c7d5c69e49e9bc04", size = 4940236, upload-time = "2025-10-15T23:18:00.897Z" },
+]
+
+[[package]]
+name = "cryptography"
 version = "49.0.0"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and platform_machine != 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and platform_machine != 'armv7l' and sys_platform != 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine != 'armv7l' and sys_platform == 'win32'",
+    "python_full_version < '3.11' and platform_machine != 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine != 'armv7l' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and platform_machine != 'armv7l' and sys_platform != 'win32'",
+]
 dependencies = [
-    { name = "cffi", marker = "platform_python_implementation != 'PyPy'" },
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "cffi", marker = "platform_machine != 'armv7l' and platform_python_implementation != 'PyPy'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11' and platform_machine != 'armv7l'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1f/99/d1c90d6041656cc6ee229dc99cd67fd0cd5aec3c5f7d72fffc27cc750054/cryptography-49.0.0.tar.gz", hash = "sha256:f89660a348f4f78a92366240a61404e337586ef7f5909a2fef59ca88ef505493", size = 854345, upload-time = "2026-06-12T20:02:30.512Z" }
 wheels = [
@@ -750,7 +798,8 @@ wheels = [
 
 [package.optional-dependencies]
 crypto = [
-    { name = "cryptography" },
+    { name = "cryptography", version = "46.0.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'armv7l'" },
+    { name = "cryptography", version = "49.0.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'armv7l'" },
 ]
 
 [[package]]
@@ -925,8 +974,10 @@ name = "rpds-py"
 version = "0.30.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version < '3.11' and sys_platform == 'win32'",
-    "python_full_version < '3.11' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and platform_machine == 'armv7l' and sys_platform == 'win32'",
+    "python_full_version < '3.11' and platform_machine != 'armv7l' and sys_platform == 'win32'",
+    "python_full_version < '3.11' and platform_machine == 'armv7l' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and platform_machine != 'armv7l' and sys_platform != 'win32'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/20/af/3f2f423103f1113b36230496629986e0ef7e199d2aa8392452b484b38ced/rpds_py-0.30.0.tar.gz", hash = "sha256:dd8ff7cf90014af0c0f787eea34794ebf6415242ee1d6fa91eaba725cc441e84", size = 69469, upload-time = "2025-11-30T20:24:38.837Z" }
 wheels = [
@@ -1051,10 +1102,14 @@ name = "rpds-py"
 version = "2026.6.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.14' and sys_platform != 'win32'",
-    "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform != 'win32'",
+    "python_full_version >= '3.14' and platform_machine == 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and platform_machine != 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and platform_machine == 'armv7l' and sys_platform != 'win32'",
+    "python_full_version >= '3.14' and platform_machine != 'armv7l' and sys_platform != 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine == 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine != 'armv7l' and sys_platform == 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine == 'armv7l' and sys_platform != 'win32'",
+    "python_full_version >= '3.11' and python_full_version < '3.14' and platform_machine != 'armv7l' and sys_platform != 'win32'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/aa/2a/9618a122aeb2a169a28b03889a2995fe297588964333d4a7d67bdf46e147/rpds_py-2026.6.3.tar.gz", hash = "sha256:1cebd1337c242e4ec2293e541f712b2da849b29f48f0c293684b71c0632625d4", size = 64051, upload-time = "2026-06-30T07:17:53.009Z" }
 wheels = [

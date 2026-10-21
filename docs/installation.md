@@ -92,26 +92,27 @@ uv sync && uv run bento
 > Anything piwheels does not carry still compiles, and for the C ones it names and offers to install
 > the build toolchain: `build-essential python3-dev libffi-dev libssl-dev pkg-config`.
 >
-> **`cryptography` deserves its own note, and the real variable is glibc — not 32-bit.** It arrives
-> via `pyjwt[crypto]` (the MCP SDK needs it), and it *does* ship a prebuilt 32-bit ARM wheel. But
-> that wheel is tagged `manylinux_2_31_armv7l`, so it needs **glibc ≥ 2.31**:
+> **`cryptography` deserves its own note, and the real variable is glibc, not 32-bit.** It arrives
+> via `pyjwt[crypto]` (the MCP SDK needs it) and ships a prebuilt 32-bit ARM wheel. From 46.0.4 on
+> that wheel needs glibc 2.31, which Buster does not have, so on 32-bit ARM Bento locks
+> **cryptography 46.0.3**, the newest release with a wheel for glibc 2.28. Every other machine gets
+> the current release.
 >
 > | Raspberry Pi OS | Debian | glibc | 32-bit `cryptography` |
 > |---|---|---|---|
-> | **Buster** | 10 | 2.28 | ❌ too old → source build → fails (no OpenSSL 3.0) |
-> | **Bullseye** | 11 | 2.31 | ✅ prebuilt wheel — no compile, no Rust |
-> | **Bookworm** | 12 | 2.36 | ✅ prebuilt wheel — no compile, no Rust |
+> | **Buster** | 10 | 2.28 | ✅ prebuilt wheel (46.0.3), no compile, no Rust |
+> | **Bullseye** | 11 | 2.31 | ✅ prebuilt wheel (46.0.3), no compile, no Rust |
+> | **Bookworm** | 12 | 2.36 | ✅ prebuilt wheel (46.0.3), no compile, no Rust |
 >
-> So on **Bullseye or Bookworm, 32-bit is completely fine** — the wheel installs in seconds and
-> bundles its own OpenSSL 3, so the system's OpenSSL version is irrelevant. The only real problem is
-> **Buster**: its glibc 2.28 is below the wheel's floor, so `uv` falls back to a source build, which
-> then fails because Buster's OpenSSL is 1.1.1 and cryptography 49 requires 3.0. The fix for a Buster
-> Pi is simply to move to Bullseye or Bookworm — **you do not need 64-bit and you do not need Rust.**
-> The installer measures glibc and says exactly this.
+> So **32-bit is fine on Buster, Bullseye and Bookworm**. The wheel bundles its own OpenSSL, so the
+> system's OpenSSL version doesn't matter. Three small C packages (`cffi`, `pyyaml`, `dbus-fast`)
+> still compile on 32-bit ARM, which needs only gcc; the installer offers the build tools. This was
+> checked in an emulated armv7 Buster (glibc 2.28) container: the whole install finished, and the
+> vault and the linked-team certificate worked. An OS older than Buster is too old for the
+> wheel, and the installer says so.
 >
-> Two genuine exceptions still need a compile (Rust via [rustup](https://rustup.rs) + ≥1 GB swap, on
-> Bookworm for its OpenSSL 3.0): an **armv6** Pi (Zero / 1), which has no ARM wheel at all, and any
-> case where you deliberately stay on Buster. **64-bit Bookworm** remains the smoothest option of all —
+> One exception still needs a compile (Rust via [rustup](https://rustup.rs) + ≥1 GB swap, on
+> Bookworm for its OpenSSL 3.0): an **armv6** Pi (Zero / 1), which has no ARM wheel at all. **64-bit Bookworm** remains the smoothest option of all —
 > prebuilt `aarch64` wheels for everything — if reflashing is on the table.
 
 **Reaching it from another machine.** A Pi is usually headless, and the obvious move — binding
