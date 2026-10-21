@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.6.72 — 2026-10-21
+
+**Installing Bento on a Pi says why a login was refused.** It used to say the user name or password
+was refused whatever happened. Now it tells a Pi flashed with Imager's *public-key only* (a password
+can't log in; add this machine's key) from a wrong user or password (new Raspberry Pi OS has no `pi`
+user) and from a blank password the Pi has no key for. The reason stays in the form under *Check it*
+instead of only a toast, and the user box no longer suggests `pi`.
+
+**A Pi opens Bento on its own screen when it starts.** Install Bento from your hub with *Open on its
+screen* (on by default) and a screen plugged into that Pi shows the Office, full screen, listening.
+On Raspberry Pi OS Lite it installs cage and Chromium to draw it, with no shell logged in on the
+screen; on a Pi with a desktop it opens when the desktop logs in. The microphone is allowed for
+Bento's own page only. `bento screen on|off|status` and *Settings → Appearance → Open at start* do the
+same on the machine itself.
+
+**Name its agent when you install it.** *Its agent's name* in the Install form (and `--agent-name`)
+is what you call it on its screen: "Chef", "Fridge".
+
+**Secure it no longer locks you out of your own Pi.** Turning password logins off checked that this
+machine's key still got in, and nobody else's, so your own password login stopped working with no
+warning. Now Secure it takes your own public key and lets it in first, and says so when you don't
+give one. If you're already locked out, *Add my key* and *Turn password logins back on* (or
+`bento network letin`) get you back in, through Bento's key. Installing Bento with the password
+that stopped working now logs in with Bento's key instead of being refused.
+
+**`bento network look` and `bento network install`.** The terminal can now look at the network and
+install Bento on a machine from its list, by address, name or MAC, on the SSH port the scan found.
+
+**The terminal's ledger rows are written.** `bento network`, `bento pool` and `bento face` opened the
+database in a way that failed quietly, so none of their steps reached the ledger.
+
 ## 0.6.71 — 2026-10-21
 
 **A Pi with SSH off is found.** *Look at the network* listed a machine only when SSH or Bento's port

@@ -55,12 +55,14 @@ def looks_like_boot(path: Path) -> str:
     return ""
 
 
-def first_boot_command(url: str, user: str, key_text: str, extra: str = "") -> list:
+def first_boot_command(url: str, user: str, key_text: str, extra: str = "", screen: bool = False) -> list:
     """The one command the card runs on first boot, as root: wait for the network, keep the
     user's services running without a login (linger), then run the installer AS that user
-    with the enrolment key. Its output goes to LOG on the Pi."""
+    with the enrolment key, and with --screen when Bento should open on the Pi's own screen.
+    Its output goes to LOG on the Pi."""
     inner = ("export XDG_RUNTIME_DIR=/run/user/$(id -u); "
-             f"curl -fsSL {shlex.quote(url)} | {extra}sh -s -- --lite --enroll={shlex.quote(key_text)}")
+             f"curl -fsSL {shlex.quote(url)} | {extra}sh -s -- --lite --enroll={shlex.quote(key_text)}"
+             + (" --screen" if screen else ""))
     script = (f"for i in $(seq 1 60); do curl -fsI {shlex.quote(url)} >/dev/null 2>&1 && break; sleep 10; done; "
               f"loginctl enable-linger {shlex.quote(user)}; sleep 3; "
               f"runuser -l {shlex.quote(user)} -c {shlex.quote(inner)}")
@@ -146,7 +148,7 @@ def network_config(ssid: str, password: str, country: str, existing: str = "") -
 
 
 def write(path: str | Path, *, url: str, key_text: str, pubkey: str, user: str = "",
-          hostname: str = "", wifi: dict | None = None, extra: str = "") -> dict:
+          hostname: str = "", wifi: dict | None = None, extra: str = "", screen: bool = False) -> dict:
     """Add Bento to the card's boot partition at `path`. Returns what was written."""
     p = Path(path)
     why = looks_like_boot(p)
@@ -165,7 +167,7 @@ def write(path: str | Path, *, url: str, key_text: str, pubkey: str, user: str =
     if not probe_user:
         raise KitError("the card has no user yet. Set one in Raspberry Pi Imager (OS customisation), "
                        "or name one here")
-    cmd = first_boot_command(url, probe_user, key_text, extra)
+    cmd = first_boot_command(url, probe_user, key_text, extra, screen)
     text, who = merge_user_data(existing, user=probe_user, pubkey=pubkey, command=cmd, hostname=hostname)
     ud.write_text(text)
     written = ["user-data"]

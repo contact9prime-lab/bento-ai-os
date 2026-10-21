@@ -5103,12 +5103,17 @@ body.kiosk #office-scene canvas{display:block}
 .dev-form{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end;margin-top:6px}
 .dev-form label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm,12px)}
 .dev-form label.prov-opt{flex-direction:row;align-items:center}
+.dev-lbl{display:flex;align-items:center;gap:6px}
 .dev-form input{min-height:var(--tap,32px)}
 .dev-secret{-webkit-text-security:disc}
 .dev-acts{display:flex;gap:8px;flex:1 1 100%}
 .dev-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;flex:1 1 100%;min-height:var(--tap,32px)}
-.dev-facts{flex:1 1 100%;font-size:var(--fs-sm,12px);line-height:1.5}
-.dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}#card-out.ok{color:var(--ok,#4ade80)}
+.dev-facts{flex:1 1 100%;min-width:0;max-width:100%;overflow-wrap:anywhere;font-size:var(--fs-sm,12px);line-height:1.5}
+.dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}
+.dev-form label.net-mine{flex:1 1 100%;min-width:0}.net-mine-h{display:flex;align-items:center;gap:6px}
+.net-mine input{width:100%;font-family:var(--mono,monospace);font-size:var(--fs-sm,12px)}
+.net-letin{margin:6px 0}.net-letin p{margin:0 0 6px}
+.dev-err{color:var(--warn,#f59e0b);margin:2px 0 0;font-size:var(--fs-sm,12px)}#card-out.ok{color:var(--ok,#4ade80)}
 .dev-plan,.dev-key{display:block;word-break:break-all;font-size:11px;padding:6px 8px;border-radius:8px;
   background:color-mix(in srgb,var(--bg) 60%,transparent);margin-top:4px;user-select:all}
 .dev-key{max-width:min(420px,60vw)}
@@ -32987,6 +32992,7 @@ async function faceSettingsPaint(){
       {desc:'This machine’s own screen shows the Office and listens.',
        more:'Only the screen plugged into this machine. A phone or another browser keeps the desktop. Add #kiosk to the address to try it anywhere.',
        f:'kiosk mic microphone always listening screen office raspberry pi wake word'}),
+    faceScreenRow(d.screen),
     pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Its wake word'],['always','Everything it hears']],d.wake||'name'),
       {desc:'With a wake word, anything else said in the room is ignored.',f:'wake word name always listening'}),
     pRow('Wake word',`<input id="s-face-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(d.wake_word||'')}">`,
@@ -33012,12 +33018,42 @@ async function faceSettingsPaint(){
   box.querySelector('#s-face-buddy').onchange=e=>put({buddy:e.target.value});
   box.querySelector('#s-face-kiosk').onchange=e=>put({kiosk:e.target.checked});
   box.querySelector('#s-face-wake').onchange=e=>put({wake:e.target.value});
+  const sb=box.querySelector('#s-face-screen');if(sb)sb.onclick=()=>faceScreenGo(sb,d.screen);
   box.querySelector('#s-face-word').onchange=e=>put({wake_word:e.target.value.trim()});
   const hb=box.querySelector('#s-face-voiceset');if(hb)hb.onclick=()=>settingsGo('voice');
   box.querySelector('#s-face-test').onclick=async e=>{
     const b=e.target,row=b.closest('.prow'),out=row&&row.querySelector('small');
     b.disabled=true;await voiceWakeTest(out);b.disabled=false;
   };
+}
+/* Open on this screen at start (screen.py): the kiosk drawn by this machine itself, by a
+   desktop autostart or by cage on a machine with no desktop. Not offered off Linux. */
+function faceScreenRow(st){
+  st=st||{};if(!st.road)return '';
+  const need=(st.missing||[]).length?` It installs ${st.missing.join(' and ')} first.`:'';
+  return pRow('Open at start',`<button class="endbtn" id="s-face-screen">${st.on?'Turn off':'Turn on'}</button>`,
+    {desc:esc(st.words||''),
+     more:(st.why?st.why[0].toUpperCase()+st.why.slice(1)+'.':'')+need+' Turning it on lists every change first.',
+     f:'open at start boot screen kiosk raspberry pi cage chromium hdmi display start'});
+}
+async function faceScreenGo(b,st){
+  st=st||{};const on=!st.on;
+  if(on&&!await osConfirm('Open Bento on this screen at start?',
+    (st.road==='console'?'tty1 shows Bento instead of a login prompt, drawn by cage and Chromium.':
+     'Bento opens full screen when the desktop logs in.')+((st.missing||[]).length?` ${st.missing.join(' and ')} will be installed.`:''),
+    {confirmText:'Turn on'}))return;
+  b.disabled=true;b.textContent=on?'Turning on…':'Turning off…';
+  try{
+    const r=await fetch('/api/screen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){
+      toast(j.error||'could not change that',{kind:'err'});
+      const row=b.closest('.prow'),out=row&&row.querySelector('small');
+      if(out&&(j.needs||[]).length)out.textContent='Run this on the machine: '+j.needs.join('  ·  ');
+      b.disabled=false;b.textContent=on?'Turn on':'Turn off';return}
+    toast('✓ '+((j.screen||{}).words||'done'));
+  }catch(e){toast(String(e.message||e),{kind:'err'})}
+  faceSettingsPaint();
 }
 /* Settings → Voice → Listening: what understands speech on this machine, for the
    kiosk, the wake-word test and the mic. It lived under Appearance → On this screen,
@@ -33247,7 +33283,7 @@ async function provPaint(){
   rows.push('<div id="prov-out" aria-live="polite"></div>');
   /* a repaint (any provision broadcast, the scan's own) must not drop what is being typed
      into the install form: found in the screenshot walk, where Check it saw an empty user */
-  const kept={};['dev-user','dev-pw','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
+  const kept={};['dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
     if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   box.innerHTML=rows.join('');
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
@@ -33310,7 +33346,7 @@ async function provAgents(){
    used once (or this machine's key), shows what the machine is and the exact command, and runs
    the real installer with a key made for that one machine, so it is set up the moment it is
    heard. The SD card writer is for the screen the card is plugged into. */
-var DEV={open:'',check:{},log:{}};
+var DEV={open:'',check:{},log:{},err:{}};
 function provDevicesHTML(v,can){
   /* The machines themselves (with Install Bento) are the inventory above, in Network
      (24n-network.js); this keeps the two ways in that need no machine yet. */
@@ -33333,12 +33369,14 @@ function provDevForm(d){
   // the port SSH answered on in the scan (its first port), which is 22 on a real Pi
   const sshPort=d.ssh&&(d.ports||[]).length?Number(d.ports[0])||22:22;
   return `<div class="dev-form">
-    <label>User there <input id="dev-user" maxlength="32" placeholder="pi" value="${esc((c&&c.user)||'')}"></label>
+    <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
     <label>Password <input id="dev-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
-    <label class="prov-opt">${pSwitch('dev-kiosk',false)} Kiosk</label></div>
+    <label class="prov-opt">${pSwitch('dev-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label></div>
     <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">Check it</button>
       ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
+    ${DEV.err[d.ip]?`<p class="warn dev-err">✗ ${esc(DEV.err[d.ip])}</p>`:''}
     ${c?`<div class="dev-facts">${esc([c.board||c.arch,c.os,c.ram_mb+' MB memory',c.free_mb+' MB free'].filter(Boolean).join(' · '))}
       ${c.bento?'<br>Bento is already there.':''}${c.host_key?`<br><span class="mut">Its key: ${esc(c.host_key)}</span>`:''}
       ${c.problems.map(p=>`<br><span class="warn">✗ ${esc(p)}</span>`).join('')}
@@ -33347,8 +33385,9 @@ function provDevForm(d){
 }
 function provDevCreds(){
   const g=id=>(document.getElementById(id)||{});
+  const agent=(g('dev-agent').value||'').trim();
   return {user:(g('dev-user').value||'').trim(),password:g('dev-pw').value||'',authorize:!!g('dev-auth').checked,
-    profile:{kiosk:!!g('dev-kiosk').checked,lite:true}};
+    profile:Object.assign({kiosk:!!g('dev-kiosk').checked,lite:true},agent?{agent_name:agent}:{})};
 }
 function provDevLine(ev){
   const id='dev-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
@@ -33363,16 +33402,18 @@ function provDevCard(){
     <label>The card’s boot partition <input id="card-path" placeholder="/media/you/bootfs"></label>
     <label>User on the card <input id="card-user" maxlength="32" placeholder="as set in Imager"></label>
     <label>Name on the network <input id="card-host" maxlength="63" placeholder="pi-kitchen"></label>
+    <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="card-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
     <label>Wi-Fi (if Imager did not) <input id="card-ssid" maxlength="32" placeholder="network name"></label>
     <label>Wi-Fi password <input id="card-wpw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true"></label>
     <label>Country <input id="card-cc" maxlength="2" placeholder="GB" style="max-width:60px"></label>
-    <label class="prov-opt">${pSwitch('card-kiosk',false)} Kiosk</label>
+    <label class="prov-opt">${pSwitch('card-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label>
     <div class="dev-acts"><button class="wiz-next" data-prov="devcardgo">Add Bento to this card</button></div>
     <p class="mut" id="card-out"></p></div>`;
   el.querySelector('[data-prov=devcardgo]').onclick=async()=>{
     const g=id=>(document.getElementById(id)||{}).value||'';
     const body={path:g('card-path').trim(),user:g('card-user').trim(),hostname:g('card-host').trim(),
-      profile:{kiosk:!!document.getElementById('card-kiosk').checked,lite:true}};
+      profile:Object.assign({kiosk:!!document.getElementById('card-kiosk').checked,lite:true},
+        g('card-agent').trim()?{agent_name:g('card-agent').trim()}:{})};
     if(g('card-ssid'))body.wifi={ssid:g('card-ssid'),password:g('card-wpw'),country:g('card-cc')||'GB'};
     const r=await fetch('/api/devices/sdcard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json().catch(()=>({}));const out=document.getElementById('card-out');
@@ -33418,12 +33459,14 @@ async function provAct(act,b){
     if(act==='devcard')return provDevCard();
     if(act==='devcheck'){const c=provDevCreds();if(!c.user){toast('Who logs in there? Type the user name.');return}
       b.disabled=true;b.textContent='Checking…';
-      try{DEV.check[b.dataset.ip]=Object.assign(await post('/api/devices/check',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c}),{user:c.user})}
-      catch(e){delete DEV.check[b.dataset.ip];throw e}
+      // a refusal stays in the form under Check it: a toast is gone before it is read
+      try{DEV.check[b.dataset.ip]=Object.assign(await post('/api/devices/check',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c}),{user:c.user});delete DEV.err[b.dataset.ip]}
+      catch(e){delete DEV.check[b.dataset.ip];DEV.err[b.dataset.ip]=String(e.message||e);throw e}
       finally{provPaint()}
       return}
     if(act==='devinstall'){const c=provDevCreds();
-      if(!await osConfirm(`Install Bento on ${b.dataset.ip}?`,`The command shown runs there as ${c.user}.`,{confirmText:'Install'}))return;
+      const called=c.profile.agent_name?` Its agent is called ${c.profile.agent_name}.`:'';
+      if(!await osConfirm(`Install Bento on ${b.dataset.ip}?`,`The command shown runs there as ${c.user}.${called}`,{confirmText:'Install'}))return;
       await post('/api/devices/install',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c});DEV.open='';toast('Installing Bento on '+b.dataset.ip+'…');return provPaint()}
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/provision/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
@@ -33466,7 +33509,7 @@ async function provAct(act,b){
       if(typeof poolPaint==='function')poolPaint();
       return;
     }
-  }catch(e){toast(String(e.message||e));provPaint()}
+  }catch(e){toast(String(e.message||e),{kind:'err'});provPaint()}
 }
 
 /* ---------------- the waiting machine's own screen ---------------- */
@@ -36000,9 +36043,11 @@ async function netPaint(){
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
   else rows.push(`<p class="mut prov-empty">Nothing listed yet. Press Look at the network.</p>`);
   // keep what is being typed across a repaint (a broadcast, a line of a running step)
-  const kept={};['net-user','net-pw','dev-user','dev-pw'].forEach(id=>{const e=document.getElementById(id);if(e)kept[id]=e.value});
+  const kept={};['net-user','net-pw','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
+    const e=document.getElementById(id);if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   box.innerHTML=rows.join('');
-  Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(e&&kept[id])e.value=kept[id]});
+  Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
+    if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
   netWire(box);
 }
 
@@ -36048,11 +36093,18 @@ function netSecureForm(r){
   const c=NET.check[r.ip],steps=(NET.v||{}).steps||[];
   const sel=NET.steps[r.ip]||{};
   return `<div class="dev-form net-form">
-    <label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc((c&&c.user)||r.user||'')}"></label>
+    <label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
     <label>Password <input id="net-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    <label class="net-mine"><span class="net-mine-h">Your own SSH key ${pInfo('After password logins go off, only keys get in. Paste the .pub file from your own computer (~/.ssh/id_ed25519.pub) so you can still log in.')}</span>
+      <input id="net-mine" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAA… you@laptop"></label>
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
       ${c&&!c.problems.length&&steps.some(s=>!c.done[s.id])?`<button class="wiz-next" data-net="go" data-key="${esc(r.key)}">Secure it</button>`:''}</div>
-    ${c?`<div class="net-steps">${steps.map(s=>{const done=!!c.done[s.id],p=(c.plan||[]).find(x=>x.id===s.id);
+    ${c&&c.done.passwords?`<div class="net-letin"><p class="mut">Password logins are off there, so only keys get in. Bento’s key still does.</p>
+      <div class="dev-acts"><button class="endbtn" data-net="letkey" data-key="${esc(r.key)}">Add my key</button>
+      <button class="endbtn" data-net="letpw" data-key="${esc(r.key)}">Turn password logins back on</button></div></div>`:''}
+    ${c?`<div class="net-steps">${(c.plan||[]).filter(p=>p.id==='yourkey').map(p=>`<div class="net-step"><span class="net-tick">＋</span>
+        <div><b>${esc(p.title)}</b><br><span class="mut">${esc(p.why)}</span>
+        <details><summary>What runs there</summary><code class="dev-plan">${esc(p.runs)}</code></details></div></div>`).join('')}${steps.map(s=>{const done=!!c.done[s.id],p=(c.plan||[]).find(x=>x.id===s.id);
       const on=sel[s.id]!==false;
       return `<div class="net-step${done?' done':''}">
         ${done?'<span class="net-tick">✓</span>':`<input type="checkbox" data-step="${esc(s.id)}" data-ip="${esc(r.ip)}" ${on?'checked':''} aria-label="${esc(s.title)}">`}
@@ -36069,7 +36121,7 @@ function netUnlinkForm(r){
   return `<div class="dev-form net-form">
     <div class="net-steps">${cs.map(c=>`<label class="net-step"><input type="checkbox" data-unlink="${esc(c.id)}" checked>
       <div><b>${esc(netConnTitle(c))}</b><br><span class="mut">${esc(netConnWhy(c))}</span></div></label>`).join('')}</div>
-    ${needUser?`<label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc(r.user||'')}"></label>`:''}
+    ${needUser?`<label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc(r.user||'')}"></label>`:''}
     <div class="dev-acts"><button class="wiz-next" data-net="unlinkgo" data-key="${esc(r.key)}">Disconnect</button></div>
   </div>`;
 }
@@ -36080,6 +36132,12 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
 function netWire(box){
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));
+  // the command shown after Check it follows the switch: --screen is its last flag, the same
+  // string the server builds (remoteinstall.plan), so what runs is still what was shown
+  const ks=box.querySelector('#dev-kiosk');
+  if(ks)ks.onchange=()=>{const ip=DEV.open,c=DEV.check[ip];if(!c||!c.plan)return;
+    c.plan=c.plan.replace(/ --screen$/,'')+(ks.checked?' --screen':'');
+    const el=box.querySelector('.dev-plan');if(el)el.textContent=c.plan};
   box.querySelectorAll('[data-step]').forEach(c=>c.onchange=()=>{
     const m=NET.steps[c.dataset.ip]=NET.steps[c.dataset.ip]||{};m[c.dataset.step]=c.checked});
 }
@@ -36089,7 +36147,7 @@ async function netAct(act,b){
   const post=async(url,body,method)=>{const res=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
     const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d.error||('could not do that ('+res.status+')'));return d};
   const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
-    password:(document.getElementById('net-pw')||{}).value||''});
+    password:(document.getElementById('net-pw')||{}).value||'',mine:((document.getElementById('net-mine')||{}).value||'').trim()});
   try{
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/devices/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} answered on ${d.networks}`:`Nothing answered on ${d.networks}.`);return netPaint()}
@@ -36113,13 +36171,24 @@ async function netAct(act,b){
       try{NET.check[r.ip]=Object.assign(await post('/api/network/check',c),{user:c.user})}
       catch(e){delete NET.check[r.ip];throw e}finally{netPaint()}
       return}
-    if(act==='go'){const c=creds(),sel=NET.steps[r.ip]||{},chk=NET.check[r.ip]||{done:{}};
+    if(act==='letkey'||act==='letpw'){const c=creds();if(!c.user){toast('Who logs in there? Type the user name.');return}
+      if(act==='letkey'&&!c.mine){toast('Paste your own SSH key first',{kind:'warn'});document.getElementById('net-mine')?.focus();return}
+      b.disabled=true;
+      const d=await post('/api/network/letin',act==='letkey'?{...c,passwords:false}:{...c,mine:'',passwords:true});
+      toast(act==='letkey'?'✓ Your key is on '+(r.display||r.ip)+'. Log in with it from your computer.'
+        :'✓ Password logins are back on '+(r.display||r.ip)+'.');
+      if(NET.check[r.ip])NET.check[r.ip].done=d.security||NET.check[r.ip].done;return netPaint()}
+    if(act==='go'){const c=creds(),sel=NET.steps[r.ip]||{};let chk=NET.check[r.ip]||{done:{}};
+      // a key pasted after Check it: check again, so the step that adds it is shown before it runs
+      if(c.mine&&!(chk.plan||[]).some(p=>p.id==='yourkey')){
+        NET.check[r.ip]=chk=Object.assign(await post('/api/network/check',c),{user:c.user});netPaint()}
       const steps=((NET.v||{}).steps||[]).map(s=>s.id).filter(id=>!chk.done[id]&&sel[id]!==false);
-      if(!steps.length){toast('Tick at least one step');return}
-      const titles=((NET.v||{}).steps||[]).filter(s=>steps.includes(s.id)).map(s=>s.title.toLowerCase());
-      if(!await osConfirm(`Secure ${r.display||r.ip}?`,`This will ${titles.join(', ')}. The commands shown run there as ${c.user}.`,{confirmText:'Secure it'}))return;
+      if(!steps.length&&!c.mine){toast('Tick at least one step');return}
+      const titles=(c.mine?['let your own key in']:[]).concat(((NET.v||{}).steps||[]).filter(s=>steps.includes(s.id)).map(s=>s.title.toLowerCase()));
+      const shut=steps.includes('passwords')&&!c.mine?' Your own password login stops too: only this machine’s key gets in until you add yours.':'';
+      if(!await osConfirm(`Secure ${r.display||r.ip}?`,`This will ${titles.join(', ')}. The commands shown run there as ${c.user}.${shut}`,{confirmText:'Secure it'}))return;
       await post('/api/network/secure',{...c,steps});toast('Securing '+(r.display||r.ip)+'…');NET.open='';return netPaint()}
-  }catch(e){toast(String(e.message||e));netPaint()}
+  }catch(e){toast(String(e.message||e),{kind:'err'});netPaint()}
 }
 function netPort(r){return r.ssh&&(r.ports||[]).length?Number(r.ports[0])||22:22}
 function netLine(ev){

@@ -52,6 +52,9 @@
 #                             as well as on its own network (Tailscale has no broadcast)
 #   --tailscale-key=KEY       install Tailscale and join the tailnet with this auth key
 #                             (or TS_AUTHKEY). Nothing keeps it after the join.
+#   --screen                  open Bento on this machine's own screen when it starts: the
+#                             Office, full screen, listening (`bento screen on`). On a machine
+#                             with no desktop it installs cage and Chromium to draw it.
 #   --no-service              do not install the launcher/login service (containers, CI)
 #   --no-verify               skip the "prove it works" step
 #
@@ -115,6 +118,8 @@ WAIT_SETUP=""
 ZERO=""
 HUBS="${AGENTOS_HUBS:-}"
 TS_KEY="${TS_AUTHKEY:-}"
+# Open Bento on this machine's screen at start (screen.py): asked for by name, never assumed.
+SCREEN=""
 
 for a in "$@"; do
   case "$a" in
@@ -131,7 +136,8 @@ for a in "$@"; do
     --zero) ZERO=1; PROFILE=lite ;;
     --hub=*) HUBS="${a#--hub=}" ;;
     --tailscale-key=*) TS_KEY="${a#--tailscale-key=}" ;;
-    -h|--help) sed -n '2,65p' "$0"; exit 0 ;;
+    --screen) SCREEN=1 ;;
+    -h|--help) sed -n '2,68p' "$0"; exit 0 ;;
     -*) printf 'unknown flag: %s  (try --help)\n' "$a" >&2; exit 2 ;;
   esac
 done
@@ -1066,6 +1072,18 @@ if [ "$SERVICE" = 1 ]; then
   uv run bento install || warn "the launcher/login step reported a problem — AgentOS still runs with 'bento'"
 else
   say "skipping the launcher and login service (--no-service)"
+fi
+
+# Bento on this machine's own screen at start. Asked for with --screen (the hub's Install
+# form ticks it), so --yes answers the question `bento screen on` would ask.
+if [ -n "$SCREEN" ]; then
+  say "opening Bento on this machine's screen when it starts"
+  if uv run bento screen on --yes; then
+    ok "a screen plugged in here shows the Office and listens"
+  else
+    warn "the screen step did not finish"
+    gap "finish it:  bento screen on"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

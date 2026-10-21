@@ -3168,6 +3168,13 @@ Six rules:
 - **The system's `ssh`, never a Python SSH library** (LGPL/EPL). The password reaches it
   through `SSH_ASKPASS` in that child's environment and is never written anywhere; Bento keeps
   its own `known_hosts` with `accept-new`, so a changed host key is refused by ssh itself.
+- **A refused login says which refusal it was** (`remoteinstall._why(password=)`, reading the ways
+  ssh lists in "Permission denied (publickey,password)"): a Pi flashed keys-only, a wrong user or
+  password (new Pi OS has no `pi`), or a key the Pi lacks. Reported as "it says not authenticated".
+  The form keeps it under Check it (`DEV.err`), because a toast is gone before it is read.
+  `bento network look|install` are `_devices_cli` with the scan's SSH port, never a second path.
+  `memory.Store()` with no path is the machine's database: the terminal verbs called it that way,
+  and every ledger row they wrote raised inside a try and was lost.
 - **What runs is what was shown.** `plan()` is the command on the consent screen and the one
   `install()` sends; the test reads the fake ssh's log for it. NEVER `--yes` on a remote
   install: it answers every optional extra (Claude Code, Codex…), which nobody agreed to here.
@@ -3218,6 +3225,14 @@ box", then "you should also be able to remove the connections". Setting machines
   `secure` waits for the key to get in again (sshd re-executes and refuses for a moment, found
   live); the firewall is its own nftables table, refuses when `$SSH_CLIENT` isn't private, and
   removes itself after `UNDO_S` unless a NEW login touches `OK_MARK`.
+- **"Never lock out" includes the PERSON, not only Bento's key.** Reported as "after I secured it
+  I could not log in". The passwords step proved this machine's key got in and nobody else's.
+  The person's own public key (`mine`, read by `harden.your_key`: type, key and a plain comment,
+  never an option like `command=`) is the plan's first step (`YOURKEY`), and the confirmation says
+  out loud when there is none. After the fact, `let_in` (`/api/network/letin`, `bento network
+  letin`) adds their key or removes `DROPIN`, logging in with Bento's key. And
+  `remoteinstall.login_run` retries a refused password with this machine's key, since a refused
+  login ran nothing: the password that stopped working read as "not authenticated".
 - **Disconnect removes ties, never the install**: a link through `_team_end_link`, the
   community place through `pool.remove`, this machine's key through `harden.remove_key`, which
   refuses when it is the only key and password logins are off (`force` is the person's).
@@ -3269,6 +3284,27 @@ be on and agents would be working in the office". Five rules:
   list). The wizard, Settings' Test it and `bento face test` (arecord) all use that one route
   or `_step_voice`. A wake word of the person's own (`face.wake_word`) never replaces the
   agent's name.
+
+**Opening on its screen at start is a separate thing from the kiosk face** (`agentos/screen.py`,
+`bento screen`, `/api/screen`, Appearance → Open at start, install.sh `--screen`, the Install form's
+"Open on its screen"; `tests/test_screen.py`). Asked for as "when the Pi has been installed, it opens
+Bento in client mode with the office so we can hook it to a screen and talk to it". `face.kiosk`
+decides how the page LOOKS once something opened it; nothing opened it on Pi OS Lite. Four rules:
+- **Two roads, read from the machine** (`road()`): a desktop (a display manager enabled) gets an XDG
+  autostart and nothing system-wide but the mic policy; no desktop gets cage (MIT, a components entry)
+  running Chromium on tty1 from a system unit with `PAMName` and `Conflicts=getty@tty1`. Never getty
+  autologin: a keyboard on the Pi must never reach a shell. `wait` (ExecStartPre) holds until a screen
+  is connected (`/sys/class/drm`) and the server answers, so a Pi with no screen costs one sleeper.
+- **The mic is allowed for this page only**, by a Chromium policy naming `http://127.0.0.1:<port>`
+  (both policy folders: Debian's chromium and the Pi's chromium-browser). Never
+  `--use-fake-ui-for-media-stream`. Measured: the page got the mic with no prompt, another origin was
+  still asking after 5 s. `--autoplay-policy=no-user-gesture-required` lets the answer be spoken.
+- **What runs is what was shown**: `plan()` is `enable()`'s steps; the form's switch adds `--screen`
+  as the LAST flag of the shown command, and the page follows a later toggle by that one rule. Root
+  goes through `session._run_root`; the hand-back names the exact commands left, and never
+  `sudo bento screen on`, which would write the unit for root.
+- **Its agent's name is the wake word on that screen**: the Install form's name rides the enrolment
+  profile (`agent_name`), and `face.wake_words` always includes the agent's name.
 
 ## Drama, Arena, Watch me once, Time travel: four things a person shows somebody else
 

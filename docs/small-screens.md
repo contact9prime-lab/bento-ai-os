@@ -65,6 +65,53 @@ rather it listened to everything, choose *Everything it hears*.
 - A browser needs a tap before it may start the microphone and the voice. If it hasn't had
   one, the kiosk says *Tap anywhere to start listening*.
 
+### Open on its screen at start
+
+A Pi set up from your hub can open the kiosk by itself every time it starts, so you plug a
+screen in and talk to it. In the hub's *Settings → Network*, **Install Bento** has two things for
+it, and the SD card form has the same two:
+
+- **Open on its screen**, on by default. Bento opens full screen on that machine when it starts.
+- **Its agent's name**, like *Chef* in the kitchen or *Fridge*. That's what you call it on its
+  screen: *"Chef, what can I make with eggs?"*. The agent's name always wakes it.
+
+![Install Bento with its agent's name and Open on its screen](screenshots/screen-install-form.png)
+
+![Its agent's name and Open on its screen, on a phone](screenshots/screen-install-form-phone.png)
+
+How it opens depends on the machine:
+
+- **Raspberry Pi OS with desktop**: Bento opens full screen when the desktop logs in, which it
+  does by itself unless you turned that off.
+- **Raspberry Pi OS Lite**, with no desktop: Bento installs `cage` (MIT), a small compositor that
+  shows one app full screen, and Chromium, and starts them on the screen at boot. The screen
+  shows Bento instead of a login prompt, and no shell is logged in on it: Ctrl+Alt+F2 still asks
+  for a password. Without a screen plugged in it waits quietly, and opens when one is.
+
+![A Pi's screen at start: Chef's office, listening](screenshots/screen-kiosk.png)
+
+Either way the microphone is allowed for Bento's own page only, so nobody has to tap a prompt on
+a screen with no mouse, and the answer is spoken without a tap first. On a Pi 3 the browser takes
+a few hundred megabytes of its memory. To hear you, the Pi needs something that understands
+speech: a voice key under *Voice* or whisper.cpp (below).
+
+On the machine itself it's *Settings → Appearance → On this screen → Open at start*, or:
+
+```sh
+bento screen status   # whether it opens at start, how, and which screens are plugged in
+bento screen on       # shows every change first, then asks
+bento screen off      # undoes all of it
+```
+
+![Open at start, in Settings](screenshots/screen-settings.png)
+
+![Open at start in Settings, on a phone](screenshots/screen-settings-phone.png)
+
+![bento screen in a terminal, and the hub's install naming its agent](screenshots/screen-terminal.png)
+
+Steps that need root use passwordless `sudo`, or ask for your password at a terminal. With
+neither, Bento prints the exact commands left to run.
+
 ### Understanding speech
 
 A browser's own speech recogniser sends the audio to Google, and the Chromium on a Raspberry

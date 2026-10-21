@@ -4288,6 +4288,73 @@ def _company_cli(args):
     sys.exit(2)
 
 
+def _screen_cli(args):
+    """`bento screen`: Bento on this machine's own screen when it starts (screen.py). `on`
+    shows every change first and asks; `run` and `wait` are what the unit or the desktop's
+    autostart start, not something a person types."""
+    from . import config as _cfgmod
+    from . import screen as scr
+    from .memory import Store
+    cfg = _cfgmod.load_config()
+    a = args.action
+
+    def ledger(action, reason):
+        try:
+            Store().audit_add(principal_kind="user", principal_id="", surface="cli", action=action,
+                              resource="screen:this", effect="allow", rule="person", outcome="ok", reason=reason)
+        except Exception:
+            pass
+    if a == "run":
+        return scr.run(cfg)
+    if a == "wait":
+        scr.wait(cfg)
+        return
+    st = scr.status(cfg)
+    if a == "status":
+        print("  " + st["words"])
+        if st["road"]:
+            print(f"  {st['why']}.")
+            print(f"  screens plugged in: {', '.join(st['screens']) or 'none'}")
+            if st["missing"]:
+                print(f"  needs: {', '.join(st['missing'])} (`bento screen on` installs them, after asking)")
+            if not st["on"]:
+                print("  turn it on:  bento screen on")
+        return
+    if a == "off":
+        got = scr.disable(cfg, say=lambda ln: print("  " + ln))
+        ledger("screen.off", "removed " + (", ".join(got["removed"]) or "nothing"))
+        if got["needs"]:
+            print(f"  ✗ {got['error']}. To finish, run:")
+            for c in got["needs"]:
+                print("    " + c)
+            sys.exit(1)
+        print("  ✓ Bento no longer opens on this screen at start")
+        return
+    if not st["road"]:
+        sys.exit("  " + st["why"])
+    if st["on"] and not st["missing"]:
+        print("  " + st["words"])
+        return
+    print(f"  {st['why']}.\n\n  This will:")
+    for step in scr.plan(cfg):
+        print(f"    {step['title']}{' (as root)' if step['root'] else ''}: {step['why']}\n      {step['runs']}")
+    if not args.yes:
+        try:
+            if input("\n  Go ahead? (y/n) ").strip().lower()[:1] != "y":
+                return
+        except EOFError:
+            sys.exit("\n  Nobody answered, so nothing changed. `bento screen on --yes` skips the question.")
+    got = scr.enable(cfg, say=lambda ln: print("    " + ln))
+    if not got["ok"]:
+        ledger("screen.failed", got["error"])
+        print("  ✗ " + got["error"])
+        for c in got["needs"]:
+            print("    " + c)
+        sys.exit(1)
+    ledger("screen.on", "ran " + ", ".join(got["done"]))
+    print("  ✓ " + scr.status(cfg)["words"])
+
+
 def _face_cli(args):
     """`bento face` — this machine's own screen: one agent drawn, and the kiosk face.
 
@@ -4508,7 +4575,7 @@ def _network_cli(args):
                 sys.exit(f"  bento network {a} MACHINE (an address, a name or a MAC; see `bento network`)")
             return None
         r = inv.find(inv.rows(), rest[0])
-        if r is None and a in ("check", "secure"):
+        if r is None and a in ("check", "secure", "install", "letin"):
             return {"ip": rest[0], "mac": "", "display": rest[0], "user": "", "ssh": True, "ports": [22],
                     "connections": [], "key": rest[0]}
         if r is None:
@@ -4521,10 +4588,20 @@ def _network_cli(args):
         except (TypeError, ValueError):
             return 22
 
+    if a in ("look", "install"):
+        from . import config as _cfgmod
+        cfg = _cfgmod.load_config()
+        if a == "look":
+            return _devices_cli(args, cfg, "devices", [], asyncio.run, verb="network")
+        r = machine()
+        if r.get("ssh_off"):
+            sys.exit("  " + r["ssh_off"])
+        return _devices_cli(args, cfg, "install", [r["ip"]], asyncio.run, port=port(r),
+                            user=args.user or r.get("user") or "")
     if a == "list":
         rows = [r for r in inv.rows() if not r.get("ignored")]
         if not rows:
-            print("  Nothing listed yet. `bento pool devices` looks at the network.")
+            print("  Nothing listed yet. `bento network look` looks at the network.")
             return
         sm = inv.summary(rows)
         print(f"  {sm['machines']} machine(s) · {sm['bento']} with Bento · {sm['secured']} secured\n")
@@ -4536,6 +4613,44 @@ def _network_cli(args):
             ties = ", ".join(c["words"] for c in r["connections"])
             if ties:
                 print(f"  {'':<22} tied by {ties}")
+        return
+    def mine():
+        """The person's own public key: --your-key FILE, else theirs in ~/.ssh on this machine."""
+        if args.your_key:
+            try:
+                k = harden.your_key(Path(os.path.expanduser(args.your_key)).read_text())
+            except OSError as e:
+                sys.exit(f"  could not read {args.your_key}: {e.strerror}")
+            if not k:
+                sys.exit(f"  {args.your_key} is not an SSH public key (a .pub file)")
+            return k
+        return harden.local_key()
+
+    if a == "letin":
+        r = machine()
+        user = args.user or r.get("user") or ""
+        if not user:
+            sys.exit("  which user logs in there? --user NAME")
+        k = mine() if (args.your_key or not args.passwords_on) else ""
+        if not k and not args.passwords_on:
+            sys.exit("  nothing to let in: --your-key FILE (or a key in ~/.ssh here), or --passwords-on")
+        print("  This will run there:")
+        if k:
+            print("    Let your own key in: " + k[:60] + "…")
+        if args.passwords_on:
+            print("    Turn password logins back on: " + harden.PASSWORDS_BACK[:70] + "…")
+        if not args.yes and input("  Go ahead? (y/n) ").strip().lower()[:1] != "y":
+            return
+        try:
+            got = asyncio.run(harden.let_in(r["ip"], user, password(), port(r), k, args.passwords_on))
+        except ri.InstallError as e:
+            sys.exit("  " + str(e))
+        inv.note_security(r["ip"], r.get("mac") or "", got["security"], user, by="cli")
+        ledger("device.letin", f"device:{r['ip']}", f"{user}@{r['ip']}: {', '.join(got['done']) or 'nothing'}")
+        if "yourkey" in got["done"]:
+            print(f"  ✓ your key is on {r['display']}: ssh {user}@{r['ip']}")
+        if "passwords_on" in got["done"]:
+            print(f"  ✓ password logins are back on {r['display']}")
         return
     if a in ("check", "secure"):
         r = machine()
@@ -4556,7 +4671,12 @@ def _network_cli(args):
         if a == "check":
             return
         steps = harden.clean_steps([x.strip() for x in args.steps.split(",") if x.strip()] or None)
-        todo = [x for x in c["plan"] if x["id"] in steps]
+        k = mine() if not c["done"].get("passwords") and "passwords" in steps else (mine() if args.your_key else "")
+        todo = [x for x in harden.plan([p["id"] for p in c["plan"]], port(r), not c["sudo"], k)
+                if x["id"] in steps or x["id"] == "yourkey"]
+        if "passwords" in steps and not c["done"].get("passwords") and not k:
+            print("  ! Password logins go off, yours too. Only this machine's key will get in."
+                  "\n    Add yours with --your-key ~/.ssh/id_ed25519.pub, or later with `bento network letin`.")
         if not todo:
             print("  Nothing to do: everything asked for is in place.")
             return
@@ -4570,7 +4690,7 @@ def _network_cli(args):
         async def show(ln):
             print("    │ " + ln[:150])
         try:
-            got = asyncio.run(harden.secure(r["ip"], user, pw, port(r), steps, on_line=show))
+            got = asyncio.run(harden.secure(r["ip"], user, pw, port(r), steps, on_line=show, mine=k))
         except ri.InstallError as e:
             ledger("device.secure_failed", f"device:{r['ip']}", str(e))
             sys.exit("  " + str(e))
@@ -4635,7 +4755,7 @@ def _network_cli(args):
         print(f"  ✓ {r['display']} is off the list")
 
 
-def _devices_cli(args, cfg, a, rest, run):
+def _devices_cli(args, cfg, a, rest, run, port: int = 22, user: str = "", verb: str = "pool"):
     """Machines on the network WITHOUT Bento (netscan.py), installing it on one over SSH
     (remoteinstall.py), and an SD card that installs it on first boot (sdcard.py). A
     password is read without echo (or from stdin with --password-stdin) and kept nowhere."""
@@ -4684,19 +4804,19 @@ def _devices_cli(args, cfg, a, rest, run):
         if not found:
             print("  Nothing answered.")
         else:
-            print("  `bento pool install IP --user NAME` installs Bento on one with SSH open.")
+            print(f"  `bento {verb} install IP --user NAME` installs Bento on one with SSH open.")
         ledger("device.scan", "network:local", f"{len(found)} answered")
         return
     if a == "install":
         if not rest:
             sys.exit("  bento pool install IP --user NAME [--authorize] [--kiosk] [--password-stdin]")
-        host, user = rest[0], getattr(args, "user", "") or ""
+        host, user = rest[0], user or getattr(args, "user", "") or ""
         if not user:
-            sys.exit("  which user logs in there? --user pi")
+            sys.exit("  which user logs in there? --user NAME (the user set in Raspberry Pi Imager)")
         pw = password()
         print(f"  Checking {user}@{host} …")
         try:
-            c = run(ri.check(host, user, pw))
+            c = run(ri.check(host, user, pw, port))
         except ri.InstallError as e:
             sys.exit("  " + str(e))
         print(f"    {c['board'] or c['arch']} · {c['os']} · {c['ram_mb']} MB memory · {c['free_mb']} MB free"
@@ -4706,7 +4826,10 @@ def _devices_cli(args, cfg, a, rest, run):
             print(f"    ✗ {prob}")
         if c["problems"]:
             sys.exit(1)
-        print("  This will run there:\n    " + ri.plan(cfg, "bento-enroll-1.…", authorize=getattr(args, "authorize", False)))
+        print("  This will run there:\n    " + ri.plan(cfg, "bento-enroll-1.…", authorize=getattr(args, "authorize", False),
+                                                     screen=bool(getattr(args, "kiosk", False))))
+        if getattr(args, "agent_name", ""):
+            print(f"  Its agent is called {getattr(args, 'agent_name')}: say that name to wake it on its screen.")
         if not getattr(args, "yes", False) and input("  Install Bento there? (y/n) ").strip().lower()[:1] != "y":
             return
         prof = prov.clean_profile({"kiosk": bool(getattr(args, "kiosk", False)), "lite": True,
@@ -4718,10 +4841,17 @@ def _devices_cli(args, cfg, a, rest, run):
             print("    │ " + ln[:150])
         try:
             got = run(ri.install(cfg, host, user, pw, k["text"], authorize=getattr(args, "authorize", False),
-                                 on_line=show))
+                                 port=port, on_line=show, screen=bool(getattr(args, "kiosk", False))))
         except ri.InstallError as e:
             prov.drop_key(k["id"])
+            ledger("device.failed", f"device:{host}", f"installing on {user}@{host}: {e}")
             sys.exit("  ✗ " + str(e))
+        d = prov.load()
+        for e in d["devices"].values():
+            if e.get("ip") == host:
+                e["state"] = "installed"
+        prov.save(d)
+        ledger("device.installed", f"device:{host}", f"Bento installed on {user}@{host}")
         print(f"  ✓ Bento is installed on {host}. When it starts it carries a key this machine made for it,"
               f"\n    so a running server here sets it up as a member the moment it hears it.")
         print(f"    its key: {got['host_key']}")
@@ -4745,7 +4875,7 @@ def _devices_cli(args, cfg, a, rest, run):
         try:
             got = sdcard.write(rest[0], url=ri.install_url(cfg), key_text=k["text"], pubkey=pk,
                                user=getattr(args, "user", "") or "", hostname=getattr(args, "hostname", "") or "",
-                               wifi=wifi)
+                               wifi=wifi, screen=bool(getattr(args, "kiosk", False)))
         except sdcard.KitError as e:
             prov.drop_key(k["id"])
             sys.exit("  " + str(e))
@@ -8396,18 +8526,27 @@ def main():
     p_co.add_argument("--words", action="store_true", help="setup: skip the brain, use the catalogue as it is")
     p_co.add_argument("--yes", action="store_true", help="setup: do not ask before making it")
     p_co.add_argument("--user", default="", help="whose company, on a machine with users")
-    p_net = verb("network", help="the machines on your network: list, check, secure, disconnect")
+    p_net = verb("network", help="the machines on your network: look, install, check, secure, disconnect")
     p_net.add_argument("action", nargs="?", default="list",
-                       choices=["list", "check", "secure", "disconnect", "label", "forget"], metavar="ACTION",
-                       help="list | check IP --user U | secure IP --user U [--steps a,b] | "
+                       choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label", "forget"],
+                       metavar="ACTION",
+                       help="list | look | install MACHINE --user U [--authorize] [--kiosk] | "
+                            "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
+                            "letin MACHINE --user U [--your-key F] [--passwords-on] | "
                             "disconnect MACHINE [--what link:NAME,community,key] | label MACHINE NAME | forget MACHINE")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
-    p_net.add_argument("--user", default="", help="check / secure / disconnect: the user on that machine")
+    p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
+    p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
+    p_net.add_argument("--kiosk", action="store_true",
+                       help="install: open Bento on its own screen at start (the Office, listening)")
+    p_net.add_argument("--your-key", default="", help="secure / letin: your own public key file (default: ~/.ssh/id_*.pub here)")
+    p_net.add_argument("--passwords-on", action="store_true", help="letin: turn password logins back on")
+    p_net.add_argument("--agent-name", default="", help="install: what its agent is called, and the name you wake it with")
     p_net.add_argument("--steps", default="", help="secure: key,passwords,firewall,updates (default: all)")
     p_net.add_argument("--what", default="", help="disconnect: which ties to remove (default: all of them)")
     p_net.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
     p_net.add_argument("--key-only", action="store_true", help="log in with this machine's key, ask no password")
-    p_net.add_argument("--yes", action="store_true", help="secure / disconnect: do not ask first")
+    p_net.add_argument("--yes", action="store_true", help="install / secure / disconnect: do not ask first")
     p_net.add_argument("--force", action="store_true",
                        help="disconnect: take the key off even when it is the only way in")
     p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")
@@ -8426,7 +8565,8 @@ def main():
     p_pool.add_argument("args", nargs="*", help="the value")
     p_pool.add_argument("--brain", action="store_true", help="join: think with the leader's brain")
     p_pool.add_argument("--code", default="", help="enable: the six digits on the new machine's screen")
-    p_pool.add_argument("--kiosk", action="store_true", help="enable / key: set the new machine up as a kiosk")
+    p_pool.add_argument("--kiosk", action="store_true",
+                        help="enable / key: set the new machine up as a kiosk; install / sdcard: also open it on its screen")
     p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
     p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
     p_pool.add_argument("--tailscale-key", default="", help="zero: put this Tailscale auth key in the line (not kept)")
@@ -8448,6 +8588,10 @@ def main():
                         help="show | buddy auto|on|off | kiosk on|off | wake name|always | "
                              "word [WAKE WORD] | test | hear ENGINE")
     p_face.add_argument("args", nargs="*", help="the value")
+    p_scr = verb("screen", help="open Bento on this machine's own screen at start: the Office, listening")
+    p_scr.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "run", "wait"],
+                       metavar="ACTION", help="status | on | off  (run and wait are what the screen itself starts)")
+    p_scr.add_argument("--yes", action="store_true", help="on: do not ask before making the changes")
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
@@ -8796,6 +8940,8 @@ def main():
         _network_cli(args)
     elif args.cmd == "face":
         _face_cli(args)
+    elif args.cmd == "screen":
+        _screen_cli(args)
     elif args.cmd == "timetravel":
         _timetravel_cli(args)
     elif args.cmd == "terminal":

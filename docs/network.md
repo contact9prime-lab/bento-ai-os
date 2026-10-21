@@ -36,9 +36,35 @@ Bento listens for new Pis whatever its brain. Before, only a machine that could 
 listened, which a hub on Claude Code can't, so it heard no Pi at all. A Pi that was already on
 when Bento started has nothing new to say, so press **Look at the network** to find it.
 
+## Install Bento
+
+Open a row and press **Install Bento**. Type the user you set in Raspberry Pi Imager and its
+password, and press **Check it**. Bento logs in, says what the machine is, and shows the exact
+command it will run there. Press **Install Bento there** to run it. The machine comes up with a
+key this one made for it, so it's set up here the moment it's heard.
+
+New Raspberry Pi OS has no `pi` user. Use the name you typed in Imager's settings.
+
+**Its agent's name** is what you call that machine's agent, like *Chef* or *Fridge*. **Open on its
+screen** (on by default) makes Bento open full screen on that machine when it starts, so you can
+plug a screen in and talk to it. It adds `--screen` to the command shown. See
+[One agent on screen, and the kiosk](small-screens.md#open-on-its-screen-at-start).
+
+When the login is refused, the reason stays under **Check it**:
+
+- **The user name or password was refused.** Check both against what you set in Imager.
+- **That machine takes SSH keys only.** Imager's *Allow public-key authentication only* turns
+  passwords off. Add this machine's key there (*Set machines up → This machine's SSH key*) and
+  flash the card again, or flash it with password authentication on.
+- **This machine's key is not on that machine.** You left the password blank; type it.
+
+![Check it on a Pi flashed keys-only: the reason, kept in the form](screenshots/network-keys-only.png)
+
+![The same refusal on a phone, under Check it](screenshots/network-keys-only-phone.png)
+
 ## Secure it
 
-Open a row and press **Secure it**. Type the user there (`pi` on a Raspberry Pi) and its
+Open a row and press **Secure it**. Type the user there (the one set in Imager) and its
 password, and press **Check it**. Bento logs in, reads which of the four steps are already in
 place, and changes nothing. Each step that isn't shows why it matters and, under *What runs
 there*, the exact command it will send.
@@ -52,8 +78,17 @@ there*, the exact command it will send.
 | Turn on a firewall | Only SSH and Bento answer, and only from your network and Tailscale |
 | Install security updates by itself | Installs `unattended-upgrades` and switches it on |
 
+**Paste your own SSH key first.** Once password logins are off, only keys get in, and that
+includes you on your own computer. Put the one line from `~/.ssh/id_ed25519.pub` on your computer
+in *Your own SSH key*, and it's let in before anything else runs. Without it, the confirmation
+says your own password login is about to stop.
+
+![Secure it with a box for your own SSH key](screenshots/network-secure-yourkey.png)
+
+![The confirmation when no key of yours was given](screenshots/network-secure-warning.png)
+
 Untick any you don't want, press **Secure it**, and confirm. The steps run in that order, and
-three things keep it from locking you out:
+three things keep it from locking Bento out:
 
 - **Passwords go off only after the key has worked on its own.** Bento logs in again with the
   key alone first, and stops if that fails. After the change it waits until the key gets in
@@ -66,6 +101,22 @@ three things keep it from locking you out:
   `/etc/bento-firewall.nft`). Your own rules, and Docker's, are left alone.
 
 ![The machine after Secure it: its badge reads secured, with Disconnect beside it](screenshots/network-secured.png)
+
+### Locked out after Secure it
+
+If you secured a machine without your own key, your password no longer gets you in, but Bento's
+key still does. Open the row, press **Security**, type the user and press **Check it**. Then:
+
+- **Add my key**: paste your own public key first. Bento logs in with its key and adds yours.
+- **Turn password logins back on**: Bento removes its own file from `/etc/ssh/sshd_config.d`
+  and reloads SSH. The rest of SSH's settings stay as they were.
+
+![Password logins are off: Add my key, or turn them back on](screenshots/network-letin.png)
+
+![Add my key and passwords back on, on a phone](screenshots/network-letin-phone.png)
+
+Installing Bento there still works with the password you always used: when it's refused, Bento
+tries its own key before saying no.
 
 On Raspberry Pi OS the first user needs no password for `sudo`. Where it does, the password
 you typed is handed to `sudo` on its standard input, and never on a command line.
@@ -92,8 +143,15 @@ turn password logins back on first.
 
 ```sh
 bento network                                   # the list, with each machine's ties
-bento network check 192.168.1.40 --user pi      # which steps are in place; changes nothing
-bento network secure 192.168.1.40 --user pi     # shows what runs, asks, then runs it
+bento network look                              # look at the network, as the tab's button does
+bento network install 192.168.1.40 --user ada   # checks it, shows what runs, asks, installs
+bento network install pi-kitchen --user ada --authorize   # and lets this machine's key in
+bento network install pi-kitchen --user ada --agent-name Chef --kiosk   # named, and opens on its screen
+bento network check 192.168.1.40 --user ada     # which steps are in place; changes nothing
+bento network secure 192.168.1.40 --user ada    # shows what runs, asks, then runs it
+bento network secure pi-kitchen --user ada --your-key ~/.ssh/id_ed25519.pub
+bento network letin pi-kitchen --user ada --your-key ~/.ssh/id_ed25519.pub   # locked out: add your key
+bento network letin pi-kitchen --user ada --passwords-on                     # or passwords back on
 bento network secure pi-kitchen --steps key,passwords
 bento network disconnect pi-kitchen --what key  # or community, or link:NAME
 bento network label 192.168.1.40 "Kitchen Pi"
@@ -101,6 +159,13 @@ bento network forget 192.168.1.40
 ```
 
 ![bento network in a terminal: the list, and how secure each machine was measured](screenshots/network-terminal.png)
+
+![bento network look and install: a keys-only Pi refused in a sentence, then an install](screenshots/network-install-terminal.png)
+
+`install` uses the SSH port the scan found, and an address that isn't on the list yet works too.
+`secure` and `letin` use the key in `~/.ssh` on the machine you type them on when you don't name one.
+
+![Secured without a key of yours, installed anyway, then let back in, in a terminal](screenshots/network-letin-terminal.png)
 
 A password is read without echo, or from standard input with `--password-stdin`. A link is
 ended by the running server, so the terminal points you to the tab or `bento link remove`.

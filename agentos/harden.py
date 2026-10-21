@@ -22,7 +22,10 @@ records, so "secured" is always measured on the machine, never a note that a run
 from __future__ import annotations
 
 import asyncio
+import os
+import re
 import shlex
+from pathlib import Path
 
 from . import remoteinstall as ri
 
@@ -39,7 +42,8 @@ STEPS = (
      "why": "Bento can reach it with no password, which lets passwords be turned off.",
      "check": "grep -qxF {pk} ~/.ssh/authorized_keys 2>/dev/null && echo ok || echo no"},
     {"id": "passwords", "title": "Turn off password logins",
-     "why": "A guessed or default password no longer gets anybody in, and root can't log in over SSH.",
+     "why": "A guessed or default password no longer gets anybody in, and root can't log in over SSH. "
+            "Your own password login stops too, so let your own key in first.",
      "check": ("if grep -qi '^PasswordAuthentication no' " + DROPIN + " 2>/dev/null"
                " && grep -qiE '^Include /etc/ssh/sshd_config.d' /etc/ssh/sshd_config 2>/dev/null;"
                " then echo ok; else echo no; fi")},
@@ -128,6 +132,41 @@ def _firewall(ssh_port: int) -> str:
             "echo 'firewall on; it switches itself off in " + str(UNDO_S) + "s unless Bento can still log in'")
 
 
+KEY_RE = re.compile(r"(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(?:256|384|521)|sk-ssh-ed25519@openssh\.com|"
+                    r"sk-ecdsa-sha2-nistp256@openssh\.com) ([A-Za-z0-9+/]{40,}={0,3})(?: ([\w.@:+-]{1,100}))?")
+
+
+def your_key(text: str) -> str:
+    """A person's own public key, as one clean line, or ''. Only the key type, the key and a
+    plain comment: an authorized_keys line can also carry options (command=…, from=…), and a
+    pasted line must never smuggle one in."""
+    t = " ".join(str(text or "").split())
+    m = KEY_RE.fullmatch(t)
+    if not m:
+        return ""
+    return " ".join(x for x in m.groups() if x)
+
+
+def local_key() -> str:
+    """This person's own key on the machine the terminal runs on, when there is one."""
+    for n in ("id_ed25519.pub", "id_ecdsa.pub", "id_rsa.pub"):
+        try:
+            k = your_key((Path(os.path.expanduser("~/.ssh")) / n).read_text())
+        except OSError:
+            continue
+        if k:
+            return k
+    return ""
+
+
+YOURKEY = {"id": "yourkey", "title": "Let your own key in",
+           "why": "You can still log in with your own key once password logins are off."}
+PASSWORDS_BACK = (
+    "rm -f " + DROPIN + "; sshd -t || { echo 'sshd refused its own configuration' >&2; exit 3; }; "
+    "systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || "
+    "service ssh reload 2>/dev/null || pkill -HUP -x sshd")
+
+
 def _key_snippet(pk: str) -> str:
     return ("umask 077; mkdir -p ~/.ssh; grep -qxF " + shlex.quote(pk) + " ~/.ssh/authorized_keys 2>/dev/null"
             " || echo " + shlex.quote(pk) + " >> ~/.ssh/authorized_keys")
@@ -148,12 +187,14 @@ def remote_for(step: str, pk: str, ssh_port: int = 22, sudo_pw: bool = False) ->
     return ("sudo -S -p '' " if sudo_pw else "sudo -n ") + "sh -c " + shlex.quote(body)
 
 
-def plan(steps, ssh_port: int = 22, sudo_pw: bool = False) -> list[dict]:
-    """What will run there, step by step, shown before it runs."""
+def plan(steps, ssh_port: int = 22, sudo_pw: bool = False, mine: str = "") -> list[dict]:
+    """What will run there, step by step, shown before it runs. `mine` is the person's own
+    public key, let in first, so turning password logins off never shuts them out."""
     pk = ri.public_key() or "<this machine's key>"
-    return [{"id": s["id"], "title": s["title"], "why": s["why"],
-             "runs": remote_for(s["id"], pk, ssh_port, sudo_pw)}
-            for s in STEPS if s["id"] in clean_steps(steps)]
+    first = [{**YOURKEY, "runs": _key_snippet(mine)}] if mine else []
+    return first + [{"id": s["id"], "title": s["title"], "why": s["why"],
+                     "runs": remote_for(s["id"], pk, ssh_port, sudo_pw)}
+                    for s in STEPS if s["id"] in clean_steps(steps)]
 
 
 def _check_script(pk: str) -> str:
@@ -189,7 +230,7 @@ async def check(host: str, user: str, password: str = "", port: int = 22) -> dic
         else:
             err = err or err2
     if code != 0:
-        raise ri.InstallError(ri._why(err, code))
+        raise ri.InstallError(ri._why(err, code, bool(password)))
     facts = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
     done = {s: facts.get(s) == "ok" for s in IDS}
     sudo, apt = facts.get("sudo") == "ok", facts.get("apt") == "ok"
@@ -205,7 +246,7 @@ async def check(host: str, user: str, password: str = "", port: int = 22) -> dic
 
 
 async def secure(host: str, user: str, password: str = "", port: int = 22, steps=None,
-                 on_line=None) -> dict:
+                 on_line=None, mine: str = "") -> dict:
     """Run the chosen steps there, in order, then read the machine back with `check()`.
     Raises InstallError on the first step that fails; what ran before it stays done."""
     _guard(host, user)
@@ -225,6 +266,13 @@ async def secure(host: str, user: str, password: str = "", port: int = 22, steps
     # how to log in: the password until password logins are off, the key after that. sudo
     # may still want the password on stdin; that is the account's, not the SSH login's.
     login = password if before["login"] == "password" else ""
+    if mine:
+        await say(f"→ {YOURKEY['title']}")
+        code, _, err = await ri._run(host, user, port, login, _key_snippet(mine), ri.CHECK_TIMEOUT)
+        if code != 0:
+            raise ri.InstallError(f"{YOURKEY['title']} stopped: {ri._why(err, code, bool(login))}")
+        ran.append("yourkey")
+        await say(f"✓ {YOURKEY['title']}")
     for sid in want:
         if before["done"].get(sid):
             await say(f"✓ {TITLES[sid]}: already done")
@@ -272,6 +320,42 @@ async def secure(host: str, user: str, password: str = "", port: int = 22, steps
     return {"ok": True, "ran": ran, "done": after["done"], "host_key": after["host_key"]}
 
 
+async def let_in(host: str, user: str, password: str = "", port: int = 22, mine: str = "",
+                 passwords_on: bool = False) -> dict:
+    """Let a person back in after Secure it: their own key added, and/or password logins on
+    again (Bento's file in sshd_config.d removed, the rest of sshd's settings as they were).
+    Logs in with this machine's key when the password no longer works."""
+    _guard(host, user)
+    if not mine and not passwords_on:
+        raise ri.InstallError("nothing to do: paste your own key, or ask for password logins back")
+    before = await check(host, user, password, port)
+    login = password if before["login"] == "password" else ""
+    done = []
+    if mine:
+        code, _, err = await ri._run(host, user, port, login, _key_snippet(mine), ri.CHECK_TIMEOUT)
+        if code != 0:
+            raise ri.InstallError(f"your key was not added: {ri._why(err, code, bool(login))}")
+        done.append("yourkey")
+    if passwords_on and before["done"].get("passwords"):
+        if not before["sudo"] and not password:
+            raise ri.InstallError(f"{user} needs a password for sudo there; type it and try again")
+        cmd = ("sudo -S -p '' " if not before["sudo"] else "sudo -n ") + "sh -c " + shlex.quote(PASSWORDS_BACK)
+        code, _, err = await ri._run(host, user, port, login, cmd, ri.CHECK_TIMEOUT,
+                                     stdin=(password + "\n") if not before["sudo"] else None)
+        if code != 0:
+            said = [ri.clean_line(ln) for ln in (err or "").splitlines() if ri.clean_line(ln)]
+            raise ri.InstallError("password logins were not turned back on: "
+                                  + ((said or [ri._why(err, code)])[-1][:200]))
+        done.append("passwords_on")
+        for _ in range(RELOAD_TRIES):      # sshd re-executes on reload, as in secure()
+            code, _, _ = await ri._run(host, user, port, "", "true", ri.CHECK_TIMEOUT)
+            if code == 0:
+                break
+            await asyncio.sleep(RELOAD_WAIT_S)
+    after = await check(host, user, "", port)
+    return {"ok": True, "done": done, "security": after["done"]}
+
+
 async def remove_key(host: str, user: str, password: str = "", port: int = 22, force: bool = False) -> dict:
     """Take this machine's SSH key off that machine (Disconnect). Refused when it is the only
     key there and password logins are off: that would leave nobody able to log in over SSH,
@@ -288,7 +372,7 @@ async def remove_key(host: str, user: str, password: str = "", port: int = 22, f
              "echo pwoff=$(grep -qi '^PasswordAuthentication no' " + DROPIN + " 2>/dev/null && echo yes || echo no)")
     code, out, err = await ri._run(host, user, port, password, probe, ri.CHECK_TIMEOUT)
     if code != 0:
-        raise ri.InstallError(ri._why(err, code))
+        raise ri.InstallError(ri._why(err, code, bool(password)))
     f = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
     if (f.get("ours") or "0").strip() in ("", "0"):
         return {"ok": True, "removed": False, "why": "this machine's key is not on it"}
@@ -300,5 +384,5 @@ async def remove_key(host: str, user: str, password: str = "", port: int = 22, f
            "chmod 600 $t && mv $t $f")
     code, out, err = await ri._run(host, user, port, password, cmd, ri.CHECK_TIMEOUT)
     if code != 0:
-        raise ri.InstallError(ri._why(err, code))
+        raise ri.InstallError(ri._why(err, code, bool(password)))
     return {"ok": True, "removed": True}

@@ -635,7 +635,14 @@ CREATE INDEX IF NOT EXISTS idx_usage_conv ON usage(conversation_id, ts);
 
 
 class Store:
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path | None = None):
+        # No path is the machine's own database: the terminal verbs (`bento pool`, `bento
+        # network`, `bento face`) open it this way, and before this default their ledger
+        # rows raised a TypeError inside a try and were never written.
+        if db_path is None:
+            from . import config
+            db_path = config.DB_PATH
+        db_path = Path(db_path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.path = db_path          # kept: retention reports on the file, not the rows
         self.db = sqlite3.connect(str(db_path), check_same_thread=False)

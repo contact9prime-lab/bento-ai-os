@@ -28,9 +28,11 @@ async function netPaint(){
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
   else rows.push(`<p class="mut prov-empty">Nothing listed yet. Press Look at the network.</p>`);
   // keep what is being typed across a repaint (a broadcast, a line of a running step)
-  const kept={};['net-user','net-pw','dev-user','dev-pw'].forEach(id=>{const e=document.getElementById(id);if(e)kept[id]=e.value});
+  const kept={};['net-user','net-pw','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
+    const e=document.getElementById(id);if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   box.innerHTML=rows.join('');
-  Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(e&&kept[id])e.value=kept[id]});
+  Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
+    if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
   netWire(box);
 }
 
@@ -76,11 +78,18 @@ function netSecureForm(r){
   const c=NET.check[r.ip],steps=(NET.v||{}).steps||[];
   const sel=NET.steps[r.ip]||{};
   return `<div class="dev-form net-form">
-    <label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc((c&&c.user)||r.user||'')}"></label>
+    <label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
     <label>Password <input id="net-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    <label class="net-mine"><span class="net-mine-h">Your own SSH key ${pInfo('After password logins go off, only keys get in. Paste the .pub file from your own computer (~/.ssh/id_ed25519.pub) so you can still log in.')}</span>
+      <input id="net-mine" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAA… you@laptop"></label>
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
       ${c&&!c.problems.length&&steps.some(s=>!c.done[s.id])?`<button class="wiz-next" data-net="go" data-key="${esc(r.key)}">Secure it</button>`:''}</div>
-    ${c?`<div class="net-steps">${steps.map(s=>{const done=!!c.done[s.id],p=(c.plan||[]).find(x=>x.id===s.id);
+    ${c&&c.done.passwords?`<div class="net-letin"><p class="mut">Password logins are off there, so only keys get in. Bento’s key still does.</p>
+      <div class="dev-acts"><button class="endbtn" data-net="letkey" data-key="${esc(r.key)}">Add my key</button>
+      <button class="endbtn" data-net="letpw" data-key="${esc(r.key)}">Turn password logins back on</button></div></div>`:''}
+    ${c?`<div class="net-steps">${(c.plan||[]).filter(p=>p.id==='yourkey').map(p=>`<div class="net-step"><span class="net-tick">＋</span>
+        <div><b>${esc(p.title)}</b><br><span class="mut">${esc(p.why)}</span>
+        <details><summary>What runs there</summary><code class="dev-plan">${esc(p.runs)}</code></details></div></div>`).join('')}${steps.map(s=>{const done=!!c.done[s.id],p=(c.plan||[]).find(x=>x.id===s.id);
       const on=sel[s.id]!==false;
       return `<div class="net-step${done?' done':''}">
         ${done?'<span class="net-tick">✓</span>':`<input type="checkbox" data-step="${esc(s.id)}" data-ip="${esc(r.ip)}" ${on?'checked':''} aria-label="${esc(s.title)}">`}
@@ -97,7 +106,7 @@ function netUnlinkForm(r){
   return `<div class="dev-form net-form">
     <div class="net-steps">${cs.map(c=>`<label class="net-step"><input type="checkbox" data-unlink="${esc(c.id)}" checked>
       <div><b>${esc(netConnTitle(c))}</b><br><span class="mut">${esc(netConnWhy(c))}</span></div></label>`).join('')}</div>
-    ${needUser?`<label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc(r.user||'')}"></label>`:''}
+    ${needUser?`<label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc(r.user||'')}"></label>`:''}
     <div class="dev-acts"><button class="wiz-next" data-net="unlinkgo" data-key="${esc(r.key)}">Disconnect</button></div>
   </div>`;
 }
@@ -108,6 +117,12 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
 function netWire(box){
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));
+  // the command shown after Check it follows the switch: --screen is its last flag, the same
+  // string the server builds (remoteinstall.plan), so what runs is still what was shown
+  const ks=box.querySelector('#dev-kiosk');
+  if(ks)ks.onchange=()=>{const ip=DEV.open,c=DEV.check[ip];if(!c||!c.plan)return;
+    c.plan=c.plan.replace(/ --screen$/,'')+(ks.checked?' --screen':'');
+    const el=box.querySelector('.dev-plan');if(el)el.textContent=c.plan};
   box.querySelectorAll('[data-step]').forEach(c=>c.onchange=()=>{
     const m=NET.steps[c.dataset.ip]=NET.steps[c.dataset.ip]||{};m[c.dataset.step]=c.checked});
 }
@@ -117,7 +132,7 @@ async function netAct(act,b){
   const post=async(url,body,method)=>{const res=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
     const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d.error||('could not do that ('+res.status+')'));return d};
   const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
-    password:(document.getElementById('net-pw')||{}).value||''});
+    password:(document.getElementById('net-pw')||{}).value||'',mine:((document.getElementById('net-mine')||{}).value||'').trim()});
   try{
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/devices/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} answered on ${d.networks}`:`Nothing answered on ${d.networks}.`);return netPaint()}
@@ -141,13 +156,24 @@ async function netAct(act,b){
       try{NET.check[r.ip]=Object.assign(await post('/api/network/check',c),{user:c.user})}
       catch(e){delete NET.check[r.ip];throw e}finally{netPaint()}
       return}
-    if(act==='go'){const c=creds(),sel=NET.steps[r.ip]||{},chk=NET.check[r.ip]||{done:{}};
+    if(act==='letkey'||act==='letpw'){const c=creds();if(!c.user){toast('Who logs in there? Type the user name.');return}
+      if(act==='letkey'&&!c.mine){toast('Paste your own SSH key first',{kind:'warn'});document.getElementById('net-mine')?.focus();return}
+      b.disabled=true;
+      const d=await post('/api/network/letin',act==='letkey'?{...c,passwords:false}:{...c,mine:'',passwords:true});
+      toast(act==='letkey'?'✓ Your key is on '+(r.display||r.ip)+'. Log in with it from your computer.'
+        :'✓ Password logins are back on '+(r.display||r.ip)+'.');
+      if(NET.check[r.ip])NET.check[r.ip].done=d.security||NET.check[r.ip].done;return netPaint()}
+    if(act==='go'){const c=creds(),sel=NET.steps[r.ip]||{};let chk=NET.check[r.ip]||{done:{}};
+      // a key pasted after Check it: check again, so the step that adds it is shown before it runs
+      if(c.mine&&!(chk.plan||[]).some(p=>p.id==='yourkey')){
+        NET.check[r.ip]=chk=Object.assign(await post('/api/network/check',c),{user:c.user});netPaint()}
       const steps=((NET.v||{}).steps||[]).map(s=>s.id).filter(id=>!chk.done[id]&&sel[id]!==false);
-      if(!steps.length){toast('Tick at least one step');return}
-      const titles=((NET.v||{}).steps||[]).filter(s=>steps.includes(s.id)).map(s=>s.title.toLowerCase());
-      if(!await osConfirm(`Secure ${r.display||r.ip}?`,`This will ${titles.join(', ')}. The commands shown run there as ${c.user}.`,{confirmText:'Secure it'}))return;
+      if(!steps.length&&!c.mine){toast('Tick at least one step');return}
+      const titles=(c.mine?['let your own key in']:[]).concat(((NET.v||{}).steps||[]).filter(s=>steps.includes(s.id)).map(s=>s.title.toLowerCase()));
+      const shut=steps.includes('passwords')&&!c.mine?' Your own password login stops too: only this machine’s key gets in until you add yours.':'';
+      if(!await osConfirm(`Secure ${r.display||r.ip}?`,`This will ${titles.join(', ')}. The commands shown run there as ${c.user}.${shut}`,{confirmText:'Secure it'}))return;
       await post('/api/network/secure',{...c,steps});toast('Securing '+(r.display||r.ip)+'…');NET.open='';return netPaint()}
-  }catch(e){toast(String(e.message||e));netPaint()}
+  }catch(e){toast(String(e.message||e),{kind:'err'});netPaint()}
 }
 function netPort(r){return r.ssh&&(r.ports||[]).length?Number(r.ports[0])||22:22}
 function netLine(ev){
