@@ -311,12 +311,13 @@ def problems(c: dict) -> list[str]:
     return out
 
 
-def plan(cfg: dict | None, key_text: str, authorize: bool = False) -> str:
-    """The exact command that will run on the other machine: shown before it runs."""
+def plan(cfg: dict | None, key_text: str, authorize: bool = False, screen: bool = False) -> str:
+    """The exact command that will run on the other machine: shown before it runs. `screen`
+    adds --screen: Bento opens on that machine's own screen when it starts (screen.py)."""
     # No --yes: that answers yes to every OPTIONAL extra (Claude Code, Codex, a boot
     # splash…), which nobody agreed to on this consent screen. With no terminal the
     # installer installs Bento itself and only reports the extras. Found by the live run.
-    flags = ["--lite"] + ([f"--enroll={key_text}"] if key_text else ["--wait"])
+    flags = ["--lite"] + ([f"--enroll={key_text}"] if key_text else ["--wait"]) + (["--screen"] if screen else [])
     cmd = f"curl -fsSL {shlex.quote(install_url(cfg))} | sh -s -- " + " ".join(shlex.quote(f) for f in flags)
     if authorize and not public_key():
         try:
@@ -335,14 +336,14 @@ def plan(cfg: dict | None, key_text: str, authorize: bool = False) -> str:
 
 async def install(cfg: dict, host: str, user: str, password: str, key_text: str,
                   authorize: bool = False, port: int = 22,
-                  on_line=None) -> dict:
+                  on_line=None, screen: bool = False) -> dict:
     """Run the installer there, streaming its lines to `on_line`. Raises InstallError."""
     if missing():
         raise InstallError(missing())
     bad = valid_target(host, user)
     if bad:
         raise InstallError(bad)
-    remote = plan(cfg, key_text, authorize)
+    remote = plan(cfg, key_text, authorize, screen)
     code, out, err, _via = await login_run(host, user, port, password, remote, INSTALL_TIMEOUT, on_line)
     if code != 0:
         said = [clean_line(ln) for ln in (err or "").splitlines() if clean_line(ln)]

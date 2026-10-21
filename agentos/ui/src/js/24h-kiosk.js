@@ -401,6 +401,7 @@ async function faceSettingsPaint(){
       {desc:'This machine’s own screen shows the Office and listens.',
        more:'Only the screen plugged into this machine. A phone or another browser keeps the desktop. Add #kiosk to the address to try it anywhere.',
        f:'kiosk mic microphone always listening screen office raspberry pi wake word'}),
+    faceScreenRow(d.screen),
     pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Its wake word'],['always','Everything it hears']],d.wake||'name'),
       {desc:'With a wake word, anything else said in the room is ignored.',f:'wake word name always listening'}),
     pRow('Wake word',`<input id="s-face-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(d.wake_word||'')}">`,
@@ -426,12 +427,42 @@ async function faceSettingsPaint(){
   box.querySelector('#s-face-buddy').onchange=e=>put({buddy:e.target.value});
   box.querySelector('#s-face-kiosk').onchange=e=>put({kiosk:e.target.checked});
   box.querySelector('#s-face-wake').onchange=e=>put({wake:e.target.value});
+  const sb=box.querySelector('#s-face-screen');if(sb)sb.onclick=()=>faceScreenGo(sb,d.screen);
   box.querySelector('#s-face-word').onchange=e=>put({wake_word:e.target.value.trim()});
   const hb=box.querySelector('#s-face-voiceset');if(hb)hb.onclick=()=>settingsGo('voice');
   box.querySelector('#s-face-test').onclick=async e=>{
     const b=e.target,row=b.closest('.prow'),out=row&&row.querySelector('small');
     b.disabled=true;await voiceWakeTest(out);b.disabled=false;
   };
+}
+/* Open on this screen at start (screen.py): the kiosk drawn by this machine itself, by a
+   desktop autostart or by cage on a machine with no desktop. Not offered off Linux. */
+function faceScreenRow(st){
+  st=st||{};if(!st.road)return '';
+  const need=(st.missing||[]).length?` It installs ${st.missing.join(' and ')} first.`:'';
+  return pRow('Open at start',`<button class="endbtn" id="s-face-screen">${st.on?'Turn off':'Turn on'}</button>`,
+    {desc:esc(st.words||''),
+     more:(st.why?st.why[0].toUpperCase()+st.why.slice(1)+'.':'')+need+' Turning it on lists every change first.',
+     f:'open at start boot screen kiosk raspberry pi cage chromium hdmi display start'});
+}
+async function faceScreenGo(b,st){
+  st=st||{};const on=!st.on;
+  if(on&&!await osConfirm('Open Bento on this screen at start?',
+    (st.road==='console'?'tty1 shows Bento instead of a login prompt, drawn by cage and Chromium.':
+     'Bento opens full screen when the desktop logs in.')+((st.missing||[]).length?` ${st.missing.join(' and ')} will be installed.`:''),
+    {confirmText:'Turn on'}))return;
+  b.disabled=true;b.textContent=on?'Turning on…':'Turning off…';
+  try{
+    const r=await fetch('/api/screen',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){
+      toast(j.error||'could not change that',{kind:'err'});
+      const row=b.closest('.prow'),out=row&&row.querySelector('small');
+      if(out&&(j.needs||[]).length)out.textContent='Run this on the machine: '+j.needs.join('  ·  ');
+      b.disabled=false;b.textContent=on?'Turn on':'Turn off';return}
+    toast('✓ '+((j.screen||{}).words||'done'));
+  }catch(e){toast(String(e.message||e),{kind:'err'})}
+  faceSettingsPaint();
 }
 /* Settings → Voice → Listening: what understands speech on this machine, for the
    kiosk, the wake-word test and the mic. It lived under Appearance → On this screen,

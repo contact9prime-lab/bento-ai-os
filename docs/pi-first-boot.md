@@ -122,6 +122,7 @@ From a terminal:
 bento network look                          # look at the network (or bento pool devices)
 bento network install 192.168.1.40 --user ada --authorize  # asks for the password
 bento network install pi-kitchen --user ada --key-only     # the card carries the leader's key
+bento network install pi-kitchen --user ada --agent-name Chef --kiosk   # named, and opens on its screen
 bento pool sshkey                           # the leader's public key, for Imager's SSH box
 ```
 

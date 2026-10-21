@@ -78,7 +78,7 @@ async function provPaint(){
   rows.push('<div id="prov-out" aria-live="polite"></div>');
   /* a repaint (any provision broadcast, the scan's own) must not drop what is being typed
      into the install form: found in the screenshot walk, where Check it saw an empty user */
-  const kept={};['dev-user','dev-pw','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
+  const kept={};['dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
     if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   box.innerHTML=rows.join('');
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
@@ -166,8 +166,9 @@ function provDevForm(d){
   return `<div class="dev-form">
     <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
     <label>Password <input id="dev-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
-    <label class="prov-opt">${pSwitch('dev-kiosk',false)} Kiosk</label></div>
+    <label class="prov-opt">${pSwitch('dev-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label></div>
     <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">Check it</button>
       ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
     ${DEV.err[d.ip]?`<p class="warn dev-err">✗ ${esc(DEV.err[d.ip])}</p>`:''}
@@ -179,8 +180,9 @@ function provDevForm(d){
 }
 function provDevCreds(){
   const g=id=>(document.getElementById(id)||{});
+  const agent=(g('dev-agent').value||'').trim();
   return {user:(g('dev-user').value||'').trim(),password:g('dev-pw').value||'',authorize:!!g('dev-auth').checked,
-    profile:{kiosk:!!g('dev-kiosk').checked,lite:true}};
+    profile:Object.assign({kiosk:!!g('dev-kiosk').checked,lite:true},agent?{agent_name:agent}:{})};
 }
 function provDevLine(ev){
   const id='dev-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
@@ -195,16 +197,18 @@ function provDevCard(){
     <label>The card’s boot partition <input id="card-path" placeholder="/media/you/bootfs"></label>
     <label>User on the card <input id="card-user" maxlength="32" placeholder="as set in Imager"></label>
     <label>Name on the network <input id="card-host" maxlength="63" placeholder="pi-kitchen"></label>
+    <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="card-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
     <label>Wi-Fi (if Imager did not) <input id="card-ssid" maxlength="32" placeholder="network name"></label>
     <label>Wi-Fi password <input id="card-wpw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true"></label>
     <label>Country <input id="card-cc" maxlength="2" placeholder="GB" style="max-width:60px"></label>
-    <label class="prov-opt">${pSwitch('card-kiosk',false)} Kiosk</label>
+    <label class="prov-opt">${pSwitch('card-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label>
     <div class="dev-acts"><button class="wiz-next" data-prov="devcardgo">Add Bento to this card</button></div>
     <p class="mut" id="card-out"></p></div>`;
   el.querySelector('[data-prov=devcardgo]').onclick=async()=>{
     const g=id=>(document.getElementById(id)||{}).value||'';
     const body={path:g('card-path').trim(),user:g('card-user').trim(),hostname:g('card-host').trim(),
-      profile:{kiosk:!!document.getElementById('card-kiosk').checked,lite:true}};
+      profile:Object.assign({kiosk:!!document.getElementById('card-kiosk').checked,lite:true},
+        g('card-agent').trim()?{agent_name:g('card-agent').trim()}:{})};
     if(g('card-ssid'))body.wifi={ssid:g('card-ssid'),password:g('card-wpw'),country:g('card-cc')||'GB'};
     const r=await fetch('/api/devices/sdcard',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json().catch(()=>({}));const out=document.getElementById('card-out');
@@ -256,7 +260,8 @@ async function provAct(act,b){
       finally{provPaint()}
       return}
     if(act==='devinstall'){const c=provDevCreds();
-      if(!await osConfirm(`Install Bento on ${b.dataset.ip}?`,`The command shown runs there as ${c.user}.`,{confirmText:'Install'}))return;
+      const called=c.profile.agent_name?` Its agent is called ${c.profile.agent_name}.`:'';
+      if(!await osConfirm(`Install Bento on ${b.dataset.ip}?`,`The command shown runs there as ${c.user}.${called}`,{confirmText:'Install'}))return;
       await post('/api/devices/install',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c});DEV.open='';toast('Installing Bento on '+b.dataset.ip+'…');return provPaint()}
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/provision/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}

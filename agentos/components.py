@@ -227,6 +227,17 @@ CATALOG: dict[str, dict] = {
         "detect": lambda: _whisper_ready(),
         "why_unavailable": lambda: _whisper_missing(),
     },
+    # The screen of a machine with no desktop (Raspberry Pi OS Lite): cage runs one
+    # full-screen app, Chromium on the kiosk, from `bento screen on` (screen.py).
+    "cage": {
+        "packages": _same("cage"),
+        "method": "system", "licence": "MIT",
+        "group": "optional", "for_session": False,
+        "title": "Bento on a screen with no desktop (cage)",
+        "unlocks": "Draws Bento full screen on a machine with no desktop, like Raspberry Pi "
+                   "OS Lite, so a screen plugged into it shows the Office and listens.",
+        "detect": lambda: bool(shutil.which("cage")),
+    },
     "alsa-utils": {
         "packages": _same("alsa-utils"),
         "method": "system", "licence": "GPL-2.0+",

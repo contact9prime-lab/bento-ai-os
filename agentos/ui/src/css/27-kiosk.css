@@ -87,11 +87,12 @@ body.kiosk #office-scene canvas{display:block}
 .dev-form{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end;margin-top:6px}
 .dev-form label{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-sm,12px)}
 .dev-form label.prov-opt{flex-direction:row;align-items:center}
+.dev-lbl{display:flex;align-items:center;gap:6px}
 .dev-form input{min-height:var(--tap,32px)}
 .dev-secret{-webkit-text-security:disc}
 .dev-acts{display:flex;gap:8px;flex:1 1 100%}
 .dev-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;flex:1 1 100%;min-height:var(--tap,32px)}
-.dev-facts{flex:1 1 100%;font-size:var(--fs-sm,12px);line-height:1.5}
+.dev-facts{flex:1 1 100%;min-width:0;max-width:100%;overflow-wrap:anywhere;font-size:var(--fs-sm,12px);line-height:1.5}
 .dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}
 .dev-form label.net-mine{flex:1 1 100%;min-width:0}.net-mine-h{display:flex;align-items:center;gap:6px}
 .net-mine input{width:100%;font-family:var(--mono,monospace);font-size:var(--fs-sm,12px)}

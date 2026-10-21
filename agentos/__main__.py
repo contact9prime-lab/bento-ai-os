@@ -4288,6 +4288,73 @@ def _company_cli(args):
     sys.exit(2)
 
 
+def _screen_cli(args):
+    """`bento screen`: Bento on this machine's own screen when it starts (screen.py). `on`
+    shows every change first and asks; `run` and `wait` are what the unit or the desktop's
+    autostart start, not something a person types."""
+    from . import config as _cfgmod
+    from . import screen as scr
+    from .memory import Store
+    cfg = _cfgmod.load_config()
+    a = args.action
+
+    def ledger(action, reason):
+        try:
+            Store().audit_add(principal_kind="user", principal_id="", surface="cli", action=action,
+                              resource="screen:this", effect="allow", rule="person", outcome="ok", reason=reason)
+        except Exception:
+            pass
+    if a == "run":
+        return scr.run(cfg)
+    if a == "wait":
+        scr.wait(cfg)
+        return
+    st = scr.status(cfg)
+    if a == "status":
+        print("  " + st["words"])
+        if st["road"]:
+            print(f"  {st['why']}.")
+            print(f"  screens plugged in: {', '.join(st['screens']) or 'none'}")
+            if st["missing"]:
+                print(f"  needs: {', '.join(st['missing'])} (`bento screen on` installs them, after asking)")
+            if not st["on"]:
+                print("  turn it on:  bento screen on")
+        return
+    if a == "off":
+        got = scr.disable(cfg, say=lambda ln: print("  " + ln))
+        ledger("screen.off", "removed " + (", ".join(got["removed"]) or "nothing"))
+        if got["needs"]:
+            print(f"  ✗ {got['error']}. To finish, run:")
+            for c in got["needs"]:
+                print("    " + c)
+            sys.exit(1)
+        print("  ✓ Bento no longer opens on this screen at start")
+        return
+    if not st["road"]:
+        sys.exit("  " + st["why"])
+    if st["on"] and not st["missing"]:
+        print("  " + st["words"])
+        return
+    print(f"  {st['why']}.\n\n  This will:")
+    for step in scr.plan(cfg):
+        print(f"    {step['title']}{' (as root)' if step['root'] else ''}: {step['why']}\n      {step['runs']}")
+    if not args.yes:
+        try:
+            if input("\n  Go ahead? (y/n) ").strip().lower()[:1] != "y":
+                return
+        except EOFError:
+            sys.exit("\n  Nobody answered, so nothing changed. `bento screen on --yes` skips the question.")
+    got = scr.enable(cfg, say=lambda ln: print("    " + ln))
+    if not got["ok"]:
+        ledger("screen.failed", got["error"])
+        print("  ✗ " + got["error"])
+        for c in got["needs"]:
+            print("    " + c)
+        sys.exit(1)
+    ledger("screen.on", "ran " + ", ".join(got["done"]))
+    print("  ✓ " + scr.status(cfg)["words"])
+
+
 def _face_cli(args):
     """`bento face` — this machine's own screen: one agent drawn, and the kiosk face.
 
@@ -4759,7 +4826,10 @@ def _devices_cli(args, cfg, a, rest, run, port: int = 22, user: str = "", verb: 
             print(f"    ✗ {prob}")
         if c["problems"]:
             sys.exit(1)
-        print("  This will run there:\n    " + ri.plan(cfg, "bento-enroll-1.…", authorize=getattr(args, "authorize", False)))
+        print("  This will run there:\n    " + ri.plan(cfg, "bento-enroll-1.…", authorize=getattr(args, "authorize", False),
+                                                     screen=bool(getattr(args, "kiosk", False))))
+        if getattr(args, "agent_name", ""):
+            print(f"  Its agent is called {getattr(args, 'agent_name')}: say that name to wake it on its screen.")
         if not getattr(args, "yes", False) and input("  Install Bento there? (y/n) ").strip().lower()[:1] != "y":
             return
         prof = prov.clean_profile({"kiosk": bool(getattr(args, "kiosk", False)), "lite": True,
@@ -4771,7 +4841,7 @@ def _devices_cli(args, cfg, a, rest, run, port: int = 22, user: str = "", verb: 
             print("    │ " + ln[:150])
         try:
             got = run(ri.install(cfg, host, user, pw, k["text"], authorize=getattr(args, "authorize", False),
-                                 port=port, on_line=show))
+                                 port=port, on_line=show, screen=bool(getattr(args, "kiosk", False))))
         except ri.InstallError as e:
             prov.drop_key(k["id"])
             ledger("device.failed", f"device:{host}", f"installing on {user}@{host}: {e}")
@@ -4805,7 +4875,7 @@ def _devices_cli(args, cfg, a, rest, run, port: int = 22, user: str = "", verb: 
         try:
             got = sdcard.write(rest[0], url=ri.install_url(cfg), key_text=k["text"], pubkey=pk,
                                user=getattr(args, "user", "") or "", hostname=getattr(args, "hostname", "") or "",
-                               wifi=wifi)
+                               wifi=wifi, screen=bool(getattr(args, "kiosk", False)))
         except sdcard.KitError as e:
             prov.drop_key(k["id"])
             sys.exit("  " + str(e))
@@ -8467,10 +8537,11 @@ def main():
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
-    p_net.add_argument("--kiosk", action="store_true", help="install: set the new machine up as a kiosk")
+    p_net.add_argument("--kiosk", action="store_true",
+                       help="install: open Bento on its own screen at start (the Office, listening)")
     p_net.add_argument("--your-key", default="", help="secure / letin: your own public key file (default: ~/.ssh/id_*.pub here)")
     p_net.add_argument("--passwords-on", action="store_true", help="letin: turn password logins back on")
-    p_net.add_argument("--agent-name", default="", help="install: what the new machine's agent is called")
+    p_net.add_argument("--agent-name", default="", help="install: what its agent is called, and the name you wake it with")
     p_net.add_argument("--steps", default="", help="secure: key,passwords,firewall,updates (default: all)")
     p_net.add_argument("--what", default="", help="disconnect: which ties to remove (default: all of them)")
     p_net.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
@@ -8494,7 +8565,8 @@ def main():
     p_pool.add_argument("args", nargs="*", help="the value")
     p_pool.add_argument("--brain", action="store_true", help="join: think with the leader's brain")
     p_pool.add_argument("--code", default="", help="enable: the six digits on the new machine's screen")
-    p_pool.add_argument("--kiosk", action="store_true", help="enable / key: set the new machine up as a kiosk")
+    p_pool.add_argument("--kiosk", action="store_true",
+                        help="enable / key: set the new machine up as a kiosk; install / sdcard: also open it on its screen")
     p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
     p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
     p_pool.add_argument("--tailscale-key", default="", help="zero: put this Tailscale auth key in the line (not kept)")
@@ -8516,6 +8588,10 @@ def main():
                         help="show | buddy auto|on|off | kiosk on|off | wake name|always | "
                              "word [WAKE WORD] | test | hear ENGINE")
     p_face.add_argument("args", nargs="*", help="the value")
+    p_scr = verb("screen", help="open Bento on this machine's own screen at start: the Office, listening")
+    p_scr.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "run", "wait"],
+                       metavar="ACTION", help="status | on | off  (run and wait are what the screen itself starts)")
+    p_scr.add_argument("--yes", action="store_true", help="on: do not ask before making the changes")
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
@@ -8864,6 +8940,8 @@ def main():
         _network_cli(args)
     elif args.cmd == "face":
         _face_cli(args)
+    elif args.cmd == "screen":
+        _screen_cli(args)
     elif args.cmd == "timetravel":
         _timetravel_cli(args)
     elif args.cmd == "terminal":

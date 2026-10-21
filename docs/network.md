@@ -45,6 +45,11 @@ key this one made for it, so it's set up here the moment it's heard.
 
 New Raspberry Pi OS has no `pi` user. Use the name you typed in Imager's settings.
 
+**Its agent's name** is what you call that machine's agent, like *Chef* or *Fridge*. **Open on its
+screen** (on by default) makes Bento open full screen on that machine when it starts, so you can
+plug a screen in and talk to it. It adds `--screen` to the command shown. See
+[One agent on screen, and the kiosk](small-screens.md#open-on-its-screen-at-start).
+
 When the login is refused, the reason stays under **Check it**:
 
 - **The user name or password was refused.** Check both against what you set in Imager.
@@ -141,6 +146,7 @@ bento network                                   # the list, with each machine's 
 bento network look                              # look at the network, as the tab's button does
 bento network install 192.168.1.40 --user ada   # checks it, shows what runs, asks, installs
 bento network install pi-kitchen --user ada --authorize   # and lets this machine's key in
+bento network install pi-kitchen --user ada --agent-name Chef --kiosk   # named, and opens on its screen
 bento network check 192.168.1.40 --user ada     # which steps are in place; changes nothing
 bento network secure 192.168.1.40 --user ada    # shows what runs, asks, then runs it
 bento network secure pi-kitchen --user ada --your-key ~/.ssh/id_ed25519.pub

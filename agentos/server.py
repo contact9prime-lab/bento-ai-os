@@ -3258,8 +3258,34 @@ async def api_models():
 async def api_face():
     """One agent on screen, and the kiosk face (face.py): one answer for every face."""
     from . import face as facemod
+    from . import screen as screenmod
     cfg = state.machine_cfg()
-    return {**facemod.state(cfg), "description": facemod.describe(cfg)}
+    return {**facemod.state(cfg), "description": facemod.describe(cfg),
+            "screen": await asyncio.to_thread(screenmod.status, cfg)}
+
+
+@app.post("/api/screen")
+async def api_screen(body: dict):
+    """Open Bento on this machine's own screen at start, or stop (screen.py). The machine's
+    screen is the machine's: admin only, a ledger row, and root steps go through the
+    privilege ladder; when it has no root, the answer carries the commands to run."""
+    from . import screen as screenmod
+    if (r := _require_admin()):
+        return r
+    cfg = state.machine_cfg()
+    on = bool((body or {}).get("on"))
+    lines: list = []
+    got = await asyncio.to_thread(screenmod.enable if on else screenmod.disable, cfg, lines.append)
+    if on:
+        _ledger("screen.on" if got["ok"] else "screen.failed", "screen:this",
+                ("ran " + ", ".join(got["done"])) if got["ok"] else got["error"])
+    else:
+        _ledger("screen.off", "screen:this", "removed " + (", ".join(got["removed"]) or "nothing"))
+    st = await asyncio.to_thread(screenmod.status, cfg)
+    if not got["ok"]:
+        return JSONResponse({"error": got.get("error") or "it did not finish",
+                             "needs": got.get("needs") or [], "screen": st, "lines": lines}, status_code=400)
+    return {"ok": True, "screen": st, "lines": lines}
 
 
 @app.put("/api/face")
@@ -13091,8 +13117,15 @@ async def api_devices_check(body: dict):
         got = await ri.check(ip, user, pw, port)
     except ri.InstallError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    got["plan"] = ri.plan(state.machine_cfg(), "bento-enroll-1.…", authorize=bool((body or {}).get("authorize")))
+    got["plan"] = ri.plan(state.machine_cfg(), "bento-enroll-1.…", authorize=bool((body or {}).get("authorize")),
+                          screen=_wants_screen(body))
     return got
+
+
+def _wants_screen(body) -> bool:
+    """The form's "Open on its screen": the kiosk face, and Bento drawn on that screen at start."""
+    prof = (body or {}).get("profile")
+    return bool(isinstance(prof, dict) and prof.get("kiosk"))
 
 
 @app.post("/api/devices/install")
@@ -13115,11 +13148,12 @@ async def api_devices_install(body: dict):
     runs[ip] = {"state": "running", "started": time.time(), "lines": []}
     _ledger("device.install", f"device:{ip}", f"started installing Bento on {user}@{ip}"
             + (" and letting this machine's key in" if b.get("authorize") else ""))
-    asyncio.ensure_future(_device_install(ip, user, pw, port, k, bool(b.get("authorize"))))
-    return {"started": True, "plan": ri.plan(state.machine_cfg(), "bento-enroll-1.…", authorize=bool(b.get("authorize")))}
+    asyncio.ensure_future(_device_install(ip, user, pw, port, k, bool(b.get("authorize")), _wants_screen(b)))
+    return {"started": True, "plan": ri.plan(state.machine_cfg(), "bento-enroll-1.…",
+                                             authorize=bool(b.get("authorize")), screen=_wants_screen(b))}
 
 
-async def _device_install(ip, user, pw, port, k, authorize):
+async def _device_install(ip, user, pw, port, k, authorize, screen=False):
     from . import provision as provmod
     from . import remoteinstall as ri
     run = state["device_installs"][ip]
@@ -13130,7 +13164,8 @@ async def _device_install(ip, user, pw, port, k, authorize):
         run["lines"] = (run["lines"] + [ln])[-40:]
         await _provision_admins({"type": "device_install", "ip": ip, "line": ln})
     try:
-        got = await ri.install(cfg, ip, user, pw, k["text"], authorize=authorize, port=port, on_line=line)
+        got = await ri.install(cfg, ip, user, pw, k["text"], authorize=authorize, port=port, on_line=line,
+                               screen=screen)
         run.update(state="done", finished=time.time())
         d = provmod.load()
         for e in d["devices"].values():
@@ -13172,7 +13207,8 @@ async def api_devices_sdcard(request: Request, body: dict):
     try:
         got = sdcard.write(str(b.get("path") or ""), url=ri.install_url(state.machine_cfg()),
                            key_text=k["text"], pubkey=pk, user=str(b.get("user") or ""),
-                           hostname=str(b.get("hostname") or ""), wifi=b.get("wifi") or None)
+                           hostname=str(b.get("hostname") or ""), wifi=b.get("wifi") or None,
+                           screen=_wants_screen(b))
     except sdcard.KitError as e:
         provmod.drop_key(k["id"])
         return JSONResponse({"error": str(e)}, status_code=400)

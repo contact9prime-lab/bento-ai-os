@@ -3285,6 +3285,27 @@ be on and agents would be working in the office". Five rules:
   or `_step_voice`. A wake word of the person's own (`face.wake_word`) never replaces the
   agent's name.
 
+**Opening on its screen at start is a separate thing from the kiosk face** (`agentos/screen.py`,
+`bento screen`, `/api/screen`, Appearance → Open at start, install.sh `--screen`, the Install form's
+"Open on its screen"; `tests/test_screen.py`). Asked for as "when the Pi has been installed, it opens
+Bento in client mode with the office so we can hook it to a screen and talk to it". `face.kiosk`
+decides how the page LOOKS once something opened it; nothing opened it on Pi OS Lite. Four rules:
+- **Two roads, read from the machine** (`road()`): a desktop (a display manager enabled) gets an XDG
+  autostart and nothing system-wide but the mic policy; no desktop gets cage (MIT, a components entry)
+  running Chromium on tty1 from a system unit with `PAMName` and `Conflicts=getty@tty1`. Never getty
+  autologin: a keyboard on the Pi must never reach a shell. `wait` (ExecStartPre) holds until a screen
+  is connected (`/sys/class/drm`) and the server answers, so a Pi with no screen costs one sleeper.
+- **The mic is allowed for this page only**, by a Chromium policy naming `http://127.0.0.1:<port>`
+  (both policy folders: Debian's chromium and the Pi's chromium-browser). Never
+  `--use-fake-ui-for-media-stream`. Measured: the page got the mic with no prompt, another origin was
+  still asking after 5 s. `--autoplay-policy=no-user-gesture-required` lets the answer be spoken.
+- **What runs is what was shown**: `plan()` is `enable()`'s steps; the form's switch adds `--screen`
+  as the LAST flag of the shown command, and the page follows a later toggle by that one rule. Root
+  goes through `session._run_root`; the hand-back names the exact commands left, and never
+  `sudo bento screen on`, which would write the unit for root.
+- **Its agent's name is the wake word on that screen**: the Install form's name rides the enrolment
+  profile (`agent_name`), and `face.wake_words` always includes the agent's name.
+
 ## Drama, Arena, Watch me once, Time travel: four things a person shows somebody else
 
 Asked for as five features to share (the fifth is the guest pass, above). Each is a module free of HTTP and

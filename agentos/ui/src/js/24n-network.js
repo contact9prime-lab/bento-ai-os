@@ -28,9 +28,11 @@ async function netPaint(){
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
   else rows.push(`<p class="mut prov-empty">Nothing listed yet. Press Look at the network.</p>`);
   // keep what is being typed across a repaint (a broadcast, a line of a running step)
-  const kept={};['net-user','net-pw','net-mine','dev-user','dev-pw'].forEach(id=>{const e=document.getElementById(id);if(e)kept[id]=e.value});
+  const kept={};['net-user','net-pw','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
+    const e=document.getElementById(id);if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   box.innerHTML=rows.join('');
-  Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(e&&kept[id])e.value=kept[id]});
+  Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
+    if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
   netWire(box);
 }
 
@@ -115,6 +117,12 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
 function netWire(box){
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));
+  // the command shown after Check it follows the switch: --screen is its last flag, the same
+  // string the server builds (remoteinstall.plan), so what runs is still what was shown
+  const ks=box.querySelector('#dev-kiosk');
+  if(ks)ks.onchange=()=>{const ip=DEV.open,c=DEV.check[ip];if(!c||!c.plan)return;
+    c.plan=c.plan.replace(/ --screen$/,'')+(ks.checked?' --screen':'');
+    const el=box.querySelector('.dev-plan');if(el)el.textContent=c.plan};
   box.querySelectorAll('[data-step]').forEach(c=>c.onchange=()=>{
     const m=NET.steps[c.dataset.ip]=NET.steps[c.dataset.ip]||{};m[c.dataset.step]=c.checked});
 }

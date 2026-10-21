@@ -8,6 +8,16 @@ can't log in; add this machine's key) from a wrong user or password (new Raspber
 user) and from a blank password the Pi has no key for. The reason stays in the form under *Check it*
 instead of only a toast, and the user box no longer suggests `pi`.
 
+**A Pi opens Bento on its own screen when it starts.** Install Bento from your hub with *Open on its
+screen* (on by default) and a screen plugged into that Pi shows the Office, full screen, listening.
+On Raspberry Pi OS Lite it installs cage and Chromium to draw it, with no shell logged in on the
+screen; on a Pi with a desktop it opens when the desktop logs in. The microphone is allowed for
+Bento's own page only. `bento screen on|off|status` and *Settings → Appearance → Open at start* do the
+same on the machine itself.
+
+**Name its agent when you install it.** *Its agent's name* in the Install form (and `--agent-name`)
+is what you call it on its screen: "Chef", "Fridge".
+
 **Secure it no longer locks you out of your own Pi.** Turning password logins off checked that this
 machine's key still got in, and nobody else's, so your own password login stopped working with no
 warning. Now Secure it takes your own public key and lets it in first, and says so when you don't
