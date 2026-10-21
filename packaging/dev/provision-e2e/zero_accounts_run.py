@@ -2,7 +2,7 @@
 accounts and a stand-in brain) and a Zero (a fresh `bento serve` that has never been set up).
 What it checks, in order:
 
-  1. ada (an admin) makes the Zero line FOR bob; the line carries bob's own key
+  1. bob makes his own Zero line, signed in (it carries his own key); ada cannot make one for him
   2. the Zero is heard and set up with nobody pressing anything, and the hub lists it as bob's
   3. a task typed on the Zero is answered on the hub as bob: his lead is offered his MCP
      server's tool (pantry), ada's is not, and the file comes back to the Zero
@@ -179,18 +179,19 @@ def main():
         _, mcp = wait("bob's pantry server is connected", lambda: (lambda r: r if any(
             s.get("status") == "connected" for s in (r.get("servers") or [])) else None)(
             http("big-box", "GET", "/api/mcp", who="bob")[1]), limit=60)
-        st, pv = http("big-box", "GET", "/api/provision", who="ada")
-        st, z = http("big-box", "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"], "for": "bob"}, who="ada")
+        st, pv = http("big-box", "GET", "/api/provision", who="bob")
+        # a Zero is made by its owner, signed in: bob makes his; nobody makes one for him
+        st, z = http("big-box", "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"]}, who="bob")
         assert st == 200 and z["for"]["name"] == "bob", z
-        st, zb = http("big-box", "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"], "for": "nobody"}, who="ada")
-        st2, zbob = http("big-box", "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"]}, who="bob")
+        st_ada, za = http("big-box", "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"], "for": "bob"}, who="ada")
+        st_own, zown = http("big-box", "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"]}, who="ada")
         cli = bento("big-box", "pool", "zero", "--for", "bob", "127.0.0.1")
         (WORK / "pool-zero-for.txt").write_text("$ bento pool zero --for bob 127.0.0.1\n" + cli.stdout)
-        step("1. ada makes the Zero line for bob",
-             accounts_offered=[a["name"] for a in pv.get("accounts", [])], line_for=z["for"],
-             key=z["key"], unknown_account=zb.get("error"), bob_himself=f"{st2} {zbob.get('error', '')}",
+        step("1. bob makes his own Zero line; ada cannot make one for him",
+             page_offers_others="accounts" in pv, page_says=pv.get("me_name"), line_for=z["for"],
+             key=z["key"], ada_for_bob=f"{st_ada} {za.get('error', '')}", ada_for_herself=zown.get("for"),
              cli=cli.stdout.strip().splitlines()[0] if cli.stdout else cli.stderr)
-        assert st == 400 and st2 == 403, (zb, zbob)
+        assert st_ada == 400 and st_own == 200 and zown["for"]["name"] == "ada" and "accounts" not in pv, (za, zown)
 
         enroll = re.search(r"--enroll=(\S+)", z["line"]).group(1)
         hubs = re.search(r"--hub=(\S+)", z["line"]).group(1)

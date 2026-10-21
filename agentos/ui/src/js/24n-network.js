@@ -52,9 +52,10 @@ function netRowHTML(r,v,can){
       <b>${esc(r.display)}</b>${netBadge(r)}${netSecBadge(r)}
       <span class="mut">${esc(r.ip||'')}${r.mac?' · '+esc(r.mac):''}${what?' · '+esc(what):''}${r.owner_name?' · for '+esc(r.owner_name):''}${seen?' · '+esc(seen):''}${esc(busy)}</span>
     </div>
+    ${r.ssh_off?`<p class="mut net-hint">${esc(r.ssh_off)}</p>`:''}
     ${can?`<div class="net-acts">
       ${r.bento==='none'&&r.ssh&&!v.ssh_missing?`<button class="endbtn" data-net="install" data-key="${esc(r.key)}">Install Bento</button>`:''}
-      ${r.ip&&!v.ssh_missing?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`:''}
+      ${r.ip&&!v.ssh_missing&&(r.ssh||r.bento!=='none'||r.secured_n>=0)?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`:''}
       ${(r.connections||[]).length?`<button class="endbtn" data-net="unlink" data-key="${esc(r.key)}">Disconnect</button>`:''}
       <button class="endbtn" data-net="label" data-key="${esc(r.key)}">Rename</button>
       <button class="endbtn" data-net="forget" data-key="${esc(r.key)}">Not this one</button></div>`:''}

@@ -61,6 +61,7 @@ var OF3_SPARK=/remember|recall|memor|knowledge|kg_|forget/i;
 /* ---------------- may we? ---------------- */
 function of3Wanted(){
   const v=OFFICE.view;if(!v||OF3.failed)return false;
+  if(v.zero)return false;           // a Zero's office is one person drawn flat (office.view)
   if(of3HQ())return of3GL();        // the Office HQ scene is this look by definition
   // The Office scene on the desktop is the comic: Office HQ is the 3D one, so the two scenes
   // are the two looks. Reported as "the 2D comic office I can't see any more, in the scene

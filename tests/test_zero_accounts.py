@@ -75,13 +75,13 @@ def test_a_machine_set_up_by_code_is_the_machines_unless_an_account_is_named(lan
 def test_every_face_can_say_whose_a_zero_is():
     srv = (ROOT / "agentos/server.py").read_text()
     assert "def _zero_for(" in srv and 'provmod.zero_key(owner)' in srv
-    assert '"owner_name"' in srv and '"accounts"' in srv, "the list says whose; an admin can choose"
+    assert '"owner_name"' in srv and '"me_name"' in srv, "the list says whose; a Zero is the signed-in person's"
     assert 'with usersmod.as_user(r.get("owner") or "")' in srv, \
         "the hub's half of a Zero (its cells, its folder) is written in the owner's account"
     main = (ROOT / "agentos/__main__.py").read_text()
     assert '"--for", dest="for_account"' in main and "prov.zero_key(owner)" in main
     js = (ROOT / "agentos/ui/src/js/24j-provision.js").read_text()
-    assert "zero-for" in js and "owner_name" in js
+    assert "zero-for" not in js and "owner_name" in js and "me_name" in js
 
 
 def test_a_zeros_office_says_its_brain_is_on_the_hub():

@@ -319,11 +319,20 @@ def view(cfg: dict, store) -> dict:
     # Buddy (face.py): only the lead is drawn. Specialists still exist and still work,
     # and the page lights the lead's desk for their work; the editor keeps the full plan.
     from . import face as facemod
+    from . import zero as zeromod
     one = facemod.buddy(cfg)
     if one:
         rooms = [r for r in rooms if r["kind"] in ("lead", "lounge")]
+    # A Zero is a small screen whose work runs on its hub: one person at a desk, drawn flat.
+    # No lounge regulars, no pet, no meeting table, no 3D. Only what is DRAWN changes; the
+    # saved plan is left alone, so the machine looks the same again if it stops being a Zero.
+    is_zero = zeromod.runs_on_hub(cfg)
+    if is_zero:
+        one = True
+        rooms = [r for r in rooms if r["kind"] == "lead"]
+        office = {**office, "look": "flat", "pet": "none", "meeting": False, "lounge": False}
     return {"office": office, "rooms": rooms, "agents": [r for r in roster if r.lower() not in away],
-            "buddy": one, "brain": _brain_here(cfg, store),
+            "buddy": one, "zero": is_zero, "brain": _brain_here(cfg, store),
             "looks": LOOKS,
             "style": STYLES[office["style"]], "styles": STYLES, "colors": COLORS,
             "decor": list(DECOR), "pets": list(PETS), "max_departments": MAX_DEPTS}

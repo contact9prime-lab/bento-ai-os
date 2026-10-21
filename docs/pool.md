@@ -52,7 +52,7 @@ community at all.
 
 ![The leader's toast when a new machine turns on](screenshots/provision-toast.png)
 
-Press **Review**, or open *Settings → Team & Communications → New machines*. Every machine heard
+Press **Review**, or open *Settings → Network → Set machines up*. Every machine heard
 is listed with its board, its memory and its id. Tick the ones to set up, type the code shown
 on each one's screen, choose what they become, and press **Enable with an agent**.
 

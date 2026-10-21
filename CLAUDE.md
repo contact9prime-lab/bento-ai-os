@@ -3128,6 +3128,10 @@ mode the souls and memory and kb should be with the hub and sectioned". Five rul
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their
 own zeros" and "a lighter Pi: one agent, office, visits and answers". Five rules:
+- **A Zero is made by its owner, signed in, and for nobody else** (`server._zero_for`). The page
+  shows no list of accounts (`me_name` only); naming another account is refused, admin or not.
+  Anyone signed in may make their own line (`can_zero`); enabling other machines stays admin.
+  The terminal has no sign-in, so `bento pool zero --for` is the hub admin's at the box.
 - **The link's owner is the account it was made for.** The automatic key is one per account (`owner`
   on the key), `enable` writes the link with that owner, and `_team_on_ask` already enters
   `users.as_user(lk["owner"])`, so the Zero is answered with that person's lead, memory and USER_KEYS
@@ -3139,6 +3143,9 @@ own zeros" and "a lighter Pi: one agent, office, visits and answers". Five rules
   after a reboot found no MCP for the account nobody had signed in to.
 - **A Zero starts no integrations** (`hub_only` in startup, `_build_user_services._run`): no MCP, no
   Telegram, no WhatsApp, no account bridges. Its integrations are the hub's.
+- **A Zero's Office is one person, drawn flat** (`office.view`: only the lead's room, look `flat`,
+  no pet, lounge or meeting room, `zero: true`; `of3Wanted` returns false on it, HQ included).
+  Only what is drawn changes; the saved plan is left alone.
 - **The light face is a filter, never a second page**: `ZERO_APPS` for the dock, deck, launchers and
   palette, `ZERO_TABS_HIDDEN` for Settings (with `zeroSettingsNote` saying where they live),
   one-agent buddy by default, the Office's brain `{"on": hub}` (`office._brain_here`). `/api/platform`
@@ -3175,6 +3182,17 @@ Six rules:
   first-boot command (re-writing replaces ours, never duplicates). A bookworm card (`firstrun.sh`,
   no cloud-init) and a folder that is not a boot partition are refused in a sentence. The route
   is loopback-only: it writes a local path.
+- **Found is "something answered", never "SSH is open"** (`_touch`, `scan`; `tests/test_discovery_gaps.py`).
+  Reported as "a raspi on the network is not being discovered": the scan listed only open ports,
+  and Imager leaves SSH off. A refused connection is a machine (`seen_by: refused`); knocking makes
+  the kernel ARP the segment, so a neighbour-table entry for an address just knocked is a machine
+  that drops everything (`arp`). No ping: it needs privileges and ARP already answers on the LAN.
+  `ssh_off_words` says how to turn SSH on, and the row offers no button that cannot log in. The
+  scan then asks mDNS for each address's name (`mdns_names`, one legacy-unicast reverse query from
+  a port of our own, never by the ear). `my_addresses` skips every address this machine holds.
+- **The ear is its own answer** (`provision.hearing_devices`), not `watching()`: a hub on Claude
+  Code cannot lead a community and so heard no Pi. `watching()` is also true once this machine
+  handed out an automatic key (a Zero line), or its Zeros announced themselves to nobody.
 - **Admin only, no agent tool, a ledger row per step** (`device.seen/scan/install/installed/
   failed/sdcard`). Logging into another machine is the largest thing this OS does to anything
   it doesn't own. `AGENTOS_SCAN_NETWORKS`/`_PORTS`, `AGENTOS_MDNS_PORT`, `AGENTOS_INSTALL_URL`

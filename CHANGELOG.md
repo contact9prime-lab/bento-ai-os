@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.71 — 2026-10-21
+
+**A Pi with SSH off is found.** *Look at the network* listed a machine only when SSH or Bento's port
+was open, and Raspberry Pi Imager leaves SSH off, so a Pi on your network could be invisible. Now a
+machine that refuses the knock is listed, and so is one whose firewall drops everything, because it
+still answers when this machine asks the network who is at its address. Its row says SSH is off and
+how to turn it on. The scan also asks each machine its own name over mDNS. Checked against three
+stand-in Pis: the old scan found one, this one finds all three.
+
+**A hub on Claude Code hears new Pis.** The ear that listens for a Pi saying its name started only on
+a machine that could lead a community, which needs a provider model, so a hub on Claude Code heard
+nothing. It now listens whatever its brain, and a hub that handed out a Zero line listens for its Zeros.
+
+**A Zero is made by its owner.** *Make a Zero* makes a line for the person signed in, and nobody else:
+there's no list of other people, and the hub refuses a line made for someone else. Anyone signed in
+can make their own Zero.
+
+**A Zero's Office is one person, drawn flat.** No lounge, no pet, no 3D.
+
 ## 0.6.70 — 2026-10-21
 
 **A Zero belongs to a person on the hub, and works with their integrations.** On a hub with

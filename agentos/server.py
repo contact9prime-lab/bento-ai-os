@@ -891,20 +891,25 @@ async def _provision_sync():
     if want_watch and not watch:
         with contextlib.suppress(OSError):
             state["provision_watch"] = await provmod.Watch(on_new=_provision_new).start()
-        # the ear for machines WITHOUT Bento: a Pi saying its name on the network (netscan.py)
-        from . import netscan
-        try:
-            state["device_ear"] = await netscan.MdnsEar(_device_heard).start()
-        except OSError as e:
-            state["store"].log("provision", f"cannot listen for new devices' names (mDNS): {e}")
     elif watch and not want_watch:
         with contextlib.suppress(Exception):
             await watch.stop()
         state["provision_watch"] = None
-        if state.get("device_ear"):
-            with contextlib.suppress(Exception):
-                await state["device_ear"].stop()
-            state["device_ear"] = None
+    # the ear for machines WITHOUT Bento: a Pi saying its name on the network (netscan.py).
+    # Its own answer, not the watch's: a hub on Claude Code could not lead a community and
+    # so heard no Pi at all.
+    want_ear, ear = provmod.hearing_devices(cfg), state.get("device_ear")
+    if want_ear and not ear and not state.get("device_ear_failed"):
+        from . import netscan
+        try:
+            state["device_ear"] = await netscan.MdnsEar(_device_heard).start()
+        except OSError as e:
+            state["device_ear_failed"] = True       # said once, not every heartbeat
+            state["store"].log("provision", f"cannot listen for new devices' names (mDNS): {e}")
+    elif ear and not want_ear:
+        with contextlib.suppress(Exception):
+            await ear.stop()
+        state["device_ear"] = None
 
 
 def _device_heard(name: str, ip: str):
@@ -1032,20 +1037,21 @@ async def _provision_claimed(got: dict):
 
 
 def _zero_for(raw) -> tuple[str | None, str]:
-    """The account a Zero is made for, from a name or an id: (uid, error). Accounts are
-    isolated by directory, so the account decides whose agents, memory and integrations
-    (MCP servers, mail, channels: users.USER_KEYS) answer the Zero. '' is the machine,
-    the only answer where there are no accounts; with accounts, nothing given is the
-    person asking."""
+    """The account a Zero is made for: (uid, error). Always the person signed in. Accounts
+    are isolated by directory, so the owner decides whose agents, memory and integrations
+    (MCP servers, mail, channels: users.USER_KEYS) answer the Zero, and nobody may hand
+    another person's integrations to a machine. '' is the machine where there are no
+    accounts. Naming yourself (by id or name) is fine; naming anyone else is refused."""
     if not usersmod.enabled():
         return "", ""
+    me = usersmod.current() or ""
     v = str(raw or "").strip()
     if not v:
-        return usersmod.current() or "", ""
+        return me, ""
     u = usersmod.get(v) or usersmod.by_name(v)
-    if not u:
-        return None, f"there is no account called {v!r} on this machine"
-    return u["id"], ""
+    if not u or u["id"] != me:
+        return None, "a Zero is made for the person signed in, and only for them"
+    return me, ""
 
 
 def _account_name(uid: str) -> str:
@@ -1129,10 +1135,12 @@ def _provision_view() -> dict:
             "door": bool(state.get("provision_door")),
             "seen": [{**m, "owner_name": _account_name(m.get("owner") or "")} for m in provmod.seen_list()],
             "keys": provmod.keys(),
-            # whose a Zero is: the accounts an admin can make one for (none without accounts)
-            "accounts": ([{"id": u["id"], "name": u["name"]} for u in usersmod.list_users()]
-                         if can and usersmod.enabled() else []),
+            # whose a Zero is: always the person signed in ('' without accounts). No list of
+            # the other accounts: a Zero is never made for somebody else (_zero_for).
             "me": usersmod.current() or "",
+            "me_name": _account_name(usersmod.current() or "") if usersmod.enabled() else "",
+            # making your own Zero is not an admin's act (api_provision_zero)
+            "can_zero": bool(usersmod.current()) or not usersmod.enabled(),
             "role": poolmod.load().get("role") or "", "has_brain": poolmod.has_brain(cfg),
             "can_change": can, "devices": _device_rows(), "ear": bool(state.get("device_ear")),
             "ssh_missing": _ri().missing(), "pubkey": _ri().public_key(),
@@ -12908,9 +12916,11 @@ async def api_provision_standard_agent_drop(name: str):
 @app.post("/api/provision/zero")
 async def api_provision_zero(body: dict):
     """The one line that makes a Zero: install.sh with this hub's automatic key and its
-    addresses. A Tailscale auth key, when given, goes into the line and is not kept."""
-    if (r := _require_admin()):
-        return r
+    addresses. A Tailscale auth key, when given, goes into the line and is not kept.
+    Anyone signed in may make their OWN Zero (it is answered as them, with their agents and
+    integrations, as a chat from another device is); nobody makes one for somebody else."""
+    if usersmod.enabled() and not usersmod.current():
+        return JSONResponse({"error": "sign in to make a Zero"}, status_code=403)
     from . import provision as provmod
     b = body or {}
     owner, err = _zero_for(b.get("for"))

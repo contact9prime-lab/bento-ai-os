@@ -102,8 +102,8 @@ installed from the leader:
    *raspberrypi joined the network without Bento*. Or press **Look at the network** to knock
    on every address of this machine's own network.
 2. Every machine that answers is listed with its name, its maker (from the MAC), its SSH banner
-   and an OS hint. Pis are marked.
-3. Press **Install Bento** on one, under *Settings → Team & Communications → Devices without Bento*. Type the user and password that Imager set, or leave the
+   and an OS hint. Pis are marked. A Pi with SSH off is listed too, with how to turn SSH on.
+3. Press **Install Bento** on one, in *Settings → Network*. Type the user and password that Imager set, or leave the
    password empty if the card already carries the leader's key. **Check it** logs in, reads what
    the machine is (processor, board, free space, memory) and changes nothing. It shows the exact
    command that will run there and the fingerprint of that machine's SSH key.
