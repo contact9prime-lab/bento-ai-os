@@ -122,6 +122,41 @@ bento pool mind                  # on a Zero: what its hub keeps for it
 
 ![bento pool mind on the hub and on the Zero](screenshots/zero-mind-terminal.png)
 
+## Whose it is
+
+On a hub with accounts, every Zero belongs to one of them. *Make a Zero* has a **For** list (it
+shows only on a machine with accounts), and the line it prints carries that account's key. A Zero
+set up with it is that account's: the hub answers it as that person, with their lead, their
+specialists, their memory and their integrations. Bob's Zero can use the MCP servers Bob set up,
+and Ada's can't, even on the same hub.
+
+![Make a Zero on a hub with accounts: For bob](screenshots/zero-for-account.png)
+
+Integrations were already per account: MCP servers, channels, mail, calendar and sign-ins are
+each person's own, kept in their own home. AI provider keys stay the machine's, because they
+spend its money. What changed is that a Zero now attaches to an account. Before, every Zero was
+answered as the machine, which on a hub with accounts meant nobody's integrations.
+
+From a terminal: `bento pool zero --for bob` prints Bob's line, and `bento pool enable … --for bob`
+sets a machine up for Bob by its code. Without `--for`, an admin gets their own line. A Zero set
+up by its code with no account named stays the machine's, as before.
+
+## What it shows
+
+A Zero is light on purpose. It has no integrations of its own, so it doesn't start any: no MCP
+servers, no Telegram, no WhatsApp. Its screen is one agent and the basics:
+
+- **Chat**, where its answers arrive, with any file the hub made.
+- **Office**, with one agent, and **Visit** to look in on the hub's office.
+- **Files**, **Settings** and **Docs**.
+
+A *Zero · hub* chip in the menu bar opens the Office. Settings leaves out AI providers,
+Executors, Channels and Accounts, and says at the top where those live. The Brain row says the
+agent thinks on the hub, and the Office's brain says *on* the hub, because that's where its
+memory is.
+
+![A Zero's desktop: one agent, Chat, Office, Files, Settings, Docs](screenshots/zero-light-face.png)
+
 ## What keeps it safe
 
 - **The hub only hears a Zero, it never trusts one.** An announcement is a stranger's words,
@@ -145,8 +180,9 @@ bento pool mind                  # on a Zero: what its hub keeps for it
 
 ## The three faces
 
-- **Desktop:** *Settings → Team & Communications → New machines*: Make a Zero, Standard setup,
-  Its agents, and a *via* label on each machine heard.
+- **Desktop:** *Settings → Team & Communications → New machines*: Make a Zero (with *For* on a
+  hub with accounts), Standard setup, Its agents, and a *via* label and the owner on each machine
+  heard. On the Zero itself, the light desktop above.
 - **Terminal:** `bento pool zero`, `bento pool standard`, `bento pool hub`, and `bento link`
   shows the standing folder for each Zero.
 - **Session UI:** the same Settings page; nothing here touches the compositor.
@@ -168,6 +204,13 @@ bento pool mind                  # on a Zero: what its hub keeps for it
   before moves once. An unreachable hub is said. The hub's `bento pool mind` was found
   printing nothing by the live run, and is tested now.
 - The live run's step 5 does the same on real servers, through the routes the screens use.
+
+- `tests/test_zero_accounts.py`: one key per account, a machine set up with an account's line
+  belongs to it, a code with no account named stays the machine's.
+- `packaging/dev/provision-e2e/zero_accounts_run.py`: a hub with two accounts and a Zero, as real
+  servers. Ada makes the line for Bob; the Zero is set up as Bob's; the hub's lead is Bob's
+  agent; Bob's writer is offered Bob's MCP tool and Ada's isn't; the conversation and memory
+  land in Bob's home only; the Zero starts no integrations and shows the light desktop.
 
 Not tested: a real tailnet. The run can't give a process a `100.x` address, so *over Tailscale*
 is covered by the unit tests on the address ranges, and the run's Zero is heard *on your

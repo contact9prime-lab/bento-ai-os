@@ -49,7 +49,7 @@ async function provPaint(){
         <label class="prov-pick"><input type="checkbox" data-pick="${esc(m.fp)}" ${on?'checked':''}${m.state==='enabled'||!can?' disabled':''}>
           <b>${esc(m.name)}</b></label>
         <span class="mut">${esc(hw.board||hw.arch||'a machine')} · ${hw.ram_mb||0} MB · id ${esc(m.id)} · ${esc(state)}
-          · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span></span>
+          · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span>${m.owner_name?` · for ${esc(m.owner_name)}`:''}</span>
         <input class="prov-name" data-name="${esc(m.fp)}" maxlength="32" placeholder="${esc(m.name)}" aria-label="Name for ${esc(m.name)}"${m.state==='enabled'?' disabled':''}>
         ${proof}
         ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Not this one</button>`:''}</div>`}).join('')}</div>`);
@@ -88,13 +88,19 @@ async function provPaint(){
 /* ---------------- a Zero: the one line, and the standard setup every machine gets ---------------- */
 function provZeroHTML(v,can){
   const st=v.standard||{},z=PROV.zero,ags=st.agents||[],rows=[];
-  rows.push(pRow('Make a Zero',`<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
+  /* whose it is: the hub answers a Zero as the account it belongs to, with that person's
+     agents, memory and integrations. Only shown on a machine with accounts. */
+  const accs=v.accounts||[];
+  const forSel=accs.length?`<select id="zero-for" aria-label="Whose Zero">${accs.map(a=>
+      `<option value="${esc(a.id)}"${a.id===(PROV.zeroFor||v.me)?' selected':''}>For ${esc(a.name)}</option>`).join('')}</select>`:'';
+  rows.push(pRow('Make a Zero',`${forSel}<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
       placeholder="Tailscale auth key (optional)" aria-label="Tailscale auth key" style="max-width:230px">
       <button class="endbtn" data-prov="zeroline"${can?'':' disabled'}>Show the line</button>`,
-    {desc:'Paste one line on a Pi and it is set up from here, with nobody at it.',
+    {desc:accs.length?'Paste one line on a Pi. It belongs to the person you choose, and works with their integrations.'
+      :'Paste one line on a Pi and it is set up from here, with nobody at it.',
      more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
      f:'zero pi curl one line install tailscale zero touch hub'}));
-  if(z)rows.push(`<div class="zero-out"><code class="zero-line">${esc(z.line)}</code>
+  if(z)rows.push(`<div class="zero-out">${z.for&&z.for.name?`<p class="mut">For ${esc(z.for.name)}</p>`:''}<code class="zero-line">${esc(z.line)}</code>
       <button class="endbtn" data-prov="zerocopy">Copy</button>
       <p class="mut">${(z.addresses||[]).map(a=>`${esc(a.addr)} ${a.via==='tailscale'?'over Tailscale':'on your network'}`).join(' · ')
         ||'This hub has no address another machine can reach.'}${(z.addresses||[]).some(a=>a.via==='tailscale')?'':
@@ -270,7 +276,8 @@ async function provAct(act,b){
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
     if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
     if(act==='zeroline'){const ts=((document.getElementById('zero-ts')||{}).value||'').trim();
-      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts})}finally{b.disabled=false}
+      const fe=document.getElementById('zero-for');if(fe)PROV.zeroFor=fe.value;
+      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts,for:PROV.zeroFor||''})}finally{b.disabled=false}
       const i=document.getElementById('zero-ts');if(i)i.value='';return provPaint()}
     if(act==='zerocopy'){navigator.clipboard&&navigator.clipboard.writeText((PROV.zero||{}).line||'');toast('✓ copied');return}
     if(act==='stdrm'){await fetch('/api/provision/standard/agent/'+encodeURIComponent(b.dataset.name),{method:'DELETE'});return provPaint()}

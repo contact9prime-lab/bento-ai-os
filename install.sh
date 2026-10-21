@@ -369,6 +369,17 @@ repo_ok() { [ -f "$1/pyproject.toml" ] && grep -q '"agentos' "$1/pyproject.toml"
 
 if [ -d "$DIR/.git" ] && repo_ok "$DIR"; then
   say "updating AgentOS in $DIR"
+  # uv.lock and the UI bundle are generated (updates.DERIVED), and a run on this
+  # machine can rewrite the lock: an older uv, or the piwheels index below. A
+  # rewritten lock makes `git pull` refuse, and the install then went on with the
+  # OLD lock. Found on a Buster Pi: the new installer said cryptography was locked
+  # to 46.0.3 while the copy still held 49.0.0 and compiled it. `bento update`
+  # resets the same two files before it pulls (updates.restore_derived).
+  for _f in uv.lock agentos/ui/index.html; do
+    if ! git -C "$DIR" diff --quiet -- "$_f" 2>/dev/null; then
+      git -C "$DIR" checkout -- "$_f" 2>/dev/null && say "reset $_f to the released copy (it is generated)"
+    fi
+  done
   # A failed pull is survivable — local edits, a detached HEAD, no upstream — and
   # the checkout is known good, so keep going with what is there.
   git -C "$DIR" pull --ff-only || warn "could not fast-forward — keeping what is there"
@@ -520,6 +531,13 @@ else
    That wheel needs glibc 2.28 or newer (Raspberry Pi OS 'Buster' or later). This system has glibc ${_g:-older than 2.28}.
 
    Move to Raspberry Pi OS Buster, Bullseye or Bookworm (32-bit is fine) and re-run me."
+        elif ! grep -q "platform_machine == 'armv7l'" uv.lock 2>/dev/null; then
+          # the installer is new but the copy it installs from is not: the pull above failed
+          die "cryptography tried to compile because the copy of Bento in $DIR is older than the fix. Its
+   uv.lock still asks for a cryptography with no wheel for this Pi. Bring the copy up to date and re-run me:
+       git -C \"$DIR\" checkout -- uv.lock agentos/ui/index.html
+       git -C \"$DIR\" pull --ff-only
+   If the pull still refuses, 'git -C \"$DIR\" status' shows what is in the way."
         else
           die "cryptography tried to compile on this 32-bit Pi, and it should not have to. This copy locks
    cryptography 46.0.3 on 32-bit ARM, whose prebuilt wheel runs on glibc 2.28 and newer (Buster

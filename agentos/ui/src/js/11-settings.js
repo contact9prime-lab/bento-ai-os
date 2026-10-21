@@ -131,12 +131,13 @@ let SETTAB=localStorage.getItem('settab')||'ai';
 
 async function renderSettings(body){
   await loadConfig();
+  if(zeroTabHidden(SETTAB))SETTAB='agent';   // a Zero has no AI providers or channels of its own
   body.innerHTML=`<div class="pshell">
       <div class="phead"><span class="pt">Settings</span><span class="set-saved" id="set-saved" role="status" aria-live="polite"></span><span class="sp"></span>
         <span class="psearch">${SVG_SEARCH}<input id="set-q" type="search" name="settings-find" placeholder="Find a setting…" autocomplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"></span>
       </div>
       <div class="prefs">
-        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label,ico])=>
+        <div class="prefs-side">${SETTINGS_TABS.filter(([id])=>!zeroTabHidden(id)).map(([id,ic,label,ico])=>
           `<button data-t="${id}" class="${SETTAB===id?'on':''}${label.length>16?' lng':''}"><span class="psi"><i>${ic}</i>${uiIcon(ico,14)}</span><span class="pst">${esc(label)}</span></button>`).join('')}</div>
         <div class="prefs-main" id="prefs-main"></div>
       </div>
@@ -185,7 +186,8 @@ function setTab(body,all){
   const main=(body||document).querySelector('#prefs-main');if(!main)return;
   const p=cfg.providers;
   const P=[];
-  const want=id=>all||SETTAB===id;
+  const want=id=>(all||SETTAB===id)&&!zeroTabHidden(id);
+  if(zeroFace())P.push(zeroSettingsNote());
   if(want('ai')){
     P.push(`<h2>AI providers</h2><p class="lead">Every model this machine can think with. Each agent can use its own, set in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. ${pInfo('Cloud providers with a key, models running on this machine, and other AI agents installed here like Claude Code, Gemini CLI or Codex.')}</p>`);
     // The chat chip has always said "change it in Settings → AI providers", and
@@ -305,6 +307,9 @@ function setTab(body,all){
       pRow('Look',`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Change…</button>`
         +`<button class="endbtn" onclick="avatarDesignAsk('@agent')">✦ Describe it</button>`,
         {desc:'Its character in Chat, Logs and the Office. Pick one or describe it.',f:'agent look character avatar face appearance'}),
+      // a Zero thinks with its hub's brain: there is no AI providers tab to send it to
+      zeroFace()?pRow('Brain',`<span class="mut">${esc(zeroHub())}'s</span>`,
+        {desc:'Your agent thinks on '+zeroHub()+', the hub this machine belongs to.',f:'lead agent brain model provider hub zero'}):
       pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
         {desc:'What your lead agent thinks with. You choose it in AI providers.',f:'lead agent brain model provider'}),
       pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',

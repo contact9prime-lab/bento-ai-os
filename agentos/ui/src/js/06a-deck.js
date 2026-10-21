@@ -75,7 +75,7 @@ function deckSetHidden(id,on){
           :`${name} is back on the desktop`);
 }
 /* the apps of a group that actually belong on the shelf right now */
-function deckShown(g){return g.apps.filter(id=>APPS[id]&&(DECKFULL||!deckIsHidden(id)))}
+function deckShown(g){return g.apps.filter(id=>APPS[id]&&zeroAllows(id)&&(DECKFULL||!deckIsHidden(id)))}
 /* every launchable app has a home: new built-ins land in More, user apps in Your apps */
 function deckReconcile(){
   const ids=(typeof launcherIds==='function'?launcherIds():Object.keys(APPS)).filter(id=>APPS[id]);

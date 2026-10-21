@@ -72,7 +72,7 @@ async def models():
 
 @app.get("/__calls")
 async def calls():
-    return {"calls": CALLS[-50:]}
+    return {"calls": CALLS[-200:]}
 
 
 @app.post("/v1/chat/completions")
@@ -80,7 +80,15 @@ async def chat(req: Request):
     body = await req.json()
     msgs = body.get("messages", [])
     text, call = _reply(msgs)
-    CALLS.append({"answer": (text or json.dumps(call))[:160]})
+    system = next((_text(m.get("content")) for m in msgs if m.get("role") == "system"), "")
+    # which tools this request was offered, and whose prompt it was: the per-account run
+    # reads these to see whose integrations answered a Zero
+    CALLS.append({"answer": (text or json.dumps(call))[:160],
+                  "tools": [t.get("function", {}).get("name") for t in body.get("tools") or []],
+                  "linked_lead": "is the lead of the linked team" in (system + " ".join(
+                      _text(m.get("content")) for m in msgs if m.get("role") == "user")),
+                  "writer": "WRITER-SOUL" in system,
+                  "agent": (re.search(r"You are (\w+)", system) or [None, ""])[1]})
 
     async def gen():
         if call:

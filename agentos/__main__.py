@@ -4651,11 +4651,14 @@ def _provision_cli(args, cfg, a, rest, val, run):
         from . import zero as zeromod
         addrs = zeromod.hub_addresses()
         hubs = zeromod.clean_hubs(rest) or [x["addr"] for x in addrs]
-        key = prov.zero_key()
+        owner = _zero_account(getattr(args, "for_account", ""))
+        key = prov.zero_key(owner)
         try:
             line = zeromod.one_line(cfg, key["text"], hubs, getattr(args, "tailscale_key", "") or "")
         except ValueError as e:
             sys.exit("  " + str(e))
+        if owner:
+            print(f"  For {_usersmod().get(owner)['name']}: their agents, memory and integrations answer it.")
         print("  Paste this on the Pi (any Pi or small Linux machine, as a user that can sudo):\n")
         print(f"    {line}\n")
         for x in addrs:
@@ -4739,6 +4742,7 @@ def _provision_cli(args, cfg, a, rest, val, run):
     prof = prov.clean_profile({"kiosk": bool(getattr(args, "kiosk", False)), "lite": True,
                                "agent_name": getattr(args, "agent_name", "") or ""})
     store = Store()
+    owner = _zero_account(getattr(args, "for_account", "")) if getattr(args, "for_account", "") else None
     for n in names:
         t = prov.find_seen(n)
         if not t:
@@ -4746,7 +4750,7 @@ def _provision_cli(args, cfg, a, rest, val, run):
             continue
         try:
             r = run(prov.enable(cfg, t, prof, code=getattr(args, "code", "") or "",
-                                pool_info={"id": d["pool"]["id"], "name": d["pool"]["name"]}))
+                                pool_info={"id": d["pool"]["id"], "name": d["pool"]["name"]}, owner=owner))
         except ValueError as e:
             print(f"  {t['name']}: {e}")
             continue
@@ -4758,13 +4762,35 @@ def _provision_cli(args, cfg, a, rest, val, run):
             pass
         if r["profile"].get("execution") == "hub":
             from . import zero as _z
-            done = _z.hub_side(store, cfg, r["label"])
+            # in the account the machine belongs to: its store, its workspace
+            us = _usersmod()
+            o_store = us.store_for(r.get("owner") or "") if r.get("owner") else store
+            o_cfg = us.cfg_for(r["owner"], cfg) if r.get("owner") else cfg
+            done = _z.hub_side(o_store, o_cfg, r["label"])
             with contextlib.suppress(Exception):
-                store.audit_add(principal_kind="user", principal_id="", surface="cli", action="provision.hub",
+                o_store.audit_add(principal_kind="user", principal_id="", surface="cli", action="provision.hub",
                                 resource=f"team:{r['label']}/*", effect="allow", rule="person", outcome="ok",
                                 reason="; ".join(done))
         print(f"  ✓ {r['name']} is set up ({r['how']}, heard {_zero_words(r.get('via'))}) and is joining "
               f"'{d['pool']['name']}'.")
+
+
+def _usersmod():
+    from . import users
+    return users
+
+
+def _zero_account(raw: str) -> str:
+    """`--for NAME`: the account a Zero belongs to ('' is the machine). Without accounts
+    there is only the machine; with them, a name that is not one is refused."""
+    us = _usersmod()
+    v = (raw or "").strip()
+    if not us.enabled() or not v:
+        return ""
+    u = us.get(v) or us.by_name(v)
+    if not u:
+        sys.exit(f"  there is no account called {v!r} here (`bento users` lists them)")
+    return u["id"]
 
 
 def _zero_mind_cli(cfg, rest, soul_file, run):
@@ -8229,6 +8255,8 @@ def main():
     p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
     p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
     p_pool.add_argument("--tailscale-key", default="", help="zero: put this Tailscale auth key in the line (not kept)")
+    p_pool.add_argument("--for", dest="for_account", default="",
+                        help="zero / enable: the account it belongs to (its agents and integrations answer it)")
     p_pool.add_argument("--soul", default="", help="mind ZERO: replace that Zero's soul with this file")
     p_pool.add_argument("--user", default="", help="install / sdcard: the user on the other machine")
     p_pool.add_argument("--password-stdin", action="store_true", help="install / sdcard: read the password from stdin")

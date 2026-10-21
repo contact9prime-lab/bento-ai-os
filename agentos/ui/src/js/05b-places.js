@@ -42,12 +42,12 @@ var APP_WORDS={
   logs:['diary','events','errors'],
   tokens:['usage','cost','spend','billing'],
 };
-function placeSettings(tab){return ()=>{
+function placeSettings(tab){const go=()=>{
   SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
   openApp('settings');
   // an open Settings window is already painted on another pane: move it
   setTimeout(()=>{if(typeof settingsGo==='function')settingsGo(tab)},60);
-}}
+};go.tab=tab;return go}
 /* A folded app's tab (APP_FOLD in 04-wm.js): opening the old id picks the tab. */
 function placeFold(id){return ()=>openApp(id)}
 function placeMissions(tab,sub){return ()=>{
@@ -92,7 +92,7 @@ var PLACES=[
   ['Rules','permissions','Permissions → Rules',['policies','policy','rules','always allow','always deny'],placeFold('policies')],
   ['Ledger','permissions','Permissions → Ledger',['audit','ledger','decisions','history of decisions','who did what'],placeFold('audit')],
   ['Quarantine','permissions','Permissions → Quarantine',['quarantine','held','stopped','blocked','suspended','runaway'],placeFold('quarantine')],
-].map(([label,app,hint,words,go])=>({label,app,hint,words,
+].map(([label,app,hint,words,go])=>({label,app,hint,words,tab:go.tab||'',
   // Watch me once notes a place as the step (00i-watch.js), not the app it opens
   go:()=>{if(typeof watchNote==='function')watchNote('place',label);return go()}}));
 

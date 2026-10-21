@@ -621,7 +621,8 @@ function handle(ev){
       else if(ev.brightness!==undefined)toast('brightness '+ev.brightness+'%');
       break;
     case 'platform':   // the compositor appeared (or went away) — re-read what we can do
-      loadPlatform().then(()=>{updateNativeWindows();refreshApp('syssettings');refreshApp('control')});
+      loadPlatform().then(()=>{updateNativeWindows();refreshApp('syssettings');refreshApp('control');
+        if(typeof zeroApply==='function')zeroApply()});
       break;
     case 'wallpaper': loadWallpaper(); toast('wallpaper updated'); break;
     case 'skills': refreshApp('skills'); break;      // the agent installed one (install_skill), with your yes

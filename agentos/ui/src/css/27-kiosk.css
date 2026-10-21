@@ -101,3 +101,14 @@ body.kiosk #office-scene canvas{display:block}
 
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
 .mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}
+
+/* A Zero's light face (00k-zeroface.js): which hub it belongs to, on the bar and in Settings */
+.zero-chip{display:inline-flex;align-items:center;height:22px;padding:0 10px;margin-right:6px;border-radius:11px;
+  font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;color:var(--txt);
+  background:color-mix(in srgb,var(--acc) 18%,transparent);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent)}
+.zero-note{margin:0 0 14px;padding:12px 16px;border-radius:12px;line-height:1.45;font-size:13px;color:var(--txt);
+  background:color-mix(in srgb,var(--acc) 10%,var(--bg2));border:1px solid color-mix(in srgb,var(--acc) 30%,transparent)}
+.zero-note b{display:block;margin-bottom:2px}
+@media (max-width:600px){.zero-chip{max-width:110px;overflow:hidden;text-overflow:ellipsis}}
+/* a Zero has no company of its own: its departments are on the hub */
+body.zero-face .of-co{display:none}

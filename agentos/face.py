@@ -41,10 +41,14 @@ def buddy_setting(cfg: dict) -> str:
 
 
 def buddy(cfg: dict) -> bool:
-    """Is only the lead drawn? `auto` means: in Light mode."""
+    """Is only the lead drawn? `auto` means: in Light mode, or on a Zero whose work runs
+    on its hub (it has one agent, and the crew is the hub's)."""
     v = buddy_setting(cfg)
     if v != "auto":
         return v == "on"
+    from . import zero as zeromod
+    if zeromod.runs_on_hub(cfg):
+        return True
     from . import profile
     return profile.resolve(cfg) == "lite"
 

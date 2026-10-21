@@ -3124,6 +3124,26 @@ mode the souls and memory and kb should be with the hub and sectioned". Five rul
 - **What it kept before moves once** (`move_local`, `cfg.zero.moved`, a `zero.moved` row); the local rows
   are left and not read again. Found by the live run: the hub's `bento pool mind` opened no database.
 
+**A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
+`server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
+`packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their
+own zeros" and "a lighter Pi: one agent, office, visits and answers". Five rules:
+- **The link's owner is the account it was made for.** The automatic key is one per account (`owner`
+  on the key), `enable` writes the link with that owner, and `_team_on_ask` already enters
+  `users.as_user(lk["owner"])`, so the Zero is answered with that person's lead, memory and USER_KEYS
+  integrations (MCP, channels, mail). Owner `''` (a code, no `--for`) stays the machine's.
+- **The hub's half is written in the owner's account** (`hub_side` under `users.as_user(owner)`, in
+  the route and in `bento pool enable`), or the cells and the standing folder land in the machine's
+  database while the link answers as the person.
+- **An owner's services start with the server** (`_start_account_bridges`), or a Zero's question
+  after a reboot found no MCP for the account nobody had signed in to.
+- **A Zero starts no integrations** (`hub_only` in startup, `_build_user_services._run`): no MCP, no
+  Telegram, no WhatsApp, no account bridges. Its integrations are the hub's.
+- **The light face is a filter, never a second page**: `ZERO_APPS` for the dock, deck, launchers and
+  palette, `ZERO_TABS_HIDDEN` for Settings (with `zeroSettingsNote` saying where they live),
+  one-agent buddy by default, the Office's brain `{"on": hub}` (`office._brain_here`). `/api/platform`
+  carries `zero`, and the page branches on that, never on the board.
+
 ## Machines WITHOUT Bento: heard, offered, installed over SSH or from the SD card
 
 `agentos/netscan.py` (the passive mDNS ear + a scan on request) + `agentos/remoteinstall.py`

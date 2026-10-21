@@ -103,6 +103,7 @@ connect();
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
     if($('#setup-wiz'))return;      // a first run has no desktop to bring back
     // the kiosk face (24h-kiosk.js): this machine's own screen as the Office, listening
+    try{if(typeof zeroApply==='function')zeroApply()}catch(e){}
     try{if(typeof kioskApply==='function')kioskApply()}catch(e){}
     try{if(typeof provWaitCheck==='function')provWaitCheck()}catch(e){}
     // Bring back the desktop this page had before it reloaded. After the splash,

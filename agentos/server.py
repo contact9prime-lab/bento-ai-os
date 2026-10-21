@@ -129,6 +129,8 @@ def _build_user_services(uid: str, toolbox, broadcast) -> dict:
         # Every loop runs inside the owner's context, so anything they reach for —
         # the store, a tool, a turn — resolves to this person and not to whoever
         # happened to be the last request.
+        if _zero().runs_on_hub(state.machine_cfg()):
+            return              # a Zero: its integrations are on the hub
         with usersmod.as_user(uid):
             await asyncio.gather(tg.run_forever(), mcp.start(), return_exceptions=True)
 
@@ -180,6 +182,17 @@ def _start_account_bridges() -> list[str]:
         seen[tok] = u.get("name") or uid
         usersmod.services(uid)          # builds the bridges and starts their loops
         started.append(uid)
+    # An account whose Zeros run here answers them with its own MCP servers. A Zero asks
+    # with nobody signed in on the hub, so those start with the server too, or its first
+    # question after a restart would be answered without them.
+    with contextlib.suppress(Exception):
+        from . import provision as provmod
+        owners = {e.get("owner") for e in provmod.load()["enabled"].values()
+                  if e.get("execution") == "hub" and e.get("owner")}
+        for uid in sorted(owners - set(started)):
+            if usersmod.get(uid):
+                usersmod.services(uid)
+                started.append(uid)
     return started
 
 
@@ -394,18 +407,26 @@ async def startup():
         uids = [u["id"] for u in usersmod.list_users()] if usersmod.enabled() else [""]
         for uid in uids:
             await _resume_one(uid)
+    # A Zero's work, memory and integrations are on its hub (zero.py): the hub's
+    # account answers it with that person's MCP servers, mail and channels. So a Zero
+    # starts none of its own here; a Pi spends nothing on a bot or a server nobody uses.
+    hub_only = _zero().runs_on_hub(cfg)
+    if hub_only:
+        store.log("system", f"this machine is a Zero of {_zero().state(cfg).get('hub')}: its integrations live on the hub")
     if not idle:
-        asyncio.create_task(_resume_whatsapp_link())
+        if not hub_only:
+            asyncio.create_task(_resume_whatsapp_link())
         asyncio.create_task(scheduler.run_forever())
         asyncio.create_task(_stage_loop())
         state["parked_task"] = asyncio.create_task(_parked_loop(time.time()))
-        asyncio.create_task(mcp.start())
-        asyncio.create_task(telegram.run_forever())
+        if not hub_only:
+            asyncio.create_task(mcp.start())
+            asyncio.create_task(telegram.run_forever())
     # The three services that cannot be shared get built per user, on demand, the
     # first time somebody's request or scheduled job reaches for one.
     usersmod.set_service_factory(
         lambda uid: _build_user_services(uid, toolbox, broadcast))
-    if not idle:
+    if not idle and not hub_only:
         _start_account_bridges()
     from . import attention
     if not idle:
@@ -1010,6 +1031,33 @@ async def _provision_claimed(got: dict):
     await state["broadcast"]({"type": "face"})
 
 
+def _zero_for(raw) -> tuple[str | None, str]:
+    """The account a Zero is made for, from a name or an id: (uid, error). Accounts are
+    isolated by directory, so the account decides whose agents, memory and integrations
+    (MCP servers, mail, channels: users.USER_KEYS) answer the Zero. '' is the machine,
+    the only answer where there are no accounts; with accounts, nothing given is the
+    person asking."""
+    if not usersmod.enabled():
+        return "", ""
+    v = str(raw or "").strip()
+    if not v:
+        return usersmod.current() or "", ""
+    u = usersmod.get(v) or usersmod.by_name(v)
+    if not u:
+        return None, f"there is no account called {v!r} on this machine"
+    return u["id"], ""
+
+
+def _account_name(uid: str) -> str:
+    u = usersmod.get(uid) if uid else None
+    return u["name"] if u else ""
+
+
+def _zero_for_words(uid: str) -> str:
+    u = usersmod.get(uid) if uid else None
+    return f" (for {u['name']})" if u else ""
+
+
 async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
     """Set up each waiting machine in `items` ({fp, code?, name?}) from here. This machine
     leads a community for it (started if there is none), and its link door is opened,
@@ -1043,7 +1091,8 @@ async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
             if it.get("name"):
                 prof["name"] = it["name"]
             try:
-                r = await provmod.enable(cfg, target, prof, code=str(it.get("code") or ""), pool_info=info)
+                r = await provmod.enable(cfg, target, prof, code=str(it.get("code") or ""), pool_info=info,
+                                         owner=it.get("owner"))
             except ValueError as e:
                 _sys_ledger("provision.failed", f"provision:{target['fp'][:16]}", f"{target.get('name')}: {e}")
                 return {"ok": False, "fp": target["fp"], "name": target.get("name"), "error": str(e)}
@@ -1052,9 +1101,14 @@ async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
                     f"heard {_zero().via_words(r.get('via', ''))})"
                     + (f" by {by}" if by else "") + f"; profile {json.dumps(r['profile'])}")
             if r["profile"].get("execution") == "hub":
-                # its work runs here: the lead cell and the two standing permissions
-                done = _zero().hub_side(state["store"], cfg, r["label"])
-                _ledger("provision.hub", f"team:{r['label']}/*", "; ".join(done))
+                # its work runs here: the lead cell and the two standing permissions, in the
+                # account the Zero belongs to, whose agents and integrations will answer it
+                with usersmod.as_user(r.get("owner") or ""):
+                    done = _zero().hub_side(state["store"], state["cfg"], r["label"])
+                    _ledger("provision.hub", f"team:{r['label']}/*",
+                            "; ".join(done) + _zero_for_words(r.get("owner") or ""))
+                if r.get("owner") and usersmod.get(r["owner"]):
+                    usersmod.services(r["owner"])   # their MCP servers answer this Zero
             return {**r, "fp": target["fp"]}
 
         results = await asyncio.gather(*[one(it) for it in items[:provmod.MAX_SEEN]])
@@ -1073,7 +1127,12 @@ def _provision_view() -> dict:
     return {"this": me, "watching": provmod.watching(cfg),
             "listening": bool(state.get("provision_watch")),
             "door": bool(state.get("provision_door")),
-            "seen": provmod.seen_list(), "keys": provmod.keys(),
+            "seen": [{**m, "owner_name": _account_name(m.get("owner") or "")} for m in provmod.seen_list()],
+            "keys": provmod.keys(),
+            # whose a Zero is: the accounts an admin can make one for (none without accounts)
+            "accounts": ([{"id": u["id"], "name": u["name"]} for u in usersmod.list_users()]
+                         if can and usersmod.enabled() else []),
+            "me": usersmod.current() or "",
             "role": poolmod.load().get("role") or "", "has_brain": poolmod.has_brain(cfg),
             "can_change": can, "devices": _device_rows(), "ear": bool(state.get("device_ear")),
             "ssh_missing": _ri().missing(), "pubkey": _ri().public_key(),
@@ -2360,6 +2419,11 @@ async def api_platform(request: Request):
     # screen attached to the machine (or a page opened with #kiosk) turns into the kiosk.
     from . import face as facemod
     state_["face"] = facemod.state(state.machine_cfg())
+    # A Zero gets the light face: its agent, the Office and visits, the answers. Its
+    # integrations live on the hub, so the page leaves their apps and tabs out.
+    zs = _zero().state(state.machine_cfg())
+    state_["zero"] = ({"hub": zs.get("hub", ""), "on_hub": zs.get("execution") == "hub"}
+                      if zs else {})
     # The windows that are live streams of real processes: the shared browser, terminal
     # sessions that outlive their window, and native apps projected into a window. Each
     # says whether it can run here and, if not, why and which component would fix it.
@@ -12788,6 +12852,13 @@ async def api_provision_enable(body: dict):
     if not items:
         return JSONResponse({"error": "choose at least one machine"}, status_code=400)
     from . import provision as provmod
+    if b.get("for"):
+        # set up for an account: its agents and integrations answer the machine. Without
+        # it, a machine heard with a Zero line belongs to whoever the line was made for.
+        owner, err = _zero_for(b.get("for"))
+        if owner is None:
+            return JSONResponse({"error": err}, status_code=400)
+        items = [{**x, "owner": owner} for x in items]
     out = await _provision_enable(items, provmod.clean_profile(b.get("profile")))
     if out.get("error"):
         return JSONResponse(out, status_code=400)
@@ -12842,18 +12913,23 @@ async def api_provision_zero(body: dict):
         return r
     from . import provision as provmod
     b = body or {}
+    owner, err = _zero_for(b.get("for"))
+    if owner is None:
+        return JSONResponse({"error": err}, status_code=400)
     addrs = _zero().hub_addresses()
     hubs = _zero().clean_hubs(b.get("hubs")) or [a["addr"] for a in addrs]
-    key = provmod.zero_key()
+    key = provmod.zero_key(owner)
     try:
         line = _zero().one_line(state.machine_cfg(), key["text"], hubs, str(b.get("tailscale_key") or ""))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     _ledger("provision.zero", "provision:zero",
             f"showed the Zero install line (hubs {', '.join(hubs) or 'none'}"
-            + (", with a Tailscale key" if b.get("tailscale_key") else "") + ")")
+            + (", with a Tailscale key" if b.get("tailscale_key") else "") + ")" + _zero_for_words(owner))
     await _provision_sync()
+    u = usersmod.get(owner) if owner else None
     return {"line": line, "hubs": hubs, "addresses": addrs, "key": {k: key[k] for k in ("id", "label", "auto")},
+            "for": {"id": owner, "name": u["name"] if u else ""},
             "standard": provmod.standard()}
 
 

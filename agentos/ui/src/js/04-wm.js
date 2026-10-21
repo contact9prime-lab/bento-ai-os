@@ -134,7 +134,7 @@ function createWin(app){
 
   const tb=document.createElement('button'); tb.className='tbwin';
   tb.dataset.app=app.id;
-  if(DOCK.includes(app.id))tb.classList.add('indock');   // pinned apps surface in the dock itself
+  if((typeof zeroFace==='function'&&zeroFace()?ZERO_APPS:DOCK).includes(app.id))tb.classList.add('indock');   // pinned apps surface in the dock itself
   tb.dataset.tip=app.title;
   tb.innerHTML=appIcon(app.id,46);
   $('#tbwins').appendChild(tb);
