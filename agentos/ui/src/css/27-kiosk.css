@@ -122,6 +122,7 @@ body.kiosk #office-scene canvas{display:block}
 .net-step input{min-width:var(--tap,20px);min-height:var(--tap,20px);margin:0}
 .net-step.done{opacity:.7}.net-tick{color:var(--ok,#4ade80);min-width:20px;text-align:center}
 .net-step details{margin-top:4px}.net-step summary{cursor:pointer;min-height:var(--tap,24px)}
+.net-hint{flex:1 1 100%;margin:0;font-size:var(--fs-sm,12px)}
 .net-steps .warn{color:var(--warn,#f59e0b);margin:0}
 @media (max-width:600px){.net-acts{flex:1 1 100%}.net-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
   .net-form input{min-height:var(--tap,40px)}}

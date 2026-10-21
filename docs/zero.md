@@ -9,7 +9,7 @@ that, what you ask it is worked on by the hub's team, and any file they make com
 
 ## Make one
 
-1. On the hub, open *Settings → Team & Communications → New machines → Make a Zero*.
+1. On the hub, open *Settings → Network → Set machines up → Make a Zero*.
 2. If the Zero won't be on the same network as the hub, paste a Tailscale auth key
    ([make one here](https://login.tailscale.com/admin/settings/keys)). Leave it empty when they
    share a network.
@@ -124,21 +124,22 @@ bento pool mind                  # on a Zero: what its hub keeps for it
 
 ## Whose it is
 
-On a hub with accounts, every Zero belongs to one of them. *Make a Zero* has a **For** list (it
-shows only on a machine with accounts), and the line it prints carries that account's key. A Zero
-set up with it is that account's: the hub answers it as that person, with their lead, their
-specialists, their memory and their integrations. Bob's Zero can use the MCP servers Bob set up,
-and Ada's can't, even on the same hub.
+On a hub with accounts, every Zero belongs to one of them: the person who made it. *Make a Zero*
+makes a line for whoever is signed in, and only for them. There's no list of other people, and the
+hub refuses a line for anybody else, an admin included. Anyone signed in can make their own; setting
+up other machines stays an admin's job. A Zero set up with that line is its owner's: the hub answers
+it as that person, with their lead, their specialists, their memory and their integrations. Bob's
+Zero can use the MCP servers Bob set up, and Ada's can't, even on the same hub.
 
-![Make a Zero on a hub with accounts: For bob](screenshots/zero-for-account.png)
+![Make a Zero, signed in as bob: the line is his](screenshots/zero-for-account.png)
 
 Integrations were already per account: MCP servers, channels, mail, calendar and sign-ins are
 each person's own, kept in their own home. AI provider keys stay the machine's, because they
 spend its money. What changed is that a Zero now attaches to an account. Before, every Zero was
 answered as the machine, which on a hub with accounts meant nobody's integrations.
 
-From a terminal: `bento pool zero --for bob` prints Bob's line, and `bento pool enable … --for bob`
-sets a machine up for Bob by its code. Without `--for`, an admin gets their own line. A Zero set
+From a terminal at the hub, which nobody signs in to, `bento pool zero --for bob` prints Bob's
+line, and `bento pool enable … --for bob` sets a machine up for Bob by its code. A Zero set
 up by its code with no account named stays the machine's, as before.
 
 ## What it shows
@@ -147,7 +148,10 @@ A Zero is light on purpose. It has no integrations of its own, so it doesn't sta
 servers, no Telegram, no WhatsApp. Its screen is one agent and the basics:
 
 - **Chat**, where its answers arrive, with any file the hub made.
-- **Office**, with one agent, and **Visit** to look in on the hub's office.
+- **Office**, with one person at one desk, drawn flat, and **Visit** to look in on the hub's office.
+  No lounge, no pet, no 3D: it is a small screen, and its work happens on the hub.
+
+![A Zero's Office: one person, drawn flat](screenshots/zero-office-flat.png)
 - **Files**, **Settings** and **Docs**.
 
 A *Zero · hub* chip in the menu bar opens the Office. Settings leaves out AI providers,
@@ -180,8 +184,7 @@ memory is.
 
 ## The three faces
 
-- **Desktop:** *Settings → Team & Communications → New machines*: Make a Zero (with *For* on a
-  hub with accounts), Standard setup, Its agents, and a *via* label and the owner on each machine
+- **Desktop:** *Settings → Network → Set machines up*: Make a Zero (for the person signed in), Standard setup, Its agents, and a *via* label and the owner on each machine
   heard. On the Zero itself, the light desktop above.
 - **Terminal:** `bento pool zero`, `bento pool standard`, `bento pool hub`, and `bento link`
   shows the standing folder for each Zero.

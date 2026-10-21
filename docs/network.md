@@ -24,6 +24,18 @@ still one row, matched by its network card's address, its IP and its certificate
 **Look at the network** knocks on SSH and Bento's port across this machine's own private
 networks. A Raspberry Pi that joins the network says its name and you get a toast.
 
+A machine doesn't need SSH open to be found. One that refuses the knock is there, and knocking
+makes this machine ask the whole network who is at each address, so even a Pi with a firewall
+that drops everything shows up. Its row says SSH is off, and how to turn it on. Raspberry Pi
+Imager leaves SSH off unless you tick *Enable SSH*. After a scan, Bento also asks the network
+over mDNS what each machine calls itself, so a Pi shows its own name.
+
+![A Pi with SSH off and a firewalled one, found and explained](screenshots/network-ssh-off.png)
+
+Bento listens for new Pis whatever its brain. Before, only a machine that could lead a community
+listened, which a hub on Claude Code can't, so it heard no Pi at all. A Pi that was already on
+when Bento started has nothing new to say, so press **Look at the network** to find it.
+
 ## Secure it
 
 Open a row and press **Secure it**. Type the user there (`pi` on a Raspberry Pi) and its

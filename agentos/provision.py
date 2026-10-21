@@ -707,7 +707,25 @@ def watching(cfg: dict) -> bool:
         return True
     if role in ("member", "pending"):
         return bool(d["watch"])
-    return bool(d["watch"]) or poolmod.has_brain(cfg)
+    # A machine that handed out an automatic key (a Zero line) listens for the machines
+    # carrying it, whatever its brain: a hub on Claude Code has no provider model to lend,
+    # and without this its Zeros announced themselves to nobody.
+    return bool(d["watch"]) or poolmod.has_brain(cfg) or any(k.get("auto") for k in d["keys"])
+
+
+def hearing_devices(cfg: dict) -> bool:
+    """Does this machine listen for devices WITHOUT Bento saying their name (netscan's mDNS
+    ear)? Anything a person could set machines up from does, whatever its brain: the Network
+    tab is not only for a machine that could lead. A member or a Zero leaves it to its leader
+    or hub unless its admin said yes; anyone whose admin said no does not."""
+    from . import pool as poolmod
+    from . import zero as zeromod
+    d = load()
+    if d["watch"] is False or waiting(cfg)[0]:
+        return False
+    if poolmod.load().get("role") in ("member", "pending") or zeromod.runs_on_hub(cfg):
+        return bool(d["watch"])
+    return True
 
 
 def note_seen(b: dict) -> bool:

@@ -114,7 +114,7 @@ def _security_words(sec: dict | None) -> tuple[str, int]:
 
 def rows(cfg: dict | None = None) -> list[dict]:
     """Every machine Bento knows on this network, newest heard first."""
-    from . import provision, teamlink
+    from . import netscan, provision, teamlink
     pd = provision.load()
     mine = load()["devices"]
     out: dict[str, dict] = {}
@@ -145,6 +145,7 @@ def rows(cfg: dict | None = None) -> list[dict]:
         r["ssh"] = r["ssh"] or bool(e.get("ssh"))
         r["ports"] = e.get("ports") or []
         r["pi"] = bool(e.get("pi"))
+        r["seen_by"] = e.get("seen_by") or r.get("seen_by") or ""
         r["ignored"] = e.get("state") == "ignored"
         if e.get("state") == "installed" and r["bento"] == "none":
             r["bento"] = "installed"
@@ -204,6 +205,9 @@ def rows(cfg: dict | None = None) -> list[dict]:
     now = time.time()
     for r in out.values():
         r["security_words"], r["secured_n"] = _security_words(r.get("security"))
+        # a Pi that is there with SSH shut: say how to open it, rather than offer a button
+        # that cannot log in (a machine running Bento is reached another way)
+        r["ssh_off"] = netscan.ssh_off_words(r) if r["bento"] == "none" else ""
         r["display"] = r.get("label") or r["name"] or r["ip"]
         r["stale"] = bool(r["last"]) and now - r["last"] > STALE_S
         r["links"] = [lk for lk in r.get("links", []) if lk["kind"] == "machine"]

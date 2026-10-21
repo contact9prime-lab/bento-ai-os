@@ -135,7 +135,7 @@ def test_a_device_heard_then_knocked_on_is_one_device():
     assert len(seen) <= 256
 
 
-def test_a_scan_finds_ssh_reads_its_banner_and_skips_a_silent_port(monkeypatch):
+def test_a_scan_finds_ssh_reads_its_banner_and_a_machine_with_nothing_open(monkeypatch):
     async def go():
         async def sshd(r, w):
             w.write(b"SSH-2.0-OpenSSH_10.0p2 Debian-7\r\n")
@@ -149,12 +149,14 @@ def test_a_scan_finds_ssh_reads_its_banner_and_skips_a_silent_port(monkeypatch):
         closed.close()
         monkeypatch.setenv("AGENTOS_SCAN_NETWORKS", "127.0.0.3/32")
         monkeypatch.setenv("AGENTOS_SCAN_PORTS", f"{port},{dead}")
+        monkeypatch.setenv("AGENTOS_MDNS_TARGET", f"127.0.0.1:{dead}")
         got = await netscan.scan([ipaddress.ip_network("127.0.0.3/32"),
                                   ipaddress.ip_network("127.0.0.4/32")], timeout=0.5)
         srv.close()
         return got, port
     got, port = asyncio.run(go())
-    assert len(got) == 1, got
+    # 127.0.0.4 refused both: a machine is there with nothing open (test_discovery_gaps)
+    assert [(x["ip"], x["seen_by"]) for x in got] == [("127.0.0.3", "port"), ("127.0.0.4", "refused")], got
     d = got[0]
     assert d["ip"] == "127.0.0.3" and d["ssh"] and d["ports"] == [port]
     assert d["os"] == "Debian 13 (trixie)" and d["banner"].startswith("SSH-2.0")

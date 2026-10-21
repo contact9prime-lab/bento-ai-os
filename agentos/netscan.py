@@ -91,6 +91,25 @@ def local_networks() -> list[ipaddress.IPv4Network]:
     return out
 
 
+def my_addresses() -> set[str]:
+    """Every IPv4 address this machine holds, on every interface (a Docker bridge's too: the
+    first live scan listed this machine's own 172.17.0.1 as a machine on the network)."""
+    out: set = set()
+    try:
+        out |= {a[4][0] for a in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)}
+    except Exception:
+        pass
+    try:
+        for _, n in socket.if_nameindex():
+            try:
+                out.add(_ifaddr(n, 0x8915))            # SIOCGIFADDR
+            except Exception:
+                pass
+    except OSError:
+        pass
+    return out
+
+
 def allowed(ip: str) -> bool:
     """Only a private or link-local address is ever knocked on or offered an install."""
     try:
@@ -158,12 +177,15 @@ def looks_like_pi(d: dict) -> bool:
 
 # ---- knocking -------------------------------------------------------------------------------
 
-async def _knock(ip: str, port: int, timeout: float, banner_too: bool = False) -> str | None:
-    """'' when the port answered, its SSH banner when `banner_too`, None when it did not."""
+async def _touch(ip: str, port: int, timeout: float, banner_too: bool = False) -> tuple[str | None, str]:
+    """('open', its SSH banner when `banner_too`), ('closed', '') when the machine refused
+    the connection (it is there, the port is shut), or (None, '') when nothing answered."""
     try:
         r, w = await asyncio.wait_for(asyncio.open_connection(ip, port), timeout)
+    except ConnectionRefusedError:
+        return "closed", ""
     except (OSError, asyncio.TimeoutError):
-        return None
+        return None, ""
     banner = ""
     try:
         if banner_too:
@@ -172,7 +194,13 @@ async def _knock(ip: str, port: int, timeout: float, banner_too: bool = False) -
         pass
     finally:
         w.close()
-    return banner
+    return "open", banner
+
+
+async def _knock(ip: str, port: int, timeout: float, banner_too: bool = False) -> str | None:
+    """'' when the port answered, its SSH banner when `banner_too`, None when it did not."""
+    state, banner = await _touch(ip, port, timeout, banner_too)
+    return banner if state == "open" else None
 
 
 async def _name(ip: str) -> str:
@@ -195,11 +223,7 @@ async def scan(networks: list | None = None, timeout: float = PROBE_TIMEOUT) -> 
     """Knock on SSH and Bento's port across this machine's own networks. Returns every
     address that answered: its name, its maker, its SSH banner and an OS hint."""
     nets = networks if networks is not None else local_networks()
-    mine = set()
-    try:
-        mine = {a[4][0] for a in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)}
-    except Exception:
-        pass
+    mine = my_addresses()
     targets = []
     for net in nets:
         hosts = list(net.hosts()) if net.num_addresses > 2 else list(net)
@@ -215,21 +239,45 @@ async def scan(networks: list | None = None, timeout: float = PROBE_TIMEOUT) -> 
 
     async def one(ip):
         async with sem:
-            got = await asyncio.gather(*[_knock(ip, p, timeout, p == ssh_port) for p in ps])
-        open_ = [p for p, g in zip(ps, got) if g is not None]
+            got = await asyncio.gather(*[_touch(ip, p, timeout, p == ssh_port) for p in ps])
+        open_ = [p for p, (st, _) in zip(ps, got) if st == "open"]
         if open_:
-            found[ip] = {"ip": ip, "ports": open_, "ssh": ssh_port in open_, "banner": got[0] or ""}
+            found[ip] = {"ip": ip, "ports": open_, "ssh": ssh_port in open_, "banner": got[0][1] or "",
+                         "seen_by": "port"}
+        elif any(st == "closed" for st, _ in got):
+            # it refused: a machine is there with neither port open (a Pi with SSH off)
+            found[ip] = {"ip": ip, "ports": [], "ssh": False, "banner": "", "seen_by": "refused"}
 
     await asyncio.gather(*[one(ip) for ip in targets])
     macs = neighbours()
+    # knocking made the kernel ask for every address on this machine's own segment, so the
+    # neighbour table now holds every machine that answered, even one that drops what it
+    # does not want to hear. That is how a machine with SSH off is found without a ping.
+    asked = set(targets)
+    for ip, mac in macs.items():
+        if ip in asked and ip not in found:
+            found[ip] = {"ip": ip, "ports": [], "ssh": False, "banner": "", "seen_by": "arp"}
     names = await asyncio.gather(*[_name(ip) for ip in found])
+    heard = await mdns_names(list(found))
     out = []
     for (ip, d), n in zip(found.items(), names):
         mac = macs.get(ip, "")
-        d.update(mac=mac, maker=maker(mac), name=n, os=os_from_banner(d["banner"]))
+        d.update(mac=mac, maker=maker(mac), name=heard.get(ip) or n, os=os_from_banner(d["banner"]))
         d["pi"] = looks_like_pi(d)
         out.append(d)
     return sorted(out, key=lambda d: tuple(int(x) for x in d["ip"].split(".")))
+
+
+def ssh_off_words(d: dict) -> str:
+    """What to say about a Pi that is on the network with SSH shut, or ''."""
+    if not d.get("pi") or d.get("ssh"):
+        return ""
+    how = ("Turn it on to install Bento: Raspberry Pi Imager's Enable SSH, or "
+           "`sudo raspi-config` → Interface Options → SSH on the Pi.")
+    if d.get("seen_by") == "arp":
+        # it answered "who has this address" and nothing else: shut, or a firewall drops it
+        return "It is on the network but SSH does not answer: it is off, or a firewall drops it. " + how
+    return "SSH is off on it. " + how
 
 
 # ---- the passive ear: mDNS announcements -------------------------------------------------------
@@ -256,28 +304,103 @@ def _dns_name(buf: bytes, off: int, depth: int = 0) -> tuple[str, int]:
     return ".".join(x for x in labels if x), (end if jumped else off)
 
 
+def _records(buf: bytes):
+    """(name, type, rdata offset, rdata length) for every record of an mDNS answer."""
+    _id, flags, qd, an, ns, ar = struct.unpack("!6H", buf[:12])
+    if not flags & 0x8000:
+        return                         # a question, not an answer
+    off = 12
+    for _ in range(qd):
+        _, off = _dns_name(buf, off)
+        off += 4
+    for _ in range(an + ns + ar):
+        name, off = _dns_name(buf, off)
+        rtype, _cls, _ttl, rdlen = struct.unpack("!HHIH", buf[off:off + 10])
+        off += 10
+        yield name.lower().rstrip("."), rtype, off, rdlen
+        off += rdlen
+
+
 def parse_mdns(buf: bytes) -> list[tuple[str, str]]:
     """(name, IPv4) pairs from the A records of one mDNS message, answers and additionals.
     A malformed packet gives []; it is somebody else's bytes."""
     try:
-        _id, flags, qd, an, ns, ar = struct.unpack("!6H", buf[:12])
-        if not flags & 0x8000:
-            return []                  # a question, not an answer
-        off = 12
-        for _ in range(qd):
-            _, off = _dns_name(buf, off)
-            off += 4
-        out = []
-        for _ in range(an + ns + ar):
-            name, off = _dns_name(buf, off)
-            rtype, _cls, _ttl, rdlen = struct.unpack("!HHIH", buf[off:off + 10])
-            off += 10
-            if rtype == 1 and rdlen == 4:
-                out.append((name.lower().rstrip("."), socket.inet_ntoa(buf[off:off + 4])))
-            off += rdlen
-        return out
+        return [(name, socket.inet_ntoa(buf[off:off + 4]))
+                for name, rtype, off, rdlen in _records(buf) if rtype == 1 and rdlen == 4]
     except Exception:
         return []
+
+
+def parse_reverse(buf: bytes) -> dict[str, str]:
+    """IPv4 → name from the reverse (PTR) answers of one mDNS message, and from its A
+    records, which a responder usually adds. '.local' is taken off."""
+    out: dict = {}
+    try:
+        for name, rtype, off, rdlen in _records(buf):
+            if rtype == 12 and name.endswith(".in-addr.arpa"):
+                parts = name[:-len(".in-addr.arpa")].split(".")
+                if len(parts) == 4:
+                    target, _ = _dns_name(buf, off)
+                    out[".".join(reversed(parts))] = target.lower().rstrip(".")
+            elif rtype == 1 and rdlen == 4:
+                out.setdefault(socket.inet_ntoa(buf[off:off + 4]), name)
+    except Exception:
+        pass
+    return {ip: (n[:-6] if n.endswith(".local") else n)[:63] for ip, n in out.items() if n and allowed(ip)}
+
+
+def _question(names: list[str], qtype: int = 12) -> bytes:
+    q = b""
+    for n in names:
+        q += b"".join(bytes([len(p)]) + p.encode() for p in n.split(".") if p) + b"\0"
+        q += struct.pack("!HH", qtype, 1)
+    return struct.pack("!6H", 0, 0, len(names), 0, 0, 0) + q
+
+
+def _mdns_target() -> tuple[str, int]:
+    t = os.environ.get("AGENTOS_MDNS_TARGET", "")       # a test's stand-in responder
+    if t:
+        h, _, p = t.rpartition(":")
+        return h, int(p)
+    return MDNS_GROUP, MDNS_PORT
+
+
+async def mdns_names(ips: list[str], timeout: float = 1.2) -> dict[str, str]:
+    """Ask the network, once, what the machines at these addresses call themselves: a
+    reverse lookup over mDNS, which a Pi's avahi answers. Sent from a port of our own, so
+    each answer comes straight back here (RFC 6762 6.7). Part of a scan somebody asked for;
+    the ear never sends. {} when nobody answers or this machine cannot multicast."""
+    ips = [ip for ip in ips if allowed(ip)]
+    if not ips:
+        return {}
+    loop = asyncio.get_running_loop()
+    got: dict = {}
+    want = set(ips)
+
+    class P(asyncio.DatagramProtocol):
+        def datagram_received(self, data, addr):
+            if len(data) <= 9000:
+                got.update({ip: n for ip, n in parse_reverse(data).items() if ip in want})
+
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+        s.bind(("", 0))
+        s.setblocking(False)
+        tr, _ = await loop.create_datagram_endpoint(P, sock=s)
+    except OSError:
+        return {}
+    try:
+        target = _mdns_target()
+        names = [".".join(reversed(ip.split("."))) + ".in-addr.arpa" for ip in ips]
+        for i in range(0, len(names), 30):              # a question each, ~30 to a packet
+            tr.sendto(_question(names[i:i + 30]), target)
+        await asyncio.sleep(timeout)
+    except OSError:
+        return {}
+    finally:
+        tr.close()
+    return got
 
 
 class MdnsEar:
@@ -347,7 +470,7 @@ def remember(seen: dict, d: dict) -> bool:
     e = seen.get(key)
     new = e is None
     e = e or {"first": time.time(), "state": "new"}
-    for k in ("ip", "mac", "maker", "name", "ssh", "banner", "os", "pi", "ports"):
+    for k in ("ip", "mac", "maker", "name", "ssh", "banner", "os", "pi", "ports", "seen_by"):
         if d.get(k) not in (None, "", []):
             e[k] = d[k]
     e["last"] = time.time()

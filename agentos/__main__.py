@@ -4679,6 +4679,8 @@ def _devices_cli(args, cfg, a, rest, run):
             what = "runs Bento" if dev["ip"] in bento else ("SSH open" if dev["ssh"] else "no SSH")
             print(f"    {dev['ip']:<15} {(dev['name'] or '?')[:24]:<24} {dev['maker'] or '':<15} "
                   f"{dev['os'] or '':<20} {what}")
+            if dev["ip"] not in bento and netscan.ssh_off_words(dev):
+                print(f"    {'':<15} {netscan.ssh_off_words(dev)}")
         if not found:
             print("  Nothing answered.")
         else:

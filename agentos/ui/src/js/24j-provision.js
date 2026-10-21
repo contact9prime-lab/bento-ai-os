@@ -88,15 +88,13 @@ async function provPaint(){
 /* ---------------- a Zero: the one line, and the standard setup every machine gets ---------------- */
 function provZeroHTML(v,can){
   const st=v.standard||{},z=PROV.zero,ags=st.agents||[],rows=[];
-  /* whose it is: the hub answers a Zero as the account it belongs to, with that person's
-     agents, memory and integrations. Only shown on a machine with accounts. */
-  const accs=v.accounts||[];
-  const forSel=accs.length?`<select id="zero-for" aria-label="Whose Zero">${accs.map(a=>
-      `<option value="${esc(a.id)}"${a.id===(PROV.zeroFor||v.me)?' selected':''}>For ${esc(a.name)}</option>`).join('')}</select>`:'';
-  rows.push(pRow('Make a Zero',`${forSel}<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
+  /* whose it is: always the person signed in. The hub answers a Zero as that account, with
+     its agents, memory and integrations, and nobody makes one for someone else (_zero_for). */
+  const mine=v.me_name||'';
+  rows.push(pRow('Make a Zero',`<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
       placeholder="Tailscale auth key (optional)" aria-label="Tailscale auth key" style="max-width:230px">
-      <button class="endbtn" data-prov="zeroline"${can?'':' disabled'}>Show the line</button>`,
-    {desc:accs.length?'Paste one line on a Pi. It belongs to the person you choose, and works with their integrations.'
+      <button class="endbtn" data-prov="zeroline"${v.can_zero!==false?'':' disabled'}>Show the line</button>`,
+    {desc:mine?`Paste one line on a Pi. It is yours, ${esc(mine)}, and works with your integrations.`
       :'Paste one line on a Pi and it is set up from here, with nobody at it.',
      more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
      f:'zero pi curl one line install tailscale zero touch hub'}));
@@ -262,8 +260,7 @@ async function provAct(act,b){
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
     if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
     if(act==='zeroline'){const ts=((document.getElementById('zero-ts')||{}).value||'').trim();
-      const fe=document.getElementById('zero-for');if(fe)PROV.zeroFor=fe.value;
-      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts,for:PROV.zeroFor||''})}finally{b.disabled=false}
+      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts})}finally{b.disabled=false}
       const i=document.getElementById('zero-ts');if(i)i.value='';return provPaint()}
     if(act==='zerocopy'){navigator.clipboard&&navigator.clipboard.writeText((PROV.zero||{}).line||'');toast('✓ copied');return}
     if(act==='stdrm'){await fetch('/api/provision/standard/agent/'+encodeURIComponent(b.dataset.name),{method:'DELETE'});return provPaint()}

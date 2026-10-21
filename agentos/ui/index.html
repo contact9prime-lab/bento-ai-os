@@ -5138,6 +5138,7 @@ body.kiosk #office-scene canvas{display:block}
 .net-step input{min-width:var(--tap,20px);min-height:var(--tap,20px);margin:0}
 .net-step.done{opacity:.7}.net-tick{color:var(--ok,#4ade80);min-width:20px;text-align:center}
 .net-step details{margin-top:4px}.net-step summary{cursor:pointer;min-height:var(--tap,24px)}
+.net-hint{flex:1 1 100%;margin:0;font-size:var(--fs-sm,12px)}
 .net-steps .warn{color:var(--warn,#f59e0b);margin:0}
 @media (max-width:600px){.net-acts{flex:1 1 100%}.net-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
   .net-form input{min-height:var(--tap,40px)}}
@@ -33256,15 +33257,13 @@ async function provPaint(){
 /* ---------------- a Zero: the one line, and the standard setup every machine gets ---------------- */
 function provZeroHTML(v,can){
   const st=v.standard||{},z=PROV.zero,ags=st.agents||[],rows=[];
-  /* whose it is: the hub answers a Zero as the account it belongs to, with that person's
-     agents, memory and integrations. Only shown on a machine with accounts. */
-  const accs=v.accounts||[];
-  const forSel=accs.length?`<select id="zero-for" aria-label="Whose Zero">${accs.map(a=>
-      `<option value="${esc(a.id)}"${a.id===(PROV.zeroFor||v.me)?' selected':''}>For ${esc(a.name)}</option>`).join('')}</select>`:'';
-  rows.push(pRow('Make a Zero',`${forSel}<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
+  /* whose it is: always the person signed in. The hub answers a Zero as that account, with
+     its agents, memory and integrations, and nobody makes one for someone else (_zero_for). */
+  const mine=v.me_name||'';
+  rows.push(pRow('Make a Zero',`<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
       placeholder="Tailscale auth key (optional)" aria-label="Tailscale auth key" style="max-width:230px">
-      <button class="endbtn" data-prov="zeroline"${can?'':' disabled'}>Show the line</button>`,
-    {desc:accs.length?'Paste one line on a Pi. It belongs to the person you choose, and works with their integrations.'
+      <button class="endbtn" data-prov="zeroline"${v.can_zero!==false?'':' disabled'}>Show the line</button>`,
+    {desc:mine?`Paste one line on a Pi. It is yours, ${esc(mine)}, and works with your integrations.`
       :'Paste one line on a Pi and it is set up from here, with nobody at it.',
      more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
      f:'zero pi curl one line install tailscale zero touch hub'}));
@@ -33430,8 +33429,7 @@ async function provAct(act,b){
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
     if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
     if(act==='zeroline'){const ts=((document.getElementById('zero-ts')||{}).value||'').trim();
-      const fe=document.getElementById('zero-for');if(fe)PROV.zeroFor=fe.value;
-      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts,for:PROV.zeroFor||''})}finally{b.disabled=false}
+      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts})}finally{b.disabled=false}
       const i=document.getElementById('zero-ts');if(i)i.value='';return provPaint()}
     if(act==='zerocopy'){navigator.clipboard&&navigator.clipboard.writeText((PROV.zero||{}).line||'');toast('✓ copied');return}
     if(act==='stdrm'){await fetch('/api/provision/standard/agent/'+encodeURIComponent(b.dataset.name),{method:'DELETE'});return provPaint()}
@@ -33560,6 +33558,7 @@ var OF3_SPARK=/remember|recall|memor|knowledge|kg_|forget/i;
 /* ---------------- may we? ---------------- */
 function of3Wanted(){
   const v=OFFICE.view;if(!v||OF3.failed)return false;
+  if(v.zero)return false;           // a Zero's office is one person drawn flat (office.view)
   if(of3HQ())return of3GL();        // the Office HQ scene is this look by definition
   // The Office scene on the desktop is the comic: Office HQ is the 3D one, so the two scenes
   // are the two looks. Reported as "the 2D comic office I can't see any more, in the scene
@@ -36025,9 +36024,10 @@ function netRowHTML(r,v,can){
       <b>${esc(r.display)}</b>${netBadge(r)}${netSecBadge(r)}
       <span class="mut">${esc(r.ip||'')}${r.mac?' · '+esc(r.mac):''}${what?' · '+esc(what):''}${r.owner_name?' · for '+esc(r.owner_name):''}${seen?' · '+esc(seen):''}${esc(busy)}</span>
     </div>
+    ${r.ssh_off?`<p class="mut net-hint">${esc(r.ssh_off)}</p>`:''}
     ${can?`<div class="net-acts">
       ${r.bento==='none'&&r.ssh&&!v.ssh_missing?`<button class="endbtn" data-net="install" data-key="${esc(r.key)}">Install Bento</button>`:''}
-      ${r.ip&&!v.ssh_missing?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`:''}
+      ${r.ip&&!v.ssh_missing&&(r.ssh||r.bento!=='none'||r.secured_n>=0)?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`:''}
       ${(r.connections||[]).length?`<button class="endbtn" data-net="unlink" data-key="${esc(r.key)}">Disconnect</button>`:''}
       <button class="endbtn" data-net="label" data-key="${esc(r.key)}">Rename</button>
       <button class="endbtn" data-net="forget" data-key="${esc(r.key)}">Not this one</button></div>`:''}
