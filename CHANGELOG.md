@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.69 — 2026-10-21
+
+**Bento installs on a 32-bit Raspberry Pi running Buster.** The install stopped at `cryptography`
+with "it needs glibc 2.31 or newer; this system has glibc 2.28". From 46.0.4 on, cryptography's
+32-bit ARM wheel needs glibc 2.31, so on Buster uv found no wheel and tried to compile it with Rust.
+On 32-bit ARM Bento now locks cryptography 46.0.3, the newest release with a wheel for glibc 2.28.
+Every other machine keeps the current release. If a compile still happens there, the installer now
+says to update uv rather than telling you to reflash, and only an OS older than Buster is told to
+move.
+
+Checked in an emulated armv7 Debian Buster container (glibc 2.28): with the old lock, `uv sync
+--no-build` refused cryptography 49.0.0 for having no wheel; with the new one it installs 46.0.3 from
+its wheel. The whole install then finished, with only `cffi`, `pyyaml` and `dbus-fast` compiled by
+gcc. Bento ran, a vault secret round-tripped through AES-GCM, and the linked-teams certificate was
+made.
+
 ## 0.6.68 — 2026-10-20
 
 **Files go with a hand-over to another team, and what they make comes back.** When your agent hands

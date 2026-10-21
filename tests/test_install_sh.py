@@ -378,21 +378,48 @@ def test_the_cryptography_message_is_arch_aware():
         "the 64-bit branch must name the too-new-Python cause, not send them to rustup")
 
 
-def test_the_real_32bit_cause_is_named_as_glibc_not_openssl_or_rust():
-    """The empirical finding: cryptography 49 SHIPS a prebuilt armv7 wheel
-    (manylinux_2_31_armv7l), so the reason a 32-bit Pi compiles is glibc — Buster's
-    2.28 is below the wheel's 2.31 floor, Bullseye's is exactly 2.31. OpenSSL and
-    Rust are only what the fallback build then trips over. The message must send a
-    Buster user to Bullseye+ for the prebuilt wheel, NOT to rustup."""
-    # the handler measures glibc and compares against 2.31
+def test_the_32bit_message_names_glibc_and_never_sends_buster_to_rustup():
+    """On 32-bit ARM the cause of a cryptography compile is glibc, never OpenSSL or
+    Rust, which are only what the fallback build trips over. This copy locks a
+    release whose armv7 wheel needs glibc 2.28, so Buster installs it; a compile
+    there means an old uv or an old copy, and an OS older than Buster is the only
+    thing that should be told to move."""
     assert re.search(r'ldd --version', SRC), "the installer must read the system's glibc"
-    assert re.search(r'-ge 31', SRC), "the 2.31 wheel floor must be the comparison"
+    assert re.search(r'-ge 28', SRC), "the 2.28 wheel floor must be the comparison"
     seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:3000]
-    assert 'glibc 2.31' in seg, "the armv7 message must name the real requirement (glibc 2.31)"
-    assert 'Buster' in seg and ('Bullseye' in seg), (
-        "it must name Buster as too-old and Bullseye/Bookworm as the fix")
-    assert '32-BIT IS FINE' in seg or '32-bit is fine' in seg.lower(), (
-        "the whole point: staying 32-bit is fine, only the OS version must move")
+    arm7 = seg[seg.index('armv7l)'):seg.index('armv6l)')]
+    assert 'glibc 2.28' in arm7 and 'Buster' in arm7, "the armv7 message must name the real floor"
+    assert '46.0.3' in arm7 and 'uv self update' in arm7, (
+        "on a new-enough glibc the fix is the locked wheel and a current uv")
+    assert 'rustup' not in arm7, "a 32-bit Buster Pi must never be sent to build Rust"
+
+
+LOCK = (REPO / "uv.lock")
+PYPROJECT = (REPO / "pyproject.toml")
+
+
+def _lock_packages(name):
+    """The [[package]] blocks for one name, as text (tomllib is 3.11+, CI runs 3.10)."""
+    blocks = LOCK.read_text().split("\n[[package]]\n")
+    return [b for b in blocks if re.match(rf'name = "{re.escape(name)}"\n', b)]
+
+
+def test_32bit_arm_locks_a_cryptography_whose_wheel_runs_on_buster():
+    """Reported from a Pi on Buster: "cryptography ships a prebuilt 32-bit ARM wheel
+    but it needs glibc 2.31; this system has glibc 2.28". From 46.0.4 on, the
+    armv7 wheel is tagged manylinux_2_31 only, so uv compiled it with Rust. The lock
+    must give armv7 a release that still has a manylinux_2_28 armv7 wheel, and give
+    everyone else the current one."""
+    assert re.search(r'"cryptography>=41,<46\.0\.4; platform_machine == \'armv7l\'"',
+                     PYPROJECT.read_text()), "pyproject must cap cryptography on armv7l"
+    blocks = _lock_packages("cryptography")
+    arm = [b for b in blocks if "platform_machine == 'armv7l'" in b.split("\nwheels", 1)[0]]
+    other = [b for b in blocks if "platform_machine != 'armv7l'" in b.split("\nwheels", 1)[0]]
+    assert arm and other, "the lock must fork cryptography on armv7l"
+    assert re.search(r'manylinux_2_28_armv7l[^"]*\.whl', arm[0]), (
+        "the armv7 cryptography must ship a wheel Buster's glibc 2.28 can install")
+    assert re.search(r'abi3-manylinux_2_28_armv7l', arm[0]), (
+        "an abi3 wheel, so it fits every Python the pin may pick")
 
 
 # ------------------------------------- 4. the question a headless install must ask

@@ -1,6 +1,6 @@
 [project]
 name = "agentos"
-version = "0.6.68"
+version = "0.6.69"
 description = "Bento Box AI — a local-first agentic OS: one interface, any AI (local or cloud), real actions on your machine."
 readme = "README.md"
 license = "MIT"
@@ -17,6 +17,11 @@ dependencies = [
     "pyyaml>=6",
     "dbus-fast>=2.24",
     "cryptography>=41",
+    # 32-bit ARM: from 46.0.4 cryptography's armv7 wheel needs glibc 2.31, so a Pi on
+    # Buster (glibc 2.28) had no wheel and uv tried to compile it with Rust. 46.0.3 is
+    # the newest with a manylinux_2_28 armv7 wheel. A marker cannot see glibc, so every
+    # armv7 machine takes it; tests/test_install_sh.py checks the lock still has one.
+    "cryptography>=41,<46.0.4; platform_machine == 'armv7l'",
 ]
 
 [project.scripts]

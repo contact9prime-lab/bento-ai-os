@@ -495,47 +495,38 @@ else
   echo ""
   cat "$UVSYNC_LOG"                                      # show what actually failed
   # A cryptography source build, spotted by any of its telltales — the OpenSSL 3.0
-  # `#error`, a Rust/cargo failure, "could not compile cryptography". The point is
-  # that all three are SYMPTOMS: they only appear once uv has fallen back to
-  # building from source, and on 32-bit ARM the reason it fell back is almost always
-  # glibc. cryptography DOES ship a prebuilt armv7 wheel — but it is tagged
-  # manylinux_2_31, so it needs glibc >= 2.31 (Raspberry Pi OS "Bullseye"). "Buster"
-  # has glibc 2.28, too old, so there is no wheel to download and uv compiles — and
-  # only THEN meets the OpenSSL/Rust wall. Moving off Buster to Bullseye+ gets the
-  # wheel and skips the compile entirely. (Verified against PyPI: the 2_31_armv7l
-  # wheel exists and is what a Bullseye Pi downloads.)
+  # `#error`, a Rust/cargo failure, "could not compile cryptography". All three are
+  # SYMPTOMS: they only appear once uv has fallen back to building from source, and on
+  # 32-bit ARM the reason it fell back is almost always glibc. cryptography's armv7
+  # wheel needs glibc 2.31 from 46.0.4 on, so on Buster (2.28) uv found no wheel and
+  # compiled. pyproject.toml now locks 46.0.3 on armv7, the newest release whose
+  # wheel is tagged manylinux_2_28, so Buster downloads it. (Verified in an armv7
+  # Buster container: `uv sync --no-build` installs it from the wheel.)
   if grep -qiE "MUST be linked with OpenSSL 3|OpenSSL 3\.0\.0 or later|cargo|rust(c| compiler|>=| toolchain)|requires rust|maturin|setuptools[_-]rust|could not compile .?cryptography" "$UVSYNC_LOG" 2>/dev/null; then
     rm -f "$UVSYNC_LOG"
     _g="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+' | tail -1)"
     _gmaj="${_g%%.*}"; _gmin="$(printf '%s' "${_g#*.}" | tr -cd '0-9')"
     [ -z "$_gmin" ] && _gmin=0
-    # glibc >= 2.31 ? (unknown or major>2 counts as new-enough)
-    if { [ "$_gmaj" = 2 ] && [ "$_gmin" -ge 31 ] 2>/dev/null; } || { [ -n "$_gmaj" ] && [ "$_gmaj" != 2 ] 2>/dev/null; }; then
-      NEW_GLIBC=1
+    # glibc >= 2.28, the floor of the 32-bit wheel this copy locks? (unknown or major>2 counts as yes)
+    if { [ "$_gmaj" = 2 ] && [ "$_gmin" -ge 28 ] 2>/dev/null; } || { [ -n "$_gmaj" ] && [ "$_gmaj" != 2 ] 2>/dev/null; }; then
+      WHEEL_GLIBC=1
     else
-      NEW_GLIBC=0
+      WHEEL_GLIBC=0
     fi
     case "$(uname -m)" in
       armv7l)
-        if [ "$NEW_GLIBC" = 0 ]; then
-          die "cryptography could not install, and the real reason is the OS version — NOT Rust or
-   OpenSSL, which are only what the fallback source build then tripped over.
+        if [ "$WHEEL_GLIBC" = 0 ]; then
+          die "cryptography could not install because this OS is too old for its prebuilt 32-bit ARM wheel.
+   That wheel needs glibc 2.28 or newer (Raspberry Pi OS 'Buster' or later). This system has glibc ${_g:-older than 2.28}.
 
-   cryptography ships a PREBUILT 32-bit ARM wheel, but it needs glibc 2.31 or newer. This system
-   has glibc ${_g:-older than 2.31} — Raspberry Pi OS 'Buster' is 2.28, too old — so there was no
-   wheel to download and uv tried to compile instead.
-
-   The fix is to move off Buster to Raspberry Pi OS 'Bullseye' or 'Bookworm' — 32-BIT IS FINE. There
-   the wheel installs in seconds: no compile, no Rust, no swap, and it bundles its own OpenSSL so the
-   system's version stops mattering. Reflash (or upgrade) to Bullseye/Bookworm and re-run me."
+   Move to Raspberry Pi OS Buster, Bullseye or Bookworm (32-bit is fine) and re-run me."
         else
-          die "cryptography compiled even though this system's glibc (${_g}) is new enough for the prebuilt
-   32-bit ARM wheel — which usually means an out-of-date uv/pip that cannot see manylinux_2_31 wheels.
-   Update uv and re-run:
+          die "cryptography tried to compile on this 32-bit Pi, and it should not have to. This copy locks
+   cryptography 46.0.3 on 32-bit ARM, whose prebuilt wheel runs on glibc 2.28 and newer (Buster
+   included), and this system has glibc ${_g:-unknown}. That usually means an older copy of Bento or
+   an old uv. Update uv and re-run the install line:
        uv self update
-   As a last resort, build it (needs a modern Rust and OpenSSL 3.0, i.e. Bookworm not Buster):
-       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-       . \"\$HOME/.cargo/env\" && sudo apt install -y $APT_BUILD_DEPS"
+   If it still compiles, run 'uv sync -v' and look for the cryptography line: it says which wheel it skipped."
         fi ;;
       armv6l)
         # armv6 (Pi Zero / 1) is not armv7 — the manylinux wheel does not apply, so
