@@ -3225,6 +3225,14 @@ box", then "you should also be able to remove the connections". Setting machines
   `secure` waits for the key to get in again (sshd re-executes and refuses for a moment, found
   live); the firewall is its own nftables table, refuses when `$SSH_CLIENT` isn't private, and
   removes itself after `UNDO_S` unless a NEW login touches `OK_MARK`.
+- **"Never lock out" includes the PERSON, not only Bento's key.** Reported as "after I secured it
+  I could not log in". The passwords step proved this machine's key got in and nobody else's.
+  The person's own public key (`mine`, read by `harden.your_key`: type, key and a plain comment,
+  never an option like `command=`) is the plan's first step (`YOURKEY`), and the confirmation says
+  out loud when there is none. After the fact, `let_in` (`/api/network/letin`, `bento network
+  letin`) adds their key or removes `DROPIN`, logging in with Bento's key. And
+  `remoteinstall.login_run` retries a refused password with this machine's key, since a refused
+  login ran nothing: the password that stopped working read as "not authenticated".
 - **Disconnect removes ties, never the install**: a link through `_team_end_link`, the
   community place through `pool.remove`, this machine's key through `harden.remove_key`, which
   refuses when it is the only key and password logins are off (`force` is the person's).

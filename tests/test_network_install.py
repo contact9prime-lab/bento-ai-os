@@ -37,8 +37,10 @@ ok = False
 if os.environ.get("SSH_ASKPASS"):
     pw = subprocess.run([os.environ["SSH_ASKPASS"]], capture_output=True, text=True).stdout.strip()
     ok = pw == "right-one" and not keys_only
+elif "-i" in args:
+    ok = os.path.exists(os.path.join(here, "has-our-key"))
 with open(os.path.join(here, "calls.jsonl"), "a") as f:
-    f.write(json.dumps({"args": args}) + "\n")
+    f.write(json.dumps({"args": args, "via": "password" if os.environ.get("SSH_ASKPASS") else "key"}) + "\n")
 if not ok:
     sys.stderr.write(target + ": Permission denied (" + ("publickey" if keys_only else "publickey,password") + ").\n")
     sys.exit(255)
@@ -132,3 +134,100 @@ def test_bento_network_lists_look_and_install():
                        capture_output=True, text=True, timeout=60)
     assert "look" in r.stdout and "install MACHINE" in r.stdout
     assert 'return _devices_cli(args, cfg, "install"' in main
+
+
+# ---- after Secure it: password logins are off, and the person must still get in -----------------
+
+def _ours(pi):
+    """This machine has its key, and the Pi has it (Secure it's first step)."""
+    remoteinstall.ensure_key("hub")
+    (pi / "has-our-key").touch()
+
+
+def test_a_password_refused_after_secure_it_logs_in_with_this_machines_key(pi):
+    """Reported as "after I secured it I could not log in": the install with the password the
+    person always used was refused, while Bento's own key would have got in."""
+    (pi / "keys-only").touch()
+    _ours(pi)
+    c = asyncio.run(remoteinstall.check("127.0.0.2", "ada", "right-one"))
+    assert c["login"] == "key" and c["board"].startswith("Raspberry Pi 3")
+    got = asyncio.run(remoteinstall.install({}, "127.0.0.2", "ada", "right-one", "bento-enroll-1.x"))
+    assert got["ok"]
+    calls = [json.loads(x) for x in (pi / "calls.jsonl").read_text().splitlines()]
+    assert [c["via"] for c in calls] == ["password", "key", "password", "key"]
+
+
+def test_with_no_key_of_ours_the_refusal_is_still_said(pi):
+    (pi / "keys-only").touch()
+    with pytest.raises(remoteinstall.InstallError, match="keys only"):
+        asyncio.run(remoteinstall.check("127.0.0.2", "ada", "right-one"))
+
+
+def test_a_pasted_key_is_one_plain_line_and_never_carries_options():
+    from agentos import harden
+    k = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPersonsOwnKeyForTheLiveRun00000000000"
+    assert harden.your_key("  " + k + "  you@laptop\n") == k + " you@laptop"
+    assert harden.your_key('command="sh" ' + k) == ""
+    assert harden.your_key(k + " a;rm -rf ~") == ""
+    assert harden.your_key(k + "\nssh-rsa AAAA") == ""
+    assert harden.your_key("hello") == ""
+
+
+def test_your_key_goes_in_first_and_is_shown_before_it_runs():
+    from agentos import harden
+    k = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPersonsOwnKeyForTheLiveRun00000000000 you@laptop"
+    plan = harden.plan(["key", "passwords"], 22, False, k)
+    assert [p["id"] for p in plan] == ["yourkey", "key", "passwords"]
+    assert k in plan[0]["runs"] and "authorized_keys" in plan[0]["runs"]
+    assert "Your own password login stops too" in next(s["why"] for s in harden.STEPS if s["id"] == "passwords")
+
+
+def test_secure_it_lets_your_key_in_before_anything_else(pi, monkeypatch):
+    from agentos import harden
+    k = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPersonsOwnKeyForTheLiveRun00000000000 you@laptop"
+    sent = []
+
+    async def fake_check(host, user, password="", port=22):
+        return {"done": {s: s != "updates" for s in harden.IDS}, "sudo": True, "apt": True,
+                "login": "key", "host_key": "", "plan": [], "problems": []}
+
+    async def fake_run(host, user, port, password, remote, timeout, on_line=None, stdin=None):
+        sent.append(remote)
+        return 0, "", ""
+    monkeypatch.setattr(harden, "check", fake_check)
+    monkeypatch.setattr(harden.ri, "_run", fake_run)
+    remoteinstall.ensure_key("hub")
+    got = asyncio.run(harden.secure("127.0.0.2", "ada", "", 22, ["passwords"], mine=k))
+    assert got["ran"] == ["yourkey"] and k in sent[0]
+
+
+def test_letting_a_person_back_in(pi, monkeypatch):
+    from agentos import harden
+    k = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPersonsOwnKeyForTheLiveRun00000000000 you@laptop"
+    sent = []
+
+    async def fake_check(host, user, password="", port=22):
+        return {"done": {"key": True, "passwords": True, "firewall": False, "updates": False},
+                "sudo": True, "apt": True, "login": "key", "host_key": "", "plan": [], "problems": []}
+
+    async def fake_run(host, user, port, password, remote, timeout, on_line=None, stdin=None):
+        sent.append((password, remote))
+        return 0, "", ""
+    monkeypatch.setattr(harden, "check", fake_check)
+    monkeypatch.setattr(harden.ri, "_run", fake_run)
+    with pytest.raises(remoteinstall.InstallError, match="nothing to do"):
+        asyncio.run(harden.let_in("127.0.0.2", "ada"))
+    got = asyncio.run(harden.let_in("127.0.0.2", "ada", "", 22, k, True))
+    assert got["done"] == ["yourkey", "passwords_on"]
+    assert k in sent[0][1] and harden.DROPIN in sent[1][1] and sent[1][1].startswith("sudo -n ")
+    assert all(pw == "" for pw, _ in sent), "Bento's own key does it"
+
+
+def test_the_page_and_the_route_let_a_person_back_in():
+    js = (ROOT / "agentos/ui/src/js/24n-network.js").read_text()
+    assert 'id="net-mine"' in js and 'data-net="letkey"' in js and 'data-net="letpw"' in js
+    assert "Your own password login stops too" in js
+    src = (ROOT / "agentos/server.py").read_text()
+    route = src[src.index('@app.post("/api/network/letin")'):]
+    route = route[:route.index("\n@app.")]
+    assert "_require_admin()" in route and "harden.your_key" in route and "device.letin" in route

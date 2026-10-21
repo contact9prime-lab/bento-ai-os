@@ -13223,10 +13223,17 @@ async def api_network_check(body: dict):
     from . import inventory as invmod
     from . import remoteinstall as ri
     ip, user, pw, port = _device_creds(body or {})
+    raw = str((body or {}).get("mine") or "").strip()
+    mine = harden.your_key(raw)
+    if raw and not mine:
+        return JSONResponse({"error": "that is not an SSH public key (one line starting ssh-ed25519, "
+                                      "ssh-rsa or ecdsa-, from a .pub file)"}, status_code=400)
     try:
         got = await harden.check(ip, user, pw, port)
     except ri.InstallError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    if mine:
+        got["plan"] = harden.plan([p["id"] for p in got["plan"]], port, not got["sudo"], mine)
     invmod.note_security(ip, _net_mac(ip), got["done"], user, by=usersmod.current() or "")
     _ledger("device.check", f"device:{ip}", f"checked {user}@{ip}: "
             + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in got["done"].items()))
@@ -13247,19 +13254,52 @@ async def api_network_secure(body: dict):
     if bad:
         return JSONResponse({"error": bad}, status_code=400)
     steps = harden.clean_steps(b.get("steps"))
-    if not steps:
+    raw = str(b.get("mine") or "").strip()
+    mine = harden.your_key(raw)
+    if raw and not mine:
+        return JSONResponse({"error": "that is not an SSH public key (one line starting ssh-ed25519, "
+                                      "ssh-rsa or ecdsa-, from a .pub file)"}, status_code=400)
+    if not steps and not mine:
         return JSONResponse({"error": "choose at least one step"}, status_code=400)
     runs = state.setdefault("device_secures", {})
     if (runs.get(ip) or {}).get("state") == "running":
         return JSONResponse({"error": "that machine is already being secured"}, status_code=409)
     runs[ip] = {"state": "running", "started": time.time(), "lines": []}
     _ledger("device.secure", f"device:{ip}", f"started securing {user}@{ip}: "
-            + ", ".join(harden.TITLES[s].lower() for s in steps))
-    asyncio.ensure_future(_network_secure(ip, user, pw, port, steps, usersmod.current() or ""))
+            + ", ".join(([harden.YOURKEY["title"].lower()] if mine else [])
+                        + [harden.TITLES[s].lower() for s in steps]))
+    asyncio.ensure_future(_network_secure(ip, user, pw, port, steps, usersmod.current() or "", mine))
     return {"started": True, "steps": steps}
 
 
-async def _network_secure(ip, user, pw, port, steps, by):
+@app.post("/api/network/letin")
+async def api_network_letin(body: dict):
+    """Let a person back into a machine Secure it locked to keys: their own public key added,
+    and/or password logins turned back on. Bento logs in with its own key to do it."""
+    if (r := _require_admin()):
+        return r
+    from . import harden
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, user, pw, port = _device_creds(b)
+    raw = str(b.get("mine") or "").strip()
+    mine = harden.your_key(raw)
+    if raw and not mine:
+        return JSONResponse({"error": "that is not an SSH public key (one line starting ssh-ed25519, "
+                                      "ssh-rsa or ecdsa-, from a .pub file)"}, status_code=400)
+    try:
+        got = await harden.let_in(ip, user, pw, port, mine, bool(b.get("passwords")))
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    invmod.note_security(ip, _net_mac(ip), got["security"], user, by=usersmod.current() or "")
+    _ledger("device.letin", f"device:{ip}", f"{user}@{ip}: "
+            + ", ".join({"yourkey": "added the person's own key",
+                         "passwords_on": "turned password logins back on"}[d] for d in got["done"]))
+    return got
+
+
+async def _network_secure(ip, user, pw, port, steps, by, mine=""):
     from . import harden
     from . import inventory as invmod
     from . import remoteinstall as ri
@@ -13270,7 +13310,7 @@ async def _network_secure(ip, user, pw, port, steps, by):
         run["lines"] = (run["lines"] + [ln])[-60:]
         await _provision_admins({"type": "device_secure", "ip": ip, "line": ln})
     try:
-        got = await harden.secure(ip, user, pw, port, steps, on_line=line)
+        got = await harden.secure(ip, user, pw, port, steps, on_line=line, mine=mine)
         run.update(state="done", finished=time.time())
         invmod.note_security(ip, _net_mac(ip), got["done"], user, by=by)
         _sys_ledger("device.secured", f"device:{ip}", f"secured {user}@{ip}: ran "

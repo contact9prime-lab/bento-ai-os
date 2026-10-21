@@ -4508,7 +4508,7 @@ def _network_cli(args):
                 sys.exit(f"  bento network {a} MACHINE (an address, a name or a MAC; see `bento network`)")
             return None
         r = inv.find(inv.rows(), rest[0])
-        if r is None and a in ("check", "secure", "install"):
+        if r is None and a in ("check", "secure", "install", "letin"):
             return {"ip": rest[0], "mac": "", "display": rest[0], "user": "", "ssh": True, "ports": [22],
                     "connections": [], "key": rest[0]}
         if r is None:
@@ -4547,6 +4547,44 @@ def _network_cli(args):
             if ties:
                 print(f"  {'':<22} tied by {ties}")
         return
+    def mine():
+        """The person's own public key: --your-key FILE, else theirs in ~/.ssh on this machine."""
+        if args.your_key:
+            try:
+                k = harden.your_key(Path(os.path.expanduser(args.your_key)).read_text())
+            except OSError as e:
+                sys.exit(f"  could not read {args.your_key}: {e.strerror}")
+            if not k:
+                sys.exit(f"  {args.your_key} is not an SSH public key (a .pub file)")
+            return k
+        return harden.local_key()
+
+    if a == "letin":
+        r = machine()
+        user = args.user or r.get("user") or ""
+        if not user:
+            sys.exit("  which user logs in there? --user NAME")
+        k = mine() if (args.your_key or not args.passwords_on) else ""
+        if not k and not args.passwords_on:
+            sys.exit("  nothing to let in: --your-key FILE (or a key in ~/.ssh here), or --passwords-on")
+        print("  This will run there:")
+        if k:
+            print("    Let your own key in: " + k[:60] + "…")
+        if args.passwords_on:
+            print("    Turn password logins back on: " + harden.PASSWORDS_BACK[:70] + "…")
+        if not args.yes and input("  Go ahead? (y/n) ").strip().lower()[:1] != "y":
+            return
+        try:
+            got = asyncio.run(harden.let_in(r["ip"], user, password(), port(r), k, args.passwords_on))
+        except ri.InstallError as e:
+            sys.exit("  " + str(e))
+        inv.note_security(r["ip"], r.get("mac") or "", got["security"], user, by="cli")
+        ledger("device.letin", f"device:{r['ip']}", f"{user}@{r['ip']}: {', '.join(got['done']) or 'nothing'}")
+        if "yourkey" in got["done"]:
+            print(f"  ✓ your key is on {r['display']}: ssh {user}@{r['ip']}")
+        if "passwords_on" in got["done"]:
+            print(f"  ✓ password logins are back on {r['display']}")
+        return
     if a in ("check", "secure"):
         r = machine()
         user = args.user or r.get("user") or ""
@@ -4566,7 +4604,12 @@ def _network_cli(args):
         if a == "check":
             return
         steps = harden.clean_steps([x.strip() for x in args.steps.split(",") if x.strip()] or None)
-        todo = [x for x in c["plan"] if x["id"] in steps]
+        k = mine() if not c["done"].get("passwords") and "passwords" in steps else (mine() if args.your_key else "")
+        todo = [x for x in harden.plan([p["id"] for p in c["plan"]], port(r), not c["sudo"], k)
+                if x["id"] in steps or x["id"] == "yourkey"]
+        if "passwords" in steps and not c["done"].get("passwords") and not k:
+            print("  ! Password logins go off, yours too. Only this machine's key will get in."
+                  "\n    Add yours with --your-key ~/.ssh/id_ed25519.pub, or later with `bento network letin`.")
         if not todo:
             print("  Nothing to do: everything asked for is in place.")
             return
@@ -4580,7 +4623,7 @@ def _network_cli(args):
         async def show(ln):
             print("    │ " + ln[:150])
         try:
-            got = asyncio.run(harden.secure(r["ip"], user, pw, port(r), steps, on_line=show))
+            got = asyncio.run(harden.secure(r["ip"], user, pw, port(r), steps, on_line=show, mine=k))
         except ri.InstallError as e:
             ledger("device.secure_failed", f"device:{r['ip']}", str(e))
             sys.exit("  " + str(e))
@@ -8415,15 +8458,18 @@ def main():
     p_co.add_argument("--user", default="", help="whose company, on a machine with users")
     p_net = verb("network", help="the machines on your network: look, install, check, secure, disconnect")
     p_net.add_argument("action", nargs="?", default="list",
-                       choices=["list", "look", "install", "check", "secure", "disconnect", "label", "forget"],
+                       choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label", "forget"],
                        metavar="ACTION",
                        help="list | look | install MACHINE --user U [--authorize] [--kiosk] | "
-                            "check IP --user U | secure IP --user U [--steps a,b] | "
+                            "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
+                            "letin MACHINE --user U [--your-key F] [--passwords-on] | "
                             "disconnect MACHINE [--what link:NAME,community,key] | label MACHINE NAME | forget MACHINE")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
     p_net.add_argument("--kiosk", action="store_true", help="install: set the new machine up as a kiosk")
+    p_net.add_argument("--your-key", default="", help="secure / letin: your own public key file (default: ~/.ssh/id_*.pub here)")
+    p_net.add_argument("--passwords-on", action="store_true", help="letin: turn password logins back on")
     p_net.add_argument("--agent-name", default="", help="install: what the new machine's agent is called")
     p_net.add_argument("--steps", default="", help="secure: key,passwords,firewall,updates (default: all)")
     p_net.add_argument("--what", default="", help="disconnect: which ties to remove (default: all of them)")

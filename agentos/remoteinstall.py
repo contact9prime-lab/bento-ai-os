@@ -253,6 +253,24 @@ async def _run(host, user, port, password, remote: str, timeout: float, on_line=
             shutil.rmtree(scratch, ignore_errors=True)
 
 
+def _refused(code: int, err: str) -> bool:
+    return code == 255 and "permission denied" in (err or "").lower()
+
+
+async def login_run(host, user, port, password, remote: str, timeout: float, on_line=None,
+                    stdin: str | None = None) -> tuple[int, str, str, str]:
+    """`_run`, and when the password is refused but this machine has its own key, once more
+    with the key. After Secure it a Pi takes keys only, and a person who typed the password
+    they always used was told "not authenticated" while Bento's key would have got in.
+    Safe for an installer too: a refused login ran nothing. Returns (code, out, err, via)."""
+    code, out, err = await _run(host, user, port, password, remote, timeout, on_line, stdin)
+    if password and _refused(code, err) and key_path().exists():
+        code2, out2, err2 = await _run(host, user, port, "", remote, timeout, on_line, stdin)
+        if code2 == 0 or not _refused(code2, err2):
+            return code2, out2, err2, "key"
+    return code, out, err, "password" if password else "key"
+
+
 async def check(host: str, user: str, password: str = "", port: int = 22) -> dict:
     """Log in and read what the machine is. Changes nothing there."""
     if missing():
@@ -260,7 +278,7 @@ async def check(host: str, user: str, password: str = "", port: int = 22) -> dic
     bad = valid_target(host, user)
     if bad:
         raise InstallError(bad)
-    code, out, err = await _run(host, user, port, password, CHECK_SCRIPT, CHECK_TIMEOUT)
+    code, out, err, via = await login_run(host, user, port, password, CHECK_SCRIPT, CHECK_TIMEOUT)
     if code != 0:
         raise InstallError(_why(err, code, bool(password)))
     facts = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
@@ -275,7 +293,7 @@ async def check(host: str, user: str, password: str = "", port: int = 22) -> dic
             "board": teamlink.plain(facts.get("board"), 60, newlines=False),
             "os": teamlink.plain(facts.get("os"), 60, newlines=False),
             "curl": facts.get("curl") == "yes", "bento": facts.get("bento") == "yes",
-            "free_mb": num("free_kb") // 1024, "ram_mb": num("ram_kb") // 1024,
+            "free_mb": num("free_kb") // 1024, "ram_mb": num("ram_kb") // 1024, "login": via,
             "host_key": fingerprint(host, port),
             "problems": problems({"curl": facts.get("curl") == "yes", "free_mb": num("free_kb") // 1024,
                                   "arch": facts.get("arch") or ""})}
@@ -325,7 +343,7 @@ async def install(cfg: dict, host: str, user: str, password: str, key_text: str,
     if bad:
         raise InstallError(bad)
     remote = plan(cfg, key_text, authorize)
-    code, out, err = await _run(host, user, port, password, remote, INSTALL_TIMEOUT, on_line)
+    code, out, err, _via = await login_run(host, user, port, password, remote, INSTALL_TIMEOUT, on_line)
     if code != 0:
         said = [clean_line(ln) for ln in (err or "").splitlines() if clean_line(ln)]
         tail = [ln for ln in out.splitlines() if ln.strip()]

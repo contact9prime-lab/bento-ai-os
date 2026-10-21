@@ -8,6 +8,13 @@ can't log in; add this machine's key) from a wrong user or password (new Raspber
 user) and from a blank password the Pi has no key for. The reason stays in the form under *Check it*
 instead of only a toast, and the user box no longer suggests `pi`.
 
+**Secure it no longer locks you out of your own Pi.** Turning password logins off checked that this
+machine's key still got in, and nobody else's, so your own password login stopped working with no
+warning. Now Secure it takes your own public key and lets it in first, and says so when you don't
+give one. If you're already locked out, *Add my key* and *Turn password logins back on* (or
+`bento network letin`) get you back in, through Bento's key. Installing Bento with the password
+that stopped working now logs in with Bento's key instead of being refused.
+
 **`bento network look` and `bento network install`.** The terminal can now look at the network and
 install Bento on a machine from its list, by address, name or MAC, on the SSH port the scan found.
 
