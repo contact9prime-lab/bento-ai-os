@@ -29,17 +29,24 @@ def _tab(name: str) -> str:
 def test_the_two_tabs_sit_after_agents():
     ids = re.findall(r"^\s+\['(\w+)','[^']*','([^']*)','(\w+)'\],", SETTINGS, re.M)
     order = [i for i, _, _ in ids]
-    assert order[:4] == ["ai", "agent", "team", "permissions"], order
+    # Network (machines on the network: inventory, install, secure) sits beside the team
+    assert order[:5] == ["ai", "agent", "team", "network", "permissions"], order
     labels = {i: l for i, l, _ in ids}
     assert labels["team"] == "Team & Communications" and labels["permissions"] == "Permissions"
+    assert labels["network"] == "Network"
 
 
 def test_team_and_communications_holds_every_team_option():
     team = _tab("team")
     for piece in ("s-team-own", "s-team-list", "s-team-talk", "s-team-freetalk", "s-team-talklog",
-                  "s-team-limits", "s-team-matrix", "s-team-links", "s-pool", "s-prov",
+                  "s-team-limits", "s-team-matrix", "s-team-links", "s-pool",
                   "openApp(\\'teamchat\\')", "tcRename()"):
         assert piece in team, piece
+    # setting machines up moved to Network, with the inventory; Team keeps a door to it
+    assert "s-prov" not in team and "placeSettings('network')" in team
+    net = _tab("network")
+    for piece in ("s-net", "s-prov", "netPaint", "provPaint"):
+        assert piece in net, piece
     agent = _tab("agent")
     for gone in ("s-team-", "s-pool", "s-prov", "s-taint"):
         assert gone not in agent, f"{gone} still on the Agents page"
@@ -59,14 +66,18 @@ def test_permissions_holds_the_decisions_and_opens_the_app():
 def test_nothing_points_at_the_old_place():
     ws = (JS / "09-websocket.js").read_text()
     assert 'data-t="agent"' not in ws, "the community and machine toasts open the Team tab"
-    assert ws.count('data-t="team"') >= 3
+    assert ws.count('data-t="team"') >= 1, "the community's toast opens the Team tab"
+    assert ws.count('data-t="network"') >= 2, "new machines and devices open the Network tab"
     for f in JS.glob("*.js"):
         t = f.read_text()
         assert "Agents → Working together" not in t and "Agents → Community" not in t, f.name
     places = (JS / "05b-places.js").read_text()
-    for name in ("'Community'", "'New machines'", "'Devices without Bento'", "'Free talk'"):
+    for name in ("'Community'", "'Free talk'"):
         line = next(ln for ln in places.splitlines() if ln.strip().startswith("[" + name))
         assert "placeSettings('team')" in line, name
+    for name in ("'Network'", "'New machines'", "'Devices without Bento'"):
+        line = next(ln for ln in places.splitlines() if ln.strip().startswith("[" + name))
+        assert "placeSettings('network')" in line, name
 
 
 def test_the_rail_draws_both():
@@ -74,6 +85,7 @@ def test_the_rail_draws_both():
     assert re.search(r"^\s+team:'M", icons, re.M) and re.search(r"^\s+shield:'M", icons, re.M)
     css = (ROOT / "agentos/ui/src/css/20-immersive.css").read_text()
     assert "[data-t=team] .psi" in css and "[data-t=permissions] .psi" in css
+    assert "[data-t=network] .psi" in css and re.search(r"^\s+wifi:'M", icons, re.M)
 
 
 @pytest.fixture()

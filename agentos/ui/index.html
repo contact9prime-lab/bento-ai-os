@@ -3440,6 +3440,7 @@ body.immersive .prefs-side [data-t=ai] .psi{background:linear-gradient(135deg,#a
 body.immersive .prefs-side [data-t=agent] .psi{background:linear-gradient(135deg,#2dd4bf,#0f766e)}
 body.immersive .prefs-side [data-t=team] .psi{background:linear-gradient(135deg,#fbbf24,#b45309)}
 body.immersive .prefs-side [data-t=permissions] .psi{background:linear-gradient(135deg,#f87171,#b91c1c)}
+body.immersive .prefs-side [data-t=network] .psi{background:linear-gradient(135deg,#22d3ee,#0e7490)}
 body.immersive .prefs-side [data-t=executors] .psi{background:linear-gradient(135deg,#60a5fa,#1d4ed8)}
 body.immersive .prefs-side [data-t=channels] .psi{background:linear-gradient(135deg,#4ade80,#15803d)}
 body.immersive .prefs-side [data-t=accounts] .psi{background:linear-gradient(135deg,#38bdf8,#0369a1)}
@@ -5113,6 +5114,33 @@ body.kiosk #office-scene canvas{display:block}
 .dev-key{max-width:min(420px,60vw)}
 .dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
+
+/* Settings → Network (24n-network.js): one row per machine, its badges, Secure it */
+.net-list{display:flex;flex-direction:column;gap:6px;margin:6px 0 10px}
+.net-m{display:flex;flex-wrap:wrap;gap:6px 10px;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--bg3) 60%,transparent)}
+.net-m.stale{opacity:.65}
+.net-top{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 320px;min-width:0}
+.net-top .mut{flex:1 1 100%;font-size:var(--fs-sm,12px);overflow-wrap:anywhere}
+.net-b,.net-s{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;
+  background:color-mix(in srgb,var(--txt) 10%,transparent)}
+.net-b.on{background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.net-s.ok{background:color-mix(in srgb,var(--ok,#4ade80) 24%,transparent)}
+.net-s.warn{background:color-mix(in srgb,var(--warn,#f59e0b) 24%,transparent)}
+.net-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.net-steps{flex:1 1 100%;display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.net-step{display:flex;gap:10px;align-items:flex-start;font-size:var(--fs-sm,12px);line-height:1.45;min-width:0}
+.net-step>div{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.net-step .dev-plan{white-space:pre-wrap;overflow-wrap:anywhere}
+.net-m>*,.net-m .dev-form,.net-steps{min-width:0;max-width:100%}
+.dev-form label.net-step{flex-direction:row;align-items:flex-start;font-size:var(--fs-sm,12px)}
+.net-form .dev-acts{align-items:center}.net-form .dev-acts button{min-height:var(--tap,36px)}
+.net-step input{min-width:var(--tap,20px);min-height:var(--tap,20px);margin:0}
+.net-step.done{opacity:.7}.net-tick{color:var(--ok,#4ade80);min-width:20px;text-align:center}
+.net-step details{margin-top:4px}.net-step summary{cursor:pointer;min-height:var(--tap,24px)}
+.net-steps .warn{color:var(--warn,#f59e0b);margin:0}
+@media (max-width:600px){.net-acts{flex:1 1 100%}.net-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
+  .net-form input{min-height:var(--tap,40px)}}
 
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
 .mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}
@@ -7616,7 +7644,7 @@ async function ttFork(p,model){
    there. SUI: the same page as the desktop, nothing native. */
 var ZERO_APPS=['chat','office','files','settings','docs'];
 // AI providers (it thinks with the hub), executors, channels and accounts are the hub's
-var ZERO_TABS_HIDDEN=['ai','executors','channels','accounts'];
+var ZERO_TABS_HIDDEN=['ai','executors','channels','accounts','network'];
 function zeroFace(){try{return !!(PLATFORM&&PLATFORM.zero&&PLATFORM.zero.on_hub)}catch(e){return false}}
 function zeroHub(){try{return (PLATFORM.zero||{}).hub||''}catch(e){return ''}}
 function zeroAllows(id){return !zeroFace()||ZERO_APPS.indexOf(id)>=0}
@@ -13831,8 +13859,9 @@ var PLACES=[
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','backup','restore','light mode','profile','snapshots','users'],placeSettings('system')],
   ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
-  ['New machines','settings','Settings → Team & Communications → Community',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch'],placeSettings('team')],
-  ['Devices without Bento','settings','Settings → Team & Communications → Devices without Bento',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('team')],
+  ['Network','settings','Settings → Network',['network','inventory','devices on the network','machines on my network','lan','secure a machine','secure it','harden','firewall','ssh password','security updates'],placeSettings('network')],
+  ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network')],
+  ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network')],
   ['Community','settings','Settings → Team & Communications → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('team')],
   ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','wake word','small screen'],placeSettings('look')],
   ['Listening','settings','Settings → Voice → Listening',['listen','listening','speech to text','whisper','hear','hearing','transcribe','mic language','dictation'],placeSettings('voice')],
@@ -16471,20 +16500,27 @@ function handle(ev){
     // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
     // new machines (provision.py): one heard waiting is asked about, here, at once
     case 'provision': if(typeof provPaint==='function')provPaint();
+      if(typeof netPaint==='function')netPaint();
       if(typeof provWaitCheck==='function')provWaitCheck();
       if(ev.kind==='new')toast(`A new machine turned on${ev.via==='tailscale'?' on your tailnet':''}: ${ev.name||'a machine'}${ev.board?' ('+ev.board+')':''}. Set it up?`,
-        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="network"]')?.click();
           setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up${ev.via==='tailscale'?' over Tailscale':''}`);
       else if(ev.kind==='failed')toast(`${ev.name||'A machine'} could not be set up: ${ev.error||'it refused'}`);
       else if(ev.kind==='claimed')setTimeout(()=>location.reload(),1500);   // this machine was just set up
       else if(ev.kind==='device')toast(`A Raspberry Pi joined your network: ${ev.name||ev.ip}. Install Bento on it?`,
-        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
-          setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="network"]')?.click();
+          setTimeout(()=>document.getElementById('s-net')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       else if(ev.kind==='installed')toast(`✓ Bento is installed on ${ev.name}. It is set up when it starts.`);
       else if(ev.kind==='install_failed')toast(`Could not install Bento on ${ev.name}: ${ev.error||'it stopped'}`);
       break;
     case 'device_install': if(typeof provDevLine==='function')provDevLine(ev); break;
+    // Settings → Network: a machine being secured (harden.py), line by line, then its result
+    case 'device_secure': if(typeof netLine==='function')netLine(ev); break;
+    case 'network': if(typeof netPaint==='function')netPaint();
+      if(ev.kind==='secured')toast(`✓ ${ev.ip} is secured: ${ev.n} of ${ev.of} in place`);
+      else if(ev.kind==='secure_failed')toast(`Could not secure ${ev.ip}: ${ev.error||'it stopped'}`);
+      break;
     case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
       if(typeof officeReload==='function')officeReload();
       if(typeof crewRoster==='function')crewRoster(true);
@@ -17808,6 +17844,7 @@ const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
   ['agent','◈','Agents','agent'],
   ['team','⚇','Team & Communications','team'],
+  ['network','⌖','Network','wifi'],
   ['permissions','⛨','Permissions','shield'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
@@ -18107,8 +18144,9 @@ function setTab(body,all){
     /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
        One machine leads and lends its brain; small machines join, share notes and take
        pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
-    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join provision new machines discover enrolment key"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div><div id="s-prov"></div></div>`);
-    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint();if(typeof provPaint==='function')provPaint()},0);
+    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div>
+      <div class="prow"><div class="pl"><small>New machines, Make a Zero and installing Bento on the network are in Network.</small></div><div class="pc"><button class="endbtn" onclick="placeSettings('network')()">Open Network</button></div></div></div>`);
+    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
@@ -18123,6 +18161,15 @@ function setTab(body,all){
       pRow('Reach your agent','<button class="endbtn" onclick="settingsGo(\'channels\')">Channels</button>',
         {desc:'Telegram, WhatsApp and the other ways to talk to your agent.',f:'channels telegram whatsapp reach phone'}),
     ],{f:'messages communications team chat channels'}));
+  }
+  /* Network (24n-network.js, inventory.py, harden.py): every machine on this network, Bento
+     or not, with install and Secure it; then setting machines up (24j-provision.js), moved
+     here from Team & Communications. Admin only: it reaches other machines. */
+  if(want('network')){
+    P.push(`<h2>Network</h2><p class="lead">The machines on your network: install Bento on them and keep them secure. ${pInfo('Bento looks only at this machine’s own private network. Anything it runs on another machine is shown before it runs, and is a ledger row.')}</p>`);
+    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates"><h3>On your network</h3><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi"><h3>Set machines up</h3><div id="s-prov"></div></div>`);
+    setTimeout(()=>{if(typeof netPaint==='function')netPaint();if(typeof provPaint==='function')provPaint()},0);
   }
   if(want('permissions')){
     /* Permissions: what your agents may do on their own, how outside content is
@@ -33266,24 +33313,10 @@ async function provAgents(){
    heard. The SD card writer is for the screen the card is plugged into. */
 var DEV={open:'',check:{},log:{}};
 function provDevicesHTML(v,can){
-  const devs=(v.devices||[]).filter(d=>!d.bento),remote=typeof remoteClient==='function'&&remoteClient();
+  /* The machines themselves (with Install Bento) are the inventory above, in Network
+     (24n-network.js); this keeps the two ways in that need no machine yet. */
+  const remote=typeof remoteClient==='function'&&remoteClient();
   const rows=[];
-  rows.push(pRow('Devices without Bento',`<button class="endbtn" data-prov="devscan"${can?'':' disabled'}>Look at the network</button>`,
-    {desc:v.ear?'A Raspberry Pi that joins your network is noticed, and you are asked.':'Look at the network to find machines you can install Bento on.',
-     more:'Only this machine’s own private network is looked at. A Pi says its name when it gets an address; anything else is found when you look.',
-     f:'devices network scan discover install raspberry pi ssh no bento'}));
-  if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
-  if(devs.length)rows.push(`<div class="prov-list">${devs.map(d=>{
-    const run=(v.installs||{})[d.ip]||{},open=DEV.open===d.ip;
-    const what=[d.maker||'',d.os||'',d.ssh?'SSH open':'no SSH'].filter(Boolean).join(' · ');
-    const st=run.state==='running'?'installing…':run.state==='done'||d.state==='installed'?'installed, starting':run.state==='failed'?'install failed':'';
-    return `<div class="prov-m dev-m${open?' open':''}" data-dev="${esc(d.ip)}">
-      <b>${esc(d.name||d.ip)}</b><span class="mut">${esc(d.ip)}${what?' · '+esc(what):''}${st?' · '+esc(st):''}</span>
-      ${can&&d.ssh&&!v.ssh_missing&&run.state!=='running'?`<button class="endbtn" data-prov="devopen" data-ip="${esc(d.ip)}">Install Bento</button>`:''}
-      ${can?`<button class="endbtn" data-prov="devignore" data-key="${esc(d.key)}">Not this one</button>`:''}
-      ${open?provDevForm(d):''}
-      ${(run.lines||[]).length||run.error?`<pre class="dev-log" id="dev-log-${esc(d.ip.replace(/\W/g,'_'))}">${esc((run.lines||[]).join('\n'))}${run.error?'\n✗ '+esc(run.error):''}</pre>`:''}
-    </div>`}).join('')}</div>`);
   rows.push(pRow('This machine’s SSH key',v.pubkey?`<code class="dev-key">${esc(v.pubkey)}</code><button class="endbtn" data-prov="devcopykey">Copy</button>`
       :`<button class="endbtn" data-prov="devkey"${can?'':' disabled'}>Make it</button>`,
     {desc:'Put it in Raspberry Pi Imager and Bento can reach a new Pi with no password.',
@@ -33320,7 +33353,7 @@ function provDevCreds(){
 }
 function provDevLine(ev){
   const id='dev-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
-  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
+  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"],.net-m[data-ip="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
     el=document.createElement('pre');el.className='dev-log';el.id=id;row.appendChild(el)}
   el.textContent=(el.textContent?el.textContent+'\n':'')+ev.line;el.scrollTop=el.scrollHeight;
 }
@@ -35937,6 +35970,163 @@ function taskDeskClose(cid){
 function taskDeskOf(i){
   for(const cid in TASKDESK.map){const d=TASKDESK.map[cid];if(d.desk===i)return {cid,...d}}
   return null;
+}
+/* ================= Settings → Network: what is on it, install, secure =================
+   inventory.py is the list and harden.py is "Secure it"; this draws /api/network. Asked for
+   as "the discovery of the devices should be another tab … install, maintain the inventory
+   and secure the box". One row per machine, Bento or not, with what it is, whose, whether
+   Bento runs there and how secure it was last measured. A row opens to two forms: Install
+   Bento (provDevForm, the same one New machines used) and Secure it, which shows each step,
+   why, and the exact command before anything runs. The rest of setting machines up (new
+   machines waiting, Make a Zero, enrolment keys, the SD card) is the New machines box below,
+   moved here from Team & Communications.
+
+   TUI: `bento network`, `bento network check|secure|label|forget`. SUI: identical, a page;
+   nothing here touches the compositor. A Zero has no Network tab (00k-zeroface.js): its
+   network is its hub's business. */
+var NET={v:null,open:'',mode:'',check:{},runs:{},steps:{}};
+
+async function netPaint(){
+  const box=document.getElementById('s-net');if(!box)return;
+  let v;try{v=await apiJSON('/api/network')}catch(e){box.innerHTML=`<p class="mut prov-empty">${esc(String(e.message||e))}</p>`;return}
+  NET.v=v;
+  const can=v.can_change,rows=[],s=v.summary||{};
+  rows.push(pRow('On your network',`<button class="endbtn" data-net="scan"${can?'':' disabled'}>Look at the network</button>`,
+    {desc:s.machines?`${s.machines} machine${s.machines===1?'':'s'} · ${s.bento} with Bento · ${s.secured} secured`
+      :'Look at the network to list the machines on it.',
+     more:'Only this machine’s own private network is looked at. A Raspberry Pi says its name when it joins, and you get a toast.',
+     f:'network inventory devices machines scan discover list'}));
+  if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
+  const list=(v.rows||[]).filter(r=>!r.ignored);
+  if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
+  else rows.push(`<p class="mut prov-empty">Nothing listed yet. Press Look at the network.</p>`);
+  // keep what is being typed across a repaint (a broadcast, a line of a running step)
+  const kept={};['net-user','net-pw','dev-user','dev-pw'].forEach(id=>{const e=document.getElementById(id);if(e)kept[id]=e.value});
+  box.innerHTML=rows.join('');
+  Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(e&&kept[id])e.value=kept[id]});
+  netWire(box);
+}
+
+function netBadge(r){
+  const b={none:'no Bento',waiting:'Bento, waiting',['set up']:'Bento, set up',linked:'Bento, linked',installed:'Bento installed'}[r.bento]||r.bento;
+  return `<span class="net-b ${r.bento==='none'?'':'on'}">${esc(b)}</span>`;
+}
+function netSecBadge(r){
+  const cls=r.secured_n<0?'':r.security_words==='secured'?'ok':'warn';
+  return `<span class="net-s ${cls}">${esc(r.security_words)}</span>`;
+}
+function netRowHTML(r,v,can){
+  const open=NET.open===r.key,run=(v.secures||{})[r.ip]||{},inst=(v.installs||{})[r.ip]||{};
+  const what=[r.board||r.maker,r.os].filter(Boolean).join(' · ');
+  const seen=r.age==null?'':r.stale?'not heard for a week':r.age<120?'heard just now':'heard '+poolAgo(r.age);
+  const busy=run.state==='running'?' · securing…':inst.state==='running'?' · installing…':'';
+  return `<div class="net-m${open?' open':''}${r.stale?' stale':''}" data-key="${esc(r.key)}" data-ip="${esc(r.ip||'')}">
+    <div class="net-top">
+      <b>${esc(r.display)}</b>${netBadge(r)}${netSecBadge(r)}
+      <span class="mut">${esc(r.ip||'')}${r.mac?' · '+esc(r.mac):''}${what?' · '+esc(what):''}${r.owner_name?' · for '+esc(r.owner_name):''}${seen?' · '+esc(seen):''}${esc(busy)}</span>
+    </div>
+    ${can?`<div class="net-acts">
+      ${r.bento==='none'&&r.ssh&&!v.ssh_missing?`<button class="endbtn" data-net="install" data-key="${esc(r.key)}">Install Bento</button>`:''}
+      ${r.ip&&!v.ssh_missing?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`:''}
+      ${(r.connections||[]).length?`<button class="endbtn" data-net="unlink" data-key="${esc(r.key)}">Disconnect</button>`:''}
+      <button class="endbtn" data-net="label" data-key="${esc(r.key)}">Rename</button>
+      <button class="endbtn" data-net="forget" data-key="${esc(r.key)}">Not this one</button></div>`:''}
+    ${open&&NET.mode==='install'?provDevForm({ip:r.ip,ssh:r.ssh,ports:r.ports||[]}):''}
+    ${open&&NET.mode==='secure'?netSecureForm(r):''}
+    ${open&&NET.mode==='unlink'?netUnlinkForm(r):''}
+    ${netLogHTML('net-log-',r.ip,run)}${netLogHTML('dev-log-',r.ip,inst)}
+  </div>`;
+}
+/* A run's lines while it runs, and its last ones when it failed. A finished run says
+   itself in the row's badge, so its apt chatter is not left on screen. */
+function netLogHTML(prefix,ip,run){
+  if(!run||!(run.state==='running'||run.state==='failed'))return '';
+  const lines=(run.lines||[]).slice(run.state==='failed'?-6:-40);
+  return `<pre class="dev-log" id="${prefix}${esc(String(ip).replace(/\W/g,'_'))}">${esc(lines.join('\n'))}${run.error?'\n✗ '+esc(run.error):''}</pre>`;
+}
+function netSecureForm(r){
+  const c=NET.check[r.ip],steps=(NET.v||{}).steps||[];
+  const sel=NET.steps[r.ip]||{};
+  return `<div class="dev-form net-form">
+    <label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc((c&&c.user)||r.user||'')}"></label>
+    <label>Password <input id="net-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
+      ${c&&!c.problems.length&&steps.some(s=>!c.done[s.id])?`<button class="wiz-next" data-net="go" data-key="${esc(r.key)}">Secure it</button>`:''}</div>
+    ${c?`<div class="net-steps">${steps.map(s=>{const done=!!c.done[s.id],p=(c.plan||[]).find(x=>x.id===s.id);
+      const on=sel[s.id]!==false;
+      return `<div class="net-step${done?' done':''}">
+        ${done?'<span class="net-tick">✓</span>':`<input type="checkbox" data-step="${esc(s.id)}" data-ip="${esc(r.ip)}" ${on?'checked':''} aria-label="${esc(s.title)}">`}
+        <div><b>${esc(s.title)}</b>${done?' <span class="mut">already done</span>':''}<br><span class="mut">${esc(s.why)}</span>
+        ${p&&!done?`<details><summary>What runs there</summary><code class="dev-plan">${esc(p.runs)}</code></details>`:''}</div></div>`}).join('')}
+      ${c.problems.map(p=>`<p class="warn">✗ ${esc(p)}</p>`).join('')}
+      ${c.host_key?`<p class="mut">Its key: ${esc(c.host_key)}</p>`:''}</div>`:''}
+  </div>`;
+}
+/* Disconnect: each tie to this machine is its own tick, and nothing is removed until the
+   person presses the button. Bento stays installed there; only the ties go. */
+function netUnlinkForm(r){
+  const cs=r.connections||[],needUser=cs.some(c=>c.kind==='key');
+  return `<div class="dev-form net-form">
+    <div class="net-steps">${cs.map(c=>`<label class="net-step"><input type="checkbox" data-unlink="${esc(c.id)}" checked>
+      <div><b>${esc(netConnTitle(c))}</b><br><span class="mut">${esc(netConnWhy(c))}</span></div></label>`).join('')}</div>
+    ${needUser?`<label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc(r.user||'')}"></label>`:''}
+    <div class="dev-acts"><button class="wiz-next" data-net="unlinkgo" data-key="${esc(r.key)}">Disconnect</button></div>
+  </div>`;
+}
+function netConnTitle(c){return c.kind==='link'?`The link “${c.label}”`:c.kind==='community'?'Its place in your community':'This machine’s SSH key on it'}
+function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop asking each other, and the permissions that named the link go.'
+  :c.kind==='community'?'It stops thinking with this machine’s brain and taking part in shared work.'
+  :'Bento can no longer log in there without a password.'}
+function netWire(box){
+  box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
+  box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));
+  box.querySelectorAll('[data-step]').forEach(c=>c.onchange=()=>{
+    const m=NET.steps[c.dataset.ip]=NET.steps[c.dataset.ip]||{};m[c.dataset.step]=c.checked});
+}
+function netRow(key){return ((NET.v||{}).rows||[]).find(r=>r.key===key)||{}}
+async function netAct(act,b){
+  const r=netRow(b.dataset.key);
+  const post=async(url,body,method)=>{const res=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+    const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d.error||('could not do that ('+res.status+')'));return d};
+  const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
+    password:(document.getElementById('net-pw')||{}).value||''});
+  try{
+    if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/devices/scan');
+      toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} answered on ${d.networks}`:`Nothing answered on ${d.networks}.`);return netPaint()}
+    if(act==='unlinkgo'){const what=[...document.querySelectorAll(`.net-m[data-key="${CSS.escape(r.key)}"] [data-unlink]`)]
+        .filter(c=>c.checked).map(c=>c.dataset.unlink);
+      if(!what.length){toast('Tick what to remove');return}
+      const words=(r.connections||[]).filter(c=>what.includes(c.id)).map(c=>c.words);
+      if(!await osConfirm(`Disconnect ${r.display||r.ip}?`,`This removes ${words.join(', ')}. Bento stays installed there.`,{confirmText:'Disconnect'}))return;
+      const d=await post('/api/network/disconnect',{key:r.key,what,user:((document.getElementById('net-user')||{}).value||'').trim()});
+      NET.open='';
+      if((d.removed||[]).length)toast('✓ Removed '+d.removed.join(', '));
+      (d.failed||[]).forEach(f=>toast('Could not remove '+f));
+      return netPaint()}
+    if(act==='install'||act==='secure'||act==='unlink'){const same=NET.open===r.key&&NET.mode===act;
+      NET.open=same?'':r.key;NET.mode=same?'':act;if(act==='install')DEV.open=same?'':r.ip;return netPaint()}
+    if(act==='label'){const n=prompt('A name for '+(r.display||r.ip),r.label||r.name||'');if(n===null)return;
+      await post('/api/network/label',{key:r.key,label:n});return netPaint()}
+    if(act==='forget'){await post('/api/network/forget',{key:r.key});return netPaint()}
+    if(act==='check'){const c=creds();if(!c.user){toast('Who logs in there? Type the user name.');return}
+      b.disabled=true;b.textContent='Checking…';
+      try{NET.check[r.ip]=Object.assign(await post('/api/network/check',c),{user:c.user})}
+      catch(e){delete NET.check[r.ip];throw e}finally{netPaint()}
+      return}
+    if(act==='go'){const c=creds(),sel=NET.steps[r.ip]||{},chk=NET.check[r.ip]||{done:{}};
+      const steps=((NET.v||{}).steps||[]).map(s=>s.id).filter(id=>!chk.done[id]&&sel[id]!==false);
+      if(!steps.length){toast('Tick at least one step');return}
+      const titles=((NET.v||{}).steps||[]).filter(s=>steps.includes(s.id)).map(s=>s.title.toLowerCase());
+      if(!await osConfirm(`Secure ${r.display||r.ip}?`,`This will ${titles.join(', ')}. The commands shown run there as ${c.user}.`,{confirmText:'Secure it'}))return;
+      await post('/api/network/secure',{...c,steps});toast('Securing '+(r.display||r.ip)+'…');NET.open='';return netPaint()}
+  }catch(e){toast(String(e.message||e));netPaint()}
+}
+function netPort(r){return r.ssh&&(r.ports||[]).length?Number(r.ports[0])||22:22}
+function netLine(ev){
+  const id='net-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
+  if(!el){const row=document.querySelector(`.net-m[data-ip="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
+    el=document.createElement('pre');el.className='dev-log';el.id=id;row.appendChild(el)}
+  el.textContent=(el.textContent?el.textContent+'\n':'')+ev.line;el.scrollTop=el.scrollHeight;
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

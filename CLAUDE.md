@@ -3180,6 +3180,32 @@ Six rules:
   it doesn't own. `AGENTOS_SCAN_NETWORKS`/`_PORTS`, `AGENTOS_MDNS_PORT`, `AGENTOS_INSTALL_URL`
   and `AGENTOS_REPO` stand a test's loopback network in for a LAN.
 
+## Network: one inventory, Secure it, Disconnect
+
+`agentos/inventory.py` (the list) + `agentos/harden.py` (Secure it, take the key off) +
+`24n-network.js` + Settings → Network + `/api/network*` + `bento network`; `docs/network.md`,
+`tests/test_network.py`, live run `packaging/dev/network-e2e/run.py` (a container with real
+OpenSSH, sudo and nftables, built from this host's packages by `build.sh`). Asked for as "the
+discovery of the devices should be another tab … install, maintain the inventory and secure the
+box", then "you should also be able to remove the connections". Setting machines up
+(`24j-provision.js`) moved into the same tab. Six rules:
+- **One row per machine, folded, never stored twice.** `inventory.rows()` reads the scan's
+  devices, Bento machines seen or set up, links and community members every time, matched by
+  MAC, address and certificate fingerprint. `inventory.json` keeps only what Bento itself
+  learned: the security last MEASURED (`harden.check`), the SSH user that worked, a label.
+- **Secured is measured.** A run that fails still re-checks and records what is now true.
+- **What runs is what was shown** (`harden.plan` = what `secure` sends), a closed set of four
+  steps; the password reaches `sudo` on stdin (`remoteinstall._run(stdin=)`), never argv.
+- **Never lock a person out.** Passwords go off only after a key-only login; after the reload
+  `secure` waits for the key to get in again (sshd re-executes and refuses for a moment, found
+  live); the firewall is its own nftables table, refuses when `$SSH_CLIENT` isn't private, and
+  removes itself after `UNDO_S` unless a NEW login touches `OK_MARK`.
+- **Disconnect removes ties, never the install**: a link through `_team_end_link`, the
+  community place through `pool.remove`, this machine's key through `harden.remove_key`, which
+  refuses when it is the only key and password logins are off (`force` is the person's).
+- **Admin only, no agent tool, a ledger row per step** (`device.check/secure/secured/
+  secure_failed/disconnect/forget`). A Zero has no Network tab (`ZERO_TABS_HIDDEN`).
+
 ## This machine's screen: one agent, and the kiosk that listens
 
 `agentos/face.py` (settings) + `agentos/hearing.py` (speech to text) + `24h-kiosk.js` +

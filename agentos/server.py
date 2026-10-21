@@ -13172,6 +13172,218 @@ async def api_devices_sdcard(request: Request, body: dict):
     return {**got, "key_label": k["label"]}
 
 
+# ---- Settings → Network: the inventory, and securing a machine (inventory.py, harden.py) ----
+
+def _network_view() -> dict:
+    from . import harden
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    rows = invmod.rows(state.machine_cfg())
+    for r in rows:
+        r["owner_name"] = _account_name(r.get("owner") or "") if r.get("owner") else ""
+    return {"rows": rows, "summary": invmod.summary(rows), "can_change": True,
+            "ssh_missing": ri.missing(), "pubkey": ri.public_key(),
+            "steps": [{"id": s["id"], "title": s["title"], "why": s["why"]} for s in harden.STEPS],
+            "secures": {ip: {k: v for k, v in run.items()} for ip, run in state.get("device_secures", {}).items()},
+            "installs": state.get("device_installs", {})}
+
+
+@app.get("/api/network")
+async def api_network():
+    """Every machine on this network Bento knows: admin only, because it names other people's
+    machines and how to reach them."""
+    if (r := _require_admin()):
+        return r
+    return _network_view()
+
+
+def _net_mac(ip: str) -> str:
+    from . import inventory as invmod
+    r = next((x for x in invmod.rows(state.machine_cfg()) if x.get("ip") == ip), None)
+    return (r or {}).get("mac") or ""
+
+
+@app.post("/api/network/check")
+async def api_network_check(body: dict):
+    """Log in and read which security steps are in place there. Changes nothing there; the
+    answer is what the inventory records, because it was measured."""
+    if (r := _require_admin()):
+        return r
+    from . import harden
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    ip, user, pw, port = _device_creds(body or {})
+    try:
+        got = await harden.check(ip, user, pw, port)
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    invmod.note_security(ip, _net_mac(ip), got["done"], user, by=usersmod.current() or "")
+    _ledger("device.check", f"device:{ip}", f"checked {user}@{ip}: "
+            + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in got["done"].items()))
+    return got
+
+
+@app.post("/api/network/secure")
+async def api_network_secure(body: dict):
+    """Run the chosen steps there. Returns at once; each line is broadcast (device_secure) to
+    the admins, and the machine is read back and recorded when it ends."""
+    if (r := _require_admin()):
+        return r
+    from . import harden
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, user, pw, port = _device_creds(b)
+    bad = ri.missing() or ri.valid_target(ip, user)
+    if bad:
+        return JSONResponse({"error": bad}, status_code=400)
+    steps = harden.clean_steps(b.get("steps"))
+    if not steps:
+        return JSONResponse({"error": "choose at least one step"}, status_code=400)
+    runs = state.setdefault("device_secures", {})
+    if (runs.get(ip) or {}).get("state") == "running":
+        return JSONResponse({"error": "that machine is already being secured"}, status_code=409)
+    runs[ip] = {"state": "running", "started": time.time(), "lines": []}
+    _ledger("device.secure", f"device:{ip}", f"started securing {user}@{ip}: "
+            + ", ".join(harden.TITLES[s].lower() for s in steps))
+    asyncio.ensure_future(_network_secure(ip, user, pw, port, steps, usersmod.current() or ""))
+    return {"started": True, "steps": steps}
+
+
+async def _network_secure(ip, user, pw, port, steps, by):
+    from . import harden
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    run = state["device_secures"][ip]
+
+    async def line(ln):
+        ln = ln[:300]
+        run["lines"] = (run["lines"] + [ln])[-60:]
+        await _provision_admins({"type": "device_secure", "ip": ip, "line": ln})
+    try:
+        got = await harden.secure(ip, user, pw, port, steps, on_line=line)
+        run.update(state="done", finished=time.time())
+        invmod.note_security(ip, _net_mac(ip), got["done"], user, by=by)
+        _sys_ledger("device.secured", f"device:{ip}", f"secured {user}@{ip}: ran "
+                    + (", ".join(got["ran"]) or "nothing new") + "; now "
+                    + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in got["done"].items()))
+        await _provision_admins({"type": "network", "kind": "secured", "ip": ip,
+                                 "n": sum(1 for v in got["done"].values() if v), "of": len(got["done"])})
+    except ri.InstallError as e:
+        run.update(state="failed", error=str(e), finished=time.time())
+        # what ran before the failure stays done: measure it, so the list says what is true
+        for login in ("", pw):
+            try:
+                now = await harden.check(ip, user, login, port)
+                invmod.note_security(ip, _net_mac(ip), now["done"], user, by=by)
+                break
+            except ri.InstallError:
+                continue
+        _sys_ledger("device.secure_failed", f"device:{ip}", f"securing {user}@{ip}: {e}")
+        await _provision_admins({"type": "network", "kind": "secure_failed", "ip": ip, "error": str(e)})
+    finally:
+        pw = ""                         # noqa: F841 — the password ends with this task
+
+
+@app.post("/api/network/disconnect")
+async def api_network_disconnect(body: dict):
+    """Remove what ties that machine to this one, each item asked for by name: a link (the
+    same ending as Team & Communications' Remove, cells and all), its place in the community
+    this machine leads, and this machine's SSH key on it. Bento on that machine is left
+    installed and its files are not touched; a ledger row says what went."""
+    if (r := _require_admin()):
+        return r
+    from . import harden
+    from . import inventory as invmod
+    from . import pool as poolmod
+    from . import remoteinstall as ri
+    from . import teamlink
+    b = body or {}
+    row = invmod.find(invmod.rows(state.machine_cfg()), str(b.get("key") or ""))
+    if not row:
+        return JSONResponse({"error": "no such machine"}, status_code=404)
+    have = {c["id"]: c for c in row["connections"]}
+    want = [str(x) for x in (b.get("what") or []) if str(x) in have]
+    if not want:
+        return JSONResponse({"error": "choose what to remove"}, status_code=400)
+    done, failed = [], []
+    for cid in want:
+        c = have[cid]
+        try:
+            if c["kind"] == "link":
+                lk = next((x for x in teamlink.links(c["owner"]) if x.get("label") == c["label"]), None)
+                if lk and await _team_end_link(c["owner"], lk, "disconnected in Network"):
+                    done.append(c["words"])
+                else:
+                    failed.append(f"{c['words']}: it was already gone")
+            elif c["kind"] == "community":
+                with usersmod.as_user(""):
+                    poolmod.remove(state["store"], row["fp"])
+                await _pool_changed(f"removed {row['display']} from the community")
+                done.append(c["words"])
+            elif c["kind"] == "key":
+                user = str(b.get("user") or row.get("user") or "")
+                got = await harden.remove_key(row["ip"], user, str(b.get("password") or ""),
+                                              netscan_port(row), force=bool(b.get("force")))
+                sec = dict((row.get("security") or {}).get("done") or {})
+                sec["key"] = False
+                invmod.note_security(row["ip"], row.get("mac") or "", sec, user, by=usersmod.current() or "")
+                done.append(c["words"] if got["removed"] else f"{c['words']} ({got['why']})")
+        except (ri.InstallError, ValueError) as e:
+            failed.append(f"{c['words']}: {e}")
+    _ledger("device.disconnect", f"device:{row.get('ip') or row['key']}",
+            f"disconnected {row['display']}: removed {', '.join(done) or 'nothing'}"
+            + (f"; could not remove {'; '.join(failed)}" if failed else ""))
+    v = _network_view()
+    v["removed"], v["failed"] = done, failed
+    return v
+
+
+def netscan_port(row: dict) -> int:
+    """The port SSH answered on there: the scan's first port when SSH was seen, else 22."""
+    try:
+        return int((row.get("ports") or [22])[0]) if row.get("ssh") else 22
+    except (TypeError, ValueError):
+        return 22
+
+
+@app.post("/api/network/label")
+async def api_network_label(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import inventory as invmod
+    b = body or {}
+    row = invmod.find(invmod.rows(state.machine_cfg()), str(b.get("key") or ""))
+    if not row:
+        return JSONResponse({"error": "no such machine"}, status_code=404)
+    invmod.set_label(row["ip"], row.get("mac") or "", str(b.get("label") or ""))
+    return _network_view()
+
+
+@app.post("/api/network/forget")
+async def api_network_forget(body: dict):
+    """Not this one: hidden from the list (a device heard again stays hidden), and what Bento
+    noted about it is dropped. The machine itself is not touched."""
+    if (r := _require_admin()):
+        return r
+    from . import inventory as invmod
+    from . import provision as provmod
+    key = str((body or {}).get("key") or "").lower()
+    row = invmod.find(invmod.rows(state.machine_cfg()), key)
+    if not row:
+        return JSONResponse({"error": "no such machine"}, status_code=404)
+    d = provmod.load()
+    hit = False
+    for k, e in d["devices"].items():
+        if k == row["key"] or (row.get("ip") and e.get("ip") == row["ip"]):
+            e["state"] = "ignored"
+            hit = True
+    if hit:
+        provmod.save(d)
+    invmod.forget(row["key"])
+    _ledger("device.forget", f"device:{row.get('ip') or key}", f"took {row['display']} off the list")
+    return _network_view()
+
+
 @app.get("/api/team/links")
 async def api_team_links():
     """Who this team is linked with, what each link may do, and whether this machine

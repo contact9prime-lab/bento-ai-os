@@ -13,6 +13,20 @@ terminal, and the list of machines says whose each one is.
 shows one agent, and its desktop is Chat, Office (with Visit), Files, Settings and Docs. Settings
 says the brain, memory and integrations live on the hub, and the Office's brain says *on* the hub.
 
+**Settings → Network: every machine on your network, and keeping them secure.** One list of
+the machines Bento knows on your network, Bento or not: what each is, whose, whether Bento runs
+there and how secure it was last measured. From a row you can install Bento, **Secure it** (this
+machine's key on it, password logins off, a firewall, security updates by themselves, each
+shown with the exact command before it runs) and **Disconnect** (its link, its place in your
+community, this machine's key on it). Passwords go off only after the key has worked on its own,
+and the firewall undoes itself unless Bento can still log in. Setting machines up moved into the
+same tab. From a terminal: `bento network`.
+
+Checked against a real SSH server with sudo and nftables: password logins were refused
+afterwards, a port nobody allowed stopped answering while SSH still did, and the firewall was
+still on 95 seconds later. The run found that SSH refuses logins for a moment after it reloads;
+Bento now waits for it.
+
 **An update that stalled on an older copy now lands.** On a Pi where something had rewritten
 `uv.lock`, `git pull` refused to run, so the install kept the old lock and tried to compile
 cryptography again. The installer now resets the two generated files before it pulls, and if a

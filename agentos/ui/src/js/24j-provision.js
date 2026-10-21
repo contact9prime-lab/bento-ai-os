@@ -145,24 +145,10 @@ async function provAgents(){
    heard. The SD card writer is for the screen the card is plugged into. */
 var DEV={open:'',check:{},log:{}};
 function provDevicesHTML(v,can){
-  const devs=(v.devices||[]).filter(d=>!d.bento),remote=typeof remoteClient==='function'&&remoteClient();
+  /* The machines themselves (with Install Bento) are the inventory above, in Network
+     (24n-network.js); this keeps the two ways in that need no machine yet. */
+  const remote=typeof remoteClient==='function'&&remoteClient();
   const rows=[];
-  rows.push(pRow('Devices without Bento',`<button class="endbtn" data-prov="devscan"${can?'':' disabled'}>Look at the network</button>`,
-    {desc:v.ear?'A Raspberry Pi that joins your network is noticed, and you are asked.':'Look at the network to find machines you can install Bento on.',
-     more:'Only this machine’s own private network is looked at. A Pi says its name when it gets an address; anything else is found when you look.',
-     f:'devices network scan discover install raspberry pi ssh no bento'}));
-  if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
-  if(devs.length)rows.push(`<div class="prov-list">${devs.map(d=>{
-    const run=(v.installs||{})[d.ip]||{},open=DEV.open===d.ip;
-    const what=[d.maker||'',d.os||'',d.ssh?'SSH open':'no SSH'].filter(Boolean).join(' · ');
-    const st=run.state==='running'?'installing…':run.state==='done'||d.state==='installed'?'installed, starting':run.state==='failed'?'install failed':'';
-    return `<div class="prov-m dev-m${open?' open':''}" data-dev="${esc(d.ip)}">
-      <b>${esc(d.name||d.ip)}</b><span class="mut">${esc(d.ip)}${what?' · '+esc(what):''}${st?' · '+esc(st):''}</span>
-      ${can&&d.ssh&&!v.ssh_missing&&run.state!=='running'?`<button class="endbtn" data-prov="devopen" data-ip="${esc(d.ip)}">Install Bento</button>`:''}
-      ${can?`<button class="endbtn" data-prov="devignore" data-key="${esc(d.key)}">Not this one</button>`:''}
-      ${open?provDevForm(d):''}
-      ${(run.lines||[]).length||run.error?`<pre class="dev-log" id="dev-log-${esc(d.ip.replace(/\W/g,'_'))}">${esc((run.lines||[]).join('\n'))}${run.error?'\n✗ '+esc(run.error):''}</pre>`:''}
-    </div>`}).join('')}</div>`);
   rows.push(pRow('This machine’s SSH key',v.pubkey?`<code class="dev-key">${esc(v.pubkey)}</code><button class="endbtn" data-prov="devcopykey">Copy</button>`
       :`<button class="endbtn" data-prov="devkey"${can?'':' disabled'}>Make it</button>`,
     {desc:'Put it in Raspberry Pi Imager and Bento can reach a new Pi with no password.',
@@ -199,7 +185,7 @@ function provDevCreds(){
 }
 function provDevLine(ev){
   const id='dev-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
-  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
+  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"],.net-m[data-ip="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
     el=document.createElement('pre');el.className='dev-log';el.id=id;row.appendChild(el)}
   el.textContent=(el.textContent?el.textContent+'\n':'')+ev.line;el.scrollTop=el.scrollHeight;
 }

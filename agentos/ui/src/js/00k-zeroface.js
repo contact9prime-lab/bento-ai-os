@@ -8,7 +8,7 @@
    there. SUI: the same page as the desktop, nothing native. */
 var ZERO_APPS=['chat','office','files','settings','docs'];
 // AI providers (it thinks with the hub), executors, channels and accounts are the hub's
-var ZERO_TABS_HIDDEN=['ai','executors','channels','accounts'];
+var ZERO_TABS_HIDDEN=['ai','executors','channels','accounts','network'];
 function zeroFace(){try{return !!(PLATFORM&&PLATFORM.zero&&PLATFORM.zero.on_hub)}catch(e){return false}}
 function zeroHub(){try{return (PLATFORM.zero||{}).hub||''}catch(e){return ''}}
 function zeroAllows(id){return !zeroFace()||ZERO_APPS.indexOf(id)>=0}

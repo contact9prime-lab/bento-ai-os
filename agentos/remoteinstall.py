@@ -195,12 +195,21 @@ def fingerprint(host: str, port: int = 22) -> str:
         return ""
 
 
-async def _run(host, user, port, password, remote: str, timeout: float, on_line=None) -> tuple[int, str, str]:
+async def _run(host, user, port, password, remote: str, timeout: float, on_line=None,
+               stdin: str | None = None) -> tuple[int, str, str]:
+    """One ssh call. `stdin` is written to the remote command and closed (harden.py hands
+    sudo its password this way, so it is never on a command line either)."""
     cmd, env, scratch = _base(host, user, port, password)
     try:
-        p = await asyncio.create_subprocess_exec(*cmd, remote, env=env, stdin=asyncio.subprocess.DEVNULL,
+        p = await asyncio.create_subprocess_exec(*cmd, remote, env=env,
+                                                 stdin=asyncio.subprocess.PIPE if stdin is not None
+                                                 else asyncio.subprocess.DEVNULL,
                                                  stdout=asyncio.subprocess.PIPE,
                                                  stderr=asyncio.subprocess.PIPE)
+        if stdin is not None:
+            p.stdin.write(stdin.encode())
+            await p.stdin.drain()
+            p.stdin.close()
         out_lines: list = []
 
         async def pump():
