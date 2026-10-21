@@ -157,7 +157,7 @@ async function loadUserApps(){
   rebuildLaunchers();
   renderWidgets();
 }
-function launcherIds(){return [...DESKTOP_APPS,...USERAPPS.map(a=>'ua_'+a.id)]}
+function launcherIds(){return [...DESKTOP_APPS,...USERAPPS.map(a=>'ua_'+a.id)].filter(id=>typeof zeroAllows!=='function'||zeroAllows(id))}
 /* user-app management: rename anywhere (desktop right-click, App Studio ✏️) */
 function uaCtxMenu(e,aid){
   const a=USERAPPS.find(x=>x.id===aid);

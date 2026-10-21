@@ -3440,6 +3440,7 @@ body.immersive .prefs-side [data-t=ai] .psi{background:linear-gradient(135deg,#a
 body.immersive .prefs-side [data-t=agent] .psi{background:linear-gradient(135deg,#2dd4bf,#0f766e)}
 body.immersive .prefs-side [data-t=team] .psi{background:linear-gradient(135deg,#fbbf24,#b45309)}
 body.immersive .prefs-side [data-t=permissions] .psi{background:linear-gradient(135deg,#f87171,#b91c1c)}
+body.immersive .prefs-side [data-t=network] .psi{background:linear-gradient(135deg,#22d3ee,#0e7490)}
 body.immersive .prefs-side [data-t=executors] .psi{background:linear-gradient(135deg,#60a5fa,#1d4ed8)}
 body.immersive .prefs-side [data-t=channels] .psi{background:linear-gradient(135deg,#4ade80,#15803d)}
 body.immersive .prefs-side [data-t=accounts] .psi{background:linear-gradient(135deg,#38bdf8,#0369a1)}
@@ -5114,8 +5115,46 @@ body.kiosk #office-scene canvas{display:block}
 .dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
 
+/* Settings → Network (24n-network.js): one row per machine, its badges, Secure it */
+.net-list{display:flex;flex-direction:column;gap:6px;margin:6px 0 10px}
+.net-m{display:flex;flex-wrap:wrap;gap:6px 10px;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--bg3) 60%,transparent)}
+.net-m.stale{opacity:.65}
+.net-top{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 320px;min-width:0}
+.net-top .mut{flex:1 1 100%;font-size:var(--fs-sm,12px);overflow-wrap:anywhere}
+.net-b,.net-s{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;
+  background:color-mix(in srgb,var(--txt) 10%,transparent)}
+.net-b.on{background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.net-s.ok{background:color-mix(in srgb,var(--ok,#4ade80) 24%,transparent)}
+.net-s.warn{background:color-mix(in srgb,var(--warn,#f59e0b) 24%,transparent)}
+.net-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.net-steps{flex:1 1 100%;display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.net-step{display:flex;gap:10px;align-items:flex-start;font-size:var(--fs-sm,12px);line-height:1.45;min-width:0}
+.net-step>div{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.net-step .dev-plan{white-space:pre-wrap;overflow-wrap:anywhere}
+.net-m>*,.net-m .dev-form,.net-steps{min-width:0;max-width:100%}
+.dev-form label.net-step{flex-direction:row;align-items:flex-start;font-size:var(--fs-sm,12px)}
+.net-form .dev-acts{align-items:center}.net-form .dev-acts button{min-height:var(--tap,36px)}
+.net-step input{min-width:var(--tap,20px);min-height:var(--tap,20px);margin:0}
+.net-step.done{opacity:.7}.net-tick{color:var(--ok,#4ade80);min-width:20px;text-align:center}
+.net-step details{margin-top:4px}.net-step summary{cursor:pointer;min-height:var(--tap,24px)}
+.net-steps .warn{color:var(--warn,#f59e0b);margin:0}
+@media (max-width:600px){.net-acts{flex:1 1 100%}.net-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
+  .net-form input{min-height:var(--tap,40px)}}
+
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
 .mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}
+
+/* A Zero's light face (00k-zeroface.js): which hub it belongs to, on the bar and in Settings */
+.zero-chip{display:inline-flex;align-items:center;height:22px;padding:0 10px;margin-right:6px;border-radius:11px;
+  font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;color:var(--txt);
+  background:color-mix(in srgb,var(--acc) 18%,transparent);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent)}
+.zero-note{margin:0 0 14px;padding:12px 16px;border-radius:12px;line-height:1.45;font-size:13px;color:var(--txt);
+  background:color-mix(in srgb,var(--acc) 10%,var(--bg2));border:1px solid color-mix(in srgb,var(--acc) 30%,transparent)}
+.zero-note b{display:block;margin-bottom:2px}
+@media (max-width:600px){.zero-chip{max-width:110px;overflow:hidden;text-overflow:ellipsis}}
+/* a Zero has no company of its own: its departments are on the hub */
+body.zero-face .of-co{display:none}
 /* ---- the drama reel (00g-drama.js) ---- */
 .dr-wrap{display:flex;flex-direction:column;gap:12px;padding:14px;max-width:760px}
 .dr-title{font-weight:750;font-size:var(--fs-lg,17px);display:flex;align-items:center;gap:6px}
@@ -7594,6 +7633,43 @@ async function ttFork(p,model){
     toast('Forked: the same question on '+(got.model||'the default brain')+', from that step.',{kind:'ok'});
     openApp('chat');setTimeout(()=>openConv(got.conversation_id),250);
   }catch(e){toast(e.message,{kind:'err'})}
+}
+/* A Zero's light face (zero.py). Its work, memory and integrations are on the hub that
+   set it up, and the hub answers it as the account it belongs to. So a Zero's screen is
+   its one agent and what comes back: Chat (the answers), the Office (its agent, and
+   visits to the hub's office), Files (what the hub sends back) and Settings without the
+   tabs for things that live on the hub. Every launcher reads zeroAllows(), so they cannot
+   disagree about what a Zero offers.
+   GUI: this file. TUI: a Zero is driven from its hub; `bento pool mind` reads its section
+   there. SUI: the same page as the desktop, nothing native. */
+var ZERO_APPS=['chat','office','files','settings','docs'];
+// AI providers (it thinks with the hub), executors, channels and accounts are the hub's
+var ZERO_TABS_HIDDEN=['ai','executors','channels','accounts','network'];
+function zeroFace(){try{return !!(PLATFORM&&PLATFORM.zero&&PLATFORM.zero.on_hub)}catch(e){return false}}
+function zeroHub(){try{return (PLATFORM.zero||{}).hub||''}catch(e){return ''}}
+function zeroAllows(id){return !zeroFace()||ZERO_APPS.indexOf(id)>=0}
+function zeroTabHidden(tab){return zeroFace()&&ZERO_TABS_HIDDEN.indexOf(tab)>=0}
+function zeroPlaceOk(pl){return zeroAllows(pl.app)&&!(pl.tab&&zeroTabHidden(pl.tab))}
+/* PLATFORM arrives after the dock and the deck were first drawn, so redraw them once */
+function zeroApply(){
+  const on=zeroFace();
+  document.body.classList.toggle('zero-face',on);
+  const chip=document.getElementById('zero-chip');
+  if(on&&!chip){const mb=document.getElementById('tray');
+    if(mb){const c=document.createElement('span');c.id='zero-chip';c.className='zero-chip';
+      c.title='This machine is a Zero. Its work, memory and integrations are on '+zeroHub()+'.';
+      c.textContent='Zero · '+zeroHub();c.onclick=()=>openApp('office');mb.prepend(c)}}
+  else if(!on&&chip)chip.remove();
+  try{if(typeof buildDock==='function')buildDock()}catch(e){}
+  try{if(typeof buildDeck==='function')buildDeck()}catch(e){}
+  try{if(typeof rebuildLaunchers==='function')rebuildLaunchers()}catch(e){}
+}
+/* What Settings says at the top of a Zero's panes */
+function zeroSettingsNote(){
+  if(!zeroFace())return '';
+  return `<div class="zero-note"><b>This machine is a Zero of ${esc(zeroHub())}.</b>
+    Its agent thinks on ${esc(zeroHub())}, and its memory and integrations live there.
+    Mail, channels and MCP servers are set up on ${esc(zeroHub())}, in the account it belongs to.</div>`;
 }
 /* ================= app icon system =================
    Squircle tiles: a curated duotone gradient + a white SVG glyph per app.
@@ -11767,7 +11843,7 @@ function createWin(app){
 
   const tb=document.createElement('button'); tb.className='tbwin';
   tb.dataset.app=app.id;
-  if(DOCK.includes(app.id))tb.classList.add('indock');   // pinned apps surface in the dock itself
+  if((typeof zeroFace==='function'&&zeroFace()?ZERO_APPS:DOCK).includes(app.id))tb.classList.add('indock');   // pinned apps surface in the dock itself
   tb.dataset.tip=app.title;
   tb.innerHTML=appIcon(app.id,46);
   $('#tbwins').appendChild(tb);
@@ -13596,7 +13672,7 @@ async function loadUserApps(){
   rebuildLaunchers();
   renderWidgets();
 }
-function launcherIds(){return [...DESKTOP_APPS,...USERAPPS.map(a=>'ua_'+a.id)]}
+function launcherIds(){return [...DESKTOP_APPS,...USERAPPS.map(a=>'ua_'+a.id)].filter(id=>typeof zeroAllows!=='function'||zeroAllows(id))}
 /* user-app management: rename anywhere (desktop right-click, App Studio ✏️) */
 function uaCtxMenu(e,aid){
   const a=USERAPPS.find(x=>x.id===aid);
@@ -13752,12 +13828,12 @@ var APP_WORDS={
   logs:['diary','events','errors'],
   tokens:['usage','cost','spend','billing'],
 };
-function placeSettings(tab){return ()=>{
+function placeSettings(tab){const go=()=>{
   SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
   openApp('settings');
   // an open Settings window is already painted on another pane: move it
   setTimeout(()=>{if(typeof settingsGo==='function')settingsGo(tab)},60);
-}}
+};go.tab=tab;return go}
 /* A folded app's tab (APP_FOLD in 04-wm.js): opening the old id picks the tab. */
 function placeFold(id){return ()=>openApp(id)}
 function placeMissions(tab,sub){return ()=>{
@@ -13783,8 +13859,9 @@ var PLACES=[
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','backup','restore','light mode','profile','snapshots','users'],placeSettings('system')],
   ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
-  ['New machines','settings','Settings → Team & Communications → Community',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch'],placeSettings('team')],
-  ['Devices without Bento','settings','Settings → Team & Communications → Devices without Bento',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('team')],
+  ['Network','settings','Settings → Network',['network','inventory','devices on the network','machines on my network','lan','secure a machine','secure it','harden','firewall','ssh password','security updates'],placeSettings('network')],
+  ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network')],
+  ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network')],
   ['Community','settings','Settings → Team & Communications → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('team')],
   ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','wake word','small screen'],placeSettings('look')],
   ['Listening','settings','Settings → Voice → Listening',['listen','listening','speech to text','whisper','hear','hearing','transcribe','mic language','dictation'],placeSettings('voice')],
@@ -13802,7 +13879,7 @@ var PLACES=[
   ['Rules','permissions','Permissions → Rules',['policies','policy','rules','always allow','always deny'],placeFold('policies')],
   ['Ledger','permissions','Permissions → Ledger',['audit','ledger','decisions','history of decisions','who did what'],placeFold('audit')],
   ['Quarantine','permissions','Permissions → Quarantine',['quarantine','held','stopped','blocked','suspended','runaway'],placeFold('quarantine')],
-].map(([label,app,hint,words,go])=>({label,app,hint,words,
+].map(([label,app,hint,words,go])=>({label,app,hint,words,tab:go.tab||'',
   // Watch me once notes a place as the step (00i-watch.js), not the app it opens
   go:()=>{if(typeof watchNote==='function')watchNote('place',label);return go()}}));
 
@@ -14068,7 +14145,8 @@ try{if(!localStorage.getItem('dock-office')){localStorage.setItem('dock-office',
     if(localStorage.getItem('dock'))localStorage.setItem('dock',JSON.stringify(DOCK))}}}catch(e){}
 function buildDock(){
   const box=$('#dock');if(!box)return;box.innerHTML='';
-  DOCK.forEach(id=>{
+  // a Zero's dock is its few apps (00k-zeroface.js); everybody else's is theirs
+  (typeof zeroFace==='function'&&zeroFace()?ZERO_APPS:DOCK).forEach(id=>{
     const a=APPS[id];if(!a)return;
     const b=document.createElement('button');b.className='dockb';b.dataset.tip=a.title;b.dataset.app=id;
     b.innerHTML=appIcon(id,46);
@@ -14078,7 +14156,8 @@ function buildDock(){
     box.appendChild(b);
   });
   // a pinned app's open window lives on its dock tile, not as a second tile in #tbwins
-  WM.wins.forEach(w=>w.tb.classList.toggle('indock',DOCK.includes(w.id)));
+  const docked=typeof zeroFace==='function'&&zeroFace()?ZERO_APPS:DOCK;
+  WM.wins.forEach(w=>w.tb.classList.toggle('indock',docked.includes(w.id)));
   updateDockSeps();
 }
 function dockCtxMenu(e,id,a){
@@ -14225,7 +14304,7 @@ function deckSetHidden(id,on){
           :`${name} is back on the desktop`);
 }
 /* the apps of a group that actually belong on the shelf right now */
-function deckShown(g){return g.apps.filter(id=>APPS[id]&&(DECKFULL||!deckIsHidden(id)))}
+function deckShown(g){return g.apps.filter(id=>APPS[id]&&zeroAllows(id)&&(DECKFULL||!deckIsHidden(id)))}
 /* every launchable app has a home: new built-ins land in More, user apps in Your apps */
 function deckReconcile(){
   const ids=(typeof launcherIds==='function'?launcherIds():Object.keys(APPS)).filter(id=>APPS[id]);
@@ -16370,7 +16449,8 @@ function handle(ev){
       else if(ev.brightness!==undefined)toast('brightness '+ev.brightness+'%');
       break;
     case 'platform':   // the compositor appeared (or went away) — re-read what we can do
-      loadPlatform().then(()=>{updateNativeWindows();refreshApp('syssettings');refreshApp('control')});
+      loadPlatform().then(()=>{updateNativeWindows();refreshApp('syssettings');refreshApp('control');
+        if(typeof zeroApply==='function')zeroApply()});
       break;
     case 'wallpaper': loadWallpaper(); toast('wallpaper updated'); break;
     case 'skills': refreshApp('skills'); break;      // the agent installed one (install_skill), with your yes
@@ -16420,20 +16500,27 @@ function handle(ev){
     // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
     // new machines (provision.py): one heard waiting is asked about, here, at once
     case 'provision': if(typeof provPaint==='function')provPaint();
+      if(typeof netPaint==='function')netPaint();
       if(typeof provWaitCheck==='function')provWaitCheck();
       if(ev.kind==='new')toast(`A new machine turned on${ev.via==='tailscale'?' on your tailnet':''}: ${ev.name||'a machine'}${ev.board?' ('+ev.board+')':''}. Set it up?`,
-        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="network"]')?.click();
           setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up${ev.via==='tailscale'?' over Tailscale':''}`);
       else if(ev.kind==='failed')toast(`${ev.name||'A machine'} could not be set up: ${ev.error||'it refused'}`);
       else if(ev.kind==='claimed')setTimeout(()=>location.reload(),1500);   // this machine was just set up
       else if(ev.kind==='device')toast(`A Raspberry Pi joined your network: ${ev.name||ev.ip}. Install Bento on it?`,
-        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
-          setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="network"]')?.click();
+          setTimeout(()=>document.getElementById('s-net')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       else if(ev.kind==='installed')toast(`✓ Bento is installed on ${ev.name}. It is set up when it starts.`);
       else if(ev.kind==='install_failed')toast(`Could not install Bento on ${ev.name}: ${ev.error||'it stopped'}`);
       break;
     case 'device_install': if(typeof provDevLine==='function')provDevLine(ev); break;
+    // Settings → Network: a machine being secured (harden.py), line by line, then its result
+    case 'device_secure': if(typeof netLine==='function')netLine(ev); break;
+    case 'network': if(typeof netPaint==='function')netPaint();
+      if(ev.kind==='secured')toast(`✓ ${ev.ip} is secured: ${ev.n} of ${ev.of} in place`);
+      else if(ev.kind==='secure_failed')toast(`Could not secure ${ev.ip}: ${ev.error||'it stopped'}`);
+      break;
     case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
       if(typeof officeReload==='function')officeReload();
       if(typeof crewRoster==='function')crewRoster(true);
@@ -17757,6 +17844,7 @@ const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
   ['agent','◈','Agents','agent'],
   ['team','⚇','Team & Communications','team'],
+  ['network','⌖','Network','wifi'],
   ['permissions','⛨','Permissions','shield'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
@@ -17771,12 +17859,13 @@ let SETTAB=localStorage.getItem('settab')||'ai';
 
 async function renderSettings(body){
   await loadConfig();
+  if(zeroTabHidden(SETTAB))SETTAB='agent';   // a Zero has no AI providers or channels of its own
   body.innerHTML=`<div class="pshell">
       <div class="phead"><span class="pt">Settings</span><span class="set-saved" id="set-saved" role="status" aria-live="polite"></span><span class="sp"></span>
         <span class="psearch">${SVG_SEARCH}<input id="set-q" type="search" name="settings-find" placeholder="Find a setting…" autocomplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"></span>
       </div>
       <div class="prefs">
-        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label,ico])=>
+        <div class="prefs-side">${SETTINGS_TABS.filter(([id])=>!zeroTabHidden(id)).map(([id,ic,label,ico])=>
           `<button data-t="${id}" class="${SETTAB===id?'on':''}${label.length>16?' lng':''}"><span class="psi"><i>${ic}</i>${uiIcon(ico,14)}</span><span class="pst">${esc(label)}</span></button>`).join('')}</div>
         <div class="prefs-main" id="prefs-main"></div>
       </div>
@@ -17825,7 +17914,8 @@ function setTab(body,all){
   const main=(body||document).querySelector('#prefs-main');if(!main)return;
   const p=cfg.providers;
   const P=[];
-  const want=id=>all||SETTAB===id;
+  const want=id=>(all||SETTAB===id)&&!zeroTabHidden(id);
+  if(zeroFace())P.push(zeroSettingsNote());
   if(want('ai')){
     P.push(`<h2>AI providers</h2><p class="lead">Every model this machine can think with. Each agent can use its own, set in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. ${pInfo('Cloud providers with a key, models running on this machine, and other AI agents installed here like Claude Code, Gemini CLI or Codex.')}</p>`);
     // The chat chip has always said "change it in Settings → AI providers", and
@@ -17945,6 +18035,9 @@ function setTab(body,all){
       pRow('Look',`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Change…</button>`
         +`<button class="endbtn" onclick="avatarDesignAsk('@agent')">✦ Describe it</button>`,
         {desc:'Its character in Chat, Logs and the Office. Pick one or describe it.',f:'agent look character avatar face appearance'}),
+      // a Zero thinks with its hub's brain: there is no AI providers tab to send it to
+      zeroFace()?pRow('Brain',`<span class="mut">${esc(zeroHub())}'s</span>`,
+        {desc:'Your agent thinks on '+zeroHub()+', the hub this machine belongs to.',f:'lead agent brain model provider hub zero'}):
       pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
         {desc:'What your lead agent thinks with. You choose it in AI providers.',f:'lead agent brain model provider'}),
       pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
@@ -18051,8 +18144,9 @@ function setTab(body,all){
     /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
        One machine leads and lends its brain; small machines join, share notes and take
        pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
-    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join provision new machines discover enrolment key"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div><div id="s-prov"></div></div>`);
-    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint();if(typeof provPaint==='function')provPaint()},0);
+    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div>
+      <div class="prow"><div class="pl"><small>New machines, Make a Zero and installing Bento on the network are in Network.</small></div><div class="pc"><button class="endbtn" onclick="placeSettings('network')()">Open Network</button></div></div></div>`);
+    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
@@ -18067,6 +18161,15 @@ function setTab(body,all){
       pRow('Reach your agent','<button class="endbtn" onclick="settingsGo(\'channels\')">Channels</button>',
         {desc:'Telegram, WhatsApp and the other ways to talk to your agent.',f:'channels telegram whatsapp reach phone'}),
     ],{f:'messages communications team chat channels'}));
+  }
+  /* Network (24n-network.js, inventory.py, harden.py): every machine on this network, Bento
+     or not, with install and Secure it; then setting machines up (24j-provision.js), moved
+     here from Team & Communications. Admin only: it reaches other machines. */
+  if(want('network')){
+    P.push(`<h2>Network</h2><p class="lead">The machines on your network: install Bento on them and keep them secure. ${pInfo('Bento looks only at this machine’s own private network. Anything it runs on another machine is shown before it runs, and is a ledger row.')}</p>`);
+    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates"><h3>On your network</h3><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi"><h3>Set machines up</h3><div id="s-prov"></div></div>`);
+    setTimeout(()=>{if(typeof netPaint==='function')netPaint();if(typeof provPaint==='function')provPaint()},0);
   }
   if(want('permissions')){
     /* Permissions: what your agents may do on their own, how outside content is
@@ -33114,7 +33217,7 @@ async function provPaint(){
         <label class="prov-pick"><input type="checkbox" data-pick="${esc(m.fp)}" ${on?'checked':''}${m.state==='enabled'||!can?' disabled':''}>
           <b>${esc(m.name)}</b></label>
         <span class="mut">${esc(hw.board||hw.arch||'a machine')} · ${hw.ram_mb||0} MB · id ${esc(m.id)} · ${esc(state)}
-          · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span></span>
+          · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span>${m.owner_name?` · for ${esc(m.owner_name)}`:''}</span>
         <input class="prov-name" data-name="${esc(m.fp)}" maxlength="32" placeholder="${esc(m.name)}" aria-label="Name for ${esc(m.name)}"${m.state==='enabled'?' disabled':''}>
         ${proof}
         ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Not this one</button>`:''}</div>`}).join('')}</div>`);
@@ -33153,13 +33256,19 @@ async function provPaint(){
 /* ---------------- a Zero: the one line, and the standard setup every machine gets ---------------- */
 function provZeroHTML(v,can){
   const st=v.standard||{},z=PROV.zero,ags=st.agents||[],rows=[];
-  rows.push(pRow('Make a Zero',`<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
+  /* whose it is: the hub answers a Zero as the account it belongs to, with that person's
+     agents, memory and integrations. Only shown on a machine with accounts. */
+  const accs=v.accounts||[];
+  const forSel=accs.length?`<select id="zero-for" aria-label="Whose Zero">${accs.map(a=>
+      `<option value="${esc(a.id)}"${a.id===(PROV.zeroFor||v.me)?' selected':''}>For ${esc(a.name)}</option>`).join('')}</select>`:'';
+  rows.push(pRow('Make a Zero',`${forSel}<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
       placeholder="Tailscale auth key (optional)" aria-label="Tailscale auth key" style="max-width:230px">
       <button class="endbtn" data-prov="zeroline"${can?'':' disabled'}>Show the line</button>`,
-    {desc:'Paste one line on a Pi and it is set up from here, with nobody at it.',
+    {desc:accs.length?'Paste one line on a Pi. It belongs to the person you choose, and works with their integrations.'
+      :'Paste one line on a Pi and it is set up from here, with nobody at it.',
      more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
      f:'zero pi curl one line install tailscale zero touch hub'}));
-  if(z)rows.push(`<div class="zero-out"><code class="zero-line">${esc(z.line)}</code>
+  if(z)rows.push(`<div class="zero-out">${z.for&&z.for.name?`<p class="mut">For ${esc(z.for.name)}</p>`:''}<code class="zero-line">${esc(z.line)}</code>
       <button class="endbtn" data-prov="zerocopy">Copy</button>
       <p class="mut">${(z.addresses||[]).map(a=>`${esc(a.addr)} ${a.via==='tailscale'?'over Tailscale':'on your network'}`).join(' · ')
         ||'This hub has no address another machine can reach.'}${(z.addresses||[]).some(a=>a.via==='tailscale')?'':
@@ -33204,24 +33313,10 @@ async function provAgents(){
    heard. The SD card writer is for the screen the card is plugged into. */
 var DEV={open:'',check:{},log:{}};
 function provDevicesHTML(v,can){
-  const devs=(v.devices||[]).filter(d=>!d.bento),remote=typeof remoteClient==='function'&&remoteClient();
+  /* The machines themselves (with Install Bento) are the inventory above, in Network
+     (24n-network.js); this keeps the two ways in that need no machine yet. */
+  const remote=typeof remoteClient==='function'&&remoteClient();
   const rows=[];
-  rows.push(pRow('Devices without Bento',`<button class="endbtn" data-prov="devscan"${can?'':' disabled'}>Look at the network</button>`,
-    {desc:v.ear?'A Raspberry Pi that joins your network is noticed, and you are asked.':'Look at the network to find machines you can install Bento on.',
-     more:'Only this machine’s own private network is looked at. A Pi says its name when it gets an address; anything else is found when you look.',
-     f:'devices network scan discover install raspberry pi ssh no bento'}));
-  if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
-  if(devs.length)rows.push(`<div class="prov-list">${devs.map(d=>{
-    const run=(v.installs||{})[d.ip]||{},open=DEV.open===d.ip;
-    const what=[d.maker||'',d.os||'',d.ssh?'SSH open':'no SSH'].filter(Boolean).join(' · ');
-    const st=run.state==='running'?'installing…':run.state==='done'||d.state==='installed'?'installed, starting':run.state==='failed'?'install failed':'';
-    return `<div class="prov-m dev-m${open?' open':''}" data-dev="${esc(d.ip)}">
-      <b>${esc(d.name||d.ip)}</b><span class="mut">${esc(d.ip)}${what?' · '+esc(what):''}${st?' · '+esc(st):''}</span>
-      ${can&&d.ssh&&!v.ssh_missing&&run.state!=='running'?`<button class="endbtn" data-prov="devopen" data-ip="${esc(d.ip)}">Install Bento</button>`:''}
-      ${can?`<button class="endbtn" data-prov="devignore" data-key="${esc(d.key)}">Not this one</button>`:''}
-      ${open?provDevForm(d):''}
-      ${(run.lines||[]).length||run.error?`<pre class="dev-log" id="dev-log-${esc(d.ip.replace(/\W/g,'_'))}">${esc((run.lines||[]).join('\n'))}${run.error?'\n✗ '+esc(run.error):''}</pre>`:''}
-    </div>`}).join('')}</div>`);
   rows.push(pRow('This machine’s SSH key',v.pubkey?`<code class="dev-key">${esc(v.pubkey)}</code><button class="endbtn" data-prov="devcopykey">Copy</button>`
       :`<button class="endbtn" data-prov="devkey"${can?'':' disabled'}>Make it</button>`,
     {desc:'Put it in Raspberry Pi Imager and Bento can reach a new Pi with no password.',
@@ -33258,7 +33353,7 @@ function provDevCreds(){
 }
 function provDevLine(ev){
   const id='dev-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
-  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
+  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"],.net-m[data-ip="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
     el=document.createElement('pre');el.className='dev-log';el.id=id;row.appendChild(el)}
   el.textContent=(el.textContent?el.textContent+'\n':'')+ev.line;el.scrollTop=el.scrollHeight;
 }
@@ -33335,7 +33430,8 @@ async function provAct(act,b){
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
     if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
     if(act==='zeroline'){const ts=((document.getElementById('zero-ts')||{}).value||'').trim();
-      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts})}finally{b.disabled=false}
+      const fe=document.getElementById('zero-for');if(fe)PROV.zeroFor=fe.value;
+      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts,for:PROV.zeroFor||''})}finally{b.disabled=false}
       const i=document.getElementById('zero-ts');if(i)i.value='';return provPaint()}
     if(act==='zerocopy'){navigator.clipboard&&navigator.clipboard.writeText((PROV.zero||{}).line||'');toast('✓ copied');return}
     if(act==='stdrm'){await fetch('/api/provision/standard/agent/'+encodeURIComponent(b.dataset.name),{method:'DELETE'});return provPaint()}
@@ -34584,7 +34680,7 @@ function of3Overlay(now){
   of3Where();
   of3Cards();
   const b=of3Project(new OF3.T.Vector3(0,1.55,0)),br=O.view.brain||{};
-  of3Place(of3El('brain','of3-brain',`<b>THE BRAIN</b><span>${(br.memories||0).toLocaleString()} ${br.memories===1?'memory':'memories'} · ${(br.facts||0).toLocaleString()} facts</span>`),b.x,b.y);
+  of3Place(of3El('brain','of3-brain',`<b>THE BRAIN</b><span>${br.on?'on '+esc(br.on):`${(br.memories||0).toLocaleString()} ${br.memories===1?'memory':'memories'} · ${(br.facts||0).toLocaleString()} facts`}</span>`),b.x,b.y);
   const focus=OF3.focus;
   // names: everyone on the move, and every desk in the room you are looking at; two
   // people walking in together get two lines, not one smudge
@@ -35874,6 +35970,163 @@ function taskDeskClose(cid){
 function taskDeskOf(i){
   for(const cid in TASKDESK.map){const d=TASKDESK.map[cid];if(d.desk===i)return {cid,...d}}
   return null;
+}
+/* ================= Settings → Network: what is on it, install, secure =================
+   inventory.py is the list and harden.py is "Secure it"; this draws /api/network. Asked for
+   as "the discovery of the devices should be another tab … install, maintain the inventory
+   and secure the box". One row per machine, Bento or not, with what it is, whose, whether
+   Bento runs there and how secure it was last measured. A row opens to two forms: Install
+   Bento (provDevForm, the same one New machines used) and Secure it, which shows each step,
+   why, and the exact command before anything runs. The rest of setting machines up (new
+   machines waiting, Make a Zero, enrolment keys, the SD card) is the New machines box below,
+   moved here from Team & Communications.
+
+   TUI: `bento network`, `bento network check|secure|label|forget`. SUI: identical, a page;
+   nothing here touches the compositor. A Zero has no Network tab (00k-zeroface.js): its
+   network is its hub's business. */
+var NET={v:null,open:'',mode:'',check:{},runs:{},steps:{}};
+
+async function netPaint(){
+  const box=document.getElementById('s-net');if(!box)return;
+  let v;try{v=await apiJSON('/api/network')}catch(e){box.innerHTML=`<p class="mut prov-empty">${esc(String(e.message||e))}</p>`;return}
+  NET.v=v;
+  const can=v.can_change,rows=[],s=v.summary||{};
+  rows.push(pRow('On your network',`<button class="endbtn" data-net="scan"${can?'':' disabled'}>Look at the network</button>`,
+    {desc:s.machines?`${s.machines} machine${s.machines===1?'':'s'} · ${s.bento} with Bento · ${s.secured} secured`
+      :'Look at the network to list the machines on it.',
+     more:'Only this machine’s own private network is looked at. A Raspberry Pi says its name when it joins, and you get a toast.',
+     f:'network inventory devices machines scan discover list'}));
+  if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
+  const list=(v.rows||[]).filter(r=>!r.ignored);
+  if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
+  else rows.push(`<p class="mut prov-empty">Nothing listed yet. Press Look at the network.</p>`);
+  // keep what is being typed across a repaint (a broadcast, a line of a running step)
+  const kept={};['net-user','net-pw','dev-user','dev-pw'].forEach(id=>{const e=document.getElementById(id);if(e)kept[id]=e.value});
+  box.innerHTML=rows.join('');
+  Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(e&&kept[id])e.value=kept[id]});
+  netWire(box);
+}
+
+function netBadge(r){
+  const b={none:'no Bento',waiting:'Bento, waiting',['set up']:'Bento, set up',linked:'Bento, linked',installed:'Bento installed'}[r.bento]||r.bento;
+  return `<span class="net-b ${r.bento==='none'?'':'on'}">${esc(b)}</span>`;
+}
+function netSecBadge(r){
+  const cls=r.secured_n<0?'':r.security_words==='secured'?'ok':'warn';
+  return `<span class="net-s ${cls}">${esc(r.security_words)}</span>`;
+}
+function netRowHTML(r,v,can){
+  const open=NET.open===r.key,run=(v.secures||{})[r.ip]||{},inst=(v.installs||{})[r.ip]||{};
+  const what=[r.board||r.maker,r.os].filter(Boolean).join(' · ');
+  const seen=r.age==null?'':r.stale?'not heard for a week':r.age<120?'heard just now':'heard '+poolAgo(r.age);
+  const busy=run.state==='running'?' · securing…':inst.state==='running'?' · installing…':'';
+  return `<div class="net-m${open?' open':''}${r.stale?' stale':''}" data-key="${esc(r.key)}" data-ip="${esc(r.ip||'')}">
+    <div class="net-top">
+      <b>${esc(r.display)}</b>${netBadge(r)}${netSecBadge(r)}
+      <span class="mut">${esc(r.ip||'')}${r.mac?' · '+esc(r.mac):''}${what?' · '+esc(what):''}${r.owner_name?' · for '+esc(r.owner_name):''}${seen?' · '+esc(seen):''}${esc(busy)}</span>
+    </div>
+    ${can?`<div class="net-acts">
+      ${r.bento==='none'&&r.ssh&&!v.ssh_missing?`<button class="endbtn" data-net="install" data-key="${esc(r.key)}">Install Bento</button>`:''}
+      ${r.ip&&!v.ssh_missing?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`:''}
+      ${(r.connections||[]).length?`<button class="endbtn" data-net="unlink" data-key="${esc(r.key)}">Disconnect</button>`:''}
+      <button class="endbtn" data-net="label" data-key="${esc(r.key)}">Rename</button>
+      <button class="endbtn" data-net="forget" data-key="${esc(r.key)}">Not this one</button></div>`:''}
+    ${open&&NET.mode==='install'?provDevForm({ip:r.ip,ssh:r.ssh,ports:r.ports||[]}):''}
+    ${open&&NET.mode==='secure'?netSecureForm(r):''}
+    ${open&&NET.mode==='unlink'?netUnlinkForm(r):''}
+    ${netLogHTML('net-log-',r.ip,run)}${netLogHTML('dev-log-',r.ip,inst)}
+  </div>`;
+}
+/* A run's lines while it runs, and its last ones when it failed. A finished run says
+   itself in the row's badge, so its apt chatter is not left on screen. */
+function netLogHTML(prefix,ip,run){
+  if(!run||!(run.state==='running'||run.state==='failed'))return '';
+  const lines=(run.lines||[]).slice(run.state==='failed'?-6:-40);
+  return `<pre class="dev-log" id="${prefix}${esc(String(ip).replace(/\W/g,'_'))}">${esc(lines.join('\n'))}${run.error?'\n✗ '+esc(run.error):''}</pre>`;
+}
+function netSecureForm(r){
+  const c=NET.check[r.ip],steps=(NET.v||{}).steps||[];
+  const sel=NET.steps[r.ip]||{};
+  return `<div class="dev-form net-form">
+    <label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc((c&&c.user)||r.user||'')}"></label>
+    <label>Password <input id="net-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
+      ${c&&!c.problems.length&&steps.some(s=>!c.done[s.id])?`<button class="wiz-next" data-net="go" data-key="${esc(r.key)}">Secure it</button>`:''}</div>
+    ${c?`<div class="net-steps">${steps.map(s=>{const done=!!c.done[s.id],p=(c.plan||[]).find(x=>x.id===s.id);
+      const on=sel[s.id]!==false;
+      return `<div class="net-step${done?' done':''}">
+        ${done?'<span class="net-tick">✓</span>':`<input type="checkbox" data-step="${esc(s.id)}" data-ip="${esc(r.ip)}" ${on?'checked':''} aria-label="${esc(s.title)}">`}
+        <div><b>${esc(s.title)}</b>${done?' <span class="mut">already done</span>':''}<br><span class="mut">${esc(s.why)}</span>
+        ${p&&!done?`<details><summary>What runs there</summary><code class="dev-plan">${esc(p.runs)}</code></details>`:''}</div></div>`}).join('')}
+      ${c.problems.map(p=>`<p class="warn">✗ ${esc(p)}</p>`).join('')}
+      ${c.host_key?`<p class="mut">Its key: ${esc(c.host_key)}</p>`:''}</div>`:''}
+  </div>`;
+}
+/* Disconnect: each tie to this machine is its own tick, and nothing is removed until the
+   person presses the button. Bento stays installed there; only the ties go. */
+function netUnlinkForm(r){
+  const cs=r.connections||[],needUser=cs.some(c=>c.kind==='key');
+  return `<div class="dev-form net-form">
+    <div class="net-steps">${cs.map(c=>`<label class="net-step"><input type="checkbox" data-unlink="${esc(c.id)}" checked>
+      <div><b>${esc(netConnTitle(c))}</b><br><span class="mut">${esc(netConnWhy(c))}</span></div></label>`).join('')}</div>
+    ${needUser?`<label>User there <input id="net-user" maxlength="32" placeholder="pi" value="${esc(r.user||'')}"></label>`:''}
+    <div class="dev-acts"><button class="wiz-next" data-net="unlinkgo" data-key="${esc(r.key)}">Disconnect</button></div>
+  </div>`;
+}
+function netConnTitle(c){return c.kind==='link'?`The link “${c.label}”`:c.kind==='community'?'Its place in your community':'This machine’s SSH key on it'}
+function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop asking each other, and the permissions that named the link go.'
+  :c.kind==='community'?'It stops thinking with this machine’s brain and taking part in shared work.'
+  :'Bento can no longer log in there without a password.'}
+function netWire(box){
+  box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
+  box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));
+  box.querySelectorAll('[data-step]').forEach(c=>c.onchange=()=>{
+    const m=NET.steps[c.dataset.ip]=NET.steps[c.dataset.ip]||{};m[c.dataset.step]=c.checked});
+}
+function netRow(key){return ((NET.v||{}).rows||[]).find(r=>r.key===key)||{}}
+async function netAct(act,b){
+  const r=netRow(b.dataset.key);
+  const post=async(url,body,method)=>{const res=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+    const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d.error||('could not do that ('+res.status+')'));return d};
+  const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
+    password:(document.getElementById('net-pw')||{}).value||''});
+  try{
+    if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/devices/scan');
+      toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} answered on ${d.networks}`:`Nothing answered on ${d.networks}.`);return netPaint()}
+    if(act==='unlinkgo'){const what=[...document.querySelectorAll(`.net-m[data-key="${CSS.escape(r.key)}"] [data-unlink]`)]
+        .filter(c=>c.checked).map(c=>c.dataset.unlink);
+      if(!what.length){toast('Tick what to remove');return}
+      const words=(r.connections||[]).filter(c=>what.includes(c.id)).map(c=>c.words);
+      if(!await osConfirm(`Disconnect ${r.display||r.ip}?`,`This removes ${words.join(', ')}. Bento stays installed there.`,{confirmText:'Disconnect'}))return;
+      const d=await post('/api/network/disconnect',{key:r.key,what,user:((document.getElementById('net-user')||{}).value||'').trim()});
+      NET.open='';
+      if((d.removed||[]).length)toast('✓ Removed '+d.removed.join(', '));
+      (d.failed||[]).forEach(f=>toast('Could not remove '+f));
+      return netPaint()}
+    if(act==='install'||act==='secure'||act==='unlink'){const same=NET.open===r.key&&NET.mode===act;
+      NET.open=same?'':r.key;NET.mode=same?'':act;if(act==='install')DEV.open=same?'':r.ip;return netPaint()}
+    if(act==='label'){const n=prompt('A name for '+(r.display||r.ip),r.label||r.name||'');if(n===null)return;
+      await post('/api/network/label',{key:r.key,label:n});return netPaint()}
+    if(act==='forget'){await post('/api/network/forget',{key:r.key});return netPaint()}
+    if(act==='check'){const c=creds();if(!c.user){toast('Who logs in there? Type the user name.');return}
+      b.disabled=true;b.textContent='Checking…';
+      try{NET.check[r.ip]=Object.assign(await post('/api/network/check',c),{user:c.user})}
+      catch(e){delete NET.check[r.ip];throw e}finally{netPaint()}
+      return}
+    if(act==='go'){const c=creds(),sel=NET.steps[r.ip]||{},chk=NET.check[r.ip]||{done:{}};
+      const steps=((NET.v||{}).steps||[]).map(s=>s.id).filter(id=>!chk.done[id]&&sel[id]!==false);
+      if(!steps.length){toast('Tick at least one step');return}
+      const titles=((NET.v||{}).steps||[]).filter(s=>steps.includes(s.id)).map(s=>s.title.toLowerCase());
+      if(!await osConfirm(`Secure ${r.display||r.ip}?`,`This will ${titles.join(', ')}. The commands shown run there as ${c.user}.`,{confirmText:'Secure it'}))return;
+      await post('/api/network/secure',{...c,steps});toast('Securing '+(r.display||r.ip)+'…');NET.open='';return netPaint()}
+  }catch(e){toast(String(e.message||e));netPaint()}
+}
+function netPort(r){return r.ssh&&(r.ports||[]).length?Number(r.ports[0])||22:22}
+function netLine(ev){
+  const id='net-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
+  if(!el){const row=document.querySelector(`.net-m[data-ip="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
+    el=document.createElement('pre');el.className='dev-log';el.id=id;row.appendChild(el)}
+  el.textContent=(el.textContent?el.textContent+'\n':'')+ev.line;el.scrollTop=el.scrollHeight;
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){
@@ -37878,10 +38131,10 @@ $('#keyshelp').addEventListener('mousedown',e=>{if(e.target.id==='keyshelp')keys
 function togglePalette(force){force===false?omniPop(false):omniFocus()}   // legacy name, one surface
 function paletteOpen(){return omniOpen()}
 function palActions(){
-  const items=Object.keys(APPS).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,
+  const items=Object.keys(APPS).filter(zeroAllows).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,
     words:typeof APP_WORDS!=='undefined'?APP_WORDS[id]:null,run:()=>openApp(id)}));
   // the places inside apps (05b-places.js): "channel" finds Settings → Channels
-  (typeof PLACES!=='undefined'?PLACES:[]).forEach(pl=>{if(APPS[pl.app])items.push(
+  (typeof PLACES!=='undefined'?PLACES:[]).forEach(pl=>{if(APPS[pl.app]&&zeroPlaceOk(pl))items.push(
     {place:true,pid:pl.app,label:pl.label,hint:pl.hint,words:pl.words,run:pl.go})});
   const g=inner=>`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block">${inner}</svg>`;
   items.push(
@@ -37913,7 +38166,7 @@ function palScore(q,text){
 function palFindApp(name){
   name=name.toLowerCase().trim();
   let best=null,bs=0;
-  for(const id in APPS){const s=palScore(name,APPS[id].title)||palScore(name,id);if(s>bs){bs=s;best={id}}}
+  for(const id in APPS){if(!zeroAllows(id))continue;const s=palScore(name,APPS[id].title)||palScore(name,id);if(s>bs){bs=s;best={id}}}
   NATIVEAPPS.forEach(a=>{const s=palScore(name,a.name);if(s>bs){bs=s;best={nat:a}}});
   return bs>=2?best:null;
 }
@@ -38304,6 +38557,7 @@ connect();
     const b=$('#boot');if(b){b.classList.add('off');setTimeout(()=>b.remove(),500)}
     if($('#setup-wiz'))return;      // a first run has no desktop to bring back
     // the kiosk face (24h-kiosk.js): this machine's own screen as the Office, listening
+    try{if(typeof zeroApply==='function')zeroApply()}catch(e){}
     try{if(typeof kioskApply==='function')kioskApply()}catch(e){}
     try{if(typeof provWaitCheck==='function')provWaitCheck()}catch(e){}
     // Bring back the desktop this page had before it reloaded. After the splash,

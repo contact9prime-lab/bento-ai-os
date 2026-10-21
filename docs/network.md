@@ -1,0 +1,125 @@
+# Network: the machines on your network
+
+*Settings → Network* lists every machine Bento knows on your network, whether it runs Bento or
+not. From each row you can install Bento on it, secure it, and remove what ties it to this
+machine. Setting new machines up (machines waiting, Make a Zero, enrolment keys, the SD card)
+is in the same tab, under *Set machines up*.
+
+![Settings → Network: one machine found, no Bento, not checked yet](screenshots/network-list.png)
+
+It's admin only, because it reaches other machines. Bento looks only at this machine's own
+private network, and anything it runs on another machine is shown to you before it runs.
+
+## The list
+
+One row per machine. A Pi that was heard without Bento, then installed, set up and linked is
+still one row, matched by its network card's address, its IP and its certificate. Each row says:
+
+- what it is (board or maker, operating system), its address, and when it was last heard;
+- whether Bento runs there: *no Bento*, *waiting*, *set up*, *linked* or *installed*;
+- how secure it is: *not checked*, *2 of 4 in place* or *secured*. This is always what Bento
+  measured on the machine the last time it logged in, never a note that a run finished;
+- whose it is, for a Zero that belongs to an account.
+
+**Look at the network** knocks on SSH and Bento's port across this machine's own private
+networks. A Raspberry Pi that joins the network says its name and you get a toast.
+
+## Secure it
+
+Open a row and press **Secure it**. Type the user there (`pi` on a Raspberry Pi) and its
+password, and press **Check it**. Bento logs in, reads which of the four steps are already in
+place, and changes nothing. Each step that isn't shows why it matters and, under *What runs
+there*, the exact command it will send.
+
+![Check it: the four steps, each with what runs there](screenshots/network-secure-it.png)
+
+| Step | What it does |
+|---|---|
+| Log in with this machine's key | Adds this machine's SSH key, so Bento can reach it with no password |
+| Turn off password logins | A guessed or default password no longer gets anybody in, and root can't log in over SSH |
+| Turn on a firewall | Only SSH and Bento answer, and only from your network and Tailscale |
+| Install security updates by itself | Installs `unattended-upgrades` and switches it on |
+
+Untick any you don't want, press **Secure it**, and confirm. The steps run in that order, and
+three things keep it from locking you out:
+
+- **Passwords go off only after the key has worked on its own.** Bento logs in again with the
+  key alone first, and stops if that fails. After the change it waits until the key gets in
+  again, because SSH restarts itself for a moment when it reloads.
+- **The firewall undoes itself unless Bento can still log in.** It's loaded with a 90-second
+  timer, and only a new login through it stops the timer. It also refuses to go on when the
+  login doing it comes from an address the firewall would drop. If you reach the machine over
+  SSH from the internet, that stops working; the step says so.
+- **The firewall is its own table** (`table inet bento` in nftables, loaded at boot from
+  `/etc/bento-firewall.nft`). Your own rules, and Docker's, are left alone.
+
+![The machine after Secure it: its badge reads secured, with Disconnect beside it](screenshots/network-secured.png)
+
+On Raspberry Pi OS the first user needs no password for `sudo`. Where it does, the password
+you typed is handed to `sudo` on its standard input, and never on a command line.
+
+## Disconnect
+
+**Disconnect** removes what ties that machine to this one. Each tie is its own tick:
+
+- **a link**: your agents and its agents stop asking each other, and the permissions that named
+  the link go (the same as *Remove* in Team & Communications);
+- **its place in your community**: it stops thinking with this machine's brain;
+- **this machine's SSH key on it**: Bento can no longer log in there without a password.
+
+![Disconnect: the ties, each its own tick](screenshots/network-disconnect.png)
+
+Bento stays installed on the other machine, and nothing else there is touched. Taking the key
+off is refused when it's the only key there and password logins are off, because nobody could
+log in over SSH afterwards and a Pi with no screen would need reflashing. Add your own key or
+turn password logins back on first.
+
+**Not this one** takes a machine off the list. A device heard again stays hidden.
+
+## From a terminal
+
+```sh
+bento network                                   # the list, with each machine's ties
+bento network check 192.168.1.40 --user pi      # which steps are in place; changes nothing
+bento network secure 192.168.1.40 --user pi     # shows what runs, asks, then runs it
+bento network secure pi-kitchen --steps key,passwords
+bento network disconnect pi-kitchen --what key  # or community, or link:NAME
+bento network label 192.168.1.40 "Kitchen Pi"
+bento network forget 192.168.1.40
+```
+
+![bento network in a terminal: the list, and how secure each machine was measured](screenshots/network-terminal.png)
+
+A password is read without echo, or from standard input with `--password-stdin`. A link is
+ended by the running server, so the terminal points you to the tab or `bento link remove`.
+
+## The three faces
+
+- **Desktop:** *Settings → Network*. On a phone the actions reflow into two columns of full-size
+  buttons.
+- **Terminal:** `bento network`, as above.
+- **Session UI:** the same page; nothing here touches the compositor. A Zero has no Network
+  tab: its network is its hub's business.
+
+## The ledger
+
+Every step is a row: `device.scan`, `device.check`, `device.secure`, then `device.secured` or
+`device.secure_failed`, `device.disconnect`, `device.forget`.
+
+## What was tested, and what wasn't
+
+- `tests/test_network.py`, with a stand-in `ssh` playing a Pi whose state changes as each step
+  runs: what runs is what was shown; the password never reaches a command line; `sudo` gets it
+  only when it needs it; passwords go off only after a key-only login; every later login uses
+  the key; a slow SSH reload is waited for; the firewall is kept only by a new login; the key
+  can't be taken off when it's the only way in; the list folds every source into one row.
+- `packaging/dev/network-e2e/run.py`, against a real machine: a container with a real OpenSSH
+  server, `sudo` and nftables, user `pi` with a password, and an SSH configuration with no
+  `Include` line, as Buster ships it. Bento found it, checked it and secured it. Then, measured
+  from outside: a password login was refused, the key got in, a port nobody allowed (9999)
+  stopped answering while SSH still did, and 95 seconds later the firewall was still on.
+  Disconnect refused to take the only key off, then took it off once another key was there.
+  The run found that SSH briefly refuses logins right after it reloads; Bento now waits for it.
+
+Not tested: a real Raspberry Pi, and Raspberry Pi OS's own `systemctl reload ssh`. The container
+has no systemd, so the reload there came from the `ssh` init script.

@@ -99,5 +99,43 @@ body.kiosk #office-scene canvas{display:block}
 .dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
 
+/* Settings → Network (24n-network.js): one row per machine, its badges, Secure it */
+.net-list{display:flex;flex-direction:column;gap:6px;margin:6px 0 10px}
+.net-m{display:flex;flex-wrap:wrap;gap:6px 10px;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--bg3) 60%,transparent)}
+.net-m.stale{opacity:.65}
+.net-top{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 320px;min-width:0}
+.net-top .mut{flex:1 1 100%;font-size:var(--fs-sm,12px);overflow-wrap:anywhere}
+.net-b,.net-s{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;
+  background:color-mix(in srgb,var(--txt) 10%,transparent)}
+.net-b.on{background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.net-s.ok{background:color-mix(in srgb,var(--ok,#4ade80) 24%,transparent)}
+.net-s.warn{background:color-mix(in srgb,var(--warn,#f59e0b) 24%,transparent)}
+.net-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.net-steps{flex:1 1 100%;display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.net-step{display:flex;gap:10px;align-items:flex-start;font-size:var(--fs-sm,12px);line-height:1.45;min-width:0}
+.net-step>div{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.net-step .dev-plan{white-space:pre-wrap;overflow-wrap:anywhere}
+.net-m>*,.net-m .dev-form,.net-steps{min-width:0;max-width:100%}
+.dev-form label.net-step{flex-direction:row;align-items:flex-start;font-size:var(--fs-sm,12px)}
+.net-form .dev-acts{align-items:center}.net-form .dev-acts button{min-height:var(--tap,36px)}
+.net-step input{min-width:var(--tap,20px);min-height:var(--tap,20px);margin:0}
+.net-step.done{opacity:.7}.net-tick{color:var(--ok,#4ade80);min-width:20px;text-align:center}
+.net-step details{margin-top:4px}.net-step summary{cursor:pointer;min-height:var(--tap,24px)}
+.net-steps .warn{color:var(--warn,#f59e0b);margin:0}
+@media (max-width:600px){.net-acts{flex:1 1 100%}.net-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
+  .net-form input{min-height:var(--tap,40px)}}
+
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
 .mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}
+
+/* A Zero's light face (00k-zeroface.js): which hub it belongs to, on the bar and in Settings */
+.zero-chip{display:inline-flex;align-items:center;height:22px;padding:0 10px;margin-right:6px;border-radius:11px;
+  font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;color:var(--txt);
+  background:color-mix(in srgb,var(--acc) 18%,transparent);border:1px solid color-mix(in srgb,var(--acc) 40%,transparent)}
+.zero-note{margin:0 0 14px;padding:12px 16px;border-radius:12px;line-height:1.45;font-size:13px;color:var(--txt);
+  background:color-mix(in srgb,var(--acc) 10%,var(--bg2));border:1px solid color-mix(in srgb,var(--acc) 30%,transparent)}
+.zero-note b{display:block;margin-bottom:2px}
+@media (max-width:600px){.zero-chip{max-width:110px;overflow:hidden;text-overflow:ellipsis}}
+/* a Zero has no company of its own: its departments are on the hub */
+body.zero-face .of-co{display:none}

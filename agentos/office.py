@@ -323,7 +323,7 @@ def view(cfg: dict, store) -> dict:
     if one:
         rooms = [r for r in rooms if r["kind"] in ("lead", "lounge")]
     return {"office": office, "rooms": rooms, "agents": [r for r in roster if r.lower() not in away],
-            "buddy": one, "brain": brain(store),
+            "buddy": one, "brain": _brain_here(cfg, store),
             "looks": LOOKS,
             "style": STYLES[office["style"]], "styles": STYLES, "colors": COLORS,
             "decor": list(DECOR), "pets": list(PETS), "max_departments": MAX_DEPTS}
@@ -340,6 +340,20 @@ def brain(store) -> dict:
         except Exception:
             pass
     return out
+
+
+def _brain_here(cfg: dict, store) -> dict:
+    """A Zero's memory and graph are its section on the hub (zeromind.py), so counting
+    this machine's own tables would show an empty brain that is not its brain. Say where
+    it is instead; the page writes "on <hub>"."""
+    try:
+        from . import zeromind
+        lk = zeromind.hub_link(cfg) if zeromind.zeromod.runs_on_hub(cfg) else None
+    except Exception:
+        lk = None
+    if lk:
+        return {"on": str(lk.get("label") or "the hub")}
+    return brain(store)
 
 
 def describe(v: dict) -> str:

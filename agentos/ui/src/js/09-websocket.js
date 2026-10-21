@@ -621,7 +621,8 @@ function handle(ev){
       else if(ev.brightness!==undefined)toast('brightness '+ev.brightness+'%');
       break;
     case 'platform':   // the compositor appeared (or went away) — re-read what we can do
-      loadPlatform().then(()=>{updateNativeWindows();refreshApp('syssettings');refreshApp('control')});
+      loadPlatform().then(()=>{updateNativeWindows();refreshApp('syssettings');refreshApp('control');
+        if(typeof zeroApply==='function')zeroApply()});
       break;
     case 'wallpaper': loadWallpaper(); toast('wallpaper updated'); break;
     case 'skills': refreshApp('skills'); break;      // the agent installed one (install_skill), with your yes
@@ -671,20 +672,27 @@ function handle(ev){
     // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
     // new machines (provision.py): one heard waiting is asked about, here, at once
     case 'provision': if(typeof provPaint==='function')provPaint();
+      if(typeof netPaint==='function')netPaint();
       if(typeof provWaitCheck==='function')provWaitCheck();
       if(ev.kind==='new')toast(`A new machine turned on${ev.via==='tailscale'?' on your tailnet':''}: ${ev.name||'a machine'}${ev.board?' ('+ev.board+')':''}. Set it up?`,
-        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="network"]')?.click();
           setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       else if(ev.kind==='enabled')toast(`✓ ${ev.name||'A machine'} carried your key and was set up${ev.via==='tailscale'?' over Tailscale':''}`);
       else if(ev.kind==='failed')toast(`${ev.name||'A machine'} could not be set up: ${ev.error||'it refused'}`);
       else if(ev.kind==='claimed')setTimeout(()=>location.reload(),1500);   // this machine was just set up
       else if(ev.kind==='device')toast(`A Raspberry Pi joined your network: ${ev.name||ev.ip}. Install Bento on it?`,
-        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
-          setTimeout(()=>document.getElementById('s-prov')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="network"]')?.click();
+          setTimeout(()=>document.getElementById('s-net')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       else if(ev.kind==='installed')toast(`✓ Bento is installed on ${ev.name}. It is set up when it starts.`);
       else if(ev.kind==='install_failed')toast(`Could not install Bento on ${ev.name}: ${ev.error||'it stopped'}`);
       break;
     case 'device_install': if(typeof provDevLine==='function')provDevLine(ev); break;
+    // Settings → Network: a machine being secured (harden.py), line by line, then its result
+    case 'device_secure': if(typeof netLine==='function')netLine(ev); break;
+    case 'network': if(typeof netPaint==='function')netPaint();
+      if(ev.kind==='secured')toast(`✓ ${ev.ip} is secured: ${ev.n} of ${ev.of} in place`);
+      else if(ev.kind==='secure_failed')toast(`Could not secure ${ev.ip}: ${ev.error||'it stopped'}`);
+      break;
     case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
       if(typeof officeReload==='function')officeReload();
       if(typeof crewRoster==='function')crewRoster(true);

@@ -192,29 +192,35 @@ def key_text(k: dict) -> str:
 
 
 def make_key(label: str = "", auto: bool = False, profile: dict | None = None,
-             single: bool = False) -> dict:
+             single: bool = False, owner: str = "") -> dict:
     """A new enrolment key for this machine's community. The secret is kept here (0600)
-    because the leader has to prove the claim with it; it is shown once, to put on cards."""
+    because the leader has to prove the claim with it; it is shown once, to put on cards.
+    `owner` is the account a machine set up with it belongs to ('' is the machine)."""
     from . import teamlink
     ident = teamlink.ensure_pki()
     d = load()
     k = {"id": secrets.token_hex(4), "secret": secrets.token_urlsafe(24), "cafp": ident["ca_fp"][:16],
          "label": teamlink.plain(label, 40, newlines=False).strip() or "Pis",
          "auto": bool(auto), "profile": clean_profile(profile or {}), "created": time.time(),
-         "single": bool(single)}
+         "single": bool(single), "owner": str(owner or "")}
     d["keys"].append(k)
     save(d)
     return {**key_view(k), "text": key_text(k)}
 
 
-def zero_key() -> dict:
+def zero_key(owner: str = "") -> dict:
     """The automatic key every Zero's one line carries (zero.py), made the first time it is
     asked for. Its text is rebuilt each time the line is asked for, by an admin, on the hub
-    that holds its secret anyway; a Zero that carries it is set up the moment it is heard."""
+    that holds its secret anyway; a Zero that carries it is set up the moment it is heard.
+
+    One per account: a Zero belongs to the account its line was made for, so the hub
+    answers it with that person's agents, memory and integrations (MCP servers, mail,
+    channels are USER_KEYS). The machine's own key has owner ''."""
+    owner = str(owner or "")
     d = load()
-    k = next((k for k in d["keys"] if k.get("zero")), None)
+    k = next((k for k in d["keys"] if k.get("zero") and str(k.get("owner") or "") == owner), None)
     if not k:
-        made = make_key("Zero", auto=True)
+        made = make_key("Zero", auto=True, owner=owner)
         d = load()
         k = next(x for x in d["keys"] if x["id"] == made["id"])
         k["zero"] = True
@@ -225,7 +231,7 @@ def zero_key() -> dict:
 def key_view(k: dict) -> dict:
     return {"id": k["id"], "label": k.get("label", ""), "auto": bool(k.get("auto")),
             "profile": k.get("profile") or {}, "created": k.get("created", 0),
-            "single": bool(k.get("single"))}
+            "single": bool(k.get("single")), "owner": str(k.get("owner") or "")}
 
 
 def keys() -> list[dict]:
@@ -739,9 +745,10 @@ def seen_list() -> list[dict]:
     out = []
     for fp, e in d["seen"].items():
         k = mine.get(e.get("key_id") or "")
+        owner = (d["enabled"].get(fp) or {}).get("owner", (k or {}).get("owner", ""))
         out.append({**e, "fp": fp, "age": int(time.time() - e.get("last", 0)),
                     "our_key": bool(k), "key_label": (k or {}).get("label", ""),
-                    "auto": bool(k and k.get("auto"))})
+                    "auto": bool(k and k.get("auto")), "owner": owner or ""})
     return sorted(out, key=lambda x: -x.get("last", 0))
 
 
@@ -1070,11 +1077,15 @@ async def scan(wait: float = 2.0, targets: list[str] | None = None) -> list[dict
 
 
 async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str = "",
-                 pool_info: dict | None = None, timeout: float = 20) -> dict:
+                 pool_info: dict | None = None, timeout: float = 20, owner: str | None = None) -> dict:
     """Set up one waiting machine from here. `target` is a seen entry (addr, port, fp).
     Proves the claim with this machine's enrolment key when the target carries one, else
     with `code`. Writes this side's link to it and records it as set up here, so its
-    request to join is let in at once. Raises ValueError with the sentence to show."""
+    request to join is let in at once. Raises ValueError with the sentence to show.
+
+    The link belongs to `owner`, else to the key's owner, else to the machine: whoever
+    owns the link is who its requests are answered as (teamlink's on_ask enters that
+    account), so a Zero made for an account works with that account's integrations."""
     from . import teamlink
     ident = teamlink.ensure_pki()
     addr, port, fp = target.get("addr"), int(target.get("port") or 0), target.get("fp")
@@ -1129,19 +1140,20 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
     td = teamlink._load()
     td["links"] = [lk for lk in td["links"] if lk.get("peer_host_fp") != fp]
     name = teamlink._label(out.get("name") or target.get("name") or "machine")
-    lk = teamlink._add_link(td, kind="machine", owner="", label=name, peer_ca=out["ca"], peer_host_fp=fp,
+    who = str(owner if owner is not None else ((key or {}).get("owner") or ""))
+    lk = teamlink._add_link(td, kind="machine", owner=who, label=name, peer_ca=out["ca"], peer_host_fp=fp,
                             peer_name=name, url=f"{addr}:{teamlink._port(out.get('port'))}",
                             direction="set up from here")
     teamlink._save(td)
     d = load()
     d["enabled"][fp] = {"name": name, "at": time.time(), "how": how,
                         "execution": prof.get("execution", "here"),
-                        "via": target.get("via") or _via(addr), "label": lk["label"]}
+                        "via": target.get("via") or _via(addr), "label": lk["label"], "owner": who}
     if key and key.get("single"):
         # a key made for one machine (an SSH install, one SD card) is spent on it
         d["keys"] = [k for k in d["keys"] if k["id"] != key["id"]]
     if fp in d["seen"]:
         d["seen"][fp].update(state="enabled", name=name)
     save(d)
-    return {"ok": True, "name": name, "label": lk["label"], "how": how, "profile": prof,
+    return {"ok": True, "name": name, "label": lk["label"], "how": how, "profile": prof, "owner": who,
             "hw": out.get("hw") or {}, "via": target.get("via") or _via(addr)}

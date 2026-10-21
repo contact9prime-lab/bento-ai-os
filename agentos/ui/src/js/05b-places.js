@@ -42,12 +42,12 @@ var APP_WORDS={
   logs:['diary','events','errors'],
   tokens:['usage','cost','spend','billing'],
 };
-function placeSettings(tab){return ()=>{
+function placeSettings(tab){const go=()=>{
   SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
   openApp('settings');
   // an open Settings window is already painted on another pane: move it
   setTimeout(()=>{if(typeof settingsGo==='function')settingsGo(tab)},60);
-}}
+};go.tab=tab;return go}
 /* A folded app's tab (APP_FOLD in 04-wm.js): opening the old id picks the tab. */
 function placeFold(id){return ()=>openApp(id)}
 function placeMissions(tab,sub){return ()=>{
@@ -73,8 +73,9 @@ var PLACES=[
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','backup','restore','light mode','profile','snapshots','users'],placeSettings('system')],
   ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
-  ['New machines','settings','Settings → Team & Communications → Community',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch'],placeSettings('team')],
-  ['Devices without Bento','settings','Settings → Team & Communications → Devices without Bento',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('team')],
+  ['Network','settings','Settings → Network',['network','inventory','devices on the network','machines on my network','lan','secure a machine','secure it','harden','firewall','ssh password','security updates'],placeSettings('network')],
+  ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network')],
+  ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network')],
   ['Community','settings','Settings → Team & Communications → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('team')],
   ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','wake word','small screen'],placeSettings('look')],
   ['Listening','settings','Settings → Voice → Listening',['listen','listening','speech to text','whisper','hear','hearing','transcribe','mic language','dictation'],placeSettings('voice')],
@@ -92,7 +93,7 @@ var PLACES=[
   ['Rules','permissions','Permissions → Rules',['policies','policy','rules','always allow','always deny'],placeFold('policies')],
   ['Ledger','permissions','Permissions → Ledger',['audit','ledger','decisions','history of decisions','who did what'],placeFold('audit')],
   ['Quarantine','permissions','Permissions → Quarantine',['quarantine','held','stopped','blocked','suspended','runaway'],placeFold('quarantine')],
-].map(([label,app,hint,words,go])=>({label,app,hint,words,
+].map(([label,app,hint,words,go])=>({label,app,hint,words,tab:go.tab||'',
   // Watch me once notes a place as the step (00i-watch.js), not the app it opens
   go:()=>{if(typeof watchNote==='function')watchNote('place',label);return go()}}));
 

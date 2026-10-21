@@ -3124,6 +3124,26 @@ mode the souls and memory and kb should be with the hub and sectioned". Five rul
 - **What it kept before moves once** (`move_local`, `cfg.zero.moved`, a `zero.moved` row); the local rows
   are left and not read again. Found by the live run: the hub's `bento pool mind` opened no database.
 
+**A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
+`server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
+`packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their
+own zeros" and "a lighter Pi: one agent, office, visits and answers". Five rules:
+- **The link's owner is the account it was made for.** The automatic key is one per account (`owner`
+  on the key), `enable` writes the link with that owner, and `_team_on_ask` already enters
+  `users.as_user(lk["owner"])`, so the Zero is answered with that person's lead, memory and USER_KEYS
+  integrations (MCP, channels, mail). Owner `''` (a code, no `--for`) stays the machine's.
+- **The hub's half is written in the owner's account** (`hub_side` under `users.as_user(owner)`, in
+  the route and in `bento pool enable`), or the cells and the standing folder land in the machine's
+  database while the link answers as the person.
+- **An owner's services start with the server** (`_start_account_bridges`), or a Zero's question
+  after a reboot found no MCP for the account nobody had signed in to.
+- **A Zero starts no integrations** (`hub_only` in startup, `_build_user_services._run`): no MCP, no
+  Telegram, no WhatsApp, no account bridges. Its integrations are the hub's.
+- **The light face is a filter, never a second page**: `ZERO_APPS` for the dock, deck, launchers and
+  palette, `ZERO_TABS_HIDDEN` for Settings (with `zeroSettingsNote` saying where they live),
+  one-agent buddy by default, the Office's brain `{"on": hub}` (`office._brain_here`). `/api/platform`
+  carries `zero`, and the page branches on that, never on the board.
+
 ## Machines WITHOUT Bento: heard, offered, installed over SSH or from the SD card
 
 `agentos/netscan.py` (the passive mDNS ear + a scan on request) + `agentos/remoteinstall.py`
@@ -3159,6 +3179,32 @@ Six rules:
   failed/sdcard`). Logging into another machine is the largest thing this OS does to anything
   it doesn't own. `AGENTOS_SCAN_NETWORKS`/`_PORTS`, `AGENTOS_MDNS_PORT`, `AGENTOS_INSTALL_URL`
   and `AGENTOS_REPO` stand a test's loopback network in for a LAN.
+
+## Network: one inventory, Secure it, Disconnect
+
+`agentos/inventory.py` (the list) + `agentos/harden.py` (Secure it, take the key off) +
+`24n-network.js` + Settings → Network + `/api/network*` + `bento network`; `docs/network.md`,
+`tests/test_network.py`, live run `packaging/dev/network-e2e/run.py` (a container with real
+OpenSSH, sudo and nftables, built from this host's packages by `build.sh`). Asked for as "the
+discovery of the devices should be another tab … install, maintain the inventory and secure the
+box", then "you should also be able to remove the connections". Setting machines up
+(`24j-provision.js`) moved into the same tab. Six rules:
+- **One row per machine, folded, never stored twice.** `inventory.rows()` reads the scan's
+  devices, Bento machines seen or set up, links and community members every time, matched by
+  MAC, address and certificate fingerprint. `inventory.json` keeps only what Bento itself
+  learned: the security last MEASURED (`harden.check`), the SSH user that worked, a label.
+- **Secured is measured.** A run that fails still re-checks and records what is now true.
+- **What runs is what was shown** (`harden.plan` = what `secure` sends), a closed set of four
+  steps; the password reaches `sudo` on stdin (`remoteinstall._run(stdin=)`), never argv.
+- **Never lock a person out.** Passwords go off only after a key-only login; after the reload
+  `secure` waits for the key to get in again (sshd re-executes and refuses for a moment, found
+  live); the firewall is its own nftables table, refuses when `$SSH_CLIENT` isn't private, and
+  removes itself after `UNDO_S` unless a NEW login touches `OK_MARK`.
+- **Disconnect removes ties, never the install**: a link through `_team_end_link`, the
+  community place through `pool.remove`, this machine's key through `harden.remove_key`, which
+  refuses when it is the only key and password logins are off (`force` is the person's).
+- **Admin only, no agent tool, a ledger row per step** (`device.check/secure/secured/
+  secure_failed/disconnect/forget`). A Zero has no Network tab (`ZERO_TABS_HIDDEN`).
 
 ## This machine's screen: one agent, and the kiosk that listens
 

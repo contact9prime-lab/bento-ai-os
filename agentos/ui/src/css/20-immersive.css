@@ -198,6 +198,7 @@ body.immersive .prefs-side [data-t=ai] .psi{background:linear-gradient(135deg,#a
 body.immersive .prefs-side [data-t=agent] .psi{background:linear-gradient(135deg,#2dd4bf,#0f766e)}
 body.immersive .prefs-side [data-t=team] .psi{background:linear-gradient(135deg,#fbbf24,#b45309)}
 body.immersive .prefs-side [data-t=permissions] .psi{background:linear-gradient(135deg,#f87171,#b91c1c)}
+body.immersive .prefs-side [data-t=network] .psi{background:linear-gradient(135deg,#22d3ee,#0e7490)}
 body.immersive .prefs-side [data-t=executors] .psi{background:linear-gradient(135deg,#60a5fa,#1d4ed8)}
 body.immersive .prefs-side [data-t=channels] .psi{background:linear-gradient(135deg,#4ade80,#15803d)}
 body.immersive .prefs-side [data-t=accounts] .psi{background:linear-gradient(135deg,#38bdf8,#0369a1)}

@@ -1181,7 +1181,7 @@ function of3Overlay(now){
   of3Where();
   of3Cards();
   const b=of3Project(new OF3.T.Vector3(0,1.55,0)),br=O.view.brain||{};
-  of3Place(of3El('brain','of3-brain',`<b>THE BRAIN</b><span>${(br.memories||0).toLocaleString()} ${br.memories===1?'memory':'memories'} · ${(br.facts||0).toLocaleString()} facts</span>`),b.x,b.y);
+  of3Place(of3El('brain','of3-brain',`<b>THE BRAIN</b><span>${br.on?'on '+esc(br.on):`${(br.memories||0).toLocaleString()} ${br.memories===1?'memory':'memories'} · ${(br.facts||0).toLocaleString()} facts`}</span>`),b.x,b.y);
   const focus=OF3.focus;
   // names: everyone on the move, and every desk in the room you are looking at; two
   // people walking in together get two lines, not one smudge

@@ -26,6 +26,7 @@ real install needs the network, a Python download and several minutes. The
 end-to-end proof belongs in a container; this is the guard that runs on every commit.
 """
 
+import os
 import re
 from pathlib import Path
 
@@ -371,7 +372,7 @@ def test_a_stale_venv_on_a_newer_python_is_rebuilt_so_the_pin_takes():
 def test_the_cryptography_message_is_arch_aware():
     """The same source-build failure means different things by architecture, so the
     handler branches: armv7l, armv6l, and 64-bit each get their own message."""
-    seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:3000]
+    seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:5000]
     assert re.search(r'armv7l\)', seg), "must branch for 32-bit armv7"
     assert re.search(r'armv6l\)', seg), "must branch for armv6 (Pi Zero / 1)"
     assert 'too new for it' in seg or '3.14' in seg, (
@@ -542,3 +543,47 @@ def test_the_last_lines_say_what_to_sign_in_with():
     tail = SRC.split("# done\n# ---", 1)[-1]
     assert "sign in as:" in tail and "sign in with:" in tail, (
         "the closing block gives an address without saying who signs in there")
+
+
+def _update_block():
+    """The installer's update path, from `say "updating ...` to the pull, as it ships."""
+    start = SRC.index('  say "updating AgentOS in $DIR"')
+    end = SRC.index('\n', SRC.index('git -C "$DIR" pull --ff-only', start))
+    return SRC[start:end]
+
+
+def test_a_rewritten_lock_does_not_keep_an_old_copy_old(tmp_path):
+    """Found on a Buster Pi after the cryptography fix: the NEW installer ran on an OLD
+    copy whose uv.lock a previous run had rewritten. `git pull` refused ("your local
+    changes would be overwritten"), the installer only warned, and the install went on
+    with the old lock and compiled cryptography. The generated files are reset first,
+    as `bento update` does, so the pull lands."""
+    import subprocess
+    from agentos import updates
+    for f in updates.DERIVED:
+        assert f in _update_block(), f"{f} is generated and must be reset before the pull"
+    git = lambda *a, cwd: subprocess.run(["git", *a], cwd=cwd, check=True, capture_output=True, text=True)
+    up = tmp_path / "upstream"; up.mkdir()
+    git("init", "-q", "-b", "master", cwd=up)
+    git("config", "user.email", "t@t", cwd=up); git("config", "user.name", "t", cwd=up)
+    (up / "uv.lock").write_text("old lock\n")
+    git("add", ".", cwd=up); git("commit", "-qm", "old", cwd=up)
+    pi = tmp_path / "pi"
+    git("clone", "-q", str(up), str(pi), cwd=tmp_path)
+    (up / "uv.lock").write_text("new lock with the armv7 fork\n")
+    git("commit", "-qam", "the fix", cwd=up)
+    (pi / "uv.lock").write_text("old lock, rewritten by uv on the Pi\n")
+    script = 'say(){ echo "$*"; }; warn(){ echo "WARN $*"; }\n' + _update_block() + "\n"
+    out = subprocess.run(["sh", "-c", script], env={**os.environ, "DIR": str(pi)},
+                         capture_output=True, text=True)
+    assert "WARN" not in out.stdout, out.stdout + out.stderr
+    assert (pi / "uv.lock").read_text() == "new lock with the armv7 fork\n"
+
+
+def test_an_old_copy_is_named_when_cryptography_still_compiles():
+    """If the pull still fails, the armv7 message says the COPY is old (its lock has
+    no armv7 entry) and how to bring it up to date, not "update uv"."""
+    seg = SRC.split('MUST be linked with OpenSSL 3', 1)[1][:4000]
+    arm7 = seg[seg.index('armv7l)'):seg.index('armv6l)')]
+    assert "grep -q \"platform_machine == 'armv7l'\" uv.lock" in arm7
+    assert 'older than the fix' in arm7 and 'pull --ff-only' in arm7

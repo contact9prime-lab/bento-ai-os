@@ -129,6 +129,8 @@ def _build_user_services(uid: str, toolbox, broadcast) -> dict:
         # Every loop runs inside the owner's context, so anything they reach for —
         # the store, a tool, a turn — resolves to this person and not to whoever
         # happened to be the last request.
+        if _zero().runs_on_hub(state.machine_cfg()):
+            return              # a Zero: its integrations are on the hub
         with usersmod.as_user(uid):
             await asyncio.gather(tg.run_forever(), mcp.start(), return_exceptions=True)
 
@@ -180,6 +182,17 @@ def _start_account_bridges() -> list[str]:
         seen[tok] = u.get("name") or uid
         usersmod.services(uid)          # builds the bridges and starts their loops
         started.append(uid)
+    # An account whose Zeros run here answers them with its own MCP servers. A Zero asks
+    # with nobody signed in on the hub, so those start with the server too, or its first
+    # question after a restart would be answered without them.
+    with contextlib.suppress(Exception):
+        from . import provision as provmod
+        owners = {e.get("owner") for e in provmod.load()["enabled"].values()
+                  if e.get("execution") == "hub" and e.get("owner")}
+        for uid in sorted(owners - set(started)):
+            if usersmod.get(uid):
+                usersmod.services(uid)
+                started.append(uid)
     return started
 
 
@@ -394,18 +407,26 @@ async def startup():
         uids = [u["id"] for u in usersmod.list_users()] if usersmod.enabled() else [""]
         for uid in uids:
             await _resume_one(uid)
+    # A Zero's work, memory and integrations are on its hub (zero.py): the hub's
+    # account answers it with that person's MCP servers, mail and channels. So a Zero
+    # starts none of its own here; a Pi spends nothing on a bot or a server nobody uses.
+    hub_only = _zero().runs_on_hub(cfg)
+    if hub_only:
+        store.log("system", f"this machine is a Zero of {_zero().state(cfg).get('hub')}: its integrations live on the hub")
     if not idle:
-        asyncio.create_task(_resume_whatsapp_link())
+        if not hub_only:
+            asyncio.create_task(_resume_whatsapp_link())
         asyncio.create_task(scheduler.run_forever())
         asyncio.create_task(_stage_loop())
         state["parked_task"] = asyncio.create_task(_parked_loop(time.time()))
-        asyncio.create_task(mcp.start())
-        asyncio.create_task(telegram.run_forever())
+        if not hub_only:
+            asyncio.create_task(mcp.start())
+            asyncio.create_task(telegram.run_forever())
     # The three services that cannot be shared get built per user, on demand, the
     # first time somebody's request or scheduled job reaches for one.
     usersmod.set_service_factory(
         lambda uid: _build_user_services(uid, toolbox, broadcast))
-    if not idle:
+    if not idle and not hub_only:
         _start_account_bridges()
     from . import attention
     if not idle:
@@ -1010,6 +1031,33 @@ async def _provision_claimed(got: dict):
     await state["broadcast"]({"type": "face"})
 
 
+def _zero_for(raw) -> tuple[str | None, str]:
+    """The account a Zero is made for, from a name or an id: (uid, error). Accounts are
+    isolated by directory, so the account decides whose agents, memory and integrations
+    (MCP servers, mail, channels: users.USER_KEYS) answer the Zero. '' is the machine,
+    the only answer where there are no accounts; with accounts, nothing given is the
+    person asking."""
+    if not usersmod.enabled():
+        return "", ""
+    v = str(raw or "").strip()
+    if not v:
+        return usersmod.current() or "", ""
+    u = usersmod.get(v) or usersmod.by_name(v)
+    if not u:
+        return None, f"there is no account called {v!r} on this machine"
+    return u["id"], ""
+
+
+def _account_name(uid: str) -> str:
+    u = usersmod.get(uid) if uid else None
+    return u["name"] if u else ""
+
+
+def _zero_for_words(uid: str) -> str:
+    u = usersmod.get(uid) if uid else None
+    return f" (for {u['name']})" if u else ""
+
+
 async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
     """Set up each waiting machine in `items` ({fp, code?, name?}) from here. This machine
     leads a community for it (started if there is none), and its link door is opened,
@@ -1043,7 +1091,8 @@ async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
             if it.get("name"):
                 prof["name"] = it["name"]
             try:
-                r = await provmod.enable(cfg, target, prof, code=str(it.get("code") or ""), pool_info=info)
+                r = await provmod.enable(cfg, target, prof, code=str(it.get("code") or ""), pool_info=info,
+                                         owner=it.get("owner"))
             except ValueError as e:
                 _sys_ledger("provision.failed", f"provision:{target['fp'][:16]}", f"{target.get('name')}: {e}")
                 return {"ok": False, "fp": target["fp"], "name": target.get("name"), "error": str(e)}
@@ -1052,9 +1101,14 @@ async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
                     f"heard {_zero().via_words(r.get('via', ''))})"
                     + (f" by {by}" if by else "") + f"; profile {json.dumps(r['profile'])}")
             if r["profile"].get("execution") == "hub":
-                # its work runs here: the lead cell and the two standing permissions
-                done = _zero().hub_side(state["store"], cfg, r["label"])
-                _ledger("provision.hub", f"team:{r['label']}/*", "; ".join(done))
+                # its work runs here: the lead cell and the two standing permissions, in the
+                # account the Zero belongs to, whose agents and integrations will answer it
+                with usersmod.as_user(r.get("owner") or ""):
+                    done = _zero().hub_side(state["store"], state["cfg"], r["label"])
+                    _ledger("provision.hub", f"team:{r['label']}/*",
+                            "; ".join(done) + _zero_for_words(r.get("owner") or ""))
+                if r.get("owner") and usersmod.get(r["owner"]):
+                    usersmod.services(r["owner"])   # their MCP servers answer this Zero
             return {**r, "fp": target["fp"]}
 
         results = await asyncio.gather(*[one(it) for it in items[:provmod.MAX_SEEN]])
@@ -1073,7 +1127,12 @@ def _provision_view() -> dict:
     return {"this": me, "watching": provmod.watching(cfg),
             "listening": bool(state.get("provision_watch")),
             "door": bool(state.get("provision_door")),
-            "seen": provmod.seen_list(), "keys": provmod.keys(),
+            "seen": [{**m, "owner_name": _account_name(m.get("owner") or "")} for m in provmod.seen_list()],
+            "keys": provmod.keys(),
+            # whose a Zero is: the accounts an admin can make one for (none without accounts)
+            "accounts": ([{"id": u["id"], "name": u["name"]} for u in usersmod.list_users()]
+                         if can and usersmod.enabled() else []),
+            "me": usersmod.current() or "",
             "role": poolmod.load().get("role") or "", "has_brain": poolmod.has_brain(cfg),
             "can_change": can, "devices": _device_rows(), "ear": bool(state.get("device_ear")),
             "ssh_missing": _ri().missing(), "pubkey": _ri().public_key(),
@@ -2360,6 +2419,11 @@ async def api_platform(request: Request):
     # screen attached to the machine (or a page opened with #kiosk) turns into the kiosk.
     from . import face as facemod
     state_["face"] = facemod.state(state.machine_cfg())
+    # A Zero gets the light face: its agent, the Office and visits, the answers. Its
+    # integrations live on the hub, so the page leaves their apps and tabs out.
+    zs = _zero().state(state.machine_cfg())
+    state_["zero"] = ({"hub": zs.get("hub", ""), "on_hub": zs.get("execution") == "hub"}
+                      if zs else {})
     # The windows that are live streams of real processes: the shared browser, terminal
     # sessions that outlive their window, and native apps projected into a window. Each
     # says whether it can run here and, if not, why and which component would fix it.
@@ -12788,6 +12852,13 @@ async def api_provision_enable(body: dict):
     if not items:
         return JSONResponse({"error": "choose at least one machine"}, status_code=400)
     from . import provision as provmod
+    if b.get("for"):
+        # set up for an account: its agents and integrations answer the machine. Without
+        # it, a machine heard with a Zero line belongs to whoever the line was made for.
+        owner, err = _zero_for(b.get("for"))
+        if owner is None:
+            return JSONResponse({"error": err}, status_code=400)
+        items = [{**x, "owner": owner} for x in items]
     out = await _provision_enable(items, provmod.clean_profile(b.get("profile")))
     if out.get("error"):
         return JSONResponse(out, status_code=400)
@@ -12842,18 +12913,23 @@ async def api_provision_zero(body: dict):
         return r
     from . import provision as provmod
     b = body or {}
+    owner, err = _zero_for(b.get("for"))
+    if owner is None:
+        return JSONResponse({"error": err}, status_code=400)
     addrs = _zero().hub_addresses()
     hubs = _zero().clean_hubs(b.get("hubs")) or [a["addr"] for a in addrs]
-    key = provmod.zero_key()
+    key = provmod.zero_key(owner)
     try:
         line = _zero().one_line(state.machine_cfg(), key["text"], hubs, str(b.get("tailscale_key") or ""))
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     _ledger("provision.zero", "provision:zero",
             f"showed the Zero install line (hubs {', '.join(hubs) or 'none'}"
-            + (", with a Tailscale key" if b.get("tailscale_key") else "") + ")")
+            + (", with a Tailscale key" if b.get("tailscale_key") else "") + ")" + _zero_for_words(owner))
     await _provision_sync()
+    u = usersmod.get(owner) if owner else None
     return {"line": line, "hubs": hubs, "addresses": addrs, "key": {k: key[k] for k in ("id", "label", "auto")},
+            "for": {"id": owner, "name": u["name"] if u else ""},
             "standard": provmod.standard()}
 
 
@@ -13094,6 +13170,218 @@ async def api_devices_sdcard(request: Request, body: dict):
             f"({', '.join(got['written'])}) for user {got['user']}")
     await _provision_sync()
     return {**got, "key_label": k["label"]}
+
+
+# ---- Settings → Network: the inventory, and securing a machine (inventory.py, harden.py) ----
+
+def _network_view() -> dict:
+    from . import harden
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    rows = invmod.rows(state.machine_cfg())
+    for r in rows:
+        r["owner_name"] = _account_name(r.get("owner") or "") if r.get("owner") else ""
+    return {"rows": rows, "summary": invmod.summary(rows), "can_change": True,
+            "ssh_missing": ri.missing(), "pubkey": ri.public_key(),
+            "steps": [{"id": s["id"], "title": s["title"], "why": s["why"]} for s in harden.STEPS],
+            "secures": {ip: {k: v for k, v in run.items()} for ip, run in state.get("device_secures", {}).items()},
+            "installs": state.get("device_installs", {})}
+
+
+@app.get("/api/network")
+async def api_network():
+    """Every machine on this network Bento knows: admin only, because it names other people's
+    machines and how to reach them."""
+    if (r := _require_admin()):
+        return r
+    return _network_view()
+
+
+def _net_mac(ip: str) -> str:
+    from . import inventory as invmod
+    r = next((x for x in invmod.rows(state.machine_cfg()) if x.get("ip") == ip), None)
+    return (r or {}).get("mac") or ""
+
+
+@app.post("/api/network/check")
+async def api_network_check(body: dict):
+    """Log in and read which security steps are in place there. Changes nothing there; the
+    answer is what the inventory records, because it was measured."""
+    if (r := _require_admin()):
+        return r
+    from . import harden
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    ip, user, pw, port = _device_creds(body or {})
+    try:
+        got = await harden.check(ip, user, pw, port)
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    invmod.note_security(ip, _net_mac(ip), got["done"], user, by=usersmod.current() or "")
+    _ledger("device.check", f"device:{ip}", f"checked {user}@{ip}: "
+            + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in got["done"].items()))
+    return got
+
+
+@app.post("/api/network/secure")
+async def api_network_secure(body: dict):
+    """Run the chosen steps there. Returns at once; each line is broadcast (device_secure) to
+    the admins, and the machine is read back and recorded when it ends."""
+    if (r := _require_admin()):
+        return r
+    from . import harden
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, user, pw, port = _device_creds(b)
+    bad = ri.missing() or ri.valid_target(ip, user)
+    if bad:
+        return JSONResponse({"error": bad}, status_code=400)
+    steps = harden.clean_steps(b.get("steps"))
+    if not steps:
+        return JSONResponse({"error": "choose at least one step"}, status_code=400)
+    runs = state.setdefault("device_secures", {})
+    if (runs.get(ip) or {}).get("state") == "running":
+        return JSONResponse({"error": "that machine is already being secured"}, status_code=409)
+    runs[ip] = {"state": "running", "started": time.time(), "lines": []}
+    _ledger("device.secure", f"device:{ip}", f"started securing {user}@{ip}: "
+            + ", ".join(harden.TITLES[s].lower() for s in steps))
+    asyncio.ensure_future(_network_secure(ip, user, pw, port, steps, usersmod.current() or ""))
+    return {"started": True, "steps": steps}
+
+
+async def _network_secure(ip, user, pw, port, steps, by):
+    from . import harden
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    run = state["device_secures"][ip]
+
+    async def line(ln):
+        ln = ln[:300]
+        run["lines"] = (run["lines"] + [ln])[-60:]
+        await _provision_admins({"type": "device_secure", "ip": ip, "line": ln})
+    try:
+        got = await harden.secure(ip, user, pw, port, steps, on_line=line)
+        run.update(state="done", finished=time.time())
+        invmod.note_security(ip, _net_mac(ip), got["done"], user, by=by)
+        _sys_ledger("device.secured", f"device:{ip}", f"secured {user}@{ip}: ran "
+                    + (", ".join(got["ran"]) or "nothing new") + "; now "
+                    + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in got["done"].items()))
+        await _provision_admins({"type": "network", "kind": "secured", "ip": ip,
+                                 "n": sum(1 for v in got["done"].values() if v), "of": len(got["done"])})
+    except ri.InstallError as e:
+        run.update(state="failed", error=str(e), finished=time.time())
+        # what ran before the failure stays done: measure it, so the list says what is true
+        for login in ("", pw):
+            try:
+                now = await harden.check(ip, user, login, port)
+                invmod.note_security(ip, _net_mac(ip), now["done"], user, by=by)
+                break
+            except ri.InstallError:
+                continue
+        _sys_ledger("device.secure_failed", f"device:{ip}", f"securing {user}@{ip}: {e}")
+        await _provision_admins({"type": "network", "kind": "secure_failed", "ip": ip, "error": str(e)})
+    finally:
+        pw = ""                         # noqa: F841 — the password ends with this task
+
+
+@app.post("/api/network/disconnect")
+async def api_network_disconnect(body: dict):
+    """Remove what ties that machine to this one, each item asked for by name: a link (the
+    same ending as Team & Communications' Remove, cells and all), its place in the community
+    this machine leads, and this machine's SSH key on it. Bento on that machine is left
+    installed and its files are not touched; a ledger row says what went."""
+    if (r := _require_admin()):
+        return r
+    from . import harden
+    from . import inventory as invmod
+    from . import pool as poolmod
+    from . import remoteinstall as ri
+    from . import teamlink
+    b = body or {}
+    row = invmod.find(invmod.rows(state.machine_cfg()), str(b.get("key") or ""))
+    if not row:
+        return JSONResponse({"error": "no such machine"}, status_code=404)
+    have = {c["id"]: c for c in row["connections"]}
+    want = [str(x) for x in (b.get("what") or []) if str(x) in have]
+    if not want:
+        return JSONResponse({"error": "choose what to remove"}, status_code=400)
+    done, failed = [], []
+    for cid in want:
+        c = have[cid]
+        try:
+            if c["kind"] == "link":
+                lk = next((x for x in teamlink.links(c["owner"]) if x.get("label") == c["label"]), None)
+                if lk and await _team_end_link(c["owner"], lk, "disconnected in Network"):
+                    done.append(c["words"])
+                else:
+                    failed.append(f"{c['words']}: it was already gone")
+            elif c["kind"] == "community":
+                with usersmod.as_user(""):
+                    poolmod.remove(state["store"], row["fp"])
+                await _pool_changed(f"removed {row['display']} from the community")
+                done.append(c["words"])
+            elif c["kind"] == "key":
+                user = str(b.get("user") or row.get("user") or "")
+                got = await harden.remove_key(row["ip"], user, str(b.get("password") or ""),
+                                              netscan_port(row), force=bool(b.get("force")))
+                sec = dict((row.get("security") or {}).get("done") or {})
+                sec["key"] = False
+                invmod.note_security(row["ip"], row.get("mac") or "", sec, user, by=usersmod.current() or "")
+                done.append(c["words"] if got["removed"] else f"{c['words']} ({got['why']})")
+        except (ri.InstallError, ValueError) as e:
+            failed.append(f"{c['words']}: {e}")
+    _ledger("device.disconnect", f"device:{row.get('ip') or row['key']}",
+            f"disconnected {row['display']}: removed {', '.join(done) or 'nothing'}"
+            + (f"; could not remove {'; '.join(failed)}" if failed else ""))
+    v = _network_view()
+    v["removed"], v["failed"] = done, failed
+    return v
+
+
+def netscan_port(row: dict) -> int:
+    """The port SSH answered on there: the scan's first port when SSH was seen, else 22."""
+    try:
+        return int((row.get("ports") or [22])[0]) if row.get("ssh") else 22
+    except (TypeError, ValueError):
+        return 22
+
+
+@app.post("/api/network/label")
+async def api_network_label(body: dict):
+    if (r := _require_admin()):
+        return r
+    from . import inventory as invmod
+    b = body or {}
+    row = invmod.find(invmod.rows(state.machine_cfg()), str(b.get("key") or ""))
+    if not row:
+        return JSONResponse({"error": "no such machine"}, status_code=404)
+    invmod.set_label(row["ip"], row.get("mac") or "", str(b.get("label") or ""))
+    return _network_view()
+
+
+@app.post("/api/network/forget")
+async def api_network_forget(body: dict):
+    """Not this one: hidden from the list (a device heard again stays hidden), and what Bento
+    noted about it is dropped. The machine itself is not touched."""
+    if (r := _require_admin()):
+        return r
+    from . import inventory as invmod
+    from . import provision as provmod
+    key = str((body or {}).get("key") or "").lower()
+    row = invmod.find(invmod.rows(state.machine_cfg()), key)
+    if not row:
+        return JSONResponse({"error": "no such machine"}, status_code=404)
+    d = provmod.load()
+    hit = False
+    for k, e in d["devices"].items():
+        if k == row["key"] or (row.get("ip") and e.get("ip") == row["ip"]):
+            e["state"] = "ignored"
+            hit = True
+    if hit:
+        provmod.save(d)
+    invmod.forget(row["key"])
+    _ledger("device.forget", f"device:{row.get('ip') or key}", f"took {row['display']} off the list")
+    return _network_view()
 
 
 @app.get("/api/team/links")

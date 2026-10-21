@@ -4476,6 +4476,165 @@ def _pool_cli(args):
              " | mind [ZERO] [--soul FILE]]")
 
 
+def _network_cli(args):
+    """Settings → Network from a terminal: every machine Bento knows on this network
+    (inventory.py), whether each is secure, securing one (harden.py) and removing what ties
+    it to this machine. Works with the server down, except a link, which the server ends."""
+    import asyncio
+    import getpass
+    from . import harden
+    from . import inventory as inv
+    from . import remoteinstall as ri
+    from .memory import Store
+    a, rest = args.action, list(args.args or [])
+
+    def ledger(action, resource, reason):
+        try:
+            Store().audit_add(principal_kind="user", principal_id="", surface="cli", action=action,
+                              resource=resource, effect="allow", rule="person", outcome="ok", reason=reason)
+        except Exception:
+            pass
+
+    def password():
+        if args.password_stdin:
+            return sys.stdin.readline().rstrip("\n")
+        if args.key_only:
+            return ""
+        return getpass.getpass("  Password there (blank to use this machine's SSH key): ")
+
+    def machine(required=True):
+        if not rest:
+            if required:
+                sys.exit(f"  bento network {a} MACHINE (an address, a name or a MAC; see `bento network`)")
+            return None
+        r = inv.find(inv.rows(), rest[0])
+        if r is None and a in ("check", "secure"):
+            return {"ip": rest[0], "mac": "", "display": rest[0], "user": "", "ssh": True, "ports": [22],
+                    "connections": [], "key": rest[0]}
+        if r is None:
+            sys.exit(f"  no machine called {rest[0]} on the list")
+        return r
+
+    def port(r):
+        try:
+            return int((r.get("ports") or [22])[0]) if r.get("ssh") else 22
+        except (TypeError, ValueError):
+            return 22
+
+    if a == "list":
+        rows = [r for r in inv.rows() if not r.get("ignored")]
+        if not rows:
+            print("  Nothing listed yet. `bento pool devices` looks at the network.")
+            return
+        sm = inv.summary(rows)
+        print(f"  {sm['machines']} machine(s) · {sm['bento']} with Bento · {sm['secured']} secured\n")
+        for r in rows:
+            seen = "" if r["age"] is None else ("not heard for a week" if r["stale"] else
+                                                f"heard {r['age'] // 60} min ago")
+            print(f"  {r['display'][:22]:<22} {r['ip'] or '?':<15} {r['bento']:<10} {r['security_words']:<16} "
+                  f"{(r['board'] or r['maker'] or '')[:24]:<24} {seen}")
+            ties = ", ".join(c["words"] for c in r["connections"])
+            if ties:
+                print(f"  {'':<22} tied by {ties}")
+        return
+    if a in ("check", "secure"):
+        r = machine()
+        user = args.user or r.get("user") or ""
+        if not user:
+            sys.exit("  which user logs in there? --user pi")
+        pw = password()
+        try:
+            c = asyncio.run(harden.check(r["ip"], user, pw, port(r)))
+        except ri.InstallError as e:
+            sys.exit("  " + str(e))
+        inv.note_security(r["ip"], r.get("mac") or "", c["done"], user, by="cli")
+        for s_ in harden.STEPS:
+            print(f"  {'✓' if c['done'][s_['id']] else '·'} {s_['title']}")
+        for p in c["problems"]:
+            print(f"  ✗ {p}")
+        ledger("device.check", f"device:{r['ip']}", f"checked {user}@{r['ip']}")
+        if a == "check":
+            return
+        steps = harden.clean_steps([x.strip() for x in args.steps.split(",") if x.strip()] or None)
+        todo = [x for x in c["plan"] if x["id"] in steps]
+        if not todo:
+            print("  Nothing to do: everything asked for is in place.")
+            return
+        print("\n  This will run there:")
+        for x in todo:
+            print(f"    {x['title']}: {x['why']}\n      {x['runs'][:400]}")
+        if not args.yes and input("  Secure it? (y/n) ").strip().lower()[:1] != "y":
+            return
+        ledger("device.secure", f"device:{r['ip']}", f"started securing {user}@{r['ip']}: {', '.join(steps)}")
+
+        async def show(ln):
+            print("    │ " + ln[:150])
+        try:
+            got = asyncio.run(harden.secure(r["ip"], user, pw, port(r), steps, on_line=show))
+        except ri.InstallError as e:
+            ledger("device.secure_failed", f"device:{r['ip']}", str(e))
+            sys.exit("  " + str(e))
+        inv.note_security(r["ip"], r.get("mac") or "", got["done"], user, by="cli")
+        n = sum(1 for v in got["done"].values() if v)
+        ledger("device.secured", f"device:{r['ip']}", f"ran {', '.join(got['ran']) or 'nothing new'}")
+        print(f"  ✓ {n} of {len(got['done'])} in place on {r['display']}")
+        return
+    if a == "disconnect":
+        r = machine()
+        have = {c["id"]: c for c in r["connections"]}
+        want = [x.strip() for x in args.what.split(",") if x.strip()] or list(have)
+        bad = [x for x in want if x not in have]
+        if bad or not want:
+            sys.exit("  " + (f"not tied by {', '.join(bad)}; " if bad else "")
+                     + "its ties: " + (", ".join(have) or "none"))
+        print("  This removes " + ", ".join(have[x]["words"] for x in want) + ". Bento stays installed there.")
+        if not args.yes and input("  Disconnect it? (y/n) ").strip().lower()[:1] != "y":
+            return
+        done = []
+        for cid in want:
+            c = have[cid]
+            if c["kind"] == "link":
+                print(f"  The link “{c['label']}” is ended by the running server: "
+                      f"Settings → Network → Disconnect, or `bento link remove {c['label']}`.")
+            elif c["kind"] == "community":
+                from . import pool
+                pool.remove(Store(), r["fp"])
+                done.append(c["words"])
+            elif c["kind"] == "key":
+                user = args.user or r.get("user") or ""
+                if not user:
+                    sys.exit("  which user logs in there? --user pi")
+                try:
+                    got = asyncio.run(harden.remove_key(r["ip"], user, password(), port(r), force=args.force))
+                except ri.InstallError as e:
+                    sys.exit("  " + str(e))
+                sec = dict((r.get("security") or {}).get("done") or {})
+                sec["key"] = False
+                inv.note_security(r["ip"], r.get("mac") or "", sec, user, by="cli")
+                done.append(c["words"] if got["removed"] else f"{c['words']} ({got['why']})")
+        ledger("device.disconnect", f"device:{r['ip'] or r['key']}", f"removed {', '.join(done) or 'nothing'}")
+        print("  ✓ removed " + (", ".join(done) or "nothing"))
+        return
+    if a == "label":
+        r = machine()
+        if len(rest) < 2:
+            sys.exit("  bento network label MACHINE NAME")
+        inv.set_label(r["ip"], r.get("mac") or "", " ".join(rest[1:]))
+        print("  ✓ named " + " ".join(rest[1:]))
+        return
+    if a == "forget":
+        r = machine()
+        from . import provision as prov
+        d = prov.load()
+        for k, e in d["devices"].items():
+            if k == r["key"] or (r.get("ip") and e.get("ip") == r["ip"]):
+                e["state"] = "ignored"
+        prov.save(d)
+        inv.forget(r["key"])
+        ledger("device.forget", f"device:{r['ip'] or r['key']}", f"took {r['display']} off the list")
+        print(f"  ✓ {r['display']} is off the list")
+
+
 def _devices_cli(args, cfg, a, rest, run):
     """Machines on the network WITHOUT Bento (netscan.py), installing it on one over SSH
     (remoteinstall.py), and an SD card that installs it on first boot (sdcard.py). A
@@ -4651,11 +4810,14 @@ def _provision_cli(args, cfg, a, rest, val, run):
         from . import zero as zeromod
         addrs = zeromod.hub_addresses()
         hubs = zeromod.clean_hubs(rest) or [x["addr"] for x in addrs]
-        key = prov.zero_key()
+        owner = _zero_account(getattr(args, "for_account", ""))
+        key = prov.zero_key(owner)
         try:
             line = zeromod.one_line(cfg, key["text"], hubs, getattr(args, "tailscale_key", "") or "")
         except ValueError as e:
             sys.exit("  " + str(e))
+        if owner:
+            print(f"  For {_usersmod().get(owner)['name']}: their agents, memory and integrations answer it.")
         print("  Paste this on the Pi (any Pi or small Linux machine, as a user that can sudo):\n")
         print(f"    {line}\n")
         for x in addrs:
@@ -4739,6 +4901,7 @@ def _provision_cli(args, cfg, a, rest, val, run):
     prof = prov.clean_profile({"kiosk": bool(getattr(args, "kiosk", False)), "lite": True,
                                "agent_name": getattr(args, "agent_name", "") or ""})
     store = Store()
+    owner = _zero_account(getattr(args, "for_account", "")) if getattr(args, "for_account", "") else None
     for n in names:
         t = prov.find_seen(n)
         if not t:
@@ -4746,7 +4909,7 @@ def _provision_cli(args, cfg, a, rest, val, run):
             continue
         try:
             r = run(prov.enable(cfg, t, prof, code=getattr(args, "code", "") or "",
-                                pool_info={"id": d["pool"]["id"], "name": d["pool"]["name"]}))
+                                pool_info={"id": d["pool"]["id"], "name": d["pool"]["name"]}, owner=owner))
         except ValueError as e:
             print(f"  {t['name']}: {e}")
             continue
@@ -4758,13 +4921,35 @@ def _provision_cli(args, cfg, a, rest, val, run):
             pass
         if r["profile"].get("execution") == "hub":
             from . import zero as _z
-            done = _z.hub_side(store, cfg, r["label"])
+            # in the account the machine belongs to: its store, its workspace
+            us = _usersmod()
+            o_store = us.store_for(r.get("owner") or "") if r.get("owner") else store
+            o_cfg = us.cfg_for(r["owner"], cfg) if r.get("owner") else cfg
+            done = _z.hub_side(o_store, o_cfg, r["label"])
             with contextlib.suppress(Exception):
-                store.audit_add(principal_kind="user", principal_id="", surface="cli", action="provision.hub",
+                o_store.audit_add(principal_kind="user", principal_id="", surface="cli", action="provision.hub",
                                 resource=f"team:{r['label']}/*", effect="allow", rule="person", outcome="ok",
                                 reason="; ".join(done))
         print(f"  ✓ {r['name']} is set up ({r['how']}, heard {_zero_words(r.get('via'))}) and is joining "
               f"'{d['pool']['name']}'.")
+
+
+def _usersmod():
+    from . import users
+    return users
+
+
+def _zero_account(raw: str) -> str:
+    """`--for NAME`: the account a Zero belongs to ('' is the machine). Without accounts
+    there is only the machine; with them, a name that is not one is refused."""
+    us = _usersmod()
+    v = (raw or "").strip()
+    if not us.enabled() or not v:
+        return ""
+    u = us.get(v) or us.by_name(v)
+    if not u:
+        sys.exit(f"  there is no account called {v!r} here (`bento users` lists them)")
+    return u["id"]
 
 
 def _zero_mind_cli(cfg, rest, soul_file, run):
@@ -8209,6 +8394,20 @@ def main():
     p_co.add_argument("--words", action="store_true", help="setup: skip the brain, use the catalogue as it is")
     p_co.add_argument("--yes", action="store_true", help="setup: do not ask before making it")
     p_co.add_argument("--user", default="", help="whose company, on a machine with users")
+    p_net = verb("network", help="the machines on your network: list, check, secure, disconnect")
+    p_net.add_argument("action", nargs="?", default="list",
+                       choices=["list", "check", "secure", "disconnect", "label", "forget"], metavar="ACTION",
+                       help="list | check IP --user U | secure IP --user U [--steps a,b] | "
+                            "disconnect MACHINE [--what link:NAME,community,key] | label MACHINE NAME | forget MACHINE")
+    p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
+    p_net.add_argument("--user", default="", help="check / secure / disconnect: the user on that machine")
+    p_net.add_argument("--steps", default="", help="secure: key,passwords,firewall,updates (default: all)")
+    p_net.add_argument("--what", default="", help="disconnect: which ties to remove (default: all of them)")
+    p_net.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
+    p_net.add_argument("--key-only", action="store_true", help="log in with this machine's key, ask no password")
+    p_net.add_argument("--yes", action="store_true", help="secure / disconnect: do not ask first")
+    p_net.add_argument("--force", action="store_true",
+                       help="disconnect: take the key off even when it is the only way in")
     p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")
     p_pool.add_argument("action", nargs="?", default="status",
                         choices=["status", "show", "create", "join", "approve", "remove", "leave",
@@ -8229,6 +8428,8 @@ def main():
     p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
     p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
     p_pool.add_argument("--tailscale-key", default="", help="zero: put this Tailscale auth key in the line (not kept)")
+    p_pool.add_argument("--for", dest="for_account", default="",
+                        help="zero / enable: the account it belongs to (its agents and integrations answer it)")
     p_pool.add_argument("--soul", default="", help="mind ZERO: replace that Zero's soul with this file")
     p_pool.add_argument("--user", default="", help="install / sdcard: the user on the other machine")
     p_pool.add_argument("--password-stdin", action="store_true", help="install / sdcard: read the password from stdin")
@@ -8589,6 +8790,8 @@ def main():
         _company_cli(args)
     elif args.cmd == "pool":
         _pool_cli(args)
+    elif args.cmd == "network":
+        _network_cli(args)
     elif args.cmd == "face":
         _face_cli(args)
     elif args.cmd == "timetravel":

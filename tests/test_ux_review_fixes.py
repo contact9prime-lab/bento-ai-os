@@ -336,7 +336,8 @@ def test_hiding_a_tile_keeps_the_app_and_says_where_it_went():
     assert "function deckSetHidden" in src and "DECK.hidden" in src
     assert "still in the launcher" in src, "a hidden app that cannot be found again is a dead end"
     # the shelf hides it; the wall keeps drawing it so it can be given back
-    assert "deckShown(g){return g.apps.filter(id=>APPS[id]&&(DECKFULL||!deckIsHidden(id)))}" in src
+    # (a Zero shows only its few apps, 00k-zeroface.js; the hidden rule is unchanged)
+    assert "deckShown(g){return g.apps.filter(id=>APPS[id]&&zeroAllows(id)&&(DECKFULL||!deckIsHidden(id)))}" in src
     assert "Show on the desktop" in src and "Hide from the desktop" in src
     assert ".deck-tile.hidden-app" in css("14-omnibar.css")
 

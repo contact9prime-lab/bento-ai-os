@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.6.70 — 2026-10-21
+
+**A Zero belongs to a person on the hub, and works with their integrations.** On a hub with
+accounts, *Make a Zero* now asks who it is for, and the line it prints carries that account's key.
+The hub answers that Zero as that person: their agent, their memory, and the MCP servers, channels
+and mail they set up. Integrations were already kept per account; before this, every Zero was
+answered as the machine, so it had nobody's. `bento pool zero --for bob` does the same from a
+terminal, and the list of machines says whose each one is.
+
+**A Zero is light.** It starts no integrations of its own (no MCP servers, Telegram or WhatsApp),
+shows one agent, and its desktop is Chat, Office (with Visit), Files, Settings and Docs. Settings
+says the brain, memory and integrations live on the hub, and the Office's brain says *on* the hub.
+
+**Settings → Network: every machine on your network, and keeping them secure.** One list of
+the machines Bento knows on your network, Bento or not: what each is, whose, whether Bento runs
+there and how secure it was last measured. From a row you can install Bento, **Secure it** (this
+machine's key on it, password logins off, a firewall, security updates by themselves, each
+shown with the exact command before it runs) and **Disconnect** (its link, its place in your
+community, this machine's key on it). Passwords go off only after the key has worked on its own,
+and the firewall undoes itself unless Bento can still log in. Setting machines up moved into the
+same tab. From a terminal: `bento network`.
+
+Checked against a real SSH server with sudo and nftables: password logins were refused
+afterwards, a port nobody allowed stopped answering while SSH still did, and the firewall was
+still on 95 seconds later. The run found that SSH refuses logins for a moment after it reloads;
+Bento now waits for it.
+
+**An update that stalled on an older copy now lands.** On a Pi where something had rewritten
+`uv.lock`, `git pull` refused to run, so the install kept the old lock and tried to compile
+cryptography again. The installer now resets the two generated files before it pulls, and if a
+compile still happens on a copy that's older than the fix, it says so with the commands to update.
+
+Checked with a live hub and Zero: Ada made the line for Bob, the Zero was set up as Bob's, Bob's
+writer was offered Bob's MCP tool and Ada's wasn't, the answer and its file came back, and the
+conversation and memory landed in Bob's home only.
+
 ## 0.6.69 — 2026-10-21
 
 **Bento installs on a 32-bit Raspberry Pi running Buster.** The install stopped at `cryptography`

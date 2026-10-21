@@ -183,10 +183,10 @@ $('#keyshelp').addEventListener('mousedown',e=>{if(e.target.id==='keyshelp')keys
 function togglePalette(force){force===false?omniPop(false):omniFocus()}   // legacy name, one surface
 function paletteOpen(){return omniOpen()}
 function palActions(){
-  const items=Object.keys(APPS).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,
+  const items=Object.keys(APPS).filter(zeroAllows).map(id=>({id,icon:APPS[id].icon,label:APPS[id].title,hint:APPS[id].desc,
     words:typeof APP_WORDS!=='undefined'?APP_WORDS[id]:null,run:()=>openApp(id)}));
   // the places inside apps (05b-places.js): "channel" finds Settings → Channels
-  (typeof PLACES!=='undefined'?PLACES:[]).forEach(pl=>{if(APPS[pl.app])items.push(
+  (typeof PLACES!=='undefined'?PLACES:[]).forEach(pl=>{if(APPS[pl.app]&&zeroPlaceOk(pl))items.push(
     {place:true,pid:pl.app,label:pl.label,hint:pl.hint,words:pl.words,run:pl.go})});
   const g=inner=>`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block">${inner}</svg>`;
   items.push(
@@ -218,7 +218,7 @@ function palScore(q,text){
 function palFindApp(name){
   name=name.toLowerCase().trim();
   let best=null,bs=0;
-  for(const id in APPS){const s=palScore(name,APPS[id].title)||palScore(name,id);if(s>bs){bs=s;best={id}}}
+  for(const id in APPS){if(!zeroAllows(id))continue;const s=palScore(name,APPS[id].title)||palScore(name,id);if(s>bs){bs=s;best={id}}}
   NATIVEAPPS.forEach(a=>{const s=palScore(name,a.name);if(s>bs){bs=s;best={nat:a}}});
   return bs>=2?best:null;
 }

@@ -117,6 +117,7 @@ const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
   ['agent','◈','Agents','agent'],
   ['team','⚇','Team & Communications','team'],
+  ['network','⌖','Network','wifi'],
   ['permissions','⛨','Permissions','shield'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
@@ -131,12 +132,13 @@ let SETTAB=localStorage.getItem('settab')||'ai';
 
 async function renderSettings(body){
   await loadConfig();
+  if(zeroTabHidden(SETTAB))SETTAB='agent';   // a Zero has no AI providers or channels of its own
   body.innerHTML=`<div class="pshell">
       <div class="phead"><span class="pt">Settings</span><span class="set-saved" id="set-saved" role="status" aria-live="polite"></span><span class="sp"></span>
         <span class="psearch">${SVG_SEARCH}<input id="set-q" type="search" name="settings-find" placeholder="Find a setting…" autocomplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"></span>
       </div>
       <div class="prefs">
-        <div class="prefs-side">${SETTINGS_TABS.map(([id,ic,label,ico])=>
+        <div class="prefs-side">${SETTINGS_TABS.filter(([id])=>!zeroTabHidden(id)).map(([id,ic,label,ico])=>
           `<button data-t="${id}" class="${SETTAB===id?'on':''}${label.length>16?' lng':''}"><span class="psi"><i>${ic}</i>${uiIcon(ico,14)}</span><span class="pst">${esc(label)}</span></button>`).join('')}</div>
         <div class="prefs-main" id="prefs-main"></div>
       </div>
@@ -185,7 +187,8 @@ function setTab(body,all){
   const main=(body||document).querySelector('#prefs-main');if(!main)return;
   const p=cfg.providers;
   const P=[];
-  const want=id=>all||SETTAB===id;
+  const want=id=>(all||SETTAB===id)&&!zeroTabHidden(id);
+  if(zeroFace())P.push(zeroSettingsNote());
   if(want('ai')){
     P.push(`<h2>AI providers</h2><p class="lead">Every model this machine can think with. Each agent can use its own, set in <a href="#" onclick="settingsGo('agent');return false">Agents</a>. ${pInfo('Cloud providers with a key, models running on this machine, and other AI agents installed here like Claude Code, Gemini CLI or Codex.')}</p>`);
     // The chat chip has always said "change it in Settings → AI providers", and
@@ -305,6 +308,9 @@ function setTab(body,all){
       pRow('Look',`<button class="endbtn av-set-btn" onclick="avatarEdit('@agent')" title="Change how your agent looks">${avatarImg('@agent','av-set')}Change…</button>`
         +`<button class="endbtn" onclick="avatarDesignAsk('@agent')">✦ Describe it</button>`,
         {desc:'Its character in Chat, Logs and the Office. Pick one or describe it.',f:'agent look character avatar face appearance'}),
+      // a Zero thinks with its hub's brain: there is no AI providers tab to send it to
+      zeroFace()?pRow('Brain',`<span class="mut">${esc(zeroHub())}'s</span>`,
+        {desc:'Your agent thinks on '+zeroHub()+', the hub this machine belongs to.',f:'lead agent brain model provider hub zero'}):
       pRow('Brain','<span id="s-lead-brain" class="mut">…</span> <button class="endbtn" onclick="settingsGo(\'ai\')">Change</button>',
         {desc:'What your lead agent thinks with. You choose it in AI providers.',f:'lead agent brain model provider'}),
       pRow('Executor','<select id="s-lead-hands" onchange="setAgentHands(\'@agent\',this.value)"><option>…</option></select>',
@@ -411,8 +417,9 @@ function setTab(body,all){
     /* A community of machines (pool.py, 24i-pool.js): built on the linked teams above.
        One machine leads and lends its brain; small machines join, share notes and take
        pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
-    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join provision new machines discover enrolment key"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div><div id="s-prov"></div></div>`);
-    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint();if(typeof provPaint==='function')provPaint()},0);
+    P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div>
+      <div class="prow"><div class="pl"><small>New machines, Make a Zero and installing Bento on the network are in Network.</small></div><div class="pc"><button class="endbtn" onclick="placeSettings('network')()">Open Network</button></div></div></div>`);
+    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
     setTimeout(paintTeamBrains,0);
     setTimeout(paintTeamLinks,0);
     setTimeout(paintTeamMatrix,0);
@@ -427,6 +434,15 @@ function setTab(body,all){
       pRow('Reach your agent','<button class="endbtn" onclick="settingsGo(\'channels\')">Channels</button>',
         {desc:'Telegram, WhatsApp and the other ways to talk to your agent.',f:'channels telegram whatsapp reach phone'}),
     ],{f:'messages communications team chat channels'}));
+  }
+  /* Network (24n-network.js, inventory.py, harden.py): every machine on this network, Bento
+     or not, with install and Secure it; then setting machines up (24j-provision.js), moved
+     here from Team & Communications. Admin only: it reaches other machines. */
+  if(want('network')){
+    P.push(`<h2>Network</h2><p class="lead">The machines on your network: install Bento on them and keep them secure. ${pInfo('Bento looks only at this machine’s own private network. Anything it runs on another machine is shown before it runs, and is a ledger row.')}</p>`);
+    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates"><h3>On your network</h3><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi"><h3>Set machines up</h3><div id="s-prov"></div></div>`);
+    setTimeout(()=>{if(typeof netPaint==='function')netPaint();if(typeof provPaint==='function')provPaint()},0);
   }
   if(want('permissions')){
     /* Permissions: what your agents may do on their own, how outside content is

@@ -242,7 +242,8 @@ try{if(!localStorage.getItem('dock-office')){localStorage.setItem('dock-office',
     if(localStorage.getItem('dock'))localStorage.setItem('dock',JSON.stringify(DOCK))}}}catch(e){}
 function buildDock(){
   const box=$('#dock');if(!box)return;box.innerHTML='';
-  DOCK.forEach(id=>{
+  // a Zero's dock is its few apps (00k-zeroface.js); everybody else's is theirs
+  (typeof zeroFace==='function'&&zeroFace()?ZERO_APPS:DOCK).forEach(id=>{
     const a=APPS[id];if(!a)return;
     const b=document.createElement('button');b.className='dockb';b.dataset.tip=a.title;b.dataset.app=id;
     b.innerHTML=appIcon(id,46);
@@ -252,7 +253,8 @@ function buildDock(){
     box.appendChild(b);
   });
   // a pinned app's open window lives on its dock tile, not as a second tile in #tbwins
-  WM.wins.forEach(w=>w.tb.classList.toggle('indock',DOCK.includes(w.id)));
+  const docked=typeof zeroFace==='function'&&zeroFace()?ZERO_APPS:DOCK;
+  WM.wins.forEach(w=>w.tb.classList.toggle('indock',docked.includes(w.id)));
   updateDockSeps();
 }
 function dockCtxMenu(e,id,a){

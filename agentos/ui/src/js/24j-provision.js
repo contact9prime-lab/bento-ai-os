@@ -49,7 +49,7 @@ async function provPaint(){
         <label class="prov-pick"><input type="checkbox" data-pick="${esc(m.fp)}" ${on?'checked':''}${m.state==='enabled'||!can?' disabled':''}>
           <b>${esc(m.name)}</b></label>
         <span class="mut">${esc(hw.board||hw.arch||'a machine')} · ${hw.ram_mb||0} MB · id ${esc(m.id)} · ${esc(state)}
-          · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span></span>
+          · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span>${m.owner_name?` · for ${esc(m.owner_name)}`:''}</span>
         <input class="prov-name" data-name="${esc(m.fp)}" maxlength="32" placeholder="${esc(m.name)}" aria-label="Name for ${esc(m.name)}"${m.state==='enabled'?' disabled':''}>
         ${proof}
         ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Not this one</button>`:''}</div>`}).join('')}</div>`);
@@ -88,13 +88,19 @@ async function provPaint(){
 /* ---------------- a Zero: the one line, and the standard setup every machine gets ---------------- */
 function provZeroHTML(v,can){
   const st=v.standard||{},z=PROV.zero,ags=st.agents||[],rows=[];
-  rows.push(pRow('Make a Zero',`<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
+  /* whose it is: the hub answers a Zero as the account it belongs to, with that person's
+     agents, memory and integrations. Only shown on a machine with accounts. */
+  const accs=v.accounts||[];
+  const forSel=accs.length?`<select id="zero-for" aria-label="Whose Zero">${accs.map(a=>
+      `<option value="${esc(a.id)}"${a.id===(PROV.zeroFor||v.me)?' selected':''}>For ${esc(a.name)}</option>`).join('')}</select>`:'';
+  rows.push(pRow('Make a Zero',`${forSel}<input id="zero-ts" class="dev-secret" autocomplete="off" data-lpignore="true" spellcheck="false"
       placeholder="Tailscale auth key (optional)" aria-label="Tailscale auth key" style="max-width:230px">
       <button class="endbtn" data-prov="zeroline"${can?'':' disabled'}>Show the line</button>`,
-    {desc:'Paste one line on a Pi and it is set up from here, with nobody at it.',
+    {desc:accs.length?'Paste one line on a Pi. It belongs to the person you choose, and works with their integrations.'
+      :'Paste one line on a Pi and it is set up from here, with nobody at it.',
      more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
      f:'zero pi curl one line install tailscale zero touch hub'}));
-  if(z)rows.push(`<div class="zero-out"><code class="zero-line">${esc(z.line)}</code>
+  if(z)rows.push(`<div class="zero-out">${z.for&&z.for.name?`<p class="mut">For ${esc(z.for.name)}</p>`:''}<code class="zero-line">${esc(z.line)}</code>
       <button class="endbtn" data-prov="zerocopy">Copy</button>
       <p class="mut">${(z.addresses||[]).map(a=>`${esc(a.addr)} ${a.via==='tailscale'?'over Tailscale':'on your network'}`).join(' · ')
         ||'This hub has no address another machine can reach.'}${(z.addresses||[]).some(a=>a.via==='tailscale')?'':
@@ -139,24 +145,10 @@ async function provAgents(){
    heard. The SD card writer is for the screen the card is plugged into. */
 var DEV={open:'',check:{},log:{}};
 function provDevicesHTML(v,can){
-  const devs=(v.devices||[]).filter(d=>!d.bento),remote=typeof remoteClient==='function'&&remoteClient();
+  /* The machines themselves (with Install Bento) are the inventory above, in Network
+     (24n-network.js); this keeps the two ways in that need no machine yet. */
+  const remote=typeof remoteClient==='function'&&remoteClient();
   const rows=[];
-  rows.push(pRow('Devices without Bento',`<button class="endbtn" data-prov="devscan"${can?'':' disabled'}>Look at the network</button>`,
-    {desc:v.ear?'A Raspberry Pi that joins your network is noticed, and you are asked.':'Look at the network to find machines you can install Bento on.',
-     more:'Only this machine’s own private network is looked at. A Pi says its name when it gets an address; anything else is found when you look.',
-     f:'devices network scan discover install raspberry pi ssh no bento'}));
-  if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
-  if(devs.length)rows.push(`<div class="prov-list">${devs.map(d=>{
-    const run=(v.installs||{})[d.ip]||{},open=DEV.open===d.ip;
-    const what=[d.maker||'',d.os||'',d.ssh?'SSH open':'no SSH'].filter(Boolean).join(' · ');
-    const st=run.state==='running'?'installing…':run.state==='done'||d.state==='installed'?'installed, starting':run.state==='failed'?'install failed':'';
-    return `<div class="prov-m dev-m${open?' open':''}" data-dev="${esc(d.ip)}">
-      <b>${esc(d.name||d.ip)}</b><span class="mut">${esc(d.ip)}${what?' · '+esc(what):''}${st?' · '+esc(st):''}</span>
-      ${can&&d.ssh&&!v.ssh_missing&&run.state!=='running'?`<button class="endbtn" data-prov="devopen" data-ip="${esc(d.ip)}">Install Bento</button>`:''}
-      ${can?`<button class="endbtn" data-prov="devignore" data-key="${esc(d.key)}">Not this one</button>`:''}
-      ${open?provDevForm(d):''}
-      ${(run.lines||[]).length||run.error?`<pre class="dev-log" id="dev-log-${esc(d.ip.replace(/\W/g,'_'))}">${esc((run.lines||[]).join('\n'))}${run.error?'\n✗ '+esc(run.error):''}</pre>`:''}
-    </div>`}).join('')}</div>`);
   rows.push(pRow('This machine’s SSH key',v.pubkey?`<code class="dev-key">${esc(v.pubkey)}</code><button class="endbtn" data-prov="devcopykey">Copy</button>`
       :`<button class="endbtn" data-prov="devkey"${can?'':' disabled'}>Make it</button>`,
     {desc:'Put it in Raspberry Pi Imager and Bento can reach a new Pi with no password.',
@@ -193,7 +185,7 @@ function provDevCreds(){
 }
 function provDevLine(ev){
   const id='dev-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
-  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
+  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"],.net-m[data-ip="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
     el=document.createElement('pre');el.className='dev-log';el.id=id;row.appendChild(el)}
   el.textContent=(el.textContent?el.textContent+'\n':'')+ev.line;el.scrollTop=el.scrollHeight;
 }
@@ -270,7 +262,8 @@ async function provAct(act,b){
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
     if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
     if(act==='zeroline'){const ts=((document.getElementById('zero-ts')||{}).value||'').trim();
-      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts})}finally{b.disabled=false}
+      const fe=document.getElementById('zero-for');if(fe)PROV.zeroFor=fe.value;
+      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts,for:PROV.zeroFor||''})}finally{b.disabled=false}
       const i=document.getElementById('zero-ts');if(i)i.value='';return provPaint()}
     if(act==='zerocopy'){navigator.clipboard&&navigator.clipboard.writeText((PROV.zero||{}).line||'');toast('✓ copied');return}
     if(act==='stdrm'){await fetch('/api/provision/standard/agent/'+encodeURIComponent(b.dataset.name),{method:'DELETE'});return provPaint()}
