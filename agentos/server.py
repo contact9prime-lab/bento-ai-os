@@ -734,6 +734,11 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
     if req.get("op") in ("chat", "chat_pull"):
         return await _team_chat_in(lk, req)
     owner = lk.get("owner") or ""
+    if req.get("op") == "edge_run":
+        # code too big for a machine this hub set up, run here in a sandbox of its own
+        from . import edgecode
+        with usersmod.as_user(owner):
+            return await edgecode.answer(state["store"], state["pdp"], lk, req)
     if req.get("op") == "zero_mind":
         # a Zero this machine set up reads and writes its own section of this home
         from . import zeromind
@@ -994,6 +999,11 @@ async def _provision_ask_installed(ip: str, tries: int = 30, every: float = 6.0)
                     return
 
 
+def _edge():
+    from . import edgecode
+    return edgecode
+
+
 def _my_name() -> str:
     from . import teamlink
     try:
@@ -1152,6 +1162,11 @@ async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
                     f"set up {r['name']} ({target.get('hw', {}).get('board') or 'machine'}, {r['how']}, "
                     f"heard {_zero().via_words(r.get('via', ''))})"
                     + (f" by {by}" if by else "") + f"; profile {json.dumps(r['profile'])}")
+            # code too big for it may run here, sandboxed: the hub's consent, revocable
+            with usersmod.as_user(r.get("owner") or ""):
+                if _edge().grant(state["store"], r["label"]):
+                    _ledger("provision.code", f"team:{r['label']}/*",
+                            f"{r['label']} may hand code too big for it to this machine, run in a sandbox")
             if r["profile"].get("execution") == "hub":
                 # its work runs here: the lead cell and the two standing permissions, in the
                 # account the Zero belongs to, whose agents and integrations will answer it
@@ -13324,7 +13339,44 @@ def _network_view() -> dict:
             "ssh_missing": ri.missing(), "pubkey": ri.public_key(),
             "steps": [{"id": s["id"], "title": s["title"], "why": s["why"]} for s in harden.STEPS],
             "secures": {ip: {k: v for k, v in run.items()} for ip, run in state.get("device_secures", {}).items()},
-            "installs": state.get("device_installs", {})}
+            "installs": state.get("device_installs", {}),
+            "firewall": _fw_state()}
+
+
+def _fw_state() -> dict:
+    from . import hostfirewall
+    try:
+        return hostfirewall.state(state.machine_cfg())
+    except Exception:
+        return {"kind": "", "words": ""}
+
+
+@app.post("/api/network/firewall")
+async def api_network_firewall(request: Request, body: dict):
+    """Open the ports machines set up from here need in this computer's firewall, or note that
+    the person did. Admin, and opening is loopback only: it changes this computer's firewall."""
+    if (r := _require_admin()):
+        return r
+    from . import hostfirewall
+    act = str((body or {}).get("action") or "")
+    with usersmod.as_user(""):
+        cfg = state.machine_cfg()
+        if act == "open":
+            if not remotemod.is_loopback(_client_addr(request)):
+                return JSONResponse({"error": "open the firewall from this computer's own screen, "
+                                              "or run `bento network firewall open` here"}, status_code=403)
+            got = await asyncio.to_thread(hostfirewall.open_ports, cfg)
+            if not got["ok"]:
+                return JSONResponse({"error": got["error"], "needs": got["needs"]}, status_code=400)
+        elif act in ("done", "undo"):
+            hostfirewall.mark_opened(cfg, act == "done")
+        else:
+            return JSONResponse({"error": "open, done or undo"}, status_code=400)
+        cfgmod.save_config(cfg)
+    _ledger("network.firewall", "firewall:this", {"open": "opened the ports for machines set up from here",
+                                                  "done": "noted the ports were opened by hand",
+                                                  "undo": "asked to be reminded about the ports"}[act])
+    return {"ok": True, "firewall": _fw_state()}
 
 
 @app.get("/api/network")

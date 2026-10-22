@@ -2822,8 +2822,8 @@ ceilings in `docs/team.md`):
 - **A link grants nothing — not even names.** `roster` lists only the agents the link's cells
   allow; `answer_linked` asks the PDP BEFORE looking the agent up, so a refusal is identical for
   an agent that exists and one that does not (it was an enumeration oracle).
-- **A link reaches no resource on the far side** — eleven wire ops, none of which reads, writes
-  or runs anything (`office`, a visit, answers with `fabric.office_for_link`: the look, the lead
+- **A link reaches no resource on the far side**, with ONE exception: `edge_run`, below. The other
+  eleven wire ops read, write and run nothing (`office`, a visit, answers with `fabric.office_for_link`: the look, the lead
   and only the agents the link's cells allow, busy/free and never the work; `teamlink.clean_office`
   holds it to the closed sets where it arrives); an ask is answered by THEIR agent with THEIR tools under THEIR gate. The
   one honest limit: what an allowed agent can READ, a question can ask it to repeat.
@@ -3194,6 +3194,20 @@ Six rules:
   announcement, so it sat on "Waiting to be set up" with a spent-on-use key nobody would use. A unicast `look`
   from an ephemeral port is answered past the firewall (conntrack). Only an automatic key is set up that way,
   once (`_PROV_BUSY`: the announcement and the ask can arrive together, and the key is single-use).
+- **Code too big for an edge machine runs on its hub, jailed** (`agentos/edgecode.py`, wire op `edge_run`,
+  `run_python(where=, folder=)`; `tests/test_edge_code.py`, live run `packaging/dev/provision-e2e/edge_code_run.py`).
+  Asked for as "small code on the Pi, big code to the hub, only in that folder, without touching our
+  application". The edge runs first under `ulimit -v` and `timeout -k` (`EDGE_*`; uutils' timeout ignored a bare
+  `-s KILL`, found on Ubuntu 25.10). The hub answers only a machine it set up (`was_enabled_here`) holding the
+  `code.run` grant written at enable (source provision, revoked with the link), only in `jail_argv`: bwrap
+  `--unshare-all`, `/usr` and the run's folder as `/work`, NOT `tools.bwrap_argv` (that binds the whole
+  filesystem read-only, fine for our agents, wrong for another machine's code), with prlimit + nice (never a
+  preexec_fn in a threaded server), one run at a time, the folder deleted. No bubblewrap: refused, never
+  unconfined. Paths both ways pass `_inside` (no absolute, `..`, hidden part or link out).
+- **The hub's own firewall is said, never assumed open** (`agentos/hostfirewall.py`, `/api/network/firewall`,
+  `bento network firewall`). ufw on the owner's hub dropped the Pi's UDP and the link port. Without root only
+  ufw.conf / firewalld's unit can be read, so the row shows while one is on until it is opened through
+  `session._run_root` or the person says they did (`network.firewall_opened`, keyed on the ports).
 - **A machine installed from a hub asks NOTHING on its own screen** (`provision.from_hub`: waiting with a
   key; `/api/setup` answers `first_run` false, `bento setup` refuses, `provHubWaitHTML`). Asked for as "the Pi
   may be remote". A `look` carries `by` (the asking machine's name), kept in memory as `provision.ASKED` (never

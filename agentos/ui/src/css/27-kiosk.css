@@ -196,3 +196,10 @@ body.kiosk #office-scene canvas{display:block}
 @media (max-width:600px){.zero-chip{max-width:110px;overflow:hidden;text-overflow:ellipsis}}
 /* a Zero has no company of its own: its departments are on the hub */
 body.zero-face .of-co{display:none}
+
+/* this computer's firewall would stop machines set up from here (hostfirewall.py) */
+.net-fw{margin:8px 16px;padding:10px 14px;border-radius:12px;border:1px solid color-mix(in srgb,var(--warn,#e0a040) 45%,transparent);
+  background:color-mix(in srgb,var(--warn,#e0a040) 8%,transparent)}
+.net-fw p{margin:0 0 8px}
+.net-fw-acts{display:flex;flex-wrap:wrap;gap:8px}
+@media (max-width:600px){.net-fw-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}}

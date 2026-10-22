@@ -3985,7 +3985,7 @@ class Toolbox(usersmod.Scoped):
             lines.append("custom: " + ", ".join(custom))
         return "\n".join(lines)
 
-    async def run_python(self, code: str, timeout: int = 120) -> str:
+    async def run_python(self, code: str, timeout: int = 120, where: str = "auto", folder: str = "") -> str:
         """Run a Python snippet and return its output.
 
         Goes through run_command rather than around it, so the sandbox jail, the
@@ -3995,18 +3995,39 @@ class Toolbox(usersmod.Scoped):
         """
         if not (code or "").strip():
             return "[error] nothing to run"
+        from . import edgecode
         enabled, root = sandbox_conf(self.cfg)
         base = root if enabled else os.path.expanduser(self.cfg["workspace"])
         os.makedirs(base, exist_ok=True)
+        # On a machine a hub set up, small code runs here inside the edge's limits and big
+        # code goes to the hub (edgecode.py). Anywhere else nothing below changes.
+        hub = edgecode.hub_for(self.cfg)
+        if where == "hub":
+            if not hub:
+                return "[error] this machine has no hub to hand code to; leave out where"
+            return await edgecode.offload(self.cfg, code, Path(base), folder, "you asked for it")
+        cwd = ""
+        if folder:
+            d = edgecode._inside(Path(base), folder)
+            if d is None or not d.is_dir():
+                return f"[error] there is no folder '{folder}' in the workspace"
+            cwd = str(d)
         path = os.path.join(base, f".agentos-run-{uuid.uuid4().hex[:8]}.py")
         try:
             with open(path, "w") as fh:
                 fh.write(code)
             py = jail_python(sys.executable) if enabled else sys.executable
-            out = await self.run_command(f"{shlex.quote(py)} {shlex.quote(path)}")
+            if hub:
+                out = await self.run_command(edgecode.local_command(py, path, cwd))
+            else:
+                lead = f"cd {shlex.quote(cwd)} && " if cwd else ""
+                out = await self.run_command(f"{lead}{shlex.quote(py)} {shlex.quote(path)}")
         finally:
             with contextlib.suppress(OSError):
                 os.unlink(path)
+        why = edgecode.stopped_by_limit(out) if hub and where != "here" else ""
+        if why:
+            return await edgecode.offload(self.cfg, code, Path(base), folder, why)
         return out or "(no output)"
 
     # -- automations: named desktop sequences the user can replay -------------
@@ -5914,6 +5935,13 @@ AUTOMATION_TOOL_SCHEMAS = [
             "properties": {
                 "code": {"type": "string", "description": "the Python source to execute; print() what you need back"},
                 "timeout": {"type": "integer", "description": "seconds before it is killed (default 120)"},
+                "folder": {"type": "string", "description": "a folder of the workspace to run in (relative); "
+                           "its files are in the current directory, and what the code writes there stays there"},
+                "where": {"type": "string", "enum": ["auto", "here", "hub"],
+                          "description": "only on a machine set up by a hub: 'auto' (default) runs here and hands "
+                                         "it to the hub if it runs out of time or memory; 'hub' sends heavy work "
+                                         "straight there (only the code and `folder` go, it runs sandboxed with "
+                                         "no network); 'here' never hands it over"},
             },
             "required": ["code"],
         },

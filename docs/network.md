@@ -111,9 +111,10 @@ which Bento is setting it up and when it last heard from it.
 At the Pi's terminal, `bento setup` says the same and how to set it up there instead.
 
 ![bento serve, bento setup and bento pool wait on a machine waiting for its hub](screenshots/network-pi-waits-for-hub-terminal.png)
- Bento asks the machine directly as well as listening for it, so a firewall on this
-computer (ufw, say) can't leave it waiting. If a machine still says *Waiting to be set up*,
-press **Look at the network**.
+
+Bento asks the machine directly as well as listening for it, so a firewall on this computer
+can't leave it waiting to be heard. If a machine still says *Waiting to be set up*, press
+**Look at the network**.
 
 With **Open on its screen** on, Bento opens full screen there and again at every start.
 
@@ -236,6 +237,38 @@ and asks before it forgets.
 Only Bento's own list of keys changes (`~/.agentos/pki/known_hosts`, kept as it was in
 `known_hosts.old`). Your own `~/.ssh/known_hosts` is left alone.
 
+### Code too big for it
+
+A Pi runs small code itself. When an agent's Python on a machine set up from here runs past a
+minute or needs more than 512 MB, Bento hands it to this computer and brings the answer back.
+An agent can also send heavy work straight here (`where: "hub"`).
+
+Only the code and the one folder it names come over. Here it runs in a sandbox of its own: no
+network, nothing of this computer visible but its system files, 2 GB of memory, 15 minutes,
+lower priority than everything else, one run at a time. The files it made or changed go back
+into that folder on the Pi, and the sandbox's folder is deleted. A computer without bubblewrap
+runs none.
+
+Setting a machine up allows it, as a grant in *Permissions* (`team:<machine>/*`, `code.run`).
+Revoke it there to stop it; the Pi then gets a sentence saying so. Every run is a ledger row.
+
+![On the Pi itself: small code stays, a 1 GB array and a 90 s loop hit the Pi's limits](screenshots/network-edge-limits-pi-terminal.png)
+
+![A hub and a Pi on real servers: small code here, slow code on the hub, its file back, then revoked](screenshots/network-edge-code-run-terminal.png)
+
+### This computer's firewall
+
+Machines set up from here reach this computer on two ports: 8322 (TCP) to join and hand work
+over, and 8620 (UDP) to be heard. When ufw or firewalld is on, the tab says so with **Open
+them**, which asks for your password. Bento can't read the rules without root, so if you
+opened them yourself, press **I opened them**.
+
+![This computer's firewall is on: the ports machines set up from here need](screenshots/network-firewall.png)
+
+![The firewall row at phone width, with both buttons full size](screenshots/network-firewall-phone.png)
+
+![bento network firewall in a terminal](screenshots/network-firewall-terminal.png)
+
 ## From a terminal
 
 ```sh
@@ -255,6 +288,8 @@ bento network label 192.168.1.40 "Kitchen Pi"
 bento network hide 192.168.1.40                 # to Hidden (forget does the same)
 bento network show 192.168.1.40                 # back on the list
 bento network rekey pi-kitchen                  # it was reformatted: forget its old SSH key
+bento network firewall                          # this computer's firewall, and the ports to open
+bento network firewall open                     # open them (asks for your password)
 ```
 
 ![bento network in a terminal: the list, and how secure each machine was measured](screenshots/network-terminal.png)
@@ -281,7 +316,8 @@ ended by the running server, so the terminal points you to the tab or `bento lin
 
 Every step is a row: `device.scan`, `device.check`, `device.secure`, then `device.secured` or
 `device.secure_failed`, `device.disconnect`, `device.forget` (hidden), `device.show`, `device.rekey` (an old SSH key
-forgotten).
+forgotten), `network.firewall`, `provision.code` (a machine may hand code here) and `edge.code`
+(one run, with what went in and came back).
 
 ## What was tested, and what wasn't
 

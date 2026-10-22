@@ -24,6 +24,10 @@ async function netPaint(){
      more:'Only this machine’s own private network is looked at. A Raspberry Pi says its name when it joins, and you get a toast.',
      f:'network inventory devices machines scan discover list'}));
   if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
+  const fw=v.firewall||{};
+  if(fw.words&&can)rows.push(`<div class="net-fw"><p>${esc(fw.words)} ${typeof pInfo!=='function'?'':pInfo('Without them a Pi set up from here can’t join it, hand work over or send code too big for it. Or run: '+(fw.commands||[]).join(' ; '))}</p>
+    <div class="net-fw-acts"><button class="endbtn" data-net="fw-open">Open them</button>
+    <button class="endbtn" data-net="fw-done">I opened them</button></div></div>`);
   const list=(v.rows||[]).filter(r=>!r.ignored),hidden=(v.rows||[]).filter(r=>r.ignored);
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
   else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
@@ -161,6 +165,11 @@ async function netAct(act,b){
   const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
     password:(document.getElementById('net-pw')||{}).value||'',mine:((document.getElementById('net-mine')||{}).value||'').trim()});
   try{
+    if(act==='fw-open'||act==='fw-done'){b.disabled=true;
+      try{await post('/api/network/firewall',{action:act==='fw-open'?'open':'done'});
+        toast(act==='fw-open'?'✓ The ports are open':'Noted')}
+      catch(e){const n=((e.data||{}).needs||[]).join(' ; ');toast(n?`${e.message}. Run: ${n}`:e.message,{kind:'err'})}
+      return netPaint()}
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/devices/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} answered on ${d.networks}`:`Nothing answered on ${d.networks}.`);return netPaint()}
     if(act==='unlinkgo'){const what=[...document.querySelectorAll(`.net-m[data-key="${CSS.escape(r.key)}"] [data-unlink]`)]

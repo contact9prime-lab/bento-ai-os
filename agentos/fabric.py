@@ -721,7 +721,7 @@ def forget_link_grants(store, label: str) -> int:
     permission it held (those are team:<label>/* rows too)."""
     n = 0
     for g in store.list_grants():
-        if g.get("action") in ("team.act", MISSION_ACTION) and g.get("principal_kind") == "team" and \
+        if g.get("action") in ("team.act", MISSION_ACTION, "code.run") and g.get("principal_kind") == "team" and \
                 str(g.get("principal_id") or "").startswith(f"{label}/"):
             n += bool(store.revoke_grant(g["id"]))
             continue

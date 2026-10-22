@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.78 — 2026-10-22
+
+**A Pi runs small code and hands big code to its hub.** On a machine set up from a hub, an
+agent's Python runs on the Pi first. If it runs past a minute or needs more than 512 MB, it goes
+to the hub with the one folder it works in, and the answer and its files come back into that
+folder. An agent can send heavy work straight there too. On the hub it runs in a sandbox of its
+own: no network, nothing of the hub visible, its own memory and time limits, lower priority, one
+at a time. Setting a machine up allows it, as a grant you can revoke in Permissions.
+
+**The hub says when its firewall is in the way.** ufw on the hub let a Pi reach only SSH and
+Bento's page, so it could never join or hand anything over. Settings → Network now says the
+firewall is on, names the two ports, and opens them on a yes. `bento network firewall` does the
+same in a terminal.
+
 ## 0.6.77 — 2026-10-22
 
 **A Pi installed from the hub asks nothing on its own screen.** It showed the setup questions
