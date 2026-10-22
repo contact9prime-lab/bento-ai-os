@@ -371,6 +371,16 @@ async def check(host: str, user: str, password: str = "", port: int = 22) -> dic
                                   "arch": facts.get("arch") or ""})}
 
 
+def stopped_because(lines: list[str]) -> str:
+    """The installer's last words, and the line that says WHY when a tool said it first: a
+    git or apt "fatal:"/"error:"/"E:" line just before the installer's own ✗ line."""
+    last = (lines or [""])[-1].lstrip("✗ ").strip()
+    cause = next((ln.strip() for ln in reversed(lines[:-1])
+                  if re.match(r"^(fatal|error|E):", ln.strip(), re.I)), "")
+    out = last if not cause or cause in last else f"{last} ({cause})"
+    return out[:300]
+
+
 def problems(c: dict) -> list[str]:
     """What would stop the install, in sentences, before anything is run."""
     out = []
@@ -381,6 +391,41 @@ def problems(c: dict) -> list[str]:
     if c.get("arch") and c["arch"] not in ("aarch64", "arm64", "x86_64", "amd64", "armv7l"):
         out.append(f"{c['arch']} is not a processor Bento runs on")
     return out
+
+
+# The installer's own "▲ …" lines (install.sh `say`), grouped into the steps a person is
+# shown while it runs. Read from what the installer printed, never guessed from the time
+# taken; a line no step names leaves the step where it was. tests/test_device_install.py
+# checks that every `say` in install.sh lands in one of these.
+STAGES = (
+    ("network", "Checking its network", ("checking the network",)),
+    ("get", "Getting Bento", ("installing uv", "cloning AgentOS", "updating AgentOS", "reset ")),
+    ("deps", "Installing what it needs", ("installing the build tools", "installing dependencies")),
+    ("setup", "Setting it up", ("this machine", "checking what this machine needs", "run 'bento installer'",
+                                "installed the 'bento' command", "added ", "turning on remote access",
+                                "setting the port", "setting the footprint", "joining your tailnet",
+                                "carrying your community", "installing launcher", "skipping the launcher")),
+    ("screen", "Getting its screen ready", ("opening Bento on this machine's screen",)),
+    ("check", "Checking it starts", ("starting it once",)),
+    ("start", "Starting Bento", ("starting the service", "not started", "environment check")),
+)
+
+
+def stages(screen: bool = False) -> list[dict]:
+    """The steps shown for one install: the screen step only when it was asked for."""
+    return [{"id": i, "words": w} for i, w, _ in STAGES if screen or i != "screen"]
+
+
+def stage_of(line: str) -> str:
+    """Which step an installer line starts, or '' for any other line."""
+    t = (line or "").strip()
+    if not t.startswith("▲"):
+        return ""
+    t = t.lstrip("▲ ").strip()
+    for sid, _words, starts in STAGES:
+        if any(t.startswith(x) for x in starts):
+            return sid
+    return ""
 
 
 def plan(cfg: dict | None, key_text: str, authorize: bool = False, screen: bool = False) -> str:
@@ -422,6 +467,6 @@ async def install(cfg: dict, host: str, user: str, password: str, key_text: str,
         tail = [ln for ln in out.splitlines() if ln.strip()]
         if code == 255 or not (said or tail):
             raise InstallError(_why(err, code, bool(password)))     # ssh itself failed: it never ran
-        raise InstallError(f"the installer stopped: {(said or tail)[-1][:200]}")
+        raise InstallError(f"the installer stopped: {stopped_because(said or tail)}")
     return {"ok": True, "host": host, "host_key": fingerprint(host, port),
             "authorized": bool(authorize and public_key())}

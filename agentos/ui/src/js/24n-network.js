@@ -51,6 +51,8 @@ function netMain(r,v){
   // a Bento waiting to be set up is set up below (New machines), with its code
   if(r.bento==='waiting')return `<button class="endbtn" data-net="setup" data-key="${esc(r.key)}">Set it up</button>`;
   if(v.ssh_missing||!r.ip)return '';
+  // while Bento installs there, the card under the row is the only thing to look at
+  if(((v.installs||{})[r.ip]||{}).state==='running')return '';
   if(r.bento==='none'&&r.ssh)return `<button class="endbtn" data-net="install" data-key="${esc(r.key)}">Install Bento</button>`;
   if(r.ssh||r.bento!=='none'||r.secured_n>=0)
     return `<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`;
@@ -60,7 +62,7 @@ function netRowHTML(r,v,can){
   const open=NET.open===r.key,run=(v.secures||{})[r.ip]||{},inst=(v.installs||{})[r.ip]||{};
   const what=r.board||r.maker||r.os||'';
   const seen=r.age==null?'':r.stale?'not heard for a week':r.age<120?'heard just now':'heard '+poolAgo(r.age);
-  const busy=run.state==='running'?'securing…':inst.state==='running'?'installing…':'';
+  const busy=run.state==='running'?'securing…':inst.state==='running'?'installing Bento…':'';
   const more=NET.more===r.key;
   return `<div class="net-m${open?' open':''}${r.stale?' stale':''}" data-key="${esc(r.key)}" data-ip="${esc(r.ip||'')}">
     <div class="net-top">
@@ -75,10 +77,10 @@ function netRowHTML(r,v,can){
         <button class="endbtn" data-net="label" data-key="${esc(r.key)}">Rename</button>
         <button class="endbtn" data-net="forget" data-key="${esc(r.key)}">Hide</button></div>`:''}`:''}
     ${r.ssh_off?`<p class="mut net-hint">${esc(r.ssh_off)}</p>`:''}
-    ${open&&NET.mode==='install'?provDevForm({ip:r.ip,ssh:r.ssh,ports:r.ports||[]}):''}
+    ${open&&NET.mode==='install'?provDevForm({ip:r.ip,ssh:r.ssh,ports:r.ports||[]}):devProgHTML(r.ip)}
     ${open&&NET.mode==='secure'?netSecureForm(r):''}
     ${open&&NET.mode==='unlink'?netUnlinkForm(r):''}
-    ${netLogHTML('net-log-',r.ip,run)}${netLogHTML('dev-log-',r.ip,inst)}
+    ${netLogHTML('net-log-',r.ip,run)}
   </div>`;
 }
 /* Hidden machines stay one tap away. Hide was "Not this one", and with nothing listing what
@@ -138,6 +140,7 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
   :c.kind==='community'?'It stops thinking with this machine’s brain and taking part in shared work.'
   :'Bento can no longer log in there without a password.'}
 function netWire(box){
+  if(box.querySelector('.dev-prog.running')&&typeof devProgTick==='function')devProgTick();
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
   const hd=box.querySelector('.net-hidden');if(hd)hd.ontoggle=()=>{NET.hiddenOpen=hd.open};
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));

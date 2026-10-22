@@ -4871,7 +4871,15 @@ def _devices_cli(args, cfg, a, rest, run, port: int = 22, user: str = "", verb: 
         k = prov.make_key(f"install on {host}", auto=True, profile=prof, single=True)
         ledger("device.install", f"device:{host}", f"started installing Bento on {user}@{host}")
 
+        steps = ri.stages(bool(getattr(args, "kiosk", False)))
+        order, seen = [s_["id"] for s_ in steps], {"at": -1}
+
         async def show(ln):
+            # the same named steps the Network tab's card shows, as the installer reaches them
+            st = ri.stage_of(ln)
+            if st in order and order.index(st) > seen["at"]:
+                seen["at"] = order.index(st)
+                print(f"  ── step {seen['at'] + 1} of {len(order)}: {steps[seen['at']]['words']}")
             print("    │ " + ln[:150])
         try:
             got = run(ri.install(cfg, host, user, pw, k["text"], authorize=getattr(args, "authorize", False),

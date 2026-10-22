@@ -13175,11 +13175,12 @@ async def api_devices_install(body: dict):
     if (runs.get(ip) or {}).get("state") == "running":
         return JSONResponse({"error": "Bento is already being installed there"}, status_code=409)
     k = provmod.make_key(f"install on {ip}", auto=True, profile=b.get("profile"), single=True)
-    runs[ip] = {"state": "running", "started": time.time(), "lines": []}
+    runs[ip] = {"state": "running", "started": time.time(), "lines": [], "stage": "",
+                "stages": ri.stages(_wants_screen(b))}
     _ledger("device.install", f"device:{ip}", f"started installing Bento on {user}@{ip}"
             + (" and letting this machine's key in" if b.get("authorize") else ""))
     asyncio.ensure_future(_device_install(ip, user, pw, port, k, bool(b.get("authorize")), _wants_screen(b)))
-    return {"started": True, "plan": ri.plan(state.machine_cfg(), "bento-enroll-1.…",
+    return {"started": True, "stages": runs[ip]["stages"], "plan": ri.plan(state.machine_cfg(), "bento-enroll-1.…",
                                              authorize=bool(b.get("authorize")), screen=_wants_screen(b))}
 
 
@@ -13192,7 +13193,12 @@ async def _device_install(ip, user, pw, port, k, authorize, screen=False):
     async def line(ln):
         ln = ln[:300]
         run["lines"] = (run["lines"] + [ln])[-40:]
-        await _provision_admins({"type": "device_install", "ip": ip, "line": ln})
+        st = ri.stage_of(ln)
+        order = [x["id"] for x in run["stages"]]
+        # a step only moves forward: a later line naming an earlier step is still that line
+        if st in order and (not run["stage"] or order.index(st) > order.index(run["stage"])):
+            run["stage"] = st
+        await _provision_admins({"type": "device_install", "ip": ip, "line": ln, "stage": run["stage"]})
     try:
         got = await ri.install(cfg, ip, user, pw, k["text"], authorize=authorize, port=port, on_line=line,
                                screen=screen)
@@ -13205,11 +13211,13 @@ async def _device_install(ip, user, pw, port, k, authorize, screen=False):
         _sys_ledger("device.installed", f"device:{ip}", f"Bento installed on {user}@{ip}; host key "
                     f"{got.get('host_key') or 'unknown'}; it is set up when it is heard")
         await _provision_admins({"type": "provision", "kind": "installed", "name": ip})
+        await _provision_admins({"type": "device_install", "ip": ip, "state": "done"})
     except ri.InstallError as e:
         provmod.drop_key(k["id"])
         run.update(state="failed", error=str(e), finished=time.time())
         _sys_ledger("device.failed", f"device:{ip}", f"installing on {user}@{ip}: {e}")
         await _provision_admins({"type": "provision", "kind": "install_failed", "name": ip, "error": str(e)})
+        await _provision_admins({"type": "device_install", "ip": ip, "state": "failed", "error": str(e)})
     finally:
         pw = ""                         # noqa: F841 — the password ends with this task
 
@@ -13330,7 +13338,8 @@ async def api_network_secure(body: dict):
     runs = state.setdefault("device_secures", {})
     if (runs.get(ip) or {}).get("state") == "running":
         return JSONResponse({"error": "that machine is already being secured"}, status_code=409)
-    runs[ip] = {"state": "running", "started": time.time(), "lines": []}
+    runs[ip] = {"state": "running", "started": time.time(), "lines": [], "stage": "",
+                "stages": ri.stages(_wants_screen(b))}
     _ledger("device.secure", f"device:{ip}", f"started securing {user}@{ip}: "
             + ", ".join(([harden.YOURKEY["title"].lower()] if mine else [])
                         + [harden.TITLES[s].lower() for s in steps]))

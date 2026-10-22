@@ -67,6 +67,36 @@ When the login is refused, the reason stays under **Check it**:
 
 ![The same refusal on a phone, under Check it](screenshots/network-keys-only-phone.png)
 
+### While it installs
+
+Once you press **Install Bento there**, the form turns into the install: the step it's on, out
+of seven (six without its screen), and how long it's been going. The steps are read from what the
+installer prints, so the bar moves when the machine does. **What it printed** shows the raw lines.
+A Pi takes 10 to 20 minutes, and you can close Settings while it runs.
+
+![Installing: the step it's on, the steps done, and how long](screenshots/network-installing.png)
+
+![The same install watched from a phone](screenshots/network-installing-phone.png)
+
+If it stops, the card says why in the installer's words, including what git or apt said just
+before it gave up (a clone cut off by a weak Wi-Fi reads *clone failed (fatal: early EOF)*). The
+form is back underneath to try again.
+
+![An install that stopped, with git's reason and the lines before it](screenshots/network-install-stopped.png)
+
+With **Open on its screen** on, the machine's own screen shows each step too. On a Pi with the
+desktop it's a full-screen page that becomes Bento's Office once Bento answers; with no desktop
+it's the console. A failed install leaves its reason up for five minutes, then gives the screen back.
+
+![A Raspberry Pi's own screen while Bento installs, photographed on the Pi](screenshots/network-install-pi-screen.png)
+
+`bento network install` prints the same steps as it reaches them.
+
+![bento network install with the steps named as it goes](screenshots/network-install-terminal-steps.png)
+
+A fresh install fetches Bento without the docs' screenshots, about 14 MB instead of 205 MB. The
+pictures are for reading the guides on GitHub; nothing on the machine shows them.
+
 ## Secure it
 
 Open a row and press **Secure it**. Type the user there (the one set in Imager) and its

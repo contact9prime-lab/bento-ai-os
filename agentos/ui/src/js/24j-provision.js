@@ -172,7 +172,10 @@ function provDevForm(d){
   const c=DEV.check[d.ip];
   // the port SSH answered on in the scan (its first port), which is 22 on a real Pi
   const sshPort=d.ssh&&(d.ports||[]).length?Number(d.ports[0])||22:22;
-  return `<div class="dev-form">
+  // while it installs, the form is the progress: nothing to type, nothing to press twice
+  const run=devRun(d.ip);
+  if(run&&run.state==='running')return `<div class="dev-form">${devProgHTML(d.ip)}</div>`;
+  return `<div class="dev-form">${devProgHTML(d.ip)}
     <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
     <label>Password <input id="dev-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
     <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
@@ -202,11 +205,74 @@ function provDevCreds(){
   return {user:(g('dev-user').value||'').trim(),password:g('dev-pw').value||'',authorize:!!g('dev-auth').checked,
     profile:Object.assign({kiosk:!!g('dev-kiosk').checked,lite:true},agent?{agent_name:agent}:{})};
 }
+/* An install in progress, as named steps. The steps are the installer's own "▲" lines read
+   by the server (remoteinstall.stage_of), so the bar moves when the Pi moves, never on a
+   timer. The raw lines are one tap away. */
+function devViews(){return [typeof NET!=='undefined'?NET.v:null,typeof PROV!=='undefined'?PROV.v:null].filter(Boolean)}
+function devRun(ip){for(const v of devViews()){const r=(v.installs||{})[ip];if(r)return r}return null}
+function devRunSet(ip,patch,line){
+  devViews().forEach(v=>{v.installs=v.installs||{};
+    const r=v.installs[ip]=v.installs[ip]||{state:'running',started:Date.now()/1000,lines:[],stage:'',stages:[]};
+    Object.assign(r,patch);if(line!=null)r.lines=(r.lines||[]).concat(line).slice(-40)});
+}
+function devAgo(s){s=Math.max(0,Math.round(s));return s<60?s+' s':Math.floor(s/60)+' min'}
+function devProgHTML(ip){
+  const run=devRun(ip);if(!run)return '';
+  const now=Date.now()/1000,st=run.state;
+  if(!(st==='running'||st==='failed'||(st==='done'&&now-(run.finished||now)<600)))return '';
+  const steps=run.stages||[],cur=steps.findIndex(x=>x.id===run.stage);
+  const pct=st==='done'?100:Math.round(((cur<0?0.15:cur+0.5)/Math.max(1,steps.length))*100);
+  const lines=(run.lines||[]).slice(st==='failed'?-12:-40);
+  const head=st==='running'?`<span class="dev-spin" aria-hidden="true"></span><b>Installing Bento on ${esc(ip)}</b>`
+    :st==='done'?`<span class="dev-ok">✓</span><b>Bento is installed on ${esc(ip)}</b>`
+    :`<span class="dev-bad">✗</span><b>The install stopped</b>`;
+  const sub=st==='running'?`${cur<0?'Starting':`Step ${cur+1} of ${steps.length}`} · ${devAgo(now-(run.started||now))}`
+    :st==='done'?'It is set up as soon as it is heard':'';
+  return `<div class="dev-prog ${esc(st)}" data-ip="${esc(ip)}" role="status" aria-live="polite">
+    <div class="dev-prog-top">${head}<span class="mut dev-prog-sub">${esc(sub)}</span></div>
+    <div class="dev-bar" aria-hidden="true"><i style="width:${pct}%"></i></div>
+    ${st==='failed'&&run.error?`<p class="warn dev-err">${esc(devWhy(run.error))}</p>`:''}
+    <ol class="dev-steps">${steps.map((x,i)=>{const c=st==='done'||i<cur?'done':i===cur?(st==='failed'?'bad':'now'):'';
+      return `<li class="${c}">${esc(x.words)}</li>`}).join('')}</ol>
+    ${st==='running'?`<p class="mut dev-prog-hint">A Pi takes 10 to 20 minutes. You can close Settings; it carries on.${steps.some(x=>x.id==='screen')?' Its own screen shows each step too.':''}</p>`:''}
+    ${lines.length?`<details class="dev-prog-log"${st==='failed'?' open':''}><summary>What it printed</summary><pre class="dev-log">${esc(lines.join('\n'))}</pre></details>`:''}
+  </div>`;
+}
+/* the headline already says it stopped: the line under it is the reason, as a sentence */
+function devWhy(e){e=String(e||'').replace(/^the installer stopped:\s*/i,'');return e.charAt(0).toUpperCase()+e.slice(1)}
+function devProgRepaint(ip){
+  const els=document.querySelectorAll(`.dev-prog[data-ip="${CSS.escape(ip)}"]`);
+  els.forEach(el=>{const open=el.querySelector('details')?.open,html=devProgHTML(ip);
+    if(!html){el.remove();return}
+    const t=document.createElement('div');t.innerHTML=html;const n=t.firstElementChild;
+    const d=n.querySelector('details');if(d&&open)d.open=true;
+    const pre=n.querySelector('pre');el.replaceWith(n);if(pre)pre.scrollTop=pre.scrollHeight});
+  return els.length;
+}
+/* The elapsed time: one timer while any install is on screen, and none once it is not. */
+var DEV_TICK=0;
+function devProgTick(){
+  if(DEV_TICK)return;
+  const step=()=>{const live=[...document.querySelectorAll('.dev-prog.running')];
+    if(!live.length){DEV_TICK=0;return}
+    live.forEach(el=>{const run=devRun(el.dataset.ip),s=el.querySelector('.dev-prog-sub');
+      if(run&&s)s.textContent=s.textContent.replace(/· .*$/,'· '+devAgo(Date.now()/1000-(run.started||0)))});
+    DEV_TICK=setTimeout(step,5000)};
+  DEV_TICK=setTimeout(step,5000);
+}
 function provDevLine(ev){
-  const id='dev-log-'+String(ev.ip||'').replace(/\W/g,'_');let el=document.getElementById(id);
-  if(!el){const row=document.querySelector(`.dev-m[data-dev="${CSS.escape(ev.ip||'')}"],.net-m[data-ip="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
-    el=document.createElement('pre');el.className='dev-log';el.id=id;row.appendChild(el)}
-  el.textContent=(el.textContent?el.textContent+'\n':'')+ev.line;el.scrollTop=el.scrollHeight;
+  if(!ev||!ev.ip)return;
+  const patch={};
+  if(ev.stage!=null)patch.stage=ev.stage;
+  if(ev.state){patch.state=ev.state;patch.finished=Date.now()/1000;if(ev.error)patch.error=ev.error;
+    // installed: the form has done its job, so the row shows the result and its new badge
+    if(ev.state==='done'&&typeof NET!=='undefined'&&NET.mode==='install'){NET.open='';NET.mode='';DEV.open=''}}
+  else patch.state='running';
+  devRunSet(ev.ip,patch,ev.line!=null?ev.line:null);
+  // the card is redrawn where it is; a finished run repaints the list, so the row's own badge
+  // and the form come back
+  if(!devProgRepaint(ev.ip)||ev.state){if(typeof netPaint==='function'&&document.getElementById('s-net'))netPaint()}
+  devProgTick();
 }
 function provDevCard(){
   const el=document.getElementById('dev-card');if(!el)return;
@@ -292,7 +358,9 @@ async function provAct(act,b){
     if(act==='devinstall'){const c=provDevCreds();
       const called=c.profile.agent_name?` Its agent is called ${c.profile.agent_name}.`:'';
       if(!await osConfirm(`Install Bento on ${b.dataset.ip}?`,`The command shown runs there as ${c.user}.${called}`,{confirmText:'Install'}))return;
-      await post('/api/devices/install',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c});DEV.open='';toast('Installing Bento on '+b.dataset.ip+'…');return provPaint()}
+      const st=await post('/api/devices/install',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c});
+      devRunSet(b.dataset.ip,{state:'running',started:Date.now()/1000,lines:[],stage:'',stages:st.stages||[],error:''});
+      delete DEV.check[b.dataset.ip];devProgTick();return provPaint()}
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/provision/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
     if(act==='more'){PROV.more=!PROV.more;return provPaint()}
