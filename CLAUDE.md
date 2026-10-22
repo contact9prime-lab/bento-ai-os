@@ -3176,7 +3176,9 @@ Six rules:
   `memory.Store()` with no path is the machine's database: the terminal verbs called it that way,
   and every ledger row they wrote raised inside a try and was lost.
 - **What runs is what was shown.** `plan()` is the command on the consent screen and the one
-  `install()` sends; the test reads the fake ssh's log for it. NEVER `--yes` on a remote
+  `install()` sends, inside `detached()` (setsid + nohup, a log under `~/.cache/bento-install`, then
+  `follow()`; a drop is followed again from the line it reached, `RECONNECTS` times). It ran inside the
+  ssh session once, and a Pi 3 too busy to answer keep-alives lost its installer half-way; the test reads the fake ssh's log for it. NEVER `--yes` on a remote
   install: it answers every optional extra (Claude Code, Codex…), which nobody agreed to here.
   Found by the live run. Installer lines pass `clean_line` (ANSI and controls stripped) before
   any toast, and a failure says the installer's own last stderr line.

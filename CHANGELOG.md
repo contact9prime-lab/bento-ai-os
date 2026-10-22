@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.84 — 2026-10-22
+
+**An install over SSH survives a dropped connection.** The installer ran inside the SSH
+session, so when a Pi 3 got too busy to answer the hub for 45 seconds (starting Bento twice
+while its screen showed the steps, on a weak Wi-Fi signal), the connection dropped and took
+the installer with it, half-way through its last check. Bento was already running there; the
+hub said it had stopped. Now the installer runs on its own there, writing a log, and the hub
+follows the log. A drop is picked up again from the line it stopped at, so nothing is lost
+or said twice. Installing again stops an earlier installer that is still running there.
+
+**You can watch it.** The install card shows a live console: every line the installer and
+its tools print there (git, uv, apt), as it arrives, kept at the newest line.
+
+**A small machine gets three minutes to start** in the installer's own check, rather than one.
+
+**The install form is tidier.** The fields sit in one row, what the check found is a card with
+the command folded away, Forget the saved one is a link, and the buttons come last at one
+height. A wizard margin and the immersive look's label spacing were stretching it.
+
 ## 0.6.83 — 2026-10-22
 
 **Install it again stays after an install stops.** A scan where a Pi didn't answer for a moment
@@ -9,10 +28,6 @@ keeps what an earlier one found, and a machine you've logged into before keeps t
 **A Pi on Wi-Fi isn't told to connect to Wi-Fi.** The installer checks the internet twice, a
 few seconds apart. When it still gets nothing while the machine is on Wi-Fi, it names the
 network and says to try again, instead of listing networks to connect to.
-
-**The install form is tidier.** The fields sit in one row, what the check found is a card with
-the command folded away, Forget the saved one is a link, and the buttons come last at one
-height. A wizard margin and the immersive look's label spacing were stretching it.
 
 ## 0.6.82 — 2026-10-22
 

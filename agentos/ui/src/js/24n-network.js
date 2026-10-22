@@ -197,6 +197,8 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
   :'Bento can no longer log in there without a password.'}
 function netWire(box){
   if(box.querySelector('.dev-prog.running')&&typeof devProgTick==='function')devProgTick();
+  // a console drawn fresh opens at its newest line, as a terminal does
+  box.querySelectorAll('.dev-console .dev-log').forEach(p=>p.scrollTop=p.scrollHeight);
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
   box.querySelectorAll('[data-pwforget]').forEach(b=>b.onclick=()=>devPwForget(b));
   box.querySelectorAll('[data-devnode]').forEach(n=>n.onclick=()=>devMapGo(n.dataset.devnode));

@@ -1224,7 +1224,12 @@ if [ "$VERIFY" = 1 ]; then
   probe_pid=$!
   verified=""
   i=0
-  while [ "$i" -lt 60 ]; do
+  # A Pi 3 starting this check while the login service starts Bento too (and Chromium shows
+  # the steps) took longer than a minute, so a small machine gets three.
+  wait_s=60
+  mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+  [ "${mem_kb:-0}" -gt 0 ] && [ "${mem_kb:-0}" -lt 2000000 ] && wait_s=180
+  while [ "$i" -lt "$wait_s" ]; do
     i=$((i + 1))
     sleep 1
     kill -0 "$probe_pid" 2>/dev/null || break     # it died; stop waiting for it
@@ -1240,7 +1245,7 @@ if [ "$VERIFY" = 1 ]; then
     ok "it starts, serves the desktop, and answers"
     rm -f "/tmp/agentos-verify.$$"
   else
-    warn "AgentOS installed, but the server did not answer within 60s."
+    warn "AgentOS installed, but the server did not answer within ${wait_s}s."
     echo "   The last lines of its output:"
     tail -n 15 "/tmp/agentos-verify.$$" 2>/dev/null | sed 's/^/     /'
     echo "   Full log: /tmp/agentos-verify.$$"

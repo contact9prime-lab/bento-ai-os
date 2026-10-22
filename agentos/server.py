@@ -13334,7 +13334,7 @@ async def _device_install(ip, user, pw, port, k, authorize, screen=False):
 
     async def line(ln):
         ln = ln[:300]
-        run["lines"] = (run["lines"] + [ln])[-40:]
+        run["lines"] = (run["lines"] + [ln])[-80:]
         st = ri.stage_of(ln)
         order = [x["id"] for x in run["stages"]]
         # a step only moves forward: a later line naming an earlier step is still that line

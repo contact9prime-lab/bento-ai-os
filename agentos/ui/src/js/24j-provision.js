@@ -240,10 +240,11 @@ function provDevCreds(){
    timer. The raw lines are one tap away. */
 function devViews(){return [typeof NET!=='undefined'?NET.v:null,typeof PROV!=='undefined'?PROV.v:null].filter(Boolean)}
 function devRun(ip){for(const v of devViews()){const r=(v.installs||{})[ip];if(r)return r}return null}
+var DEV_LINES=80;
 function devRunSet(ip,patch,line){
   devViews().forEach(v=>{v.installs=v.installs||{};
     const r=v.installs[ip]=v.installs[ip]||{state:'running',started:Date.now()/1000,lines:[],stage:'',stages:[]};
-    Object.assign(r,patch);if(line!=null)r.lines=(r.lines||[]).concat(line).slice(-40)});
+    Object.assign(r,patch);if(line!=null)r.lines=(r.lines||[]).concat(line).slice(-DEV_LINES)});
 }
 function devAgo(s){s=Math.max(0,Math.round(s));return s<60?s+' s':Math.floor(s/60)+' min'}
 function devProgHTML(ip){
@@ -252,7 +253,7 @@ function devProgHTML(ip){
   if(!(st==='running'||st==='failed'||(st==='done'&&now-(run.finished||now)<600)))return '';
   const steps=run.stages||[],cur=steps.findIndex(x=>x.id===run.stage);
   const pct=st==='done'?100:Math.round(((cur<0?0.15:cur+0.5)/Math.max(1,steps.length))*100);
-  const lines=(run.lines||[]).slice(st==='failed'?-12:-40);
+  const lines=(run.lines||[]).filter(x=>x!=='').slice(-DEV_LINES);
   const head=st==='running'?`<span class="dev-spin" aria-hidden="true"></span><b>Installing Bento on ${esc(ip)}</b>`
     :st==='done'?`<span class="dev-ok">✓</span><b>Bento is installed on ${esc(ip)}</b>`
     :`<span class="dev-bad">✗</span><b>The install stopped</b>`;
@@ -265,18 +266,21 @@ function devProgHTML(ip){
     <ol class="dev-steps">${steps.map((x,i)=>{const c=st==='done'||i<cur?'done':i===cur?(st==='failed'?'bad':'now'):'';
       return `<li class="${c}">${esc(x.words)}</li>`}).join('')}</ol>
     ${st==='running'?`<p class="mut dev-prog-hint">A Pi takes 10 to 20 minutes. You can close Settings; it carries on.${steps.some(x=>x.id==='screen')?' Its own screen shows each step too.':''}</p>`:''}
-    ${lines.length?`<details class="dev-prog-log"${st==='failed'?' open':''}><summary>What it printed</summary><pre class="dev-log">${esc(lines.join('\n'))}</pre></details>`:''}
+    ${lines.length?`<div class="dev-console" aria-label="What it prints there"><div class="dev-console-h">
+      <span>${st==='running'?'Live from '+esc(ip):'What it printed'}</span>${st==='running'?'<i class="dev-console-dot" aria-hidden="true"></i>':''}</div>
+      <pre class="dev-log">${lines.map((x,i)=>`<span class="${i===lines.length-1&&st==='running'?'dev-now':/^(✗|!)/.test(x)?'dev-l-bad':/^✓/.test(x)?'dev-l-ok':/^▲/.test(x)?'dev-l-step':''}">${esc(x)}</span>`).join('\n')}</pre></div>`:''}
   </div>`;
 }
 /* the headline already says it stopped: the line under it is the reason, as a sentence */
 function devWhy(e){e=String(e||'').replace(/^the installer stopped:\s*/i,'');return e.charAt(0).toUpperCase()+e.slice(1)}
 function devProgRepaint(ip){
   const els=document.querySelectorAll(`.dev-prog[data-ip="${CSS.escape(ip)}"]`);
-  els.forEach(el=>{const open=el.querySelector('details')?.open,html=devProgHTML(ip);
+  els.forEach(el=>{const html=devProgHTML(ip);
     if(!html){el.remove();return}
+    // the console stays at the newest line, unless the person scrolled up to read
+    const old=el.querySelector('.dev-log'),stuck=!old||old.scrollHeight-old.scrollTop-old.clientHeight<24,top=old?old.scrollTop:0;
     const t=document.createElement('div');t.innerHTML=html;const n=t.firstElementChild;
-    const d=n.querySelector('details');if(d&&open)d.open=true;
-    const pre=n.querySelector('pre');el.replaceWith(n);if(pre)pre.scrollTop=pre.scrollHeight});
+    const pre=n.querySelector('.dev-log');el.replaceWith(n);if(pre)pre.scrollTop=stuck?pre.scrollHeight:top});
   return els.length;
 }
 /* The elapsed time: one timer while any install is on screen, and none once it is not. */
