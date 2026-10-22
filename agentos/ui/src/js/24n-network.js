@@ -116,8 +116,8 @@ function netSecureForm(r){
   const c=NET.check[r.ip],steps=(NET.v||{}).steps||[];
   const sel=NET.steps[r.ip]||{};
   return `<div class="dev-form net-form">
-    <label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
-    ${devPwHTML('net-pw',r.ip,(c&&c.user)||r.user||'')}
+    <div class="dev-fields"><label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
+    ${devPwHTML('net-pw',r.ip,(c&&c.user)||r.user||'')}</div>
     <label class="net-mine"><span class="net-mine-h">Your own SSH key ${pInfo('After password logins go off, only keys get in. Paste the .pub file from your own computer (~/.ssh/id_ed25519.pub) so you can still log in.')}</span>
       <input id="net-mine" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAA… you@laptop"></label>
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
@@ -167,8 +167,8 @@ function netControlsForm(r,v){
       ${known&&(s.id==='code'||st.installed)?`<button class="endbtn" data-net="ctlsw" data-sw="${esc(s.id)}" data-on="${on?0:1}" data-key="${esc(r.key)}">${on?'Turn off':'Turn on'}</button>`:''}
     </div>`};
   return `<div class="dev-form net-form">
-    <label>User there <input id="ctl-user" maxlength="32" value="${esc(r.user||'')}" placeholder="the user set in Imager"></label>
-    ${devPwHTML('ctl-pw',r.ip,r.user||'')}
+    <div class="dev-fields"><label>User there <input id="ctl-user" maxlength="32" value="${esc(r.user||'')}" placeholder="the user set in Imager"></label>
+    ${devPwHTML('ctl-pw',r.ip,r.user||'')}</div>
     <div class="dev-acts"><button class="endbtn" data-net="ctlread" data-key="${esc(r.key)}">${st?'Read again':'Read its switches'}</button>
       ${st&&st.installed?`<button class="endbtn" data-net="ctlupdate" data-key="${esc(r.key)}">Update Bento there${st.version?' ('+esc(st.version)+')':''}</button>`:''}</div>
     ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}

@@ -10,6 +10,10 @@ keeps what an earlier one found, and a machine you've logged into before keeps t
 few seconds apart. When it still gets nothing while the machine is on Wi-Fi, it names the
 network and says to try again, instead of listing networks to connect to.
 
+**The install form is tidier.** The fields sit in one row, what the check found is a card with
+the command folded away, Forget the saved one is a link, and the buttons come last at one
+height. A wizard margin and the immersive look's label spacing were stretching it.
+
 ## 0.6.82 — 2026-10-22
 
 **A Pi's agent is changed in the Agents tab's own editor.** The Devices app's Controls showed

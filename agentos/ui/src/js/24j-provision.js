@@ -175,20 +175,25 @@ function provDevForm(d){
   // while it installs, the form is the progress: nothing to type, nothing to press twice
   const run=devRun(d.ip);
   if(run&&run.state==='running')return `<div class="dev-form">${devProgHTML(d.ip)}</div>`;
-  return `<div class="dev-form">${devProgHTML(d.ip)}
-    <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
-    ${devPwHTML('dev-pw',d.ip,(c&&c.user)||'')}
-    <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
+  // fields in one grid, the choices on one line, what the check found as a card, and the
+  // buttons last, where the eye ends up after reading it
+  return `<div class="dev-form dev-install">${devProgHTML(d.ip)}
+    <div class="dev-fields">
+      <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
+      ${devPwHTML('dev-pw',d.ip,(c&&c.user)||'')}
+      <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
+    </div>
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
     <label class="prov-opt">${pSwitch('dev-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label></div>
-    <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">Check it</button>
-      ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
     ${DEV.err[d.ip]?`<p class="warn dev-err">✗ ${esc(DEV.err[d.ip])}</p>`:''}
     ${sshRekeyHTML(d.ip,sshPort,DEV.rekey[d.ip])}
-    ${c?`<div class="dev-facts">${esc([c.board||c.arch,c.os,c.ram_mb+' MB memory',c.free_mb+' MB free'].filter(Boolean).join(' · '))}
-      ${c.bento?'<br>Bento is already there.':''}${c.host_key?`<br><span class="mut">Its key: ${esc(c.host_key)}</span>`:''}
-      ${c.problems.map(p=>`<br><span class="warn">✗ ${esc(p)}</span>`).join('')}
-      <br><span class="mut">This runs there:</span><code class="dev-plan">${esc(c.plan||'')}</code></div>`:''}
+    ${c?`<div class="dev-facts dev-found"><b>${esc([c.board||c.arch,c.os].filter(Boolean).join(' · '))}</b>
+      <span class="mut">${esc([c.ram_mb+' MB memory',c.free_mb+' MB free'].join(' · '))}${c.bento?' · Bento is already there':''}</span>
+      ${c.host_key?`<span class="mut dev-hostkey">Its key: ${esc(c.host_key)}</span>`:''}
+      ${c.problems.map(p=>`<span class="warn">✗ ${esc(p)}</span>`).join('')}
+      <details><summary>What runs there</summary><code class="dev-plan">${esc(c.plan||'')}</code></details></div>`:''}
+    <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">${c?'Check again':'Check it'}</button>
+      ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
   </div>`;
 }
 /* A reformatted machine shows a new SSH key and ssh refuses it. Both fingerprints, and a
@@ -207,7 +212,7 @@ function devPwHTML(id,ip,user){
       placeholder="${saved?'saved, encrypted: leave blank':'blank: use this machine’s key'}"></label>
     <div class="dev-pw-opts"><label class="prov-opt"><input type="checkbox" id="${id}-keep"${saved?'':' checked'}>
       ${saved?'Replace the saved one with what I type':'Remember it, encrypted on this computer'}</label>
-      ${saved?`<button class="endbtn dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
+      ${saved?`<button class="dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
 }
 function devPwKeep(id){const e=document.getElementById(id+'-keep');return !!(e&&e.checked)}
 async function devPwForget(b){
