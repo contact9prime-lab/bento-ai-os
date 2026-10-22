@@ -3180,6 +3180,13 @@ Six rules:
   install: it answers every optional extra (Claude Code, Codex…), which nobody agreed to here.
   Found by the live run. Installer lines pass `clean_line` (ANSI and controls stripped) before
   any toast, and a failure says the installer's own last stderr line.
+- **A changed host key is the person's to forget, with both keys in view** (`remoteinstall.KeyChanged`,
+  raised from `_run` so every login says it alike; `seen_key`, `forget_host`, `/api/devices/forget-key`,
+  `bento network rekey`; `tests/test_device_install.py`). Reported with a screenshot after a Pi was
+  reformatted: the refusal said to edit a known_hosts file nobody could reach. The check answers 409
+  with `key_changed` (old and new fingerprints, the new one read by ssh-keyscan), the form keeps it under
+  Check it, and forgetting is confirmed, a `device.rekey` row, then Check it again. Never forget a key
+  on its own: the same refusal is what a machine in the middle gets.
 - **A key per machine, spent on use.** The install and each SD card get a single-use automatic
   enrolment key (`make_key(single=True)`), dropped by `enable()` once it set its machine up and
   by the route when the install failed. "Let this machine in" adds the leader's own key

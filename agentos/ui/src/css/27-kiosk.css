@@ -97,7 +97,8 @@ body.kiosk #office-scene canvas{display:block}
 .dev-form label.net-mine{flex:1 1 100%;min-width:0}.net-mine-h{display:flex;align-items:center;gap:6px}
 .net-mine input{width:100%;font-family:var(--mono,monospace);font-size:var(--fs-sm,12px)}
 .net-letin{margin:6px 0}.net-letin p{margin:0 0 6px}
-.dev-err{color:var(--warn,#f59e0b);margin:2px 0 0;font-size:var(--fs-sm,12px)}#card-out.ok{color:var(--ok,#4ade80)}
+.dev-err{color:var(--warn,#f59e0b);margin:2px 0 0;font-size:var(--fs-sm,12px)}
+.dev-rekey{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin:2px 0 0}.dev-rekey p{margin:0;line-height:1.6;overflow-wrap:anywhere}.dev-rekey code{font-size:var(--fs-xs,11px)}#card-out.ok{color:var(--ok,#4ade80)}
 .dev-plan,.dev-key{display:block;word-break:break-all;font-size:11px;padding:6px 8px;border-radius:8px;
   background:color-mix(in srgb,var(--bg) 60%,transparent);margin-top:4px;user-select:all}
 .dev-key{max-width:min(420px,60vw)}

@@ -151,11 +151,32 @@ machine hidden from New machines goes back to waiting to be set up.
 
 ![Hidden, opened: each machine with Show again](screenshots/network-hidden.png)
 
-![The same on a phone](screenshots/network-hidden-phone.png)
+![Hidden opened on a phone, each machine with Show again](screenshots/network-hidden-phone.png)
 
 ![bento network: the hidden ones named under the list, then hide and show](screenshots/network-hidden-terminal.png)
 
 The count at the top is of the machines listed, not the hidden ones.
+
+## A reformatted machine
+
+Bento remembers each machine's SSH key the first time it logs in, and refuses a machine whose
+key has changed, because that is also what a machine pretending to be yours looks like. A Pi you
+reformatted or reinstalled has a new key, so *Check it* stops there and shows both keys: the one
+Bento remembered and the one the machine shows now. If you did reformat it, press **It was
+reformatted: forget the old key**. Bento asks once more, forgets it, and checks again, and the
+new key is remembered from then on.
+
+![Check it on a reformatted Pi: refused, with the old and new keys and the button](screenshots/network-rekey.png)
+
+![The same refusal on a phone, the two keys wrapped under Check it](screenshots/network-rekey-phone.png)
+
+In a terminal the refusal names the command, `bento network rekey MACHINE`, which shows both keys
+and asks before it forgets.
+
+![bento network check refused, rekey, then check gets in](screenshots/network-rekey-terminal.png)
+
+Only Bento's own list of keys changes (`~/.agentos/pki/known_hosts`, kept as it was in
+`known_hosts.old`). Your own `~/.ssh/known_hosts` is left alone.
 
 ## From a terminal
 
@@ -175,6 +196,7 @@ bento network disconnect pi-kitchen --what key  # or community, or link:NAME
 bento network label 192.168.1.40 "Kitchen Pi"
 bento network hide 192.168.1.40                 # to Hidden (forget does the same)
 bento network show 192.168.1.40                 # back on the list
+bento network rekey pi-kitchen                  # it was reformatted: forget its old SSH key
 ```
 
 ![bento network in a terminal: the list, and how secure each machine was measured](screenshots/network-terminal.png)
@@ -200,7 +222,8 @@ ended by the running server, so the terminal points you to the tab or `bento lin
 ## The ledger
 
 Every step is a row: `device.scan`, `device.check`, `device.secure`, then `device.secured` or
-`device.secure_failed`, `device.disconnect`, `device.forget` (hidden), `device.show`.
+`device.secure_failed`, `device.disconnect`, `device.forget` (hidden), `device.show`, `device.rekey` (an old SSH key
+forgotten).
 
 ## What was tested, and what wasn't
 

@@ -19,7 +19,9 @@ Four rules:
     key (`ensure_key`) is added to the account instead, and later visits need no password.
   * THE OTHER MACHINE'S KEY IS PINNED. Bento keeps its own known_hosts; the first visit
     records the host key (`accept-new`) and a later visit to a machine whose key changed is
-    refused by ssh itself. The fingerprint is shown with the check.
+    refused by ssh itself. The fingerprint is shown with the check. A reformatted Pi has a
+    new key, so that refusal is `KeyChanged`, carrying both fingerprints, and forgetting the
+    old key (`forget_host`) is the person's act after they compared them.
   * IT USES THE SYSTEM'S `ssh`. Python's SSH libraries are LGPL or EPL, and this project
     ships only permissive code (CLAUDE.md, Licensing); OpenSSH is on every Pi and nearly
     every Linux and Mac already. With no `ssh` here, the card says which package adds it.
@@ -55,6 +57,23 @@ CHECK_SCRIPT = (
 
 class InstallError(Exception):
     """A sentence for the person."""
+
+
+KEY_CHANGED = ("that machine's key is not the one seen last time, so it was refused. If it was "
+               "reformatted or reinstalled, forget the old key and check it again")
+
+
+class KeyChanged(InstallError):
+    """ssh refused a machine whose host key is not the pinned one. Raised from `_run`, so every
+    login (check, install, Secure it) says it the same way, with what is needed to decide."""
+
+    def __init__(self, host: str, port: int = 22):
+        self.host, self.port = host, int(port or 22)
+        super().__init__(KEY_CHANGED)
+
+    def facts(self) -> dict:
+        return {"host": self.host, "port": self.port, "old": fingerprint(self.host, self.port),
+                "new": seen_key(self.host, self.port)}
 
 
 def _home() -> Path:
@@ -187,8 +206,7 @@ def _why(stderr: str, code: int, password: bool = True) -> str:
                     "authentication on")
         return "the user name or password was refused. " + NEW_PI_USER
     if "host key verification failed" in low or "remote host identification has changed" in low:
-        return ("that machine's key is not the one seen last time, so it was refused. If it was "
-                "reinstalled, forget it in this machine's known hosts and try again")
+        return KEY_CHANGED
     if "connection refused" in low:
         return "nothing answers SSH there (is SSH switched on for that machine?)"
     if "timed out" in low or "no route" in low:
@@ -206,9 +224,61 @@ def clean_line(ln: str) -> str:
     return teamlink.plain(ANSI.sub("", ln or "").rstrip(), 300, newlines=False).strip()
 
 
+def _target(host: str, port: int = 22) -> str:
+    return host if int(port or 22) == 22 else f"[{host}]:{port}"
+
+
+def _changed(err: str) -> bool:
+    low = (err or "").lower()
+    return "host key verification failed" in low or "remote host identification has changed" in low
+
+
+def seen_key(host: str, port: int = 22) -> str:
+    """The SHA256 fingerprint the machine shows NOW, of the same kind as the pinned one
+    (ed25519 when nothing is pinned). Read with ssh-keyscan; it trusts nothing and logs in to
+    nothing, it only lets the person compare before forgetting the old key."""
+    types = [ln.split()[1] for ln in _pinned(host, port).splitlines()
+             if ln.strip() and not ln.startswith("#") and len(ln.split()) > 2]
+    kinds = [k for k in ("ed25519", "ecdsa", "rsa") if any(k in t for t in types)][:1] or ["ed25519"]
+    try:
+        r = subprocess.run(["ssh-keyscan", "-T", "5", "-p", str(int(port or 22)), "-t", ",".join(kinds), host],
+                           capture_output=True, text=True, timeout=12)
+        f = subprocess.run(["ssh-keygen", "-l", "-f", "-"], input=r.stdout, capture_output=True,
+                           text=True, timeout=10)
+        m = re.search(r"(SHA256:[A-Za-z0-9+/=]+)", f.stdout)
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
+
+
+def _pinned(host: str, port: int = 22) -> str:
+    try:
+        return subprocess.run(["ssh-keygen", "-F", _target(host, port), "-f", str(known_hosts())],
+                              capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return ""
+
+
+def forget_host(host: str, port: int = 22) -> str:
+    """Drop the pinned key for one machine from Bento's own known_hosts, so the next visit
+    pins the key it shows then. Returns the fingerprint forgotten ('' when none was pinned).
+    ssh-keygen keeps the file as it was in known_hosts.old."""
+    from . import netscan
+    if not netscan.allowed(str(host or "")):
+        raise InstallError("Bento only keeps keys for machines on this network (a private address)")
+    old = fingerprint(host, port)
+    if not old:
+        return ""
+    r = subprocess.run(["ssh-keygen", "-R", _target(host, port), "-f", str(known_hosts())],
+                       capture_output=True, text=True, timeout=10)
+    if r.returncode != 0:
+        raise InstallError("could not forget the old key: " + (r.stderr.strip().splitlines() or ["ssh-keygen failed"])[-1][:200])
+    return old
+
+
 def fingerprint(host: str, port: int = 22) -> str:
     """The pinned host key's SHA256 fingerprint, after a first visit."""
-    target = host if int(port or 22) == 22 else f"[{host}]:{port}"
+    target = _target(host, port)
     try:
         r = subprocess.run(["ssh-keygen", "-l", "-F", target, "-f", str(known_hosts())],
                            capture_output=True, text=True, timeout=10)
@@ -247,6 +317,8 @@ async def _run(host, user, port, password, remote: str, timeout: float, on_line=
             p.kill()
             raise InstallError("it took too long; nothing more was run")
         err = (await p.stderr.read()).decode(errors="replace")
+        if p.returncode == 255 and _changed(err):
+            raise KeyChanged(host, port)    # ssh refused before logging in: nothing ran there
         return p.returncode, "\n".join(out_lines), err
     finally:
         if scratch:
