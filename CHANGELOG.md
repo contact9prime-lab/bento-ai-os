@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.82 — 2026-10-22
+
+**A Pi's agent is changed in the Agents tab's own editor.** The Devices app's Controls showed
+the look as a row of dropdowns. Now it's a card with **Change its look**, which opens the same
+editor as the Agents tab, with swatches, chips and the figure. Choices are made here and sent
+in one go with **Save there**, since each change is a login. The editor scrolls on a phone.
+
+**Open on its screen turns on from the hub.** On a Pi whose sudo wants a password, it stopped
+with "it asks for your password", because its page needs root once to use the microphone. The
+password typed for the machine is now handed to sudo there for that one command, over SSH and
+never on the command line.
+
 ## 0.6.81 — 2026-10-22
 
 **A Pi hears through its hub.** A Pi set up from a hub had no voice keys and no whisper.cpp of its

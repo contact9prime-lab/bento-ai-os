@@ -138,22 +138,14 @@ function netSecureForm(r){
       ${c.host_key?`<p class="mut">Its key: ${esc(c.host_key)}</p>`:''}</div>`:''}
   </div>`;
 }
-/* Its lead agent's look, changed there: picks from the closed set the editor here draws, or a
-   description in words (its own designer picks). The face is painted HERE from its recipe. */
-var LOOK_FIELDS=[['skin','Skin'],['hair','Hair'],['style','Hair style'],['outfit','Outfit'],['shirt','Shirt'],['pants','Trousers']];
-function netLookHTML(r,st,v){
-  const ch=v.look_choices||{},look=st.look||{};
-  const cur=f=>{if(f==='shirt')return Object.keys(ch.hues||{}).find(n=>ch.hues[n]===look.hue)||'';
-    const x=look[f];return typeof x==='number'?(ch[f]||[])[x]||'':String(x||'')};
-  return `<div class="net-look"><div class="net-look-h">${look&&Object.keys(look).length?avatarRecipeImg(look,'net-look-face',st.agent||'its agent'):''}
-      <div><b>${esc(st.agent||'Its agent')}</b><br><span class="mut">How its agent looks there: on its screen, in its Office, and on the map here.</span></div></div>
-    <div class="net-look-grid">${LOOK_FIELDS.map(([f,t])=>`<label>${t}<select data-look="${f}">
-      <option value="">${cur(f)?esc(cur(f)):'as it is'}</option>${(ch[f]||[]).filter(o=>o!==cur(f)).map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></label>`).join('')}
-      <label class="prov-opt"><input type="checkbox" data-look="glasses"${look.glasses?' checked':''}> Glasses</label>
-      <label class="prov-opt"><input type="checkbox" data-look="blush"${look.blush?' checked':''}> Blush</label></div>
-    <div class="dev-acts"><button class="endbtn" data-net="ctllook" data-key="${esc(r.key)}">Save its look</button></div>
-    <label class="net-look-say">Or describe it <input id="ctl-look-say" maxlength="200" placeholder="a cheerful chef with curly grey hair"></label>
-    <div class="dev-acts"><button class="endbtn" data-net="ctldesign" data-key="${esc(r.key)}">Design it</button></div></div>`;
+/* Its lead agent's look, changed there in the Agents page's own editor (avatarEditStaged):
+   the same swatches and chips, or a description its own designer reads. The face is painted
+   HERE from its recipe. */
+function netLookHTML(r,st){
+  const look=st.look||{},has=look&&Object.keys(look).length;
+  return `<div class="net-look"><div class="net-look-face-wrap">${has?avatarRecipeImg(look,'net-look-face',st.agent||'its agent'):`<span class="net-look-face net-look-none">${esc((st.agent||'?').slice(0,1))}</span>`}</div>
+    <div class="net-look-t"><b>${esc(st.agent||'Its agent')}</b><span class="mut">How it looks on its screen, in its Office and on the map here.</span></div>
+    <button class="endbtn" data-net="ctllook" data-key="${esc(r.key)}">Change its look</button></div>`;
 }
 /* What its switches were last READ as, in one line under the row: the inventory keeps it
    with the time, and nothing here guesses. */
@@ -181,7 +173,7 @@ function netControlsForm(r,v){
     ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
     ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}
     <div class="net-sws">${sw.map(row).join('')}</div>
-    ${st&&st.installed?netLookHTML(r,st,v):''}
+    ${st&&st.installed?netLookHTML(r,st):''}
     ${st&&st.installed?`<div class="net-remove"><b>Remove Bento</b><br><span class="mut">Takes the program off and ends its ties to this computer. Its memory and settings stay there, so installing it again picks up where it was.</span>
       <details><summary>What runs there</summary><code class="dev-plan">${esc(c.remove||'')}</code></details>
       <div class="dev-acts"><button class="endbtn danger" data-net="ctlremove" data-key="${esc(r.key)}">Remove Bento</button></div></div>`:''}
@@ -246,7 +238,7 @@ async function netAct(act,b){
       return netPaint()}
     if(act==='controls'){NET.more='';const same=NET.open===r.key&&NET.mode==='controls';
       NET.open=same?'':r.key;NET.mode=same?'':'controls';return netPaint()}
-    if(act==='ctlread'||act==='ctlsw'||act==='ctlremove'||act==='ctlupdate'||act==='ctllook'||act==='ctldesign'){
+    if(act==='ctlread'||act==='ctlsw'||act==='ctlremove'||act==='ctlupdate'||act==='ctllook'){
       const cr={ip:r.ip,key:r.key,port:netPort(r),user:((document.getElementById('ctl-user')||{}).value||'').trim(),
         password:(document.getElementById('ctl-pw')||{}).value||'',remember:devPwKeep('ctl-pw')};
       if(act!=='ctlsw'||b.dataset.sw!=='code')if(!cr.user){toast('Type the user there first');return}
@@ -256,18 +248,15 @@ async function netAct(act,b){
       NET.err[r.ip]='';
       try{
         if(act==='ctlread'){const d=await post('/api/network/controls',cr);NET.ctl[r.ip]=d}
-        else if(act==='ctllook'||act==='ctldesign'){
-          const box=b.closest('.net-look'),body={...cr};
-          if(act==='ctldesign'){body.describe=((document.getElementById('ctl-look-say')||{}).value||'').trim();
-            if(!body.describe){toast('Say what it should look like');b.disabled=false;b.textContent=was;return}}
-          else{const st0=(NET.ctl[r.ip]||{}).state||{},ch={};
-            box.querySelectorAll('select[data-look]').forEach(e=>{if(e.value)ch[e.dataset.look]=e.value});
-            box.querySelectorAll('input[data-look]').forEach(e=>{if(!!e.checked!==!!(st0.look||{})[e.dataset.look])ch[e.dataset.look]=e.checked});
-            if(!Object.keys(ch).length){toast('Choose what to change first');b.disabled=false;b.textContent=was;return}
-            body.changes=ch}
-          const d=await post('/api/network/look',body);
-          NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
-          toast(`✓ ${d.state.agent||'Its agent'} has a new look on ${r.display||r.ip}`)}
+        else if(act==='ctllook'){
+          const st0=(NET.ctl[r.ip]||{}).state||{},where=r.display||r.ip,who=st0.agent||'Its agent';
+          const send=async extra=>{const d=await post('/api/network/look',{...cr,...extra});
+            NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};netPaint();return (d.state||{}).look||{}};
+          b.disabled=false;b.textContent=was;
+          return avatarEditStaged({title:who+' on '+where,msg:'Its agent, on its own screen, in its Office and on the map here. Saved there when you press Save.',
+            recipe:st0.look||{},saveText:'Save there',saving:'Saving on '+where+'…',designing:where+' is designing it…',
+            save:async changes=>{await send({changes});toast(`✓ ${who} has a new look on ${where}`)},
+            design:async words=>{const rec=await send({describe:words});toast(`✓ ${who} has a new look on ${where}`);return rec}})}
         else if(act==='ctlupdate'){const d=await post('/api/network/update',cr);
           NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
           toast(`✓ ${r.display||r.ip}: ${d.before||'?'} → ${(d.state||{}).version||'?'}`)}

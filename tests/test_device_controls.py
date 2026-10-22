@@ -209,3 +209,26 @@ def test_a_device_password_is_kept_encrypted_and_changes_only_when_asked(tmp_pat
     src = (ROOT / "agentos/server.py").read_text()
     route = src[src.index('@app.post("/api/network/password")'):][:900]
     assert "vault.get" not in route and "forget" in route, "nothing hands a saved password back"
+
+
+def test_screen_on_gets_root_there_with_the_password_typed_here(pi):
+    """A Pi's sudo wants a password, and `bento screen on` needs root once (the microphone
+    policy): it stopped with "it asks for your password" on the owner's Pi. The password typed
+    here goes on ssh's stdin, never into the command, and reaches sudo there."""
+    pib = Path(os.environ["PI_BIN"])
+    (pib / "sudo").write_text("#!/bin/sh\n"
+                              "for a; do [ \"$a\" = -n ] && exit 1; done\n"
+                              "[ \"$1\" = -S ] || exit 9; shift; [ \"$1\" = -p ] && shift 2\n"
+                              "IFS= read -r got; [ \"$got\" = 'pi pw' ] || exit 1\n"
+                              "echo \"$*\" >> \"$HOME/../root.txt\"\n")
+    (pib / "sudo").chmod(0o755)
+    bento = pi / ".local/bin/bento"            # like 0.6.75: root first, then the screen
+    bento.write_text(bento.read_text().replace(
+        '"screen on") mkdir', '"screen on") sudo -n true || { echo "it asks for your password" >&2; exit 1; }; '
+                              'sudo -n install -D policy /etc/chromium/policies/managed/bento.json; mkdir'))
+    got = asyncio.run(devicectl.switch("192.168.1.9", "pi", "pi pw", 22, "screen", True))
+    assert got["ok"] and got["state"]["screen"], got
+    assert "install -D policy" in (pi.parent / "root.txt").read_text()
+    assert "pi pw" not in (pi.parent / "calls.txt").read_text(), "the password is never in the command"
+    got = asyncio.run(devicectl.switch("192.168.1.9", "pi", "", 22, "screen", True))
+    assert not got["ok"], "with no password, sudo there is left as it is"

@@ -32,7 +32,7 @@ img.av-set{width:30px;height:30px;border-radius:8px;margin-right:8px}
 @media (prefers-reduced-motion:reduce){.av-sprite{animation:none;background-position:0 0}}
 
 /* ---- the editor: the dialog kit, with a stage and the closed set of choices ---- */
-.dlg.ave{width:min(580px,94vw)}
+.dlg.ave{width:min(580px,94vw);max-height:calc(100dvh - 24px);overflow:auto}
 .ave-body{display:flex;gap:18px;align-items:center;margin:12px 0 6px}
 .ave-stage{flex:none;padding:16px 22px 12px;border-radius:14px;
   background:radial-gradient(ellipse at 50% 92%,color-mix(in srgb,var(--acc) 16%,transparent),transparent 62%),

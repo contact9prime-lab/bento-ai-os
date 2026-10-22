@@ -3214,12 +3214,17 @@ Six rules:
   and the route ends the links and the community place. Its `pkill -f '[s]creen-profile'`: unbracketed, it killed
   the remote shell running it (and, in a test, the host's own shells: the test stubs pkill). The Devices app and
   Settings → Network are ONE list: `netPaint` draws into `#s-net` and every `.devhub-box`.
+  Screen on needs root there once (the mic policy) and a Pi's sudo wants a password: `WITH_SUDO` puts a
+  `sudo` shim ahead of PATH for that one command, fed the typed password on ssh's stdin (never argv), so
+  even an old Bento's `sudo -n` probe passes. A key login leaves sudo alone.
 - **The device map draws each machine's OWN agent, painted here** (`devMapHTML` in `24o-devices.js`,
   `inventory` `agent`, `devicectl` `agent`/`look`). The face is a recipe: from the link's identity, or read
   from its database (read-only, `mode=ro`) by the state script; held to `avatars.clean` and painted through
   `avatarRecipeImg`, never a second painter. A Pi that is not linked has no recipe until it is read, and gets
   its initial, not an invented face (its own face is salted on it). Look changes are `look_patch` (the
   closed set, names, validated before any login) through its server's `/api/avatars/@agent`, else its CLI.
+  It is edited in the Agents tab's dialog (`avatarEditStaged`, the same `aveRowsHTML`), staged here and
+  sent with one Save, because every change is a login.
 - **A device password lives in the vault, and nothing returns it** (`_device_creds` fills a blank from it,
   `_remember_pw` saves a TYPED one only after a login with it worked and only when ticked: Remember for a
   first, Replace when one is saved, so it changes only when the person says so; `/api/network/password`

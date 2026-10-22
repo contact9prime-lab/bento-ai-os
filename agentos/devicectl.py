@@ -152,14 +152,37 @@ SCREEN_ON = ('{ [ -f "$HOME/.config/autostart/bento-screen.desktop" ] || '
              'systemctl is-enabled -q bento-screen.service 2>/dev/null; }')
 
 
+# `bento screen on` needs root there once (the microphone policy, or the screen's unit), and a
+# Pi's sudo wants a password nobody is at a terminal to type: it stopped with "it asks for your
+# password" (found on the owner's Pi). The password the person typed here arrives on stdin, never
+# argv, and a `sudo` in a private folder ahead of PATH hands it to the real one for this one
+# command (`-n` dropped, so Bento's "passwordless?" probe says yes). Gone when the shell ends.
+# No password (a key login) leaves sudo as it is.
+WITH_SUDO = r"""IFS= read -r P || P=
+if [ -n "$P" ] && R=$(command -v sudo); then
+D=$(mktemp -d); trap 'rm -rf "$D"' EXIT
+cat > "$D/sudo" <<EOS
+#!/bin/sh
+for a; do shift; [ "\$a" = -n ] || set -- "\$@" "\$a"; done
+printf '%s\n' "\$P" | $R -S -p '' "\$@"
+EOS
+chmod 700 "$D/sudo"; export P PATH="$D:$PATH"
+fi
+"""
+
+
+def needs_root(switch: str, on: bool) -> bool:
+    return on and switch in ("running", "screen")
+
+
 def command(switch: str, on: bool, port: int = 8321) -> str:
     """The one line run there for a switch. Raises ValueError for one that is not run there."""
     if switch == "running":
         if on:      # back on, and back on its screen if that is what it was set to
-            return f"{B} service start && {{ {SCREEN_ON} && {B} screen on --yes >/dev/null 2>&1; true; }}"
+            return (WITH_SUDO + f"{B} service start && {{ {SCREEN_ON} && {B} screen on --yes >/dev/null 2>&1; true; }}")
         return f"{B} service stop; {CLOSE}; true"
     if switch == "screen":
-        return f"{B} screen on --yes" if on else f"{B} screen off; {CLOSE}; true"
+        return WITH_SUDO + f"{B} screen on --yes" if on else f"{B} screen off; {CLOSE}; true"
     if switch == "listening":
         return _face(on, port)
     raise ValueError(f"{switch} is not switched on that machine")
@@ -200,7 +223,8 @@ async def switch(host: str, user: str, password: str, port: int, which: str, on:
     """Run one switch there, then read the state again: the answer is what is TRUE after."""
     _guard(host, user)
     cmd = command(which, on, bento_port)
-    code, out, err, via = await ri.login_run(host, user, port, password, cmd, 120)
+    code, out, err, via = await ri.login_run(host, user, port, password, cmd, 120,
+                                             stdin=(password + "\n") if needs_root(which, on) else None)
     after = await state(host, user, "" if via == "key" else password, port)
     said = ri.clean_line((err or out or "").strip().splitlines()[-1]) if (err or out).strip() else ""
     return {"ok": code == 0, "ran": cmd, "said": said, "state": after}

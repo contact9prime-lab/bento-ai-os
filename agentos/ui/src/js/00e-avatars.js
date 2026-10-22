@@ -130,19 +130,13 @@ async function avatarDesignAsk(key){
   await avatarEdit(key);
   const d=document.querySelector('.dlg-scrim .ave-desc');if(d)d.focus();
 }
-async function avatarEdit(key){
-  await avatarsLoad();
-  const a=AVATARS.by[key];if(!a||!AVATARS.pal){if(typeof toast==='function')toast('No character called '+key);return}
-  const P=AVATARS.pal;
-  const scr=document.createElement('div');scr.className='dlg-scrim';
+/* The editor's rows: swatches and chips over the palette, the recipe's choice lit. The
+   Agents page's dialog and a device's (avatarEditStaged) draw the same rows. */
+function aveRowsHTML(P,r){
   const sw=(field,items,cur,rgbOf)=>items.map(it=>{
     const val=field==='hue'?it.hue:it.i;const on=val===cur;
     return `<button class="ave-sw${on?' on':''}" data-f="${field}" data-v="${val}" title="${esc(it.name)}" aria-label="${esc(it.name)}" aria-pressed="${on}" style="--c:rgb(${rgbOf(it).join(',')})"></button>`}).join('');
-  const draw=()=>{
-    const r=AVATARS.by[key].recipe;
-    scr.querySelector('.ave-stage').innerHTML=avatarSprite(key,208);
-    scr.querySelector('.ave-about').textContent=AVATARS.by[key].about;
-    scr.querySelector('.ave-rows').innerHTML=`
+  return `
       <div class="ave-row"><span>Skin</span><div>${sw('skin',P.skin,r.skin,x=>x.rgb)}</div></div>
       <div class="ave-row"><span>Hair</span><div>${sw('hair',P.hair,r.hair,x=>x.rgb)}</div></div>
       <div class="ave-row"><span>Style</span><div class="ave-chips">${P.style.map(s=>`<button class="ave-chip${s===r.style?' on':''}" data-f="style" data-v="${s}" aria-pressed="${s===r.style}">${s}</button>`).join('')}</div></div>
@@ -152,6 +146,73 @@ async function avatarEdit(key){
       <div class="ave-row"><span>Extras</span><div class="ave-chips">
         <button class="ave-chip${r.glasses?' on':''}" data-f="glasses" data-v="${!r.glasses}" aria-pressed="${!!r.glasses}">glasses</button>
         <button class="ave-chip${r.blush?' on':''}" data-f="blush" data-v="${!r.blush}" aria-pressed="${!!r.blush}">blush</button></div></div>`;
+}
+/* The animated figure from a recipe this machine does not store (another machine's agent). */
+function avatarRecipeSprite(rec,px){
+  const u=Math.max(2,Math.round((px||104)/26));
+  return `<div class="av-sprite" style="--u:${u}px;background-image:url('${avatarRecipeSrc(rec,{sheet:1})}')" role="img" aria-label="its look"></div>`;
+}
+/* The same editor for a character that lives on ANOTHER machine (a Pi's agent, from the
+   Devices app). Each change there is a login, so choices are staged here and painted from
+   the recipe, and one Save sends them, as names. `o.save(patch)` and `o.design(words)` return
+   the recipe read back there; either may throw with the reason. */
+async function avatarEditStaged(o){
+  await avatarsLoad();
+  const P=AVATARS.pal;if(!P){if(typeof toast==='function')toast('The character palette did not load');return}
+  const base={...(o.recipe||{})};let r={...base};
+  const scr=document.createElement('div');scr.className='dlg-scrim';
+  scr.innerHTML=`<div class="dlg ave" role="dialog" aria-modal="true" aria-label="Character of ${esc(o.title)}">
+      <div class="dlg-t">${esc(o.title)}</div>
+      <div class="dlg-m">${esc(o.msg||'')}</div>
+      <form class="ave-design"><input class="ave-desc" maxlength="200" autocomplete="off"
+          placeholder="Describe them — e.g. a cheerful chef with curly grey hair" aria-label="Describe the character"><button class="pact" type="submit">Design</button></form>
+      <div class="ave-said mut" aria-live="polite"></div>
+      <div class="ave-body"><div class="ave-stage"></div><div class="ave-rows"></div></div>
+      <div class="dlg-b"><button class="ave-reset" type="button">Put back</button><button class="ave-cancel" type="button">Cancel</button><button class="dlg-ok" type="button">${esc(o.saveText||'Save')}</button></div></div>`;
+  document.body.appendChild(scr);
+  const said=scr.querySelector('.ave-said'),ok=scr.querySelector('.dlg-ok');
+  const changed=()=>{const p={};
+    for(const f of ['skin','hair','pants']){if(r[f]!==base[f]){const it=(P[f]||[])[r[f]];if(it)p[f]=it.name}}
+    for(const f of ['style','outfit'])if(r[f]!==base[f]&&r[f]!=null)p[f]=r[f];
+    if(r.hue!==base.hue){const it=(P.shirt||[]).find(x=>x.hue===r.hue);if(it)p.shirt=it.name}
+    for(const f of ['glasses','blush'])if(!!r[f]!==!!base[f])p[f]=!!r[f];
+    return p};
+  const draw=()=>{
+    scr.querySelector('.ave-stage').innerHTML=avatarRecipeSprite(r,208);
+    scr.querySelector('.ave-rows').innerHTML=aveRowsHTML(P,r);
+    const n=Object.keys(changed()).length;ok.disabled=!n;scr.querySelector('.ave-reset').disabled=!n;
+    scr.querySelectorAll('.ave-rows [data-f]').forEach(b=>b.onclick=()=>{
+      const f=b.dataset.f;let v=b.dataset.v;
+      r[f]=(f==='style'||f==='outfit')?v:(f==='glasses'||f==='blush')?(v==='true'):Number(v);
+      said.textContent='';draw()})};
+  draw();
+  const close=()=>scr.remove();
+  const busy=(on,words)=>{scr.querySelectorAll('button,input').forEach(e=>e.disabled=on);said.textContent=words||'';if(!on)draw()};
+  scr.querySelector('.ave-cancel').onclick=close;
+  scr.onclick=e=>{if(e.target===scr)close()};
+  scr.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+  scr.querySelector('.ave-reset').onclick=()=>{r={...base};said.textContent='';draw()};
+  ok.onclick=async()=>{
+    busy(true,o.saving||'Saving…');
+    try{await o.save(changed());close()}catch(e){busy(false);said.textContent='✗ '+(e.message||e)}};
+  scr.querySelector('.ave-design').onsubmit=async e=>{
+    e.preventDefault();
+    const words=scr.querySelector('.ave-desc').value.trim();if(!words){scr.querySelector('.ave-desc').focus();return}
+    busy(true,o.designing||'Designing…');
+    try{const rec=await o.design(words);Object.assign(base,rec||{});r={...base};busy(false);said.textContent=o.designed||'Done. It has the new look.'}
+    catch(e){busy(false);said.textContent='✗ '+(e.message||e)}};
+  ok.focus();
+}
+async function avatarEdit(key){
+  await avatarsLoad();
+  const a=AVATARS.by[key];if(!a||!AVATARS.pal){if(typeof toast==='function')toast('No character called '+key);return}
+  const P=AVATARS.pal;
+  const scr=document.createElement('div');scr.className='dlg-scrim';
+  const draw=()=>{
+    const r=AVATARS.by[key].recipe;
+    scr.querySelector('.ave-stage').innerHTML=avatarSprite(key,208);
+    scr.querySelector('.ave-about').textContent=AVATARS.by[key].about;
+    scr.querySelector('.ave-rows').innerHTML=aveRowsHTML(P,r);
     scr.querySelectorAll('[data-f]').forEach(b=>b.onclick=async()=>{
       const f=b.dataset.f;let v=b.dataset.v;
       v=(f==='style'||f==='outfit')?v:(f==='glasses'||f==='blush')?(v==='true'):Number(v);
