@@ -320,3 +320,38 @@ def test_a_waiting_machine_answers_a_question_sent_to_its_address(lan):
             return await provision.scan(0.6, targets=["127.0.0.1"])
     got = loop.run_until_complete(go())
     assert got and {b["name"] for b in got} <= {"pi-kitchen", "pi-garage"} and all(b["waiting"] for b in got)
+
+
+def test_a_pi_installed_from_a_hub_asks_nothing_on_its_own_screen(lan):
+    """Asked for as "everything should be done in the hub, the Pi may be remote". A machine
+    carrying a hub's key skips the setup questions, and its screen says who is setting it up."""
+    L, A, B, loop, heard = lan
+    with _at(L):
+        k = provision.make_key("install on the kitchen Pi", auto=True, single=True)
+    with _at(A):
+        provision.adopt_key(k["text"])
+        assert provision.from_hub(A["cfg"])
+    with _at(B):
+        assert provision.status(B["cfg"])["pin"] and not provision.from_hub(B["cfg"]), \
+            "a Pi waiting with a code is set up by a person reading it, so it still shows the code"
+
+    async def go():
+        with _at(L):
+            return await provision.scan(0.6, by="big-box")
+    loop.run_until_complete(go())
+    with _at(A):
+        st = provision.status(A["cfg"])
+    assert st["from_hub"] and st["asked_by"]["name"] == "big-box"
+    provision.ASKED.clear()
+
+
+def test_the_setup_wizard_and_the_terminal_defer_to_the_hub():
+    root = Path(__file__).parent.parent
+    src = (root / "agentos/server.py").read_text()
+    route = src[src.index('@app.get("/api/setup")'):src.index('@app.post("/api/setup")')]
+    assert '"first_run": cfgmod.is_first_run() and not hub' in route
+    page = (root / "agentos/ui/src/js/24j-provision.js").read_text()
+    hub = page[page.index("function provHubWaitHTML"):page.index("function provHubWire")]
+    assert "<input" not in hub and "pin" not in hub, "nothing to answer on the Pi"
+    cli = (root / "agentos/__main__.py").read_text()
+    assert "_prov.from_hub(cfg) and not getattr(args, \"again\", False)" in cli

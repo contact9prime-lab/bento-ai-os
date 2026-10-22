@@ -3194,6 +3194,11 @@ Six rules:
   announcement, so it sat on "Waiting to be set up" with a spent-on-use key nobody would use. A unicast `look`
   from an ephemeral port is answered past the firewall (conntrack). Only an automatic key is set up that way,
   once (`_PROV_BUSY`: the announcement and the ask can arrive together, and the key is single-use).
+- **A machine installed from a hub asks NOTHING on its own screen** (`provision.from_hub`: waiting with a
+  key; `/api/setup` answers `first_run` false, `bento setup` refuses, `provHubWaitHTML`). Asked for as "the Pi
+  may be remote". A `look` carries `by` (the asking machine's name), kept in memory as `provision.ASKED` (never
+  written: a hub asks every few seconds and an SD card wears out), so the screen says who is setting it up.
+  A Pi waiting with a CODE still shows the code: a person reads it.
 - **On a desktop the screen opens before it asks for root** (`screen.plan` puts `autostart` before `mic`;
   `enable` returns ok with `mic` when root is refused there). A Pi's sudo wants a password, so the mic policy
   stopped the whole step and nothing opened. `run_argv` says `--ozone-platform=wayland` when the desktop has a

@@ -581,7 +581,7 @@ def test_the_hub_asks_an_installed_machine_itself(monkeypatch):
                {"fp": "c" * 64, "waiting": True, "key_id": "auto1", "name": "done-already"}]
     asked = {}
 
-    async def scan(wait=2.0, targets=None):
+    async def scan(wait=2.0, targets=None, by=""):
         asked["targets"] = targets
         return beacons
     monkeypatch.setattr(provision, "scan", scan)

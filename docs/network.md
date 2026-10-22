@@ -100,7 +100,18 @@ pictures are for reading the guides on GitHub; nothing on the machine shows them
 ### When it's done
 
 Once it's installed, Bento sets the machine up by itself: the install gave it a key that only
-works once. Bento asks the machine directly as well as listening for it, so a firewall on this
+works once. Everything is chosen here, in the Install form, so the machine asks nothing on its
+own screen. It may be in another room, or another building. Until it's set up, its screen says
+which Bento is setting it up and when it last heard from it.
+
+![A Pi's own screen while its hub sets it up: nothing to answer there](screenshots/network-pi-waits-for-hub.png)
+
+![The same waiting screen at phone width](screenshots/network-pi-waits-for-hub-phone.png)
+
+At the Pi's terminal, `bento setup` says the same and how to set it up there instead.
+
+![bento serve, bento setup and bento pool wait on a machine waiting for its hub](screenshots/network-pi-waits-for-hub-terminal.png)
+ Bento asks the machine directly as well as listening for it, so a firewall on this
 computer (ufw, say) can't leave it waiting. If a machine still says *Waiting to be set up*,
 press **Look at the network**.
 

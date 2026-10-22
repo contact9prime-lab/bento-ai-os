@@ -5097,6 +5097,16 @@ body.kiosk #office-scene canvas{display:block}
 #prov-wait p{margin:6px 0}
 #prov-wait .prov-pin{font-size:40px;font-weight:700;letter-spacing:.12em;font-variant-numeric:tabular-nums;margin:6px 0}
 #prov-wait button{min-height:var(--tap,32px)}
+/* installed from a hub: the whole screen, nothing to answer */
+#prov-wait.hub{inset:0;max-width:none;border:0;border-radius:0;box-shadow:none;display:grid;place-items:center;
+  padding:max(24px,env(safe-area-inset-top)) 24px;background:radial-gradient(ellipse at 50% 30%,color-mix(in srgb,var(--acc) 22%,var(--bg)) 0%,var(--bg) 70%)}
+#prov-wait .prov-hub{max-width:640px;text-align:center}
+#prov-wait .prov-who{white-space:nowrap}
+#prov-wait .prov-mark{font-weight:700;letter-spacing:.06em;opacity:.8}
+#prov-wait .prov-hub h1{font-size:clamp(26px,5vw,44px);line-height:1.15;margin:18px 0 10px}
+#prov-wait .prov-hub p{font-size:clamp(15px,2.2vw,19px)}
+#prov-wait .prov-here-link{margin-top:22px;background:none;border:0;color:var(--txt2,var(--txt));opacity:.7;
+  text-decoration:underline;cursor:pointer;font:inherit;font-size:14px}
 @media (max-width:600px){.prov-name,.prov-code{flex:1 1 40%;min-height:var(--tap,40px)}}
 /* machines without Bento: the install form and its live log */
 .dev-m{align-items:flex-start}
@@ -33665,6 +33675,8 @@ function provWaitCard(v){
   if(!show){if(el)el.remove();return}
   if(!el){el=document.createElement('div');el.id='prov-wait';el.setAttribute('role','status');document.body.appendChild(el)}
   const hw=t.hw||{};
+  el.classList.toggle('hub',!!t.from_hub);
+  if(t.from_hub){el.innerHTML=provHubWaitHTML(t);provHubWire(el);return}
   el.innerHTML=`<b>Waiting to be set up</b>
     <p>${t.locked?`Too many wrong codes. Try again in ${Math.ceil(t.locked/60)} minutes.`
       :t.pin?`On the Bento that leads your community, open Settings → Team & Communications → Community, choose this machine and type`
@@ -33676,6 +33688,30 @@ function provWaitCard(v){
     await fetch('/api/provision',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({wait:false})});
     el.remove();
   };
+}
+/* Installed from a hub: the hub chose everything (name, screen, voice), so this screen
+   asks nothing. It says who is setting it up and that it finishes by itself. */
+function provHubWaitHTML(t){
+  const a=t.asked_by||{},hw=t.hw||{};
+  const who=a.name?esc(a.name):(t.hubs&&t.hubs.length?esc(t.hubs[0]):'the Bento that installed it');
+  const heard=a.at?`Heard from ${esc(a.name||a.addr)} ${devAgo(Date.now()/1000-a.at)} ago.`
+    :'Waiting for it to answer. It finishes by itself.';
+  return `<div class="prov-hub">
+    <div class="prov-mark">▲ Bento</div>
+    <h1>Getting set up from <span class="prov-who">${who}</span></h1>
+    <p>Everything is chosen there. Nothing to do here.</p>
+    <p class="mut">${heard}</p>
+    <p class="mut">${esc(hw.board||hw.host||'This machine')} · id ${esc(t.id)}</p>
+    <button class="prov-here-link" id="prov-here">Set it up here instead</button>
+  </div>`;
+}
+function provHubWire(el){
+  el.querySelector('#prov-here').onclick=async()=>{
+    await fetch('/api/provision',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({wait:false})});
+    el.remove();location.reload();
+  };
+  // a hub asks every few seconds: keep "heard from" current until it is set up
+  if(!PROV.hubTick)PROV.hubTick=setTimeout(()=>{PROV.hubTick=0;provWaitCheck()},5000);
 }
 async function provWaitCheck(){
   try{const v=await apiJSON('/api/provision');PROV.v=v;provWaitCard(v)}catch(e){}
