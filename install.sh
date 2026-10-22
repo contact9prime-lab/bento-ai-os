@@ -509,17 +509,36 @@ else
   # git's own words go to a file, so a failure says WHY ("clone failed" alone was all a
   # person installing from the hub ever saw, with git's reason scrolled into stderr).
   clone_err="${TMPDIR:-/tmp}/bento-clone.$$"
-  if git clone --filter=blob:none --no-checkout "$REPO" "$DIR" 2>"$clone_err" \
-     && git -C "$DIR" sparse-checkout set --no-cone '/*' '!/docs/screenshots/' 2>>"$clone_err" \
-     && git -C "$DIR" checkout -q 2>>"$clone_err" && repo_ok "$DIR"; then
-    ok "fetched without the docs' screenshots (they are on GitHub)"
-  else
+  # Three tries at the small clone, a pause between them, each failure said. It used to fall
+  # straight back to the full 205 MB clone on any failure: on a Pi 3 on weak Wi-Fi the small
+  # one broke once and the big one then broke too ("fetch-pack: invalid index-pack output").
+  # The full clone is only for a git that cannot do a partial one at all.
+  cloned=""
+  for try in 1 2 3; do
+    : > "$clone_err"
+    if git clone --filter=blob:none --no-checkout "$REPO" "$DIR" 2>"$clone_err" \
+       && git -C "$DIR" sparse-checkout set --no-cone '/*' '!/docs/screenshots/' 2>>"$clone_err" \
+       && git -C "$DIR" checkout -q 2>>"$clone_err" && repo_ok "$DIR"; then
+      cloned=1; break
+    fi
     rm -rf "$DIR"
+    why=$(grep -E '^(fatal|error):' "$clone_err" | tail -n 1 | cut -c1-200)
+    grep -qiE "filter|unknown option|sparse-checkout" "$clone_err" && ! grep -qiE "^fatal: (unable to access|early EOF|fetch-pack)" "$clone_err" && break
+    [ "$try" -lt 3 ] && { warn "the download broke${why:+ ($why)}; trying again ($((try + 1)) of 3)"; sleep $((try * 10)); }
+  done
+  if [ -n "$cloned" ]; then
+    ok "fetched without the docs' screenshots (they are on GitHub)"
+  elif grep -qiE "filter|unknown option|sparse-checkout" "$clone_err" && ! grep -qiE "^fatal: (unable to access|early EOF|fetch-pack)" "$clone_err"; then
+    # a git too old for a partial clone: the whole thing, once
     if ! git clone "$REPO" "$DIR" 2>>"$clone_err"; then
       why=$(grep -E '^(fatal|error):' "$clone_err" | tail -n 1 | cut -c1-200)
       rm -f "$clone_err"
       die "clone failed${why:+ ($why)}. Check its network and try again"
     fi
+  else
+    why=$(grep -E '^(fatal|error):' "$clone_err" | tail -n 1 | cut -c1-200)
+    rm -f "$clone_err"
+    die "the download broke three times${why:+ ($why)}. A weak Wi-Fi signal or a power supply that's too small does this; try again"
   fi
   rm -f "$clone_err"
 fi
