@@ -92,7 +92,7 @@ def note_security(ip: str, mac: str, done: dict, user: str, by: str = "") -> dic
 
 def note_controls(ip: str, mac: str, st: dict, user: str, by: str = "") -> dict:
     """What its switches were READ as (devicectl.state), with when: shown, never assumed."""
-    keep = {k: st.get(k) for k in ("installed", "version", "running", "screen", "listening")}
+    keep = {k: st.get(k) for k in ("installed", "version", "running", "screen", "listening", "showing")}
     return record(ip, mac, controls={"state": keep, "at": time.time(), "by": by}, user=user)
 
 

@@ -243,8 +243,10 @@ Every machine with Bento has **Controls**. Type the user there and press **Read 
 Bento logs in (with this computer's key if it's there, or the password you type) and reads
 what's on. Nothing changes until you press a switch.
 
-- **Bento running**: its background service. Off stops Bento there; on starts it again.
-- **Open on its screen**: Bento full screen on its display, now and at every start.
+- **Bento running**: its background service. Off stops Bento there and closes it on its screen;
+  on starts it again, back on its screen if that switch is on.
+- **Open on its screen**: Bento full screen on its display, now and at every start. Off closes it
+  now. Its desktop may still open Bento as an ordinary window at login, if it was installed that way.
 - **Listening**: the kiosk face, the Office with the microphone on.
 - **Big code to the hub**: whether it may hand heavy Python here (below). This one is a
   permission on this computer, so it needs no login.
@@ -264,6 +266,8 @@ stays too; Disconnect takes that off.
 ![A Pi's controls at phone width, each switch a full-size button](screenshots/devices-controls-phone.png)
 
 ![bento network controls and switch on a real Pi, every switch put back afterwards](screenshots/devices-switches-terminal.png)
+
+![The Pi's own screen with Bento running and Open on its screen both off: its plain desktop](screenshots/devices-pi-off.png)
 
 The **Devices** app in the dock is the same list in a window of its own.
 

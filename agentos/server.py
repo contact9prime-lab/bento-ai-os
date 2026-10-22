@@ -13607,12 +13607,14 @@ async def api_network_switch(body: dict):
     except ri.InstallError as e:
         return _ssh_refusal(e)
     invmod.note_controls(ip, _net_mac(ip), got["state"], user, by=usersmod.current() or "")
-    took = bool(got["state"].get(which)) == on
+    took = bool(got["state"].get(which)) == on and not (
+        which in ("screen", "running") and not on and got["state"].get("showing"))
     _ledger("device.switch", f"device:{ip}", f"{which} {'on' if on else 'off'} on {user}@{ip}: "
             + ("done" if took else f"still {'on' if not on else 'off'} ({got['said'] or 'no reason given'})"))
     got["state"]["code"] = _code_handoff(row)
     if not took:
-        return JSONResponse({"error": f"it is still {'off' if on else 'on'} there"
+        return JSONResponse({"error": ("its screen still shows Bento" if got["state"].get("showing") and not on
+                                       else f"it is still {'off' if on else 'on'} there")
                                       + (f": {got['said']}" if got["said"] else ""),
                              "state": got["state"], "ran": got["ran"]}, status_code=400)
     return {"ok": True, "switch": which, "on": on, "state": got["state"], "ran": got["ran"],

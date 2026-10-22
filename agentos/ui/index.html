@@ -36353,7 +36353,7 @@ function netSecureForm(r){
 function netSwitchLine(r){
   const c=(r.controls||{}).state;if(!c||r.bento==='removed')return '';
   const ago=r.controls.at?poolAgo(Math.max(0,Math.round(Date.now()/1000-r.controls.at))):'';
-  const w=[c.running?'running':'stopped',c.screen?'opens on its screen':'',c.listening?'listening':'',
+  const w=[c.running?'running':'stopped',c.screen?'opens on its screen':'',c.showing&&!c.screen?'still shows Bento on its screen':'',c.listening?'listening':'',
     r.code_handoff?'big code here':'',c.version?'v'+c.version:''].filter(Boolean).join(' · ');
   return `<span class="mut net-sw-line">${esc(w)}${ago?` <span class="net-sw-at">(read ${esc(ago)})</span>`:''}</span>`;
 }

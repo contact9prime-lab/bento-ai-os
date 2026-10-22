@@ -4751,7 +4751,8 @@ def _network_cli(args):
         pw = password()
 
         def show(st):
-            print(f"  {r['display']}: " + ("Bento " + (st["version"] or "?") if st["installed"] else "no Bento"))
+            print(f"  {r['display']}: " + ("Bento " + (st["version"] or "?") if st["installed"] else "no Bento")
+                  + (" · its screen shows Bento now" if st.get("showing") else ""))
             if st["installed"]:
                 for sw in devicectl.SWITCHES:
                     if sw["remote"]:
@@ -4768,7 +4769,8 @@ def _network_cli(args):
                 print("  runs there: " + devicectl.command(which, want == "on", st["port"]))
                 got = asyncio.run(devicectl.switch(r["ip"], user, pw, port(r), which, want == "on", st["port"]))
                 inv.note_controls(r["ip"], r.get("mac") or "", got["state"], user, by="cli")
-                took = bool(got["state"].get(which)) == (want == "on")
+                took = bool(got["state"].get(which)) == (want == "on") and not (
+                    which in ("screen", "running") and want == "off" and got["state"].get("showing"))
                 ledger("device.switch", f"device:{r['ip']}", f"{which} {want} on {user}@{r['ip']}: "
                        + ("done" if took else "did not take"))
                 show(got["state"])

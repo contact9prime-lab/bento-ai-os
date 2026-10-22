@@ -11,6 +11,11 @@ program off and keeps its memory and settings, so installing it again picks up w
 was read is kept in the list. `bento network controls|switch|update|remove` do the same from a
 terminal.
 
+**Off means off on the screen too.** Found on the owner's Pi: with Bento running and Open on its
+screen both switched off, the Office stayed frozen on the screen, because the window already open
+was left open. Both switches now close it, on any Bento version there; switching Bento back on
+reopens it when the screen is set to. The state says when its screen still shows Bento.
+
 **Switching the screen takes effect at once.** `bento screen on` opens Bento on the desktop that
 is logged in now, and `off` closes it, instead of waiting for the next start.
 

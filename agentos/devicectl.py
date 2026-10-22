@@ -40,6 +40,7 @@ echo "installed=$([ -x "$B" ] && [ -d "$S" ] && echo yes || echo no)"
 echo "version=$(cat "$S/agentos/VERSION" 2>/dev/null)"
 echo "running=$(systemctl --user is-active agentos 2>/dev/null | head -1)"
 if [ -f "$HOME/.config/autostart/bento-screen.desktop" ] || systemctl is-enabled -q bento-screen.service 2>/dev/null; then echo screen=on; else echo screen=off; fi
+if pgrep -f '[s]creen-profile' >/dev/null 2>&1; then echo showing=yes; else echo showing=no; fi
 echo "listening=$(python3 -c 'import json,os
 c=json.load(open(os.path.expanduser("~/.agentos/config.json")))
 print("on" if (c.get("face") or {{}}).get("kiosk") else "off")' 2>/dev/null || echo off)"
@@ -55,6 +56,7 @@ def parse_state(out: str) -> dict:
             "running": installed and f.get("running", "").strip() == "active",
             "screen": installed and f.get("screen") == "on",
             "listening": installed and f.get("listening") == "on",
+            "showing": f.get("showing") == "yes",
             "port": int(f.get("port") or 8321) if str(f.get("port") or "").isdigit() else 8321}
 
 
@@ -65,12 +67,22 @@ def _face(on: bool, port: int) -> str:
             f"http://127.0.0.1:{int(port)}/api/face >/dev/null 2>&1 || {B} face kiosk {'on' if on else 'off'}")
 
 
+# Close the screen's window now, whatever version is there: an old Bento's `screen off` only
+# removed the entry for the next start, and a stopped Bento left the Office frozen on the screen
+# (found on the owner's Pi). The bracket keeps the pattern from matching this very shell.
+CLOSE = "pkill -f '[s]creen-profile' 2>/dev/null"
+SCREEN_ON = ('{ [ -f "$HOME/.config/autostart/bento-screen.desktop" ] || '
+             'systemctl is-enabled -q bento-screen.service 2>/dev/null; }')
+
+
 def command(switch: str, on: bool, port: int = 8321) -> str:
     """The one line run there for a switch. Raises ValueError for one that is not run there."""
     if switch == "running":
-        return f"{B} service {'start' if on else 'stop'}"
+        if on:      # back on, and back on its screen if that is what it was set to
+            return f"{B} service start && {{ {SCREEN_ON} && {B} screen on --yes >/dev/null 2>&1; true; }}"
+        return f"{B} service stop; {CLOSE}; true"
     if switch == "screen":
-        return f"{B} screen {'on --yes' if on else 'off'}"
+        return f"{B} screen on --yes" if on else f"{B} screen off; {CLOSE}; true"
     if switch == "listening":
         return _face(on, port)
     raise ValueError(f"{switch} is not switched on that machine")
@@ -78,8 +90,7 @@ def command(switch: str, on: bool, port: int = 8321) -> str:
 
 REMOVE = (f"B={B}; S={SRC}; "
           '"$B" screen off >/dev/null 2>&1; "$B" uninstall; '
-          # the bracket keeps the pattern from matching this very shell's command line
-          "pkill -f '[s]creen-profile' 2>/dev/null; "
+          f"{CLOSE}; "
           'rm -rf "$S" "$B"; echo removed')
 
 

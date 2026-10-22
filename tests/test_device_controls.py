@@ -56,7 +56,8 @@ def pi(tmp_path, monkeypatch):
     for path, text in ((bin_ / "ssh", SSH), (pib / "systemctl", SYSTEMCTL), (home / ".local/bin/bento", BENTO),
                        (pib / "curl", "#!/bin/sh\nexit 7\n"), (bin_ / "ssh-keygen", "#!/bin/sh\nexit 0\n"),
                        # never the host's own pkill: it would stop whatever matches on the machine running the tests
-                       (pib / "pkill", "#!/bin/sh\necho \"$@\" >> \"$HOME/../pkill.txt\"\n")):
+                       (pib / "pkill", "#!/bin/sh\necho \"$@\" >> \"$HOME/../pkill.txt\"; rm -f \"$HOME/.showing\"\n"),
+                       (pib / "pgrep", "#!/bin/sh\n[ -f \"$HOME/.showing\" ]\n")):
         path.write_text(text)
         path.chmod(0o755)
     (pib / "python3").symlink_to(sys.executable)
@@ -136,3 +137,21 @@ def test_update_runs_bento_update_there_and_reads_the_version_after(pi):
         'case "$1 $2" in', 'case "$1 $2" in\n  "update ") echo 0.6.79 > "$HOME/.local/src/agentic-os/agentos/VERSION"; echo "version 0.6.75 → 0.6.79" ;;'))
     got = asyncio.run(devicectl.update("192.168.1.9", "pi"))
     assert got["ok"] and got["state"]["version"] == "0.6.79" and "0.6.79" in got["said"][-1]
+
+
+def test_off_closes_what_is_on_its_screen_now_and_on_brings_it_back(pi):
+    """Found on the owner's Pi: running and screen both off, and the Office still on the screen,
+    because the window that was open stayed open."""
+    (pi / ".showing").write_text("")
+    assert _st()["showing"]
+    got = asyncio.run(devicectl.switch("192.168.1.9", "pi", "", 22, "running", False))
+    assert not got["state"]["running"] and not got["state"]["showing"], "nothing frozen on the screen"
+    (pi / ".config/autostart").mkdir(parents=True, exist_ok=True)
+    (pi / ".config/autostart/bento-screen.desktop").write_text("")
+    calls = pi.parent / "calls.txt"
+    asyncio.run(devicectl.switch("192.168.1.9", "pi", "", 22, "running", True))
+    assert devicectl.command("running", True) in calls.read_text() and "screen on --yes" in devicectl.command("running", True), \
+        "back on its screen, as it was set"
+    (pi / ".showing").write_text("")
+    got = asyncio.run(devicectl.switch("192.168.1.9", "pi", "", 22, "screen", False))
+    assert not got["state"]["screen"] and not got["state"]["showing"]
