@@ -11,6 +11,12 @@ deletes all of it, sets `~/.agentos` aside as `~/.agentos-removed-<time>` (never
 and names anything left. The hub forgets what it heard and set up at that address, so a new
 install is set up as a new machine. `bento network remove` does the hub's half too.
 
+**An install rides out a weak connection.** Doing it for real on a Pi 3 on weak Wi-Fi and
+too little power, the small clone broke once and the installer fell back to the full 205 MB one,
+which broke too. The next try got the code and then timed out reaching PyPI, which answered in
+under a second a minute later. The installer now tries the small clone three times and the
+package step three times when the network is what failed, and says each time why.
+
 **A Pi's questions get answered.** A thinking model on a long prompt (a Pi asking its hub's
 qwen3.5:9b) thought until the window was full and said nothing, and every question ended on
 "the model hit its token limit". It now answers once more without thinking.
