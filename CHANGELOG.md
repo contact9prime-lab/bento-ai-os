@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.79 — 2026-10-22
+
+**Devices: switch a Pi's things on and off, update it, or remove Bento, from the hub.** A new
+Devices app in the dock lists every machine on your network (the same list as Settings →
+Network). A machine with Bento has Controls: Bento running, open on its screen, listening, and big
+code to the hub, each read from the machine first and read again after you switch it, so what
+you see is what's true there. Update Bento there runs the update on it. Remove Bento takes the
+program off and keeps its memory and settings, so installing it again picks up where it was. What
+was read is kept in the list. `bento network controls|switch|update|remove` do the same from a
+terminal.
+
+**Switching the screen takes effect at once.** `bento screen on` opens Bento on the desktop that
+is logged in now, and `off` closes it, instead of waiting for the next start.
+
 ## 0.6.78 — 2026-10-22
 
 **A Pi runs small code and hands big code to its hub.** On a machine set up from a hub, an

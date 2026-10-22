@@ -237,6 +237,40 @@ and asks before it forgets.
 Only Bento's own list of keys changes (`~/.agentos/pki/known_hosts`, kept as it was in
 `known_hosts.old`). Your own `~/.ssh/known_hosts` is left alone.
 
+### Controls, and removing Bento
+
+Every machine with Bento has **Controls**. Type the user there and press **Read its switches**:
+Bento logs in (with this computer's key if it's there, or the password you type) and reads
+what's on. Nothing changes until you press a switch.
+
+- **Bento running**: its background service. Off stops Bento there; on starts it again.
+- **Open on its screen**: Bento full screen on its display, now and at every start.
+- **Listening**: the kiosk face, the Office with the microphone on.
+- **Big code to the hub**: whether it may hand heavy Python here (below). This one is a
+  permission on this computer, so it needs no login.
+- **Update Bento there** runs `bento update` on it and reads the version after.
+
+Each switch shows the line it runs under *What runs there*, and after it runs, the state is
+read again: the tab says what is true, not what was asked for. What was read is kept in the
+list with when, under the machine's name.
+
+**Remove Bento** stops it, takes the program off (the service, the launcher, the screen entry and
+the code), and ends its link and its place in your community. Its memory and settings in
+`~/.agentos` stay on it, so **Install it again** picks up where it was. This computer's SSH key
+stays too; Disconnect takes that off.
+
+![The Devices app: every machine, and a Pi's switches as read from it](screenshots/devices-controls-desk.png)
+
+![A Pi's controls at phone width, each switch a full-size button](screenshots/devices-controls-phone.png)
+
+![bento network controls and switch on a real Pi, every switch put back afterwards](screenshots/devices-switches-terminal.png)
+
+The **Devices** app in the dock is the same list in a window of its own.
+
+![The Devices app listing the machines on the network](screenshots/devices-list-desk.png)
+
+![The Devices app at phone width: the same list, one machine per card](screenshots/devices-list-phone.png)
+
 ### Code too big for it
 
 A Pi runs small code itself. When an agent's Python on a machine set up from here runs past a
@@ -290,6 +324,10 @@ bento network show 192.168.1.40                 # back on the list
 bento network rekey pi-kitchen                  # it was reformatted: forget its old SSH key
 bento network firewall                          # this computer's firewall, and the ports to open
 bento network firewall open                     # open them (asks for your password)
+bento network controls pi-kitchen --user pi     # read its switches
+bento network switch pi-kitchen screen off --user pi    # running, screen, listening or code; on|off
+bento network update pi-kitchen --user pi       # bento update there
+bento network remove pi-kitchen --user pi       # Bento off it; its data stays
 ```
 
 ![bento network in a terminal: the list, and how secure each machine was measured](screenshots/network-terminal.png)
@@ -317,7 +355,8 @@ ended by the running server, so the terminal points you to the tab or `bento lin
 Every step is a row: `device.scan`, `device.check`, `device.secure`, then `device.secured` or
 `device.secure_failed`, `device.disconnect`, `device.forget` (hidden), `device.show`, `device.rekey` (an old SSH key
 forgotten), `network.firewall`, `provision.code` (a machine may hand code here) and `edge.code`
-(one run, with what went in and came back).
+(one run, with what went in and came back), `device.controls`, `device.switch`, `device.update` and
+`device.remove`.
 
 ## What was tested, and what wasn't
 

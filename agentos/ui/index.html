@@ -5219,6 +5219,19 @@ body.zero-face .of-co{display:none}
 .net-fw p{margin:0 0 8px}
 .net-fw-acts{display:flex;flex-wrap:wrap;gap:8px}
 @media (max-width:600px){.net-fw-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}}
+
+/* a Bento machine's switches (devicectl.py): Settings → Network and the Devices app */
+.net-sw-line{display:block;flex-basis:100%;margin:2px 0 0;font-size:12.5px}
+.net-sw-at{opacity:.7}
+.net-sws{display:grid;gap:8px;margin-top:10px}
+.net-sw{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.net-sw.on{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.net-sw .endbtn{flex:none;min-height:var(--tap,32px)}
+.net-remove{margin-top:14px;padding:10px 12px;border-radius:10px;border:1px solid color-mix(in srgb,var(--err,#e05050) 40%,transparent)}
+.net-remove .endbtn.danger{color:var(--err,#e05050)}
+.devhub-box{padding:4px 0}
+@media (max-width:600px){.net-sw{flex-direction:column}.net-sw .endbtn{width:100%;min-height:var(--tap,40px)}}
 /* ---- the drama reel (00g-drama.js) ---- */
 .dr-wrap{display:flex;flex-direction:column;gap:12px;padding:14px;max-width:760px}
 .dr-title{font-weight:750;font-size:var(--fs-lg,17px);display:flex;align-items:center;gap:6px}
@@ -7791,6 +7804,7 @@ const ICONS={
   syssettings:['#8B93A5','#3B4453','<rect x="3.2" y="4.8" width="17.6" height="12" rx="1.8"/><path d="M8.6 19.8h6.8M12 16.8v3"/><path d="M6.6 8.6h4.2m2.4 0h4.2M6.6 12.8h7.4m2.4 0h1.4"/><circle cx="12.2" cy="8.6" r="1.5"/><circle cx="15.2" cy="12.8" r="1.5"/>'],
   permissions:['#F2B33D','#B45309','<circle cx="8.6" cy="10.2" r="3.4"/><path d="M11.4 12.4l7 7M16.6 17.6l1.6-1.6M18.9 15.3l1.5-1.5"/>'],
   setup:['#5EEAD4','#0F766E','<path d="M6.2 20V4.6l10.2 3.2-10.2 3.2"/><path d="M6.2 4.6h.01"/><circle cx="17.6" cy="16.4" r="2.6"/><path d="M17.6 12.6v1M17.6 19.2v1M13.8 16.4h1M20.4 16.4h1"/>'],
+  devices:['#34D399','#0F766E','<rect x="3.5" y="5" width="10" height="7.5" rx="1.4"/><path d="M6.5 15.5h4"/><rect x="15" y="8" width="5.5" height="9" rx="1.2"/><circle cx="8.5" cy="18.6" r="1.3"/><path d="M8.5 15.5v1.8"/>'],
   users:['#38BDF8','#1E40AF','<circle cx="9" cy="9.2" r="2.9"/><path d="M3.6 18.6c.7-3 2.8-4.6 5.4-4.6s4.7 1.6 5.4 4.6"/><circle cx="16.8" cy="10.2" r="2.1"/><path d="M15.6 14.2c2.2.2 3.9 1.7 4.6 4.4"/>'],
   train:['#C084FC','#6D28D9','<path d="M3.8 5.6 12 9.2l8.2-3.6L12 2Z"/><path d="M6.6 10.6v3.9c0 1.8 2.4 3.2 5.4 3.2s5.4-1.4 5.4-3.2v-3.9"/><path d="M20.2 5.6v6.2"/>'],
   evals:['#4ADE80','#15803D','<path d="M9.6 3.4v5.2L5.2 17a2.4 2.4 0 0 0 2.1 3.6h9.4a2.4 2.4 0 0 0 2.1-3.6l-4.4-8.4V3.4"/><path d="M8.6 3.4h6.8"/><path d="M7.4 13.6h9.2"/>'],
@@ -13658,6 +13672,7 @@ const APPS={
   evals:{id:'evals',title:'Evals',icon:'🧪',w:820,h:620,desc:'Behavioural evals — does the agent still behave after a change?',
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
+  devices:{id:'devices',title:'Devices',icon:'',w:900,h:700,desc:'The machines on your network: switches, install and remove Bento',render:renderDevices},
   users:{id:'users',title:'Users',icon:'◱',w:720,h:640,desc:'Who can use this machine — accounts, roles, shared agents & apps',render:renderUsers},
   setup:{id:'setup',title:'Setup',icon:'▲',w:1000,h:680,
     desc:'Set this machine up, or open the arc to see what each step does',
@@ -13722,7 +13737,7 @@ const APP_CTX={
 Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','office','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','profile','skills','studio','train','mcp','telegram','permissions','logs','tokens','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','office','mission','apps','browser','files','terminal','control','devices','syssettings','store','taskmgr','models','profile','skills','studio','train','mcp','telegram','permissions','logs','tokens','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}
@@ -13871,6 +13886,7 @@ window.addEventListener('message',e=>{
    `bento help --all`, and each place here has a verb there (bento telegram, bento flow,
    bento job, bento mail…). `var`, not `let`: the bundle is one script. */
 var APP_WORDS={
+  devices:['device','devices','device hub','machines','pi','raspberry pi','network','inventory','fleet','zero','remove bento','uninstall'],
   jobs:['mission','missions','job','jobs','flow','flows','workflow','workflows','fabric','orchestrator','recipe'],
   settings:['preferences','prefs','config','configuration','options'],
   timetravel:['undo','rewind','time machine','time travel','go back','revert','restore','fork','checkpoint','history of changes'],
@@ -36211,11 +36227,13 @@ function taskDeskOf(i){
    TUI: `bento network`, `bento network check|secure|label|forget`. SUI: identical, a page;
    nothing here touches the compositor. A Zero has no Network tab (00k-zeroface.js): its
    network is its hub's business. */
-var NET={v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{}};
+var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{}};
 
 async function netPaint(){
-  const box=document.getElementById('s-net');if(!box)return;
-  let v;try{v=await apiJSON('/api/network')}catch(e){box.innerHTML=`<p class="mut prov-empty">${esc(String(e.message||e))}</p>`;return}
+  // Settings → Network and the Devices app draw the same list
+  const boxes=[document.getElementById('s-net'),...document.querySelectorAll('.devhub-box')].filter(Boolean);
+  if(!boxes.length)return;
+  let v;try{v=await apiJSON('/api/network')}catch(e){boxes.forEach(b=>b.innerHTML=`<p class="mut prov-empty">${esc(String(e.message||e))}</p>`);return}
   NET.v=v;
   const can=v.can_change,rows=[],s=v.summary||{};
   rows.push(pRow('Machines',`<button class="endbtn" data-net="scan"${can?'':' disabled'}>Look at the network</button>`,
@@ -36233,18 +36251,17 @@ async function netPaint(){
   else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
   if(hidden.length)rows.push(netHiddenHTML(hidden,can));
   // keep what is being typed across a repaint (a broadcast, a line of a running step)
-  const kept={};['net-user','net-pw','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
+  const kept={};['ctl-user','ctl-pw','net-user','net-pw','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
     const e=document.getElementById(id);if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
-  box.innerHTML=rows.join('');
+  boxes.forEach(box=>{box.innerHTML=rows.join('');netWire(box)});
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
     if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
-  netWire(box);
 }
 
 /* One pill: what it is to Bento, and once it was measured, how secure. "not checked" was a
    second pill on every row and said nothing a person could act on. */
 function netBadge(r){
-  const b={none:'No Bento',waiting:'Bento, waiting',['set up']:'Bento',linked:'Bento, linked',installed:'Bento'}[r.bento]||r.bento;
+  const b={none:'No Bento',waiting:'Bento, waiting',['set up']:'Bento',linked:'Bento, linked',installed:'Bento',removed:'Bento removed'}[r.bento]||r.bento;
   const sec=r.secured_n<0?'':r.security_words==='secured'?' · secured':' · '+r.security_words;
   const cls=r.secured_n<0?(r.bento==='none'?'':'on'):r.security_words==='secured'?'ok':'warn';
   return `<span class="net-b ${cls}">${esc(b+sec)}</span>`;
@@ -36257,7 +36274,8 @@ function netMain(r,v){
   if(v.ssh_missing||!r.ip)return '';
   // while Bento installs there, the card under the row is the only thing to look at
   if(((v.installs||{})[r.ip]||{}).state==='running')return '';
-  if(r.bento==='none'&&r.ssh)return `<button class="endbtn" data-net="install" data-key="${esc(r.key)}">Install Bento</button>`;
+  if((r.bento==='none'||r.bento==='removed')&&r.ssh)return `<button class="endbtn" data-net="install" data-key="${esc(r.key)}">${r.bento==='removed'?'Install it again':'Install Bento'}</button>`;
+  if(['set up','linked','installed'].includes(r.bento))return `<button class="endbtn" data-net="controls" data-key="${esc(r.key)}">Controls</button>`;
   if(r.ssh||r.bento!=='none'||r.secured_n>=0)
     return `<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`;
   return '';
@@ -36272,17 +36290,19 @@ function netRowHTML(r,v,can){
     <div class="net-top">
       <b title="${esc(r.mac||'')}">${esc(r.display)}</b>${netBadge(r)}
       <span class="mut">${[r.ip,what,r.owner_name?'for '+r.owner_name:'',busy||seen].filter(Boolean).map(esc).join(' · ')}</span>
+      ${netSwitchLine(r)}
     </div>
     ${can?`<div class="net-acts">${netMain(r,v)}
       <button class="endbtn net-more-b" data-net="more" data-key="${esc(r.key)}" aria-expanded="${more}" aria-label="More for ${esc(r.display)}">⋯</button></div>
       ${more?`<div class="net-more">
-        ${netMain(r,v).includes('data-net="install"')&&r.ip&&!v.ssh_missing?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">Secure it</button>`:''}
+        ${/data-net="(install|controls)"/.test(netMain(r,v))&&r.ip&&!v.ssh_missing?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`:''}
         ${(r.connections||[]).length?`<button class="endbtn" data-net="unlink" data-key="${esc(r.key)}">Disconnect</button>`:''}
         <button class="endbtn" data-net="label" data-key="${esc(r.key)}">Rename</button>
         <button class="endbtn" data-net="forget" data-key="${esc(r.key)}">Hide</button></div>`:''}`:''}
     ${r.ssh_off?`<p class="mut net-hint">${esc(r.ssh_off)}</p>`:''}
     ${open&&NET.mode==='install'?provDevForm({ip:r.ip,ssh:r.ssh,ports:r.ports||[]}):devProgHTML(r.ip)}
     ${open&&NET.mode==='secure'?netSecureForm(r):''}
+    ${open&&NET.mode==='controls'?netControlsForm(r,v):''}
     ${open&&NET.mode==='unlink'?netUnlinkForm(r):''}
     ${netLogHTML('net-log-',r.ip,run)}
   </div>`;
@@ -36326,6 +36346,37 @@ function netSecureForm(r){
         ${p&&!done?`<details><summary>What runs there</summary><code class="dev-plan">${esc(p.runs)}</code></details>`:''}</div></div>`}).join('')}
       ${c.problems.map(p=>`<p class="warn">✗ ${esc(p)}</p>`).join('')}
       ${c.host_key?`<p class="mut">Its key: ${esc(c.host_key)}</p>`:''}</div>`:''}
+  </div>`;
+}
+/* What its switches were last READ as, in one line under the row: the inventory keeps it
+   with the time, and nothing here guesses. */
+function netSwitchLine(r){
+  const c=(r.controls||{}).state;if(!c||r.bento==='removed')return '';
+  const ago=r.controls.at?poolAgo(Math.max(0,Math.round(Date.now()/1000-r.controls.at))):'';
+  const w=[c.running?'running':'stopped',c.screen?'opens on its screen':'',c.listening?'listening':'',
+    r.code_handoff?'big code here':'',c.version?'v'+c.version:''].filter(Boolean).join(' · ');
+  return `<span class="mut net-sw-line">${esc(w)}${ago?` <span class="net-sw-at">(read ${esc(ago)})</span>`:''}</span>`;
+}
+function netControlsForm(r,v){
+  const c=NET.ctl[r.ip],st=(c&&c.state)||null,sw=(v.switches||[]);
+  const row=s=>{const on=s.id==='code'?r.code_handoff:st&&st[s.id];const known=s.id==='code'?r.code_handoff!=null:!!st;
+    const cmd=c&&c.commands&&c.commands[s.id];
+    return `<div class="net-sw${on?' on':''}">
+      <div><b>${esc(s.title)}</b> <span class="mut">${known?(on?'on':'off'):s.id==='code'?'it isn’t linked to this computer':'not read yet'}</span><br><span class="mut">${esc(s.why)}</span>
+      ${cmd?`<details><summary>What runs there</summary><code class="dev-plan">on: ${esc(cmd.on)}\noff: ${esc(cmd.off)}</code></details>`:''}</div>
+      ${known&&(s.id==='code'||st.installed)?`<button class="endbtn" data-net="ctlsw" data-sw="${esc(s.id)}" data-on="${on?0:1}" data-key="${esc(r.key)}">${on?'Turn off':'Turn on'}</button>`:''}
+    </div>`};
+  return `<div class="dev-form net-form">
+    <label>User there <input id="ctl-user" maxlength="32" value="${esc(r.user||'')}" placeholder="the user set in Imager"></label>
+    <label>Password <input id="ctl-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    <div class="dev-acts"><button class="endbtn" data-net="ctlread" data-key="${esc(r.key)}">${st?'Read again':'Read its switches'}</button>
+      ${st&&st.installed?`<button class="endbtn" data-net="ctlupdate" data-key="${esc(r.key)}">Update Bento there${st.version?' ('+esc(st.version)+')':''}</button>`:''}</div>
+    ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
+    ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}
+    <div class="net-sws">${sw.map(row).join('')}</div>
+    ${st&&st.installed?`<div class="net-remove"><b>Remove Bento</b><br><span class="mut">Takes the program off and ends its ties to this computer. Its memory and settings stay there, so installing it again picks up where it was.</span>
+      <details><summary>What runs there</summary><code class="dev-plan">${esc(c.remove||'')}</code></details>
+      <div class="dev-acts"><button class="endbtn danger" data-net="ctlremove" data-key="${esc(r.key)}">Remove Bento</button></div></div>`:''}
   </div>`;
 }
 /* Disconnect: each tie to this machine is its own tick, and nothing is removed until the
@@ -36382,6 +36433,30 @@ async function netAct(act,b){
       if((d.removed||[]).length)toast('✓ Removed '+d.removed.join(', '));
       (d.failed||[]).forEach(f=>toast('Could not remove '+f));
       return netPaint()}
+    if(act==='controls'){NET.more='';const same=NET.open===r.key&&NET.mode==='controls';
+      NET.open=same?'':r.key;NET.mode=same?'':'controls';return netPaint()}
+    if(act==='ctlread'||act==='ctlsw'||act==='ctlremove'||act==='ctlupdate'){
+      const cr={ip:r.ip,key:r.key,port:netPort(r),user:((document.getElementById('ctl-user')||{}).value||'').trim(),
+        password:(document.getElementById('ctl-pw')||{}).value||''};
+      if(act!=='ctlsw'||b.dataset.sw!=='code')if(!cr.user){toast('Type the user there first');return}
+      if(act==='ctlremove'&&!await osConfirm(`Remove Bento from ${r.display||r.ip}?`,
+        'It stops, the program is taken off, and its ties to this computer end. Its memory and settings stay there.',{confirmText:'Remove Bento'}))return;
+      b.disabled=true;const was=b.textContent;b.textContent=act==='ctlremove'?'Removing…':act==='ctlread'?'Reading…':act==='ctlupdate'?'Updating… (a few minutes)':'Working…';
+      NET.err[r.ip]='';
+      try{
+        if(act==='ctlread'){const d=await post('/api/network/controls',cr);NET.ctl[r.ip]=d}
+        else if(act==='ctlupdate'){const d=await post('/api/network/update',cr);
+          NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
+          toast(`✓ ${r.display||r.ip}: ${d.before||'?'} → ${(d.state||{}).version||'?'}`)}
+        else if(act==='ctlsw'){const on=b.dataset.on==='1';
+          const d=await post('/api/network/switch',{...cr,switch:b.dataset.sw,on});
+          if(d.state)NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
+          toast(`✓ ${(((NET.v||{}).switches||[]).find(x=>x.id===b.dataset.sw)||{}).title||b.dataset.sw} ${on?'on':'off'} on ${r.display||r.ip}`)}
+        else{const d=await post('/api/network/remove',cr);delete NET.ctl[r.ip];NET.open='';
+          toast(d.ok?`✓ Bento removed from ${r.display||r.ip}${(d.ended||[]).length?'; ended '+d.ended.join(', '):''}`:'It may not all be gone: read its switches again',{kind:d.ok?'ok':'warn'})}
+      }catch(e){const d=e.data||{};if(d.key_changed)NET.rekey[r.ip]=d.key_changed;NET.err[r.ip]=e.message;
+        if(d.state)NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state}}
+      b.disabled=false;b.textContent=was;return netPaint()}
     if(act==='install'||act==='secure'||act==='unlink'){NET.more='';const same=NET.open===r.key&&NET.mode===act;
       NET.open=same?'':r.key;NET.mode=same?'':act;if(act==='install')DEV.open=same?'':r.ip;return netPaint()}
     if(act==='label'){const n=prompt('A name for '+(r.display||r.ip),r.label||r.name||'');if(n===null)return;
@@ -36429,6 +36504,15 @@ function netLine(ev){
   if(!el){const row=document.querySelector(`.net-m[data-ip="${CSS.escape(ev.ip||'')}"]`);if(!row)return;
     el=document.createElement('pre');el.className='dev-log';el.id=id;row.appendChild(el)}
   el.textContent=(el.textContent?el.textContent+'\n':'')+ev.line;el.scrollTop=el.scrollHeight;
+}
+/* ---------------- Devices: the machines on your network, in a window of their own ----------------
+   Asked for as "have these devices in the device hub in Bento". The same list as Settings →
+   Network (netPaint draws into every .devhub-box), so the two never disagree: each machine,
+   what it is to Bento, its switches as last read, Controls, Install and Remove. */
+async function renderDevices(body,w){
+  const pb=panelShell(body,{title:'Devices',sub:'The machines on your network'});
+  pb.innerHTML=`<div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>`;
+  await netPaint();
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

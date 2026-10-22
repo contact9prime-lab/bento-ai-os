@@ -4333,11 +4333,15 @@ def _screen_cli(args):
                 print("    " + c)
             sys.exit(1)
         print("  ✓ Bento no longer opens on this screen at start")
+        if scr.close_now():
+            print("  ✓ and it is closed there now")
         return
     if not st["road"]:
         sys.exit("  " + st["why"])
     if st["on"] and not st["missing"]:
         print("  " + st["words"])
+        if scr.open_now(cfg):
+            print("  ✓ and it is opening there now")
         return
     print(f"  {st['why']}.\n\n  This will:")
     for step in scr.plan(cfg):
@@ -4357,6 +4361,8 @@ def _screen_cli(args):
         sys.exit(1)
     ledger("screen.on", "ran " + ", ".join(got["done"]))
     print("  ✓ " + scr.status(cfg)["words"])
+    if scr.open_now(cfg):
+        print("  ✓ and it is opening there now")
     if got.get("mic"):
         print(f"  ! {got['mic']}. To allow it ahead, run:")
         for c in got["needs"]:
@@ -4596,7 +4602,7 @@ def _network_cli(args):
                 sys.exit(f"  bento network {a} MACHINE (an address, a name or a MAC; see `bento network`)")
             return None
         r = inv.find(inv.rows(), rest[0])
-        if r is None and a in ("check", "secure", "install", "letin", "rekey"):
+        if r is None and a in ("check", "secure", "install", "letin", "rekey", "controls", "switch", "remove", "update"):
             return {"ip": rest[0], "mac": "", "display": rest[0], "user": "", "ssh": True, "ports": [22],
                     "connections": [], "key": rest[0]}
         if r is None:
@@ -4714,6 +4720,84 @@ def _network_cli(args):
             print(f"  ✓ your key is on {r['display']}: ssh {user}@{r['ip']}")
         if "passwords_on" in got["done"]:
             print(f"  ✓ password logins are back on {r['display']}")
+        return
+    if a in ("controls", "switch", "remove", "update"):
+        from . import devicectl
+        from . import edgecode
+        r = machine()
+        which = (rest[1] if len(rest) > 1 else "").lower() if a == "switch" else ""
+        want = (rest[2] if len(rest) > 2 else "").lower() if a == "switch" else ""
+        if a == "switch" and (which not in devicectl.IDS or want not in ("on", "off")):
+            sys.exit(f"  bento network switch MACHINE {{{'|'.join(devicectl.IDS)}}} on|off")
+        if which == "code":
+            # the hub's own permission: no login there
+            labels = [lk["label"] for lk in r.get("links") or []]
+            if not labels:
+                sys.exit(f"  {r['display']} isn't linked to this computer, so there is nothing to allow")
+            st_ = Store()
+            for lb in labels:
+                if want == "on":
+                    edgecode.grant(st_, lb)
+                else:
+                    for g in st_.list_grants(principal_kind="team", principal_id=f"{lb}/*"):
+                        if g.get("action") == edgecode.ACTION:
+                            st_.revoke_grant(g["id"])
+            ledger("device.switch", f"device:{r['ip']}", f"big code to the hub {want} for {', '.join(labels)}")
+            print(f"  ✓ big code to the hub is {want} for {r['display']}")
+            return
+        user = args.user or r.get("user") or ""
+        if not user:
+            sys.exit("  which user logs in there? --user pi")
+        pw = password()
+
+        def show(st):
+            print(f"  {r['display']}: " + ("Bento " + (st["version"] or "?") if st["installed"] else "no Bento"))
+            if st["installed"]:
+                for sw in devicectl.SWITCHES:
+                    if sw["remote"]:
+                        print(f"    {'●' if st[sw['id']] else '○'} {sw['title']}: {'on' if st[sw['id']] else 'off'}")
+        try:
+            if a == "controls":
+                st = asyncio.run(devicectl.state(r["ip"], user, pw, port(r)))
+                inv.note_controls(r["ip"], r.get("mac") or "", st, user, by="cli")
+                ledger("device.controls", f"device:{r['ip']}", f"read {user}@{r['ip']}")
+                show(st)
+                return
+            if a == "switch":
+                st = asyncio.run(devicectl.state(r["ip"], user, pw, port(r)))
+                print("  runs there: " + devicectl.command(which, want == "on", st["port"]))
+                got = asyncio.run(devicectl.switch(r["ip"], user, pw, port(r), which, want == "on", st["port"]))
+                inv.note_controls(r["ip"], r.get("mac") or "", got["state"], user, by="cli")
+                took = bool(got["state"].get(which)) == (want == "on")
+                ledger("device.switch", f"device:{r['ip']}", f"{which} {want} on {user}@{r['ip']}: "
+                       + ("done" if took else "did not take"))
+                show(got["state"])
+                if not took:
+                    sys.exit(f"  ✗ it is still {'off' if want == 'on' else 'on'} there"
+                             + (f": {got['said']}" if got["said"] else ""))
+                return
+            if a == "update":
+                before = asyncio.run(devicectl.state(r["ip"], user, pw, port(r)))["version"]
+                print("  runs there: " + devicectl.UPDATE + "   (a Pi takes a few minutes)")
+                got = asyncio.run(devicectl.update(r["ip"], user, pw, port(r)))
+                inv.note_controls(r["ip"], r.get("mac") or "", got["state"], user, by="cli")
+                ledger("device.update", f"device:{r['ip']}", f"updated {user}@{r['ip']}: {before} → {got['state']['version']}")
+                for ln in got["said"]:
+                    print("    " + ln)
+                print(f"  {'✓' if got['ok'] else '✗'} {r['display']}: {before or '?'} → {got['state']['version'] or '?'}")
+                if not got["ok"]:
+                    sys.exit(1)
+                return
+            print("  This runs there (its data in ~/.agentos stays):\n    " + devicectl.remove_plan())
+            if not args.yes and input(f"  Remove Bento from {r['display']}? (y/n) ").strip().lower()[:1] != "y":
+                return
+            got = asyncio.run(devicectl.remove(r["ip"], user, pw, port(r)))
+            inv.note_controls(r["ip"], r.get("mac") or "", got["state"], user, by="cli")
+            ledger("device.remove", f"device:{r['ip']}", f"removed Bento from {user}@{r['ip']} (its data kept)")
+            print(f"  ✓ Bento removed from {r['display']}. Its link and community place are ended by the "
+                  "running server; from here, `bento network disconnect` ends them.")
+        except ri.InstallError as e:
+            sys.exit(_ssh_says(e))
         return
     if a in ("check", "secure"):
         r = machine()
@@ -8618,7 +8702,7 @@ def main():
     p_net = verb("network", help="the machines on your network: look, install, check, secure, disconnect")
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
-                                "forget", "hide", "show", "rekey", "firewall"],
+                                "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update"],
                        metavar="ACTION",
                        help="list | look | install MACHINE --user U [--authorize] [--kiosk] | "
                             "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
@@ -8626,7 +8710,9 @@ def main():
                             "disconnect MACHINE [--what link:NAME,community,key] | label MACHINE NAME | "
                             "hide MACHINE | show MACHINE (a hidden one, back on the list) | "
                             "rekey MACHINE (it was reformatted: forget its old SSH key) | "
-                            "firewall [open|done] (the ports machines set up from here need)")
+                            "firewall [open|done] (the ports machines set up from here need) | "
+                            "controls MACHINE --user U | switch MACHINE running|screen|listening|code on|off | "
+                            "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
