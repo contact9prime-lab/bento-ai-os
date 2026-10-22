@@ -82,6 +82,7 @@ function kioskLeave(){
   if(location.hash==='#kiosk')history.replaceState(null,'',location.pathname+location.search);
   kioskStop();
 }
+function kioskShort(t){const s=String(t||'');const i=s.search(/[:.]\s/);return i>0?s.slice(0,i)+'.':s}
 function kioskSay(line,phase){KIOSK.line=line||'';if(phase)KIOSK.phase=phase;kioskPaint()}
 function kioskPaint(){
   const hud=document.getElementById('kiosk-hud');if(!hud)return;
@@ -93,6 +94,7 @@ function kioskPaint(){
   const h=hud.querySelector('.kh-heard'),r=hud.querySelector('.kh-reply');
   h.hidden=!KIOSK.heard;h.textContent=KIOSK.heard?'“'+KIOSK.heard+'”':'';
   r.hidden=!KIOSK.reply;r.textContent=KIOSK.reply.slice(-600);
+  r.scrollTop=r.scrollHeight;          // the newest words, as they are said, on a screen too short for all of them
   const mic=hud.querySelector('.kh-mic');
   const can=!!hear.engine;
   mic.hidden=!can;
@@ -110,7 +112,8 @@ function kioskFollowing(){return KIOSK.follow&&Date.now()<KIOSK.follow}
 async function kioskListen(){
   if(!KIOSK.on||KIOSK.muted)return;
   const hear=kioskFace().hear||{};
-  if(!hear.engine){kioskSay(hear.line||'Nothing on this machine can understand speech yet.','deaf');return}
+  // one short sentence on the screen; the long one (what to install, which key) is in Settings
+  if(!hear.engine){kioskSay(kioskShort(hear.line)||'I can’t hear yet.','deaf');return}
   if(hear.engine==='browser')return kioskBrowserListen();
   if(KIOSK.stream){kioskSay('','listening');return}
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){

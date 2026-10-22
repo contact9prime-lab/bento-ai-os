@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.80 — 2026-10-22
+
+**The kiosk fits a Pi's small screen.** On a 3.5-inch 480×320 screen the Office wasn't drawn
+at all (a rule meant for phones hid it) and the band's sentence spilled out of its card. Now the
+Office shows with its rooms side by side, the band is compact on a short screen with lines that end
+inside it, a long answer gets the room it needs and keeps its newest words in view, and "can't
+hear" is one short sentence. Checked at 480×320, 800×480, 1024×600 and portrait 480×800.
+
 ## 0.6.79 — 2026-10-22
 
 **Devices: switch a Pi's things on and off, update it, or remove Bento, from the hub.** A new
@@ -10,6 +18,22 @@ you see is what's true there. Update Bento there runs the update on it. Remove B
 program off and keeps its memory and settings, so installing it again picks up where it was. What
 was read is kept in the list. `bento network controls|switch|update|remove` do the same from a
 terminal.
+
+**A map of your devices, with their agents.** The Devices app opens on a map: your agent in the
+middle, each machine with Bento around it showing its own agent, and lines for how each is tied
+to this computer. Tap an agent to open its controls.
+
+**Change the look of a device's agent from here.** Pick its hair, skin, outfit and the rest, or
+describe it in words. It changes on the device and on the map.
+
+**Device passwords are remembered, encrypted.** Tick Remember it and a password that worked is
+kept in this computer's vault. It's used when you leave the box blank, changes only when you
+replace it, and is never shown again.
+
+**Off means off on the screen too.** Found on the owner's Pi: with Bento running and Open on its
+screen both switched off, the Office stayed frozen on the screen, because the window already open
+was left open. Both switches now close it, on any Bento version there; switching Bento back on
+reopens it when the screen is set to. The state says when its screen still shows Bento.
 
 **Switching the screen takes effect at once.** `bento screen on` opens Bento on the desktop that
 is logged in now, and `off` closes it, instead of waiting for the next start.

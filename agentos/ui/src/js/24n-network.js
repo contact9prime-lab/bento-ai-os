@@ -35,9 +35,10 @@ async function netPaint(){
   else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
   if(hidden.length)rows.push(netHiddenHTML(hidden,can));
   // keep what is being typed across a repaint (a broadcast, a line of a running step)
-  const kept={};['ctl-user','ctl-pw','net-user','net-pw','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
+  const kept={};['ctl-user','ctl-pw','ctl-pw-keep','net-user','net-pw','net-pw-keep','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
     const e=document.getElementById(id);if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
-  boxes.forEach(box=>{box.innerHTML=rows.join('');netWire(box)});
+  boxes.forEach(box=>{box.innerHTML=(box.classList.contains('devhub-box')&&typeof devMapHTML==='function'?devMapHTML(v):'')
+    +rows.join('');netWire(box)});
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
     if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
 }
@@ -110,7 +111,7 @@ function netSecureForm(r){
   const sel=NET.steps[r.ip]||{};
   return `<div class="dev-form net-form">
     <label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
-    <label>Password <input id="net-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    ${devPwHTML('net-pw',r.ip,(c&&c.user)||r.user||'')}
     <label class="net-mine"><span class="net-mine-h">Your own SSH key ${pInfo('After password logins go off, only keys get in. Paste the .pub file from your own computer (~/.ssh/id_ed25519.pub) so you can still log in.')}</span>
       <input id="net-mine" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAA… you@laptop"></label>
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
@@ -132,12 +133,29 @@ function netSecureForm(r){
       ${c.host_key?`<p class="mut">Its key: ${esc(c.host_key)}</p>`:''}</div>`:''}
   </div>`;
 }
+/* Its lead agent's look, changed there: picks from the closed set the editor here draws, or a
+   description in words (its own designer picks). The face is painted HERE from its recipe. */
+var LOOK_FIELDS=[['skin','Skin'],['hair','Hair'],['style','Hair style'],['outfit','Outfit'],['shirt','Shirt'],['pants','Trousers']];
+function netLookHTML(r,st,v){
+  const ch=v.look_choices||{},look=st.look||{};
+  const cur=f=>{if(f==='shirt')return Object.keys(ch.hues||{}).find(n=>ch.hues[n]===look.hue)||'';
+    const x=look[f];return typeof x==='number'?(ch[f]||[])[x]||'':String(x||'')};
+  return `<div class="net-look"><div class="net-look-h">${look&&Object.keys(look).length?avatarRecipeImg(look,'net-look-face',st.agent||'its agent'):''}
+      <div><b>${esc(st.agent||'Its agent')}</b><br><span class="mut">How its agent looks there: on its screen, in its Office, and on the map here.</span></div></div>
+    <div class="net-look-grid">${LOOK_FIELDS.map(([f,t])=>`<label>${t}<select data-look="${f}">
+      <option value="">${cur(f)?esc(cur(f)):'as it is'}</option>${(ch[f]||[]).filter(o=>o!==cur(f)).map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></label>`).join('')}
+      <label class="prov-opt"><input type="checkbox" data-look="glasses"${look.glasses?' checked':''}> Glasses</label>
+      <label class="prov-opt"><input type="checkbox" data-look="blush"${look.blush?' checked':''}> Blush</label></div>
+    <div class="dev-acts"><button class="endbtn" data-net="ctllook" data-key="${esc(r.key)}">Save its look</button></div>
+    <label class="net-look-say">Or describe it <input id="ctl-look-say" maxlength="200" placeholder="a cheerful chef with curly grey hair"></label>
+    <div class="dev-acts"><button class="endbtn" data-net="ctldesign" data-key="${esc(r.key)}">Design it</button></div></div>`;
+}
 /* What its switches were last READ as, in one line under the row: the inventory keeps it
    with the time, and nothing here guesses. */
 function netSwitchLine(r){
   const c=(r.controls||{}).state;if(!c||r.bento==='removed')return '';
   const ago=r.controls.at?poolAgo(Math.max(0,Math.round(Date.now()/1000-r.controls.at))):'';
-  const w=[c.running?'running':'stopped',c.screen?'opens on its screen':'',c.listening?'listening':'',
+  const w=[c.running?'running':'stopped',c.screen?'opens on its screen':'',c.showing&&!c.screen?'still shows Bento on its screen':'',c.listening?'listening':'',
     r.code_handoff?'big code here':'',c.version?'v'+c.version:''].filter(Boolean).join(' · ');
   return `<span class="mut net-sw-line">${esc(w)}${ago?` <span class="net-sw-at">(read ${esc(ago)})</span>`:''}</span>`;
 }
@@ -152,12 +170,13 @@ function netControlsForm(r,v){
     </div>`};
   return `<div class="dev-form net-form">
     <label>User there <input id="ctl-user" maxlength="32" value="${esc(r.user||'')}" placeholder="the user set in Imager"></label>
-    <label>Password <input id="ctl-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    ${devPwHTML('ctl-pw',r.ip,r.user||'')}
     <div class="dev-acts"><button class="endbtn" data-net="ctlread" data-key="${esc(r.key)}">${st?'Read again':'Read its switches'}</button>
       ${st&&st.installed?`<button class="endbtn" data-net="ctlupdate" data-key="${esc(r.key)}">Update Bento there${st.version?' ('+esc(st.version)+')':''}</button>`:''}</div>
     ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
     ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}
     <div class="net-sws">${sw.map(row).join('')}</div>
+    ${st&&st.installed?netLookHTML(r,st,v):''}
     ${st&&st.installed?`<div class="net-remove"><b>Remove Bento</b><br><span class="mut">Takes the program off and ends its ties to this computer. Its memory and settings stay there, so installing it again picks up where it was.</span>
       <details><summary>What runs there</summary><code class="dev-plan">${esc(c.remove||'')}</code></details>
       <div class="dev-acts"><button class="endbtn danger" data-net="ctlremove" data-key="${esc(r.key)}">Remove Bento</button></div></div>`:''}
@@ -181,6 +200,8 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
 function netWire(box){
   if(box.querySelector('.dev-prog.running')&&typeof devProgTick==='function')devProgTick();
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
+  box.querySelectorAll('[data-pwforget]').forEach(b=>b.onclick=()=>devPwForget(b));
+  box.querySelectorAll('[data-devnode]').forEach(n=>n.onclick=()=>devMapGo(n.dataset.devnode));
   const hd=box.querySelector('.net-hidden');if(hd)hd.ontoggle=()=>{NET.hiddenOpen=hd.open};
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));
   // the command shown after Check it follows the switch: --screen is its last flag, the same
@@ -198,7 +219,7 @@ async function netAct(act,b){
   const post=async(url,body,method)=>{const res=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
     const d=await res.json().catch(()=>({}));if(!res.ok)throw Object.assign(new Error(d.error||('could not do that ('+res.status+')')),{data:d});return d};
   const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
-    password:(document.getElementById('net-pw')||{}).value||'',mine:((document.getElementById('net-mine')||{}).value||'').trim()});
+    password:(document.getElementById('net-pw')||{}).value||'',remember:devPwKeep('net-pw'),mine:((document.getElementById('net-mine')||{}).value||'').trim()});
   try{
     if(act==='fw-open'||act==='fw-done'){b.disabled=true;
       try{await post('/api/network/firewall',{action:act==='fw-open'?'open':'done'});
@@ -219,9 +240,9 @@ async function netAct(act,b){
       return netPaint()}
     if(act==='controls'){NET.more='';const same=NET.open===r.key&&NET.mode==='controls';
       NET.open=same?'':r.key;NET.mode=same?'':'controls';return netPaint()}
-    if(act==='ctlread'||act==='ctlsw'||act==='ctlremove'||act==='ctlupdate'){
+    if(act==='ctlread'||act==='ctlsw'||act==='ctlremove'||act==='ctlupdate'||act==='ctllook'||act==='ctldesign'){
       const cr={ip:r.ip,key:r.key,port:netPort(r),user:((document.getElementById('ctl-user')||{}).value||'').trim(),
-        password:(document.getElementById('ctl-pw')||{}).value||''};
+        password:(document.getElementById('ctl-pw')||{}).value||'',remember:devPwKeep('ctl-pw')};
       if(act!=='ctlsw'||b.dataset.sw!=='code')if(!cr.user){toast('Type the user there first');return}
       if(act==='ctlremove'&&!await osConfirm(`Remove Bento from ${r.display||r.ip}?`,
         'It stops, the program is taken off, and its ties to this computer end. Its memory and settings stay there.',{confirmText:'Remove Bento'}))return;
@@ -229,6 +250,18 @@ async function netAct(act,b){
       NET.err[r.ip]='';
       try{
         if(act==='ctlread'){const d=await post('/api/network/controls',cr);NET.ctl[r.ip]=d}
+        else if(act==='ctllook'||act==='ctldesign'){
+          const box=b.closest('.net-look'),body={...cr};
+          if(act==='ctldesign'){body.describe=((document.getElementById('ctl-look-say')||{}).value||'').trim();
+            if(!body.describe){toast('Say what it should look like');b.disabled=false;b.textContent=was;return}}
+          else{const st0=(NET.ctl[r.ip]||{}).state||{},ch={};
+            box.querySelectorAll('select[data-look]').forEach(e=>{if(e.value)ch[e.dataset.look]=e.value});
+            box.querySelectorAll('input[data-look]').forEach(e=>{if(!!e.checked!==!!(st0.look||{})[e.dataset.look])ch[e.dataset.look]=e.checked});
+            if(!Object.keys(ch).length){toast('Choose what to change first');b.disabled=false;b.textContent=was;return}
+            body.changes=ch}
+          const d=await post('/api/network/look',body);
+          NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
+          toast(`✓ ${d.state.agent||'Its agent'} has a new look on ${r.display||r.ip}`)}
         else if(act==='ctlupdate'){const d=await post('/api/network/update',cr);
           NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
           toast(`✓ ${r.display||r.ip}: ${d.before||'?'} → ${(d.state||{}).version||'?'}`)}

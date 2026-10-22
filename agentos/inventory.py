@@ -92,7 +92,8 @@ def note_security(ip: str, mac: str, done: dict, user: str, by: str = "") -> dic
 
 def note_controls(ip: str, mac: str, st: dict, user: str, by: str = "") -> dict:
     """What its switches were READ as (devicectl.state), with when: shown, never assumed."""
-    keep = {k: st.get(k) for k in ("installed", "version", "running", "screen", "listening")}
+    keep = {k: st.get(k) for k in ("installed", "version", "running", "screen", "listening", "showing",
+                                   "agent", "look")}
     return record(ip, mac, controls={"state": keep, "at": time.time(), "by": by}, user=user)
 
 
@@ -228,6 +229,10 @@ def rows(cfg: dict | None = None) -> list[dict]:
             by_fp[r["fp"]] = r
         r.setdefault("links", []).append({"label": lk.get("label", ""), "owner": lk.get("owner") or "",
                                           "kind": lk.get("kind")})
+        ident = lk.get("peer_identity") or {}
+        if ident.get("agent_name") and not r.get("agent"):
+            # its lead, as the link last said it: a name and a recipe, painted here (one painter)
+            r["agent"] = {"name": ident["agent_name"], "look": ident.get("agent") or {}, "from": "link"}
         r["sources"].append("link")
     try:
         from . import pool
@@ -253,6 +258,10 @@ def rows(cfg: dict | None = None) -> list[dict]:
         r["user"] = e.get("user", "")
         r["security"] = e.get("security")
         r["controls"] = e.get("controls")
+        cs = (e.get("controls") or {}).get("state") or {}
+        if cs.get("agent") and cs.get("installed") is not False:
+            r["agent"] = {"name": cs["agent"], "look": cs.get("look") or (r.get("agent") or {}).get("look") or {},
+                          "from": "read"}
         got = ((e.get("controls") or {}).get("state") or {}).get("installed")
         if got is False:
             r["bento"] = "removed"          # read there after Remove: the program is gone

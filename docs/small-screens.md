@@ -55,6 +55,32 @@ rather it listened to everything, choose *Everything it hears*.
 
 ![The kiosk on a 7-inch screen](screenshots/kiosk-answer.png)
 
+### On a small screen
+
+It fits the screens people put on a Pi: the official 7-inch (800×480), a 3.5-inch (480×320),
+1024×600 panels and portrait ones. The Office takes what the band at the bottom leaves, its
+rooms side by side on a wide screen. The band is smaller on a short screen, its lines end inside
+it, and while there is an answer it gets the room it needs, showing the newest words.
+
+![The kiosk on a 7-inch 800x480 screen, with an answer](screenshots/kiosk-answer-800x480.png)
+
+![The kiosk on a 3.5-inch 480x320 screen, with an answer](screenshots/kiosk-answer-480x320.png)
+
+![The kiosk on a portrait 480x800 screen, with an answer](screenshots/kiosk-answer-480x800.png)
+
+![The kiosk on a 1024x600 screen, waiting](screenshots/kiosk-after-1024x600.png)
+
+Before, a 480-wide screen showed no Office at all, and the band spilled its sentence out of the
+card:
+
+![The kiosk at 480x320 before: no Office, the sentence out of its card](screenshots/kiosk-before-480x320.png)
+
+![The kiosk at 480x320 now: the Office, and one short line](screenshots/kiosk-after-480x320.png)
+
+![The kiosk at 800x480 before, with a three-line sentence](screenshots/kiosk-before-800x480.png)
+
+![The kiosk at 800x480 now, with one short line under the Office](screenshots/kiosk-after-800x480.png)
+
 - **Only the screen plugged into the machine** shows the kiosk. A phone or another browser
   looking at the same machine keeps its desktop. To try it anywhere, open the address with
   `#kiosk` on the end.

@@ -243,8 +243,10 @@ Every machine with Bento has **Controls**. Type the user there and press **Read 
 Bento logs in (with this computer's key if it's there, or the password you type) and reads
 what's on. Nothing changes until you press a switch.
 
-- **Bento running**: its background service. Off stops Bento there; on starts it again.
-- **Open on its screen**: Bento full screen on its display, now and at every start.
+- **Bento running**: its background service. Off stops Bento there and closes it on its screen;
+  on starts it again, back on its screen if that switch is on.
+- **Open on its screen**: Bento full screen on its display, now and at every start. Off closes it
+  now. Its desktop may still open Bento as an ordinary window at login, if it was installed that way.
 - **Listening**: the kiosk face, the Office with the microphone on.
 - **Big code to the hub**: whether it may hand heavy Python here (below). This one is a
   permission on this computer, so it needs no login.
@@ -265,9 +267,38 @@ stays too; Disconnect takes that off.
 
 ![bento network controls and switch on a real Pi, every switch put back afterwards](screenshots/devices-switches-terminal.png)
 
-The **Devices** app in the dock is the same list in a window of its own.
+![The Pi's own screen with Bento running and Open on its screen both off: its plain desktop](screenshots/devices-pi-off.png)
+
+The **Devices** app in the dock is the same list in a window of its own, with a map above it:
+this computer in the middle with your agent, each machine with Bento around it with its own
+agent, and the rest of the network as small dots. A solid line is a link or your community; a
+dashed one is Bento with no tie to this computer yet. A green ring is running. Tap an agent to
+open its machine's Controls.
+
+![The device map: your agent in the middle, Mr. Pi on the Raspberry Pi](screenshots/devices-map-desk.png)
+
+![The device map at phone width](screenshots/devices-map-phone.png)
 
 ![The Devices app listing the machines on the network](screenshots/devices-list-desk.png)
+
+### Its agent's look
+
+Controls has its agent's look: pick skin, hair, style, outfit, shirt and trousers, or describe
+it in words and its own designer picks. It changes on that machine (its screen and its Office)
+and on the map here.
+
+![The Look section for Mr. Pi, in a Pi's Controls](screenshots/devices-look-desk.png)
+
+![The Look section at phone width](screenshots/devices-look-phone.png)
+
+![The map after Mr. Pi's hair was made pink from here](screenshots/devices-map-new-look.png)
+
+### Passwords
+
+A password you type for a machine can be remembered: tick **Remember it** and, once it has
+logged in, it's kept in this computer's vault, encrypted. Leave the box blank next time and it's
+used. It changes only when you type a new one and tick **Replace the saved one**, and **Forget
+the saved one** removes it. Nothing ever shows it again, here or anywhere else.
 
 ![The Devices app at phone width: the same list, one machine per card](screenshots/devices-list-phone.png)
 

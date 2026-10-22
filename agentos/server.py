@@ -13200,8 +13200,71 @@ async def api_devices_forget_key(body: dict):
 
 
 def _device_creds(b: dict) -> tuple[str, str, str, int]:
-    return (str(b.get("ip") or ""), str(b.get("user") or ""), str(b.get("password") or ""),
-            int(b.get("port") or 22))
+    """The address, user, password and SSH port for one login. A blank password is the one saved
+    for that machine and user in this computer's vault, if one was; a typed one is used as typed
+    and saved only by `_remember_pw`, after it worked and when the person asked."""
+    ip, user, pw = str(b.get("ip") or ""), str(b.get("user") or ""), str(b.get("password") or "")
+    if not pw and ip and user:
+        pw = _saved_pw(ip, user)
+    return ip, user, pw, int(b.get("port") or 22)
+
+
+def _pw_name(ip: str, user: str) -> str:
+    """One vault entry per machine and user, by MAC when known (an address can move)."""
+    mac = ""
+    with contextlib.suppress(Exception):
+        mac = _net_mac(ip)
+    return "ssh." + (mac or ip).replace(":", "-") + "." + user
+
+
+def _saved_pw(ip: str, user: str) -> str:
+    from . import vault
+    with usersmod.as_user(""):             # the machines on the network are the machine's
+        return vault.get(_pw_name(ip, user), actor="device login")
+
+
+def _pw_saved(ip: str, user: str) -> bool:
+    from . import vault
+    if not ip or not user:
+        return False
+    with usersmod.as_user(""):
+        return vault.has(_pw_name(ip, user))
+
+
+def _remember_pw(b: dict) -> str:
+    """After a login with a TYPED password worked: save it, encrypted, when the person ticked
+    Remember (a first one) or Replace (one is saved already). Never otherwise, so a saved one
+    changes only when they say so. Returns what happened, in words, or ''."""
+    from . import vault
+    ip, user, pw = str(b.get("ip") or ""), str(b.get("user") or ""), str(b.get("password") or "")
+    if not (ip and user and pw and b.get("remember")):
+        return ""
+    had = _pw_saved(ip, user)
+    try:
+        with usersmod.as_user(""):
+            vault.put(_pw_name(ip, user), pw)
+    except Exception as e:                 # a locked vault says so; the login itself worked
+        return f"not saved: {e}"
+    _ledger("device.password", f"device:{ip}", f"{'replaced the saved' if had else 'saved the'} password for "
+            f"{user}@{ip} in the vault")
+    return "replaced" if had else "saved"
+
+
+@app.post("/api/network/password")
+async def api_network_password(body: dict):
+    """Forget the saved password for a machine and user. There is no route that returns one."""
+    if (r := _require_admin()):
+        return r
+    from . import vault
+    b = body or {}
+    ip, user = str(b.get("ip") or ""), str(b.get("user") or "")
+    if str(b.get("action") or "") != "forget" or not ip or not user:
+        return JSONResponse({"error": "forget, with the address and the user"}, status_code=400)
+    with usersmod.as_user(""):
+        gone = vault.forget(_pw_name(ip, user))
+    if gone:
+        _ledger("device.password", f"device:{ip}", f"forgot the saved password for {user}@{ip}")
+    return {"ok": True, "forgot": gone, "saved": False}
 
 
 @app.post("/api/devices/check")
@@ -13218,6 +13281,7 @@ async def api_devices_check(body: dict):
         return _ssh_refusal(e)
     got["plan"] = ri.plan(state.machine_cfg(), "bento-enroll-1.…", authorize=bool((body or {}).get("authorize")),
                           screen=_wants_screen(body))
+    got["password"] = _remember_pw(body or {}) or ("saved" if _pw_saved(ip, user) else "")
     return got
 
 
@@ -13337,13 +13401,36 @@ def _network_view() -> dict:
         r["owner_name"] = _account_name(r.get("owner") or "") if r.get("owner") else ""
         with contextlib.suppress(Exception):
             r["code_handoff"] = _code_handoff(r)
+        with contextlib.suppress(Exception):
+            r["pw_saved"] = bool(r.get("ip") and r.get("user") and _pw_saved(r["ip"], r["user"]))
     return {"rows": rows, "summary": invmod.summary(rows), "can_change": True,
             "ssh_missing": ri.missing(), "pubkey": ri.public_key(),
             "steps": [{"id": s["id"], "title": s["title"], "why": s["why"]} for s in harden.STEPS],
             "secures": {ip: {k: v for k, v in run.items()} for ip, run in state.get("device_secures", {}).items()},
             "installs": state.get("device_installs", {}),
             "firewall": _fw_state(),
+            "me": _me_on_map(),
+            "look_choices": _look_choices(),
             "switches": _switches_meta()}
+
+
+def _me_on_map() -> dict:
+    from . import teamlink
+    cfg = state["cfg"]
+    try:
+        name = teamlink.machine_name(state.machine_cfg())
+    except Exception:
+        name = "this computer"
+    return {"name": name, "agent": cfg.get("agent_name") or "Aria"}
+
+
+def _look_choices() -> dict:
+    """The closed set, as names, for the Look picker: the same palette the editor here draws."""
+    p = avatarsmod.palette()
+    out = {k: [x["name"] for x in v] if v and isinstance(v[0], dict) else v
+           for k, v in p.items() if isinstance(v, list)}
+    out["hues"] = {name: hue for name, hue in avatarsmod.HUES}     # the shirt is stored as its hue
+    return out
 
 
 def _switches_meta() -> list:
@@ -13424,6 +13511,7 @@ async def api_network_check(body: dict):
     if mine:
         got["plan"] = harden.plan([p["id"] for p in got["plan"]], port, not got["sudo"], mine)
     invmod.note_security(ip, _net_mac(ip), got["done"], user, by=usersmod.current() or "")
+    got["password"] = _remember_pw(body or {}) or ("saved" if _pw_saved(ip, user) else "")
     _ledger("device.check", f"device:{ip}", f"checked {user}@{ip}: "
             + ", ".join(f"{k} {'on' if v else 'off'}" for k, v in got["done"].items()))
     return got
@@ -13561,6 +13649,7 @@ async def api_network_controls(body: dict):
     invmod.note_controls(ip, _net_mac(ip), st, user, by=usersmod.current() or "")
     row = _row_by(b) or {}
     st["code"] = _code_handoff(row)
+    st["password"] = _remember_pw(b) or ("saved" if _pw_saved(ip, user) else "")
     _ledger("device.controls", f"device:{ip}", f"read {user}@{ip}: " + ", ".join(
         f"{k} {'on' if st.get(k) else 'off'}" for k in ("running", "screen", "listening")) + f", v{st['version']}")
     return {"state": st, "switches": devicectl.SWITCHES,
@@ -13607,16 +13696,49 @@ async def api_network_switch(body: dict):
     except ri.InstallError as e:
         return _ssh_refusal(e)
     invmod.note_controls(ip, _net_mac(ip), got["state"], user, by=usersmod.current() or "")
-    took = bool(got["state"].get(which)) == on
+    took = bool(got["state"].get(which)) == on and not (
+        which in ("screen", "running") and not on and got["state"].get("showing"))
     _ledger("device.switch", f"device:{ip}", f"{which} {'on' if on else 'off'} on {user}@{ip}: "
             + ("done" if took else f"still {'on' if not on else 'off'} ({got['said'] or 'no reason given'})"))
     got["state"]["code"] = _code_handoff(row)
     if not took:
-        return JSONResponse({"error": f"it is still {'off' if on else 'on'} there"
+        return JSONResponse({"error": ("its screen still shows Bento" if got["state"].get("showing") and not on
+                                       else f"it is still {'off' if on else 'on'} there")
                                       + (f": {got['said']}" if got["said"] else ""),
                              "state": got["state"], "ran": got["ran"]}, status_code=400)
     return {"ok": True, "switch": which, "on": on, "state": got["state"], "ran": got["ran"],
             "view": _network_view()}
+
+
+@app.post("/api/network/look")
+async def api_network_look(body: dict):
+    """Change the look of that machine's lead agent: picks from the closed set, or a description
+    in words (its own designer chooses, from the same set). Read back and kept in the inventory."""
+    if (r := _require_admin()):
+        return r
+    from . import devicectl
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, user, pw, port = _device_creds(b)
+    try:
+        if b.get("changes"):
+            devicectl.look_patch(b["changes"])          # refused here, in a sentence, before any login
+        st = await devicectl.state(ip, user, pw, port)
+        got = await devicectl.look(ip, user, pw, port, b.get("changes") or None,
+                                   str(b.get("describe") or ""), st["port"])
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except ri.InstallError as e:
+        return _ssh_refusal(e)
+    invmod.note_controls(ip, _net_mac(ip), got["state"], user, by=usersmod.current() or "")
+    _ledger("device.look", f"device:{ip}", f"changed the look of {got['state'].get('agent') or 'its agent'} on "
+            f"{user}@{ip}" + (" from a description" if b.get("describe") else ": " + ", ".join(
+                f"{k} {v}" for k, v in (b.get("changes") or {}).items())))
+    if not got["ok"]:
+        return JSONResponse({"error": "it did not change there: " + (got["said"] or "no reason given"),
+                             "state": got["state"]}, status_code=400)
+    return {"ok": True, "state": got["state"], "ran": got["ran"], "view": _network_view()}
 
 
 @app.post("/api/network/update")
