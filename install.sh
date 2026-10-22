@@ -605,14 +605,27 @@ esac
 # (a `| tee` pipe would report tee's, which is the reason live output was dropped
 # before); the log is still written, for the failure classifier below. POSIX sh:
 # no pipefail, no process substitution, `$UV_PI_ARGS` intentionally word-split.
+# Up to three tries when the network is what failed (a Pi 3 on weak Wi-Fi timed out reaching
+# PyPI half-way through, and was fine a minute later). uv keeps what it already downloaded,
+# so a retry fetches only the rest. Anything else is said at once, as before.
 run_uv_sync() {
-  uv sync $UV_PI_ARGS >"$UVSYNC_LOG" 2>&1 &
-  _uvpid=$!
-  while kill -0 "$_uvpid" 2>/dev/null; do
-    printf '.'
-    sleep 5
+  _try=1
+  while :; do
+    UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}" uv sync $UV_PI_ARGS >"$UVSYNC_LOG" 2>&1 &
+    _uvpid=$!
+    while kill -0 "$_uvpid" 2>/dev/null; do
+      printf '.'
+      sleep 5
+    done
+    wait "$_uvpid" && return 0
+    _rc=$?
+    [ "$_try" -lt 3 ] && grep -qiE "timed out|error sending request|Failed to fetch|client error \(Connect\)|dns error|connection (reset|refused)" "$UVSYNC_LOG" \
+      || return "$_rc"
+    echo ""
+    warn "the network dropped while fetching packages; trying again ($((_try + 1)) of 3)"
+    sleep $((_try * 15))
+    _try=$((_try + 1))
   done
-  wait "$_uvpid"
 }
 
 # Pin the interpreter. `requires-python = ">=3.10"` has no ceiling, so on a fresh
