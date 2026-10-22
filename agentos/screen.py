@@ -242,6 +242,50 @@ def _ozone() -> str:
     return "--ozone-platform=wayland" if _wayland() else "--ozone-platform-hint=auto"
 
 
+def _profile() -> str:
+    from . import config as cfgmod
+    return str(cfgmod.AGENTOS_HOME / "screen-profile")
+
+
+def showing() -> list[int]:
+    """The screen's browser processes now: the ones using its profile."""
+    want = f"--user-data-dir={_profile()}".encode()
+    pids = []
+    for d in Path("/proc").glob("[0-9]*"):
+        try:
+            if want in (d / "cmdline").read_bytes():
+                pids.append(int(d.name))
+        except (OSError, ValueError):
+            continue
+    return pids
+
+
+def open_now(cfg: dict | None = None) -> bool:
+    """Open it on the desktop that is logged in now, as the autostart will at the next start.
+    Only on the desktop road (the console road's unit starts with `enable --now`), and only
+    once: True when it was started here."""
+    import subprocess
+    rd, _ = road()
+    if rd != "desktop" or not browser() or showing() or not (_wayland() or os.environ.get("DISPLAY")):
+        return False
+    subprocess.Popen([_python(), "-m", "agentos", "screen", "run"], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    return True
+
+
+def close_now() -> int:
+    """Close it if it is showing. Returns how many processes were told to stop."""
+    import signal
+    n = 0
+    for pid in showing():
+        try:
+            os.kill(pid, signal.SIGTERM)
+            n += 1
+        except OSError:
+            pass
+    return n
+
+
 def _server_up(cfg: dict | None = None) -> bool:
     from . import desktop
     return desktop._server_up(_port(cfg))
@@ -461,4 +505,6 @@ def disable(cfg: dict | None = None, say=print) -> dict:
         session._run_root(["systemctl", "daemon-reload"], "Bento needs root to reload systemd.")
     for r in removed:
         say(f"✓ removed {r}")
-    return {"ok": not needs, "removed": removed, "needs": needs, "error": error}
+    # a mic policy left behind only lets this page use the mic; the screen is off without it
+    stops = [n for n in needs if POLICY_NAME not in n]
+    return {"ok": not stops, "removed": removed, "needs": needs, "error": error if stops else ""}

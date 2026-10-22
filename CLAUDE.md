@@ -3204,6 +3204,16 @@ Six rules:
   filesystem read-only, fine for our agents, wrong for another machine's code), with prlimit + nice (never a
   preexec_fn in a threaded server), one run at a time, the folder deleted. No bubblewrap: refused, never
   unconfined. Paths both ways pass `_inside` (no absolute, `..`, hidden part or link out).
+- **A Bento machine's switches are READ there, switched, and read again** (`agentos/devicectl.py`, the Devices
+  app `24o-devices.js`, `/api/network/controls|switch|update|remove`, `bento network controls|switch|update|remove`;
+  `tests/test_device_controls.py`). Asked for as "an option of removing it, test on and off on a few things, in the
+  inventory, and a device hub". Over SSH like harden.py, because "running: on" must reach a machine whose Bento is
+  stopped. `STATE_SCRIPT` is plain shell (files and systemctl), so an old Bento answers; the answer after a switch
+  is a fresh read, and a switch that did not take is an error with what it said. `inventory.note_controls` keeps
+  the read with its time; installed false reads as `removed`. Remove keeps `~/.agentos` and this computer's key,
+  and the route ends the links and the community place. Its `pkill -f '[s]creen-profile'`: unbracketed, it killed
+  the remote shell running it (and, in a test, the host's own shells: the test stubs pkill). The Devices app and
+  Settings → Network are ONE list: `netPaint` draws into `#s-net` and every `.devhub-box`.
 - **The hub's own firewall is said, never assumed open** (`agentos/hostfirewall.py`, `/api/network/firewall`,
   `bento network firewall`). ufw on the owner's hub dropped the Pi's UDP and the link port. Without root only
   ufw.conf / firewalld's unit can be read, so the row shows while one is on until it is opened through

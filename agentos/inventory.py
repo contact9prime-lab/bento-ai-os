@@ -90,6 +90,12 @@ def note_security(ip: str, mac: str, done: dict, user: str, by: str = "") -> dic
     return record(ip, mac, security={"done": clean, "at": time.time(), "by": by}, user=user)
 
 
+def note_controls(ip: str, mac: str, st: dict, user: str, by: str = "") -> dict:
+    """What its switches were READ as (devicectl.state), with when: shown, never assumed."""
+    keep = {k: st.get(k) for k in ("installed", "version", "running", "screen", "listening")}
+    return record(ip, mac, controls={"state": keep, "at": time.time(), "by": by}, user=user)
+
+
 def set_label(ip: str, mac: str, label: str) -> dict:
     from . import teamlink
     return record(ip, mac, label=teamlink.plain(label, 40, newlines=False).strip())
@@ -246,6 +252,12 @@ def rows(cfg: dict | None = None) -> list[dict]:
             r["label"] = e["label"]
         r["user"] = e.get("user", "")
         r["security"] = e.get("security")
+        r["controls"] = e.get("controls")
+        got = ((e.get("controls") or {}).get("state") or {}).get("installed")
+        if got is False:
+            r["bento"] = "removed"          # read there after Remove: the program is gone
+        elif got and r["bento"] in ("none", "removed"):
+            r["bento"] = "installed"        # read there: Bento is on it
         r["ignored"] = r.get("ignored") or bool(e.get("hidden"))
     now = time.time()
     for r in out.values():

@@ -79,6 +79,7 @@ const APPS={
   evals:{id:'evals',title:'Evals',icon:'🧪',w:820,h:620,desc:'Behavioural evals — does the agent still behave after a change?',
     render:renderEvals,onClose(w){if(w._onEval)EVAL_LISTENERS.delete(w._onEval);return true}},
   settings:{id:'settings',title:'Settings',icon:'',w:900,h:660,desc:'Providers, voice, autonomy',render:renderSettings},
+  devices:{id:'devices',title:'Devices',icon:'',w:900,h:700,desc:'The machines on your network: switches, install and remove Bento',render:renderDevices},
   users:{id:'users',title:'Users',icon:'◱',w:720,h:640,desc:'Who can use this machine — accounts, roles, shared agents & apps',render:renderUsers},
   setup:{id:'setup',title:'Setup',icon:'▲',w:1000,h:680,
     desc:'Set this machine up, or open the arc to see what each step does',
@@ -143,7 +144,7 @@ const APP_CTX={
 Object.keys(APP_CTX).forEach(id=>{if(APPS[id])APPS[id].context=APP_CTX[id]});
 
 /* ================= desktop icons / start menu / ctx menu ================= */
-const DESKTOP_APPS=['chat','office','mission','apps','browser','files','terminal','control','syssettings','store','taskmgr','models','profile','skills','studio','train','mcp','telegram','permissions','logs','tokens','themes','personalize','snapshots','docs','settings','about'];
+const DESKTOP_APPS=['chat','office','mission','apps','browser','files','terminal','control','devices','syssettings','store','taskmgr','models','profile','skills','studio','train','mcp','telegram','permissions','logs','tokens','themes','personalize','snapshots','docs','settings','about'];
 let USERAPPS=[];
 async function loadUserApps(){
   try{const r=await fetch('/api/apps');const d=await r.json();USERAPPS=d.apps||[]}catch(e){USERAPPS=[]}

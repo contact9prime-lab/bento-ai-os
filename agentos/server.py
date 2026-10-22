@@ -13335,12 +13335,20 @@ def _network_view() -> dict:
     rows = invmod.rows(state.machine_cfg())
     for r in rows:
         r["owner_name"] = _account_name(r.get("owner") or "") if r.get("owner") else ""
+        with contextlib.suppress(Exception):
+            r["code_handoff"] = _code_handoff(r)
     return {"rows": rows, "summary": invmod.summary(rows), "can_change": True,
             "ssh_missing": ri.missing(), "pubkey": ri.public_key(),
             "steps": [{"id": s["id"], "title": s["title"], "why": s["why"]} for s in harden.STEPS],
             "secures": {ip: {k: v for k, v in run.items()} for ip, run in state.get("device_secures", {}).items()},
             "installs": state.get("device_installs", {}),
-            "firewall": _fw_state()}
+            "firewall": _fw_state(),
+            "switches": _switches_meta()}
+
+
+def _switches_meta() -> list:
+    from . import devicectl
+    return devicectl.SWITCHES
 
 
 def _fw_state() -> dict:
@@ -13514,6 +13522,162 @@ async def _network_secure(ip, user, pw, port, steps, by, mine=""):
         await _provision_admins({"type": "network", "kind": "secure_failed", "ip": ip, "error": str(e)})
     finally:
         pw = ""                         # noqa: F841 — the password ends with this task
+
+
+def _code_handoff(row: dict) -> bool | None:
+    """Is "Big code to the hub" on for this machine: its link's code.run grant here. None when
+    it has no link here to be on for."""
+    from . import edgecode
+    labels = [lk["label"] for lk in row.get("links") or []]
+    if not labels:
+        return None
+    for g in state["store"].list_grants(principal_kind="team"):
+        if g.get("action") == edgecode.ACTION and g.get("effect") == "allow" and \
+                str(g.get("principal_id") or "") in {f"{x}/*" for x in labels}:
+            return True
+    return False
+
+
+def _row_by(b: dict):
+    from . import inventory as invmod
+    return invmod.find(invmod.rows(state.machine_cfg()), str(b.get("key") or b.get("ip") or ""))
+
+
+@app.post("/api/network/controls")
+async def api_network_controls(body: dict):
+    """Log in and read its switches (devicectl.STATE_SCRIPT). Changes nothing there; what was
+    read is kept in the inventory with the time."""
+    if (r := _require_admin()):
+        return r
+    from . import devicectl
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, user, pw, port = _device_creds(b)
+    try:
+        st = await devicectl.state(ip, user, pw, port)
+    except ri.InstallError as e:
+        return _ssh_refusal(e)
+    invmod.note_controls(ip, _net_mac(ip), st, user, by=usersmod.current() or "")
+    row = _row_by(b) or {}
+    st["code"] = _code_handoff(row)
+    _ledger("device.controls", f"device:{ip}", f"read {user}@{ip}: " + ", ".join(
+        f"{k} {'on' if st.get(k) else 'off'}" for k in ("running", "screen", "listening")) + f", v{st['version']}")
+    return {"state": st, "switches": devicectl.SWITCHES,
+            "commands": {s["id"]: {"on": devicectl.command(s["id"], True, st["port"]),
+                                   "off": devicectl.command(s["id"], False, st["port"])}
+                         for s in devicectl.SWITCHES if s["remote"]},
+            "remove": devicectl.remove_plan(), "view": _network_view()}
+
+
+@app.post("/api/network/switch")
+async def api_network_switch(body: dict):
+    """Turn one thing on or off there (or, for big code, here), then read it again."""
+    if (r := _require_admin()):
+        return r
+    from . import devicectl
+    from . import edgecode
+    from . import fabric as fabricmod
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    b = body or {}
+    which, on = str(b.get("switch") or ""), bool(b.get("on"))
+    if which not in devicectl.IDS:
+        return JSONResponse({"error": "no such switch"}, status_code=400)
+    ip, user, pw, port = _device_creds(b)
+    row = _row_by(b) or {}
+    if which == "code":
+        labels = [lk["label"] for lk in row.get("links") or []]
+        if not labels:
+            return JSONResponse({"error": "it isn't linked to this computer, so there is nothing to allow"},
+                                status_code=400)
+        for lb in labels:
+            if on:
+                edgecode.grant(state["store"], lb)
+            else:
+                for g in state["store"].list_grants(principal_kind="team", principal_id=f"{lb}/*"):
+                    if g.get("action") == edgecode.ACTION:
+                        state["store"].revoke_grant(g["id"])
+        _ledger("device.switch", f"device:{ip or row.get('key')}",
+                f"big code to the hub {'on' if on else 'off'} for {', '.join(labels)}")
+        return {"ok": True, "switch": which, "on": _code_handoff(row), "view": _network_view()}
+    try:
+        st = await devicectl.state(ip, user, pw, port)
+        got = await devicectl.switch(ip, user, pw, port, which, on, st["port"])
+    except ri.InstallError as e:
+        return _ssh_refusal(e)
+    invmod.note_controls(ip, _net_mac(ip), got["state"], user, by=usersmod.current() or "")
+    took = bool(got["state"].get(which)) == on
+    _ledger("device.switch", f"device:{ip}", f"{which} {'on' if on else 'off'} on {user}@{ip}: "
+            + ("done" if took else f"still {'on' if not on else 'off'} ({got['said'] or 'no reason given'})"))
+    got["state"]["code"] = _code_handoff(row)
+    if not took:
+        return JSONResponse({"error": f"it is still {'off' if on else 'on'} there"
+                                      + (f": {got['said']}" if got["said"] else ""),
+                             "state": got["state"], "ran": got["ran"]}, status_code=400)
+    return {"ok": True, "switch": which, "on": on, "state": got["state"], "ran": got["ran"],
+            "view": _network_view()}
+
+
+@app.post("/api/network/update")
+async def api_network_update(body: dict):
+    """`bento update` on that machine, then its switches read again."""
+    if (r := _require_admin()):
+        return r
+    from . import devicectl
+    from . import inventory as invmod
+    from . import remoteinstall as ri
+    ip, user, pw, port = _device_creds(body or {})
+    before = ""
+    try:
+        before = (await devicectl.state(ip, user, pw, port))["version"]
+        got = await devicectl.update(ip, user, pw, port)
+    except ri.InstallError as e:
+        return _ssh_refusal(e)
+    invmod.note_controls(ip, _net_mac(ip), got["state"], user, by=usersmod.current() or "")
+    _ledger("device.update", f"device:{ip}", f"updated Bento on {user}@{ip}: {before or '?'} → "
+            f"{got['state']['version'] or '?'}" + ("" if got["ok"] else " (it reported a problem)"))
+    if not got["ok"]:
+        return JSONResponse({"error": "the update reported a problem: " + (got["said"][-1] if got["said"] else "no reason"),
+                             "said": got["said"], "state": got["state"]}, status_code=400)
+    return {**got, "before": before, "view": _network_view()}
+
+
+@app.post("/api/network/remove")
+async def api_network_remove(body: dict):
+    """Take Bento off that machine, keeping its data (~/.agentos), then end what tied it to this
+    computer: its links and its place in the community. This computer's SSH key stays on it,
+    so putting Bento back needs no password."""
+    if (r := _require_admin()):
+        return r
+    from . import devicectl
+    from . import inventory as invmod
+    from . import pool as poolmod
+    from . import remoteinstall as ri
+    from . import teamlink
+    b = body or {}
+    ip, user, pw, port = _device_creds(b)
+    row = _row_by(b) or {}
+    try:
+        got = await devicectl.remove(ip, user, pw, port)
+    except ri.InstallError as e:
+        return _ssh_refusal(e)
+    invmod.note_controls(ip, _net_mac(ip), got["state"], user, by=usersmod.current() or "")
+    ended = []
+    for c in row.get("connections") or []:
+        with contextlib.suppress(Exception):
+            if c["kind"] == "link":
+                lk = next((x for x in teamlink.links(c["owner"]) if x.get("label") == c["label"]), None)
+                if lk and await _team_end_link(c["owner"], lk, "Bento was removed there"):
+                    ended.append(c["words"])
+            elif c["kind"] == "community":
+                with usersmod.as_user(""):
+                    poolmod.remove(state["store"], row["fp"])
+                await _pool_changed(f"removed {row.get('display')} from the community")
+                ended.append(c["words"])
+    _ledger("device.remove", f"device:{ip}", f"removed Bento from {user}@{ip} (its data kept)"
+            + (f"; ended {', '.join(ended)}" if ended else ""))
+    return {"ok": got["ok"], "state": got["state"], "ran": got["ran"], "ended": ended, "view": _network_view()}
 
 
 @app.post("/api/network/disconnect")

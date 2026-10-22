@@ -203,3 +203,16 @@ body.zero-face .of-co{display:none}
 .net-fw p{margin:0 0 8px}
 .net-fw-acts{display:flex;flex-wrap:wrap;gap:8px}
 @media (max-width:600px){.net-fw-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}}
+
+/* a Bento machine's switches (devicectl.py): Settings → Network and the Devices app */
+.net-sw-line{display:block;flex-basis:100%;margin:2px 0 0;font-size:12.5px}
+.net-sw-at{opacity:.7}
+.net-sws{display:grid;gap:8px;margin-top:10px}
+.net-sw{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.net-sw.on{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.net-sw .endbtn{flex:none;min-height:var(--tap,32px)}
+.net-remove{margin-top:14px;padding:10px 12px;border-radius:10px;border:1px solid color-mix(in srgb,var(--err,#e05050) 40%,transparent)}
+.net-remove .endbtn.danger{color:var(--err,#e05050)}
+.devhub-box{padding:4px 0}
+@media (max-width:600px){.net-sw{flex-direction:column}.net-sw .endbtn{width:100%;min-height:var(--tap,40px)}}
