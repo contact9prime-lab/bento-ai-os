@@ -142,6 +142,20 @@ for a in "$@"; do
   esac
 done
 
+if [ -n "$SCREEN" ] && [ "$(uname -s)" = Linux ] && [ "$(tty 2>/dev/null)" != /dev/tty1 ]; then
+  PISCREEN_BIN=$(command -v chromium || command -v chromium-browser || true)
+  if systemctl is-active -q display-manager 2>/dev/null; then
+    if [ -n "$PISCREEN_BIN" ] && [ -d "/run/user/$(id -u)" ]; then PISCREEN=page
+    elif command -v notify-send >/dev/null 2>&1; then PISCREEN=notify; fi
+  elif [ -w /dev/tty1 ] || { [ -e /dev/tty1 ] && sudo -n true 2>/dev/null; }; then
+    PISCREEN=tty
+    # big letters, for a screen across a room (the console font, until Bento takes it over)
+    for f in /usr/share/consolefonts/Uni3-TerminusBold32x16.psf.gz /usr/share/consolefonts/Lat15-TerminusBold32x16.psf.gz; do
+      [ -f "$f" ] && { setfont -C /dev/tty1 "$f" >/dev/null 2>&1 || sudo -n setfont -C /dev/tty1 "$f" >/dev/null 2>&1 || true; break; }
+    done
+  fi
+fi
+
 case "$PORT_WANTED" in
   ''|*[!0-9]*) [ -z "$PORT_WANTED" ] || { echo "--port must be a number" >&2; exit 2; } ;;
 esac
@@ -170,10 +184,80 @@ REMOTE_ON=""
 # ...and who signs in there, when the answer is a person rather than a secret.
 REMOTE_WHO=""
 
-say()  { printf '\033[36m▲ %s\033[0m\n' "$*"; }
+say()  { printf '\033[36m▲ %s\033[0m\n' "$*"; screen_show "Installing Bento" "$*"; }
 warn() { printf '\033[33m!  %s\033[0m\n' "$*"; }
 ok()   { printf '\033[32m✓ %s\033[0m\n' "$*"; }
-die()  { printf '\033[31m✗  %s\033[0m\n' "$*" >&2; exit 1; }
+die()  { printf '\033[31m✗  %s\033[0m\n' "$*" >&2; screen_stopped "$*"; exit 1; }
+
+# The machine's OWN screen while it installs, when it was asked to open Bento there
+# (--screen). Installed from another machine's Install form, a Pi on a TV sat showing its
+# desktop for fifteen minutes with nothing saying anything was happening. Three roads,
+# read from the machine:
+#   page     a desktop with Chromium (Raspberry Pi OS with desktop): a full-screen page
+#            that shows each step and, once Bento answers, becomes Bento itself.
+#   tty      no desktop: the words on the console, tty1 (the user's own, or through
+#            passwordless sudo).
+#   notify   a desktop without Chromium: one notification each step replaces.
+# None is tried when this script runs ON that console.
+PISCREEN=""
+PISCREEN_DIR="$HOME/.cache/bento-install"
+html_esc() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+screen_page() {   # screen_page HEADLINE LINE FOOT [URL to go to]
+  mkdir -p "$PISCREEN_DIR" 2>/dev/null || return 0
+  case "$4" in
+    '') refresh="3"; spin='<i class="s"></i>' ;;
+    stop) refresh="3"; spin="" ;;          # still re-read: a second try writes over it
+    *) refresh="6;url=$4"; spin="" ;;      # done: the page becomes Bento
+  esac
+  cat >"$PISCREEN_DIR/index.tmp" <<PAGE
+<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="$refresh"><title>Bento</title>
+<style>html,body{margin:0;height:100%;background:#0b0d17;color:#e8e8f0;font-family:system-ui,sans-serif;cursor:none}
+main{height:100%;display:flex;flex-direction:column;justify-content:center;padding:0 9vw;box-sizing:border-box}
+.b{font-size:3vw;font-weight:700;color:#8b7cff;letter-spacing:.04em}h1{font-size:5.4vw;margin:2vh 0;display:flex;align-items:center;gap:2.4vw}
+p{font-size:2.6vw;margin:0 0 5vh;color:#c8c8d8;max-width:80vw}small{font-size:1.8vw;color:#7d7f95}
+.s{width:4vw;height:4vw;border-radius:50%;border:.5vw solid #2c2d4a;border-top-color:#8b7cff;animation:r 1s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}</style>
+<main><div class="b">Bento</div><h1>$spin$(html_esc "$1")</h1><p>$(html_esc "$2")</p><small>$(html_esc "$3")</small></main>
+PAGE
+  mv "$PISCREEN_DIR/index.tmp" "$PISCREEN_DIR/index.html" 2>/dev/null || true
+  # the first page opens the browser; later ones are picked up by its refresh
+  if [ ! -s "$PISCREEN_DIR/pid" ] || ! kill -0 "$(cat "$PISCREEN_DIR/pid" 2>/dev/null)" 2>/dev/null; then
+    rt="/run/user/$(id -u)"
+    # Chromium picks X11 on its own and exits on a Wayland desktop (labwc, Raspberry Pi OS
+    # since bookworm) with "Missing X server": found on a Pi 3 B+.
+    if [ -S "$rt/wayland-0" ]; then set -- env XDG_RUNTIME_DIR="$rt" WAYLAND_DISPLAY=wayland-0 "$PISCREEN_BIN" --ozone-platform=wayland
+    else set -- env XDG_RUNTIME_DIR="$rt" DISPLAY=:0 "$PISCREEN_BIN"; fi
+    setsid "$@" --kiosk --noerrdialogs --disable-infobars --no-first-run \
+      --password-store=basic --user-data-dir="$PISCREEN_DIR/browser" "file://$PISCREEN_DIR/index.html" \
+      >/dev/null 2>&1 </dev/null &
+    echo $! >"$PISCREEN_DIR/pid"
+  fi
+}
+# A failed install leaves its reason up for five minutes, then gives the screen back: a
+# full-screen window on a Pi with no keyboard would otherwise stay until someone pulled the plug.
+screen_stopped() {
+  screen_show "The install stopped" "$1" "The machine that started it says what to do." stop
+  if [ "$PISCREEN" = page ] && [ -s "$PISCREEN_DIR/pid" ]; then
+    setsid sh -c "sleep 300; kill $(cat "$PISCREEN_DIR/pid") 2>/dev/null" >/dev/null 2>&1 </dev/null &
+  fi
+}
+screen_show() {   # screen_show HEADLINE LINE [FOOT] [URL]
+  foot="${3-Leave it on. This takes a while on a Pi.}"
+  case "$PISCREEN" in
+    page) screen_page "$1" "$2" "$foot" "$4" ;;
+    tty)
+      { printf '\033[2J\033[H\033[?25l\n\n\n'
+        printf '    \033[1;36mBento\033[0m\n\n'
+        printf '    \033[1m%s\033[0m\n\n' "$1"
+        printf '    %s\n\n' "$2"
+        printf '    \033[2m%s\033[0m\n' "$foot"
+      } | { if [ -w /dev/tty1 ]; then cat >/dev/tty1; else sudo -n tee /dev/tty1 >/dev/null; fi; } 2>/dev/null || true ;;
+    notify)
+      DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus" \
+        notify-send -a Bento -h string:x-canonical-private-synchronous:bento-install "$1" "$2" \
+        >/dev/null 2>&1 || true ;;
+  esac
+}
 
 # Anything that is missing but not fatal is collected and printed ONCE at the
 # end. A warning in the middle of a five-minute install scrolls past unread, and
@@ -403,7 +487,27 @@ else
   fi
   say "cloning AgentOS into $DIR"
   mkdir -p "$(dirname "$DIR")"
-  git clone "$REPO" "$DIR" || die "clone failed — check the network and try again"
+  # Without the docs' screenshots, and without old copies of any file: those are 190 of the
+  # 205 MB a full clone fetches, and nothing the program shows reads them (the Docs app draws
+  # no pictures; they are for GitHub). A Pi on Wi-Fi stalled at 86 MB of a full clone; this
+  # is about 14 MB. Later files arrive on `git pull` as usual. A git too old for a partial
+  # clone (before 2.25) gets the full one.
+  # git's own words go to a file, so a failure says WHY ("clone failed" alone was all a
+  # person installing from the hub ever saw, with git's reason scrolled into stderr).
+  clone_err="${TMPDIR:-/tmp}/bento-clone.$$"
+  if git clone --filter=blob:none --no-checkout "$REPO" "$DIR" 2>"$clone_err" \
+     && git -C "$DIR" sparse-checkout set --no-cone '/*' '!/docs/screenshots/' 2>>"$clone_err" \
+     && git -C "$DIR" checkout -q 2>>"$clone_err" && repo_ok "$DIR"; then
+    ok "fetched without the docs' screenshots (they are on GitHub)"
+  else
+    rm -rf "$DIR"
+    if ! git clone "$REPO" "$DIR" 2>>"$clone_err"; then
+      why=$(grep -E '^(fatal|error):' "$clone_err" | tail -n 1 | cut -c1-200)
+      rm -f "$clone_err"
+      die "clone failed${why:+ ($why)}. Check its network and try again"
+    fi
+  fi
+  rm -f "$clone_err"
 fi
 
 repo_ok "$DIR" || die "no AgentOS source in $DIR after cloning — remove it and run this again"
@@ -1211,6 +1315,7 @@ echo
 # prevent, printed by the last line of the same script.
 if [ -n "$RUNNING" ]; then
   ok "AgentOS is running."
+  screen_show "Bento is installed" "It opens on this screen in a moment." "" "http://127.0.0.1:${PORT}/"
 elif [ "$SERVICE" = 1 ]; then
   ok "AgentOS is installed — but nothing is listening yet."
 else

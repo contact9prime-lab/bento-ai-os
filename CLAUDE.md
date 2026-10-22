@@ -3180,6 +3180,15 @@ Six rules:
   install: it answers every optional extra (Claude Code, Codex…), which nobody agreed to here.
   Found by the live run. Installer lines pass `clean_line` (ANSI and controls stripped) before
   any toast, and a failure says the installer's own last stderr line.
+- **An install is shown as the installer's own steps, here and on its screen** (`remoteinstall.STAGES`/
+  `stage_of`/`stopped_because`, `devProgHTML` in 24j, install.sh `screen_show`; `tests/test_device_install.py`).
+  Reported as "is it installed there? how do I know?" over a log that stopped at "cloning", then "no reason
+  why this failed". The steps are read from install.sh's `say` lines (a `say` no step names fails the test),
+  and only move forward. A stopped install names the tool's line before the installer's ✗ (git's `fatal:`).
+  With `--screen` the machine's screen shows it too: a Chromium page on a desktop (needs
+  `--ozone-platform=wayland` on labwc, found on a Pi 3 B+), the console without one, closed 5 minutes after a
+  failure. A fresh clone is `--filter=blob:none` without `docs/screenshots/` (205 MB to 14 MB): the full
+  clone stalled at 86 MB on that Pi's Wi-Fi. Nothing the program shows reads the screenshots.
 - **A changed host key is the person's to forget, with both keys in view** (`remoteinstall.KeyChanged`,
   raised from `_run` so every login says it alike; `seen_key`, `forget_host`, `/api/devices/forget-key`,
   `bento network rekey`; `tests/test_device_install.py`). Reported with a screenshot after a Pi was

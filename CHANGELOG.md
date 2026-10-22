@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.75 — 2026-10-22
+
+**Installing Bento on a Pi shows how far it got.** The form used to turn into a scrolling log.
+It's now a card: a spinner, the step it's on out of seven, the steps done, and how long it has
+taken, with the raw lines one tap away. When it's done the card says so and the row shows
+Bento; when it stops, it says why.
+
+**A failed install says why.** It said *clone failed, check the network* and nothing else, while
+git had said what went wrong on the line before. The card, the toast and `bento network install`
+now carry git's or apt's own reason.
+
+**The Pi's own screen shows the install.** With *Open on its screen* on, a Pi with the desktop
+shows a full-screen page with each step, which becomes Bento's Office when Bento answers. A Pi
+without the desktop gets the steps on its console.
+
+**A new install downloads 14 MB, not 205 MB.** Every install fetched the whole history and the
+docs' screenshots, and on a Pi's Wi-Fi the download stalled at 86 MB. A fresh install now fetches
+only what runs. On the same Pi it took 37 seconds.
+
 ## 0.6.74 — 2026-10-22
 
 **A reformatted Pi can be reached again.** Bento remembers each machine's SSH key and refuses one

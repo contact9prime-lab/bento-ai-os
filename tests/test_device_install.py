@@ -285,7 +285,7 @@ def test_a_failed_install_says_the_installers_own_words_without_its_colours(fake
         lines.append(ln)
     with pytest.raises(remoteinstall.InstallError) as e:
         asyncio.run(remoteinstall.install({}, "127.0.0.2", "pi", "right-one", "k", on_line=on_line))
-    assert str(e.value) == "the installer stopped: \u2717 clone failed: check the network and try again"
+    assert str(e.value) == "the installer stopped: clone failed: check the network and try again"
     assert lines == ["\u25b2 cloning AgentOS"], "no escape codes reach a toast"
     assert remoteinstall.clean_line("\x1b]52;c;ZXZpbA==\x07ok\x1b[0m\u202e") == "ok"
 
@@ -509,3 +509,55 @@ def test_every_face_can_forget_a_changed_key():
     assert "/api/devices/forget-key" in js and "sshRekeyHTML" in js
     assert "sshRekeyHTML" in (ROOT / "agentos" / "ui" / "src" / "js" / "24n-network.js").read_text()
     assert '"rekey"' in (ROOT / "agentos" / "__main__.py").read_text()
+
+
+def test_every_installer_step_line_is_a_named_step():
+    """The progress card's steps are read from install.sh's own `say` lines. A new `say`
+    that no step names would leave the bar where it was, so it fails here instead."""
+    import re
+    text = (ROOT / "install.sh").read_text()
+    # a variable in the line stands for whatever it prints there
+    says = [re.sub(r"\$\{?[A-Za-z_][^}\s]*\}?", "x", s) for s in re.findall(r'^\s*say "([^"]+)', text, re.M)]
+    assert len(says) > 15
+    missing = [s for s in says if not remoteinstall.stage_of("▲ " + s)]
+    assert not missing, f"no step names: {missing}"
+    assert remoteinstall.stage_of("building the environment") == ""
+    assert remoteinstall.stage_of("▲ installing dependencies (this fetches Python too)") == "deps"
+    ids = [s["id"] for s in remoteinstall.stages()]
+    assert "screen" not in ids and "screen" in [s["id"] for s in remoteinstall.stages(screen=True)]
+
+
+def test_the_pi_screen_is_told_only_when_its_screen_was_asked_for():
+    """--screen: each step goes to the machine's own screen (tty1 through sudo -n, or one
+    replacing notification on a desktop), never when the script runs on that console."""
+    text = (ROOT / "install.sh").read_text()
+    assert 'screen_show "Installing Bento" "$*"' in text.split("say()", 1)[1].splitlines()[0]
+    assert "screen_stopped" in text.split("die()", 1)[1].splitlines()[0]
+    assert "--ozone-platform=wayland" in text, "Chromium exits on a Wayland desktop without it"
+    gate = text.split('if [ -n "$SCREEN" ] && [ "$(uname -s)" = Linux ]', 1)[1].split("\nfi\n", 1)[0]
+    assert '!= /dev/tty1' in text and "sudo -n true" in gate and "PISCREEN=tty" in gate
+    assert "PISCREEN=page" in gate and "PISCREEN=notify" in gate
+
+
+def test_an_install_in_progress_is_drawn_as_steps():
+    js = (ROOT / "agentos" / "ui" / "src" / "js" / "24j-provision.js").read_text()
+    assert "function devProgHTML" in js and "Step ${cur+1} of ${steps.length}" in js
+    server = (ROOT / "agentos" / "server.py").read_text()
+    assert "ri.stage_of(ln)" in server and '"stages": ri.stages(_wants_screen(b))' in server
+
+
+def test_a_stopped_install_says_the_tools_own_reason():
+    """Reported with a screenshot: "clone failed — check the network" and nothing else, while
+    git had said why on the line before."""
+    got = remoteinstall.stopped_because(["Cloning into '/home/pi/x'...",
+                                         "error: RPC failed; curl 92 HTTP/2 stream 5 was not closed cleanly",
+                                         "fatal: early EOF",
+                                         "\u2717  clone failed. Check its network and try again"])
+    assert got == "clone failed. Check its network and try again (fatal: early EOF)"
+    assert remoteinstall.stopped_because(["E: Unable to locate package x", "\u2717  apt failed"]) == \
+        "apt failed (E: Unable to locate package x)"
+    # the installer already quoted git: said once
+    assert remoteinstall.stopped_because(["fatal: early EOF", "\u2717  clone failed (fatal: early EOF)"]) == \
+        "clone failed (fatal: early EOF)"
+    text = (ROOT / "install.sh").read_text()
+    assert "--filter=blob:none" in text and "'!/docs/screenshots/'" in text
