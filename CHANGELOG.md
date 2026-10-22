@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.83 — 2026-10-22
+
+**Install it again stays after an install stops.** A scan where a Pi didn't answer for a moment
+marked its SSH as closed, and the row lost its Install button. Now a scan that hears nothing
+keeps what an earlier one found, and a machine you've logged into before keeps the button.
+
+**A Pi on Wi-Fi isn't told to connect to Wi-Fi.** The installer checks the internet twice, a
+few seconds apart. When it still gets nothing while the machine is on Wi-Fi, it names the
+network and says to try again, instead of listing networks to connect to.
+
 ## 0.6.82 — 2026-10-22
 
 **A Pi's agent is changed in the Agents tab's own editor.** The Devices app's Controls showed

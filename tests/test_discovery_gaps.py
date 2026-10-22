@@ -213,3 +213,22 @@ def test_a_zeros_office_is_one_person_drawn_flat(tmp_path):
     js = (ROOT / "agentos/ui/src/js/24k-office3d.js").read_text()
     want = js[js.index("function of3Wanted"):js.index("function of3GL")]
     assert want.index("if(v.zero)return false") < want.index("of3HQ()"), "not even the HQ scene is 3D"
+
+
+def test_a_quiet_scan_does_not_take_ssh_away():
+    """Found on the owner's Pi: one scan where its Wi-Fi dropped saw it only by ARP, wrote
+    ssh: False over the knock that had found port 22, and the row lost its Install button."""
+    from agentos import netscan
+    seen: dict = {}
+    mac = "b8:27:eb:56:2d:48"
+    netscan.remember(seen, {"ip": "192.168.1.9", "mac": mac, "ports": [22], "ssh": True, "seen_by": "port"})
+    netscan.remember(seen, {"ip": "192.168.1.9", "mac": mac, "ports": [], "ssh": False, "seen_by": "arp"})
+    assert seen[mac]["ssh"] is True and seen[mac]["ports"] == [22]
+    # a refusal is an answer: SSH really is closed now
+    netscan.remember(seen, {"ip": "192.168.1.9", "mac": mac, "ports": [], "ssh": False, "seen_by": "refused"})
+    assert seen[mac]["ssh"] is False
+
+
+def test_a_removed_machine_with_a_working_login_offers_install_again():
+    src = (Path(__file__).resolve().parents[1] / "agentos/ui/src/js/24n-network.js").read_text()
+    assert "(r.ssh||r.user)" in src

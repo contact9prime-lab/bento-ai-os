@@ -36428,7 +36428,8 @@ function netMain(r,v){
   if(v.ssh_missing||!r.ip)return '';
   // while Bento installs there, the card under the row is the only thing to look at
   if(((v.installs||{})[r.ip]||{}).state==='running')return '';
-  if((r.bento==='none'||r.bento==='removed')&&r.ssh)return `<button class="endbtn" data-net="install" data-key="${esc(r.key)}">${r.bento==='removed'?'Install it again':'Install Bento'}</button>`;
+  // a login that worked here before counts as SSH too: one quiet scan must not take the button away
+  if((r.bento==='none'||r.bento==='removed')&&(r.ssh||r.user))return `<button class="endbtn" data-net="install" data-key="${esc(r.key)}">${r.bento==='removed'?'Install it again':'Install Bento'}</button>`;
   if(['set up','linked','installed'].includes(r.bento))return `<button class="endbtn" data-net="controls" data-key="${esc(r.key)}">Controls</button>`;
   if(r.ssh||r.bento!=='none'||r.secured_n>=0)
     return `<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`;
