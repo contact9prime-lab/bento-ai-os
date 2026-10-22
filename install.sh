@@ -386,8 +386,14 @@ net_ok=""
 # user is standing.
 probes="https://api.github.com https://pypi.org"
 command -v uv >/dev/null 2>&1 || probes="https://astral.sh $probes"
-for probe in $probes; do
-  if curl -fsS -m 12 -o /dev/null "$probe" 2>/dev/null; then net_ok=1; break; fi
+# Twice, a few seconds apart: a Pi's Wi-Fi drops for a moment, and one miss stopped an
+# install on the owner's Pi whose internet was back by the time anybody looked.
+for try in 1 2; do
+  for probe in $probes; do
+    if curl -fsS -m 12 -o /dev/null "$probe" 2>/dev/null; then net_ok=1; break; fi
+  done
+  [ -n "$net_ok" ] && break
+  [ "$try" = 1 ] && sleep 8
 done
 # A reachable git remote is proof by itself, and it is the only probe that tests
 # the URL actually about to be cloned — so an AGENTOS_REPO override is checked
@@ -402,7 +408,14 @@ if [ -z "$net_ok" ]; then
   warn "no internet connection — everything below needs one."
   # On a headless Pi this is nearly always wifi that has never been configured,
   # so offer the tool rather than just reporting the problem.
-  if command -v nmcli >/dev/null 2>&1; then
+  on_wifi=""
+  command -v nmcli >/dev/null 2>&1 && \
+    on_wifi=$(nmcli -t -f TYPE,STATE,CONNECTION device 2>/dev/null | awk -F: '$1=="wifi" && $2=="connected" {print $3; exit}')
+  if [ -n "$on_wifi" ]; then
+    # connected, and still nothing answered: telling them to connect would be wrong
+    echo "   It is on Wi-Fi ($on_wifi), but nothing on the internet answered."
+    echo "   A weak signal drops out for a moment; try the install again."
+  elif command -v nmcli >/dev/null 2>&1; then
     echo "   Wi-Fi networks in range:"
     nmcli -t -f SSID,SIGNAL,SECURITY device wifi list 2>/dev/null \
       | awk -F: 'NF && $1!="" {printf "     %-32s %s%%  %s\n", $1, $2, $3}' | head -12 || true

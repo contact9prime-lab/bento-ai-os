@@ -264,6 +264,16 @@ the code), and ends its link and its place in your community. Its memory and set
 `~/.agentos` stay on it, so **Install it again** picks up where it was. This computer's SSH key
 stays too; Disconnect takes that off.
 
+**Install it again** stays on the row after an install stops, so you can just try again. A scan
+where the machine didn't answer for a moment doesn't take it away, and a machine you've logged
+into before keeps it. If the installer finds no internet while the machine is on Wi-Fi, it names
+the network and says to try again: a weak signal drops out for a moment. It also checks twice,
+a few seconds apart, before it stops.
+
+![A Pi whose install stopped, with Install it again on its row](screenshots/network-install-again-desk.png)
+
+![The same row at phone width, Install it again a full-width button](screenshots/network-install-again-phone.png)
+
 ![The Devices app: every machine, and a Pi's switches as read from it](screenshots/devices-controls-desk.png)
 
 ![A Pi's controls at phone width, each switch a full-size button](screenshots/devices-controls-phone.png)

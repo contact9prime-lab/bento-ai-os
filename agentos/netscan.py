@@ -470,7 +470,13 @@ def remember(seen: dict, d: dict) -> bool:
     e = seen.get(key)
     new = e is None
     e = e or {"first": time.time(), "state": "new"}
+    # Seen only by ARP means nothing answered this time (a Pi's Wi-Fi drops for a moment), not
+    # that SSH went away: it kept what an earlier knock found. Found on the owner's Pi, whose
+    # Install button vanished after one quiet scan. A refusal does say SSH is closed.
+    quiet = d.get("seen_by") == "arp" and not d.get("ports")
     for k in ("ip", "mac", "maker", "name", "ssh", "banner", "os", "pi", "ports", "seen_by"):
+        if quiet and k in ("ssh", "seen_by") and e.get("ssh"):
+            continue
         if d.get(k) not in (None, "", []):
             e[k] = d[k]
     e["last"] = time.time()
