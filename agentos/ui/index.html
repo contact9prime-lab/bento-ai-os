@@ -5040,8 +5040,15 @@ body.kiosk #office-scene canvas{display:block}
 #kiosk-hud .kh-line{color:var(--txt2,var(--txt));opacity:.85;font-size:var(--fs-md,15px)}
 #kiosk-hud .kh-heard{grid-column:2;font-style:italic;opacity:.8;font-size:var(--fs-md,15px);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#kiosk-hud .kh-reply{grid-column:2;font-size:var(--fs-lg,18px);line-height:1.35;overflow:auto;max-height:22vh}
+#kiosk-hud .kh-reply{grid-column:2;font-size:var(--fs-lg,18px);line-height:1.35;overflow-x:hidden;overflow-y:auto;scrollbar-width:thin;max-height:22vh}
+/* the band is where a kiosk turn is answered: the "replied" pill would only open Chat */
+body.kiosk #aibubble{display:none!important}
 #kiosk-hud .kh-acts{grid-column:3;grid-row:1/3;display:flex;gap:8px}
+#kiosk-hud .kh-type{grid-column:2;display:flex;gap:8px;min-width:0}
+#kiosk-hud .kh-in{flex:1;min-width:0;min-height:var(--tap,44px);padding:0 14px;border-radius:999px;font-size:var(--fs-md,15px);
+  border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);background:color-mix(in srgb,var(--bg) 70%,transparent);color:var(--txt)}
+#kiosk-hud .kh-send{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
+#kiosk-hud .kh-key.on{border-color:var(--acc)}
 #kiosk-hud button{min-height:var(--tap,44px);min-width:var(--tap,44px);padding:0 16px;border-radius:999px;
   border:1px solid color-mix(in srgb,var(--txt) 18%,transparent);background:var(--bg3);color:var(--txt);
   font:inherit;cursor:pointer}
@@ -5052,7 +5059,7 @@ body.kiosk #office-scene canvas{display:block}
 @media (max-width:640px){
   #kiosk-hud{grid-template-columns:1fr auto;left:16px;right:16px}
   #kiosk-hud .kh-who{grid-row:auto}
-  #kiosk-hud .kh-heard,#kiosk-hud .kh-reply{grid-column:1/3}
+  #kiosk-hud .kh-heard,#kiosk-hud .kh-reply,#kiosk-hud .kh-type{grid-column:1/3}
   #kiosk-hud .kh-acts{grid-column:2;grid-row:1}
 }
 @media (prefers-reduced-motion:reduce){#kiosk-hud .kh-mic.live{box-shadow:none;outline:2px solid var(--acc)}}
@@ -5134,7 +5141,24 @@ body.kiosk #office-scene canvas{display:block}
 .dev-lbl{display:flex;align-items:center;gap:6px}
 .dev-form input{min-height:var(--tap,32px)}
 .dev-secret{-webkit-text-security:disc}
-.dev-acts{display:flex;gap:8px;flex:1 1 100%}
+.dev-acts{display:flex;flex-wrap:wrap;gap:8px;flex:1 1 100%;align-items:center}
+/* .wiz-next brings the wizard's top margin, which stretched the button beside it */
+.dev-acts>button,body.immersive .dev-acts>button{min-height:max(var(--tap,32px),38px);margin:0;padding:0 18px;line-height:1.2}
+@media (max-width:480px){.dev-acts>button{flex:1 1 auto}}
+/* Settings gives every label a margin; inside a form it doubled every gap */
+.dev-form label,body.immersive .dev-form label{margin:0}
+.dev-fields+.dev-opts{margin-top:-2px}
+.dev-fields{flex:1 1 100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 14px;align-items:end}
+.dev-fields input{width:100%;box-sizing:border-box}
+.dev-fields>.dev-pw-opts{grid-column:1/-1;order:1;margin-top:-4px}
+.dev-opts input[type=checkbox]{width:18px;height:18px;min-height:0;margin:0}
+.dev-found{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.dev-found .dev-hostkey{font-family:var(--mono,monospace);font-size:var(--fs-xs,11px)}
+.dev-found details summary{cursor:pointer;color:var(--mut);margin-top:4px}
+/* forgetting a saved password is a small thing beside its tick, so it reads as a link */
+.dev-pw-forget{background:none;border:0;padding:0 2px;min-height:var(--tap,32px);color:var(--acc);
+  font:inherit;font-size:var(--fs-sm,12px);cursor:pointer}.dev-pw-forget:hover{text-decoration:underline}
 .dev-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;flex:1 1 100%;min-height:var(--tap,32px)}
 .dev-facts{flex:1 1 100%;min-width:0;max-width:100%;overflow-wrap:anywhere;font-size:var(--fs-sm,12px);line-height:1.5}
 .dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}
@@ -5169,6 +5193,18 @@ body.kiosk #office-scene canvas{display:block}
 .dev-key{max-width:min(420px,60vw)}
 .dev-log{flex:1 1 100%;max-height:180px;overflow:auto;margin:6px 0 0;padding:8px;border-radius:8px;font-size:11px;
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
+/* the install's console: what the installer and its tools print there, as it arrives */
+.dev-console{margin-top:8px;border-radius:10px;overflow:hidden;border:1px solid color-mix(in srgb,var(--txt) 10%,transparent);
+  background:color-mix(in srgb,var(--bg) 82%,#000)}
+.dev-console-h{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:var(--fs-xs,11px);color:var(--mut);
+  border-bottom:1px solid color-mix(in srgb,var(--txt) 8%,transparent)}
+.dev-console-dot{width:7px;height:7px;border-radius:50%;background:var(--ok,#4ade80);animation:devBlink 1.4s ease-in-out infinite}
+@keyframes devBlink{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.dev-console-dot{animation:none}}
+.dev-console .dev-log{margin:0;border-radius:0;background:none;max-height:min(260px,40vh);padding:8px 10px;
+  font-family:var(--mono,ui-monospace,monospace);line-height:1.55;color:color-mix(in srgb,var(--txt) 78%,transparent)}
+.dev-log .dev-l-step{color:var(--txt)}.dev-log .dev-l-ok{color:var(--ok,#4ade80)}.dev-log .dev-l-bad{color:var(--warn,#f59e0b)}
+.dev-log .dev-now{color:var(--txt)}.dev-log .dev-now::after{content:'▍';margin-left:2px;color:var(--acc);animation:devBlink 1s steps(1) infinite}
 
 /* Settings → Network (24n-network.js): one row per machine, its badges, Secure it */
 .net-list{display:flex;flex-direction:column;gap:6px;margin:6px 16px 10px}
@@ -8065,6 +8101,13 @@ function glassProbe(force){
     };
     requestAnimationFrame(step);
   },1400);
+}
+/* A small machine's own screen (a Pi) starts with no blur: its frame probe needs two windows
+   open before it measures anything, and on a Pi 3 the desktop alone was the problem. A
+   choice made in Themes → Effects still wins, and a phone looking at it keeps the blur. */
+function glassSmall(small){
+  if(!small||GLASS.pref!=='auto'||(typeof remoteClient==='function'&&remoteClient()))return;
+  GLASS.level='off';applyGlass();
 }
 applyGlass();
 /* ================= immersive experience (the default look) =================
@@ -28047,6 +28090,7 @@ async function modelDelete(name){
 let PLATFORM={mode:'hosted',detected_mode:'hosted',capabilities:{},summary:''};
 async function loadPlatform(){
   try{PLATFORM=await (await fetch('/api/platform')).json()}catch(e){}
+  if(typeof glassSmall==='function')glassSmall(PLATFORM.small);
   updateBell();
 }
 function cap(id){return PLATFORM.capabilities?.[id]||{available:false,supported:false,reason:'',component:''}}
@@ -30065,7 +30109,7 @@ function renderOffice(el,w){
   // scene gets it back when the window closes (officeClose)
   // The 3D renderer goes with the scene: left alive, it kept drawing into the scene's
   // canvas while the window's stayed dark (reported as "I cannot see the office").
-  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;OFFICE.fit=false;of3Dispose();
+  cancelAnimationFrame(OFFICE.raf);clearTimeout(OFFICE.wait);OFFICE.raf=0;OFFICE.fit=false;of3Dispose();
   OFFICE.w=w;OFFICE.people={};OFFICE.papers=[];OFFICE.bursts=[];OFFICE.pops=[];OFFICE.sheets={};
   OFFICE.static=matchMedia('(prefers-reduced-motion: reduce)').matches;
   try{OFFICE.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){OFFICE.font='sans-serif'}
@@ -30111,7 +30155,7 @@ function renderOffice(el,w){
   officeLoad();
 }
 function officeClose(w){
-  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
+  cancelAnimationFrame(OFFICE.raf);clearTimeout(OFFICE.wait);OFFICE.raf=0;
   of3Dispose();
   try{w._ofro&&w._ofro.disconnect()}catch(e){}
   OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;OFFICE.visiting=undefined;
@@ -30154,7 +30198,7 @@ function officeSceneStop(){
   try{S.ro&&S.ro.disconnect()}catch(e){}S.ro=null;
   removeEventListener('resize',officeSceneResize);
   document.removeEventListener('visibilitychange',officeKick);
-  if(OFFICE.w&&OFFICE.w.scene){cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;of3Dispose();
+  if(OFFICE.w&&OFFICE.w.scene){cancelAnimationFrame(OFFICE.raf);clearTimeout(OFFICE.wait);OFFICE.raf=0;of3Dispose();
     OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.fit=false}
   if(S.host)S.host.remove();S.host=null;
 }
@@ -30831,14 +30875,21 @@ function officeSnooze(){
 function officeMoving(){
   const O=OFFICE;
   return O.papers.length||O.bursts.length||O.pops.length||Object.values(O.people).some(p=>p.mode==='walk'||p.busy||p.say||p.hop)
-    ||(O.pet&&O.pet.walking)||!!O.ball||!!(O.L&&O.L.radial&&of3Moving());
+    ||!!(O.L&&O.L.radial&&of3Moving());
 }
+/* The pet and the game of fetch are decor, not work: on a small machine's own screen they
+   move at a few frames a second. They kept a Pi 3 drawing 30 a second with nothing happening. */
+function officeDecorMoving(){const O=OFFICE;return (O.pet&&O.pet.walking)||!!O.ball}
+function officeLight(){try{return !!(PLATFORM&&PLATFORM.small)&&!(typeof remoteClient==='function'&&remoteClient())}catch(e){return false}}
 function officeFrame(now){
   const O=OFFICE;O.raf=0;
   if(!O.w||!O.ctx)return;
   if(!officeAwake())return officeSnooze();      // asleep: the next wake re-kicks
-  const busy=officeMoving(), dt=(now-O.last)/1000;
-  if(dt<(busy?1/30:1/6)){O.raf=requestAnimationFrame(officeFrame);return}
+  const work=officeMoving(),decor=!work&&officeDecorMoving(),dt=(now-O.last)/1000;
+  const light=officeLight(),every=work?1/30:decor?(light?1/4:1/30):(light?1/2:1/6);
+  if(dt<every){
+    // not due yet: wait on a timer, not on every refresh (a frame asked for is a frame drawn)
+    O.raf=-1;O.wait=setTimeout(()=>{O.raf=requestAnimationFrame(officeFrame)},Math.max(4,(every-dt)*1000-4));return}
   O.last=now;
   // one bad frame must not end the loop: an exception here used to leave the
   // Office blank until it was closed and opened again
@@ -32834,9 +32885,19 @@ function kioskStart(){
   hud.innerHTML=`<div class="kh-who">${typeof avatarImg==='function'?avatarImg('@agent','kh-face'):''}
       <div class="kh-txt"><b class="kh-name"></b><span class="kh-line"></span></div></div>
     <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
+    <form class="kh-type" hidden><input class="kh-in" autocomplete="off" enterkeyhint="send" aria-label="Type a message">
+      <button type="submit" class="kh-send">Send</button></form>
     <div class="kh-acts"><button class="kh-mic" aria-label="Microphone"></button>
+      <button class="kh-key" aria-label="Type instead">⌨ Type</button>
       <button class="kh-leave" aria-label="Leave the kiosk">Leave</button></div>`;
   hud.querySelector('.kh-mic').onclick=()=>kioskMicTap();
+  // a keyboard is another way in: the answer still comes here, in the band, and nothing
+  // opens unless the agent shows something
+  hud.querySelector('.kh-key').onclick=()=>{KIOSK.typing=!KIOSK.typing;kioskPaint();
+    if(KIOSK.typing)hud.querySelector('.kh-in').focus()};
+  hud.querySelector('.kh-type').onsubmit=e=>{e.preventDefault();const i=hud.querySelector('.kh-in'),t=i.value.trim();
+    if(!t||KIOSK.busy)return;i.value='';KIOSK.heard=t;kioskAsk(t)};
+  hud.querySelector('.kh-in').onkeydown=e=>{if(e.key==='Escape'){KIOSK.typing=false;kioskPaint()}};
   hud.querySelector('.kh-leave').onclick=()=>kioskLeave();
   // one drawer of the office state at a time (officeSceneAttach): an open Office
   // window would keep the scene empty behind it, and windows are hidden here
@@ -32873,7 +32934,9 @@ function kioskPaint(){
   const hud=document.getElementById('kiosk-hud');if(!hud)return;
   const name=agentName(),f=kioskFace(),hear=f.hear||{};
   hud.querySelector('.kh-name').textContent=name;
-  const waiting=KIOSK.phase==='listening'?(kioskFollowing()?'Listening. Go ahead.'
+  // nothing that hears: say where to type, never "listening"
+  const waiting=KIOSK.phase==='listening'&&!hear.engine?(KIOSK.reply?'Type again below.':(hear.line||'Type below.'))
+    :KIOSK.phase==='listening'?(kioskFollowing()?'Listening. Go ahead.'
       :(f.wake==='always'?'Listening.':`Say “${kioskWakeWords()[0]||name}” and what you need.`)):'';
   hud.querySelector('.kh-line').textContent=KIOSK.line||waiting;
   const h=hud.querySelector('.kh-heard'),r=hud.querySelector('.kh-reply');
@@ -32883,6 +32946,10 @@ function kioskPaint(){
   const mic=hud.querySelector('.kh-mic');
   const can=!!hear.engine;
   mic.hidden=!can;
+  // with nothing that hears, typing is the way in, so the box is simply there
+  const typing=KIOSK.typing||!can,form=hud.querySelector('.kh-type'),key=hud.querySelector('.kh-key');
+  form.hidden=!typing;key.hidden=!can;key.classList.toggle('on',typing);
+  const inp=hud.querySelector('.kh-in');inp.placeholder=`Type to ${name}…`;inp.disabled=!!KIOSK.busy;
   mic.className='kh-mic'+(KIOSK.muted?' off':'')+(KIOSK.talking?' live':'');
   mic.textContent=KIOSK.muted?'Mic off':(KIOSK.talking?'Hearing you':'Mic on');
   hud.dataset.phase=KIOSK.phase||'';
@@ -33577,20 +33644,25 @@ function provDevForm(d){
   // while it installs, the form is the progress: nothing to type, nothing to press twice
   const run=devRun(d.ip);
   if(run&&run.state==='running')return `<div class="dev-form">${devProgHTML(d.ip)}</div>`;
-  return `<div class="dev-form">${devProgHTML(d.ip)}
-    <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
-    ${devPwHTML('dev-pw',d.ip,(c&&c.user)||'')}
-    <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
+  // fields in one grid, the choices on one line, what the check found as a card, and the
+  // buttons last, where the eye ends up after reading it
+  return `<div class="dev-form dev-install">${devProgHTML(d.ip)}
+    <div class="dev-fields">
+      <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
+      ${devPwHTML('dev-pw',d.ip,(c&&c.user)||'')}
+      <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
+    </div>
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
     <label class="prov-opt">${pSwitch('dev-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label></div>
-    <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">Check it</button>
-      ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
     ${DEV.err[d.ip]?`<p class="warn dev-err">✗ ${esc(DEV.err[d.ip])}</p>`:''}
     ${sshRekeyHTML(d.ip,sshPort,DEV.rekey[d.ip])}
-    ${c?`<div class="dev-facts">${esc([c.board||c.arch,c.os,c.ram_mb+' MB memory',c.free_mb+' MB free'].filter(Boolean).join(' · '))}
-      ${c.bento?'<br>Bento is already there.':''}${c.host_key?`<br><span class="mut">Its key: ${esc(c.host_key)}</span>`:''}
-      ${c.problems.map(p=>`<br><span class="warn">✗ ${esc(p)}</span>`).join('')}
-      <br><span class="mut">This runs there:</span><code class="dev-plan">${esc(c.plan||'')}</code></div>`:''}
+    ${c?`<div class="dev-facts dev-found"><b>${esc([c.board||c.arch,c.os].filter(Boolean).join(' · '))}</b>
+      <span class="mut">${esc([c.ram_mb+' MB memory',c.free_mb+' MB free'].join(' · '))}${c.bento?' · Bento is already there':''}</span>
+      ${c.host_key?`<span class="mut dev-hostkey">Its key: ${esc(c.host_key)}</span>`:''}
+      ${c.problems.map(p=>`<span class="warn">✗ ${esc(p)}</span>`).join('')}
+      <details><summary>What runs there</summary><code class="dev-plan">${esc(c.plan||'')}</code></details></div>`:''}
+    <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">${c?'Check again':'Check it'}</button>
+      ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
   </div>`;
 }
 /* A reformatted machine shows a new SSH key and ssh refuses it. Both fingerprints, and a
@@ -33609,7 +33681,7 @@ function devPwHTML(id,ip,user){
       placeholder="${saved?'saved, encrypted: leave blank':'blank: use this machine’s key'}"></label>
     <div class="dev-pw-opts"><label class="prov-opt"><input type="checkbox" id="${id}-keep"${saved?'':' checked'}>
       ${saved?'Replace the saved one with what I type':'Remember it, encrypted on this computer'}</label>
-      ${saved?`<button class="endbtn dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
+      ${saved?`<button class="dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
 }
 function devPwKeep(id){const e=document.getElementById(id+'-keep');return !!(e&&e.checked)}
 async function devPwForget(b){
@@ -33637,10 +33709,11 @@ function provDevCreds(){
    timer. The raw lines are one tap away. */
 function devViews(){return [typeof NET!=='undefined'?NET.v:null,typeof PROV!=='undefined'?PROV.v:null].filter(Boolean)}
 function devRun(ip){for(const v of devViews()){const r=(v.installs||{})[ip];if(r)return r}return null}
+var DEV_LINES=80;
 function devRunSet(ip,patch,line){
   devViews().forEach(v=>{v.installs=v.installs||{};
     const r=v.installs[ip]=v.installs[ip]||{state:'running',started:Date.now()/1000,lines:[],stage:'',stages:[]};
-    Object.assign(r,patch);if(line!=null)r.lines=(r.lines||[]).concat(line).slice(-40)});
+    Object.assign(r,patch);if(line!=null)r.lines=(r.lines||[]).concat(line).slice(-DEV_LINES)});
 }
 function devAgo(s){s=Math.max(0,Math.round(s));return s<60?s+' s':Math.floor(s/60)+' min'}
 function devProgHTML(ip){
@@ -33649,7 +33722,7 @@ function devProgHTML(ip){
   if(!(st==='running'||st==='failed'||(st==='done'&&now-(run.finished||now)<600)))return '';
   const steps=run.stages||[],cur=steps.findIndex(x=>x.id===run.stage);
   const pct=st==='done'?100:Math.round(((cur<0?0.15:cur+0.5)/Math.max(1,steps.length))*100);
-  const lines=(run.lines||[]).slice(st==='failed'?-12:-40);
+  const lines=(run.lines||[]).filter(x=>x!=='').slice(-DEV_LINES);
   const head=st==='running'?`<span class="dev-spin" aria-hidden="true"></span><b>Installing Bento on ${esc(ip)}</b>`
     :st==='done'?`<span class="dev-ok">✓</span><b>Bento is installed on ${esc(ip)}</b>`
     :`<span class="dev-bad">✗</span><b>The install stopped</b>`;
@@ -33662,18 +33735,21 @@ function devProgHTML(ip){
     <ol class="dev-steps">${steps.map((x,i)=>{const c=st==='done'||i<cur?'done':i===cur?(st==='failed'?'bad':'now'):'';
       return `<li class="${c}">${esc(x.words)}</li>`}).join('')}</ol>
     ${st==='running'?`<p class="mut dev-prog-hint">A Pi takes 10 to 20 minutes. You can close Settings; it carries on.${steps.some(x=>x.id==='screen')?' Its own screen shows each step too.':''}</p>`:''}
-    ${lines.length?`<details class="dev-prog-log"${st==='failed'?' open':''}><summary>What it printed</summary><pre class="dev-log">${esc(lines.join('\n'))}</pre></details>`:''}
+    ${lines.length?`<div class="dev-console" aria-label="What it prints there"><div class="dev-console-h">
+      <span>${st==='running'?'Live from '+esc(ip):'What it printed'}</span>${st==='running'?'<i class="dev-console-dot" aria-hidden="true"></i>':''}</div>
+      <pre class="dev-log">${lines.map((x,i)=>`<span class="${i===lines.length-1&&st==='running'?'dev-now':/^(✗|!)/.test(x)?'dev-l-bad':/^✓/.test(x)?'dev-l-ok':/^▲/.test(x)?'dev-l-step':''}">${esc(x)}</span>`).join('\n')}</pre></div>`:''}
   </div>`;
 }
 /* the headline already says it stopped: the line under it is the reason, as a sentence */
 function devWhy(e){e=String(e||'').replace(/^the installer stopped:\s*/i,'');return e.charAt(0).toUpperCase()+e.slice(1)}
 function devProgRepaint(ip){
   const els=document.querySelectorAll(`.dev-prog[data-ip="${CSS.escape(ip)}"]`);
-  els.forEach(el=>{const open=el.querySelector('details')?.open,html=devProgHTML(ip);
+  els.forEach(el=>{const html=devProgHTML(ip);
     if(!html){el.remove();return}
+    // the console stays at the newest line, unless the person scrolled up to read
+    const old=el.querySelector('.dev-log'),stuck=!old||old.scrollHeight-old.scrollTop-old.clientHeight<24,top=old?old.scrollTop:0;
     const t=document.createElement('div');t.innerHTML=html;const n=t.firstElementChild;
-    const d=n.querySelector('details');if(d&&open)d.open=true;
-    const pre=n.querySelector('pre');el.replaceWith(n);if(pre)pre.scrollTop=pre.scrollHeight});
+    const pre=n.querySelector('.dev-log');el.replaceWith(n);if(pre)pre.scrollTop=stuck?pre.scrollHeight:top});
   return els.length;
 }
 /* The elapsed time: one timer while any install is on screen, and none once it is not. */
@@ -36480,8 +36556,8 @@ function netSecureForm(r){
   const c=NET.check[r.ip],steps=(NET.v||{}).steps||[];
   const sel=NET.steps[r.ip]||{};
   return `<div class="dev-form net-form">
-    <label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
-    ${devPwHTML('net-pw',r.ip,(c&&c.user)||r.user||'')}
+    <div class="dev-fields"><label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
+    ${devPwHTML('net-pw',r.ip,(c&&c.user)||r.user||'')}</div>
     <label class="net-mine"><span class="net-mine-h">Your own SSH key ${pInfo('After password logins go off, only keys get in. Paste the .pub file from your own computer (~/.ssh/id_ed25519.pub) so you can still log in.')}</span>
       <input id="net-mine" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAA… you@laptop"></label>
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
@@ -36531,8 +36607,8 @@ function netControlsForm(r,v){
       ${known&&(s.id==='code'||st.installed)?`<button class="endbtn" data-net="ctlsw" data-sw="${esc(s.id)}" data-on="${on?0:1}" data-key="${esc(r.key)}">${on?'Turn off':'Turn on'}</button>`:''}
     </div>`};
   return `<div class="dev-form net-form">
-    <label>User there <input id="ctl-user" maxlength="32" value="${esc(r.user||'')}" placeholder="the user set in Imager"></label>
-    ${devPwHTML('ctl-pw',r.ip,r.user||'')}
+    <div class="dev-fields"><label>User there <input id="ctl-user" maxlength="32" value="${esc(r.user||'')}" placeholder="the user set in Imager"></label>
+    ${devPwHTML('ctl-pw',r.ip,r.user||'')}</div>
     <div class="dev-acts"><button class="endbtn" data-net="ctlread" data-key="${esc(r.key)}">${st?'Read again':'Read its switches'}</button>
       ${st&&st.installed?`<button class="endbtn" data-net="ctlupdate" data-key="${esc(r.key)}">Update Bento there${st.version?' ('+esc(st.version)+')':''}</button>`:''}</div>
     ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
@@ -36561,6 +36637,8 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
   :'Bento can no longer log in there without a password.'}
 function netWire(box){
   if(box.querySelector('.dev-prog.running')&&typeof devProgTick==='function')devProgTick();
+  // a console drawn fresh opens at its newest line, as a terminal does
+  box.querySelectorAll('.dev-console .dev-log').forEach(p=>p.scrollTop=p.scrollHeight);
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
   box.querySelectorAll('[data-pwforget]').forEach(b=>b.onclick=()=>devPwForget(b));
   box.querySelectorAll('[data-devnode]').forEach(n=>n.onclick=()=>devMapGo(n.dataset.devnode));

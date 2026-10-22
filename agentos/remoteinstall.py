@@ -32,6 +32,7 @@ import asyncio
 import os
 import re
 import shlex
+import time
 import shutil
 import socket
 import subprocess
@@ -221,7 +222,9 @@ def clean_line(ln: str) -> str:
     """One line of the other machine's output, as words: its colours dropped and any other
     control character removed, because it is shown in a toast and a terminal."""
     from . import teamlink
-    return teamlink.plain(ANSI.sub("", ln or "").rstrip(), 300, newlines=False).strip()
+    # a progress bar redraws its line with \r: what is on screen is the last part
+    ln = next((x for x in reversed((ln or "").split("\r")) if x.strip()), "")
+    return teamlink.plain(ANSI.sub("", ln).rstrip(), 300, newlines=False).strip()
 
 
 def _target(host: str, port: int = 22) -> str:
@@ -451,6 +454,40 @@ def plan(cfg: dict | None, key_text: str, authorize: bool = False, screen: bool 
     return cmd
 
 
+# The installer runs on its own there, writing to a log, and this machine follows the log.
+# It ran inside the ssh session, so a dropped connection killed it: found on the owner's
+# Pi 3, where starting Bento twice (the service and the installer's check) with Chromium
+# showing the steps left ssh's keep-alives unanswered for 45 s, and the install died
+# half-way while Bento was already running there. Now a drop is followed again from the
+# line it stopped at. The plan (what the person agreed to) is unchanged inside it.
+INSTALL_DIR = '"$HOME/.cache/bento-install"'
+END = "== bento install ended:"
+END_RE = re.compile(r"^== bento install ended: (\d+)$")
+RECONNECTS = 20
+RECONNECT_WAIT = 6
+
+
+def follow(skip: int = 0) -> str:
+    """Print the install's log from line `skip`+1 until it ends (or the installer is gone)."""
+    return (f'D={INSTALL_DIR}; L="$D/install.log"; i=0; '
+            'while [ ! -s "$D/install.pid" ] && [ $i -lt 40 ]; do sleep 0.5; i=$((i+1)); done; '
+            f'tail -n +{int(skip) + 1} -f "$L" & T=$!; '
+            f'while kill -0 "$(cat "$D/install.pid" 2>/dev/null)" 2>/dev/null && ! grep -q "^{END}" "$L"; do sleep 2; done; '
+            'sleep 2; kill $T 2>/dev/null; wait $T 2>/dev/null; true')
+
+
+def detached(cmd: str) -> str:
+    """`cmd` run on its own there (setsid and nohup, its own pid file and log), then followed."""
+    inner = f'echo $$ > {INSTALL_DIR}/install.pid; {cmd}; echo "{END} $?"'
+    # an earlier install still running there (pressed twice) is stopped first: two writing one
+    # log garbled it. setsid made it the leader of its own group, so the group goes with it.
+    return (f'D={INSTALL_DIR}; mkdir -p "$D"; O=$(cat "$D/install.pid" 2>/dev/null); '
+            '[ -n "$O" ] && kill -0 "$O" 2>/dev/null && { kill -TERM -- "-$O" 2>/dev/null || kill "$O"; sleep 1; }; '
+            'rm -f "$D/install.pid"; : > "$D/install.log"; '
+            f'S=$(command -v setsid || true); $S nohup sh -c {shlex.quote(inner)} > "$D/install.log" 2>&1 < /dev/null & '
+            + follow(0))
+
+
 async def install(cfg: dict, host: str, user: str, password: str, key_text: str,
                   authorize: bool = False, port: int = 22,
                   on_line=None, screen: bool = False) -> dict:
@@ -460,11 +497,40 @@ async def install(cfg: dict, host: str, user: str, password: str, key_text: str,
     bad = valid_target(host, user)
     if bad:
         raise InstallError(bad)
-    remote = plan(cfg, key_text, authorize, screen)
-    code, out, err, _via = await login_run(host, user, port, password, remote, INSTALL_TIMEOUT, on_line)
+    deadline = time.monotonic() + INSTALL_TIMEOUT
+    seen, end, lines = [0], [None], []
+
+    async def take(ln):
+        seen[0] += 1
+        m = END_RE.match(ln)
+        if m:
+            end[0] = int(m.group(1))
+            return
+        if ln:
+            lines.append(ln)
+        if on_line:
+            await on_line(ln)
+    remote = detached(plan(cfg, key_text, authorize, screen))
+    code, out, err, via = await login_run(host, user, port, password, remote, INSTALL_TIMEOUT, take)
+    drops = 0
+    while end[0] is None and code == 255 and seen[0] and drops < RECONNECTS:
+        left = deadline - time.monotonic()
+        if left < RECONNECT_WAIT * 2:
+            break
+        drops += 1
+        if on_line:
+            await on_line("… the connection dropped; it carries on there, following it again")
+        await asyncio.sleep(RECONNECT_WAIT)
+        code, out, err, via2 = await login_run(host, user, port, "" if via == "key" else password,
+                                               follow(seen[0]), left, take)
+    if end[0] is not None:
+        code = end[0]
+    elif code == 255 and seen[0]:
+        raise InstallError("the connection to it dropped and could not be made again; the install "
+                           "may still be running there. Read its switches in a few minutes")
     if code != 0:
         said = [clean_line(ln) for ln in (err or "").splitlines() if clean_line(ln)]
-        tail = [ln for ln in out.splitlines() if ln.strip()]
+        tail = [ln for ln in lines if ln.strip()]
         if code == 255 or not (said or tail):
             raise InstallError(_why(err, code, bool(password)))     # ssh itself failed: it never ran
         raise InstallError(f"the installer stopped: {stopped_because(said or tail)}")

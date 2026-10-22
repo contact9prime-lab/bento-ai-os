@@ -175,20 +175,25 @@ function provDevForm(d){
   // while it installs, the form is the progress: nothing to type, nothing to press twice
   const run=devRun(d.ip);
   if(run&&run.state==='running')return `<div class="dev-form">${devProgHTML(d.ip)}</div>`;
-  return `<div class="dev-form">${devProgHTML(d.ip)}
-    <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
-    ${devPwHTML('dev-pw',d.ip,(c&&c.user)||'')}
-    <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
+  // fields in one grid, the choices on one line, what the check found as a card, and the
+  // buttons last, where the eye ends up after reading it
+  return `<div class="dev-form dev-install">${devProgHTML(d.ip)}
+    <div class="dev-fields">
+      <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
+      ${devPwHTML('dev-pw',d.ip,(c&&c.user)||'')}
+      <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
+    </div>
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
     <label class="prov-opt">${pSwitch('dev-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label></div>
-    <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">Check it</button>
-      ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
     ${DEV.err[d.ip]?`<p class="warn dev-err">✗ ${esc(DEV.err[d.ip])}</p>`:''}
     ${sshRekeyHTML(d.ip,sshPort,DEV.rekey[d.ip])}
-    ${c?`<div class="dev-facts">${esc([c.board||c.arch,c.os,c.ram_mb+' MB memory',c.free_mb+' MB free'].filter(Boolean).join(' · '))}
-      ${c.bento?'<br>Bento is already there.':''}${c.host_key?`<br><span class="mut">Its key: ${esc(c.host_key)}</span>`:''}
-      ${c.problems.map(p=>`<br><span class="warn">✗ ${esc(p)}</span>`).join('')}
-      <br><span class="mut">This runs there:</span><code class="dev-plan">${esc(c.plan||'')}</code></div>`:''}
+    ${c?`<div class="dev-facts dev-found"><b>${esc([c.board||c.arch,c.os].filter(Boolean).join(' · '))}</b>
+      <span class="mut">${esc([c.ram_mb+' MB memory',c.free_mb+' MB free'].join(' · '))}${c.bento?' · Bento is already there':''}</span>
+      ${c.host_key?`<span class="mut dev-hostkey">Its key: ${esc(c.host_key)}</span>`:''}
+      ${c.problems.map(p=>`<span class="warn">✗ ${esc(p)}</span>`).join('')}
+      <details><summary>What runs there</summary><code class="dev-plan">${esc(c.plan||'')}</code></details></div>`:''}
+    <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">${c?'Check again':'Check it'}</button>
+      ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
   </div>`;
 }
 /* A reformatted machine shows a new SSH key and ssh refuses it. Both fingerprints, and a
@@ -207,7 +212,7 @@ function devPwHTML(id,ip,user){
       placeholder="${saved?'saved, encrypted: leave blank':'blank: use this machine’s key'}"></label>
     <div class="dev-pw-opts"><label class="prov-opt"><input type="checkbox" id="${id}-keep"${saved?'':' checked'}>
       ${saved?'Replace the saved one with what I type':'Remember it, encrypted on this computer'}</label>
-      ${saved?`<button class="endbtn dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
+      ${saved?`<button class="dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
 }
 function devPwKeep(id){const e=document.getElementById(id+'-keep');return !!(e&&e.checked)}
 async function devPwForget(b){
@@ -235,10 +240,11 @@ function provDevCreds(){
    timer. The raw lines are one tap away. */
 function devViews(){return [typeof NET!=='undefined'?NET.v:null,typeof PROV!=='undefined'?PROV.v:null].filter(Boolean)}
 function devRun(ip){for(const v of devViews()){const r=(v.installs||{})[ip];if(r)return r}return null}
+var DEV_LINES=80;
 function devRunSet(ip,patch,line){
   devViews().forEach(v=>{v.installs=v.installs||{};
     const r=v.installs[ip]=v.installs[ip]||{state:'running',started:Date.now()/1000,lines:[],stage:'',stages:[]};
-    Object.assign(r,patch);if(line!=null)r.lines=(r.lines||[]).concat(line).slice(-40)});
+    Object.assign(r,patch);if(line!=null)r.lines=(r.lines||[]).concat(line).slice(-DEV_LINES)});
 }
 function devAgo(s){s=Math.max(0,Math.round(s));return s<60?s+' s':Math.floor(s/60)+' min'}
 function devProgHTML(ip){
@@ -247,7 +253,7 @@ function devProgHTML(ip){
   if(!(st==='running'||st==='failed'||(st==='done'&&now-(run.finished||now)<600)))return '';
   const steps=run.stages||[],cur=steps.findIndex(x=>x.id===run.stage);
   const pct=st==='done'?100:Math.round(((cur<0?0.15:cur+0.5)/Math.max(1,steps.length))*100);
-  const lines=(run.lines||[]).slice(st==='failed'?-12:-40);
+  const lines=(run.lines||[]).filter(x=>x!=='').slice(-DEV_LINES);
   const head=st==='running'?`<span class="dev-spin" aria-hidden="true"></span><b>Installing Bento on ${esc(ip)}</b>`
     :st==='done'?`<span class="dev-ok">✓</span><b>Bento is installed on ${esc(ip)}</b>`
     :`<span class="dev-bad">✗</span><b>The install stopped</b>`;
@@ -260,18 +266,21 @@ function devProgHTML(ip){
     <ol class="dev-steps">${steps.map((x,i)=>{const c=st==='done'||i<cur?'done':i===cur?(st==='failed'?'bad':'now'):'';
       return `<li class="${c}">${esc(x.words)}</li>`}).join('')}</ol>
     ${st==='running'?`<p class="mut dev-prog-hint">A Pi takes 10 to 20 minutes. You can close Settings; it carries on.${steps.some(x=>x.id==='screen')?' Its own screen shows each step too.':''}</p>`:''}
-    ${lines.length?`<details class="dev-prog-log"${st==='failed'?' open':''}><summary>What it printed</summary><pre class="dev-log">${esc(lines.join('\n'))}</pre></details>`:''}
+    ${lines.length?`<div class="dev-console" aria-label="What it prints there"><div class="dev-console-h">
+      <span>${st==='running'?'Live from '+esc(ip):'What it printed'}</span>${st==='running'?'<i class="dev-console-dot" aria-hidden="true"></i>':''}</div>
+      <pre class="dev-log">${lines.map((x,i)=>`<span class="${i===lines.length-1&&st==='running'?'dev-now':/^(✗|!)/.test(x)?'dev-l-bad':/^✓/.test(x)?'dev-l-ok':/^▲/.test(x)?'dev-l-step':''}">${esc(x)}</span>`).join('\n')}</pre></div>`:''}
   </div>`;
 }
 /* the headline already says it stopped: the line under it is the reason, as a sentence */
 function devWhy(e){e=String(e||'').replace(/^the installer stopped:\s*/i,'');return e.charAt(0).toUpperCase()+e.slice(1)}
 function devProgRepaint(ip){
   const els=document.querySelectorAll(`.dev-prog[data-ip="${CSS.escape(ip)}"]`);
-  els.forEach(el=>{const open=el.querySelector('details')?.open,html=devProgHTML(ip);
+  els.forEach(el=>{const html=devProgHTML(ip);
     if(!html){el.remove();return}
+    // the console stays at the newest line, unless the person scrolled up to read
+    const old=el.querySelector('.dev-log'),stuck=!old||old.scrollHeight-old.scrollTop-old.clientHeight<24,top=old?old.scrollTop:0;
     const t=document.createElement('div');t.innerHTML=html;const n=t.firstElementChild;
-    const d=n.querySelector('details');if(d&&open)d.open=true;
-    const pre=n.querySelector('pre');el.replaceWith(n);if(pre)pre.scrollTop=pre.scrollHeight});
+    const pre=n.querySelector('.dev-log');el.replaceWith(n);if(pre)pre.scrollTop=stuck?pre.scrollHeight:top});
   return els.length;
 }
 /* The elapsed time: one timer while any install is on screen, and none once it is not. */

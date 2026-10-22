@@ -274,6 +274,25 @@ a few seconds apart, before it stops.
 
 ![The same row at phone width, Install it again a full-width button](screenshots/network-install-again-phone.png)
 
+The install form puts the user, password and agent's name in one row, the choices under them,
+and what **Check it** found in a card (the board, its memory, its SSH key, and *What runs there*
+folded away). **Check again** and **Install Bento there** come last, at the same height.
+
+![The install form after Check it on a Raspberry Pi 3 B+, with Install Bento there](screenshots/network-install-form-desk.png)
+
+![The install form at phone width, both buttons full width](screenshots/network-install-form-phone.png)
+
+While it installs, the card shows what the machine prints, live: the installer's steps and the
+lines from git, uv and apt under them, kept at the newest line. The installer runs on its own
+there and writes `~/.cache/bento-install/install.log`, and this computer follows that log. If
+the connection drops (a busy Pi, a weak Wi-Fi signal), the install carries on there, and the
+card says so and picks the log up again from where it was. Installing again stops an earlier
+installer that's still running there.
+
+![An install running, its console showing a dropped connection picked up again](screenshots/network-install-console-desk.png)
+
+![The live console at phone width, at its newest line](screenshots/network-install-console-phone.png)
+
 ![The Devices app: every machine, and a Pi's switches as read from it](screenshots/devices-controls-desk.png)
 
 ![A Pi's controls at phone width, each switch a full-size button](screenshots/devices-controls-phone.png)

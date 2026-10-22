@@ -75,6 +75,27 @@ the wait is the hub's own transcription.
 
 ![A hub and a Pi on real servers: speech understood on the hub, every byte checked](screenshots/devices-hub-hearing-terminal.png)
 
+### Typing instead of talking
+
+The band has **⌨ Type**. When nothing on the machine can understand speech, the box is simply
+there. Press Enter or **Send**: the answer comes back in the band, like a spoken one, and
+nothing opens on the screen. Esc closes the box.
+
+![A Pi's 800x480 kiosk with the box to type to Mr. Pi](screenshots/kiosk-type-box-800x480.png)
+
+![The kiosk after a typed question, the answer in the band](screenshots/kiosk-typed-800x480.png)
+
+![The same kiosk on a 1440x900 screen](screenshots/kiosk-typed-desk.png)
+
+### A small machine draws its own screen light
+
+On a small machine (the lite footprint, which a Pi gets), its own screen starts with the glass
+blur off. The Office's pet and its game of fetch move at four frames a second, and the Office
+draws twice a second when nothing is happening. A phone or a laptop looking at the Pi draws
+on its own hardware and keeps the full look. Measured with Chrome drawing in software at
+1920x1080: two windows with the blur took a whole core while nothing happened, and 0.8%
+without it. The kiosk went from 18% to 4%. Glass can be turned back on in Themes → Effects.
+
 ### On a small screen
 
 It fits the screens people put on a Pi: the official 7-inch (800×480), a 3.5-inch (480×320),

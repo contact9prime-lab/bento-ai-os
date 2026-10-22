@@ -116,8 +116,8 @@ function netSecureForm(r){
   const c=NET.check[r.ip],steps=(NET.v||{}).steps||[];
   const sel=NET.steps[r.ip]||{};
   return `<div class="dev-form net-form">
-    <label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
-    ${devPwHTML('net-pw',r.ip,(c&&c.user)||r.user||'')}
+    <div class="dev-fields"><label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
+    ${devPwHTML('net-pw',r.ip,(c&&c.user)||r.user||'')}</div>
     <label class="net-mine"><span class="net-mine-h">Your own SSH key ${pInfo('After password logins go off, only keys get in. Paste the .pub file from your own computer (~/.ssh/id_ed25519.pub) so you can still log in.')}</span>
       <input id="net-mine" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAA… you@laptop"></label>
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
@@ -167,8 +167,8 @@ function netControlsForm(r,v){
       ${known&&(s.id==='code'||st.installed)?`<button class="endbtn" data-net="ctlsw" data-sw="${esc(s.id)}" data-on="${on?0:1}" data-key="${esc(r.key)}">${on?'Turn off':'Turn on'}</button>`:''}
     </div>`};
   return `<div class="dev-form net-form">
-    <label>User there <input id="ctl-user" maxlength="32" value="${esc(r.user||'')}" placeholder="the user set in Imager"></label>
-    ${devPwHTML('ctl-pw',r.ip,r.user||'')}
+    <div class="dev-fields"><label>User there <input id="ctl-user" maxlength="32" value="${esc(r.user||'')}" placeholder="the user set in Imager"></label>
+    ${devPwHTML('ctl-pw',r.ip,r.user||'')}</div>
     <div class="dev-acts"><button class="endbtn" data-net="ctlread" data-key="${esc(r.key)}">${st?'Read again':'Read its switches'}</button>
       ${st&&st.installed?`<button class="endbtn" data-net="ctlupdate" data-key="${esc(r.key)}">Update Bento there${st.version?' ('+esc(st.version)+')':''}</button>`:''}</div>
     ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
@@ -197,6 +197,8 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
   :'Bento can no longer log in there without a password.'}
 function netWire(box){
   if(box.querySelector('.dev-prog.running')&&typeof devProgTick==='function')devProgTick();
+  // a console drawn fresh opens at its newest line, as a terminal does
+  box.querySelectorAll('.dev-console .dev-log').forEach(p=>p.scrollTop=p.scrollHeight);
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
   box.querySelectorAll('[data-pwforget]').forEach(b=>b.onclick=()=>devPwForget(b));
   box.querySelectorAll('[data-devnode]').forEach(n=>n.onclick=()=>devMapGo(n.dataset.devnode));

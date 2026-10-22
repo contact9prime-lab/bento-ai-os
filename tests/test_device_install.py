@@ -13,6 +13,7 @@ import ipaddress
 import json
 import os
 import socket
+import shutil
 import stat
 import struct
 import sys
@@ -267,7 +268,7 @@ def test_install_runs_the_plan_lets_the_key_in_and_then_needs_no_password(fake_s
                                             authorize=True, on_line=on_line))
     assert got["ok"] and got["authorized"] and lines[-1] == "done"
     remote = (fake_ssh / "remote.txt").read_text()
-    assert remote == remoteinstall.plan({}, key, authorize=True), "what was shown is what ran"
+    assert remote == remoteinstall.detached(remoteinstall.plan({}, key, authorize=True)), "what was shown is what ran"
     assert f"--enroll={key}" in remote and "--lite" in remote
     assert "--yes" not in remote, "--yes would install every optional extra nobody agreed to"
     assert "https://example.test/install.sh" in remote
@@ -624,3 +625,125 @@ def test_a_machine_heard_twice_at_once_is_set_up_once(monkeypatch):
         await asyncio.gather(server._provision_new(dict(b)), server._provision_new(dict(b)))
     asyncio.run(both())
     assert len(runs) == 1
+
+
+# ---- a dropped connection does not stop the install --------------------------------------------
+
+DROPPING_SSH = r'''#!/usr/bin/env python3
+"""A stand-in `ssh` that RUNS the command in sh with HOME set to the stand-in machine, and
+drops the first connection after two lines (exit 255, as ssh does when keep-alives go
+unanswered). Its children are killed with it; a detached installer is not its child."""
+import os, signal, subprocess, sys
+here = os.path.dirname(os.path.abspath(__file__))
+remote = sys.argv[-1]
+env = {**os.environ, "HOME": os.path.join(here, "machine")}
+env.pop("SSH_ASKPASS", None)
+drop = not os.path.exists(os.path.join(here, "dropped"))
+with open(os.path.join(here, "remotes.txt"), "a") as f:
+    f.write(remote + "\n---\n")
+p = subprocess.Popen(["sh", "-c", remote], env=env, stdout=subprocess.PIPE, start_new_session=True)
+n = 0
+for raw in p.stdout:
+    sys.stdout.buffer.write(raw); sys.stdout.flush()
+    n += 1
+    if drop and n == 2:
+        open(os.path.join(here, "dropped"), "w").close()
+        os.killpg(p.pid, signal.SIGKILL)
+        sys.stderr.write("Timeout, server 127.0.0.2 not responding.\n")
+        sys.exit(255)
+sys.exit(p.wait())
+'''
+
+SLOW_INSTALLER = r'''#!/bin/sh
+echo "▲ checking the network"
+sleep 0.4
+echo "▲ cloning AgentOS"
+sleep 1.5
+printf 'resolving 10%%\rresolving 100%%\n'
+echo "▲ starting it once to check it actually works"
+sleep 0.4
+echo "✓ it starts, serves the desktop, and answers"
+EOF_MARK
+'''
+
+
+@pytest.mark.skipif(not shutil.which("setsid") or not shutil.which("curl"), reason="needs setsid and curl")
+def test_a_dropped_connection_is_followed_again_and_the_install_finishes(tmp_path, monkeypatch):
+    """Found on the owner's Pi 3: ssh gave up during the installer's own check and took the
+    installer with it. Now it runs on its own there and is followed again from where it was."""
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    (bin_ / "machine").mkdir()
+    ssh = bin_ / "ssh"
+    ssh.write_text(DROPPING_SSH)
+    ssh.chmod(0o755)
+    inst = tmp_path / "install.sh"
+    inst.write_text(SLOW_INSTALLER.replace("EOF_MARK\n", ""))
+    monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("AGENTOS_SCAN_NETWORKS", "127.0.0.0/8")
+    monkeypatch.setenv("AGENTOS_INSTALL_URL", inst.as_uri())
+    monkeypatch.delenv("AGENTOS_REPO", raising=False)
+    monkeypatch.setattr(remoteinstall, "RECONNECT_WAIT", 0.2)
+    lines = []
+
+    async def on_line(ln):
+        lines.append(ln)
+    with teamlink.at(tmp_path / "home"):
+        got = asyncio.run(remoteinstall.install({}, "127.0.0.2", "pi", "pw", "k", on_line=on_line))
+    assert got["ok"]
+    assert (bin_ / "dropped").exists(), "the first connection really dropped"
+    assert any("following it again" in ln for ln in lines)
+    said = [ln for ln in lines if "following it again" not in ln]
+    assert said == ["▲ checking the network", "▲ cloning AgentOS", "resolving 100%",
+                    "▲ starting it once to check it actually works",
+                    "✓ it starts, serves the desktop, and answers"], "every line once, in order"
+    log = (bin_ / "machine/.cache/bento-install/install.log").read_text()
+    assert log.rstrip().endswith("== bento install ended: 0")
+
+
+@pytest.mark.skipif(not shutil.which("setsid") or not shutil.which("curl"), reason="needs setsid and curl")
+def test_a_detached_install_that_fails_says_its_own_last_words(tmp_path, monkeypatch):
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    (bin_ / "machine").mkdir()
+    (bin_ / "dropped").touch()              # this one does not drop
+    ssh = bin_ / "ssh"
+    ssh.write_text(DROPPING_SSH)
+    ssh.chmod(0o755)
+    inst = tmp_path / "install.sh"
+    inst.write_text('#!/bin/sh\necho "▲ cloning AgentOS"\necho "fatal: unable to access" >&2\n'
+                    'printf "\\033[31m✗  clone failed\\033[0m\\n" >&2\nexit 1\n')
+    monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("AGENTOS_SCAN_NETWORKS", "127.0.0.0/8")
+    monkeypatch.setenv("AGENTOS_INSTALL_URL", inst.as_uri())
+    monkeypatch.delenv("AGENTOS_REPO", raising=False)
+    with teamlink.at(tmp_path / "home"):
+        with pytest.raises(remoteinstall.InstallError) as e:
+            asyncio.run(remoteinstall.install({}, "127.0.0.2", "pi", "pw", "k"))
+    assert str(e.value) == "the installer stopped: clone failed (fatal: unable to access)"
+
+
+@pytest.mark.skipif(not shutil.which("setsid") or not shutil.which("curl"), reason="needs setsid and curl")
+def test_installing_again_stops_the_install_still_running_there(tmp_path):
+    """Two installers writing one log printed every line two or three times."""
+    import subprocess
+    import time as _t
+    first = tmp_path / "first.sh"
+    first.write_text('#!/bin/sh\necho "first one"\nsleep 60\n')
+    second = tmp_path / "second.sh"
+    second.write_text('#!/bin/sh\necho "second one"\n')
+    env = {**os.environ, "HOME": str(tmp_path)}
+    run1 = subprocess.Popen(["sh", "-c", remoteinstall.detached(f"curl -fsSL {first.as_uri()} | sh")],
+                            env=env, stdout=subprocess.PIPE, text=True, start_new_session=True)
+    pidf = tmp_path / ".cache/bento-install/install.pid"
+    for _ in range(50):
+        if pidf.exists() and pidf.read_text().strip():
+            break
+        _t.sleep(0.1)
+    old = int(pidf.read_text())
+    os.killpg(run1.pid, 9)                  # the hub's connection to the first one is gone
+    out = subprocess.run(["sh", "-c", remoteinstall.detached(f"curl -fsSL {second.as_uri()} | sh")],
+                         env=env, capture_output=True, text=True, timeout=30).stdout
+    assert out.splitlines() == ["second one", "== bento install ended: 0"]
+    with pytest.raises(ProcessLookupError):
+        os.kill(old, 0)

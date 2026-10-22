@@ -3176,7 +3176,9 @@ Six rules:
   `memory.Store()` with no path is the machine's database: the terminal verbs called it that way,
   and every ledger row they wrote raised inside a try and was lost.
 - **What runs is what was shown.** `plan()` is the command on the consent screen and the one
-  `install()` sends; the test reads the fake ssh's log for it. NEVER `--yes` on a remote
+  `install()` sends, inside `detached()` (setsid + nohup, a log under `~/.cache/bento-install`, then
+  `follow()`; a drop is followed again from the line it reached, `RECONNECTS` times). It ran inside the
+  ssh session once, and a Pi 3 too busy to answer keep-alives lost its installer half-way; the test reads the fake ssh's log for it. NEVER `--yes` on a remote
   install: it answers every optional extra (Claude Code, Codex…), which nobody agreed to here.
   Found by the live run. Installer lines pass `clean_line` (ANSI and controls stripped) before
   any toast, and a failure says the installer's own last stderr line.
@@ -3362,6 +3364,12 @@ be on and agents would be working in the office". Five rules:
   must exempt `.kiosk` (the scene IS that screen). The band shrinks by `max-height` media, clamps its line,
   and while an answer shows it may take two thirds of a short screen (the office fits above, the band is
   measured); the kiosk's Office scale may fall to .5 below 720px wide so rooms sit side by side.
+- **A small machine's own screen is light, and the kiosk takes typing** (`/api/platform` `small` from
+  `profile.resolve`, `glassSmall`, `officeLight`; `tests/test_kiosk_small.py`). Found on a Pi 3 B+ that
+  "hangs": Chromium's GPU process at 62% and the page at 40%, swapping, under-voltage. The glass blur
+  alone was a whole core at rest in software rendering, and the Office drew decor at 30 fps forever and
+  asked for a frame on every refresh. Remote viewers keep the full look. Measure with CPU throttling
+  OFF: Chrome's own throttling costs ~86% of a core on a blank page.
 - **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
   `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
   it to video or another origin.

@@ -3,6 +3,7 @@
 let PLATFORM={mode:'hosted',detected_mode:'hosted',capabilities:{},summary:''};
 async function loadPlatform(){
   try{PLATFORM=await (await fetch('/api/platform')).json()}catch(e){}
+  if(typeof glassSmall==='function')glassSmall(PLATFORM.small);
   updateBell();
 }
 function cap(id){return PLATFORM.capabilities?.[id]||{available:false,supported:false,reason:'',component:''}}
