@@ -369,7 +369,11 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
     # in front of, so "it is set up when you open it" is not true here — the arc has
     # a terminal face and this is the only place that names it.
     try:
-        if cfgmod.is_first_run():
+        from . import provision as _prov
+        if cfgmod.is_first_run() and _prov.from_hub(cfg):
+            print("  ▲ this machine is being set up from the Bento that installed it.")
+            print("    Nothing to answer here: it finishes by itself. `bento pool wait` says if it still waits.\n")
+        elif cfgmod.is_first_run():
             print("  ▲ this machine has not been set up yet.")
             print("    over SSH:  bento setup   — name it, give it a brain, put it to work")
             print("    or open the address above: the wizard is the first thing you see.\n")
@@ -5053,7 +5057,8 @@ def _provision_cli(args, cfg, a, rest, val, run):
         st = prov.status(cfg)
         if st["waiting"]:
             print(f"  Waiting to be set up ({st['why']}). Machine id {st['id']}.")
-            print(f"  Code: {st['pin'][:3]} {st['pin'][3:]}" if st["pin"] else "  It carries an enrolment key.")
+            print(f"  Code: {st['pin'][:3]} {st['pin'][3:]}" if st["pin"] else
+                  "  It carries its hub's key: the hub chooses everything and sets it up by itself.")
             if st["locked"]:
                 print(f"  Too many wrong codes: closed for {st['locked'] // 60 + 1} more minutes.")
         else:
@@ -8842,6 +8847,11 @@ def main():
         # finished in the other picks up exactly where it was left.
         from . import setup_tui
         cfg, store = _open_store(getattr(args, "user", ""))
+        from . import provision as _prov
+        if _prov.from_hub(cfg) and not getattr(args, "again", False):
+            # the hub chooses everything; asking here would answer for it
+            sys.exit("  This machine is being set up from the Bento that installed it: nothing to answer here.\n"
+                     "  To set it up here instead:  bento pool wait off  then  bento setup")
         if getattr(args, "again", False):
             # the desktop's "Walk me through it": skips and confirmations cleared, the
             # arc from the top — onboarding.restart, which never deletes anything

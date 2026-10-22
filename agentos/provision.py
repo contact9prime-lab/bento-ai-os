@@ -503,6 +503,16 @@ def apply_people(store, cfg: dict, prof: dict, hub: str = "") -> dict:
 
 # ---- the waiting side ----------------------------------------------------------------------
 
+# The last machine that asked this one whether it waits (a `look` naming itself). In memory
+# only: it changes every few seconds while a hub asks, and a Pi's SD card wears out.
+ASKED: dict = {}
+
+
+def _plain_name(v) -> str:
+    from . import teamlink
+    return teamlink.plain(str(v or ""))[:40].strip()
+
+
 def waiting(cfg: dict) -> tuple[bool, str]:
     """Is this machine waiting to be set up by another, and why. Read at start and after
     every change; the door and the announcements follow it."""
@@ -567,7 +577,15 @@ def status(cfg: dict) -> dict:
     kid = (parse_key(d["key"]) or {}).get("id", "") if d["key"] else ""
     return {"waiting": ok, "why": why, "pin": pin() if ok and not kid else "",
             "key_id": kid, "id": id_code(fp), "locked": locked(),
-            "claimed": d["claimed"], "port": tcp_port(cfg), "hw": hardware()}
+            "claimed": d["claimed"], "port": tcp_port(cfg), "hw": hardware(),
+            "from_hub": ok and bool(kid), "asked_by": dict(ASKED) if ok else {}, "hubs": hubs()}
+
+
+def from_hub(cfg: dict) -> bool:
+    """Waiting with a hub's key: installed from a hub (or its SD card), which chooses
+    everything. Its own screen asks nothing, because nobody may be standing at it."""
+    ok, _ = waiting(cfg)
+    return ok and bool(load()["key"])
 
 
 def proof(secret: str, leader_fp: str, member_fp: str, nonce: str, side: str = "claim") -> str:
@@ -972,6 +990,9 @@ class Door:
             return
         hits.append(now)
         self._replies[addr[0]] = hits
+        by = _plain_name(msg.get("by"))
+        if by:
+            ASKED.update(name=by, addr=addr[0], at=now)
         out = here(self.cfg())
         out["nonce"] = str(msg.get("nonce") or "")[:32]
         try:
@@ -1064,7 +1085,7 @@ class Watch:
             asyncio.ensure_future(self.on_new(b))
 
 
-async def scan(wait: float = 2.0, targets: list[str] | None = None) -> list[dict]:
+async def scan(wait: float = 2.0, targets: list[str] | None = None, by: str = "") -> list[dict]:
     """Ask the network who is waiting, and wait `wait` seconds for answers. What answers is
     remembered (note_seen), so the list in Settings fills from a scan as from announcements."""
     loop = asyncio.get_running_loop()
@@ -1079,7 +1100,10 @@ async def scan(wait: float = 2.0, targets: list[str] | None = None) -> list[dict
 
     tr, _ = await loop.create_datagram_endpoint(lambda: _UDP(on), sock=_udp_socket(None))
     try:
-        raw = json.dumps({"m": MAGIC, "op": "look", "nonce": nonce}).encode()
+        look = {"m": MAGIC, "op": "look", "nonce": nonce}
+        if by:
+            look["by"] = by[:40]           # so a waiting machine's screen can say who is setting it up
+        raw = json.dumps(look).encode()
         for _ in range(2):                 # UDP drops: say it twice
             for a in (targets or broadcast_addresses()):
                 try:

@@ -419,6 +419,8 @@ function provWaitCard(v){
   if(!show){if(el)el.remove();return}
   if(!el){el=document.createElement('div');el.id='prov-wait';el.setAttribute('role','status');document.body.appendChild(el)}
   const hw=t.hw||{};
+  el.classList.toggle('hub',!!t.from_hub);
+  if(t.from_hub){el.innerHTML=provHubWaitHTML(t);provHubWire(el);return}
   el.innerHTML=`<b>Waiting to be set up</b>
     <p>${t.locked?`Too many wrong codes. Try again in ${Math.ceil(t.locked/60)} minutes.`
       :t.pin?`On the Bento that leads your community, open Settings → Team & Communications → Community, choose this machine and type`
@@ -430,6 +432,30 @@ function provWaitCard(v){
     await fetch('/api/provision',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({wait:false})});
     el.remove();
   };
+}
+/* Installed from a hub: the hub chose everything (name, screen, voice), so this screen
+   asks nothing. It says who is setting it up and that it finishes by itself. */
+function provHubWaitHTML(t){
+  const a=t.asked_by||{},hw=t.hw||{};
+  const who=a.name?esc(a.name):(t.hubs&&t.hubs.length?esc(t.hubs[0]):'the Bento that installed it');
+  const heard=a.at?`Heard from ${esc(a.name||a.addr)} ${devAgo(Date.now()/1000-a.at)} ago.`
+    :'Waiting for it to answer. It finishes by itself.';
+  return `<div class="prov-hub">
+    <div class="prov-mark">▲ Bento</div>
+    <h1>Getting set up from <span class="prov-who">${who}</span></h1>
+    <p>Everything is chosen there. Nothing to do here.</p>
+    <p class="mut">${heard}</p>
+    <p class="mut">${esc(hw.board||hw.host||'This machine')} · id ${esc(t.id)}</p>
+    <button class="prov-here-link" id="prov-here">Set it up here instead</button>
+  </div>`;
+}
+function provHubWire(el){
+  el.querySelector('#prov-here').onclick=async()=>{
+    await fetch('/api/provision',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({wait:false})});
+    el.remove();location.reload();
+  };
+  // a hub asks every few seconds: keep "heard from" current until it is set up
+  if(!PROV.hubTick)PROV.hubTick=setTimeout(()=>{PROV.hubTick=0;provWaitCheck()},5000);
 }
 async function provWaitCheck(){
   try{const v=await apiJSON('/api/provision');PROV.v=v;provWaitCard(v)}catch(e){}

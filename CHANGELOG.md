@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.77 — 2026-10-22
+
+**A Pi installed from the hub asks nothing on its own screen.** It showed the setup questions
+(*One agent, or a company?*) on a screen nobody may be standing at. Everything is chosen on the
+hub, so the Pi's screen now says *Getting set up from <your hub>*, when it last heard from it,
+and nothing else. `bento setup` on the Pi says the same. *Set it up here instead* is still there,
+small, for a Pi whose hub never comes.
+
 ## 0.6.76 — 2026-10-22
 
 **A Pi installed from the hub opens Bento on its screen.** The screen step tried to let the page

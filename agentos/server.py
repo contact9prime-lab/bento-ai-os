@@ -973,7 +973,7 @@ async def _provision_ask(ips: list) -> list:
     from . import provision as provmod
     if not ips:
         return []
-    found = await provmod.scan(1.5, targets=list(ips))
+    found = await provmod.scan(1.5, targets=list(ips), by=_my_name())
     auto = {k["id"] for k in provmod.load()["keys"] if k.get("auto")}
     for b in found:
         # only what can be set up without a person; the rest is listed, as a scan lists it
@@ -992,6 +992,14 @@ async def _provision_ask_installed(ip: str, tries: int = 30, every: float = 6.0)
             for b in await _provision_ask([ip]):
                 if provmod.was_enabled_here(b["fp"]) or not b.get("waiting"):
                     return
+
+
+def _my_name() -> str:
+    from . import teamlink
+    try:
+        return teamlink.machine_name(state.machine_cfg())
+    except Exception:
+        return ""
 
 
 async def _provision_new(b: dict):
@@ -10356,8 +10364,12 @@ async def api_setup_state():
     local = await providers.ollama_models(cfg["providers"]["ollama"]["base_url"])
     from . import desktop as desktopmod
     from . import setup as setupmod
+    from . import provision as provmod
+    hub = provmod.from_hub(state.machine_cfg())
     return {
-        "first_run": cfgmod.is_first_run(),
+        # set up from a hub: the hub chooses everything, so this screen asks nothing
+        "first_run": cfgmod.is_first_run() and not hub,
+        "from_hub": hub,
         "agent_name": cfg.get("agent_name", "Aria"),
         "autonomy": cfg.get("autonomy", "balanced"),
         "default_model": cfg.get("default_model", ""),
@@ -12907,7 +12919,7 @@ async def api_provision_scan():
     if (r := _require_admin()):
         return r
     from . import provision as provmod
-    found = await provmod.scan(2.0)
+    found = await provmod.scan(2.0, by=_my_name())
     v = _provision_view()
     v["found"] = len(found)
     return v
@@ -13095,7 +13107,7 @@ async def api_devices_scan():
     from . import netscan
     from . import provision as provmod
     t0 = time.time()
-    found, bento = await asyncio.gather(netscan.scan(), provmod.scan(1.5))
+    found, bento = await asyncio.gather(netscan.scan(), provmod.scan(1.5, by=_my_name()))
     d = provmod.load()
     for dev in found:
         netscan.remember(d["devices"], dev)
