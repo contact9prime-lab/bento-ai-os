@@ -734,6 +734,11 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
     if req.get("op") in ("chat", "chat_pull"):
         return await _team_chat_in(lk, req)
     owner = lk.get("owner") or ""
+    if req.get("op") == "hear":
+        # what a machine this hub set up heard, understood here (hearing.answer_hub)
+        from . import hearing
+        with usersmod.as_user(owner):
+            return await hearing.answer_hub(state["store"], state["pdp"], state.machine_cfg(), lk, req)
     if req.get("op") == "edge_run":
         # code too big for a machine this hub set up, run here in a sandbox of its own
         from . import edgecode
@@ -1164,6 +1169,10 @@ async def _provision_enable(items: list, profile: dict, by: str = "") -> dict:
                     + (f" by {by}" if by else "") + f"; profile {json.dumps(r['profile'])}")
             # code too big for it may run here, sandboxed: the hub's consent, revocable
             with usersmod.as_user(r.get("owner") or ""):
+                from . import hearing as _hearing
+                if _hearing.grant_hub(state["store"], r["label"]):
+                    _ledger("provision.hear", f"team:{r['label']}/*",
+                            f"{r['label']} may have this machine understand what is said to it")
                 if _edge().grant(state["store"], r["label"]):
                     _ledger("provision.code", f"team:{r['label']}/*",
                             f"{r['label']} may hand code too big for it to this machine, run in a sandbox")
@@ -13409,9 +13418,24 @@ def _network_view() -> dict:
             "secures": {ip: {k: v for k, v in run.items()} for ip, run in state.get("device_secures", {}).items()},
             "installs": state.get("device_installs", {}),
             "firewall": _fw_state(),
+            "hearing": _hub_hearing(),
             "me": _me_on_map(),
             "look_choices": _look_choices(),
             "switches": _switches_meta()}
+
+
+def _hub_hearing() -> dict:
+    """Whether this computer can understand speech for the machines it set up."""
+    from . import hearing
+    try:
+        cfg = state.machine_cfg()
+        have = hearing.status(cfg)["have"]
+        eng = next((e for e in hearing._order(cfg, "auto") if e != "hub" and have.get(e)), "")
+        st = hearing.status({**cfg, "speech": {**(cfg.get("speech") or {}), "hear": {"engine": eng}}}) if eng else {}
+    except Exception:
+        return {"engine": "", "line": ""}
+    return {"engine": eng, "line": st["line"] if eng else
+            "This computer can't understand speech yet, so machines set up from here can't listen through it."}
 
 
 def _me_on_map() -> dict:

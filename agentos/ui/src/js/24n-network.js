@@ -30,6 +30,11 @@ async function netPaint(){
   if(fw.words&&can)rows.push(`<div class="net-fw"><p>${esc(fw.words)} ${typeof pInfo!=='function'?'':pInfo('Without them a Pi set up from here can’t join it, hand work over or send code too big for it. Or run: '+(fw.commands||[]).join(' ; '))}</p>
     <div class="net-fw-acts"><button class="endbtn" data-net="fw-open">Open them</button>
     <button class="endbtn" data-net="fw-done">I opened them</button></div></div>`);
+  // the Pis set up from here listen through this computer: say when it can't understand speech
+  const hh=v.hearing||{};
+  if(can&&!hh.engine&&hh.line&&(v.rows||[]).some(r=>!r.ignored&&['set up','linked','installed'].includes(r.bento)))
+    rows.push(`<div class="net-fw"><p>${esc(hh.line)}</p><div class="net-fw-acts">
+      <button class="endbtn" data-net="hearsetup">Set up listening</button></div></div>`);
   const list=(v.rows||[]).filter(r=>!r.ignored),hidden=(v.rows||[]).filter(r=>r.ignored);
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
   else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
@@ -221,6 +226,7 @@ async function netAct(act,b){
   const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
     password:(document.getElementById('net-pw')||{}).value||'',remember:devPwKeep('net-pw'),mine:((document.getElementById('net-mine')||{}).value||'').trim()});
   try{
+    if(act==='hearsetup'){placeSettings('voice')();return}
     if(act==='fw-open'||act==='fw-done'){b.disabled=true;
       try{await post('/api/network/firewall',{action:act==='fw-open'?'open':'done'});
         toast(act==='fw-open'?'✓ The ports are open':'Noted')}

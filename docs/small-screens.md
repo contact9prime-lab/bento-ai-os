@@ -55,6 +55,26 @@ rather it listened to everything, choose *Everything it hears*.
 
 ![The kiosk on a 7-inch screen](screenshots/kiosk-answer.png)
 
+### Listening through its hub
+
+A Pi set up from a hub hears through it. What it records is sent to the hub over the link that
+set it up, the hub turns it into words with its own whisper.cpp or voice key, and the words come
+back. The hub is faster at this than a Pi, and has the keys a Pi set up from it doesn't. If the
+hub can't, the Pi uses anything of its own.
+
+So the hub needs a way to hear: Settings → Voice → Listening there (whisper.cpp, or an ElevenLabs,
+OpenAI or Google Cloud key). Until it has one, its Devices tab says so. Each machine it sets up is
+allowed to use it, as a permission you can revoke in Permissions.
+
+It sends each thing you say once you pause, not word by word. The link adds a few milliseconds;
+the wait is the hub's own transcription.
+
+![The hub's Devices tab: it can't understand speech yet, with Set up listening](screenshots/devices-hub-hearing.png)
+
+![The hub saying it cannot hear yet, at phone width](screenshots/devices-hub-hearing-phone.png)
+
+![A hub and a Pi on real servers: speech understood on the hub, every byte checked](screenshots/devices-hub-hearing-terminal.png)
+
 ### On a small screen
 
 It fits the screens people put on a Pi: the official 7-inch (800×480), a 3.5-inch (480×320),

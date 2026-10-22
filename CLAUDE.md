@@ -3344,6 +3344,14 @@ be on and agents would be working in the office". Five rules:
   `--target whisper-cli`, model to `hearing.MODEL_DIR` through a `.part` file, `needs_root`
   False, no argv without git/cmake/a compiler so the button is a sentence). `alsa-utils` is
   offered only to the terminal check. Nothing installs by default.
+- **A machine set up from a hub hears through it** (`hearing` engine `hub`, `_hub_run`, `answer_hub`,
+  `grant_hub`, wire op `hear`; `tests/test_hub_hearing.py`, live run `packaging/dev/provision-e2e/hub_hear_run.py`).
+  Asked for as "transcription through the hub so it happens quickly, and build it in the hub". `auto` tries the
+  hub first (a Pi is slow at it and has none of the hub's keys), then its own engines if the hub refuses. The
+  hub answers only a machine it set up holding the `speech.hear` grant written at enable (revoked with the
+  link), with its OWN engines (`answer_hub` never picks `hub`: no chain of hubs). One utterance per call, at
+  most `HUB_MAX_BYTES` (base64 fits the 4 MiB line); measured 8 ms of link on loopback, so the wait is the engine.
+  The hub's Devices tab says when it has nothing to hear with (`_hub_hearing`).
 - **A Pi's screen is small, and the kiosk is tested at its sizes** (480x320, 800x480, 1024x600, 480x800;
   `tests/test_kiosk_small.py`). A 480-wide kiosk is `dev-mobile`, and the phone rule hiding the Office scene
   must exempt `.kiosk` (the scene IS that screen). The band shrinks by `max-height` media, clamps its line,
