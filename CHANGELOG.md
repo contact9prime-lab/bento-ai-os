@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.76 — 2026-10-22
+
+**A Pi installed from the hub opens Bento on its screen.** The screen step tried to let the page
+use the microphone first, which needs root, and on a Pi whose `sudo` asks for a password it
+stopped there, before it wrote the entry that opens Bento at login. It now opens Bento first and
+says the microphone will be asked for once. Chromium on the Pi's desktop also needed telling to
+use Wayland, or it exited at once.
+
+**The Pi's screen shows its install again.** The installer chose the screen page and then wiped
+the choice a few lines later, so no Pi showed it. Fixed, and at the end the page hands over to
+Bento full screen.
+
+**A Pi waiting to be set up is set up even through a firewall.** A hub with ufw on dropped the
+Pi's broadcast, so the Pi sat on *Waiting to be set up*. The hub now asks a machine it just
+installed directly, and **Look at the network** asks every machine that answered.
+
 ## 0.6.75 — 2026-10-22
 
 **Installing Bento on a Pi shows how far it got.** The form used to turn into a scrolling log.

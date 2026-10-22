@@ -963,6 +963,37 @@ async def _provision_admins(ev: dict):
             await state["broadcast_user"](ev, u["id"])
 
 
+_PROV_BUSY: set = set()
+
+
+async def _provision_ask(ips: list) -> list:
+    """Ask these addresses directly whether they are waiting, and set up what answers with an
+    automatic key. A waiting machine's broadcast can be dropped by this machine's own firewall
+    (ufw on the hub that had just installed a Pi), and the answer to a question we sent passes it."""
+    from . import provision as provmod
+    if not ips:
+        return []
+    found = await provmod.scan(1.5, targets=list(ips))
+    auto = {k["id"] for k in provmod.load()["keys"] if k.get("auto")}
+    for b in found:
+        # only what can be set up without a person; the rest is listed, as a scan lists it
+        if b.get("waiting") and b.get("key_id") in auto and not provmod.was_enabled_here(b["fp"]):
+            await _provision_new(b)
+    return found
+
+
+async def _provision_ask_installed(ip: str, tries: int = 30, every: float = 6.0):
+    """After an install, ask the machine until it is set up: it starts its door a little after
+    the installer ends, and a Pi takes a while."""
+    from . import provision as provmod
+    for _ in range(tries):
+        await asyncio.sleep(every)
+        with contextlib.suppress(Exception):
+            for b in await _provision_ask([ip]):
+                if provmod.was_enabled_here(b["fp"]) or not b.get("waiting"):
+                    return
+
+
 async def _provision_new(b: dict):
     """A machine turned on and said it is waiting. Ask whoever may set it up — and if it
     carries one of this machine's keys marked automatic, set it up now (the zero-touch
@@ -975,7 +1006,14 @@ async def _provision_new(b: dict):
                 f"is waiting to be set up, heard {zeromod.via_words(b.get('via', ''))}")
     auto = next((k for k in provmod.load()["keys"] if k.get("auto") and k["id"] == b.get("key_id")), None)
     if auto:
-        res = await _provision_enable([{"fp": b["fp"]}], {}, by=f"the automatic key '{auto.get('label')}'")
+        # heard twice at once (the announcement and a direct ask): set it up once
+        if b["fp"] in _PROV_BUSY or provmod.was_enabled_here(b["fp"]):
+            return
+        _PROV_BUSY.add(b["fp"])
+        try:
+            res = await _provision_enable([{"fp": b["fp"]}], {}, by=f"the automatic key '{auto.get('label')}'")
+        finally:
+            _PROV_BUSY.discard(b["fp"])
         r = (res.get("results") or [{}])[0]
         await _provision_admins({"type": "provision", "kind": "enabled" if r.get("ok") else "failed",
                                  "name": b["name"], "error": r.get("error", ""), "via": b.get("via", "")})
@@ -3285,7 +3323,7 @@ async def api_screen(body: dict):
     if not got["ok"]:
         return JSONResponse({"error": got.get("error") or "it did not finish",
                              "needs": got.get("needs") or [], "screen": st, "lines": lines}, status_code=400)
-    return {"ok": True, "screen": st, "lines": lines}
+    return {"ok": True, "screen": st, "lines": lines, "mic": got.get("mic", ""), "needs": got.get("needs") or []}
 
 
 @app.put("/api/face")
@@ -13062,6 +13100,10 @@ async def api_devices_scan():
     for dev in found:
         netscan.remember(d["devices"], dev)
     provmod.save(d)
+    # and each machine that answered, directly: a broadcast's answers can be dropped here
+    heard = {b["fp"] for b in bento}
+    bento += [b for b in await _provision_ask([dev["ip"] for dev in found if dev.get("ports")])
+              if b["fp"] not in heard]
     nets = ", ".join(str(n) for n in netscan.local_networks()) or "none"
     _ledger("device.scan", "network:local", f"looked at {nets}: {len(found)} answered, "
             f"{len(bento)} waiting Bento, in {time.time() - t0:.1f}s")
@@ -13212,6 +13254,7 @@ async def _device_install(ip, user, pw, port, k, authorize, screen=False):
                     f"{got.get('host_key') or 'unknown'}; it is set up when it is heard")
         await _provision_admins({"type": "provision", "kind": "installed", "name": ip})
         await _provision_admins({"type": "device_install", "ip": ip, "state": "done"})
+        asyncio.ensure_future(_provision_ask_installed(ip))
     except ri.InstallError as e:
         provmod.drop_key(k["id"])
         run.update(state="failed", error=str(e), finished=time.time())

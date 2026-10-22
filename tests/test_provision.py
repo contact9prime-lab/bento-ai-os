@@ -306,3 +306,17 @@ def test_a_machine_heard_again_unchanged_is_not_written_again(tmp_path, monkeypa
         moved = dict(b, addr="10.0.0.10")
         provision.note_seen(moved)
         assert provision.find_seen("pi")["addr"] == "10.0.0.10", "a machine that moved is written down"
+
+
+def test_a_waiting_machine_answers_a_question_sent_to_its_address(lan):
+    """A hub's firewall can drop the broadcast; the hub then asks the address itself."""
+    L, A, B, loop, heard = lan
+
+    async def go():
+        # the leader's own ear shares the port, and a datagram to one address reaches one socket
+        await L["watch"].stop()
+        L["watch"] = None
+        with _at(L):
+            return await provision.scan(0.6, targets=["127.0.0.1"])
+    got = loop.run_until_complete(go())
+    assert got and {b["name"] for b in got} <= {"pi-kitchen", "pi-garage"} and all(b["waiting"] for b in got)

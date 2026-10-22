@@ -221,12 +221,25 @@ def run_argv(cfg: dict | None = None, exe: str = "", profile: str = "") -> list[
     profile = profile or str(cfgmod.AGENTOS_HOME / "screen-profile")
     args = [exe, "--kiosk", "--noerrdialogs", "--disable-infobars", "--no-first-run",
             "--no-default-browser-check", "--disable-session-crashed-bubble",
-            "--disable-translate", "--password-store=basic", "--ozone-platform-hint=auto",
+            "--disable-translate", "--password-store=basic", _ozone(),
             "--autoplay-policy=no-user-gesture-required",
             "--check-for-update-interval=31536000", f"--user-data-dir={profile}"]
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         args.append("--no-sandbox")       # Chromium refuses to start as root without it
     return args + [url(cfg)]
+
+
+def _wayland() -> str:
+    """The desktop's Wayland socket, or ''. Read from the machine, because a process started
+    over SSH or by the installer has no WAYLAND_DISPLAY of its own."""
+    run = os.environ.get("XDG_RUNTIME_DIR") or (f"/run/user/{os.getuid()}" if hasattr(os, "getuid") else "")
+    name = os.environ.get("WAYLAND_DISPLAY") or "wayland-0"
+    return str(Path(run) / name) if run and (Path(run) / name).exists() else ""
+
+
+def _ozone() -> str:
+    # The hint "auto" chose X11 on a Pi's labwc desktop and exited with "Missing X server".
+    return "--ozone-platform=wayland" if _wayland() else "--ozone-platform-hint=auto"
 
 
 def _server_up(cfg: dict | None = None) -> bool:
@@ -255,6 +268,10 @@ def run(cfg: dict | None = None) -> None:
     args = run_argv(cfg, exe)
     from . import config as cfgmod
     (cfgmod.AGENTOS_HOME / "screen-profile").mkdir(parents=True, exist_ok=True)
+    sock = _wayland()
+    if sock:
+        os.environ.setdefault("XDG_RUNTIME_DIR", str(Path(sock).parent))
+        os.environ.setdefault("WAYLAND_DISPLAY", Path(sock).name)
     os.execv(exe, args)
 
 
@@ -311,10 +328,12 @@ def plan(cfg: dict | None = None) -> list[dict]:
                       "why": f"{why} Licence: {comp.get('licence', '?')}.",
                       "runs": components.install_command(comp) or f"install {cid}"})
     dirs = " ".join(shlex.quote(str(d)) for d in POLICY_DIRS)
-    steps.append({"id": "mic", "root": True, "title": "Let this page use the microphone",
-                  "why": f"Chromium allows the mic for {url(cfg).split('/#')[0]} only, so the screen "
-                         "can hear you without a prompt nobody can answer.",
-                  "runs": f"mkdir -p {dirs}; write {POLICY_NAME} in each"})
+    mic = {"id": "mic", "root": True, "title": "Let this page use the microphone",
+           "why": f"Chromium allows the mic for {url(cfg).split('/#')[0]} only, so the screen "
+                  "can hear you without a prompt nobody can answer.",
+           "runs": f"mkdir -p {dirs}; write {POLICY_NAME} in each"}
+    if rd == "console":
+        steps.append(mic)
     if rd == "console":
         steps.append({"id": "pam", "root": True, "title": "A login session for the screen",
                       "why": "Gives the screen its seat (display and input) without logging a shell in.",
@@ -328,6 +347,9 @@ def plan(cfg: dict | None = None) -> list[dict]:
                       "why": "Full screen, as the kiosk. It needs the desktop to log in by itself "
                              "(Raspberry Pi OS does unless you turned that off).",
                       "runs": f"write {AUTOSTART}"})
+        # After the autostart: on a desktop the page opens without it and asks for the mic
+        # once, so a Pi whose sudo wants a password still gets its screen.
+        steps.append(mic)
     return steps
 
 
@@ -380,6 +402,9 @@ def enable(cfg: dict | None = None, say=print) -> dict:
             for d in POLICY_DIRS:
                 ok, out = _root_write(d / POLICY_NAME, policy_text(cfg),
                                       "Bento needs root to let its own page use the microphone.")
+                if not ok and rd == "desktop":
+                    return {"ok": True, "done": done, "needs": _handback(cfg, rd), "error": "",
+                            "mic": "root is needed to let the page use the microphone without asking"}
                 if not ok:
                     return {"ok": False, "done": done, "needs": _handback(cfg, rd),
                             "error": "root is needed to let the page use the microphone" + (f" ({out})" if out else "")}

@@ -120,6 +120,7 @@ HUBS="${AGENTOS_HUBS:-}"
 TS_KEY="${TS_AUTHKEY:-}"
 # Open Bento on this machine's screen at start (screen.py): asked for by name, never assumed.
 SCREEN=""
+PISCREEN=""
 
 for a in "$@"; do
   case "$a" in
@@ -198,8 +199,8 @@ die()  { printf '\033[31m✗  %s\033[0m\n' "$*" >&2; screen_stopped "$*"; exit 1
 #   tty      no desktop: the words on the console, tty1 (the user's own, or through
 #            passwordless sudo).
 #   notify   a desktop without Chromium: one notification each step replaces.
-# None is tried when this script runs ON that console.
-PISCREEN=""
+# None is tried when this script runs ON that console. PISCREEN is decided after the flags
+# (above); setting it again here wiped that, and no Pi showed its install.
 PISCREEN_DIR="$HOME/.cache/bento-install"
 html_esc() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
 screen_page() {   # screen_page HEADLINE LINE FOOT [URL to go to]
@@ -1316,6 +1317,13 @@ echo
 if [ -n "$RUNNING" ]; then
   ok "AgentOS is running."
   screen_show "Bento is installed" "It opens on this screen in a moment." "" "http://127.0.0.1:${PORT}/"
+  # The install page hands over to the screen's own kiosk (its profile, the mic, the voice),
+  # which the autostart opens at every start after this one.
+  if [ "$PISCREEN" = page ] && [ -f "$HOME/.config/autostart/bento-screen.desktop" ]; then
+    sleep 4
+    kill "$(cat "$PISCREEN_DIR/pid" 2>/dev/null)" 2>/dev/null || true
+    setsid uv run bento screen run >/dev/null 2>&1 </dev/null &
+  fi
 elif [ "$SERVICE" = 1 ]; then
   ok "AgentOS is installed — but nothing is listening yet."
 else

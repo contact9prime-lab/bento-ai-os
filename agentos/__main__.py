@@ -4353,6 +4353,10 @@ def _screen_cli(args):
         sys.exit(1)
     ledger("screen.on", "ran " + ", ".join(got["done"]))
     print("  ✓ " + scr.status(cfg)["words"])
+    if got.get("mic"):
+        print(f"  ! {got['mic']}. To allow it ahead, run:")
+        for c in got["needs"]:
+            print("    " + c)
 
 
 def _face_cli(args):
