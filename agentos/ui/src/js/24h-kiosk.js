@@ -49,9 +49,19 @@ function kioskStart(){
   hud.innerHTML=`<div class="kh-who">${typeof avatarImg==='function'?avatarImg('@agent','kh-face'):''}
       <div class="kh-txt"><b class="kh-name"></b><span class="kh-line"></span></div></div>
     <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
+    <form class="kh-type" hidden><input class="kh-in" autocomplete="off" enterkeyhint="send" aria-label="Type a message">
+      <button type="submit" class="kh-send">Send</button></form>
     <div class="kh-acts"><button class="kh-mic" aria-label="Microphone"></button>
+      <button class="kh-key" aria-label="Type instead">⌨ Type</button>
       <button class="kh-leave" aria-label="Leave the kiosk">Leave</button></div>`;
   hud.querySelector('.kh-mic').onclick=()=>kioskMicTap();
+  // a keyboard is another way in: the answer still comes here, in the band, and nothing
+  // opens unless the agent shows something
+  hud.querySelector('.kh-key').onclick=()=>{KIOSK.typing=!KIOSK.typing;kioskPaint();
+    if(KIOSK.typing)hud.querySelector('.kh-in').focus()};
+  hud.querySelector('.kh-type').onsubmit=e=>{e.preventDefault();const i=hud.querySelector('.kh-in'),t=i.value.trim();
+    if(!t||KIOSK.busy)return;i.value='';KIOSK.heard=t;kioskAsk(t)};
+  hud.querySelector('.kh-in').onkeydown=e=>{if(e.key==='Escape'){KIOSK.typing=false;kioskPaint()}};
   hud.querySelector('.kh-leave').onclick=()=>kioskLeave();
   // one drawer of the office state at a time (officeSceneAttach): an open Office
   // window would keep the scene empty behind it, and windows are hidden here
@@ -88,7 +98,9 @@ function kioskPaint(){
   const hud=document.getElementById('kiosk-hud');if(!hud)return;
   const name=agentName(),f=kioskFace(),hear=f.hear||{};
   hud.querySelector('.kh-name').textContent=name;
-  const waiting=KIOSK.phase==='listening'?(kioskFollowing()?'Listening. Go ahead.'
+  // nothing that hears: say where to type, never "listening"
+  const waiting=KIOSK.phase==='listening'&&!hear.engine?(KIOSK.reply?'Type again below.':(hear.line||'Type below.'))
+    :KIOSK.phase==='listening'?(kioskFollowing()?'Listening. Go ahead.'
       :(f.wake==='always'?'Listening.':`Say “${kioskWakeWords()[0]||name}” and what you need.`)):'';
   hud.querySelector('.kh-line').textContent=KIOSK.line||waiting;
   const h=hud.querySelector('.kh-heard'),r=hud.querySelector('.kh-reply');
@@ -98,6 +110,10 @@ function kioskPaint(){
   const mic=hud.querySelector('.kh-mic');
   const can=!!hear.engine;
   mic.hidden=!can;
+  // with nothing that hears, typing is the way in, so the box is simply there
+  const typing=KIOSK.typing||!can,form=hud.querySelector('.kh-type'),key=hud.querySelector('.kh-key');
+  form.hidden=!typing;key.hidden=!can;key.classList.toggle('on',typing);
+  const inp=hud.querySelector('.kh-in');inp.placeholder=`Type to ${name}…`;inp.disabled=!!KIOSK.busy;
   mic.className='kh-mic'+(KIOSK.muted?' off':'')+(KIOSK.talking?' live':'');
   mic.textContent=KIOSK.muted?'Mic off':(KIOSK.talking?'Hearing you':'Mic on');
   hud.dataset.phase=KIOSK.phase||'';

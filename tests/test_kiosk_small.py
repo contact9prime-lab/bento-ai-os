@@ -44,3 +44,34 @@ def test_the_can_not_hear_line_is_one_short_sentence_on_the_screen():
             "set up. Install whisper.cpp, or add an ElevenLabs, OpenAI or Google Cloud key under Voice.")
     out = subprocess.run(["node", "-e", fn + f"console.log(kioskShort({long!r}))"], capture_output=True, text=True)
     assert out.stdout.strip() == "Nothing here can understand speech yet."
+
+
+def test_the_kiosk_can_be_typed_to_and_answers_in_its_band():
+    """'the kiosk mode should be the light mode with a keyboard option': with nothing that hears,
+    the box is simply there; the answer stays in the band and the replied pill is not shown."""
+    js = (JS / "24h-kiosk.js").read_text()
+    assert '<form class="kh-type"' in js and "kioskAsk(t)" in js
+    assert "const typing=KIOSK.typing||!can" in js, "no hearing: typing is the way in"
+    assert "!hear.engine?(KIOSK.reply?'Type again below.'" in js, "never 'listening' with nothing that hears"
+    assert "body.kiosk #aibubble{display:none!important}" in (CSS / "27-kiosk.css").read_text()
+
+
+def test_a_small_machine_draws_its_own_screen_light():
+    """Measured with Chrome drawing in software at 1920x1080: two windows with the glass blur
+    took a whole core at rest (100%), without it 0.8%; the kiosk's Office went from 18% to 4%
+    once its decor and rest slowed down on a small machine."""
+    srv = (ROOT / "agentos/server.py").read_text()
+    assert 'state_["small"] = _prof.resolve(state.machine_cfg()) == "lite"' in srv
+    glass = (JS / "01a-glass.js").read_text()
+    assert "function glassSmall(small)" in glass and "remoteClient()" in glass[glass.index("function glassSmall"):]
+    assert "glassSmall(PLATFORM.small)" in (JS / "22-quicksettings.js").read_text()
+    office = (JS / "24d-office.js").read_text()
+    assert "every=work?1/30:decor?(light?1/4:1/30):(light?1/2:1/6)" in office
+    # not due: a timer, never a frame asked for on every refresh
+    assert "O.raf=-1;O.wait=setTimeout(" in office and office.count("clearTimeout(OFFICE.wait)") == 3
+
+
+def test_the_platform_route_says_whether_the_machine_is_small(tmp_path, monkeypatch):
+    from agentos import profile
+    assert profile.resolve({"profile": "lite"}) == "lite"
+    assert profile.resolve({"profile": "full"}) == "full"

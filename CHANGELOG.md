@@ -15,6 +15,15 @@ its tools print there (git, uv, apt), as it arrives, kept at the newest line.
 
 **A small machine gets three minutes to start** in the installer's own check, rather than one.
 
+**The kiosk takes typing.** The band has a box to type in (shown on its own when nothing on
+the machine can hear), the answer comes back in the band, and the "replied" pill that would
+open Chat is gone from the kiosk.
+
+**A Pi draws its own screen light.** A small machine's own screen starts with the glass blur
+off, and the Office's decor and rest slow down. Measured in software rendering at 1080p: two
+windows at rest went from a whole core to 0.8%, and the kiosk from 18% to 4%. A phone looking
+at the Pi keeps the full look.
+
 **The install form is tidier.** The fields sit in one row, what the check found is a card with
 the command folded away, Forget the saved one is a link, and the buttons come last at one
 height. A wizard margin and the immersive look's label spacing were stretching it.

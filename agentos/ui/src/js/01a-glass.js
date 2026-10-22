@@ -74,4 +74,11 @@ function glassProbe(force){
     requestAnimationFrame(step);
   },1400);
 }
+/* A small machine's own screen (a Pi) starts with no blur: its frame probe needs two windows
+   open before it measures anything, and on a Pi 3 the desktop alone was the problem. A
+   choice made in Themes → Effects still wins, and a phone looking at it keeps the blur. */
+function glassSmall(small){
+  if(!small||GLASS.pref!=='auto'||(typeof remoteClient==='function'&&remoteClient()))return;
+  GLASS.level='off';applyGlass();
+}
 applyGlass();

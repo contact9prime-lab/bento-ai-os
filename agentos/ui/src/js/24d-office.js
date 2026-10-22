@@ -56,7 +56,7 @@ function renderOffice(el,w){
   // scene gets it back when the window closes (officeClose)
   // The 3D renderer goes with the scene: left alive, it kept drawing into the scene's
   // canvas while the window's stayed dark (reported as "I cannot see the office").
-  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;OFFICE.fit=false;of3Dispose();
+  cancelAnimationFrame(OFFICE.raf);clearTimeout(OFFICE.wait);OFFICE.raf=0;OFFICE.fit=false;of3Dispose();
   OFFICE.w=w;OFFICE.people={};OFFICE.papers=[];OFFICE.bursts=[];OFFICE.pops=[];OFFICE.sheets={};
   OFFICE.static=matchMedia('(prefers-reduced-motion: reduce)').matches;
   try{OFFICE.font=getComputedStyle(document.body).fontFamily||'sans-serif'}catch(e){OFFICE.font='sans-serif'}
@@ -102,7 +102,7 @@ function renderOffice(el,w){
   officeLoad();
 }
 function officeClose(w){
-  cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;
+  cancelAnimationFrame(OFFICE.raf);clearTimeout(OFFICE.wait);OFFICE.raf=0;
   of3Dispose();
   try{w._ofro&&w._ofro.disconnect()}catch(e){}
   OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.design=false;OFFICE.visiting=undefined;
@@ -145,7 +145,7 @@ function officeSceneStop(){
   try{S.ro&&S.ro.disconnect()}catch(e){}S.ro=null;
   removeEventListener('resize',officeSceneResize);
   document.removeEventListener('visibilitychange',officeKick);
-  if(OFFICE.w&&OFFICE.w.scene){cancelAnimationFrame(OFFICE.raf);OFFICE.raf=0;of3Dispose();
+  if(OFFICE.w&&OFFICE.w.scene){cancelAnimationFrame(OFFICE.raf);clearTimeout(OFFICE.wait);OFFICE.raf=0;of3Dispose();
     OFFICE.w=null;OFFICE.cv=null;OFFICE.ctx=null;OFFICE.bg=null;OFFICE.fit=false}
   if(S.host)S.host.remove();S.host=null;
 }
@@ -822,14 +822,21 @@ function officeSnooze(){
 function officeMoving(){
   const O=OFFICE;
   return O.papers.length||O.bursts.length||O.pops.length||Object.values(O.people).some(p=>p.mode==='walk'||p.busy||p.say||p.hop)
-    ||(O.pet&&O.pet.walking)||!!O.ball||!!(O.L&&O.L.radial&&of3Moving());
+    ||!!(O.L&&O.L.radial&&of3Moving());
 }
+/* The pet and the game of fetch are decor, not work: on a small machine's own screen they
+   move at a few frames a second. They kept a Pi 3 drawing 30 a second with nothing happening. */
+function officeDecorMoving(){const O=OFFICE;return (O.pet&&O.pet.walking)||!!O.ball}
+function officeLight(){try{return !!(PLATFORM&&PLATFORM.small)&&!(typeof remoteClient==='function'&&remoteClient())}catch(e){return false}}
 function officeFrame(now){
   const O=OFFICE;O.raf=0;
   if(!O.w||!O.ctx)return;
   if(!officeAwake())return officeSnooze();      // asleep: the next wake re-kicks
-  const busy=officeMoving(), dt=(now-O.last)/1000;
-  if(dt<(busy?1/30:1/6)){O.raf=requestAnimationFrame(officeFrame);return}
+  const work=officeMoving(),decor=!work&&officeDecorMoving(),dt=(now-O.last)/1000;
+  const light=officeLight(),every=work?1/30:decor?(light?1/4:1/30):(light?1/2:1/6);
+  if(dt<every){
+    // not due yet: wait on a timer, not on every refresh (a frame asked for is a frame drawn)
+    O.raf=-1;O.wait=setTimeout(()=>{O.raf=requestAnimationFrame(officeFrame)},Math.max(4,(every-dt)*1000-4));return}
   O.last=now;
   // one bad frame must not end the loop: an exception here used to leave the
   // Office blank until it was closed and opened again

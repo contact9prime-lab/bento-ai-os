@@ -2499,6 +2499,12 @@ async def api_platform(request: Request):
     state_["face"] = facemod.state(state.machine_cfg())
     # A Zero gets the light face: its agent, the Office and visits, the answers. Its
     # integrations live on the hub, so the page leaves their apps and tabs out.
+    # A small machine (the lite footprint: a Pi) draws its own screen light: no glass blur,
+    # the Office's decor at a few frames a second. Measured on a Pi 3 B+ showing the
+    # desktop: Chromium's GPU process at 62% and the page at 40% of a core, swapping.
+    # A phone or laptop looking at it draws on its own hardware and keeps the full look.
+    from . import profile as _prof
+    state_["small"] = _prof.resolve(state.machine_cfg()) == "lite"
     zs = _zero().state(state.machine_cfg())
     state_["zero"] = ({"hub": zs.get("hub", ""), "on_hub": zs.get("execution") == "hub"}
                       if zs else {})
