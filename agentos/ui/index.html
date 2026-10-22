@@ -3973,7 +3973,7 @@ img.av-set{width:30px;height:30px;border-radius:8px;margin-right:8px}
 @media (prefers-reduced-motion:reduce){.av-sprite{animation:none;background-position:0 0}}
 
 /* ---- the editor: the dialog kit, with a stage and the closed set of choices ---- */
-.dlg.ave{width:min(580px,94vw)}
+.dlg.ave{width:min(580px,94vw);max-height:calc(100dvh - 24px);overflow:auto}
 .ave-body{display:flex;gap:18px;align-items:center;margin:12px 0 6px}
 .ave-stage{flex:none;padding:16px 22px 12px;border-radius:14px;
   background:radial-gradient(ellipse at 50% 92%,color-mix(in srgb,var(--acc) 16%,transparent),transparent 62%),
@@ -5277,20 +5277,18 @@ body.zero-face .of-co{display:none}
 .devmap-empty{position:absolute;left:0;right:0;bottom:12px;margin:0;text-align:center;font-size:12px}
 .devmap-n.up{flex-direction:column-reverse}
 .devmap-n.up .devmap-ring{order:-1}
-.net-look{margin-top:14px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
-.net-look-h{display:flex;gap:12px;align-items:center}
-.net-look-face{width:56px;height:56px;border-radius:12px;image-rendering:pixelated;background:var(--bg2)}
-.net-look-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px 12px;margin:10px 0}
-.net-look-grid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
-.net-look-grid .prov-opt{flex-direction:row;align-items:center}
-.net-look-say{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:12.5px}
+.net-look{display:flex;gap:14px;align-items:center;margin-top:8px;padding:12px 14px;border-radius:10px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.net-look-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.net-look-face{width:56px;height:56px;border-radius:12px;image-rendering:pixelated;background:var(--bg2);display:block}
+.net-look-none{display:grid;place-items:center;font-weight:600;font-size:22px;color:var(--txt2,var(--txt))}
+@media (max-width:480px){.net-look{flex-wrap:wrap}.net-look>.endbtn{flex:1 1 100%}}
 .dev-pw-opts{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;flex-basis:100%}
 @media (max-width:600px){.devmap{height:380px;margin:6px 8px 12px}.devmap-n{max-width:96px}.devmap-n .mut{max-width:96px}
   .devmap-ring{width:44px;height:44px}.devmap-me .devmap-ring{width:56px;height:56px}}
 /* the form wraps its fields in a row; these each take a whole line */
 .dev-form>.net-sws,.dev-form>.net-look,.dev-form>.net-remove,.dev-form>.dev-pw-opts{flex:1 1 100%}
 .dev-pw-opts .prov-opt{display:inline-flex;align-items:center;gap:8px}
-.dev-pw-opts input[type=checkbox],.net-look-grid input[type=checkbox]{width:18px;height:18px;min-height:0}
+.dev-pw-opts input[type=checkbox]{width:18px;height:18px;min-height:0}
 /* ---- the drama reel (00g-drama.js) ---- */
 .dr-wrap{display:flex;flex-direction:column;gap:12px;padding:14px;max-width:760px}
 .dr-title{font-weight:750;font-size:var(--fs-lg,17px);display:flex;align-items:center;gap:6px}
@@ -6852,19 +6850,13 @@ async function avatarDesignAsk(key){
   await avatarEdit(key);
   const d=document.querySelector('.dlg-scrim .ave-desc');if(d)d.focus();
 }
-async function avatarEdit(key){
-  await avatarsLoad();
-  const a=AVATARS.by[key];if(!a||!AVATARS.pal){if(typeof toast==='function')toast('No character called '+key);return}
-  const P=AVATARS.pal;
-  const scr=document.createElement('div');scr.className='dlg-scrim';
+/* The editor's rows: swatches and chips over the palette, the recipe's choice lit. The
+   Agents page's dialog and a device's (avatarEditStaged) draw the same rows. */
+function aveRowsHTML(P,r){
   const sw=(field,items,cur,rgbOf)=>items.map(it=>{
     const val=field==='hue'?it.hue:it.i;const on=val===cur;
     return `<button class="ave-sw${on?' on':''}" data-f="${field}" data-v="${val}" title="${esc(it.name)}" aria-label="${esc(it.name)}" aria-pressed="${on}" style="--c:rgb(${rgbOf(it).join(',')})"></button>`}).join('');
-  const draw=()=>{
-    const r=AVATARS.by[key].recipe;
-    scr.querySelector('.ave-stage').innerHTML=avatarSprite(key,208);
-    scr.querySelector('.ave-about').textContent=AVATARS.by[key].about;
-    scr.querySelector('.ave-rows').innerHTML=`
+  return `
       <div class="ave-row"><span>Skin</span><div>${sw('skin',P.skin,r.skin,x=>x.rgb)}</div></div>
       <div class="ave-row"><span>Hair</span><div>${sw('hair',P.hair,r.hair,x=>x.rgb)}</div></div>
       <div class="ave-row"><span>Style</span><div class="ave-chips">${P.style.map(s=>`<button class="ave-chip${s===r.style?' on':''}" data-f="style" data-v="${s}" aria-pressed="${s===r.style}">${s}</button>`).join('')}</div></div>
@@ -6874,6 +6866,73 @@ async function avatarEdit(key){
       <div class="ave-row"><span>Extras</span><div class="ave-chips">
         <button class="ave-chip${r.glasses?' on':''}" data-f="glasses" data-v="${!r.glasses}" aria-pressed="${!!r.glasses}">glasses</button>
         <button class="ave-chip${r.blush?' on':''}" data-f="blush" data-v="${!r.blush}" aria-pressed="${!!r.blush}">blush</button></div></div>`;
+}
+/* The animated figure from a recipe this machine does not store (another machine's agent). */
+function avatarRecipeSprite(rec,px){
+  const u=Math.max(2,Math.round((px||104)/26));
+  return `<div class="av-sprite" style="--u:${u}px;background-image:url('${avatarRecipeSrc(rec,{sheet:1})}')" role="img" aria-label="its look"></div>`;
+}
+/* The same editor for a character that lives on ANOTHER machine (a Pi's agent, from the
+   Devices app). Each change there is a login, so choices are staged here and painted from
+   the recipe, and one Save sends them, as names. `o.save(patch)` and `o.design(words)` return
+   the recipe read back there; either may throw with the reason. */
+async function avatarEditStaged(o){
+  await avatarsLoad();
+  const P=AVATARS.pal;if(!P){if(typeof toast==='function')toast('The character palette did not load');return}
+  const base={...(o.recipe||{})};let r={...base};
+  const scr=document.createElement('div');scr.className='dlg-scrim';
+  scr.innerHTML=`<div class="dlg ave" role="dialog" aria-modal="true" aria-label="Character of ${esc(o.title)}">
+      <div class="dlg-t">${esc(o.title)}</div>
+      <div class="dlg-m">${esc(o.msg||'')}</div>
+      <form class="ave-design"><input class="ave-desc" maxlength="200" autocomplete="off"
+          placeholder="Describe them — e.g. a cheerful chef with curly grey hair" aria-label="Describe the character"><button class="pact" type="submit">Design</button></form>
+      <div class="ave-said mut" aria-live="polite"></div>
+      <div class="ave-body"><div class="ave-stage"></div><div class="ave-rows"></div></div>
+      <div class="dlg-b"><button class="ave-reset" type="button">Put back</button><button class="ave-cancel" type="button">Cancel</button><button class="dlg-ok" type="button">${esc(o.saveText||'Save')}</button></div></div>`;
+  document.body.appendChild(scr);
+  const said=scr.querySelector('.ave-said'),ok=scr.querySelector('.dlg-ok');
+  const changed=()=>{const p={};
+    for(const f of ['skin','hair','pants']){if(r[f]!==base[f]){const it=(P[f]||[])[r[f]];if(it)p[f]=it.name}}
+    for(const f of ['style','outfit'])if(r[f]!==base[f]&&r[f]!=null)p[f]=r[f];
+    if(r.hue!==base.hue){const it=(P.shirt||[]).find(x=>x.hue===r.hue);if(it)p.shirt=it.name}
+    for(const f of ['glasses','blush'])if(!!r[f]!==!!base[f])p[f]=!!r[f];
+    return p};
+  const draw=()=>{
+    scr.querySelector('.ave-stage').innerHTML=avatarRecipeSprite(r,208);
+    scr.querySelector('.ave-rows').innerHTML=aveRowsHTML(P,r);
+    const n=Object.keys(changed()).length;ok.disabled=!n;scr.querySelector('.ave-reset').disabled=!n;
+    scr.querySelectorAll('.ave-rows [data-f]').forEach(b=>b.onclick=()=>{
+      const f=b.dataset.f;let v=b.dataset.v;
+      r[f]=(f==='style'||f==='outfit')?v:(f==='glasses'||f==='blush')?(v==='true'):Number(v);
+      said.textContent='';draw()})};
+  draw();
+  const close=()=>scr.remove();
+  const busy=(on,words)=>{scr.querySelectorAll('button,input').forEach(e=>e.disabled=on);said.textContent=words||'';if(!on)draw()};
+  scr.querySelector('.ave-cancel').onclick=close;
+  scr.onclick=e=>{if(e.target===scr)close()};
+  scr.addEventListener('keydown',e=>{if(e.key==='Escape')close()});
+  scr.querySelector('.ave-reset').onclick=()=>{r={...base};said.textContent='';draw()};
+  ok.onclick=async()=>{
+    busy(true,o.saving||'Saving…');
+    try{await o.save(changed());close()}catch(e){busy(false);said.textContent='✗ '+(e.message||e)}};
+  scr.querySelector('.ave-design').onsubmit=async e=>{
+    e.preventDefault();
+    const words=scr.querySelector('.ave-desc').value.trim();if(!words){scr.querySelector('.ave-desc').focus();return}
+    busy(true,o.designing||'Designing…');
+    try{const rec=await o.design(words);Object.assign(base,rec||{});r={...base};busy(false);said.textContent=o.designed||'Done. It has the new look.'}
+    catch(e){busy(false);said.textContent='✗ '+(e.message||e)}};
+  ok.focus();
+}
+async function avatarEdit(key){
+  await avatarsLoad();
+  const a=AVATARS.by[key];if(!a||!AVATARS.pal){if(typeof toast==='function')toast('No character called '+key);return}
+  const P=AVATARS.pal;
+  const scr=document.createElement('div');scr.className='dlg-scrim';
+  const draw=()=>{
+    const r=AVATARS.by[key].recipe;
+    scr.querySelector('.ave-stage').innerHTML=avatarSprite(key,208);
+    scr.querySelector('.ave-about').textContent=AVATARS.by[key].about;
+    scr.querySelector('.ave-rows').innerHTML=aveRowsHTML(P,r);
     scr.querySelectorAll('[data-f]').forEach(b=>b.onclick=async()=>{
       const f=b.dataset.f;let v=b.dataset.v;
       v=(f==='style'||f==='outfit')?v:(f==='glasses'||f==='blush')?(v==='true'):Number(v);
@@ -36443,22 +36502,14 @@ function netSecureForm(r){
       ${c.host_key?`<p class="mut">Its key: ${esc(c.host_key)}</p>`:''}</div>`:''}
   </div>`;
 }
-/* Its lead agent's look, changed there: picks from the closed set the editor here draws, or a
-   description in words (its own designer picks). The face is painted HERE from its recipe. */
-var LOOK_FIELDS=[['skin','Skin'],['hair','Hair'],['style','Hair style'],['outfit','Outfit'],['shirt','Shirt'],['pants','Trousers']];
-function netLookHTML(r,st,v){
-  const ch=v.look_choices||{},look=st.look||{};
-  const cur=f=>{if(f==='shirt')return Object.keys(ch.hues||{}).find(n=>ch.hues[n]===look.hue)||'';
-    const x=look[f];return typeof x==='number'?(ch[f]||[])[x]||'':String(x||'')};
-  return `<div class="net-look"><div class="net-look-h">${look&&Object.keys(look).length?avatarRecipeImg(look,'net-look-face',st.agent||'its agent'):''}
-      <div><b>${esc(st.agent||'Its agent')}</b><br><span class="mut">How its agent looks there: on its screen, in its Office, and on the map here.</span></div></div>
-    <div class="net-look-grid">${LOOK_FIELDS.map(([f,t])=>`<label>${t}<select data-look="${f}">
-      <option value="">${cur(f)?esc(cur(f)):'as it is'}</option>${(ch[f]||[]).filter(o=>o!==cur(f)).map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></label>`).join('')}
-      <label class="prov-opt"><input type="checkbox" data-look="glasses"${look.glasses?' checked':''}> Glasses</label>
-      <label class="prov-opt"><input type="checkbox" data-look="blush"${look.blush?' checked':''}> Blush</label></div>
-    <div class="dev-acts"><button class="endbtn" data-net="ctllook" data-key="${esc(r.key)}">Save its look</button></div>
-    <label class="net-look-say">Or describe it <input id="ctl-look-say" maxlength="200" placeholder="a cheerful chef with curly grey hair"></label>
-    <div class="dev-acts"><button class="endbtn" data-net="ctldesign" data-key="${esc(r.key)}">Design it</button></div></div>`;
+/* Its lead agent's look, changed there in the Agents page's own editor (avatarEditStaged):
+   the same swatches and chips, or a description its own designer reads. The face is painted
+   HERE from its recipe. */
+function netLookHTML(r,st){
+  const look=st.look||{},has=look&&Object.keys(look).length;
+  return `<div class="net-look"><div class="net-look-face-wrap">${has?avatarRecipeImg(look,'net-look-face',st.agent||'its agent'):`<span class="net-look-face net-look-none">${esc((st.agent||'?').slice(0,1))}</span>`}</div>
+    <div class="net-look-t"><b>${esc(st.agent||'Its agent')}</b><span class="mut">How it looks on its screen, in its Office and on the map here.</span></div>
+    <button class="endbtn" data-net="ctllook" data-key="${esc(r.key)}">Change its look</button></div>`;
 }
 /* What its switches were last READ as, in one line under the row: the inventory keeps it
    with the time, and nothing here guesses. */
@@ -36486,7 +36537,7 @@ function netControlsForm(r,v){
     ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
     ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}
     <div class="net-sws">${sw.map(row).join('')}</div>
-    ${st&&st.installed?netLookHTML(r,st,v):''}
+    ${st&&st.installed?netLookHTML(r,st):''}
     ${st&&st.installed?`<div class="net-remove"><b>Remove Bento</b><br><span class="mut">Takes the program off and ends its ties to this computer. Its memory and settings stay there, so installing it again picks up where it was.</span>
       <details><summary>What runs there</summary><code class="dev-plan">${esc(c.remove||'')}</code></details>
       <div class="dev-acts"><button class="endbtn danger" data-net="ctlremove" data-key="${esc(r.key)}">Remove Bento</button></div></div>`:''}
@@ -36551,7 +36602,7 @@ async function netAct(act,b){
       return netPaint()}
     if(act==='controls'){NET.more='';const same=NET.open===r.key&&NET.mode==='controls';
       NET.open=same?'':r.key;NET.mode=same?'':'controls';return netPaint()}
-    if(act==='ctlread'||act==='ctlsw'||act==='ctlremove'||act==='ctlupdate'||act==='ctllook'||act==='ctldesign'){
+    if(act==='ctlread'||act==='ctlsw'||act==='ctlremove'||act==='ctlupdate'||act==='ctllook'){
       const cr={ip:r.ip,key:r.key,port:netPort(r),user:((document.getElementById('ctl-user')||{}).value||'').trim(),
         password:(document.getElementById('ctl-pw')||{}).value||'',remember:devPwKeep('ctl-pw')};
       if(act!=='ctlsw'||b.dataset.sw!=='code')if(!cr.user){toast('Type the user there first');return}
@@ -36561,18 +36612,15 @@ async function netAct(act,b){
       NET.err[r.ip]='';
       try{
         if(act==='ctlread'){const d=await post('/api/network/controls',cr);NET.ctl[r.ip]=d}
-        else if(act==='ctllook'||act==='ctldesign'){
-          const box=b.closest('.net-look'),body={...cr};
-          if(act==='ctldesign'){body.describe=((document.getElementById('ctl-look-say')||{}).value||'').trim();
-            if(!body.describe){toast('Say what it should look like');b.disabled=false;b.textContent=was;return}}
-          else{const st0=(NET.ctl[r.ip]||{}).state||{},ch={};
-            box.querySelectorAll('select[data-look]').forEach(e=>{if(e.value)ch[e.dataset.look]=e.value});
-            box.querySelectorAll('input[data-look]').forEach(e=>{if(!!e.checked!==!!(st0.look||{})[e.dataset.look])ch[e.dataset.look]=e.checked});
-            if(!Object.keys(ch).length){toast('Choose what to change first');b.disabled=false;b.textContent=was;return}
-            body.changes=ch}
-          const d=await post('/api/network/look',body);
-          NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
-          toast(`✓ ${d.state.agent||'Its agent'} has a new look on ${r.display||r.ip}`)}
+        else if(act==='ctllook'){
+          const st0=(NET.ctl[r.ip]||{}).state||{},where=r.display||r.ip,who=st0.agent||'Its agent';
+          const send=async extra=>{const d=await post('/api/network/look',{...cr,...extra});
+            NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};netPaint();return (d.state||{}).look||{}};
+          b.disabled=false;b.textContent=was;
+          return avatarEditStaged({title:who+' on '+where,msg:'Its agent, on its own screen, in its Office and on the map here. Saved there when you press Save.',
+            recipe:st0.look||{},saveText:'Save there',saving:'Saving on '+where+'…',designing:where+' is designing it…',
+            save:async changes=>{await send({changes});toast(`✓ ${who} has a new look on ${where}`)},
+            design:async words=>{const rec=await send({describe:words});toast(`✓ ${who} has a new look on ${where}`);return rec}})}
         else if(act==='ctlupdate'){const d=await post('/api/network/update',cr);
           NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
           toast(`✓ ${r.display||r.ip}: ${d.before||'?'} → ${(d.state||{}).version||'?'}`)}

@@ -261,17 +261,15 @@ body.zero-face .of-co{display:none}
 .devmap-empty{position:absolute;left:0;right:0;bottom:12px;margin:0;text-align:center;font-size:12px}
 .devmap-n.up{flex-direction:column-reverse}
 .devmap-n.up .devmap-ring{order:-1}
-.net-look{margin-top:14px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
-.net-look-h{display:flex;gap:12px;align-items:center}
-.net-look-face{width:56px;height:56px;border-radius:12px;image-rendering:pixelated;background:var(--bg2)}
-.net-look-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px 12px;margin:10px 0}
-.net-look-grid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
-.net-look-grid .prov-opt{flex-direction:row;align-items:center}
-.net-look-say{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:12.5px}
+.net-look{display:flex;gap:14px;align-items:center;margin-top:8px;padding:12px 14px;border-radius:10px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.net-look-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.net-look-face{width:56px;height:56px;border-radius:12px;image-rendering:pixelated;background:var(--bg2);display:block}
+.net-look-none{display:grid;place-items:center;font-weight:600;font-size:22px;color:var(--txt2,var(--txt))}
+@media (max-width:480px){.net-look{flex-wrap:wrap}.net-look>.endbtn{flex:1 1 100%}}
 .dev-pw-opts{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;flex-basis:100%}
 @media (max-width:600px){.devmap{height:380px;margin:6px 8px 12px}.devmap-n{max-width:96px}.devmap-n .mut{max-width:96px}
   .devmap-ring{width:44px;height:44px}.devmap-me .devmap-ring{width:56px;height:56px}}
 /* the form wraps its fields in a row; these each take a whole line */
 .dev-form>.net-sws,.dev-form>.net-look,.dev-form>.net-remove,.dev-form>.dev-pw-opts{flex:1 1 100%}
 .dev-pw-opts .prov-opt{display:inline-flex;align-items:center;gap:8px}
-.dev-pw-opts input[type=checkbox],.net-look-grid input[type=checkbox]{width:18px;height:18px;min-height:0}
+.dev-pw-opts input[type=checkbox]{width:18px;height:18px;min-height:0}

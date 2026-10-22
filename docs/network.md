@@ -247,6 +247,9 @@ what's on. Nothing changes until you press a switch.
   on starts it again, back on its screen if that switch is on.
 - **Open on its screen**: Bento full screen on its display, now and at every start. Off closes it
   now. Its desktop may still open Bento as an ordinary window at login, if it was installed that way.
+  Turning it on needs root there once, to let its page use the microphone. When you typed the
+  machine's password, it's handed to sudo there for that one command (over SSH, never on the
+  command line). With a key login and a sudo that wants a password, it says so.
 - **Listening**: the kiosk face, the Office with the microphone on.
 - **Big code to the hub**: whether it may hand heavy Python here (below). This one is a
   permission on this computer, so it needs no login.
@@ -283,13 +286,16 @@ open its machine's Controls.
 
 ### Its agent's look
 
-Controls has its agent's look: pick skin, hair, style, outfit, shirt and trousers, or describe
-it in words and its own designer picks. It changes on that machine (its screen and its Office)
-and on the map here.
+Controls shows its agent with **Change its look**, which opens the same editor as the Agents
+tab: skin, hair, style, colour, what it wears, trousers and extras, or describe it in words and
+its own designer picks. Your choices show on the figure as you make them and go to that machine
+when you press **Save there**. It changes there (its screen and its Office) and on the map here.
 
-![The Look section for Mr. Pi, in a Pi's Controls](screenshots/devices-look-desk.png)
+![Mr. Pi's card in a Pi's Controls, with Change its look](screenshots/devices-look-desk.png)
 
-![The Look section at phone width](screenshots/devices-look-phone.png)
+![The agent editor open for Mr. Pi, with the bun picked and not saved yet](screenshots/devices-look-editor-desk.png)
+
+![The agent editor for Mr. Pi at phone width, scrolled to Save there](screenshots/devices-look-phone.png)
 
 ![The map after Mr. Pi's hair was made pink from here](screenshots/devices-map-new-look.png)
 
