@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.73 — 2026-10-22
+
+**A machine you hid can be shown again.** *Not this one* in Settings → Network (now **Hide**,
+behind ⋯) took a machine off the list for good, and nothing listed what it had hidden, so a Pi
+rejected by mistake could never be set up from here again. Hidden machines are now under
+**Hidden** below the list, each with **Show again**, and come back as they were, name and security
+included. A Bento machine hidden from New machines goes back to waiting. The count at the top no
+longer includes hidden machines. `bento network hide|show` do the same, and `bento network` names
+the hidden ones.
+
+**The Network tab is simpler.** Each machine is one line with one status pill and one button
+(*Install Bento*, *Secure it* or *Set it up*), and the rest is behind ⋯. New machines appears
+only when one is waiting, and Make a Zero, the SD card, keys and the standard setup are folded
+under *Add a machine*.
+
 ## 0.6.72 — 2026-10-21
 
 **Installing Bento on a Pi says why a login was refused.** It used to say the user name or password

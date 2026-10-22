@@ -2,10 +2,11 @@
 
 *Settings → Network* lists every machine Bento knows on your network, whether it runs Bento or
 not. From each row you can install Bento on it, secure it, and remove what ties it to this
-machine. Setting new machines up (machines waiting, Make a Zero, enrolment keys, the SD card)
-is in the same tab, under *Set machines up*.
+machine. A machine waiting to be set up shows under *New machines* in the same tab, and the
+other ways to add one (Make a Zero, the SD card, keys, the standard setup) are folded under
+*Add a machine*.
 
-![Settings → Network: one machine found, no Bento, not checked yet](screenshots/network-list.png)
+![Settings → Network: the machines, each with one button and ⋯, then Hidden and Add a machine](screenshots/network-list.png)
 
 It's admin only, because it reaches other machines. Bento looks only at this machine's own
 private network, and anything it runs on another machine is shown to you before it runs.
@@ -15,11 +16,15 @@ private network, and anything it runs on another machine is shown to you before 
 One row per machine. A Pi that was heard without Bento, then installed, set up and linked is
 still one row, matched by its network card's address, its IP and its certificate. Each row says:
 
-- what it is (board or maker, operating system), its address, and when it was last heard;
-- whether Bento runs there: *no Bento*, *waiting*, *set up*, *linked* or *installed*;
-- how secure it is: *not checked*, *2 of 4 in place* or *secured*. This is always what Bento
-  measured on the machine the last time it logged in, never a note that a run finished;
+- what it is (board or maker), its address, and when it was last heard;
+- whether Bento runs there (*No Bento*, *Bento, waiting*, *Bento*, *Bento, linked*), and once
+  it has been checked, how secure it is (*2 of 4 in place* or *secured*). That is always what
+  Bento measured on the machine the last time it logged in, never a note that a run finished;
 - whose it is, for a Zero that belongs to an account.
+
+Each row has one button for the thing it most needs: *Install Bento*, *Secure it* (or
+*Security* once checked), or *Set it up* for a Bento machine waiting under New machines. The
+rest (Secure it when Install is the button, Disconnect, Rename, Hide) is behind **⋯**.
 
 **Look at the network** knocks on SSH and Bento's port across this machine's own private
 networks. A Raspberry Pi that joins the network says its name and you get a toast.
@@ -137,7 +142,20 @@ off is refused when it's the only key there and password logins are off, because
 log in over SSH afterwards and a Pi with no screen would need reflashing. Add your own key or
 turn password logins back on first.
 
-**Not this one** takes a machine off the list. A device heard again stays hidden.
+## Hidden machines
+
+**Hide** (behind ⋯, or on a row under New machines) moves a machine to **Hidden** under the
+list. Heard again, it stays there and you get no toast. Nothing about it is forgotten: open
+Hidden and press **Show again**, and it's back as it was, with its name and security. A Bento
+machine hidden from New machines goes back to waiting to be set up.
+
+![Hidden, opened: each machine with Show again](screenshots/network-hidden.png)
+
+![The same on a phone](screenshots/network-hidden-phone.png)
+
+![bento network: the hidden ones named under the list, then hide and show](screenshots/network-hidden-terminal.png)
+
+The count at the top is of the machines listed, not the hidden ones.
 
 ## From a terminal
 
@@ -155,7 +173,8 @@ bento network letin pi-kitchen --user ada --passwords-on                     # o
 bento network secure pi-kitchen --steps key,passwords
 bento network disconnect pi-kitchen --what key  # or community, or link:NAME
 bento network label 192.168.1.40 "Kitchen Pi"
-bento network forget 192.168.1.40
+bento network hide 192.168.1.40                 # to Hidden (forget does the same)
+bento network show 192.168.1.40                 # back on the list
 ```
 
 ![bento network in a terminal: the list, and how secure each machine was measured](screenshots/network-terminal.png)
@@ -181,7 +200,7 @@ ended by the running server, so the terminal points you to the tab or `bento lin
 ## The ledger
 
 Every step is a row: `device.scan`, `device.check`, `device.secure`, then `device.secured` or
-`device.secure_failed`, `device.disconnect`, `device.forget`.
+`device.secure_failed`, `device.disconnect`, `device.forget` (hidden), `device.show`.
 
 ## What was tested, and what wasn't
 

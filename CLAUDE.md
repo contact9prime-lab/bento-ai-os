@@ -3236,8 +3236,14 @@ box", then "you should also be able to remove the connections". Setting machines
 - **Disconnect removes ties, never the install**: a link through `_team_end_link`, the
   community place through `pool.remove`, this machine's key through `harden.remove_key`, which
   refuses when it is the only key and password logins are off (`force` is the person's).
+- **Hide is undoable, and what it hid is listed** (`inventory.hide`/`unhide`, `/api/network/show`,
+  `bento network hide|show`; `tests/test_network.py`). Reported as "if I rejected a device by
+  chance it will not populate in the list": Not this one marked it ignored, dropped the notes, and
+  every list filtered ignored rows out. Now each source is marked with the state it had (`was`),
+  the notes stay (`hidden` on the inventory row), `rows()` marks `ignored` from any of them, the
+  tab draws them under Hidden with Show again, and `summary` counts only what is listed.
 - **Admin only, no agent tool, a ledger row per step** (`device.check/secure/secured/
-  secure_failed/disconnect/forget`). A Zero has no Network tab (`ZERO_TABS_HIDDEN`).
+  secure_failed/disconnect/forget/show`). A Zero has no Network tab (`ZERO_TABS_HIDDEN`).
 
 ## This machine's screen: one agent, and the kiosk that listens
 
