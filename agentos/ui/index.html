@@ -5212,6 +5212,13 @@ body.kiosk #office-scene canvas{display:block}
 @media (max-width:600px){.zero-chip{max-width:110px;overflow:hidden;text-overflow:ellipsis}}
 /* a Zero has no company of its own: its departments are on the hub */
 body.zero-face .of-co{display:none}
+
+/* this computer's firewall would stop machines set up from here (hostfirewall.py) */
+.net-fw{margin:8px 16px;padding:10px 14px;border-radius:12px;border:1px solid color-mix(in srgb,var(--warn,#e0a040) 45%,transparent);
+  background:color-mix(in srgb,var(--warn,#e0a040) 8%,transparent)}
+.net-fw p{margin:0 0 8px}
+.net-fw-acts{display:flex;flex-wrap:wrap;gap:8px}
+@media (max-width:600px){.net-fw-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}}
 /* ---- the drama reel (00g-drama.js) ---- */
 .dr-wrap{display:flex;flex-direction:column;gap:12px;padding:14px;max-width:760px}
 .dr-title{font-weight:750;font-size:var(--fs-lg,17px);display:flex;align-items:center;gap:6px}
@@ -36217,6 +36224,10 @@ async function netPaint(){
      more:'Only this machine’s own private network is looked at. A Raspberry Pi says its name when it joins, and you get a toast.',
      f:'network inventory devices machines scan discover list'}));
   if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
+  const fw=v.firewall||{};
+  if(fw.words&&can)rows.push(`<div class="net-fw"><p>${esc(fw.words)} ${typeof pInfo!=='function'?'':pInfo('Without them a Pi set up from here can’t join it, hand work over or send code too big for it. Or run: '+(fw.commands||[]).join(' ; '))}</p>
+    <div class="net-fw-acts"><button class="endbtn" data-net="fw-open">Open them</button>
+    <button class="endbtn" data-net="fw-done">I opened them</button></div></div>`);
   const list=(v.rows||[]).filter(r=>!r.ignored),hidden=(v.rows||[]).filter(r=>r.ignored);
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
   else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
@@ -36354,6 +36365,11 @@ async function netAct(act,b){
   const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
     password:(document.getElementById('net-pw')||{}).value||'',mine:((document.getElementById('net-mine')||{}).value||'').trim()});
   try{
+    if(act==='fw-open'||act==='fw-done'){b.disabled=true;
+      try{await post('/api/network/firewall',{action:act==='fw-open'?'open':'done'});
+        toast(act==='fw-open'?'✓ The ports are open':'Noted')}
+      catch(e){const n=((e.data||{}).needs||[]).join(' ; ');toast(n?`${e.message}. Run: ${n}`:e.message,{kind:'err'})}
+      return netPaint()}
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/devices/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} answered on ${d.networks}`:`Nothing answered on ${d.networks}.`);return netPaint()}
     if(act==='unlinkgo'){const what=[...document.querySelectorAll(`.net-m[data-key="${CSS.escape(r.key)}"] [data-unlink]`)]

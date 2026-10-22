@@ -4571,6 +4571,8 @@ def _network_cli(args):
     from . import harden
     from . import inventory as inv
     from . import remoteinstall as ri
+    from . import config as _cfgm
+    from . import hostfirewall as _fw
     from .memory import Store
     a, rest = args.action, list(args.args or [])
 
@@ -4638,6 +4640,42 @@ def _network_cli(args):
                 print(f"  {'':<22} tied by {ties}")
         if tail:
             print(tail)
+        fw = _fw.state(_cfgm.load_config())
+        if fw["words"]:
+            print(f"\n  ! {fw['words']}\n    `bento network firewall open` opens them.")
+        return
+    if a == "firewall":
+        cfg = _cfgm.load_config()
+        fw = _fw.state(cfg)
+        sub = (rest[0] if rest else "").lower()
+        if not fw["kind"]:
+            print("  No firewall is on here (ufw or firewalld), so nothing to open.")
+            return
+        if sub == "open":
+            got = _fw.open_ports(cfg)
+            if not got["ok"]:
+                print(f"  ✗ {got['error']}. Run:")
+                for c in got["needs"]:
+                    print("    " + c)
+                sys.exit(1)
+            _cfgm.save_config(cfg)
+            ledger("network.firewall", "firewall:this", "opened " + ", ".join(
+                f"{x['port']}/{x['proto']}" for x in fw["ports"]))
+            print("  ✓ open: " + ", ".join(f"{x['port']}/{x['proto']}" for x in fw["ports"]))
+            return
+        if sub == "done":
+            _fw.mark_opened(cfg)
+            _cfgm.save_config(cfg)
+            print("  Noted: you opened them.")
+            return
+        print(f"  {fw['kind']} is on here." + ("  The ports are open (opened from Bento)." if fw["opened"] else ""))
+        for x in fw["ports"]:
+            print(f"    {x['port']}/{x['proto']}: {x['for']}")
+        if not fw["opened"]:
+            print("  `bento network firewall open` opens them, or run:")
+            for c in fw["commands"]:
+                print("    " + c)
+            print("  then `bento network firewall done`.")
         return
     def mine():
         """The person's own public key: --your-key FILE, else theirs in ~/.ssh on this machine."""
@@ -8580,14 +8618,15 @@ def main():
     p_net = verb("network", help="the machines on your network: look, install, check, secure, disconnect")
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
-                                "forget", "hide", "show", "rekey"],
+                                "forget", "hide", "show", "rekey", "firewall"],
                        metavar="ACTION",
                        help="list | look | install MACHINE --user U [--authorize] [--kiosk] | "
                             "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
                             "letin MACHINE --user U [--your-key F] [--passwords-on] | "
                             "disconnect MACHINE [--what link:NAME,community,key] | label MACHINE NAME | "
                             "hide MACHINE | show MACHINE (a hidden one, back on the list) | "
-                            "rekey MACHINE (it was reformatted: forget its old SSH key)")
+                            "rekey MACHINE (it was reformatted: forget its old SSH key) | "
+                            "firewall [open|done] (the ports machines set up from here need)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
