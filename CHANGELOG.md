@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.81 — 2026-10-22
+
+**A Pi hears through its hub.** A Pi set up from a hub had no voice keys and no whisper.cpp of its
+own, so its kiosk couldn't hear at all. Now what it records goes to the hub over the link that set
+it up, and the hub turns it into words with its own whisper.cpp or voice key. The hub's Devices
+tab says when it can't understand speech yet, with a door to set it up. Each machine it sets up
+may use it, as a permission you can revoke.
+
 ## 0.6.80 — 2026-10-22
 
 **The kiosk fits a Pi's small screen.** On a 3.5-inch 480×320 screen the Office wasn't drawn

@@ -32,10 +32,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-ENGINES = ("auto", "whisper.cpp", "elevenlabs", "openai", "google", "browser")
+ENGINES = ("auto", "hub", "whisper.cpp", "elevenlabs", "openai", "google", "browser")
 CLOUD = ("elevenlabs", "openai", "google")
 TITLES = {"whisper.cpp": "whisper.cpp", "elevenlabs": "ElevenLabs", "openai": "OpenAI",
-          "google": "Google Cloud"}
+          "google": "Google Cloud", "hub": "your hub"}
+HUB_MAX_BYTES = 2_500_000           # base64 of this fits a pinned link's 4 MiB line (about 75 s)
+HUB_ACTION, HUB_RESOURCE = "speech.hear", "speech:hear"
 ELEVEN_MODELS = ("scribe_v2", "scribe_v1")     # newest first; an older account may lack one
 MODEL_DIR = Path.home() / ".local/share/whisper.cpp/models"
 MAX_BYTES = 4 << 20                 # about two minutes of 16 kHz mono 16-bit audio
@@ -97,15 +99,28 @@ def _whisper(cfg: dict) -> tuple[str, str]:
     return exe, model
 
 
+def _hub(cfg: dict) -> dict | None:
+    """The link to the hub that set this machine up, or None. A hub is faster than a Pi at
+    this and holds the keys a machine it set up does not (its integrations are the hub's)."""
+    try:
+        from . import zeromind
+        return zeromind.hub_link(cfg)
+    except Exception:
+        return None
+
+
 def _order(cfg: dict, want: str) -> list[str]:
     if want != "auto":
         return [want]
     spoken = str(((cfg or {}).get("speech") or {}).get("engine") or "")
     cloud = ([spoken] if spoken in CLOUD else []) + [e for e in CLOUD if e != spoken]
-    return ["whisper.cpp"] + cloud
+    return ["hub", "whisper.cpp"] + cloud
 
 
 def _line(e: str, cfg: dict) -> str:
+    if e == "hub":
+        lk = _hub(cfg) or {}
+        return f"Speech is understood by your hub, {lk.get('label') or 'the Bento that set this machine up'}."
     if e == "whisper.cpp":
         return "Speech is understood on this machine with whisper.cpp."
     where = "AI providers" if e == "openai" and not _voice_key(cfg, "openai") else "Voice"
@@ -120,7 +135,7 @@ def status(cfg: dict) -> dict:
     want = str(_conf(cfg).get("engine") or "auto").lower()
     want = want if want in ENGINES else "auto"
     exe, model_or_why = _whisper(cfg)
-    have = {"whisper.cpp": bool(exe), "elevenlabs": bool(_voice_key(cfg, "elevenlabs")),
+    have = {"hub": _hub(cfg) is not None, "whisper.cpp": bool(exe), "elevenlabs": bool(_voice_key(cfg, "elevenlabs")),
             "openai": bool(_openai(cfg)[1]), "google": bool(_voice_key(cfg, "google"))}
     install = [] if exe else ["whisper-cpp"]
     if want == "browser":
@@ -149,6 +164,16 @@ async def transcribe(cfg: dict, wav: bytes, lang: str = "") -> str:
     st = status(cfg)
     full = str(lang or (cfg.get("speech") or {}).get("language") or "")[:12]
     lang = full.split("-")[0].lower()[:5]
+    if st["engine"] == "hub":
+        try:
+            return await _hub_run(cfg, wav, lang)
+        except HearError as e:
+            # the hub could not: anything this machine has of its own still tries
+            rest = [x for x in _order(cfg, "auto")[1:] if st["have"].get(x)]
+            if not rest:
+                raise
+            return await transcribe({**cfg, "speech": {**(cfg.get("speech") or {}),
+                                                       "hear": {**_conf(cfg), "engine": rest[0]}}}, wav, lang)
     if st["engine"] == "whisper.cpp":
         import asyncio
         return await asyncio.to_thread(_whisper_run, cfg, wav, lang)
@@ -159,6 +184,69 @@ async def transcribe(cfg: dict, wav: bytes, lang: str = "") -> str:
     if st["engine"] == "google":
         return await _google_run(cfg, wav, full or "en-US")
     raise HearError(st["line"])
+
+
+async def _hub_run(cfg: dict, wav: bytes, lang: str) -> str:
+    """One utterance to the hub over the link that set this machine up (op `hear`), answered by
+    whatever the hub hears with. The link is already open TLS on the LAN, so the cost is the
+    upload and the hub's own transcription."""
+    import base64
+    from . import teamlink
+    lk = _hub(cfg)
+    if not lk:
+        raise HearError("This machine has no hub to understand speech for it.")
+    if len(wav) > HUB_MAX_BYTES:
+        raise HearError("That was too long to send in one go. Say it in shorter pieces.")
+    try:
+        out = await teamlink.call(lk, {"op": "hear", "wav": base64.b64encode(wav).decode(), "lang": lang},
+                                  timeout=TIMEOUT_S + 15, limit=teamlink.POOL_LINE)
+    except Exception as e:
+        raise HearError(f"Your hub {lk.get('label')} could not be reached: {type(e).__name__}.") from e
+    if not isinstance(out, dict) or not out.get("ok"):
+        raise HearError(str((out or {}).get("error") or f"Your hub {lk.get('label')} did not answer."))
+    return str(out.get("text") or "").strip()
+
+
+async def answer_hub(store, pdp, cfg: dict, lk: dict, req: dict) -> dict:
+    """The hub's side: one utterance from a machine this hub set up, understood with what the
+    hub has. Only a machine set up here, only with the `speech.hear` grant written then (it can
+    be revoked in Permissions, and goes with the link). Never passed on to another hub."""
+    import base64
+    from . import edgecode
+    from .policy import Principal
+    label = str(lk.get("label") or "")
+    if not edgecode.set_up_here(lk):
+        return {"ok": False, "error": "This hub understands speech only for machines it set up."}
+    dec = pdp.decide(Principal("team", f"{label}/hear"), HUB_ACTION, HUB_RESOURCE, {"surface": "team"})
+    if dec.effect != "allow":
+        return {"ok": False, "error": f"Your hub doesn't understand speech for {label} (allow it in Permissions there)."}
+    try:
+        wav = base64.b64decode(str(req.get("wav") or ""), validate=True)
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "That recording did not arrive whole."}
+    # this machine's OWN engines only: a hub never passes a recording on to a hub of its own
+    have = status(cfg)["have"]
+    own = next((e for e in _order(cfg, "auto") if e != "hub" and have.get(e)), "")
+    if not own:
+        return {"ok": False, "error": "Your hub can't understand speech yet. Set up Listening under Voice on it."}
+    here = {**cfg, "speech": {**(cfg.get("speech") or {}), "hear": {**_conf(cfg), "engine": own}}}
+    st = status(here)
+    try:
+        text = await transcribe(here, wav, str(req.get("lang") or "")[:12])
+    except HearError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "text": text, "engine": st["engine"]}
+
+
+def grant_hub(store, label: str) -> bool:
+    """Written when the hub sets a machine up, beside code.run: an ordinary grant."""
+    have = [g for g in store.list_grants(principal_kind="team", principal_id=f"{label}/*")
+            if g.get("action") == HUB_ACTION and g.get("effect") == "allow"]
+    if have:
+        return False
+    store.add_grant("team", f"{label}/*", HUB_ACTION, HUB_RESOURCE, source="provision",
+                    note=f"{label} may have this machine understand what is said to it")
+    return True
 
 
 def _whisper_run(cfg: dict, wav: bytes, lang: str) -> str:
