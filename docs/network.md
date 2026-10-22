@@ -274,6 +274,14 @@ a few seconds apart, before it stops.
 
 ![The same row at phone width, Install it again a full-width button](screenshots/network-install-again-phone.png)
 
+The install form puts the user, password and agent's name in one row, the choices under them,
+and what **Check it** found in a card (the board, its memory, its SSH key, and *What runs there*
+folded away). **Check again** and **Install Bento there** come last, at the same height.
+
+![The install form after Check it on a Raspberry Pi 3 B+, with Install Bento there](screenshots/network-install-form-desk.png)
+
+![The install form at phone width, both buttons full width](screenshots/network-install-form-phone.png)
+
 ![The Devices app: every machine, and a Pi's switches as read from it](screenshots/devices-controls-desk.png)
 
 ![A Pi's controls at phone width, each switch a full-size button](screenshots/devices-controls-phone.png)

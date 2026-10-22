@@ -118,7 +118,24 @@ body.kiosk #office-scene canvas{display:block}
 .dev-lbl{display:flex;align-items:center;gap:6px}
 .dev-form input{min-height:var(--tap,32px)}
 .dev-secret{-webkit-text-security:disc}
-.dev-acts{display:flex;gap:8px;flex:1 1 100%}
+.dev-acts{display:flex;flex-wrap:wrap;gap:8px;flex:1 1 100%;align-items:center}
+/* .wiz-next brings the wizard's top margin, which stretched the button beside it */
+.dev-acts>button,body.immersive .dev-acts>button{min-height:max(var(--tap,32px),38px);margin:0;padding:0 18px;line-height:1.2}
+@media (max-width:480px){.dev-acts>button{flex:1 1 auto}}
+/* Settings gives every label a margin; inside a form it doubled every gap */
+.dev-form label,body.immersive .dev-form label{margin:0}
+.dev-fields+.dev-opts{margin-top:-2px}
+.dev-fields{flex:1 1 100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 14px;align-items:end}
+.dev-fields input{width:100%;box-sizing:border-box}
+.dev-fields>.dev-pw-opts{grid-column:1/-1;order:1;margin-top:-4px}
+.dev-opts input[type=checkbox]{width:18px;height:18px;min-height:0;margin:0}
+.dev-found{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.dev-found .dev-hostkey{font-family:var(--mono,monospace);font-size:var(--fs-xs,11px)}
+.dev-found details summary{cursor:pointer;color:var(--mut);margin-top:4px}
+/* forgetting a saved password is a small thing beside its tick, so it reads as a link */
+.dev-pw-forget{background:none;border:0;padding:0 2px;min-height:var(--tap,32px);color:var(--acc);
+  font:inherit;font-size:var(--fs-sm,12px);cursor:pointer}.dev-pw-forget:hover{text-decoration:underline}
 .dev-opts{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;flex:1 1 100%;min-height:var(--tap,32px)}
 .dev-facts{flex:1 1 100%;min-width:0;max-width:100%;overflow-wrap:anywhere;font-size:var(--fs-sm,12px);line-height:1.5}
 .dev-facts .warn,#card-out.warn{color:var(--warn,#f59e0b)}
