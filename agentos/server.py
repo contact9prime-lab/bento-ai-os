@@ -13097,9 +13097,37 @@ async def api_devices_sshkey():
     try:
         pk = ri.ensure_key(teamlink.machine_name(state.machine_cfg()))
     except ri.InstallError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _ssh_refusal(e)
     _ledger("device.sshkey", "provision:ssh-key", "made this machine's SSH key")
     return {"pubkey": pk}
+
+
+def _ssh_refusal(e) -> JSONResponse:
+    """A login that did not happen, as the page reads it. A changed host key (a reformatted
+    machine) carries both fingerprints, so the form can offer Forget the old key."""
+    from . import remoteinstall as ri
+    body = {"error": str(e)}
+    if isinstance(e, ri.KeyChanged):
+        body["key_changed"] = e.facts()
+    return JSONResponse(body, status_code=409 if "key_changed" in body else 400)
+
+
+@app.post("/api/devices/forget-key")
+async def api_devices_forget_key(body: dict):
+    """Forget the key Bento pinned for one machine, after the person compared it with the one
+    it shows now. The next login pins the new key. Admin only, and a ledger row."""
+    if (r := _require_admin()):
+        return r
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, port = str(b.get("ip") or ""), int(b.get("port") or 22)
+    try:
+        old = ri.forget_host(ip, port)
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _ledger("device.rekey", f"device:{ip}", f"forgot the old SSH key of {ip}"
+            + (f" ({old})" if old else " (none was kept)") + "; the next login keeps the new one")
+    return {"forgot": old}
 
 
 def _device_creds(b: dict) -> tuple[str, str, str, int]:
@@ -13118,7 +13146,7 @@ async def api_devices_check(body: dict):
     try:
         got = await ri.check(ip, user, pw, port)
     except ri.InstallError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _ssh_refusal(e)
     got["plan"] = ri.plan(state.machine_cfg(), "bento-enroll-1.…", authorize=bool((body or {}).get("authorize")),
                           screen=_wants_screen(body))
     return got
@@ -13269,7 +13297,7 @@ async def api_network_check(body: dict):
     try:
         got = await harden.check(ip, user, pw, port)
     except ri.InstallError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _ssh_refusal(e)
     if mine:
         got["plan"] = harden.plan([p["id"] for p in got["plan"]], port, not got["sudo"], mine)
     invmod.note_security(ip, _net_mac(ip), got["done"], user, by=usersmod.current() or "")
@@ -13329,7 +13357,7 @@ async def api_network_letin(body: dict):
     try:
         got = await harden.let_in(ip, user, pw, port, mine, bool(b.get("passwords")))
     except ri.InstallError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return _ssh_refusal(e)
     invmod.note_security(ip, _net_mac(ip), got["security"], user, by=usersmod.current() or "")
     _ledger("device.letin", f"device:{ip}", f"{user}@{ip}: "
             + ", ".join({"yourkey": "added the person's own key",

@@ -4543,6 +4543,17 @@ def _pool_cli(args):
              " | mind [ZERO] [--soul FILE]]")
 
 
+def _ssh_says(e) -> str:
+    """A refused login for the terminal. A changed host key (a reformatted machine) says both
+    fingerprints and the command that forgets the old one."""
+    from . import remoteinstall as ri
+    if not isinstance(e, ri.KeyChanged):
+        return "  " + str(e)
+    f = e.facts()
+    return (f"  {e}\n  Old key:       {f['old'] or 'unknown'}\n  It now shows:  {f['new'] or 'not read'}"
+            f"\n  If you reformatted it: bento network rekey {e.host}")
+
+
 def _network_cli(args):
     """Settings → Network from a terminal: every machine Bento knows on this network
     (inventory.py), whether each is secure, securing one (harden.py) and removing what ties
@@ -4575,7 +4586,7 @@ def _network_cli(args):
                 sys.exit(f"  bento network {a} MACHINE (an address, a name or a MAC; see `bento network`)")
             return None
         r = inv.find(inv.rows(), rest[0])
-        if r is None and a in ("check", "secure", "install", "letin"):
+        if r is None and a in ("check", "secure", "install", "letin", "rekey"):
             return {"ip": rest[0], "mac": "", "display": rest[0], "user": "", "ssh": True, "ports": [22],
                     "connections": [], "key": rest[0]}
         if r is None:
@@ -4650,7 +4661,7 @@ def _network_cli(args):
         try:
             got = asyncio.run(harden.let_in(r["ip"], user, password(), port(r), k, args.passwords_on))
         except ri.InstallError as e:
-            sys.exit("  " + str(e))
+            sys.exit(_ssh_says(e))
         inv.note_security(r["ip"], r.get("mac") or "", got["security"], user, by="cli")
         ledger("device.letin", f"device:{r['ip']}", f"{user}@{r['ip']}: {', '.join(got['done']) or 'nothing'}")
         if "yourkey" in got["done"]:
@@ -4667,7 +4678,7 @@ def _network_cli(args):
         try:
             c = asyncio.run(harden.check(r["ip"], user, pw, port(r)))
         except ri.InstallError as e:
-            sys.exit("  " + str(e))
+            sys.exit(_ssh_says(e))
         inv.note_security(r["ip"], r.get("mac") or "", c["done"], user, by="cli")
         for s_ in harden.STEPS:
             print(f"  {'✓' if c['done'][s_['id']] else '·'} {s_['title']}")
@@ -4699,7 +4710,7 @@ def _network_cli(args):
             got = asyncio.run(harden.secure(r["ip"], user, pw, port(r), steps, on_line=show, mine=k))
         except ri.InstallError as e:
             ledger("device.secure_failed", f"device:{r['ip']}", str(e))
-            sys.exit("  " + str(e))
+            sys.exit(_ssh_says(e))
         inv.note_security(r["ip"], r.get("mac") or "", got["done"], user, by="cli")
         n = sum(1 for v in got["done"].values() if v)
         ledger("device.secured", f"device:{r['ip']}", f"ran {', '.join(got['ran']) or 'nothing new'}")
@@ -4733,7 +4744,7 @@ def _network_cli(args):
                 try:
                     got = asyncio.run(harden.remove_key(r["ip"], user, password(), port(r), force=args.force))
                 except ri.InstallError as e:
-                    sys.exit("  " + str(e))
+                    sys.exit(_ssh_says(e))
                 sec = dict((r.get("security") or {}).get("done") or {})
                 sec["key"] = False
                 inv.note_security(r["ip"], r.get("mac") or "", sec, user, by="cli")
@@ -4753,6 +4764,23 @@ def _network_cli(args):
         inv.hide(r)
         ledger("device.forget", f"device:{r['ip'] or r['key']}", f"hid {r['display']}")
         print(f"  ✓ {r['display']} is hidden. `bento network show {r['ip'] or r['key']}` lists it again.")
+        return
+    if a == "rekey":
+        r = machine()
+        old, new = ri.fingerprint(r["ip"], port(r)), ri.seen_key(r["ip"], port(r))
+        if not old:
+            print(f"  Bento keeps no key for {r['display']}: the next login keeps the one it shows.")
+            return
+        print(f"  Old key:       {old}\n  It now shows:  {new or 'nothing (is it on?)'}")
+        print("  Forget the old key only if you reformatted or reinstalled it.")
+        if not args.yes and input("  Forget it? (y/n) ").strip().lower()[:1] != "y":
+            return
+        try:
+            ri.forget_host(r["ip"], port(r))
+        except ri.InstallError as e:
+            sys.exit(_ssh_says(e))
+        ledger("device.rekey", f"device:{r['ip']}", f"forgot the old SSH key of {r['ip']} ({old})")
+        print(f"  ✓ forgotten. `bento network check {r['ip']} --user U` keeps the new one.")
         return
     if a == "show":
         r = machine()
@@ -4824,7 +4852,7 @@ def _devices_cli(args, cfg, a, rest, run, port: int = 22, user: str = "", verb: 
         try:
             c = run(ri.check(host, user, pw, port))
         except ri.InstallError as e:
-            sys.exit("  " + str(e))
+            sys.exit(_ssh_says(e))
         print(f"    {c['board'] or c['arch']} · {c['os']} · {c['ram_mb']} MB memory · {c['free_mb']} MB free"
               + (" · Bento is already there" if c["bento"] else ""))
         print(f"    its key: {c['host_key'] or 'unknown'}")
@@ -8535,13 +8563,14 @@ def main():
     p_net = verb("network", help="the machines on your network: look, install, check, secure, disconnect")
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
-                                "forget", "hide", "show"],
+                                "forget", "hide", "show", "rekey"],
                        metavar="ACTION",
                        help="list | look | install MACHINE --user U [--authorize] [--kiosk] | "
                             "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
                             "letin MACHINE --user U [--your-key F] [--passwords-on] | "
                             "disconnect MACHINE [--what link:NAME,community,key] | label MACHINE NAME | "
-                            "hide MACHINE | show MACHINE (a hidden one, back on the list)")
+                            "hide MACHINE | show MACHINE (a hidden one, back on the list) | "
+                            "rekey MACHINE (it was reformatted: forget its old SSH key)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
@@ -8554,7 +8583,7 @@ def main():
     p_net.add_argument("--what", default="", help="disconnect: which ties to remove (default: all of them)")
     p_net.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
     p_net.add_argument("--key-only", action="store_true", help="log in with this machine's key, ask no password")
-    p_net.add_argument("--yes", action="store_true", help="install / secure / disconnect: do not ask first")
+    p_net.add_argument("--yes", action="store_true", help="install / secure / disconnect / rekey: do not ask first")
     p_net.add_argument("--force", action="store_true",
                        help="disconnect: take the key off even when it is the only way in")
     p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")

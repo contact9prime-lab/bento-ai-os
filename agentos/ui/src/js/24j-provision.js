@@ -150,7 +150,7 @@ async function provAgents(){
    used once (or this machine's key), shows what the machine is and the exact command, and runs
    the real installer with a key made for that one machine, so it is set up the moment it is
    heard. The SD card writer is for the screen the card is plugged into. */
-var DEV={open:'',check:{},log:{},err:{}};
+var DEV={open:'',check:{},log:{},err:{},rekey:{}};
 function provDevicesHTML(v,can){
   /* The machines themselves (with Install Bento) are the inventory above, in Network
      (24n-network.js); this keeps the two ways in that need no machine yet. */
@@ -181,11 +181,20 @@ function provDevForm(d){
     <div class="dev-acts"><button class="endbtn" data-prov="devcheck" data-ip="${esc(d.ip)}" data-port="${sshPort}">Check it</button>
       ${c&&!c.problems.length?`<button class="wiz-next" data-prov="devinstall" data-ip="${esc(d.ip)}" data-port="${sshPort}">Install Bento there</button>`:''}</div>
     ${DEV.err[d.ip]?`<p class="warn dev-err">✗ ${esc(DEV.err[d.ip])}</p>`:''}
+    ${sshRekeyHTML(d.ip,sshPort,DEV.rekey[d.ip])}
     ${c?`<div class="dev-facts">${esc([c.board||c.arch,c.os,c.ram_mb+' MB memory',c.free_mb+' MB free'].filter(Boolean).join(' · '))}
       ${c.bento?'<br>Bento is already there.':''}${c.host_key?`<br><span class="mut">Its key: ${esc(c.host_key)}</span>`:''}
       ${c.problems.map(p=>`<br><span class="warn">✗ ${esc(p)}</span>`).join('')}
       <br><span class="mut">This runs there:</span><code class="dev-plan">${esc(c.plan||'')}</code></div>`:''}
   </div>`;
+}
+/* A reformatted machine shows a new SSH key and ssh refuses it. Both fingerprints, and a
+   button that forgets the old one: the person's call, since the same refusal is what a
+   machine pretending to be this one would get. */
+function sshRekeyHTML(ip,port,k){
+  if(!k)return '';
+  return `<div class="dev-rekey"><p class="mut">Old key: <code>${esc(k.old||'unknown')}</code><br>It now shows: <code>${esc(k.new||'not read')}</code></p>
+    <button class="endbtn" data-prov="rekey" data-ip="${esc(ip)}" data-port="${Number(port)||22}">It was reformatted: forget the old key</button></div>`;
 }
 function provDevCreds(){
   const g=id=>(document.getElementById(id)||{});
@@ -252,8 +261,18 @@ function provWire(box){
 async function provAct(act,b){
   const box=document.getElementById('s-prov'),out=document.getElementById('prov-out');
   const post=async(url,body,method)=>{const r=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
-    const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('could not do that ('+r.status+')'));return d};
+    const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('could not do that ('+r.status+')')),{data:d});return d};
   try{
+    if(act==='rekey'){const ip=b.dataset.ip,k=DEV.rekey[ip]||(typeof NET!=='undefined'&&NET.rekey&&NET.rekey[ip])||{};
+      if(!await osConfirm(`Forget the old key of ${ip}?`,
+        `Do this only if you reformatted or reinstalled it. Old key: ${k.old||'unknown'}. It now shows: ${k.new||'unknown'}. The next login keeps the new one.`,
+        {confirmText:'Forget the old key'}))return;
+      await post('/api/devices/forget-key',{ip,port:Number(b.dataset.port)||22});
+      delete DEV.rekey[ip];delete DEV.err[ip];if(typeof NET!=='undefined'&&NET.rekey){delete NET.rekey[ip];delete NET.err[ip]}
+      toast('✓ Forgot the old key. Checking it again…');
+      // the Check it beside it runs again with what is typed, and keeps the new key
+      const again=b.closest('.dev-form')?.querySelector('[data-prov="devcheck"],[data-net="check"]');
+      if(again)again.click();return}
     if(act==='devscan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/devices/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} answered on ${d.networks}`:`Nothing answered on ${d.networks}.`);return provPaint()}
     if(act==='devopen'){DEV.open=DEV.open===b.dataset.ip?'':b.dataset.ip;return provPaint()}
@@ -265,7 +284,9 @@ async function provAct(act,b){
       b.disabled=true;b.textContent='Checking…';
       // a refusal stays in the form under Check it: a toast is gone before it is read
       try{DEV.check[b.dataset.ip]=Object.assign(await post('/api/devices/check',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c}),{user:c.user});delete DEV.err[b.dataset.ip]}
-      catch(e){delete DEV.check[b.dataset.ip];DEV.err[b.dataset.ip]=String(e.message||e);throw e}
+      catch(e){delete DEV.check[b.dataset.ip];DEV.err[b.dataset.ip]=String(e.message||e);
+        if(e.data&&e.data.key_changed){DEV.rekey[b.dataset.ip]=e.data.key_changed;return}
+        delete DEV.rekey[b.dataset.ip];throw e}
       finally{provPaint()}
       return}
     if(act==='devinstall'){const c=provDevCreds();

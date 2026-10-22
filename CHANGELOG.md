@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.74 — 2026-10-22
+
+**A reformatted Pi can be reached again.** Bento remembers each machine's SSH key and refuses one
+whose key changed, so a Pi you reformatted was refused on every *Check it*, with advice to edit a
+file you couldn't get to. *Check it* now shows the old key and the one the machine shows now, with
+**It was reformatted: forget the old key**. After you confirm, Bento forgets the old key and checks
+again. `bento network rekey MACHINE` does the same from a terminal, and a refused check there
+names it.
+
 ## 0.6.73 — 2026-10-22
 
 **A machine you hid can be shown again.** *Not this one* in Settings → Network (now **Hide**,

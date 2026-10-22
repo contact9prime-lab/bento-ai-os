@@ -11,7 +11,7 @@
    TUI: `bento network`, `bento network check|secure|label|forget`. SUI: identical, a page;
    nothing here touches the compositor. A Zero has no Network tab (00k-zeroface.js): its
    network is its hub's business. */
-var NET={v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{}};
+var NET={v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{}};
 
 async function netPaint(){
   const box=document.getElementById('s-net');if(!box)return;
@@ -105,6 +105,8 @@ function netSecureForm(r){
       <input id="net-mine" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAA… you@laptop"></label>
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
       ${c&&!c.problems.length&&steps.some(s=>!c.done[s.id])?`<button class="wiz-next" data-net="go" data-key="${esc(r.key)}">Secure it</button>`:''}</div>
+    ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
+    ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}
     ${c&&c.done.passwords?`<div class="net-letin"><p class="mut">Password logins are off there, so only keys get in. Bento’s key still does.</p>
       <div class="dev-acts"><button class="endbtn" data-net="letkey" data-key="${esc(r.key)}">Add my key</button>
       <button class="endbtn" data-net="letpw" data-key="${esc(r.key)}">Turn password logins back on</button></div></div>`:''}
@@ -152,7 +154,7 @@ function netRow(key){return ((NET.v||{}).rows||[]).find(r=>r.key===key)||{}}
 async function netAct(act,b){
   const r=netRow(b.dataset.key);
   const post=async(url,body,method)=>{const res=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
-    const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d.error||('could not do that ('+res.status+')'));return d};
+    const d=await res.json().catch(()=>({}));if(!res.ok)throw Object.assign(new Error(d.error||('could not do that ('+res.status+')')),{data:d});return d};
   const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
     password:(document.getElementById('net-pw')||{}).value||'',mine:((document.getElementById('net-mine')||{}).value||'').trim()});
   try{
@@ -184,8 +186,11 @@ async function netAct(act,b){
       toast(`✓ ${r.display||r.ip} is listed again`);if(typeof provPaint==='function')provPaint();return netPaint()}
     if(act==='check'){const c=creds();if(!c.user){toast('Who logs in there? Type the user name.');return}
       b.disabled=true;b.textContent='Checking…';
-      try{NET.check[r.ip]=Object.assign(await post('/api/network/check',c),{user:c.user})}
-      catch(e){delete NET.check[r.ip];throw e}finally{netPaint()}
+      try{NET.check[r.ip]=Object.assign(await post('/api/network/check',c),{user:c.user});delete NET.err[r.ip];delete NET.rekey[r.ip]}
+      catch(e){delete NET.check[r.ip];
+        // kept under Check it, like the install form: a changed key needs a decision, not a toast
+        if(e.data&&e.data.key_changed){NET.err[r.ip]=String(e.message||e);NET.rekey[r.ip]=e.data.key_changed;return}
+        delete NET.err[r.ip];delete NET.rekey[r.ip];throw e}finally{netPaint()}
       return}
     if(act==='letkey'||act==='letpw'){const c=creds();if(!c.user){toast('Who logs in there? Type the user name.');return}
       if(act==='letkey'&&!c.mine){toast('Paste your own SSH key first',{kind:'warn'});document.getElementById('net-mine')?.focus();return}

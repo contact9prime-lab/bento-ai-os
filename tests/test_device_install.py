@@ -454,3 +454,58 @@ def test_no_ssh_library_is_a_dependency():
     py = (ROOT / "pyproject.toml").read_text().lower()
     for lib in ("paramiko", "asyncssh", "fabric", "pexpect"):
         assert f'"{lib}' not in py, f"{lib} is not permissively licensed or not needed: the system ssh is used"
+
+
+CHANGED_SSH = '''#!/usr/bin/env python3
+import sys
+sys.stderr.write("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\\n"
+                 "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\\n"
+                 "Host key verification failed.\\n")
+sys.exit(255)
+'''
+
+
+def _pin(host, port=22):
+    """Pin a real ed25519 host key for `host` in Bento's known_hosts, as a first visit would."""
+    import subprocess
+    kh = remoteinstall.known_hosts()
+    kh.parent.mkdir(parents=True, exist_ok=True)
+    d = kh.parent / "hostkey"
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(d)], check=True)
+    target = host if port == 22 else f"[{host}]:{port}"
+    kh.write_text(f"{target} {(d.parent / 'hostkey.pub').read_text().split(' ')[0]} "
+                  f"{(d.parent / 'hostkey.pub').read_text().split(' ')[1]}\n")
+
+
+def test_a_reformatted_machine_says_its_key_changed_and_both_fingerprints(fake_ssh):
+    """Reported with a screenshot after a Pi was reformatted: the refusal named a file the
+    person cannot reach. It is KeyChanged now, with the old and new fingerprints."""
+    (fake_ssh / "ssh").write_text(CHANGED_SSH)
+    _pin("127.0.0.2")
+    with pytest.raises(remoteinstall.KeyChanged) as e:
+        asyncio.run(remoteinstall.check("127.0.0.2", "pi", "right-one"))
+    assert "forget the old key" in str(e.value) and "known hosts" not in str(e.value)
+    f = e.value.facts()
+    assert f["host"] == "127.0.0.2" and f["port"] == 22 and f["old"].startswith("SHA256:")
+
+
+def test_forgetting_the_old_key_lets_the_next_login_keep_the_new_one(fake_ssh, monkeypatch):
+    _pin("127.0.0.2")
+    old = remoteinstall.fingerprint("127.0.0.2")
+    assert old.startswith("SHA256:")
+    assert remoteinstall.forget_host("127.0.0.2") == old
+    assert remoteinstall.fingerprint("127.0.0.2") == ""
+    assert remoteinstall.forget_host("127.0.0.2") == "", "nothing pinned, nothing to forget"
+    monkeypatch.delenv("AGENTOS_SCAN_NETWORKS")
+    with pytest.raises(remoteinstall.InstallError, match="this network"):
+        remoteinstall.forget_host("8.8.8.8")
+
+
+def test_every_face_can_forget_a_changed_key():
+    server = (ROOT / "agentos" / "server.py").read_text()
+    assert '"/api/devices/forget-key"' in server and '"device.rekey"' in server
+    assert "key_changed" in server
+    js = (ROOT / "agentos" / "ui" / "src" / "js" / "24j-provision.js").read_text()
+    assert "/api/devices/forget-key" in js and "sshRekeyHTML" in js
+    assert "sshRekeyHTML" in (ROOT / "agentos" / "ui" / "src" / "js" / "24n-network.js").read_text()
+    assert '"rekey"' in (ROOT / "agentos" / "__main__.py").read_text()
