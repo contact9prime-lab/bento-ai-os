@@ -440,8 +440,8 @@ function setTab(body,all){
      here from Team & Communications. Admin only: it reaches other machines. */
   if(want('network')){
     P.push(`<h2>Network</h2><p class="lead">The machines on your network: install Bento on them and keep them secure. ${pInfo('Bento looks only at this machine’s own private network. Anything it runs on another machine is shown before it runs, and is a ledger row.')}</p>`);
-    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates"><h3>On your network</h3><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
-    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi"><h3>Set machines up</h3><div id="s-prov"></div></div>`);
+    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates hidden show again"><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi add a machine"><div id="s-prov"></div></div>`);
     setTimeout(()=>{if(typeof netPaint==='function')netPaint();if(typeof provPaint==='function')provPaint()},0);
   }
   if(want('permissions')){

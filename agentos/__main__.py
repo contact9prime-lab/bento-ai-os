@@ -4599,9 +4599,13 @@ def _network_cli(args):
         return _devices_cli(args, cfg, "install", [r["ip"]], asyncio.run, port=port(r),
                             user=args.user or r.get("user") or "")
     if a == "list":
-        rows = [r for r in inv.rows() if not r.get("ignored")]
+        every = inv.rows()
+        rows = [r for r in every if not r.get("ignored")]
+        hidden = [r for r in every if r.get("ignored")]
+        tail = ("\n  Hidden: " + ", ".join(f"{r['display']} ({r['ip'] or r['key']})" for r in hidden)
+                + "\n  `bento network show MACHINE` lists one again.") if hidden else ""
         if not rows:
-            print("  Nothing listed yet. `bento network look` looks at the network.")
+            print("  Nothing listed yet. `bento network look` looks at the network." + tail)
             return
         sm = inv.summary(rows)
         print(f"  {sm['machines']} machine(s) · {sm['bento']} with Bento · {sm['secured']} secured\n")
@@ -4613,6 +4617,8 @@ def _network_cli(args):
             ties = ", ".join(c["words"] for c in r["connections"])
             if ties:
                 print(f"  {'':<22} tied by {ties}")
+        if tail:
+            print(tail)
         return
     def mine():
         """The person's own public key: --your-key FILE, else theirs in ~/.ssh on this machine."""
@@ -4742,17 +4748,17 @@ def _network_cli(args):
         inv.set_label(r["ip"], r.get("mac") or "", " ".join(rest[1:]))
         print("  ✓ named " + " ".join(rest[1:]))
         return
-    if a == "forget":
+    if a in ("forget", "hide"):
         r = machine()
-        from . import provision as prov
-        d = prov.load()
-        for k, e in d["devices"].items():
-            if k == r["key"] or (r.get("ip") and e.get("ip") == r["ip"]):
-                e["state"] = "ignored"
-        prov.save(d)
-        inv.forget(r["key"])
-        ledger("device.forget", f"device:{r['ip'] or r['key']}", f"took {r['display']} off the list")
-        print(f"  ✓ {r['display']} is off the list")
+        inv.hide(r)
+        ledger("device.forget", f"device:{r['ip'] or r['key']}", f"hid {r['display']}")
+        print(f"  ✓ {r['display']} is hidden. `bento network show {r['ip'] or r['key']}` lists it again.")
+        return
+    if a == "show":
+        r = machine()
+        inv.unhide(r)
+        ledger("device.show", f"device:{r['ip'] or r['key']}", f"listed {r['display']} again")
+        print(f"  ✓ {r['display']} is listed again")
 
 
 def _devices_cli(args, cfg, a, rest, run, port: int = 22, user: str = "", verb: str = "pool"):
@@ -8528,12 +8534,14 @@ def main():
     p_co.add_argument("--user", default="", help="whose company, on a machine with users")
     p_net = verb("network", help="the machines on your network: look, install, check, secure, disconnect")
     p_net.add_argument("action", nargs="?", default="list",
-                       choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label", "forget"],
+                       choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
+                                "forget", "hide", "show"],
                        metavar="ACTION",
                        help="list | look | install MACHINE --user U [--authorize] [--kiosk] | "
                             "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
                             "letin MACHINE --user U [--your-key F] [--passwords-on] | "
-                            "disconnect MACHINE [--what link:NAME,community,key] | label MACHINE NAME | forget MACHINE")
+                            "disconnect MACHINE [--what link:NAME,community,key] | label MACHINE NAME | "
+                            "hide MACHINE | show MACHINE (a hidden one, back on the list)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")

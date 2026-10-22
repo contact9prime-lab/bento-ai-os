@@ -775,7 +775,9 @@ def ignore(fp_or_name: str) -> dict | None:
     e = _find_seen(d, fp_or_name)
     if not e:
         return None
-    d["seen"][e]["state"] = "ignored"
+    if d["seen"][e].get("state") != "ignored":
+        d["seen"][e]["was"] = d["seen"][e].get("state") or "new"   # Show again in Network puts it back
+        d["seen"][e]["state"] = "ignored"
     save(d)
     return d["seen"][e]
 

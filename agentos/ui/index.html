@@ -5121,7 +5121,7 @@ body.kiosk #office-scene canvas{display:block}
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
 
 /* Settings → Network (24n-network.js): one row per machine, its badges, Secure it */
-.net-list{display:flex;flex-direction:column;gap:6px;margin:6px 0 10px}
+.net-list{display:flex;flex-direction:column;gap:6px;margin:6px 16px 10px}
 .net-m{display:flex;flex-wrap:wrap;gap:6px 10px;padding:10px 12px;border-radius:10px;
   background:color-mix(in srgb,var(--bg3) 60%,transparent)}
 .net-m.stale{opacity:.65}
@@ -5130,8 +5130,8 @@ body.kiosk #office-scene canvas{display:block}
 .net-b,.net-s{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;
   background:color-mix(in srgb,var(--txt) 10%,transparent)}
 .net-b.on{background:color-mix(in srgb,var(--acc) 22%,transparent)}
-.net-s.ok{background:color-mix(in srgb,var(--ok,#4ade80) 24%,transparent)}
-.net-s.warn{background:color-mix(in srgb,var(--warn,#f59e0b) 24%,transparent)}
+.net-b.ok{background:color-mix(in srgb,var(--ok,#4ade80) 24%,transparent)}
+.net-b.warn{background:color-mix(in srgb,var(--warn,#f59e0b) 24%,transparent)}
 .net-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .net-steps{flex:1 1 100%;display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .net-step{display:flex;gap:10px;align-items:flex-start;font-size:var(--fs-sm,12px);line-height:1.45;min-width:0}
@@ -5145,7 +5145,26 @@ body.kiosk #office-scene canvas{display:block}
 .net-step details{margin-top:4px}.net-step summary{cursor:pointer;min-height:var(--tap,24px)}
 .net-hint{flex:1 1 100%;margin:0;font-size:var(--fs-sm,12px)}
 .net-steps .warn{color:var(--warn,#f59e0b);margin:0}
-@media (max-width:600px){.net-acts{flex:1 1 100%}.net-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
+/* ⋯ opens the rarer actions on a line of their own, so a row is one button and ⋯ */
+.net-more-b{min-width:var(--tap,32px);padding-inline:10px;font-weight:700;letter-spacing:.08em}
+.net-more{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+/* hidden machines: a fold under the list, each with Show again */
+.net-hidden{margin:0 16px 12px}
+.net-hidden>summary{cursor:pointer;min-height:var(--tap,32px);display:flex;align-items:center;gap:6px;
+  font-size:var(--fs-sm,12px);color:var(--dim);list-style:none}
+.net-hidden>summary::-webkit-details-marker{display:none}
+.net-hidden>summary::before{content:'▸';transition:transform .15s}
+.net-hidden[open]>summary::before{transform:rotate(90deg)}
+.net-h>span{flex:1 1 220px;min-width:0}
+.net-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;
+  padding:6px 0;border-top:1px solid color-mix(in srgb,var(--txt) 8%,transparent)}
+.net-h .mut{font-size:var(--fs-sm,12px)}
+/* Add a machine: the ways in, folded under one row unless a search is on */
+.prefs-main:not(.searching) .prov-add:not(.open) .prov-add-body{display:none}
+.prov-add .prov-add-body>.prow:first-child{border-top:1px solid color-mix(in srgb,var(--txt) 8%,transparent)}
+@media (max-width:600px){.net-acts{flex:1 1 100%;justify-content:flex-end}
+  .net-acts>.endbtn:not(.net-more-b),.net-more .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
+  .net-more-b{min-height:var(--tap,40px)}
   .net-form input{min-height:var(--tap,40px)}}
 
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
@@ -18173,8 +18192,8 @@ function setTab(body,all){
      here from Team & Communications. Admin only: it reaches other machines. */
   if(want('network')){
     P.push(`<h2>Network</h2><p class="lead">The machines on your network: install Bento on them and keep them secure. ${pInfo('Bento looks only at this machine’s own private network. Anything it runs on another machine is shown before it runs, and is a ledger row.')}</p>`);
-    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates"><h3>On your network</h3><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
-    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi"><h3>Set machines up</h3><div id="s-prov"></div></div>`);
+    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates hidden show again"><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi add a machine"><div id="s-prov"></div></div>`);
     setTimeout(()=>{if(typeof netPaint==='function')netPaint();if(typeof provPaint==='function')provPaint()},0);
   }
   if(want('permissions')){
@@ -33223,7 +33242,7 @@ async function poolNotes(){
 
    TUI: `bento pool discover | enable | key | wait | zero | standard`. SUI: identical, a page;
    nothing here touches the compositor. */
-var PROV={v:null,sel:{},zero:null,agents:null};
+var PROV={v:null,sel:{},zero:null,agents:null,more:false};
 
 async function provPaint(){
   const box=document.getElementById('s-prov');if(!box)return;
@@ -33239,12 +33258,15 @@ async function provPaint(){
     box.innerHTML=rows.join('');provWire(box);return;
   }
   if(!(v.role==='leader'||v.has_brain||(v.seen||[]).length||(v.devices||[]).length)){box.innerHTML='';return}
-  const seen=(v.seen||[]).filter(m=>m.state!=='ignored');
-  rows.push(pRow('New machines',`<button class="endbtn" data-prov="scan"${can?'':' disabled'}>Look now</button>`,
-    {desc:v.watching?'Machines that turn on waiting to be set up show here, and you get a toast.':'This machine is not listening for new ones.',
-     more:'A fresh Raspberry Pi with Bento waits by itself. Any other machine waits after bento pool wait on.',
-     f:'provision new machines discover raspberry pi poap enable set up scan'}));
+  /* Only what is waiting now is shown: a machine set up long ago is in the list above, and a
+     hidden one under Hidden there. The empty "no machine is waiting" block is gone: the toast
+     says when one turns up, and Look at the network looks for them too. */
+  const seen=(v.seen||[]).filter(m=>m.state!=='ignored'&&m.state!=='enabled');
   if(seen.length){
+    rows.push(pRow('New machines',`<button class="endbtn" data-prov="scan"${can?'':' disabled'}>Look again</button>`,
+      {desc:`${seen.length} waiting to be set up.`,
+       more:'A fresh Raspberry Pi with Bento waits by itself. Any other machine waits after bento pool wait on.',
+       f:'provision new machines discover raspberry pi poap enable set up scan'}));
     rows.push(`<div class="prov-list">${seen.map(m=>{
       const hw=m.hw||{},on=PROV.sel[m.fp]!==undefined;
       const state=m.state==='enabled'?'set up':m.age<90?'waiting':'waiting · heard '+poolAgo(m.age);
@@ -33257,7 +33279,7 @@ async function provPaint(){
           · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span>${m.owner_name?` · for ${esc(m.owner_name)}`:''}</span>
         <input class="prov-name" data-name="${esc(m.fp)}" maxlength="32" placeholder="${esc(m.name)}" aria-label="Name for ${esc(m.name)}"${m.state==='enabled'?' disabled':''}>
         ${proof}
-        ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Not this one</button>`:''}</div>`}).join('')}</div>`);
+        ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Hide</button>`:''}</div>`}).join('')}</div>`);
     const f=PROV.form||{kiosk:false,buddy:'auto',agent:''};
     rows.push(pRow('Set them up as',`<label class="prov-opt">${pSwitch('prov-kiosk',!!f.kiosk)} Kiosk</label>
         ${pSelect('prov-buddy',[['auto','Auto'],['on','Only the agent'],['off','The whole crew']],f.buddy)}
@@ -33267,20 +33289,26 @@ async function provPaint(){
        f:'provision profile kiosk buddy agent name'}));
     rows.push(pRow('Enable',`<button class="wiz-next" data-prov="enable"${can?'':' disabled'}>Enable with an agent</button>`,
       {desc:'Type the code shown on each machine’s screen, unless it carries your key.',f:'provision enable'}));
-  }else{
-    rows.push(`<p class="mut prov-empty">No machine is waiting right now. Turn one on, or press Look now.</p>`);
   }
-  rows.push(provZeroHTML(v,can));
-  rows.push(provDevicesHTML(v,can));
+  /* Everything else is a way to ADD a machine, used once in a while: folded under one row so
+     the tab reads as the list of machines. A search still finds each row (.searching). */
+  const more=[];
+  more.push(provZeroHTML(v,can));
+  more.push(provDevicesHTML(v,can));
   const ks=(v.keys||[]).filter(k=>!k.single);
-  rows.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
+  more.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
       <label class="prov-opt">${pSwitch('prov-auto-'+k.id,!!k.auto)} automatic</label>
       <button class="endbtn" data-prov="dropkey" data-kid="${esc(k.id)}">Revoke</button></span>`).join('')}
       <button class="endbtn" data-prov="key"${can?'':' disabled'}>Make a key</button>`,
     {desc:'Put a key on a new machine and nobody has to read a code off its screen.',
      more:'Save it as bento-enroll.txt on the SD card’s boot partition, or install with --enroll. Automatic sets the machine up the moment it is heard.',
      f:'provision enrolment key zero touch sd card automatic'}));
-  rows.push('<div id="prov-out" aria-live="polite"></div>');
+  more.push('<div id="prov-out" aria-live="polite"></div>');
+  rows.push(`<div class="prov-add${PROV.more?' open':''}">${pRow('Add a machine',
+      `<button class="endbtn" data-prov="more" aria-expanded="${!!PROV.more}">${PROV.more?'Hide':'Show'}</button>`,
+      {desc:'A Zero, an SD card, keys, and what every new machine gets.',cls:'phead-row',
+       f:'add a machine zero sd card keys standard setup ssh key enrolment'})}
+    <div class="prov-add-body">${more.join('')}</div></div>`);
   /* a repaint (any provision broadcast, the scan's own) must not drop what is being typed
      into the install form: found in the screenshot walk, where Check it saw an empty user */
   const kept={};['dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
@@ -33470,9 +33498,12 @@ async function provAct(act,b){
       await post('/api/devices/install',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c});DEV.open='';toast('Installing Bento on '+b.dataset.ip+'…');return provPaint()}
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/provision/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
-    if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
+    if(act==='more'){PROV.more=!PROV.more;return provPaint()}
+    if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});
+      toast('Hidden. It is under Hidden in the list of machines if you want it back.');
+      if(typeof netPaint==='function')netPaint();return provPaint()}
     if(act==='zeroline'){const ts=((document.getElementById('zero-ts')||{}).value||'').trim();
-      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts})}finally{b.disabled=false}
+      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts});PROV.more=true}finally{b.disabled=false}
       const i=document.getElementById('zero-ts');if(i)i.value='';return provPaint()}
     if(act==='zerocopy'){navigator.clipboard&&navigator.clipboard.writeText((PROV.zero||{}).line||'');toast('✓ copied');return}
     if(act==='stdrm'){await fetch('/api/provision/standard/agent/'+encodeURIComponent(b.dataset.name),{method:'DELETE'});return provPaint()}
@@ -36026,22 +36057,23 @@ function taskDeskOf(i){
    TUI: `bento network`, `bento network check|secure|label|forget`. SUI: identical, a page;
    nothing here touches the compositor. A Zero has no Network tab (00k-zeroface.js): its
    network is its hub's business. */
-var NET={v:null,open:'',mode:'',check:{},runs:{},steps:{}};
+var NET={v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{}};
 
 async function netPaint(){
   const box=document.getElementById('s-net');if(!box)return;
   let v;try{v=await apiJSON('/api/network')}catch(e){box.innerHTML=`<p class="mut prov-empty">${esc(String(e.message||e))}</p>`;return}
   NET.v=v;
   const can=v.can_change,rows=[],s=v.summary||{};
-  rows.push(pRow('On your network',`<button class="endbtn" data-net="scan"${can?'':' disabled'}>Look at the network</button>`,
-    {desc:s.machines?`${s.machines} machine${s.machines===1?'':'s'} · ${s.bento} with Bento · ${s.secured} secured`
+  rows.push(pRow('Machines',`<button class="endbtn" data-net="scan"${can?'':' disabled'}>Look at the network</button>`,
+    {desc:s.machines?`${s.machines} found · ${s.bento} with Bento · ${s.secured} secured`
       :'Look at the network to list the machines on it.',
      more:'Only this machine’s own private network is looked at. A Raspberry Pi says its name when it joins, and you get a toast.',
      f:'network inventory devices machines scan discover list'}));
   if(v.ssh_missing)rows.push(`<p class="mut prov-empty">${esc(v.ssh_missing)}</p>`);
-  const list=(v.rows||[]).filter(r=>!r.ignored);
+  const list=(v.rows||[]).filter(r=>!r.ignored),hidden=(v.rows||[]).filter(r=>r.ignored);
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
-  else rows.push(`<p class="mut prov-empty">Nothing listed yet. Press Look at the network.</p>`);
+  else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
+  if(hidden.length)rows.push(netHiddenHTML(hidden,can));
   // keep what is being typed across a repaint (a broadcast, a line of a running step)
   const kept={};['net-user','net-pw','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
     const e=document.getElementById(id);if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
@@ -36051,36 +36083,56 @@ async function netPaint(){
   netWire(box);
 }
 
+/* One pill: what it is to Bento, and once it was measured, how secure. "not checked" was a
+   second pill on every row and said nothing a person could act on. */
 function netBadge(r){
-  const b={none:'no Bento',waiting:'Bento, waiting',['set up']:'Bento, set up',linked:'Bento, linked',installed:'Bento installed'}[r.bento]||r.bento;
-  return `<span class="net-b ${r.bento==='none'?'':'on'}">${esc(b)}</span>`;
+  const b={none:'No Bento',waiting:'Bento, waiting',['set up']:'Bento',linked:'Bento, linked',installed:'Bento'}[r.bento]||r.bento;
+  const sec=r.secured_n<0?'':r.security_words==='secured'?' · secured':' · '+r.security_words;
+  const cls=r.secured_n<0?(r.bento==='none'?'':'on'):r.security_words==='secured'?'ok':'warn';
+  return `<span class="net-b ${cls}">${esc(b+sec)}</span>`;
 }
-function netSecBadge(r){
-  const cls=r.secured_n<0?'':r.security_words==='secured'?'ok':'warn';
-  return `<span class="net-s ${cls}">${esc(r.security_words)}</span>`;
+/* The one thing a row is for, as its button; the rest is behind ⋯ so a phone shows two
+   buttons a row, not five. */
+function netMain(r,v){
+  // a Bento waiting to be set up is set up below (New machines), with its code
+  if(r.bento==='waiting')return `<button class="endbtn" data-net="setup" data-key="${esc(r.key)}">Set it up</button>`;
+  if(v.ssh_missing||!r.ip)return '';
+  if(r.bento==='none'&&r.ssh)return `<button class="endbtn" data-net="install" data-key="${esc(r.key)}">Install Bento</button>`;
+  if(r.ssh||r.bento!=='none'||r.secured_n>=0)
+    return `<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`;
+  return '';
 }
 function netRowHTML(r,v,can){
   const open=NET.open===r.key,run=(v.secures||{})[r.ip]||{},inst=(v.installs||{})[r.ip]||{};
-  const what=[r.board||r.maker,r.os].filter(Boolean).join(' · ');
+  const what=r.board||r.maker||r.os||'';
   const seen=r.age==null?'':r.stale?'not heard for a week':r.age<120?'heard just now':'heard '+poolAgo(r.age);
-  const busy=run.state==='running'?' · securing…':inst.state==='running'?' · installing…':'';
+  const busy=run.state==='running'?'securing…':inst.state==='running'?'installing…':'';
+  const more=NET.more===r.key;
   return `<div class="net-m${open?' open':''}${r.stale?' stale':''}" data-key="${esc(r.key)}" data-ip="${esc(r.ip||'')}">
     <div class="net-top">
-      <b>${esc(r.display)}</b>${netBadge(r)}${netSecBadge(r)}
-      <span class="mut">${esc(r.ip||'')}${r.mac?' · '+esc(r.mac):''}${what?' · '+esc(what):''}${r.owner_name?' · for '+esc(r.owner_name):''}${seen?' · '+esc(seen):''}${esc(busy)}</span>
+      <b title="${esc(r.mac||'')}">${esc(r.display)}</b>${netBadge(r)}
+      <span class="mut">${[r.ip,what,r.owner_name?'for '+r.owner_name:'',busy||seen].filter(Boolean).map(esc).join(' · ')}</span>
     </div>
+    ${can?`<div class="net-acts">${netMain(r,v)}
+      <button class="endbtn net-more-b" data-net="more" data-key="${esc(r.key)}" aria-expanded="${more}" aria-label="More for ${esc(r.display)}">⋯</button></div>
+      ${more?`<div class="net-more">
+        ${netMain(r,v).includes('data-net="install"')&&r.ip&&!v.ssh_missing?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">Secure it</button>`:''}
+        ${(r.connections||[]).length?`<button class="endbtn" data-net="unlink" data-key="${esc(r.key)}">Disconnect</button>`:''}
+        <button class="endbtn" data-net="label" data-key="${esc(r.key)}">Rename</button>
+        <button class="endbtn" data-net="forget" data-key="${esc(r.key)}">Hide</button></div>`:''}`:''}
     ${r.ssh_off?`<p class="mut net-hint">${esc(r.ssh_off)}</p>`:''}
-    ${can?`<div class="net-acts">
-      ${r.bento==='none'&&r.ssh&&!v.ssh_missing?`<button class="endbtn" data-net="install" data-key="${esc(r.key)}">Install Bento</button>`:''}
-      ${r.ip&&!v.ssh_missing&&(r.ssh||r.bento!=='none'||r.secured_n>=0)?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`:''}
-      ${(r.connections||[]).length?`<button class="endbtn" data-net="unlink" data-key="${esc(r.key)}">Disconnect</button>`:''}
-      <button class="endbtn" data-net="label" data-key="${esc(r.key)}">Rename</button>
-      <button class="endbtn" data-net="forget" data-key="${esc(r.key)}">Not this one</button></div>`:''}
     ${open&&NET.mode==='install'?provDevForm({ip:r.ip,ssh:r.ssh,ports:r.ports||[]}):''}
     ${open&&NET.mode==='secure'?netSecureForm(r):''}
     ${open&&NET.mode==='unlink'?netUnlinkForm(r):''}
     ${netLogHTML('net-log-',r.ip,run)}${netLogHTML('dev-log-',r.ip,inst)}
   </div>`;
+}
+/* Hidden machines stay one tap away. Hide was "Not this one", and with nothing listing what
+   it hid, a machine rejected by mistake could never be set up from here again. */
+function netHiddenHTML(hidden,can){
+  return `<details class="net-hidden"${NET.hiddenOpen?' open':''}><summary>Hidden (${hidden.length})</summary>
+    ${hidden.map(r=>`<div class="net-h"><span><b>${esc(r.display)}</b> <span class="mut">${esc([r.ip,r.board||r.maker,r.bento==='waiting'?'waiting to be set up':''].filter(Boolean).join(' · '))}</span></span>
+      ${can?`<button class="endbtn" data-net="show" data-key="${esc(r.key)}">Show again</button>`:''}</div>`).join('')}</details>`;
 }
 /* A run's lines while it runs, and its last ones when it failed. A finished run says
    itself in the row's badge, so its apt chatter is not left on screen. */
@@ -36131,6 +36183,7 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
   :'Bento can no longer log in there without a password.'}
 function netWire(box){
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
+  const hd=box.querySelector('.net-hidden');if(hd)hd.ontoggle=()=>{NET.hiddenOpen=hd.open};
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));
   // the command shown after Check it follows the switch: --screen is its last flag, the same
   // string the server builds (remoteinstall.plan), so what runs is still what was shown
@@ -36161,11 +36214,20 @@ async function netAct(act,b){
       if((d.removed||[]).length)toast('✓ Removed '+d.removed.join(', '));
       (d.failed||[]).forEach(f=>toast('Could not remove '+f));
       return netPaint()}
-    if(act==='install'||act==='secure'||act==='unlink'){const same=NET.open===r.key&&NET.mode===act;
+    if(act==='install'||act==='secure'||act==='unlink'){NET.more='';const same=NET.open===r.key&&NET.mode===act;
       NET.open=same?'':r.key;NET.mode=same?'':act;if(act==='install')DEV.open=same?'':r.ip;return netPaint()}
     if(act==='label'){const n=prompt('A name for '+(r.display||r.ip),r.label||r.name||'');if(n===null)return;
       await post('/api/network/label',{key:r.key,label:n});return netPaint()}
-    if(act==='forget'){await post('/api/network/forget',{key:r.key});return netPaint()}
+    if(act==='setup'){const m=[...document.querySelectorAll('.prov-m')].find(e=>e.textContent.includes(r.name||r.display));
+      if(!m){toast('It is not waiting any more. Press Look at the network.');return}
+      m.scrollIntoView({block:'center',behavior:'smooth'});const c=m.querySelector('[data-pick]');if(c&&!c.disabled&&!c.checked)c.click();
+      (m.querySelector('.prov-code')||m.querySelector('.prov-name'))?.focus({preventScroll:true});return}
+    if(act==='more'){NET.more=NET.more===r.key?'':r.key;return netPaint()}
+    if(act==='forget'){await post('/api/network/forget',{key:r.key});NET.more='';
+      toast(`${r.display||r.ip} is hidden. It is under Hidden if you want it back.`);
+      if(typeof provPaint==='function')provPaint();return netPaint()}
+    if(act==='show'){await post('/api/network/show',{key:r.key});
+      toast(`✓ ${r.display||r.ip} is listed again`);if(typeof provPaint==='function')provPaint();return netPaint()}
     if(act==='check'){const c=creds();if(!c.user){toast('Who logs in there? Type the user name.');return}
       b.disabled=true;b.textContent='Checking…';
       try{NET.check[r.ip]=Object.assign(await post('/api/network/check',c),{user:c.user})}

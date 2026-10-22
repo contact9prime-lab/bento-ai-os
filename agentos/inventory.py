@@ -103,6 +103,49 @@ def forget(key: str) -> bool:
     return True
 
 
+def _same(r: dict, k: str, e: dict, addr_key: str = "ip") -> bool:
+    return k == r["key"] or bool(r.get("ip") and e.get(addr_key) == r["ip"]) or \
+        bool(r.get("fp") and k == r["fp"])
+
+
+def hide(r: dict) -> int:
+    """Not this one: the row goes to the hidden list, and every source that told us about it is
+    marked, so hearing it again does not bring it back or toast. Nothing is dropped: Show again
+    puts it back as it was, label and security included. Reported as "if I rejected a device by
+    chance it never shows again" when this deleted the notes and nothing listed what was hidden."""
+    from . import provision
+    pd, hit = provision.load(), 0
+    for kind, addr in (("devices", "ip"), ("seen", "addr")):
+        for k, e in pd[kind].items():
+            if _same(r, k, e, addr) and e.get("state") != "ignored":
+                e["was"], e["state"] = e.get("state") or "new", "ignored"
+                hit += 1
+    if hit:
+        provision.save(pd)
+    record(r.get("ip") or "", r.get("mac") or "", hidden=True)
+    return hit
+
+
+def unhide(r: dict) -> int:
+    """Show again: each source goes back to the state it had before it was hidden."""
+    from . import provision
+    pd, hit = provision.load(), 0
+    for kind, addr in (("devices", "ip"), ("seen", "addr")):
+        for k, e in pd[kind].items():
+            if _same(r, k, e, addr) and e.get("state") == "ignored":
+                e["state"] = e.pop("was", None) or "new"
+                hit += 1
+    if hit:
+        provision.save(pd)
+    d = load()
+    for k, e in d["devices"].items():
+        if e.get("hidden") and (k == r["key"] or (r.get("ip") and e.get("ip") == r["ip"])):
+            e.pop("hidden")
+            hit += 1
+    save(d)
+    return hit
+
+
 def _security_words(sec: dict | None) -> tuple[str, int]:
     from . import harden
     if not sec:
@@ -146,8 +189,8 @@ def rows(cfg: dict | None = None) -> list[dict]:
         r["ports"] = e.get("ports") or []
         r["pi"] = bool(e.get("pi"))
         r["seen_by"] = e.get("seen_by") or r.get("seen_by") or ""
-        r["ignored"] = e.get("state") == "ignored"
-        if e.get("state") == "installed" and r["bento"] == "none":
+        r["ignored"] = r.get("ignored") or e.get("state") == "ignored"
+        if (e.get("state") == "installed" or e.get("was") == "installed") and r["bento"] == "none":
             r["bento"] = "installed"
         r["last"] = max(r["last"], e.get("last", 0))
         r["first"] = min(x for x in (r["first"], e.get("first", 0)) if x) if r["first"] else e.get("first", 0)
@@ -158,7 +201,8 @@ def rows(cfg: dict | None = None) -> list[dict]:
         r["name"] = m.get("name") or r["name"]
         r["board"] = hw.get("board") or hw.get("arch") or r["board"]
         r["ram_mb"] = hw.get("ram_mb") or r.get("ram_mb", 0)
-        r["bento"] = "set up" if m.get("state") == "enabled" else "waiting"
+        r["bento"] = "set up" if m.get("state") == "enabled" or m.get("was") == "enabled" else "waiting"
+        r["ignored"] = r.get("ignored") or m.get("state") == "ignored"
         r["version"] = m.get("version") or ""
         r["owner"] = m.get("owner") or ""
         r["via"] = m.get("via") or ""
@@ -202,6 +246,7 @@ def rows(cfg: dict | None = None) -> list[dict]:
             r["label"] = e["label"]
         r["user"] = e.get("user", "")
         r["security"] = e.get("security")
+        r["ignored"] = r.get("ignored") or bool(e.get("hidden"))
     now = time.time()
     for r in out.values():
         r["security_words"], r["secured_n"] = _security_words(r.get("security"))
@@ -240,6 +285,10 @@ def find(rows_: list[dict], what: str) -> dict | None:
 
 
 def summary(rows_: list[dict]) -> dict:
-    return {"machines": len(rows_), "bento": sum(1 for r in rows_ if r["bento"] != "none"),
+    """Counts what is listed. A hidden machine is counted apart, or the line said five
+    machines over a list of three."""
+    hidden = sum(1 for r in rows_ if r.get("ignored"))
+    rows_ = [r for r in rows_ if not r.get("ignored")]
+    return {"hidden": hidden,"machines": len(rows_), "bento": sum(1 for r in rows_ if r["bento"] != "none"),
             "secured": sum(1 for r in rows_ if r["security_words"] == "secured"),
             "unchecked": sum(1 for r in rows_ if r["secured_n"] < 0)}

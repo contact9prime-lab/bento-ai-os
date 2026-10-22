@@ -105,7 +105,7 @@ body.kiosk #office-scene canvas{display:block}
   background:color-mix(in srgb,var(--bg) 70%,transparent);white-space:pre-wrap}
 
 /* Settings → Network (24n-network.js): one row per machine, its badges, Secure it */
-.net-list{display:flex;flex-direction:column;gap:6px;margin:6px 0 10px}
+.net-list{display:flex;flex-direction:column;gap:6px;margin:6px 16px 10px}
 .net-m{display:flex;flex-wrap:wrap;gap:6px 10px;padding:10px 12px;border-radius:10px;
   background:color-mix(in srgb,var(--bg3) 60%,transparent)}
 .net-m.stale{opacity:.65}
@@ -114,8 +114,8 @@ body.kiosk #office-scene canvas{display:block}
 .net-b,.net-s{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;
   background:color-mix(in srgb,var(--txt) 10%,transparent)}
 .net-b.on{background:color-mix(in srgb,var(--acc) 22%,transparent)}
-.net-s.ok{background:color-mix(in srgb,var(--ok,#4ade80) 24%,transparent)}
-.net-s.warn{background:color-mix(in srgb,var(--warn,#f59e0b) 24%,transparent)}
+.net-b.ok{background:color-mix(in srgb,var(--ok,#4ade80) 24%,transparent)}
+.net-b.warn{background:color-mix(in srgb,var(--warn,#f59e0b) 24%,transparent)}
 .net-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .net-steps{flex:1 1 100%;display:flex;flex-direction:column;gap:8px;margin-top:4px}
 .net-step{display:flex;gap:10px;align-items:flex-start;font-size:var(--fs-sm,12px);line-height:1.45;min-width:0}
@@ -129,7 +129,26 @@ body.kiosk #office-scene canvas{display:block}
 .net-step details{margin-top:4px}.net-step summary{cursor:pointer;min-height:var(--tap,24px)}
 .net-hint{flex:1 1 100%;margin:0;font-size:var(--fs-sm,12px)}
 .net-steps .warn{color:var(--warn,#f59e0b);margin:0}
-@media (max-width:600px){.net-acts{flex:1 1 100%}.net-acts .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
+/* ⋯ opens the rarer actions on a line of their own, so a row is one button and ⋯ */
+.net-more-b{min-width:var(--tap,32px);padding-inline:10px;font-weight:700;letter-spacing:.08em}
+.net-more{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+/* hidden machines: a fold under the list, each with Show again */
+.net-hidden{margin:0 16px 12px}
+.net-hidden>summary{cursor:pointer;min-height:var(--tap,32px);display:flex;align-items:center;gap:6px;
+  font-size:var(--fs-sm,12px);color:var(--dim);list-style:none}
+.net-hidden>summary::-webkit-details-marker{display:none}
+.net-hidden>summary::before{content:'▸';transition:transform .15s}
+.net-hidden[open]>summary::before{transform:rotate(90deg)}
+.net-h>span{flex:1 1 220px;min-width:0}
+.net-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;
+  padding:6px 0;border-top:1px solid color-mix(in srgb,var(--txt) 8%,transparent)}
+.net-h .mut{font-size:var(--fs-sm,12px)}
+/* Add a machine: the ways in, folded under one row unless a search is on */
+.prefs-main:not(.searching) .prov-add:not(.open) .prov-add-body{display:none}
+.prov-add .prov-add-body>.prow:first-child{border-top:1px solid color-mix(in srgb,var(--txt) 8%,transparent)}
+@media (max-width:600px){.net-acts{flex:1 1 100%;justify-content:flex-end}
+  .net-acts>.endbtn:not(.net-more-b),.net-more .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
+  .net-more-b{min-height:var(--tap,40px)}
   .net-form input{min-height:var(--tap,40px)}}
 
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */

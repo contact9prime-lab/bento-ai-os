@@ -18,7 +18,7 @@
 
    TUI: `bento pool discover | enable | key | wait | zero | standard`. SUI: identical, a page;
    nothing here touches the compositor. */
-var PROV={v:null,sel:{},zero:null,agents:null};
+var PROV={v:null,sel:{},zero:null,agents:null,more:false};
 
 async function provPaint(){
   const box=document.getElementById('s-prov');if(!box)return;
@@ -34,12 +34,15 @@ async function provPaint(){
     box.innerHTML=rows.join('');provWire(box);return;
   }
   if(!(v.role==='leader'||v.has_brain||(v.seen||[]).length||(v.devices||[]).length)){box.innerHTML='';return}
-  const seen=(v.seen||[]).filter(m=>m.state!=='ignored');
-  rows.push(pRow('New machines',`<button class="endbtn" data-prov="scan"${can?'':' disabled'}>Look now</button>`,
-    {desc:v.watching?'Machines that turn on waiting to be set up show here, and you get a toast.':'This machine is not listening for new ones.',
-     more:'A fresh Raspberry Pi with Bento waits by itself. Any other machine waits after bento pool wait on.',
-     f:'provision new machines discover raspberry pi poap enable set up scan'}));
+  /* Only what is waiting now is shown: a machine set up long ago is in the list above, and a
+     hidden one under Hidden there. The empty "no machine is waiting" block is gone: the toast
+     says when one turns up, and Look at the network looks for them too. */
+  const seen=(v.seen||[]).filter(m=>m.state!=='ignored'&&m.state!=='enabled');
   if(seen.length){
+    rows.push(pRow('New machines',`<button class="endbtn" data-prov="scan"${can?'':' disabled'}>Look again</button>`,
+      {desc:`${seen.length} waiting to be set up.`,
+       more:'A fresh Raspberry Pi with Bento waits by itself. Any other machine waits after bento pool wait on.',
+       f:'provision new machines discover raspberry pi poap enable set up scan'}));
     rows.push(`<div class="prov-list">${seen.map(m=>{
       const hw=m.hw||{},on=PROV.sel[m.fp]!==undefined;
       const state=m.state==='enabled'?'set up':m.age<90?'waiting':'waiting · heard '+poolAgo(m.age);
@@ -52,7 +55,7 @@ async function provPaint(){
           · <span class="prov-via ${m.via==='tailscale'?'ts':''}">${m.via==='tailscale'?'over Tailscale':'on your network'}</span>${m.owner_name?` · for ${esc(m.owner_name)}`:''}</span>
         <input class="prov-name" data-name="${esc(m.fp)}" maxlength="32" placeholder="${esc(m.name)}" aria-label="Name for ${esc(m.name)}"${m.state==='enabled'?' disabled':''}>
         ${proof}
-        ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Not this one</button>`:''}</div>`}).join('')}</div>`);
+        ${m.state!=='enabled'&&can?`<button class="endbtn" data-prov="ignore" data-fp="${esc(m.fp)}">Hide</button>`:''}</div>`}).join('')}</div>`);
     const f=PROV.form||{kiosk:false,buddy:'auto',agent:''};
     rows.push(pRow('Set them up as',`<label class="prov-opt">${pSwitch('prov-kiosk',!!f.kiosk)} Kiosk</label>
         ${pSelect('prov-buddy',[['auto','Auto'],['on','Only the agent'],['off','The whole crew']],f.buddy)}
@@ -62,20 +65,26 @@ async function provPaint(){
        f:'provision profile kiosk buddy agent name'}));
     rows.push(pRow('Enable',`<button class="wiz-next" data-prov="enable"${can?'':' disabled'}>Enable with an agent</button>`,
       {desc:'Type the code shown on each machine’s screen, unless it carries your key.',f:'provision enable'}));
-  }else{
-    rows.push(`<p class="mut prov-empty">No machine is waiting right now. Turn one on, or press Look now.</p>`);
   }
-  rows.push(provZeroHTML(v,can));
-  rows.push(provDevicesHTML(v,can));
+  /* Everything else is a way to ADD a machine, used once in a while: folded under one row so
+     the tab reads as the list of machines. A search still finds each row (.searching). */
+  const more=[];
+  more.push(provZeroHTML(v,can));
+  more.push(provDevicesHTML(v,can));
   const ks=(v.keys||[]).filter(k=>!k.single);
-  rows.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
+  more.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
       <label class="prov-opt">${pSwitch('prov-auto-'+k.id,!!k.auto)} automatic</label>
       <button class="endbtn" data-prov="dropkey" data-kid="${esc(k.id)}">Revoke</button></span>`).join('')}
       <button class="endbtn" data-prov="key"${can?'':' disabled'}>Make a key</button>`,
     {desc:'Put a key on a new machine and nobody has to read a code off its screen.',
      more:'Save it as bento-enroll.txt on the SD card’s boot partition, or install with --enroll. Automatic sets the machine up the moment it is heard.',
      f:'provision enrolment key zero touch sd card automatic'}));
-  rows.push('<div id="prov-out" aria-live="polite"></div>');
+  more.push('<div id="prov-out" aria-live="polite"></div>');
+  rows.push(`<div class="prov-add${PROV.more?' open':''}">${pRow('Add a machine',
+      `<button class="endbtn" data-prov="more" aria-expanded="${!!PROV.more}">${PROV.more?'Hide':'Show'}</button>`,
+      {desc:'A Zero, an SD card, keys, and what every new machine gets.',cls:'phead-row',
+       f:'add a machine zero sd card keys standard setup ssh key enrolment'})}
+    <div class="prov-add-body">${more.join('')}</div></div>`);
   /* a repaint (any provision broadcast, the scan's own) must not drop what is being typed
      into the install form: found in the screenshot walk, where Check it saw an empty user */
   const kept={};['dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
@@ -265,9 +274,12 @@ async function provAct(act,b){
       await post('/api/devices/install',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c});DEV.open='';toast('Installing Bento on '+b.dataset.ip+'…');return provPaint()}
     if(act==='scan'){b.disabled=true;b.textContent='Looking…';const d=await post('/api/provision/scan');
       toast(d.found?`✓ ${d.found} machine${d.found===1?'':'s'} waiting`:'No machine answered. Is it on the same network?');return provPaint()}
-    if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});return provPaint()}
+    if(act==='more'){PROV.more=!PROV.more;return provPaint()}
+    if(act==='ignore'){await post('/api/provision/ignore',{fp:b.dataset.fp});
+      toast('Hidden. It is under Hidden in the list of machines if you want it back.');
+      if(typeof netPaint==='function')netPaint();return provPaint()}
     if(act==='zeroline'){const ts=((document.getElementById('zero-ts')||{}).value||'').trim();
-      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts})}finally{b.disabled=false}
+      b.disabled=true;try{PROV.zero=await post('/api/provision/zero',{tailscale_key:ts});PROV.more=true}finally{b.disabled=false}
       const i=document.getElementById('zero-ts');if(i)i.value='';return provPaint()}
     if(act==='zerocopy'){navigator.clipboard&&navigator.clipboard.writeText((PROV.zero||{}).line||'');toast('✓ copied');return}
     if(act==='stdrm'){await fetch('/api/provision/standard/agent/'+encodeURIComponent(b.dataset.name),{method:'DELETE'});return provPaint()}

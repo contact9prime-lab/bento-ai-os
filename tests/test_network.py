@@ -335,24 +335,63 @@ def test_unchecked_is_said_never_guessed(tmp_path):
         assert r["security_words"] == "not checked" and r["secured_n"] == -1 and r["bento"] == "none"
 
 
+def test_a_hidden_machine_can_be_shown_again_as_it_was(tmp_path):
+    """Reported as "if I rejected a device by chance it will not populate in the list": Not this
+    one marked it ignored, dropped the notes, and nothing listed what was hidden."""
+    with teamlink.at(tmp_path / "home"):
+        d = provision.load()
+        d["devices"]["dc:a6:32:00:00:02"] = {"ip": "192.168.1.41", "mac": "dc:a6:32:00:00:02", "ssh": True,
+                                              "ports": [22], "first": 1, "last": 100, "state": "installed"}
+        d["devices"]["10.0.0.7"] = {"ip": "10.0.0.7", "ssh": True, "first": 1, "last": 90, "state": "new"}
+        provision.save(d)
+        inventory.set_label("192.168.1.41", "dc:a6:32:00:00:02", "Kitchen")
+        r = inventory.find(inventory.rows(), "kitchen")
+        inventory.hide(r)
+        rows = inventory.rows()
+        assert inventory.find(rows, "kitchen")["ignored"], "hidden, and still on the hidden list"
+        assert inventory.summary(rows) == {**inventory.summary(rows), "machines": 1, "hidden": 1}, \
+            "the line counts what is listed, not what is hidden"
+        assert provision.load()["devices"]["dc:a6:32:00:00:02"]["state"] == "ignored", "heard again, it stays hidden"
+        inventory.unhide(inventory.find(rows, "kitchen"))
+        r = inventory.find(inventory.rows(), "kitchen")
+        assert not r["ignored"] and r["display"] == "Kitchen" and r["bento"] == "installed", \
+            "back as it was: its label and what it is"
+        assert provision.load()["devices"]["dc:a6:32:00:00:02"]["state"] == "installed"
+
+
+def test_a_bento_machine_hidden_from_new_machines_comes_back_waiting(tmp_path):
+    with teamlink.at(tmp_path / "home"):
+        d = provision.load()
+        d["seen"]["fp-lounge"] = {"name": "lounge-pi", "addr": "192.168.1.77", "state": "new", "waiting": True,
+                                  "hw": {}, "last": 200, "first": 50}
+        provision.save(d)
+        assert provision.ignore("lounge-pi")
+        r = inventory.find(inventory.rows(), "lounge-pi")
+        assert r["ignored"] and r["bento"] == "waiting", "Not this one in New machines is on the hidden list"
+        inventory.unhide(r)
+        assert provision.load()["seen"]["fp-lounge"]["state"] == "new", "waiting to be set up again"
+        assert not inventory.find(inventory.rows(), "lounge-pi")["ignored"]
+
+
 # ---- every face -------------------------------------------------------------------------------
 
 def test_every_face_has_it():
     srv = (ROOT / "agentos/server.py").read_text()
     for route in ('@app.get("/api/network")', '@app.post("/api/network/check")',
                   '@app.post("/api/network/secure")', '@app.post("/api/network/disconnect")',
-                  '@app.post("/api/network/label")', '@app.post("/api/network/forget")'):
+                  '@app.post("/api/network/label")', '@app.post("/api/network/forget")',
+                  '@app.post("/api/network/show")'):
         assert route in srv, route
         body = srv[srv.index(route):srv.index("\n@app.", srv.index(route) + 5)]
         assert "_require_admin()" in body, f"{route} reaches other machines: admin only"
     for row in ('"device.check"', '"device.secure"', '"device.secured"', '"device.secure_failed"',
-                '"device.disconnect"', '"device.forget"'):
+                '"device.disconnect"', '"device.forget"', '"device.show"'):
         assert row in srv, f"{row} is a ledger row"
     main = (ROOT / "agentos/__main__.py").read_text()
     assert 'verb("network"' in main and "def _network_cli" in main
     js = (ROOT / "agentos/ui/src/js/24n-network.js").read_text()
     for piece in ("/api/network/check", "/api/network/secure", "/api/network/disconnect",
-                  "What runs there", "osConfirm", "provDevForm"):
+                  "What runs there", "osConfirm", "provDevForm", "/api/network/show", "Show again"):
         assert piece in js, piece
     zero = (ROOT / "agentos/ui/src/js/00k-zeroface.js").read_text()
     assert "'network'" in zero, "a Zero's network is its hub's business"

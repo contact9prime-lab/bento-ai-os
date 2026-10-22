@@ -13079,7 +13079,9 @@ async def api_devices_ignore(body: dict):
     k = str((body or {}).get("key") or "")
     if k not in d["devices"]:
         return JSONResponse({"error": "no such device"}, status_code=404)
-    d["devices"][k]["state"] = "ignored"
+    if d["devices"][k].get("state") != "ignored":
+        d["devices"][k]["was"] = d["devices"][k].get("state") or "new"
+        d["devices"][k]["state"] = "ignored"
     provmod.save(d)
     return _provision_view()
 
@@ -13447,26 +13449,33 @@ async def api_network_label(body: dict):
 
 @app.post("/api/network/forget")
 async def api_network_forget(body: dict):
-    """Not this one: hidden from the list (a device heard again stays hidden), and what Bento
-    noted about it is dropped. The machine itself is not touched."""
+    """Not this one: the machine moves to the hidden list (heard again, it stays there and
+    nobody is toasted). The machine itself is not touched, and Show again undoes it."""
     if (r := _require_admin()):
         return r
     from . import inventory as invmod
-    from . import provision as provmod
     key = str((body or {}).get("key") or "").lower()
     row = invmod.find(invmod.rows(state.machine_cfg()), key)
     if not row:
         return JSONResponse({"error": "no such machine"}, status_code=404)
-    d = provmod.load()
-    hit = False
-    for k, e in d["devices"].items():
-        if k == row["key"] or (row.get("ip") and e.get("ip") == row["ip"]):
-            e["state"] = "ignored"
-            hit = True
-    if hit:
-        provmod.save(d)
-    invmod.forget(row["key"])
-    _ledger("device.forget", f"device:{row.get('ip') or key}", f"took {row['display']} off the list")
+    invmod.hide(row)
+    _ledger("device.forget", f"device:{row.get('ip') or key}", f"hid {row['display']}")
+    return _network_view()
+
+
+@app.post("/api/network/show")
+async def api_network_show(body: dict):
+    """Show again: a machine hidden by Not this one, by mistake or not, is listed again as it
+    was, and a Bento machine waiting to be set up is back in New machines."""
+    if (r := _require_admin()):
+        return r
+    from . import inventory as invmod
+    key = str((body or {}).get("key") or "").lower()
+    row = invmod.find(invmod.rows(state.machine_cfg()), key)
+    if not row:
+        return JSONResponse({"error": "no such machine"}, status_code=404)
+    invmod.unhide(row)
+    _ledger("device.show", f"device:{row.get('ip') or key}", f"listed {row['display']} again")
     return _network_view()
 
 
