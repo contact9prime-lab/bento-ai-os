@@ -3214,6 +3214,16 @@ Six rules:
   and the route ends the links and the community place. Its `pkill -f '[s]creen-profile'`: unbracketed, it killed
   the remote shell running it (and, in a test, the host's own shells: the test stubs pkill). The Devices app and
   Settings → Network are ONE list: `netPaint` draws into `#s-net` and every `.devhub-box`.
+- **The device map draws each machine's OWN agent, painted here** (`devMapHTML` in `24o-devices.js`,
+  `inventory` `agent`, `devicectl` `agent`/`look`). The face is a recipe: from the link's identity, or read
+  from its database (read-only, `mode=ro`) by the state script; held to `avatars.clean` and painted through
+  `avatarRecipeImg`, never a second painter. A Pi that is not linked has no recipe until it is read, and gets
+  its initial, not an invented face (its own face is salted on it). Look changes are `look_patch` (the
+  closed set, names, validated before any login) through its server's `/api/avatars/@agent`, else its CLI.
+- **A device password lives in the vault, and nothing returns it** (`_device_creds` fills a blank from it,
+  `_remember_pw` saves a TYPED one only after a login with it worked and only when ticked: Remember for a
+  first, Replace when one is saved, so it changes only when the person says so; `/api/network/password`
+  forgets). Kept in the machine's vault (`as_user("")`), one entry per MAC (or address) and user.
 - **The hub's own firewall is said, never assumed open** (`agentos/hostfirewall.py`, `/api/network/firewall`,
   `bento network firewall`). ufw on the owner's hub dropped the Pi's UDP and the link port. Without root only
   ufw.conf / firewalld's unit can be read, so the row shows while one is on until it is opened through

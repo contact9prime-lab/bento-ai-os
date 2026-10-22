@@ -11,6 +11,17 @@ program off and keeps its memory and settings, so installing it again picks up w
 was read is kept in the list. `bento network controls|switch|update|remove` do the same from a
 terminal.
 
+**A map of your devices, with their agents.** The Devices app opens on a map: your agent in the
+middle, each machine with Bento around it showing its own agent, and lines for how each is tied
+to this computer. Tap an agent to open its controls.
+
+**Change the look of a device's agent from here.** Pick its hair, skin, outfit and the rest, or
+describe it in words. It changes on the device and on the map.
+
+**Device passwords are remembered, encrypted.** Tick Remember it and a password that worked is
+kept in this computer's vault. It's used when you leave the box blank, changes only when you
+replace it, and is never shown again.
+
 **Off means off on the screen too.** Found on the owner's Pi: with Bento running and Open on its
 screen both switched off, the Office stayed frozen on the screen, because the window already open
 was left open. Both switches now close it, on any Bento version there; switching Bento back on

@@ -155,3 +155,57 @@ def test_off_closes_what_is_on_its_screen_now_and_on_brings_it_back(pi):
     (pi / ".showing").write_text("")
     got = asyncio.run(devicectl.switch("192.168.1.9", "pi", "", 22, "screen", False))
     assert not got["state"]["screen"] and not got["state"]["showing"]
+
+
+def test_its_agent_and_face_are_read_there_and_drawn_here(pi):
+    import sqlite3
+    db = sqlite3.connect(pi / ".agentos/agentos.db.real")
+    db.execute("create table avatars (key text primary key, recipe text, updated_at real)")
+    db.execute("insert into avatars values ('@agent', ?, 0)", (json.dumps({"hair": 1, "style": "long", "hue": 172}),))
+    db.commit()
+    db.close()
+    (pi / ".agentos/agentos.db").unlink()
+    (pi / ".agentos/agentos.db.real").rename(pi / ".agentos/agentos.db")
+    c = json.loads((pi / ".agentos/config.json").read_text())
+    c["agent_name"] = "Mr. Pi"
+    (pi / ".agentos/config.json").write_text(json.dumps(c))
+    st = _st()
+    assert st["agent"] == "Mr. Pi" and st["look"]["hair"] == 1 and st["look"]["style"] == "long"
+    inventory.note_controls("192.168.1.9", "", st, "pi")
+    r = inventory.find(inventory.rows(), "192.168.1.9")
+    assert r["agent"]["name"] == "Mr. Pi" and r["agent"]["look"]["hue"] == 172
+
+
+def test_a_look_is_the_closed_set_and_nothing_else_reaches_a_shell(pi):
+    with pytest.raises(ValueError):
+        devicectl.look_patch({"hair": "plaid; rm -rf ~"})
+    with pytest.raises(ValueError):
+        devicectl.look_patch({})
+    assert devicectl.look_patch({"hair": "pink", "glasses": "no", "colour": "x"}) == {"hair": "pink", "glasses": False}
+    cmd = devicectl.describe_command("a chef'; rm -rf ~ #")
+    assert "'\"'\"'" in cmd, "the words are quoted for the shell, whatever they say"
+    got = asyncio.run(devicectl.look("192.168.1.9", "pi", "", 22, {"hair": "pink", "style": "bun"}))
+    assert "avatar set agent hair=pink style=bun" in got["ran"]
+
+
+def test_a_device_password_is_kept_encrypted_and_changes_only_when_asked(tmp_path, monkeypatch):
+    from agentos import server, vault
+    monkeypatch.setenv("AGENTOS_VAULT_KEYRING", "0")
+    monkeypatch.setattr(server, "_net_mac", lambda ip: "aa:bb:cc:dd:ee:ff")
+    monkeypatch.setattr(server, "_ledger", lambda *a, **k: None)
+    with teamlink.at(tmp_path / "hub"):
+        monkeypatch.setattr(vault, "_home", lambda: tmp_path / "hub")
+        b = {"ip": "192.168.1.9", "user": "pi", "password": "raspberry-1"}
+        assert server._remember_pw(b) == "" and not server._pw_saved("192.168.1.9", "pi"), "only when ticked"
+        assert server._remember_pw({**b, "remember": True}) == "saved"
+        raw = (tmp_path / "hub" / vault.VAULT_FILE).read_text()
+        assert "raspberry-1" not in raw, "encrypted on disk"
+        assert server._device_creds({"ip": "192.168.1.9", "user": "pi"})[2] == "raspberry-1", "blank uses it"
+        assert server._device_creds({**b, "password": "typed-now"})[2] == "typed-now"
+        server._remember_pw({**b, "password": "typed-now"})                 # not ticked: kept as it was
+        assert server._saved_pw("192.168.1.9", "pi") == "raspberry-1"
+        assert server._remember_pw({**b, "password": "new-one", "remember": True}) == "replaced"
+        assert server._saved_pw("192.168.1.9", "pi") == "new-one"
+    src = (ROOT / "agentos/server.py").read_text()
+    route = src[src.index('@app.post("/api/network/password")'):][:900]
+    assert "vault.get" not in route and "forget" in route, "nothing hands a saved password back"

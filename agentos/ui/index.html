@@ -5232,6 +5232,47 @@ body.zero-face .of-co{display:none}
 .net-remove .endbtn.danger{color:var(--err,#e05050)}
 .devhub-box{padding:4px 0}
 @media (max-width:600px){.net-sw{flex-direction:column}.net-sw .endbtn{width:100%;min-height:var(--tap,40px)}}
+
+/* the device map (24o-devices.js): positions are percentages, the lines an SVG under them */
+.devmap{position:relative;height:clamp(300px,42vh,400px);margin:6px 16px 14px;border-radius:16px;overflow:hidden;
+  background:radial-gradient(ellipse at 50% 50%,color-mix(in srgb,var(--acc) 14%,transparent) 0%,transparent 65%),
+  color-mix(in srgb,var(--txt) 3%,transparent)}
+.devmap svg{position:absolute;inset:0;width:100%;height:100%}
+.devmap line{stroke:color-mix(in srgb,var(--acc) 70%,transparent);stroke-width:.35;vector-effect:non-scaling-stroke}
+.devmap line.tie{stroke-width:2}
+.devmap line.loose{stroke-dasharray:6 5;stroke-width:1.5;opacity:.7}
+.devmap-n{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;
+  background:none;border:0;color:var(--txt);font:inherit;cursor:pointer;max-width:132px;text-align:center;padding:4px;
+  min-width:var(--tap,40px);min-height:var(--tap,40px)}
+.devmap-n b{font-size:13px;line-height:1.2}
+.devmap-n .mut{font-size:11.5px;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.devmap-me{cursor:default}
+.devmap-ring{display:grid;place-items:center;width:54px;height:54px;border-radius:50%;background:var(--bg2);
+  border:2px solid color-mix(in srgb,var(--txt) 25%,transparent);overflow:hidden}
+.devmap-me .devmap-ring{width:68px;height:68px;border-color:var(--acc)}
+.devmap-ring.up{border-color:#34d399}.devmap-ring.down{border-color:color-mix(in srgb,var(--txt) 35%,transparent);opacity:.75}
+.devmap-ring img,.devmap-face{width:100%;height:100%;image-rendering:pixelated;object-fit:cover}
+.devmap-initial{display:grid;place-items:center;font-weight:700;font-size:22px;background:color-mix(in srgb,var(--acc) 30%,var(--bg2))}
+.devmap-dot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;
+  background:color-mix(in srgb,var(--txt) 30%,transparent)}
+.devmap-more{position:absolute;left:14px;top:10px;margin:0;font-size:12px}
+.devmap-empty{position:absolute;left:0;right:0;bottom:12px;margin:0;text-align:center;font-size:12px}
+.devmap-n.up{flex-direction:column-reverse}
+.devmap-n.up .devmap-ring{order:-1}
+.net-look{margin-top:14px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
+.net-look-h{display:flex;gap:12px;align-items:center}
+.net-look-face{width:56px;height:56px;border-radius:12px;image-rendering:pixelated;background:var(--bg2)}
+.net-look-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px 12px;margin:10px 0}
+.net-look-grid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+.net-look-grid .prov-opt{flex-direction:row;align-items:center}
+.net-look-say{display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:12.5px}
+.dev-pw-opts{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;flex-basis:100%}
+@media (max-width:600px){.devmap{height:380px;margin:6px 8px 12px}.devmap-n{max-width:96px}.devmap-n .mut{max-width:96px}
+  .devmap-ring{width:44px;height:44px}.devmap-me .devmap-ring{width:56px;height:56px}}
+/* the form wraps its fields in a row; these each take a whole line */
+.dev-form>.net-sws,.dev-form>.net-look,.dev-form>.net-remove,.dev-form>.dev-pw-opts{flex:1 1 100%}
+.dev-pw-opts .prov-opt{display:inline-flex;align-items:center;gap:8px}
+.dev-pw-opts input[type=checkbox],.net-look-grid input[type=checkbox]{width:18px;height:18px;min-height:0}
 /* ---- the drama reel (00g-drama.js) ---- */
 .dr-wrap{display:flex;flex-direction:column;gap:12px;padding:14px;max-width:760px}
 .dr-title{font-weight:750;font-size:var(--fs-lg,17px);display:flex;align-items:center;gap:6px}
@@ -33366,7 +33407,7 @@ async function provPaint(){
     <div class="prov-add-body">${more.join('')}</div></div>`);
   /* a repaint (any provision broadcast, the scan's own) must not drop what is being typed
      into the install form: found in the screenshot walk, where Check it saw an empty user */
-  const kept={};['dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
+  const kept={};['dev-user','dev-pw','dev-pw-keep','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
     if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   box.innerHTML=rows.join('');
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
@@ -33456,7 +33497,7 @@ function provDevForm(d){
   if(run&&run.state==='running')return `<div class="dev-form">${devProgHTML(d.ip)}</div>`;
   return `<div class="dev-form">${devProgHTML(d.ip)}
     <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
-    <label>Password <input id="dev-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    ${devPwHTML('dev-pw',d.ip,(c&&c.user)||'')}
     <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
     <label class="prov-opt">${pSwitch('dev-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label></div>
@@ -33473,6 +33514,31 @@ function provDevForm(d){
 /* A reformatted machine shows a new SSH key and ssh refuses it. Both fingerprints, and a
    button that forgets the old one: the person's call, since the same refusal is what a
    machine pretending to be this one would get. */
+/* The password box for a machine: a saved one is in this computer's vault, encrypted, and is
+   never sent back here. Blank uses it; a typed one is used for this login and saved only when
+   the tick says so, so a saved one changes only when the person means it to. */
+function devPwSaved(ip,user){
+  const r=(((typeof NET!=='undefined'&&NET.v)||{}).rows||[]).find(x=>x.ip===ip);
+  return !!(r&&r.pw_saved&&(!user||r.user===user));
+}
+function devPwHTML(id,ip,user){
+  const saved=devPwSaved(ip,user);
+  return `<label>Password <input id="${id}" type="text" class="dev-secret" autocomplete="off" data-lpignore="true"
+      placeholder="${saved?'saved, encrypted: leave blank':'blank: use this machine’s key'}"></label>
+    <div class="dev-pw-opts"><label class="prov-opt"><input type="checkbox" id="${id}-keep"${saved?'':' checked'}>
+      ${saved?'Replace the saved one with what I type':'Remember it, encrypted on this computer'}</label>
+      ${saved?`<button class="endbtn dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
+}
+function devPwKeep(id){const e=document.getElementById(id+'-keep');return !!(e&&e.checked)}
+async function devPwForget(b){
+  const id=b.dataset.pwid,userEl=document.getElementById(id.replace(/-pw$/,'-user'));
+  const user=((userEl||{}).value||'').trim();
+  const r=await fetch('/api/network/password',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'forget',ip:b.dataset.pwforget,user})});
+  const d=await r.json().catch(()=>({}));
+  toast(r.ok?(d.forgot?'Forgot the saved password':'There was none saved for that user'):(d.error||'could not forget it'));
+  if(typeof netPaint==='function')netPaint();
+}
 function sshRekeyHTML(ip,port,k){
   if(!k)return '';
   return `<div class="dev-rekey"><p class="mut">Old key: <code>${esc(k.old||'unknown')}</code><br>It now shows: <code>${esc(k.new||'not read')}</code></p>
@@ -33481,7 +33547,7 @@ function sshRekeyHTML(ip,port,k){
 function provDevCreds(){
   const g=id=>(document.getElementById(id)||{});
   const agent=(g('dev-agent').value||'').trim();
-  return {user:(g('dev-user').value||'').trim(),password:g('dev-pw').value||'',authorize:!!g('dev-auth').checked,
+  return {user:(g('dev-user').value||'').trim(),password:g('dev-pw').value||'',remember:devPwKeep('dev-pw'),authorize:!!g('dev-auth').checked,
     profile:Object.assign({kiosk:!!g('dev-kiosk').checked,lite:true},agent?{agent_name:agent}:{})};
 }
 /* An install in progress, as named steps. The steps are the installer's own "▲" lines read
@@ -36251,9 +36317,10 @@ async function netPaint(){
   else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
   if(hidden.length)rows.push(netHiddenHTML(hidden,can));
   // keep what is being typed across a repaint (a broadcast, a line of a running step)
-  const kept={};['ctl-user','ctl-pw','net-user','net-pw','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
+  const kept={};['ctl-user','ctl-pw','ctl-pw-keep','net-user','net-pw','net-pw-keep','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
     const e=document.getElementById(id);if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
-  boxes.forEach(box=>{box.innerHTML=rows.join('');netWire(box)});
+  boxes.forEach(box=>{box.innerHTML=(box.classList.contains('devhub-box')&&typeof devMapHTML==='function'?devMapHTML(v):'')
+    +rows.join('');netWire(box)});
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
     if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
 }
@@ -36326,7 +36393,7 @@ function netSecureForm(r){
   const sel=NET.steps[r.ip]||{};
   return `<div class="dev-form net-form">
     <label>User there <input id="net-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||r.user||'')}"></label>
-    <label>Password <input id="net-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    ${devPwHTML('net-pw',r.ip,(c&&c.user)||r.user||'')}
     <label class="net-mine"><span class="net-mine-h">Your own SSH key ${pInfo('After password logins go off, only keys get in. Paste the .pub file from your own computer (~/.ssh/id_ed25519.pub) so you can still log in.')}</span>
       <input id="net-mine" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAA… you@laptop"></label>
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
@@ -36348,6 +36415,23 @@ function netSecureForm(r){
       ${c.host_key?`<p class="mut">Its key: ${esc(c.host_key)}</p>`:''}</div>`:''}
   </div>`;
 }
+/* Its lead agent's look, changed there: picks from the closed set the editor here draws, or a
+   description in words (its own designer picks). The face is painted HERE from its recipe. */
+var LOOK_FIELDS=[['skin','Skin'],['hair','Hair'],['style','Hair style'],['outfit','Outfit'],['shirt','Shirt'],['pants','Trousers']];
+function netLookHTML(r,st,v){
+  const ch=v.look_choices||{},look=st.look||{};
+  const cur=f=>{if(f==='shirt')return Object.keys(ch.hues||{}).find(n=>ch.hues[n]===look.hue)||'';
+    const x=look[f];return typeof x==='number'?(ch[f]||[])[x]||'':String(x||'')};
+  return `<div class="net-look"><div class="net-look-h">${look&&Object.keys(look).length?avatarRecipeImg(look,'net-look-face',st.agent||'its agent'):''}
+      <div><b>${esc(st.agent||'Its agent')}</b><br><span class="mut">How its agent looks there: on its screen, in its Office, and on the map here.</span></div></div>
+    <div class="net-look-grid">${LOOK_FIELDS.map(([f,t])=>`<label>${t}<select data-look="${f}">
+      <option value="">${cur(f)?esc(cur(f)):'as it is'}</option>${(ch[f]||[]).filter(o=>o!==cur(f)).map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select></label>`).join('')}
+      <label class="prov-opt"><input type="checkbox" data-look="glasses"${look.glasses?' checked':''}> Glasses</label>
+      <label class="prov-opt"><input type="checkbox" data-look="blush"${look.blush?' checked':''}> Blush</label></div>
+    <div class="dev-acts"><button class="endbtn" data-net="ctllook" data-key="${esc(r.key)}">Save its look</button></div>
+    <label class="net-look-say">Or describe it <input id="ctl-look-say" maxlength="200" placeholder="a cheerful chef with curly grey hair"></label>
+    <div class="dev-acts"><button class="endbtn" data-net="ctldesign" data-key="${esc(r.key)}">Design it</button></div></div>`;
+}
 /* What its switches were last READ as, in one line under the row: the inventory keeps it
    with the time, and nothing here guesses. */
 function netSwitchLine(r){
@@ -36368,12 +36452,13 @@ function netControlsForm(r,v){
     </div>`};
   return `<div class="dev-form net-form">
     <label>User there <input id="ctl-user" maxlength="32" value="${esc(r.user||'')}" placeholder="the user set in Imager"></label>
-    <label>Password <input id="ctl-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    ${devPwHTML('ctl-pw',r.ip,r.user||'')}
     <div class="dev-acts"><button class="endbtn" data-net="ctlread" data-key="${esc(r.key)}">${st?'Read again':'Read its switches'}</button>
       ${st&&st.installed?`<button class="endbtn" data-net="ctlupdate" data-key="${esc(r.key)}">Update Bento there${st.version?' ('+esc(st.version)+')':''}</button>`:''}</div>
     ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
     ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}
     <div class="net-sws">${sw.map(row).join('')}</div>
+    ${st&&st.installed?netLookHTML(r,st,v):''}
     ${st&&st.installed?`<div class="net-remove"><b>Remove Bento</b><br><span class="mut">Takes the program off and ends its ties to this computer. Its memory and settings stay there, so installing it again picks up where it was.</span>
       <details><summary>What runs there</summary><code class="dev-plan">${esc(c.remove||'')}</code></details>
       <div class="dev-acts"><button class="endbtn danger" data-net="ctlremove" data-key="${esc(r.key)}">Remove Bento</button></div></div>`:''}
@@ -36397,6 +36482,8 @@ function netConnWhy(c){return c.kind==='link'?'Your agents and its agents stop a
 function netWire(box){
   if(box.querySelector('.dev-prog.running')&&typeof devProgTick==='function')devProgTick();
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
+  box.querySelectorAll('[data-pwforget]').forEach(b=>b.onclick=()=>devPwForget(b));
+  box.querySelectorAll('[data-devnode]').forEach(n=>n.onclick=()=>devMapGo(n.dataset.devnode));
   const hd=box.querySelector('.net-hidden');if(hd)hd.ontoggle=()=>{NET.hiddenOpen=hd.open};
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));
   // the command shown after Check it follows the switch: --screen is its last flag, the same
@@ -36414,7 +36501,7 @@ async function netAct(act,b){
   const post=async(url,body,method)=>{const res=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
     const d=await res.json().catch(()=>({}));if(!res.ok)throw Object.assign(new Error(d.error||('could not do that ('+res.status+')')),{data:d});return d};
   const creds=()=>({ip:r.ip,port:netPort(r),user:((document.getElementById('net-user')||{}).value||'').trim(),
-    password:(document.getElementById('net-pw')||{}).value||'',mine:((document.getElementById('net-mine')||{}).value||'').trim()});
+    password:(document.getElementById('net-pw')||{}).value||'',remember:devPwKeep('net-pw'),mine:((document.getElementById('net-mine')||{}).value||'').trim()});
   try{
     if(act==='fw-open'||act==='fw-done'){b.disabled=true;
       try{await post('/api/network/firewall',{action:act==='fw-open'?'open':'done'});
@@ -36435,9 +36522,9 @@ async function netAct(act,b){
       return netPaint()}
     if(act==='controls'){NET.more='';const same=NET.open===r.key&&NET.mode==='controls';
       NET.open=same?'':r.key;NET.mode=same?'':'controls';return netPaint()}
-    if(act==='ctlread'||act==='ctlsw'||act==='ctlremove'||act==='ctlupdate'){
+    if(act==='ctlread'||act==='ctlsw'||act==='ctlremove'||act==='ctlupdate'||act==='ctllook'||act==='ctldesign'){
       const cr={ip:r.ip,key:r.key,port:netPort(r),user:((document.getElementById('ctl-user')||{}).value||'').trim(),
-        password:(document.getElementById('ctl-pw')||{}).value||''};
+        password:(document.getElementById('ctl-pw')||{}).value||'',remember:devPwKeep('ctl-pw')};
       if(act!=='ctlsw'||b.dataset.sw!=='code')if(!cr.user){toast('Type the user there first');return}
       if(act==='ctlremove'&&!await osConfirm(`Remove Bento from ${r.display||r.ip}?`,
         'It stops, the program is taken off, and its ties to this computer end. Its memory and settings stay there.',{confirmText:'Remove Bento'}))return;
@@ -36445,6 +36532,18 @@ async function netAct(act,b){
       NET.err[r.ip]='';
       try{
         if(act==='ctlread'){const d=await post('/api/network/controls',cr);NET.ctl[r.ip]=d}
+        else if(act==='ctllook'||act==='ctldesign'){
+          const box=b.closest('.net-look'),body={...cr};
+          if(act==='ctldesign'){body.describe=((document.getElementById('ctl-look-say')||{}).value||'').trim();
+            if(!body.describe){toast('Say what it should look like');b.disabled=false;b.textContent=was;return}}
+          else{const st0=(NET.ctl[r.ip]||{}).state||{},ch={};
+            box.querySelectorAll('select[data-look]').forEach(e=>{if(e.value)ch[e.dataset.look]=e.value});
+            box.querySelectorAll('input[data-look]').forEach(e=>{if(!!e.checked!==!!(st0.look||{})[e.dataset.look])ch[e.dataset.look]=e.checked});
+            if(!Object.keys(ch).length){toast('Choose what to change first');b.disabled=false;b.textContent=was;return}
+            body.changes=ch}
+          const d=await post('/api/network/look',body);
+          NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
+          toast(`✓ ${d.state.agent||'Its agent'} has a new look on ${r.display||r.ip}`)}
         else if(act==='ctlupdate'){const d=await post('/api/network/update',cr);
           NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
           toast(`✓ ${r.display||r.ip}: ${d.before||'?'} → ${(d.state||{}).version||'?'}`)}
@@ -36513,6 +36612,52 @@ async function renderDevices(body,w){
   const pb=panelShell(body,{title:'Devices',sub:'The machines on your network'});
   pb.innerHTML=`<div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>`;
   await netPaint();
+}
+
+/* The map: this computer in the middle with its lead agent, every machine with Bento around it
+   with ITS agent (the face painted here from the recipe its link or its switches gave), and the
+   rest of the network as small dots on an outer ring, so twenty phones don't crowd the Pis. A
+   line is a tie: solid for a link or the community, dashed for Bento with no tie yet. A node is
+   a door to that machine's Controls below. Positions are percentages, so it fits any width. */
+function devMapHTML(v){
+  const rows=(v.rows||[]).filter(r=>!r.ignored);
+  const bento=rows.filter(r=>r.bento!=='none'&&r.bento!=='removed').slice(0,12);
+  const rest=rows.filter(r=>!bento.includes(r));
+  const me=v.me||{},pos=(i,n,rx,ry,off)=>{const a=-Math.PI/2+(off||0)+2*Math.PI*i/Math.max(n,1);
+    return [50+rx*Math.cos(a),50+ry*Math.sin(a)]};
+  const lines=[],nodes=[];
+  bento.forEach((r,i)=>{
+    const [x,y]=pos(i,bento.length,34,30),tied=(r.connections||[]).some(c=>c.kind!=='key');
+    // from the edge of the middle to the edge of the face, never through a name
+    const at=t=>[(50+(x-50)*t).toFixed(2),(50+(y-50)*t).toFixed(2)];
+    const [ax,ay]=at(.2),[bx,by]=at(.78);
+    lines.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" class="${tied?'tie':'loose'}"/>`);
+    const ag=r.agent||{},st=((r.controls||{}).state)||{};
+    const face=ag.look&&Object.keys(ag.look).length?avatarRecipeImg(ag.look,'devmap-face',ag.name||'')
+      :`<span class="devmap-face devmap-initial">${esc((ag.name||r.display||'?').slice(0,1).toUpperCase())}</span>`;
+    const dot=st.running===true?'up':st.running===false?'down':'';
+    // above the middle, the name goes above the face, so the line meets the face
+    nodes.push(`<button class="devmap-n${y<50?' up':''}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-devnode="${esc(r.key)}"
+        aria-label="${esc((ag.name?ag.name+' on ':'')+r.display)}">
+      <span class="devmap-ring ${dot}">${face}</span>
+      <b>${esc(ag.name||'Bento')}</b><span class="mut">${esc(r.display)}</span></button>`);
+  });
+  rest.forEach((r,i)=>{const [x,y]=pos(i,rest.length,47,46,Math.PI/rest.length);
+    nodes.push(`<span class="devmap-dot" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" title="${esc(r.display+(r.ip&&r.ip!==r.display?' · '+r.ip:''))}"></span>`)});
+  const meFace=typeof avatarImg==='function'?avatarImg('@agent','devmap-face'):'';
+  return `<div class="devmap" role="img" aria-label="Map of the machines on your network">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${lines.join('')}</svg>
+    ${nodes.join('')}
+    <div class="devmap-n devmap-me" style="left:50%;top:50%"><span class="devmap-ring up">${meFace}</span>
+      <b>${esc(me.agent||'Your agent')}</b><span class="mut">${esc(me.name||'this computer')}</span></div>
+    ${rest.length?`<p class="devmap-more mut">${rest.length} other machine${rest.length===1?'':'s'} on your network, without Bento</p>`:''}
+    ${!bento.length?`<p class="devmap-empty mut">No other machine runs Bento yet. Install it on one below.</p>`:''}
+  </div>`;
+}
+function devMapGo(key){
+  NET.open=key;NET.mode='controls';NET.more='';
+  netPaint().then(()=>{const m=document.querySelector(`.devhub-box .net-m[data-key="${CSS.escape(key)}"]`);
+    if(m)m.scrollIntoView({block:'start',behavior:'smooth'})});
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

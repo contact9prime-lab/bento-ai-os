@@ -87,7 +87,7 @@ async function provPaint(){
     <div class="prov-add-body">${more.join('')}</div></div>`);
   /* a repaint (any provision broadcast, the scan's own) must not drop what is being typed
      into the install form: found in the screenshot walk, where Check it saw an empty user */
-  const kept={};['dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
+  const kept={};['dev-user','dev-pw','dev-pw-keep','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{const e=document.getElementById(id);
     if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   box.innerHTML=rows.join('');
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
@@ -177,7 +177,7 @@ function provDevForm(d){
   if(run&&run.state==='running')return `<div class="dev-form">${devProgHTML(d.ip)}</div>`;
   return `<div class="dev-form">${devProgHTML(d.ip)}
     <label>User there <input id="dev-user" maxlength="32" placeholder="the user set in Imager" value="${esc((c&&c.user)||'')}"></label>
-    <label>Password <input id="dev-pw" type="text" class="dev-secret" autocomplete="off" data-lpignore="true" placeholder="blank: use this machine’s key"></label>
+    ${devPwHTML('dev-pw',d.ip,(c&&c.user)||'')}
     <label><span class="dev-lbl">Its agent’s name ${pInfo('What you call it on its screen: say its name, then what you want. Like Chef in the kitchen, or Fridge.')}</span><input id="dev-agent" maxlength="32" placeholder="Chef, Fridge…"></label>
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
     <label class="prov-opt">${pSwitch('dev-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label></div>
@@ -194,6 +194,31 @@ function provDevForm(d){
 /* A reformatted machine shows a new SSH key and ssh refuses it. Both fingerprints, and a
    button that forgets the old one: the person's call, since the same refusal is what a
    machine pretending to be this one would get. */
+/* The password box for a machine: a saved one is in this computer's vault, encrypted, and is
+   never sent back here. Blank uses it; a typed one is used for this login and saved only when
+   the tick says so, so a saved one changes only when the person means it to. */
+function devPwSaved(ip,user){
+  const r=(((typeof NET!=='undefined'&&NET.v)||{}).rows||[]).find(x=>x.ip===ip);
+  return !!(r&&r.pw_saved&&(!user||r.user===user));
+}
+function devPwHTML(id,ip,user){
+  const saved=devPwSaved(ip,user);
+  return `<label>Password <input id="${id}" type="text" class="dev-secret" autocomplete="off" data-lpignore="true"
+      placeholder="${saved?'saved, encrypted: leave blank':'blank: use this machine’s key'}"></label>
+    <div class="dev-pw-opts"><label class="prov-opt"><input type="checkbox" id="${id}-keep"${saved?'':' checked'}>
+      ${saved?'Replace the saved one with what I type':'Remember it, encrypted on this computer'}</label>
+      ${saved?`<button class="endbtn dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
+}
+function devPwKeep(id){const e=document.getElementById(id+'-keep');return !!(e&&e.checked)}
+async function devPwForget(b){
+  const id=b.dataset.pwid,userEl=document.getElementById(id.replace(/-pw$/,'-user'));
+  const user=((userEl||{}).value||'').trim();
+  const r=await fetch('/api/network/password',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'forget',ip:b.dataset.pwforget,user})});
+  const d=await r.json().catch(()=>({}));
+  toast(r.ok?(d.forgot?'Forgot the saved password':'There was none saved for that user'):(d.error||'could not forget it'));
+  if(typeof netPaint==='function')netPaint();
+}
 function sshRekeyHTML(ip,port,k){
   if(!k)return '';
   return `<div class="dev-rekey"><p class="mut">Old key: <code>${esc(k.old||'unknown')}</code><br>It now shows: <code>${esc(k.new||'not read')}</code></p>
@@ -202,7 +227,7 @@ function sshRekeyHTML(ip,port,k){
 function provDevCreds(){
   const g=id=>(document.getElementById(id)||{});
   const agent=(g('dev-agent').value||'').trim();
-  return {user:(g('dev-user').value||'').trim(),password:g('dev-pw').value||'',authorize:!!g('dev-auth').checked,
+  return {user:(g('dev-user').value||'').trim(),password:g('dev-pw').value||'',remember:devPwKeep('dev-pw'),authorize:!!g('dev-auth').checked,
     profile:Object.assign({kiosk:!!g('dev-kiosk').checked,lite:true},agent?{agent_name:agent}:{})};
 }
 /* An install in progress, as named steps. The steps are the installer's own "▲" lines read
