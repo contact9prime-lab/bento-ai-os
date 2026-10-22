@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.80 — 2026-10-22
+
+**The kiosk fits a Pi's small screen.** On a 3.5-inch 480×320 screen the Office wasn't drawn
+at all (a rule meant for phones hid it) and the band's sentence spilled out of its card. Now the
+Office shows with its rooms side by side, the band is compact on a short screen with lines that end
+inside it, a long answer gets the room it needs and keeps its newest words in view, and "can't
+hear" is one short sentence. Checked at 480×320, 800×480, 1024×600 and portrait 480×800.
+
 ## 0.6.79 — 2026-10-22
 
 **Devices: switch a Pi's things on and off, update it, or remove Bento, from the hub.** A new

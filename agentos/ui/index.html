@@ -3317,7 +3317,7 @@ body.immersive #office-scene .of-scroll{width:min(1180px,94vw);height:100%;displ
 body.immersive #office-scene canvas{display:block;border-radius:var(--r-lg,14px);
   box-shadow:0 18px 50px color-mix(in srgb,var(--bg) 60%,transparent)}
 body.immersive.imm-office #wall.has::after{background:linear-gradient(rgba(4,5,8,.0) 42%,rgba(4,5,8,.20))}
-body.immersive.dev-mobile #office-scene:not(.hq){display:none}
+body.immersive.dev-mobile:not(.kiosk) #office-scene:not(.hq){display:none}  /* a Pi's own small screen IS the office */
 body.immersive.imm-movement #wall.has::after{background:linear-gradient(rgba(4,5,8,.0),rgba(4,5,8,.12))}
 body.immersive.imm-movement #wall.has::before{opacity:.035}
 
@@ -5056,6 +5056,24 @@ body.kiosk #office-scene canvas{display:block}
   #kiosk-hud .kh-acts{grid-column:2;grid-row:1}
 }
 @media (prefers-reduced-motion:reduce){#kiosk-hud .kh-mic.live{box-shadow:none;outline:2px solid var(--acc)}}
+/* a Pi's own small screen (the 7" 800x480, a 3.5" 480x320): a compact band, so the office keeps
+   most of the height, and lines that end rather than spill out of the card */
+@media (max-height:520px){
+  #kiosk-hud{left:8px;right:8px;bottom:8px;padding:8px 10px;gap:4px 10px;max-height:46vh}
+  #kiosk-hud .kh-face{width:40px;height:40px;border-radius:9px}
+  #kiosk-hud .kh-name{font-size:16px}
+  #kiosk-hud .kh-line,#kiosk-hud .kh-heard{font-size:14px}
+  #kiosk-hud .kh-line{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  #kiosk-hud .kh-reply{font-size:15px;max-height:26vh}
+  #kiosk-hud button{min-height:40px;padding:0 12px}
+}
+@media (max-height:360px){
+  /* an answer is what this screen is for while there is one: the band may take most of it,
+     and the office above shrinks into what is left (the band is measured, kioskPaint) */
+  #kiosk-hud{max-height:66vh}
+  #kiosk-hud .kh-line{-webkit-line-clamp:1}
+  #kiosk-hud .kh-reply{max-height:40vh}
+}
 /* Settings → Team & Communications → Community (24i-pool.js) */
 .pool-list{display:flex;flex-direction:column;gap:6px;width:100%}
 .pool-m{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:var(--r-md,10px);
@@ -30151,7 +30169,9 @@ function officeLayout(){
   // The kiosk face (24h-kiosk.js) is the whole screen of a small machine: people are
   // drawn bigger, to be read from across a room, and the rooms take the height there is
   const kiosk=!!(O.w&&O.w.scene&&document.body.classList.contains('kiosk'));
-  O.s=kiosk?Math.max(.9,Math.min(1.8,cw/720,sc.clientHeight/300))
+  // (a Pi's 480-wide screen may go down to half size, so its rooms sit side by side as on any
+  // landscape screen rather than stacked in a narrow column with the sides empty)
+  O.s=kiosk?Math.max(cw<720?.5:.9,Math.min(1.8,cw/720,sc.clientHeight/300))
     :phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
   // each room's natural width: a desk slot per member, and never narrower than a room
   const want=r=>r.kind==='lead'?300:r.kind==='meeting'?280:r.kind==='lounge'?250
@@ -32788,6 +32808,7 @@ function kioskLeave(){
   if(location.hash==='#kiosk')history.replaceState(null,'',location.pathname+location.search);
   kioskStop();
 }
+function kioskShort(t){const s=String(t||'');const i=s.search(/[:.]\s/);return i>0?s.slice(0,i)+'.':s}
 function kioskSay(line,phase){KIOSK.line=line||'';if(phase)KIOSK.phase=phase;kioskPaint()}
 function kioskPaint(){
   const hud=document.getElementById('kiosk-hud');if(!hud)return;
@@ -32799,6 +32820,7 @@ function kioskPaint(){
   const h=hud.querySelector('.kh-heard'),r=hud.querySelector('.kh-reply');
   h.hidden=!KIOSK.heard;h.textContent=KIOSK.heard?'“'+KIOSK.heard+'”':'';
   r.hidden=!KIOSK.reply;r.textContent=KIOSK.reply.slice(-600);
+  r.scrollTop=r.scrollHeight;          // the newest words, as they are said, on a screen too short for all of them
   const mic=hud.querySelector('.kh-mic');
   const can=!!hear.engine;
   mic.hidden=!can;
@@ -32816,7 +32838,8 @@ function kioskFollowing(){return KIOSK.follow&&Date.now()<KIOSK.follow}
 async function kioskListen(){
   if(!KIOSK.on||KIOSK.muted)return;
   const hear=kioskFace().hear||{};
-  if(!hear.engine){kioskSay(hear.line||'Nothing on this machine can understand speech yet.','deaf');return}
+  // one short sentence on the screen; the long one (what to install, which key) is in Settings
+  if(!hear.engine){kioskSay(kioskShort(hear.line)||'I can’t hear yet.','deaf');return}
   if(hear.engine==='browser')return kioskBrowserListen();
   if(KIOSK.stream){kioskSay('','listening');return}
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){

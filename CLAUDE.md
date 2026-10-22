@@ -3344,6 +3344,11 @@ be on and agents would be working in the office". Five rules:
   `--target whisper-cli`, model to `hearing.MODEL_DIR` through a `.part` file, `needs_root`
   False, no argv without git/cmake/a compiler so the button is a sentence). `alsa-utils` is
   offered only to the terminal check. Nothing installs by default.
+- **A Pi's screen is small, and the kiosk is tested at its sizes** (480x320, 800x480, 1024x600, 480x800;
+  `tests/test_kiosk_small.py`). A 480-wide kiosk is `dev-mobile`, and the phone rule hiding the Office scene
+  must exempt `.kiosk` (the scene IS that screen). The band shrinks by `max-height` media, clamps its line,
+  and while an answer shows it may take two thirds of a short screen (the office fits above, the band is
+  measured); the kiosk's Office scale may fall to .5 below 720px wide so rooms sit side by side.
 - **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
   `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
   it to video or another origin.

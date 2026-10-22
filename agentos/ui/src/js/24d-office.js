@@ -219,7 +219,9 @@ function officeLayout(){
   // The kiosk face (24h-kiosk.js) is the whole screen of a small machine: people are
   // drawn bigger, to be read from across a room, and the rooms take the height there is
   const kiosk=!!(O.w&&O.w.scene&&document.body.classList.contains('kiosk'));
-  O.s=kiosk?Math.max(.9,Math.min(1.8,cw/720,sc.clientHeight/300))
+  // (a Pi's 480-wide screen may go down to half size, so its rooms sit side by side as on any
+  // landscape screen rather than stacked in a narrow column with the sides empty)
+  O.s=kiosk?Math.max(cw<720?.5:.9,Math.min(1.8,cw/720,sc.clientHeight/300))
     :phone?cw/560:Math.max(.78,Math.min(1.3,cw/1100));
   // each room's natural width: a desk slot per member, and never narrower than a room
   const want=r=>r.kind==='lead'?300:r.kind==='meeting'?280:r.kind==='lounge'?250
