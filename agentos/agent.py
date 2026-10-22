@@ -1394,6 +1394,14 @@ class Agent:
             # Zero progress at the token limit = the context window itself is full
             # (prompt ≈ num_ctx): continuing would loop forever. Fail loudly instead.
             if finish_reason == "length" and not tool_calls and not (text.strip() or carry):
+                # A thinking model on a long prompt (a Pi asking its hub's qwen3.5:9b) thinks
+                # until the window is full and says nothing. Once, without thinking: that
+                # reliably answers. It used to stop here with this sentence on every question.
+                if not getattr(self, "_think_off", False) and not self.aborted:
+                    self._think_off = True
+                    await self.emit({"type": "status",
+                                     "message": "the model ran out of room while thinking — answering without thinking…"})
+                    continue
                 msg = ("the model hit its token limit before producing any output — it either "
                        "spent the whole budget in its thinking channel, or the prompt fills its "
                        "context window. Try again, disable thinking (`ollama_think: false`), "

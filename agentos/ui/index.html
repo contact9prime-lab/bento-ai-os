@@ -30886,7 +30886,9 @@ function officeFrame(now){
   if(!O.w||!O.ctx)return;
   if(!officeAwake())return officeSnooze();      // asleep: the next wake re-kicks
   const work=officeMoving(),decor=!work&&officeDecorMoving(),dt=(now-O.last)/1000;
-  const light=officeLight(),every=work?1/30:decor?(light?1/4:1/30):(light?1/2:1/6);
+  // On a small machine people step like an old arcade game (8 a second) rather than glide
+  // at 30: the figures are pixel art already, and it is a quarter of the drawing.
+  const light=officeLight(),every=work?(light?1/8:1/30):decor?(light?1/4:1/30):(light?1/2:1/6);
   if(dt<every){
     // not due yet: wait on a timer, not on every refresh (a frame asked for is a frame drawn)
     O.raf=-1;O.wait=setTimeout(()=>{O.raf=requestAnimationFrame(officeFrame)},Math.max(4,(every-dt)*1000-4));return}
@@ -36708,7 +36710,8 @@ async function netAct(act,b){
           if(d.state)NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
           toast(`✓ ${(((NET.v||{}).switches||[]).find(x=>x.id===b.dataset.sw)||{}).title||b.dataset.sw} ${on?'on':'off'} on ${r.display||r.ip}`)}
         else{const d=await post('/api/network/remove',cr);delete NET.ctl[r.ip];NET.open='';
-          toast(d.ok?`✓ Bento removed from ${r.display||r.ip}${(d.ended||[]).length?'; ended '+d.ended.join(', '):''}`:'It may not all be gone: read its switches again',{kind:d.ok?'ok':'warn'})}
+          toast(d.ok?`✓ Bento removed from ${r.display||r.ip}. Installing it again sets it up as a new machine.`
+            :`✗ Not all of it went: ${(d.left||[]).join(', ')||'read its switches again'}`,{kind:d.ok?'ok':'warn'})}
       }catch(e){const d=e.data||{};if(d.key_changed)NET.rekey[r.ip]=d.key_changed;NET.err[r.ip]=e.message;
         if(d.state)NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state}}
       b.disabled=false;b.textContent=was;return netPaint()}

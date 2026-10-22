@@ -13827,9 +13827,15 @@ async def api_network_remove(body: dict):
                     poolmod.remove(state["store"], row["fp"])
                 await _pool_changed(f"removed {row.get('display')} from the community")
                 ended.append(c["words"])
-    _ledger("device.remove", f"device:{ip}", f"removed Bento from {user}@{ip} (its data kept)"
+    from . import provision as provmod
+    with usersmod.as_user(""):
+        if provmod.forget_at(ip):
+            ended.append("what this computer had heard and set up there")
+    _ledger("device.remove", f"device:{ip}", f"removed Bento from {user}@{ip} (its data set aside"
+            + (f" at {got['kept']}" if got.get("kept") else "") + ")"
             + (f"; ended {', '.join(ended)}" if ended else ""))
-    return {"ok": got["ok"], "state": got["state"], "ran": got["ran"], "ended": ended, "view": _network_view()}
+    return {"ok": got["ok"], "state": got["state"], "ran": got["ran"], "ended": ended, "left": got.get("left") or [],
+            "kept": got.get("kept", ""), "view": _network_view()}
 
 
 @app.post("/api/network/disconnect")

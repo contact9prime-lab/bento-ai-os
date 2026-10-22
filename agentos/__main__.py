@@ -4790,14 +4790,25 @@ def _network_cli(args):
                 if not got["ok"]:
                     sys.exit(1)
                 return
-            print("  This runs there (its data in ~/.agentos stays):\n    " + devicectl.remove_plan())
+            print("  This takes Bento off there and sets its ~/.agentos aside (never deleted), then\n"
+                  "  ends what tied it to this computer. Installing it again sets it up as a new machine.")
             if not args.yes and input(f"  Remove Bento from {r['display']}? (y/n) ").strip().lower()[:1] != "y":
                 return
             got = asyncio.run(devicectl.remove(r["ip"], user, pw, port(r)))
             inv.note_controls(r["ip"], r.get("mac") or "", got["state"], user, by="cli")
-            ledger("device.remove", f"device:{r['ip']}", f"removed Bento from {user}@{r['ip']} (its data kept)")
-            print(f"  ✓ Bento removed from {r['display']}. Its link and community place are ended by the "
-                  "running server; from here, `bento network disconnect` ends them.")
+            ended = devicectl.end_ties(r)
+            ledger("device.remove", f"device:{r['ip']}", f"removed Bento from {user}@{r['ip']}"
+                   + (f" (its data set aside at {got['kept']})" if got.get("kept") else "")
+                   + (f"; ended {', '.join(ended)}" if ended else ""))
+            if got.get("kept"):
+                print(f"  · its memory and settings are set aside there: {got['kept']}")
+            for x in ended:
+                print(f"  · ended: {x}")
+            for x in got.get("left") or []:
+                print(f"  ✗ still there: {x}")
+            if not got["ok"]:
+                sys.exit(f"  ✗ Bento is not fully removed from {r['display']}")
+            print(f"  ✓ Bento removed from {r['display']}")
         except ri.InstallError as e:
             sys.exit(_ssh_says(e))
         return

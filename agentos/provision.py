@@ -814,6 +814,23 @@ def find_seen(key: str) -> dict | None:
     return {**d["seen"][fp], "fp": fp} if fp else None
 
 
+def forget_at(addr: str) -> list[str]:
+    """Bento was removed from the machine at `addr`: forget what was heard and set up there.
+    Its next install has a new home and so a new certificate, and the old "set up" entry at
+    the same address made the hub treat the new one as something it had already done."""
+    d = load()
+    gone = [fp for fp, e in d["seen"].items() if addr and e.get("addr") == addr]
+    for fp in gone:
+        d["seen"].pop(fp, None)
+        d["enabled"].pop(fp, None)
+    for e in d.get("devices", {}).values():
+        if e.get("ip") == addr and e.get("state") == "installed":
+            e["state"] = "new"
+    if gone or any(e.get("ip") == addr for e in d.get("devices", {}).values()):
+        save(d)
+    return gone
+
+
 def was_enabled_here(fp: str) -> bool:
     """A machine this one set up: its request to join is let in at once (pool.py)."""
     return fp in load()["enabled"]

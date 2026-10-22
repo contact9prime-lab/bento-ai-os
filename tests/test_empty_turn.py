@@ -161,3 +161,28 @@ def test_varied_tool_calls_are_not_treated_as_a_loop(tmp_path, monkeypatch):
     res = asyncio.run(ag.run([{"role": "user", "content": "look around"}]))
     assert "done looking" in (res["content"] or "")
     assert not [e for e in events if e["type"] == "error"]
+
+
+def test_thinking_that_fills_the_window_is_answered_without_thinking(tmp_path, monkeypatch):
+    """A Pi asking its hub's qwen3.5:9b: it thought until the window was full (finish
+    'length', no text) and every question ended on 'the model hit its token limit'."""
+    calls = []
+
+    def fake_chat(cfg, model, messages, tools, options=None):
+        calls.append(options or {})
+
+        async def gen():
+            if len(calls) == 1:
+                yield {"type": "thinking", "text": "let me consider every angle " * 50}
+                yield {"type": "finish", "reason": "length"}
+            else:
+                yield {"type": "text", "text": "I am Mr. Pi."}
+                yield {"type": "finish", "reason": "stop"}
+        return gen()
+
+    monkeypatch.setattr(providers, "chat", fake_chat)
+    events = []
+    res = asyncio.run(_agent(tmp_path, events).run([{"role": "user", "content": "who are you?"}]))
+    assert res["content"] == "I am Mr. Pi."
+    assert len(calls) == 2 and calls[1].get("think") is False
+    assert not [e for e in events if e["type"] == "error"]

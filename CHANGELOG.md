@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.85 — 2026-10-22
+
+**Remove means removed, and adding it back adds it.** Remove from the hub used to run
+`bento uninstall` and delete the code. A server started by hand kept running, an autostart that
+the screen step had moved aside still opened Bento at login, and the installer's own screen
+stayed up. Its `~/.agentos` still said it had been set up by the hub, so after a reinstall it
+never waited to be set up again: the hub had forgotten it, the Pi had not. Remove now stops and
+deletes all of it, sets `~/.agentos` aside as `~/.agentos-removed-<time>` (never deleted), checks,
+and names anything left. The hub forgets what it heard and set up at that address, so a new
+install is set up as a new machine. `bento network remove` does the hub's half too.
+
+**A Pi's questions get answered.** A thinking model on a long prompt (a Pi asking its hub's
+qwen3.5:9b) thought until the window was full and said nothing, and every question ended on
+"the model hit its token limit". It now answers once more without thinking.
+
+**On a small machine the Office steps like an old arcade game**: people move at 8 frames a
+second instead of gliding at 30. It is a quarter of the drawing.
+
 ## 0.6.84 — 2026-10-22
 
 **An install over SSH survives a dropped connection.** The installer ran inside the SSH

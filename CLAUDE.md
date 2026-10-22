@@ -3213,7 +3213,11 @@ Six rules:
   stopped. `STATE_SCRIPT` is plain shell (files and systemctl), so an old Bento answers; the answer after a switch
   is a fresh read, and a switch that did not take is an error with what it said. `inventory.note_controls` keeps
   the read with its time; installed false reads as `removed`. Remove keeps `~/.agentos` and this computer's key,
-  and the route ends the links and the community place. Its `pkill -f '[s]creen-profile'`: unbracketed, it killed
+  and the route ends the links and the community place. Remove now sets `~/.agentos` aside
+  (`.agentos-removed-<time>`) because a kept `provision.json` said "claimed by the hub", so a reinstall
+  never waited again; it stops every server and the installer's screen, deletes drop-ins and the moved
+  autostart, and reports `left`. `devicectl.end_ties` is the hub's half (links, community,
+  `provision.forget_at`), shared by the route and `bento network remove`. Its `pkill -f '[s]creen-profile'`: unbracketed, it killed
   the remote shell running it (and, in a test, the host's own shells: the test stubs pkill). The Devices app and
   Settings → Network are ONE list: `netPaint` draws into `#s-net` and every `.devhub-box`.
   Screen on needs root there once (the mic policy) and a Pi's sudo wants a password: `WITH_SUDO` puts a

@@ -268,7 +268,8 @@ async function netAct(act,b){
           if(d.state)NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state};
           toast(`✓ ${(((NET.v||{}).switches||[]).find(x=>x.id===b.dataset.sw)||{}).title||b.dataset.sw} ${on?'on':'off'} on ${r.display||r.ip}`)}
         else{const d=await post('/api/network/remove',cr);delete NET.ctl[r.ip];NET.open='';
-          toast(d.ok?`✓ Bento removed from ${r.display||r.ip}${(d.ended||[]).length?'; ended '+d.ended.join(', '):''}`:'It may not all be gone: read its switches again',{kind:d.ok?'ok':'warn'})}
+          toast(d.ok?`✓ Bento removed from ${r.display||r.ip}. Installing it again sets it up as a new machine.`
+            :`✗ Not all of it went: ${(d.left||[]).join(', ')||'read its switches again'}`,{kind:d.ok?'ok':'warn'})}
       }catch(e){const d=e.data||{};if(d.key_changed)NET.rekey[r.ip]=d.key_changed;NET.err[r.ip]=e.message;
         if(d.state)NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state}}
       b.disabled=false;b.textContent=was;return netPaint()}
