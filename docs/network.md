@@ -268,6 +268,8 @@ community, and what was heard and set up at that address, so **Install it again*
 new machine. This computer's SSH key stays on it; Disconnect takes that off. `bento network remove`
 does all of it from a terminal.
 
+![Three moments from removing and adding back a Raspberry Pi 3 from the hub with bento network remove and install: the Pi's desktop with Bento gone, its screen during the install, and the kiosk Office afterwards](screenshots/network-remove-add-pi.png)
+
 **Install it again** stays on the row after an install stops, so you can just try again. A scan
 where the machine didn't answer for a moment doesn't take it away, and a machine you've logged
 into before keeps it. If the installer finds no internet while the machine is on Wi-Fi, it names
