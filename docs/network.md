@@ -97,6 +97,23 @@ it's the console. A failed install leaves its reason up for five minutes, then g
 A fresh install fetches Bento without the docs' screenshots, about 14 MB instead of 205 MB. The
 pictures are for reading the guides on GitHub; nothing on the machine shows them.
 
+### When it's done
+
+Once it's installed, Bento sets the machine up by itself: the install gave it a key that only
+works once. Bento asks the machine directly as well as listening for it, so a firewall on this
+computer (ufw, say) can't leave it waiting. If a machine still says *Waiting to be set up*,
+press **Look at the network**.
+
+With **Open on its screen** on, Bento opens full screen there and again at every start.
+
+![Bento open full screen on a Raspberry Pi after the install, photographed on the Pi](screenshots/network-pi-opens-bento.png)
+
+Letting the page use the microphone without asking needs root. On a Pi whose `sudo` asks for a
+password, Bento still opens on the screen, and the page asks for the microphone the first time.
+Run `bento screen on` at a terminal on the Pi to allow it ahead.
+
+![bento screen on, on a Pi whose sudo asks for a password](screenshots/network-pi-screen-on-terminal.png)
+
 ## Secure it
 
 Open a row and press **Secure it**. Type the user there (the one set in Imager) and its

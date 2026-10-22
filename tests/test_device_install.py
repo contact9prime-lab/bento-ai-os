@@ -561,3 +561,66 @@ def test_a_stopped_install_says_the_tools_own_reason():
         "clone failed (fatal: early EOF)"
     text = (ROOT / "install.sh").read_text()
     assert "--filter=blob:none" in text and "'!/docs/screenshots/'" in text
+
+
+def test_the_installer_decides_its_screen_once():
+    """`PISCREEN=""` after the flags wiped what they decided, so no Pi showed its install."""
+    text = (ROOT / "install.sh").read_text()
+    assert text.count('PISCREEN=""') == 1
+    assert text.index('PISCREEN=""') < text.index("PISCREEN=page") < text.index("screen_page() {")
+    done = text[text.index('screen_show "Bento is installed"'):]
+    assert "bento screen run" in done.split("elif")[0], "the install page hands over to the kiosk"
+
+
+def test_the_hub_asks_an_installed_machine_itself(monkeypatch):
+    """Found with a Pi installed from a hub with ufw on: its broadcast never arrived, so it
+    waited for ever. An answer to a question the hub sent passes the firewall."""
+    from agentos import provision, server
+    beacons = [{"fp": "a" * 64, "waiting": True, "key_id": "auto1", "name": "pi"},
+               {"fp": "b" * 64, "waiting": True, "key_id": "manual", "name": "other"},
+               {"fp": "c" * 64, "waiting": True, "key_id": "auto1", "name": "done-already"}]
+    asked = {}
+
+    async def scan(wait=2.0, targets=None):
+        asked["targets"] = targets
+        return beacons
+    monkeypatch.setattr(provision, "scan", scan)
+    monkeypatch.setattr(provision, "load", lambda: {"keys": [{"id": "auto1", "auto": True},
+                                                             {"id": "manual", "auto": False}]})
+    monkeypatch.setattr(provision, "was_enabled_here", lambda fp: fp == "c" * 64)
+    new = []
+
+    async def on_new(b):
+        new.append(b["name"])
+    monkeypatch.setattr(server, "_provision_new", on_new)
+    asyncio.run(server._provision_ask(["192.168.1.9"]))
+    assert asked["targets"] == ["192.168.1.9"] and new == ["pi"]
+    src = (ROOT / "agentos/server.py").read_text()
+    inst = src[src.index("async def _device_install("):src.index('@app.post("/api/devices/sdcard")')]
+    assert "_provision_ask_installed(ip)" in inst
+    scan_route = src[src.index('@app.post("/api/devices/scan")'):src.index('@app.post("/api/devices/ignore")')]
+    assert "_provision_ask(" in scan_route
+
+
+def test_a_machine_heard_twice_at_once_is_set_up_once(monkeypatch):
+    from agentos import provision, server
+    monkeypatch.setattr(provision, "load", lambda: {"keys": [{"id": "k", "auto": True, "label": "x"}]})
+    monkeypatch.setattr(provision, "was_enabled_here", lambda fp: False)
+    monkeypatch.setattr(server, "_sys_ledger", lambda *a, **k: None)
+    runs = []
+
+    async def enable(items, profile, by=""):
+        runs.append(items)
+        await asyncio.sleep(0.05)
+        return {"results": [{"ok": True}]}
+
+    async def admins(ev):
+        pass
+    monkeypatch.setattr(server, "_provision_enable", enable)
+    monkeypatch.setattr(server, "_provision_admins", admins)
+    b = {"fp": "d" * 64, "waiting": True, "key_id": "k", "name": "pi", "addr": "10.0.0.2"}
+
+    async def both():
+        await asyncio.gather(server._provision_new(dict(b)), server._provision_new(dict(b)))
+    asyncio.run(both())
+    assert len(runs) == 1

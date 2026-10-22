@@ -92,8 +92,32 @@ def test_the_plan_on_a_desktop_changes_nothing_system_wide_but_the_mic(monkeypat
     monkeypatch.setattr(screen, "road", lambda: ("desktop", "lightdm"))
     monkeypatch.setattr(screen, "browser", lambda: "/usr/bin/chromium")
     steps = screen.plan({})
-    assert [s["id"] for s in steps] == ["mic", "autostart"]
-    assert [s["root"] for s in steps] == [True, False]
+    assert [s["id"] for s in steps] == ["autostart", "mic"], "the window first: it needs no root"
+    assert [s["root"] for s in steps] == [False, True]
+
+
+def test_a_desktop_whose_sudo_wants_a_password_still_opens_on_its_screen(monkeypatch, tmp_path):
+    """Found on a Pi 3 B+ installed from the hub: the mic policy needed root, sudo asked for a
+    password, and the step stopped before the autostart, so the screen never showed Bento."""
+    from agentos import desktop
+    monkeypatch.setattr(screen, "road", lambda: ("desktop", "lightdm"))
+    monkeypatch.setattr(screen, "browser", lambda: "/usr/bin/chromium")
+    monkeypatch.setattr(screen, "AUTOSTART", tmp_path / "autostart" / "bento-screen.desktop")
+    monkeypatch.setattr(desktop, "AUTOSTART_FILE", tmp_path / "autostart" / "agentos-app.desktop")
+    monkeypatch.setattr(screen, "_root_write", lambda *a, **k: (False, "a password is required"))
+    got = screen.enable({}, say=lambda _l: None)
+    assert got["ok"] and got["done"] == ["autostart"] and screen.AUTOSTART.exists()
+    assert "microphone" in got["mic"] and any(c.startswith("bento screen on") for c in got["needs"])
+
+
+def test_the_screen_draws_on_the_desktops_wayland_when_it_has_one(monkeypatch, tmp_path):
+    """The hint "auto" chose X11 on labwc and Chromium exited: "Missing X server"."""
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    assert "--ozone-platform-hint=auto" in screen.run_argv({}, exe="chromium", profile="p")
+    (tmp_path / "wayland-0").touch()
+    argv = screen.run_argv({}, exe="chromium", profile="p")
+    assert "--ozone-platform=wayland" in argv and "--ozone-platform-hint=auto" not in argv
 
 
 def test_no_root_hands_the_commands_back_and_writes_nothing(monkeypatch, tmp_path):
@@ -118,7 +142,7 @@ def test_a_desktop_gets_one_window_at_login_and_off_puts_it_back(monkeypatch, tm
     wrote = []
     monkeypatch.setattr(screen, "_root_write", lambda path, text, why: (wrote.append(path), (True, ""))[1])
     got = screen.enable({"port": 8321}, say=lambda _l: None)
-    assert got["ok"] and got["done"] == ["mic", "autostart"]
+    assert got["ok"] and got["done"] == ["autostart", "mic"] and not got.get("mic")
     assert "-m agentos screen run" in screen.AUTOSTART.read_text()
     assert not desktop.AUTOSTART_FILE.exists(), "the app's own login window would be a second one"
     assert all(p.name == screen.POLICY_NAME for p in wrote)

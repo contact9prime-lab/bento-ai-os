@@ -3189,6 +3189,16 @@ Six rules:
   `--ozone-platform=wayland` on labwc, found on a Pi 3 B+), the console without one, closed 5 minutes after a
   failure. A fresh clone is `--filter=blob:none` without `docs/screenshots/` (205 MB to 14 MB): the full
   clone stalled at 86 MB on that Pi's Wi-Fi. Nothing the program shows reads the screenshots.
+- **An installed machine is ASKED, not only listened for** (`server._provision_ask`/`_provision_ask_installed`,
+  the devices scan; `tests/test_device_install.py`). Found on the owner's hub: ufw dropped the Pi's UDP
+  announcement, so it sat on "Waiting to be set up" with a spent-on-use key nobody would use. A unicast `look`
+  from an ephemeral port is answered past the firewall (conntrack). Only an automatic key is set up that way,
+  once (`_PROV_BUSY`: the announcement and the ask can arrive together, and the key is single-use).
+- **On a desktop the screen opens before it asks for root** (`screen.plan` puts `autostart` before `mic`;
+  `enable` returns ok with `mic` when root is refused there). A Pi's sudo wants a password, so the mic policy
+  stopped the whole step and nothing opened. `run_argv` says `--ozone-platform=wayland` when the desktop has a
+  Wayland socket: the hint `auto` picked X11 on labwc. install.sh decides `PISCREEN` once, before the flags'
+  detection; a second `PISCREEN=""` below it is why no Pi showed its install.
 - **A changed host key is the person's to forget, with both keys in view** (`remoteinstall.KeyChanged`,
   raised from `_run` so every login says it alike; `seen_key`, `forget_host`, `/api/devices/forget-key`,
   `bento network rekey`; `tests/test_device_install.py`). Reported with a screenshot after a Pi was
