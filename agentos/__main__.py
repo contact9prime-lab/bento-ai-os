@@ -4665,6 +4665,8 @@ def _network_cli(args):
             sys.exit("  " + r["ssh_off"])
         return _devices_cli(args, cfg, "install", [r["ip"]], asyncio.run, port=port(r),
                             user=args.user or r.get("user") or "")
+    if a == "ties":
+        return _ties_cli(rest)
     if a == "list":
         every = inv.rows()
         rows = [r for r in every if not r.get("ignored")]
@@ -5051,7 +5053,8 @@ def _devices_cli(args, cfg, a, rest, run, port: int = 22, user: str = "", verb: 
             return
         prof = prov.clean_profile({"kiosk": bool(getattr(args, "kiosk", False)), "lite": True,
                                    "agent_name": getattr(args, "agent_name", "") or ""})
-        k = prov.make_key(f"install on {host}", auto=True, profile=prof, single=True)
+        k = prov.make_key(f"install on {host}", auto=True, profile=prof, single=True,
+                          owner=_install_owner(getattr(args, "for_", "") or ""))
         ledger("device.install", f"device:{host}", f"started installing Bento on {user}@{host}")
 
         steps = ri.stages(bool(getattr(args, "kiosk", False)))
@@ -5308,6 +5311,65 @@ def _zero_account(raw: str) -> str:
     if not u:
         sys.exit(f"  there is no account called {v!r} here (`bento users` lists them)")
     return u["id"]
+
+
+def _ties_cli(rest):
+    """Network → Teams and Zeros from a terminal: each tie, whether it answers, and one tie's own
+    sessions, memory, knowledge or log lines (ties.py). Read-only; Network changes them."""
+    import asyncio
+    from . import ties as tiesmod
+    from . import teamlink
+    from . import users as usersmod
+    from .memory import Store
+    asyncio.run(tiesmod.probe([lk for lk in teamlink._load()["links"] if lk.get("kind") in ("machine", "account")]))
+    all_ = tiesmod.ties(None)
+    if not rest:
+        if not all_:
+            print("  Nothing is linked yet.")
+            return
+        for t in all_:
+            st = "old link" if t["stale"] else "answering" if t["answering"] else f"not answering ({t['why']})"
+            b = t["brain"]
+            runs = ("this machine's brain" if not b["executor"] else b["model"] if b["executor"] == "aria"
+                    else b["executor"] + (f" ({b['model']})" if b["model"] else ""))
+            whose = (usersmod.get(t["owner"]) or {}).get("name", "an account") if t["owner"] else "the machine"
+            print(f"  {t['label']:<24} {t['kind']:<8} {st}")
+            print(f"  {'':<24} {t['peer']}{' at ' + t['addr'] if t['addr'] else ''} · belongs to {whose} · runs on {runs}")
+        print("\n  `bento network ties LINK sessions|memory|knowledge|logs` shows one tie's own rows.")
+        return
+    t = next((x for x in all_ if x["label"] == rest[0]), None)
+    if not t:
+        sys.exit(f"  no link called {rest[0]}")
+    what = rest[1] if len(rest) > 1 else "sessions"
+    with usersmod.as_user(t["owner"]):
+        try:
+            got = tiesmod.view(Store(), t, what)
+        except ValueError as e:
+            sys.exit(f"  {e}")
+    print(f"  {t['label']} · {what}")
+    if not got["rows"]:
+        print(f"    {got.get('note') or 'nothing here yet'}")
+    for r in got["rows"]:
+        line = (f"{r['title']} ({r['messages']} messages)" if what == "sessions" else r["content"] if what == "memory"
+                else f"{r['subject']} {r['relation']} {r['object']}" if what == "knowledge" else f"[{r['kind']}] {r['text']}")
+        print("    " + " ".join(str(line).split())[:110])
+
+
+def _install_owner(name: str) -> str:
+    """Whose a machine installed from this terminal is. Named with --for; else, on a machine
+    whose accounts have ONE admin, that admin (the terminal has no sign-in, and a Pi left
+    with the machine was a Pi whose chats nobody's Chat showed); else the machine."""
+    from . import users as usersmod
+    if not usersmod.enabled():
+        return ""
+    us = usersmod.list_users()
+    if name:
+        u = next((u for u in us if name in (u.get("id"), u.get("name"))), None)
+        if not u:
+            raise SystemExit(f"  ✗ no account called '{name}'")
+        return u["id"]
+    admins = [u for u in us if u.get("admin") or u.get("role") == "admin"]
+    return admins[0]["id"] if len(admins) == 1 else ""
 
 
 def _zero_mind_cli(cfg, rest, soul_file, run):
@@ -8755,9 +8817,11 @@ def main():
     p_net = verb("network", help="the machines on your network: look, install, check, secure, disconnect")
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
-                                "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update"],
+                                "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update",
+                                "ties"],
                        metavar="ACTION",
-                       help="list | look | install MACHINE --user U [--authorize] [--kiosk] | "
+                       help="list | ties [LINK [sessions|memory|knowledge|logs]] | "
+                            "look | install MACHINE --user U [--authorize] [--kiosk] [--for ACCOUNT] | "
                             "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
                             "letin MACHINE --user U [--your-key F] [--passwords-on] | "
                             "disconnect MACHINE [--what link:NAME,community,key] | label MACHINE NAME | "
@@ -8774,6 +8838,7 @@ def main():
     p_net.add_argument("--your-key", default="", help="secure / letin: your own public key file (default: ~/.ssh/id_*.pub here)")
     p_net.add_argument("--passwords-on", action="store_true", help="letin: turn password logins back on")
     p_net.add_argument("--agent-name", default="", help="install: what its agent is called, and the name you wake it with")
+    p_net.add_argument("--for", dest="for_", default="", metavar="ACCOUNT", help="install: the account the machine belongs to (one admin: that admin)")
     p_net.add_argument("--steps", default="", help="secure: key,passwords,firewall,updates (default: all)")
     p_net.add_argument("--what", default="", help="disconnect: which ties to remove (default: all of them)")
     p_net.add_argument("--password-stdin", action="store_true", help="read the password from stdin")

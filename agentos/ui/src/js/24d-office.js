@@ -599,6 +599,22 @@ function officeReport(p,ok){
    asks there; the answer is said at that desk, and then the asker walks back. From a
    mission's master or another team there is nobody here to walk, so the question
    arrives on paper instead. */
+/* A Zero's chat is worked HERE (fabric.zero_chat): the question comes in by the door on paper
+   and is said at the lead's desk, the answer goes back out on paper. The desk itself is lit by
+   the turn (turn_start), like any chat; this is only who asked. */
+function officeZero(ev){
+  const O=OFFICE;if(!O.w||!O.L)return;
+  const lead=O.people['@agent'],who='◫ '+(ev.zero||'a Zero');if(!lead)return;
+  const door=officeBoardPoint();
+  if(ev.phase==='start'){
+    officePaper(door,lead,()=>officeSay(lead,who+': '+(ev.text||''),'say',OF_SAY_MS+4000));
+    officeLog(`${who} asked: ${String(ev.text||'').slice(0,90)}`);
+  }else{
+    officeSay(lead,'→ '+who+': '+(ev.text||''),'say',OF_SAY_MS+2000);
+    officePaper(officeHead(lead),door,()=>{});
+    officeLog(`answered ${who}`);
+  }
+}
 function officeMsg(ev){
   const O=OFFICE,from=officeMatch(ev.from),to=officeMatch(ev.to);
   if(ev.phase==='progress'){
@@ -892,8 +908,8 @@ function ofMix(a,b,t){const p=x=>[1,3,5].map(i=>parseInt(x.slice(i,i+2),16));con
 function ofFont(ctx,size,weight,italic){ctx.font=`${italic?'italic ':''}${weight||700} ${size}px ${OFFICE.font||'sans-serif'}`}
 function officeBg(){
   const O=OFFICE;if(!O.L||!O.cv)return;
-  const c=O.bg||(O.bg=document.createElement('canvas'));
-  c.width=O.cv.width;c.height=O.cv.height;
+  const c=O.bg||(O.bg=officeBgCanvas());
+  c.width=O.cv.width;c.height=O.cv.height;O.bgLost=false;
   const ctx=c.getContext('2d'),st=O.view.style,L=O.L;
   ctx.setTransform(O.dpr*O.s,0,0,O.dpr*O.s,0,0);
   // the building: hallways and the spine, a flat tone under everything
@@ -904,6 +920,20 @@ function officeBg(){
   ofDots(ctx,OF_M,OF_M,OF_SPINE-6,L.H-OF_M*2,'#000000',.12,9);
   L.rooms.forEach((r,i)=>officeRoomBg(ctx,r,i));
   ctx.setTransform(1,0,0,1,0,0);
+}
+/* The rooms are painted ONCE, so a canvas the GPU dropped has to be painted again. Chrome
+   blanks a 2D canvas when its GPU context is lost (memory pressure, a GPU process reset);
+   the people are redrawn every frame and came back, the rooms stayed dark (reported with a
+   screenshot of desks floating on black). */
+function officeBgCanvas(){
+  const c=document.createElement('canvas');
+  c.addEventListener('contextlost',()=>{if(OFFICE.bg===c)OFFICE.bgLost=true});
+  c.addEventListener('contextrestored',()=>{if(OFFICE.bg===c){officeBg();officeKick()}});
+  return c;
+}
+function officeBgGone(){
+  const O=OFFICE;if(O.bgLost)return true;
+  try{const x=O.bg&&O.bg.getContext('2d');return !!(x&&x.isContextLost&&x.isContextLost())}catch(e){return false}
 }
 /* Halftone: the comic printer's dot, used for every shadow. */
 function ofDots(ctx,x,y,w,h,color,alpha,step){
@@ -1084,6 +1114,7 @@ function officeDraw(){
   if(O.L.radial)return of3Draw();
   const k=O.dpr*O.s;
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,O.cv.width,O.cv.height);
+  if(officeBgGone()){O.bg=null;officeBg()}       // a fresh canvas when the old one was dropped
   if(O.bg&&O.bg.width&&O.bg.height)ctx.drawImage(O.bg,0,0);
   ctx.setTransform(k,0,0,k,0,0);
   officeBoard(ctx);

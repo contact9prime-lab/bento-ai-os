@@ -420,6 +420,27 @@ def test_the_world_stands_a_department_as_its_head(tmp_path):
         cl.post("/api/world/leave")
 
 
+def test_a_crowd_with_no_department_stands_behind_your_agent(tmp_path):
+    """A screenshot of thirty agents shoulder to shoulder on the canal: past WORLD_CROWD only
+    your agent, the heads and whoever is working stand; the rest are on your agent's card."""
+    from fastapi.testclient import TestClient
+    from agentos import server as servermod
+    with TestClient(servermod.app) as cl:
+        plan = cl.post("/api/company/draft", json={"departments": ["finance"]}).json()["plan"]
+        assert cl.post("/api/company/apply", json={"plan": plan, "talk": False}).json()["ok"]
+        for i in range(servermod.WORLD_CROWD + 3):
+            cl.post("/api/subagents", json={"name": f"loner{i}", "description": "x", "system_prompt": "x"})
+        v = cl.post("/api/world/enter", json={}).json()
+        shown = [a["name"] for a in v["agents"]]
+        assert len(shown) <= servermod.WORLD_CROWD and shown[0] == "@agent" and "finance-lead" in shown
+        assert not any(n.startswith("loner") for n in shown)
+        folded = {a["name"] for a in v["staff"]["@agent"]}
+        assert {f"loner{i}" for i in range(servermod.WORLD_CROWD + 3)} <= folded, "nobody's feelings are dropped"
+        js = _js("01e-world.js")
+        assert "st['@agent']" in js and "Also on the team" in js
+        cl.post("/api/world/leave")
+
+
 def test_the_scenes_read_the_membership_and_decide_nothing():
     crew = _js("01d-crew.js")
     assert "(d.company||{}).departments" in crew and "CREW_MAX_ORG" in crew

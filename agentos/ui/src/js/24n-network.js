@@ -39,11 +39,15 @@ async function netPaint(){
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
   else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
   if(hidden.length)rows.push(netHiddenHTML(hidden,can));
+  // the teams and Zeros tied to this machine (24p-ties.js), whether or not they are on this network
+  if(typeof tiesHTML==='function')rows.push(tiesHTML(v));
   // keep what is being typed across a repaint (a broadcast, a line of a running step)
   const kept={};['ctl-user','ctl-pw','ctl-pw-keep','net-user','net-pw','net-pw-keep','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
     const e=document.getElementById(id);if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   boxes.forEach(box=>{box.innerHTML=(box.classList.contains('devhub-box')&&typeof devMapHTML==='function'?devMapHTML(v):'')
-    +rows.join('');netWire(box)});
+    +rows.join('');netWire(box);if(typeof tiesWire==='function')tiesWire(box);
+    if(typeof devMapWire==='function')devMapWire(box)});
+  if(typeof tiesProbeSoon==='function')tiesProbeSoon();
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
     if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
 }
