@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.6.86 — 2026-10-23
+
+**A Zero's chat runs on its hub.** A Pi set up from a hub used to run every chat turn itself and
+only borrow the hub's model, sending a 24,000-token prompt each time. That filled the 24,576-token
+window it asked for, so the model had room for one word a round and the answer came out as
+"HeyIII". Now the whole turn runs on the hub, in the Zero's own section: the session, memory and
+knowledge stay there, the Zero keeps only its screen's copy, and the hub's Office, device map and
+logs show it working. A hub that hasn't been updated yet still lends its model, and the Pi answers
+itself until it is.
+
+**A prompt that fills the window is asked again with one that fits.** The hub sizes a member's
+window to what it was sent, and the chat loop stops "continuing" when the prompt alone took the
+window. Ollama reports a cut-off prompt as the window minus one, so the retry is sized from the
+prompt itself. On the real qwen3.5:9b, a 54,653-token turn now gets a whole sentence back.
+
+**Teams and Zeros in Network.** Every link was left off the Network list because it kept its
+address in a field the list didn't read. Network now lists each Zero and linked team: whether it
+answers, whose it is, which of your agents it may ask, which of your brains its work runs on, and
+its own sessions, memory, knowledge and log lines. A link a reinstall left behind is marked old,
+with Remove. A Pi installed from a terminal belonged to the machine, so its chats never reached
+your Chat; Make it mine moves it to your account, and new installs belong to whoever installs them
+(`bento network install --for`). Teams & Communications has the same "runs on" choice for each
+linked team.
+
+**The device map draws teams and Zeros.** This computer in the middle, Zeros on the nearest ring,
+teams on the next, each with its agent's face, a ZERO or TEAM tag, and whether it answers. A Zero
+working right now glows and shows what was asked. Tapping a node opens it in the list below.
+
+**The hub can use a Pi's hardware.** A hub on Claude Code never knew about `pool_task`, so it
+couldn't hand work to the machines it leads. It now has it, and its lead is told which machines
+those are.
+
+**The Office window draws its rooms again.** The rooms are painted once into a hidden canvas, and
+Chrome can drop a canvas's contents under GPU memory pressure. Only the desks came back. The Office
+now repaints the rooms when that happens.
+
+**World shows heads when the team is big.** Past nine people, only your agent, the department
+heads and whoever is working stand in the scene. Everyone else is on your agent's card, feelings
+and all.
+
 ## 0.6.85 — 2026-10-22
 
 **Joining Wi-Fi from the kiosk.** The kiosk fills the screen, so a Pi that came up without its

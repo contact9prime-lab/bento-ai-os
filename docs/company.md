@@ -357,7 +357,11 @@ the same answer about who is in which department, so they never disagree.
 
 - **World:** a department stands as its head, with a tag like "★ Finance · 3". Tap the
   head to see how everybody in the department feels. Drawing twenty people at once made a
-  crowd, so the rest of the department is on that card instead.
+  crowd, so the rest of the department is on that card instead. With more than nine people
+  standing, the ones in no department step off the street too, unless they're working: your
+  agent's card lists them under *Also on the team*.
+
+  ![The World with 31 agents: your agent and the five department heads stand on the canal, and your agent's card lists the other 25 under Also on the team](screenshots/world-crowd-heads.png)
 
   ![The World with a company: the heads, their departments, and a head's card](screenshots/company-world.png)
 
