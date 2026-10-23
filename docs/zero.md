@@ -162,7 +162,7 @@ the hub itself updates, it looks at its Zeros, and *When this hub updates* decid
 
 ![Network: when this hub updates, its Zeros are asked first; a Zero on an older Bento is marked, with Update](screenshots/zero-update.png)
 
-![The same on a phone](screenshots/zero-update-phone.png)
+![On a phone: the update setting, and a Zero marked behind with Update](screenshots/zero-update-phone.png)
 
 The Zero also checks on its own, once a day, and offers a waiting update on its screen. An update
 on a Zero skips the test suite, which ran where the code was built and would keep a Pi 3 busy
