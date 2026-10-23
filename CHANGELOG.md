@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.90 — 2026-10-23
+
+**Change the Pi's screen from Devices and from chat.** Devices → a Zero → Manage → **Its screen**
+wears a face on the Pi, or makes one with widgets, over their link and only from its own hub.
+In chat, say it: "put a clock and a timer on my screen" at the Pi, or "put the dashboard on
+raspberrypi-3" to the hub's agent. The new `screen_face` tool does it, and from a Zero's own chat
+it changes only that Zero's screen.
+
 ## 0.6.89 — 2026-10-23
 
 **Faces and widgets for the Pi's screen.** The kiosk wears a face: Chat, Office, a big Clock, a

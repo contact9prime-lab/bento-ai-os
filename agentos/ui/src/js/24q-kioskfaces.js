@@ -148,13 +148,14 @@ function kfaceSwitcherPaint(){
   kfaceEditorWire(strip,()=>{KFACE.open=false;kfaceSwitcherPaint()});
 }
 /* The editor, shared by the kiosk's strip and Settings → Appearance (faceFacesPaint). */
-function kfaceEditorHTML(ed,st){
+function kfaceEditorHTML(ed,st,opts){
+  opts=opts||{};
   const all=[...st.widgets.map(w=>({id:w.id,name:w.name,what:w.what})),...(st.apps||[]).map(a=>({id:'app:'+a.id,name:a.name,what:'your app’s widget'}))];
   return `<div class="kf-editor"><div class="kf-erow"><input class="kf-ename" maxlength="24" value="${esc(ed.name||'')}" placeholder="Name it, like Kitchen" aria-label="Face name">
     <select class="kf-elayout" aria-label="Layout">${['board','clock','ambient','chat','office'].map(l=>`<option value="${l}"${ed.layout===l?' selected':''}>${{board:'Dashboard',clock:'Clock',ambient:'Ambient',chat:'Chat',office:'Office'}[l]}</option>`).join('')}</select></div>
     <p class="kf-ehint">Tap widgets to put them on, in the order you tap. Up to ${st.max_widgets}.</p>
     <div class="kf-ewidgets">${all.map(w=>{const i=(ed.widgets||[]).indexOf(w.id);return `<button class="kf-ew${i>=0?' on':''}" data-w="${esc(w.id)}" title="${esc(w.what)}">${i>=0?`<i>${i+1}</i>`:''}${esc(w.name)}</button>`}).join('')}
-      <button class="kf-ew kf-build" data-build="1">＋ Build a widget</button></div>
+      ${opts.build===false?'':'<button class="kf-ew kf-build" data-build="1">＋ Build a widget</button>'}</div>
     <div class="kf-eacts">${ed.id&&!ed.builtin?`<button class="kf-del" data-del="${esc(ed.id)}">Remove face</button>`:''}<span style="flex:1"></span>
       <button data-cancel="1">Cancel</button><button class="go" data-save="1">Save and wear it</button></div></div>`;
 }

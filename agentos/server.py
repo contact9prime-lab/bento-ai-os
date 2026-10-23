@@ -320,6 +320,7 @@ async def startup():
     # A community of machines (pool.py). Machine-level: it reads the machine's config,
     # store and gate whoever is signed in, because a community is joined by the machine.
     from . import pool as poolmod
+    toolbox.screen = _screen_tool       # screen_face: this machine's faces, or a Zero's over its link
     toolbox.pool = poolmod.Pool(cfg=lambda: state.machine_cfg(),
                                 store=lambda: dict.__getitem__(state, "store"),
                                 pdp=lambda: dict.__getitem__(state, "pdp"),
@@ -839,6 +840,19 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
             return await edgecode.answer(state["store"], state["pdp"], lk, req)
     if req.get("op") == "zero_update":
         return await _zero_update_from_hub(lk)
+    if req.get("op") == "zero_face":
+        # its hub reads or changes this machine's screen faces (Devices, or the hub's agent)
+        if not _zero().is_my_hub(state.machine_cfg(), lk):
+            return {"ok": False, "error": "only the hub that set this machine up can change its screen"}
+        b = {k: req[k] for k in ("use", "save", "delete") if k in req}
+        b["by"] = f"asked by {lk.get('label')}"
+        with usersmod.as_user(""):
+            st, dropped, err = _faces_apply(b)
+        if err:
+            return {"ok": False, "error": err}
+        if any(k in b for k in ("use", "save", "delete")):
+            await state["broadcast"]({"type": "face"})
+        return {"ok": True, **st, "dropped": dropped}
     if req.get("op") == "zero_chat":
         # somebody at a Zero's screen: the turn runs here, in its section, kept here
         with usersmod.as_user(owner):
@@ -3543,15 +3557,13 @@ async def api_face_faces():
     return st
 
 
-@app.put("/api/face/faces")
-async def api_face_faces_put(body: dict):
-    """Wear a face, save one of your own, or remove one. The screen is the machine's: admin."""
+def _faces_apply(b: dict) -> tuple[dict, list, str]:
+    """Wear a face, save one of your own, or remove one, on THIS machine's screen: the one
+    write the route, a hub's request over the link and the agent's screen_face all make.
+    Returns (state, dropped, error)."""
     from . import faces as facesmod
-    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
-        return JSONResponse({"error": "only an admin can change how this machine's screen looks"},
-                            status_code=403)
     # the same write /api/face makes: the person's view, saved, then the machine's copy of `face`
-    b, mc = body or {}, state["cfg"]
+    mc = state["cfg"]
     if "face" not in mc and isinstance(state.machine_cfg().get("face"), dict):
         mc["face"] = json.loads(json.dumps(state.machine_cfg()["face"]))
     dropped, said = [], ""
@@ -3562,7 +3574,7 @@ async def api_face_faces_put(body: dict):
                 ids = [a["id"] for a in state["store"].list_apps()]
             face, dropped = facesmod.save(mc, b["save"], ids)
             said = f"saved the face '{face['name']}'"
-            if b.get("use", True):
+            if b.get("use", True) is not False:
                 facesmod.use(mc, face["id"])
         if b.get("delete"):
             facesmod.delete(mc, str(b["delete"]))
@@ -3571,14 +3583,30 @@ async def api_face_faces_put(body: dict):
             facesmod.use(mc, b["use"])
             said = said or f"this screen wears '{b['use']}'"
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    cfgmod.save_config(mc)
-    if mc is not state.machine_cfg():
-        state.machine_cfg()["face"] = json.loads(json.dumps(mc["face"]))
-    from . import face as facemod
-    facemod.record(state["store"], said)
+        return {}, [], str(e)
+    if said:
+        cfgmod.save_config(mc)
+        if mc is not state.machine_cfg():
+            state.machine_cfg()["face"] = json.loads(json.dumps(mc["face"]))
+        from . import face as facemod
+        facemod.record(state["store"], said + (f" ({b['by']})" if b.get("by") else ""))
+    st = facesmod.state(state.machine_cfg())
+    with contextlib.suppress(Exception):
+        st["apps"] = [{"id": a["id"], "name": a.get("name") or a["id"]} for a in state["store"].list_apps()][:40]
+    return st, dropped, ""
+
+
+@app.put("/api/face/faces")
+async def api_face_faces_put(body: dict):
+    """Wear a face, save one of your own, or remove one. The screen is the machine's: admin."""
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can change how this machine's screen looks"},
+                            status_code=403)
+    st, dropped, err = _faces_apply(body or {})
+    if err:
+        return JSONResponse({"error": err}, status_code=400)
     await state["broadcast"]({"type": "face"})
-    return {**facesmod.state(state.machine_cfg()), "dropped": dropped}
+    return {**st, "dropped": dropped}
 
 
 @app.post("/api/face/wake-test")
@@ -13741,6 +13769,87 @@ async def api_network_tie_brain(label: str, body: dict):
                              f"{label}'s work here runs on {got.get('executor') or 'this machine'}"
                              + (f" ({got['model']})" if got.get("model") else ""))
     return {"ok": True, "brain": got}
+
+
+async def _screen_tool(machine: str, change: dict, space_id: str) -> dict:
+    """The agent's screen_face. A turn in a Zero's section (its chat, worked here) may change
+    only that Zero's screen, whatever the model named; otherwise `machine` is a Zero this hub
+    set up, or empty for this machine. Changing a screen is an admin's, as in Settings."""
+    from . import provision, teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+    mine = ""
+    if space_id:
+        mine = next((e.get("label") or "" for e in (provision.load().get("enabled") or {}).values()
+                     if e.get("space") and e.get("space") == space_id), "")
+    if mine:
+        if machine and machine not in (mine,):
+            return {"ok": False, "error": f"from {mine}'s chat, only {mine}'s own screen can be changed"}
+        machine = mine
+    me = usersmod.current() or ""
+    if change and usersmod.enabled() and not usersmod.is_admin(me) and not mine:
+        return {"ok": False, "error": "only an admin can change how a machine's screen looks"}
+    here = teamlink.machine_name(state.machine_cfg())
+    if not machine or machine.lower() in (here.lower(), "here", "this machine"):
+        st, dropped, err = _faces_apply(change)
+        if err:
+            return {"ok": False, "error": err}
+        if change:
+            await state["broadcast"]({"type": "face"})
+        return {"ok": True, **st, "dropped": dropped, "machine": "This screen"}
+    zeros = [lk for lk in teamlink._load()["links"] if zeromod.ships_to(lk)
+             and (lk.get("owner") or "") in ("", me)]
+    lk = next((x for x in zeros if machine.lower() in (str(x.get("label")).lower(), str(x.get("peer_name")).lower())), None)
+    if not lk:
+        return {"ok": False, "error": f"no Zero called '{machine}' was set up from here"
+                                      + (f": there are {', '.join(x['label'] for x in zeros)}" if zeros else "")}
+    got = await tiesmod.faces_remote(lk, change)
+    if got.get("ok"):
+        got["machine"] = f"{lk['label']}'s screen"
+        if change:
+            with usersmod.as_user(lk.get("owner") or ""):
+                fabricmod.audit_team(state["store"], "face.write", f"screen:{lk['label']}",
+                                     f"changed {lk['label']}'s screen: {', '.join(change)}")
+    return got
+
+
+def _zero_link(label: str, owner: str = "") -> dict | None:
+    from . import teamlink
+    return next((x for x in teamlink._load()["links"] if x.get("label") == label
+                 and (x.get("owner") or "") == (owner or "")), None)
+
+
+@app.get("/api/network/ties/{label}/faces")
+async def api_network_tie_faces(label: str, owner: str = ""):
+    """A Zero's screen faces, read over its link."""
+    if (r := _require_admin()):
+        return r
+    from . import ties as tiesmod
+    _, err = _tie(label, owner)
+    if err:
+        return err
+    got = await tiesmod.faces_remote(_zero_link(label, owner) or {}, {})
+    if not got.get("ok"):
+        return JSONResponse({"error": got.get("error") or "it did not answer"}, status_code=400)
+    return got
+
+
+@app.put("/api/network/ties/{label}/faces")
+async def api_network_tie_faces_put(label: str, body: dict):
+    """Wear, save or remove a face on a Zero's screen, over its link."""
+    if (r := _require_admin()):
+        return r
+    from . import ties as tiesmod
+    b = body or {}
+    _, err = _tie(label, b.get("owner"))
+    if err:
+        return err
+    got = await tiesmod.faces_remote(_zero_link(label, b.get("owner")) or {},
+                                     {k: b[k] for k in ("use", "save", "delete") if k in b})
+    _ledger("face.write", f"screen:{label}", "changed its screen's face" + ("" if got.get("ok") else f": {got.get('error')}"))
+    if not got.get("ok"):
+        return JSONResponse({"error": got.get("error") or "it did not answer"}, status_code=400)
+    return got
 
 
 @app.post("/api/network/ties/{label}/update")

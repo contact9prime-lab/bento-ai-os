@@ -103,6 +103,23 @@ too.
 From a terminal: `bento face faces` lists them, `bento face faces use board` wears one, and
 `bento face faces add Kitchen board clock,timer,quote` makes one.
 
+**From the hub, and from chat.** A Zero's screen can be changed from its hub: Devices (or Network)
+→ the Zero → *Manage* → **Its screen** shows its faces, and a tap there changes the face on the Pi
+at once, over their link. **New face** makes one there too. Only the hub that set the Pi up can do
+this.
+
+![Devices on the hub: a Zero's Manage panel, with its screen's faces and the one it wears](screenshots/devices-zero-screen.png)
+
+![Making a face for the Zero from the hub: its name, layout and widgets](screenshots/devices-zero-screen-new.png)
+
+![On a phone: the Zero’s Manage panel with its screen’s faces, full width](screenshots/devices-zero-screen-phone.png)
+
+Or just say it: *"put a clock, a timer and what you last said on my screen"* at the Pi, or *"put the
+dashboard on raspberrypi-3"* to your agent on the hub. The agent's `screen_face` tool does it. Said
+at a Zero, it changes only that Zero's own screen, whatever is named.
+
+![On the Pi: asked by chat, the screen now wears the Kitchen face with a clock, a timer and its last words](screenshots/kiosk-face-by-chat.png)
+
 ### Listening through its hub
 
 A Pi set up from a hub hears through it. What it records is sent to the hub over the link that
