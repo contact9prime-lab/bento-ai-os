@@ -70,7 +70,7 @@ function tieBrainWord(b){
 function tieBodyHTML(t){
   const k=tieKey(t);
   if(!t.mine)return `<div class="tie-body"><p class="mut">This link belongs to ${esc(t.owner_name||'another account')}. They manage it from their own Team & Communications.</p></div>`;
-  const views=['sessions','memory','knowledge','logs'];
+  const views=t.kind==='zero'?['sessions','schedules','memory','knowledge','logs']:['sessions','memory','knowledge','logs'];
   const vw=TIES.view&&TIES.view.k===k?TIES.view:null;
   return `<div class="tie-body">
     ${t.stale?`<p class="tie-warn">${esc(tieState(t).why)} Remove it so nothing tries it again.</p>`:''}
@@ -81,7 +81,7 @@ function tieBodyHTML(t){
       <div class="tie-field"><span>It may ask</span><div class="tie-agents">${tieAgentsHTML(t)}</div></div>
     </div>
     ${t.kind==='zero'&&!t.stale?`<div class="tie-field tie-screen"><span>Its screen</span>${tieScreenHTML(t)}</div>`:''}
-    <div class="tie-views" role="tablist">${views.map(w=>`<button class="tie-vb${vw&&vw.what===w?' on':''}" role="tab" aria-selected="${!!(vw&&vw.what===w)}" data-tie="view" data-k="${esc(k)}" data-w="${w}">${{sessions:'Sessions',memory:'Memory',knowledge:'Knowledge',logs:'Logs'}[w]}</button>`).join('')}</div>
+    <div class="tie-views" role="tablist">${views.map(w=>`<button class="tie-vb${vw&&vw.what===w?' on':''}" role="tab" aria-selected="${!!(vw&&vw.what===w)}" data-tie="view" data-k="${esc(k)}" data-w="${w}">${{sessions:'Sessions',schedules:'Schedules',memory:'Memory',knowledge:'Knowledge',logs:'Logs'}[w]}</button>`).join('')}</div>
     ${vw?`<div class="tie-view">${tieViewHTML(vw)}</div>`:''}
     <div class="tie-acts"><button class="endbtn danger" data-tie="remove" data-k="${esc(k)}">Remove this link</button></div>
   </div>`;
@@ -111,6 +111,11 @@ function tieViewHTML(vw){
   const r=vw.rows||[],when=s=>s?new Date(s*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
   if(!r.length)return `<p class="mut">${esc(vw.note||'Nothing here yet.')}</p>`;
   if(vw.what==='sessions')return `<ul class="tie-rows">${r.map(c=>`<li><button class="tie-conv" data-tie="conv" data-cid="${esc(c.id)}"><b>${esc(c.title||'chat')}</b><span class="mut">${c.messages} messages · ${when(c.updated_at)}</span></button></li>`).join('')}</ul>`;
+  if(vw.what==='schedules'){
+    const every=x=>x.schedule_type==='daily'?'every day at '+x.at_time:x.schedule_type==='weekly'?'every '+['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][x.weekday]+' at '+x.at_time
+      :x.schedule_type==='interval'?'every '+Math.round((x.interval_seconds||0)/60)+' min':'once';
+    return `<ul class="tie-rows">${r.map(x=>`<li class="tie-sch"><div><b>${esc(x.prompt)}</b><span class="mut">${esc(every(x))}${x.next_run?' · next '+when(x.next_run):''}${x.last_result?' · last: '+esc(String(x.last_result).replace(/\s+/g,' ').slice(0,80)):''}</span></div>
+      <button class="endbtn" data-tie="unsched" data-k="${esc(vw.k)}" data-tid="${esc(x.id)}">Cancel</button></li>`).join('')}</ul>`}
   if(vw.what==='memory')return `<ul class="tie-rows">${r.map(m=>`<li>${m.pinned?'📌 ':''}${esc(m.content)}<span class="mut"> · ${esc(m.scope||'')}</span></li>`).join('')}</ul>`;
   if(vw.what==='knowledge')return `<ul class="tie-rows">${r.map(e=>`<li><b>${esc(e.subject)}</b> <span class="mut">${esc(e.relation)}</span> <b>${esc(e.object)}</b></li>`).join('')}</ul>`;
   return `<ul class="tie-rows tie-logs">${r.map(l=>`<li><span class="mut">${when(l.at)}</span> <i>${esc(l.kind)}</i> ${esc(l.text)}</li>`).join('')}</ul>`;
@@ -193,6 +198,11 @@ async function tieAct(act,t,el){
   if(act==='conv'){if(typeof openApp==='function')openApp('chat');
     setTimeout(()=>{if(typeof openConv==='function')openConv(el.dataset.cid)},300);return}
   if(act==='update')return tieUpdate(t.label,t.owner,el);
+  if(act==='unsched'){
+    const r=await fetch(`/api/network/ties/${encodeURIComponent(t.label)}/schedules/${encodeURIComponent(el.dataset.tid)}?owner=${encodeURIComponent(t.owner||'')}`,{method:'DELETE'})
+      .then(x=>x.json()).catch(e=>({error:String(e)}));
+    if(r.error)return toast('✗ '+r.error);
+    toast('✓ cancelled');TIES.view.rows=TIES.view.rows.filter(x=>x.id!==el.dataset.tid);return netPaint()}
   if(act==='adopt'){
     const r=await fetch(`/api/network/ties/${encodeURIComponent(t.label)}/adopt`,{method:'POST'}).then(x=>x.json()).catch(e=>({error:String(e)}));
     if(r.error)return toast('✗ '+r.error);

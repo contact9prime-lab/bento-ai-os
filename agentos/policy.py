@@ -710,6 +710,10 @@ STANDING_ACTIONS = ("fs.write", "memory.write", "kg.write", "media.generate", "m
 # controls, and a deny-list is correct only until the next tool is added. These two
 # make something here and change nothing else.
 STANDING_TOOLS = ("save_report", "notify")
+# Only on a row provisioning wrote for a Zero this machine set up (zero.zero_standing): asked for
+# at its own screen, a schedule runs later exactly as that Zero's chat runs (scheduler.zero_job),
+# so allowing it gives nobody more than the chat. Never on a row a person or another link wrote.
+PROVISION_TOOLS = ("schedule_task",)
 _NO_STANDING_DIRS = {"/", "/home", "/Users", "/root", "/etc", "/usr", "/bin", "/sbin", "/lib",
                      "/lib64", "/boot", "/var", "/opt", "/srv", "/tmp", "/dev", "/proc", "/sys",
                      "/System", "/Library", "/Applications", "/private", "/private/tmp"}
@@ -719,8 +723,9 @@ def standing_resource(agent: str, action: str, scope: str) -> str:
     return f"{agent}|{action}|{scope}"
 
 
-def standing_refusal(action: str, scope: str) -> str:
-    """Why this could never be a standing permission ('' when it could)."""
+def standing_refusal(action: str, scope: str, source: str = "") -> str:
+    """Why this could never be a standing permission ('' when it could). `source` is the row's:
+    a provision row may also cover PROVISION_TOOLS."""
     if action not in STANDING_ACTIONS:
         return (f"'{action}' cannot be allowed ahead of time for another team — only "
                 f"{', '.join(STANDING_ACTIONS)}")
@@ -739,7 +744,7 @@ def standing_refusal(action: str, scope: str) -> str:
                     f"(~/shared, ~/reports), never your home, a system folder or a hidden one")
     if action == "tool.use":
         name = sc[5:].split(" ", 1)[0].rstrip("*") if sc.startswith("tool:") else ""
-        if name not in STANDING_TOOLS:
+        if name not in STANDING_TOOLS and not (source == "provision" and name in PROVISION_TOOLS):
             return (f"'{name or sc}' cannot be allowed ahead of time for another team — of the "
                     f"tools, only {', '.join(STANDING_TOOLS)}: the rest reach a shell, send "
                     f"something out or change this OS, and each of those is a person's yes")
@@ -1165,11 +1170,20 @@ class PDP(usersmod.Scoped):
     def _standing(self, principal: Principal, action: str, resource: str, taint) -> dict | None:
         """The standing permission that covers this step, or None (see STANDING_ACTIONS)."""
         link = _link_only_taint(taint)
-        if not link or principal.kind != "subagent" or action not in STANDING_ACTIONS:
+        # the lead itself only on a provision row: a Zero's own chat, worked here (fabric.zero_chat)
+        if not link or principal.kind not in ("subagent", "user") or action not in STANDING_ACTIONS:
             return None
         if action == "fs.write":
             resource = _fs_real(resource, self.cfg.get("workspace", ""))
+        # the lead is widened by exactly one thing: PROVISION_TOOLS on a provision row (a Zero's
+        # own chat scheduling for its screen). Every other standing permission is a specialist's.
+        lead_ok = principal.kind == "user" and action == "tool.use" and \
+            resource[5:].split(" ", 1)[0] in PROVISION_TOOLS if resource.startswith("tool:") else False
+        if principal.kind == "user" and not lead_ok:
+            return None
         for g in self._grants():
+            if principal.kind == "user" and g.get("source") != "provision":
+                continue
             if (g.get("principal_kind") == "team" and g.get("principal_id") == f"{link}/*"
                     and g.get("action") == "team.act" and g.get("effect", "allow") == "allow"):
                 agent, _, rest = str(g.get("resource") or "").partition("|")
@@ -1179,7 +1193,7 @@ class PDP(usersmod.Scoped):
                 # (linkfiles.set_back): any of my agents, that one folder
                 anyone = agent == "*" and g.get("source") in ("provision", "files")
                 if (agent == principal.id or anyone) and act == action and scope and \
-                        not standing_refusal(act, scope) and _match(scope, resource) and \
+                        not standing_refusal(act, scope, g.get("source") or "") and _match(scope, resource) and \
                         not (action == "fs.write" and _hidden(resource)):
                     return g
         return None

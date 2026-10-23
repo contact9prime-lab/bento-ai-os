@@ -715,6 +715,9 @@ function handle(ev){
         if(!box.closest('.msg'))setTimeout(()=>box.remove(),2500);
       });
       break;}
+    case 'zero_say':   // a schedule made at this screen, worked on its hub
+      if(typeof kioskScheduled==='function')kioskScheduled(ev);
+      break;
     case 'zero_behind':   // a Zero this hub set up runs an older Bento (server._zeros_keep_current)
       toast(`${ev.peer||ev.label} runs ${ev.version}, this hub ${ev.hub}`,{label:'Update it',go:()=>tieUpdate(ev.label,ev.owner),ms:20000});
       break;

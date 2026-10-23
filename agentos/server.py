@@ -290,6 +290,7 @@ async def startup():
                 pass
 
     scheduler = Scheduler(cfg, store, toolbox, broadcast)
+    scheduler.zero_job = _zero_job      # a schedule made at a Zero's screen runs as its chat does
     toolbox.scheduler = scheduler
     mcp = MCPManager(cfg, store)
     toolbox.mcp = mcp
@@ -742,6 +743,59 @@ async def _tie_tell(ev: dict, owner: str) -> None:
             await state["broadcast_user"](ev, u["id"])
 
 
+async def _zero_job(task: dict):
+    """A schedule made at a Zero's screen, firing on its hub: run as that Zero's chat runs
+    (fabric.zero_chat, with its tools, its taint, its section and its brain), then sent to its
+    screen (wire op zero_say). None when the task's space is no Zero's section."""
+    from . import teamlink
+    from . import zero as zeromod
+    from .tools import _zero_label_of
+    label = _zero_label_of(task.get("space_id") or "")
+    if not label:
+        return None
+    lk = next((x for x in teamlink._load()["links"] if x.get("label") == label and zeromod.ships_to(x)), None)
+    if not lk:
+        return "", f"[error] {label} is no longer linked here, so its schedule had nowhere to run"
+    owner = lk.get("owner") or ""
+
+    async def tell(e):
+        await _tie_tell(e, owner)
+    with usersmod.as_user(owner):
+        got = await state["fabric"].zero_chat(lk, {"text": task.get("prompt") or "", "_job": True,
+                                                   "conversation": f"schedule-{task['id']}"}, say=tell)
+    text = (got.get("text") or got.get("error") or "").strip()
+    if got.get("ok") and text:
+        title = " ".join(str(task.get("prompt") or "").split())[:60]
+        try:
+            sent = await teamlink.call(lk, {"op": "zero_say", "title": title, "text": text[:4000]}, timeout=20)
+        except Exception as e:
+            sent = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        if not sent.get("ok"):
+            text += f"\n\n(not shown on {label}: {sent.get('error') or 'it did not answer'})"
+    return got.get("conversation") or "", (text if got.get("ok") else f"[error] {text or 'no answer'}")
+
+
+async def _zero_say_from_hub(lk: dict, req: dict) -> dict:
+    """What a schedule made here worked out on the hub, for this screen: kept in its own
+    conversation and shown and spoken by the kiosk. Only from the hub that set this machine up."""
+    from . import teamlink
+    if not _zero().is_my_hub(state.machine_cfg(), lk):
+        return {"ok": False, "error": "only the hub that set this machine up can speak on its screen"}
+    title = teamlink.plain(req.get("title"), 80, newlines=False).strip() or "A schedule"
+    text = teamlink.plain(req.get("text"), 4000, newlines=True).strip()
+    if not text:
+        return {"ok": False, "error": "nothing to say"}
+    with usersmod.as_user(""):
+        st = state["store"]
+        cid = next((c["id"] for c in st.list_conversations(limit=200) if c.get("origin") == "schedule"
+                    and c.get("title") == f"⏱ From {lk.get('label')}"), "") or \
+            st.create_conversation(f"⏱ From {lk.get('label')}", origin="schedule")
+        st.add_message(cid, "assistant", f"⏱ {title}\n\n{text}", {"zero_say": lk.get("label"), "title": title})
+        st.touch_conversation(cid)
+    await state["broadcast"]({"type": "zero_say", "title": title, "text": text, "conversation_id": cid})
+    return {"ok": True}
+
+
 ZEROS_CHECK_S = 6 * 3600          # how often a hub looks at its Zeros' versions
 _ZERO_TOLD: set = set()           # (label, hub version) already put on a screen this run
 
@@ -755,6 +809,12 @@ async def _zeros_keep_current():
     from . import zero as zeromod
     from . import __version__
     await asyncio.sleep(120)
+    # a Zero set up before a standing row existed gets it now (zero.zero_standing is idempotent)
+    with contextlib.suppress(Exception):
+        for lk in teamlink._load()["links"]:
+            if zeromod.ships_to(lk):
+                with usersmod.as_user(lk.get("owner") or ""):
+                    zeromod.zero_standing(state["store"], state["cfg"], lk["label"])
     while True:
         with contextlib.suppress(Exception):
             mode = tiesmod.update_mode(state.machine_cfg())
@@ -840,6 +900,8 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
             return await edgecode.answer(state["store"], state["pdp"], lk, req)
     if req.get("op") == "zero_update":
         return await _zero_update_from_hub(lk)
+    if req.get("op") == "zero_say":
+        return await _zero_say_from_hub(lk, req)
     if req.get("op") == "zero_face":
         # its hub reads or changes this machine's screen faces (Devices, or the hub's agent)
         if not _zero().is_my_hub(state.machine_cfg(), lk):
@@ -855,6 +917,7 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
         return {"ok": True, **st, "dropped": dropped}
     if req.get("op") == "zero_chat":
         # somebody at a Zero's screen: the turn runs here, in its section, kept here
+        req.pop("_job", None)            # only this hub's scheduler says a turn is a scheduled job
         with usersmod.as_user(owner):
             async def tell(e):
                 await _tie_tell(e, owner)
@@ -13769,6 +13832,26 @@ async def api_network_tie_brain(label: str, body: dict):
                              f"{label}'s work here runs on {got.get('executor') or 'this machine'}"
                              + (f" ({got['model']})" if got.get("model") else ""))
     return {"ok": True, "brain": got}
+
+
+@app.delete("/api/network/ties/{label}/schedules/{tid}")
+async def api_network_tie_schedule_delete(label: str, tid: str, owner: str = ""):
+    """Cancel a schedule a Zero asked for (kept in its section, in the link owner's account)."""
+    if (r := _require_admin()):
+        return r
+    from . import ties as tiesmod
+    t = next((x for x in tiesmod.ties(None) if x["label"] == label and x["owner"] == (owner or "")), None)
+    if not t or not t.get("space"):
+        return JSONResponse({"error": f"no Zero called '{label}' keeps schedules here"}, status_code=404)
+    with usersmod.as_user(t["owner"]):
+        row = state["store"].db.execute("SELECT id, prompt FROM tasks WHERE id=? AND space_id=?",
+                                        (tid, t["space"])).fetchone()
+        if not row:
+            return JSONResponse({"error": "that schedule isn't one of this Zero's"}, status_code=404)
+        state["store"].delete_task(tid)
+        fabricmod.audit_team(state["store"], "zero.schedule", f"link:{label}",
+                             f"cancelled {label}'s schedule: {str(row['prompt'])[:80]}")
+    return {"ok": True}
 
 
 async def _screen_tool(machine: str, change: dict, space_id: str) -> dict:

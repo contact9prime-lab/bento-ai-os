@@ -150,6 +150,27 @@ bento pool mind                  # on a Zero: what its hub keeps for it
 
 ![bento pool mind on the hub and on the Zero](screenshots/zero-mind-terminal.png)
 
+## Schedules asked for at its screen
+
+Say *"every morning at 8, tell me the weather"* or *"remind me in twenty minutes to take the tea
+off"* at a Zero, and the schedule is made on its hub, where its chat runs. It's kept in the Zero's
+section, and when it fires the hub works it and sends the answer to the Zero, which shows it in
+its chat and says it out loud.
+
+![On the Pi: asked for a reminder, the hub scheduled it, and later the reminder came back to the screen](screenshots/zero-schedule-said.png)
+
+A schedule made there runs exactly as that Zero's chat runs, not as you: the same tools, marked
+as coming from outside, in its section, on the brain chosen for it. Anyone standing at the Pi can
+talk to it, so a schedule must not get them more than the chat does. A scheduled run can't make
+another schedule. The one standing permission that lets the Zero's chat schedule without a card
+is written when the hub sets the Zero up (and for older Zeros when the hub starts), and it covers
+only that.
+
+Network → the Zero → *Manage* → **Schedules** lists them, with **Cancel**. They're also in
+Missions → Schedule with your other schedules.
+
+![The hub's Network: a Zero's schedules, with when they run, what they last said, and Cancel](screenshots/zero-schedules-hub.png)
+
 ## Keeping it up to date
 
 A Zero updates itself when its own hub asks, over their link, so no password is needed. Network →
