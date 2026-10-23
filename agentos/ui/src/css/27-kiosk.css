@@ -9,7 +9,7 @@ body.kiosk .win{display:none!important}
 body.kiosk #wall{background:var(--bg)}
 body.kiosk #office-scene{position:absolute;left:0;right:0;top:0;bottom:var(--kiosk-hud,128px);
   display:flex;justify-content:center;align-items:center;pointer-events:none}
-body.kiosk #office-scene .of-scroll{width:100vw;height:100%;display:flex;align-items:center;
+body.kiosk #office-scene .of-scroll{width:100%;height:100%;display:flex;align-items:center;
   justify-content:center;overflow:hidden}
 body.kiosk #office-scene canvas{display:block}
 #kiosk-hud{position:fixed;left:16px;right:16px;bottom:16px;z-index:9600;display:grid;
@@ -78,6 +78,40 @@ body.kiosk #aibubble{display:none!important}
   #kiosk-hud .kh-line{-webkit-line-clamp:1}
   #kiosk-hud .kh-reply{max-height:40vh}
 }
+/* A landscape screen: the chat is a column on the right, the whole height, and the Office
+   takes the rest (kioskSide). The log holds the conversation; the band's heard/reply lines
+   are the log's last two bubbles here, so they are not shown twice. */
+#kiosk-hud .kh-log,#kiosk-hud .kh-hub{display:none}
+body.kiosk.kiosk-side{--kiosk-col:clamp(300px,40vw,640px)}
+body.kiosk.kiosk-side #office-scene{right:calc(var(--kiosk-col) + 20px);bottom:0}
+body.kiosk.kiosk-side #kiosk-hud{left:auto;right:12px;top:12px;bottom:12px;width:var(--kiosk-col);max-height:none;
+  display:flex;flex-direction:column;align-items:stretch;gap:10px;padding:14px;border-radius:20px}
+body.kiosk.kiosk-side #kiosk-hud .kh-who{flex:none;padding-bottom:10px;border-bottom:1px solid color-mix(in srgb,var(--txt) 10%,transparent)}
+body.kiosk.kiosk-side #kiosk-hud .kh-txt{flex:1}
+body.kiosk.kiosk-side #kiosk-hud .kh-hub{display:inline-flex;flex:none;align-self:flex-start;font-size:12px;font-weight:600;padding:4px 10px;
+  border-radius:999px;background:color-mix(in srgb,#34d399 18%,transparent);color:#34d399}
+body.kiosk.kiosk-side #kiosk-hud .kh-hub[hidden]{display:none}
+body.kiosk.kiosk-side #kiosk-hud .kh-log{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;
+  scrollbar-width:thin;padding:4px 2px;overscroll-behavior:contain}
+body.kiosk.kiosk-side #kiosk-hud .kh-heard,body.kiosk.kiosk-side #kiosk-hud .kh-reply{display:none!important}
+body.kiosk.kiosk-side #kiosk-hud .kh-type{flex:none}
+body.kiosk.kiosk-side #kiosk-hud .kh-acts{flex:none;justify-content:flex-end;flex-wrap:wrap}
+body.kiosk.kiosk-side #kiosk-hud .kh-wifi{flex:none}
+.kh-m{display:flex;gap:8px;align-items:flex-end;max-width:100%}
+.kh-m p{margin:0;padding:10px 14px;border-radius:18px;font-size:var(--fs-lg,17px);line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere;max-width:88%}
+.kh-m.you{justify-content:flex-end}
+.kh-m.you p{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-bottom-right-radius:6px}
+.kh-m.agent p{background:color-mix(in srgb,var(--txt) 8%,var(--bg2));border-bottom-left-radius:6px}
+.kh-m.live p{box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 35%,transparent)}
+.kh-lf{width:32px;height:32px;flex:none;border-radius:9px;image-rendering:pixelated}
+.kh-empty{margin:auto;text-align:center;opacity:.7;font-size:var(--fs-md,15px);max-width:28ch}
+.kh-dots{display:inline-flex;gap:4px;font-style:normal}
+.kh-dots b{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.4}
+@media (prefers-reduced-motion:no-preference){.kh-dots b{animation:kh-dot 1.2s infinite}.kh-dots b:nth-child(2){animation-delay:.2s}.kh-dots b:nth-child(3){animation-delay:.4s}}
+@keyframes kh-dot{50%{opacity:1}}
+@media (max-height:520px){body.kiosk.kiosk-side #kiosk-hud{top:8px;bottom:8px;right:8px;padding:10px;gap:6px}
+  .kh-m p{font-size:15px;padding:8px 12px}.kh-lf{width:26px;height:26px}}
+
 /* Settings → Team & Communications → Community (24i-pool.js) */
 .pool-list{display:flex;flex-direction:column;gap:6px;width:100%}
 .pool-m{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:var(--r-md,10px);

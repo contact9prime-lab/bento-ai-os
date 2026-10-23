@@ -121,3 +121,33 @@
 .tie-acts .endbtn.danger{color:var(--err,#e05050)}
 @media (max-width:600px){.tie-list{margin:6px 8px 10px}.tie-grid{grid-template-columns:1fr}.tie-sub{margin-left:0}
   .tie-top .endbtn{margin-left:auto}}
+
+/* Chat: a conversation that came from another machine (10-chat.js chatMachine*) */
+.conv.conv-machine .t::before{content:"◫ ";color:#34d399}
+.conv.conv-machine.team .t::before{content:"↔ ";color:#a78bfa}
+.cm-banner{display:flex;gap:12px;align-items:center;margin:4px 0 14px;padding:12px 14px;border-radius:14px;
+  background:color-mix(in srgb,var(--mc,#34d399) 12%,var(--bg2));border:1px solid color-mix(in srgb,var(--mc,#34d399) 35%,transparent)}
+.cm-banner.team{--mc:#a78bfa}
+.cm-banner>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cm-banner span{font-size:12.5px;color:color-mix(in srgb,var(--txt) 70%,transparent)}
+.cm-face{width:34px;height:34px;flex:none;border-radius:10px;image-rendering:pixelated;overflow:hidden;display:inline-grid;place-items:center}
+.cm-banner .cm-face{width:42px;height:42px;border-radius:12px}
+.cm-initial{font-weight:700;background:color-mix(in srgb,var(--mc,#34d399) 30%,var(--bg2))}
+.cm-who{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cm-who .cm-face{width:22px;height:22px;border-radius:7px}
+.cm-route{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,#34d399 16%,transparent);color:#34d399}
+.cm-route.team{background:color-mix(in srgb,#a78bfa 16%,transparent);color:#a78bfa}
+body .msg.user.from-machine .bubble,body.immersive .msg.user.from-machine .bubble{background:color-mix(in srgb,#34d399 16%,var(--bg2));color:var(--txt)}
+body .msg.user.from-machine.team .bubble,body.immersive .msg.user.from-machine.team .bubble{background:color-mix(in srgb,#a78bfa 16%,var(--bg2))}
+
+/* Settings → AI providers → If it isn't available (11-settings.js paintFallbacks) */
+.fb-list{display:flex;flex-direction:column;gap:8px;width:100%}
+.fb-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fb-row select{flex:1 1 220px;min-width:0;min-height:var(--tap,34px)}
+.fb-row .endbtn{min-width:var(--tap,34px);min-height:var(--tap,34px);padding:0 10px}
+.fb-row.off select{opacity:.6}
+.fb-n{width:22px;height:22px;flex:none;display:grid;place-items:center;border-radius:50%;font-size:12px;font-weight:700;
+  background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.fb-why{flex-basis:100%;margin-left:30px;font-size:12px}
+.fb-add{align-self:flex-start}
+.fb-none{margin:0}

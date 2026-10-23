@@ -462,6 +462,17 @@ def _spawn_server(port: int) -> tuple[bool, str]:
                    f"  its output: {log_path}")
 
 
+def _start_wait() -> float:
+    """How long a server may take to answer after a restart. A Pi 3 took two and a half
+    minutes after an update (measured), so a restart that read as failed had worked."""
+    try:
+        with open("/proc/meminfo") as f:
+            kb = int(f.readline().split()[1])
+        return 240.0 if kb < 2_000_000 else 20.0
+    except (OSError, ValueError, IndexError):
+        return 20.0
+
+
 def _wait_for(pred, seconds: float = 20.0) -> bool:
     deadline = time.time() + seconds
     while time.time() < deadline:
@@ -553,7 +564,7 @@ def service_restart() -> tuple[bool, str]:
         ok, out = _run(["systemctl", "--user", "restart", f"{APP_ID}.service"])
         if not ok:
             return False, f"systemd refused: {out}"
-        if _wait_for(lambda: _server_up(port)):
+        if _wait_for(lambda: _server_up(port), _start_wait()):
             return True, f"restarted — http://127.0.0.1:{port}"
         return False, f"systemd restarted the unit but nothing answers on port {port}"
     if mgr == "launchagent":

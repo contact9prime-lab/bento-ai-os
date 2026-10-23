@@ -223,7 +223,11 @@ REMOVE = (WITH_SUDO + f"B={B}; S={SRC}; U=\"$HOME/.config/systemd/user\"; A=\"$H
           'echo removed')
 
 
-UPDATE = f"{B} update"
+# `bento update` alone only checks (installing is --apply), so without it this said "✓ 0.6.85 →
+# 0.6.85" over a list of the changes it had not installed (found updating a Pi from the hub).
+# --no-tests: the code was tested where it was built; four thousand tests on a Pi 3 hold its
+# screen down for the better part of an hour, and the update still rolls back on a failed migrate.
+UPDATE = f"{B} update --apply --no-tests"
 
 
 async def update(host: str, user: str, password: str = "", port: int = 22) -> dict:
@@ -232,7 +236,10 @@ async def update(host: str, user: str, password: str = "", port: int = 22) -> di
     code, out, err, via = await ri.login_run(host, user, port, password, UPDATE, 900)
     after = await state(host, user, "" if via == "key" else password, port)
     tail = [ri.clean_line(x) for x in (out + "\n" + err).strip().splitlines() if x.strip()][-6:]
-    return {"ok": code == 0, "ran": UPDATE, "said": tail, "state": after}
+    # changes still listed as waiting were not installed, whatever the exit code says
+    waiting = "install it: bento update --apply" in out or "changes waiting" in out and "--apply" in out
+    return {"ok": code == 0 and not waiting, "ran": UPDATE, "said": tail, "state": after,
+            **({"error": "the update was checked there but not installed"} if waiting else {})}
 
 
 def remove_plan() -> str:

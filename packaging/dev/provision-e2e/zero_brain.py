@@ -2,8 +2,8 @@
 what the system prompt says, and calls the real tools:
 
   the Zero's lead   ("THIS MACHINE IS A ZERO")  -> delegate the task to lead@<hub>
-  the hub's lead    ("is the lead of the linked team", or a Zero's chat run there: "at the
-                    screen of")  -> delegate to the writer, saying
+  the hub's lead    ("is the lead of the linked team", or a Zero's chat run there: "a small
+                    machine this hub set up")  -> delegate to the writer, saying
                     where the Zero's files go (the folder the prompt names)
   the writer        ("WRITER-SOUL")  -> write_file into that folder
   after a tool      -> says what came back, naming any path it was given
@@ -52,7 +52,7 @@ def _reply(msgs):
                                         "content": "# Kitchen plan\n\n- eggs\n- milk\n- coffee\n"})
         return f"writer: {tool[:200]}", None
     last = next((_text(m.get("content")) for m in reversed(msgs) if m.get("role") == "user"), "")
-    if "is the lead of the linked team" in every or "at the screen of" in every:
+    if "is the lead of the linked team" in every or "a small machine this hub set up" in every:
         if tool is None and last.strip().lower().startswith("thanks"):
             return "You're welcome.", None        # a follow-up in the same session: nothing to make
         if tool is None:

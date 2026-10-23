@@ -162,7 +162,7 @@ def test_the_hub_has_routes_a_terminal_and_a_devices_app_for_it():
 
 def test_update_runs_bento_update_there_and_reads_the_version_after(pi):
     (pi / ".local/bin/bento").write_text((pi / ".local/bin/bento").read_text().replace(
-        'case "$1 $2" in', 'case "$1 $2" in\n  "update ") echo 0.6.79 > "$HOME/.local/src/agentic-os/agentos/VERSION"; echo "version 0.6.75 → 0.6.79" ;;'))
+        'case "$1 $2" in', 'case "$1 $2" in\n  "update --apply") echo 0.6.79 > "$HOME/.local/src/agentic-os/agentos/VERSION"; echo "version 0.6.75 → 0.6.79" ;;'))
     got = asyncio.run(devicectl.update("192.168.1.9", "pi"))
     assert got["ok"] and got["state"]["version"] == "0.6.79" and "0.6.79" in got["said"][-1]
 
@@ -276,3 +276,27 @@ def test_no_pattern_in_a_script_matches_the_script_itself():
             script = devicectl.command(which, on)
             for pat in re.findall(r"p(?:kill|grep) -f '([^']+)'", script):
                 assert not re.search(pat, script), (which, on, pat)
+
+
+def test_update_from_the_hub_installs_and_says_when_it_did_not():
+    """It ran `bento update`, which only checks, and said "✓ 0.6.85 → 0.6.85" over the list of
+    changes it had not installed."""
+    import asyncio
+    from agentos import devicectl, remoteinstall as ri
+    assert "--apply" in devicectl.UPDATE
+
+    async def checked_only(*a, **k):
+        return 0, "4 changes waiting:\n  install it: bento update --apply\n", "", "key"
+
+    async def read(*a, **k):
+        return {"installed": True, "version": "0.6.85"}
+    import pytest
+    mp = pytest.MonkeyPatch()
+    mp.setattr(ri, "login_run", checked_only)
+    mp.setattr(devicectl, "state", read)
+    mp.setattr(devicectl, "_guard", lambda *a: None)
+    try:
+        got = asyncio.run(devicectl.update("192.168.1.9", "pi"))
+    finally:
+        mp.undo()
+    assert not got["ok"] and "not installed" in got["error"]

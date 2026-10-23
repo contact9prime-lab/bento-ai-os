@@ -51,7 +51,11 @@ def test_the_turn_runs_on_the_hub_and_is_kept_there_in_the_zeros_section(hz, mon
 
     async def emit(ev):
         events.append(ev)
+    Z["cfg"]["agent_name"] = "Mr. Pi"
     r1 = _on(Z, loop, lambda: zero.hub_turn(Z["cfg"], "c-screen", "Hi Mr Pi", emit))
+    system = next(m["content"] for m in seen[0] if m["role"] == "system")
+    assert "you are Mr. Pi" in system and "not as Aria" in system, \
+        "the Zero's agent answers as itself: on the real Pi, \"Hi Mr Pi\" came back from Aria"
     r2 = _on(Z, loop, lambda: zero.hub_turn(Z["cfg"], "c-screen", "and again", emit))
     assert r1["content"] == "Hello from the hub (1 said so far)."
     assert "2 said so far" in r2["content"], "the session is the hub's: the second turn has the first"

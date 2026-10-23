@@ -361,6 +361,7 @@ async def hub_turn(cfg: dict, conversation_id: str, text: str, emit) -> dict:
     await emit({"type": "status", "message": f"thinking on {hub}"})
     try:
         got = await teamlink.call(lk, {"op": "zero_chat", "text": text, "conversation": conversation_id,
+                                       "agent": str(cfg.get("agent_name") or "")[:40],
                                        "progress": 1}, on_progress=progress, limit=teamlink.POOL_LINE)
     except Exception as e:
         got = {"ok": False, "error": f"{type(e).__name__}: {e}"}
