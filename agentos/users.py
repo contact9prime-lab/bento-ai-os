@@ -564,7 +564,7 @@ def cfg_for(uid: str | None = None, machine: dict | None = None) -> dict:
 USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "signin",
              "desktop", "widgets", "shortcuts", "spaces",
              "agent_name", "soul", "onboarding", "setup_complete",
-             "autonomy", "default_model", "max_steps", "workspace",
+             "autonomy", "default_model", "brain_fallbacks", "max_steps", "workspace",
              "memory", "history", "tools", "steer_queued_messages",
              # whom I trust: added registry publisher keys and the first-install
              # pins of apps I installed. Personal by the USER_KEYS test — trusting

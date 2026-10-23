@@ -177,7 +177,8 @@ DEFAULTS = {
                   "usage_days": 365},
     "engine": "aria",
     "agent_name": "Aria",         # what the agent calls itself; change it in Settings
-    "default_model": "",          # e.g. "ollama/qwen3.5:9b" — picked automatically if empty
+    "default_model": "",
+    "brain_fallbacks": [],        # brains asked next when this one isn't available (fallback.py)          # e.g. "ollama/qwen3.5:9b" — picked automatically if empty
     "autonomy": "balanced",       # paranoid | balanced | full
     # Autonomy answers "how much may the agent do without asking". This answers a
     # different question: "how much may a WEB PAGE do", once its text is in the
