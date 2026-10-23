@@ -96,6 +96,7 @@ def ties(owner: str | None = None) -> list[dict]:
             "version": _VERSION.get(lk.get("id") or "", ""),
             "behind": behind(_VERSION.get(lk.get("id") or "", "")),
             "moved": (lk.get("moved") or [])[-1] if lk.get("moved") else None,
+            "talks_to": target_of(lk),
         })
     out.sort(key=lambda t: (t["stale"], -float(t["created"] or 0)))
     return out
@@ -253,6 +254,66 @@ def set_brain(owner: str, label: str, executor: str, model: str) -> dict:
         lk.pop("brain", None)
     teamlink._save(d)
     return lk.get("brain") or {"executor": "", "model": ""}
+
+
+# ---- who it talks to ------------------------------------------------------------------
+#
+# Asked for as "the Zeros or the teams can talk to either Aria, which controls all the
+# departments, or they can talk to each department only … better restrict". A link says who
+# answers it here: the lead (everything the lead can reach: every company, department and
+# specialist), or ONE department of one company, whose desk does the work with its own people,
+# the company's persona and its sign-offs. Stored on the link (`talks_to`), like its brain.
+# A link that says nothing talks to the lead, as every link did before, and every screen that
+# shows it says what that hands over (topology.access).
+
+def target_of(lk: dict) -> dict:
+    t = lk.get("talks_to") if isinstance(lk.get("talks_to"), dict) else {}
+    if t.get("to") == "department" and t.get("department"):
+        return {"to": "department", "company": str(t.get("company") or ""),
+                "department": str(t["department"])}
+    return {"to": "lead"}
+
+
+def set_target(owner: str, label: str, target: dict, cfg: dict, store) -> dict:
+    """Write who a tie talks to. A department must exist in that company now, and have a desk:
+    a link pointed at nothing would refuse every question with no way to see why."""
+    from . import company as companymod
+    from . import teamlink
+    t = target if isinstance(target, dict) else {}
+    want = {"to": "lead"}
+    if t.get("to") == "department":
+        cid, dname = str(t.get("company") or "").strip().lower(), str(t.get("department") or "").strip()
+        if companymod.cfg_of(cfg, cid) is None:
+            raise ValueError("you keep no company by that id")
+        d = next((x for x in companymod.departments_of(cfg, store, cid)
+                  if x["name"].lower() == dname.lower()), None)
+        if not d:
+            raise ValueError(f"no department called '{dname}' in that company")
+        if not d.get("desk"):
+            raise ValueError(f"{d['name']} has no desk yet: set the company up again from the Company panel")
+        want = {"to": "department", "company": cid, "department": d["name"]}
+    elif t.get("to") not in (None, "", "lead"):
+        raise ValueError("a link talks to your lead agent or to one department")
+    d_ = teamlink._load()
+    lk = next((x for x in d_["links"] if (x.get("owner") or "") == (owner or "")
+               and x.get("label") == label), None)
+    if not lk:
+        raise LookupError(f"no link called '{label}'")
+    if want["to"] == "lead":
+        lk.pop("talks_to", None)
+    else:
+        lk["talks_to"] = want
+    teamlink._save(d_)
+    return target_of(lk)
+
+
+def target_words(cfg: dict, t: dict) -> str:
+    from . import company as companymod
+    if t.get("to") != "department":
+        return (cfg or {}).get("agent_name") or "Aria"
+    c = companymod.cfg_of(cfg, t.get("company") or "")
+    name = companymod.profile(c).get("name") if c is not None else ""
+    return f"{t['department']}" + (f" at {name}" if name else "")
 
 
 # ---- whose it is -----------------------------------------------------------------------

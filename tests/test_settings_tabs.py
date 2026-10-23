@@ -1,10 +1,11 @@
-"""Settings has a Permissions tab and a Team & Communications tab.
+"""Settings has a Permissions tab, and Team & Communications is split between Agents and Network & Teams.
 
 Asked for as "In settings permissions should be added as a separate tab. Team &
 Communications should be added as a separate tab with all the options". The Agents page
 had grown to hold everything about agents working together, linked teams and the
-community of machines, and the permission settings were scattered. These pin where
-each now lives, and that nothing that pointed at the old place still does.
+community of machines, and the permission settings were scattered. Then (2026-10) "agents'
+own providers, talk and huddles move to Agents; the rest merges with Network". These pin
+where each now lives, and that nothing that pointed at an old place still does.
 """
 import re
 import sys
@@ -26,32 +27,28 @@ def _tab(name: str) -> str:
     return SETTINGS[i:j]
 
 
-def test_the_two_tabs_sit_after_agents():
+def test_the_tabs_sit_after_agents():
     ids = re.findall(r"^\s+\['(\w+)','[^']*','([^']*)','(\w+)'\],", SETTINGS, re.M)
     order = [i for i, _, _ in ids]
-    # Network (machines on the network: inventory, install, secure) sits beside the team
-    assert order[:5] == ["ai", "agent", "team", "network", "permissions"], order
+    assert order[:4] == ["ai", "agent", "network", "permissions"], order
     labels = {i: l for i, l, _ in ids}
-    assert labels["team"] == "Team & Communications" and labels["permissions"] == "Permissions"
-    assert labels["network"] == "Network"
+    assert "team" not in labels and labels["permissions"] == "Permissions"
+    assert labels["network"] == "Network & Teams"
 
 
-def test_team_and_communications_holds_every_team_option():
-    team = _tab("team")
-    for piece in ("s-team-own", "s-team-list", "s-team-talk", "s-team-freetalk", "s-team-talklog",
-                  "s-team-limits", "s-team-matrix", "s-team-links", "s-pool",
-                  "openApp(\\'teamchat\\')", "tcRename()"):
-        assert piece in team, piece
-    # setting machines up moved to Network, with the inventory; Team keeps a door to it
-    assert "s-prov" not in team and "placeSettings('network')" in team
-    net = _tab("network")
-    for piece in ("s-net", "s-prov", "netPaint", "provPaint"):
-        assert piece in net, piece
+def test_every_team_option_has_a_home():
     agent = _tab("agent")
-    for gone in ("s-team-", "s-pool", "s-prov", "s-taint"):
-        assert gone not in agent, f"{gone} still on the Agents page"
+    for piece in ("s-team-own", "s-team-list", "s-team-talk", "s-team-freetalk", "s-team-talklog",
+                  "s-team-limits", "s-team-matrix"):
+        assert piece in agent, piece
     for kept in ('id="agents-list"', 'id="agents-graph"', "s-hist-compact", "agent-share-box"):
         assert kept in agent, kept
+    net = _tab("network")
+    for piece in ("s-net", "s-prov", "netPaint", "provPaint", "s-team-links", "s-pool",
+                  "openApp(\\'teamchat\\')", "tcRename()"):
+        assert piece in net, piece
+    for gone in ("s-pool", "s-prov", "s-taint", "s-team-links"):
+        assert gone not in agent, f"{gone} on the Agents page"
 
 
 def test_permissions_holds_the_decisions_and_opens_the_app():
@@ -65,19 +62,17 @@ def test_permissions_holds_the_decisions_and_opens_the_app():
 
 def test_nothing_points_at_the_old_place():
     ws = (JS / "09-websocket.js").read_text()
-    assert 'data-t="agent"' not in ws, "the community and machine toasts open the Team tab"
-    assert ws.count('data-t="team"') >= 1, "the community's toast opens the Team tab"
-    assert ws.count('data-t="network"') >= 2, "new machines and devices open the Network tab"
+    assert 'data-t="team"' not in ws, "the team tab is gone: its toasts open Network & Teams"
+    assert ws.count('data-t="network"') >= 3, "new machines, devices, links and the community open Network"
     for f in JS.glob("*.js"):
         t = f.read_text()
         assert "Agents → Working together" not in t and "Agents → Community" not in t, f.name
+        assert "placeSettings('team')" not in t, f.name
     places = (JS / "05b-places.js").read_text()
-    for name in ("'Community'", "'Free talk'"):
+    for name, tab in (("'Community'", "network"), ("'Free talk'", "agent"), ("'Network'", "network"),
+                      ("'New machines'", "network"), ("'Devices without Bento'", "network")):
         line = next(ln for ln in places.splitlines() if ln.strip().startswith("[" + name))
-        assert "placeSettings('team')" in line, name
-    for name in ("'Network'", "'New machines'", "'Devices without Bento'"):
-        line = next(ln for ln in places.splitlines() if ln.strip().startswith("[" + name))
-        assert "placeSettings('network')" in line, name
+        assert f"placeSettings('{tab}')" in line, name
 
 
 def test_the_rail_draws_both():

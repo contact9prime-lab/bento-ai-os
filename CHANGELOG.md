@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.93 — 2026-10-23
+
+**A Pi or a linked team talks to your lead, or to one department.** Network & Teams → Team to agent
+mapping has **Talks to** for every Zero and team. A department's desk then answers it, with that
+department's people and permissions and the company's persona, and nothing else on the hub is
+reachable through it. Talking to your lead stays the default for links you already have, and the row
+says in amber everything that gives. **What it can reach** lists who answers, the people and tools, who
+else it may ask, and every permission row written for it. `bento network talks`.
+
+**Maps: logical and physical.** The logical map is your lead, each company you keep, its departments
+and people down to their tools and permissions, with each Zero and team hung from what it talks to.
+The physical map is the device map. Both are in Network & Teams and in Devices. `bento network map`.
+
+**Settings is reorganised.** Team & Communications is gone. Agents now has your agents by company and
+department (with a Default company), each agent's model, who may ask whom, and huddles. Network & Teams
+has Discovery and linkage, Team to agent mapping and Maps.
+
+**Chat has tabs and search.** Desktop, Channels, Devices, Huddles and App builder, and a search that
+reads every message. Huddles are kept under their own tab, with **＋ New huddle**.
+
 ## 0.6.92 — 2026-10-23
 
 **A Pi whose address changed is followed, and Devices has Events.** A Pi gets its address from

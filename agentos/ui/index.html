@@ -545,6 +545,14 @@ body.exp-jarvis.js-speaking #js-orb .core{animation:jspeak .5s ease-in-out infin
 #newchat{margin:10px 10px 8px;padding:8px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg3);color:var(--txt);font-weight:600;font-size:var(--fs-sm);transition:border-color var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out)}
 #newchat:hover{border-color:var(--acc);color:var(--acc)}
 #convs{flex:1;overflow-y:auto;padding:2px 6px 8px}
+/* Chat's tabs and search (10-chat.js loadConvs, chattabs.py) */
+#conv-q{margin:0 10px 6px;min-height:32px;padding:6px 10px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg2);color:var(--txt);font-size:var(--fs-sm)}
+.ctabs{display:flex;flex-wrap:wrap;gap:4px;padding:0 8px 8px}
+.ctab{min-height:28px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--dim);font-size:var(--fs-xs);white-space:nowrap}
+.ctab small{opacity:.7;margin-left:2px}
+.ctab.on{background:color-mix(in srgb,var(--acc) 18%,transparent);border-color:color-mix(in srgb,var(--acc) 45%,transparent);color:var(--txt)}
+.conv-new-huddle{margin:2px 4px 8px;width:calc(100% - 8px)}
+.conv-none{padding:10px;font-size:var(--fs-sm)}
 .conv{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--r-md);color:var(--dim);font-size:var(--fs-sm);cursor:pointer;white-space:nowrap;overflow:hidden}
 .conv:hover{background:var(--bg3);color:var(--txt)}
 .conv.active{background:var(--bg4);color:var(--txt)}
@@ -2674,6 +2682,8 @@ body.dev-touch #startmenu .smapp{min-height:92px}
 /* the ⋯ must share the row with the two pickers, not take a row of its own */
 body.dev-mobile #topbar>select{flex:1 1 34%}
 body.dev-mobile #tb-more{flex:0 0 var(--tap)}
+/* Chat's tabs and search are taps on a phone (10-chat.js) */
+body.dev-mobile .ctab,body.dev-mobile #conv-q{min-height:var(--tap)}
 /* ================= glass quality =================
    Loads last so it out-orders the themes, which inject their own <style>.
    See 04d-glass.js for why this knob exists and what picks a level.
@@ -6410,6 +6420,55 @@ body.kiosk-side #kf-strip{bottom:12px;right:calc(var(--kiosk-col) + 24px)}
 #kiosk-face.kf-ambient .kf-hm{font-size:clamp(36px,7vmin,72px)}
 #kiosk-hud .kh-faces .kh-fi{margin-right:6px}
 @media (max-width:900px){#kiosk-hud .kh-faces .kh-fn{display:none}#kiosk-hud .kh-faces .kh-fi{margin:0}}
+/* Network & Teams: the three parts, the team-to-agent mapping and the logical map (24r-topology.js),
+   and Settings → Agents grouped by company (11e-hands.js) */
+.net-part{font-size:var(--fs-base);font-weight:650;margin:22px 0 8px;padding-top:6px;border-top:1px solid color-mix(in srgb,var(--txt) 8%,transparent)}
+.ag-co{margin:14px 16px 6px;font-size:var(--fs-sm);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ag-dept{margin:8px 16px 4px;font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.05em;color:var(--dim)}
+.ag-dept span{font-weight:700}
+.tm-list{display:flex;flex-direction:column;gap:10px}
+.tm-row{border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.tm-row.wide{border-color:color-mix(in srgb,var(--warn,#f59e0b) 45%,var(--line))}
+.tm-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tm-h .sp{flex:1}
+.tm-ini{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--bg3);font-weight:700}
+.tm-to{display:flex;align-items:center;gap:6px;font-size:var(--fs-sm)}
+.tm-to select{max-width:260px;min-height:32px}
+.tm-caution{margin:0;font-size:var(--fs-sm);color:color-mix(in srgb,var(--warn,#f59e0b) 85%,var(--txt))}
+.tm-more{align-self:flex-start}
+.tm-access{display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm)}
+.tm-access .ag-k{display:inline-block;min-width:110px;color:var(--dim)}
+.tm-people,.tm-grants{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.tm-tools{margin-top:3px;display:flex;flex-wrap:wrap;gap:4px}
+.tm-grants li.bad{color:var(--err)}
+.tp-seg{display:flex;align-items:center;gap:6px}
+.tp-seg .sp{flex:1}
+.tp-tree{overflow-x:auto;padding:4px 0}
+.tp-ul{list-style:none;margin:0;padding:0 0 0 18px;position:relative}
+.tp-ul.root{padding-left:0}
+.tp-li{position:relative;margin:6px 0}
+.tp-ul:not(.root)>.tp-li::before{content:"";position:absolute;left:-12px;top:0;bottom:-6px;border-left:1px solid color-mix(in srgb,var(--txt) 18%,transparent)}
+.tp-ul:not(.root)>.tp-li:last-child::before{bottom:auto;height:16px}
+.tp-ul:not(.root)>.tp-li::after{content:"";position:absolute;left:-12px;top:16px;width:10px;border-top:1px solid color-mix(in srgb,var(--txt) 18%,transparent)}
+.tp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tp-node{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);color:var(--txt);font-size:var(--fs-sm)}
+.tp-node.company{background:color-mix(in srgb,var(--acc) 10%,var(--bg2))}
+.tp-node.dept{border-left:3px solid var(--dc,var(--acc))}
+.tp-node.person{cursor:pointer}
+.tp-node.person.head b::after{content:" ★";color:#fbbf24}
+.tp-about{max-width:40ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tp-ties{display:inline-flex;gap:4px;flex-wrap:wrap}
+.tp-tie{font-size:var(--fs-xs);padding:2px 8px;border-radius:999px;border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.tp-tie.team{border-style:dashed}
+.tp-tie.off{opacity:.55}
+.tp-perm{margin:6px 0 4px 6px;padding:8px 10px;border-left:2px solid color-mix(in srgb,var(--acc) 50%,transparent);font-size:var(--fs-sm);display:flex;flex-direction:column;gap:4px}
+.tp-perm .ag-k{display:inline-block;min-width:90px;color:var(--dim)}
+.dev-views{margin:0 0 12px}
+body.dev-mobile .tp-node,body.dev-mobile .tm-to select,body.dev-mobile .tm-more{min-height:var(--tap)}
+body.dev-mobile .tm-to{width:100%}
+body.dev-mobile .tm-to select{max-width:none;flex:1}
+.tp-node.company{flex-wrap:wrap;max-width:100%}
+body.dev-mobile .tp-about{white-space:normal;max-width:100%;flex-basis:100%}
 </style>
 </head>
 <body>
@@ -14391,6 +14450,7 @@ var APP_WORDS={
   tokens:['usage','cost','spend','billing'],
 };
 function placeSettings(tab){const go=()=>{
+  tab=(typeof SETTAB_ALIAS!=='undefined'&&SETTAB_ALIAS[tab])||tab;
   SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
   openApp('settings');
   // an open Settings window is already painted on another pane: move it
@@ -14409,9 +14469,10 @@ function placeCompany(){return ()=>{openApp('office');setTimeout(()=>{if(typeof 
 var PLACES=[
   ['AI providers','settings','Settings → AI providers',['provider','providers','model','models','brain','api key','key','openai','anthropic','claude','gemini','ollama','openrouter','llm'],placeSettings('ai')],
   ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona'],placeSettings('agent')],
-  ['Team & Communications','settings','Settings → Team & Communications',['team','swarm','huddle','talk','working together','democracy','matrix','who may ask whom','linked teams','link','team chat','messages','communications'],placeSettings('team')],
+  ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','democracy','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent')],
+  ['Network & Teams','settings','Settings → Network & Teams',['linked teams','link','team chat','messages','communications','teams and communication','mapping','talks to','topology','logical map','physical map'],placeSettings('network')],
   ['Permissions settings','settings','Settings → Permissions',['permissions','autonomy','paranoid','balanced','full autonomy','ledger','audit','untrusted','injection','grants','security'],placeSettings('permissions')],
-  ['Free talk','settings','Settings → Team & Communications',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('team')],
+  ['Free talk','settings','Settings → Agents',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent')],
   ['Executors','settings','Settings → Executors',['executor','executors','hands','folders','folder access','claude code','codex','gemini cli','sandbox','reach'],placeSettings('executors')],
   ['Channels','settings','Settings → Channels',['channel','channels','telegram','whatsapp','messaging','phone','bot','notify','notifications'],placeSettings('channels')],
   ['Accounts','settings','Settings → Accounts',['account','accounts','mail','email','gmail','outlook','calendar','imap','caldav','sign in','google','microsoft'],placeSettings('accounts')],
@@ -14424,7 +14485,7 @@ var PLACES=[
   ['Network','settings','Settings → Network',['network','inventory','devices on the network','machines on my network','lan','secure a machine','secure it','harden','firewall','ssh password','security updates','teams and zeros','zeros','device map','what it runs on'],placeSettings('network')],
   ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network')],
   ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network')],
-  ['Community','settings','Settings → Team & Communications → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('team')],
+  ['Community','settings','Settings → Network & Teams → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('network')],
   ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','wake word','small screen'],placeSettings('look')],
   ['Listening','settings','Settings → Voice → Listening',['listen','listening','speech to text','whisper','hear','hearing','transcribe','mic language','dictation'],placeSettings('voice')],
   ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],
@@ -17075,7 +17136,7 @@ function handle(ev){
     // the community of machines changed, or somebody asks to join it (pool.py)
     case 'pool': if(typeof poolPaint==='function')poolPaint();
       if(ev.kind==='pool_request')toast((ev.name||'A machine')+' asks to join your community',
-        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="network"]')?.click();
           setTimeout(()=>document.getElementById('s-pool')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       break;
     // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes
@@ -17335,6 +17396,8 @@ function renderChat(body){
   body.innerHTML=`<div class="chatwrap">
     <div class="cside">
       <button id="newchat"><span data-ic="plus">＋</span> New chat</button>
+      <input id="conv-q" type="search" placeholder="Search chats" aria-label="Search chats">
+      <div id="ctabs" class="ctabs" role="tablist" aria-label="Which chats"></div>
       <div id="convs"></div>
     </div>
     <div class="cmain">
@@ -17543,24 +17606,27 @@ function removeWorking(){
   // …and let the ticker stop itself now that this row is gone.
   if(typeof actSync==='function')actSync();
 }
+/* The list is in tabs (chattabs.py decides each conversation's): Desktop, Channels, Devices,
+   Huddles, App builder. Asked for as "the huddle must be recorded in the chat as a separate
+   section, and the chat must have tabs and searches". A huddle is listed under Huddles AND the
+   tab it happened in. Search reads titles and every message. */
+var CONVTAB=(()=>{try{return localStorage.getItem('chat.tab')||'desktop'}catch(e){return 'desktop'}})();
+var CONVQ='';
+function convTab(t){CONVTAB=t;try{localStorage.setItem('chat.tab',t)}catch(e){}loadConvs()}
 async function loadConvs(){
   const box=$('#convs'); if(!box)return;
-  const r=await fetch('/api/conversations');const d=await r.json();
+  const qe=$('#conv-q');
+  if(qe&&!qe.dataset.wired){qe.dataset.wired=1;qe.value=CONVQ;let deb;
+    qe.oninput=()=>{clearTimeout(deb);deb=setTimeout(()=>{CONVQ=qe.value.trim();loadConvs()},250)}}
+  const r=await fetch('/api/conversations'+(CONVQ?'?q='+encodeURIComponent(CONVQ):''));const d=await r.json();
   if(!$('#convs'))return;
+  const all=d.conversations||[],tabs=d.tabs||[];
+  const tb=$('#ctabs');
+  if(tb){tb.innerHTML=tabs.map(t=>{const n=all.filter(c=>(c.tabs||[c.tab]).includes(t.id)).length;
+      return `<button role="tab" class="ctab${CONVTAB===t.id?' on':''}" aria-selected="${CONVTAB===t.id}" data-tab="${esc(t.id)}">${esc(t.name)}${n?` <small>${n}</small>`:''}</button>`}).join('');
+    tb.querySelectorAll('.ctab').forEach(b=>b.onclick=()=>convTab(b.dataset.tab))}
   box.innerHTML='';
-  // the agent's embedded threads (omnibar Desktop, per-app copilots) live in
-  // their own sections so app-scoped exchanges never drown the real chats
-  // A chat from the phone is one long thread per person, and read like any other one it was
-  // lost in the list (reported: "the telegram chats are not visible in the Chats"). It has its
-  // own section, first, the way the prompt bar's threads do.
-  const phone=c=>c.origin==='telegram'||c.origin==='whatsapp'||/^(✈ )?(Telegram|WhatsApp) · /.test(c.title||'');
-  const groups=[['On your phone',phone],
-                ['From the prompt bar',c=>c.origin==='omni'],
-                ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
-                ['Your agents talking',c=>c.origin==='freetalk'],
-                // a Zero's screen, or a linked team, worked here (chatMachine): where it came from
-                ['From other machines',chatFromMachine],
-                ['',c=>!phone(c)&&c.origin!=='omni'&&c.origin!=='freetalk'&&!chatFromMachine(c)&&!(c.origin||'').startsWith('copilot:')]];
+  const items=all.filter(c=>(c.tabs||[c.tab]).includes(CONVTAB));
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
@@ -17574,12 +17640,32 @@ async function loadConvs(){
       if(currentConv===c.id)newChat(); else loadConvs();};
     return el;
   };
+  // inside a tab, the threads that came from one place stay together
+  const groups=CONVTAB==='desktop'?[['From the prompt bar',c=>c.origin==='omni'],
+      ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
+      [items.some(c=>c.origin==='omni'||(c.origin||'').startsWith('copilot:'))?'Chats':'',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]]
+    :CONVTAB==='huddles'?[['Your agents talking',c=>c.origin==='freetalk'],['Huddles in a chat',c=>c.origin!=='freetalk']]
+    :CONVTAB==='devices'?[['Zeros',c=>c.origin==='zero'],['Linked teams',c=>c.origin!=='zero']]
+    :[['',()=>true]];
+  if(CONVTAB==='huddles'){const nb=document.createElement('button');nb.className='endbtn conv-new-huddle';
+    nb.textContent='＋ New huddle';nb.onclick=chatNewHuddle;box.appendChild(nb)}
   groups.forEach(([label,test])=>{
-    const items=d.conversations.filter(test);
-    if(!items.length)return;
+    const its=items.filter(test);
+    if(!its.length)return;
     if(label){const h=document.createElement('div');h.className='convgrp';h.textContent=label;box.appendChild(h)}
-    items.forEach(c=>box.appendChild(row(c)));
+    its.forEach(c=>box.appendChild(row(c)));
   });
+  if(!items.length){const p=document.createElement('p');p.className='mut conv-none';
+    p.textContent=CONVQ?'Nothing here says that.':({channels:'Telegram and WhatsApp chats show here.',
+      devices:'Chats from your Zeros and linked teams show here.',huddles:'When your agents huddle, it shows here.',
+      apps:'Chats that built an app show here.'}[CONVTAB]||'No chats yet.');box.appendChild(p)}
+}
+/* A huddle starts with two or more names (fabric.parse_huddle): a new chat with them typed. */
+async function chatNewHuddle(){
+  let names=[];try{names=((await apiJSON('/api/subagents')).subagents||[]).map(x=>x.name).slice(0,3)}catch(e){}
+  newChat();
+  if(input){input.value=(names.length>=2?names.slice(0,2).map(n=>'@'+n).join(' ')+' ':'@')+'';input.focus()}
+  toast(names.length>=2?'Name two to four agents, then the question.':'A huddle needs two agents: make one in Settings → Agents.');
 }
 /* Everything this chat did, as one JSON file (agentos/trace.py), to read or hand to an AI.
    Asked for as "for every execution I should be able to get the json file to see what
@@ -18478,8 +18564,7 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
   ['agent','◈','Agents','agent'],
-  ['team','⚇','Team & Communications','team'],
-  ['network','⌖','Network','wifi'],
+  ['network','⌖','Network & Teams','wifi'],
   ['permissions','⛨','Permissions','shield'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
@@ -18490,7 +18575,10 @@ const SETTINGS_TABS=[
   ['look','◧','Appearance','look'],
   ['system','⚙','System','system'],
 ];
-let SETTAB=localStorage.getItem('settab')||'ai';
+/* Team & Communications was merged into Network & Teams (2026-10): an old stored tab or link
+   lands there. */
+var SETTAB_ALIAS={team:'network'};
+let SETTAB=(t=>SETTAB_ALIAS[t]||t)(localStorage.getItem('settab')||'ai');
 
 async function renderSettings(body){
   await loadConfig();
@@ -18697,24 +18785,10 @@ function setTab(body,all){
       pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
         {desc:'The model App Studio builds apps with.',more:'AgentOS won’t switch to another model on its own.',f:'build model app studio'}),
     ],{f:'agent workspace steps history build'}));
-    P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
-    setTimeout(renderAgentsList,0);
-    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><div class="ghint">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</div><div id="agents-graph" class="agraph mut">loading…</div></div>`);
-    setTimeout(renderAgentsGraph,0);
-
-    /* Sharing the agent belongs on the page that answers "who is my agent" —
-       11c-agentshare.js renders it, agentbundle.py decides everything. */
-    P.push(`<div id="agent-share-box" data-f="share fork agent bundle export import publish host"><div class="pgroup"><h3>Share this agent</h3><div class="ghint mut">checking…</div></div></div>`);
-    setTimeout(renderAgentShare,0);
-  }
-  if(want('team')){
-    /* Team & Communications: everything about your agents working with each other,
-       with other teams and with other machines, and the people on those teams. It
-       used to be half of the Agents page; Agents now answers only "who are my agents".
-       Each piece keeps its own painter (paintTeamBrains, paintTeamMatrix, paintTeamLinks,
-       freeTalkPaint, talkLogPaint, poolPaint, provPaint). TUI: `bento team`, `bento link`,
-       `bento pool`. SUI: this page; nothing here touches the compositor. */
-    P.push(`<h2>Team &amp; Communications</h2><p class="lead">How your agents work together, and with other teams and machines. ${pInfo('Asking each other, huddles and free talk, linked teams on other machines or accounts, messages with the people on them, and a community of small machines.')}</p>`);
+    /* Moved here from Team & Communications (2026-10): the models each agent answers on, how
+       agents and departments talk to each other, and huddles are about your agents, so they
+       live with them. Asked for as "agents answer on their own providers should move to
+       agents … the huddle must be part of the agents itself". */
     /* The team: each specialist may answer on its OWN provider — a researcher on a
        local model, a validator on Claude, a writer on GPT — and they can hand work to
        each other and talk it through in a huddle. One switch turns that off (one
@@ -18756,7 +18830,11 @@ function setTab(body,all){
         {stack:true,desc:'How far agents can go when they ask each other.',more:'Limits count per task and apply from the next question.',
          f:'team limits hops budget clarify ask back huddle rounds agents swarm'}),
     ],{f:'team agents message ask each other matrix limits swarm democracy'}));
-    P.push(pGroup('Free talk',[
+    P.push(pGroup('Huddles and free talk',[
+      pRow('Huddle','<button class="endbtn" onclick="openApp(\'chat\');setTimeout(()=>{if(typeof chatNewHuddle===\'function\'){convTab(\'huddles\');chatNewHuddle()}},400)">Start a huddle</button>',
+        {desc:'Two to four agents talk a question through, each on its own brain.',
+         more:'Start a message with two or more names, like @researcher @writer. Every huddle is kept in Chat under Huddles.',
+         f:'huddle agents talk together question names chat huddles'}),
       /* Free talk (24f-freetalk.js): the one time agents talk with nobody asking them
          anything, so it is started here by the person, after a caution they tick, and it
          ends on its clock or its message count. And the one place that lists every time
@@ -18769,7 +18847,35 @@ function setTab(body,all){
         {stack:true,desc:'Every time your agents talked to each other.',
          more:'Free talks, huddles and one agent asking another. Open one in Chat, or replay its run with every step.',
          f:'agent to agent chat talk log history conversation huddle ask transcript record'}),
-    ],{f:'team free talk agents talk log'}));
+    ],{f:'huddle free talk agents talk log'}));
+    setTimeout(paintTeamBrains,0);
+    setTimeout(paintTeamMatrix,0);
+    setTimeout(paintTeamLimits,0);
+    setTimeout(freeTalkPaint,0);
+    setTimeout(talkLogPaint,0);
+    P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
+    setTimeout(renderAgentsList,0);
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><div class="ghint">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</div><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    setTimeout(renderAgentsGraph,0);
+
+    /* Sharing the agent belongs on the page that answers "who is my agent" —
+       11c-agentshare.js renders it, agentbundle.py decides everything. */
+    P.push(`<div id="agent-share-box" data-f="share fork agent bundle export import publish host"><div class="pgroup"><h3>Share this agent</h3><div class="ghint mut">checking…</div></div></div>`);
+    setTimeout(renderAgentShare,0);
+  }
+  if(want('network')){
+    /* Network & Teams: Team & Communications merged into Network (2026-10), in three parts.
+       Discovery and linkage: the machines here (24n-network.js), setting machines up
+       (24j-provision.js), linked teams, the community and the people on them. Team to agent
+       mapping: who each Zero and team talks to here (your lead or one department) and what that
+       gives it (24r-topology.js, topology.py). Maps: the logical map (lead, companies,
+       departments, people, permissions) and the physical one (the devices). The machine list
+       is admin only; linked teams and the mapping of your own are anybody's. TUI: `bento
+       network`, `bento link`, `bento pool`, `bento network map`. */
+    P.push(`<h2>Network &amp; Teams</h2><p class="lead">The machines on your network, the teams you link with, and who they talk to here. ${pInfo('Bento looks only at this machine’s own private network. Anything it runs on another machine is shown before it runs, and is a ledger row.')}</p>`);
+    P.push(`<h3 class="net-part">Discovery and linkage</h3>`);
+    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates hidden show again"><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi add a machine"><div id="s-prov"></div></div>`);
     P.push(pGroup('Linked teams',[
       /* Linked teams: another Bento (mutual TLS) or another account here. The way in is
          Ask → Approve with six digits on both screens (the OAuth device flow); an invite
@@ -18785,14 +18891,7 @@ function setTab(body,all){
        One machine leads and lends its brain; small machines join, share notes and take
        pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
     P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div>
-      <div class="prow"><div class="pl"><small>New machines, Make a Zero and installing Bento on the network are in Network.</small></div><div class="pc"><button class="endbtn" onclick="placeSettings('network')()">Open Network</button></div></div></div>`);
-    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
-    setTimeout(paintTeamBrains,0);
-    setTimeout(paintTeamLinks,0);
-    setTimeout(paintTeamMatrix,0);
-    setTimeout(paintTeamLimits,0);
-    setTimeout(freeTalkPaint,0);
-    setTimeout(talkLogPaint,0);
+</div>`);
     P.push(pGroup('Messages',[
       pRow('People on linked teams','<button class="endbtn" onclick="openApp(\'teamchat\')">Open Team Chat</button> <button class="endbtn" onclick="tcRename()">Your name…</button>',
         {desc:'Write to the people on your linked teams. Your agents never read these.',
@@ -18801,15 +18900,13 @@ function setTab(body,all){
       pRow('Reach your agent','<button class="endbtn" onclick="settingsGo(\'channels\')">Channels</button>',
         {desc:'Telegram, WhatsApp and the other ways to talk to your agent.',f:'channels telegram whatsapp reach phone'}),
     ],{f:'messages communications team chat channels'}));
-  }
-  /* Network (24n-network.js, inventory.py, harden.py): every machine on this network, Bento
-     or not, with install and Secure it; then setting machines up (24j-provision.js), moved
-     here from Team & Communications. Admin only: it reaches other machines. */
-  if(want('network')){
-    P.push(`<h2>Network</h2><p class="lead">The machines on your network: install Bento on them and keep them secure. ${pInfo('Bento looks only at this machine’s own private network. Anything it runs on another machine is shown before it runs, and is a ledger row.')}</p>`);
-    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates hidden show again"><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
-    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi add a machine"><div id="s-prov"></div></div>`);
-    setTimeout(()=>{if(typeof netPaint==='function')netPaint();if(typeof provPaint==='function')provPaint()},0);
+    P.push(`<h3 class="net-part">Team to agent mapping</h3>`);
+    P.push(`<div class="pgroup" data-f="mapping team zero talks to department lead agent access permissions what it can reach caution"><div class="ghint">Who each Zero and linked team talks to here, and everything that gives it. ${pInfo('Your lead agent can reach every company, department and agent. A department keeps a team to that department’s people and permissions.')}</div><div id="s-net-mapping"><p class="mut">…</p></div></div>`);
+    P.push(`<h3 class="net-part">Maps</h3>`);
+    P.push(`<div class="pgroup" data-f="map topology logical physical devices departments companies permissions"><div id="s-net-maps"><p class="mut">…</p></div></div>`);
+    setTimeout(()=>{if(typeof netPaint==='function')netPaint();if(typeof provPaint==='function')provPaint();
+      if(typeof poolPaint==='function')poolPaint();if(typeof paintTeamLinks==='function')paintTeamLinks();
+      if(typeof topoMappingPaint==='function')topoMappingPaint();if(typeof topoMapsPaint==='function')topoMapsPaint()},0);
   }
   if(want('permissions')){
     /* Permissions: what your agents may do on their own, how outside content is
@@ -18847,7 +18944,7 @@ function setTab(body,all){
     P.push(pGroup('Elsewhere',[
       pRow('What each agent can reach','<button class="endbtn" onclick="settingsGo(\'executors\')">Executors</button>',
         {desc:'Tools, folders, web and MCP servers. A limit no permission goes past.',f:'executors hands reach folders tools limit jail'}),
-      pRow('Who may ask whom','<button class="endbtn" onclick="settingsGo(\'team\')">Team &amp; Communications</button>',
+      pRow('Who may ask whom','<button class="endbtn" onclick="settingsGo(\'agent\')">Agents</button>',
         {desc:'Which of your agents may ask which, and what linked teams may ask.',f:'matrix who may ask whom linked team standing'}),
       pRow('Per channel','<button class="endbtn" onclick="settingsGo(\'channels\')">Channels</button>',
         {desc:'How much Telegram, WhatsApp and the others are trusted.',f:'channel permissions trust telegram whatsapp'}),
@@ -19890,10 +19987,10 @@ async function paintTeamLimits(){
    screen to approve on. Everything is a call to /api/team/links*. */
 var TEAM_INVITE=null;
 function openLinkedTeams(){
-  SETTAB='team';try{localStorage.setItem('settab','team')}catch(e){}
+  SETTAB='network';try{localStorage.setItem('settab','network')}catch(e){}
   openApp('settings');
   setTimeout(()=>{
-    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="team"]')?.click();
+    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="network"]')?.click();
     setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
   },250);
 }
@@ -21300,6 +21397,7 @@ var HANDS={data:null,edit:null};
 var AGENTS={data:null,focus:''};
 
 function settingsGo(tab){
+  tab=(typeof SETTAB_ALIAS!=='undefined'&&SETTAB_ALIAS[tab])||tab;
   SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
   const b=document.querySelector(`.prefs-side button[data-t="${tab}"]`);
   if(b)b.click();
@@ -21432,12 +21530,42 @@ async function renderAgentsList(){
     if(lh)lh.innerHTML=opts(lead.hands.name);
   }
   const others=d.agents.filter(a=>!a.master);
+  /* Grouped by company and department (topology.logical, the same tree as the logical map):
+     asked for as "agents should be in different companies, or in the default company". */
+  let topo=null;try{topo=await apiJSON('/api/network/logical')}catch(e){}
+  const byName=Object.fromEntries(others.map(a=>[a.name.toLowerCase(),a]));
+  const seen=new Set(),sections=[];
+  ((topo&&topo.companies)||[]).forEach(c=>{
+    const parts=[];
+    (c.departments||[]).forEach(dp=>{const as=(dp.people||[]).map(p=>byName[p.name.toLowerCase()]).filter(Boolean);
+      as.forEach(a=>seen.add(a.name.toLowerCase()));if(as.length)parts.push({dept:dp,agents:as})});
+    const loose=[...(c.people||[]),...(c.auditor&&!sections.some(x=>x.hasAud)?[c.auditor]:[])]
+      .map(p=>byName[p.name.toLowerCase()]).filter(a=>a&&!seen.has(a.name.toLowerCase()));
+    loose.forEach(a=>seen.add(a.name.toLowerCase()));
+    if(parts.length||loose.length)sections.push({co:c,parts,loose,hasAud:!!c.auditor});
+  });
+  const rest=others.filter(a=>!seen.has(a.name.toLowerCase()));
+  if(rest.length)sections.push({co:{name:'Default company',default:true},parts:[],loose:rest});
+  const coHead=c=>`<div class="ag-co"><b>▦ ${esc(c.name)}</b>${c.default?' <span class="mut">agents in no company</span>'
+    :c.open?' <span class="brainchip">open</span>':` <button class="endbtn" onclick="agentsOpenCompany('${esc(c.id)}')">Open it</button>`}</div>`;
+  const body=sections.map(sc=>coHead(sc.co)+sc.parts.map(pt=>`<div class="ag-dept"><span>${esc(pt.dept.name)}</span>${pt.dept.head?` <small class="mut">head: ${esc(pt.dept.head)}</small>`:''}</div>`
+      +pt.agents.map(agCardHTML).join('')).join('')+(sc.loose.length&&sc.parts.length?'<div class="ag-dept"><span>In no department</span></div>':'')
+      +sc.loose.map(agCardHTML).join('')).join('');
   // The way to add one is in the list's own header, where the eye starts — it sat at
   // the very end of a long list, against the last card, off screen when the page opened
   box.innerHTML=`<div class="pgroup"><div class="ag-head"><h3>Your agents</h3>
       <button class="pact ag-new" onclick="agentEdit('')">＋ New agent</button></div>
-    <div class="ghint">${esc(cfg.agent_name||'Your agent')} hands work to these. ${pInfo('Each one has its own soul, brain, executor, permissions and skills.')}</div>
-    ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
+    <div class="ghint">${esc(cfg.agent_name||'Your agent')} hands work to these, by company and department. ${pInfo('Each one has its own soul, brain, executor, permissions and skills. Companies and departments are set up in the Office’s Company panel.')}</div>
+    ${body||'<div class="ghint mut">No other agents yet. Press ＋ New agent and describe one in a sentence.</div>'}
+    <div class="tlk-actions"><button class="endbtn" onclick="openApp('office');setTimeout(()=>{if(typeof officeCompany==='function')officeCompany(true)},900)">Companies and departments…</button></div></div>`;
+}
+async function agentsOpenCompany(id){
+  try{await apiJSON('/api/companies/active',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({id})});
+    toast('✓ opened');renderAgentsList()}catch(e){toast(String(e.message||e),{kind:'err'})}
+}
+function agCardHTML(a){
+  const opts=cur=>((AGENTS.data||{}).profiles||[]).map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
+  {const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
       <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${esc(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
         <span class="sp"></span><button class="endbtn" onclick="agentEdit('${esc(a.key)}')">Edit</button></div>
@@ -21452,7 +21580,7 @@ async function renderAgentsList(){
         ${a.asks.length||a.blocked.length?`<div><span class="ag-k">May ask</span>${a.asks.map(esc).join(', ')||'<span class="mut">nobody without asking you</span>'}${a.blocked.length?` <span class="mut">· blocked: ${a.blocked.map(esc).join(', ')}</span>`:''}</div>`:''}
         ${a.missions.length?`<div><span class="ag-k">Missions</span>${a.missions.map(esc).join(', ')}</div>`:''}
         ${(a.links||[]).filter(l=>l.they_may_ask||(l.their_missions||[]).length).map(l=>`<div><span class="ag-k">${esc(l.label)}</span>may ask it${l.standing?` · ${l.standing} standing permission${l.standing===1?'':'s'}`:''}${(l.their_missions||[]).length?' · their missions: '+l.their_missions.map(esc).join(', '):''}</div>`).join('')}
-      </div></div>`}).join('')||'<div class="ghint mut">No other agents yet. Press ＋ New agent and describe one in a sentence.</div>'}</div>`;
+      </div></div>`}
 }
 async function agentEdit(name){
   // the Missions editor's wizard, borrowed: one way to define an agent, not two
@@ -22374,7 +22502,7 @@ function drawSAW(){
           <span id="sw-look-status" class="sub" aria-live="polite"></span>
         </div></div>
       <label for="sw-model">Brain</label><select id="sw-model">${opts}</select>
-      <div class="sub saw-hint">A pinned model is used when Settings → Team & Communications lets agents use their own; otherwise it answers on this machine's brain.</div>`;
+      <div class="sub saw-hint">A pinned model is used when Settings → Agents lets agents use their own; otherwise it answers on this machine's brain.</div>`;
   }else if(st===2){
     const chips=Object.keys(SAW_PRESETS).map(p=>`<button class="sawchip" onclick="sawPreset('${p}')">${p}</button>`).join('')
       +`<button class="sawchip" onclick="SAW.d.tools=[];sawRefreshList()">Clear all</button>`;
@@ -23468,7 +23596,7 @@ function flwLinkedHTML(d){
       onchange="flwRoster('${esc(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(x.subagent)} <span class="lbadge">linked team</span></div>
         <div class="d">works on ${esc(String(x.subagent).split('@')[1])}’s machine under their permissions; its answer is untrusted here</div></div></label>`).join('');
-  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → Team & Communications).</p>');
+  if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → Network & Teams).</p>');
   return rows+`<div class="flw-linked"><input id="flw-la" placeholder="their agent, e.g. analyst" autocomplete="off" autocapitalize="off" spellcheck="false">
       <span>@</span><select id="flw-ll">${FLW.links.map(l=>`<option>${esc(l)}</option>`).join('')}</select>
       <button class="sawchip" onclick="flwLinkedWho()">Who?</button><button class="sawchip" onclick="flwAddLinked()">Add</button></div>
@@ -27873,7 +28001,7 @@ function pfWhy(){
   }else if(stage==='rate'){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="PERM.tab='quarantine';refreshApp('permissions')">Open Quarantine</button></div>`;
   }else if(stage==='team'){
-    doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('team')()">Who may ask whom</button></div>`;
+    doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('agent')()">Who may ask whom</button></div>`;
   }
   return `<div class="pf-why ${pfEffCls(eff)}">
     <div class="pf-verdict"><b>${esc(pfEffWord(eff))}</b> at <b>${esc(label)}</b></div>
@@ -32353,7 +32481,7 @@ function playWindowBurst(win,tool){
    (free talks, huddles, one agent asking another), read from the runs they already are
    (fabric.talk_log, `bento team log`).
 
-   Faces — GUI and SUI: Settings → Team & Communications, and the Chat thread.
+   Faces — GUI and SUI: Settings → Agents, and Chat → Huddles.
    TUI: `bento team freetalk` starts and stops one, `bento team log` lists them.
    `var`/function declarations only: the bundle is one script. */
 var FREETALK={talks:[],opts:null,log:null,understood:false,mode:'talk',minutes:5,messages:20,topic:'',agents:null};
@@ -33161,7 +33289,7 @@ function companyOverviewPaint(el){
   el.querySelectorAll('[data-hands]').forEach(x=>x.onchange=()=>companyHands(x));
   el.querySelectorAll('[data-code]').forEach(x=>x.onchange=()=>companyCode(x));
   q('.co-perm').onchange=e=>companyPermMode(e.target);
-  q('.co-grid').onclick=()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
+  q('.co-grid').onclick=()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
     setTimeout(()=>document.getElementById('s-team-matrix')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)};
   el.querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>companyKitOpen(b.dataset.kit));
   el.querySelectorAll('[data-mcpq]').forEach(b=>b.onclick=()=>companyKitSetUp(b.dataset.mcp,b.dataset.mcpq,b.dataset.mcpc));
@@ -34003,7 +34131,7 @@ function kioskScheduled(ev){
   if(!KIOSK.busy&&!KIOSK.muted)kioskSpeak(text);
 }
 /* ================= a community of machines =================
-   Settings → Team & Communications → Community. pool.py is the whole design; this
+   Settings → Network & Teams → Community. pool.py is the whole design; this
    draws /api/pool and changes it. One machine LEADS (holds the keys, lends its brain,
    splits bigger work); small machines JOIN over a linked team, share notes and take
    pieces of work. Who leads next is decided by rank among machines whose own admin
@@ -34100,7 +34228,7 @@ async function poolNotes(){
 /* ================= new machines on the network =================
    provision.py is the whole design; this draws /api/provision. Two faces of it:
 
-   - On a machine that leads (or could): Settings → Team & Communications → New machines.
+   - On a machine that leads (or could): Settings → Network & Teams → New machines.
      Every machine heard waiting is a row (its board, memory, the id to compare with its
      own screen); tick several, type each one's code (or let the community's enrolment
      key prove it), choose what they become (kiosk, one agent, the agent's name) and
@@ -34556,7 +34684,7 @@ function provWaitCard(v){
   if(t.from_hub){el.innerHTML=provHubWaitHTML(t);provHubWire(el);return}
   el.innerHTML=`<b>Waiting to be set up</b>
     <p>${t.locked?`Too many wrong codes. Try again in ${Math.ceil(t.locked/60)} minutes.`
-      :t.pin?`On the Bento that leads your community, open Settings → Team & Communications → Community, choose this machine and type`
+      :t.pin?`On the Bento that leads your community, open Settings → Network & Teams → Community, choose this machine and type`
       :`This machine carries an enrolment key. On the Bento that leads your community, choose it and press Enable.`}</p>
     ${t.pin&&!t.locked?`<div class="prov-pin">${esc(t.pin.slice(0,3))} ${esc(t.pin.slice(3))}</div>`:''}
     <p class="mut">${esc(hw.board||hw.host||'This machine')} · id ${esc(t.id)}</p>
@@ -37401,10 +37529,27 @@ function netLine(ev){
    what it is to Bento, its switches as last read, Controls, Install and Remove. */
 async function renderDevices(body,w){
   const pb=panelShell(body,{title:'Devices',sub:'The machines on your network'});
-  pb.innerHTML=`<div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
-    <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section>`;
+  /* Physical: the devices (the map, the list, Events). Logical: your lead, companies,
+     departments and people, and who each Zero and team talks to (24r-topology.js). */
+  pb.innerHTML=`<div class="seg dev-views" role="tablist">
+      <button role="tab" data-dv="physical">Physical</button><button role="tab" data-dv="logical">Logical</button></div>
+    <div class="dev-physical"><div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
+    <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section></div>
+    <div class="dev-logical" hidden><p class="mut">…</p></div>`;
+  pb.querySelectorAll('[data-dv]').forEach(b=>b.onclick=()=>devViewSet(b.dataset.dv));
+  let v='physical';try{v=localStorage.getItem('devices.view')||'physical'}catch(e){}
+  devViewSet(v);
   await netPaint();
   devEventsLoad();
+}
+async function devViewSet(v){
+  try{localStorage.setItem('devices.view',v)}catch(e){}
+  document.querySelectorAll('.dev-views [data-dv]').forEach(b=>{b.classList.toggle('on',b.dataset.dv===v);b.setAttribute('aria-selected',b.dataset.dv===v)});
+  document.querySelectorAll('.dev-physical').forEach(x=>x.hidden=v!=='physical');
+  const lg=[...document.querySelectorAll('.dev-logical')];lg.forEach(x=>x.hidden=v!=='logical');
+  if(v!=='logical'||!lg.length||typeof topoTreeHTML!=='function')return;
+  try{TOPO.tree=await apiJSON('/api/network/logical')}catch(e){lg.forEach(x=>x.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`);return}
+  lg.forEach(x=>{x.innerHTML=topoTreeHTML(TOPO.tree);topoTreeWire(x)});
 }
 
 /* Events: what happened to the machines here, newest first (devevents.py). Asked for as "in the
@@ -37549,7 +37694,7 @@ function tieFace(t,cls){
 
 function tiesHTML(v){
   const ts=v.ties||[];
-  if(!ts.length)return pRow('Teams and Zeros','',{desc:'Nothing is linked yet. Link a team in Team & Communications, or install Bento on a Pi below.',
+  if(!ts.length)return pRow('Teams and Zeros','',{desc:'Nothing is linked yet. Link a team above, or install Bento on a Pi.',
     f:'teams zeros links linked'});
   const live=ts.filter(t=>!t.stale),old=ts.filter(t=>t.stale);
   const mode=v.zero_updates||'ask',zs=live.filter(t=>t.kind==='zero');
@@ -37595,7 +37740,7 @@ function tieBrainWord(b){
 
 function tieBodyHTML(t){
   const k=tieKey(t);
-  if(!t.mine)return `<div class="tie-body"><p class="mut">This link belongs to ${esc(t.owner_name||'another account')}. They manage it from their own Team & Communications.</p></div>`;
+  if(!t.mine)return `<div class="tie-body"><p class="mut">This link belongs to ${esc(t.owner_name||'another account')}. They manage it from their own Network & Teams.</p></div>`;
   const views=t.kind==='zero'?['events','sessions','schedules','memory','knowledge','logs']:['events','sessions','memory','knowledge','logs'];
   const vw=TIES.view&&TIES.view.k===k?TIES.view:null;
   return `<div class="tie-body">
@@ -37978,6 +38123,145 @@ async function faceFacesPaint(){
     <button class="kf-pick kf-new" data-new="1"><span class="kf-thumb">＋</span>New face</button></div>
     ${KFACE.st.faces.find(f=>f.id===KFACE.st.current&&!f.builtin)?`<button class="endbtn" data-edit="1">Edit this face</button>`:''}`;
   kfaceEditorWire(box,()=>faceFacesPaint());
+}
+/* ---------------- Network & Teams: who each tie talks to, and the maps ----------------
+   Asked for as "the Zeros or the teams can talk to either Aria, which controls all the
+   departments, or to each department only … caution the user that Aria will have access to many
+   things", "Team to agent mapping: show the users what all they have given it access to", and
+   "Maps, where the logical maps and the physical maps can be opened … all the way to the
+   permission level".
+
+   - Mapping (topoMappingPaint): every Zero and linked team, with Talks to (your lead or one
+     department), and what that gives it, read from topology.access: who answers, the people and
+     tools they reach, which of your agents it may also ask, and every permission row naming it.
+     Talking to the lead carries the caution in words.
+   - Maps (topoMapsPaint, and the Devices app's Logical view): the logical map is topology.logical
+     (lead, companies, departments, people, down to each one's executor, brain, tools and
+     permissions, with each tie hung from what it talks to); the physical map is the device map
+     (devMapHTML), the same one Devices opens on.
+   TUI: `bento network map`, `bento network ties`. SUI: this page. `var`/functions only. */
+var TOPO={ties:null,targets:null,access:{},open:{},view:'logical',tree:null};
+
+async function topoTies(){
+  try{return (await apiJSON('/api/network/ties')).ties||[]}catch(e){}
+  // not an admin: your own links, from Team Chat's list
+  try{const d=await apiJSON('/api/team/links');
+    return (d.links||[]).map(lk=>({label:lk.label,kind:lk.kind==='account'?'account':'team',peer:lk.peer_name||lk.label,
+      owner:lk.owner||'',mine:true,talks_to:lk.talks_to||{to:'lead'},agent:{}}))}catch(e){return []}
+}
+function topoKey(t){return (t.owner||'')+'|'+t.label}
+
+async function topoMappingPaint(){
+  const box=document.getElementById('s-net-mapping');if(!box)return;
+  const [ties,targets]=await Promise.all([topoTies(),apiJSON('/api/network/targets').catch(()=>({companies:[],lead:'Aria'}))]);
+  TOPO.ties=ties.filter(t=>!t.stale);TOPO.targets=targets;
+  if(!TOPO.ties.length){box.innerHTML='<p class="mut">No Zeros or linked teams yet. Link one in Discovery and linkage above.</p>';return}
+  await Promise.all(TOPO.ties.filter(t=>t.mine!==false).map(async t=>{
+    try{TOPO.access[topoKey(t)]=await apiJSON(`/api/network/ties/${encodeURIComponent(t.label)}/access?owner=${encodeURIComponent(t.owner||'')}`)}
+    catch(e){TOPO.access[topoKey(t)]={error:String(e.message||e)}}}));
+  box.innerHTML=`<div class="tm-list">${TOPO.ties.map(topoRowHTML).join('')}</div>`;
+  box.querySelectorAll('[data-tm=target]').forEach(sel=>sel.onchange=()=>topoSetTarget(sel));
+  box.querySelectorAll('[data-tm=more]').forEach(b=>b.onclick=()=>{TOPO.open[b.dataset.k]=!TOPO.open[b.dataset.k];topoMappingPaint()});
+}
+function topoTargetSelect(t){
+  const tt=t.talks_to||{to:'lead'},cur=tt.to==='department'?`d|${tt.company||''}|${tt.department}`:'lead';
+  const T=TOPO.targets||{companies:[]};
+  const opts=[`<option value="lead"${cur==='lead'?' selected':''}>${esc(T.lead||'Aria')}: everything (all departments)</option>`];
+  (T.companies||[]).forEach(c=>{if(!(c.departments||[]).length)return;
+    opts.push(`<optgroup label="${esc(c.name)}">`+c.departments.map(d=>{const v=`d|${c.id}|${d.name}`;
+      return `<option value="${esc(v)}"${v===cur||(tt.to==='department'&&!tt.company&&c.open&&tt.department===d.name)?' selected':''}${d.desk?'':' disabled'}>${esc(d.name)}${d.desk?'':' (no desk yet)'}</option>`}).join('')+'</optgroup>')});
+  return `<select data-tm="target" data-label="${esc(t.label)}" data-owner="${esc(t.owner||'')}" aria-label="Who ${esc(t.label)} talks to">${opts.join('')}</select>`;
+}
+function topoRowHTML(t){
+  const k=topoKey(t),a=TOPO.access[k]||{},open=!!TOPO.open[k];
+  const kind=t.kind==='zero'?'Zero':t.kind==='account'?'Account':'Team';
+  const face=(t.agent&&t.agent.look&&typeof avatarRecipeImg==='function')?avatarRecipeImg(t.agent.look,'av-tool',t.peer):`<span class="tm-ini">${esc((t.peer||t.label||'?')[0].toUpperCase())}</span>`;
+  if(t.mine===false)return `<div class="tm-row"><div class="tm-h">${face}<b>${esc(t.label)}</b><span class="brainchip">${kind}</span></div>
+    <p class="mut">Belongs to ${esc(t.owner_name||'another account')}: they map it.</p></div>`;
+  const lead=a.talks_to&&a.talks_to.to==='lead';
+  return `<div class="tm-row${lead?' wide':''}">
+    <div class="tm-h">${face}<b>${esc(t.label)}</b><span class="brainchip">${kind}</span>
+      <span class="sp"></span><label class="tm-to"><span>Talks to</span>${topoTargetSelect(t)}</label></div>
+    ${a.error?`<p class="tie-warn">${esc(a.error)}</p>`:''}
+    ${a.caution?`<p class="tm-caution">⚠ ${esc(a.caution)}</p>`:''}
+    <button class="endbtn tm-more" data-tm="more" data-k="${esc(k)}" aria-expanded="${open}">${open?'Hide':'What it can reach'}</button>
+    ${open?topoAccessHTML(a):''}
+  </div>`;
+}
+function topoAccessHTML(a){
+  const people=(a.reach||[]).map(p=>`<li><b>${esc(p.name)}</b> <span class="mut">${esc(p.hands)}${p.brain?' · '+esc(p.brain):''}</span>
+      <div class="tm-tools">${(p.tools||[]).map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' ')||'<span class="mut">no tools of its own</span>'}</div>
+      ${p.allow||p.deny?`<div class="mut tm-perm">${p.allow} allowed, ${p.deny} refused</div>`:''}</li>`).join('');
+  return `<div class="tm-access">
+    <div><span class="ag-k">Answers here</span>${esc(a.words||'')}${a.persona?` <span class="mut">· ${esc(a.persona)}</span>`:''}</div>
+    ${(a.tools||[]).length?`<div><span class="ag-k">Through</span>${a.tools.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' ')}</div>`:''}
+    <div><span class="ag-k">Can reach</span>${people?`<ul class="tm-people">${people}</ul>`:'<span class="mut">nobody</span>'}</div>
+    <div><span class="ag-k">Also may ask</span>${(a.asks||[]).length?a.asks.map(esc).join(', '):'<span class="mut">none of your agents directly</span>'}</div>
+    <div><span class="ag-k">Permissions</span>${(a.grants||[]).length?`<ul class="tm-grants">${a.grants.map(g=>`<li class="${g.effect==='deny'?'bad':''}">${esc(g.words)}${g.source?` <span class="mut">(${esc(g.source)})</span>`:''}</li>`).join('')}</ul>`:'<span class="mut">none written for it</span>'}
+      <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
+  </div>`;
+}
+async function topoSetTarget(sel){
+  const v=sel.value,body={owner:sel.dataset.owner};
+  if(v==='lead')body.to='lead';else{const [,company,...d]=v.split('|');Object.assign(body,{to:'department',company,department:d.join('|')})}
+  sel.disabled=true;
+  try{const r=await apiJSON(`/api/network/ties/${encodeURIComponent(sel.dataset.label)}/target`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    toast(body.to==='lead'?`${sel.dataset.label} talks to ${r.words} now, who can reach every department and agent`:`✓ ${sel.dataset.label} talks to ${r.words}`,
+      body.to==='lead'?{kind:'warn'}:{})}catch(e){toast(String(e.message||e),{kind:'err'})}
+  TOPO.tree=null;await topoMappingPaint();topoMapsPaint();
+}
+
+/* ---- the maps ---- */
+async function topoMapsPaint(){
+  const box=document.getElementById('s-net-maps');if(!box)return;
+  try{TOPO.tree=await apiJSON('/api/network/logical')}catch(e){box.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`;return}
+  const v=TOPO.view;
+  box.innerHTML=`<div class="seg tp-seg" role="tablist">${[['logical','Logical'],['physical','Physical']].map(([k,l])=>
+      `<button role="tab" class="${v===k?'on':''}" aria-selected="${v===k}" data-tp="${k}">${l}</button>`).join('')}
+      <span class="sp"></span><button class="endbtn" onclick="topoOpen('${v}')">Open it full</button></div>
+    <p class="ghint">${v==='logical'?'Your lead, your companies, their departments and people, and who each Zero and team talks to. Tap anyone to see their permissions.'
+      :'The devices this hub is connected to: Zeros, linked teams and the rest of your network.'}</p>
+    <div class="tp-body">${v==='logical'?topoTreeHTML(TOPO.tree):((typeof NET!=='undefined'&&NET.v&&typeof devMapHTML==='function')?devMapHTML(NET.v):'<p class="mut">The device map needs an admin: it names the machines on this network.</p>')}</div>`;
+  box.querySelectorAll('[data-tp]').forEach(b=>b.onclick=()=>{TOPO.view=b.dataset.tp;topoMapsPaint()});
+  topoTreeWire(box);
+  if(v==='physical'&&typeof devMapWire==='function')devMapWire(box);
+}
+function topoOpen(view){
+  try{localStorage.setItem('devices.view',view)}catch(e){}
+  openApp('devices');setTimeout(()=>{if(typeof devViewSet==='function')devViewSet(view)},500);
+}
+function topoTieChips(ts){
+  return (ts||[]).map(x=>`<span class="tp-tie ${esc(x.kind||'team')}${x.answering===false?' off':''}" title="${esc(x.label)} talks to this">${x.kind==='zero'?'◫':'⇄'} ${esc(x.label)}${x.missing?' · '+esc(x.missing)+' is gone':''}</span>`).join('');
+}
+function topoPersonHTML(p,path){
+  const on=!!TOPO.open['p:'+path];
+  const fams=Object.entries(p.families||{});
+  return `<li class="tp-li"><button class="tp-node person${p.head?' head':''}" data-tpk="p:${esc(path)}" aria-expanded="${on}">
+      ${typeof avatarImg==='function'?avatarImg(p.lead?'@agent':p.name,'av-tool'):''}<b>${esc(p.label||p.name)}</b>${p.head?' <span class="mut">head</span>':''}</button>
+    ${on?`<div class="tp-perm">
+      <div><span class="ag-k">Executor</span>${esc(p.hands)}${p.hands_summary?` <span class="mut">${esc(p.hands_summary)}</span>`:''}</div>
+      ${p.brain?`<div><span class="ag-k">Brain</span>${esc(p.brain)}</div>`:''}
+      <div><span class="ag-k">Tools</span>${(p.tools||[]).map(x=>`<span class="brainchip">${esc(x==='*'?'every tool':x)}</span>`).join(' ')||'<span class="mut">none</span>'}</div>
+      <div><span class="ag-k">Permissions</span>${p.autonomy?'autonomy '+esc(p.autonomy)+' · ':''}${p.allow} allowed, ${p.deny} refused${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}
+        <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
+      ${(p.missions||[]).length?`<div><span class="ag-k">Missions</span>${p.missions.map(esc).join(', ')}</div>`:''}
+    </div>`:''}</li>`;
+}
+function topoTreeHTML(tree){
+  if(!tree)return '<p class="mut">…</p>';
+  const L=tree.lead||{};
+  return `<div class="tp-tree"><ul class="tp-ul root"><li class="tp-li">
+    <div class="tp-row">${topoPersonHTML({...L,lead:true},'lead').replace(/^<li class="tp-li">|<\/li>$/g,'')}<span class="tp-ties">${topoTieChips(L.ties)}</span></div>
+    <ul class="tp-ul">${(tree.companies||[]).map((c,ci)=>`<li class="tp-li"><div class="tp-node company${c.open?' open':''}">▦ <b>${esc(c.name)}</b>${c.open&&!c.default?' <span class="mut">open</span>':''}${c.about?` <span class="mut tp-about">${esc(c.about)}</span>`:''}</div>
+      <ul class="tp-ul">${(c.departments||[]).map((d,di)=>`<li class="tp-li"><div class="tp-row"><div class="tp-node dept" style="--dc:${esc(d.color||'')}">▸ <b>${esc(d.name)}</b></div><span class="tp-ties">${topoTieChips(d.ties)}</span></div>
+          <ul class="tp-ul">${(d.people||[]).map(p=>topoPersonHTML(p,ci+'/'+di+'/'+p.name)).join('')}</ul></li>`).join('')}
+        ${(c.people||[]).map(p=>topoPersonHTML(p,ci+'//'+p.name)).join('')}
+        ${c.auditor?topoPersonHTML({...c.auditor,label:c.auditor.name+', checks every department'},ci+'/auditor'):''}</ul></li>`).join('')}</ul>
+  </li></ul></div>`;
+}
+function topoTreeWire(box){
+  box.querySelectorAll('[data-tpk]').forEach(b=>b.onclick=()=>{TOPO.open[b.dataset.tpk]=!TOPO.open[b.dataset.tpk];
+    const host=b.closest('.tp-body,.dev-logical');if(host){host.innerHTML=topoTreeHTML(TOPO.tree);topoTreeWire(host)}});
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

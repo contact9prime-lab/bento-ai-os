@@ -41,6 +41,56 @@ Bento listens for new Pis whatever its brain. Before, only a machine that could 
 listened, which a hub on Claude Code can't, so it heard no Pi at all. A Pi that was already on
 when Bento started has nothing new to say, so press **Look at the network** to find it.
 
+## Network & Teams
+
+Settings → **Network & Teams** is Network and the old Team & Communications in one tab, in three
+parts:
+
+- **Discovery and linkage**: the machines on your network and the teams you link with. Finding
+  and installing Bento on a machine, new machines and Make a Zero, linked teams, the community,
+  and messages with the people on linked teams. Your agents working together (models, who may ask
+  whom, huddles) moved to Settings → Agents.
+- **Team to agent mapping**: who each Zero and team talks to here, below.
+- **Maps**: the logical map and the physical one, below.
+
+### Team to agent mapping
+
+Every Zero and linked team has **Talks to**: your lead agent, or one department of one of your
+companies.
+
+- **Your lead agent** can hand the work to every company, department and agent you have. The
+  row says so in amber, with how many agents that is and through which tools. Links made before
+  this keep talking to the lead, so nothing changes on an update until you choose.
+- **A department** keeps the team to that department. Its desk does the work, with its own people
+  and their permissions, the company's persona and its sign-offs, and the question is marked as
+  coming from outside. Nothing else here is reachable through it. A department of a company that
+  isn't open works too.
+
+**What it can reach** lists everything the choice gives it: who answers, the people they can
+reach with each one's tools, executor and permissions, which of your agents it may also ask
+directly, and every permission row written for it.
+
+![Team to agent mapping: a Zero talking to Sales, and a team talking to the lead with the caution](screenshots/net-mapping.png)
+
+![What a team talking to the lead can reach: every agent, with its tools and permissions](screenshots/net-mapping-access.png)
+
+From a terminal: `bento network talks` lists them, `bento network talks studio Sales` points one at a
+department (`--company ID` for another company, `lead` for the lead), and it prints what that gives.
+
+### Maps
+
+- **Logical**: your lead at the top, each company you keep, its departments and their people, and
+  each Zero and team hung from what it talks to. Tap anyone to see their executor, brain, tools,
+  permissions and missions.
+- **Physical**: the devices this hub is connected to, the same map Devices opens on.
+
+**Open it full** opens the Devices app on that view; Devices has **Physical** and **Logical** at the top.
+`bento network map` prints the logical one.
+
+![The logical map: Aria, Acme Tiles and its departments, a Zero on Sales, a team on Aria, and one agent's permissions](screenshots/net-logical.png)
+
+![The logical map on a phone, in the Devices app](screenshots/devices-logical-phone.png)
+
 ## Teams and Zeros
 
 Under the machines, **Teams and Zeros** lists every tie this computer has with another Bento: the
@@ -55,8 +105,8 @@ the tab opens and again with **Check them now**.
 - **Its work here runs on.** Which of this computer's brains answers for it: the machine's own,
   one model from a provider, or an agent like Claude Code. A Pi's chats can run on a local model
   while your own chats stay on Claude Code.
-- **It may ask.** Which of your agents its agents may ask. These are the same permissions as in
-  Team & Communications.
+- **It may ask.** Which of your agents its agents may ask directly, beside who it talks to. These
+  are the same permissions as in Settings → Agents.
 - **Sessions, Memory, Knowledge, Logs.** That tie's own rows and nothing else. A Zero's are its
   section here, exactly: nothing of yours and nothing of another Zero's. A team keeps its memory on
   its own machine, so it has sessions and log lines only.
@@ -274,7 +324,7 @@ you typed is handed to `sudo` on its standard input, and never on a command line
 **Disconnect** removes what ties that machine to this one. Each tie is its own tick:
 
 - **a link**: your agents and its agents stop asking each other, and the permissions that named
-  the link go (the same as *Remove* in Team & Communications);
+  the link go (the same as *Remove* in Network & Teams);
 - **its place in your community**: it stops thinking with this machine's brain;
 - **this machine's SSH key on it**: Bento can no longer log in there without a password.
 
@@ -479,6 +529,8 @@ bento network hide 192.168.1.40                 # to Hidden (forget does the sam
 bento network show 192.168.1.40                 # back on the list
 bento network rekey pi-kitchen                  # it was reformatted: forget its old SSH key
 bento network events [pi-kitchen]               # what happened to the machines here
+bento network map                               # the logical map: lead, companies, departments, people
+bento network talks studio Sales                # who a team or Zero talks to here, and what it gives it
 bento network firewall                          # this computer's firewall, and the ports to open
 bento network firewall open                     # open them (asks for your password)
 bento network controls pi-kitchen --user pi     # read its switches

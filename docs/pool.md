@@ -11,10 +11,10 @@ community.
 ## Start one
 
 1. **Link the machines.** A community is built on [linked teams](team.md#linked-teams): on the
-   Pi, *Settings → Team & Communications → Linked teams*, type the leader's address and
+   Pi, *Settings → Network & Teams → Linked teams*, type the leader's address and
    press **Ask**. Approve it on the leader; both screens show the same six digits. Both
    machines need *Accept linked teams* on.
-2. **Start the community** on the leader: *Settings → Team & Communications → Community → Start*. The leader
+2. **Start the community** on the leader: *Settings → Network & Teams → Community → Start*. The leader
    needs a brain of its own (a model with a key, or a local model).
 3. **Ask to join** on each Pi: pick the leader in *Join a community*. A Pi with no brain of its
    own thinks with the leader's brain from then on.

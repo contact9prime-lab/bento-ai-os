@@ -3191,6 +3191,28 @@ installs now take the installer's account (`make_key(owner=)`, `--for`), `adopt`
 re-writes `edgecode.grant`/`hearing.grant_hub` in the new owner's store (its requests enter that account).
 Probing needs the STORED link (`teamlink._load()`): `links()` strips `peer_ca` and a call without it fails.
 
+**A tie talks to the lead or to ONE department, and the department's desk does the work** (`ties.target_of`/
+`set_target`/`target_words`, `lk["talks_to"]`, `ControlPlane._link_department`, `department_task(company=, tainted=)`,
+`company.cfg_of`/`departments_of`, `topology.logical`/`access`, `/api/network/targets|logical`,
+`/api/network/ties/{label}/target|access`, `bento network map|talks`; `tests/test_agents_network_redesign.py`). Asked
+for as "the Zeros or teams talk to Aria, who controls all departments, or to each department only … caution the user,
+better restrict". Four rules:
+- **A department link never reaches the lead.** `zero_chat` and `_lead_for_link` branch before the lead's loop and run
+  `department_task` on that desk, `tainted=True` (the input artifact is marked), in the link's company (a parked one
+  through `cfg_of`). A department that is gone refuses in a sentence; it never falls back to the lead.
+- **A link that says nothing talks to the lead**, as before the change, so an update changes nobody's answers; the
+  mapping row says in amber what that hands over (`topology.access`'s `caution`, which excludes the auditor: no roster).
+- **The map and the access disclosure are one reading**, agentmap.overview per agent. The auditor stands with the
+  companies (`company.auditor`), never as a Default-company agent.
+- **Settings has no Team & Communications tab** (`SETTAB_ALIAS={team:'network'}`, read by `settingsGo` and
+  `placeSettings`): models, who may ask whom, limits, huddles and free talk are in Agents (grouped by company and
+  department, with Default company for the rest); linked teams, community, messages, Team to agent mapping and Maps are in
+  Network & Teams. `tests/test_settings_tabs.py` refuses `placeSettings('team')` and `data-t="team"` coming back.
+
+**Chat's list is in tabs, decided once** (`chattabs.home_of`/`tag`/`search`, `/api/conversations?q=&tab=`,
+`10-chat.js` `CONVTAB`/`chatNewHuddle`). Desktop, Channels, Devices, Huddles, App builder. A conversation has one home tab,
+and one with a `huddle` message is ALSO listed under Huddles. Search reads titles and message content.
+
 **A machine's address is free to move; its certificate is not** (`teamlink.note_seen`/`relocate`/`candidates`/
 `ON_MOVED`, `server._ties_watch`/`_ties_check`/`_tie_moved`; `tests/test_device_moves.py`, live run
 `packaging/dev/provision-e2e/dhcp_run.py`). Reported as "the Pi's IP changes time and again". Every machine link

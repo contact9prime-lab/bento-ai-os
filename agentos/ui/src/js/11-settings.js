@@ -116,8 +116,7 @@ const pSelect=(id,opts,cur)=>`<select id="${id}">${opts.map(([v,l])=>
 const SETTINGS_TABS=[
   ['ai','✦','AI providers','sparkles'],
   ['agent','◈','Agents','agent'],
-  ['team','⚇','Team & Communications','team'],
-  ['network','⌖','Network','wifi'],
+  ['network','⌖','Network & Teams','wifi'],
   ['permissions','⛨','Permissions','shield'],
   ['executors','⇥','Executors','executors'],
   ['channels','◇','Channels','channels'],
@@ -128,7 +127,10 @@ const SETTINGS_TABS=[
   ['look','◧','Appearance','look'],
   ['system','⚙','System','system'],
 ];
-let SETTAB=localStorage.getItem('settab')||'ai';
+/* Team & Communications was merged into Network & Teams (2026-10): an old stored tab or link
+   lands there. */
+var SETTAB_ALIAS={team:'network'};
+let SETTAB=(t=>SETTAB_ALIAS[t]||t)(localStorage.getItem('settab')||'ai');
 
 async function renderSettings(body){
   await loadConfig();
@@ -335,24 +337,10 @@ function setTab(body,all){
       pRow('Build model','<select id="s-build-model"><option value="">Use my default model</option></select>',
         {desc:'The model App Studio builds apps with.',more:'AgentOS won’t switch to another model on its own.',f:'build model app studio'}),
     ],{f:'agent workspace steps history build'}));
-    P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
-    setTimeout(renderAgentsList,0);
-    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><div class="ghint">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</div><div id="agents-graph" class="agraph mut">loading…</div></div>`);
-    setTimeout(renderAgentsGraph,0);
-
-    /* Sharing the agent belongs on the page that answers "who is my agent" —
-       11c-agentshare.js renders it, agentbundle.py decides everything. */
-    P.push(`<div id="agent-share-box" data-f="share fork agent bundle export import publish host"><div class="pgroup"><h3>Share this agent</h3><div class="ghint mut">checking…</div></div></div>`);
-    setTimeout(renderAgentShare,0);
-  }
-  if(want('team')){
-    /* Team & Communications: everything about your agents working with each other,
-       with other teams and with other machines, and the people on those teams. It
-       used to be half of the Agents page; Agents now answers only "who are my agents".
-       Each piece keeps its own painter (paintTeamBrains, paintTeamMatrix, paintTeamLinks,
-       freeTalkPaint, talkLogPaint, poolPaint, provPaint). TUI: `bento team`, `bento link`,
-       `bento pool`. SUI: this page; nothing here touches the compositor. */
-    P.push(`<h2>Team &amp; Communications</h2><p class="lead">How your agents work together, and with other teams and machines. ${pInfo('Asking each other, huddles and free talk, linked teams on other machines or accounts, messages with the people on them, and a community of small machines.')}</p>`);
+    /* Moved here from Team & Communications (2026-10): the models each agent answers on, how
+       agents and departments talk to each other, and huddles are about your agents, so they
+       live with them. Asked for as "agents answer on their own providers should move to
+       agents … the huddle must be part of the agents itself". */
     /* The team: each specialist may answer on its OWN provider — a researcher on a
        local model, a validator on Claude, a writer on GPT — and they can hand work to
        each other and talk it through in a huddle. One switch turns that off (one
@@ -394,7 +382,11 @@ function setTab(body,all){
         {stack:true,desc:'How far agents can go when they ask each other.',more:'Limits count per task and apply from the next question.',
          f:'team limits hops budget clarify ask back huddle rounds agents swarm'}),
     ],{f:'team agents message ask each other matrix limits swarm democracy'}));
-    P.push(pGroup('Free talk',[
+    P.push(pGroup('Huddles and free talk',[
+      pRow('Huddle','<button class="endbtn" onclick="openApp(\'chat\');setTimeout(()=>{if(typeof chatNewHuddle===\'function\'){convTab(\'huddles\');chatNewHuddle()}},400)">Start a huddle</button>',
+        {desc:'Two to four agents talk a question through, each on its own brain.',
+         more:'Start a message with two or more names, like @researcher @writer. Every huddle is kept in Chat under Huddles.',
+         f:'huddle agents talk together question names chat huddles'}),
       /* Free talk (24f-freetalk.js): the one time agents talk with nobody asking them
          anything, so it is started here by the person, after a caution they tick, and it
          ends on its clock or its message count. And the one place that lists every time
@@ -407,7 +399,35 @@ function setTab(body,all){
         {stack:true,desc:'Every time your agents talked to each other.',
          more:'Free talks, huddles and one agent asking another. Open one in Chat, or replay its run with every step.',
          f:'agent to agent chat talk log history conversation huddle ask transcript record'}),
-    ],{f:'team free talk agents talk log'}));
+    ],{f:'huddle free talk agents talk log'}));
+    setTimeout(paintTeamBrains,0);
+    setTimeout(paintTeamMatrix,0);
+    setTimeout(paintTeamLimits,0);
+    setTimeout(freeTalkPaint,0);
+    setTimeout(talkLogPaint,0);
+    P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
+    setTimeout(renderAgentsList,0);
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><div class="ghint">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</div><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    setTimeout(renderAgentsGraph,0);
+
+    /* Sharing the agent belongs on the page that answers "who is my agent" —
+       11c-agentshare.js renders it, agentbundle.py decides everything. */
+    P.push(`<div id="agent-share-box" data-f="share fork agent bundle export import publish host"><div class="pgroup"><h3>Share this agent</h3><div class="ghint mut">checking…</div></div></div>`);
+    setTimeout(renderAgentShare,0);
+  }
+  if(want('network')){
+    /* Network & Teams: Team & Communications merged into Network (2026-10), in three parts.
+       Discovery and linkage: the machines here (24n-network.js), setting machines up
+       (24j-provision.js), linked teams, the community and the people on them. Team to agent
+       mapping: who each Zero and team talks to here (your lead or one department) and what that
+       gives it (24r-topology.js, topology.py). Maps: the logical map (lead, companies,
+       departments, people, permissions) and the physical one (the devices). The machine list
+       is admin only; linked teams and the mapping of your own are anybody's. TUI: `bento
+       network`, `bento link`, `bento pool`, `bento network map`. */
+    P.push(`<h2>Network &amp; Teams</h2><p class="lead">The machines on your network, the teams you link with, and who they talk to here. ${pInfo('Bento looks only at this machine’s own private network. Anything it runs on another machine is shown before it runs, and is a ledger row.')}</p>`);
+    P.push(`<h3 class="net-part">Discovery and linkage</h3>`);
+    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates hidden show again"><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi add a machine"><div id="s-prov"></div></div>`);
     P.push(pGroup('Linked teams',[
       /* Linked teams: another Bento (mutual TLS) or another account here. The way in is
          Ask → Approve with six digits on both screens (the OAuth device flow); an invite
@@ -423,14 +443,7 @@ function setTab(body,all){
        One machine leads and lends its brain; small machines join, share notes and take
        pieces of bigger work. The machine's, so admin only. Terminal: `bento pool`. */
     P.push(`<div class="pgroup" data-f="community pool cluster machines raspberry pi leader elect shared memory notes members join"><h3>Community</h3><div id="s-pool"><div class="prow"><div class="pl"><small>…</small></div></div></div>
-      <div class="prow"><div class="pl"><small>New machines, Make a Zero and installing Bento on the network are in Network.</small></div><div class="pc"><button class="endbtn" onclick="placeSettings('network')()">Open Network</button></div></div></div>`);
-    setTimeout(()=>{if(typeof poolPaint==='function')poolPaint()},0);
-    setTimeout(paintTeamBrains,0);
-    setTimeout(paintTeamLinks,0);
-    setTimeout(paintTeamMatrix,0);
-    setTimeout(paintTeamLimits,0);
-    setTimeout(freeTalkPaint,0);
-    setTimeout(talkLogPaint,0);
+</div>`);
     P.push(pGroup('Messages',[
       pRow('People on linked teams','<button class="endbtn" onclick="openApp(\'teamchat\')">Open Team Chat</button> <button class="endbtn" onclick="tcRename()">Your name…</button>',
         {desc:'Write to the people on your linked teams. Your agents never read these.',
@@ -439,15 +452,13 @@ function setTab(body,all){
       pRow('Reach your agent','<button class="endbtn" onclick="settingsGo(\'channels\')">Channels</button>',
         {desc:'Telegram, WhatsApp and the other ways to talk to your agent.',f:'channels telegram whatsapp reach phone'}),
     ],{f:'messages communications team chat channels'}));
-  }
-  /* Network (24n-network.js, inventory.py, harden.py): every machine on this network, Bento
-     or not, with install and Secure it; then setting machines up (24j-provision.js), moved
-     here from Team & Communications. Admin only: it reaches other machines. */
-  if(want('network')){
-    P.push(`<h2>Network</h2><p class="lead">The machines on your network: install Bento on them and keep them secure. ${pInfo('Bento looks only at this machine’s own private network. Anything it runs on another machine is shown before it runs, and is a ledger row.')}</p>`);
-    P.push(`<div class="pgroup" data-f="network inventory devices machines scan discover install secure firewall ssh password updates hidden show again"><div id="s-net"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
-    P.push(`<div class="pgroup" data-f="provision new machines discover enrolment key zero make a zero standard setup sd card ssh key raspberry pi add a machine"><div id="s-prov"></div></div>`);
-    setTimeout(()=>{if(typeof netPaint==='function')netPaint();if(typeof provPaint==='function')provPaint()},0);
+    P.push(`<h3 class="net-part">Team to agent mapping</h3>`);
+    P.push(`<div class="pgroup" data-f="mapping team zero talks to department lead agent access permissions what it can reach caution"><div class="ghint">Who each Zero and linked team talks to here, and everything that gives it. ${pInfo('Your lead agent can reach every company, department and agent. A department keeps a team to that department’s people and permissions.')}</div><div id="s-net-mapping"><p class="mut">…</p></div></div>`);
+    P.push(`<h3 class="net-part">Maps</h3>`);
+    P.push(`<div class="pgroup" data-f="map topology logical physical devices departments companies permissions"><div id="s-net-maps"><p class="mut">…</p></div></div>`);
+    setTimeout(()=>{if(typeof netPaint==='function')netPaint();if(typeof provPaint==='function')provPaint();
+      if(typeof poolPaint==='function')poolPaint();if(typeof paintTeamLinks==='function')paintTeamLinks();
+      if(typeof topoMappingPaint==='function')topoMappingPaint();if(typeof topoMapsPaint==='function')topoMapsPaint()},0);
   }
   if(want('permissions')){
     /* Permissions: what your agents may do on their own, how outside content is
@@ -485,7 +496,7 @@ function setTab(body,all){
     P.push(pGroup('Elsewhere',[
       pRow('What each agent can reach','<button class="endbtn" onclick="settingsGo(\'executors\')">Executors</button>',
         {desc:'Tools, folders, web and MCP servers. A limit no permission goes past.',f:'executors hands reach folders tools limit jail'}),
-      pRow('Who may ask whom','<button class="endbtn" onclick="settingsGo(\'team\')">Team &amp; Communications</button>',
+      pRow('Who may ask whom','<button class="endbtn" onclick="settingsGo(\'agent\')">Agents</button>',
         {desc:'Which of your agents may ask which, and what linked teams may ask.',f:'matrix who may ask whom linked team standing'}),
       pRow('Per channel','<button class="endbtn" onclick="settingsGo(\'channels\')">Channels</button>',
         {desc:'How much Telegram, WhatsApp and the others are trusted.',f:'channel permissions trust telegram whatsapp'}),
@@ -1528,10 +1539,10 @@ async function paintTeamLimits(){
    screen to approve on. Everything is a call to /api/team/links*. */
 var TEAM_INVITE=null;
 function openLinkedTeams(){
-  SETTAB='team';try{localStorage.setItem('settab','team')}catch(e){}
+  SETTAB='network';try{localStorage.setItem('settab','network')}catch(e){}
   openApp('settings');
   setTimeout(()=>{
-    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="team"]')?.click();
+    if(!document.getElementById('s-team-links'))document.querySelector('.prefs-side button[data-t="network"]')?.click();
     setTimeout(()=>{const e=document.getElementById('s-team-links');if(e){paintTeamLinks();e.scrollIntoView({block:'start',behavior:'smooth'})}},120);
   },250);
 }

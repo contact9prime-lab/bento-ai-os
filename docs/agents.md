@@ -214,15 +214,24 @@ builds with. Below them, **Your agents** shows each specialist on one card:
 **Edit** opens the agent editor (soul, tools, skills, autonomy). **＋ New agent** creates
 one.
 
+The Agents tab also has everything about your agents working together:
+
+- **Your agents, by company.** Each company you keep, its departments with their heads, and the
+  agents in them. Agents in no company are under **Default company**.
+- **Models**: each agent's own provider.
+- **Asking each other**: ask me, swarm, democracy or off, who may ask whom (agents, or
+  departments when the company says so), and the limits.
+- **Huddles and free talk**: start a huddle, let them talk, and the log of every
+  agent-to-agent conversation. Every huddle is also kept in Chat under **Huddles**.
+
 Two tabs sit beside Agents:
 
-- **Team & Communications** has everything about agents working together, in this order:
-  - **Models**: each agent's own provider;
-  - **Asking each other**: ask me, swarm, democracy or off, who may ask whom, and the limits;
-  - **Free talk**, and the log of every agent-to-agent conversation;
-  - **Linked teams**;
-  - **Community**: the community of machines, new machines, and devices without Bento;
-  - **Messages** with the people on linked teams.
+- **Network & Teams** is the machines and the teams you link with, in three parts:
+  - **Discovery and linkage**: the machines on your network, new machines and Make a Zero,
+    linked teams, the community, and messages with the people on linked teams;
+  - **Team to agent mapping**: who each Zero and team talks to here, and what that gives it
+    ([Network](network.md#team-to-agent-mapping));
+  - **Maps**: the logical map and the physical one.
 - **Permissions** has what your agents may do on their own:
   - autonomy, and how content from a web page or an MCP server is treated;
   - a count of what is allowed right now, by where it came from (you, missions, the matrix,
@@ -235,7 +244,7 @@ Two tabs sit beside Agents:
 
 ![Settings → Permissions: what is allowed now by source, waiting for review, and the ledger check](screenshots/settings-permissions.png)
 
-![Settings → Team & Communications: each agent's provider, messaging mode and free talk](screenshots/settings-team.png)
+![Settings → Agents: your agents grouped by company and department](screenshots/agents-companies.png)
 
 ![The same page on a 390px phone](screenshots/settings-agents-phone.png)
 

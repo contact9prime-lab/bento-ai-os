@@ -4318,8 +4318,18 @@ async def api_put_config(patch: dict):
 
 
 @app.get("/api/conversations")
-async def api_conversations():
-    return {"conversations": state["store"].list_conversations()}
+async def api_conversations(q: str = "", tab: str = ""):
+    """Every conversation, each with the Chat tab it lives under (chattabs.py). `q` keeps the
+    ones whose title or any message says it; `tab` keeps one tab's."""
+    from . import chattabs
+    convs = state["store"].list_conversations(limit=300 if q or tab else 100)
+    if q:
+        hit = chattabs.search(state["store"], q)
+        convs = [c for c in convs if c["id"] in hit]
+    convs = chattabs.tag(state["store"], convs)
+    if tab in chattabs.TABS:
+        convs = [c for c in convs if tab in c["tabs"]]
+    return {"conversations": convs, "tabs": [{"id": t, "name": chattabs.NAMES[t]} for t in chattabs.TABS]}
 
 
 @app.post("/api/conversations")
@@ -14025,6 +14035,78 @@ async def api_network_tie_brain(label: str, body: dict):
                              f"{label}'s work here runs on {got.get('executor') or 'this machine'}"
                              + (f" ({got['model']})" if got.get("model") else ""))
     return {"ok": True, "brain": got}
+
+
+def _tie_mine(label: str, owner) :
+    """A tie this person may map: their own, or the machine's when they are an admin."""
+    owner = owner or ""
+    if not owner and usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return None, JSONResponse({"error": "that link belongs to the machine: an admin maps it"}, status_code=403)
+    return _tie(label, owner)
+
+
+@app.get("/api/network/targets")
+async def api_network_targets():
+    """Who a tie can talk to here: your lead agent, or one department of one of your companies
+    (each with whether it has a desk to work on). The choices Team → agent mapping offers."""
+    from . import company as companymod
+    cfg = state["cfg"]
+    out = []
+    for co in companymod.companies(cfg):
+        ccfg = companymod.cfg_of(cfg, co["id"])
+        if ccfg is None:
+            continue
+        out.append({"id": co["id"], "name": co["name"], "open": co["active"],
+                    "departments": [{"name": d["name"], "desk": bool(d.get("desk")), "people": len(d["members"])}
+                                    for d in companymod.departments(ccfg, state["store"]) if d["members"]]})
+    return {"lead": cfg.get("agent_name") or "Aria", "companies": out}
+
+
+@app.put("/api/network/ties/{label}/target")
+async def api_network_tie_target(label: str, body: dict):
+    """Who a tie talks to here: {"to": "lead"} or {"to": "department", "company", "department"}.
+    Written in the link owner's account (their companies), and a ledger row."""
+    from . import ties as tiesmod
+    b = body or {}
+    lk, err = _tie_mine(label, b.get("owner"))
+    if err:
+        return err
+    owner = lk.get("owner") or ""
+    with usersmod.as_user(owner):
+        try:
+            got = tiesmod.set_target(owner, label, b, state["cfg"], state["store"])
+        except (ValueError, LookupError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        words = tiesmod.target_words(state["cfg"], got)
+        fabricmod.audit_team(state["store"], "link.target", f"link:{label}",
+                             f"{label} talks to {words}" + (" (everything the lead can reach)" if got["to"] == "lead" else ""))
+    await _tie_tell({"type": "team_links"}, owner)
+    return {"ok": True, "talks_to": got, "words": words}
+
+
+@app.get("/api/network/ties/{label}/access")
+async def api_network_tie_access(label: str, owner: str = ""):
+    """What one tie is given here, in words (topology.access): who answers it, what they reach,
+    which of your agents it may ask directly, and every permission row that names it."""
+    from . import topology
+    lk, err = _tie_mine(label, owner)
+    if err:
+        return err
+    with usersmod.as_user(lk.get("owner") or ""):
+        return topology.access(state["cfg"], state["store"], lk)
+
+
+@app.get("/api/network/logical")
+async def api_network_logical():
+    """The logical map (topology.logical): the lead, your companies, their departments and people
+    down to their permissions, and every tie hung from what it talks to. Yours; an admin also sees
+    the machine's ties."""
+    from . import ties as tiesmod
+    from . import topology
+    me = usersmod.current() or ""
+    admin = (not usersmod.enabled()) or usersmod.is_admin(me)
+    ties = [t for t in tiesmod.ties(None) if t["owner"] == me or (admin and not t["owner"])]
+    return topology.logical(state["cfg"], state["store"], ties)
 
 
 @app.delete("/api/network/ties/{label}/schedules/{tid}")

@@ -5,7 +5,7 @@ pasting one line. It installs Bento in Light mode, joins your Tailscale network 
 to, finds your main machine (the **hub**) and is set up from there with nobody at it. After
 that, what you ask it is worked on by the hub's team, and any file they make comes back to it.
 
-![Settings → Team & Communications on the hub: the one line, and the standard setup](screenshots/zero-make-a-zero.png)
+![Settings → Network & Teams on the hub: the one line, and the standard setup](screenshots/zero-make-a-zero.png)
 
 ## Make one
 
@@ -111,6 +111,14 @@ Files come back with the answer. Anything the hub's answer names by its full pat
 hub's workspace, travels back and lands in the Zero's workspace under `from-<hub>/`. Up to 8
 files, 1.5 MB each and 2.5 MB in all; what's too big is named in the answer and stays on the
 hub. Each time, the hub writes a `link.files` row.
+
+## Who it talks to on the hub
+
+A Zero talks to your lead agent, or to one department of one of your companies: Network & Teams →
+Team to agent mapping. With a department, the department's desk answers what is said at the Pi,
+with that department's people and permissions and the company's persona, and the Pi's screen
+shows its answer. Schedules made at the Pi run the same way. With the lead, the row says in amber
+that the lead can reach every department and agent.
 
 ## Its memory, graph and soul live on the hub
 

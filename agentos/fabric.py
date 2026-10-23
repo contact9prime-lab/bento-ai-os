@@ -2015,6 +2015,22 @@ class ControlPlane(usersmod.Scoped):
                    + ("allowed by the person here" if ok else "not allowed (no, or nobody here)"))
         return ok
 
+    async def _link_department(self, lk: dict, t: dict, task: str, cid: str, approver,
+                               space: str = "") -> tuple[str, str]:
+        """A link that talks to ONE department (ties.target_of): its desk works the task, with
+        its own people and permissions, the company's persona and its sign-offs, marked as from
+        outside. Nothing else on this machine is reachable from it: no lead, no other department,
+        no specialist outside that desk's roster. (answer, department) or a sentence."""
+        try:
+            got = await self.department_task(t["department"], task, conversation_id=cid,
+                                             approver=approver, surface="team",
+                                             company=t.get("company") or "", tainted=True,
+                                             space_id=space)
+        except (ValueError, PermissionError) as e:
+            return f"{t['department']} could not take it: {e}", t["department"]
+        res = got["result"] or {}
+        return (res.get("content") or res.get("fault") or "(no answer)").strip(), got["department"]
+
     async def _lead_for_link(self, lk: dict, frm: str, req: dict, say=None) -> dict:
         """A whole task from a linked team, handed to this machine's lead (the link's cell
         allowed it). The lead works it like the lead it is: its specialists, departments and
@@ -2082,8 +2098,19 @@ class ControlPlane(usersmod.Scoped):
             if ev.get("type") == "tool_start":
                 teamlink.report(f"{name} is using {str(ev.get('name') or 'a tool').removeprefix('mcp__bento__')}")
             await self._ui(ev)
-        teamlink.report(f"{name}, the lead here, is working on it")
         from . import ties as tiesmod
+        target = tiesmod.target_of(lk)
+        if target["to"] == "department":
+            teamlink.report(f"{target['department']} is working on it")
+            text, dept = await self._link_department(lk, target, question, cid, here, space)
+            self.store.add_message(cid, "assistant", text, {"team": lk["label"], "department": dept})
+            await self._ui({"type": "conversations"})
+            if say:
+                with contextlib.suppress(Exception):
+                    await say({"phase": "reply", "from": dept, "to": who, "text": " ".join(text.split())[:1200]})
+            return {"ok": True, "text": text[:6000], "model": "", "provider": "", "department": dept,
+                    **self._ship_back(lk, text, since=started)}
+        teamlink.report(f"{name}, the lead here, is working on it")
         engine, bmodel, bcfg = tiesmod.brain_for(self.cfg, lk)    # what this tie runs on here
         try:
             if engine != "aria":
@@ -2197,6 +2224,28 @@ class ControlPlane(usersmod.Scoped):
                      f"there now. Do it, and answer with what they should see and hear on that screen: "
                      f"short, the result first. Don't ask questions, and don't schedule anything new.")
         from . import ties as tiesmod
+        target = tiesmod.target_of(lk)
+        if target["to"] == "department":
+            # this Zero talks to one department: its desk answers, with what was said before
+            await self._ui({"type": "turn_start", "conversation_id": cid, "model": target["department"]})
+            earlier = "\n".join(f"{m['role']}: {' '.join(str(m.get('content') or '').split())[:300]}"
+                                 for m in prior[-6:] if m.get("role") in ("user", "assistant"))
+            task = (f"Somebody at the screen of {label} (a small machine this hub set up) says:\n\n{text}\n\n"
+                    + (f"Earlier in this conversation:\n{earlier}\n\n" if earlier else "")
+                    + "Answer short enough to be read on a small screen or heard aloud."
+                    + (" This is a scheduled job: nobody is waiting, so answer with the result." if job else ""))
+            text_out, dept = await self._link_department(lk, target, task, cid, here, space)
+            self.store.add_message(cid, "assistant", text_out, {"zero": label, "department": dept})
+            self.store.log("turn", f"{label} → {dept}: {' '.join(text.split())[:160]}",
+                           {"conversation_id": cid, "zero": label, "space_id": space})
+            await self._ui({"type": "turn_end", "conversation_id": cid})
+            await self._ui({"type": "conversations"})
+            if say:
+                with contextlib.suppress(Exception):
+                    await say({"type": "zero_work", "phase": "end", "zero": label, "conversation_id": cid,
+                               "text": " ".join(text_out.split())[:300]})
+            return {"ok": True, "text": text_out[:6000], "conversation": cid, "model": dept,
+                    "department": dept, **self._ship_back(lk, text_out, since=started)}
         engine, bmodel, bcfg = tiesmod.brain_for(self.cfg, lk)    # what this tie runs on here
         await self._ui({"type": "turn_start", "conversation_id": cid, "model": engine})
         exec_sid = ""
@@ -2244,7 +2293,8 @@ class ControlPlane(usersmod.Scoped):
 
     async def department_task(self, department: str, task: str, conversation_id: str = "",
                               approver=None, surface: str = "gui", ui_emit=None,
-                              agent_slot=None, decided: bool = False) -> dict:
+                              agent_slot=None, decided: bool = False, company: str = "",
+                              tainted: bool = False, space_id: str = "") -> dict:
         """A task for a department of the open company: a run of its desk, led by its
         head, signed off by the bosses above it and checked by the auditor. One door for
         every way a department is reached by name: `@Sales …` in Chat, Telegram and
@@ -2253,11 +2303,17 @@ class ControlPlane(usersmod.Scoped):
         decision is `agent.invoke` on the desk's flow, as /api/company/task decides it.
 
         Returns {"department", "head", "flow", "result"}; raises ValueError with a
-        sentence when there is no such department or desk, PermissionError on a deny."""
+        sentence when there is no such department or desk, PermissionError on a deny.
+
+        `company` names another of the person's companies (a link may talk to a department
+        of a parked one); `tainted` marks a task that came from outside this machine."""
         from . import company as _company
         from .policy import MAIN
-        flow = _company.desk_for(self.cfg, self.store, department)
-        dept = next((d for d in _company.departments(self.cfg, self.store)
+        ccfg = _company.cfg_of(self.cfg, company)
+        if ccfg is None:
+            raise ValueError("that company is no longer kept here")
+        flow = _company.desk_for(ccfg, self.store, department)
+        dept = next((d for d in _company.departments(ccfg, self.store)
                      if d.get("desk") == flow["name"]), {"name": department})
         if not decided and self.toolbox is not None and getattr(self.toolbox, "pdp", None):
             dec = self.toolbox.pdp.decide(MAIN, "agent.invoke", f"agent:flow/{flow['name']}",
@@ -2270,7 +2326,8 @@ class ControlPlane(usersmod.Scoped):
         res = await self.run_flow(flow, str(task or "").strip(),
                                   origin={"surface": "chat", "ref": dept["name"]},
                                   conversation_id=conversation_id, approver=approver,
-                                  ui_emit=ui_emit, agent_slot=agent_slot)
+                                  ui_emit=ui_emit, agent_slot=agent_slot, tainted=tainted,
+                                  space_id=space_id)
         return {"department": dept["name"], "head": dept.get("lead") or "",
                 "flow": flow["name"], "result": res}
 

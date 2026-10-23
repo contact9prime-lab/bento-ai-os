@@ -5,6 +5,8 @@ function renderChat(body){
   body.innerHTML=`<div class="chatwrap">
     <div class="cside">
       <button id="newchat"><span data-ic="plus">＋</span> New chat</button>
+      <input id="conv-q" type="search" placeholder="Search chats" aria-label="Search chats">
+      <div id="ctabs" class="ctabs" role="tablist" aria-label="Which chats"></div>
       <div id="convs"></div>
     </div>
     <div class="cmain">
@@ -213,24 +215,27 @@ function removeWorking(){
   // …and let the ticker stop itself now that this row is gone.
   if(typeof actSync==='function')actSync();
 }
+/* The list is in tabs (chattabs.py decides each conversation's): Desktop, Channels, Devices,
+   Huddles, App builder. Asked for as "the huddle must be recorded in the chat as a separate
+   section, and the chat must have tabs and searches". A huddle is listed under Huddles AND the
+   tab it happened in. Search reads titles and every message. */
+var CONVTAB=(()=>{try{return localStorage.getItem('chat.tab')||'desktop'}catch(e){return 'desktop'}})();
+var CONVQ='';
+function convTab(t){CONVTAB=t;try{localStorage.setItem('chat.tab',t)}catch(e){}loadConvs()}
 async function loadConvs(){
   const box=$('#convs'); if(!box)return;
-  const r=await fetch('/api/conversations');const d=await r.json();
+  const qe=$('#conv-q');
+  if(qe&&!qe.dataset.wired){qe.dataset.wired=1;qe.value=CONVQ;let deb;
+    qe.oninput=()=>{clearTimeout(deb);deb=setTimeout(()=>{CONVQ=qe.value.trim();loadConvs()},250)}}
+  const r=await fetch('/api/conversations'+(CONVQ?'?q='+encodeURIComponent(CONVQ):''));const d=await r.json();
   if(!$('#convs'))return;
+  const all=d.conversations||[],tabs=d.tabs||[];
+  const tb=$('#ctabs');
+  if(tb){tb.innerHTML=tabs.map(t=>{const n=all.filter(c=>(c.tabs||[c.tab]).includes(t.id)).length;
+      return `<button role="tab" class="ctab${CONVTAB===t.id?' on':''}" aria-selected="${CONVTAB===t.id}" data-tab="${esc(t.id)}">${esc(t.name)}${n?` <small>${n}</small>`:''}</button>`}).join('');
+    tb.querySelectorAll('.ctab').forEach(b=>b.onclick=()=>convTab(b.dataset.tab))}
   box.innerHTML='';
-  // the agent's embedded threads (omnibar Desktop, per-app copilots) live in
-  // their own sections so app-scoped exchanges never drown the real chats
-  // A chat from the phone is one long thread per person, and read like any other one it was
-  // lost in the list (reported: "the telegram chats are not visible in the Chats"). It has its
-  // own section, first, the way the prompt bar's threads do.
-  const phone=c=>c.origin==='telegram'||c.origin==='whatsapp'||/^(✈ )?(Telegram|WhatsApp) · /.test(c.title||'');
-  const groups=[['On your phone',phone],
-                ['From the prompt bar',c=>c.origin==='omni'],
-                ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
-                ['Your agents talking',c=>c.origin==='freetalk'],
-                // a Zero's screen, or a linked team, worked here (chatMachine): where it came from
-                ['From other machines',chatFromMachine],
-                ['',c=>!phone(c)&&c.origin!=='omni'&&c.origin!=='freetalk'&&!chatFromMachine(c)&&!(c.origin||'').startsWith('copilot:')]];
+  const items=all.filter(c=>(c.tabs||[c.tab]).includes(CONVTAB));
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
@@ -244,12 +249,32 @@ async function loadConvs(){
       if(currentConv===c.id)newChat(); else loadConvs();};
     return el;
   };
+  // inside a tab, the threads that came from one place stay together
+  const groups=CONVTAB==='desktop'?[['From the prompt bar',c=>c.origin==='omni'],
+      ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
+      [items.some(c=>c.origin==='omni'||(c.origin||'').startsWith('copilot:'))?'Chats':'',c=>c.origin!=='omni'&&!(c.origin||'').startsWith('copilot:')]]
+    :CONVTAB==='huddles'?[['Your agents talking',c=>c.origin==='freetalk'],['Huddles in a chat',c=>c.origin!=='freetalk']]
+    :CONVTAB==='devices'?[['Zeros',c=>c.origin==='zero'],['Linked teams',c=>c.origin!=='zero']]
+    :[['',()=>true]];
+  if(CONVTAB==='huddles'){const nb=document.createElement('button');nb.className='endbtn conv-new-huddle';
+    nb.textContent='＋ New huddle';nb.onclick=chatNewHuddle;box.appendChild(nb)}
   groups.forEach(([label,test])=>{
-    const items=d.conversations.filter(test);
-    if(!items.length)return;
+    const its=items.filter(test);
+    if(!its.length)return;
     if(label){const h=document.createElement('div');h.className='convgrp';h.textContent=label;box.appendChild(h)}
-    items.forEach(c=>box.appendChild(row(c)));
+    its.forEach(c=>box.appendChild(row(c)));
   });
+  if(!items.length){const p=document.createElement('p');p.className='mut conv-none';
+    p.textContent=CONVQ?'Nothing here says that.':({channels:'Telegram and WhatsApp chats show here.',
+      devices:'Chats from your Zeros and linked teams show here.',huddles:'When your agents huddle, it shows here.',
+      apps:'Chats that built an app show here.'}[CONVTAB]||'No chats yet.');box.appendChild(p)}
+}
+/* A huddle starts with two or more names (fabric.parse_huddle): a new chat with them typed. */
+async function chatNewHuddle(){
+  let names=[];try{names=((await apiJSON('/api/subagents')).subagents||[]).map(x=>x.name).slice(0,3)}catch(e){}
+  newChat();
+  if(input){input.value=(names.length>=2?names.slice(0,2).map(n=>'@'+n).join(' ')+' ':'@')+'';input.focus()}
+  toast(names.length>=2?'Name two to four agents, then the question.':'A huddle needs two agents: make one in Settings → Agents.');
 }
 /* Everything this chat did, as one JSON file (agentos/trace.py), to read or hand to an AI.
    Asked for as "for every execution I should be able to get the json file to see what
