@@ -233,6 +233,8 @@ SAFE_TOOLS = {
     # the Stage: drawn on the person's own screen and kept with the chat (stage.py)
     "show_scene",
     "set_avatar", "set_office", "set_wallpaper", "save_asset",
+    # a machine's own screen: which face, which widgets. Cosmetic and undone with a tap
+    "screen_face",
     "generate_image", "generate_wallpaper", "llm_generate",
     # to the owner's own chat; another chat or number is risky (see risk_of)
     "telegram_send", "whatsapp_send",
@@ -763,6 +765,7 @@ class Toolbox(usersmod.Scoped):
         self.telegram = None   # TelegramBridge, wired up in server startup
         self.whatsapp = None   # WhatsAppBridge, wired up in server startup
         self.broadcast = None  # UI event broadcaster, wired up in server startup
+        self.screen = None     # async (machine, change, space_id) -> dict: screen faces (server)
         self.broadcast_user = None  # the same, to one account's sessions only
         self.fabric = None     # ControlPlane, wired up in server startup
         self.pdp = None        # policy.PDP — the permission gate, wired up in server startup
@@ -3929,6 +3932,37 @@ class Toolbox(usersmod.Scoped):
         return ("Done — " + of.describe(v)
                 + (f" (not placed, nobody here is called: {', '.join(dropped)})" if dropped else ""))
 
+    async def screen_face(self, machine: str = "", face: str = "", new_face=None, remove: str = "",
+                          space_id: str = "") -> str:
+        """Look at or change the faces a machine's own screen wears (faces.py): this machine's,
+        or a Zero's that this hub set up (over its link). Asked for as "can I change the widget on
+        the Pi from chat". With nothing to change it says what the screen wears and what it could.
+        Inside a Zero's own chat only that Zero's screen can be changed (the server reads it
+        from the section the turn runs in, never from the model)."""
+        if not self.screen:
+            return "[error] this machine's screen can't be changed from here"
+        change = {}
+        if face:
+            change["use"] = str(face).strip()
+        if isinstance(new_face, dict):
+            change["save"] = new_face
+        if remove:
+            change["delete"] = str(remove).strip()
+        got = await self.screen(str(machine or "").strip(), change, space_id or "")
+        if not got.get("ok"):
+            return f"[error] {got.get('error') or 'it did not answer'}"
+        cur = next((f for f in got.get("faces") or [] if f.get("id") == got.get("current")), {})
+        lines = [f"{got.get('machine') or 'This screen'} wears '{cur.get('name') or got.get('current')}'"
+                 + (f" ({cur.get('layout')}: {', '.join(cur.get('widgets') or []) or 'no widgets'})" if cur else "") + "."]
+        if got.get("dropped"):
+            lines.append("Left out: " + ", ".join(got["dropped"]) + ".")
+        if not change:
+            lines.append("Faces: " + ", ".join(f"{f['id']} ({f['layout']})" for f in got.get("faces") or []) + ".")
+            lines.append("Widgets for a face of your own: " + ", ".join(w["id"] for w in got.get("widgets") or [])
+                         + ((", or app:<id> for " + ", ".join(a["id"] for a in got.get("apps") or [])) if got.get("apps") else "")
+                         + f". Layouts: {', '.join(got.get('layouts') or [])}. Up to {got.get('max_widgets', 8)} widgets.")
+        return " ".join(lines)
+
     async def set_avatar(self, who: str = "", skin: str = "", hair: str = "", style: str = "",
                          shirt: str = "", pants: str = "", glasses=None, blush=None,
                          outfit: str = "", reroll: bool = False) -> str:
@@ -5669,6 +5703,25 @@ DESKTOP_TOOL_SCHEMAS = [
             "required": ["who"]},
     },
     {
+        "name": "screen_face",
+        "description": "Look at or change what a machine's own screen shows (the kiosk on a Raspberry Pi "
+                       "or another small screen): which FACE it wears, and the widgets on a face of your "
+                       "own. Call with nothing to hear what it wears and every face, widget and layout. "
+                       "Faces: chat, office, clock, board (a dashboard of widgets), ambient. Widgets: clock, "
+                       "date, agent, quote, machine, network, timer, brief, or app:<id> for one of the "
+                       "person's apps with a widget view. `machine` is a Zero this hub set up (its name), "
+                       "or empty for this machine. Asked \"put a timer and the clock on the Pi\", make a "
+                       "face with new_face and it is worn at once.",
+        "parameters": {"type": "object", "properties": {
+            "machine": {"type": "string", "description": "A Zero's name, e.g. raspberrypi-3. Empty: this machine."},
+            "face": {"type": "string", "description": "A face id to wear: chat, office, clock, board, ambient, or one of your own."},
+            "new_face": {"type": "object", "description": "A face of your own, saved and worn.",
+                         "properties": {"name": {"type": "string"},
+                                        "layout": {"type": "string", "enum": ["board", "clock", "ambient", "chat", "office"]},
+                                        "widgets": {"type": "array", "items": {"type": "string"}}}},
+            "remove": {"type": "string", "description": "The id of a face of your own to remove."}}},
+    },
+    {
         "name": "set_office",
         "description": "Look at or redesign the Office playground — the comic-strip office where "
                        "the user watches you and every specialist at work: your corner office, a desk "
@@ -6313,4 +6366,6 @@ TOOL_SCHEMAS.extend(CAPABILITY_REQUEST_SCHEMAS)
 SPACE_SCOPED_TOOLS = frozenset({
     "remember", "recall", "kg_add", "kg_query",
     "list_assets", "save_asset", "generate_image", "timeline",
+    # a Zero's chat runs in its section: that is how screen_face knows which screen is its own
+    "screen_face",
 })

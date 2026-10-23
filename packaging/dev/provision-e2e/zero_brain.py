@@ -52,6 +52,12 @@ def _reply(msgs):
                                         "content": "# Kitchen plan\n\n- eggs\n- milk\n- coffee\n"})
         return f"writer: {tool[:200]}", None
     last = next((_text(m.get("content")) for m in reversed(msgs) if m.get("role") == "user"), "")
+    if "on my screen" in last.lower():
+        # a person at a Zero asking for widgets: the tool, then what it said
+        if tool is None:
+            return _call("screen_face", {"new_face": {"name": "Kitchen", "layout": "board",
+                                                      "widgets": ["clock", "timer", "quote"]}})
+        return f"Done: {tool[:300]}", None
     if "is the lead of the linked team" in every or "a small machine this hub set up" in every:
         if tool is None and last.strip().lower().startswith("thanks"):
             return "You're welcome.", None        # a follow-up in the same session: nothing to make

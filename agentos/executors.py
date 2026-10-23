@@ -1790,7 +1790,9 @@ TEAM_TOOLS = ("delegate", "huddle", "department_task", "create_flow", "list_flow
               "create_subagent", "request_capability", "linked_teams",
               # the machines this one leads: work handed to their own hardware (pool.py). Offered
               # only where there is a community (Toolbox.schemas), each piece asked for as risky.
-              "pool_task", "community_recall")
+              "pool_task", "community_recall",
+              # what a machine's own screen shows, here or on a Zero this hub set up (faces.py)
+              "screen_face")
 #: What the lead may use for a task a linked team handed it: its own team, and nothing that
 #: reaches this machine directly (fabric.ControlPlane._lead_for_link).
 LINKED_LEAD_TOOLS = ("delegate", "huddle", "department_task", "linked_teams")
