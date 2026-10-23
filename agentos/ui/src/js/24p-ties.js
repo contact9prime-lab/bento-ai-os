@@ -26,7 +26,15 @@ function tiesHTML(v){
   if(!ts.length)return pRow('Teams and Zeros','',{desc:'Nothing is linked yet. Link a team in Team & Communications, or install Bento on a Pi below.',
     f:'teams zeros links linked'});
   const live=ts.filter(t=>!t.stale),old=ts.filter(t=>t.stale);
-  const head=pRow('Teams and Zeros',`<button class="endbtn" data-tie="probe">Check them now</button>`,
+  const mode=v.zero_updates||'ask',zs=live.filter(t=>t.kind==='zero');
+  const upd=zs.length?pRow('When this hub updates',`<select data-tie="mode" aria-label="When this hub updates, its Zeros">
+      <option value="ask"${mode==='ask'?' selected':''}>Ask me to update the Zeros</option>
+      <option value="auto"${mode==='auto'?' selected':''}>Update the Zeros too</option>
+      <option value="off"${mode==='off'?' selected':''}>Leave the Zeros alone</option></select>`,
+    {desc:zs.some(t=>t.behind)?`${zs.filter(t=>t.behind).length} behind this hub. Update each one below.`:'What happens to the machines it set up.',
+     more:'A Zero updates itself when its own hub asks, over their link. No password is needed.',
+     f:'update zeros pi keep up to date auto update hub'}):'';
+  const head=upd+pRow('Teams and Zeros',`<button class="endbtn" data-tie="probe">Check them now</button>`,
     {desc:`${live.filter(t=>t.kind==='zero').length} Zero · ${live.filter(t=>t.kind!=='zero').length} team${old.length?` · ${old.length} old`:''}`,
      more:'A Zero is a small machine set up from here: its chats, memory and work run on this computer. A team is another Bento you linked with: it keeps its own.',
      f:'teams zeros links linked executors brain runs on access agents sessions memory knowledge logs'});
@@ -43,6 +51,8 @@ function tieRowHTML(t){
       <div class="tie-name"><b>${esc(ag.name||t.peer)}</b><span class="mut">${esc(t.peer)}${t.addr?' · '+esc(t.addr):''}</span></div>
       <span class="tie-kind ${t.kind}">${esc(tieKindWord(t))}</span>
       <span class="tie-st ${st.cls}" title="${esc(st.why)}">${esc(st.word)}</span>
+      ${t.version?`<span class="tie-ver${t.behind?' behind':''}" title="${t.behind?'behind this hub':'the version it runs'}">${esc(t.version)}</span>`:''}
+      ${t.behind&&t.mine&&t.kind==='zero'&&!t.stale?`<button class="endbtn tie-upd" data-tie="update" data-k="${esc(k)}">Update</button>`:''}
       <button class="endbtn" data-tie="open" data-k="${esc(k)}" aria-expanded="${open}">${open?'Close':'Manage'}</button>
     </div>
     <p class="tie-sub mut">Belongs to ${esc(who)}${runs?` · runs on ${esc(runs)}`:''}${t.mine&&access.length?` · may ask ${esc(access.map(tieAgentWord).join(', '))}`:''}${st.why&&!open?' · '+esc(st.why):''}</p>
@@ -114,6 +124,9 @@ function tiesWire(box){
   box.querySelectorAll('[data-tie]').forEach(el=>{
     const act=el.dataset.tie,t=el.dataset.k?tieFind(el.dataset.k):null;
     if(act==='brain')el.onchange=()=>tieSave(t,'brain',el.value);
+    else if(act==='mode')el.onchange=async()=>{const r=await fetch('/api/network/zero-updates',{method:'PUT',headers:{'content-type':'application/json'},
+      body:JSON.stringify({mode:el.value})}).then(x=>x.json()).catch(e=>({error:String(e)}));
+      toast(r.error?'✗ '+r.error:{ask:'✓ you’ll be asked when a Zero is behind',auto:'✓ the Zeros update when this hub does',off:'✓ the Zeros are left as they are'}[r.mode])}
     else if(act==='ask')el.onchange=()=>{const box2=el.closest('.tie-agents');
       tieSave(t,'access',[...box2.querySelectorAll('input:checked')].map(i=>i.value))};
     else el.onclick=()=>tieAct(act,t,el);
@@ -133,6 +146,7 @@ async function tieAct(act,t,el){
     return netPaint()}
   if(act==='conv'){if(typeof openApp==='function')openApp('chat');
     setTimeout(()=>{if(typeof openConv==='function')openConv(el.dataset.cid)},300);return}
+  if(act==='update')return tieUpdate(t.label,t.owner,el);
   if(act==='adopt'){
     const r=await fetch(`/api/network/ties/${encodeURIComponent(t.label)}/adopt`,{method:'POST'}).then(x=>x.json()).catch(e=>({error:String(e)}));
     if(r.error)return toast('✗ '+r.error);
@@ -164,4 +178,15 @@ var TIES_PROBED=0;
 function tiesProbeSoon(){
   if(Date.now()-TIES_PROBED<30000)return;TIES_PROBED=Date.now();
   apiJSON('/api/network/ties?probe=1').then(r=>{if(NET.v){NET.v.ties=r.ties;netPaint()}}).catch(()=>{});
+}
+
+/* Ask a Zero to update itself (it answers at once, works, and restarts: its screen shows it). */
+async function tieUpdate(label,owner,el){
+  if(el){el.disabled=true;el.textContent='Asking…'}
+  const r=await fetch(`/api/network/ties/${encodeURIComponent(label)}/update`,{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({owner:owner||''})}).then(x=>x.json()).catch(e=>({error:String(e)}));
+  if(r.error){toast('✗ '+r.error);if(el){el.disabled=false;el.textContent='Update'}return}
+  toast(`✓ ${label} is updating. It restarts on its own, and a Pi takes a few minutes.`);
+  if(el)el.textContent='Updating…';
+  setTimeout(()=>{TIES_PROBED=0;if(typeof tiesProbeSoon==='function')tiesProbeSoon()},240000);
 }

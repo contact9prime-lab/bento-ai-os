@@ -3150,6 +3150,12 @@ In Chat, `chatMachineMsg` reads `meta.zero` / `meta.team` (or the `[who@team]` p
 with `chatMachineBanner`; the kiosk on a landscape screen is a right-hand column (`kioskSide`, `kiosk-side`,
 `.kh-log` holds `KIOSK.log`, the band's heard/reply lines are hidden there).
 
+**A Zero updates itself when its own hub asks** (wire op `zero_update`, `server._zero_update_from_hub`
+only for `zero.is_my_hub`, `ties.ask_update`, `server._zeros_keep_current` after start and every 6 h,
+`provision.zero_updates` ask/auto/off, the kiosk's `kioskUpdate`; `tests/test_zero_update.py`). `hello`
+carries `version`; `ties.behind` compares it. Never run `updates.apply` in a live run on a throwaway:
+the throwaway's code root is this checkout.
+
 **A brain that isn't available hands the turn to the next one** (`agentos/fallback.py`, `brain_fallbacks`
 USER_KEY, `/api/brain/fallbacks`, `bento brain fallbacks`, the finally of `_run_chat`; `tests/test_fallback.py`).
 Only an unavailable brain is a reason (`fallback.unavailable`); a stop or a refusal never is. The failed turn

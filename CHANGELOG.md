@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.88 — 2026-10-23
+
+**The Zeros stay current with their hub.** A link's hello now says its version, so Network →
+Teams and Zeros shows which Zeros are behind, with **Update**. The hub asks over the link and the
+Zero updates itself: no SSH and no password, and only its own hub can ask. After the hub itself
+updates it looks at its Zeros, and *When this hub updates* decides what then happens: ask me (a
+toast with Update it, once per version), update them too, or leave them alone. On the Pi's own
+screen, a waiting update is offered in the kiosk, since the desktop's update card is under it.
+`bento network ties <zero> update` asks from a terminal. A Zero on 0.6.87 or older needs one
+update the old way first (Controls → Update, or `bento network update`).
+
 ## 0.6.87 — 2026-10-23
 
 **Brains to fall back on.** Settings → AI providers has **If it isn't available** under the lead's

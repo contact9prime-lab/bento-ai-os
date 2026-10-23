@@ -6265,6 +6265,18 @@ body .msg.user.from-machine.team .bubble,body.immersive .msg.user.from-machine.t
 .fb-why{flex-basis:100%;margin-left:30px;font-size:12px}
 .fb-add{align-self:flex-start}
 .fb-none{margin:0}
+
+.tie-ver{font-size:11px;font-family:var(--mono,ui-monospace,monospace);padding:2px 7px;border-radius:7px;
+  background:color-mix(in srgb,var(--txt) 8%,transparent);color:color-mix(in srgb,var(--txt) 70%,transparent)}
+.tie-ver.behind{background:color-mix(in srgb,#fbbf24 18%,transparent);color:#fbbf24}
+.tie-upd{border-color:#fbbf24!important}
+#kiosk-hud .kh-upd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:12px;
+  background:color-mix(in srgb,#fbbf24 14%,transparent);font-size:var(--fs-md,15px)}
+#kiosk-hud .kh-upd[hidden]{display:none}
+#kiosk-hud .kh-upd span{flex:1;min-width:0}
+#kiosk-hud .kh-upd-go{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
+body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
+#kiosk-hud .kh-upd{grid-column:1/-1}
 </style>
 </head>
 <body>
@@ -16873,8 +16885,8 @@ function handle(ev){
     case 'skills': refreshApp('skills'); break;      // the agent installed one (install_skill), with your yes
     case 'shell_cmd': shellCmd(ev); break;   // the agent's hands on this desktop (contract: server shell_command())
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated
-    case 'update': showUpdate(ev); break;            // a newer version exists; installing still asks
-    case 'update_progress': updateProgress(ev); break;
+    case 'update': showUpdate(ev);if(typeof kioskUpdate==='function')kioskUpdate(ev); break;   // a newer version exists; installing still asks
+    case 'update_progress': updateProgress(ev);if(typeof kioskUpdate==='function')kioskUpdate(ev); break;
     case 'update_done': updateDone(ev); break;
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
     case 'accounts':
@@ -16958,6 +16970,9 @@ function handle(ev){
         if(!box.closest('.msg'))setTimeout(()=>box.remove(),2500);
       });
       break;}
+    case 'zero_behind':   // a Zero this hub set up runs an older Bento (server._zeros_keep_current)
+      toast(`${ev.peer||ev.label} runs ${ev.version}, this hub ${ev.hub}`,{label:'Update it',go:()=>tieUpdate(ev.label,ev.owner),ms:20000});
+      break;
     case 'zero_work':   // somebody at a Zero's screen, answered here (fabric.zero_chat)
       if(typeof officeZero==='function')officeZero(ev);
       if(typeof devMapPulse==='function')devMapPulse(ev);
@@ -33188,6 +33203,7 @@ function kioskStart(){
     <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
     <form class="kh-type" hidden><input class="kh-in" autocomplete="off" enterkeyhint="send" aria-label="Type a message">
       <button type="submit" class="kh-send">Send</button></form>
+    <div class="kh-upd" hidden></div>
     <div class="kh-wifi" hidden></div>
     <div class="kh-acts"><button class="kh-net" hidden aria-label="Wi-Fi">Wi-Fi</button><button class="kh-mic" aria-label="Microphone"></button>
       <button class="kh-key" aria-label="Type instead">⌨ Type</button>
@@ -33773,6 +33789,25 @@ function kioskWifiPaint(){
     :`<p class="kh-wifi-why">Looking for networks…</p>`;
   box.querySelectorAll('.kh-wifi-n').forEach(b=>b.onclick=()=>{KIOSK.wifiPick=b.dataset.ssid;KIOSK.wifiErr='';kioskWifiPaint()});
   kioskPaint();
+}
+
+/* A newer Bento, on the machine's own screen: the desktop's update card is hidden under the
+   kiosk, so the offer and the progress are here. Asked for as "the Pi can check the update and
+   ask the users to update itself". Installing goes through /api/update, which only this screen
+   (loopback) may start, without the test suite: a Pi 3 would take most of an hour over it. */
+function kioskUpdate(ev){
+  const hud=document.getElementById('kiosk-hud');if(!hud)return;
+  const box=hud.querySelector('.kh-upd');if(!box)return;
+  if(ev.type==='update_progress'){box.hidden=false;box.innerHTML=`<span>⟳ ${esc(ev.message||'updating…')}</span>`;return}
+  if(!ev.update_available)return;
+  box.hidden=false;
+  box.innerHTML=`<span>A newer Bento is ready${ev.latest&&ev.latest!==ev.current?' ('+esc(ev.latest)+')':''}.</span>
+    <button class="kh-upd-go">Update</button><button class="kh-upd-x" aria-label="Not now">Later</button>`;
+  box.querySelector('.kh-upd-x').onclick=()=>{box.hidden=true};
+  box.querySelector('.kh-upd-go').onclick=async()=>{box.innerHTML='<span>⟳ updating…</span>';
+    const r=await fetch('/api/update',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({run_tests:false})})
+      .then(x=>x.json()).catch(e=>({error:String(e)}));
+    if(r.error)box.innerHTML=`<span>✗ ${esc(r.error)}</span>`};
 }
 /* ================= a community of machines =================
    Settings → Team & Communications → Community. pool.py is the whole design; this
@@ -37290,7 +37325,15 @@ function tiesHTML(v){
   if(!ts.length)return pRow('Teams and Zeros','',{desc:'Nothing is linked yet. Link a team in Team & Communications, or install Bento on a Pi below.',
     f:'teams zeros links linked'});
   const live=ts.filter(t=>!t.stale),old=ts.filter(t=>t.stale);
-  const head=pRow('Teams and Zeros',`<button class="endbtn" data-tie="probe">Check them now</button>`,
+  const mode=v.zero_updates||'ask',zs=live.filter(t=>t.kind==='zero');
+  const upd=zs.length?pRow('When this hub updates',`<select data-tie="mode" aria-label="When this hub updates, its Zeros">
+      <option value="ask"${mode==='ask'?' selected':''}>Ask me to update the Zeros</option>
+      <option value="auto"${mode==='auto'?' selected':''}>Update the Zeros too</option>
+      <option value="off"${mode==='off'?' selected':''}>Leave the Zeros alone</option></select>`,
+    {desc:zs.some(t=>t.behind)?`${zs.filter(t=>t.behind).length} behind this hub. Update each one below.`:'What happens to the machines it set up.',
+     more:'A Zero updates itself when its own hub asks, over their link. No password is needed.',
+     f:'update zeros pi keep up to date auto update hub'}):'';
+  const head=upd+pRow('Teams and Zeros',`<button class="endbtn" data-tie="probe">Check them now</button>`,
     {desc:`${live.filter(t=>t.kind==='zero').length} Zero · ${live.filter(t=>t.kind!=='zero').length} team${old.length?` · ${old.length} old`:''}`,
      more:'A Zero is a small machine set up from here: its chats, memory and work run on this computer. A team is another Bento you linked with: it keeps its own.',
      f:'teams zeros links linked executors brain runs on access agents sessions memory knowledge logs'});
@@ -37307,6 +37350,8 @@ function tieRowHTML(t){
       <div class="tie-name"><b>${esc(ag.name||t.peer)}</b><span class="mut">${esc(t.peer)}${t.addr?' · '+esc(t.addr):''}</span></div>
       <span class="tie-kind ${t.kind}">${esc(tieKindWord(t))}</span>
       <span class="tie-st ${st.cls}" title="${esc(st.why)}">${esc(st.word)}</span>
+      ${t.version?`<span class="tie-ver${t.behind?' behind':''}" title="${t.behind?'behind this hub':'the version it runs'}">${esc(t.version)}</span>`:''}
+      ${t.behind&&t.mine&&t.kind==='zero'&&!t.stale?`<button class="endbtn tie-upd" data-tie="update" data-k="${esc(k)}">Update</button>`:''}
       <button class="endbtn" data-tie="open" data-k="${esc(k)}" aria-expanded="${open}">${open?'Close':'Manage'}</button>
     </div>
     <p class="tie-sub mut">Belongs to ${esc(who)}${runs?` · runs on ${esc(runs)}`:''}${t.mine&&access.length?` · may ask ${esc(access.map(tieAgentWord).join(', '))}`:''}${st.why&&!open?' · '+esc(st.why):''}</p>
@@ -37378,6 +37423,9 @@ function tiesWire(box){
   box.querySelectorAll('[data-tie]').forEach(el=>{
     const act=el.dataset.tie,t=el.dataset.k?tieFind(el.dataset.k):null;
     if(act==='brain')el.onchange=()=>tieSave(t,'brain',el.value);
+    else if(act==='mode')el.onchange=async()=>{const r=await fetch('/api/network/zero-updates',{method:'PUT',headers:{'content-type':'application/json'},
+      body:JSON.stringify({mode:el.value})}).then(x=>x.json()).catch(e=>({error:String(e)}));
+      toast(r.error?'✗ '+r.error:{ask:'✓ you’ll be asked when a Zero is behind',auto:'✓ the Zeros update when this hub does',off:'✓ the Zeros are left as they are'}[r.mode])}
     else if(act==='ask')el.onchange=()=>{const box2=el.closest('.tie-agents');
       tieSave(t,'access',[...box2.querySelectorAll('input:checked')].map(i=>i.value))};
     else el.onclick=()=>tieAct(act,t,el);
@@ -37397,6 +37445,7 @@ async function tieAct(act,t,el){
     return netPaint()}
   if(act==='conv'){if(typeof openApp==='function')openApp('chat');
     setTimeout(()=>{if(typeof openConv==='function')openConv(el.dataset.cid)},300);return}
+  if(act==='update')return tieUpdate(t.label,t.owner,el);
   if(act==='adopt'){
     const r=await fetch(`/api/network/ties/${encodeURIComponent(t.label)}/adopt`,{method:'POST'}).then(x=>x.json()).catch(e=>({error:String(e)}));
     if(r.error)return toast('✗ '+r.error);
@@ -37428,6 +37477,17 @@ var TIES_PROBED=0;
 function tiesProbeSoon(){
   if(Date.now()-TIES_PROBED<30000)return;TIES_PROBED=Date.now();
   apiJSON('/api/network/ties?probe=1').then(r=>{if(NET.v){NET.v.ties=r.ties;netPaint()}}).catch(()=>{});
+}
+
+/* Ask a Zero to update itself (it answers at once, works, and restarts: its screen shows it). */
+async function tieUpdate(label,owner,el){
+  if(el){el.disabled=true;el.textContent='Asking…'}
+  const r=await fetch(`/api/network/ties/${encodeURIComponent(label)}/update`,{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({owner:owner||''})}).then(x=>x.json()).catch(e=>({error:String(e)}));
+  if(r.error){toast('✗ '+r.error);if(el){el.disabled=false;el.textContent='Update'}return}
+  toast(`✓ ${label} is updating. It restarts on its own, and a Pi takes a few minutes.`);
+  if(el)el.textContent='Updating…';
+  setTimeout(()=>{TIES_PROBED=0;if(typeof tiesProbeSoon==='function')tiesProbeSoon()},240000);
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

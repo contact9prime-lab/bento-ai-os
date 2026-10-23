@@ -151,3 +151,15 @@ body .msg.user.from-machine.team .bubble,body.immersive .msg.user.from-machine.t
 .fb-why{flex-basis:100%;margin-left:30px;font-size:12px}
 .fb-add{align-self:flex-start}
 .fb-none{margin:0}
+
+.tie-ver{font-size:11px;font-family:var(--mono,ui-monospace,monospace);padding:2px 7px;border-radius:7px;
+  background:color-mix(in srgb,var(--txt) 8%,transparent);color:color-mix(in srgb,var(--txt) 70%,transparent)}
+.tie-ver.behind{background:color-mix(in srgb,#fbbf24 18%,transparent);color:#fbbf24}
+.tie-upd{border-color:#fbbf24!important}
+#kiosk-hud .kh-upd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:12px;
+  background:color-mix(in srgb,#fbbf24 14%,transparent);font-size:var(--fs-md,15px)}
+#kiosk-hud .kh-upd[hidden]{display:none}
+#kiosk-hud .kh-upd span{flex:1;min-width:0}
+#kiosk-hud .kh-upd-go{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
+body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
+#kiosk-hud .kh-upd{grid-column:1/-1}

@@ -5333,14 +5333,25 @@ def _ties_cli(rest):
             runs = ("this machine's brain" if not b["executor"] else b["model"] if b["executor"] == "aria"
                     else b["executor"] + (f" ({b['model']})" if b["model"] else ""))
             whose = (usersmod.get(t["owner"]) or {}).get("name", "an account") if t["owner"] else "the machine"
-            print(f"  {t['label']:<24} {t['kind']:<8} {st}")
+            ver = (t["version"] + (" (behind this hub)" if t["behind"] else "")) if t["version"] else ""
+            print(f"  {t['label']:<24} {t['kind']:<8} {st}{'  · ' + ver if ver else ''}")
             print(f"  {'':<24} {t['peer']}{' at ' + t['addr'] if t['addr'] else ''} · belongs to {whose} · runs on {runs}")
-        print("\n  `bento network ties LINK sessions|memory|knowledge|logs` shows one tie's own rows.")
+        print("\n  `bento network ties LINK sessions|memory|knowledge|logs` shows one tie's own rows,"
+              "\n  `bento network ties LINK update` asks a Zero to update itself.")
         return
     t = next((x for x in all_ if x["label"] == rest[0]), None)
     if not t:
         sys.exit(f"  no link called {rest[0]}")
     what = rest[1] if len(rest) > 1 else "sessions"
+    if what == "update":
+        # ask a Zero this hub set up to update itself, over its link (no password)
+        lk = next(x for x in teamlink._load()["links"] if x.get("id") == t["id"])
+        got = asyncio.run(tiesmod.ask_update(lk))
+        if not got.get("ok"):
+            sys.exit(f"  ✗ {got.get('error')}")
+        print(f"  ✓ {t['label']} is updating ({t['version'] or 'its version'} → this hub's). "
+              f"It restarts on its own; a Pi takes a few minutes.")
+        return
     with usersmod.as_user(t["owner"]):
         try:
             got = tiesmod.view(Store(), t, what)
@@ -8845,7 +8856,7 @@ def main():
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties"],
                        metavar="ACTION",
-                       help="list | ties [LINK [sessions|memory|knowledge|logs]] | "
+                       help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | "
                             "look | install MACHINE --user U [--authorize] [--kiosk] [--for ACCOUNT] | "
                             "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
                             "letin MACHINE --user U [--your-key F] [--passwords-on] | "

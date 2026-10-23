@@ -441,6 +441,8 @@ async def startup():
     # Is there a newer version? Checking is automatic; installing never is.
     from . import updates as updmod
     asyncio.create_task(updmod.watch(cfg, store, broadcast, cfgmod.save_config))
+    # the machines this hub set up: behind it after it updated? ask, or update them (ties.py)
+    asyncio.create_task(_zeros_keep_current())
 
     async def wm_events():
         # In the AgentOS session, the compositor tells us the moment a window
@@ -739,6 +741,85 @@ async def _tie_tell(ev: dict, owner: str) -> None:
             await state["broadcast_user"](ev, u["id"])
 
 
+ZEROS_CHECK_S = 6 * 3600          # how often a hub looks at its Zeros' versions
+_ZERO_TOLD: set = set()           # (label, hub version) already put on a screen this run
+
+
+async def _zeros_keep_current():
+    """After start (which is how an update ends) and every ZEROS_CHECK_S: each machine this hub
+    set up says its version; one that is behind is updated (`auto`), offered (`ask`, once per
+    hub version), or left alone (`off`)."""
+    from . import ties as tiesmod
+    from . import teamlink
+    from . import zero as zeromod
+    from . import __version__
+    await asyncio.sleep(120)
+    while True:
+        with contextlib.suppress(Exception):
+            mode = tiesmod.update_mode(state.machine_cfg())
+            zeros = [lk for lk in teamlink._load()["links"] if zeromod.ships_to(lk)]
+            if mode != "off" and zeros:
+                await tiesmod.probe(zeros, force=True)
+                for t in tiesmod.ties(None):
+                    if t["kind"] != "zero" or t["stale"] or not t["behind"]:
+                        continue
+                    lk = next((x for x in zeros if x.get("id") == t["id"]), None)
+                    if not lk:
+                        continue
+                    if mode == "auto":
+                        got = await tiesmod.ask_update(lk)
+                        with usersmod.as_user(t["owner"]):
+                            fabricmod.audit_team(state["store"], "zero.update", f"link:{t['label']}",
+                                                 f"asked {t['label']} ({t['version']}) to update to {__version__}: "
+                                                 + ("started" if got.get("ok") else got.get("error") or "no answer"))
+                    elif (t["label"], __version__) not in _ZERO_TOLD:
+                        _ZERO_TOLD.add((t["label"], __version__))
+                        await _tie_tell({"type": "zero_behind", "label": t["label"], "owner": t["owner"],
+                                         "peer": t["peer"], "version": t["version"], "hub": __version__}, t["owner"])
+        await asyncio.sleep(ZEROS_CHECK_S)
+
+
+_ZERO_UPDATING: dict = {}
+
+
+async def _zero_update_from_hub(lk: dict) -> dict:
+    """This machine's hub asks it to update: it does, on its own (updates.apply, no tests: they
+    ran where the code was built), says so on its screen, and restarts. Only its own hub."""
+    cfg = state.machine_cfg()
+    if not _zero().is_my_hub(cfg, lk):
+        return {"ok": False, "error": "only the hub that set this machine up can ask it to update"}
+    if _ZERO_UPDATING.get("on"):
+        return {"ok": True, "started": True, "already": True}
+    from . import updates as updmod
+    from . import __version__
+    _ZERO_UPDATING["on"] = True
+    with usersmod.as_user(""):
+        fabricmod.audit_team(state["store"], "zero.update", f"link:{lk.get('label')}",
+                             f"{lk.get('label')} asked this machine to update (running {__version__})")
+
+    async def go():
+        try:
+            loop = asyncio.get_running_loop()
+
+            async def say(m):
+                await state["broadcast"]({"type": "update_progress", "message": m})
+            await say(f"updating, as {lk.get('label')} asked…")
+            res = await updmod.apply(cfg, run_tests=False,
+                                     log=lambda m: loop.call_soon_threadsafe(asyncio.ensure_future, say(m)))
+            await state["broadcast"]({"type": "update_done", **res})
+            if res.get("ok") and res.get("from") != res.get("to"):     # something moved: restart into it
+                await asyncio.sleep(1.0)
+                await state["broadcast"]({"type": "reload", "delay": 8000})
+                await asyncio.sleep(0.5)
+                from . import desktop as desktopmod
+                state["down_reason"] = "to install an update"
+                desktopmod.restart_service()
+        finally:
+            _ZERO_UPDATING["on"] = False
+    asyncio.create_task(go())
+    return {"ok": True, "started": True, "version": __version__}
+
+
 async def _team_on_ask(lk: dict, req: dict) -> dict:
     """A request from a linked machine, answered in the account that owns the link —
     entered here, before anything is read, as the webhook route enters its owner.
@@ -756,6 +837,8 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
         from . import edgecode
         with usersmod.as_user(owner):
             return await edgecode.answer(state["store"], state["pdp"], lk, req)
+    if req.get("op") == "zero_update":
+        return await _zero_update_from_hub(lk)
     if req.get("op") == "zero_chat":
         # somebody at a Zero's screen: the turn runs here, in its section, kept here
         with usersmod.as_user(owner):
@@ -13515,7 +13598,8 @@ def _network_view() -> dict:
             "me": _me_on_map(),
             "look_choices": _look_choices(),
             "switches": _switches_meta(),
-            "ties": _ties_view()}
+            "ties": _ties_view(),
+            "zero_updates": __import__("agentos.ties", fromlist=["x"]).update_mode(state.machine_cfg())}
 
 
 def _ties_view() -> list[dict]:
@@ -13604,6 +13688,42 @@ async def api_network_tie_brain(label: str, body: dict):
                              f"{label}'s work here runs on {got.get('executor') or 'this machine'}"
                              + (f" ({got['model']})" if got.get("model") else ""))
     return {"ok": True, "brain": got}
+
+
+@app.post("/api/network/ties/{label}/update")
+async def api_network_tie_update(label: str, body: dict | None = None):
+    """Ask a Zero this hub set up to update itself, over its link: no SSH, no password."""
+    if (r := _require_admin()):
+        return r
+    from . import ties as tiesmod
+    from . import teamlink
+    b = body or {}
+    _, err = _tie(label, b.get("owner"))
+    if err:
+        return err
+    lk = next((x for x in teamlink._load()["links"] if x.get("label") == label
+               and (x.get("owner") or "") == (b.get("owner") or "")), None)
+    got = await tiesmod.ask_update(lk or {})
+    _ledger("zero.update", f"link:{label}", "asked it to update" + ("" if got.get("ok") else f": {got.get('error')}"))
+    if not got.get("ok"):
+        return JSONResponse({"error": got.get("error") or "it did not answer"}, status_code=400)
+    return got
+
+
+@app.put("/api/network/zero-updates")
+async def api_network_zero_updates(body: dict):
+    """What happens to the Zeros when this hub updates: ask, auto or off (a machine setting)."""
+    if (r := _require_admin()):
+        return r
+    from . import ties as tiesmod
+    mode = str((body or {}).get("mode") or "")
+    if mode not in tiesmod.UPDATE_MODES:
+        return JSONResponse({"error": "choose ask, auto or off"}, status_code=400)
+    mc = state.machine_cfg()
+    mc.setdefault("provision", {})["zero_updates"] = mode
+    cfgmod.save_config(mc)
+    _ledger("zero.update", "provision:zero_updates", f"when this hub updates, its Zeros: {mode}")
+    return {"ok": True, "mode": mode}
 
 
 @app.put("/api/network/ties/{label}/access")

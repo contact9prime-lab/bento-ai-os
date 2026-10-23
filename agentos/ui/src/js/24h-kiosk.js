@@ -52,6 +52,7 @@ function kioskStart(){
     <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
     <form class="kh-type" hidden><input class="kh-in" autocomplete="off" enterkeyhint="send" aria-label="Type a message">
       <button type="submit" class="kh-send">Send</button></form>
+    <div class="kh-upd" hidden></div>
     <div class="kh-wifi" hidden></div>
     <div class="kh-acts"><button class="kh-net" hidden aria-label="Wi-Fi">Wi-Fi</button><button class="kh-mic" aria-label="Microphone"></button>
       <button class="kh-key" aria-label="Type instead">⌨ Type</button>
@@ -637,4 +638,23 @@ function kioskWifiPaint(){
     :`<p class="kh-wifi-why">Looking for networks…</p>`;
   box.querySelectorAll('.kh-wifi-n').forEach(b=>b.onclick=()=>{KIOSK.wifiPick=b.dataset.ssid;KIOSK.wifiErr='';kioskWifiPaint()});
   kioskPaint();
+}
+
+/* A newer Bento, on the machine's own screen: the desktop's update card is hidden under the
+   kiosk, so the offer and the progress are here. Asked for as "the Pi can check the update and
+   ask the users to update itself". Installing goes through /api/update, which only this screen
+   (loopback) may start, without the test suite: a Pi 3 would take most of an hour over it. */
+function kioskUpdate(ev){
+  const hud=document.getElementById('kiosk-hud');if(!hud)return;
+  const box=hud.querySelector('.kh-upd');if(!box)return;
+  if(ev.type==='update_progress'){box.hidden=false;box.innerHTML=`<span>⟳ ${esc(ev.message||'updating…')}</span>`;return}
+  if(!ev.update_available)return;
+  box.hidden=false;
+  box.innerHTML=`<span>A newer Bento is ready${ev.latest&&ev.latest!==ev.current?' ('+esc(ev.latest)+')':''}.</span>
+    <button class="kh-upd-go">Update</button><button class="kh-upd-x" aria-label="Not now">Later</button>`;
+  box.querySelector('.kh-upd-x').onclick=()=>{box.hidden=true};
+  box.querySelector('.kh-upd-go').onclick=async()=>{box.innerHTML='<span>⟳ updating…</span>';
+    const r=await fetch('/api/update',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({run_tests:false})})
+      .then(x=>x.json()).catch(e=>({error:String(e)}));
+    if(r.error)box.innerHTML=`<span>✗ ${esc(r.error)}</span>`};
 }

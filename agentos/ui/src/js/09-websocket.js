@@ -628,8 +628,8 @@ function handle(ev){
     case 'skills': refreshApp('skills'); break;      // the agent installed one (install_skill), with your yes
     case 'shell_cmd': shellCmd(ev); break;   // the agent's hands on this desktop (contract: server shell_command())
     case 'briefing': showBriefing(ev); break;        // "while you were away" — OS-initiated
-    case 'update': showUpdate(ev); break;            // a newer version exists; installing still asks
-    case 'update_progress': updateProgress(ev); break;
+    case 'update': showUpdate(ev);if(typeof kioskUpdate==='function')kioskUpdate(ev); break;   // a newer version exists; installing still asks
+    case 'update_progress': updateProgress(ev);if(typeof kioskUpdate==='function')kioskUpdate(ev); break;
     case 'update_done': updateDone(ev); break;
     case 'suggestion': showSuggestion(ev); break;    // at most one proactive idea at a time
     case 'accounts':
@@ -713,6 +713,9 @@ function handle(ev){
         if(!box.closest('.msg'))setTimeout(()=>box.remove(),2500);
       });
       break;}
+    case 'zero_behind':   // a Zero this hub set up runs an older Bento (server._zeros_keep_current)
+      toast(`${ev.peer||ev.label} runs ${ev.version}, this hub ${ev.hub}`,{label:'Update it',go:()=>tieUpdate(ev.label,ev.owner),ms:20000});
+      break;
     case 'zero_work':   // somebody at a Zero's screen, answered here (fabric.zero_chat)
       if(typeof officeZero==='function')officeZero(ev);
       if(typeof devMapPulse==='function')devMapPulse(ev);
