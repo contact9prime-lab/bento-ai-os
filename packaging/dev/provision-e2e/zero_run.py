@@ -9,12 +9,15 @@ up). What it checks, in order:
      hub hears it only because it announced to the hub's address
   3. the hub sets it up the moment it is heard, with the standard profile and nobody
      pressing anything: no seeded agents, the hub's "scout" with its executor, Light mode
-  4. a task typed on the Zero is handed to the hub's lead, who gives it to the hub's
-     writer; the file the writer makes comes back into the Zero's from-<hub>/ folder
+  4. a chat on the Zero runs on the hub (fabric.zero_chat): the hub's lead gives it to the
+     hub's writer, the file comes back into the Zero's from-<hub>/ folder, and the session is
+     kept on the hub in the Zero's section, the same conversation for the next turn
   5. its memory, graph and soul are on the hub, in its own section: what it knew before
      moved there once, what it remembers now is written there, the Zero sees nothing of
      the hub's own memory, and the hub's screens and terminal show the section
   6. the ledger on both sides says what happened
+  7. Network on the hub lists the Zero as a tie that answers, its own sessions read back,
+     and the brain its work runs on can be chosen
 
     python zero_run.py [WORKDIR] [--keep]
 """
@@ -41,10 +44,10 @@ for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY",
 
 # name, http, link, claim door, brain port, broadcast targets
 MACHINES = [
-    ("big-box", 8541, 8641, 0, 9441, "127.255.255.255"),
+    ("big-box", 8541, 8651, 0, 9441, "127.255.255.255"),
     # TEST-NET-3, routed nowhere: a broadcast nobody hears. Not 192.0.2.x: a cloud container
     # can sit in that range, and the first run's "unheard" broadcast reached the hub.
-    ("pi-zero", 8542, 8642, 8742, None, "203.0.113.255"),
+    ("pi-zero", 8542, 8652, 8752, None, "203.0.113.255"),
 ]
 PROCS: dict = {}
 REPORT: dict = {"steps": []}
@@ -88,6 +91,9 @@ def config(name, http_port, link, door, brain, _targets):
                                          "models": ["fake-1"]}})
     if door:
         cfg["provision"] = {"port": door}
+        # a real Ollama on this computer would be picked as the Zero's own brain, and a member
+        # with a brain of its own never thinks with the hub's: point it at nothing
+        cfg["providers"] = {"ollama": {"base_url": "http://127.0.0.1:9"}}
     home(name).mkdir(parents=True, exist_ok=True)
     (home(name) / "config.json").write_text(json.dumps(cfg, indent=1))
 
@@ -225,7 +231,18 @@ def main():
         assert came, got
         REPORT["file"] = (home("pi-zero") / came[0]).read_text()
 
-        assert "[its memory came from the hub]" in ans.get("content", ""), ans
+        # the session is the hub's: one conversation there, in the Zero's section, which the
+        # next turn on the same chat continues
+        st, ans2 = http("pi-zero", "POST", "/api/chat", {"text": "thanks", "conversation_id": ans["conversation_id"]},
+                        timeout=300)
+        con = sqlite3.connect(home("big-box") / "agentos.db")
+        zconv = con.execute("select c.id, c.title, s.name, (select count(*) from messages m where m.conversation_id=c.id) "
+                            "from conversations c join spaces s on s.id=c.space_id where c.origin='zero'").fetchall()
+        con.close()
+        assert len(zconv) == 1 and zconv[0][3] == 4, zconv
+        shipped = [d for a, d in ledger("big-box", "link.files")]
+        assert len(shipped) == 1, f"the second turn made nothing, so it sends nothing back: {shipped}"
+        REPORT["hub_session"] = zconv
         st, rem = http("pi-zero", "POST", "/api/memories", {"content": "the user likes green tea"})
         assert st == 200 and rem.get("kept_on") == "big-box", rem
         st, zm = http("pi-zero", "GET", "/api/memories")
@@ -237,7 +254,7 @@ def main():
         con.close()
         con = sqlite3.connect(home("big-box") / "agentos.db")
         hub_conv = con.execute("select c.space_id, s.name from conversations c join spaces s on s.id = c.space_id "
-                               "where c.title like '↔ pi-zero%'").fetchall()
+                               "where c.origin = 'zero'").fetchall()
         con.close()
         mine = [m["content"] for m in zm["memories"]]
         assert "HUB-PRIVATE: the hub owner's own note" not in mine
@@ -262,6 +279,20 @@ def main():
              hub=[f"{a}: {d[:110]}" for a, d in ledger("big-box", "provision.%") + ledger("big-box", "link.%")
                   + ledger("big-box", "zero.%")],
              zero=[f"{a}: {d[:110]}" for a, d in ledger("pi-zero", "provision.%")])
+        st, tv = http("big-box", "GET", "/api/network/ties?probe=2")
+        tie = next(t for t in tv["ties"] if t["kind"] == "zero")
+        st, sess = http("big-box", "GET", f"/api/network/ties/{tie['label']}/view?what=sessions")
+        st, mem = http("big-box", "GET", f"/api/network/ties/{tie['label']}/view?what=memory")
+        st, logs = http("big-box", "GET", f"/api/network/ties/{tie['label']}/view?what=logs")
+        st, br = http("big-box", "PUT", f"/api/network/ties/{tie['label']}/brain",
+                      {"executor": "aria", "model": "custom/fake-1"})
+        assert tie["answering"] is True and sess["rows"] and br.get("ok"), (tie, sess, br)
+        assert any("green tea" in r["content"] for r in mem["rows"]), mem
+        assert not any("HUB-PRIVATE" in r["content"] for r in mem["rows"]), mem
+        step("7. Network on the hub: the Zero answers, and its own rows read back",
+             tie={k: tie[k] for k in ("label", "kind", "answering", "peer", "stale")},
+             sessions=[f"{r['title']} ({r['messages']} messages)" for r in sess["rows"]],
+             memory=[r["content"] for r in mem["rows"]], log_lines=len(logs["rows"]), runs_on=br["brain"])
         REPORT["ok"] = True
     finally:
         (WORK / "report.json").write_text(json.dumps(REPORT, indent=1))

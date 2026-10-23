@@ -997,7 +997,7 @@ class Listener:
             req = await _read_line(reader, limit=POOL_LINE if known else MAX_LINE, timeout=FIRST_LINE)
             if fp and _by_fp(fp) and self._peer_busy(fp):
                 out = {"ok": False, "error": "too many requests from your team — slow down"}
-            elif req.get("op") == "ask" and req.get("progress") and fp and _by_fp(fp):
+            elif req.get("op") in ("ask", "zero_chat") and req.get("progress") and fp and _by_fp(fp):
                 out = await self._with_progress(writer, self._dispatch(req, fp, addr))
             else:
                 out = await self._dispatch(req, fp, addr)
@@ -1095,7 +1095,7 @@ class Listener:
         if op == "hello":
             return {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"],
                     "identity": self._ident(lk.get("owner") or "")}
-        if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "edge_run", "hear") and self.on_ask:
+        if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat", "edge_run", "hear") and self.on_ask:
             out = await self.on_ask(lk, req)
             if isinstance(out, dict) and "identity" not in out:
                 out["identity"] = self._ident(lk.get("owner") or "")

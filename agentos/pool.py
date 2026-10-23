@@ -312,10 +312,14 @@ def note() -> str:
         return ""
     nm = d["pool"]["name"]
     if d["role"] == "leader":
-        n = sum(1 for e in d["members"].values() if e.get("state") == "member")
+        live = [e for e in d["members"].values() if e.get("state") == "member"]
+        n = len(live)
+        who = ", ".join(str(e.get("name") or "a machine") + (f" ({e['hw']['ram_mb']} MB)" if
+                        isinstance(e.get("hw"), dict) and e["hw"].get("ram_mb") else "") for e in live[:8])
         return (f"\n=== Your community ===\nThis machine leads the community '{nm}' of {n + 1} "
-                f"machines. To split a bigger task across them, use pool_task with self-contained "
-                f"pieces. Shared notes: community_recall to read, remember(community=true) to "
+                f"machines{': this one and ' + who if who else ''}. Their hardware is yours to use: "
+                f"to split a bigger task across them, or to run something on one of them, use "
+                f"pool_task with self-contained pieces. Shared notes: community_recall to read, remember(community=true) to "
                 f"share a fact every machine should know.\n=== end community ===\n")
     lead = (d.get("leader") or {}).get("name") or "its leader"
     return (f"\n=== Your community ===\nThis machine is a member of the community '{nm}', led by "
@@ -722,6 +726,7 @@ class Pool:
             msgs = req.get("messages") if isinstance(req.get("messages"), list) else []
             tools = req.get("tools") if isinstance(req.get("tools"), list) else []
             opts = req.get("options") if isinstance(req.get("options"), dict) else None
+            opts = fit_window(opts, msgs, tools)
             async for ev in self.chat(cfg, model, msgs, tools, opts):
                 if ev.get("type") == "usage":
                     usage = ev
@@ -1049,6 +1054,26 @@ def grant_work(store, pool_id: str, name: str) -> None:
 
 
 # ---- a member's model calls ------------------------------------------------------------
+
+WINDOW_CEILING = 131072
+
+
+def fit_window(opts: dict | None, messages: list, tools: list) -> dict | None:
+    """A member's num_ctx is its own guess at a model it does not run. The leader sizes the
+    window to what it was sent: a Pi's whole turn (24,575 tokens) went into the 24,576 it
+    asked for, and the answer was one word. ~3 characters a token is the safe side."""
+    if not opts or not opts.get("num_ctx"):
+        return opts
+    import json as _json
+    try:
+        est = len(_json.dumps(messages, ensure_ascii=False)) // 3 + len(_json.dumps(tools)) // 3
+    except (TypeError, ValueError):
+        return opts
+    need = est + 8192
+    have = int(opts.get("num_ctx") or 0)
+    if need <= have:
+        return opts
+    return {**opts, "num_ctx": min(WINDOW_CEILING, -(-need // 4096) * 4096)}
 
 async def chat(cfg: dict, model: str, messages: list, tools: list, options: dict | None = None,
                call=None):

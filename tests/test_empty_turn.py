@@ -186,3 +186,70 @@ def test_thinking_that_fills_the_window_is_answered_without_thinking(tmp_path, m
     assert res["content"] == "I am Mr. Pi."
     assert len(calls) == 2 and calls[1].get("think") is False
     assert not [e for e in events if e["type"] == "error"]
+
+
+def test_a_prompt_that_fills_the_window_is_asked_again_bigger_not_continued(tmp_path, monkeypatch):
+    """A Pi answered "HeyIII": its prompt was 24,575 of the 24,576 tokens it asked for, so
+    each round had room for one word and the continuation loop glued them together."""
+    calls = []
+
+    def fake_chat(cfg, model, messages, tools, options=None):
+        calls.append(dict(options or {}))
+
+        async def gen():
+            if options.get("num_ctx", 0) <= 24576:
+                yield {"type": "text", "text": "Hey"}
+                yield {"type": "usage", "input": options["num_ctx"] - 1, "output": 1}
+                yield {"type": "finish", "reason": "length"}
+            else:
+                yield {"type": "text", "text": "Hello, I am Mr. Pi."}
+                yield {"type": "usage", "input": 24575, "output": 7}
+                yield {"type": "finish", "reason": "stop"}
+        return gen()
+
+    monkeypatch.setattr(providers, "chat", fake_chat)
+    events = []
+    res = asyncio.run(_agent(tmp_path, events).run([{"role": "user", "content": "Hi Mr Pi"}]))
+    assert res["content"] == "Hello, I am Mr. Pi.", "no 'Hey' glued in front"
+    assert len(calls) == 2 and calls[1]["num_ctx"] > calls[0]["num_ctx"]
+    assert calls[1].get("think") is False
+
+
+def test_the_leader_sizes_a_members_window_to_what_it_was_sent():
+    from agentos import pool
+    big = [{"role": "system", "content": "x" * 90000}, {"role": "user", "content": "hi"}]
+    got = pool.fit_window({"num_ctx": 24576}, big, [])
+    assert got["num_ctx"] >= 30000 + 8192 and got["num_ctx"] % 4096 == 0
+    small = [{"role": "user", "content": "hi"}]
+    assert pool.fit_window({"num_ctx": 24576}, small, [])["num_ctx"] == 24576
+    assert pool.fit_window(None, big, []) is None
+    huge = [{"role": "user", "content": "x" * 900000}]
+    assert pool.fit_window({"num_ctx": 4096}, huge, [])["num_ctx"] == pool.WINDOW_CEILING
+
+
+def test_a_cut_off_prompt_is_sized_from_what_is_sent_not_doubled(tmp_path, monkeypatch):
+    """Ollama reports a prompt it cut as the window minus one: measured with qwen3.5:9b, a
+    54,653-token turn read 24,575 at 24,576 and 49,151 at 49,152. The retry window is sized
+    from the messages and tools themselves, in one go."""
+    calls = []
+
+    def fake_chat(cfg, model, messages, tools, options=None):
+        calls.append(dict(options or {}))
+
+        async def gen():
+            if options["num_ctx"] < 60000:
+                yield {"type": "usage", "input": options["num_ctx"] - 1, "output": 1}
+                yield {"type": "finish", "reason": "length"}
+            else:
+                yield {"type": "text", "text": "Hello! I am ready."}
+                yield {"type": "finish", "reason": "stop"}
+        return gen()
+
+    monkeypatch.setattr(providers, "chat", fake_chat)
+    events = []
+    ag = _agent(tmp_path, events)
+    ag.extra_system = "kitchen note " * 15000            # ~180,000 characters
+    res = asyncio.run(ag.run([{"role": "user", "content": "hi"}]))
+    assert res["content"] == "Hello! I am ready."
+    assert len(calls) == 2, "straight to a window that fits: no round lost to a thinking retry"
+    assert calls[1]["num_ctx"] >= 60000 and calls[1]["think"] is False
