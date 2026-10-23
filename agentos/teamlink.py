@@ -1084,6 +1084,11 @@ class Listener:
             return {"ok": False, "error": "this machine does not know your certificate — pair first"}
         if isinstance(req.get("identity"), dict):
             note_identity(lk.get("owner") or "", lk["label"], req["identity"])
+        if lk.get("kind") == "machine":
+            with contextlib.suppress(Exception):
+                moved = note_seen(fp, addr)
+                if moved:
+                    _told(moved, addr, "heard")
         if op in POOL_OPS:
             if not self.on_pool:
                 return {"ok": False, "error": "this machine is not taking part in a community"}
@@ -1098,12 +1103,195 @@ class Listener:
             return {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"],
                     "version": __version__, "identity": self._ident(lk.get("owner") or "")}
         if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat",
-                  "zero_update", "zero_say", "zero_face", "edge_run", "hear") and self.on_ask:
+                  "zero_update", "zero_say", "zero_face", "zero_refresh", "edge_run", "hear") and self.on_ask:
             out = await self.on_ask(lk, req)
             if isinstance(out, dict) and "identity" not in out:
                 out["identity"] = self._ident(lk.get("owner") or "")
             return out
         return {"ok": False, "error": f"unknown request '{op}'"}
+
+
+# ---- a machine whose address changed (DHCP) --------------------------------------------------
+#
+# A Pi on a home network gets its address from DHCP, and it changes: after a reboot, a router
+# restart, a long time off. The link kept the address it was made with and dialled it forever
+# ("could not reach pi at 192.168.29.246"). The certificate is what a link trusts, never the
+# address, so an address is free to move as long as the certificate at the new one is the pinned
+# one. Two ways it moves:
+#
+#   * HEARD: a pinned machine connected to us from another address (`note_seen`). Its own hello
+#     every minute (server._ties_watch) is enough for its hub to follow it.
+#   * FOUND: dialling the old address failed, so `relocate` tries where it might be now: the
+#     address it last connected from, its MAC in the neighbour table, its name over mDNS, and
+#     last, a knock on the link port across this machine's own networks. Each candidate is
+#     dialled with the pinned certificate; one that presents another is never used.
+#
+# Only an address is ever rewritten, never a name (a name follows its machine through DNS),
+# and every move is a `device.moved` ledger row and an event in Devices (server._tie_moved).
+
+ON_MOVED = None                 # async (link view, old host, new host, how): set by the server
+RELOCATE_EVERY = 60             # seconds between looks for one link that cannot be reached
+RELOCATE_DIAL = 4.0             # seconds one candidate may take
+SWEEP_TIMEOUT = 0.6
+SWEEP_AT_ONCE = 64
+SWEEP_EVERY = 900               # a knock across the network, for one link, at most this often
+_SWEPT: dict[str, float] = {}
+MOVES_KEPT = 10
+_RELOCATING: dict[str, float] = {}
+
+
+def _host_port(url: str) -> tuple[str, str]:
+    host, _, port = str(url or "").rpartition(":")
+    return host.strip("[]"), port
+
+
+def _hostport(host: str, port) -> str:
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+
+
+def _ip(h: str):
+    try:
+        return ipaddress.ip_address(str(h or "").strip("[]"))
+    except ValueError:
+        return None
+
+
+def _move(lk_id: str, new_host: str, how: str) -> tuple[dict, str] | None:
+    """Point the stored link at `new_host`, keeping its port. (view, old host), or None when
+    nothing changed or the address is a name."""
+    d = _load()
+    for lk in d["links"]:
+        if lk.get("id") != lk_id:
+            continue
+        old, port = _host_port(lk.get("url") or "")
+        if not old or not port or old == new_host or _ip(old) is None:
+            return None
+        lk["url"] = _hostport(new_host, port)
+        if lk.get("host"):
+            lk["host"] = new_host           # ties.host_of reads it before the url
+        lk["moved"] = (list(lk.get("moved") or []) + [{"from": old, "to": new_host, "at": time.time(),
+                                                       "how": how}])[-MOVES_KEPT:]
+        _save(d)
+        return {k: v for k, v in lk.items() if k != "peer_ca"}, old
+    return None
+
+
+def _told(view_old, new_host: str, how: str) -> None:
+    if not view_old or ON_MOVED is None:
+        return
+    with contextlib.suppress(RuntimeError):
+        asyncio.get_running_loop().create_task(ON_MOVED(view_old[0], view_old[1], new_host, how))
+
+
+def note_seen(fp: str, addr: str) -> tuple[dict, str] | None:
+    """A pinned machine just connected from `addr`: remember it (and its MAC), and when the link
+    dials another address, move the link there. A loopback address never replaces a real one."""
+    from . import netscan
+    if not fp or not addr or addr == "?":
+        return None
+    d = _load()
+    lk = next((x for x in d["links"] if x.get("kind") == "machine" and x.get("peer_host_fp") == fp), None)
+    if not lk:
+        return None
+    changed = False
+    if lk.get("seen_from") != addr:
+        lk["seen_from"] = addr
+        changed = True
+    mac = netscan.neighbours().get(addr)
+    if mac and lk.get("mac") != mac:
+        lk["mac"] = mac
+        changed = True
+    if changed:
+        _save(d)
+    old, port = _host_port(lk.get("url") or "")
+    a, o = _ip(addr), _ip(old)
+    if not port or o is None or a is None or old == addr or (a.is_loopback and not o.is_loopback):
+        return None
+    return _move(lk["id"], addr, "heard")
+
+
+async def _dial(host: str, port: int, lk: dict, limit: int, wait: float):
+    """A TLS connection to `host` that presents the pinned certificate, or None."""
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(
+            host, port, ssl=_client_ctx(lk["peer_ca"], ensure_pki()), server_hostname=SNI,
+            limit=limit + 1), wait)
+    except (OSError, asyncio.TimeoutError, ssl.SSLError, ValueError):
+        return None
+    if _peer_fp(writer) != lk.get("peer_host_fp"):
+        writer.close()
+        return None
+    return reader, writer
+
+
+async def _open(host: str, port: int) -> bool:
+    try:
+        _r, w = await asyncio.wait_for(asyncio.open_connection(host, port), SWEEP_TIMEOUT)
+    except (OSError, asyncio.TimeoutError):
+        return False
+    w.close()
+    return True
+
+
+async def candidates(lk: dict, old: str, port: int, sweep: bool = True) -> list[tuple[str, str]]:
+    """Where a machine might be now, as (host, how), most likely first."""
+    from . import netscan
+    out: list[tuple[str, str]] = []
+
+    def add(h, how):
+        if h and h != old and all(h != x for x, _ in out):
+            out.append((h, how))
+    add(lk.get("seen_from"), "heard")
+    o = _ip(old)
+    if o is None or o.is_loopback:
+        return out                  # the same machine: nothing on a network to look through
+    if lk.get("mac"):
+        for ip, mac in netscan.neighbours().items():
+            if mac == lk["mac"]:
+                add(ip, "MAC")
+    for name in {lk.get("peer_name") or "", (lk.get("peer_identity") or {}).get("host") or ""} - {""}:
+        with contextlib.suppress(Exception):
+            for ip in await netscan.mdns_lookup(name):
+                add(ip, "name")
+    if sweep:
+        nets = [n for n in netscan.local_networks() if o in n]
+        hosts = [str(h) for n in nets for h in n.hosts()][:netscan.MAX_HOSTS]
+        hosts = [h for h in hosts if h != old and all(h != x for x, _ in out)
+                 and h not in netscan.my_addresses()]
+        sem = asyncio.Semaphore(SWEEP_AT_ONCE)
+
+        async def knock(h):
+            async with sem:
+                return h if await _open(h, port) else None
+        for h in await asyncio.gather(*(knock(h) for h in hosts)):
+            add(h, "search")
+    return out
+
+
+async def relocate(lk: dict, limit: int = MAX_LINE):
+    """The old address failed: (reader, writer, new host) for the first candidate presenting the
+    pinned certificate, the link already moved; None when it is nowhere, or was looked for in the
+    last RELOCATE_EVERY seconds."""
+    old, port = _host_port(lk.get("url") or "")
+    key = lk.get("id") or ""
+    if not port or _ip(old) is None or not lk.get("peer_ca"):
+        return None
+    if time.time() - _RELOCATING.get(key, 0) < RELOCATE_EVERY:
+        return None
+    _RELOCATING[key] = time.time()
+    # the knock across the network is the costly part: a machine that is off would be swept for
+    # every minute, so it waits SWEEP_EVERY between tries
+    sweep = time.time() - _SWEPT.get(key, 0) >= SWEEP_EVERY
+    if sweep:
+        _SWEPT[key] = time.time()
+    for host, how in await candidates(lk, old, int(port), sweep=sweep):
+        got = await _dial(host, int(port), lk, limit, RELOCATE_DIAL)
+        if got:
+            _told(_move(key, host, how), host, how)
+            _RELOCATING.pop(key, None)
+            _SWEPT.pop(key, None)
+            return got[0], got[1], host
+    return None
 
 
 async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT, limit: int = MAX_LINE,
@@ -1127,7 +1315,13 @@ async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT, limit: int = M
             host.strip("[]"), int(port), ssl=_client_ctx(lk["peer_ca"], ident),
             server_hostname=SNI, limit=limit + 1), 15)
     except (OSError, asyncio.TimeoutError, ssl.SSLError) as e:
-        return {"ok": False, "error": f"could not reach {lk.get('label')} at {host}:{port} ({type(e).__name__})"}
+        # the address may have moved (DHCP): look for the pinned certificate elsewhere
+        found = None
+        with contextlib.suppress(Exception):
+            found = await relocate(lk, limit)
+        if not found:
+            return {"ok": False, "error": f"could not reach {lk.get('label')} at {host}:{port} ({type(e).__name__})"}
+        reader, writer, host = found
     try:
         if _peer_fp(writer) != lk.get("peer_host_fp"):
             return {"ok": False, "error": f"{lk.get('label')} presented a different certificate "

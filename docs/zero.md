@@ -191,6 +191,14 @@ for most of an hour, and it restarts on its own (a Pi takes a few minutes). From
 `bento network ties <zero> update`. A Zero on 0.6.87 or older can't be asked over the link yet:
 update it once with Controls → Update, or `bento network update <address>`.
 
+The Pi's screen comes back on its own after an update. The page used to reload a few seconds after
+the update started, while the Pi was still restarting, and the browser showed its own "not
+reachable" page, where nothing of Bento's runs to try again. Now the page waits until its server
+answers, and a kiosk takes the new page without anyone tapping Refresh. Two more catch a screen
+that is stuck anyway: when the hub sees a Zero answer again on a new version it asks it to
+refresh its screen, and a Pi that starts with its browser showing and no page connected starts
+the browser again. Devices → Events says when a screen was refreshed.
+
 ## Whose it is
 
 On a hub with accounts, every Zero belongs to one of them: the person who made it. *Make a Zero*

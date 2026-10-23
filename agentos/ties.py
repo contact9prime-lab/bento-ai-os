@@ -27,6 +27,7 @@ import time
 
 PROBE_TTL = 30           # seconds an answer to "are you there?" is kept
 PROBE_TIMEOUT = 4        # seconds one probe may take
+WATCH_TIMEOUT = 50       # the same, from the minute watch: time to look for a machine that moved
 VIEWS = ("sessions", "schedules", "memory", "knowledge", "logs")
 VIEW_ROWS = 60
 
@@ -62,8 +63,12 @@ def _stale(lk: dict, all_links: list[dict]) -> bool:
     if lk.get("kind") != "machine":
         return False
     me = (str(lk.get("peer_name") or ""), host_of(lk))
+    # by its network card too: a reinstalled Pi that DHCP then gave another address is the same
+    # machine, at a new address, holding only the newer link's certificate
+    mac = str(lk.get("mac") or "")
     return any(o is not lk and o.get("kind") == "machine"
-               and (str(o.get("peer_name") or ""), host_of(o)) == me
+               and ((str(o.get("peer_name") or ""), host_of(o)) == me
+                    or (mac and str(o.get("mac") or "") == mac and str(o.get("peer_name") or "") == me[0]))
                and float(o.get("created") or 0) > float(lk.get("created") or 0)
                for o in all_links)
 
@@ -90,14 +95,17 @@ def ties(owner: str | None = None) -> list[dict]:
             "brain": {"executor": str(brain.get("executor") or ""), "model": str(brain.get("model") or "")},
             "version": _VERSION.get(lk.get("id") or "", ""),
             "behind": behind(_VERSION.get(lk.get("id") or "", "")),
+            "moved": (lk.get("moved") or [])[-1] if lk.get("moved") else None,
         })
     out.sort(key=lambda t: (t["stale"], -float(t["created"] or 0)))
     return out
 
 
-async def probe(lks: list[dict], force: bool = False) -> None:
+async def probe(lks: list[dict], force: bool = False, wait: float = PROBE_TIMEOUT) -> None:
     """Ask each machine link whether it is there, all at once. An account link is always
-    there (same machine). Kept PROBE_TTL seconds."""
+    there (same machine). Kept PROBE_TTL seconds. A screen waits PROBE_TIMEOUT; the minute
+    watch waits WATCH_TIMEOUT, because a machine that moved is looked for inside the call
+    (teamlink.relocate) and cut off at five seconds it was never found by looking."""
     from . import teamlink
     now = time.time()
 
@@ -110,7 +118,7 @@ async def probe(lks: list[dict], force: bool = False) -> None:
             return
         try:
             got = await asyncio.wait_for(teamlink.call(lk, {"op": "hello"}, timeout=PROBE_TIMEOUT),
-                                         PROBE_TIMEOUT + 1)
+                                         wait + 1)
             ok = bool(got.get("ok"))
             why = "" if ok else teamlink.plain(got.get("error") or "no answer", 120, newlines=False)
             if ok:

@@ -6,14 +6,33 @@ var CUR_ENGINE={engine:'',model:''};
 /* The last model each engine reported. The chip reads it so the top bar can say
    what the machine is running on, not just who it forwards to. */
 var FWD_MODEL={};
+/* A reload asked for by the server, done only once a server answers again. The update and the
+   restart broadcast `reload` and then restart: a reload a few seconds later, while it was down,
+   left the page on the browser's own "not reachable" page, where nothing of ours runs, and a
+   Pi's kiosk sat there until somebody walked over (a Pi 3 takes minutes to come back). So the
+   page waits for the socket to drop and come back, and reloads then. */
+var RELOAD_WANT={on:false,dropped:false,timer:0};
+function reloadWhenUp(delay){
+  RELOAD_WANT.on=true;RELOAD_WANT.dropped=!(ws&&ws.readyState===1);
+  clearTimeout(RELOAD_WANT.timer);
+  // the restart never came (nothing moved): reload once something answers, as before
+  RELOAD_WANT.timer=setTimeout(()=>reloadIfServerUp(),Math.max(delay||400,1000)+30000);
+  if(RELOAD_WANT.dropped)setTimeout(()=>reloadIfServerUp(),Math.max(delay||400,1000));
+}
+async function reloadIfServerUp(tries){
+  tries=tries||0;
+  try{const r=await fetch('/api/platform',{cache:'no-store'});if(r.ok)return location.reload()}catch(e){}
+  if(tries<900)setTimeout(()=>reloadIfServerUp(tries+1),2000);   // about half an hour, then give up
+}
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-  ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim();
+  ws.onopen=()=>{if(RELOAD_WANT.on&&RELOAD_WANT.dropped)return location.reload();   // back after the restart
+    setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim();
     // a reconnect is usually a restart: is this page the build that is now running?
     if(typeof updateWaitingCheck==='function')setTimeout(updateWaitingCheck,1500);
     // a Brief that came while nobody was looking is offered once, with Play (24b-brief.js)
     if(typeof briefWelcome==='function'&&!window._briefWelcomed){window._briefWelcomed=1;setTimeout(briefWelcome,2500)}};
-  ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
+  ws.onclose=()=>{if(RELOAD_WANT.on)RELOAD_WANT.dropped=true;setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
     for(const k in ACT)actDone(k);   // no socket, no honest "what it is doing"
     removeWorking(); // never leave "thinking…" on screen with no live socket behind it
     if(window.STUDIO&&STUDIO.building)studioLog('<span class="mut">connection lost — reconnecting…</span>');
@@ -721,6 +740,9 @@ function handle(ev){
     case 'zero_behind':   // a Zero this hub set up runs an older Bento (server._zeros_keep_current)
       toast(`${ev.peer||ev.label} runs ${ev.version}, this hub ${ev.hub}`,{label:'Update it',go:()=>tieUpdate(ev.label,ev.owner),ms:20000});
       break;
+    case 'device_event':   // a machine moved, stopped answering, came back, updated (server._ties_check)
+      if(typeof devEventLive==='function')devEventLive(ev);
+      break;
     case 'zero_work':   // somebody at a Zero's screen, answered here (fabric.zero_chat)
       if(typeof officeZero==='function')officeZero(ev);
       if(typeof devMapPulse==='function')devMapPulse(ev);
@@ -781,7 +803,7 @@ function handle(ev){
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is
     // how a deploy reaches the screen without the user hunting for Ctrl+R
-    case 'reload': setTimeout(()=>location.reload(),ev.delay||400); break;
+    case 'reload': reloadWhenUp(ev.delay||400); break;
     // back from suspend or the lock screen: the page may have been frozen for
     // hours, so repaint the things that go stale rather than sit there wrong
     case 'wake': onWake(); break;
@@ -913,6 +935,6 @@ function onWake(){
   }catch(e){}
   setTimeout(()=>{
     const live=(typeof ws!=='undefined'&&ws&&ws.readyState===1);
-    if(!live)location.reload();
+    if(!live)reloadIfServerUp();   // never into a server that is down: that is the browser's error page
   },4000);
 }

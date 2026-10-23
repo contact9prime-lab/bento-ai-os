@@ -60,6 +60,11 @@ details.mtools[open] summary::before{content:'▾ '}
 table.loglist{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
 table.loglist td{padding:5px 8px;border-bottom:1px solid rgba(35,42,53,.5);vertical-align:top}
 table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:tabular-nums}
+/* a long line (a path, a journal line) wraps inside its cell rather than pushing the table past the screen */
+table.loglist{table-layout:fixed}
+table.loglist td:first-child{width:96px}
+table.loglist td:nth-child(2){width:84px}
+table.loglist td:last-child{overflow-wrap:anywhere}
 .lbadge{font-size:var(--fs-2xs);padding:1px 7px;border-radius:var(--r-md);background:var(--bg4);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 .lk-tool .lbadge{color:var(--acc)} .lk-turn .lbadge{color:var(--acc2)} .lk-error .lbadge{color:var(--err)}
 .lk-telegram .lbadge{color:#60a5fa} .lk-mcp .lbadge{color:#c084fc} .lk-task .lbadge{color:var(--warn)} .lk-system .lbadge{color:var(--dim)}

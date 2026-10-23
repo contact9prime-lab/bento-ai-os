@@ -296,11 +296,13 @@ async function tgUnpair(){
 
 /* ================= logs app ================= */
 function renderLogs(body,w){
-  w.kind=w.kind||'';w.q=w.q||'';
+  w.kind=w.kind||'';w.q=w.q||'';w.src=w.src||'';
   body.innerHTML=`<div class="apptop">
+      <select id="log-src" style="flex:0 0 150px" hidden aria-label="Which diary"></select>
       <select id="log-kind" style="flex:0 0 130px">
         <option value="">all kinds</option><option>turn</option><option>tool</option><option>policy</option><option>mcp</option>
-        <option>telegram</option><option>task</option><option>system</option><option>error</option>
+        <option>telegram</option><option>task</option><option>system</option><option>device</option><option>provision</option>
+        <option>screen</option><option>error</option>
       </select>
       <input id="log-q" placeholder="search message & details… (e.g. deny, app:, run_command)" style="flex:1">
       <span class="mut" id="log-count" style="flex:0 0 auto"></span>
@@ -309,15 +311,27 @@ function renderLogs(body,w){
     </div>
     <div style="flex:1;overflow-y:auto;user-select:text"><table class="loglist"><tbody id="log-rows"></tbody></table></div>`;
   $('#log-kind').value=w.kind;$('#log-q').value=w.q;
+  $('#log-src').onchange=()=>{w.src=$('#log-src').value;loadLogs(w)};
   $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;if(typeof watchNote==='function')watchNote('view','logs',w.kind);loadLogs(w)};
   let deb;$('#log-q').oninput=e=>{clearTimeout(deb);deb=setTimeout(()=>{w.q=e.target.value;loadLogs(w)},300)};
   stopWinTicks(w);
   winTick(w,()=>loadLogs(w),5000,{key:'poll'});
 }
 async function loadLogs(w){
-  const r=await fetch('/api/logs?kind='+encodeURIComponent(w.kind||'')+'&q='+encodeURIComponent(w.q||''));const d=await r.json();
+  const r=await fetch('/api/logs?kind='+encodeURIComponent(w.kind||'')+'&q='+encodeURIComponent(w.q||'')
+    +'&source='+encodeURIComponent(w.src||''));const d=await r.json();
   const tb=$('#log-rows');if(!tb)return;
   $('#log-count').textContent=d.logs.length+' entries';
+  /* the diaries this person may read: their own, the machine's (devices, links, setting machines
+     up), and the server's output. One is no choice, so the picker shows only for two or more. */
+  const srcs=d.sources||[],sel=$('#log-src');
+  if(sel&&srcs.length>1){
+    const want=`<option value="">${srcs.filter(x=>x.id!=='service').length>1?'Mine and this machine':'All'}</option>`
+      +srcs.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+    if(sel.dataset.opts!==want){sel.innerHTML=want;sel.dataset.opts=want;sel.value=w.src||''}
+    sel.hidden=false;
+  }
+  const many=srcs.length>1,WH={mine:'mine',machine:'machine',service:'server'};
   tb.innerHTML=d.logs.map(l=>{
     const t=new Date(l.created_at*1000);
     let m={};try{m=JSON.parse(l.meta||'{}')}catch(e){}
@@ -326,7 +340,7 @@ async function loadLogs(w){
     const eff=m.effect==='deny'||l.kind==='error'?'var(--err,#f87171)':(m.effect==='allow'?'var(--ok,#5eead4)':'');
     return `<tr class="lk-${esc(l.kind)}" style="cursor:${keys.length?'pointer':'default'}" onclick="logExpand(this)">
       <td class="lk">${t.toLocaleTimeString()}<br><span style="font-size:10px">${t.toLocaleDateString()}</span></td>
-      <td><span class="lbadge" ${eff?`style="color:${eff};border-color:${eff}"`:''}>${esc(l.kind)}</span></td>
+      <td><span class="lbadge" ${eff?`style="color:${eff};border-color:${eff}"`:''}>${esc(l.kind)}</span>${many&&l.where?`<br><span class="mut" style="font-size:10px">${esc(WH[l.where]||l.where)}</span>`:''}</td>
       <td>${avatarImg(avatarKeyOf(m.principal),'av-log')}${esc(l.message)}
         ${m.principal?`<span class="badge" style="margin-left:6px">${esc(m.principal)}</span>`:''}
         ${mtxt?`<div class="tools-mini" style="white-space:normal;word-break:break-word">${esc(mtxt.slice(0,220))}${mtxt.length>220?' …':''}</div>

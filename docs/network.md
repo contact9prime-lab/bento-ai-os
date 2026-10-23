@@ -68,6 +68,37 @@ the tab opens and again with **Check them now**.
 
 ![On a phone: a Zero's memory, read from its section](screenshots/network-ties-memory-phone.png)
 
+### When a machine's address changes
+
+A Pi on a home network gets its address from your router (DHCP), and it can change after a
+reboot or a router restart. Bento follows it. A link trusts the machine's certificate, never its
+address, so the address is free to move:
+
+- Every machine says hello to the other once a minute. When the Pi's hello comes from a new
+  address, the hub's link moves there.
+- When the hub can't reach a machine at its old address, it looks where it might be now: the
+  address it last came from, its network card in this computer's neighbour table, its name on
+  the network (`raspberrypi.local`), and then, at most every 15 minutes, a knock on the link port
+  across this computer's own network.
+
+Each place is dialled with the pinned certificate, and an answer with any other certificate is
+never used. Only an address is ever changed. A link made to a name keeps its name. Every move is
+an event, below, and a `device.moved` ledger row.
+
+### Events
+
+The Devices app has **Events** under the map: what happened to the machines here, newest first.
+A machine that moved and how it was found, one that stopped answering (after two missed minutes,
+so a Wi-Fi blink isn't news) and came back, one that's on a new version, a Zero whose screen was
+refreshed, and every step done to a machine from here: heard, installed, secured, switched,
+linked, set up, asked to update. Manage on a team or a Zero has the same list for it alone.
+
+![Devices: the map, and Events under it](screenshots/devices-events.png)
+
+![Events on a phone: the Pi moved twice, stopped answering and came back](screenshots/devices-events-phone.png)
+
+`bento network events` prints them, and `bento network events pi-kitchen` one machine's.
+
 ### The map
 
 The Devices app opens on a map. This computer is in the middle with its agent. Zeros sit on the
@@ -447,6 +478,7 @@ bento network label 192.168.1.40 "Kitchen Pi"
 bento network hide 192.168.1.40                 # to Hidden (forget does the same)
 bento network show 192.168.1.40                 # back on the list
 bento network rekey pi-kitchen                  # it was reformatted: forget its old SSH key
+bento network events [pi-kitchen]               # what happened to the machines here
 bento network firewall                          # this computer's firewall, and the ports to open
 bento network firewall open                     # open them (asks for your password)
 bento network controls pi-kitchen --user pi     # read its switches
@@ -481,9 +513,19 @@ Every step is a row: `device.scan`, `device.check`, `device.secure`, then `devic
 `device.secure_failed`, `device.disconnect`, `device.forget` (hidden), `device.show`, `device.rekey` (an old SSH key
 forgotten), `network.firewall`, `provision.code` (a machine may hand code here) and `edge.code`
 (one run, with what went in and came back), `device.controls`, `device.switch`, `device.update` and
-`device.remove`.
+`device.remove`, and `device.moved` (a machine followed to its new address).
 
 ## What was tested, and what wasn't
+
+- `tests/test_device_moves.py`, two machines on real mTLS: a Pi heard from a new address is
+  followed there, one that stopped answering is found where it is, and a different certificate at
+  the new address moves nothing. A name is never rewritten, and a real address never becomes a
+  loopback one. The watch says offline only after two misses, and back on a new version a Zero's
+  screen is refreshed.
+- `packaging/dev/provision-e2e/dhcp_run.py`, two real `bento serve`s: the hub's record of the Pi
+  is pointed at an address where nothing answers, and the hub follows the Pi back, both from the
+  Pi's hello and by looking; then the Pi is stopped and started, and Events says so. Finding a Pi
+  by its network card or its `.local` name needs a real LAN and wasn't run here.
 
 - `tests/test_network.py`, with a stand-in `ssh` playing a Pi whose state changes as each step
   runs: what runs is what was shown; the password never reaches a command line; `sudo` gets it

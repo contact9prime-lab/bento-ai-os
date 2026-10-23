@@ -621,7 +621,7 @@ See [Models & Appearance](models.md) for more.
 | **MCP Servers** | connect external tool servers |
 | **Telegram** | control the agent from your phone |
 | **Permissions** | what your agents may do and what they did. Tabs: the policy map, grants, review, **Quarantine**, **Rules** (always-allow / always-deny) and the **Ledger** (every decision) |
-| **Logs** | everything the system did |
+| **Logs** | everything the system did. On a machine with accounts an admin picks the diary: their own, **This machine** (devices, links, setting machines up, the server's own work) or **Server output** |
 | **Token Analytics** | model token usage over time |
 | **Missions** | what the machine does for you. Tabs: **Run** (your missions), **Build** (flows, agents, runs), **Schedule** (plain scheduled prompts) and **Routines** (named sequences and hot corners) |
 | **Personalize** | wallpapers and gallery |

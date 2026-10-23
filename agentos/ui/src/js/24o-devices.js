@@ -4,8 +4,42 @@
    what it is to Bento, its switches as last read, Controls, Install and Remove. */
 async function renderDevices(body,w){
   const pb=panelShell(body,{title:'Devices',sub:'The machines on your network'});
-  pb.innerHTML=`<div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>`;
+  pb.innerHTML=`<div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
+    <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section>`;
   await netPaint();
+  devEventsLoad();
+}
+
+/* Events: what happened to the machines here, newest first (devevents.py). Asked for as "in the
+   devices section we need to have events": a Pi that moved to another address, stopped answering
+   or came back, updated, had its screen refreshed, and every step done to a machine from here.
+   A machine's own row has the same list for it alone (Events, 24p-ties.js). */
+var DEVEV={list:null,all:false};
+var DEVEV_ICON={moved:'⇄',offline:'○',online:'●',updated:'⬆',refreshed:'⟳',failed:'✗',installed:'✓',secured:'🔒'};
+function devEventsList(list){
+  const when=s=>new Date(s*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  return `<ul class="dev-ev">${list.map(e=>`<li class="dev-ev-${esc(e.event)}${e.failed?' bad':''}">
+    <span class="dev-ev-i" aria-hidden="true">${DEVEV_ICON[e.event]||'·'}</span>
+    <span class="dev-ev-t">${esc(e.text)}</span><time class="mut">${when(e.at)}</time></li>`).join('')}</ul>`;
+}
+async function devEventsLoad(){
+  const boxes=[...document.querySelectorAll('.dev-ev-box')];if(!boxes.length)return;
+  try{DEVEV.list=(await apiJSON('/api/network/events?limit=200')).events||[]}
+  catch(e){boxes.forEach(b=>b.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`);return}
+  devEventsPaint();
+}
+function devEventsPaint(){
+  const list=DEVEV.list||[],shown=DEVEV.all?list:list.slice(0,12);
+  document.querySelectorAll('.dev-ev-box').forEach(b=>{
+    b.innerHTML=list.length?devEventsList(shown)+(list.length>12?`<button class="endbtn dev-ev-more">${DEVEV.all?'Show fewer':'Show all '+list.length}</button>`:'')
+      :'<p class="mut">Nothing has happened to the machines here yet.</p>';
+    const m=b.querySelector('.dev-ev-more');if(m)m.onclick=()=>{DEVEV.all=!DEVEV.all;devEventsPaint()}});
+}
+/* A new one, live (server._device_event). A move also repaints the list: the address changed. */
+function devEventLive(ev){
+  if(DEVEV.list)DEVEV.list.unshift({at:Date.now()/1000,event:ev.event,label:ev.label,text:ev.text});
+  devEventsPaint();
+  if(ev.event==='moved'){toast('⇄ '+ev.text);if(typeof netPaint==='function')netPaint()}
 }
 
 /* The map: this computer in the middle with its lead agent, the Zeros it set up on the ring

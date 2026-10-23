@@ -403,6 +403,44 @@ async def mdns_names(ips: list[str], timeout: float = 1.2) -> dict[str, str]:
     return got
 
 
+async def mdns_lookup(name: str, timeout: float = 1.0) -> list[str]:
+    """Where is `<name>.local` now? One A question over mDNS, from a port of our own, so the
+    answer comes straight back (RFC 6762 6.7). A Pi's avahi answers for its hostname wherever
+    DHCP put it, which is how a link finds a machine whose address changed (teamlink.relocate).
+    [] when nobody answers or this machine cannot multicast."""
+    name = str(name or "").lower().strip(".")
+    if not name:
+        return []
+    if not name.endswith(".local"):
+        name += ".local"
+    loop = asyncio.get_running_loop()
+    got: list[str] = []
+
+    class P(asyncio.DatagramProtocol):
+        def datagram_received(self, data, addr):
+            if len(data) <= 9000:
+                for n, ip in parse_mdns(data):
+                    if n == name and allowed(ip) and ip not in got:
+                        got.append(ip)
+
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+        s.bind(("", 0))
+        s.setblocking(False)
+        tr, _ = await loop.create_datagram_endpoint(P, sock=s)
+    except OSError:
+        return []
+    try:
+        tr.sendto(_question([name], qtype=1), _mdns_target())
+        await asyncio.sleep(timeout)
+    except OSError:
+        return []
+    finally:
+        tr.close()
+    return got
+
+
 class MdnsEar:
     """Listens on the mDNS group for machines saying their name. Sends nothing. A machine
     whose bind fails (another program owns 5353 without sharing it) just has no ear, and the

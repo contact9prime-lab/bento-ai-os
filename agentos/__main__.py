@@ -4699,6 +4699,11 @@ def _network_cli(args):
                             user=args.user or r.get("user") or "")
     if a == "ties":
         return _ties_cli(rest)
+    if a == "events":
+        # Devices → Events: the machine's own diary and ledger (the person's account is the page's)
+        from . import devevents
+        print(devevents.text(devevents.gather([Store()], who=",".join(rest), limit=60)))
+        return
     if a == "list":
         every = inv.rows()
         rows = [r for r in every if not r.get("ignored")]
@@ -8886,9 +8891,10 @@ def main():
     p_net = verb("network", help="the machines on your network: look, install, check, secure, disconnect")
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
-                                "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties"],
+                                "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
+                                "events"],
                        metavar="ACTION",
-                       help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | "
+                       help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | "
                             "look | install MACHINE --user U [--authorize] [--kiosk] [--for ACCOUNT] | "
                             "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
                             "letin MACHINE --user U [--your-key F] [--passwords-on] | "
