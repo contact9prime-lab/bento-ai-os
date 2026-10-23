@@ -3143,6 +3143,23 @@ room for one word a round ("HeyIII"). Four rules:
 - **Files go back only if this turn made them** (`since=started`): a first cut sent the last hour's again.
 - **An older hub answers "unknown request"**, and the Zero answers itself (`fallback`), saying so once.
 
+**A Zero's chat answers in the Zero agent's name** (`req["agent"]`, `zeromind.soul_of(label)` in the
+note); the real Pi's "Hi Mr Pi" came back from the hub's Aria. **A machine-owned tie's activity goes to the
+admins** (`server._tie_tell`): `broadcast_user(ev, "")` reaches nobody signed in on a hub with accounts.
+In Chat, `chatMachineMsg` reads `meta.zero` / `meta.team` (or the `[who@team]` prefix) and the thread opens
+with `chatMachineBanner`; the kiosk on a landscape screen is a right-hand column (`kioskSide`, `kiosk-side`,
+`.kh-log` holds `KIOSK.log`, the band's heard/reply lines are hidden there).
+
+**A brain that isn't available hands the turn to the next one** (`agentos/fallback.py`, `brain_fallbacks`
+USER_KEY, `/api/brain/fallbacks`, `bento brain fallbacks`, the finally of `_run_chat`; `tests/test_fallback.py`).
+Only an unavailable brain is a reason (`fallback.unavailable`); a stop or a refusal never is. The failed turn
+saves nothing (`_FallingBack`), the retry is the same `_run_chat` with `_fallback_tried` (its message is
+already in the thread), and a brain this machine can't run is skipped (`usable`).
+
+**`bento network update` installs** (`devicectl.UPDATE` = `update --apply --no-tests`): plain `bento update`
+only checks, and the hub said "✓ 0.6.85 → 0.6.85". A small machine gets `desktop._start_wait()` (240 s):
+the real Pi 3 answered two and a half minutes after its restart.
+
 **A prompt that fills the window is asked again with one that fits, never continued** (`agent._window_full`,
 `pool.fit_window`; `tests/test_empty_turn.py`). Ollama reports a cut-off prompt as num_ctx − 1 (measured on
 qwen3.5:9b: 24,575 at 24,576, 49,151 at 49,152 for a 54,653-token prompt), so the retry is sized from the

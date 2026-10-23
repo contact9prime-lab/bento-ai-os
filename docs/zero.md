@@ -89,6 +89,21 @@ way, and the Zero says so once and answers itself. `zero.chat: here` in the Zero
 its chats local on purpose.
 
 Which brain answers for a Zero is the hub's choice: Network → the Zero → *Its work here runs on*.
+It answers in the Zero's own name and with the soul kept for it on the hub, not as the hub's lead.
+
+In the hub's Chat, a Zero's conversations are under **From other machines**. Each opens with where
+it came from, and each message wears the machine it was said at and its route to your agent.
+
+![The hub's Chat: a Zero's thread, each message marked as said at its screen](screenshots/chat-from-zero.png)
+
+A Zero installed from a terminal belongs to the machine, and on a hub with accounts the admins see
+it work: the Office, the device map and the Chat events go to them. Press *Make it mine* in Network
+to have its conversations in your own Chat.
+
+Before 0.6.86 a Zero borrowed the hub's model through its community, and a community can lend
+only a provider model, never Claude Code. That is why such a Zero answered on a local model while
+the hub itself was on Claude Code. Update the Zero (Network → Controls → Update, or
+`bento network update <address>`) and its chats run on the hub's own brain.
 
 ![On the Zero: the task went to the hub, and the file came back](screenshots/zero-file-came-back.png)
 

@@ -55,6 +55,15 @@ rather it listened to everything, choose *Everything it hears*.
 
 ![The kiosk on a 7-inch screen](screenshots/kiosk-answer.png)
 
+On a landscape screen the chat is a column on the right, the full height: the conversation so far
+in bubbles, the answer arriving in the last one, and typing and the mic at the bottom. The Office
+takes the rest. A Zero says where its words are worked, *◫ on* its hub. A tall or narrow screen
+keeps the band along the bottom.
+
+![The kiosk on a 1280x720 screen: the Office on the left, the chat column on the right while the answer is worked on the hub](screenshots/kiosk-chat-column.png)
+
+![The same on a Pi's 800x480 screen](screenshots/kiosk-chat-column-800.png)
+
 ### Listening through its hub
 
 A Pi set up from a hub hears through it. What it records is sent to the hub over the link that

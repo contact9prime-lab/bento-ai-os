@@ -22,6 +22,22 @@ prompt bar, copilot panels, Telegram, the API, scheduled turns. Apps and App Stu
 built-in agent, because they depend on its tools. Each executor remembers its own model, so
 switching away and back does not lose the choice.
 
+### If it isn't available
+
+Under the picker, **If it isn't available** is an ordered list of other brains. When the one above
+can't answer a turn because of a usage limit, a sign-in that lapsed, a service that's down or a
+CLI that isn't installed, the same message goes to the next one, and the chat says which and why.
+Nothing empty is saved for the one that failed. A turn you stopped, or one the rules refused, is
+never retried on another brain. A brain this machine can't run right now (no key, switched off,
+not installed) is skipped. Up to four.
+
+![AI providers: the lead's brain, with two fallbacks in order under it](screenshots/ai-fallbacks.png)
+
+![The same on a phone: each fallback a full-width row with move up and remove](screenshots/ai-fallbacks-phone.png)
+
+From a terminal: `bento brain fallbacks claude-code,ollama/qwen3.5:9b` sets them, `bento brain
+fallbacks` lists them and `bento brain fallbacks clear` removes them.
+
 Headless? `bento brain` prints the same list — what could answer, what it would run on, and what
 would fix anything missing — and `bento brain <executor> [model]` sets it. `bento doctor` reports
 the pair as one of its checks. In chat, an admin can just say *"answer with Claude Code on opus"*.
