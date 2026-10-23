@@ -268,9 +268,23 @@ def open_now(cfg: dict | None = None) -> bool:
     rd, _ = road()
     if rd != "desktop" or not browser() or showing() or not (_wayland() or os.environ.get("DISPLAY")):
         return False
-    subprocess.Popen([_python(), "-m", "agentos", "screen", "run"], stdin=subprocess.DEVNULL,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    subprocess.Popen(open_argv(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
     return True
+
+
+def open_argv() -> list[str]:
+    """How `open_now` starts the browser: in a unit of its own when systemd runs the user's
+    session. A process started from the server, even in a new session, sits in the SERVER's
+    cgroup, so restarting Bento (every update does) stopped it with the server: found on a real
+    Pi, whose screen went dark after 0.6.93 installed and stayed dark."""
+    run = [_python(), "-m", "agentos", "screen", "run"]
+    sock = _wayland()
+    if shutil.which("systemd-run") and Path(f"/run/user/{os.getuid()}/systemd").exists():
+        env = [f"--setenv=XDG_RUNTIME_DIR={Path(sock).parent}", f"--setenv=WAYLAND_DISPLAY={Path(sock).name}"] if sock \
+            else ([f"--setenv=DISPLAY={os.environ['DISPLAY']}"] if os.environ.get("DISPLAY") else [])
+        return ["systemd-run", "--user", "--collect", "--quiet", f"--unit=bento-screen-{int(time.time())}", *env, *run]
+    return run
 
 
 def close_now() -> int:
@@ -292,6 +306,10 @@ def restart_now(cfg: dict | None = None, wait: float = 6.0) -> str:
     systemd starts it again (Restart=always); on a desktop it is opened here once it has gone.
     Returns what happened, in words."""
     if not close_now():
+        # nothing showing at all (it was stopped with the server, or closed): open it, when this
+        # machine opens Bento on its screen at all
+        if road()[0] == "desktop" and AUTOSTART.exists() and open_now(cfg):
+            return "opened Bento on its screen again"
         return "no browser was showing Bento on this screen"
     t0 = time.time()
     while showing() and time.time() - t0 < wait:

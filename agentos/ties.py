@@ -183,6 +183,13 @@ async def ask_update(lk: dict) -> dict:
     from . import zero as zeromod
     if not zeromod.ships_to(lk):
         return {"ok": False, "error": "only a machine this hub set up updates when it asks"}
+    # Ask what it runs first. Already on this hub's version, there is nothing to install: it used
+    # to be asked anyway, found nothing, did not restart, and the button said "updating" for good.
+    await probe([lk], force=True, wait=PROBE_TIMEOUT)
+    have = _VERSION.get(lk.get("id") or "", "")
+    if have and have != OLDER and not behind(have):
+        return {"ok": True, "current": True, "version": have,
+                "said": f"{lk.get('label')} is already on {have}, the same as this hub"}
     try:
         got = await teamlink.call(lk, {"op": "zero_update"}, timeout=30)
     except Exception as e:

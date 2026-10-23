@@ -5422,6 +5422,9 @@ def _ties_cli(rest):
         got = asyncio.run(tiesmod.ask_update(lk))
         if not got.get("ok"):
             sys.exit(f"  ✗ {got.get('error')}")
+        if got.get("current"):
+            print(f"  ✓ {got['said']}: nothing to install.")
+            return
         print(f"  ✓ {t['label']} is updating ({t['version'] or 'its version'} → this hub's). "
               f"It restarts on its own; a Pi takes a few minutes.")
         return

@@ -960,8 +960,6 @@ async def _screen_refresh(wait: float = 25.0) -> str:
                 return "the page reloaded"
         elif not had and _screen_clients():
             return "the page is back"
-    if not screenmod.showing():
-        return "no browser is showing Bento on its screen"
     loop = asyncio.get_running_loop()
     words = await loop.run_in_executor(None, screenmod.restart_now, state.machine_cfg())
     with contextlib.suppress(Exception):
@@ -976,7 +974,9 @@ async def _screen_revive():
     from . import screen as screenmod
     await asyncio.sleep(90)
     with contextlib.suppress(Exception):
-        if screenmod.showing() and not _screen_clients():
+        # a browser on its error page, or none at all on a machine that opens Bento on its
+        # screen (a restart took it down): either way nothing of ours is connected
+        if not _screen_clients() and (screenmod.showing() or screenmod.AUTOSTART.exists()):
             await _screen_refresh(wait=0)
 
 

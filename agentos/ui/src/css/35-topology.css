@@ -21,29 +21,6 @@
 .tm-grants li.bad{color:var(--err)}
 .tp-seg{display:flex;align-items:center;gap:6px}
 .tp-seg .sp{flex:1}
-.tp-tree{overflow-x:auto;padding:4px 0}
-.tp-ul{list-style:none;margin:0;padding:0 0 0 18px;position:relative}
-.tp-ul.root{padding-left:0}
-.tp-li{position:relative;margin:6px 0}
-.tp-ul:not(.root)>.tp-li::before{content:"";position:absolute;left:-12px;top:0;bottom:-6px;border-left:1px solid color-mix(in srgb,var(--txt) 18%,transparent)}
-.tp-ul:not(.root)>.tp-li:last-child::before{bottom:auto;height:16px}
-.tp-ul:not(.root)>.tp-li::after{content:"";position:absolute;left:-12px;top:16px;width:10px;border-top:1px solid color-mix(in srgb,var(--txt) 18%,transparent)}
-.tp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.tp-node{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);color:var(--txt);font-size:var(--fs-sm)}
-.tp-node.company{background:color-mix(in srgb,var(--acc) 10%,var(--bg2))}
-.tp-node.dept{border-left:3px solid var(--dc,var(--acc))}
-.tp-node.person{cursor:pointer}
-.tp-node.person.head b::after{content:" ★";color:#fbbf24}
-.tp-about{max-width:40ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tp-ties{display:inline-flex;gap:4px;flex-wrap:wrap}
-.tp-tie{font-size:var(--fs-xs);padding:2px 8px;border-radius:999px;border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);background:color-mix(in srgb,var(--acc) 12%,transparent)}
-.tp-tie.team{border-style:dashed}
-.tp-tie.off{opacity:.55}
-.tp-perm{margin:6px 0 4px 6px;padding:8px 10px;border-left:2px solid color-mix(in srgb,var(--acc) 50%,transparent);font-size:var(--fs-sm);display:flex;flex-direction:column;gap:4px}
-.tp-perm .ag-k{display:inline-block;min-width:90px;color:var(--dim)}
 .dev-views{margin:0 0 12px}
-body.dev-mobile .tp-node,body.dev-mobile .tm-to select,body.dev-mobile .tm-more{min-height:var(--tap)}
 body.dev-mobile .tm-to{width:100%}
 body.dev-mobile .tm-to select{max-width:none;flex:1}
-.tp-node.company{flex-wrap:wrap;max-width:100%}
-body.dev-mobile .tp-about{white-space:normal;max-width:100%;flex-basis:100%}

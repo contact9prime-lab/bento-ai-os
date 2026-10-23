@@ -85,55 +85,30 @@ async function topoSetTarget(sel){
   TOPO.tree=null;await topoMappingPaint();topoMapsPaint();
 }
 
-/* ---- the maps ---- */
+/* ---- the maps: one zoomable view for both (24s-zmap.js) ---- */
 async function topoMapsPaint(){
   const box=document.getElementById('s-net-maps');if(!box)return;
-  try{TOPO.tree=await apiJSON('/api/network/logical')}catch(e){box.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`;return}
   const v=TOPO.view;
-  box.innerHTML=`<div class="seg tp-seg" role="tablist">${[['logical','Logical'],['physical','Physical']].map(([k,l])=>
-      `<button role="tab" class="${v===k?'on':''}" aria-selected="${v===k}" data-tp="${k}">${l}</button>`).join('')}
-      <span class="sp"></span><button class="endbtn" onclick="topoOpen('${v}')">Open it full</button></div>
-    <p class="ghint">${v==='logical'?'Your lead, your companies, their departments and people, and who each Zero and team talks to. Tap anyone to see their permissions.'
-      :'The devices this hub is connected to: Zeros, linked teams and the rest of your network.'}</p>
-    <div class="tp-body">${v==='logical'?topoTreeHTML(TOPO.tree):((typeof NET!=='undefined'&&NET.v&&typeof devMapHTML==='function')?devMapHTML(NET.v):'<p class="mut">The device map needs an admin: it names the machines on this network.</p>')}</div>`;
-  box.querySelectorAll('[data-tp]').forEach(b=>b.onclick=()=>{TOPO.view=b.dataset.tp;topoMapsPaint()});
-  topoTreeWire(box);
-  if(v==='physical'&&typeof devMapWire==='function')devMapWire(box);
+  if(!box.querySelector('.tp-seg')){
+    box.innerHTML=`<div class="seg tp-seg" role="tablist">${[['logical','Logical'],['physical','Physical']].map(([k,l])=>
+        `<button role="tab" data-tp="${k}">${l}</button>`).join('')}<span class="sp"></span>
+        <button class="endbtn" data-tp-open="1">Open it full</button></div>
+      <p class="ghint tp-hint"></p><div class="tp-map zm-host"></div>`;
+    box.querySelectorAll('[data-tp]').forEach(b=>b.onclick=()=>{TOPO.view=b.dataset.tp;topoMapsPaint()});
+    box.querySelector('[data-tp-open]').onclick=()=>topoOpen(TOPO.view);
+  }
+  box.querySelectorAll('[data-tp]').forEach(b=>{b.classList.toggle('on',b.dataset.tp===v);b.setAttribute('aria-selected',b.dataset.tp===v)});
+  box.querySelector('.tp-hint').textContent=v==='logical'?'Your lead, your companies and their departments, and who each Zero and team talks to. Tap anything to open it.'
+    :'The devices this hub is connected to. Tap a group to open it.';
+  const host=box.querySelector('.tp-map');
+  // a different map in the same place starts fresh
+  if(host.dataset.zmv!==v){host.dataset.zmv=v;host.innerHTML='';host.dataset.zm='net'+v}
+  try{
+    if(v==='logical'){TOPO.tree=await apiJSON('/api/network/logical');zmMount(host,zmLogical(TOPO.tree),{label:'The logical map'})}
+    else{const nv=(typeof NET!=='undefined'&&NET.v)||await apiJSON('/api/network');zmMount(host,zmPhysical(nv),{label:'The device map'})}
+  }catch(e){host.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`}
 }
 function topoOpen(view){
   try{localStorage.setItem('devices.view',view)}catch(e){}
   openApp('devices');setTimeout(()=>{if(typeof devViewSet==='function')devViewSet(view)},500);
-}
-function topoTieChips(ts){
-  return (ts||[]).map(x=>`<span class="tp-tie ${esc(x.kind||'team')}${x.answering===false?' off':''}" title="${esc(x.label)} talks to this">${x.kind==='zero'?'◫':'⇄'} ${esc(x.label)}${x.missing?' · '+esc(x.missing)+' is gone':''}</span>`).join('');
-}
-function topoPersonHTML(p,path){
-  const on=!!TOPO.open['p:'+path];
-  const fams=Object.entries(p.families||{});
-  return `<li class="tp-li"><button class="tp-node person${p.head?' head':''}" data-tpk="p:${esc(path)}" aria-expanded="${on}">
-      ${typeof avatarImg==='function'?avatarImg(p.lead?'@agent':p.name,'av-tool'):''}<b>${esc(p.label||p.name)}</b>${p.head?' <span class="mut">head</span>':''}</button>
-    ${on?`<div class="tp-perm">
-      <div><span class="ag-k">Executor</span>${esc(p.hands)}${p.hands_summary?` <span class="mut">${esc(p.hands_summary)}</span>`:''}</div>
-      ${p.brain?`<div><span class="ag-k">Brain</span>${esc(p.brain)}</div>`:''}
-      <div><span class="ag-k">Tools</span>${(p.tools||[]).map(x=>`<span class="brainchip">${esc(x==='*'?'every tool':x)}</span>`).join(' ')||'<span class="mut">none</span>'}</div>
-      <div><span class="ag-k">Permissions</span>${p.autonomy?'autonomy '+esc(p.autonomy)+' · ':''}${p.allow} allowed, ${p.deny} refused${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}
-        <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
-      ${(p.missions||[]).length?`<div><span class="ag-k">Missions</span>${p.missions.map(esc).join(', ')}</div>`:''}
-    </div>`:''}</li>`;
-}
-function topoTreeHTML(tree){
-  if(!tree)return '<p class="mut">…</p>';
-  const L=tree.lead||{};
-  return `<div class="tp-tree"><ul class="tp-ul root"><li class="tp-li">
-    <div class="tp-row">${topoPersonHTML({...L,lead:true},'lead').replace(/^<li class="tp-li">|<\/li>$/g,'')}<span class="tp-ties">${topoTieChips(L.ties)}</span></div>
-    <ul class="tp-ul">${(tree.companies||[]).map((c,ci)=>`<li class="tp-li"><div class="tp-node company${c.open?' open':''}">▦ <b>${esc(c.name)}</b>${c.open&&!c.default?' <span class="mut">open</span>':''}${c.about?` <span class="mut tp-about">${esc(c.about)}</span>`:''}</div>
-      <ul class="tp-ul">${(c.departments||[]).map((d,di)=>`<li class="tp-li"><div class="tp-row"><div class="tp-node dept" style="--dc:${esc(d.color||'')}">▸ <b>${esc(d.name)}</b></div><span class="tp-ties">${topoTieChips(d.ties)}</span></div>
-          <ul class="tp-ul">${(d.people||[]).map(p=>topoPersonHTML(p,ci+'/'+di+'/'+p.name)).join('')}</ul></li>`).join('')}
-        ${(c.people||[]).map(p=>topoPersonHTML(p,ci+'//'+p.name)).join('')}
-        ${c.auditor?topoPersonHTML({...c.auditor,label:c.auditor.name+', checks every department'},ci+'/auditor'):''}</ul></li>`).join('')}</ul>
-  </li></ul></div>`;
-}
-function topoTreeWire(box){
-  box.querySelectorAll('[data-tpk]').forEach(b=>b.onclick=()=>{TOPO.open[b.dataset.tpk]=!TOPO.open[b.dataset.tpk];
-    const host=b.closest('.tp-body,.dev-logical');if(host){host.innerHTML=topoTreeHTML(TOPO.tree);topoTreeWire(host)}});
 }

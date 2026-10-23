@@ -407,7 +407,7 @@ function setTab(body,all){
     setTimeout(talkLogPaint,0);
     P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
     setTimeout(renderAgentsList,0);
-    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><div class="ghint">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</div><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><div class="ghint">Your lead, your companies and departments, and every agent. Tap anything to open it and see its permissions, or find it by name.</div><div id="agents-graph" class="zm-host" data-zm="agentsmap"><p class="mut">loading…</p></div></div>`);
     setTimeout(renderAgentsGraph,0);
 
     /* Sharing the agent belongs on the page that answers "who is my agent" —

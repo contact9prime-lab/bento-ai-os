@@ -3209,6 +3209,20 @@ better restrict". Four rules:
   department, with Default company for the rest); linked teams, community, messages, Team to agent mapping and Maps are in
   Network & Teams. `tests/test_settings_tabs.py` refuses `placeSettings('team')` and `data-t="team"` coming back.
 
+**Every map is one view you move through** (`24s-zmap.js`: `zmMount`, `zmLogical`, `zmPhysical`, `zmSelect`;
+`36-zmap.css`; `tests/test_map_and_screen.py`). Reported as "the desktop is flickering like crazy" and "this map
+is not making any sense". The Agents map drew everything at once: 2,448 curves on a 1034x2794 sheet inside a
+blurred window, re-tiled on every scroll (measured on a copy of the owner's hub). Three rules: a fixed window with
+`contain:strict`; ONE place at a time (the focus in the middle, its children on a ring, theirs as dots, the way
+back a toolbar button), because a radial tree of everything still piled up at 47 agents; zoom moves things apart and
+keeps markers readable (`zmCam`'s counter-scale). Never draw a whole organisation on one sheet again.
+
+**The screen's browser runs in a unit of its own** (`screen.open_argv`: `systemd-run --user`). Started from the
+server, even with a new session, it sat in the server's cgroup, and the 0.6.93 update's restart stopped it: the
+owner's Pi went dark. `restart_now` and `_screen_revive` open it when nothing is showing on a machine that opens
+Bento on its screen. **Update on a current Zero says so** (`ties.ask_update` probes first): it used to ask, find
+nothing, not restart, and leave the button on "Updating…".
+
 **Chat's list is in tabs, decided once** (`chattabs.home_of`/`tag`/`search`, `/api/conversations?q=&tab=`,
 `10-chat.js` `CONVTAB`/`chatNewHuddle`). Desktop, Channels, Devices, Huddles, App builder. A conversation has one home tab,
 and one with a `huddle` message is ALSO listed under Huddles. Search reads titles and message content.

@@ -117,8 +117,8 @@ def test_routes_are_admin_and_the_page_draws_both_kinds():
         body = srv[srv.index(r):]
         body = body[:body.index("\n@app.")]
         assert "_require_admin()" in body, r
-    js = (ROOT / "agentos/ui/src/js/24o-devices.js").read_text()
-    assert "t.kind==='zero'" in js and "'TEAM'" in js and "devMapPulse" in js
+    js = (ROOT / "agentos/ui/src/js/24o-devices.js").read_text() + (ROOT / "agentos/ui/src/js/24s-zmap.js").read_text()
+    assert "t.kind==='zero'" in js and "'Zero':'Team'" in js and "devMapPulse" in js
     ws = (ROOT / "agentos/ui/src/js/09-websocket.js").read_text()
     assert "case 'zero_work'" in ws and "officeZero" in ws
 

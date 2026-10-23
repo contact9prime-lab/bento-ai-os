@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.94 — 2026-10-24
+
+**The maps are maps.** Agents, Network & Teams and Devices share one view you move through: one
+place at a time, tap to go in, ↑ to go back, search for anything, zoom and drag. The Agents map used
+to draw every agent, brain, skill and mission at once, and on a big team that made the whole desktop
+flicker. Now it's a fixed-size window that draws one place at a time.
+
+**A Pi's screen survives an update.** Its browser was started inside Bento's own service, so the
+restart that ends every update closed it, and the Pi showed nothing. It runs on its own now, and a
+Pi that starts with nothing on its screen opens Bento again.
+
+**Update on a Pi that's already current says so** instead of "updating" forever.
+
 ## 0.6.93 — 2026-10-23
 
 **A Pi or a linked team talks to your lead, or to one department.** Network & Teams → Team to agent

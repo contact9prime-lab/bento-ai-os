@@ -35,8 +35,15 @@ def test_a_link_says_its_version_and_the_hub_sees_who_is_behind(hz, monkeypatch)
     assert ties.behind(ties.OLDER), "a hello with no version is a Bento from before versions were said"
 
 
-def test_only_its_own_hub_can_ask_and_an_older_zero_is_said_in_words(hz):
+def test_only_its_own_hub_can_ask_and_an_older_zero_is_said_in_words(hz, monkeypatch):
     H, Z, loop = hz
+    real_probe = ties.probe
+
+    async def old_hello(lks, force=False, wait=ties.PROBE_TIMEOUT):
+        await real_probe(lks, force=force, wait=wait)
+        for lk_ in lks:
+            ties._VERSION[lk_.get("id") or ""] = ties.OLDER    # a hello with no version: before 0.6.88
+    monkeypatch.setattr(ties, "probe", old_hello)
     assert not _on(H, loop, lambda: ties.ask_update({"kind": "machine", "peer_host_fp": "nobody"}))["ok"]
 
     async def old_zero(lk, req):

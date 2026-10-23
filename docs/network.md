@@ -79,17 +79,32 @@ department (`--company ID` for another company, `lead` for the lead), and it pri
 
 ### Maps
 
-- **Logical**: your lead at the top, each company you keep, its departments and their people, and
-  each Zero and team hung from what it talks to. Tap anyone to see their executor, brain, tools,
-  permissions and missions.
-- **Physical**: the devices this hub is connected to, the same map Devices opens on.
+Every map in Bento is one view you move through, the way a map app works:
 
-**Open it full** opens the Devices app on that view; Devices has **Physical** and **Logical** at the top.
-`bento network map` prints the logical one.
+- **One place at a time.** The thing you're looking at sits in the middle, with what's inside it on
+  a ring around it, and small dots beyond them where there is more.
+- **Tap to go in.** A company opens its departments, a department its people, a group of devices its
+  machines. The panel says everything about what you tapped: permissions, tools, executor, address,
+  with the buttons that act on it. **↑** in the toolbar, or the trail in the panel, goes back out.
+- **Find** goes straight to any agent, department or machine.
+- Drag to move, scroll or pinch to zoom, **Fit** to see it all. Keys: + − 0, the arrows, Escape to go up.
 
-![The logical map: Aria, Acme Tiles and its departments, a Zero on Sales, a team on Aria, and one agent's permissions](screenshots/net-logical.png)
+The **logical** map starts at your lead: your companies, the Zeros and teams that talk to it, then
+departments, people and their permissions. The **physical** map starts at this computer: Zeros,
+linked teams, Bento machines and the other devices. Both are in Network & Teams → Maps and in the
+Devices app; Settings → Agents has the logical one. `bento network map` prints the logical one.
 
-![The logical map on a phone, in the Devices app](screenshots/devices-logical-phone.png)
+![The logical map zoomed out: Aria, the companies, and a team talking to her](screenshots/map-overview.png)
+
+![A company opened: its departments around it, with its panel](screenshots/map-company.png)
+
+![On a phone: the Sales department, with a Zero that talks to it and its three people](screenshots/map-department-phone.png)
+
+![The physical map: this computer, its Zeros, linked teams and the devices on the network](screenshots/map-devices.png)
+
+The map used to draw every agent, brain, executor, skill and mission at once. On a hub with 47
+agents that was 2,448 curves on a sheet nearly three thousand pixels tall, and redrawing it made
+the whole desktop flicker. The map now has a fixed size and draws one place at a time.
 
 ## Teams and Zeros
 

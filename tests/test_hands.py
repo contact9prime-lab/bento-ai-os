@@ -189,7 +189,8 @@ def test_settings_has_three_clear_places():
     assert 'id="hands-list"' in js and "An executor is what an agent can reach" in js
     assert 'id="agents-list"' in js and 'id="agents-graph"' in js and "Asking each other" in js
     ui = (ROOT / "agentos/ui/src/js/11e-hands.js").read_text()
-    assert "/api/agents/graph" in ui and "/api/hands/" in ui
+    # the map is the zoomable one over the logical tree (24s-zmap.js); /api/agents/graph stays for `bento agents`
+    assert "zmMount(box,zmLogical(tree)" in ui and "/api/hands/" in ui
 
 
 def test_the_immersive_look_is_the_default():

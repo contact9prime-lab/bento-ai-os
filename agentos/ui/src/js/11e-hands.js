@@ -204,34 +204,13 @@ async function agentEdit(name){
   openSAW(name||null,{onSaved:()=>{renderAgentsList();renderAgentsGraph()},onCancel:()=>{}});
 }
 
-/* ---------------- the map ---------------- */
-var AG_COLS={brain:0,team:0,mission:0,agent:1,hands:2,skill:3};
-var AG_EDGE={brain:'var(--acc)',hands:'color-mix(in srgb,var(--txt) 55%,transparent)',skill:'color-mix(in srgb,var(--txt) 35%,transparent)',
-  talk:'#4ade80',blocked:'#f87171',delegate:'#a78bfa',roster:'#fbbf24',link:'#60a5fa'};
+/* ---------------- the map ----------------
+   The zoomable map (24s-zmap.js) over topology.logical: the lead, companies, departments and
+   every agent, each opening to its executor, brain, tools, skills, permissions and missions.
+   It was every agent, brain, executor, skill and mission drawn at once: 2,448 curves on a
+   1034x2794 sheet on the owner's hub, unreadable, and it made the desktop flicker. */
 async function renderAgentsGraph(){
   const box=document.getElementById('agents-graph');if(!box)return;
-  let g;try{g=await apiJSON('/api/agents/graph')}catch(e){box.textContent='could not load the map: '+e.message;return}
-  box.classList.remove('mut');
-  const cols=[[],[],[],[]];g.nodes.forEach(n=>cols[AG_COLS[n.kind]??3].push(n));
-  const W=190,GX=70,GUT=60,H=46,GY=12,X=[0,W+GX+GUT,2*(W+GX)+GUT,3*(W+GX)+GUT];
-  const pos={};cols.forEach((c,i)=>c.forEach((n,j)=>pos[n.id]={x:X[i],y:j*(H+GY),col:i}));
-  const height=Math.max(...cols.map(c=>c.length*(H+GY)),H)+10,width=X[3]+W+4;
-  const f=AGENTS.focus;
-  const on=e=>!f||e.from===f||e.to===f;
-  const path=e=>{const a=pos[e.from],b=pos[e.to];if(!a||!b)return'';
-    const ay=a.y+H/2,by=b.y+H/2;
-    if(a.col===b.col){ // agent ↔ agent: an arc in the gutter to the left of the agents
-      const x=a.x,bend=Math.min(GUT-8,18+Math.abs(ay-by)/6);
-      return `M${x},${ay} C${x-bend},${ay} ${x-bend},${by} ${x},${by}`}
-    const [l,r]=a.col<b.col?[a,b]:[b,a],[ly,ry]=a.col<b.col?[ay,by]:[by,ay];
-    const x1=l.x+W,x2=r.x,mx=(x1+x2)/2;return `M${x1},${ly} C${mx},${ly} ${mx},${ry} ${x2},${ry}`};
-  box.innerHTML=`<div class="agraph-legend">${[['brain','thinks with'],['hands','works with'],['talk','may ask'],['blocked','may not ask'],['delegate','delegates'],['roster','mission roster'],['link','linked team'],['skill','knows']]
-      .map(([k,l])=>`<span><i style="background:${AG_EDGE[k]}"></i>${l}</span>`).join('')}${f?' <button class="endbtn" onclick="AGENTS.focus=\'\';renderAgentsGraph()">Show everyone</button>':''}</div>
-    <div class="agraph-scroll"><div class="agraph-canvas" style="width:${width}px;height:${height}px">
-    <svg width="${width}" height="${height}" aria-hidden="true">${g.edges.map(e=>`<path d="${path(e)}" fill="none" stroke="${AG_EDGE[e.kind]||'var(--line)'}" stroke-width="${e.kind==='brain'||e.kind==='hands'?2:1.5}" ${e.kind==='blocked'?'stroke-dasharray="4 3"':''} opacity="${on(e)?0.9:0.08}"><title>${esc(e.label)}</title></path>`).join('')}</svg>
-    ${g.nodes.map(n=>{const p=pos[n.id],dim=f&&n.id!==f&&!g.edges.some(e=>on(e)&&(e.from===n.id||e.to===n.id));
-      return `<button class="agn agn-${n.kind}${n.master?' lead':''}${f===n.id?' on':''}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px;opacity:${dim?0.3:1}" ${n.kind==='agent'?`onclick="AGENTS.focus=AGENTS.focus==='${esc(n.id)}'?'':'${esc(n.id)}';renderAgentsGraph()"`:'tabindex="-1"'} title="${esc(n.sub||'')}">
-        ${n.kind==='agent'?avatarImg(n.key,'av-tool'):''}<span class="agn-t"><b>${esc(n.label)}</b><small>${esc(n.kind==='agent'&&n.master?'lead agent':(n.sub||n.kind))}</small></span></button>`}).join('')}
-    </div></div>
-    <div class="agraph-cols mut"><span>Brains · teams · missions</span><span>Agents</span><span>Executors</span><span>Skills</span></div>`;
+  let tree;try{tree=await apiJSON('/api/network/logical')}catch(e){box.textContent='could not load the map: '+e.message;return}
+  zmMount(box,zmLogical(tree),{label:'Your agents'});
 }
