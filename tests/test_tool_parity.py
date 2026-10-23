@@ -27,7 +27,7 @@ from agentos.tools import (ALWAYS_ASK, BUILTIN_THEMES,              # noqa: E402
 NEW_TOOLS = ["desktop_state", "control_desktop", "manage_window", "list_themes",
              "wifi", "bluetooth", "set_brightness", "audio", "power_profile",
              "lock_screen", "power_action", "list_notifications", "take_screenshot",
-             "set_avatar", "set_office"]
+             "set_avatar", "screen_face", "set_office"]
 
 
 @pytest.fixture()

@@ -80,6 +80,7 @@ function tieBodyHTML(t){
       <div class="tie-field"><span>Its work here runs on</span>${tieBrainSelect(t)}</div>
       <div class="tie-field"><span>It may ask</span><div class="tie-agents">${tieAgentsHTML(t)}</div></div>
     </div>
+    ${t.kind==='zero'&&!t.stale?`<div class="tie-field tie-screen"><span>Its screen</span>${tieScreenHTML(t)}</div>`:''}
     <div class="tie-views" role="tablist">${views.map(w=>`<button class="tie-vb${vw&&vw.what===w?' on':''}" role="tab" aria-selected="${!!(vw&&vw.what===w)}" data-tie="view" data-k="${esc(k)}" data-w="${w}">${{sessions:'Sessions',schedules:'Schedules',memory:'Memory',knowledge:'Knowledge',logs:'Logs'}[w]}</button>`).join('')}</div>
     ${vw?`<div class="tie-view">${tieViewHTML(vw)}</div>`:''}
     <div class="tie-acts"><button class="endbtn danger" data-tie="remove" data-k="${esc(k)}">Remove this link</button></div>
@@ -125,7 +126,52 @@ async function tieLists(){
   if(!TIES.brains)try{const b=await apiJSON('/api/brains');TIES.brains=b.executors||[]}catch(e){TIES.brains=[]}
   if(!TIES.agents)try{const s=await apiJSON('/api/subagents');TIES.agents=(s.subagents||s.agents||[]).map(x=>x.name).filter(Boolean)}catch(e){TIES.agents=[]}
 }
+/* A Zero's screen, from here: its faces read and changed over its link (/api/network/ties/…/faces),
+   with the same strip and editor the screen itself has (24q-kioskfaces.js). Asked for as "can I
+   change the widget on the Pi from Devices". Building a widget is the Pi's own App Studio's. */
+TIES.faces={};TIES.fedit=null;
+async function tieScreenLoad(t){
+  const k=tieKey(t);TIES.faces[k]={loading:true};
+  try{TIES.faces[k]=await apiJSON(`/api/network/ties/${encodeURIComponent(t.label)}/faces?owner=${encodeURIComponent(t.owner||'')}`)}
+  catch(e){TIES.faces[k]={error:String(e.message||e)}}
+  netPaint();
+}
+function tieScreenHTML(t){
+  const st=TIES.faces[tieKey(t)];
+  if(!st||st.loading)return '<span class="mut">reading its screen…</span>';
+  if(st.error)return `<span class="mut">${esc(st.error)}</span>`;
+  if(TIES.fedit&&TIES.fedit.k===tieKey(t))return `<div class="tie-faces" data-k="${esc(tieKey(t))}">${kfaceEditorHTML(TIES.fedit,st,{build:false})}</div>`;
+  const cur=st.faces.find(f=>f.id===st.current)||{};
+  return `<div class="tie-faces" data-k="${esc(tieKey(t))}"><div class="kf-faces">${st.faces.map(f=>
+      `<button class="kf-pick${f.id===st.current?' on':''}" data-f="${esc(f.id)}"><span class="kf-thumb kf-t-${esc(f.layout)}"></span>${esc(f.name)}</button>`).join('')}
+    <button class="kf-pick kf-new" data-new="1"><span class="kf-thumb">＋</span>New face</button></div>
+    ${cur.id&&!cur.builtin?`<button class="endbtn" data-edit="1">Edit ${esc(cur.name)}</button>`:''}</div>`;
+}
+function tieScreenWire(box){
+  box.querySelectorAll('.tie-faces').forEach(fb=>{
+    const k=fb.dataset.k,t=tieFind(k),st=TIES.faces[k];if(!t||!st||st.error||st.loading)return;
+    const send=async body=>{
+      const r=await fetch(`/api/network/ties/${encodeURIComponent(t.label)}/faces`,{method:'PUT',headers:{'content-type':'application/json'},
+        body:JSON.stringify({owner:t.owner||'',...body})}).then(x=>x.json()).catch(e=>({error:String(e)}));
+      if(r.error)return toast('✗ '+r.error);
+      if((r.dropped||[]).length)toast('Left out: '+r.dropped.join(', '));
+      TIES.faces[k]=r;TIES.fedit=null;
+      toast(`✓ ${t.peer} wears ${((r.faces||[]).find(f=>f.id===r.current)||{}).name||r.current}`);netPaint()};
+    fb.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>send({use:b.dataset.f}));
+    const nw=fb.querySelector('[data-new]');if(nw)nw.onclick=()=>{TIES.fedit={k,name:'',layout:'board',widgets:['clock','agent']};netPaint()};
+    const ed=fb.querySelector('[data-edit]');if(ed)ed.onclick=()=>{TIES.fedit={k,...JSON.parse(JSON.stringify(st.faces.find(f=>f.id===st.current)))};netPaint()};
+    const e=TIES.fedit;if(!e||e.k!==k)return;
+    const nm=fb.querySelector('.kf-ename');if(nm)nm.oninput=()=>{e.name=nm.value};
+    const ly=fb.querySelector('.kf-elayout');if(ly)ly.onchange=()=>{e.layout=ly.value};
+    fb.querySelectorAll('.kf-ew[data-w]').forEach(b=>b.onclick=()=>{const w=b.dataset.w,i=e.widgets.indexOf(w);
+      if(i>=0)e.widgets.splice(i,1);else if(e.widgets.length<(st.max_widgets||8))e.widgets.push(w);netPaint()});
+    const cn=fb.querySelector('[data-cancel]');if(cn)cn.onclick=()=>{TIES.fedit=null;netPaint()};
+    const dl=fb.querySelector('[data-del]');if(dl)dl.onclick=()=>send({delete:dl.dataset.del});
+    const sv=fb.querySelector('[data-save]');if(sv)sv.onclick=()=>send({save:{id:e.id||'',name:e.name,layout:e.layout,widgets:e.widgets}});
+  });
+}
 function tiesWire(box){
+  tieScreenWire(box);
   box.querySelectorAll('[data-tie]').forEach(el=>{
     const act=el.dataset.tie,t=el.dataset.k?tieFind(el.dataset.k):null;
     if(act==='brain')el.onchange=()=>tieSave(t,'brain',el.value);
@@ -141,8 +187,8 @@ async function tieAct(act,t,el){
   if(act==='probe'){el.disabled=true;el.textContent='Checking…';
     try{const r=await apiJSON('/api/network/ties?probe=2');NET.v.ties=r.ties}catch(e){toast(String(e.message||e))}
     return netPaint()}
-  if(act==='open'){const k=tieKey(t);TIES.open=TIES.open===k?'':k;TIES.view=null;
-    if(TIES.open){await tieLists()}return netPaint()}
+  if(act==='open'){const k=tieKey(t);TIES.open=TIES.open===k?'':k;TIES.view=null;TIES.fedit=null;
+    if(TIES.open){await tieLists();if(t.kind==='zero'&&!t.stale)tieScreenLoad(t)}return netPaint()}
   if(act==='view'){const k=tieKey(t),what=el.dataset.w;
     if(TIES.view&&TIES.view.k===k&&TIES.view.what===what){TIES.view=null;return netPaint()}
     TIES.view={k,what,loading:true};netPaint();

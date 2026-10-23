@@ -6283,6 +6283,11 @@ body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
 .tie-sch{display:flex;gap:10px;align-items:center}
 .tie-sch>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .tie-sch .mut{font-size:11.5px}
+/* a Zero's screen, in its Manage panel (24p-ties.js tieScreen*) */
+.tie-screen{grid-column:1/-1}
+.tie-faces{display:flex;flex-direction:column;gap:8px}
+.tie-faces .kf-pick{min-width:84px}
+.tie-faces .kf-thumb{width:72px;height:44px}
 /* Faces for this machine's screen (24q-kioskfaces.js). #kiosk-face sits above the wall and below
    the kiosk's band; the Office scene is stopped while it shows. Colours are the theme's. */
 #kiosk-face{position:fixed;left:0;right:0;top:0;bottom:var(--kiosk-hud,128px);z-index:9500;padding:18px;
@@ -37508,6 +37513,7 @@ function tieBodyHTML(t){
       <div class="tie-field"><span>Its work here runs on</span>${tieBrainSelect(t)}</div>
       <div class="tie-field"><span>It may ask</span><div class="tie-agents">${tieAgentsHTML(t)}</div></div>
     </div>
+    ${t.kind==='zero'&&!t.stale?`<div class="tie-field tie-screen"><span>Its screen</span>${tieScreenHTML(t)}</div>`:''}
     <div class="tie-views" role="tablist">${views.map(w=>`<button class="tie-vb${vw&&vw.what===w?' on':''}" role="tab" aria-selected="${!!(vw&&vw.what===w)}" data-tie="view" data-k="${esc(k)}" data-w="${w}">${{sessions:'Sessions',schedules:'Schedules',memory:'Memory',knowledge:'Knowledge',logs:'Logs'}[w]}</button>`).join('')}</div>
     ${vw?`<div class="tie-view">${tieViewHTML(vw)}</div>`:''}
     <div class="tie-acts"><button class="endbtn danger" data-tie="remove" data-k="${esc(k)}">Remove this link</button></div>
@@ -37553,7 +37559,52 @@ async function tieLists(){
   if(!TIES.brains)try{const b=await apiJSON('/api/brains');TIES.brains=b.executors||[]}catch(e){TIES.brains=[]}
   if(!TIES.agents)try{const s=await apiJSON('/api/subagents');TIES.agents=(s.subagents||s.agents||[]).map(x=>x.name).filter(Boolean)}catch(e){TIES.agents=[]}
 }
+/* A Zero's screen, from here: its faces read and changed over its link (/api/network/ties/…/faces),
+   with the same strip and editor the screen itself has (24q-kioskfaces.js). Asked for as "can I
+   change the widget on the Pi from Devices". Building a widget is the Pi's own App Studio's. */
+TIES.faces={};TIES.fedit=null;
+async function tieScreenLoad(t){
+  const k=tieKey(t);TIES.faces[k]={loading:true};
+  try{TIES.faces[k]=await apiJSON(`/api/network/ties/${encodeURIComponent(t.label)}/faces?owner=${encodeURIComponent(t.owner||'')}`)}
+  catch(e){TIES.faces[k]={error:String(e.message||e)}}
+  netPaint();
+}
+function tieScreenHTML(t){
+  const st=TIES.faces[tieKey(t)];
+  if(!st||st.loading)return '<span class="mut">reading its screen…</span>';
+  if(st.error)return `<span class="mut">${esc(st.error)}</span>`;
+  if(TIES.fedit&&TIES.fedit.k===tieKey(t))return `<div class="tie-faces" data-k="${esc(tieKey(t))}">${kfaceEditorHTML(TIES.fedit,st,{build:false})}</div>`;
+  const cur=st.faces.find(f=>f.id===st.current)||{};
+  return `<div class="tie-faces" data-k="${esc(tieKey(t))}"><div class="kf-faces">${st.faces.map(f=>
+      `<button class="kf-pick${f.id===st.current?' on':''}" data-f="${esc(f.id)}"><span class="kf-thumb kf-t-${esc(f.layout)}"></span>${esc(f.name)}</button>`).join('')}
+    <button class="kf-pick kf-new" data-new="1"><span class="kf-thumb">＋</span>New face</button></div>
+    ${cur.id&&!cur.builtin?`<button class="endbtn" data-edit="1">Edit ${esc(cur.name)}</button>`:''}</div>`;
+}
+function tieScreenWire(box){
+  box.querySelectorAll('.tie-faces').forEach(fb=>{
+    const k=fb.dataset.k,t=tieFind(k),st=TIES.faces[k];if(!t||!st||st.error||st.loading)return;
+    const send=async body=>{
+      const r=await fetch(`/api/network/ties/${encodeURIComponent(t.label)}/faces`,{method:'PUT',headers:{'content-type':'application/json'},
+        body:JSON.stringify({owner:t.owner||'',...body})}).then(x=>x.json()).catch(e=>({error:String(e)}));
+      if(r.error)return toast('✗ '+r.error);
+      if((r.dropped||[]).length)toast('Left out: '+r.dropped.join(', '));
+      TIES.faces[k]=r;TIES.fedit=null;
+      toast(`✓ ${t.peer} wears ${((r.faces||[]).find(f=>f.id===r.current)||{}).name||r.current}`);netPaint()};
+    fb.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>send({use:b.dataset.f}));
+    const nw=fb.querySelector('[data-new]');if(nw)nw.onclick=()=>{TIES.fedit={k,name:'',layout:'board',widgets:['clock','agent']};netPaint()};
+    const ed=fb.querySelector('[data-edit]');if(ed)ed.onclick=()=>{TIES.fedit={k,...JSON.parse(JSON.stringify(st.faces.find(f=>f.id===st.current)))};netPaint()};
+    const e=TIES.fedit;if(!e||e.k!==k)return;
+    const nm=fb.querySelector('.kf-ename');if(nm)nm.oninput=()=>{e.name=nm.value};
+    const ly=fb.querySelector('.kf-elayout');if(ly)ly.onchange=()=>{e.layout=ly.value};
+    fb.querySelectorAll('.kf-ew[data-w]').forEach(b=>b.onclick=()=>{const w=b.dataset.w,i=e.widgets.indexOf(w);
+      if(i>=0)e.widgets.splice(i,1);else if(e.widgets.length<(st.max_widgets||8))e.widgets.push(w);netPaint()});
+    const cn=fb.querySelector('[data-cancel]');if(cn)cn.onclick=()=>{TIES.fedit=null;netPaint()};
+    const dl=fb.querySelector('[data-del]');if(dl)dl.onclick=()=>send({delete:dl.dataset.del});
+    const sv=fb.querySelector('[data-save]');if(sv)sv.onclick=()=>send({save:{id:e.id||'',name:e.name,layout:e.layout,widgets:e.widgets}});
+  });
+}
 function tiesWire(box){
+  tieScreenWire(box);
   box.querySelectorAll('[data-tie]').forEach(el=>{
     const act=el.dataset.tie,t=el.dataset.k?tieFind(el.dataset.k):null;
     if(act==='brain')el.onchange=()=>tieSave(t,'brain',el.value);
@@ -37569,8 +37620,8 @@ async function tieAct(act,t,el){
   if(act==='probe'){el.disabled=true;el.textContent='Checking…';
     try{const r=await apiJSON('/api/network/ties?probe=2');NET.v.ties=r.ties}catch(e){toast(String(e.message||e))}
     return netPaint()}
-  if(act==='open'){const k=tieKey(t);TIES.open=TIES.open===k?'':k;TIES.view=null;
-    if(TIES.open){await tieLists()}return netPaint()}
+  if(act==='open'){const k=tieKey(t);TIES.open=TIES.open===k?'':k;TIES.view=null;TIES.fedit=null;
+    if(TIES.open){await tieLists();if(t.kind==='zero'&&!t.stale)tieScreenLoad(t)}return netPaint()}
   if(act==='view'){const k=tieKey(t),what=el.dataset.w;
     if(TIES.view&&TIES.view.k===k&&TIES.view.what===what){TIES.view=null;return netPaint()}
     TIES.view={k,what,loading:true};netPaint();
@@ -37778,13 +37829,14 @@ function kfaceSwitcherPaint(){
   kfaceEditorWire(strip,()=>{KFACE.open=false;kfaceSwitcherPaint()});
 }
 /* The editor, shared by the kiosk's strip and Settings → Appearance (faceFacesPaint). */
-function kfaceEditorHTML(ed,st){
+function kfaceEditorHTML(ed,st,opts){
+  opts=opts||{};
   const all=[...st.widgets.map(w=>({id:w.id,name:w.name,what:w.what})),...(st.apps||[]).map(a=>({id:'app:'+a.id,name:a.name,what:'your app’s widget'}))];
   return `<div class="kf-editor"><div class="kf-erow"><input class="kf-ename" maxlength="24" value="${esc(ed.name||'')}" placeholder="Name it, like Kitchen" aria-label="Face name">
     <select class="kf-elayout" aria-label="Layout">${['board','clock','ambient','chat','office'].map(l=>`<option value="${l}"${ed.layout===l?' selected':''}>${{board:'Dashboard',clock:'Clock',ambient:'Ambient',chat:'Chat',office:'Office'}[l]}</option>`).join('')}</select></div>
     <p class="kf-ehint">Tap widgets to put them on, in the order you tap. Up to ${st.max_widgets}.</p>
     <div class="kf-ewidgets">${all.map(w=>{const i=(ed.widgets||[]).indexOf(w.id);return `<button class="kf-ew${i>=0?' on':''}" data-w="${esc(w.id)}" title="${esc(w.what)}">${i>=0?`<i>${i+1}</i>`:''}${esc(w.name)}</button>`}).join('')}
-      <button class="kf-ew kf-build" data-build="1">＋ Build a widget</button></div>
+      ${opts.build===false?'':'<button class="kf-ew kf-build" data-build="1">＋ Build a widget</button>'}</div>
     <div class="kf-eacts">${ed.id&&!ed.builtin?`<button class="kf-del" data-del="${esc(ed.id)}">Remove face</button>`:''}<span style="flex:1"></span>
       <button data-cancel="1">Cancel</button><button class="go" data-save="1">Save and wear it</button></div></div>`;
 }

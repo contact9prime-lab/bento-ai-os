@@ -3455,6 +3455,10 @@ be on and agents would be working in the office". Five rules:
   machine's `face.faces`, written like `/api/face` (the person's view, then the machine's copy). A widget face
   calls `officeSceneStop` and ticks on ONE interval; `kioskSideWanted` is true only for the chat layout. Widget
   tiles are `kf-w-<id>`: a tile and its inner line shared a class, and filling one wiped the other.
+- **A screen is changed from the hub and from chat** (`server._faces_apply` is the one writer; wire op
+  `zero_face` only for `is_my_hub`; `/api/network/ties/{label}/faces`; the `screen_face` tool, action
+  `face.write`, SAFE like set_office; `tests/test_screen_face.py`). The tool is SPACE_SCOPED: a turn in a
+  Zero's section may change only that Zero's screen (`_screen_tool` reads the section, never the arguments).
 - **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
   `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
   it to video or another origin.

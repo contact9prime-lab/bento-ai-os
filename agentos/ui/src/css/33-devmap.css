@@ -167,3 +167,8 @@ body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
 .tie-sch{display:flex;gap:10px;align-items:center}
 .tie-sch>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .tie-sch .mut{font-size:11.5px}
+/* a Zero's screen, in its Manage panel (24p-ties.js tieScreen*) */
+.tie-screen{grid-column:1/-1}
+.tie-faces{display:flex;flex-direction:column;gap:8px}
+.tie-faces .kf-pick{min-width:84px}
+.tie-faces .kf-thumb{width:72px;height:44px}

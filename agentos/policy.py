@@ -308,6 +308,9 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     # my office" is grantable, and refusable, apart from every tool that does real work.
     if name == "set_office":
         return "office.write", "office:*"
+    # a machine's own screen: grantable apart from everything else, per machine
+    if name == "screen_face":
+        return "face.write", f"screen:{args.get('machine') or 'here'}"
     if name in _SPACE:
         action, res = _SPACE[name]
         if not res:

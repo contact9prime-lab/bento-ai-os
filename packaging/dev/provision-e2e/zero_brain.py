@@ -61,6 +61,12 @@ def _reply(msgs):
             return _call("schedule_task", {"prompt": "Say: time for tea, the kettle is on",
                                            "schedule_type": "once", "delay_minutes": 0})
         return f"Done: {tool[:200]}", None
+    if "on my screen" in last.lower():
+        # a person at a Zero asking for widgets: the tool, then what it said
+        if tool is None:
+            return _call("screen_face", {"new_face": {"name": "Kitchen", "layout": "board",
+                                                      "widgets": ["clock", "timer", "quote"]}})
+        return f"Done: {tool[:300]}", None
     if "is the lead of the linked team" in every or "a small machine this hub set up" in every:
         if tool is None and last.strip().lower().startswith("thanks"):
             return "You're welcome.", None        # a follow-up in the same session: nothing to make

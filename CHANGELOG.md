@@ -2,11 +2,11 @@
 
 ## 0.6.90 — 2026-10-23
 
-**A Zero sets up schedules on its hub.** "Every morning at 8, tell me the weather" said at the Pi
-makes a schedule on the hub, kept in the Pi's section. When it fires the hub works it and sends the
-answer back, and the Pi shows and speaks it. It runs exactly as the Pi's chat runs, never as you
-with every tool, and a scheduled run can't schedule more. Network → the Zero → Schedules lists
-them with Cancel.
+**Change the Pi's screen from Devices and from chat.** Devices → a Zero → Manage → **Its screen**
+wears a face on the Pi, or makes one with widgets, over their link and only from its own hub.
+In chat, say it: "put a clock and a timer on my screen" at the Pi, or "put the dashboard on
+raspberrypi-3" to the hub's agent. The new `screen_face` tool does it, and from a Zero's own chat
+it changes only that Zero's screen.
 
 ## 0.6.89 — 2026-10-23
 

@@ -184,6 +184,21 @@ async def ask_update(lk: dict) -> dict:
     return got
 
 
+async def faces_remote(lk: dict, change: dict) -> dict:
+    """Read (no change) or change a Zero's screen faces, over its link (wire op zero_face)."""
+    from . import teamlink
+    from . import zero as zeromod
+    if not zeromod.ships_to(lk):
+        return {"ok": False, "error": "only a machine this hub set up takes its screen from here"}
+    try:
+        got = await teamlink.call(lk, {"op": "zero_face", **change}, timeout=20)
+    except Exception as e:
+        got = {"ok": False, "error": _why(e)}
+    if not got.get("ok") and "unknown request" in str(got.get("error") or ""):
+        got["error"] = "it runs a Bento older than 0.6.90: update it first, then its screen can be changed from here"
+    return got
+
+
 # ---- what it runs on here -------------------------------------------------------------
 
 def brain_for(cfg: dict, lk: dict) -> tuple[str, str, dict]:
