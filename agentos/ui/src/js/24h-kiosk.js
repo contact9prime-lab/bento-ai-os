@@ -52,6 +52,7 @@ function kioskStart(){
     <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
     <form class="kh-type" hidden><input class="kh-in" autocomplete="off" enterkeyhint="send" aria-label="Type a message">
       <button type="submit" class="kh-send">Send</button></form>
+    <div class="kh-upd" hidden></div>
     <div class="kh-wifi" hidden></div>
     <div class="kh-acts"><button class="kh-net" hidden aria-label="Wi-Fi">Wi-Fi</button><button class="kh-mic" aria-label="Microphone"></button>
       <button class="kh-key" aria-label="Type instead">⌨ Type</button>
@@ -77,6 +78,7 @@ function kioskStart(){
   addEventListener('resize',kioskSide);
   kioskSide();
   kioskPaint();
+  if(typeof kfaceLoad==='function')kfaceLoad();
   kioskHistory();
   kioskListen();
   kioskNet(false);
@@ -85,7 +87,8 @@ function kioskStart(){
    conversation so far in it; the Office takes what is left. Asked for as "the Zero look and
    feel has to be a big screen view of chat on the right". A tall or narrow screen keeps the
    band at the bottom, where a column would leave the office a sliver. */
-function kioskSideWanted(){return innerWidth>=640&&innerWidth/Math.max(1,innerHeight)>=1.15}
+function kioskSideWanted(){return (typeof kfaceLayout!=='function'||kfaceLayout()==='chat')
+  &&innerWidth>=640&&innerWidth/Math.max(1,innerHeight)>=1.15}
 function kioskSide(){
   if(!KIOSK.on)return;
   const on=kioskSideWanted();
@@ -119,6 +122,8 @@ function kioskStop(){
   clearTimeout(KIOSK.netT);KIOSK.wifiOpen=false;
   kioskMicOff();
   document.body.classList.remove('kiosk','kiosk-side');removeEventListener('resize',kioskSide);
+  if(typeof kfaceStop==='function')kfaceStop();
+  const strip=document.getElementById('kf-strip');if(strip)strip.remove();
   document.body.style.removeProperty('--kiosk-hud');KIOSK.hudH=0;
   const hud=document.getElementById('kiosk-hud');if(hud)hud.remove();
   if(KIOSK.cid&&typeof sinkOff==='function')sinkOff(KIOSK.cid);
@@ -475,6 +480,10 @@ async function faceSettingsPaint(){
        more:'Only the screen plugged into this machine. A phone or another browser keeps the desktop. Add #kiosk to the address to try it anywhere.',
        f:'kiosk mic microphone always listening screen office raspberry pi wake word'}),
     faceScreenRow(d.screen),
+    pRow('Faces','<div id="s-faces" class="kf-settings"><span class="mut">…</span></div>',
+      {desc:'What the kiosk shows: the chat, the Office, a clock, a dashboard of widgets, or one of your own.',stack:true,
+       more:'On the screen itself, tap ◐ or swipe sideways to change face. A widget you build in App Studio can go on a face too.',
+       f:'faces face widgets dashboard clock ambient kiosk layout build widget pi screen'}),
     pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Its wake word'],['always','Everything it hears']],d.wake||'name'),
       {desc:'With a wake word, anything else said in the room is ignored.',f:'wake word name always listening'}),
     pRow('Wake word',`<input id="s-face-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(d.wake_word||'')}">`,
@@ -488,6 +497,7 @@ async function faceSettingsPaint(){
     hear.engine?'':pRow('Hearing',`<button class="endbtn" id="s-face-voiceset">Voice settings</button>`,
       {desc:esc(hear.line||'Nothing here can understand speech yet.'),f:'kiosk hear speech to text voice'}),
   ].join('');
+  if(typeof faceFacesPaint==='function')faceFacesPaint();
   const put=async body=>{
     const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));
@@ -637,4 +647,23 @@ function kioskWifiPaint(){
     :`<p class="kh-wifi-why">Looking for networks…</p>`;
   box.querySelectorAll('.kh-wifi-n').forEach(b=>b.onclick=()=>{KIOSK.wifiPick=b.dataset.ssid;KIOSK.wifiErr='';kioskWifiPaint()});
   kioskPaint();
+}
+
+/* A newer Bento, on the machine's own screen: the desktop's update card is hidden under the
+   kiosk, so the offer and the progress are here. Asked for as "the Pi can check the update and
+   ask the users to update itself". Installing goes through /api/update, which only this screen
+   (loopback) may start, without the test suite: a Pi 3 would take most of an hour over it. */
+function kioskUpdate(ev){
+  const hud=document.getElementById('kiosk-hud');if(!hud)return;
+  const box=hud.querySelector('.kh-upd');if(!box)return;
+  if(ev.type==='update_progress'){box.hidden=false;box.innerHTML=`<span>⟳ ${esc(ev.message||'updating…')}</span>`;return}
+  if(!ev.update_available)return;
+  box.hidden=false;
+  box.innerHTML=`<span>A newer Bento is ready${ev.latest&&ev.latest!==ev.current?' ('+esc(ev.latest)+')':''}.</span>
+    <button class="kh-upd-go">Update</button><button class="kh-upd-x" aria-label="Not now">Later</button>`;
+  box.querySelector('.kh-upd-x').onclick=()=>{box.hidden=true};
+  box.querySelector('.kh-upd-go').onclick=async()=>{box.innerHTML='<span>⟳ updating…</span>';
+    const r=await fetch('/api/update',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({run_tests:false})})
+      .then(x=>x.json()).catch(e=>({error:String(e)}));
+    if(r.error)box.innerHTML=`<span>✗ ${esc(r.error)}</span>`};
 }

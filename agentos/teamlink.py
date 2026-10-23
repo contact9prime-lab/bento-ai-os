@@ -1093,9 +1093,12 @@ class Listener:
             # this link was written from a roster, not by a person linking two teams
             return {"ok": False, "error": "a community link carries community requests only"}
         if op == "hello":
+            # the version goes with it: a hub sees which of its Zeros are behind (ties.py)
+            from . import __version__
             return {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"],
-                    "identity": self._ident(lk.get("owner") or "")}
-        if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat", "edge_run", "hear") and self.on_ask:
+                    "version": __version__, "identity": self._ident(lk.get("owner") or "")}
+        if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat",
+                  "zero_update", "edge_run", "hear") and self.on_ask:
             out = await self.on_ask(lk, req)
             if isinstance(out, dict) and "identity" not in out:
                 out["identity"] = self._ident(lk.get("owner") or "")

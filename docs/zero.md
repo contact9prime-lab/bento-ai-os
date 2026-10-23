@@ -150,6 +150,26 @@ bento pool mind                  # on a Zero: what its hub keeps for it
 
 ![bento pool mind on the hub and on the Zero](screenshots/zero-mind-terminal.png)
 
+## Keeping it up to date
+
+A Zero updates itself when its own hub asks, over their link, so no password is needed. Network →
+Teams and Zeros shows each Zero's version, marked when it's behind the hub, with **Update**. When
+the hub itself updates, it looks at its Zeros, and *When this hub updates* decides what happens:
+
+- **Ask me to update the Zeros** (the default): a toast with *Update it*, once per version.
+- **Update the Zeros too**: each one is asked straight away, and a ledger row says so.
+- **Leave the Zeros alone.**
+
+![Network: when this hub updates, its Zeros are asked first; a Zero on an older Bento is marked, with Update](screenshots/zero-update.png)
+
+![On a phone: the update setting, and a Zero marked behind with Update](screenshots/zero-update-phone.png)
+
+The Zero also checks on its own, once a day, and offers a waiting update on its screen. An update
+on a Zero skips the test suite, which ran where the code was built and would keep a Pi 3 busy
+for most of an hour, and it restarts on its own (a Pi takes a few minutes). From a terminal:
+`bento network ties <zero> update`. A Zero on 0.6.87 or older can't be asked over the link yet:
+update it once with Controls → Update, or `bento network update <address>`.
+
 ## Whose it is
 
 On a hub with accounts, every Zero belongs to one of them: the person who made it. *Make a Zero*

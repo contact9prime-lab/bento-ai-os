@@ -3150,6 +3150,12 @@ In Chat, `chatMachineMsg` reads `meta.zero` / `meta.team` (or the `[who@team]` p
 with `chatMachineBanner`; the kiosk on a landscape screen is a right-hand column (`kioskSide`, `kiosk-side`,
 `.kh-log` holds `KIOSK.log`, the band's heard/reply lines are hidden there).
 
+**A Zero updates itself when its own hub asks** (wire op `zero_update`, `server._zero_update_from_hub`
+only for `zero.is_my_hub`, `ties.ask_update`, `server._zeros_keep_current` after start and every 6 h,
+`provision.zero_updates` ask/auto/off, the kiosk's `kioskUpdate`; `tests/test_zero_update.py`). `hello`
+carries `version`; `ties.behind` compares it. Never run `updates.apply` in a live run on a throwaway:
+the throwaway's code root is this checkout.
+
 **A brain that isn't available hands the turn to the next one** (`agentos/fallback.py`, `brain_fallbacks`
 USER_KEY, `/api/brain/fallbacks`, `bento brain fallbacks`, the finally of `_run_chat`; `tests/test_fallback.py`).
 Only an unavailable brain is a reason (`fallback.unavailable`); a stop or a refusal never is. The failed turn
@@ -3436,6 +3442,12 @@ be on and agents would be working in the office". Five rules:
   `psk-flags 0` so NetworkManager keeps it for the next boot, never argv. `unknown` connectivity with a
   connected device is online (Pi OS turns the check off). The list is kept between status checks
   (`KIOSK.nets`), or an open network asked for a password. Joining is admin; a `wifi.join` row, no secret.
+- **The kiosk wears a face** (`agentos/faces.py`, `24q-kioskfaces.js`, `/api/face/faces`, `bento face faces`;
+  `tests/test_kiosk_faces.py`): a layout (chat, office, clock, board, ambient) and widgets from a closed set,
+  or `app:<id>` for one of your apps (the desktop widgets' sandboxed frame, never same-origin). Faces are the
+  machine's `face.faces`, written like `/api/face` (the person's view, then the machine's copy). A widget face
+  calls `officeSceneStop` and ticks on ONE interval; `kioskSideWanted` is true only for the chat layout. Widget
+  tiles are `kf-w-<id>`: a tile and its inner line shared a class, and filling one wiped the other.
 - **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
   `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
   it to video or another origin.

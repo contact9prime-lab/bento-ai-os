@@ -31,6 +31,7 @@ VIEWS = ("sessions", "memory", "knowledge", "logs")
 VIEW_ROWS = 60
 
 _PROBED: dict[str, tuple[float, bool, str]] = {}
+_VERSION: dict[str, str] = {}      # what each tie said it runs, at its last hello
 
 
 def host_of(lk: dict) -> str:
@@ -87,6 +88,8 @@ def ties(owner: str | None = None) -> list[dict]:
             "answering": pr[1] if pr else None, "checked": pr[0] if pr else 0,
             "why": pr[2] if pr else "", "space": e.get("space") or "",
             "brain": {"executor": str(brain.get("executor") or ""), "model": str(brain.get("model") or "")},
+            "version": _VERSION.get(lk.get("id") or "", ""),
+            "behind": behind(_VERSION.get(lk.get("id") or "", "")),
         })
     out.sort(key=lambda t: (t["stale"], -float(t["created"] or 0)))
     return out
@@ -110,6 +113,10 @@ async def probe(lks: list[dict], force: bool = False) -> None:
                                          PROBE_TIMEOUT + 1)
             ok = bool(got.get("ok"))
             why = "" if ok else teamlink.plain(got.get("error") or "no answer", 120, newlines=False)
+            if ok:
+                # a hello with no version is a Bento from before versions were said: behind, and
+                # never the value an earlier answer left here
+                _VERSION[key] = teamlink.plain(got.get("version") or OLDER, 20, newlines=False).strip()
         except Exception as e:      # an answer is a sentence, never a traceback
             ok, why = False, _why(e)
         _PROBED[key] = (time.time(), ok, why)
@@ -125,6 +132,56 @@ def _why(e: Exception) -> str:
     if "timeout" in s or "timed out" in s:
         return "no answer in time"
     return str(e)[:120] or type(e).__name__
+
+
+# ---- keeping the Zeros current ------------------------------------------------------------
+#
+# Asked for as "if Bento is updated, ask the hub to update the Pi, or the Pi checks and asks".
+# A Zero this hub set up updates ITSELF when its hub asks over the link (wire op zero_update,
+# answered only for its own hub): no SSH, no password. What happens after the hub itself updates
+# is `provision.zero_updates`: "ask" (the default: a toast with Update), "auto", or "off".
+
+UPDATE_MODES = ("ask", "auto", "off")
+OLDER = "< 0.6.88"               # what a Zero that says no version runs
+
+
+def _vt(v: str) -> tuple:
+    out = []
+    for p in str(v or "").split("."):
+        try:
+            out.append(int("".join(ch for ch in p if ch.isdigit()) or 0))
+        except ValueError:
+            out.append(0)
+    return tuple(out)
+
+
+def behind(version: str) -> bool:
+    """Is a machine on `version` behind this one? Unknown is not behind."""
+    from . import __version__
+    if version == OLDER:
+        return True
+    return bool(version) and _vt(version) < _vt(__version__)
+
+
+def update_mode(cfg: dict) -> str:
+    m = str(((cfg or {}).get("provision") or {}).get("zero_updates") or "ask")
+    return m if m in UPDATE_MODES else "ask"
+
+
+async def ask_update(lk: dict) -> dict:
+    """Ask a Zero this hub set up to update itself. It answers at once and works after."""
+    from . import teamlink
+    from . import zero as zeromod
+    if not zeromod.ships_to(lk):
+        return {"ok": False, "error": "only a machine this hub set up updates when it asks"}
+    try:
+        got = await teamlink.call(lk, {"op": "zero_update"}, timeout=30)
+    except Exception as e:
+        got = {"ok": False, "error": _why(e)}
+    if not got.get("ok") and "unknown request" in str(got.get("error") or ""):
+        got["error"] = ("it runs a Bento older than 0.6.88, which can't be asked over the link: "
+                        "update it once with Controls → Update (or bento network update)")
+    return got
 
 
 # ---- what it runs on here -------------------------------------------------------------

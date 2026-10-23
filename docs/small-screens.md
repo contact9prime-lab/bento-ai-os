@@ -64,6 +64,45 @@ keeps the band along the bottom.
 
 ![The same on a Pi's 800x480 screen](screenshots/kiosk-chat-column-800.png)
 
+### Faces and widgets
+
+The kiosk can wear different **faces**. Tap **◐** in its buttons, or swipe sideways, to change:
+
+- **Chat**: the Office and the chat column.
+- **Office**: the Office, the whole screen, with the band along the bottom.
+- **Clock**: a big clock, the date and your agent's line.
+- **Dashboard**: a grid of widgets.
+- **Ambient**: the wallpaper and a small clock.
+
+![The Dashboard face on a 1280x720 screen: clock, your agent, this machine's processor and memory, the network and its hub, a running timer and the Brief](screenshots/kiosk-face-board-1280.png)
+
+![The same Dashboard on a Pi's 800x480 screen, six tiles in two rows](screenshots/kiosk-face-board-800.png)
+
+![The Clock face on 800x480: the time, the date and your agent's line](screenshots/kiosk-face-clock-800.png)
+
+![The Ambient face: the wallpaper, and a small clock in the corner](screenshots/kiosk-face-ambient-1280.png)
+
+The widgets are: **Clock**, **Date**, **Your agent** (what it's doing or last said), **Your agent
+says** (its last answer, large), **This machine** (processor, memory, temperature, uptime),
+**Network** (the Wi-Fi it's on, and whether its hub answers), **Timer** (+1, +5, Start; it rings
+when done) and **Your Brief**. They are drawn by the page itself and tick on one timer, and the
+Office stops drawing while a widget face shows, so a Pi stays light.
+
+**＋ New face** makes your own: a name, a layout, and the widgets in the order you tap them, up to
+eight. **＋ Build a widget** opens App Studio: any app you build with a widget view can go on a face,
+in the same sandboxed frame the desktop's widgets use. Your faces are the machine's, like the rest
+of the screen settings, and admins change them in Settings → Appearance → On this screen → Faces
+too.
+
+![The faces strip on the screen: Chat, Office, Clock, Dashboard, Ambient, your own Kitchen, and New face](screenshots/kiosk-face-switcher-1280.png)
+
+![Making a face: a name, a layout, and widgets numbered in the order they were tapped, with Build a widget](screenshots/kiosk-face-editor-1280.png)
+
+![The Kitchen face it made: a clock, your agent, a running timer and your agent's last words](screenshots/kiosk-face-kitchen-1280.png)
+
+From a terminal: `bento face faces` lists them, `bento face faces use board` wears one, and
+`bento face faces add Kitchen board clock,timer,quote` makes one.
+
 ### Listening through its hub
 
 A Pi set up from a hub hears through it. What it records is sent to the hub over the link that

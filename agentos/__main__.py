@@ -4409,6 +4409,36 @@ def _screen_cli(args):
             print("    " + c)
 
 
+def _faces_cli(cfg, rest):
+    """`bento face faces`: what this screen can wear (faces.py), and which it wears."""
+    from . import config as _cfgmod
+    from . import faces as facesmod
+    try:
+        if rest[:1] == ["use"] and len(rest) > 1:
+            facesmod.use(cfg, rest[1])
+            _cfgmod.save_config(cfg)
+        elif rest[:1] == ["add"] and len(rest) > 3:
+            face, dropped = facesmod.save(cfg, {"name": rest[1], "layout": rest[2],
+                                                "widgets": [w.strip() for w in rest[3].split(",")]})
+            facesmod.use(cfg, face["id"])
+            _cfgmod.save_config(cfg)
+            if dropped:
+                print("  left out: " + ", ".join(dropped))
+        elif rest[:1] == ["remove"] and len(rest) > 1:
+            if not facesmod.delete(cfg, rest[1]):
+                sys.exit(f"  ✗ no face of your own called '{rest[1]}' (the built-in ones stay)")
+            _cfgmod.save_config(cfg)
+    except ValueError as e:
+        sys.exit(f"  ✗ {e}")
+    st = facesmod.state(cfg)
+    print("  Faces for this machine's screen (◐ or a swipe changes them there):")
+    for f in st["faces"]:
+        on = "●" if f["id"] == st["current"] else " "
+        print(f"   {on} {f['id']:<12} {f['name']:<14} {f['layout']:<8} {', '.join(f['widgets'])}")
+    print("\n  Widgets: " + ", ".join(w["id"] for w in st["widgets"]) + ", or app:<id> for one of your apps.")
+    print("  bento face faces use ID · add NAME LAYOUT W1,W2 · remove ID")
+
+
 def _face_cli(args):
     """`bento face` — this machine's own screen: one agent drawn, and the kiosk face.
 
@@ -4420,6 +4450,8 @@ def _face_cli(args):
     from . import face as facemod
     from . import hearing
     cfg = _cfgmod.load_config()
+    if args.action == "faces":
+        return _faces_cli(cfg, list(args.args or []))
     a, rest = args.action, [x.lower() for x in (args.args or [])]
     val = rest[0] if rest else ""
     if a in ("show", "status"):
@@ -5333,14 +5365,25 @@ def _ties_cli(rest):
             runs = ("this machine's brain" if not b["executor"] else b["model"] if b["executor"] == "aria"
                     else b["executor"] + (f" ({b['model']})" if b["model"] else ""))
             whose = (usersmod.get(t["owner"]) or {}).get("name", "an account") if t["owner"] else "the machine"
-            print(f"  {t['label']:<24} {t['kind']:<8} {st}")
+            ver = (t["version"] + (" (behind this hub)" if t["behind"] else "")) if t["version"] else ""
+            print(f"  {t['label']:<24} {t['kind']:<8} {st}{'  · ' + ver if ver else ''}")
             print(f"  {'':<24} {t['peer']}{' at ' + t['addr'] if t['addr'] else ''} · belongs to {whose} · runs on {runs}")
-        print("\n  `bento network ties LINK sessions|memory|knowledge|logs` shows one tie's own rows.")
+        print("\n  `bento network ties LINK sessions|memory|knowledge|logs` shows one tie's own rows,"
+              "\n  `bento network ties LINK update` asks a Zero to update itself.")
         return
     t = next((x for x in all_ if x["label"] == rest[0]), None)
     if not t:
         sys.exit(f"  no link called {rest[0]}")
     what = rest[1] if len(rest) > 1 else "sessions"
+    if what == "update":
+        # ask a Zero this hub set up to update itself, over its link (no password)
+        lk = next(x for x in teamlink._load()["links"] if x.get("id") == t["id"])
+        got = asyncio.run(tiesmod.ask_update(lk))
+        if not got.get("ok"):
+            sys.exit(f"  ✗ {got.get('error')}")
+        print(f"  ✓ {t['label']} is updating ({t['version'] or 'its version'} → this hub's). "
+              f"It restarts on its own; a Pi takes a few minutes.")
+        return
     with usersmod.as_user(t["owner"]):
         try:
             got = tiesmod.view(Store(), t, what)
@@ -8845,7 +8888,7 @@ def main():
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties"],
                        metavar="ACTION",
-                       help="list | ties [LINK [sessions|memory|knowledge|logs]] | "
+                       help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | "
                             "look | install MACHINE --user U [--authorize] [--kiosk] [--for ACCOUNT] | "
                             "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
                             "letin MACHINE --user U [--your-key F] [--passwords-on] | "
@@ -8905,10 +8948,10 @@ def main():
     p_pool.add_argument("--wifi-country", default="", help="sdcard: two letters, like GB or IN")
     p_face = verb("face", help="this machine's screen: one agent drawn, and the kiosk that listens")
     p_face.add_argument("action", nargs="?", default="show",
-                        choices=["show", "status", "buddy", "kiosk", "wake", "word", "test", "hear"],
+                        choices=["show", "status", "buddy", "kiosk", "wake", "word", "test", "hear", "faces"],
                         metavar="ACTION",
                         help="show | buddy auto|on|off | kiosk on|off | wake name|always | "
-                             "word [WAKE WORD] | test | hear ENGINE")
+                             "word [WAKE WORD] | test | hear ENGINE | faces [use ID | add NAME LAYOUT W1,W2 | remove ID]")
     p_face.add_argument("args", nargs="*", help="the value")
     p_scr = verb("screen", help="open Bento on this machine's own screen at start: the Office, listening")
     p_scr.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "run", "wait"],
