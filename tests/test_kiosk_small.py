@@ -66,7 +66,7 @@ def test_a_small_machine_draws_its_own_screen_light():
     assert "function glassSmall(small)" in glass and "remoteClient()" in glass[glass.index("function glassSmall"):]
     assert "glassSmall(PLATFORM.small)" in (JS / "22-quicksettings.js").read_text()
     office = (JS / "24d-office.js").read_text()
-    assert "every=work?1/30:decor?(light?1/4:1/30):(light?1/2:1/6)" in office
+    assert "every=work?(light?1/8:1/30):decor?(light?1/4:1/30):(light?1/2:1/6)" in office
     # not due: a timer, never a frame asked for on every refresh
     assert "O.raf=-1;O.wait=setTimeout(" in office and office.count("clearTimeout(OFFICE.wait)") == 3
 

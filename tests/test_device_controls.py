@@ -99,12 +99,40 @@ def test_each_switch_is_what_was_shown_and_is_read_back(pi):
         devicectl.command("code", True)
 
 
-def test_remove_takes_the_program_and_keeps_its_data(pi):
+def test_remove_takes_everything_and_sets_its_home_aside(pi):
+    """'When I remove it should remove and when I add it should add': a moved-aside autostart
+    still opened Bento at login, a server started by hand kept running, and ~/.agentos still
+    said 'set up by the hub', so a reinstall never waited to be set up again."""
+    a = pi / ".config/autostart"
+    a.mkdir(parents=True)
+    for f in ("agentos-app.desktop.bento-screen", "bento-screen.desktop"):
+        (a / f).write_text("[Desktop Entry]\n")
+    u = pi / ".config/systemd/user/agentos.service.d"
+    u.mkdir(parents=True)
+    (u / "home.conf").write_text("[Service]\n")
+    (pi / ".cache/bento-install").mkdir(parents=True)
+    (pi / ".agentos/provision.json").write_text('{"claimed": {"by": "hub"}}')
     got = asyncio.run(devicectl.remove("192.168.1.9", "pi"))
-    assert got["ok"] and not got["state"]["installed"]
+    assert got["ok"] and not got["state"]["installed"] and got["left"] == []
     assert not (pi / ".local/src/agentic-os").exists() and not (pi / ".local/bin/bento").exists()
-    assert (pi / ".agentos/agentos.db").read_text() == "memory", "memory and settings stay"
-    assert "-f [s]creen-profile" in (pi.parent / "pkill.txt").read_text(), "closes the screen without matching itself"
+    assert not list(a.iterdir()), "no autostart left to open Bento at login"
+    assert not u.exists() and not (pi / ".cache/bento-install").exists()
+    assert not (pi / ".agentos").exists(), "a reinstall starts as a new machine"
+    kept = Path(got["kept"])
+    assert kept.name.startswith(".agentos-removed-") and (kept / "agentos.db").read_text() == "memory", \
+        "set aside, never deleted"
+    killed = (pi.parent / "pkill.txt").read_text()
+    assert "-f [s]creen-profile" in killed and "-f [a]gentos serve" in killed and "[b]ento-install/browser" in killed
+
+
+def test_remove_names_what_it_could_not_take_away(pi):
+    # a server that will not stop (the stand-in pgrep says one is there)
+    (pi / ".showing").write_text("")
+    pg = Path(os.environ["PI_BIN"]) / "pgrep"
+    pg.write_text("#!/bin/sh\ncase \"$*\" in *gentos\\ serve*) exit 0 ;; esac\n[ -f \"$HOME/.showing\" ]\n")
+    got = asyncio.run(devicectl.remove("192.168.1.9", "pi"))
+    assert not got["ok"] and "a Bento server is still running" in got["left"]
+    assert got["state"]["running"], "a server from deleted code still reads as running"
 
 
 def test_what_was_read_is_kept_in_the_inventory_and_a_removed_one_says_so(pi, monkeypatch):
@@ -232,3 +260,19 @@ def test_screen_on_gets_root_there_with_the_password_typed_here(pi):
     assert "pi pw" not in (pi.parent / "calls.txt").read_text(), "the password is never in the command"
     got = asyncio.run(devicectl.switch("192.168.1.9", "pi", "", 22, "screen", True))
     assert not got["ok"], "with no password, sudo there is left as it is"
+
+
+def test_no_pattern_in_a_script_matches_the_script_itself():
+    """pkill -f reads every command line, the shell running the script included: '[a]gentos-app'
+    matched the path agentos-app.desktop further down the same script, and Remove killed itself
+    on the owner's Pi (ssh exit 255) while every stand-in test passed."""
+    import re
+    for name in ("REMOVE", "STATE_SCRIPT", "CLOSE"):
+        script = getattr(devicectl, name)
+        for pat in re.findall(r"p(?:kill|grep) -f '([^']+)'", script):
+            assert not re.search(pat, script), (name, pat)
+    for which in ("running", "screen"):
+        for on in (True, False):
+            script = devicectl.command(which, on)
+            for pat in re.findall(r"p(?:kill|grep) -f '([^']+)'", script):
+                assert not re.search(pat, script), (which, on, pat)

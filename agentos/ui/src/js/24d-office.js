@@ -833,7 +833,9 @@ function officeFrame(now){
   if(!O.w||!O.ctx)return;
   if(!officeAwake())return officeSnooze();      // asleep: the next wake re-kicks
   const work=officeMoving(),decor=!work&&officeDecorMoving(),dt=(now-O.last)/1000;
-  const light=officeLight(),every=work?1/30:decor?(light?1/4:1/30):(light?1/2:1/6);
+  // On a small machine people step like an old arcade game (8 a second) rather than glide
+  // at 30: the figures are pixel art already, and it is a quarter of the drawing.
+  const light=officeLight(),every=work?(light?1/8:1/30):decor?(light?1/4:1/30):(light?1/2:1/6);
   if(dt<every){
     // not due yet: wait on a timer, not on every refresh (a frame asked for is a frame drawn)
     O.raf=-1;O.wait=setTimeout(()=>{O.raf=requestAnimationFrame(officeFrame)},Math.max(4,(every-dt)*1000-4));return}

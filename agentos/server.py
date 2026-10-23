@@ -3340,6 +3340,38 @@ async def api_face():
             "screen": await asyncio.to_thread(screenmod.status, cfg)}
 
 
+@app.get("/api/wifi")
+async def api_wifi(scan: int = 0):
+    """This machine's network, and with ?scan=1 what is in range (wifi.py). The kiosk shows it
+    when the machine has no network: its desktop's own menu is under the kiosk."""
+    from . import wifi
+    st = await asyncio.to_thread(wifi.status)
+    if scan:
+        st["networks"] = await asyncio.to_thread(wifi.networks)
+    return st
+
+
+@app.post("/api/wifi/connect")
+async def api_wifi_connect(body: dict):
+    """Join a network on this machine and keep it for the next boot. Admin only: it changes how
+    the machine reaches everything. The password reaches NetworkManager in a 0600 file, never
+    a command line, and no row anywhere carries it."""
+    if (r := _require_admin()):
+        return r
+    from . import wifi
+    b = body or {}
+    ssid, pw = str(b.get("ssid") or ""), str(b.get("password") or "")
+    try:
+        got = await asyncio.to_thread(wifi.connect, ssid, pw)
+    except ValueError as e:
+        _ledger("wifi.join", f"wifi:{wifi._plain(ssid)}", f"could not join: {e}")
+        return JSONResponse({"error": str(e)}, status_code=400)
+    finally:
+        pw = ""                         # noqa: F841 — the password ends with this request
+    _ledger("wifi.join", f"wifi:{got['ssid']}", f"joined {got['ssid']}")
+    return got
+
+
 @app.post("/api/screen")
 async def api_screen(body: dict):
     """Open Bento on this machine's own screen at start, or stop (screen.py). The machine's
@@ -13827,9 +13859,15 @@ async def api_network_remove(body: dict):
                     poolmod.remove(state["store"], row["fp"])
                 await _pool_changed(f"removed {row.get('display')} from the community")
                 ended.append(c["words"])
-    _ledger("device.remove", f"device:{ip}", f"removed Bento from {user}@{ip} (its data kept)"
+    from . import provision as provmod
+    with usersmod.as_user(""):
+        if provmod.forget_at(ip):
+            ended.append("what this computer had heard and set up there")
+    _ledger("device.remove", f"device:{ip}", f"removed Bento from {user}@{ip} (its data set aside"
+            + (f" at {got['kept']}" if got.get("kept") else "") + ")"
             + (f"; ended {', '.join(ended)}" if ended else ""))
-    return {"ok": got["ok"], "state": got["state"], "ran": got["ran"], "ended": ended, "view": _network_view()}
+    return {"ok": got["ok"], "state": got["state"], "ran": got["ran"], "ended": ended, "left": got.get("left") or [],
+            "kept": got.get("kept", ""), "view": _network_view()}
 
 
 @app.post("/api/network/disconnect")

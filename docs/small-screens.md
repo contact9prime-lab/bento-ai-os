@@ -87,6 +87,25 @@ nothing opens on the screen. Esc closes the box.
 
 ![The same kiosk on a 1440x900 screen](screenshots/kiosk-typed-desk.png)
 
+### When it has no network
+
+The kiosk checks the network every 20 seconds. When there's none, the band says **No network**
+and shows **Wi-Fi**: the networks in range, strongest first. Tap one, type its password and
+**Join**. It joins again on its own at the next start. The password goes to NetworkManager
+through a private file that's removed straight away, never on a command line, and nothing keeps a
+copy. `bento wifi`, `bento wifi list` and `bento wifi join NAME` do the same from a terminal.
+Changing Wi-Fi needs an admin on a machine with accounts.
+
+![A Pi's 800x480 kiosk with no network, offering Wi-Fi](screenshots/kiosk-wifi-offline-800x480.png)
+
+![The networks in range, in the kiosk's band](screenshots/kiosk-wifi-list-800x480.png)
+
+![Typing the password for a network](screenshots/kiosk-wifi-password-800x480.png)
+
+![The kiosk on a 1440x900 screen with no network, typing the password for 1401 in its band](screenshots/kiosk-wifi-password-desk.png)
+
+![The kiosk on a phone-sized screen, typing the password for 1401 under No network](screenshots/kiosk-wifi-password-phone.png)
+
 ### A small machine draws its own screen light
 
 On a small machine (the lite footprint, which a Pi gets), its own screen starts with the glass

@@ -39,6 +39,7 @@ STATE_SCRIPT = f"""B={B}; S={SRC}
 echo "installed=$([ -x "$B" ] && [ -d "$S" ] && echo yes || echo no)"
 echo "version=$(cat "$S/agentos/VERSION" 2>/dev/null)"
 echo "running=$(systemctl --user is-active agentos 2>/dev/null | head -1)"
+pgrep -f '[a]gentos serve' >/dev/null 2>&1 && echo serving=yes
 if [ -f "$HOME/.config/autostart/bento-screen.desktop" ] || systemctl is-enabled -q bento-screen.service 2>/dev/null; then echo screen=on; else echo screen=off; fi
 if pgrep -f '[s]creen-profile' >/dev/null 2>&1; then echo showing=yes; else echo showing=no; fi
 echo "listening=$(python3 -c 'import json,os
@@ -68,7 +69,8 @@ def parse_state(out: str) -> dict:
     f = dict(ln.split("=", 1) for ln in (out or "").splitlines() if "=" in ln)
     installed = f.get("installed") == "yes"
     return {"installed": installed, "version": f.get("version", "").strip(),
-            "running": installed and f.get("running", "").strip() == "active",
+            # a server started by hand, or left running from deleted code, is running too
+            "running": (installed and f.get("running", "").strip() == "active") or f.get("serving") == "yes",
             "screen": installed and f.get("screen") == "on",
             "listening": installed and f.get("listening") == "on",
             "showing": f.get("showing") == "yes",
@@ -188,10 +190,37 @@ def command(switch: str, on: bool, port: int = 8321) -> str:
     raise ValueError(f"{switch} is not switched on that machine")
 
 
-REMOVE = (f"B={B}; S={SRC}; "
-          '"$B" screen off >/dev/null 2>&1; "$B" uninstall; '
-          f"{CLOSE}; "
-          'rm -rf "$S" "$B"; echo removed')
+# Remove takes away everything Bento put there, checks, and names what is left. Reported as
+# "when I remove it should remove and when I add it should add". The old one ran `bento
+# uninstall` and deleted the code: a server started by hand (the installer does that when the
+# service will not start) kept running, an autostart moved aside by `screen on`
+# (agentos-app.desktop.bento-screen) still opened Bento at login, the installer's own screen
+# stayed up, and ~/.agentos still said "set up by the hub", so a reinstall never waited to be
+# set up again: the hub had forgotten it, the Pi had not. Its home is now MOVED aside, never
+# deleted: a fresh install is a new machine to the hub, and nothing it knew is lost.
+# Root (the screen's system unit, the mic policy) gets the typed password as Turn on does.
+REMOVE = (WITH_SUDO + f"B={B}; S={SRC}; U=\"$HOME/.config/systemd/user\"; A=\"$HOME/.config/autostart\"\n"
+          '[ -x "$B" ] && { "$B" screen off >/dev/null 2>&1; "$B" uninstall >/dev/null 2>&1; }\n'
+          'systemctl --user disable --now agentos.service >/dev/null 2>&1\n'
+          # $P is the password (WITH_SUDO): the installer's process is $I
+          'I=$(cat "$HOME/.cache/bento-install/install.pid" 2>/dev/null); '
+          '[ -n "$I" ] && kill -TERM -- "-$I" 2>/dev/null\n'
+          f"{CLOSE}; pkill -f '[b]ento-install/browser' 2>/dev/null; "
+          "pkill -f '[a]gentos serve' 2>/dev/null; sleep 1\n"
+          'rm -rf "$U/agentos.service" "$U/agentos.service.d" "$U/default.target.wants/agentos.service" '
+          '"$A/agentos-app.desktop" "$A/agentos-app.desktop.bento-screen" "$A/bento-screen.desktop" '
+          '"$HOME/.local/share/applications/agentos.desktop" '
+          '"$HOME/.local/share/icons/hicolor/scalable/apps/agentos.svg" '
+          '"$HOME/.local/bin/agentos" "$HOME/.cache/bento-install" "$S" "$B"\n'
+          'systemctl --user daemon-reload >/dev/null 2>&1\n'
+          'if [ -d "$HOME/.agentos" ]; then K="$HOME/.agentos-removed-$(date +%Y%m%d-%H%M%S)"; '
+          'mv "$HOME/.agentos" "$K" && echo "kept=$K"; fi\n'
+          # what is still there, named: a remove that says "removed" over a running server is the bug
+          'pgrep -f \'[a]gentos serve\' >/dev/null 2>&1 && echo "left=a Bento server is still running"\n'
+          'for f in "$S" "$B" "$U/agentos.service" "$A/agentos-app.desktop.bento-screen" "$A/bento-screen.desktop"; do '
+          '[ -e "$f" ] && echo "left=$f"; done\n'
+          'systemctl is-enabled -q bento-screen.service 2>/dev/null && echo "left=the screen service (needs your password)"\n'
+          'echo removed')
 
 
 UPDATE = f"{B} update"
@@ -230,15 +259,51 @@ async def switch(host: str, user: str, password: str, port: int, which: str, on:
     return {"ok": code == 0, "ran": cmd, "said": said, "state": after}
 
 
+def end_ties(row: dict) -> list[str]:
+    """This computer's half of a removed machine: its links (and the cells that named them),
+    its place in the community, and what was heard and set up at its address. One function
+    for the Remove button and `bento network remove`, so the terminal ends them too: it used
+    to leave them to "the running server", and nothing ever asked that server to."""
+    from . import fabric, pool, provision, teamlink
+    from . import users as usersmod
+    ended = []
+    for c in row.get("connections") or []:
+        try:
+            if c["kind"] == "link":
+                owner = c.get("owner") or ""
+                if teamlink.remove(owner, c["label"]):
+                    st = usersmod.store_for(owner)
+                    n = fabric.forget_link_grants(st, c["label"])
+                    with usersmod.as_user(owner):
+                        fabric.audit_team(st, "link.revoke", f"link:{c['label']}",
+                                          f"Bento was removed there; {n} permission(s) that named it revoked")
+                    ended.append(c["words"])
+            elif c["kind"] == "community" and row.get("fp"):
+                with usersmod.as_user(""):
+                    pool.remove(usersmod.store_for(""), row["fp"])
+                ended.append(c["words"])
+        except Exception:
+            continue
+    with usersmod.as_user(""):
+        if row.get("ip") and provision.forget_at(row["ip"]):
+            ended.append("what this computer heard and set up there")
+    return ended
+
+
 async def remove(host: str, user: str, password: str = "", port: int = 22) -> dict:
     _guard(host, user)
-    code, out, err, via = await ri.login_run(host, user, port, password, REMOVE, 120)
-    if code != 0 or "removed" not in out:
+    code, out, err, via = await ri.login_run(host, user, port, password, REMOVE, 120,
+                                             stdin=(password + "\n") if password else None)
+    if "removed" not in out:
         raise ri.InstallError("it could not be removed there: "
                               + (ri.clean_line((err or out).strip().splitlines()[-1]) if (err or out).strip() else
                                  f"exit {code}"))
+    f = [ln.split("=", 1) for ln in out.splitlines() if "=" in ln]
+    left = [ri.clean_line(v) for k, v in f if k == "left"]
+    kept = next((ri.clean_line(v) for k, v in f if k == "kept"), "")
     after = await state(host, user, "" if via == "key" else password, port)
-    return {"ok": not after["installed"], "ran": REMOVE, "state": after}
+    return {"ok": not after["installed"] and not after["running"] and not left, "ran": REMOVE,
+            "left": left, "kept": kept, "state": after}
 
 
 def _guard(host: str, user: str) -> None:

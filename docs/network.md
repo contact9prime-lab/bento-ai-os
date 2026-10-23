@@ -259,10 +259,16 @@ Each switch shows the line it runs under *What runs there*, and after it runs, t
 read again: the tab says what is true, not what was asked for. What was read is kept in the
 list with when, under the machine's name.
 
-**Remove Bento** stops it, takes the program off (the service, the launcher, the screen entry and
-the code), and ends its link and its place in your community. Its memory and settings in
-`~/.agentos` stay on it, so **Install it again** picks up where it was. This computer's SSH key
-stays too; Disconnect takes that off.
+**Remove Bento** stops everything of Bento's that runs there (the service, a server started by
+hand, its screen, an installer still going) and takes the program off: the service and its
+overrides, the launcher, every autostart entry and the code. Its memory and settings in
+`~/.agentos` are set aside as `~/.agentos-removed-<date-time>`, never deleted. It then checks and
+names anything that's still there. On this computer it ends the link, its place in your
+community, and what was heard and set up at that address, so **Install it again** sets it up as a
+new machine. This computer's SSH key stays on it; Disconnect takes that off. `bento network remove`
+does all of it from a terminal.
+
+![Three moments from removing and adding back a Raspberry Pi 3 from the hub with bento network remove and install: the Pi's desktop with Bento gone, its screen during the install, and the kiosk Office afterwards](screenshots/network-remove-add-pi.png)
 
 **Install it again** stays on the row after an install stops, so you can just try again. A scan
 where the machine didn't answer for a moment doesn't take it away, and a machine you've logged

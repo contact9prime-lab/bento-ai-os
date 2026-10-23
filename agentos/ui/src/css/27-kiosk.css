@@ -33,6 +33,19 @@ body.kiosk #aibubble{display:none!important}
   border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);background:color-mix(in srgb,var(--bg) 70%,transparent);color:var(--txt)}
 #kiosk-hud .kh-send{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
 #kiosk-hud .kh-key.on{border-color:var(--acc)}
+#kiosk-hud .kh-wifi{grid-column:2;min-width:0}
+#kiosk-hud .kh-wifi-list{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:2px}
+#kiosk-hud .kh-wifi-n{flex:none;scroll-snap-align:start;display:flex;flex-direction:column;align-items:flex-start;
+  gap:2px;padding:8px 14px;border-radius:14px;max-width:220px;text-align:left}
+#kiosk-hud .kh-wifi-n span{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#kiosk-hud .kh-wifi-n small{opacity:.7}
+#kiosk-hud .kh-wifi-n.on{border-color:var(--acc)}
+#kiosk-hud .kh-wifi-join{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#kiosk-hud .kh-wifi-pw{flex:1 1 160px;min-width:0;min-height:var(--tap,44px);padding:0 14px;border-radius:999px;
+  border:1px solid color-mix(in srgb,var(--txt) 16%,transparent);background:color-mix(in srgb,var(--bg) 70%,transparent);
+  color:var(--txt);-webkit-text-security:disc}
+#kiosk-hud .kh-wifi-err,#kiosk-hud .kh-wifi-why{color:var(--warn,#f59e0b);margin:0}
+#kiosk-hud .kh-net.on{border-color:var(--acc)}
 #kiosk-hud button{min-height:var(--tap,44px);min-width:var(--tap,44px);padding:0 16px;border-radius:999px;
   border:1px solid color-mix(in srgb,var(--txt) 18%,transparent);background:var(--bg3);color:var(--txt);
   font:inherit;cursor:pointer}
@@ -43,7 +56,7 @@ body.kiosk #aibubble{display:none!important}
 @media (max-width:640px){
   #kiosk-hud{grid-template-columns:1fr auto;left:16px;right:16px}
   #kiosk-hud .kh-who{grid-row:auto}
-  #kiosk-hud .kh-heard,#kiosk-hud .kh-reply,#kiosk-hud .kh-type{grid-column:1/3}
+  #kiosk-hud .kh-heard,#kiosk-hud .kh-reply,#kiosk-hud .kh-type,#kiosk-hud .kh-wifi{grid-column:1/3}
   #kiosk-hud .kh-acts{grid-column:2;grid-row:1}
 }
 @media (prefers-reduced-motion:reduce){#kiosk-hud .kh-mic.live{box-shadow:none;outline:2px solid var(--acc)}}

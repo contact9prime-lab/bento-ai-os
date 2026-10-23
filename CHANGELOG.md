@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.85 — 2026-10-22
+
+**Joining Wi-Fi from the kiosk.** The kiosk fills the screen, so a Pi that came up without its
+Wi-Fi had no way back to its network menu. When there's no network, the band now says so and
+offers the networks in range; tap one, type the password, Join, and it joins again on its own at
+the next start. The password reaches NetworkManager through a private file, never a command line.
+`bento wifi` does the same from a terminal.
+
+**Remove means removed, and adding it back adds it.** Remove from the hub used to run
+`bento uninstall` and delete the code. A server started by hand kept running, an autostart that
+the screen step had moved aside still opened Bento at login, and the installer's own screen
+stayed up. Its `~/.agentos` still said it had been set up by the hub, so after a reinstall it
+never waited to be set up again: the hub had forgotten it, the Pi had not. Remove now stops and
+deletes all of it, sets `~/.agentos` aside as `~/.agentos-removed-<time>` (never deleted), checks,
+and names anything left. The hub forgets what it heard and set up at that address, so a new
+install is set up as a new machine. `bento network remove` does the hub's half too.
+
+**An install rides out a weak connection.** Doing it for real on a Pi 3 on weak Wi-Fi and
+too little power, the small clone broke once and the installer fell back to the full 205 MB one,
+which broke too. The next try got the code and then timed out reaching PyPI, which answered in
+under a second a minute later. The installer now tries the small clone three times and the
+package step three times when the network is what failed, and says each time why.
+
+**A Pi's questions get answered.** A thinking model on a long prompt (a Pi asking its hub's
+qwen3.5:9b) thought until the window was full and said nothing, and every question ended on
+"the model hit its token limit". It now answers once more without thinking.
+
+**On a small machine the Office steps like an old arcade game**: people move at 8 frames a
+second instead of gliding at 30. It is a quarter of the drawing.
+
 ## 0.6.84 — 2026-10-22
 
 **An install over SSH survives a dropped connection.** The installer ran inside the SSH

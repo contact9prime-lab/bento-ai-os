@@ -3213,7 +3213,11 @@ Six rules:
   stopped. `STATE_SCRIPT` is plain shell (files and systemctl), so an old Bento answers; the answer after a switch
   is a fresh read, and a switch that did not take is an error with what it said. `inventory.note_controls` keeps
   the read with its time; installed false reads as `removed`. Remove keeps `~/.agentos` and this computer's key,
-  and the route ends the links and the community place. Its `pkill -f '[s]creen-profile'`: unbracketed, it killed
+  and the route ends the links and the community place. Remove now sets `~/.agentos` aside
+  (`.agentos-removed-<time>`) because a kept `provision.json` said "claimed by the hub", so a reinstall
+  never waited again; it stops every server and the installer's screen, deletes drop-ins and the moved
+  autostart, and reports `left`. `devicectl.end_ties` is the hub's half (links, community,
+  `provision.forget_at`), shared by the route and `bento network remove`. Its `pkill -f '[s]creen-profile'`: unbracketed, it killed
   the remote shell running it (and, in a test, the host's own shells: the test stubs pkill). The Devices app and
   Settings → Network are ONE list: `netPaint` draws into `#s-net` and every `.devhub-box`.
   Screen on needs root there once (the mic policy) and a Pi's sudo wants a password: `WITH_SUDO` puts a
@@ -3370,6 +3374,12 @@ be on and agents would be working in the office". Five rules:
   alone was a whole core at rest in software rendering, and the Office drew decor at 30 fps forever and
   asked for a frame on every refresh. Remote viewers keep the full look. Measure with CPU throttling
   OFF: Chrome's own throttling costs ~86% of a core on a blank page.
+- **A kiosk with no network offers Wi-Fi** (`agentos/wifi.py`, `/api/wifi`, `/api/wifi/connect`, `bento wifi`,
+  `kioskNet`/`kioskWifiPaint`; `tests/test_wifi.py`). The desktop's own menu is under the kiosk. nmcli does
+  the work; a password goes through `passwd-file` (0600 in a 0700 folder, removed at once) with
+  `psk-flags 0` so NetworkManager keeps it for the next boot, never argv. `unknown` connectivity with a
+  connected device is online (Pi OS turns the check off). The list is kept between status checks
+  (`KIOSK.nets`), or an open network asked for a password. Joining is admin; a `wifi.join` row, no secret.
 - **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
   `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
   it to video or another origin.
