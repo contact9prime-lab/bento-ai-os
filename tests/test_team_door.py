@@ -86,7 +86,9 @@ def test_a_forwarded_turn_hands_over_through_the_gate(tmp_path, monkeypatch):
     assert said == "The toolsmith built it."
     assert "YOU LEAD A TEAM" in seen["context"] and "toolsmith: You are the toolsmith" in seen["context"]
     assert "hand that part over" in seen["context"] and "who did what" in seen["context"]
-    assert seen["tools"] == sorted(executors.DOOR_TOOLS + (mcpbridge.CONNECTED,)), \
+    # pool_task and community_recall exist only where there is a community (Toolbox.schemas)
+    community = {"pool_task", "community_recall"}
+    assert seen["tools"] == sorted(set(executors.DOOR_TOOLS) - community | {mcpbridge.CONNECTED}), \
         ("the door offers the team, missions, schedules, the person's live windows and "
          "finding and connecting tools, and nothing else")
     assert "run_command" not in executors.DOOR_TOOLS and "write_file" not in executors.DOOR_TOOLS

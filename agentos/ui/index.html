@@ -5300,40 +5300,12 @@ body.zero-face .of-co{display:none}
 .devhub-box{padding:4px 0}
 @media (max-width:600px){.net-sw{flex-direction:column}.net-sw .endbtn{width:100%;min-height:var(--tap,40px)}}
 
-/* the device map (24o-devices.js): positions are percentages, the lines an SVG under them */
-.devmap{position:relative;height:clamp(300px,42vh,400px);margin:6px 16px 14px;border-radius:16px;overflow:hidden;
-  background:radial-gradient(ellipse at 50% 50%,color-mix(in srgb,var(--acc) 14%,transparent) 0%,transparent 65%),
-  color-mix(in srgb,var(--txt) 3%,transparent)}
-.devmap svg{position:absolute;inset:0;width:100%;height:100%}
-.devmap line{stroke:color-mix(in srgb,var(--acc) 70%,transparent);stroke-width:.35;vector-effect:non-scaling-stroke}
-.devmap line.tie{stroke-width:2}
-.devmap line.loose{stroke-dasharray:6 5;stroke-width:1.5;opacity:.7}
-.devmap-n{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;
-  background:none;border:0;color:var(--txt);font:inherit;cursor:pointer;max-width:132px;text-align:center;padding:4px;
-  min-width:var(--tap,40px);min-height:var(--tap,40px)}
-.devmap-n b{font-size:13px;line-height:1.2}
-.devmap-n .mut{font-size:11.5px;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.devmap-me{cursor:default}
-.devmap-ring{display:grid;place-items:center;width:54px;height:54px;border-radius:50%;background:var(--bg2);
-  border:2px solid color-mix(in srgb,var(--txt) 25%,transparent);overflow:hidden}
-.devmap-me .devmap-ring{width:68px;height:68px;border-color:var(--acc)}
-.devmap-ring.up{border-color:#34d399}.devmap-ring.down{border-color:color-mix(in srgb,var(--txt) 35%,transparent);opacity:.75}
-.devmap-ring img,.devmap-face{width:100%;height:100%;image-rendering:pixelated;object-fit:cover}
-.devmap-initial{display:grid;place-items:center;font-weight:700;font-size:22px;background:color-mix(in srgb,var(--acc) 30%,var(--bg2))}
-.devmap-dot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;
-  background:color-mix(in srgb,var(--txt) 30%,transparent)}
-.devmap-more{position:absolute;left:14px;top:10px;margin:0;font-size:12px}
-.devmap-empty{position:absolute;left:0;right:0;bottom:12px;margin:0;text-align:center;font-size:12px}
-.devmap-n.up{flex-direction:column-reverse}
-.devmap-n.up .devmap-ring{order:-1}
 .net-look{display:flex;gap:14px;align-items:center;margin-top:8px;padding:12px 14px;border-radius:10px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
 .net-look-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .net-look-face{width:56px;height:56px;border-radius:12px;image-rendering:pixelated;background:var(--bg2);display:block}
 .net-look-none{display:grid;place-items:center;font-weight:600;font-size:22px;color:var(--txt2,var(--txt))}
 @media (max-width:480px){.net-look{flex-wrap:wrap}.net-look>.endbtn{flex:1 1 100%}}
 .dev-pw-opts{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;flex-basis:100%}
-@media (max-width:600px){.devmap{height:380px;margin:6px 8px 12px}.devmap-n{max-width:96px}.devmap-n .mut{max-width:96px}
-  .devmap-ring{width:44px;height:44px}.devmap-me .devmap-ring{width:56px;height:56px}}
 /* the form wraps its fields in a row; these each take a whole line */
 .dev-form>.net-sws,.dev-form>.net-look,.dev-form>.net-remove,.dev-form>.dev-pw-opts{flex:1 1 100%}
 .dev-pw-opts .prov-opt{display:inline-flex;align-items:center;gap:8px}
@@ -6106,6 +6078,129 @@ body.dev-mobile .perm-q{max-width:none;margin-left:0}
 .aud-when span{font-size:10.5px;color:var(--dim)}
 .pa-name{display:flex;align-items:center;gap:8px;min-width:0}
 .pa-name b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The device map (24o-devices.js): this computer in the middle, Zeros on the inner ring, teams
+   on the next, the rest of the network as dots on the edge. Positions are percentages; the rings
+   and lines are one SVG under the nodes. Every colour is mixed from the theme's tokens. */
+.dm{--zero:#34d399;--team:#a78bfa;--mach:color-mix(in srgb,var(--acc) 80%,var(--txt));
+  position:relative;height:clamp(340px,48vh,460px);margin:6px 16px 16px;border-radius:18px;overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 50%,color-mix(in srgb,var(--acc) 22%,transparent) 0,transparent 30%),
+    radial-gradient(ellipse at 50% 120%,color-mix(in srgb,var(--team) 14%,transparent) 0,transparent 60%),
+    linear-gradient(180deg,color-mix(in srgb,var(--bg2) 92%,var(--acc)),color-mix(in srgb,var(--bg) 96%,var(--acc)));
+  border:1px solid color-mix(in srgb,var(--txt) 9%,transparent);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--txt) 7%,transparent)}
+.dm::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(color-mix(in srgb,var(--txt) 14%,transparent) 1px,transparent 1.2px);
+  background-size:22px 22px;mask-image:radial-gradient(ellipse at 50% 50%,#000 30%,transparent 75%)}
+.dm-bg{position:absolute;inset:0;width:100%;height:100%}
+.dm-bg ellipse{fill:none;stroke:color-mix(in srgb,var(--txt) 9%,transparent);stroke-width:1;vector-effect:non-scaling-stroke;stroke-dasharray:2 6}
+.dm-bg line{stroke-width:2;vector-effect:non-scaling-stroke;stroke-linecap:round}
+.dm-bg line.zero{stroke:var(--zero)}
+.dm-bg line.team,.dm-bg line.account{stroke:var(--team);stroke-dasharray:7 6}
+.dm-bg line.machine{stroke:var(--mach);stroke-dasharray:2 5;opacity:.75}
+.dm-bg line.down,.dm-bg line.stale{stroke:color-mix(in srgb,var(--txt) 28%,transparent);stroke-dasharray:3 6}
+@media (prefers-reduced-motion:no-preference){.dm-bg line.zero,.dm-bg line.team{animation:dm-flow 2.4s linear infinite}
+  .dm-bg line.zero{stroke-dasharray:10 6}}
+@keyframes dm-flow{to{stroke-dashoffset:-32}}
+
+.dm-n{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;
+  background:none;border:0;color:var(--txt);font:inherit;cursor:pointer;max-width:140px;text-align:center;padding:4px;
+  min-width:var(--tap,40px);min-height:var(--tap,40px)}
+.dm-n.above{flex-direction:column-reverse}
+.dm-lab{display:flex;flex-direction:column;align-items:center;gap:2px}
+.dm-ring{position:relative;display:grid;place-items:center;width:58px;height:58px;border-radius:18px;background:var(--bg2);
+  border:2px solid color-mix(in srgb,var(--txt) 22%,transparent);
+  box-shadow:0 6px 18px color-mix(in srgb,#000 35%,transparent);transition:transform .2s,box-shadow .2s}
+.dm-ring>img,.dm-face{width:100%;height:100%;border-radius:15px;image-rendering:pixelated;object-fit:cover;overflow:hidden}
+.dm-n:hover .dm-ring,.dm-n:focus-visible .dm-ring{transform:translateY(-2px) scale(1.05)}
+.dm-n.zero .dm-ring{border-color:var(--zero)}
+.dm-n.team .dm-ring,.dm-n.account .dm-ring{border-color:var(--team)}
+.dm-n.machine .dm-ring{border-color:var(--mach)}
+.dm-n.down .dm-ring,.dm-n.stale .dm-ring{border-color:color-mix(in srgb,var(--txt) 30%,transparent);filter:grayscale(.7);opacity:.75}
+.dm-st{position:absolute;right:-4px;bottom:-4px;width:13px;height:13px;border-radius:50%;
+  background:color-mix(in srgb,var(--txt) 35%,transparent);border:2px solid var(--bg2)}
+.dm-n.up .dm-st{background:var(--zero)}
+.dm-n.down .dm-st{background:#f87171}
+.dm-tag{font:700 9.5px/1 var(--mono,ui-monospace,monospace);letter-spacing:.08em;padding:3px 6px;border-radius:999px;margin-top:4px;
+  background:color-mix(in srgb,var(--txt) 10%,transparent);color:color-mix(in srgb,var(--txt) 75%,transparent)}
+.dm-n.zero .dm-tag{background:color-mix(in srgb,var(--zero) 22%,transparent);color:var(--zero)}
+.dm-n.team .dm-tag,.dm-n.account .dm-tag{background:color-mix(in srgb,var(--team) 22%,transparent);color:var(--team)}
+.dm-n b{font-size:13px;line-height:1.2;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dm-sub{font-size:11.5px;color:color-mix(in srgb,var(--txt) 60%,transparent);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dm-say{font-size:11px;max-width:160px;min-height:0;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dm-say:empty{display:none}
+.dm-n.busy .dm-say{padding:3px 8px;border-radius:9px;background:color-mix(in srgb,var(--zero) 20%,var(--bg2))}
+.dm-n.busy .dm-ring{box-shadow:0 0 0 4px color-mix(in srgb,var(--zero) 30%,transparent),0 0 26px color-mix(in srgb,var(--zero) 55%,transparent)}
+@media (prefers-reduced-motion:no-preference){.dm-n.busy .dm-ring{animation:dm-glow 1.4s ease-in-out infinite alternate}}
+@keyframes dm-glow{to{box-shadow:0 0 0 7px color-mix(in srgb,var(--zero) 18%,transparent),0 0 34px color-mix(in srgb,var(--zero) 70%,transparent)}}
+.dm-me{cursor:default}
+.dm-me .dm-ring{width:76px;height:76px;border-radius:24px;border-color:var(--acc);
+  box-shadow:0 0 0 6px color-mix(in srgb,var(--acc) 16%,transparent),0 10px 30px color-mix(in srgb,var(--acc) 35%,transparent)}
+.dm-me .dm-ring>img,.dm-me .dm-face{border-radius:21px}
+.dm-me .dm-tag{background:color-mix(in srgb,var(--acc) 25%,transparent);color:var(--txt)}
+.dm-dot{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;
+  background:color-mix(in srgb,var(--txt) 26%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--txt) 6%,transparent)}
+.dm-legend{position:absolute;left:12px;right:12px;width:max-content;max-width:calc(100% - 24px);bottom:10px;display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11.5px;
+  padding:6px 10px;border-radius:10px;background:color-mix(in srgb,var(--bg) 70%,transparent);backdrop-filter:none}
+.dm-legend span{display:inline-flex;align-items:center;gap:6px;color:color-mix(in srgb,var(--txt) 75%,transparent)}
+.dm-legend i{width:14px;height:3px;border-radius:2px;background:var(--mach)}
+.dm-legend .zero i{background:var(--zero)}.dm-legend .team i{background:var(--team)}
+.dm-legend .off i{background:color-mix(in srgb,var(--txt) 30%,transparent)}
+.dm-legend .dot i{width:8px;height:8px;border-radius:50%;background:color-mix(in srgb,var(--txt) 30%,transparent)}
+.dm-legend .old{color:#fbbf24}.dm-legend .old i{background:#fbbf24}
+.dm-empty{position:absolute;left:0;right:0;top:calc(50% + 70px);margin:0 16px;text-align:center;font-size:12.5px;
+  color:color-mix(in srgb,var(--txt) 60%,transparent)}
+@media (max-width:600px){.dm{height:440px;margin:6px 8px 12px}.dm-n{max-width:100px}.dm-n b,.dm-sub{max-width:100px}
+  .dm-ring{width:46px;height:46px;border-radius:14px}.dm-me .dm-ring{width:60px;height:60px;border-radius:18px}
+  .dm-say{max-width:110px}.dm-legend{font-size:10.5px;gap:4px 8px}}
+
+/* Teams and Zeros in Network (24p-ties.js) */
+.tie-list{display:flex;flex-direction:column;gap:8px;margin:6px 16px 12px}
+.tie{border-radius:12px;padding:10px 12px;background:color-mix(in srgb,var(--txt) 4%,transparent);
+  border:1px solid color-mix(in srgb,var(--txt) 8%,transparent);border-left:3px solid var(--tc,var(--acc))}
+.tie.zero{--tc:#34d399}.tie.team,.tie.account{--tc:#a78bfa}.tie.stale{--tc:#fbbf24;opacity:.85}
+.tie-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tie-face{position:relative;flex:none;width:40px;height:40px}
+.tie-img{width:40px;height:40px;border-radius:11px;image-rendering:pixelated;background:var(--bg2);display:grid;place-items:center;overflow:hidden}
+.tie-dot{position:absolute;right:-3px;bottom:-3px;width:11px;height:11px;border-radius:50%;border:2px solid var(--bg2);
+  background:color-mix(in srgb,var(--txt) 35%,transparent)}
+.tie-dot.up{background:#34d399}.tie-dot.down{background:#f87171}.tie-dot.stale{background:#fbbf24}
+.tie-name{flex:1;min-width:120px;display:flex;flex-direction:column;gap:1px}
+.tie-name .mut{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tie-kind,.tie-st{font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--tc) 18%,transparent);color:var(--tc)}
+.tie-st{background:color-mix(in srgb,var(--txt) 8%,transparent);color:color-mix(in srgb,var(--txt) 75%,transparent)}
+.tie-st.up{color:#34d399}.tie-st.down{color:#f87171}.tie-st.stale{color:#fbbf24}
+.tie-top .endbtn{min-height:var(--tap,32px)}
+.tie-sub{margin:6px 0 0 50px;font-size:12px}
+.tie-body{margin-top:10px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--txt) 8%,transparent);display:flex;flex-direction:column;gap:12px}
+.tie-own{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 12px;border-radius:10px;
+  background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.tie-own p{flex:1;min-width:200px;margin:0;font-size:12.5px}
+.tie-warn{margin:0;padding:8px 10px;border-radius:9px;font-size:12.5px;background:color-mix(in srgb,#fbbf24 14%,transparent)}
+.tie-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:12px}
+.tie-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tie-field>span{font-size:12px;font-weight:600;color:color-mix(in srgb,var(--txt) 70%,transparent)}
+.tie-brain{width:100%;min-height:var(--tap,34px)}
+.tie-agents{display:flex;flex-wrap:wrap;gap:6px}
+.tie-ag{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12.5px;cursor:pointer;
+  background:color-mix(in srgb,var(--txt) 6%,transparent);min-height:var(--tap,30px)}
+.tie-ag input{width:16px;height:16px;min-height:0;margin:0}
+.tie-views{display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x mandatory}
+.tie-vb{flex:none;scroll-snap-align:start;padding:6px 12px;border-radius:9px;border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);
+  background:none;color:var(--txt);font:inherit;font-size:12.5px;cursor:pointer;min-height:var(--tap,32px)}
+.tie-vb.on{background:color-mix(in srgb,var(--tc) 20%,transparent);border-color:var(--tc)}
+.tie-view{max-height:260px;overflow:auto;border-radius:10px;padding:6px 10px;background:color-mix(in srgb,var(--bg) 55%,transparent)}
+.tie-rows{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.tie-rows li{padding:7px 0;border-bottom:1px solid color-mix(in srgb,var(--txt) 6%,transparent);font-size:12.5px;overflow-wrap:anywhere}
+.tie-rows li:last-child{border-bottom:0}
+.tie-logs i{font-style:normal;font-size:10.5px;padding:1px 6px;border-radius:6px;background:color-mix(in srgb,var(--txt) 9%,transparent)}
+.tie-conv{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;background:none;border:0;color:var(--txt);
+  font:inherit;text-align:left;cursor:pointer;padding:0;min-height:var(--tap,32px)}
+.tie-conv .mut{font-size:11.5px}
+.tie-acts{display:flex;justify-content:flex-end}
+.tie-acts .endbtn.danger{color:var(--err,#e05050)}
+@media (max-width:600px){.tie-list{margin:6px 8px 10px}.tie-grid{grid-template-columns:1fr}.tie-sub{margin-left:0}
+  .tie-top .endbtn{margin-left:auto}}
 </style>
 </head>
 <body>
@@ -9453,7 +9548,11 @@ function worldLabel(n){
 function worldOrg(n){const c=WORLD.v&&WORLD.v.company;return (c&&c.of&&c.of[n])||null}
 /* With a company, a department stands as its head and the rest of it is `staff` (the
    server's _world_org): drawing twenty-odd people made a crowd, not a team. */
-function worldStaff(n){const o=worldOrg(n);return o&&o.head?((WORLD.v.staff||{})[o.dept]||[]):[]}
+function worldStaff(n){const st=(WORLD.v&&WORLD.v.staff)||{};if(n==='@agent')return st['@agent']||[];
+  const o=worldOrg(n);return o&&o.head?(st[o.dept]||[]):[]}
+/* the heading over a card's staff: a department, or (on your agent's card) everybody in no
+   department, who stand off the street once there are more than the server's WORLD_CROWD */
+function worldStaffHead(n){return n==='@agent'?'Also on the team':((worldOrg(n)||{}).dept||'')}
 function worldDeptLine(n){
   const o=worldOrg(n);if(!o)return '';
   const d=((WORLD.v.company||{}).departments||[]).find(x=>x.name===o.dept);
@@ -9830,7 +9929,7 @@ function worldCard(name,quiet){
     ${m.under&&m.under.length?`<p class="wd-under">Also: ${m.under.map(u=>esc(u.emoji+' '+u.name)).join(', ')}</p>`:''}
     <div class="wd-grow"><span>${esc(l.name)}</span>${l.next?`<i style="--p:${Math.max(4,100-l.to_next/(l.to_next+l.xp||1)*100)}%"></i><small>${l.to_next} to ${esc(l.next)}</small>`:'<small>top of the ladder</small>'}</div>
     ${a.friend?`<p class="wd-friend">Works best with ${esc(worldLabel(a.friend))}</p>`:''}
-    ${worldStaff(name).length?`<div class="wd-h">${esc(worldOrg(name).dept)}</div><ul class="wd-staff">${worldStaff(name).map(x=>
+    ${worldStaff(name).length?`<div class="wd-h">${esc(worldStaffHead(name))}</div><ul class="wd-staff">${worldStaff(name).map(x=>
       `<li><b>${esc(x.mood.emoji)}</b> ${esc(x.name)} <small>${esc(x.mood.name)}${x.busy?' · at work':''}</small></li>`).join('')}</ul>`:''}
     <div class="wd-acts">${a.busy&&a.work?`<button class="endbtn wd-work" onclick="worldOpenWork('${esc(name)}')">${a.work.kind==='build'?'Open App Studio':a.work.kind==='run'?'Open the run':'Open the chat'}</button>`:''}<button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>
       <button class="endbtn wd-calm1" onclick="worldCalm('${esc(name)}')">Calm down</button></div>`;
@@ -14113,7 +14212,7 @@ var PLACES=[
   ['Appearance','settings','Settings → Appearance',['appearance','look','theme','immersive','scene','dark mode','font','wallpaper','office look','mind','brain','neural'],placeSettings('look')],
   ['System','settings','Settings → System',['system','update','updates','version','reset','factory reset','backup','restore','light mode','profile','snapshots','users'],placeSettings('system')],
   ['Put Bento in the cloud','settings','Settings → System → Put Bento in the cloud',['deploy','cloud','render','fly','hosting','host','server','online','one click','storage','bucket','backblaze','keep memory'],placeSettings('system')],
-  ['Network','settings','Settings → Network',['network','inventory','devices on the network','machines on my network','lan','secure a machine','secure it','harden','firewall','ssh password','security updates'],placeSettings('network')],
+  ['Network','settings','Settings → Network',['network','inventory','devices on the network','machines on my network','lan','secure a machine','secure it','harden','firewall','ssh password','security updates','teams and zeros','zeros','device map','what it runs on'],placeSettings('network')],
   ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network')],
   ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network')],
   ['Community','settings','Settings → Team & Communications → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('team')],
@@ -16795,6 +16894,10 @@ function handle(ev){
         if(!box.closest('.msg'))setTimeout(()=>box.remove(),2500);
       });
       break;}
+    case 'zero_work':   // somebody at a Zero's screen, answered here (fabric.zero_chat)
+      if(typeof officeZero==='function')officeZero(ev);
+      if(typeof devMapPulse==='function')devMapPulse(ev);
+      break;
     case 'agent_msg':   // one specialist asking another, and the answer (10b-huddle.js)
       if(typeof agentMsgLive==='function')agentMsgLive(ev,_cur);
       break;
@@ -19538,7 +19641,8 @@ function tlkOutHTML(r){
 async function paintTeamLinks(){
   const box=document.getElementById('s-team-links');if(!box)return;
   let d={},sa={};
-  try{[d,sa]=await Promise.all([fetch('/api/team/links').then(r=>r.json()),fetch('/api/subagents').then(r=>r.json())])}catch(e){}
+  try{[d,sa]=await Promise.all([fetch('/api/team/links').then(r=>r.json()),fetch('/api/subagents').then(r=>r.json()),
+    typeof tieLists==='function'?tieLists():null])}catch(e){}
   const mine=(sa.subagents||[]).map(s=>s.name), me=d.me||{};
   const keep=box.querySelector('#tlk-addr')?.value||'', open=box.querySelector('.tlk-more')?.open;
   box.classList.remove('mut');
@@ -19553,6 +19657,7 @@ async function paintTeamLinks(){
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
       ${l.pass?tlPassHTML(l):`<label class="tlk-sub tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="lead" ${(l.theirs_may_ask||[]).includes('lead')?'checked':''}> ${avatarImg('@agent','av-tool')}<span>They may hand whole tasks to ${esc(agentName())}, who works them with your team${pInfo('Your lead takes the task, hands parts to your specialists and departments, and answers. It can’t touch this machine’s files or shell for them, and anything that needs a person comes to you.')}</span></label>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists here, so their work comes to your lead</span>'}</div>
+      <div class="tlk-sub tlk-runs"><span>Their work here runs on</span>${typeof tieBrainSelect==='function'?tieBrainSelect({label:l.label,owner:l.owner||'',brain:l.brain||{}}).replace('data-tie="brain"','data-link-brain="'+esc(l.label)+'"'):''}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-files="${esc(l.label)}" ${l.files_back?'checked':''}><span>Send back the files my agents make for their tasks${pInfo('Only files made while working their task, named in the answer, from your workspace or shared folders. Older files and hidden ones stay here. Files they send you land in from-'+esc(l.label)+' in your workspace.')}</span></label>
       ${tlMissionsHTML(l)}
@@ -19573,6 +19678,7 @@ async function paintTeamLinks(){
     ${d.can_listen&&!d.listening?'<p class="mut tlk-why">You can already ask other machines. Turn this on so they can ask you.</p>':''}
     ${tlLendHTML(d,mine)}
     ${links||'<p class="mut">No linked teams yet.</p>'}
+    ${d.machine_links?`<p class="mut tlk-why">${d.machine_links} more ${d.machine_links===1?'link belongs':'links belong'} to this machine (a Pi installed from a terminal). <a href="#" onclick="placeSettings('network')();return false">Manage ${d.machine_links===1?'it':'them'} in Network</a>, where you can also make ${d.machine_links===1?'it':'them'} yours.</p>`:''}
     <details class="tlk-more"${open?' open':''}><summary>Use an invite code instead</summary>
       <p class="mut tlk-why">For a machine with no screen to approve on. Make a code on one side and paste it on the other.</p>
       <div class="tlk-actions">
@@ -19589,6 +19695,10 @@ async function paintTeamLinks(){
     const lab=cb.dataset.link, sel=[...box.querySelectorAll(`input[data-link="${CSS.escape(lab)}"]`)].filter(x=>x.checked).map(x=>x.dataset.agent);
     await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
   box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
+  box.querySelectorAll('select[data-link-brain]').forEach(sel=>sel.onchange=async()=>{
+    const [executor,...m]=String(sel.value||'').split('|');
+    const r=await teamApi('/api/team/links/'+encodeURIComponent(sel.dataset.linkBrain)+'/brain','PUT',{executor:executor||'',model:m.join('|')});
+    if(r&&typeof tieBrainWord==='function')toast(`✓ ${sel.dataset.linkBrain}’s work here runs on ${tieBrainWord(r.brain)}`)});
   box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
   box.querySelectorAll('input[data-link-files]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkFiles)+'/access','PUT',{files_back:cb.checked}).then(r=>r&&toast(cb.checked?'Files made for '+cb.dataset.linkFiles+' go back with the answer':'Files stay here; '+cb.dataset.linkFiles+' gets words only')));
   tlPassTick();
@@ -30665,6 +30775,22 @@ function officeReport(p,ok){
    asks there; the answer is said at that desk, and then the asker walks back. From a
    mission's master or another team there is nobody here to walk, so the question
    arrives on paper instead. */
+/* A Zero's chat is worked HERE (fabric.zero_chat): the question comes in by the door on paper
+   and is said at the lead's desk, the answer goes back out on paper. The desk itself is lit by
+   the turn (turn_start), like any chat; this is only who asked. */
+function officeZero(ev){
+  const O=OFFICE;if(!O.w||!O.L)return;
+  const lead=O.people['@agent'],who='◫ '+(ev.zero||'a Zero');if(!lead)return;
+  const door=officeBoardPoint();
+  if(ev.phase==='start'){
+    officePaper(door,lead,()=>officeSay(lead,who+': '+(ev.text||''),'say',OF_SAY_MS+4000));
+    officeLog(`${who} asked: ${String(ev.text||'').slice(0,90)}`);
+  }else{
+    officeSay(lead,'→ '+who+': '+(ev.text||''),'say',OF_SAY_MS+2000);
+    officePaper(officeHead(lead),door,()=>{});
+    officeLog(`answered ${who}`);
+  }
+}
 function officeMsg(ev){
   const O=OFFICE,from=officeMatch(ev.from),to=officeMatch(ev.to);
   if(ev.phase==='progress'){
@@ -30958,8 +31084,8 @@ function ofMix(a,b,t){const p=x=>[1,3,5].map(i=>parseInt(x.slice(i,i+2),16));con
 function ofFont(ctx,size,weight,italic){ctx.font=`${italic?'italic ':''}${weight||700} ${size}px ${OFFICE.font||'sans-serif'}`}
 function officeBg(){
   const O=OFFICE;if(!O.L||!O.cv)return;
-  const c=O.bg||(O.bg=document.createElement('canvas'));
-  c.width=O.cv.width;c.height=O.cv.height;
+  const c=O.bg||(O.bg=officeBgCanvas());
+  c.width=O.cv.width;c.height=O.cv.height;O.bgLost=false;
   const ctx=c.getContext('2d'),st=O.view.style,L=O.L;
   ctx.setTransform(O.dpr*O.s,0,0,O.dpr*O.s,0,0);
   // the building: hallways and the spine, a flat tone under everything
@@ -30970,6 +31096,20 @@ function officeBg(){
   ofDots(ctx,OF_M,OF_M,OF_SPINE-6,L.H-OF_M*2,'#000000',.12,9);
   L.rooms.forEach((r,i)=>officeRoomBg(ctx,r,i));
   ctx.setTransform(1,0,0,1,0,0);
+}
+/* The rooms are painted ONCE, so a canvas the GPU dropped has to be painted again. Chrome
+   blanks a 2D canvas when its GPU context is lost (memory pressure, a GPU process reset);
+   the people are redrawn every frame and came back, the rooms stayed dark (reported with a
+   screenshot of desks floating on black). */
+function officeBgCanvas(){
+  const c=document.createElement('canvas');
+  c.addEventListener('contextlost',()=>{if(OFFICE.bg===c)OFFICE.bgLost=true});
+  c.addEventListener('contextrestored',()=>{if(OFFICE.bg===c){officeBg();officeKick()}});
+  return c;
+}
+function officeBgGone(){
+  const O=OFFICE;if(O.bgLost)return true;
+  try{const x=O.bg&&O.bg.getContext('2d');return !!(x&&x.isContextLost&&x.isContextLost())}catch(e){return false}
 }
 /* Halftone: the comic printer's dot, used for every shadow. */
 function ofDots(ctx,x,y,w,h,color,alpha,step){
@@ -31150,6 +31290,7 @@ function officeDraw(){
   if(O.L.radial)return of3Draw();
   const k=O.dpr*O.s;
   ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,O.cv.width,O.cv.height);
+  if(officeBgGone()){O.bg=null;officeBg()}       // a fresh canvas when the old one was dropped
   if(O.bg&&O.bg.width&&O.bg.height)ctx.drawImage(O.bg,0,0);
   ctx.setTransform(k,0,0,k,0,0);
   officeBoard(ctx);
@@ -36550,11 +36691,15 @@ async function netPaint(){
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
   else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
   if(hidden.length)rows.push(netHiddenHTML(hidden,can));
+  // the teams and Zeros tied to this machine (24p-ties.js), whether or not they are on this network
+  if(typeof tiesHTML==='function')rows.push(tiesHTML(v));
   // keep what is being typed across a repaint (a broadcast, a line of a running step)
   const kept={};['ctl-user','ctl-pw','ctl-pw-keep','net-user','net-pw','net-pw-keep','net-mine','dev-user','dev-pw','dev-agent','dev-auth','dev-kiosk'].forEach(id=>{
     const e=document.getElementById(id);if(e)kept[id]=e.type==='checkbox'?e.checked:e.value});
   boxes.forEach(box=>{box.innerHTML=(box.classList.contains('devhub-box')&&typeof devMapHTML==='function'?devMapHTML(v):'')
-    +rows.join('');netWire(box)});
+    +rows.join('');netWire(box);if(typeof tiesWire==='function')tiesWire(box);
+    if(typeof devMapWire==='function')devMapWire(box)});
+  if(typeof tiesProbeSoon==='function')tiesProbeSoon();
   Object.keys(kept).forEach(id=>{const e=document.getElementById(id);if(!e)return;
     if(e.type==='checkbox')e.checked=kept[id];else if(kept[id])e.value=kept[id]});
 }
@@ -36842,50 +36987,257 @@ async function renderDevices(body,w){
   await netPaint();
 }
 
-/* The map: this computer in the middle with its lead agent, every machine with Bento around it
-   with ITS agent (the face painted here from the recipe its link or its switches gave), and the
-   rest of the network as small dots on an outer ring, so twenty phones don't crowd the Pis. A
-   line is a tie: solid for a link or the community, dashed for Bento with no tie yet. A node is
-   a door to that machine's Controls below. Positions are percentages, so it fits any width. */
+/* The map: this computer in the middle with its lead agent, the Zeros it set up on the ring
+   nearest it, the teams it is linked with on the next one, other machines running Bento between,
+   and the rest of the network as small dots on the edge, so twenty phones don't crowd the Pis.
+   Every node is a tie Network lists too (ties.py, inventory.py), so the map and the list agree:
+   a Zero's line is solid, a team's dashed, one that is not answering grey; a node working right
+   now (a Zero's chat run here, zero_work) glows and says so. Tapping a node opens its row below.
+   Positions are percentages, so it fits any width; faces are painted here from recipes. */
+var DEVMAP={busy:{}};
 function devMapHTML(v){
-  const rows=(v.rows||[]).filter(r=>!r.ignored);
-  const bento=rows.filter(r=>r.bento!=='none'&&r.bento!=='removed').slice(0,12);
-  const rest=rows.filter(r=>!bento.includes(r));
-  const me=v.me||{},pos=(i,n,rx,ry,off)=>{const a=-Math.PI/2+(off||0)+2*Math.PI*i/Math.max(n,1);
+  const rows=(v.rows||[]).filter(r=>!r.ignored),ties=(v.ties||[]).filter(t=>!t.stale);
+  const old=(v.ties||[]).length-ties.length;
+  const tied=new Set();
+  const nodes=[],lines=[];
+  // one node per live tie; the machine row it is on (by link label) is folded into it
+  const zeros=ties.filter(t=>t.kind==='zero'),teams=ties.filter(t=>t.kind!=='zero');
+  const rowOf=t=>rows.find(r=>(r.links||[]).some(l=>l.label===t.label));
+  ties.forEach(t=>{const r=rowOf(t);if(r)tied.add(r.key)});
+  const machines=rows.filter(r=>!tied.has(r.key)&&r.bento!=='none'&&r.bento!=='removed').slice(0,8);
+  const rest=rows.filter(r=>!tied.has(r.key)&&!machines.includes(r));
+  const pos=(i,n,rx,ry,off)=>{const a=-Math.PI/2+(off||0)+2*Math.PI*i/Math.max(n,1);
     return [50+rx*Math.cos(a),50+ry*Math.sin(a)]};
-  const lines=[],nodes=[];
-  bento.forEach((r,i)=>{
-    const [x,y]=pos(i,bento.length,34,30),tied=(r.connections||[]).some(c=>c.kind!=='key');
-    // from the edge of the middle to the edge of the face, never through a name
-    const at=t=>[(50+(x-50)*t).toFixed(2),(50+(y-50)*t).toFixed(2)];
-    const [ax,ay]=at(.2),[bx,by]=at(.78);
-    lines.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" class="${tied?'tie':'loose'}"/>`);
-    const ag=r.agent||{},st=((r.controls||{}).state)||{};
-    const face=ag.look&&Object.keys(ag.look).length?avatarRecipeImg(ag.look,'devmap-face',ag.name||'')
-      :`<span class="devmap-face devmap-initial">${esc((ag.name||r.display||'?').slice(0,1).toUpperCase())}</span>`;
-    const dot=st.running===true?'up':st.running===false?'down':'';
-    // above the middle, the name goes above the face, so the line meets the face
-    nodes.push(`<button class="devmap-n${y<50?' up':''}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-devnode="${esc(r.key)}"
-        aria-label="${esc((ag.name?ag.name+' on ':'')+r.display)}">
-      <span class="devmap-ring ${dot}">${face}</span>
-      <b>${esc(ag.name||'Bento')}</b><span class="mut">${esc(r.display)}</span></button>`);
-  });
+  const line=(x,y,cls)=>{const at=t=>[(50+(x-50)*t).toFixed(2),(50+(y-50)*t).toFixed(2)];
+    const [ax,ay]=at(.17),[bx,by]=at(.8);
+    lines.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" class="${cls}"/>`)};
+  const node=(x,y,o)=>{
+    nodes.push(`<button class="dm-n ${o.kind} ${o.st}${DEVMAP.busy[o.label]?' busy':''}${y<50?' above':''}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%"
+        data-dm="${esc(o.go)}" data-dmk="${esc(o.key)}" data-dmlabel="${esc(o.label||'')}" aria-label="${esc(o.aria)}">
+      <span class="dm-ring">${o.face}<i class="dm-st" aria-hidden="true"></i></span>
+      <span class="dm-lab"><span class="dm-tag">${esc(o.tag)}</span><b>${esc(o.name)}</b><span class="dm-sub">${esc(o.sub)}</span></span>
+      <span class="dm-say" aria-live="polite">${esc(DEVMAP.busy[o.label]||'')}</span></button>`)};
+  const tieNode=(t,x,y)=>{const st=tieState(t),r=rowOf(t);
+    line(x,y,`${t.kind} ${st.cls}`);
+    node(x,y,{kind:t.kind,st:st.cls,label:t.label,go:'tie',key:tieKey(t),face:tieFace(t,'dm-face'),
+      tag:t.kind==='zero'?'ZERO':t.kind==='account'?'ACCOUNT':'TEAM',name:(t.agent||{}).name||t.peer,
+      sub:t.peer+(t.answering===false?' · not answering':''),aria:`${tieKindWord(t)} ${t.peer}, ${st.word}`})};
+  zeros.forEach((t,i)=>{const [x,y]=pos(i,zeros.length,29,33,-.55);tieNode(t,x,y)});
+  teams.forEach((t,i)=>{const [x,y]=pos(i,teams.length,40,38,.6);tieNode(t,x,y)});
+  machines.forEach((r,i)=>{const [x,y]=pos(i,machines.length,34,35,1.4),ag=r.agent||{},cs=((r.controls||{}).state)||{};
+    const st=cs.running===true?'up':cs.running===false?'down':'';
+    line(x,y,'machine '+st);
+    node(x,y,{kind:'machine',st,label:'',go:'machine',key:r.key,
+      face:ag.look&&Object.keys(ag.look).length?avatarRecipeImg(ag.look,'dm-face',ag.name||'')
+        :`<span class="dm-face devmap-initial">${esc((ag.name||r.display||'?').slice(0,1).toUpperCase())}</span>`,
+      tag:r.bento==='waiting'?'WAITING':'BENTO',name:ag.name||'Bento',sub:r.display,aria:`${ag.name?ag.name+' on ':''}${r.display}`})});
   rest.forEach((r,i)=>{const [x,y]=pos(i,rest.length,47,46,Math.PI/rest.length);
-    nodes.push(`<span class="devmap-dot" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" title="${esc(r.display+(r.ip&&r.ip!==r.display?' · '+r.ip:''))}"></span>`)});
-  const meFace=typeof avatarImg==='function'?avatarImg('@agent','devmap-face'):'';
-  return `<div class="devmap" role="img" aria-label="Map of the machines on your network">
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${lines.join('')}</svg>
+    nodes.push(`<span class="dm-dot" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" title="${esc(r.display+(r.ip&&r.ip!==r.display?' · '+r.ip:''))}"></span>`)});
+  const me=v.me||{},meFace=typeof avatarImg==='function'?avatarImg('@agent','dm-face'):'';
+  const n=k=>ties.filter(t=>t.kind===k).length;
+  return `<div class="dm" role="img" aria-label="Map of the machines and teams tied to this computer">
+    <svg class="dm-bg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <ellipse cx="50" cy="50" rx="29" ry="33"/><ellipse cx="50" cy="50" rx="40" ry="38"/><ellipse cx="50" cy="50" rx="47" ry="46"/>
+      ${lines.join('')}</svg>
     ${nodes.join('')}
-    <div class="devmap-n devmap-me" style="left:50%;top:50%"><span class="devmap-ring up">${meFace}</span>
-      <b>${esc(me.agent||'Your agent')}</b><span class="mut">${esc(me.name||'this computer')}</span></div>
-    ${rest.length?`<p class="devmap-more mut">${rest.length} other machine${rest.length===1?'':'s'} on your network, without Bento</p>`:''}
-    ${!bento.length?`<p class="devmap-empty mut">No other machine runs Bento yet. Install it on one below.</p>`:''}
+    <div class="dm-n dm-me" style="left:50%;top:50%"><span class="dm-ring">${meFace}</span>
+      <span class="dm-lab"><span class="dm-tag">HUB</span><b>${esc(me.agent||'Your agent')}</b><span class="dm-sub">${esc(me.name||'this computer')}</span></span></div>
+    <div class="dm-legend"><span class="zero"><i></i>Zero ${n('zero')}</span><span class="team"><i></i>Team ${n('team')+n('account')}</span>
+      ${machines.length?`<span class="machine"><i></i>Bento ${machines.length}</span>`:''}<span class="off"><i></i>not answering</span>
+      ${rest.length?`<span class="dot"><i></i>${rest.length} other machine${rest.length===1?'':'s'}</span>`:''}
+      ${old?`<span class="old"><i></i>${old} old link${old===1?'':'s'} to remove below</span>`:''}</div>
+    ${!ties.length&&!machines.length?`<p class="dm-empty">Nothing is tied to this computer yet. Install Bento on a machine below, or link a team.</p>`:''}
   </div>`;
+}
+/* A node working right now: a Zero's chat run here (fabric.zero_chat broadcasts zero_work). */
+function devMapPulse(ev){
+  const k=ev.zero;if(!k)return;
+  if(ev.phase==='start')DEVMAP.busy[k]='“'+String(ev.text||'').slice(0,60)+'”';
+  else{DEVMAP.busy[k]='answered';setTimeout(()=>{if(DEVMAP.busy[k]==='answered'){delete DEVMAP.busy[k];devMapMark(k)}},6000)}
+  devMapMark(k);
+}
+function devMapMark(k){
+  document.querySelectorAll(`.dm-n[data-dmlabel="${CSS.escape(k)}"]`).forEach(n=>{
+    n.classList.toggle('busy',!!DEVMAP.busy[k]);const s=n.querySelector('.dm-say');if(s)s.textContent=DEVMAP.busy[k]||''});
+}
+function devMapWire(box){
+  box.querySelectorAll('.dm-n[data-dm]').forEach(n=>n.onclick=()=>{
+    if(n.dataset.dm==='tie'){TIES.open=n.dataset.dmk;TIES.view=null;
+      tieLists().then(()=>netPaint()).then(()=>{const t=document.querySelector(`.devhub-box .tie[data-tiekey="${CSS.escape(n.dataset.dmk)}"]`);
+        if(t)t.scrollIntoView({block:'start',behavior:'smooth'})})}
+    else devMapGo(n.dataset.dmk)});
 }
 function devMapGo(key){
   NET.open=key;NET.mode='controls';NET.more='';
   netPaint().then(()=>{const m=document.querySelector(`.devhub-box .net-m[data-key="${CSS.escape(key)}"]`);
     if(m)m.scrollIntoView({block:'start',behavior:'smooth'})});
+}
+/* ---------------- Teams and Zeros: every tie this machine has, in Network ----------------
+   Asked for as "in network we should not only show the devices that are zero connected but also
+   the teams connection", "where can I select what agents it has access to and what executors it
+   can run on", and "a filtered view of KB, memory, sessions and logs for the Pi and other Zeros and
+   teams". One row per tie from /api/network (ties.py): whether it answers, whose it is, which of
+   this machine's agents it may ask, what its work runs on here, and its own rows read-only.
+   The device map (24o) draws the same list, so the two never disagree. */
+var TIES={open:'',view:'',rows:null,brains:null,agents:null,busy:{}};
+
+function tieKey(t){return (t.owner||'')+'/'+t.label}
+function tieKindWord(t){return t.kind==='zero'?'Zero':t.kind==='account'?'Account here':'Team'}
+function tieState(t){
+  if(t.stale)return {cls:'stale',word:'Old link',why:'A newer link to the same machine was made after this one. It is left over from a reinstall.'};
+  if(t.answering===true)return {cls:'up',word:'Answering',why:''};
+  if(t.answering===false)return {cls:'down',word:'Not answering',why:t.why||''};
+  return {cls:'',word:'Checking…',why:''};
+}
+function tieFace(t,cls){
+  const ag=t.agent||{};
+  return ag.look&&Object.keys(ag.look).length&&typeof avatarRecipeImg==='function'?avatarRecipeImg(ag.look,cls,ag.name||'')
+    :`<span class="${cls} devmap-initial">${esc((ag.name||t.peer||'?').slice(0,1).toUpperCase())}</span>`;
+}
+
+function tiesHTML(v){
+  const ts=v.ties||[];
+  if(!ts.length)return pRow('Teams and Zeros','',{desc:'Nothing is linked yet. Link a team in Team & Communications, or install Bento on a Pi below.',
+    f:'teams zeros links linked'});
+  const live=ts.filter(t=>!t.stale),old=ts.filter(t=>t.stale);
+  const head=pRow('Teams and Zeros',`<button class="endbtn" data-tie="probe">Check them now</button>`,
+    {desc:`${live.filter(t=>t.kind==='zero').length} Zero · ${live.filter(t=>t.kind!=='zero').length} team${old.length?` · ${old.length} old`:''}`,
+     more:'A Zero is a small machine set up from here: its chats, memory and work run on this computer. A team is another Bento you linked with: it keeps its own.',
+     f:'teams zeros links linked executors brain runs on access agents sessions memory knowledge logs'});
+  return head+`<div class="tie-list">${ts.map(tieRowHTML).join('')}</div>`;
+}
+
+function tieRowHTML(t){
+  const k=tieKey(t),open=TIES.open===k,st=tieState(t);
+  const ag=t.agent||{},who=t.owner?(t.owner_name||'another account'):'this machine';
+  const runs=t.brain&&t.brain.executor?tieBrainWord(t.brain):'',access=(t.access||{}).theirs_may_ask||[];
+  return `<div class="tie ${t.kind} ${st.cls}${open?' open':''}" data-tiekey="${esc(k)}">
+    <div class="tie-top">
+      <span class="tie-face">${tieFace(t,'tie-img')}<i class="tie-dot ${st.cls}" title="${esc(st.word)}"></i></span>
+      <div class="tie-name"><b>${esc(ag.name||t.peer)}</b><span class="mut">${esc(t.peer)}${t.addr?' · '+esc(t.addr):''}</span></div>
+      <span class="tie-kind ${t.kind}">${esc(tieKindWord(t))}</span>
+      <span class="tie-st ${st.cls}" title="${esc(st.why)}">${esc(st.word)}</span>
+      <button class="endbtn" data-tie="open" data-k="${esc(k)}" aria-expanded="${open}">${open?'Close':'Manage'}</button>
+    </div>
+    <p class="tie-sub mut">Belongs to ${esc(who)}${runs?` · runs on ${esc(runs)}`:''}${t.mine&&access.length?` · may ask ${esc(access.map(tieAgentWord).join(', '))}`:''}${st.why&&!open?' · '+esc(st.why):''}</p>
+    ${open?tieBodyHTML(t):''}
+  </div>`;
+}
+function tieAgentWord(n){return n==='@agent'||n==='lead'?(typeof agentName==='function'?agentName():'your agent'):n}
+function tieBrainWord(b){
+  if(!b||!b.executor)return 'this machine’s brain';
+  if(b.executor==='aria')return (b.model||'').split('/').slice(1).join('/')||b.model;
+  const t=(typeof EXEC_TITLES!=='undefined'&&EXEC_TITLES[b.executor])||b.executor;
+  return t+(b.model?' · '+b.model:'');
+}
+
+function tieBodyHTML(t){
+  const k=tieKey(t);
+  if(!t.mine)return `<div class="tie-body"><p class="mut">This link belongs to ${esc(t.owner_name||'another account')}. They manage it from their own Team & Communications.</p></div>`;
+  const views=['sessions','memory','knowledge','logs'];
+  const vw=TIES.view&&TIES.view.k===k?TIES.view:null;
+  return `<div class="tie-body">
+    ${t.stale?`<p class="tie-warn">${esc(tieState(t).why)} Remove it so nothing tries it again.</p>`:''}
+    ${t.can_adopt?`<div class="tie-own"><p>It belongs to this machine, not to you, so its chats and memory here are kept where your Chat and Profile don’t show them.</p>
+      <button class="endbtn" data-tie="adopt" data-k="${esc(k)}">Make it mine</button></div>`:''}
+    <div class="tie-grid">
+      <div class="tie-field"><span>Its work here runs on</span>${tieBrainSelect(t)}</div>
+      <div class="tie-field"><span>It may ask</span><div class="tie-agents">${tieAgentsHTML(t)}</div></div>
+    </div>
+    <div class="tie-views" role="tablist">${views.map(w=>`<button class="tie-vb${vw&&vw.what===w?' on':''}" role="tab" aria-selected="${!!(vw&&vw.what===w)}" data-tie="view" data-k="${esc(k)}" data-w="${w}">${{sessions:'Sessions',memory:'Memory',knowledge:'Knowledge',logs:'Logs'}[w]}</button>`).join('')}</div>
+    ${vw?`<div class="tie-view">${tieViewHTML(vw)}</div>`:''}
+    <div class="tie-acts"><button class="endbtn danger" data-tie="remove" data-k="${esc(k)}">Remove this link</button></div>
+  </div>`;
+}
+
+function tieBrainSelect(t){
+  const b=t.brain||{},cur=b.executor?(b.executor+'|'+(b.model||'')):'';
+  const opts=[`<option value="">This machine’s brain</option>`];
+  (TIES.brains||[]).filter(x=>x.available).forEach(x=>{
+    const eng=x.engine==='aria'?'aria':x.id;
+    if(x.engine==='aria')(x.models||[]).slice(0,30).forEach(m=>opts.push(`<option value="aria|${esc(m.id)}"${cur==='aria|'+m.id?' selected':''}>${esc(x.name.split(' —')[0]+' · '+(m.name||m.id))}</option>`));
+    else{opts.push(`<option value="${esc(eng)}|"${cur===eng+'|'?' selected':''}>${esc(x.name)}</option>`);
+      (x.models||[]).filter(m=>m.id).slice(0,8).forEach(m=>opts.push(`<option value="${esc(eng)}|${esc(m.id)}"${cur===eng+'|'+m.id?' selected':''}>${esc(x.name+' · '+(m.name||m.id))}</option>`))}
+  });
+  if(!TIES.brains)opts.push('<option disabled>loading…</option>');
+  return `<select class="tie-brain" data-tie="brain" data-k="${esc(tieKey(t))}" aria-label="What its work runs on here">${opts.join('')}</select>`;
+}
+function tieAgentsHTML(t){
+  const on=new Set(((t.access||{}).theirs_may_ask)||[]),names=['@agent',...(TIES.agents||[])];
+  if(!TIES.agents)return '<span class="mut">loading…</span>';
+  return names.map(n=>`<label class="tie-ag"><input type="checkbox" data-tie="ask" data-k="${esc(tieKey(t))}" value="${esc(n)}"${on.has(n)||(n==='@agent'&&on.has('lead'))?' checked':''}>${esc(tieAgentWord(n))}</label>`).join('');
+}
+
+function tieViewHTML(vw){
+  if(vw.loading)return '<p class="mut">reading…</p>';
+  if(vw.error)return `<p class="tie-warn">${esc(vw.error)}</p>`;
+  const r=vw.rows||[],when=s=>s?new Date(s*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  if(!r.length)return `<p class="mut">${esc(vw.note||'Nothing here yet.')}</p>`;
+  if(vw.what==='sessions')return `<ul class="tie-rows">${r.map(c=>`<li><button class="tie-conv" data-tie="conv" data-cid="${esc(c.id)}"><b>${esc(c.title||'chat')}</b><span class="mut">${c.messages} messages · ${when(c.updated_at)}</span></button></li>`).join('')}</ul>`;
+  if(vw.what==='memory')return `<ul class="tie-rows">${r.map(m=>`<li>${m.pinned?'📌 ':''}${esc(m.content)}<span class="mut"> · ${esc(m.scope||'')}</span></li>`).join('')}</ul>`;
+  if(vw.what==='knowledge')return `<ul class="tie-rows">${r.map(e=>`<li><b>${esc(e.subject)}</b> <span class="mut">${esc(e.relation)}</span> <b>${esc(e.object)}</b></li>`).join('')}</ul>`;
+  return `<ul class="tie-rows tie-logs">${r.map(l=>`<li><span class="mut">${when(l.at)}</span> <i>${esc(l.kind)}</i> ${esc(l.text)}</li>`).join('')}</ul>`;
+}
+
+function tieFind(k){return ((NET.v||{}).ties||[]).find(t=>tieKey(t)===k)}
+async function tieLists(){
+  if(!TIES.brains)try{const b=await apiJSON('/api/brains');TIES.brains=b.executors||[]}catch(e){TIES.brains=[]}
+  if(!TIES.agents)try{const s=await apiJSON('/api/subagents');TIES.agents=(s.subagents||s.agents||[]).map(x=>x.name).filter(Boolean)}catch(e){TIES.agents=[]}
+}
+function tiesWire(box){
+  box.querySelectorAll('[data-tie]').forEach(el=>{
+    const act=el.dataset.tie,t=el.dataset.k?tieFind(el.dataset.k):null;
+    if(act==='brain')el.onchange=()=>tieSave(t,'brain',el.value);
+    else if(act==='ask')el.onchange=()=>{const box2=el.closest('.tie-agents');
+      tieSave(t,'access',[...box2.querySelectorAll('input:checked')].map(i=>i.value))};
+    else el.onclick=()=>tieAct(act,t,el);
+  });
+}
+async function tieAct(act,t,el){
+  if(act==='probe'){el.disabled=true;el.textContent='Checking…';
+    try{const r=await apiJSON('/api/network/ties?probe=2');NET.v.ties=r.ties}catch(e){toast(String(e.message||e))}
+    return netPaint()}
+  if(act==='open'){const k=tieKey(t);TIES.open=TIES.open===k?'':k;TIES.view=null;
+    if(TIES.open){await tieLists()}return netPaint()}
+  if(act==='view'){const k=tieKey(t),what=el.dataset.w;
+    if(TIES.view&&TIES.view.k===k&&TIES.view.what===what){TIES.view=null;return netPaint()}
+    TIES.view={k,what,loading:true};netPaint();
+    try{const r=await apiJSON(`/api/network/ties/${encodeURIComponent(t.label)}/view?what=${what}&owner=${encodeURIComponent(t.owner||'')}`);
+      TIES.view={k,what,rows:r.rows,note:r.note||''}}catch(e){TIES.view={k,what,error:String(e.message||e)}}
+    return netPaint()}
+  if(act==='conv'){if(typeof openApp==='function')openApp('chat');
+    setTimeout(()=>{if(typeof openConv==='function')openConv(el.dataset.cid)},300);return}
+  if(act==='adopt'){
+    const r=await fetch(`/api/network/ties/${encodeURIComponent(t.label)}/adopt`,{method:'POST'}).then(x=>x.json()).catch(e=>({error:String(e)}));
+    if(r.error)return toast('✗ '+r.error);
+    toast(`✓ ${t.peer} is yours now`+(r.left_behind?'. What the machine kept for it stays with the machine.':''));
+    TIES.open=(r.owner||'')+'/'+t.label;return netPaint()}
+  if(act==='remove'){
+    // asked on the button itself, like Disconnect's form: a second tap within a few seconds
+    if(!el.dataset.sure){el.dataset.sure='1';el.textContent='Tap again to remove';
+      el.title='Its agents stop asking yours, and the permissions that named it go';
+      setTimeout(()=>{if(el.isConnected){delete el.dataset.sure;el.textContent='Remove this link'}},4000);return}
+    const r=await fetch(`/api/network/ties/${encodeURIComponent(t.label)}?owner=${encodeURIComponent(t.owner||'')}`,{method:'DELETE'}).then(x=>x.json()).catch(e=>({error:String(e)}));
+    if(r.error)return toast('✗ '+r.error);
+    toast('✓ link removed');TIES.open='';return netPaint()}
+}
+async function tieSave(t,what,val){
+  if(!t)return;
+  const url=`/api/network/ties/${encodeURIComponent(t.label)}/${what}`;
+  let body={owner:t.owner||''};
+  if(what==='brain'){const [executor,...m]=String(val||'').split('|');body={...body,executor:executor||'',model:m.join('|')}}
+  else body={...body,theirs_may_ask:val};
+  const r=await fetch(url,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(x=>x.json()).catch(e=>({error:String(e)}));
+  if(r.error)return toast('✗ '+r.error);
+  if(what==='brain'){t.brain=r.brain;toast(`✓ ${t.peer}’s work here runs on ${tieBrainWord(r.brain)}`)}
+  else{t.access={...(t.access||{}),theirs_may_ask:r.theirs_may_ask||val};toast(`✓ saved who ${t.peer} may ask`)}
+  netPaint();
+}
+/* Ask whether each tie answers, once, after the tab first paints: never on every paint. */
+var TIES_PROBED=0;
+function tiesProbeSoon(){
+  if(Date.now()-TIES_PROBED<30000)return;TIES_PROBED=Date.now();
+  apiJSON('/api/network/ties?probe=1').then(r=>{if(NET.v){NET.v.ties=r.ties;netPaint()}}).catch(()=>{});
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

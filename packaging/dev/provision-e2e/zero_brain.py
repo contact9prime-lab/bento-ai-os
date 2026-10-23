@@ -2,7 +2,8 @@
 what the system prompt says, and calls the real tools:
 
   the Zero's lead   ("THIS MACHINE IS A ZERO")  -> delegate the task to lead@<hub>
-  the hub's lead    ("is the lead of the linked team")  -> delegate to the writer, saying
+  the hub's lead    ("is the lead of the linked team", or a Zero's chat run there: "at the
+                    screen of")  -> delegate to the writer, saying
                     where the Zero's files go (the folder the prompt names)
   the writer        ("WRITER-SOUL")  -> write_file into that folder
   after a tool      -> says what came back, naming any path it was given
@@ -50,7 +51,10 @@ def _reply(msgs):
             return _call("write_file", {"path": m.group(1) if m else "kitchen-plan.md",
                                         "content": "# Kitchen plan\n\n- eggs\n- milk\n- coffee\n"})
         return f"writer: {tool[:200]}", None
-    if "is the lead of the linked team" in every:
+    last = next((_text(m.get("content")) for m in reversed(msgs) if m.get("role") == "user"), "")
+    if "is the lead of the linked team" in every or "at the screen of" in every:
+        if tool is None and last.strip().lower().startswith("thanks"):
+            return "You're welcome.", None        # a follow-up in the same session: nothing to make
         if tool is None:
             dest = f"{folder.group(1)}/kitchen-plan.md" if folder else "kitchen-plan.md"
             return _call("delegate", {"subagent": "writer", "task": f"write the kitchen plan into {dest}"})
@@ -91,6 +95,11 @@ async def chat(req: Request):
                   "agent": (re.search(r"You are (\w+)", system) or [None, ""])[1]})
 
     async def gen():
+        # "take your time" in what was said: a slow answer, so a screenshot can catch the
+        # work while it is happening (the Office, the device map)
+        if "take your time" in " ".join(_text(m.get("content")) for m in msgs if m.get("role") == "user"):
+            import asyncio
+            await asyncio.sleep(8)
         if call:
             yield _chunk({"role": "assistant", "tool_calls": [{"index": 0, "id": f"call_{int(time.time()*1000)}",
                                                                "type": "function", "function": call}]})

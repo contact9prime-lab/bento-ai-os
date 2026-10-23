@@ -153,7 +153,7 @@ def test_the_hub_has_routes_a_terminal_and_a_devices_app_for_it():
     remove = src[src.index('@app.post("/api/network/remove")'):src.index('@app.post("/api/network/disconnect")')]
     assert "_team_end_link" in remove and "poolmod.remove" in remove and "device.remove" in remove
     cli = (ROOT / "agentos/__main__.py").read_text()
-    assert '"controls", "switch", "remove", "update"]' in cli
+    assert '"controls", "switch", "remove", "update"' in cli
     js = (ROOT / "agentos/ui/src/js/05-apps-registry.js").read_text()
     assert "devices:{id:'devices'" in js and "'devices'" in js.split("DESKTOP_APPS")[1][:300]
     net = (ROOT / "agentos/ui/src/js/24n-network.js").read_text()

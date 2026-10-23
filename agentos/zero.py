@@ -333,3 +333,49 @@ def files_line(paths: list[Path], hub: str, left: list[str] | None = None) -> st
         s += f"\n\nLeft on {hub} (too big to send back): " + ", ".join(left)
     return s
 
+
+
+# ---- a Zero's chat runs on its hub -------------------------------------------------------
+
+def chat_on_hub(cfg: dict) -> bool:
+    """Does a person's chat on this machine run on its hub? On a Zero set to work there,
+    unless `zero.chat: here` keeps it local (a hub that is away for good)."""
+    from . import zeromind
+    return runs_on_hub(cfg) and state(cfg).get("chat", "hub") != "here" and zeromind.on_hub(cfg)
+
+
+async def hub_turn(cfg: dict, conversation_id: str, text: str, emit) -> dict:
+    """One turn of a person's chat, worked on the hub (fabric.zero_chat there). What comes
+    back is the reply, which the caller saves here as the screen's copy. A hub that cannot
+    be reached is said in a sentence; nothing is answered locally in its place."""
+    from . import teamlink, zeromind, linkfiles, executors as execmod
+    lk = zeromind.hub_link(cfg)
+    hub = (lk or {}).get("label") or state(cfg).get("hub") or "the hub"
+    if not lk:
+        return {"content": f"[error] this machine has no link to {hub}, where its chats run",
+                "steps": [], "tokens": {"input": 0, "output": 0}}
+
+    async def progress(t: str, secs: int):
+        if t and t != "received":
+            await emit({"type": "status", "message": f"{hub}: {t}"})
+    await emit({"type": "status", "message": f"thinking on {hub}"})
+    try:
+        got = await teamlink.call(lk, {"op": "zero_chat", "text": text, "conversation": conversation_id,
+                                       "progress": 1}, on_progress=progress, limit=teamlink.POOL_LINE)
+    except Exception as e:
+        got = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    if not got.get("ok"):
+        why = teamlink.plain(got.get("error") or "no answer", 300, newlines=False)
+        if "unknown request" in why:
+            return {"fallback": f"{hub} runs an older Bento, so this machine answers itself until it is updated"}
+        return {"content": f"[error] {hub} could not answer: {why}", "steps": [],
+                "tokens": {"input": 0, "output": 0}}
+    out = teamlink.plain(got.get("text") or "(no answer)", 6000)
+    if got.get("files"):
+        from pathlib import Path
+        paths = linkfiles.receive(got.get("files"), Path(execmod.default_workspace(cfg)), lk["label"])
+        out += files_line(paths, lk["label"], got.get("left"))
+    await emit({"type": "text_delta", "text": out})
+    return {"content": out, "steps": [{"type": "text", "text": out}],
+            "tokens": {"input": 0, "output": 0}, "engine": f"hub:{hub}",
+            "engine_model": teamlink.plain(got.get("model", ""), 80, newlines=False)}

@@ -1557,7 +1557,8 @@ function tlkOutHTML(r){
 async function paintTeamLinks(){
   const box=document.getElementById('s-team-links');if(!box)return;
   let d={},sa={};
-  try{[d,sa]=await Promise.all([fetch('/api/team/links').then(r=>r.json()),fetch('/api/subagents').then(r=>r.json())])}catch(e){}
+  try{[d,sa]=await Promise.all([fetch('/api/team/links').then(r=>r.json()),fetch('/api/subagents').then(r=>r.json()),
+    typeof tieLists==='function'?tieLists():null])}catch(e){}
   const mine=(sa.subagents||[]).map(s=>s.name), me=d.me||{};
   const keep=box.querySelector('#tlk-addr')?.value||'', open=box.querySelector('.tlk-more')?.open;
   box.classList.remove('mut');
@@ -1572,6 +1573,7 @@ async function paintTeamLinks(){
         <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
       ${l.pass?tlPassHTML(l):`<label class="tlk-sub tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="lead" ${(l.theirs_may_ask||[]).includes('lead')?'checked':''}> ${avatarImg('@agent','av-tool')}<span>They may hand whole tasks to ${esc(agentName())}, who works them with your team${pInfo('Your lead takes the task, hands parts to your specialists and departments, and answers. It can’t touch this machine’s files or shell for them, and anything that needs a person comes to you.')}</span></label>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists here, so their work comes to your lead</span>'}</div>
+      <div class="tlk-sub tlk-runs"><span>Their work here runs on</span>${typeof tieBrainSelect==='function'?tieBrainSelect({label:l.label,owner:l.owner||'',brain:l.brain||{}}).replace('data-tie="brain"','data-link-brain="'+esc(l.label)+'"'):''}</div>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-mine="${esc(l.label)}" ${l.mine_may_ask?'checked':''}><span>My agents may ask theirs without asking me each time</span></label>
       <label class="tlk-sub tlk-chk"><input type="checkbox" data-link-files="${esc(l.label)}" ${l.files_back?'checked':''}><span>Send back the files my agents make for their tasks${pInfo('Only files made while working their task, named in the answer, from your workspace or shared folders. Older files and hidden ones stay here. Files they send you land in from-'+esc(l.label)+' in your workspace.')}</span></label>
       ${tlMissionsHTML(l)}
@@ -1592,6 +1594,7 @@ async function paintTeamLinks(){
     ${d.can_listen&&!d.listening?'<p class="mut tlk-why">You can already ask other machines. Turn this on so they can ask you.</p>':''}
     ${tlLendHTML(d,mine)}
     ${links||'<p class="mut">No linked teams yet.</p>'}
+    ${d.machine_links?`<p class="mut tlk-why">${d.machine_links} more ${d.machine_links===1?'link belongs':'links belong'} to this machine (a Pi installed from a terminal). <a href="#" onclick="placeSettings('network')();return false">Manage ${d.machine_links===1?'it':'them'} in Network</a>, where you can also make ${d.machine_links===1?'it':'them'} yours.</p>`:''}
     <details class="tlk-more"${open?' open':''}><summary>Use an invite code instead</summary>
       <p class="mut tlk-why">For a machine with no screen to approve on. Make a code on one side and paste it on the other.</p>
       <div class="tlk-actions">
@@ -1608,6 +1611,10 @@ async function paintTeamLinks(){
     const lab=cb.dataset.link, sel=[...box.querySelectorAll(`input[data-link="${CSS.escape(lab)}"]`)].filter(x=>x.checked).map(x=>x.dataset.agent);
     await teamApi('/api/team/links/'+encodeURIComponent(lab)+'/access','PUT',{theirs_may_ask:sel});});
   box.querySelectorAll('details.tlk-stand').forEach(x=>x.ontoggle=()=>{TL_STAND_OPEN[x.dataset.stand]=x.open});
+  box.querySelectorAll('select[data-link-brain]').forEach(sel=>sel.onchange=async()=>{
+    const [executor,...m]=String(sel.value||'').split('|');
+    const r=await teamApi('/api/team/links/'+encodeURIComponent(sel.dataset.linkBrain)+'/brain','PUT',{executor:executor||'',model:m.join('|')});
+    if(r&&typeof tieBrainWord==='function')toast(`✓ ${sel.dataset.linkBrain}’s work here runs on ${tieBrainWord(r.brain)}`)});
   box.querySelectorAll('input[data-link-mine]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkMine)+'/access','PUT',{mine_may_ask:cb.checked}));
   box.querySelectorAll('input[data-link-files]').forEach(cb=>cb.onchange=()=>teamApi('/api/team/links/'+encodeURIComponent(cb.dataset.linkFiles)+'/access','PUT',{files_back:cb.checked}).then(r=>r&&toast(cb.checked?'Files made for '+cb.dataset.linkFiles+' go back with the answer':'Files stay here; '+cb.dataset.linkFiles+' gets words only')));
   tlPassTick();

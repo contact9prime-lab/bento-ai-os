@@ -2285,6 +2285,8 @@ things keep it true:
   half right. The scene sleeps on `crewCovered()` and re-checks on a one-second timer
   (`officeSnooze`), never a frame loop. A frame that throws is caught, and the backing store
   steps its dpr down past `OF_MAX_PX`: a full-screen Office on a Retina Mac came up blank.
+- **The room layer is repainted when the GPU drops it** (`officeBgCanvas`, `officeBgGone`): Chrome blanks a
+  2D canvas on context loss and the rooms are painted once, so a window showed desks floating on black.
 - **The rooms are states.** Two or more of one mission's specialists running at once meet at
   the table (`officeMeetSync`, keyed on the flow run from `flow_start`; a huddle has the room
   first). Waiting for approval walks to the lead's office, hand up, minutes counting
@@ -2447,6 +2449,8 @@ all evaporated, and it comes back when I switch to that world. Scene matters." F
   carries `busy_now`, and the page refreshes when it differs from what it draws. The line under
   the prompt bar counts a build too (`BUILD_LIVE`, set by `buildPulse` and `state_sync`'s
   `build_mine`), and follows `updateSpin` rather than the minute timer.
+- **Past `WORLD_CROWD` figures only your agent, the heads and whoever is working stand** (`_world_org`); the
+  rest are `staff["@agent"]`, on your agent's card. Thirty people on the canal was a crowd, not a team.
 - **A routine event habituates, and the lead's chat is routine.** Every chat reply counted as
   "finished a task" at full weight, so the lead sat Proud and cheering all day (a screenshot).
   A plain answer is not a task (`_WORKED` needs a tool); a working reply is `CHAT_SUCCESS`
@@ -3124,6 +3128,39 @@ mode the souls and memory and kb should be with the hub and sectioned". Five rul
 - **What it kept before moves once** (`move_local`, `cfg.zero.moved`, a `zero.moved` row); the local rows
   are left and not read again. Found by the live run: the hub's `bento pool mind` opened no database.
 
+**A Zero's chat runs on its hub** (`fabric.zero_chat`, wire op `zero_chat`, `zero.chat_on_hub`/`hub_turn`,
+the branch at the top of `_run_chat` and in `/api/chat`; `tests/test_zero_chat.py`, live run step 4 of
+`zero_run.py`). Reported from a real Pi as "the response is not complete": it ran each turn itself on
+`pool/default`, and its own prompt (137 tool schemas) took the whole 24,576-token window, so the model had
+room for one word a round ("HeyIII"). Four rules:
+- **The turn, the session and the mind are the hub's.** One hub conversation per Zero conversation (id
+  derived from link id + the Zero's cid, origin `zero`, in the Zero's section); the Zero saves only its
+  screen's copy. Its events go to the owner's screens (`turn_start`/`turn_end`, `zero_work` for the Office
+  and the device map) and a `turn` log line with `zero` in meta, which `ties.view` reads.
+- **Somebody at a Zero's screen is not signed in**: the turn is tainted like a linked question; only
+  `zero.HUB_HANDOVERS` to local agents pass without a card. Tools are `fabric.ZERO_CHAT_TOOLS`; a CLI brain
+  keeps WebSearch/WebFetch only.
+- **Files go back only if this turn made them** (`since=started`): a first cut sent the last hour's again.
+- **An older hub answers "unknown request"**, and the Zero answers itself (`fallback`), saying so once.
+
+**A prompt that fills the window is asked again with one that fits, never continued** (`agent._window_full`,
+`pool.fit_window`; `tests/test_empty_turn.py`). Ollama reports a cut-off prompt as num_ctx − 1 (measured on
+qwen3.5:9b: 24,575 at 24,576, 49,151 at 49,152 for a 54,653-token prompt), so the retry is sized from the
+characters sent (~3 a token), checked BEFORE the thinking-off retry, and the leader sizes a member's window
+the same way. Continuing a full window glued one word per round together.
+
+**Teams and Zeros are ties, read from links** (`agentos/ties.py`, `24p-ties.js`, the map in `24o-devices.js`,
+`/api/network/ties*`, `/api/team/links/{label}/brain`, `bento network ties`; `tests/test_ties.py`). Found on the
+owner's hub: every link kept its address in `url` only and the inventory read `host`, so Network listed no
+link at all (`ties.host_of` now), and two reinstalls left links whose certificate the Pi no longer had
+(`stale`: a newer link to the same name and address). A tie's brain is ON THE LINK (`lk["brain"]`, read by
+`ties.brain_for` in `zero_chat` and `_lead_for_link`); an engine no longer installed falls back like
+`resolve_engine`. The views read one tie's rows only (a Zero's section through `Store.only`). A link the
+MACHINE owns (a terminal install) is in no account's Settings, so its chats landed where nobody's Chat looks:
+installs now take the installer's account (`make_key(owner=)`, `--for`), `adopt` moves an old one and
+re-writes `edgecode.grant`/`hearing.grant_hub` in the new owner's store (its requests enter that account).
+Probing needs the STORED link (`teamlink._load()`): `links()` strips `peer_ca` and a call without it fails.
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their
@@ -3273,6 +3310,8 @@ Six rules:
   `ssh_off_words` says how to turn SSH on, and the row offers no button that cannot log in. The
   scan then asks mDNS for each address's name (`mdns_names`, one legacy-unicast reverse query from
   a port of our own, never by the ear). `my_addresses` skips every address this machine holds.
+- **A hub on Claude Code can use its community's hardware**: `pool_task` and `community_recall` are in
+  `TEAM_TOOLS`, and `_pool_note` names the members. Without them a forwarded hub never knew its Pis could work.
 - **The ear is its own answer** (`provision.hearing_devices`), not `watching()`: a hub on Claude
   Code cannot lead a community and so heard no Pi. `watching()` is also true once this machine
   handed out an automatic key (a Zero line), or its Zeros announced themselves to nobody.

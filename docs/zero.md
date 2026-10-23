@@ -74,8 +74,21 @@ top of the standard one.
 ## When the hub does the work
 
 With *work runs on this hub*, the Zero keeps no agents of its own (beyond the ones the standard
-setup gives it) and thinks with the hub's brain. Its lead hands anything more than a short answer
-to the hub's lead, and the hub's team works it.
+setup gives it). A chat on the Zero, typed or said at its screen, runs on the hub: the hub's lead
+answers it with the hub's team, inside the Zero's section, and the conversation is kept on the hub.
+The Zero keeps a copy for its own screen and nothing else. On the hub you see it happen: the
+Office shows the question arriving at your agent's desk, the device map lights the Zero up, and
+Network → the Zero → Sessions lists its conversations.
+
+![The hub's Office while a Zero's question is answered there](screenshots/office-zero-chat.png)
+
+Before, the Zero ran each turn itself and only borrowed the hub's model, which meant sending its
+whole prompt, around 24,000 tokens, for every message. On a Pi that filled the window it asked for,
+and answers came back one word at a time. A hub that hasn't been updated yet still works the old
+way, and the Zero says so once and answers itself. `zero.chat: here` in the Zero's config keeps
+its chats local on purpose.
+
+Which brain answers for a Zero is the hub's choice: Network → the Zero → *Its work here runs on*.
 
 ![On the Zero: the task went to the hub, and the file came back](screenshots/zero-file-came-back.png)
 

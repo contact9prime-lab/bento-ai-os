@@ -218,9 +218,13 @@ def rows(cfg: dict | None = None) -> list[dict]:
         r["sources"].append("setup")
     by_fp = {r["fp"]: r for r in out.values() if r.get("fp")}
     for lk in teamlink.links(pool=True):               # linked by hand, or a community member
-        if lk.get("kind") not in ("machine", "pool") or not lk.get("host"):
+        # a link made by joining keeps its address in `url` only: reading `host` alone left
+        # every link off the list, so a linked team never showed in Network
+        from .ties import host_of
+        host = host_of(lk)
+        if lk.get("kind") not in ("machine", "pool") or not host:
             continue
-        r = by_fp.get(lk.get("peer_host_fp") or "") or row(str(lk["host"]))
+        r = by_fp.get(lk.get("peer_host_fp") or "") or row(host)
         r["name"] = r["name"] or lk.get("label", "")
         if r["bento"] in ("none", "installed"):
             r["bento"] = "linked"

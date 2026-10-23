@@ -409,6 +409,17 @@ class _Park:
 PARK = _Park()
 
 
+CTX_CEILING = 131072
+
+
+def _window_full(prompt_tokens: int, num_ctx) -> bool:
+    """The prompt alone took (nearly) the whole context window."""
+    try:
+        return bool(num_ctx) and prompt_tokens >= int(num_ctx) - 256
+    except (TypeError, ValueError):
+        return False
+
+
 class Agent:
     def __init__(self, cfg: dict, toolbox: Toolbox, model_id: str,
                  emit: Callable[[dict], Awaitable[None]],
@@ -503,6 +514,8 @@ class Agent:
             "num_ctx": int(self.cfg.get("ollama_num_ctx", 24576)),
             "max_tokens": int(self.cfg.get("max_output_tokens", 16384)),
         }
+        if getattr(self, "_ctx_up", False):
+            opts["num_ctx"] = min(CTX_CEILING, max(opts["num_ctx"] * 2, int(getattr(self, "_ctx_need", 0) or 0)))
         if self.cfg.get("ollama_think") is not None:
             opts["think"] = bool(self.cfg["ollama_think"])
         if getattr(self, "_think_off", False):
@@ -1364,6 +1377,7 @@ class Agent:
             self._text_buf = text_parts  # live buffer for partial_text
             tool_calls: list[dict] = []
             finish_reason = ""
+            last_in = 0
             try:
                 async for ev in self._stream(messages):
                     if self.aborted:
@@ -1378,6 +1392,7 @@ class Agent:
                     elif ev["type"] == "finish":
                         finish_reason = ev.get("reason", "")
                     elif ev["type"] == "usage":
+                        last_in = ev.get("input", 0) or 0
                         tokens["input"] += ev.get("input", 0) or 0
                         tokens["output"] += ev.get("output", 0) or 0
                         if getattr(self, "emit_usage", False):
@@ -1391,6 +1406,22 @@ class Agent:
 
             text = "".join(text_parts)
 
+            # A prompt that already fills the window leaves room for a word, and a continuation
+            # is a longer prompt: a Pi answered "HeyIII", one word a round (its prompt was
+            # 24,575 of 24,576 tokens). Once, with a window that fits and no thinking.
+            if finish_reason == "length" and not tool_calls and not self.aborted and _window_full(
+                    last_in, self._gen_options().get("num_ctx")):
+                if not getattr(self, "_ctx_up", False):
+                    # Ollama reports a cut-off prompt as the window minus one, so the real size
+                    # is unknown: sized from what is sent (~3 characters a token), never only
+                    # doubled (a 50,000-token turn was cut again at 49,152)
+                    from .pool import fit_window
+                    want = (fit_window({"num_ctx": 1}, messages, self._tools()) or {}).get("num_ctx", 0)
+                    self._ctx_need = int(want or 0)
+                    self._ctx_up = self._think_off = True
+                    await self.emit({"type": "status", "message":
+                                     "the question filled the model's window — asking again with a bigger one…"})
+                    continue
             # Zero progress at the token limit = the context window itself is full
             # (prompt ≈ num_ctx): continuing would loop forever. Fail loudly instead.
             if finish_reason == "length" and not tool_calls and not (text.strip() or carry):
@@ -1414,7 +1445,8 @@ class Agent:
             # where it stopped instead of shipping a truncated answer. Bounded to 3
             # continuations; tool-call rounds are excluded (their recovery path is the
             # `_raw`-args error message the toolbox returns).
-            if finish_reason == "length" and not tool_calls and not self.aborted and cont_rounds < 3:
+            if finish_reason == "length" and not tool_calls and not self.aborted and cont_rounds < 3 \
+                    and not _window_full(last_in, self._gen_options().get("num_ctx")):
                 cont_rounds += 1
                 carry += text
                 await self.emit({"type": "status",

@@ -655,6 +655,13 @@ stranger never puts a card on your screen. A pair you blocked is refused without
 with none of your screens open the answer is no, at once. Each card is a `link.ask` line in the
 ledger.
 
+**What their work runs on here** is yours to choose, on the link's card under *Their work here
+runs on*: this machine's brain, one model from a provider, or an agent like Claude Code. A linked
+Pi's questions can run on a local model while your own chats stay on Claude Code. Network →
+Teams and Zeros has the same choice for every link, including the ones that belong to the machine.
+
+![A linked team's card: who may ask whom, and the brain its work runs on here](screenshots/team-link-runs-on.png)
+
 Their lead works your task with its team and nothing else: on Claude Code every one of its own
 tools is off for that run, it can't read that machine's files or run its shell for you, and the
 task is marked as coming from outside, so anything that needs a person goes to the owner's

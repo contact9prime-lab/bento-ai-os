@@ -284,40 +284,12 @@ body.zero-face .of-co{display:none}
 .devhub-box{padding:4px 0}
 @media (max-width:600px){.net-sw{flex-direction:column}.net-sw .endbtn{width:100%;min-height:var(--tap,40px)}}
 
-/* the device map (24o-devices.js): positions are percentages, the lines an SVG under them */
-.devmap{position:relative;height:clamp(300px,42vh,400px);margin:6px 16px 14px;border-radius:16px;overflow:hidden;
-  background:radial-gradient(ellipse at 50% 50%,color-mix(in srgb,var(--acc) 14%,transparent) 0%,transparent 65%),
-  color-mix(in srgb,var(--txt) 3%,transparent)}
-.devmap svg{position:absolute;inset:0;width:100%;height:100%}
-.devmap line{stroke:color-mix(in srgb,var(--acc) 70%,transparent);stroke-width:.35;vector-effect:non-scaling-stroke}
-.devmap line.tie{stroke-width:2}
-.devmap line.loose{stroke-dasharray:6 5;stroke-width:1.5;opacity:.7}
-.devmap-n{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px;
-  background:none;border:0;color:var(--txt);font:inherit;cursor:pointer;max-width:132px;text-align:center;padding:4px;
-  min-width:var(--tap,40px);min-height:var(--tap,40px)}
-.devmap-n b{font-size:13px;line-height:1.2}
-.devmap-n .mut{font-size:11.5px;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.devmap-me{cursor:default}
-.devmap-ring{display:grid;place-items:center;width:54px;height:54px;border-radius:50%;background:var(--bg2);
-  border:2px solid color-mix(in srgb,var(--txt) 25%,transparent);overflow:hidden}
-.devmap-me .devmap-ring{width:68px;height:68px;border-color:var(--acc)}
-.devmap-ring.up{border-color:#34d399}.devmap-ring.down{border-color:color-mix(in srgb,var(--txt) 35%,transparent);opacity:.75}
-.devmap-ring img,.devmap-face{width:100%;height:100%;image-rendering:pixelated;object-fit:cover}
-.devmap-initial{display:grid;place-items:center;font-weight:700;font-size:22px;background:color-mix(in srgb,var(--acc) 30%,var(--bg2))}
-.devmap-dot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;
-  background:color-mix(in srgb,var(--txt) 30%,transparent)}
-.devmap-more{position:absolute;left:14px;top:10px;margin:0;font-size:12px}
-.devmap-empty{position:absolute;left:0;right:0;bottom:12px;margin:0;text-align:center;font-size:12px}
-.devmap-n.up{flex-direction:column-reverse}
-.devmap-n.up .devmap-ring{order:-1}
 .net-look{display:flex;gap:14px;align-items:center;margin-top:8px;padding:12px 14px;border-radius:10px;background:color-mix(in srgb,var(--txt) 4%,transparent)}
 .net-look-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .net-look-face{width:56px;height:56px;border-radius:12px;image-rendering:pixelated;background:var(--bg2);display:block}
 .net-look-none{display:grid;place-items:center;font-weight:600;font-size:22px;color:var(--txt2,var(--txt))}
 @media (max-width:480px){.net-look{flex-wrap:wrap}.net-look>.endbtn{flex:1 1 100%}}
 .dev-pw-opts{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;flex-basis:100%}
-@media (max-width:600px){.devmap{height:380px;margin:6px 8px 12px}.devmap-n{max-width:96px}.devmap-n .mut{max-width:96px}
-  .devmap-ring{width:44px;height:44px}.devmap-me .devmap-ring{width:56px;height:56px}}
 /* the form wraps its fields in a row; these each take a whole line */
 .dev-form>.net-sws,.dev-form>.net-look,.dev-form>.net-remove,.dev-form>.dev-pw-opts{flex:1 1 100%}
 .dev-pw-opts .prov-opt{display:inline-flex;align-items:center;gap:8px}

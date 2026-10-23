@@ -1787,7 +1787,10 @@ async def install(note=None) -> tuple[bool, str]:
 # asks the person for the ability. Reported as "Aria has a lot of other agents to build the
 # tool but it isn't using that" and a Research memo that stopped at "no shell or Python".
 TEAM_TOOLS = ("delegate", "huddle", "department_task", "create_flow", "list_flows", "schedule_task",
-              "create_subagent", "request_capability", "linked_teams")
+              "create_subagent", "request_capability", "linked_teams",
+              # the machines this one leads: work handed to their own hardware (pool.py). Offered
+              # only where there is a community (Toolbox.schemas), each piece asked for as risky.
+              "pool_task", "community_recall")
 #: What the lead may use for a task a linked team handed it: its own team, and nothing that
 #: reaches this machine directly (fabric.ControlPlane._lead_for_link).
 LINKED_LEAD_TOOLS = ("delegate", "huddle", "department_task", "linked_teams")
@@ -2010,8 +2013,22 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
         + identity_note(cfg, store, company=False) + stage_note + dept_note \
         + team_note(subs, in_departments=grouped) + linked_note(cfg, store) + _zero_note(cfg) \
+        + _pool_note(door) \
         + workspace_note() + capability_note()
     return token
+
+
+def _pool_note(door: tuple) -> str:
+    """The community, for a forwarded lead whose door has pool_task: without it a Claude Code
+    hub never knew the Pis it set up were there to work."""
+    if "pool_task" not in door:
+        return ""
+    from . import pool as poolmod
+    try:
+        return poolmod.note().replace("use pool_task", "use mcp__bento__pool_task") \
+            .replace("community_recall to", "mcp__bento__community_recall to")
+    except Exception:
+        return ""
 
 
 def _zero_note(cfg: dict) -> str:

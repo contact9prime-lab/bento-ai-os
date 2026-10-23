@@ -713,6 +713,10 @@ function handle(ev){
         if(!box.closest('.msg'))setTimeout(()=>box.remove(),2500);
       });
       break;}
+    case 'zero_work':   // somebody at a Zero's screen, answered here (fabric.zero_chat)
+      if(typeof officeZero==='function')officeZero(ev);
+      if(typeof devMapPulse==='function')devMapPulse(ev);
+      break;
     case 'agent_msg':   // one specialist asking another, and the answer (10b-huddle.js)
       if(typeof agentMsgLive==='function')agentMsgLive(ev,_cur);
       break;

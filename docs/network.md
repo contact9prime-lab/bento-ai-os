@@ -41,6 +41,59 @@ Bento listens for new Pis whatever its brain. Before, only a machine that could 
 listened, which a hub on Claude Code can't, so it heard no Pi at all. A Pi that was already on
 when Bento started has nothing new to say, so press **Look at the network** to find it.
 
+## Teams and Zeros
+
+Under the machines, **Teams and Zeros** lists every tie this computer has with another Bento: the
+Zeros it set up and the teams it linked with, wherever they are. A team reached over Tailscale is
+here too, even though it isn't on this network. Each one says whether it's answering, checked when
+the tab opens and again with **Check them now**.
+
+![Teams and Zeros: a linked team, and a Zero opened with its brain, who it may ask and its sessions](screenshots/network-ties-zero.png)
+
+**Manage** opens one:
+
+- **Its work here runs on.** Which of this computer's brains answers for it: the machine's own,
+  one model from a provider, or an agent like Claude Code. A Pi's chats can run on a local model
+  while your own chats stay on Claude Code.
+- **It may ask.** Which of your agents its agents may ask. These are the same permissions as in
+  Team & Communications.
+- **Sessions, Memory, Knowledge, Logs.** That tie's own rows and nothing else. A Zero's are its
+  section here, exactly: nothing of yours and nothing of another Zero's. A team keeps its memory on
+  its own machine, so it has sessions and log lines only.
+- **Make it mine.** A Pi installed from a terminal belongs to the machine, so its chats and memory
+  here sit where your Chat and Profile don't show them. This moves it to your account. New installs
+  belong to whoever installs them, and `bento network install --for NAME` names one from a terminal.
+- **Remove this link.** Tap it twice. A link a reinstall left behind is marked **Old link**: the
+  machine at that address no longer has the certificate it was made with.
+
+![On a phone: a Zero's memory, read from its section](screenshots/network-ties-memory-phone.png)
+
+### The map
+
+The Devices app opens on a map. This computer is in the middle with its agent. Zeros sit on the
+nearest ring with a solid line, teams on the next with a dashed one, and other machines with Bento
+between. A grey line means it isn't answering. The rest of your network is the dots on the edge.
+Tap a node to open it in the list.
+
+![The device map while a Zero's question is worked on this computer: the Zero glows and shows what it asked](screenshots/devmap-zero-working.png)
+
+When somebody talks to a Zero, the chat runs here and the Zero's node glows with what it was asked.
+The Office shows the question arriving at your agent's desk.
+
+![The map on a phone: the hub, a Zero and a linked team](screenshots/devmap-phone.png)
+
+From a terminal, `bento network ties` lists them, and `bento network ties pi-zero memory` shows
+one tie's own rows:
+
+```
+$ bento network ties
+  studio-mac               team     answering
+                           studio-mac at 127.0.0.1 · belongs to the machine · runs on this machine's brain
+  pi-zero                  zero     answering
+                           pi-zero at 127.0.0.1 · belongs to the machine · runs on custom/fake-1
+  pi-zero-old              zero     old link
+```
+
 ## Install Bento
 
 Open a row and press **Install Bento**. Type the user you set in Raspberry Pi Imager and its
@@ -418,7 +471,7 @@ ended by the running server, so the terminal points you to the tab or `bento lin
 
 - **Desktop:** *Settings → Network*. On a phone the actions reflow into two columns of full-size
   buttons.
-- **Terminal:** `bento network`, as above.
+- **Terminal:** `bento network`, as above, and `bento network ties` for teams and Zeros.
 - **Session UI:** the same page; nothing here touches the compositor. A Zero has no Network
   tab: its network is its hub's business.
 

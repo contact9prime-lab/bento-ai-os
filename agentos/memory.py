@@ -794,8 +794,8 @@ class Store:
     # -- conversations ------------------------------------------------------
 
     def create_conversation(self, title: str = "New chat", origin: str = "user",
-                            space_id: str = "") -> str:
-        cid = uuid.uuid4().hex[:12]
+                            space_id: str = "", cid: str = "") -> str:
+        cid = cid or uuid.uuid4().hex[:12]
         now = time.time()
         self.db.execute(
             "INSERT INTO conversations (id, title, created_at, updated_at, origin, space_id) "

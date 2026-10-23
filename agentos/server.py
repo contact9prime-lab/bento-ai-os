@@ -744,6 +744,12 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
         from . import edgecode
         with usersmod.as_user(owner):
             return await edgecode.answer(state["store"], state["pdp"], lk, req)
+    if req.get("op") == "zero_chat":
+        # somebody at a Zero's screen: the turn runs here, in its section, kept here
+        with usersmod.as_user(owner):
+            async def tell(e):
+                await state["broadcast_user"](e, owner)
+            return await state["fabric"].zero_chat(lk, req, say=tell)
     if req.get("op") == "zero_mind":
         # a Zero this machine set up reads and writes its own section of this home
         from . import zeromind
@@ -11537,6 +11543,9 @@ def _world_view(uid: str) -> dict:
     return _world_org(worldmod.view(uid))
 
 
+WORLD_CROWD = 9
+
+
 def _world_org(v: dict) -> dict:
     """The live world, with who is in which department (company.membership). With a
     company the place would hold twenty-odd people shoulder to shoulder, which read as a
@@ -11552,8 +11561,6 @@ def _world_org(v: dict) -> dict:
     from . import company as companymod
     m = companymod.membership(state["cfg"], state["store"])
     v["company"] = m
-    if not m["departments"]:
-        return v
     of, order = m["of"], {d["name"]: i for i, d in enumerate(m["departments"])}
     heads = {d["head"] for d in m["departments"]}
     shown, staff = [], {}
@@ -11563,6 +11570,19 @@ def _world_org(v: dict) -> dict:
             staff.setdefault(o["dept"], []).append(a)
         else:
             shown.append(a)
+
+    # Many people in no department stood in a crowd of thirty (a screenshot): past
+    # WORLD_CROWD figures only your agent, the heads and whoever is working stand, and the
+    # rest are listed on your agent's card (staff "@agent"), feelings and all.
+    if len(shown) > WORLD_CROWD:
+        keep = []
+        for a in shown:
+            n = a.get("name")
+            if n == "@agent" or n in heads or a.get("busy"):
+                keep.append(a)
+            else:
+                staff.setdefault("@agent", []).append(a)
+        shown = keep
 
     def rank(a):
         n = a.get("name")
@@ -13354,7 +13374,10 @@ async def api_devices_install(body: dict):
     runs = state.setdefault("device_installs", {})
     if (runs.get(ip) or {}).get("state") == "running":
         return JSONResponse({"error": "Bento is already being installed there"}, status_code=409)
-    k = provmod.make_key(f"install on {ip}", auto=True, profile=b.get("profile"), single=True)
+    # the machine it sets up belongs to the person installing it: its chats, memory and
+    # permissions here land in their account, not in the machine's where they never see them
+    k = provmod.make_key(f"install on {ip}", auto=True, profile=b.get("profile"), single=True,
+                         owner=usersmod.current() or "")
     runs[ip] = {"state": "running", "started": time.time(), "lines": [], "stage": "",
                 "stages": ri.stages(_wants_screen(b))}
     _ledger("device.install", f"device:{ip}", f"started installing Bento on {user}@{ip}"
@@ -13459,7 +13482,159 @@ def _network_view() -> dict:
             "hearing": _hub_hearing(),
             "me": _me_on_map(),
             "look_choices": _look_choices(),
-            "switches": _switches_meta()}
+            "switches": _switches_meta(),
+            "ties": _ties_view()}
+
+
+def _ties_view() -> list[dict]:
+    """The teams and Zeros this machine is tied to (ties.py), with each one's agent and who
+    it belongs to. Every account's, because Network is the machine's tab; only yours and
+    the machine's can be changed from here."""
+    from . import ties as tiesmod
+    from . import teamlink
+    me = usersmod.current() or ""
+    out = []
+    for t in tiesmod.ties(None):
+        ident = _team_peer_identity(teamlink.find(t["owner"], t["label"]) or {}) or {}
+        t["agent"] = {"name": ident.get("agent_name") or "", "look": ident.get("agent") or {}}
+        t["owner_name"] = _account_name(t["owner"]) if t["owner"] else ""
+        t["mine"] = t["owner"] in ("", me)
+        t["can_adopt"] = not t["owner"] and bool(me) and usersmod.enabled()
+        if t["mine"]:
+            with usersmod.as_user(t["owner"]), contextlib.suppress(Exception):
+                t["access"] = fabricmod.link_access(state["store"], t["label"])
+        out.append(t)
+    return out
+
+
+def _tie(label: str, owner: str):
+    """A tie the person may change: their own, or the machine's (an admin's to manage)."""
+    from . import teamlink
+    me = usersmod.current() or ""
+    owner = owner or ""
+    if owner not in ("", me):
+        return None, JSONResponse({"error": "that link belongs to another account; they manage it"},
+                                  status_code=403)
+    lk = teamlink.find(owner, label)
+    if not lk:
+        return None, JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    return lk, None
+
+
+@app.get("/api/network/ties")
+async def api_network_ties(probe: int = 0):
+    """Teams and Zeros, and whether each is answering (asked now when `probe`)."""
+    if (r := _require_admin()):
+        return r
+    from . import ties as tiesmod
+    from . import teamlink
+    if probe:
+        # the stored links, certificates and all: a call is pinned to the one recorded
+        await tiesmod.probe([lk for lk in teamlink._load()["links"] if lk.get("kind") in ("machine", "account")],
+                            force=probe > 1)
+    return {"ties": _ties_view()}
+
+
+@app.get("/api/network/ties/{label}/view")
+async def api_network_tie_view(label: str, what: str = "sessions", owner: str = ""):
+    """One tie's own sessions, memory, knowledge or log lines, read-only."""
+    if (r := _require_admin()):
+        return r
+    from . import ties as tiesmod
+    t = next((x for x in tiesmod.ties(None) if x["label"] == label and x["owner"] == (owner or "")), None)
+    if not t:
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    if t["owner"] not in ("", usersmod.current() or ""):
+        return JSONResponse({"error": "that link belongs to another account"}, status_code=403)
+    try:
+        with usersmod.as_user(t["owner"]):
+            return tiesmod.view(state["store"], t, what)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.put("/api/network/ties/{label}/brain")
+async def api_network_tie_brain(label: str, body: dict):
+    """Which of this machine's brains a tie's work runs on here ('' = the machine's)."""
+    if (r := _require_admin()):
+        return r
+    from . import ties as tiesmod
+    b = body or {}
+    lk, err = _tie(label, b.get("owner"))
+    if err:
+        return err
+    try:
+        got = tiesmod.set_brain(lk.get("owner") or "", label, b.get("executor", ""), b.get("model", ""))
+    except (ValueError, LookupError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    with usersmod.as_user(lk.get("owner") or ""):
+        fabricmod.audit_team(state["store"], "link.brain", f"link:{label}",
+                             f"{label}'s work here runs on {got.get('executor') or 'this machine'}"
+                             + (f" ({got['model']})" if got.get("model") else ""))
+    return {"ok": True, "brain": got}
+
+
+@app.put("/api/network/ties/{label}/access")
+async def api_network_tie_access(label: str, body: dict):
+    """Which of this machine's agents a tie may ask: the same cells as Teams & Communications."""
+    if (r := _require_admin()):
+        return r
+    b = body or {}
+    lk, err = _tie(label, b.get("owner"))
+    if err:
+        return err
+    if lk.get("pass"):
+        return JSONResponse({"error": "a guest pass lends one agent for a set time"}, status_code=409)
+    with usersmod.as_user(lk.get("owner") or ""):
+        got = fabricmod.set_link_access(state["store"], label, b.get("theirs_may_ask"), None)
+    return {"ok": True, **got}
+
+
+@app.post("/api/network/ties/{label}/adopt")
+async def api_network_tie_adopt(label: str):
+    """A Zero or team the machine owns (installed from a terminal) becomes yours: its chats,
+    memory and permissions here then live in your account."""
+    if (r := _require_admin()):
+        return r
+    from . import ties as tiesmod
+    me = usersmod.current() or ""
+    if not me:
+        return JSONResponse({"error": "there are no accounts here, so it is already yours"}, status_code=409)
+    try:
+        got = tiesmod.adopt(label, me)
+    except (LookupError, ValueError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    from . import zero as zeromod
+    from . import teamlink
+    lk = teamlink.find(me, label)
+    with usersmod.as_user(me):
+        if lk and zeromod.ships_to(lk):
+            with contextlib.suppress(Exception):
+                zeromod.hub_side(state["store"], state["cfg"], label)
+        # what the machine granted it at enable, granted again where it is answered now
+        # (its requests enter this account): code on the hub, and listening through it
+        from . import edgecode, hearing as _hearing
+        with contextlib.suppress(Exception):
+            edgecode.grant(state["store"], label)
+        with contextlib.suppress(Exception):
+            _hearing.grant_hub(state["store"], label)
+        fabricmod.audit_team(state["store"], "link.adopt", f"link:{label}",
+                             f"{label} now belongs to this account (it was the machine's)")
+    await state["broadcast_user"]({"type": "team_links"}, me)
+    return got
+
+
+@app.delete("/api/network/ties/{label}")
+async def api_network_tie_remove(label: str, owner: str = ""):
+    """End a tie: the link, its cells on both sides, a ledger row. The machine stays."""
+    if (r := _require_admin()):
+        return r
+    lk, err = _tie(label, owner)
+    if err:
+        return err
+    if not await _team_end_link(lk.get("owner") or "", lk):
+        return JSONResponse({"error": f"no link called '{label}'"}, status_code=404)
+    return {"ok": True}
 
 
 def _hub_hearing() -> dict:
@@ -14001,6 +14176,8 @@ async def api_team_links():
     return {"me": {"name": teamlink.machine_name(state["cfg"]), "fingerprint": ident["host_fp"],
                    "address": teamlink.guess_address(), "port": teamlink.team_port(state["cfg"])},
             "listening": bool(lst), "accounts": usersmod.enabled(),
+            # links the MACHINE owns (installed from a terminal) are managed in Network
+            "machine_links": (len(teamlink.links("")) if owner and usersmod.is_admin(owner) else 0),
             "can_listen": usersmod.is_admin(owner), "links": out,
             "incoming": reqs["incoming"], "outgoing": reqs["outgoing"] + _team_outgoing(owner),
             # standing permissions apply only while outside content is ASKED about
@@ -14600,6 +14777,25 @@ async def api_team_link_roster(label: str):
     got = (await teamlink.call(lk, {"op": "roster"}, timeout=20) if lk.get("kind") == "machine"
            else await state["fabric"]._ask_account(lk, {"op": "roster"}))
     return got if got.get("ok") else JSONResponse(got, status_code=502)
+
+
+@app.put("/api/team/links/{label}/brain")
+async def api_team_link_brain(label: str, body: dict):
+    """Which of this machine's brains a linked team's work runs on here ('' = the machine's).
+    Yours to choose for your own links; Network sets it for the machine's."""
+    from . import ties as tiesmod
+    owner = usersmod.current() or ""
+    b = body or {}
+    try:
+        got = tiesmod.set_brain(owner, label, b.get("executor", ""), b.get("model", ""))
+    except LookupError as e:
+        return JSONResponse({"error": str(e)}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    fabricmod.audit_team(state["store"], "link.brain", f"link:{label}",
+                         f"{label}'s work here runs on {got.get('executor') or 'this machine'}"
+                         + (f" ({got['model']})" if got.get("model") else ""))
+    return {"ok": True, "brain": got}
 
 
 @app.put("/api/team/links/{label}/access")
@@ -15988,7 +16184,18 @@ async def api_chat(body: dict, request: Request):
     # An APP asking for a turn is machinery, not a person: it expects AgentOS's
     # tools and its own data store, neither of which an executor has. Forwarding
     # it would break the app, so a forwarder still answers apps itself.
-    if engine != "aria" and principal.kind != "app":
+    zero_res = None
+    if principal.kind != "app" and _zero().chat_on_hub(cfg):
+        # a Zero: worked on its hub and kept there, as a chat on its screen is (_run_chat)
+        async def _quiet(_e):
+            pass
+        zero_res = await _zero().hub_turn(cfg, cid, text, _quiet)
+        if zero_res.get("fallback"):
+            zero_res = None
+    if zero_res is not None:
+        result = zero_res
+        model = ""
+    elif engine != "aria" and principal.kind != "app":
         knowledge.turn_started()
         try:
             content, _run = await execmod.forward(
@@ -16751,7 +16958,25 @@ async def _run_chat(cid: str, data: dict):
         # trigger go to the specialist / the huddle / the flow even when the machine's
         # brain is Claude Code. Checked in the wrong order, every `@toolsmith build a
         # tool` was forwarded to Claude Code, which built it itself.
-        if model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit or dept_hit):
+        zero_res = None
+        if _zero().chat_on_hub(cfg) and not (mention or huddle_hit or flow_hit or dept_hit):
+            # A Zero: the turn is worked on its hub, in its section there, and kept there
+            # (fabric.zero_chat). This machine shows it and keeps the screen's copy.
+            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": model, "uid": owner}
+            knowledge.turn_started()
+            started = True
+            await evsend({"type": "turn_start", "model": f"hub:{_zero().state(cfg).get('hub')}"})
+            zero_res = await _zero().hub_turn(cfg, cid, text, evsend)
+            if zero_res.get("fallback"):
+                # a hub older than this: it lends its model only, so the turn runs here
+                knowledge.turn_ended()
+                started = False
+                await evsend({"type": "status", "message": zero_res["fallback"]})
+                zero_res = None
+        if zero_res is not None:
+            result = zero_res
+            model = ""
+        elif model in execmod.ENGINES and model != "aria" and not (mention or huddle_hit or flow_hit or dept_hit):
             # Engine = Claude Code: delegate the turn to the coding agent already
             # installed on this machine. It keeps AgentOS's turn lifecycle — working
             # indicator, global turn slot, Stop, persistence — because its stream is

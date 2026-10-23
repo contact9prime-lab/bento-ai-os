@@ -288,7 +288,11 @@ function worldLabel(n){
 function worldOrg(n){const c=WORLD.v&&WORLD.v.company;return (c&&c.of&&c.of[n])||null}
 /* With a company, a department stands as its head and the rest of it is `staff` (the
    server's _world_org): drawing twenty-odd people made a crowd, not a team. */
-function worldStaff(n){const o=worldOrg(n);return o&&o.head?((WORLD.v.staff||{})[o.dept]||[]):[]}
+function worldStaff(n){const st=(WORLD.v&&WORLD.v.staff)||{};if(n==='@agent')return st['@agent']||[];
+  const o=worldOrg(n);return o&&o.head?(st[o.dept]||[]):[]}
+/* the heading over a card's staff: a department, or (on your agent's card) everybody in no
+   department, who stand off the street once there are more than the server's WORLD_CROWD */
+function worldStaffHead(n){return n==='@agent'?'Also on the team':((worldOrg(n)||{}).dept||'')}
 function worldDeptLine(n){
   const o=worldOrg(n);if(!o)return '';
   const d=((WORLD.v.company||{}).departments||[]).find(x=>x.name===o.dept);
@@ -665,7 +669,7 @@ function worldCard(name,quiet){
     ${m.under&&m.under.length?`<p class="wd-under">Also: ${m.under.map(u=>esc(u.emoji+' '+u.name)).join(', ')}</p>`:''}
     <div class="wd-grow"><span>${esc(l.name)}</span>${l.next?`<i style="--p:${Math.max(4,100-l.to_next/(l.to_next+l.xp||1)*100)}%"></i><small>${l.to_next} to ${esc(l.next)}</small>`:'<small>top of the ladder</small>'}</div>
     ${a.friend?`<p class="wd-friend">Works best with ${esc(worldLabel(a.friend))}</p>`:''}
-    ${worldStaff(name).length?`<div class="wd-h">${esc(worldOrg(name).dept)}</div><ul class="wd-staff">${worldStaff(name).map(x=>
+    ${worldStaff(name).length?`<div class="wd-h">${esc(worldStaffHead(name))}</div><ul class="wd-staff">${worldStaff(name).map(x=>
       `<li><b>${esc(x.mood.emoji)}</b> ${esc(x.name)} <small>${esc(x.mood.name)}${x.busy?' · at work':''}</small></li>`).join('')}</ul>`:''}
     <div class="wd-acts">${a.busy&&a.work?`<button class="endbtn wd-work" onclick="worldOpenWork('${esc(name)}')">${a.work.kind==='build'?'Open App Studio':a.work.kind==='run'?'Open the run':'Open the chat'}</button>`:''}<button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>
       <button class="endbtn wd-calm1" onclick="worldCalm('${esc(name)}')">Calm down</button></div>`;
