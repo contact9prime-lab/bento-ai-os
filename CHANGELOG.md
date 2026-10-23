@@ -2,6 +2,12 @@
 
 ## 0.6.85 — 2026-10-22
 
+**Joining Wi-Fi from the kiosk.** The kiosk fills the screen, so a Pi that came up without its
+Wi-Fi had no way back to its network menu. When there's no network, the band now says so and
+offers the networks in range; tap one, type the password, Join, and it joins again on its own at
+the next start. The password reaches NetworkManager through a private file, never a command line.
+`bento wifi` does the same from a terminal.
+
 **Remove means removed, and adding it back adds it.** Remove from the hub used to run
 `bento uninstall` and delete the code. A server started by hand kept running, an autostart that
 the screen step had moved aside still opened Bento at login, and the installer's own screen

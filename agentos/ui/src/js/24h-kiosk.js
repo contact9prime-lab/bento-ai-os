@@ -19,7 +19,7 @@
    SUI: the chrome is hidden, so suiChrome() gives the bands back (00-sui.js). */
 var KIOSK={on:false,cid:'',phase:'',line:'',heard:'',reply:'',follow:0,speaking:false,busy:false,
   stream:null,ctx:null,src:null,node:null,rec:null,chunks:[],pre:[],talking:false,quiet:0,started:0,
-  floor:0.004,sending:false,muted:false};
+  floor:0.004,sending:false,muted:false,net:null,nets:[],netT:0,wifiOpen:false,wifiPick:'',wifiBusy:false,wifiErr:''};
 var KIOSK_RATE=16000;          // what whisper.cpp and the OpenAI endpoint both want
 var KIOSK_FOLLOW_MS=20000;     // after an answer, no name needed for a follow-up
 var KIOSK_SILENCE_MS=900;      // a pause this long ends an utterance
@@ -51,10 +51,13 @@ function kioskStart(){
     <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
     <form class="kh-type" hidden><input class="kh-in" autocomplete="off" enterkeyhint="send" aria-label="Type a message">
       <button type="submit" class="kh-send">Send</button></form>
-    <div class="kh-acts"><button class="kh-mic" aria-label="Microphone"></button>
+    <div class="kh-wifi" hidden></div>
+    <div class="kh-acts"><button class="kh-net" hidden aria-label="Wi-Fi">Wi-Fi</button><button class="kh-mic" aria-label="Microphone"></button>
       <button class="kh-key" aria-label="Type instead">⌨ Type</button>
       <button class="kh-leave" aria-label="Leave the kiosk">Leave</button></div>`;
   hud.querySelector('.kh-mic').onclick=()=>kioskMicTap();
+  hud.querySelector('.kh-net').onclick=()=>{KIOSK.wifiOpen=!KIOSK.wifiOpen;KIOSK.wifiPick='';KIOSK.wifiErr='';
+    if(KIOSK.wifiOpen)kioskNet(true);kioskWifiPaint()};
   // a keyboard is another way in: the answer still comes here, in the band, and nothing
   // opens unless the agent shows something
   hud.querySelector('.kh-key').onclick=()=>{KIOSK.typing=!KIOSK.typing;kioskPaint();
@@ -72,9 +75,11 @@ function kioskStart(){
   if(typeof suiSyncStruts==='function')suiSyncStruts();
   kioskPaint();
   kioskListen();
+  kioskNet(false);
 }
 function kioskStop(){
   KIOSK.on=false;
+  clearTimeout(KIOSK.netT);KIOSK.wifiOpen=false;
   kioskMicOff();
   document.body.classList.remove('kiosk');
   document.body.style.removeProperty('--kiosk-hud');KIOSK.hudH=0;
@@ -102,7 +107,10 @@ function kioskPaint(){
   const waiting=KIOSK.phase==='listening'&&!hear.engine?(KIOSK.reply?'Type again below.':(hear.line||'Type below.'))
     :KIOSK.phase==='listening'?(kioskFollowing()?'Listening. Go ahead.'
       :(f.wake==='always'?'Listening.':`Say “${kioskWakeWords()[0]||name}” and what you need.`)):'';
-  hud.querySelector('.kh-line').textContent=KIOSK.line||waiting;
+  const net=KIOSK.net,off=!!(net&&net.ok!==false&&!net.online&&!net.why);
+  // no network outranks everything else the line could say: nothing works without it
+  hud.querySelector('.kh-line').textContent=off?'No network. Tap Wi-Fi to join one.':(KIOSK.line||waiting);
+  const nb=hud.querySelector('.kh-net');nb.hidden=!(off||KIOSK.wifiOpen);nb.classList.toggle('on',KIOSK.wifiOpen);
   const h=hud.querySelector('.kh-heard'),r=hud.querySelector('.kh-reply');
   h.hidden=!KIOSK.heard;h.textContent=KIOSK.heard?'“'+KIOSK.heard+'”':'';
   r.hidden=!KIOSK.reply;r.textContent=KIOSK.reply.slice(-600);
@@ -535,4 +543,52 @@ function hearFixWire(box,pre,after){
   const w=box.querySelector('#'+pre+'-whisper');
   if(w)w.onclick=async()=>{w.disabled=true;w.textContent='Installing… (a few minutes)';
     try{await installComponent('whisper-cpp')}finally{if(typeof after==='function')after()}};
+}
+
+/* ---------------- Wi-Fi, from the kiosk ----------------
+   The desktop's own network menu is under the kiosk, and a Pi that boots without its Wi-Fi
+   had no way back ("I am not able to connect to wifi when it loads"). Checked every 20 s on a
+   timer while the kiosk is on (not a frame loop); the panel scans only when it is open. */
+var KIOSK_NET_MS=20000;
+async function kioskNet(scan){
+  clearTimeout(KIOSK.netT);
+  if(!KIOSK.on)return;
+  try{KIOSK.net=await apiJSON('/api/wifi'+(scan?'?scan=1':''))}catch(e){KIOSK.net=null}
+  // the list is kept until a new scan: a status-only check must not forget which one is open
+  if(KIOSK.net&&KIOSK.net.networks)KIOSK.nets=KIOSK.net.networks;
+  if(!KIOSK.on)return;
+  kioskPaint();if(KIOSK.wifiOpen)kioskWifiPaint();
+  KIOSK.netT=setTimeout(()=>kioskNet(KIOSK.wifiOpen&&!KIOSK.wifiPick),KIOSK_NET_MS);
+}
+function kioskWifiPaint(){
+  const box=document.querySelector('#kiosk-hud .kh-wifi');if(!box)return;
+  box.hidden=!KIOSK.wifiOpen;
+  if(!KIOSK.wifiOpen){kioskPaint();return}
+  const net=KIOSK.net||{},list=KIOSK.nets||[];
+  if(net.why){box.innerHTML=`<p class="kh-wifi-why">${esc(net.why)}</p>`;kioskPaint();return}
+  if(KIOSK.wifiPick){
+    const n=list.find(x=>x.ssid===KIOSK.wifiPick)||{secure:true};
+    box.innerHTML=`<form class="kh-wifi-join"><b>${esc(KIOSK.wifiPick)}</b>
+      ${n.secure?`<input class="kh-wifi-pw" type="text" autocomplete="off" data-lpignore="true" placeholder="Password" aria-label="Wi-Fi password">`:''}
+      <button type="submit" class="kh-send"${KIOSK.wifiBusy?' disabled':''}>${KIOSK.wifiBusy?'Joining…':'Join'}</button>
+      <button type="button" class="kh-wifi-back">Back</button>
+      ${KIOSK.wifiErr?`<span class="kh-wifi-err">✗ ${esc(KIOSK.wifiErr)}</span>`:''}</form>`;
+    box.querySelector('.kh-wifi-back').onclick=()=>{KIOSK.wifiPick='';KIOSK.wifiErr='';kioskWifiPaint()};
+    const pw=box.querySelector('.kh-wifi-pw');if(pw&&!KIOSK.wifiBusy)pw.focus();
+    box.querySelector('form').onsubmit=async e=>{e.preventDefault();if(KIOSK.wifiBusy)return;
+      KIOSK.wifiBusy=true;KIOSK.wifiErr='';const password=pw?pw.value:'';kioskWifiPaint();
+      try{const r=await fetch('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ssid:KIOSK.wifiPick,password})});
+        const d=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(d.error||'could not join');
+        KIOSK.wifiOpen=false;KIOSK.wifiPick='';KIOSK.net=d.status||KIOSK.net;
+        toast('✓ Joined '+(d.ssid||'the network'));
+      }catch(err){KIOSK.wifiErr=String(err.message||err)}
+      KIOSK.wifiBusy=false;kioskWifiPaint();kioskNet(false)};
+    kioskPaint();return}
+  box.innerHTML=list.length?`<div class="kh-wifi-list">${list.map(n=>`<button class="kh-wifi-n${n.in_use?' on':''}" data-ssid="${esc(n.ssid)}">
+      <span>${esc(n.ssid)}</span><small>${n.secure?'🔒 ':''}${n.signal}%</small></button>`).join('')}</div>`
+    :`<p class="kh-wifi-why">Looking for networks…</p>`;
+  box.querySelectorAll('.kh-wifi-n').forEach(b=>b.onclick=()=>{KIOSK.wifiPick=b.dataset.ssid;KIOSK.wifiErr='';kioskWifiPaint()});
+  kioskPaint();
 }

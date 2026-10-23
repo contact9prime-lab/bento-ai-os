@@ -4292,6 +4292,46 @@ def _company_cli(args):
     sys.exit(2)
 
 
+def _wifi_cli(args):
+    """`bento wifi`: the same as the kiosk's Wi-Fi panel (wifi.py), for a screen with no kiosk
+    or a terminal over SSH. The password is asked without echo, or read from stdin; never argv."""
+    import getpass
+    from . import wifi
+    from .memory import Store
+    why = wifi.available()
+    if why:
+        sys.exit("  " + why)
+    if args.action == "status":
+        st = wifi.status()
+        w = st.get("wifi") or {}
+        on = (f"on {w.get('connection')}" + (f" ({w['signal']}%)" if w.get("signal") is not None else "")
+              if w.get("state") == "connected" else "Wi-Fi not connected")
+        print(f"  {'✓ online' if st['online'] else '✗ not online'} · {on}" + (" · wired" if st.get("wired") else ""))
+        return
+    if args.action == "list":
+        for n in wifi.networks():
+            print(f"  {'●' if n['in_use'] else ' '} {n['signal']:>3}%  {'🔒' if n['secure'] else '  '} {n['ssid']}")
+        return
+    if not args.ssid:
+        sys.exit("  bento wifi join NAME   (bento wifi list shows what is in range)")
+    pw = ""
+    if not args.open:
+        pw = sys.stdin.readline().rstrip("\n") if args.password_stdin else getpass.getpass(f"  Password for {args.ssid}: ")
+    try:
+        got = wifi.connect(args.ssid, pw)
+    except ValueError as e:
+        sys.exit(f"  ✗ {e}")
+    finally:
+        pw = ""
+    try:
+        Store().audit_add(principal_kind="user", principal_id="", surface="cli", action="wifi.join",
+                          resource=f"wifi:{got['ssid']}", effect="allow", rule="person", outcome="ok",
+                          reason=f"joined {got['ssid']}")
+    except Exception:
+        pass
+    print(f"  ✓ joined {got['ssid']}; it joins again on its own at the next start")
+
+
 def _screen_cli(args):
     """`bento screen`: Bento on this machine's own screen when it starts (screen.py). `on`
     shows every change first and asks; `run` and `wait` are what the unit or the desktop's
@@ -8784,6 +8824,12 @@ def main():
     p_scr.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "run", "wait"],
                        metavar="ACTION", help="status | on | off  (run and wait are what the screen itself starts)")
     p_scr.add_argument("--yes", action="store_true", help="on: do not ask before making the changes")
+    p_wifi = verb("wifi", help="this machine's Wi-Fi: on a network or not, what is in range, join one")
+    p_wifi.add_argument("action", nargs="?", default="status", choices=["status", "list", "join"],
+                        metavar="ACTION", help="status | list | join NAME")
+    p_wifi.add_argument("ssid", nargs="?", default="", metavar="NAME", help="join: the network's name")
+    p_wifi.add_argument("--password-stdin", action="store_true", help="join: read the password from stdin")
+    p_wifi.add_argument("--open", action="store_true", help="join: a network with no password")
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
@@ -9139,6 +9185,8 @@ def main():
         _face_cli(args)
     elif args.cmd == "screen":
         _screen_cli(args)
+    elif args.cmd == "wifi":
+        _wifi_cli(args)
     elif args.cmd == "timetravel":
         _timetravel_cli(args)
     elif args.cmd == "terminal":
