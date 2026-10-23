@@ -163,3 +163,7 @@ body .msg.user.from-machine.team .bubble,body.immersive .msg.user.from-machine.t
 #kiosk-hud .kh-upd-go{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
 body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
 #kiosk-hud .kh-upd{grid-column:1/-1}
+
+.tie-sch{display:flex;gap:10px;align-items:center}
+.tie-sch>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tie-sch .mut{font-size:11.5px}

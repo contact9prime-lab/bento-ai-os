@@ -67,6 +67,7 @@ class Scheduler(usersmod.Scoped):
         self.broadcast = broadcast
         self.fabric = None            # ControlPlane, wired in server startup — a task that
                                       # names a flow runs the flow instead of a bare prompt
+        self.zero_job = None          # async (task) -> (cid, text) | None: a Zero's schedule (server)
         self._stop = asyncio.Event()
         self._file_state: dict = {}   # trigger task id -> {path: mtime} snapshot
         self._idle_fired: dict = {}   # trigger task id -> last-turn ts it fired against
@@ -84,14 +85,19 @@ class Scheduler(usersmod.Scoped):
 
     def create_task(self, prompt: str, schedule_type: str, interval_minutes: int = 0,
                     at_time: str = "", delay_minutes: int = 0, weekday: int = -1,
-                    app_id: str = "") -> str:
+                    app_id: str = "", space_id: str = "") -> str:
         now = time.time()
+        add = self.store.add_task
+        if space_id:
+            # a Zero's schedule lives in its section (tools.schedule_task decides when)
+            def add(*a, **k):
+                return self.store.add_task(*a, space_id=space_id, **k)
         for_app = " for this app" if app_id else ""
         if schedule_type == "weekly":
             at_time = at_time or "09:00"
             wd = int(weekday) % 7 if weekday is not None and int(weekday) >= 0 else 0
             old = self._same(prompt, "weekly", app_id, at_time=at_time, weekday=wd)
-            tid = old["id"] if old else self.store.add_task(
+            tid = old["id"] if old else add(
                 prompt, "weekly", None, at_time, _next_weekly(at_time, wd, now), weekday=wd,
                 app_id=app_id)
             return (f"{'already scheduled' if old else 'scheduled'} task {tid}{for_app}: "
@@ -99,19 +105,19 @@ class Scheduler(usersmod.Scoped):
         if schedule_type == "interval":
             interval = max(1, int(interval_minutes)) * 60
             old = self._same(prompt, "interval", app_id, interval_seconds=interval)
-            tid = old["id"] if old else self.store.add_task(
+            tid = old["id"] if old else add(
                 prompt, "interval", interval, None, now + interval, app_id=app_id)
             return (f"{'already scheduled' if old else 'scheduled'} task {tid}{for_app}: "
                     f"every {interval // 60} min")
         if schedule_type == "daily":
             at_time = at_time or "09:00"
             old = self._same(prompt, "daily", app_id, at_time=at_time)
-            tid = old["id"] if old else self.store.add_task(
+            tid = old["id"] if old else add(
                 prompt, "daily", None, at_time, _next_daily(at_time, now), app_id=app_id)
             return (f"{'already scheduled' if old else 'scheduled'} task {tid}{for_app}: "
                     f"daily at {at_time}")
         delay = max(0, int(delay_minutes)) * 60
-        tid = self.store.add_task(prompt, "once", None, None, now + delay, app_id=app_id)
+        tid = add(prompt, "once", None, None, now + delay, app_id=app_id)
         return f"scheduled task {tid}{for_app}: once, in {delay // 60} min"
 
     # ---- triggers (event-driven tasks) --------------------------------------
@@ -364,6 +370,20 @@ class Scheduler(usersmod.Scoped):
                                   "conversation_id": "", "result": ""})
             return
 
+        # A Zero's schedule (asked for at its screen) runs the way that Zero's chat runs: the
+        # same tools, marked as from outside, in its section, on its brain, and the answer goes
+        # to its screen. Run as the owner with every tool, it would have been a way for anybody
+        # at the Pi to get more than the Pi's chat gives them.
+        if task.get("space_id") and self.zero_job:
+            got = await self.zero_job(task)
+            if got is not None:
+                cid, result_text = got
+                self._reschedule(task, result_text)
+                self.store.task_run_finish(trid, "failed" if result_text.startswith("[error]") else "ok",
+                                           result_text, conversation_id=cid)
+                await self.broadcast({"type": "task_finished", "task_id": task["id"],
+                                      "conversation_id": cid, "result": result_text[:500]})
+                return
         prompt = (f"[Scheduled background JOB — no user is present, do not ask questions. Work until the "
                   f"deliverable exists. If it produces findings, call `save_report` to save an HTML report "
                   f"(and set to_telegram=true to deliver it), or use `telegram_send`/`notify` to alert the "

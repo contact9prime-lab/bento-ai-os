@@ -27,7 +27,7 @@ import time
 
 PROBE_TTL = 30           # seconds an answer to "are you there?" is kept
 PROBE_TIMEOUT = 4        # seconds one probe may take
-VIEWS = ("sessions", "memory", "knowledge", "logs")
+VIEWS = ("sessions", "schedules", "memory", "knowledge", "logs")
 VIEW_ROWS = 60
 
 _PROBED: dict[str, tuple[float, bool, str]] = {}
@@ -280,6 +280,14 @@ def view(store, tie: dict, what: str, limit: int = VIEW_ROWS) -> dict:
             n = store.db.execute("SELECT COUNT(*) FROM messages WHERE conversation_id=?", (r["id"],)).fetchone()
             r["messages"] = n[0] if n else 0
         return {"what": what, "rows": rows}
+    if what == "schedules":
+        # what a Zero asked for at its screen, run here as its chat runs (scheduler.zero_job)
+        if not sid:
+            return {"what": what, "rows": [], "note": "A linked team keeps its schedules on its own machine."}
+        rows = _q(store, "SELECT id, prompt, schedule_type, at_time, interval_seconds, weekday, next_run, last_run, "
+                         "last_result, enabled FROM tasks WHERE space_id=? ORDER BY created_at DESC LIMIT ?", (sid, limit))
+        return {"what": what, "rows": rows, "note": "" if rows else
+                "Nothing scheduled yet. Ask at its screen, like “every morning at 8, tell me the weather”."}
     if what in ("memory", "knowledge") and not sid:
         return {"what": what, "rows": [], "note": (
             "A linked team keeps its own memory on its own machine. Only a Zero this machine set up "

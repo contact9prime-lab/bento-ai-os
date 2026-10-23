@@ -211,7 +211,7 @@ def test_the_hub_lets_its_agents_make_files_for_its_own_zero_and_nothing_else(tm
 
     assert write(folder / "plan.md") == "ask", "nothing standing yet: a person is needed"
     made = zero.zero_standing(store, cfg, "pi-kitchen")
-    assert folder.is_dir() and len(made) == 1
+    assert folder.is_dir() and len(made) == 2, "its folder, and its schedules (policy.PROVISION_TOOLS)"
     assert zero.zero_standing(store, cfg, "pi-kitchen") == [], "written once"
     pdp = PDP(cfg, store)
     assert write(folder / "plan.md") == "allow"
@@ -226,7 +226,8 @@ def test_the_hub_lets_its_agents_make_files_for_its_own_zero_and_nothing_else(tm
         "another link's task gets nothing from this"
     rep = pdp.decide(w, "tool.use", "tool:save_report", {"risk": "safe", "tool": "save_report", "taint": LINKED, "reason": "saves"})
     assert rep.effect == "allow", "a report is safe already: nothing standing is needed for it"
-    # the lead itself is not a subagent: standing permissions never widen it
+    # the lead itself is not a subagent: standing permissions never widen it (bar a Zero's own
+    # schedule_task, policy.PROVISION_TOOLS, tested in test_zero_schedules)
     assert pdp.decide(MAIN, "fs.write", f"fs:{folder}/a.md",
                       {"risk": "risky", "taint": LINKED, "reason": "w"}).effect == "ask"
     # a row naming every agent that provisioning did not write is never honoured

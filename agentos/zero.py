@@ -225,12 +225,13 @@ def zero_standing(store, cfg: dict, label: str) -> list[str]:
     from .policy import standing_refusal, standing_resource
     folder = folder_for(cfg, label)
     folder.mkdir(parents=True, exist_ok=True)
-    want = [("fs.write", f"fs:{folder}/*")]
+    # its folder, and the schedules it asks for at its screen (run as its chat runs: policy.PROVISION_TOOLS)
+    want = [("fs.write", f"fs:{folder}/*"), ("tool.use", "tool:schedule_task*")]
     have = {g.get("resource") for g in store.list_grants(principal_kind="team", principal_id=f"{label}/*")
             if g.get("action") == "team.act" and g.get("source") == "provision"}
     made = []
     for action, scope in want:
-        if standing_refusal(action, scope):
+        if standing_refusal(action, scope, "provision"):
             continue
         res = standing_resource("*", action, scope)
         if res in have:

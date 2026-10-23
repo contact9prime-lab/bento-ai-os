@@ -3104,14 +3104,19 @@ class Toolbox(usersmod.Scoped):
     async def schedule_task(self, prompt: str, schedule_type: str,
                             interval_minutes: int = 0, at_time: str = "",
                             delay_minutes: int = 0, weekday: int = -1,
-                            app: str = "", _app: str = "") -> str:
+                            app: str = "", _app: str = "", space_id: str = "") -> str:
         if self.scheduler is None:
             return "[error] scheduler not running"
         app_id, err = self._schedule_app(app, _app)
         if err:
             return err
+        # Asked at a Zero's screen (its chat runs here, in its section): the schedule is that
+        # Zero's. It is kept in the section, runs as the Zero's chat runs, and its answer goes
+        # to the Zero's screen (scheduler.zero_job). Any other turn's space is not recorded.
+        zero_space = space_id if space_id and _zero_label_of(space_id) else ""
         return self.scheduler.create_task(prompt, schedule_type, interval_minutes, at_time,
-                                          delay_minutes, weekday=weekday, app_id=app_id)
+                                          delay_minutes, weekday=weekday, app_id=app_id,
+                                          space_id=zero_space)
 
     async def create_trigger(self, kind: str, match_or_path: str = "", prompt: str = "",
                              cooldown_secs: int = 300, minutes: float = 30,
@@ -6310,7 +6315,19 @@ TOOL_SCHEMAS.extend(CAPABILITY_REQUEST_SCHEMAS)
 
 #: Tools whose reads and writes belong to the turn's space. The agent loop injects
 #: `space_id` for these; nothing else in the OS decides scope on the model's behalf.
+def _zero_label_of(space_id: str) -> str:
+    """The Zero whose section `space_id` is, on the hub that set it up, or ''."""
+    from . import provision
+    try:
+        return next((e.get("label") or e.get("name") or "" for e in (provision.load().get("enabled") or {}).values()
+                     if space_id and e.get("space") == space_id), "")
+    except Exception:
+        return ""
+
+
 SPACE_SCOPED_TOOLS = frozenset({
     "remember", "recall", "kg_add", "kg_query",
     "list_assets", "save_asset", "generate_image", "timeline",
+    # how a schedule asked for at a Zero becomes that Zero's (scheduler.zero_job)
+    "schedule_task",
 })

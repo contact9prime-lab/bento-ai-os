@@ -667,3 +667,13 @@ function kioskUpdate(ev){
       .then(x=>x.json()).catch(e=>({error:String(e)}));
     if(r.error)box.innerHTML=`<span>✗ ${esc(r.error)}</span>`};
 }
+
+/* A schedule made at this screen, worked on the hub, said here (server._zero_say_from_hub). It
+   joins the conversation column and is spoken unless the mic is muted; off the kiosk it is a toast. */
+function kioskScheduled(ev){
+  const text=String(ev.text||'').trim();if(!text)return;
+  if(!KIOSK.on){toast('⏱ '+(ev.title||'A schedule')+': '+text.slice(0,140));return}
+  KIOSK.log=(KIOSK.log||[]).concat([{who:'agent',text:'⏱ '+(ev.title||'')+'\n'+text}]).slice(-KIOSK_LOG);
+  KIOSK.reply=text;KIOSK.heard='⏱ '+(ev.title||'A schedule');kioskPaint();
+  if(!KIOSK.busy&&!KIOSK.muted)kioskSpeak(text);
+}

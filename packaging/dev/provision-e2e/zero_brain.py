@@ -52,6 +52,15 @@ def _reply(msgs):
                                         "content": "# Kitchen plan\n\n- eggs\n- milk\n- coffee\n"})
         return f"writer: {tool[:200]}", None
     last = next((_text(m.get("content")) for m in reversed(msgs) if m.get("role") == "user"), "")
+    if last.strip().startswith("Say:"):
+        return last.strip()[4:].strip(), None                 # a scheduled job firing: its words
+    said = " ".join(_text(m.get("content")) for m in msgs if m.get("role") == "user").lower()
+    if "remind me" in said and "a small machine this hub set up" in every:
+        # a schedule asked for at a Zero: a one-off, due at once, so a run sees it fire
+        if tool is None:
+            return _call("schedule_task", {"prompt": "Say: time for tea, the kettle is on",
+                                           "schedule_type": "once", "delay_minutes": 0})
+        return f"Done: {tool[:200]}", None
     if "is the lead of the linked team" in every or "a small machine this hub set up" in every:
         if tool is None and last.strip().lower().startswith("thanks"):
             return "You're welcome.", None        # a follow-up in the same session: nothing to make

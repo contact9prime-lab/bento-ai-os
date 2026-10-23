@@ -3150,6 +3150,13 @@ In Chat, `chatMachineMsg` reads `meta.zero` / `meta.team` (or the `[who@team]` p
 with `chatMachineBanner`; the kiosk on a landscape screen is a right-hand column (`kioskSide`, `kiosk-side`,
 `.kh-log` holds `KIOSK.log`, the band's heard/reply lines are hidden there).
 
+**A Zero's schedules live on its hub and run as its chat does** (`tools.schedule_task` records the space only
+when it is a Zero's section, `scheduler.zero_job` → `server._zero_job` → `fabric.zero_chat(_job)` → wire op
+`zero_say` → the kiosk's `kioskScheduled`; `tests/test_zero_schedules.py`). Never `run_prompt` as the owner:
+anybody at the Pi can talk to it. `_job` is stripped from link requests, and a job may not schedule. The
+taint ceiling is lifted for `schedule_task` alone by a PROVISION row (`policy.PROVISION_TOOLS`, written by
+`zero.zero_standing`, and for older Zeros at hub start); the lead is widened by nothing else.
+
 **A Zero updates itself when its own hub asks** (wire op `zero_update`, `server._zero_update_from_hub`
 only for `zero.is_my_hub`, `ties.ask_update`, `server._zeros_keep_current` after start and every 6 h,
 `provision.zero_updates` ask/auto/off, the kiosk's `kioskUpdate`; `tests/test_zero_update.py`). `hello`
