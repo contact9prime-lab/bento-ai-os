@@ -228,11 +228,14 @@ async function loadConvs(){
                 ['From the prompt bar',c=>c.origin==='omni'],
                 ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
                 ['Your agents talking',c=>c.origin==='freetalk'],
-                ['',c=>!phone(c)&&c.origin!=='omni'&&c.origin!=='freetalk'&&!(c.origin||'').startsWith('copilot:')]];
+                // a Zero's screen, or a linked team, worked here (chatMachine): where it came from
+                ['From other machines',chatFromMachine],
+                ['',c=>!phone(c)&&c.origin!=='omni'&&c.origin!=='freetalk'&&!chatFromMachine(c)&&!(c.origin||'').startsWith('copilot:')]];
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
     el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(c.title||'untitled');
+    if(chatFromMachine(c))el.classList.add('conv-machine',c.origin==='zero'?'zero':'team');
     if(RUNNING.has(c.id))el.querySelector('.t').style.color='var(--acc,#5eead4)';
     el.onclick=e=>{if(!e.target.classList.contains('del'))openConv(c.id)};
     el.querySelector('.del').onclick=async e=>{e.stopPropagation();
@@ -266,11 +269,15 @@ async function openConv(cid){
   if(!feed)return;
   curBody=null;curThink=null;curText='';
   feed.innerHTML='';
+  const mach=chatMachineOf(d.messages);
+  if(mach)feed.insertAdjacentHTML('beforeend',chatMachineBanner(mach,d.messages));
   d.messages.forEach(msg=>{
     // a free talk is one card that grows message by message (24f-freetalk.js)
     if(msg.meta&&msg.meta.freetalk&&typeof freeTalkRender==='function'&&freeTalkRender(msg))return;
     const m=document.createElement('div');m.className='msg '+msg.role;
-    if(msg.role==='user'){m.dataset.mid=msg.id||'';m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
+    if(msg.role==='user'&&chatMachineMsg(msg)){const x=chatMachineMsg(msg);m.dataset.mid=msg.id||'';m.classList.add('from-machine',x.kind);
+      m.innerHTML='<div class="who">'+chatMachineWho(x)+'</div><div class="bubble"></div>';m.querySelector('.bubble').textContent=x.text;}
+    else if(msg.role==='user'){m.dataset.mid=msg.id||'';m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
     else{const sp=msg.meta&&msg.meta.speaker,dp=msg.meta&&msg.meta.department;
       // a specialist's reply is stored with a first line naming it and its model;
       // with its face in the header that line would say the same thing twice
@@ -530,6 +537,38 @@ function engineLabel(engine,model){
 }
 /* The label for a stored message: its own recorded engine/model, falling back to
    the executor step for turns saved before that was recorded. */
+/* ---- conversations that came from another machine ----
+   A Zero's screen (fabric.zero_chat: meta.zero) or a linked team (_lead_for_link: meta.team,
+   "[who@team] question") worked here. Asked for as "we need to see the interaction between the
+   machines visually in chats": the thread says where it came from, and each message wears the
+   machine it came from and the route it took. */
+function chatFromMachine(c){return c.origin==='zero'||(c.origin==='team'&&/^↔ /.test(c.title||''))}
+function chatMachineMsg(msg){
+  const mt=msg.meta||{};
+  if(mt.zero)return {kind:'zero',label:mt.zero,who:'',text:msg.content||''};
+  const m=String(msg.content||'').match(/^\[([\w.-]+)@([\w.-]+)\] ([\s\S]*)$/);
+  if(mt.team||m)return {kind:'team',label:mt.team||(m&&m[2])||'',who:mt.from||(m&&m[1])||'',text:m?m[3]:(msg.content||'')};
+  return null;
+}
+function chatMachineOf(msgs){for(const m of msgs||[]){if(m.role==='user'){const x=chatMachineMsg(m);if(x)return x}}return null}
+function chatMachineFace(x){
+  const t=((typeof NET!=='undefined'&&NET.v&&NET.v.ties)||[]).find(y=>y.label===x.label);
+  if(t&&typeof tieFace==='function')return tieFace(t,'cm-face');
+  return `<span class="cm-face cm-initial">${esc((x.who||x.label||'?').slice(0,1).toUpperCase())}</span>`;
+}
+function chatMachineWho(x){
+  const here=(typeof agentName==='function'?agentName():'your agent');
+  return `<span class="cm-who">${chatMachineFace(x)}<b>${esc(x.kind==='zero'?'At '+x.label+'’s screen':x.who+'@'+x.label)}</b>`
+    +`<span class="cm-route ${x.kind}">${x.kind==='zero'?'◫ '+esc(x.label):'↔ '+esc(x.label)} → ${esc(here)}</span></span>`;
+}
+function chatMachineBanner(x,msgs){
+  // the brain that answered, only when the reply recorded one (a chip, never a guess)
+  const last=[...(msgs||[])].reverse().find(m=>m.role==='assistant'),lm=(last&&last.meta)||{};
+  const eng=(lm.engine||lm.model)?msgWho(lm):'';
+  const here=(typeof agentName==='function'?agentName():'your agent');
+  return `<div class="cm-banner ${x.kind}">${chatMachineFace(x)}<div><b>${x.kind==='zero'?'From '+esc(x.label)+', a Zero this machine set up':'From '+esc(x.label)+', a linked team'}</b>
+    <span>${x.kind==='zero'?'Said at its screen and answered here':'Asked by '+esc(x.who)+' there and worked here'} by ${esc(here)}${eng?' on '+eng:''}. ${x.kind==='zero'?'Its copy is on its screen.':'The answer went back to them.'}</span></div></div>`;
+}
 function msgWho(meta){
   const engine=(meta&&meta.engine)
     ||((meta&&meta.steps||[]).find(s=>s&&s.type==='executor')||{}).name||'';

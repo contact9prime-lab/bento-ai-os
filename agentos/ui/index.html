@@ -5025,7 +5025,7 @@ body.kiosk .win{display:none!important}
 body.kiosk #wall{background:var(--bg)}
 body.kiosk #office-scene{position:absolute;left:0;right:0;top:0;bottom:var(--kiosk-hud,128px);
   display:flex;justify-content:center;align-items:center;pointer-events:none}
-body.kiosk #office-scene .of-scroll{width:100vw;height:100%;display:flex;align-items:center;
+body.kiosk #office-scene .of-scroll{width:100%;height:100%;display:flex;align-items:center;
   justify-content:center;overflow:hidden}
 body.kiosk #office-scene canvas{display:block}
 #kiosk-hud{position:fixed;left:16px;right:16px;bottom:16px;z-index:9600;display:grid;
@@ -5094,6 +5094,40 @@ body.kiosk #aibubble{display:none!important}
   #kiosk-hud .kh-line{-webkit-line-clamp:1}
   #kiosk-hud .kh-reply{max-height:40vh}
 }
+/* A landscape screen: the chat is a column on the right, the whole height, and the Office
+   takes the rest (kioskSide). The log holds the conversation; the band's heard/reply lines
+   are the log's last two bubbles here, so they are not shown twice. */
+#kiosk-hud .kh-log,#kiosk-hud .kh-hub{display:none}
+body.kiosk.kiosk-side{--kiosk-col:clamp(300px,40vw,640px)}
+body.kiosk.kiosk-side #office-scene{right:calc(var(--kiosk-col) + 20px);bottom:0}
+body.kiosk.kiosk-side #kiosk-hud{left:auto;right:12px;top:12px;bottom:12px;width:var(--kiosk-col);max-height:none;
+  display:flex;flex-direction:column;align-items:stretch;gap:10px;padding:14px;border-radius:20px}
+body.kiosk.kiosk-side #kiosk-hud .kh-who{flex:none;padding-bottom:10px;border-bottom:1px solid color-mix(in srgb,var(--txt) 10%,transparent)}
+body.kiosk.kiosk-side #kiosk-hud .kh-txt{flex:1}
+body.kiosk.kiosk-side #kiosk-hud .kh-hub{display:inline-flex;flex:none;align-self:flex-start;font-size:12px;font-weight:600;padding:4px 10px;
+  border-radius:999px;background:color-mix(in srgb,#34d399 18%,transparent);color:#34d399}
+body.kiosk.kiosk-side #kiosk-hud .kh-hub[hidden]{display:none}
+body.kiosk.kiosk-side #kiosk-hud .kh-log{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;
+  scrollbar-width:thin;padding:4px 2px;overscroll-behavior:contain}
+body.kiosk.kiosk-side #kiosk-hud .kh-heard,body.kiosk.kiosk-side #kiosk-hud .kh-reply{display:none!important}
+body.kiosk.kiosk-side #kiosk-hud .kh-type{flex:none}
+body.kiosk.kiosk-side #kiosk-hud .kh-acts{flex:none;justify-content:flex-end;flex-wrap:wrap}
+body.kiosk.kiosk-side #kiosk-hud .kh-wifi{flex:none}
+.kh-m{display:flex;gap:8px;align-items:flex-end;max-width:100%}
+.kh-m p{margin:0;padding:10px 14px;border-radius:18px;font-size:var(--fs-lg,17px);line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere;max-width:88%}
+.kh-m.you{justify-content:flex-end}
+.kh-m.you p{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-bottom-right-radius:6px}
+.kh-m.agent p{background:color-mix(in srgb,var(--txt) 8%,var(--bg2));border-bottom-left-radius:6px}
+.kh-m.live p{box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 35%,transparent)}
+.kh-lf{width:32px;height:32px;flex:none;border-radius:9px;image-rendering:pixelated}
+.kh-empty{margin:auto;text-align:center;opacity:.7;font-size:var(--fs-md,15px);max-width:28ch}
+.kh-dots{display:inline-flex;gap:4px;font-style:normal}
+.kh-dots b{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.4}
+@media (prefers-reduced-motion:no-preference){.kh-dots b{animation:kh-dot 1.2s infinite}.kh-dots b:nth-child(2){animation-delay:.2s}.kh-dots b:nth-child(3){animation-delay:.4s}}
+@keyframes kh-dot{50%{opacity:1}}
+@media (max-height:520px){body.kiosk.kiosk-side #kiosk-hud{top:8px;bottom:8px;right:8px;padding:10px;gap:6px}
+  .kh-m p{font-size:15px;padding:8px 12px}.kh-lf{width:26px;height:26px}}
+
 /* Settings → Team & Communications → Community (24i-pool.js) */
 .pool-list{display:flex;flex-direction:column;gap:6px;width:100%}
 .pool-m{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:var(--r-md,10px);
@@ -6201,6 +6235,36 @@ body.dev-mobile .perm-q{max-width:none;margin-left:0}
 .tie-acts .endbtn.danger{color:var(--err,#e05050)}
 @media (max-width:600px){.tie-list{margin:6px 8px 10px}.tie-grid{grid-template-columns:1fr}.tie-sub{margin-left:0}
   .tie-top .endbtn{margin-left:auto}}
+
+/* Chat: a conversation that came from another machine (10-chat.js chatMachine*) */
+.conv.conv-machine .t::before{content:"◫ ";color:#34d399}
+.conv.conv-machine.team .t::before{content:"↔ ";color:#a78bfa}
+.cm-banner{display:flex;gap:12px;align-items:center;margin:4px 0 14px;padding:12px 14px;border-radius:14px;
+  background:color-mix(in srgb,var(--mc,#34d399) 12%,var(--bg2));border:1px solid color-mix(in srgb,var(--mc,#34d399) 35%,transparent)}
+.cm-banner.team{--mc:#a78bfa}
+.cm-banner>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cm-banner span{font-size:12.5px;color:color-mix(in srgb,var(--txt) 70%,transparent)}
+.cm-face{width:34px;height:34px;flex:none;border-radius:10px;image-rendering:pixelated;overflow:hidden;display:inline-grid;place-items:center}
+.cm-banner .cm-face{width:42px;height:42px;border-radius:12px}
+.cm-initial{font-weight:700;background:color-mix(in srgb,var(--mc,#34d399) 30%,var(--bg2))}
+.cm-who{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cm-who .cm-face{width:22px;height:22px;border-radius:7px}
+.cm-route{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,#34d399 16%,transparent);color:#34d399}
+.cm-route.team{background:color-mix(in srgb,#a78bfa 16%,transparent);color:#a78bfa}
+body .msg.user.from-machine .bubble,body.immersive .msg.user.from-machine .bubble{background:color-mix(in srgb,#34d399 16%,var(--bg2));color:var(--txt)}
+body .msg.user.from-machine.team .bubble,body.immersive .msg.user.from-machine.team .bubble{background:color-mix(in srgb,#a78bfa 16%,var(--bg2))}
+
+/* Settings → AI providers → If it isn't available (11-settings.js paintFallbacks) */
+.fb-list{display:flex;flex-direction:column;gap:8px;width:100%}
+.fb-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fb-row select{flex:1 1 220px;min-width:0;min-height:var(--tap,34px)}
+.fb-row .endbtn{min-width:var(--tap,34px);min-height:var(--tap,34px);padding:0 10px}
+.fb-row.off select{opacity:.6}
+.fb-n{width:22px;height:22px;flex:none;display:grid;place-items:center;border-radius:50%;font-size:12px;font-weight:700;
+  background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.fb-why{flex-basis:100%;margin-left:30px;font-size:12px}
+.fb-add{align-self:flex-start}
+.fb-none{margin:0}
 </style>
 </head>
 <body>
@@ -17319,11 +17383,14 @@ async function loadConvs(){
                 ['From the prompt bar',c=>c.origin==='omni'],
                 ['Copilots',c=>(c.origin||'').startsWith('copilot:')],
                 ['Your agents talking',c=>c.origin==='freetalk'],
-                ['',c=>!phone(c)&&c.origin!=='omni'&&c.origin!=='freetalk'&&!(c.origin||'').startsWith('copilot:')]];
+                // a Zero's screen, or a linked team, worked here (chatMachine): where it came from
+                ['From other machines',chatFromMachine],
+                ['',c=>!phone(c)&&c.origin!=='omni'&&c.origin!=='freetalk'&&!chatFromMachine(c)&&!(c.origin||'').startsWith('copilot:')]];
   const row=c=>{
     const el=document.createElement('div');el.className='conv'+(c.id===currentConv?' active':'');
     el.innerHTML=`<span class="t"></span><button class="del">✕</button>`;
     el.querySelector('.t').textContent=(RUNNING.has(c.id)?'● ':'')+(c.title||'untitled');
+    if(chatFromMachine(c))el.classList.add('conv-machine',c.origin==='zero'?'zero':'team');
     if(RUNNING.has(c.id))el.querySelector('.t').style.color='var(--acc,#5eead4)';
     el.onclick=e=>{if(!e.target.classList.contains('del'))openConv(c.id)};
     el.querySelector('.del').onclick=async e=>{e.stopPropagation();
@@ -17357,11 +17424,15 @@ async function openConv(cid){
   if(!feed)return;
   curBody=null;curThink=null;curText='';
   feed.innerHTML='';
+  const mach=chatMachineOf(d.messages);
+  if(mach)feed.insertAdjacentHTML('beforeend',chatMachineBanner(mach,d.messages));
   d.messages.forEach(msg=>{
     // a free talk is one card that grows message by message (24f-freetalk.js)
     if(msg.meta&&msg.meta.freetalk&&typeof freeTalkRender==='function'&&freeTalkRender(msg))return;
     const m=document.createElement('div');m.className='msg '+msg.role;
-    if(msg.role==='user'){m.dataset.mid=msg.id||'';m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
+    if(msg.role==='user'&&chatMachineMsg(msg)){const x=chatMachineMsg(msg);m.dataset.mid=msg.id||'';m.classList.add('from-machine',x.kind);
+      m.innerHTML='<div class="who">'+chatMachineWho(x)+'</div><div class="bubble"></div>';m.querySelector('.bubble').textContent=x.text;}
+    else if(msg.role==='user'){m.dataset.mid=msg.id||'';m.innerHTML='<div class="who">'+chatWho('@me','you')+'</div><div class="bubble"></div>';const bb=m.querySelector('.bubble');bb.textContent=msg.content;bubbleImgs(bb,msg.meta?.images);}
     else{const sp=msg.meta&&msg.meta.speaker,dp=msg.meta&&msg.meta.department;
       // a specialist's reply is stored with a first line naming it and its model;
       // with its face in the header that line would say the same thing twice
@@ -17621,6 +17692,38 @@ function engineLabel(engine,model){
 }
 /* The label for a stored message: its own recorded engine/model, falling back to
    the executor step for turns saved before that was recorded. */
+/* ---- conversations that came from another machine ----
+   A Zero's screen (fabric.zero_chat: meta.zero) or a linked team (_lead_for_link: meta.team,
+   "[who@team] question") worked here. Asked for as "we need to see the interaction between the
+   machines visually in chats": the thread says where it came from, and each message wears the
+   machine it came from and the route it took. */
+function chatFromMachine(c){return c.origin==='zero'||(c.origin==='team'&&/^↔ /.test(c.title||''))}
+function chatMachineMsg(msg){
+  const mt=msg.meta||{};
+  if(mt.zero)return {kind:'zero',label:mt.zero,who:'',text:msg.content||''};
+  const m=String(msg.content||'').match(/^\[([\w.-]+)@([\w.-]+)\] ([\s\S]*)$/);
+  if(mt.team||m)return {kind:'team',label:mt.team||(m&&m[2])||'',who:mt.from||(m&&m[1])||'',text:m?m[3]:(msg.content||'')};
+  return null;
+}
+function chatMachineOf(msgs){for(const m of msgs||[]){if(m.role==='user'){const x=chatMachineMsg(m);if(x)return x}}return null}
+function chatMachineFace(x){
+  const t=((typeof NET!=='undefined'&&NET.v&&NET.v.ties)||[]).find(y=>y.label===x.label);
+  if(t&&typeof tieFace==='function')return tieFace(t,'cm-face');
+  return `<span class="cm-face cm-initial">${esc((x.who||x.label||'?').slice(0,1).toUpperCase())}</span>`;
+}
+function chatMachineWho(x){
+  const here=(typeof agentName==='function'?agentName():'your agent');
+  return `<span class="cm-who">${chatMachineFace(x)}<b>${esc(x.kind==='zero'?'At '+x.label+'’s screen':x.who+'@'+x.label)}</b>`
+    +`<span class="cm-route ${x.kind}">${x.kind==='zero'?'◫ '+esc(x.label):'↔ '+esc(x.label)} → ${esc(here)}</span></span>`;
+}
+function chatMachineBanner(x,msgs){
+  // the brain that answered, only when the reply recorded one (a chip, never a guess)
+  const last=[...(msgs||[])].reverse().find(m=>m.role==='assistant'),lm=(last&&last.meta)||{};
+  const eng=(lm.engine||lm.model)?msgWho(lm):'';
+  const here=(typeof agentName==='function'?agentName():'your agent');
+  return `<div class="cm-banner ${x.kind}">${chatMachineFace(x)}<div><b>${x.kind==='zero'?'From '+esc(x.label)+', a Zero this machine set up':'From '+esc(x.label)+', a linked team'}</b>
+    <span>${x.kind==='zero'?'Said at its screen and answered here':'Asked by '+esc(x.who)+' there and worked here'} by ${esc(here)}${eng?' on '+eng:''}. ${x.kind==='zero'?'Its copy is on its screen.':'The answer went back to them.'}</span></div></div>`;
+}
 function msgWho(meta){
   const engine=(meta&&meta.engine)
     ||((meta&&meta.steps||[]).find(s=>s&&s.type==='executor')||{}).name||'';
@@ -18294,11 +18397,16 @@ function setTab(body,all){
         {desc:'The AI that answers you, and the model it uses.',
          more:'Chat, the prompt bar, Telegram and scheduled jobs all use it. Changes apply right away.',
          f:'model default answers with picker which model refresh available executor engine brain'}),
+      pRow('If it isn’t available','<div id="s-fallbacks" class="fb-list"><span class="mut">…</span></div>',
+        {desc:'Asked next, in this order, when the one above can’t answer.',stack:true,
+         more:'A usage limit, a lapsed sign-in or a service that is down sends the same message to the next one. A turn you stopped, or one the rules refused, is never retried.',
+         f:'fallback fallbacks pool backup if not available next model brain order failover'}),
       pRow('Available', '<span id="s-model-count" class="mut">…</span>',
         {desc:'What your providers can run right now.',more:'Refresh after you pull a model or add a key.',
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
+    setTimeout(paintFallbacks, 0);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Models running on this machine. Private and free.',f:'ollama local base url'}),
@@ -19905,6 +20013,42 @@ async function permVerifyLedger(b){
   if(small)small.textContent=line;toast(line);
 }
 
+
+/* The brains asked next when the lead's isn't available (agentos/fallback.py). Each row is
+   one brain, picked from the same list as the picker above (tieBrainSelect's options), with
+   up, down and remove; changes save on the spot, like the picker. */
+var FB={rows:null};
+async function paintFallbacks(){
+  const box=document.getElementById('s-fallbacks');if(!box)return;
+  try{const [r]=await Promise.all([apiJSON('/api/brain/fallbacks'),typeof tieLists==='function'?tieLists():null]);
+    FB.rows=r.fallbacks||[];FB.max=r.max||4}catch(e){box.innerHTML=`<span class="mut">${esc(String(e.message||e))}</span>`;return}
+  const opt=(fb,i)=>(typeof tieBrainSelect==='function'?tieBrainSelect({label:'fb'+i,owner:'',brain:fb}):'')
+    .replace('data-tie="brain"','data-fb="'+i+'"').replace('<option value="">This machine’s brain</option>','<option value="">Choose…</option>');
+  box.innerHTML=(FB.rows.length?FB.rows.map((fb,i)=>`<div class="fb-row${fb.usable?'':' off'}"><span class="fb-n">${i+1}</span>${opt(fb,i)}
+      <button class="endbtn" data-fbup="${i}" ${i?'':'disabled'} aria-label="Move up" title="Move up">↑</button>
+      <button class="endbtn" data-fbx="${i}" aria-label="Remove" title="Remove">✕</button>
+      ${fb.usable?'':'<span class="fb-why mut">not on this machine right now, skipped</span>'}</div>`).join('')
+    :'<p class="mut fb-none">None yet. If the brain above can’t answer, you’ll see why.</p>')
+    +(FB.rows.length<FB.max?`<button class="endbtn fb-add" data-fbadd="1">＋ Add a fallback</button>`:'');
+  box.querySelectorAll('select[data-fb]').forEach(sel=>sel.onchange=()=>{const i=+sel.dataset.fb,[ex,...m]=sel.value.split('|');
+    if(!ex){FB.rows.splice(i,1)}else FB.rows[i]={executor:ex,model:m.join('|')};fbSave()});
+  box.querySelectorAll('[data-fbup]').forEach(b=>b.onclick=()=>{const i=+b.dataset.fbup;[FB.rows[i-1],FB.rows[i]]=[FB.rows[i],FB.rows[i-1]];fbSave()});
+  box.querySelectorAll('[data-fbx]').forEach(b=>b.onclick=()=>{FB.rows.splice(+b.dataset.fbx,1);fbSave()});
+  const add=box.querySelector('[data-fbadd]');
+  if(add)add.onclick=()=>{
+    // the first brain on this machine that is not already the lead or on the list
+    const have=new Set(FB.rows.map(r=>r.executor+'|'+r.model));
+    const pick=(TIES.brains||[]).filter(x=>x.available).flatMap(x=>x.engine==='aria'?(x.models||[]).map(m=>({executor:'aria',model:m.id})):[{executor:x.id,model:''}])
+      .find(c=>!have.has(c.executor+'|'+c.model)&&!(typeof CUR_ENGINE!=='undefined'&&CUR_ENGINE&&c.executor===CUR_ENGINE.engine));
+    if(!pick)return toast('Every brain on this machine is already on the list');
+    FB.rows.push(pick);fbSave()};
+}
+async function fbSave(){
+  const r=await fetch('/api/brain/fallbacks',{method:'PUT',headers:{'content-type':'application/json'},
+    body:JSON.stringify({fallbacks:FB.rows.map(x=>({executor:x.executor,model:x.model}))})}).then(x=>x.json()).catch(e=>({error:String(e)}));
+  if(r.error)toast('✗ '+r.error);
+  paintFallbacks();
+}
 /* ================= WhatsApp: the two things a form cannot say =================
    The generic channel card in 11-settings draws WhatsApp's four fields fine. What
    it cannot draw are the two things that decide whether this channel actually
@@ -33011,7 +33155,7 @@ async function companyReview(ids){
    SUI: the chrome is hidden, so suiChrome() gives the bands back (00-sui.js). */
 var KIOSK={on:false,cid:'',phase:'',line:'',heard:'',reply:'',follow:0,speaking:false,busy:false,
   stream:null,ctx:null,src:null,node:null,rec:null,chunks:[],pre:[],talking:false,quiet:0,started:0,
-  floor:0.004,sending:false,muted:false,net:null,nets:[],netT:0,wifiOpen:false,wifiPick:'',wifiBusy:false,wifiErr:''};
+  floor:0.004,sending:false,muted:false,net:null,nets:[],netT:0,wifiOpen:false,wifiPick:'',wifiBusy:false,wifiErr:'',log:[],sideW:0};
 var KIOSK_RATE=16000;          // what whisper.cpp and the OpenAI endpoint both want
 var KIOSK_FOLLOW_MS=20000;     // after an answer, no name needed for a follow-up
 var KIOSK_SILENCE_MS=900;      // a pause this long ends an utterance
@@ -33039,7 +33183,8 @@ function kioskStart(){
   let hud=document.getElementById('kiosk-hud');
   if(!hud){hud=document.createElement('div');hud.id='kiosk-hud';document.body.appendChild(hud)}
   hud.innerHTML=`<div class="kh-who">${typeof avatarImg==='function'?avatarImg('@agent','kh-face'):''}
-      <div class="kh-txt"><b class="kh-name"></b><span class="kh-line"></span></div></div>
+      <div class="kh-txt"><b class="kh-name"></b><span class="kh-line"></span></div><span class="kh-hub" hidden></span></div>
+    <div class="kh-log" role="log" aria-live="polite" aria-label="The conversation"></div>
     <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
     <form class="kh-type" hidden><input class="kh-in" autocomplete="off" enterkeyhint="send" aria-label="Type a message">
       <button type="submit" class="kh-send">Send</button></form>
@@ -33065,15 +33210,51 @@ function kioskStart(){
     if(typeof OFFICE_SCENE!=='undefined'&&OFFICE_SCENE.on)officeSceneResize();else officeSceneStart();
   }
   if(typeof suiSyncStruts==='function')suiSyncStruts();
+  addEventListener('resize',kioskSide);
+  kioskSide();
   kioskPaint();
+  kioskHistory();
   kioskListen();
   kioskNet(false);
+}
+/* A landscape screen gets the chat as a column on the right, the whole height, with the
+   conversation so far in it; the Office takes what is left. Asked for as "the Zero look and
+   feel has to be a big screen view of chat on the right". A tall or narrow screen keeps the
+   band at the bottom, where a column would leave the office a sliver. */
+function kioskSideWanted(){return innerWidth>=640&&innerWidth/Math.max(1,innerHeight)>=1.15}
+function kioskSide(){
+  if(!KIOSK.on)return;
+  const on=kioskSideWanted();
+  if(document.body.classList.contains('kiosk-side')===on&&KIOSK.sideW===innerWidth)return;
+  KIOSK.sideW=innerWidth;
+  document.body.classList.toggle('kiosk-side',on);
+  KIOSK.hudH=-1;kioskPaint();
+  if(typeof officeSceneResize==='function')officeSceneResize();
+}
+/* Today's conversation at this screen, so the column opens on what was said, not empty.
+   On a Zero the turns run on its hub; this is the screen's own copy of them. */
+async function kioskHistory(){
+  const cid=await kioskThread();if(!cid)return;
+  try{const d=await apiJSON('/api/conversations/'+encodeURIComponent(cid));
+    KIOSK.log=(d.messages||[]).filter(m=>m.role==='user'||m.role==='assistant')
+      .map(m=>({who:m.role==='user'?'you':'agent',text:String(m.content||'')})).slice(-KIOSK_LOG)}catch(e){KIOSK.log=[]}
+  kioskPaint();
+}
+var KIOSK_LOG=40;             // messages the column keeps on screen
+function kioskLogHTML(){
+  const face=typeof avatarImg==='function'?avatarImg('@agent','kh-lf'):'';
+  const rows=(KIOSK.log||[]).slice();
+  // the turn in flight: what was heard, and the answer as it arrives
+  if(KIOSK.busy){if(KIOSK.heard)rows.push({who:'you',text:KIOSK.heard});rows.push({who:'agent',text:KIOSK.reply||'',live:1})}
+  if(!rows.length)return `<p class="kh-empty">${esc(agentName())} is here. Say its name, or type below.</p>`;
+  return rows.map(r=>r.who==='you'?`<div class="kh-m you"><p>${esc(r.text)}</p></div>`
+    :`<div class="kh-m agent${r.live?' live':''}">${face}<p>${r.text?esc(r.text.slice(-4000)):'<i class="kh-dots"><b></b><b></b><b></b></i>'}</p></div>`).join('');
 }
 function kioskStop(){
   KIOSK.on=false;
   clearTimeout(KIOSK.netT);KIOSK.wifiOpen=false;
   kioskMicOff();
-  document.body.classList.remove('kiosk');
+  document.body.classList.remove('kiosk','kiosk-side');removeEventListener('resize',kioskSide);
   document.body.style.removeProperty('--kiosk-hud');KIOSK.hudH=0;
   const hud=document.getElementById('kiosk-hud');if(hud)hud.remove();
   if(KIOSK.cid&&typeof sinkOff==='function')sinkOff(KIOSK.cid);
@@ -33117,8 +33298,16 @@ function kioskPaint(){
   mic.className='kh-mic'+(KIOSK.muted?' off':'')+(KIOSK.talking?' live':'');
   mic.textContent=KIOSK.muted?'Mic off':(KIOSK.talking?'Hearing you':'Mic on');
   hud.dataset.phase=KIOSK.phase||'';
-  // the office ends where this band begins: measured, because the answer grows it
-  const band=Math.ceil(hud.getBoundingClientRect().height)+24;
+  const side=document.body.classList.contains('kiosk-side');
+  const lg=hud.querySelector('.kh-log');
+  if(lg&&side){const near=lg.scrollHeight-lg.scrollTop-lg.clientHeight<80,html=kioskLogHTML();
+    if(lg.innerHTML!==html){lg.innerHTML=html;if(near||KIOSK.busy)lg.scrollTop=lg.scrollHeight}}
+  // a Zero says where its words are worked: on its hub
+  const hb=hud.querySelector('.kh-hub'),hub=typeof zeroFace==='function'&&zeroFace()?zeroHub():'';
+  if(hb){hb.hidden=!hub;hb.textContent=hub?'◫ on '+hub:''}
+  // the office ends where this band begins: measured, because the answer grows it (a
+  // column on the right takes no height from it)
+  const band=side?0:Math.ceil(hud.getBoundingClientRect().height)+24;
   if(KIOSK.hudH!==band){KIOSK.hudH=band;document.body.style.setProperty('--kiosk-hud',band+'px');
     if(typeof officeSceneResize==='function')officeSceneResize()}
 }
@@ -33301,11 +33490,12 @@ async function kioskAsk(text){
   if(typeof ws==='undefined'||!ws||ws.readyState!==1){kioskSay('Not connected to the machine.','listening');return}
   const cid=await kioskThread();
   if(!cid){kioskSay('Could not start a conversation.','listening');return}
-  KIOSK.busy=true;kioskSay(agentName()+' is working…','working');
+  KIOSK.busy=true;KIOSK.heard=KIOSK.heard||text;kioskSay(agentName()+' is working…','working');
   sinkOn(cid,{
     delta:(t,all)=>{KIOSK.reply=all||((KIOSK.reply||'')+t);kioskPaint()},
     error:ev=>{KIOSK.busy=false;KIOSK.reply='';kioskSay(String(ev.message||'something went wrong'),'listening')},
     end:()=>{KIOSK.busy=false;const said=KIOSK.reply;
+      KIOSK.log=(KIOSK.log||[]).concat([{who:'you',text:text},{who:'agent',text:said||''}].filter(x=>x.text)).slice(-KIOSK_LOG);
       if(said.trim())kioskSpeak(said);else kioskSay('','listening')},
   });
   if(typeof voiceAddress==='function')text=voiceAddress(text);

@@ -46,6 +46,7 @@ from . import signin as signinmod
 from . import mail as mailmod
 from . import calendars as calendarsmod
 from . import usage as usagemod
+from . import fallback as fallbackmod
 from . import standby as standbymod
 from .agent import Agent
 from .mcp_client import MCP_AVAILABLE, MCPManager
@@ -727,6 +728,17 @@ async def _team_chat_sweep():
                     await _team_chat_push(lk)
 
 
+async def _tie_tell(ev: dict, owner: str) -> None:
+    """What another machine is doing here, to the screens of whoever it belongs to. A link the
+    MACHINE owns (a Pi installed from a terminal) on a hub with accounts belongs to no signed-in
+    person, so its Zero worked here with nobody's Office or map moving: the admins see it."""
+    if owner or not usersmod.enabled():
+        return await state["broadcast_user"](ev, owner)
+    for u in usersmod.list_users():
+        if usersmod.is_admin(u["id"]):
+            await state["broadcast_user"](ev, u["id"])
+
+
 async def _team_on_ask(lk: dict, req: dict) -> dict:
     """A request from a linked machine, answered in the account that owns the link —
     entered here, before anything is read, as the webhook route enters its owner.
@@ -748,7 +760,7 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
         # somebody at a Zero's screen: the turn runs here, in its section, kept here
         with usersmod.as_user(owner):
             async def tell(e):
-                await state["broadcast_user"](e, owner)
+                await _tie_tell(e, owner)
             return await state["fabric"].zero_chat(lk, req, say=tell)
     if req.get("op") == "zero_mind":
         # a Zero this machine set up reads and writes its own section of this home
@@ -760,7 +772,7 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
             return out
     with usersmod.as_user(owner):
         async def say(e):
-            await state["broadcast_user"]({"type": "agent_msg", "conversation_id": "", **e}, owner)
+            await _tie_tell({"type": "agent_msg", "conversation_id": "", **e}, owner)
         out = await state["fabric"].answer_linked(lk, req, say=say)
         if req.get("op") == "mission":
             # their mission was recorded (or forgotten) here: Settings repaints the list
@@ -3537,6 +3549,26 @@ async def api_brains(refresh: bool = False):
     # minutes on top of that — every surface asks this question, and on a small
     # machine spawning three processes per Settings repaint is felt.
     return await asyncio.to_thread(execmod.brains, cfg, models)
+
+
+@app.get("/api/brain/fallbacks")
+async def api_brain_fallbacks():
+    """The brains asked next when the lead's isn't available, in order (fallback.py)."""
+    cfg = state["cfg"]
+    return {"fallbacks": [{**fb, "words": fallbackmod.words(fb), "usable": fallbackmod.usable(cfg, fb)}
+                          for fb in fallbackmod.chain(cfg)], "max": fallbackmod.MAX}
+
+
+@app.put("/api/brain/fallbacks")
+async def api_brain_fallbacks_set(body: dict):
+    cfg = state["cfg"]
+    try:
+        got = fallbackmod.clean((body or {}).get("fallbacks") or [], cfg)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfg["brain_fallbacks"] = got
+    cfgmod.save_config(cfg)
+    return await api_brain_fallbacks()
 
 
 @app.put("/api/brain")
@@ -16863,6 +16895,10 @@ async def run_chat(cid: str, data: dict):
         return await _run_chat(cid, data)
 
 
+class _FallingBack(Exception):
+    """The turn goes to the next brain: nothing is saved for this one."""
+
+
 async def _run_chat(cid: str, data: dict):
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     turns = state["turns"]
@@ -16874,7 +16910,11 @@ async def _run_chat(cid: str, data: dict):
     # the person who started it, not to whoever else is signed in on the machine.
     owner = str(data.get("uid", "") or "")
 
+    turn_errors: list[str] = []      # what the turn said went wrong (fallback.unavailable reads it)
+
     async def evsend(ev: dict):
+        if ev.get("type") == "error":
+            turn_errors.append(str(ev.get("message") or ""))
         await state["broadcast_user"]({**ev, "conversation_id": cid}, owner)
 
     async def approver(name: str, args: dict, reason: str, offer: dict | None = None) -> bool:
@@ -16915,6 +16955,8 @@ async def _run_chat(cid: str, data: dict):
             return
     try:
         images = _chat_images(data)
+        # a turn asked again of a fallback brain: its message is already in the thread
+        retry = bool(data.get("_fallback_tried"))
         history, hinfo = await _history_for(cid, model)
         if hinfo.get("compacted"):
             # Never silent: a thread that has been summarised behaves differently
@@ -16923,11 +16965,12 @@ async def _run_chat(cid: str, data: dict):
             await evsend({"type": "status",
                           "message": f"earlier messages ({hinfo['compacted']}) summarised — "
                                      f"this conversation outgrew the model's context window"})
-        store.add_message(cid, "user", text, {"images": images} if images else None)
-        entry = {"role": "user", "content": text}
-        if images:
-            entry["images"] = images
-        history.append(entry)
+        if not retry:
+            store.add_message(cid, "user", text, {"images": images} if images else None)
+            entry = {"role": "user", "content": text}
+            if images:
+                entry["images"] = images
+            history.append(entry)
         store.touch_conversation(cid)
 
         # '@subagent task' addresses a team member directly — it runs INSIDE this chat,
@@ -16997,6 +17040,8 @@ async def _run_chat(cid: str, data: dict):
             if not avail.get("available"):
                 raise RuntimeError(avail.get("reason") or f"{ex_title} is not available")
             env = execmod.envelope_from(cfg, execmod.default_workspace(cfg), model)
+            if data.get("_exec_model"):
+                env.model = str(data["_exec_model"])     # a fallback that names its CLI's model
             # From the conversation row, not a dict on the server: a restart used to
             # drop every chat's executor session, so a machine that had been running
             # for a week came back with every conversation a stranger.
@@ -17295,11 +17340,25 @@ async def _run_chat(cid: str, data: dict):
     finally:
         if started:
             knowledge.turn_ended()
+        # Nothing answered because the brain wasn't available (a usage limit, a lapsed
+        # sign-in, a service down): the same message goes to the next brain on the person's
+        # list (fallback.py), and nothing empty is saved for this one.
+        fb_next, fb_tried = None, list(data.get("_fallback_tried") or [])
+        try:
+            said = (result.get("content") or "").strip()
+            if (not said or said.startswith("[error]")) and fallbackmod.unavailable(turn_errors + [said]):
+                fb_tried.append(fallbackmod.key(engine if engine != "aria" else "aria",
+                                                "" if engine != "aria" else model))
+                fb_next = fallbackmod.next_for(cfg, fb_tried)
+        except Exception:
+            fb_next = None
         # Saving the reply comes first and alone. Everything after it is
         # bookkeeping, and bookkeeping that throws must not be able to eat the
         # answer — which is exactly what happened when an UnboundLocalError below
         # skipped this call and left the bubble empty.
         try:
+            if fb_next:
+                raise _FallingBack()
             store.add_message(cid, "assistant", header + result["content"],
                               {"steps": result["steps"],
                                # a reloaded conversation must still say who answered
@@ -17332,10 +17391,23 @@ async def _run_chat(cid: str, data: dict):
                             space_id=_spacemod.active_for(cfg, _surface, store, cid))
             knowledge.schedule_extraction(cfg, store, cid, text, result["content"],
                                           state.get("broadcast"))
+        except _FallingBack:
+            pass
         except Exception as e:
             with contextlib.suppress(Exception):
                 store.log("error", f"turn persistence failed: {e}"[:400])
         turns.pop(cid, None)
+        if fb_next:
+            why = next((e for e in turn_errors if e.strip()), said)[:160]
+            with contextlib.suppress(Exception):
+                store.log("turn", f"{fb_tried[-1]} wasn't available ({why}); asked {fallbackmod.words(fb_next)}",
+                          {"conversation_id": cid, "fallback": fallbackmod.request(fb_next)})
+                await evsend({"type": "status", "message": f"{fb_tried[-1]} isn't available right now ({why}). "
+                                                           f"Asking {fallbackmod.words(fb_next)} instead…"})
+            turns[cid] = {"agent": None, "task": asyncio.current_task(), "model": "", "uid": owner}
+            return await _run_chat(cid, {**data, "model": fallbackmod.request(fb_next),
+                                         "_exec_model": fb_next.get("model") if fb_next["executor"] != "aria" else "",
+                                         "_fallback_tried": fb_tried})
         with contextlib.suppress(Exception):
             await evsend({"type": "turn_end"})
         # the slot is free: whatever the user queued and the agent left for later

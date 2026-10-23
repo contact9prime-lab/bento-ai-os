@@ -668,6 +668,14 @@ task is marked as coming from outside, so anything that needs a person goes to t
 screen there or is refused. The task and its answer are kept there as a chat titled
 `↔ <your team>: …`.
 
+On the side doing the work, their question arrives in the Office on paper at the desk of the
+agent it's for, with its words in a balloon, and the answer goes back out. In Chat it's under
+**From other machines**, opening with which team it came from and who asked.
+
+![The hub's Office as a linked team's question arrives at the lead's desk](screenshots/office-team-ask.png)
+
+![A linked team's thread in Chat: who asked, from which team, and the route to your agent](screenshots/chat-from-team.png)
+
 You can watch it happen. In Chat the hand-over and the answer appear under your message, in the
 Office a paper leaves the lead's desk for the other team and the answer comes back on paper, and
 on Telegram the exchange is in the comic strip after the reply. Every step is in the ledger on

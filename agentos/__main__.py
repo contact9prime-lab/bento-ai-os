@@ -5355,6 +5355,31 @@ def _ties_cli(rest):
         print("    " + " ".join(str(line).split())[:110])
 
 
+def _fallbacks_cli(spec: str):
+    """`bento brain fallbacks [LIST | clear]`: the brains asked next when the lead's isn't
+    available (fallback.py). LIST is comma-separated: claude-code,ollama/qwen3.5:9b,gemini-cli."""
+    from . import config as _cfgm
+    from . import fallback as fb
+    cfg = _cfgm.load_config()
+    if spec:
+        items = [] if spec == "clear" else [
+            {"executor": x.split("/", 1)[0] if "/" in x and x.split("/", 1)[0] in cfg.get("providers", {}) else x,
+             "model": x if "/" in x else ""} for x in (p.strip() for p in spec.split(",")) if x]
+        try:
+            cfg["brain_fallbacks"] = fb.clean(items, cfg)
+        except ValueError as e:
+            sys.exit(f"  ✗ {e}")
+        _cfgm.save_config(cfg)
+    chain = fb.chain(cfg)
+    if not chain:
+        print("  No fallbacks. If the lead's brain can't answer, the chat says why.")
+        print("  Add some:  bento brain fallbacks claude-code,ollama/qwen3.5:9b")
+        return
+    print("  If the lead's brain isn't available, these are asked in turn:")
+    for i, f in enumerate(chain, 1):
+        print(f"    {i}. {fb.words(f)}" + ("" if fb.usable(cfg, f) else "   (not on this machine right now, skipped)"))
+
+
 def _install_owner(name: str) -> str:
     """Whose a machine installed from this terminal is. Named with --for; else, on a machine
     whose accounts have ONE admin, that admin (the terminal has no sign-in, and a Pi left
@@ -8386,7 +8411,8 @@ def main():
     p_brain.add_argument("executor", nargs="?", help="ollama | openai | anthropic | google | "
                                                     "openrouter | custom | claude-code | gemini-cli | "
                                                     "codex | aria")
-    p_brain.add_argument("model", nargs="?", help="one of THAT executor's models; omit for its default")
+    p_brain.add_argument("model", nargs="?", help="one of THAT executor's models; omit for its default. "
+                                                  "`bento brain fallbacks a,b` sets the brains asked next")
 
     p_del = verb("delegate", help="hand a task to an executor (Claude Code) and stream it here")
     p_del.add_argument("prompt", nargs="+")
@@ -9072,6 +9098,8 @@ def main():
         usage_cmd(args)
     elif args.cmd == "forward":
         forward_cmd(args.engine)
+    elif args.cmd == "brain" and args.executor == "fallbacks":
+        _fallbacks_cli(args.model or "")
     elif args.cmd == "brain":
         brain_cmd(args.executor, args.model)
     elif args.cmd == "profile":

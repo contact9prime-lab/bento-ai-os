@@ -210,11 +210,16 @@ function setTab(body,all){
         {desc:'The AI that answers you, and the model it uses.',
          more:'Chat, the prompt bar, Telegram and scheduled jobs all use it. Changes apply right away.',
          f:'model default answers with picker which model refresh available executor engine brain'}),
+      pRow('If it isn’t available','<div id="s-fallbacks" class="fb-list"><span class="mut">…</span></div>',
+        {desc:'Asked next, in this order, when the one above can’t answer.',stack:true,
+         more:'A usage limit, a lapsed sign-in or a service that is down sends the same message to the next one. A turn you stopped, or one the rules refused, is never retried.',
+         f:'fallback fallbacks pool backup if not available next model brain order failover'}),
       pRow('Available', '<span id="s-model-count" class="mut">…</span>',
         {desc:'What your providers can run right now.',more:'Refresh after you pull a model or add a key.',
          f:'available models count refresh providers'}),
     ], {f:'model answering default'}));
     setTimeout(paintModelPicker, 0);      // the list is fetched, not part of cfg
+    setTimeout(paintFallbacks, 0);
     P.push(pGroup('Local',[
       pRow('Ollama base URL',pText('s-ollama-url',p.ollama.base_url,'http://localhost:11434'),
         {desc:'Models running on this machine. Private and free.',f:'ollama local base url'}),
@@ -1821,3 +1826,39 @@ async function permVerifyLedger(b){
   if(small)small.textContent=line;toast(line);
 }
 
+
+/* The brains asked next when the lead's isn't available (agentos/fallback.py). Each row is
+   one brain, picked from the same list as the picker above (tieBrainSelect's options), with
+   up, down and remove; changes save on the spot, like the picker. */
+var FB={rows:null};
+async function paintFallbacks(){
+  const box=document.getElementById('s-fallbacks');if(!box)return;
+  try{const [r]=await Promise.all([apiJSON('/api/brain/fallbacks'),typeof tieLists==='function'?tieLists():null]);
+    FB.rows=r.fallbacks||[];FB.max=r.max||4}catch(e){box.innerHTML=`<span class="mut">${esc(String(e.message||e))}</span>`;return}
+  const opt=(fb,i)=>(typeof tieBrainSelect==='function'?tieBrainSelect({label:'fb'+i,owner:'',brain:fb}):'')
+    .replace('data-tie="brain"','data-fb="'+i+'"').replace('<option value="">This machine’s brain</option>','<option value="">Choose…</option>');
+  box.innerHTML=(FB.rows.length?FB.rows.map((fb,i)=>`<div class="fb-row${fb.usable?'':' off'}"><span class="fb-n">${i+1}</span>${opt(fb,i)}
+      <button class="endbtn" data-fbup="${i}" ${i?'':'disabled'} aria-label="Move up" title="Move up">↑</button>
+      <button class="endbtn" data-fbx="${i}" aria-label="Remove" title="Remove">✕</button>
+      ${fb.usable?'':'<span class="fb-why mut">not on this machine right now, skipped</span>'}</div>`).join('')
+    :'<p class="mut fb-none">None yet. If the brain above can’t answer, you’ll see why.</p>')
+    +(FB.rows.length<FB.max?`<button class="endbtn fb-add" data-fbadd="1">＋ Add a fallback</button>`:'');
+  box.querySelectorAll('select[data-fb]').forEach(sel=>sel.onchange=()=>{const i=+sel.dataset.fb,[ex,...m]=sel.value.split('|');
+    if(!ex){FB.rows.splice(i,1)}else FB.rows[i]={executor:ex,model:m.join('|')};fbSave()});
+  box.querySelectorAll('[data-fbup]').forEach(b=>b.onclick=()=>{const i=+b.dataset.fbup;[FB.rows[i-1],FB.rows[i]]=[FB.rows[i],FB.rows[i-1]];fbSave()});
+  box.querySelectorAll('[data-fbx]').forEach(b=>b.onclick=()=>{FB.rows.splice(+b.dataset.fbx,1);fbSave()});
+  const add=box.querySelector('[data-fbadd]');
+  if(add)add.onclick=()=>{
+    // the first brain on this machine that is not already the lead or on the list
+    const have=new Set(FB.rows.map(r=>r.executor+'|'+r.model));
+    const pick=(TIES.brains||[]).filter(x=>x.available).flatMap(x=>x.engine==='aria'?(x.models||[]).map(m=>({executor:'aria',model:m.id})):[{executor:x.id,model:''}])
+      .find(c=>!have.has(c.executor+'|'+c.model)&&!(typeof CUR_ENGINE!=='undefined'&&CUR_ENGINE&&c.executor===CUR_ENGINE.engine));
+    if(!pick)return toast('Every brain on this machine is already on the list');
+    FB.rows.push(pick);fbSave()};
+}
+async function fbSave(){
+  const r=await fetch('/api/brain/fallbacks',{method:'PUT',headers:{'content-type':'application/json'},
+    body:JSON.stringify({fallbacks:FB.rows.map(x=>({executor:x.executor,model:x.model}))})}).then(x=>x.json()).catch(e=>({error:String(e)}));
+  if(r.error)toast('✗ '+r.error);
+  paintFallbacks();
+}

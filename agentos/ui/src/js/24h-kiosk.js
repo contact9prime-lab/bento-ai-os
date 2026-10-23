@@ -19,7 +19,7 @@
    SUI: the chrome is hidden, so suiChrome() gives the bands back (00-sui.js). */
 var KIOSK={on:false,cid:'',phase:'',line:'',heard:'',reply:'',follow:0,speaking:false,busy:false,
   stream:null,ctx:null,src:null,node:null,rec:null,chunks:[],pre:[],talking:false,quiet:0,started:0,
-  floor:0.004,sending:false,muted:false,net:null,nets:[],netT:0,wifiOpen:false,wifiPick:'',wifiBusy:false,wifiErr:''};
+  floor:0.004,sending:false,muted:false,net:null,nets:[],netT:0,wifiOpen:false,wifiPick:'',wifiBusy:false,wifiErr:'',log:[],sideW:0};
 var KIOSK_RATE=16000;          // what whisper.cpp and the OpenAI endpoint both want
 var KIOSK_FOLLOW_MS=20000;     // after an answer, no name needed for a follow-up
 var KIOSK_SILENCE_MS=900;      // a pause this long ends an utterance
@@ -47,7 +47,8 @@ function kioskStart(){
   let hud=document.getElementById('kiosk-hud');
   if(!hud){hud=document.createElement('div');hud.id='kiosk-hud';document.body.appendChild(hud)}
   hud.innerHTML=`<div class="kh-who">${typeof avatarImg==='function'?avatarImg('@agent','kh-face'):''}
-      <div class="kh-txt"><b class="kh-name"></b><span class="kh-line"></span></div></div>
+      <div class="kh-txt"><b class="kh-name"></b><span class="kh-line"></span></div><span class="kh-hub" hidden></span></div>
+    <div class="kh-log" role="log" aria-live="polite" aria-label="The conversation"></div>
     <div class="kh-heard" hidden></div><div class="kh-reply" hidden></div>
     <form class="kh-type" hidden><input class="kh-in" autocomplete="off" enterkeyhint="send" aria-label="Type a message">
       <button type="submit" class="kh-send">Send</button></form>
@@ -73,15 +74,51 @@ function kioskStart(){
     if(typeof OFFICE_SCENE!=='undefined'&&OFFICE_SCENE.on)officeSceneResize();else officeSceneStart();
   }
   if(typeof suiSyncStruts==='function')suiSyncStruts();
+  addEventListener('resize',kioskSide);
+  kioskSide();
   kioskPaint();
+  kioskHistory();
   kioskListen();
   kioskNet(false);
+}
+/* A landscape screen gets the chat as a column on the right, the whole height, with the
+   conversation so far in it; the Office takes what is left. Asked for as "the Zero look and
+   feel has to be a big screen view of chat on the right". A tall or narrow screen keeps the
+   band at the bottom, where a column would leave the office a sliver. */
+function kioskSideWanted(){return innerWidth>=640&&innerWidth/Math.max(1,innerHeight)>=1.15}
+function kioskSide(){
+  if(!KIOSK.on)return;
+  const on=kioskSideWanted();
+  if(document.body.classList.contains('kiosk-side')===on&&KIOSK.sideW===innerWidth)return;
+  KIOSK.sideW=innerWidth;
+  document.body.classList.toggle('kiosk-side',on);
+  KIOSK.hudH=-1;kioskPaint();
+  if(typeof officeSceneResize==='function')officeSceneResize();
+}
+/* Today's conversation at this screen, so the column opens on what was said, not empty.
+   On a Zero the turns run on its hub; this is the screen's own copy of them. */
+async function kioskHistory(){
+  const cid=await kioskThread();if(!cid)return;
+  try{const d=await apiJSON('/api/conversations/'+encodeURIComponent(cid));
+    KIOSK.log=(d.messages||[]).filter(m=>m.role==='user'||m.role==='assistant')
+      .map(m=>({who:m.role==='user'?'you':'agent',text:String(m.content||'')})).slice(-KIOSK_LOG)}catch(e){KIOSK.log=[]}
+  kioskPaint();
+}
+var KIOSK_LOG=40;             // messages the column keeps on screen
+function kioskLogHTML(){
+  const face=typeof avatarImg==='function'?avatarImg('@agent','kh-lf'):'';
+  const rows=(KIOSK.log||[]).slice();
+  // the turn in flight: what was heard, and the answer as it arrives
+  if(KIOSK.busy){if(KIOSK.heard)rows.push({who:'you',text:KIOSK.heard});rows.push({who:'agent',text:KIOSK.reply||'',live:1})}
+  if(!rows.length)return `<p class="kh-empty">${esc(agentName())} is here. Say its name, or type below.</p>`;
+  return rows.map(r=>r.who==='you'?`<div class="kh-m you"><p>${esc(r.text)}</p></div>`
+    :`<div class="kh-m agent${r.live?' live':''}">${face}<p>${r.text?esc(r.text.slice(-4000)):'<i class="kh-dots"><b></b><b></b><b></b></i>'}</p></div>`).join('');
 }
 function kioskStop(){
   KIOSK.on=false;
   clearTimeout(KIOSK.netT);KIOSK.wifiOpen=false;
   kioskMicOff();
-  document.body.classList.remove('kiosk');
+  document.body.classList.remove('kiosk','kiosk-side');removeEventListener('resize',kioskSide);
   document.body.style.removeProperty('--kiosk-hud');KIOSK.hudH=0;
   const hud=document.getElementById('kiosk-hud');if(hud)hud.remove();
   if(KIOSK.cid&&typeof sinkOff==='function')sinkOff(KIOSK.cid);
@@ -125,8 +162,16 @@ function kioskPaint(){
   mic.className='kh-mic'+(KIOSK.muted?' off':'')+(KIOSK.talking?' live':'');
   mic.textContent=KIOSK.muted?'Mic off':(KIOSK.talking?'Hearing you':'Mic on');
   hud.dataset.phase=KIOSK.phase||'';
-  // the office ends where this band begins: measured, because the answer grows it
-  const band=Math.ceil(hud.getBoundingClientRect().height)+24;
+  const side=document.body.classList.contains('kiosk-side');
+  const lg=hud.querySelector('.kh-log');
+  if(lg&&side){const near=lg.scrollHeight-lg.scrollTop-lg.clientHeight<80,html=kioskLogHTML();
+    if(lg.innerHTML!==html){lg.innerHTML=html;if(near||KIOSK.busy)lg.scrollTop=lg.scrollHeight}}
+  // a Zero says where its words are worked: on its hub
+  const hb=hud.querySelector('.kh-hub'),hub=typeof zeroFace==='function'&&zeroFace()?zeroHub():'';
+  if(hb){hb.hidden=!hub;hb.textContent=hub?'◫ on '+hub:''}
+  // the office ends where this band begins: measured, because the answer grows it (a
+  // column on the right takes no height from it)
+  const band=side?0:Math.ceil(hud.getBoundingClientRect().height)+24;
   if(KIOSK.hudH!==band){KIOSK.hudH=band;document.body.style.setProperty('--kiosk-hud',band+'px');
     if(typeof officeSceneResize==='function')officeSceneResize()}
 }
@@ -309,11 +354,12 @@ async function kioskAsk(text){
   if(typeof ws==='undefined'||!ws||ws.readyState!==1){kioskSay('Not connected to the machine.','listening');return}
   const cid=await kioskThread();
   if(!cid){kioskSay('Could not start a conversation.','listening');return}
-  KIOSK.busy=true;kioskSay(agentName()+' is working…','working');
+  KIOSK.busy=true;KIOSK.heard=KIOSK.heard||text;kioskSay(agentName()+' is working…','working');
   sinkOn(cid,{
     delta:(t,all)=>{KIOSK.reply=all||((KIOSK.reply||'')+t);kioskPaint()},
     error:ev=>{KIOSK.busy=false;KIOSK.reply='';kioskSay(String(ev.message||'something went wrong'),'listening')},
     end:()=>{KIOSK.busy=false;const said=KIOSK.reply;
+      KIOSK.log=(KIOSK.log||[]).concat([{who:'you',text:text},{who:'agent',text:said||''}].filter(x=>x.text)).slice(-KIOSK_LOG);
       if(said.trim())kioskSpeak(said);else kioskSay('','listening')},
   });
   if(typeof voiceAddress==='function')text=voiceAddress(text);

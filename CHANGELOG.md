@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.87 — 2026-10-23
+
+**Brains to fall back on.** Settings → AI providers has **If it isn't available** under the lead's
+brain: an ordered list of other brains. When Claude Code hits its usage limit, a sign-in lapses or a
+provider is down, the same message goes to the next one and the chat says so. A stopped turn or a
+refused one is never retried elsewhere. `bento brain fallbacks` sets them from a terminal.
+
+**The Zero's screen is a chat.** On a landscape screen the kiosk's chat is a column on the right,
+the full height, with the conversation so far, and the Office on the left. It says *◫ on* its hub.
+
+**Which machine said what, in Chat.** A Zero's or a linked team's conversations are under
+**From other machines** on the hub. Each opens with where it came from, and each message wears the
+machine and its route to your agent.
+
+**A Zero answers as itself.** Its chat runs on the hub, in its own name and with its own soul. On
+the real Pi, "Hi Mr Pi" came back from the hub's Aria.
+
+**Seeing a machine-owned Zero work.** A Pi installed from a terminal belongs to the machine, so
+its activity reached nobody's screen on a hub with accounts. The admins see it now.
+
+**Updating a Pi from the hub installs.** `bento network update` ran `bento update`, which only
+checks, and said "✓ 0.6.85 → 0.6.85". It now installs (`--apply`, without the test suite a Pi 3
+would take most of an hour over), says so when nothing was installed, and waits up to four minutes
+for a small machine to come back: the real Pi took two and a half.
+
 ## 0.6.86 — 2026-10-23
 
 **A Zero's chat runs on its hub.** A Pi set up from a hub used to run every chat turn itself and
