@@ -98,7 +98,7 @@ def test_a_waiting_update_keeps_the_page_the_server_started_with(monkeypatch):
 
 def test_a_pane_that_fails_says_why_and_keeps_its_button():
     hands = (JS / "11e-hands.js").read_text()
-    for route in ("/api/hands", "/api/agents", "/api/agents/graph"):
+    for route in ("/api/hands", "/api/agents", "/api/network/logical"):
         assert f"apiJSON('{route}')" in hands, f"{route} read with a bare .json() hangs on an old server"
     lst = hands.split("async function renderAgentsList(")[1].split("\n}")[0]
     fail = lst.split("catch(e){", 1)[1].split("return}", 1)[0]

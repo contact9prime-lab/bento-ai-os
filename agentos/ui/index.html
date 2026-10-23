@@ -6443,32 +6443,80 @@ body.kiosk-side #kf-strip{bottom:12px;right:calc(var(--kiosk-col) + 24px)}
 .tm-grants li.bad{color:var(--err)}
 .tp-seg{display:flex;align-items:center;gap:6px}
 .tp-seg .sp{flex:1}
-.tp-tree{overflow-x:auto;padding:4px 0}
-.tp-ul{list-style:none;margin:0;padding:0 0 0 18px;position:relative}
-.tp-ul.root{padding-left:0}
-.tp-li{position:relative;margin:6px 0}
-.tp-ul:not(.root)>.tp-li::before{content:"";position:absolute;left:-12px;top:0;bottom:-6px;border-left:1px solid color-mix(in srgb,var(--txt) 18%,transparent)}
-.tp-ul:not(.root)>.tp-li:last-child::before{bottom:auto;height:16px}
-.tp-ul:not(.root)>.tp-li::after{content:"";position:absolute;left:-12px;top:16px;width:10px;border-top:1px solid color-mix(in srgb,var(--txt) 18%,transparent)}
-.tp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.tp-node{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);color:var(--txt);font-size:var(--fs-sm)}
-.tp-node.company{background:color-mix(in srgb,var(--acc) 10%,var(--bg2))}
-.tp-node.dept{border-left:3px solid var(--dc,var(--acc))}
-.tp-node.person{cursor:pointer}
-.tp-node.person.head b::after{content:" ★";color:#fbbf24}
-.tp-about{max-width:40ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tp-ties{display:inline-flex;gap:4px;flex-wrap:wrap}
-.tp-tie{font-size:var(--fs-xs);padding:2px 8px;border-radius:999px;border:1px solid color-mix(in srgb,var(--acc) 40%,transparent);background:color-mix(in srgb,var(--acc) 12%,transparent)}
-.tp-tie.team{border-style:dashed}
-.tp-tie.off{opacity:.55}
-.tp-perm{margin:6px 0 4px 6px;padding:8px 10px;border-left:2px solid color-mix(in srgb,var(--acc) 50%,transparent);font-size:var(--fs-sm);display:flex;flex-direction:column;gap:4px}
-.tp-perm .ag-k{display:inline-block;min-width:90px;color:var(--dim)}
 .dev-views{margin:0 0 12px}
-body.dev-mobile .tp-node,body.dev-mobile .tm-to select,body.dev-mobile .tm-more{min-height:var(--tap)}
 body.dev-mobile .tm-to{width:100%}
 body.dev-mobile .tm-to select{max-width:none;flex:1}
-.tp-node.company{flex-wrap:wrap;max-width:100%}
-body.dev-mobile .tp-about{white-space:normal;max-width:100%;flex-basis:100%}
+/* The zoomable map (24s-zmap.js): a fixed window onto a radial tree. Its size never grows with
+   the team, and `contain:strict` keeps its repaints inside it: the sheet it replaced made the
+   whole desktop flicker. Colours come from the theme's tokens. */
+.zm-host{position:relative}
+.zm{position:relative;height:min(560px,68vh);min-height:340px;border:1px solid var(--line);border-radius:var(--r-md);
+  background:radial-gradient(circle at 50% 50%,color-mix(in srgb,var(--acc) 7%,var(--bg2)),var(--bg2) 70%);
+  overflow:hidden;contain:strict;touch-action:none;outline:none}
+.zm:focus-visible{box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 60%,transparent)}
+.zm-svg{position:absolute;inset:0;width:100%;height:100%;cursor:grab;user-select:none}
+.zm-svg:active{cursor:grabbing}
+.zm-e{fill:none;stroke:color-mix(in srgb,var(--txt) 18%,transparent);stroke-width:1.4}
+.zm-e.on{stroke:var(--acc);stroke-width:2.2}
+.zm-e.tie,.zm-e[class*="tie"]{stroke-dasharray:5 4;stroke:color-mix(in srgb,var(--acc) 45%,transparent)}
+.zm-n{cursor:pointer}
+.zm-c{fill:var(--bg3);stroke:var(--zc,color-mix(in srgb,var(--txt) 30%,transparent));stroke-width:1.6}
+.zm-n.lead .zm-c{stroke:var(--acc);stroke-width:2.6;fill:color-mix(in srgb,var(--acc) 22%,var(--bg3))}
+.zm-n.company .zm-c{fill:color-mix(in srgb,var(--acc) 14%,var(--bg3));stroke:color-mix(in srgb,var(--acc) 60%,transparent)}
+.zm-n.dept .zm-c{stroke:#fbbf24}
+.zm-n.group .zm-c{fill:color-mix(in srgb,var(--txt) 8%,var(--bg3))}
+.zm-n.head .zm-c{stroke:#fbbf24;stroke-width:2.4}
+.zm-n.tie .zm-c,.zm-n.device.zero .zm-c{stroke:var(--acc);stroke-dasharray:4 3}
+.zm-n.off .zm-c{opacity:.5;stroke:var(--err)}
+.zm-n.busy .zm-c{stroke:var(--ok);stroke-width:3}
+.zm-n.sel .zm-c{stroke:var(--acc);stroke-width:3.4}
+.zm-n:hover .zm-c,.zm-n:focus .zm-c{stroke:var(--acc)}
+.zm-n:focus{outline:none}
+.zm-ini{text-anchor:middle;fill:var(--txt);font-size:12px;font-weight:700;pointer-events:none}
+.zm-l{text-anchor:middle;fill:var(--txt);font-size:12px;font-weight:600;paint-order:stroke;stroke:var(--bg2);stroke-width:3px;pointer-events:none}
+.zm-s{text-anchor:middle;fill:var(--dim);font-size:10px;paint-order:stroke;stroke:var(--bg2);stroke-width:3px;pointer-events:none}
+.zm-badge circle{fill:var(--acc)}
+.zm-badge text{text-anchor:middle;fill:var(--on-acc,#fff);font-size:9px;font-weight:700}
+.zm-l.radial{font-size:11px;font-weight:500}
+.zm-far .zm-l.deeper{display:none}
+.zm-farther .zm-l.deep{display:none}
+.zm-n.sel .zm-l,.zm-n:hover .zm-l{display:inline}
+.zm-tools{position:absolute;top:8px;left:8px;right:8px;display:flex;gap:6px;align-items:center;pointer-events:none}
+.zm-tools>*{pointer-events:auto}
+.zm-q{flex:0 1 220px;min-height:32px;padding:5px 10px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg1,var(--bg));color:var(--txt)}
+.zm-b{min-width:34px;min-height:32px}
+.zm-hint{position:absolute;left:10px;bottom:6px;margin:0;font-size:11px;color:var(--dim);pointer-events:none}
+.zm-side{position:absolute;top:48px;right:8px;bottom:8px;width:300px;overflow:auto;padding:12px;border:1px solid var(--line);
+  border-radius:var(--r-md);background:color-mix(in srgb,var(--bg) 94%,transparent);font-size:var(--fs-sm)}
+.zm-crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px;color:var(--dim);margin-bottom:6px}
+.zm-crumb{background:none;border:0;padding:0;color:var(--acc);font-size:11px;cursor:pointer}
+.zm-h{display:flex;align-items:center;gap:6px}
+.zm-h b{font-size:var(--fs-base)}
+.zm-x{margin-left:auto;background:none;border:0;color:var(--dim);font-size:16px;min-width:32px;min-height:32px;cursor:pointer}
+.zm-sub{margin:4px 0 8px}
+.zm-rows{display:flex;flex-direction:column;gap:6px}
+.zm-rows .ag-k{display:inline-block;min-width:84px;color:var(--dim)}
+.zm-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.zm-kids{margin-top:10px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.zm-kid{border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--txt);padding:2px 9px;font-size:11px;cursor:pointer}
+.dm-wrap{margin-bottom:12px}
+/* a phone: the panel goes under the map, the controls are taps */
+body.dev-mobile .zm{height:62vh;min-height:320px}
+body.dev-mobile .zm-b,body.dev-mobile .zm-q,body.dev-mobile .zm-kid,body.dev-mobile .zm-x{min-height:var(--tap)}
+.zm.narrow .zm-side{top:auto;left:8px;right:8px;width:auto;max-height:38%}
+.zm-side:not([hidden])~.zm-hint{display:none}
+.dm-wrap .dm-legend{position:static;transform:none;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+.zm-e.ghost{stroke:color-mix(in srgb,var(--txt) 10%,transparent);stroke-width:1}
+.zm-e.up{stroke-dasharray:3 5;stroke:color-mix(in srgb,var(--txt) 30%,transparent)}
+.zm-n.dot .zm-c{fill:color-mix(in srgb,var(--txt) 35%,var(--bg3));stroke:none}
+.zm-n.dot{cursor:pointer}
+.zm-n.up .zm-c{fill:transparent;stroke-dasharray:3 3;stroke:color-mix(in srgb,var(--txt) 45%,transparent)}
+.zm-n.up .zm-l{fill:var(--dim);font-weight:500}
+.zm-l.big{font-size:14px;font-weight:700}
+.zm-tools{flex-wrap:wrap}
+.zm-q{min-width:0}
+.zm.narrow .zm-q{flex:1 1 120px}
+.zm-up[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -18855,7 +18903,7 @@ function setTab(body,all){
     setTimeout(talkLogPaint,0);
     P.push(`<div id="agents-list" data-f="agents specialists sub agents brain hands permissions skills soul new agent"><p class="mut">loading…</p></div>`);
     setTimeout(renderAgentsList,0);
-    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><div class="ghint">Every agent, what it thinks with, what it can reach and who it can ask. Tap an agent to see only its lines.</div><div id="agents-graph" class="agraph mut">loading…</div></div>`);
+    P.push(`<div class="pgroup" data-f="map graph permissions who may reach what agents brains hands teams missions"><h3>The map</h3><div class="ghint">Your lead, your companies and departments, and every agent. Tap anything to open it and see its permissions, or find it by name.</div><div id="agents-graph" class="zm-host" data-zm="agentsmap"><p class="mut">loading…</p></div></div>`);
     setTimeout(renderAgentsGraph,0);
 
     /* Sharing the agent belongs on the page that answers "who is my agent" —
@@ -21590,36 +21638,15 @@ async function agentEdit(name){
   openSAW(name||null,{onSaved:()=>{renderAgentsList();renderAgentsGraph()},onCancel:()=>{}});
 }
 
-/* ---------------- the map ---------------- */
-var AG_COLS={brain:0,team:0,mission:0,agent:1,hands:2,skill:3};
-var AG_EDGE={brain:'var(--acc)',hands:'color-mix(in srgb,var(--txt) 55%,transparent)',skill:'color-mix(in srgb,var(--txt) 35%,transparent)',
-  talk:'#4ade80',blocked:'#f87171',delegate:'#a78bfa',roster:'#fbbf24',link:'#60a5fa'};
+/* ---------------- the map ----------------
+   The zoomable map (24s-zmap.js) over topology.logical: the lead, companies, departments and
+   every agent, each opening to its executor, brain, tools, skills, permissions and missions.
+   It was every agent, brain, executor, skill and mission drawn at once: 2,448 curves on a
+   1034x2794 sheet on the owner's hub, unreadable, and it made the desktop flicker. */
 async function renderAgentsGraph(){
   const box=document.getElementById('agents-graph');if(!box)return;
-  let g;try{g=await apiJSON('/api/agents/graph')}catch(e){box.textContent='could not load the map: '+e.message;return}
-  box.classList.remove('mut');
-  const cols=[[],[],[],[]];g.nodes.forEach(n=>cols[AG_COLS[n.kind]??3].push(n));
-  const W=190,GX=70,GUT=60,H=46,GY=12,X=[0,W+GX+GUT,2*(W+GX)+GUT,3*(W+GX)+GUT];
-  const pos={};cols.forEach((c,i)=>c.forEach((n,j)=>pos[n.id]={x:X[i],y:j*(H+GY),col:i}));
-  const height=Math.max(...cols.map(c=>c.length*(H+GY)),H)+10,width=X[3]+W+4;
-  const f=AGENTS.focus;
-  const on=e=>!f||e.from===f||e.to===f;
-  const path=e=>{const a=pos[e.from],b=pos[e.to];if(!a||!b)return'';
-    const ay=a.y+H/2,by=b.y+H/2;
-    if(a.col===b.col){ // agent ↔ agent: an arc in the gutter to the left of the agents
-      const x=a.x,bend=Math.min(GUT-8,18+Math.abs(ay-by)/6);
-      return `M${x},${ay} C${x-bend},${ay} ${x-bend},${by} ${x},${by}`}
-    const [l,r]=a.col<b.col?[a,b]:[b,a],[ly,ry]=a.col<b.col?[ay,by]:[by,ay];
-    const x1=l.x+W,x2=r.x,mx=(x1+x2)/2;return `M${x1},${ly} C${mx},${ly} ${mx},${ry} ${x2},${ry}`};
-  box.innerHTML=`<div class="agraph-legend">${[['brain','thinks with'],['hands','works with'],['talk','may ask'],['blocked','may not ask'],['delegate','delegates'],['roster','mission roster'],['link','linked team'],['skill','knows']]
-      .map(([k,l])=>`<span><i style="background:${AG_EDGE[k]}"></i>${l}</span>`).join('')}${f?' <button class="endbtn" onclick="AGENTS.focus=\'\';renderAgentsGraph()">Show everyone</button>':''}</div>
-    <div class="agraph-scroll"><div class="agraph-canvas" style="width:${width}px;height:${height}px">
-    <svg width="${width}" height="${height}" aria-hidden="true">${g.edges.map(e=>`<path d="${path(e)}" fill="none" stroke="${AG_EDGE[e.kind]||'var(--line)'}" stroke-width="${e.kind==='brain'||e.kind==='hands'?2:1.5}" ${e.kind==='blocked'?'stroke-dasharray="4 3"':''} opacity="${on(e)?0.9:0.08}"><title>${esc(e.label)}</title></path>`).join('')}</svg>
-    ${g.nodes.map(n=>{const p=pos[n.id],dim=f&&n.id!==f&&!g.edges.some(e=>on(e)&&(e.from===n.id||e.to===n.id));
-      return `<button class="agn agn-${n.kind}${n.master?' lead':''}${f===n.id?' on':''}" style="left:${p.x}px;top:${p.y}px;width:${W}px;height:${H}px;opacity:${dim?0.3:1}" ${n.kind==='agent'?`onclick="AGENTS.focus=AGENTS.focus==='${esc(n.id)}'?'':'${esc(n.id)}';renderAgentsGraph()"`:'tabindex="-1"'} title="${esc(n.sub||'')}">
-        ${n.kind==='agent'?avatarImg(n.key,'av-tool'):''}<span class="agn-t"><b>${esc(n.label)}</b><small>${esc(n.kind==='agent'&&n.master?'lead agent':(n.sub||n.kind))}</small></span></button>`}).join('')}
-    </div></div>
-    <div class="agraph-cols mut"><span>Brains · teams · missions</span><span>Agents</span><span>Executors</span><span>Skills</span></div>`;
+  let tree;try{tree=await apiJSON('/api/network/logical')}catch(e){box.textContent='could not load the map: '+e.message;return}
+  zmMount(box,zmLogical(tree),{label:'Your agents'});
 }
 /* ================= Settings → Voice → Voice engine =================
    Which engine reads your agents aloud (agentos/speech.py). The browser's own voices
@@ -37547,9 +37574,9 @@ async function devViewSet(v){
   document.querySelectorAll('.dev-views [data-dv]').forEach(b=>{b.classList.toggle('on',b.dataset.dv===v);b.setAttribute('aria-selected',b.dataset.dv===v)});
   document.querySelectorAll('.dev-physical').forEach(x=>x.hidden=v!=='physical');
   const lg=[...document.querySelectorAll('.dev-logical')];lg.forEach(x=>x.hidden=v!=='logical');
-  if(v!=='logical'||!lg.length||typeof topoTreeHTML!=='function')return;
+  if(v!=='logical'||!lg.length)return;
   try{TOPO.tree=await apiJSON('/api/network/logical')}catch(e){lg.forEach(x=>x.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`);return}
-  lg.forEach(x=>{x.innerHTML=topoTreeHTML(TOPO.tree);topoTreeWire(x)});
+  lg.forEach(x=>{x.classList.add('zm-host');x.dataset.zm='devlogical';zmMount(x,zmLogical(TOPO.tree),{label:'The logical map'})});
 }
 
 /* Events: what happened to the machines here, newest first (devevents.py). Asked for as "in the
@@ -37592,59 +37619,14 @@ function devEventLive(ev){
    now (a Zero's chat run here, zero_work) glows and says so. Tapping a node opens its row below.
    Positions are percentages, so it fits any width; faces are painted here from recipes. */
 var DEVMAP={busy:{}};
+/* The device map is the zoomable map (24s-zmap.js) over the same rows and ties as the list:
+   this computer in the middle, then Zeros, linked teams, Bento machines and the other devices,
+   each a group you open. It used to be every machine at once, on rings. */
 function devMapHTML(v){
-  const rows=(v.rows||[]).filter(r=>!r.ignored),ties=(v.ties||[]).filter(t=>!t.stale);
-  const old=(v.ties||[]).length-ties.length;
-  const tied=new Set();
-  const nodes=[],lines=[];
-  // one node per live tie; the machine row it is on (by link label) is folded into it
-  const zeros=ties.filter(t=>t.kind==='zero'),teams=ties.filter(t=>t.kind!=='zero');
-  const rowOf=t=>rows.find(r=>(r.links||[]).some(l=>l.label===t.label));
-  ties.forEach(t=>{const r=rowOf(t);if(r)tied.add(r.key)});
-  const machines=rows.filter(r=>!tied.has(r.key)&&r.bento!=='none'&&r.bento!=='removed').slice(0,8);
-  const rest=rows.filter(r=>!tied.has(r.key)&&!machines.includes(r));
-  const pos=(i,n,rx,ry,off)=>{const a=-Math.PI/2+(off||0)+2*Math.PI*i/Math.max(n,1);
-    return [50+rx*Math.cos(a),50+ry*Math.sin(a)]};
-  const line=(x,y,cls)=>{const at=t=>[(50+(x-50)*t).toFixed(2),(50+(y-50)*t).toFixed(2)];
-    const [ax,ay]=at(.17),[bx,by]=at(.8);
-    lines.push(`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" class="${cls}"/>`)};
-  const node=(x,y,o)=>{
-    nodes.push(`<button class="dm-n ${o.kind} ${o.st}${DEVMAP.busy[o.label]?' busy':''}${y<50?' above':''}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%"
-        data-dm="${esc(o.go)}" data-dmk="${esc(o.key)}" data-dmlabel="${esc(o.label||'')}" aria-label="${esc(o.aria)}">
-      <span class="dm-ring">${o.face}<i class="dm-st" aria-hidden="true"></i></span>
-      <span class="dm-lab"><span class="dm-tag">${esc(o.tag)}</span><b>${esc(o.name)}</b><span class="dm-sub">${esc(o.sub)}</span></span>
-      <span class="dm-say" aria-live="polite">${esc(DEVMAP.busy[o.label]||'')}</span></button>`)};
-  const tieNode=(t,x,y)=>{const st=tieState(t),r=rowOf(t);
-    line(x,y,`${t.kind} ${st.cls}`);
-    node(x,y,{kind:t.kind,st:st.cls,label:t.label,go:'tie',key:tieKey(t),face:tieFace(t,'dm-face'),
-      tag:t.kind==='zero'?'ZERO':t.kind==='account'?'ACCOUNT':'TEAM',name:(t.agent||{}).name||t.peer,
-      sub:t.peer+(t.answering===false?' · not answering':''),aria:`${tieKindWord(t)} ${t.peer}, ${st.word}`})};
-  zeros.forEach((t,i)=>{const [x,y]=pos(i,zeros.length,29,33,-.55);tieNode(t,x,y)});
-  teams.forEach((t,i)=>{const [x,y]=pos(i,teams.length,40,38,.6);tieNode(t,x,y)});
-  machines.forEach((r,i)=>{const [x,y]=pos(i,machines.length,34,35,1.4),ag=r.agent||{},cs=((r.controls||{}).state)||{};
-    const st=cs.running===true?'up':cs.running===false?'down':'';
-    line(x,y,'machine '+st);
-    node(x,y,{kind:'machine',st,label:'',go:'machine',key:r.key,
-      face:ag.look&&Object.keys(ag.look).length?avatarRecipeImg(ag.look,'dm-face',ag.name||'')
-        :`<span class="dm-face devmap-initial">${esc((ag.name||r.display||'?').slice(0,1).toUpperCase())}</span>`,
-      tag:r.bento==='waiting'?'WAITING':'BENTO',name:ag.name||'Bento',sub:r.display,aria:`${ag.name?ag.name+' on ':''}${r.display}`})});
-  rest.forEach((r,i)=>{const [x,y]=pos(i,rest.length,47,46,Math.PI/rest.length);
-    nodes.push(`<span class="dm-dot" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" title="${esc(r.display+(r.ip&&r.ip!==r.display?' · '+r.ip:''))}"></span>`)});
-  const me=v.me||{},meFace=typeof avatarImg==='function'?avatarImg('@agent','dm-face'):'';
-  const n=k=>ties.filter(t=>t.kind===k).length;
-  return `<div class="dm" role="img" aria-label="Map of the machines and teams tied to this computer">
-    <svg class="dm-bg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      <ellipse cx="50" cy="50" rx="29" ry="33"/><ellipse cx="50" cy="50" rx="40" ry="38"/><ellipse cx="50" cy="50" rx="47" ry="46"/>
-      ${lines.join('')}</svg>
-    ${nodes.join('')}
-    <div class="dm-n dm-me" style="left:50%;top:50%"><span class="dm-ring">${meFace}</span>
-      <span class="dm-lab"><span class="dm-tag">HUB</span><b>${esc(me.agent||'Your agent')}</b><span class="dm-sub">${esc(me.name||'this computer')}</span></span></div>
+  const ties=(v.ties||[]).filter(t=>!t.stale),n=k=>ties.filter(t=>t.kind===k).length;
+  return `<div class="dm-wrap"><div class="zm-host dm-zm" data-zm="devphysical"></div>
     <div class="dm-legend"><span class="zero"><i></i>Zero ${n('zero')}</span><span class="team"><i></i>Team ${n('team')+n('account')}</span>
-      ${machines.length?`<span class="machine"><i></i>Bento ${machines.length}</span>`:''}<span class="off"><i></i>not answering</span>
-      ${rest.length?`<span class="dot"><i></i>${rest.length} other machine${rest.length===1?'':'s'}</span>`:''}
-      ${old?`<span class="old"><i></i>${old} old link${old===1?'':'s'} to remove below</span>`:''}</div>
-    ${!ties.length&&!machines.length?`<p class="dm-empty">Nothing is tied to this computer yet. Install Bento on a machine below, or link a team.</p>`:''}
-  </div>`;
+      <span class="off"><i></i>not answering</span></div></div>`;
 }
 /* A node working right now: a Zero's chat run here (fabric.zero_chat broadcasts zero_work). */
 function devMapPulse(ev){
@@ -37654,15 +37636,11 @@ function devMapPulse(ev){
   devMapMark(k);
 }
 function devMapMark(k){
-  document.querySelectorAll(`.dm-n[data-dmlabel="${CSS.escape(k)}"]`).forEach(n=>{
-    n.classList.toggle('busy',!!DEVMAP.busy[k]);const s=n.querySelector('.dm-say');if(s)s.textContent=DEVMAP.busy[k]||''});
+  if(typeof NET==='undefined'||!NET.v)return;
+  document.querySelectorAll('.dm-zm').forEach(h=>zmMount(h,zmPhysical(NET.v),{label:'The device map'}));
 }
 function devMapWire(box){
-  box.querySelectorAll('.dm-n[data-dm]').forEach(n=>n.onclick=()=>{
-    if(n.dataset.dm==='tie'){TIES.open=n.dataset.dmk;TIES.view=null;
-      tieLists().then(()=>netPaint()).then(()=>{const t=document.querySelector(`.devhub-box .tie[data-tiekey="${CSS.escape(n.dataset.dmk)}"]`);
-        if(t)t.scrollIntoView({block:'start',behavior:'smooth'})})}
-    else devMapGo(n.dataset.dmk)});
+  box.querySelectorAll('.dm-zm').forEach(h=>{if(typeof NET!=='undefined'&&NET.v)zmMount(h,zmPhysical(NET.v),{label:'The device map'})});
 }
 function devMapGo(key){
   NET.open=key;NET.mode='controls';NET.more='';
@@ -37918,6 +37896,7 @@ async function tieUpdate(label,owner,el){
   const r=await fetch(`/api/network/ties/${encodeURIComponent(label)}/update`,{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({owner:owner||''})}).then(x=>x.json()).catch(e=>({error:String(e)}));
   if(r.error){toast('✗ '+r.error);if(el){el.disabled=false;el.textContent='Update'}return}
+  if(r.current){toast(`✓ ${r.said||label+' is already up to date'}`);if(el){el.disabled=false;el.textContent='Update'}return}
   toast(`✓ ${label} is updating. It restarts on its own, and a Pi takes a few minutes.`);
   if(el)el.textContent='Updating…';
   setTimeout(()=>{TIES_PROBED=0;if(typeof tiesProbeSoon==='function')tiesProbeSoon()},240000);
@@ -38211,57 +38190,309 @@ async function topoSetTarget(sel){
   TOPO.tree=null;await topoMappingPaint();topoMapsPaint();
 }
 
-/* ---- the maps ---- */
+/* ---- the maps: one zoomable view for both (24s-zmap.js) ---- */
 async function topoMapsPaint(){
   const box=document.getElementById('s-net-maps');if(!box)return;
-  try{TOPO.tree=await apiJSON('/api/network/logical')}catch(e){box.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`;return}
   const v=TOPO.view;
-  box.innerHTML=`<div class="seg tp-seg" role="tablist">${[['logical','Logical'],['physical','Physical']].map(([k,l])=>
-      `<button role="tab" class="${v===k?'on':''}" aria-selected="${v===k}" data-tp="${k}">${l}</button>`).join('')}
-      <span class="sp"></span><button class="endbtn" onclick="topoOpen('${v}')">Open it full</button></div>
-    <p class="ghint">${v==='logical'?'Your lead, your companies, their departments and people, and who each Zero and team talks to. Tap anyone to see their permissions.'
-      :'The devices this hub is connected to: Zeros, linked teams and the rest of your network.'}</p>
-    <div class="tp-body">${v==='logical'?topoTreeHTML(TOPO.tree):((typeof NET!=='undefined'&&NET.v&&typeof devMapHTML==='function')?devMapHTML(NET.v):'<p class="mut">The device map needs an admin: it names the machines on this network.</p>')}</div>`;
-  box.querySelectorAll('[data-tp]').forEach(b=>b.onclick=()=>{TOPO.view=b.dataset.tp;topoMapsPaint()});
-  topoTreeWire(box);
-  if(v==='physical'&&typeof devMapWire==='function')devMapWire(box);
+  if(!box.querySelector('.tp-seg')){
+    box.innerHTML=`<div class="seg tp-seg" role="tablist">${[['logical','Logical'],['physical','Physical']].map(([k,l])=>
+        `<button role="tab" data-tp="${k}">${l}</button>`).join('')}<span class="sp"></span>
+        <button class="endbtn" data-tp-open="1">Open it full</button></div>
+      <p class="ghint tp-hint"></p><div class="tp-map zm-host"></div>`;
+    box.querySelectorAll('[data-tp]').forEach(b=>b.onclick=()=>{TOPO.view=b.dataset.tp;topoMapsPaint()});
+    box.querySelector('[data-tp-open]').onclick=()=>topoOpen(TOPO.view);
+  }
+  box.querySelectorAll('[data-tp]').forEach(b=>{b.classList.toggle('on',b.dataset.tp===v);b.setAttribute('aria-selected',b.dataset.tp===v)});
+  box.querySelector('.tp-hint').textContent=v==='logical'?'Your lead, your companies and their departments, and who each Zero and team talks to. Tap anything to open it.'
+    :'The devices this hub is connected to. Tap a group to open it.';
+  const host=box.querySelector('.tp-map');
+  // a different map in the same place starts fresh
+  if(host.dataset.zmv!==v){host.dataset.zmv=v;host.innerHTML='';host.dataset.zm='net'+v}
+  try{
+    if(v==='logical'){TOPO.tree=await apiJSON('/api/network/logical');zmMount(host,zmLogical(TOPO.tree),{label:'The logical map'})}
+    else{const nv=(typeof NET!=='undefined'&&NET.v)||await apiJSON('/api/network');zmMount(host,zmPhysical(nv),{label:'The device map'})}
+  }catch(e){host.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`}
 }
 function topoOpen(view){
   try{localStorage.setItem('devices.view',view)}catch(e){}
   openApp('devices');setTimeout(()=>{if(typeof devViewSet==='function')devViewSet(view)},500);
 }
-function topoTieChips(ts){
-  return (ts||[]).map(x=>`<span class="tp-tie ${esc(x.kind||'team')}${x.answering===false?' off':''}" title="${esc(x.label)} talks to this">${x.kind==='zero'?'◫':'⇄'} ${esc(x.label)}${x.missing?' · '+esc(x.missing)+' is gone':''}</span>`).join('');
+/* ---------------- One zoomable map: the agents, the logical map and the device map ----------------
+   Reported with a screenshot of the Agents map ("not making any sense, too cluttered … make it
+   intuitive: zoom out to see things, zoom in to see more, click a node or search to go further")
+   and as "the desktop is flickering like crazy". Both had one cause: the Agents map drew every
+   agent, brain, executor, skill and mission at once, 2,448 curves on a 1034x2794 sheet inside a
+   blurred window, which Chrome re-tiles on every scroll. Measured on a copy of the owner's hub.
+
+   So the three maps (Settings → Agents, Network & Teams → Maps, Devices) are this one view, and it
+   is a map you move through rather than a sheet you squint at:
+   - ONE PLACE AT A TIME. What you are looking at sits in the middle; what is inside it is on the
+     ring around it; what is inside those shows as small dots beyond, so you can see where there is
+     more. The level above is one "↑" node, and the trail in the panel goes back further. A first
+     radial tree of everything still piled up on the owner's 47 agents; a focus never does.
+   - Tap moves in (and says everything about it in the panel: permissions, tools, address, with the
+     doors that act on it). ↑, Fit after zooming out, or the trail moves out. Search goes straight
+     to anything, and opens the place it is in.
+   - Zoom moves things apart and keeps the markers a size you can read; drag to move.
+   - A fixed-size window (contain:strict), so its cost never grows with the team.
+   The data is the same answers as before (topology.logical, /api/network); nothing is decided here.
+   `var`/functions only: the bundle is one script. */
+var ZM={};          // host id -> {root, focus, sel, k, x, y, L}
+var ZM_SIZE=[32,21,6];
+var ZM_GAP=58;       // arc each node on the ring needs, in map pixels
+
+function zmFlat(n,out,path){out=out||[];path=path||[];out.push({n,path});(n.children||[]).forEach(c=>zmFlat(c,out,path.concat(n)));return out}
+function zmFind(st,nid){return zmFlat(st.root).find(x=>x.n.id===nid)}
+
+function zmMount(host,root,o){
+  if(!host)return;
+  o=o||{};
+  const id=host.dataset.zm||(host.dataset.zm='zm'+Math.random().toString(36).slice(2,8));
+  const prev=ZM[id];
+  const keep=x=>prev&&x&&zmFlat(root).some(y=>y.n.id===x)?x:'';
+  ZM[id]={root,focus:keep(prev&&prev.focus)||root.id,sel:keep(prev&&prev.sel),k:prev?prev.k:1,x:prev?prev.x:0,y:prev?prev.y:0,o};
+  if(!host.querySelector('.zm')){
+    host.innerHTML=`<div class="zm" tabindex="0" aria-label="${esc(o.label||'Map')}">
+      <svg class="zm-svg" role="img" aria-label="${esc(o.label||'Map')}"><g class="zm-cam"></g></svg>
+      <div class="zm-tools"><input class="zm-q" type="search" placeholder="Find…" aria-label="Find on the map" list="${id}-names">
+        <datalist id="${id}-names"></datalist>
+        <button class="endbtn zm-b" data-zmb="in" aria-label="Zoom in">＋</button><button class="endbtn zm-b" data-zmb="out" aria-label="Zoom out">−</button>
+        <button class="endbtn zm-b" data-zmb="fit">Fit</button><button class="endbtn zm-b zm-up" data-zmb="up" hidden></button></div>
+      <aside class="zm-side" hidden></aside>
+      <p class="zm-hint">Tap to go in · ↑ goes back · drag to move · scroll to zoom</p></div>`;
+    zmWire(host,id);
+  }
+  zmPaint(host,id);
+  if(!prev)zmFit(host,id,true);
 }
-function topoPersonHTML(p,path){
-  const on=!!TOPO.open['p:'+path];
+
+/* The focus in the middle, its children on a ring big enough for all of them, their children as
+   dots just outside each one, and the level above as one node off to the side. */
+function zmLayout(st){
+  const pos={},vis=[],edges=[];
+  const hit=zmFind(st,st.focus)||{n:st.root,path:[]};
+  const f=hit.n,kids=f.children||[];
+  pos[f.id]={x:0,y:0,d:0,n:f,a:0};vis.push(f.id);
+  const R1=Math.max(kids.length<=6?125:170,kids.length*ZM_GAP/(2*Math.PI));
+  kids.forEach((c,i)=>{
+    const a=-Math.PI/2+2*Math.PI*i/Math.max(kids.length,1);
+    pos[c.id]={x:Math.cos(a)*R1,y:Math.sin(a)*R1,d:1,n:c,a};vis.push(c.id);edges.push([f.id,c.id,c.kind]);
+    // the dots that say "there is more here": only on a ring with room for them
+    const g=kids.length>10?[]:c.children||[],span=Math.min(2*Math.PI/Math.max(kids.length,1)*0.8,0.9),R2=R1+70;
+    g.slice(0,24).forEach((gc,j)=>{const b=a+(g.length>1?(j/(Math.min(g.length,24)-1)-.5)*span:0);
+      pos[gc.id]={x:Math.cos(b)*R2,y:Math.sin(b)*R2,d:2,n:gc,a:b};vis.push(gc.id);edges.push([c.id,gc.id,'ghost'])});
+  });
+  return {pos,vis,edges,up:hit.path[hit.path.length-1]||null};
+}
+
+function zmPaint(host,id){
+  const st=ZM[id],cam=host.querySelector('.zm-cam');if(!cam)return;
+  const L=zmLayout(st);st.L=L;
+  // up to ten on a ring, each name sits under its marker; a crowded ring turns them outward
+  L.crowded=L.vis.filter(v=>L.pos[v].d===1&&!L.pos[v].up).length>10;
+  const P=L.pos;
+  const edge=([a,b,k])=>{const A=P[a],B=P[b];if(!A||!B)return'';
+    return `<line class="zm-e ${esc(k||'')}${st.sel&&(a===st.sel||b===st.sel)?' on':''}" x1="${A.x.toFixed(1)}" y1="${A.y.toFixed(1)}" x2="${B.x.toFixed(1)}" y2="${B.y.toFixed(1)}"/>`};
+  const node=nid=>{const p=P[nid],n=p.n,kids=(n.children||[]).length;
+    if(p.d===2)return `<g class="zm-n dot ${esc(n.kind||'')}" data-zid="${esc(n.id)}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})"><circle class="zm-c" r="${ZM_SIZE[2]}"><title>${esc(n.label)}</title></circle></g>`;
+    const r=ZM_SIZE[p.d]*(p.up?0.8:1);
+    const img=n.img&&!p.up?`<clipPath id="${id}-c-${zmSafe(n.id)}"><circle r="${r-3}"/></clipPath><image href="${esc(n.img)}" x="${-r+3}" y="${-r+3}" width="${2*r-6}" height="${2*r-6}" clip-path="url(#${id}-c-${zmSafe(n.id)})" preserveAspectRatio="xMidYMin slice"/>`
+      :`<text class="zm-ini" dy=".35em">${esc(p.up?'↑':(n.glyph||String(n.label||'?').slice(0,1).toUpperCase()))}</text>`;
+    // names go outward from the middle, so a full ring of them never runs into its neighbours
+    let lab;
+    if(p.d===1&&!p.up&&(L.crowded)){
+      const deg=p.a*180/Math.PI,left=Math.cos(p.a)<-0.01,rot=left?deg+180:deg,vert=Math.abs(Math.cos(p.a))<0.35;
+      lab=vert?`<text class="zm-l" y="${Math.sin(p.a)>0?r+14:-r-8}">${esc(String(n.label||'').slice(0,26))}</text>`
+        :`<text class="zm-l" transform="rotate(${rot.toFixed(1)})" x="${left?-(r+6):r+6}" dy=".35em" text-anchor="${left?'end':'start'}">${esc(String(n.label||'').slice(0,26))}</text>`;
+    }else{
+      lab=`<text class="zm-l${p.d===0?' big':''}" y="${r+15}">${esc(p.up?'Back to '+String(n.label||'').slice(0,22):String(n.label||'').slice(0,30))}</text>`
+        +(n.sub&&p.d===0?`<text class="zm-s" y="${r+29}">${esc(String(n.sub).slice(0,48))}</text>`:'');
+    }
+    const badge=kids&&p.d===1?`<g class="zm-badge" transform="translate(${(r*.75).toFixed(1)},${(-r*.75).toFixed(1)})"><circle r="9"/><text dy=".35em">${kids>99?'99+':kids}</text></g>`:'';
+    return `<g class="zm-n d${p.d} ${p.up?'up ':''}${esc(n.kind||'')} ${esc(n.st||'')}${st.sel===n.id?' sel':''}${kids?' has':''}" data-zid="${esc(n.id)}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})" tabindex="0" role="button" aria-label="${esc(p.up?'Back to '+n.label:(n.kindWord?n.kindWord+' ':'')+n.label+(kids?', '+kids+' inside':''))}">
+      <circle class="zm-c" r="${r}" style="${n.color?'--zc:'+esc(n.color):''}"/>${img}${badge}${lab}</g>`};
+  cam.innerHTML=L.edges.map(edge).join('')+L.vis.map(node).join('');
+  // the way back out is a button in the toolbar, so the frame only has to hold the place itself
+  const ub=host.querySelector('.zm-up');
+  if(ub){ub.hidden=!L.up;if(L.up){ub.textContent='↑ '+String(L.up.label).slice(0,24);ub.dataset.up=L.up.id;
+    ub.setAttribute('aria-label','Back to '+L.up.label)}}
+  zmCam(host,id);
+  const dl=host.querySelector('datalist');
+  if(dl&&!dl.dataset.done){dl.dataset.done=1;dl.innerHTML=zmFlat(st.root).map(x=>`<option value="${esc(x.n.label)}">`).join('')}
+  zmSide(host,id);
+}
+function zmSafe(s){return String(s).replace(/[^a-z0-9_-]/gi,'_')}
+function zmCam(host,id){
+  const st=ZM[id],svg=host.querySelector('.zm-svg'),cam=host.querySelector('.zm-cam');if(!svg||!cam)return;
+  const w=svg.clientWidth||600,h=svg.clientHeight||400;
+  cam.setAttribute('transform',`translate(${(w/2+st.x).toFixed(1)},${(h/2+st.y).toFixed(1)}) scale(${st.k.toFixed(3)})`);
+  host.querySelector('.zm')?.classList.toggle('narrow',w<760);
+  // like a map: zooming moves places apart, the markers and their names keep a size you can read
+  // (never under about half their size, or a small window piles them up again)
+  const s=Math.max(0.65,Math.min(1.4,st.k))/st.k;
+  if(st.L)cam.querySelectorAll('.zm-n').forEach(g=>{const p=st.L.pos[g.dataset.zid];
+    if(p)g.setAttribute('transform',`translate(${p.x.toFixed(1)},${p.y.toFixed(1)}) scale(${s.toFixed(3)})`)});
+}
+/* Frame what is shown, in the room the panel leaves (beside it when wide, above it when narrow). */
+function zmFit(host,id,now){
+  const st=ZM[id],svg=host.querySelector('.zm-svg');if(!svg||!st.L)return;
+  const ps=Object.values(st.L.pos);if(!ps.length)return;
+  const w=svg.clientWidth||600,h=svg.clientHeight||400,wide=w>=760,panel=!!st.sel;
+  const xs=ps.map(p=>p.x),ys=ps.map(p=>p.y);
+  const bw=Math.max(...xs)-Math.min(...xs)+220,bh=Math.max(...ys)-Math.min(...ys)+170;
+  const aw=w-(panel&&wide?320:0),ah=(panel&&!wide?h*0.6:h)-50;
+  const k=Math.max(0.3,Math.min(1.3,Math.min(aw/bw,ah/bh)));
+  const to={k,x:-((Math.max(...xs)+Math.min(...xs))/2)*k-(panel&&wide?160:0),y:-((Math.max(...ys)+Math.min(...ys))/2)*k+25-(panel&&!wide?h*0.19:0)};
+  zmAnimate(host,id,to,now);
+}
+function zmAnimate(host,id,to,now){
+  const st=ZM[id],t0=performance.now(),from={k:st.k,x:st.x,y:st.y};
+  const reduce=now||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const step=t=>{const f=reduce?1:Math.min(1,(t-t0)/300),e=1-Math.pow(1-f,3);
+    st.k=from.k+(to.k-from.k)*e;st.x=from.x+(to.x-from.x)*e;st.y=from.y+(to.y-from.y)*e;zmCam(host,id);
+    if(f<1)requestAnimationFrame(step)};
+  if(reduce)step(t0+1);else requestAnimationFrame(step);
+}
+/* Go to a node: a place with things in it becomes the middle; a thing on its own is shown where it
+   is, with its panel. "↑" goes back up. */
+function zmSelect(host,id,nid){
+  const st=ZM[id];
+  if(String(nid).startsWith('↑')){const up=nid.slice(1);st.focus=up;st.sel=up;zmPaint(host,id);zmFit(host,id);return}
+  const hit=zmFind(st,nid);if(!hit)return;
+  if((hit.n.children||[]).length)st.focus=nid;
+  else st.focus=(hit.path[hit.path.length-1]||st.root).id;
+  st.sel=nid;zmPaint(host,id);zmFit(host,id);
+}
+function zmSide(host,id){
+  const st=ZM[id],side=host.querySelector('.zm-side');if(!side)return;
+  const hit=st.sel&&zmFlat(st.root).find(x=>x.n.id===st.sel);
+  if(!hit){side.hidden=true;return}
+  const n=hit.n;side.hidden=false;
+  side.innerHTML=`<div class="zm-crumbs">${hit.path.map(a=>`<button class="zm-crumb" data-zgo="${esc(a.id)}">${esc(a.label)}</button>`).join('<span>›</span>')}</div>
+    <div class="zm-h"><b>${esc(n.label)}</b>${n.kindWord?` <span class="brainchip">${esc(n.kindWord)}</span>`:''}<button class="zm-x" aria-label="Close">✕</button></div>
+    ${n.sub?`<p class="mut zm-sub">${esc(n.sub)}</p>`:''}
+    <div class="zm-detail">${typeof n.detail==='function'?n.detail():n.detail||''}</div>
+    ${(n.children||[]).length?`<div class="zm-kids"><span class="ag-k">Inside</span>${n.children.slice(0,40).map(c=>`<button class="zm-kid" data-zgo="${esc(c.id)}">${esc(c.label)}</button>`).join('')}${n.children.length>40?` <span class="mut">and ${n.children.length-40} more</span>`:''}</div>`:''}`;
+  side.querySelector('.zm-x').onclick=()=>{st.sel='';zmPaint(host,id);zmFit(host,id)};
+  side.querySelectorAll('[data-zgo]').forEach(b=>b.onclick=()=>zmSelect(host,id,b.dataset.zgo));
+  if(typeof n.wire==='function')n.wire(side);
+}
+function zmWire(host,id){
+  const z=host.querySelector('.zm'),svg=host.querySelector('.zm-svg');
+  const st=()=>ZM[id];
+  const zoomAt=(f,cx,cy)=>{const s=st(),r=svg.getBoundingClientRect(),w=svg.clientWidth,h=svg.clientHeight;
+    const px=(cx==null?w/2:cx-r.left)-w/2,py=(cy==null?h/2:cy-r.top)-h/2;
+    const k=Math.max(0.2,Math.min(3,s.k*f)),q=k/s.k;s.x=px-(px-s.x)*q;s.y=py-(py-s.y)*q;s.k=k;zmCam(host,id)};
+  svg.addEventListener('wheel',e=>{e.preventDefault();zoomAt(Math.exp(-e.deltaY*0.0015),e.clientX,e.clientY)},{passive:false});
+  const pts=new Map();let drag=null,moved=0,pinch=0;
+  svg.addEventListener('pointerdown',e=>{pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    const g=e.target.closest&&e.target.closest('.zm-n');
+    svg.setPointerCapture(e.pointerId);
+    moved=0;drag={x:e.clientX,y:e.clientY,sx:st().x,sy:st().y,node:g?g.dataset.zid:''};
+    if(pts.size===2){const [a,b]=[...pts.values()];pinch=Math.hypot(a.x-b.x,a.y-b.y)}});
+  svg.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===2&&pinch){const [a,b]=[...pts.values()],d=Math.hypot(a.x-b.x,a.y-b.y);zoomAt(d/pinch,(a.x+b.x)/2,(a.y+b.y)/2);pinch=d;moved=99;return}
+    if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;moved=Math.max(moved,Math.abs(dx)+Math.abs(dy));
+    if(moved>4){const s=st();s.x=drag.sx+dx;s.y=drag.sy+dy;zmCam(host,id)}});
+  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=0;
+    if(drag&&moved<=4&&drag.node&&!String(drag.node).startsWith('dot'))zmSelect(host,id,drag.node)
+    if(!pts.size)drag=null};
+  svg.addEventListener('pointerup',up);svg.addEventListener('pointercancel',e=>{pts.delete(e.pointerId);drag=null});
+  host.querySelectorAll('[data-zmb]').forEach(b=>b.onclick=()=>{const k=b.dataset.zmb;
+    if(k==='in')zoomAt(1.3);
+    else if(k==='out'){const s=st();if(s.k<=0.45&&s.focus!==s.root.id)host.querySelector('.zm-up')?.click();else zoomAt(1/1.3)}
+    else if(k==='up'){const s=st();if(b.dataset.up){s.focus=b.dataset.up;s.sel=b.dataset.up;zmPaint(host,id);zmFit(host,id)}}
+    else zmFit(host,id)});
+  const q=host.querySelector('.zm-q');
+  const find=()=>{const v=q.value.trim().toLowerCase();if(!v)return;
+    const all=zmFlat(st().root),hit=all.find(x=>String(x.n.label).toLowerCase()===v)||all.find(x=>String(x.n.label).toLowerCase().includes(v));
+    if(hit)zmSelect(host,id,hit.n.id);else toast('Nothing on the map is called that.')};
+  q.addEventListener('change',find);q.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();find()}});
+  z.addEventListener('keydown',e=>{if(e.target===q)return;
+    const s=st(),k={'+':()=>zoomAt(1.25),'=':()=>zoomAt(1.25),'-':()=>zoomAt(0.8),'0':()=>zmFit(host,id),
+      ArrowLeft:()=>{s.x+=40;zmCam(host,id)},ArrowRight:()=>{s.x-=40;zmCam(host,id)},ArrowUp:()=>{s.y+=40;zmCam(host,id)},ArrowDown:()=>{s.y-=40;zmCam(host,id)}}[e.key];
+    if(k){e.preventDefault();k()}
+    else if(e.key==='Enter'){const g=e.target.closest&&e.target.closest('.zm-n');if(g)zmSelect(host,id,g.dataset.zid)}
+    else if(e.key==='Backspace'||e.key==='Escape'){const s=st();if(s.focus!==s.root.id)host.querySelector('.zm-up')?.click()}});
+  if(typeof ResizeObserver==='function')new ResizeObserver(()=>zmCam(host,id)).observe(svg);
+}
+
+/* ---- the data: the same answers the lists read ---- */
+function zmPersonDetail(p){
   const fams=Object.entries(p.families||{});
-  return `<li class="tp-li"><button class="tp-node person${p.head?' head':''}" data-tpk="p:${esc(path)}" aria-expanded="${on}">
-      ${typeof avatarImg==='function'?avatarImg(p.lead?'@agent':p.name,'av-tool'):''}<b>${esc(p.label||p.name)}</b>${p.head?' <span class="mut">head</span>':''}</button>
-    ${on?`<div class="tp-perm">
-      <div><span class="ag-k">Executor</span>${esc(p.hands)}${p.hands_summary?` <span class="mut">${esc(p.hands_summary)}</span>`:''}</div>
-      ${p.brain?`<div><span class="ag-k">Brain</span>${esc(p.brain)}</div>`:''}
-      <div><span class="ag-k">Tools</span>${(p.tools||[]).map(x=>`<span class="brainchip">${esc(x==='*'?'every tool':x)}</span>`).join(' ')||'<span class="mut">none</span>'}</div>
-      <div><span class="ag-k">Permissions</span>${p.autonomy?'autonomy '+esc(p.autonomy)+' · ':''}${p.allow} allowed, ${p.deny} refused${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}
-        <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
-      ${(p.missions||[]).length?`<div><span class="ag-k">Missions</span>${p.missions.map(esc).join(', ')}</div>`:''}
-    </div>`:''}</li>`;
+  return `<div class="zm-rows">
+    <div><span class="ag-k">Executor</span>${esc(p.hands||'default')}${p.hands_summary?` <span class="mut">${esc(p.hands_summary)}</span>`:''}</div>
+    ${p.brain?`<div><span class="ag-k">Brain</span>${esc(p.brain)}</div>`:''}
+    <div><span class="ag-k">Tools</span>${(p.tools||[]).map(x=>`<span class="brainchip">${esc(x==='*'?'every tool':x)}</span>`).join(' ')||'<span class="mut">none</span>'}</div>
+    ${(p.skills||[]).length?`<div><span class="ag-k">Skills</span>${p.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' ')}</div>`:''}
+    <div><span class="ag-k">Permissions</span>${p.autonomy?'autonomy '+esc(p.autonomy)+' · ':''}${p.allow||0} allowed, ${p.deny||0} refused${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}</div>
+    ${(p.missions||[]).length?`<div><span class="ag-k">Missions</span>${p.missions.map(esc).join(', ')}</div>`:''}
+    <div class="zm-acts">${p.lead?'':`<button class="endbtn" onclick="agentEdit('${esc(p.name)}')">Edit</button>`}<button class="endbtn" onclick="openApp('permissions')">Permissions</button></div></div>`;
 }
-function topoTreeHTML(tree){
-  if(!tree)return '<p class="mut">…</p>';
+function zmAvatar(key){try{return typeof avatarSrc==='function'?avatarSrc(key):''}catch(e){return ''}}
+function zmTieNode(t,where){
+  return {id:'tie:'+where+':'+t.label,label:t.label,kind:'tie '+(t.kind||'team'),kindWord:t.kind==='zero'?'Zero':'Team',
+    st:t.answering===false?'off':'',sub:t.missing?t.missing+' is gone':(t.kind==='zero'?'Zero':'linked team'),glyph:t.kind==='zero'?'◫':'⇄',
+    detail:()=>`<div class="zm-rows"><div><span class="ag-k">Talks to</span>${esc(where)}</div>
+      <div class="zm-acts"><button class="endbtn" onclick="placeSettings('network')()">Who it talks to</button></div></div>`};
+}
+function zmTieGroup(ties,where,gid){
+  ties=ties||[];
+  if(ties.length<2)return ties.map(t=>zmTieNode(t,where));
+  return [{id:'g:'+gid,label:ties.length+' talking to '+where,kind:'group ties',glyph:'⇄',kindWord:'',
+    sub:ties.map(t=>t.label).join(', '),children:ties.map(t=>zmTieNode(t,where))}];
+}
+function zmLogical(tree){
   const L=tree.lead||{};
-  return `<div class="tp-tree"><ul class="tp-ul root"><li class="tp-li">
-    <div class="tp-row">${topoPersonHTML({...L,lead:true},'lead').replace(/^<li class="tp-li">|<\/li>$/g,'')}<span class="tp-ties">${topoTieChips(L.ties)}</span></div>
-    <ul class="tp-ul">${(tree.companies||[]).map((c,ci)=>`<li class="tp-li"><div class="tp-node company${c.open?' open':''}">▦ <b>${esc(c.name)}</b>${c.open&&!c.default?' <span class="mut">open</span>':''}${c.about?` <span class="mut tp-about">${esc(c.about)}</span>`:''}</div>
-      <ul class="tp-ul">${(c.departments||[]).map((d,di)=>`<li class="tp-li"><div class="tp-row"><div class="tp-node dept" style="--dc:${esc(d.color||'')}">▸ <b>${esc(d.name)}</b></div><span class="tp-ties">${topoTieChips(d.ties)}</span></div>
-          <ul class="tp-ul">${(d.people||[]).map(p=>topoPersonHTML(p,ci+'/'+di+'/'+p.name)).join('')}</ul></li>`).join('')}
-        ${(c.people||[]).map(p=>topoPersonHTML(p,ci+'//'+p.name)).join('')}
-        ${c.auditor?topoPersonHTML({...c.auditor,label:c.auditor.name+', checks every department'},ci+'/auditor'):''}</ul></li>`).join('')}</ul>
-  </li></ul></div>`;
+  const person=(p,pre)=>({id:pre+':'+p.name,label:p.label||p.name,kind:'person'+(p.head?' head':''),kindWord:p.head?'head':'agent',
+    sub:p.hands&&p.hands!=='default'?p.hands:'',img:zmAvatar(p.name),detail:()=>zmPersonDetail(p)});
+  const companies=(tree.companies||[]).map((c,ci)=>({id:'co:'+ci,label:c.name,kind:'company'+(c.default?' default':''),kindWord:c.default?'':'company',
+    sub:c.about||(c.open&&!c.default?'open':''),big:true,glyph:'▦',
+    detail:()=>`<div class="zm-rows"><div><span class="ag-k">Departments</span>${(c.departments||[]).length}</div>
+      <div class="zm-acts"><button class="endbtn" onclick="openApp('office');setTimeout(()=>{if(typeof officeCompany==='function')officeCompany(true)},900)">Company panel</button></div></div>`,
+    children:[...(c.departments||[]).map((d,di)=>({id:`d:${ci}:${di}`,label:d.name,kind:'dept',kindWord:'department',glyph:'▸',
+        sub:(d.people||[]).length+' people'+(d.head?' · head '+d.head:''),openAtStart:false,
+        detail:()=>`<div class="zm-rows">${d.about?`<div>${esc(d.about)}</div>`:''}${d.head?`<div><span class="ag-k">Head</span>${esc(d.head)}</div>`:''}
+          ${(d.ties||[]).length?`<div><span class="ag-k">Talking to it</span>${d.ties.map(t=>esc(t.label)).join(', ')}</div>`:''}</div>`,
+        children:[...zmTieGroup(d.ties,d.name,`t:${ci}:${di}`),...(d.people||[]).map(p=>person(p,`p:${ci}:${di}`))]})),
+      ...(c.people||[]).map(p=>person(p,`p:${ci}`)),
+      ...(c.auditor?[person({...c.auditor,label:c.auditor.name+' (auditor)'},`a:${ci}`)]:[])]}));
+  return {id:'lead',label:L.name||'Aria',kind:'lead',kindWord:'lead agent',big:true,img:zmAvatar('@agent'),
+    detail:()=>zmPersonDetail({...L,lead:true}),
+    children:[...zmTieGroup(L.ties,L.name||'Aria','tl'),...companies]};
 }
-function topoTreeWire(box){
-  box.querySelectorAll('[data-tpk]').forEach(b=>b.onclick=()=>{TOPO.open[b.dataset.tpk]=!TOPO.open[b.dataset.tpk];
-    const host=b.closest('.tp-body,.dev-logical');if(host){host.innerHTML=topoTreeHTML(TOPO.tree);topoTreeWire(host)}});
+function zmPhysical(v){
+  const rows=(v.rows||[]).filter(r=>!r.ignored),ties=(v.ties||[]).filter(t=>!t.stale);
+  const rowOf=t=>rows.find(r=>(r.links||[]).some(l=>l.label===t.label));
+  const tied=new Set();ties.forEach(t=>{const r=rowOf(t);if(r)tied.add(r.key)});
+  const tieN=t=>{const st=typeof tieState==='function'?tieState(t):{cls:'',word:''},r=rowOf(t);
+    return {id:'tie:'+tieKey(t),label:(t.agent||{}).name||t.peer||t.label,kind:'device '+(t.kind||'team'),kindWord:t.kind==='zero'?'Zero':'Team',
+      st:(t.answering===false?'off':'')+((typeof DEVMAP!=='undefined'&&DEVMAP.busy[t.label])?' busy':''),sub:t.label+(t.addr?' · '+t.addr:''),
+      img:t.agent&&t.agent.look&&typeof avatarRecipeSrc==='function'?avatarRecipeSrc(t.agent.look):'',glyph:t.kind==='zero'?'◫':'⇄',
+      detail:()=>`<div class="zm-rows"><div><span class="ag-k">State</span>${esc(st.word||'')}${t.version?' · '+esc(t.version):''}</div>
+        ${t.addr?`<div><span class="ag-k">Address</span>${esc(t.addr)}</div>`:''}${r&&r.mac?`<div><span class="ag-k">MAC</span>${esc(r.mac)}</div>`:''}
+        ${t.talks_to?`<div><span class="ag-k">Talks to</span>${esc(t.talks_to.to==='department'?t.talks_to.department:'your lead agent')}</div>`:''}
+        ${typeof DEVMAP!=='undefined'&&DEVMAP.busy[t.label]?`<div><span class="ag-k">Now</span>${esc(DEVMAP.busy[t.label])}</div>`:''}
+        <div class="zm-acts"><button class="endbtn" data-zt="${esc(tieKey(t))}">Manage</button></div></div>`,
+      wire:side=>side.querySelectorAll('[data-zt]').forEach(b=>b.onclick=()=>{TIES.open=b.dataset.zt;TIES.view=null;
+        tieLists().then(()=>netPaint()).then(()=>document.querySelector(`.devhub-box .tie[data-tiekey="${CSS.escape(b.dataset.zt)}"]`)?.scrollIntoView({block:'start',behavior:'smooth'}))})}};
+  const rowN=r=>{const ag=r.agent||{},cs=((r.controls||{}).state)||{};
+    return {id:'m:'+r.key,label:r.display||r.ip,kind:'device machine',kindWord:r.bento==='none'?'device':'Bento',
+      st:cs.running===false?'off':'',sub:(r.ip&&r.ip!==r.display?r.ip:'')+(r.security_words&&r.bento!=='none'?' · '+r.security_words:''),
+      img:ag.look&&Object.keys(ag.look).length&&typeof avatarRecipeSrc==='function'?avatarRecipeSrc(ag.look):'',
+      detail:()=>`<div class="zm-rows"><div><span class="ag-k">Address</span>${esc(r.ip||'')}</div>${r.mac?`<div><span class="ag-k">MAC</span>${esc(r.mac)}</div>`:''}
+        <div><span class="ag-k">Bento</span>${esc(r.bento||'')}${r.security_words?' · '+esc(r.security_words):''}</div>
+        <div class="zm-acts"><button class="endbtn" data-zm-go="${esc(r.key)}">Open in the list</button></div></div>`,
+      wire:side=>side.querySelectorAll('[data-zm-go]').forEach(b=>b.onclick=()=>devMapGo(b.dataset.zmGo))}};
+  const zeros=ties.filter(t=>t.kind==='zero'),teams=ties.filter(t=>t.kind!=='zero');
+  const bento=rows.filter(r=>!tied.has(r.key)&&r.bento!=='none'&&r.bento!=='removed'),rest=rows.filter(r=>!tied.has(r.key)&&!bento.includes(r));
+  const group=(id,label,kids,open,glyph)=>kids.length?[{id,label,kind:'group',kindWord:'',glyph,openAtStart:open,children:kids}]:[];
+  const me=v.me||{};
+  return {id:'me',label:me.name||'This computer',kind:'lead',kindWord:'this computer',big:true,img:zmAvatar('@agent'),
+    sub:me.ip||'',detail:()=>`<div class="zm-rows">${me.ip?`<div><span class="ag-k">Address</span>${esc(me.ip)}</div>`:''}
+      <div><span class="ag-k">Tied to it</span>${zeros.length} Zero${zeros.length===1?'':'s'}, ${teams.length} team${teams.length===1?'':'s'}</div></div>`,
+    children:[...group('g:zero','Zeros',zeros.map(tieN),true,'◫'),...group('g:team','Linked teams',teams.map(tieN),true,'⇄'),
+      ...group('g:bento','Bento machines',bento.map(rowN),true,'▣'),...group('g:rest','Other devices',rest.map(rowN),false,'•')]};
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

@@ -247,6 +247,7 @@ async function tieUpdate(label,owner,el){
   const r=await fetch(`/api/network/ties/${encodeURIComponent(label)}/update`,{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({owner:owner||''})}).then(x=>x.json()).catch(e=>({error:String(e)}));
   if(r.error){toast('✗ '+r.error);if(el){el.disabled=false;el.textContent='Update'}return}
+  if(r.current){toast(`✓ ${r.said||label+' is already up to date'}`);if(el){el.disabled=false;el.textContent='Update'}return}
   toast(`✓ ${label} is updating. It restarts on its own, and a Pi takes a few minutes.`);
   if(el)el.textContent='Updating…';
   setTimeout(()=>{TIES_PROBED=0;if(typeof tiesProbeSoon==='function')tiesProbeSoon()},240000);

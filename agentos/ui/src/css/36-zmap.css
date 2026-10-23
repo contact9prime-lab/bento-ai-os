@@ -1,0 +1,71 @@
+/* The zoomable map (24s-zmap.js): a fixed window onto a radial tree. Its size never grows with
+   the team, and `contain:strict` keeps its repaints inside it: the sheet it replaced made the
+   whole desktop flicker. Colours come from the theme's tokens. */
+.zm-host{position:relative}
+.zm{position:relative;height:min(560px,68vh);min-height:340px;border:1px solid var(--line);border-radius:var(--r-md);
+  background:radial-gradient(circle at 50% 50%,color-mix(in srgb,var(--acc) 7%,var(--bg2)),var(--bg2) 70%);
+  overflow:hidden;contain:strict;touch-action:none;outline:none}
+.zm:focus-visible{box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 60%,transparent)}
+.zm-svg{position:absolute;inset:0;width:100%;height:100%;cursor:grab;user-select:none}
+.zm-svg:active{cursor:grabbing}
+.zm-e{fill:none;stroke:color-mix(in srgb,var(--txt) 18%,transparent);stroke-width:1.4}
+.zm-e.on{stroke:var(--acc);stroke-width:2.2}
+.zm-e.tie,.zm-e[class*="tie"]{stroke-dasharray:5 4;stroke:color-mix(in srgb,var(--acc) 45%,transparent)}
+.zm-n{cursor:pointer}
+.zm-c{fill:var(--bg3);stroke:var(--zc,color-mix(in srgb,var(--txt) 30%,transparent));stroke-width:1.6}
+.zm-n.lead .zm-c{stroke:var(--acc);stroke-width:2.6;fill:color-mix(in srgb,var(--acc) 22%,var(--bg3))}
+.zm-n.company .zm-c{fill:color-mix(in srgb,var(--acc) 14%,var(--bg3));stroke:color-mix(in srgb,var(--acc) 60%,transparent)}
+.zm-n.dept .zm-c{stroke:#fbbf24}
+.zm-n.group .zm-c{fill:color-mix(in srgb,var(--txt) 8%,var(--bg3))}
+.zm-n.head .zm-c{stroke:#fbbf24;stroke-width:2.4}
+.zm-n.tie .zm-c,.zm-n.device.zero .zm-c{stroke:var(--acc);stroke-dasharray:4 3}
+.zm-n.off .zm-c{opacity:.5;stroke:var(--err)}
+.zm-n.busy .zm-c{stroke:var(--ok);stroke-width:3}
+.zm-n.sel .zm-c{stroke:var(--acc);stroke-width:3.4}
+.zm-n:hover .zm-c,.zm-n:focus .zm-c{stroke:var(--acc)}
+.zm-n:focus{outline:none}
+.zm-ini{text-anchor:middle;fill:var(--txt);font-size:12px;font-weight:700;pointer-events:none}
+.zm-l{text-anchor:middle;fill:var(--txt);font-size:12px;font-weight:600;paint-order:stroke;stroke:var(--bg2);stroke-width:3px;pointer-events:none}
+.zm-s{text-anchor:middle;fill:var(--dim);font-size:10px;paint-order:stroke;stroke:var(--bg2);stroke-width:3px;pointer-events:none}
+.zm-badge circle{fill:var(--acc)}
+.zm-badge text{text-anchor:middle;fill:var(--on-acc,#fff);font-size:9px;font-weight:700}
+.zm-l.radial{font-size:11px;font-weight:500}
+.zm-far .zm-l.deeper{display:none}
+.zm-farther .zm-l.deep{display:none}
+.zm-n.sel .zm-l,.zm-n:hover .zm-l{display:inline}
+.zm-tools{position:absolute;top:8px;left:8px;right:8px;display:flex;gap:6px;align-items:center;pointer-events:none}
+.zm-tools>*{pointer-events:auto}
+.zm-q{flex:0 1 220px;min-height:32px;padding:5px 10px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg1,var(--bg));color:var(--txt)}
+.zm-b{min-width:34px;min-height:32px}
+.zm-hint{position:absolute;left:10px;bottom:6px;margin:0;font-size:11px;color:var(--dim);pointer-events:none}
+.zm-side{position:absolute;top:48px;right:8px;bottom:8px;width:300px;overflow:auto;padding:12px;border:1px solid var(--line);
+  border-radius:var(--r-md);background:color-mix(in srgb,var(--bg) 94%,transparent);font-size:var(--fs-sm)}
+.zm-crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px;color:var(--dim);margin-bottom:6px}
+.zm-crumb{background:none;border:0;padding:0;color:var(--acc);font-size:11px;cursor:pointer}
+.zm-h{display:flex;align-items:center;gap:6px}
+.zm-h b{font-size:var(--fs-base)}
+.zm-x{margin-left:auto;background:none;border:0;color:var(--dim);font-size:16px;min-width:32px;min-height:32px;cursor:pointer}
+.zm-sub{margin:4px 0 8px}
+.zm-rows{display:flex;flex-direction:column;gap:6px}
+.zm-rows .ag-k{display:inline-block;min-width:84px;color:var(--dim)}
+.zm-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.zm-kids{margin-top:10px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.zm-kid{border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--txt);padding:2px 9px;font-size:11px;cursor:pointer}
+.dm-wrap{margin-bottom:12px}
+/* a phone: the panel goes under the map, the controls are taps */
+body.dev-mobile .zm{height:62vh;min-height:320px}
+body.dev-mobile .zm-b,body.dev-mobile .zm-q,body.dev-mobile .zm-kid,body.dev-mobile .zm-x{min-height:var(--tap)}
+.zm.narrow .zm-side{top:auto;left:8px;right:8px;width:auto;max-height:38%}
+.zm-side:not([hidden])~.zm-hint{display:none}
+.dm-wrap .dm-legend{position:static;transform:none;margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+.zm-e.ghost{stroke:color-mix(in srgb,var(--txt) 10%,transparent);stroke-width:1}
+.zm-e.up{stroke-dasharray:3 5;stroke:color-mix(in srgb,var(--txt) 30%,transparent)}
+.zm-n.dot .zm-c{fill:color-mix(in srgb,var(--txt) 35%,var(--bg3));stroke:none}
+.zm-n.dot{cursor:pointer}
+.zm-n.up .zm-c{fill:transparent;stroke-dasharray:3 3;stroke:color-mix(in srgb,var(--txt) 45%,transparent)}
+.zm-n.up .zm-l{fill:var(--dim);font-weight:500}
+.zm-l.big{font-size:14px;font-weight:700}
+.zm-tools{flex-wrap:wrap}
+.zm-q{min-width:0}
+.zm.narrow .zm-q{flex:1 1 120px}
+.zm-up[hidden]{display:none}
