@@ -1,0 +1,99 @@
+/* Faces for this machine's screen (24q-kioskfaces.js). #kiosk-face sits above the wall and below
+   the kiosk's band; the Office scene is stopped while it shows. Colours are the theme's. */
+#kiosk-face{position:fixed;left:0;right:0;top:0;bottom:var(--kiosk-hud,128px);z-index:9500;padding:18px;
+  display:flex;color:var(--txt);touch-action:pan-y;user-select:none}
+#kiosk-face .kf-grid{flex:1;display:grid;gap:14px;min-height:0}
+.kf-w{position:relative;border-radius:22px;padding:16px 18px;min-width:0;min-height:0;overflow:hidden;
+  background:color-mix(in srgb,var(--bg2) 82%,transparent);border:1px solid color-mix(in srgb,var(--txt) 9%,transparent);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--txt) 7%,transparent),0 10px 30px color-mix(in srgb,#000 25%,transparent);
+  display:flex;flex-direction:column;justify-content:center}
+.kf-w h4{margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:color-mix(in srgb,var(--txt) 55%,transparent)}
+/* board: a grid that fills the screen */
+#kiosk-face.kf-board .kf-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));grid-auto-rows:minmax(0,1fr)}
+#kiosk-face.kf-board .kf-w-clock{grid-column:span 2}
+/* clock: the time fills the screen, the rest under it */
+#kiosk-face.kf-clock .kf-grid{grid-template-columns:1fr;grid-template-rows:minmax(0,3fr) auto auto;gap:8px}
+#kiosk-face.kf-clock .kf-w{background:none;border:0;box-shadow:none;align-items:center;text-align:center}
+#kiosk-face.kf-clock .kf-hm{font-size:clamp(72px,22vmin,260px)}
+/* ambient: the wallpaper, and a small clock in a corner */
+#kiosk-face.kf-ambient{align-items:flex-end;justify-content:flex-start}
+#kiosk-face.kf-ambient .kf-grid{flex:none;width:min(360px,90vw)}
+#kiosk-face.kf-ambient .kf-w{background:color-mix(in srgb,var(--bg) 45%,transparent);backdrop-filter:none}
+.kf-time{display:flex;align-items:flex-start;justify-content:center;gap:6px;font-variant-numeric:tabular-nums}
+.kf-hm{white-space:nowrap;font-size:clamp(40px,9vmin,110px);font-weight:800;letter-spacing:-.03em;line-height:1;
+  background:linear-gradient(180deg,var(--txt),color-mix(in srgb,var(--acc) 60%,var(--txt)));-webkit-background-clip:text;background-clip:text;color:transparent}
+.kf-s{font-size:clamp(14px,2.4vmin,26px);font-weight:700;color:var(--acc);margin-top:.4em}
+.kf-day{font-size:clamp(18px,3.4vmin,34px);font-weight:700}
+.kf-date{font-size:clamp(13px,2.2vmin,20px);color:color-mix(in srgb,var(--txt) 65%,transparent)}
+.kf-agent,.kf-quote{display:flex;gap:12px;align-items:center}
+.kf-agent>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.kf-agent b{font-size:18px}
+.kf-line{font-size:14px;color:color-mix(in srgb,var(--txt) 70%,transparent);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.kf-face{width:56px;height:56px;border-radius:16px;image-rendering:pixelated;flex:none}
+.kf-quote{align-items:flex-start}
+.kf-said{margin:0;font-size:clamp(15px,2.6vmin,24px);line-height:1.35;font-style:italic;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+.kf-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.kf-stats>div{display:flex;flex-direction:column;gap:3px}
+.kf-stats i{font-style:normal;font-size:11px;color:color-mix(in srgb,var(--txt) 55%,transparent)}
+.kf-stats b{font-size:clamp(18px,3vmin,30px);font-variant-numeric:tabular-nums}
+.kf-stats b.hot{color:#f87171}
+.kf-bar{height:5px;border-radius:3px;background:color-mix(in srgb,var(--txt) 10%,transparent);overflow:hidden}
+.kf-bar>span{display:block;height:100%;width:0;border-radius:3px;background:var(--acc-grad,var(--acc));transition:width .6s}
+.kf-nrow{display:flex;align-items:center;gap:8px;font-size:15px;padding:3px 0}
+.kf-dot{width:10px;height:10px;border-radius:50%;background:#f87171;flex:none}
+.kf-dot.up{background:#34d399;box-shadow:0 0 0 4px color-mix(in srgb,#34d399 20%,transparent)}
+.kf-tm{font-size:clamp(34px,7vmin,72px);font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.kf-tm.run{color:var(--acc)}
+.kf-tbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.kf-tbtns button{min-height:var(--tap,40px);min-width:var(--tap,44px);border-radius:999px;padding:0 14px;font:inherit;font-weight:700;
+  border:1px solid color-mix(in srgb,var(--txt) 15%,transparent);background:color-mix(in srgb,var(--txt) 6%,transparent);color:var(--txt)}
+.kf-tbtns .go{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
+.kf-brief{font-size:clamp(16px,2.6vmin,24px);font-weight:600}
+.kf-w iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:transparent}
+.kf-app-x{padding:0}
+/* the switcher (◐) and the editor: a sheet over the bottom of the screen */
+#kiosk-hud .kh-faces.on{border-color:var(--acc)}
+#kf-strip{position:fixed;left:12px;right:12px;bottom:calc(var(--kiosk-hud,128px) + 4px);z-index:9700;padding:12px;border-radius:18px;
+  background:color-mix(in srgb,var(--bg2) 97%,transparent);border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);
+  box-shadow:0 18px 40px color-mix(in srgb,#000 40%,transparent);max-height:70vh;overflow:auto}
+body.kiosk-side #kf-strip{bottom:12px;right:calc(var(--kiosk-col) + 24px)}
+.kf-faces{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
+.kf-pick{flex:none;scroll-snap-align:start;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border-radius:14px;
+  background:none;border:2px solid transparent;color:var(--txt);font:inherit;font-size:13px;font-weight:600;cursor:pointer;min-width:96px}
+.kf-pick.on{border-color:var(--acc)}
+.kf-thumb{width:84px;height:52px;border-radius:10px;display:grid;place-items:center;font-size:22px;
+  background:color-mix(in srgb,var(--txt) 8%,transparent);position:relative;overflow:hidden}
+.kf-t-chat{background:linear-gradient(90deg,color-mix(in srgb,#fbbf24 40%,var(--bg3)) 0 58%,color-mix(in srgb,var(--txt) 14%,var(--bg2)) 58%)}
+.kf-t-office{background:linear-gradient(180deg,color-mix(in srgb,#fbbf24 40%,var(--bg3)) 0 72%,color-mix(in srgb,var(--txt) 14%,var(--bg2)) 72%)}
+.kf-t-clock::after{content:"12:00";font-weight:800;font-size:16px}
+.kf-t-board{background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--acc) 25%,transparent) 0 24px,transparent 24px 30px),color-mix(in srgb,var(--txt) 6%,transparent)}
+.kf-t-ambient{background:linear-gradient(135deg,color-mix(in srgb,var(--acc) 45%,var(--bg)),color-mix(in srgb,#a78bfa 40%,var(--bg)))}
+.kf-editcur,.kf-editor button{min-height:var(--tap,38px);border-radius:999px;padding:0 14px;font:inherit;font-weight:600;cursor:pointer;
+  border:1px solid color-mix(in srgb,var(--txt) 15%,transparent);background:color-mix(in srgb,var(--txt) 6%,transparent);color:var(--txt)}
+.kf-editor{display:flex;flex-direction:column;gap:10px}
+.kf-erow{display:flex;gap:8px;flex-wrap:wrap}
+.kf-ename{flex:1 1 180px;min-height:var(--tap,40px);border-radius:12px;padding:0 12px}
+.kf-elayout{min-height:var(--tap,40px)}
+.kf-ehint{margin:0;font-size:12.5px;color:color-mix(in srgb,var(--txt) 60%,transparent)}
+.kf-ewidgets{display:flex;flex-wrap:wrap;gap:8px}
+.kf-ew{position:relative}
+.kf-ew.on{border-color:var(--acc)!important;background:color-mix(in srgb,var(--acc) 18%,transparent)!important}
+.kf-ew i{font-style:normal;font-size:11px;font-weight:800;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;
+  background:var(--acc);color:var(--on-acc,#fff);margin-right:6px}
+.kf-build{border-style:dashed!important}
+.kf-eacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.kf-eacts .go{background:var(--acc-grad,var(--acc));color:var(--on-acc,#fff);border-color:transparent}
+.kf-del{color:var(--err,#e05050)!important}
+.kf-settings{width:100%}
+/* a Pi's 7" screen: smaller tiles, four across, so six widgets fit in two rows */
+@media (max-height:520px){#kiosk-face{padding:8px}#kiosk-face .kf-grid{gap:8px}
+  #kiosk-face.kf-board .kf-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,165px),1fr))}
+  .kf-w{padding:8px 10px;border-radius:14px}.kf-w h4{margin:0 0 4px;font-size:10.5px}
+  .kf-stats{gap:4px 10px}.kf-stats b{font-size:17px}.kf-tm{font-size:34px}
+  .kf-tbtns{margin-top:6px;gap:4px}.kf-tbtns button{min-height:34px;min-width:36px;padding:0 9px;font-size:13px}
+  .kf-face{width:40px;height:40px;border-radius:11px}.kf-agent b{font-size:15px}.kf-line{font-size:12.5px}
+  .kf-nrow{font-size:13px}.kf-said{font-size:14px}}
+@media (max-width:560px){#kiosk-face.kf-board .kf-w-clock{grid-column:auto}}
+#kiosk-face.kf-ambient .kf-hm{font-size:clamp(36px,7vmin,72px)}
+#kiosk-hud .kh-faces .kh-fi{margin-right:6px}
+@media (max-width:900px){#kiosk-hud .kh-faces .kh-fn{display:none}#kiosk-hud .kh-faces .kh-fi{margin:0}}

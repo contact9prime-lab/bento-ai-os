@@ -3290,7 +3290,11 @@ async def api_system():
     except Exception:
         pass
 
-    return {"cpu": max(cpu, 0.0), "load": list(os.getloadavg()),
+    temp = None                       # a Pi's SoC, for its screen's machine widget
+    with contextlib.suppress(OSError, ValueError):
+        with open("/sys/class/thermal/thermal_zone0/temp") as f:
+            temp = round(int(f.read().strip()) / 1000, 1)
+    return {"cpu": max(cpu, 0.0), "load": list(os.getloadavg()), "temp_c": temp,
             "mem": {"total_kb": mem_total, "used_kb": mem_used},
             "disk": {"total": du.total, "used": du.used},
             "uptime": uptime, "cores": cores, "procs": procs}
@@ -3526,6 +3530,55 @@ async def api_face_put(body: dict):
     facemod.record(state["store"], msg)
     await state["broadcast"]({"type": "face"})
     return {**facemod.state(state.machine_cfg()), "description": msg}
+
+
+@app.get("/api/face/faces")
+async def api_face_faces():
+    """The faces this screen can wear (faces.py): built in, your own, and the widgets to fill them."""
+    from . import faces as facesmod
+    st = facesmod.state(state.machine_cfg())
+    # your apps that have a widget view can go on a face too
+    with contextlib.suppress(Exception):
+        st["apps"] = [{"id": a["id"], "name": a.get("name") or a["id"]} for a in state["store"].list_apps()][:40]
+    return st
+
+
+@app.put("/api/face/faces")
+async def api_face_faces_put(body: dict):
+    """Wear a face, save one of your own, or remove one. The screen is the machine's: admin."""
+    from . import faces as facesmod
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        return JSONResponse({"error": "only an admin can change how this machine's screen looks"},
+                            status_code=403)
+    # the same write /api/face makes: the person's view, saved, then the machine's copy of `face`
+    b, mc = body or {}, state["cfg"]
+    if "face" not in mc and isinstance(state.machine_cfg().get("face"), dict):
+        mc["face"] = json.loads(json.dumps(state.machine_cfg()["face"]))
+    dropped, said = [], ""
+    try:
+        if isinstance(b.get("save"), dict):
+            ids = []
+            with contextlib.suppress(Exception):
+                ids = [a["id"] for a in state["store"].list_apps()]
+            face, dropped = facesmod.save(mc, b["save"], ids)
+            said = f"saved the face '{face['name']}'"
+            if b.get("use", True):
+                facesmod.use(mc, face["id"])
+        if b.get("delete"):
+            facesmod.delete(mc, str(b["delete"]))
+            said = f"removed the face '{b['delete']}'"
+        if isinstance(b.get("use"), str):
+            facesmod.use(mc, b["use"])
+            said = said or f"this screen wears '{b['use']}'"
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    cfgmod.save_config(mc)
+    if mc is not state.machine_cfg():
+        state.machine_cfg()["face"] = json.loads(json.dumps(mc["face"]))
+    from . import face as facemod
+    facemod.record(state["store"], said)
+    await state["broadcast"]({"type": "face"})
+    return {**facesmod.state(state.machine_cfg()), "dropped": dropped}
 
 
 @app.post("/api/face/wake-test")

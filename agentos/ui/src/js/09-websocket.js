@@ -696,7 +696,9 @@ function handle(ev){
     case 'face': if(typeof loadPlatform==='function')loadPlatform().then(()=>{
       if(typeof officeReload==='function')officeReload();
       if(typeof crewRoster==='function')crewRoster(true);
-      if(typeof kioskApply==='function')kioskApply()}); break;
+      if(typeof kioskApply==='function')kioskApply();
+      if(typeof kfaceLoad==='function'&&typeof KIOSK!=='undefined'&&KIOSK.on)kfaceLoad();
+      else if(typeof faceFacesPaint==='function'&&document.getElementById('s-faces')){KFACE.st=null;faceFacesPaint()}}); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
     case 'approval_resolved':{

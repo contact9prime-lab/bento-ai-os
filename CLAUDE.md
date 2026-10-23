@@ -3442,6 +3442,12 @@ be on and agents would be working in the office". Five rules:
   `psk-flags 0` so NetworkManager keeps it for the next boot, never argv. `unknown` connectivity with a
   connected device is online (Pi OS turns the check off). The list is kept between status checks
   (`KIOSK.nets`), or an open network asked for a password. Joining is admin; a `wifi.join` row, no secret.
+- **The kiosk wears a face** (`agentos/faces.py`, `24q-kioskfaces.js`, `/api/face/faces`, `bento face faces`;
+  `tests/test_kiosk_faces.py`): a layout (chat, office, clock, board, ambient) and widgets from a closed set,
+  or `app:<id>` for one of your apps (the desktop widgets' sandboxed frame, never same-origin). Faces are the
+  machine's `face.faces`, written like `/api/face` (the person's view, then the machine's copy). A widget face
+  calls `officeSceneStop` and ticks on ONE interval; `kioskSideWanted` is true only for the chat layout. Widget
+  tiles are `kf-w-<id>`: a tile and its inner line shared a class, and filling one wiped the other.
 - **SUI could never listen before.** WebKitGTK denies a permission request nobody handles, so
   `shellhost.on_permission` grants audio, and only audio, to the host's own page. Do not widen
   it to video or another origin.

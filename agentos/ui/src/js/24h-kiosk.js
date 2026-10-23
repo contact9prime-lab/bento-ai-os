@@ -78,6 +78,7 @@ function kioskStart(){
   addEventListener('resize',kioskSide);
   kioskSide();
   kioskPaint();
+  if(typeof kfaceLoad==='function')kfaceLoad();
   kioskHistory();
   kioskListen();
   kioskNet(false);
@@ -86,7 +87,8 @@ function kioskStart(){
    conversation so far in it; the Office takes what is left. Asked for as "the Zero look and
    feel has to be a big screen view of chat on the right". A tall or narrow screen keeps the
    band at the bottom, where a column would leave the office a sliver. */
-function kioskSideWanted(){return innerWidth>=640&&innerWidth/Math.max(1,innerHeight)>=1.15}
+function kioskSideWanted(){return (typeof kfaceLayout!=='function'||kfaceLayout()==='chat')
+  &&innerWidth>=640&&innerWidth/Math.max(1,innerHeight)>=1.15}
 function kioskSide(){
   if(!KIOSK.on)return;
   const on=kioskSideWanted();
@@ -120,6 +122,8 @@ function kioskStop(){
   clearTimeout(KIOSK.netT);KIOSK.wifiOpen=false;
   kioskMicOff();
   document.body.classList.remove('kiosk','kiosk-side');removeEventListener('resize',kioskSide);
+  if(typeof kfaceStop==='function')kfaceStop();
+  const strip=document.getElementById('kf-strip');if(strip)strip.remove();
   document.body.style.removeProperty('--kiosk-hud');KIOSK.hudH=0;
   const hud=document.getElementById('kiosk-hud');if(hud)hud.remove();
   if(KIOSK.cid&&typeof sinkOff==='function')sinkOff(KIOSK.cid);
@@ -476,6 +480,10 @@ async function faceSettingsPaint(){
        more:'Only the screen plugged into this machine. A phone or another browser keeps the desktop. Add #kiosk to the address to try it anywhere.',
        f:'kiosk mic microphone always listening screen office raspberry pi wake word'}),
     faceScreenRow(d.screen),
+    pRow('Faces','<div id="s-faces" class="kf-settings"><span class="mut">…</span></div>',
+      {desc:'What the kiosk shows: the chat, the Office, a clock, a dashboard of widgets, or one of your own.',stack:true,
+       more:'On the screen itself, tap ◐ or swipe sideways to change face. A widget you build in App Studio can go on a face too.',
+       f:'faces face widgets dashboard clock ambient kiosk layout build widget pi screen'}),
     pRow('The kiosk listens for',pSelect('s-face-wake',[['name','Its wake word'],['always','Everything it hears']],d.wake||'name'),
       {desc:'With a wake word, anything else said in the room is ignored.',f:'wake word name always listening'}),
     pRow('Wake word',`<input id="s-face-word" maxlength="32" placeholder="${esc(agentName())}" value="${esc(d.wake_word||'')}">`,
@@ -489,6 +497,7 @@ async function faceSettingsPaint(){
     hear.engine?'':pRow('Hearing',`<button class="endbtn" id="s-face-voiceset">Voice settings</button>`,
       {desc:esc(hear.line||'Nothing here can understand speech yet.'),f:'kiosk hear speech to text voice'}),
   ].join('');
+  if(typeof faceFacesPaint==='function')faceFacesPaint();
   const put=async body=>{
     const r=await fetch('/api/face',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));

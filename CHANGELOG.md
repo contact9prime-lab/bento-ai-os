@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.89 — 2026-10-23
+
+**Faces and widgets for the Pi's screen.** The kiosk wears a face: Chat, Office, a big Clock, a
+Dashboard of widgets, or Ambient, and you change it with ◐ or a swipe. The widgets are a clock,
+the date, your agent and its last words, this machine's processor, memory, temperature and
+uptime, the network and its hub, a timer that rings, and your Brief. They tick on one timer and
+the Office stops while they show, so a Pi stays light. **＋ New face** makes your own, and
+**＋ Build a widget** opens App Studio: any app with a widget view can go on a face. Also in Settings
+→ Appearance → On this screen, and `bento face faces`. The kiosk's wallpaper covers the screen
+again: a background shorthand had reset its size and left a seam down the right.
+
 ## 0.6.88 — 2026-10-23
 
 **The Zeros stay current with their hub.** A link's hello now says its version, so Network →
