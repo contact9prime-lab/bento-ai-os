@@ -70,7 +70,7 @@ function tieBrainWord(b){
 function tieBodyHTML(t){
   const k=tieKey(t);
   if(!t.mine)return `<div class="tie-body"><p class="mut">This link belongs to ${esc(t.owner_name||'another account')}. They manage it from their own Team & Communications.</p></div>`;
-  const views=t.kind==='zero'?['sessions','schedules','memory','knowledge','logs']:['sessions','memory','knowledge','logs'];
+  const views=t.kind==='zero'?['events','sessions','schedules','memory','knowledge','logs']:['events','sessions','memory','knowledge','logs'];
   const vw=TIES.view&&TIES.view.k===k?TIES.view:null;
   return `<div class="tie-body">
     ${t.stale?`<p class="tie-warn">${esc(tieState(t).why)} Remove it so nothing tries it again.</p>`:''}
@@ -81,7 +81,7 @@ function tieBodyHTML(t){
       <div class="tie-field"><span>It may ask</span><div class="tie-agents">${tieAgentsHTML(t)}</div></div>
     </div>
     ${t.kind==='zero'&&!t.stale?`<div class="tie-field tie-screen"><span>Its screen</span>${tieScreenHTML(t)}</div>`:''}
-    <div class="tie-views" role="tablist">${views.map(w=>`<button class="tie-vb${vw&&vw.what===w?' on':''}" role="tab" aria-selected="${!!(vw&&vw.what===w)}" data-tie="view" data-k="${esc(k)}" data-w="${w}">${{sessions:'Sessions',schedules:'Schedules',memory:'Memory',knowledge:'Knowledge',logs:'Logs'}[w]}</button>`).join('')}</div>
+    <div class="tie-views" role="tablist">${views.map(w=>`<button class="tie-vb${vw&&vw.what===w?' on':''}" role="tab" aria-selected="${!!(vw&&vw.what===w)}" data-tie="view" data-k="${esc(k)}" data-w="${w}">${{events:'Events',sessions:'Sessions',schedules:'Schedules',memory:'Memory',knowledge:'Knowledge',logs:'Logs'}[w]}</button>`).join('')}</div>
     ${vw?`<div class="tie-view">${tieViewHTML(vw)}</div>`:''}
     <div class="tie-acts"><button class="endbtn danger" data-tie="remove" data-k="${esc(k)}">Remove this link</button></div>
   </div>`;
@@ -110,6 +110,7 @@ function tieViewHTML(vw){
   if(vw.error)return `<p class="tie-warn">${esc(vw.error)}</p>`;
   const r=vw.rows||[],when=s=>s?new Date(s*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
   if(!r.length)return `<p class="mut">${esc(vw.note||'Nothing here yet.')}</p>`;
+  if(vw.what==='events')return devEventsList(r);
   if(vw.what==='sessions')return `<ul class="tie-rows">${r.map(c=>`<li><button class="tie-conv" data-tie="conv" data-cid="${esc(c.id)}"><b>${esc(c.title||'chat')}</b><span class="mut">${c.messages} messages · ${when(c.updated_at)}</span></button></li>`).join('')}</ul>`;
   if(vw.what==='schedules'){
     const every=x=>x.schedule_type==='daily'?'every day at '+x.at_time:x.schedule_type==='weekly'?'every '+['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][x.weekday]+' at '+x.at_time
@@ -192,6 +193,10 @@ async function tieAct(act,t,el){
   if(act==='view'){const k=tieKey(t),what=el.dataset.w;
     if(TIES.view&&TIES.view.k===k&&TIES.view.what===what){TIES.view=null;return netPaint()}
     TIES.view={k,what,loading:true};netPaint();
+    if(what==='events'){
+      try{const r=await apiJSON('/api/network/events?limit=60&who='+encodeURIComponent([t.label,t.addr].filter(Boolean).join(',')));
+        TIES.view={k,what,rows:r.events,note:'Nothing has happened to it yet.'}}catch(e){TIES.view={k,what,error:String(e.message||e)}}
+      return netPaint()}
     try{const r=await apiJSON(`/api/network/ties/${encodeURIComponent(t.label)}/view?what=${what}&owner=${encodeURIComponent(t.owner||'')}`);
       TIES.view={k,what,rows:r.rows,note:r.note||''}}catch(e){TIES.view={k,what,error:String(e.message||e)}}
     return netPaint()}

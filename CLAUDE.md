@@ -3191,6 +3191,32 @@ installs now take the installer's account (`make_key(owner=)`, `--for`), `adopt`
 re-writes `edgecode.grant`/`hearing.grant_hub` in the new owner's store (its requests enter that account).
 Probing needs the STORED link (`teamlink._load()`): `links()` strips `peer_ca` and a call without it fails.
 
+**A machine's address is free to move; its certificate is not** (`teamlink.note_seen`/`relocate`/`candidates`/
+`ON_MOVED`, `server._ties_watch`/`_ties_check`/`_tie_moved`; `tests/test_device_moves.py`, live run
+`packaging/dev/provision-e2e/dhcp_run.py`). Reported as "the Pi's IP changes time and again". Every machine link
+says hello once a minute (on a Zero that is its hub, which is how the hub hears the new address). A pinned
+connection from another address moves the link (`heard`); a failed dial tries `seen_from`, the MAC in the neighbour
+table, `<name>.local` over mDNS, then a knock on the link port across our own network (at most every
+`SWEEP_EVERY`), each dialled with the pin. Only an IP literal is rewritten (and `host` with it: `ties.host_of`
+reads it first); a loopback address never replaces a real one; loopback links never look on the network, or the
+suite pays a second of mDNS per unreachable link. A standby never runs the watch: its hellos would move the Pi's
+hub link to the cloud.
+
+**Devices → Events is the diary and the ledger read together** (`devevents.gather`, `/api/network/events`, `bento
+network events`): the watch's lines (`log` kind `device`: moved, offline after `TIES_DOWN_AFTER` misses, online,
+updated, refreshed) and `device.*`/`link.*`/`provision.*`/`zero.*` rows, from the machine's database AND the
+person's, because a step from a page is written in the account and one from the server in the machine's.
+
+**An admin's Logs read the machine's diary** (`_log_sources`, `/api/logs?source=`): with accounts the machine's own
+lines (provision, devices, the scheduler) were in a database no account's Logs opened. "Server output" is
+`desktop.service_lines` (the journal, else server.log).
+
+**A page never reloads into a server that is down** (`reloadWhenUp`/`reloadIfServerUp` in 09-websocket.js). The
+update's `reload` at 8 s landed on the browser's own "not reachable" page while a Pi 3 took minutes to restart, and
+nothing of ours runs there. It reloads when the socket drops and comes back; a kiosk takes a new build itself. For a
+browser stuck anyway: the hub sends wire op `zero_refresh` to a Zero back on a new version, and a machine starting
+with its screen's browser showing and no loopback page connected restarts it (`screen.restart_now`, `_screen_revive`).
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their

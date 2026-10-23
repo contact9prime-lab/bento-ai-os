@@ -1027,6 +1027,11 @@ details.mtools[open] summary::before{content:'▾ '}
 table.loglist{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
 table.loglist td{padding:5px 8px;border-bottom:1px solid rgba(35,42,53,.5);vertical-align:top}
 table.loglist td.lk{white-space:nowrap;color:var(--dim2);font-variant-numeric:tabular-nums}
+/* a long line (a path, a journal line) wraps inside its cell rather than pushing the table past the screen */
+table.loglist{table-layout:fixed}
+table.loglist td:first-child{width:96px}
+table.loglist td:nth-child(2){width:84px}
+table.loglist td:last-child{overflow-wrap:anywhere}
 .lbadge{font-size:var(--fs-2xs);padding:1px 7px;border-radius:var(--r-md);background:var(--bg4);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 .lk-tool .lbadge{color:var(--acc)} .lk-turn .lbadge{color:var(--acc2)} .lk-error .lbadge{color:var(--err)}
 .lk-telegram .lbadge{color:#60a5fa} .lk-mcp .lbadge{color:#c084fc} .lk-task .lbadge{color:var(--warn)} .lk-system .lbadge{color:var(--dim)}
@@ -2485,6 +2490,8 @@ body.dev-mobile .inner,body.dev-mobile #combox{max-width:100%;padding-left:12px;
 body.dev-mobile .msg.user .bubble{max-width:92%}
 body.dev-mobile .pad{padding:12px 14px}
 body.dev-mobile table.plist,body.dev-mobile table.loglist{font-size:var(--fs-xs)}
+body.dev-mobile table.loglist td:first-child{width:74px}
+body.dev-mobile table.loglist td:nth-child(2){width:70px}
 /* a panel header costs three lines on a phone — the title carries it alone */
 body.dev-mobile .phead .ps{display:none}
 /* hot corners need a pointer that can rest in a corner; a phone has neither the
@@ -6288,6 +6295,22 @@ body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
 .tie-faces{display:flex;flex-direction:column;gap:8px}
 .tie-faces .kf-pick{min-width:84px}
 .tie-faces .kf-thumb{width:72px;height:44px}
+
+/* Devices → Events (24o-devices.js devEvents*), and a machine's own Events view */
+.dev-events{margin:18px 0 6px}
+.dev-events h3{font-size:13px;font-weight:600;margin:0 0 8px}
+.dev-ev{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.dev-ev li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:7px 0;
+  border-bottom:1px solid color-mix(in srgb,var(--txt) 6%,transparent);font-size:12.5px}
+.dev-ev li:last-child{border-bottom:0}
+.dev-ev-i{text-align:center;color:color-mix(in srgb,var(--txt) 55%,transparent)}
+.dev-ev-t{overflow-wrap:anywhere}
+.dev-ev time{font-size:11px;white-space:nowrap}
+.dev-ev-moved .dev-ev-i,.dev-ev-refreshed .dev-ev-i{color:var(--acc)}
+.dev-ev-online .dev-ev-i,.dev-ev-installed .dev-ev-i{color:var(--ok)}
+.dev-ev-offline .dev-ev-i,.dev-ev li.bad .dev-ev-i{color:var(--err)}
+.dev-ev-more{margin-top:8px;min-height:var(--tap,36px)}
+@media (max-width:520px){.dev-ev li{grid-template-columns:22px minmax(0,1fr)}.dev-ev time{grid-column:2}}
 /* Faces for this machine's screen (24q-kioskfaces.js). #kiosk-face sits above the wall and below
    the kiosk's band; the Office scene is stopped while it shows. Colours are the theme's. */
 #kiosk-face{position:fixed;left:0;right:0;top:0;bottom:var(--kiosk-hud,128px);z-index:9500;padding:18px;
@@ -16373,14 +16396,33 @@ var CUR_ENGINE={engine:'',model:''};
 /* The last model each engine reported. The chip reads it so the top bar can say
    what the machine is running on, not just who it forwards to. */
 var FWD_MODEL={};
+/* A reload asked for by the server, done only once a server answers again. The update and the
+   restart broadcast `reload` and then restart: a reload a few seconds later, while it was down,
+   left the page on the browser's own "not reachable" page, where nothing of ours runs, and a
+   Pi's kiosk sat there until somebody walked over (a Pi 3 takes minutes to come back). So the
+   page waits for the socket to drop and come back, and reloads then. */
+var RELOAD_WANT={on:false,dropped:false,timer:0};
+function reloadWhenUp(delay){
+  RELOAD_WANT.on=true;RELOAD_WANT.dropped=!(ws&&ws.readyState===1);
+  clearTimeout(RELOAD_WANT.timer);
+  // the restart never came (nothing moved): reload once something answers, as before
+  RELOAD_WANT.timer=setTimeout(()=>reloadIfServerUp(),Math.max(delay||400,1000)+30000);
+  if(RELOAD_WANT.dropped)setTimeout(()=>reloadIfServerUp(),Math.max(delay||400,1000));
+}
+async function reloadIfServerUp(tries){
+  tries=tries||0;
+  try{const r=await fetch('/api/platform',{cache:'no-store'});if(r.ok)return location.reload()}catch(e){}
+  if(tries<900)setTimeout(()=>reloadIfServerUp(tries+1),2000);   // about half an hour, then give up
+}
 function connect(){
   ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
-  ws.onopen=()=>{setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim();
+  ws.onopen=()=>{if(RELOAD_WANT.on&&RELOAD_WANT.dropped)return location.reload();   // back after the restart
+    setStatus(true);if(sendBtn&&input)sendBtn.disabled=!input.value.trim();
     // a reconnect is usually a restart: is this page the build that is now running?
     if(typeof updateWaitingCheck==='function')setTimeout(updateWaitingCheck,1500);
     // a Brief that came while nobody was looking is offered once, with Play (24b-brief.js)
     if(typeof briefWelcome==='function'&&!window._briefWelcomed){window._briefWelcomed=1;setTimeout(briefWelcome,2500)}};
-  ws.onclose=()=>{setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
+  ws.onclose=()=>{if(RELOAD_WANT.on)RELOAD_WANT.dropped=true;setStatus(false);setRunning(false);RUNNING.clear();for(const k in STREAMS)delete STREAMS[k];
     for(const k in ACT)actDone(k);   // no socket, no honest "what it is doing"
     removeWorking(); // never leave "thinking…" on screen with no live socket behind it
     if(window.STUDIO&&STUDIO.building)studioLog('<span class="mut">connection lost — reconnecting…</span>');
@@ -17088,6 +17130,9 @@ function handle(ev){
     case 'zero_behind':   // a Zero this hub set up runs an older Bento (server._zeros_keep_current)
       toast(`${ev.peer||ev.label} runs ${ev.version}, this hub ${ev.hub}`,{label:'Update it',go:()=>tieUpdate(ev.label,ev.owner),ms:20000});
       break;
+    case 'device_event':   // a machine moved, stopped answering, came back, updated (server._ties_check)
+      if(typeof devEventLive==='function')devEventLive(ev);
+      break;
     case 'zero_work':   // somebody at a Zero's screen, answered here (fabric.zero_chat)
       if(typeof officeZero==='function')officeZero(ev);
       if(typeof devMapPulse==='function')devMapPulse(ev);
@@ -17148,7 +17193,7 @@ function handle(ev){
     case 'setup': location.reload(); break;
     // the desktop is a page, so a new build only appears after a reload — this is
     // how a deploy reaches the screen without the user hunting for Ctrl+R
-    case 'reload': setTimeout(()=>location.reload(),ev.delay||400); break;
+    case 'reload': reloadWhenUp(ev.delay||400); break;
     // back from suspend or the lock screen: the page may have been frozen for
     // hours, so repaint the things that go stale rather than sit there wrong
     case 'wake': onWake(); break;
@@ -17280,7 +17325,7 @@ function onWake(){
   }catch(e){}
   setTimeout(()=>{
     const live=(typeof ws!=='undefined'&&ws&&ws.readyState===1);
-    if(!live)location.reload();
+    if(!live)reloadIfServerUp();   // never into a server that is down: that is the browser's error page
   },4000);
 }
 /* ================= chat app ================= */
@@ -26651,11 +26696,13 @@ async function tgUnpair(){
 
 /* ================= logs app ================= */
 function renderLogs(body,w){
-  w.kind=w.kind||'';w.q=w.q||'';
+  w.kind=w.kind||'';w.q=w.q||'';w.src=w.src||'';
   body.innerHTML=`<div class="apptop">
+      <select id="log-src" style="flex:0 0 150px" hidden aria-label="Which diary"></select>
       <select id="log-kind" style="flex:0 0 130px">
         <option value="">all kinds</option><option>turn</option><option>tool</option><option>policy</option><option>mcp</option>
-        <option>telegram</option><option>task</option><option>system</option><option>error</option>
+        <option>telegram</option><option>task</option><option>system</option><option>device</option><option>provision</option>
+        <option>screen</option><option>error</option>
       </select>
       <input id="log-q" placeholder="search message & details… (e.g. deny, app:, run_command)" style="flex:1">
       <span class="mut" id="log-count" style="flex:0 0 auto"></span>
@@ -26664,15 +26711,27 @@ function renderLogs(body,w){
     </div>
     <div style="flex:1;overflow-y:auto;user-select:text"><table class="loglist"><tbody id="log-rows"></tbody></table></div>`;
   $('#log-kind').value=w.kind;$('#log-q').value=w.q;
+  $('#log-src').onchange=()=>{w.src=$('#log-src').value;loadLogs(w)};
   $('#log-kind').onchange=()=>{w.kind=$('#log-kind').value;if(typeof watchNote==='function')watchNote('view','logs',w.kind);loadLogs(w)};
   let deb;$('#log-q').oninput=e=>{clearTimeout(deb);deb=setTimeout(()=>{w.q=e.target.value;loadLogs(w)},300)};
   stopWinTicks(w);
   winTick(w,()=>loadLogs(w),5000,{key:'poll'});
 }
 async function loadLogs(w){
-  const r=await fetch('/api/logs?kind='+encodeURIComponent(w.kind||'')+'&q='+encodeURIComponent(w.q||''));const d=await r.json();
+  const r=await fetch('/api/logs?kind='+encodeURIComponent(w.kind||'')+'&q='+encodeURIComponent(w.q||'')
+    +'&source='+encodeURIComponent(w.src||''));const d=await r.json();
   const tb=$('#log-rows');if(!tb)return;
   $('#log-count').textContent=d.logs.length+' entries';
+  /* the diaries this person may read: their own, the machine's (devices, links, setting machines
+     up), and the server's output. One is no choice, so the picker shows only for two or more. */
+  const srcs=d.sources||[],sel=$('#log-src');
+  if(sel&&srcs.length>1){
+    const want=`<option value="">${srcs.filter(x=>x.id!=='service').length>1?'Mine and this machine':'All'}</option>`
+      +srcs.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+    if(sel.dataset.opts!==want){sel.innerHTML=want;sel.dataset.opts=want;sel.value=w.src||''}
+    sel.hidden=false;
+  }
+  const many=srcs.length>1,WH={mine:'mine',machine:'machine',service:'server'};
   tb.innerHTML=d.logs.map(l=>{
     const t=new Date(l.created_at*1000);
     let m={};try{m=JSON.parse(l.meta||'{}')}catch(e){}
@@ -26681,7 +26740,7 @@ async function loadLogs(w){
     const eff=m.effect==='deny'||l.kind==='error'?'var(--err,#f87171)':(m.effect==='allow'?'var(--ok,#5eead4)':'');
     return `<tr class="lk-${esc(l.kind)}" style="cursor:${keys.length?'pointer':'default'}" onclick="logExpand(this)">
       <td class="lk">${t.toLocaleTimeString()}<br><span style="font-size:10px">${t.toLocaleDateString()}</span></td>
-      <td><span class="lbadge" ${eff?`style="color:${eff};border-color:${eff}"`:''}>${esc(l.kind)}</span></td>
+      <td><span class="lbadge" ${eff?`style="color:${eff};border-color:${eff}"`:''}>${esc(l.kind)}</span>${many&&l.where?`<br><span class="mut" style="font-size:10px">${esc(WH[l.where]||l.where)}</span>`:''}</td>
       <td>${avatarImg(avatarKeyOf(m.principal),'av-log')}${esc(l.message)}
         ${m.principal?`<span class="badge" style="margin-left:6px">${esc(m.principal)}</span>`:''}
         ${mtxt?`<div class="tools-mini" style="white-space:normal;word-break:break-word">${esc(mtxt.slice(0,220))}${mtxt.length>220?' …':''}</div>
@@ -37342,8 +37401,42 @@ function netLine(ev){
    what it is to Bento, its switches as last read, Controls, Install and Remove. */
 async function renderDevices(body,w){
   const pb=panelShell(body,{title:'Devices',sub:'The machines on your network'});
-  pb.innerHTML=`<div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>`;
+  pb.innerHTML=`<div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
+    <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section>`;
   await netPaint();
+  devEventsLoad();
+}
+
+/* Events: what happened to the machines here, newest first (devevents.py). Asked for as "in the
+   devices section we need to have events": a Pi that moved to another address, stopped answering
+   or came back, updated, had its screen refreshed, and every step done to a machine from here.
+   A machine's own row has the same list for it alone (Events, 24p-ties.js). */
+var DEVEV={list:null,all:false};
+var DEVEV_ICON={moved:'⇄',offline:'○',online:'●',updated:'⬆',refreshed:'⟳',failed:'✗',installed:'✓',secured:'🔒'};
+function devEventsList(list){
+  const when=s=>new Date(s*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  return `<ul class="dev-ev">${list.map(e=>`<li class="dev-ev-${esc(e.event)}${e.failed?' bad':''}">
+    <span class="dev-ev-i" aria-hidden="true">${DEVEV_ICON[e.event]||'·'}</span>
+    <span class="dev-ev-t">${esc(e.text)}</span><time class="mut">${when(e.at)}</time></li>`).join('')}</ul>`;
+}
+async function devEventsLoad(){
+  const boxes=[...document.querySelectorAll('.dev-ev-box')];if(!boxes.length)return;
+  try{DEVEV.list=(await apiJSON('/api/network/events?limit=200')).events||[]}
+  catch(e){boxes.forEach(b=>b.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`);return}
+  devEventsPaint();
+}
+function devEventsPaint(){
+  const list=DEVEV.list||[],shown=DEVEV.all?list:list.slice(0,12);
+  document.querySelectorAll('.dev-ev-box').forEach(b=>{
+    b.innerHTML=list.length?devEventsList(shown)+(list.length>12?`<button class="endbtn dev-ev-more">${DEVEV.all?'Show fewer':'Show all '+list.length}</button>`:'')
+      :'<p class="mut">Nothing has happened to the machines here yet.</p>';
+    const m=b.querySelector('.dev-ev-more');if(m)m.onclick=()=>{DEVEV.all=!DEVEV.all;devEventsPaint()}});
+}
+/* A new one, live (server._device_event). A move also repaints the list: the address changed. */
+function devEventLive(ev){
+  if(DEVEV.list)DEVEV.list.unshift({at:Date.now()/1000,event:ev.event,label:ev.label,text:ev.text});
+  devEventsPaint();
+  if(ev.event==='moved'){toast('⇄ '+ev.text);if(typeof netPaint==='function')netPaint()}
 }
 
 /* The map: this computer in the middle with its lead agent, the Zeros it set up on the ring
@@ -37503,7 +37596,7 @@ function tieBrainWord(b){
 function tieBodyHTML(t){
   const k=tieKey(t);
   if(!t.mine)return `<div class="tie-body"><p class="mut">This link belongs to ${esc(t.owner_name||'another account')}. They manage it from their own Team & Communications.</p></div>`;
-  const views=t.kind==='zero'?['sessions','schedules','memory','knowledge','logs']:['sessions','memory','knowledge','logs'];
+  const views=t.kind==='zero'?['events','sessions','schedules','memory','knowledge','logs']:['events','sessions','memory','knowledge','logs'];
   const vw=TIES.view&&TIES.view.k===k?TIES.view:null;
   return `<div class="tie-body">
     ${t.stale?`<p class="tie-warn">${esc(tieState(t).why)} Remove it so nothing tries it again.</p>`:''}
@@ -37514,7 +37607,7 @@ function tieBodyHTML(t){
       <div class="tie-field"><span>It may ask</span><div class="tie-agents">${tieAgentsHTML(t)}</div></div>
     </div>
     ${t.kind==='zero'&&!t.stale?`<div class="tie-field tie-screen"><span>Its screen</span>${tieScreenHTML(t)}</div>`:''}
-    <div class="tie-views" role="tablist">${views.map(w=>`<button class="tie-vb${vw&&vw.what===w?' on':''}" role="tab" aria-selected="${!!(vw&&vw.what===w)}" data-tie="view" data-k="${esc(k)}" data-w="${w}">${{sessions:'Sessions',schedules:'Schedules',memory:'Memory',knowledge:'Knowledge',logs:'Logs'}[w]}</button>`).join('')}</div>
+    <div class="tie-views" role="tablist">${views.map(w=>`<button class="tie-vb${vw&&vw.what===w?' on':''}" role="tab" aria-selected="${!!(vw&&vw.what===w)}" data-tie="view" data-k="${esc(k)}" data-w="${w}">${{events:'Events',sessions:'Sessions',schedules:'Schedules',memory:'Memory',knowledge:'Knowledge',logs:'Logs'}[w]}</button>`).join('')}</div>
     ${vw?`<div class="tie-view">${tieViewHTML(vw)}</div>`:''}
     <div class="tie-acts"><button class="endbtn danger" data-tie="remove" data-k="${esc(k)}">Remove this link</button></div>
   </div>`;
@@ -37543,6 +37636,7 @@ function tieViewHTML(vw){
   if(vw.error)return `<p class="tie-warn">${esc(vw.error)}</p>`;
   const r=vw.rows||[],when=s=>s?new Date(s*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
   if(!r.length)return `<p class="mut">${esc(vw.note||'Nothing here yet.')}</p>`;
+  if(vw.what==='events')return devEventsList(r);
   if(vw.what==='sessions')return `<ul class="tie-rows">${r.map(c=>`<li><button class="tie-conv" data-tie="conv" data-cid="${esc(c.id)}"><b>${esc(c.title||'chat')}</b><span class="mut">${c.messages} messages · ${when(c.updated_at)}</span></button></li>`).join('')}</ul>`;
   if(vw.what==='schedules'){
     const every=x=>x.schedule_type==='daily'?'every day at '+x.at_time:x.schedule_type==='weekly'?'every '+['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][x.weekday]+' at '+x.at_time
@@ -37625,6 +37719,10 @@ async function tieAct(act,t,el){
   if(act==='view'){const k=tieKey(t),what=el.dataset.w;
     if(TIES.view&&TIES.view.k===k&&TIES.view.what===what){TIES.view=null;return netPaint()}
     TIES.view={k,what,loading:true};netPaint();
+    if(what==='events'){
+      try{const r=await apiJSON('/api/network/events?limit=60&who='+encodeURIComponent([t.label,t.addr].filter(Boolean).join(',')));
+        TIES.view={k,what,rows:r.events,note:'Nothing has happened to it yet.'}}catch(e){TIES.view={k,what,error:String(e.message||e)}}
+      return netPaint()}
     try{const r=await apiJSON(`/api/network/ties/${encodeURIComponent(t.label)}/view?what=${what}&owner=${encodeURIComponent(t.owner||'')}`);
       TIES.view={k,what,rows:r.rows,note:r.note||''}}catch(e){TIES.view={k,what,error:String(e.message||e)}}
     return netPaint()}
@@ -40335,6 +40433,8 @@ async function updateWaitingCheck(){
     if(!PAGE_BUILD)PAGE_BUILD=d.build||'';
     else if(d.build&&d.build!==PAGE_BUILD&&PAGE_STALE_SAID!==d.build){
       PAGE_STALE_SAID=d.build;
+      // a kiosk has nobody to tap Refresh: it takes the new page itself
+      if(typeof KIOSK!=='undefined'&&KIOSK&&KIOSK.on)return location.reload();
       toast(`Bento was updated${d.current?' to '+d.current:''}. Refresh this page to use it.`,
         {kind:'warn',ms:600000,label:'Refresh',go:()=>location.reload()});
       return;

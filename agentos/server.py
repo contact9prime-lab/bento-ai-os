@@ -445,6 +445,12 @@ async def startup():
     asyncio.create_task(updmod.watch(cfg, store, broadcast, cfgmod.save_config))
     # the machines this hub set up: behind it after it updated? ask, or update them (ties.py)
     asyncio.create_task(_zeros_keep_current())
+    # where the linked machines are now, and whether they answer: Devices → Events
+    from . import teamlink as _tl
+    _tl.ON_MOVED = _tie_moved
+    if not idle:
+        asyncio.create_task(_ties_watch())
+        asyncio.create_task(_screen_revive())
 
     async def wm_events():
         # In the AgentOS session, the compositor tells us the moment a window
@@ -840,6 +846,150 @@ async def _zeros_keep_current():
         await asyncio.sleep(ZEROS_CHECK_S)
 
 
+# ---- where the linked machines are, and whether they answer --------------------------------
+#
+# Asked for as "the Pi's IP changes time and again, we should work on DHCP", "in the devices
+# section we need events" and "when the Pi updates, the hub should refresh the session on it".
+# Once a minute every machine link is asked hello. On a Zero that is its hub, which is how the
+# hub hears the Zero's new address (teamlink.note_seen); on the hub a failing hello looks for the
+# machine where it may be now (teamlink.relocate). What changed is an event: moved, stopped
+# answering, answering again, updated. A Zero back on a newer version gets zero_refresh, so its
+# screen is never left on the browser's "not reachable" page.
+
+TIES_WATCH_S = 60
+TIES_DOWN_AFTER = 2               # misses in a row before "stopped answering" (Wi-Fi blinks)
+_TIE_UP: dict[str, bool] = {}
+_TIE_MISS: dict[str, int] = {}
+_TIE_REFRESH: set = set()         # links asked to update here: refresh their screen when back
+
+_MOVED_HOW = {"heard": "it connected from there", "MAC": "found by its network card",
+              "name": "found by its name on the network", "search": "found by looking on the network"}
+
+
+async def _device_event(owner: str, event: str, label: str, text: str, **meta) -> None:
+    """One line in Devices → Events: the machine's diary (kind `device`), then the screens."""
+    with contextlib.suppress(Exception):
+        with usersmod.as_user(""):
+            state["store"].log("device", text, {"event": event, "link": label, **meta})
+    await _tie_tell({"type": "device_event", "event": event, "label": label, "text": text}, owner)
+
+
+async def _tie_moved(lk: dict, old: str, new: str, how: str) -> None:
+    owner, label = lk.get("owner") or "", lk.get("label") or ""
+    text = f"{label} moved from {old} to {new} ({_MOVED_HOW.get(how, how)})"
+    with contextlib.suppress(Exception):
+        with usersmod.as_user(owner):
+            fabricmod.audit_team(state["store"], "device.moved", f"link:{label}", text)
+    await _device_event(owner, "moved", label, text, frm=old, to=new, how=how)
+    await _tie_tell({"type": "team_links"}, owner)
+
+
+async def _ties_check() -> list[dict]:
+    """One round of the watch. Returns the events it raised (the tests read them)."""
+    from . import teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+    out = []
+    all_links = teamlink._load()["links"]
+    lks = [lk for lk in all_links if lk.get("kind") == "machine" and lk.get("url")
+           and not tiesmod._stale(lk, all_links)]
+    before = {lk["id"]: tiesmod._VERSION.get(lk["id"]) for lk in lks}
+    await tiesmod.probe(lks, force=True, wait=tiesmod.WATCH_TIMEOUT)
+    for lk in lks:
+        key, label, owner = lk["id"], lk.get("label") or "", lk.get("owner") or ""
+        _t, ok, why = tiesmod._PROBED.get(key, (0, False, ""))
+        _TIE_MISS[key] = 0 if ok else _TIE_MISS.get(key, 0) + 1
+        was = _TIE_UP.get(key)
+        if not ok and _TIE_MISS[key] < TIES_DOWN_AFTER and was is not None:
+            continue                                  # one miss is a blink, not news
+        _TIE_UP[key] = ok
+        ev = None
+        if was is True and not ok:
+            ev = ("offline", f"{label} stopped answering ({why or 'no answer'})")
+        elif was is False and ok:
+            ev = ("online", f"{label} is answering again")
+        if ev:
+            await _device_event(owner, ev[0], label, ev[1])
+            out.append({"event": ev[0], "label": label})
+        now_v = tiesmod._VERSION.get(key)
+        if ok and before.get(key) and now_v and now_v != before[key]:
+            await _device_event(owner, "updated", label, f"{label} is on {now_v} now (was {before[key]})",
+                                version=now_v)
+            out.append({"event": "updated", "label": label})
+            if zeromod.ships_to(lk):
+                _TIE_REFRESH.add(key)
+        if ok and key in _TIE_REFRESH and zeromod.ships_to(lk):
+            _TIE_REFRESH.discard(key)
+            got = await teamlink.call(lk, {"op": "zero_refresh"}, timeout=40)
+            words = got.get("said") or got.get("error") or "no answer"
+            await _device_event(owner, "refreshed", label, f"asked {label} to refresh its screen: {words}")
+            out.append({"event": "refreshed", "label": label})
+    return out
+
+
+async def _ties_watch():
+    await asyncio.sleep(20)
+    while True:
+        with contextlib.suppress(Exception):
+            await _ties_check()
+        await asyncio.sleep(TIES_WATCH_S)
+
+
+def _screen_clients() -> int:
+    """Pages open on this machine's own screen (loopback sockets)."""
+    n = 0
+    for c in list(state.get("clients") or ()):
+        with contextlib.suppress(Exception):
+            n += remotemod.is_loopback(c.client.host)
+    return n
+
+
+async def _screen_refresh(wait: float = 25.0) -> str:
+    """Reload the page on this machine's screen; when no page is connected after `wait` (the
+    browser is on its own "not reachable" page, where nothing of ours runs) start the browser
+    again. Returns what it did, in words."""
+    from . import screen as screenmod
+    had = _screen_clients()
+    if had:
+        await state["broadcast"]({"type": "reload", "delay": 300})
+    t0 = time.time()
+    while time.time() - t0 < wait:
+        await asyncio.sleep(1.0)
+        if had and _screen_clients():
+            if time.time() - t0 > 3:
+                return "the page reloaded"
+        elif not had and _screen_clients():
+            return "the page is back"
+    if not screenmod.showing():
+        return "no browser is showing Bento on its screen"
+    loop = asyncio.get_running_loop()
+    words = await loop.run_in_executor(None, screenmod.restart_now, state.machine_cfg())
+    with contextlib.suppress(Exception):
+        state["store"].log("screen", f"the screen's page was not answering: {words}")
+    return words
+
+
+async def _screen_revive():
+    """After a start: a browser left on its error page by a restart that took longer than the
+    page's patience (a Pi 3 comes back in minutes) has nothing of ours running to notice. When
+    it is showing and no page has connected, start it again. Once."""
+    from . import screen as screenmod
+    await asyncio.sleep(90)
+    with contextlib.suppress(Exception):
+        if screenmod.showing() and not _screen_clients():
+            await _screen_refresh(wait=0)
+
+
+async def _zero_refresh_from_hub(lk: dict) -> dict:
+    if not _zero().is_my_hub(state.machine_cfg(), lk):
+        return {"ok": False, "error": "only the hub that set this machine up can refresh its screen"}
+    said = await _screen_refresh()
+    with contextlib.suppress(Exception):
+        with usersmod.as_user(""):
+            state["store"].log("screen", f"{lk.get('label')} asked to refresh the screen: {said}")
+    return {"ok": True, "said": said}
+
+
 _ZERO_UPDATING: dict = {}
 
 
@@ -902,6 +1052,8 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
         return await _zero_update_from_hub(lk)
     if req.get("op") == "zero_say":
         return await _zero_say_from_hub(lk, req)
+    if req.get("op") == "zero_refresh":
+        return await _zero_refresh_from_hub(lk)
     if req.get("op") == "zero_face":
         # its hub reads or changes this machine's screen faces (Devices, or the hub's agent)
         if not _zero().is_my_hub(state.machine_cfg(), lk):
@@ -5655,10 +5807,51 @@ async def api_whatsapp_webhook(request: Request):
 
 # ---- Logs -------------------------------------------------------------------
 
+LOG_SOURCES = {"mine": "Mine", "machine": "This machine", "service": "Server output"}
+
+
+def _log_sources() -> list[str]:
+    """Which diaries this person may read. On a machine with accounts the machine keeps its own
+    (devices, links, setting machines up, the scheduler's machine work), in a database no account
+    reads, so an admin's Logs showed none of it: reported as "the system logs I am not able to
+    see". An admin reads it, and the server's output; anyone else reads their own."""
+    if not usersmod.enabled():
+        return ["machine", "service"]
+    return ["mine", "machine", "service"] if usersmod.is_admin(usersmod.current()) else ["mine"]
+
+
+def _service_rows(limit: int, q: str) -> list[dict]:
+    from . import desktop as desktopmod
+    got, where = desktopmod.service_lines(limit)
+    rows = [{"id": f"svc{i}", "kind": "service", "message": ln[:2000], "meta": json.dumps({"from": where}),
+             "created_at": t, "where": "service"} for i, (t, ln) in enumerate(got)]
+    if q:
+        rows = [r for r in rows if q.lower() in r["message"].lower()]
+    return rows[::-1]
+
+
 @app.get("/api/logs")
-async def api_logs(kind: str = "", limit: int = 300, q: str = ""):
-    """System logs, filterable by kind and free-text search (message + meta)."""
-    return {"logs": state["store"].list_logs(kind, min(limit, 1000), q=q)}
+async def api_logs(kind: str = "", limit: int = 300, q: str = "", source: str = ""):
+    """System logs, filterable by kind and free-text search (message + meta). `source` picks a
+    diary (`_log_sources`); none is every diary this person may read, newest first."""
+    limit = min(limit, 1000)
+    allowed = _log_sources()
+    want = [source] if source in allowed else [x for x in allowed if x != "service"]
+    rows: list[dict] = []
+    for src in want:
+        if src == "service":
+            if not kind or kind == "service":
+                rows += await asyncio.get_running_loop().run_in_executor(None, _service_rows, limit, q)
+            continue
+        if src == "machine" and usersmod.enabled():
+            with usersmod.as_user(""):
+                got = state["store"].list_logs(kind, limit, q=q)
+        else:
+            got = state["store"].list_logs(kind, limit, q=q)
+        rows += [{**r, "where": src} for r in got]
+    rows.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
+    return {"logs": rows[:limit], "source": source if source in allowed else "",
+            "sources": [{"id": x, "name": LOG_SOURCES[x]} for x in allowed]}
 
 
 @app.delete("/api/logs")
@@ -14106,6 +14299,20 @@ async def api_network_firewall(request: Request, body: dict):
                                                   "done": "noted the ports were opened by hand",
                                                   "undo": "asked to be reminded about the ports"}[act])
     return {"ok": True, "firewall": _fw_state()}
+
+
+@app.get("/api/network/events")
+async def api_network_events(who: str = "", limit: int = 200):
+    """What happened to the machines here, newest first (devevents.py): admin only, like the rest
+    of Network. `who` keeps one machine's (its label, address or MAC, comma-separated)."""
+    if (r := _require_admin()):
+        return r
+    from . import devevents
+    stores = [state["store"]]
+    if usersmod.enabled():
+        with usersmod.as_user(""):
+            stores.append(state["store"])
+    return {"events": devevents.gather(stores, who=who, limit=max(1, min(limit, 500)))}
 
 
 @app.get("/api/network")

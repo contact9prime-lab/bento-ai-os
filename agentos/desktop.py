@@ -649,6 +649,45 @@ def _listening_pid(port: int) -> str:
     return ""
 
 
+def _is_the_service() -> bool:
+    """Is this process the one systemd runs? A server started by hand beside an installed
+    service would otherwise show the service's journal as its own output."""
+    try:
+        out = subprocess.run(["systemctl", "--user", "show", "-p", "MainPID", "--value", f"{APP_ID}.service"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+        return int(out or 0) == os.getpid()
+    except Exception:
+        return False
+
+
+def service_lines(lines: int = 200) -> tuple[list[tuple[float, str]], str]:
+    """The server's own output as (time, line), newest last, and where it came from: the
+    journal under systemd, else server.log (whose lines carry no time of their own, so they
+    are given the file's). The Logs app's "Server output"; `service_logs` streams the same."""
+    import re as _re
+    lines = max(1, min(int(lines or 200), 2000))
+    if service_manager() == "systemd" and shutil.which("journalctl") and _is_the_service():
+        try:
+            out = subprocess.run(["journalctl", "--user", "-u", f"{APP_ID}.service", "-n", str(lines),
+                                  "-o", "short-unix", "--no-pager"], capture_output=True, text=True,
+                                 timeout=10).stdout
+        except Exception:
+            out = ""
+        got = []
+        for ln in out.splitlines():
+            m = _re.match(r"^(\d+\.\d+)\s+\S+\s+[^:]+:\s?(.*)$", ln)
+            if m:
+                got.append((float(m.group(1)), m.group(2)))
+        if got:
+            return got, "the service's journal"
+    p = server_log()
+    try:
+        t = p.stat().st_mtime
+        return [(t, ln) for ln in p.read_text(errors="replace").splitlines()[-lines:]], str(p)
+    except OSError:
+        return [], ""
+
+
 def service_logs(lines: int = 60, follow: bool = False) -> tuple[bool, str]:
     """Hand the caller the right log command for this machine, and run it.
 

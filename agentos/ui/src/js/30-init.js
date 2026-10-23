@@ -128,6 +128,8 @@ async function updateWaitingCheck(){
     if(!PAGE_BUILD)PAGE_BUILD=d.build||'';
     else if(d.build&&d.build!==PAGE_BUILD&&PAGE_STALE_SAID!==d.build){
       PAGE_STALE_SAID=d.build;
+      // a kiosk has nobody to tap Refresh: it takes the new page itself
+      if(typeof KIOSK!=='undefined'&&KIOSK&&KIOSK.on)return location.reload();
       toast(`Bento was updated${d.current?' to '+d.current:''}. Refresh this page to use it.`,
         {kind:'warn',ms:600000,label:'Refresh',go:()=>location.reload()});
       return;

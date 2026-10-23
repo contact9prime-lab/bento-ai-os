@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.92 — 2026-10-23
+
+**A Pi whose address changed is followed, and Devices has Events.** A Pi gets its address from
+your router and it changes. The hub now follows it: the Pi says hello once a minute, and when the
+hub can't reach the old address it looks by the Pi's last address, its network card and its
+`.local` name, always checking it's the same certificate. Devices → **Events** lists what happened:
+moved, stopped answering, back, updated, a screen refreshed, and every step done to a machine from
+here, for all of them or one. `bento network events`.
+
+**An admin's Logs show the machine's own diary.** On a hub with accounts, the lines about devices,
+links and setting machines up were kept where no one's Logs looked. Logs now has a picker: yours,
+this machine's, and the server's own output.
+
+**The Pi's screen comes back by itself after an update.** The page reloaded while the Pi was still
+restarting and was left on the browser's "not reachable" page. It now waits for its server, and the
+hub refreshes a Zero's screen when it comes back on a new version.
+
 ## 0.6.91 — 2026-10-23
 
 **A Zero sets up schedules on its hub.** "Every morning at 8, tell me the weather" said at the Pi

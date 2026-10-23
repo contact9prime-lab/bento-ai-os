@@ -286,6 +286,23 @@ def close_now() -> int:
     return n
 
 
+def restart_now(cfg: dict | None = None, wait: float = 6.0) -> str:
+    """Start the screen's browser again: it was left on its own "not reachable" page, where
+    nothing of ours runs to reload it. On the console road cage ends with the browser and
+    systemd starts it again (Restart=always); on a desktop it is opened here once it has gone.
+    Returns what happened, in words."""
+    if not close_now():
+        return "no browser was showing Bento on this screen"
+    t0 = time.time()
+    while showing() and time.time() - t0 < wait:
+        time.sleep(0.3)
+    rd, _ = road()
+    if rd == "desktop":
+        return "started the screen's browser again" if open_now(cfg) else \
+            "closed the screen's browser, and could not open it again here"
+    return "started the screen's browser again"
+
+
 def _server_up(cfg: dict | None = None) -> bool:
     from . import desktop
     return desktop._server_up(_port(cfg))

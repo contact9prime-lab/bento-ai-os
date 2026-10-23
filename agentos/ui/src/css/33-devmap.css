@@ -172,3 +172,19 @@ body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
 .tie-faces{display:flex;flex-direction:column;gap:8px}
 .tie-faces .kf-pick{min-width:84px}
 .tie-faces .kf-thumb{width:72px;height:44px}
+
+/* Devices → Events (24o-devices.js devEvents*), and a machine's own Events view */
+.dev-events{margin:18px 0 6px}
+.dev-events h3{font-size:13px;font-weight:600;margin:0 0 8px}
+.dev-ev{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.dev-ev li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:7px 0;
+  border-bottom:1px solid color-mix(in srgb,var(--txt) 6%,transparent);font-size:12.5px}
+.dev-ev li:last-child{border-bottom:0}
+.dev-ev-i{text-align:center;color:color-mix(in srgb,var(--txt) 55%,transparent)}
+.dev-ev-t{overflow-wrap:anywhere}
+.dev-ev time{font-size:11px;white-space:nowrap}
+.dev-ev-moved .dev-ev-i,.dev-ev-refreshed .dev-ev-i{color:var(--acc)}
+.dev-ev-online .dev-ev-i,.dev-ev-installed .dev-ev-i{color:var(--ok)}
+.dev-ev-offline .dev-ev-i,.dev-ev li.bad .dev-ev-i{color:var(--err)}
+.dev-ev-more{margin-top:8px;min-height:var(--tap,36px)}
+@media (max-width:520px){.dev-ev li{grid-template-columns:22px minmax(0,1fr)}.dev-ev time{grid-column:2}}
