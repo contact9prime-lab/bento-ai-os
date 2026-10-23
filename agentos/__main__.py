@@ -8817,8 +8817,7 @@ def main():
     p_net = verb("network", help="the machines on your network: look, install, check, secure, disconnect")
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
-                                "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update",
-                                "ties"],
+                                "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs]] | "
                             "look | install MACHINE --user U [--authorize] [--kiosk] [--for ACCOUNT] | "
