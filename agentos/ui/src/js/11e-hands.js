@@ -11,6 +11,7 @@ var HANDS={data:null,edit:null};
 var AGENTS={data:null,focus:''};
 
 function settingsGo(tab){
+  tab=(typeof SETTAB_ALIAS!=='undefined'&&SETTAB_ALIAS[tab])||tab;
   SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
   const b=document.querySelector(`.prefs-side button[data-t="${tab}"]`);
   if(b)b.click();
@@ -143,12 +144,42 @@ async function renderAgentsList(){
     if(lh)lh.innerHTML=opts(lead.hands.name);
   }
   const others=d.agents.filter(a=>!a.master);
+  /* Grouped by company and department (topology.logical, the same tree as the logical map):
+     asked for as "agents should be in different companies, or in the default company". */
+  let topo=null;try{topo=await apiJSON('/api/network/logical')}catch(e){}
+  const byName=Object.fromEntries(others.map(a=>[a.name.toLowerCase(),a]));
+  const seen=new Set(),sections=[];
+  ((topo&&topo.companies)||[]).forEach(c=>{
+    const parts=[];
+    (c.departments||[]).forEach(dp=>{const as=(dp.people||[]).map(p=>byName[p.name.toLowerCase()]).filter(Boolean);
+      as.forEach(a=>seen.add(a.name.toLowerCase()));if(as.length)parts.push({dept:dp,agents:as})});
+    const loose=[...(c.people||[]),...(c.auditor&&!sections.some(x=>x.hasAud)?[c.auditor]:[])]
+      .map(p=>byName[p.name.toLowerCase()]).filter(a=>a&&!seen.has(a.name.toLowerCase()));
+    loose.forEach(a=>seen.add(a.name.toLowerCase()));
+    if(parts.length||loose.length)sections.push({co:c,parts,loose,hasAud:!!c.auditor});
+  });
+  const rest=others.filter(a=>!seen.has(a.name.toLowerCase()));
+  if(rest.length)sections.push({co:{name:'Default company',default:true},parts:[],loose:rest});
+  const coHead=c=>`<div class="ag-co"><b>▦ ${esc(c.name)}</b>${c.default?' <span class="mut">agents in no company</span>'
+    :c.open?' <span class="brainchip">open</span>':` <button class="endbtn" onclick="agentsOpenCompany('${esc(c.id)}')">Open it</button>`}</div>`;
+  const body=sections.map(sc=>coHead(sc.co)+sc.parts.map(pt=>`<div class="ag-dept"><span>${esc(pt.dept.name)}</span>${pt.dept.head?` <small class="mut">head: ${esc(pt.dept.head)}</small>`:''}</div>`
+      +pt.agents.map(agCardHTML).join('')).join('')+(sc.loose.length&&sc.parts.length?'<div class="ag-dept"><span>In no department</span></div>':'')
+      +sc.loose.map(agCardHTML).join('')).join('');
   // The way to add one is in the list's own header, where the eye starts — it sat at
   // the very end of a long list, against the last card, off screen when the page opened
   box.innerHTML=`<div class="pgroup"><div class="ag-head"><h3>Your agents</h3>
       <button class="pact ag-new" onclick="agentEdit('')">＋ New agent</button></div>
-    <div class="ghint">${esc(cfg.agent_name||'Your agent')} hands work to these. ${pInfo('Each one has its own soul, brain, executor, permissions and skills.')}</div>
-    ${others.map(a=>{const au=a.authority,fams=Object.entries(au.families||{});
+    <div class="ghint">${esc(cfg.agent_name||'Your agent')} hands work to these, by company and department. ${pInfo('Each one has its own soul, brain, executor, permissions and skills. Companies and departments are set up in the Office’s Company panel.')}</div>
+    ${body||'<div class="ghint mut">No other agents yet. Press ＋ New agent and describe one in a sentence.</div>'}
+    <div class="tlk-actions"><button class="endbtn" onclick="openApp('office');setTimeout(()=>{if(typeof officeCompany==='function')officeCompany(true)},900)">Companies and departments…</button></div></div>`;
+}
+async function agentsOpenCompany(id){
+  try{await apiJSON('/api/companies/active',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({id})});
+    toast('✓ opened');renderAgentsList()}catch(e){toast(String(e.message||e),{kind:'err'})}
+}
+function agCardHTML(a){
+  const opts=cur=>((AGENTS.data||{}).profiles||[]).map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
+  {const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
       <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${esc(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
         <span class="sp"></span><button class="endbtn" onclick="agentEdit('${esc(a.key)}')">Edit</button></div>
@@ -163,7 +194,7 @@ async function renderAgentsList(){
         ${a.asks.length||a.blocked.length?`<div><span class="ag-k">May ask</span>${a.asks.map(esc).join(', ')||'<span class="mut">nobody without asking you</span>'}${a.blocked.length?` <span class="mut">· blocked: ${a.blocked.map(esc).join(', ')}</span>`:''}</div>`:''}
         ${a.missions.length?`<div><span class="ag-k">Missions</span>${a.missions.map(esc).join(', ')}</div>`:''}
         ${(a.links||[]).filter(l=>l.they_may_ask||(l.their_missions||[]).length).map(l=>`<div><span class="ag-k">${esc(l.label)}</span>may ask it${l.standing?` · ${l.standing} standing permission${l.standing===1?'':'s'}`:''}${(l.their_missions||[]).length?' · their missions: '+l.their_missions.map(esc).join(', '):''}</div>`).join('')}
-      </div></div>`}).join('')||'<div class="ghint mut">No other agents yet. Press ＋ New agent and describe one in a sentence.</div>'}</div>`;
+      </div></div>`}
 }
 async function agentEdit(name){
   // the Missions editor's wizard, borrowed: one way to define an agent, not two

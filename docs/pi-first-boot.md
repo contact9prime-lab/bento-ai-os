@@ -66,7 +66,7 @@ and the router's cooperation, so Bento doesn't try. What it does use:
 ### 1. Bento on the card: nothing to press (trixie)
 
 Write the card with Raspberry Pi Imager as usual, setting a user, Wi-Fi and SSH. Keep the card
-plugged into the machine that leads your community, then go to *Settings → Team & Communications → Community →
+plugged into the machine that leads your community, then go to *Settings → Network & Teams → Community →
 Set up an SD card*, press **Add Bento to a card** and give the path of the boot partition.
 From a terminal:
 

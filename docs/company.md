@@ -374,7 +374,7 @@ the same answer about who is in which department, so they never disagree.
 ![The department grid in Settings](screenshots/company-dept-grid.png)
 
 People in a company ask each other questions. By default each pair of agents is decided on
-its own in Settings → Team & Communications. With many people that is a big grid, so a
+its own in Settings → Agents. With many people that is a big grid, so a
 company can decide it **per department** instead: ▦ Company → **Who may ask whom** →
 **Per department**, or `bento company permissions department`.
 

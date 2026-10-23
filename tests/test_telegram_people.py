@@ -66,9 +66,11 @@ def test_the_owner_is_asked_about_somebody_new(tmp_path):
     assert "await tg.decide_newcomer(chat_id, bool(body[\"allowed\"]))" in srv
 
 
-def test_phone_chats_have_their_own_section():
+def test_phone_chats_have_their_own_tab():
     chat = (ROOT / "agentos/ui/src/js/10-chat.js").read_text()
-    assert "['On your phone',phone]" in chat
+    # its own tab now (chattabs.py): Chat → Channels
+    assert "c.tabs||[c.tab]" in chat
+    assert 'return "channels"' in (ROOT / "agentos/chattabs.py").read_text()
     assert 'origin="telegram"' in (ROOT / "agentos/telegram.py").read_text()
     assert 'origin="whatsapp"' in (ROOT / "agentos/whatsapp.py").read_text()
     ws = (ROOT / "agentos/ui/src/js/09-websocket.js").read_text()

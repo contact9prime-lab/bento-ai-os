@@ -44,6 +44,7 @@ var APP_WORDS={
   tokens:['usage','cost','spend','billing'],
 };
 function placeSettings(tab){const go=()=>{
+  tab=(typeof SETTAB_ALIAS!=='undefined'&&SETTAB_ALIAS[tab])||tab;
   SETTAB=tab;try{localStorage.setItem('settab',tab)}catch(e){}
   openApp('settings');
   // an open Settings window is already painted on another pane: move it
@@ -62,9 +63,10 @@ function placeCompany(){return ()=>{openApp('office');setTimeout(()=>{if(typeof 
 var PLACES=[
   ['AI providers','settings','Settings → AI providers',['provider','providers','model','models','brain','api key','key','openai','anthropic','claude','gemini','ollama','openrouter','llm'],placeSettings('ai')],
   ['Agents','settings','Settings → Agents',['agent','agents','specialist','specialists','lead','persona'],placeSettings('agent')],
-  ['Team & Communications','settings','Settings → Team & Communications',['team','swarm','huddle','talk','working together','democracy','matrix','who may ask whom','linked teams','link','team chat','messages','communications'],placeSettings('team')],
+  ['Agents working together','settings','Settings → Agents',['team','swarm','huddle','talk','working together','democracy','matrix','who may ask whom','own providers','departments talk'],placeSettings('agent')],
+  ['Network & Teams','settings','Settings → Network & Teams',['linked teams','link','team chat','messages','communications','teams and communication','mapping','talks to','topology','logical map','physical map'],placeSettings('network')],
   ['Permissions settings','settings','Settings → Permissions',['permissions','autonomy','paranoid','balanced','full autonomy','ledger','audit','untrusted','injection','grants','security'],placeSettings('permissions')],
-  ['Free talk','settings','Settings → Team & Communications',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('team')],
+  ['Free talk','settings','Settings → Agents',['free talk','let them talk','agent talk','agent to agent','agents talking','talk log','open floor'],placeSettings('agent')],
   ['Executors','settings','Settings → Executors',['executor','executors','hands','folders','folder access','claude code','codex','gemini cli','sandbox','reach'],placeSettings('executors')],
   ['Channels','settings','Settings → Channels',['channel','channels','telegram','whatsapp','messaging','phone','bot','notify','notifications'],placeSettings('channels')],
   ['Accounts','settings','Settings → Accounts',['account','accounts','mail','email','gmail','outlook','calendar','imap','caldav','sign in','google','microsoft'],placeSettings('accounts')],
@@ -77,7 +79,7 @@ var PLACES=[
   ['Network','settings','Settings → Network',['network','inventory','devices on the network','machines on my network','lan','secure a machine','secure it','harden','firewall','ssh password','security updates','teams and zeros','zeros','device map','what it runs on'],placeSettings('network')],
   ['New machines','settings','Settings → Network → Set machines up',['new machine','provision','discover','set up a pi','enrolment key','enroll','poap','zero touch','make a zero','zero'],placeSettings('network')],
   ['Devices without Bento','settings','Settings → Network',['devices','network scan','scan the network','install bento','ssh','sd card','first boot','cloud-init','imager'],placeSettings('network')],
-  ['Community','settings','Settings → Team & Communications → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('team')],
+  ['Community','settings','Settings → Network & Teams → Community',['community','pool','cluster','machines','raspberry pi','pi','leader','join','shared notes','shared memory','split work'],placeSettings('network')],
   ['On this screen','settings','Settings → Appearance → On this screen',['kiosk','one agent','buddy','wake word','small screen'],placeSettings('look')],
   ['Listening','settings','Settings → Voice → Listening',['listen','listening','speech to text','whisper','hear','hearing','transcribe','mic language','dictation'],placeSettings('voice')],
   ['Cloud standby','settings','Settings → System → Cloud standby',['cloud','standby','failover','offload','take over','hand back','move to the cloud','vps','always on'],placeSettings('system')],

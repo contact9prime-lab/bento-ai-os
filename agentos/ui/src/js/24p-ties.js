@@ -23,7 +23,7 @@ function tieFace(t,cls){
 
 function tiesHTML(v){
   const ts=v.ties||[];
-  if(!ts.length)return pRow('Teams and Zeros','',{desc:'Nothing is linked yet. Link a team in Team & Communications, or install Bento on a Pi below.',
+  if(!ts.length)return pRow('Teams and Zeros','',{desc:'Nothing is linked yet. Link a team above, or install Bento on a Pi.',
     f:'teams zeros links linked'});
   const live=ts.filter(t=>!t.stale),old=ts.filter(t=>t.stale);
   const mode=v.zero_updates||'ask',zs=live.filter(t=>t.kind==='zero');
@@ -69,7 +69,7 @@ function tieBrainWord(b){
 
 function tieBodyHTML(t){
   const k=tieKey(t);
-  if(!t.mine)return `<div class="tie-body"><p class="mut">This link belongs to ${esc(t.owner_name||'another account')}. They manage it from their own Team & Communications.</p></div>`;
+  if(!t.mine)return `<div class="tie-body"><p class="mut">This link belongs to ${esc(t.owner_name||'another account')}. They manage it from their own Network & Teams.</p></div>`;
   const views=t.kind==='zero'?['events','sessions','schedules','memory','knowledge','logs']:['events','sessions','memory','knowledge','logs'];
   const vw=TIES.view&&TIES.view.k===k?TIES.view:null;
   return `<div class="tie-body">

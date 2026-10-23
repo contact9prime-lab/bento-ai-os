@@ -81,15 +81,15 @@ def test_the_agents_tab_splits_who_it_is_from_how_it_works():
     assert 'type="checkbox" id="ags-soul"' not in share   # a switch now
 
 
-def test_the_team_tab_is_in_groups():
-    team = _tab("team")
-    order = [g for g in _groups(team) if g]
-    want = ["Models", "Asking each other", "Free talk", "Linked teams", "Messages"]
-    assert [g for g in order if g in want] == want, order
-    asking = team[team.index("pGroup('Asking each other'"):team.index("pGroup('Free talk'")]
+def test_the_team_groups_are_in_agents_and_network():
+    agent, net = _tab("agent"), _tab("network")
+    want = ["Models", "Asking each other", "Huddles and free talk"]
+    assert [g for g in _groups(agent) if g in want] == want, _groups(agent)
+    asking = agent[agent.index("pGroup('Asking each other'"):agent.index("pGroup('Huddles and free talk'")]
     for piece in ("s-team-talk", "s-team-matrix", "s-team-limits"):
         assert piece in asking, piece
-    assert "Community" in team
+    assert [g for g in _groups(net) if g in ("Linked teams", "Messages")] == ["Linked teams", "Messages"]
+    assert "Community" in net
     # the limits are small boxes, not full-width fields
     assert ".prow.stack .pc .tl-row input[type=number]{width:96px" in (CSS / "11-prefs.css").read_text()
 

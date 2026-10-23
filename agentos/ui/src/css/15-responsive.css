@@ -365,3 +365,5 @@ body.dev-touch #startmenu .smapp{min-height:92px}
 /* the ⋯ must share the row with the two pickers, not take a row of its own */
 body.dev-mobile #topbar>select{flex:1 1 34%}
 body.dev-mobile #tb-more{flex:0 0 var(--tap)}
+/* Chat's tabs and search are taps on a phone (10-chat.js) */
+body.dev-mobile .ctab,body.dev-mobile #conv-q{min-height:var(--tap)}

@@ -4699,6 +4699,42 @@ def _network_cli(args):
                             user=args.user or r.get("user") or "")
     if a == "ties":
         return _ties_cli(rest)
+    if a in ("map", "talks"):
+        # Network & Teams → Maps (logical) and Team to agent mapping, for the owner of the links
+        from . import ties as _ties
+        from . import topology as _topo
+        from . import teamlink as _tl
+        cfg, store = _open_store(getattr(args, "for_", "") or "")      # --for ACCOUNT, on a machine with several
+        if a == "map":
+            print(_topo.text(_topo.logical(cfg, store, _ties.ties(None))))
+            return
+        if not rest:
+            for t in _ties.ties(None):
+                print(f"  {t['label']:<24} talks to {_ties.target_words(cfg, t['talks_to'])}")
+            print("\n  `bento network talks LINK lead` or `bento network talks LINK DEPARTMENT [--company ID]`")
+            return
+        t = next((x for x in _ties.ties(None) if x["label"] == rest[0]), None)
+        if not t:
+            sys.exit(f"  no link called {rest[0]}")
+        if len(rest) > 1:
+            want = {"to": "lead"} if rest[1].lower() == "lead" else \
+                {"to": "department", "company": getattr(args, "company", "") or "", "department": " ".join(rest[1:])}
+            try:
+                got = _ties.set_target(t["owner"], t["label"], want, cfg, store)
+            except (ValueError, LookupError) as e:
+                sys.exit(f"  {e}")
+            ledger("link.target", f"link:{t['label']}", f"{t['label']} talks to {_ties.target_words(cfg, got)}")
+        lk = next(x for x in _tl._load()["links"]
+                  if x.get("label") == t["label"] and (x.get("owner") or "") == t["owner"])
+        acc = _topo.access(cfg, store, lk)
+        print(f"  {t['label']} talks to {acc['words']}")
+        if acc.get("caution"):
+            print(f"  ⚠ {acc['caution']}")
+        print(f"  reaches: {', '.join(p['name'] for p in acc['reach']) or 'nobody'}")
+        print(f"  also may ask: {', '.join(acc['asks']) or 'none of your agents directly'}")
+        for g in acc["grants"]:
+            print(f"  permission: {g['words']}")
+        return
     if a == "events":
         # Devices → Events: the machine's own diary and ledger (the person's account is the page's)
         from . import devevents
@@ -8892,9 +8928,10 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events"],
+                                "events", "map", "talks"],
                        metavar="ACTION",
-                       help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | "
+                       help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
+                            "talks [LINK [lead|DEPARTMENT --company ID]] | "
                             "look | install MACHINE --user U [--authorize] [--kiosk] [--for ACCOUNT] | "
                             "check IP --user U | secure IP --user U [--steps a,b] [--your-key F] | "
                             "letin MACHINE --user U [--your-key F] [--passwords-on] | "
@@ -8912,6 +8949,7 @@ def main():
     p_net.add_argument("--your-key", default="", help="secure / letin: your own public key file (default: ~/.ssh/id_*.pub here)")
     p_net.add_argument("--passwords-on", action="store_true", help="letin: turn password logins back on")
     p_net.add_argument("--agent-name", default="", help="install: what its agent is called, and the name you wake it with")
+    p_net.add_argument("--company", default="", help="talks: the company the department is in (default: the open one)")
     p_net.add_argument("--for", dest="for_", default="", metavar="ACCOUNT", help="install: the account the machine belongs to (one admin: that admin)")
     p_net.add_argument("--steps", default="", help="secure: key,passwords,firewall,updates (default: all)")
     p_net.add_argument("--what", default="", help="disconnect: which ties to remove (default: all of them)")

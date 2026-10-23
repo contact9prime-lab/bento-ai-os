@@ -121,7 +121,7 @@ function pfWhy(){
   }else if(stage==='rate'){
     doors=`<div class="pf-rule"><button class="endbtn" onclick="PERM.tab='quarantine';refreshApp('permissions')">Open Quarantine</button></div>`;
   }else if(stage==='team'){
-    doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('team')()">Who may ask whom</button></div>`;
+    doors=`<div class="pf-rule"><button class="endbtn" onclick="placeSettings('agent')()">Who may ask whom</button></div>`;
   }
   return `<div class="pf-why ${pfEffCls(eff)}">
     <div class="pf-verdict"><b>${esc(pfEffWord(eff))}</b> at <b>${esc(label)}</b></div>

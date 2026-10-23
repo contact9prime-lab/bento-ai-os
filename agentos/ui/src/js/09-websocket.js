@@ -685,7 +685,7 @@ function handle(ev){
     // the community of machines changed, or somebody asks to join it (pool.py)
     case 'pool': if(typeof poolPaint==='function')poolPaint();
       if(ev.kind==='pool_request')toast((ev.name||'A machine')+' asks to join your community',
-        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
+        {label:'Review',go:()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="network"]')?.click();
           setTimeout(()=>document.getElementById('s-pool')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)}});
       break;
     // this screen's face changed (one agent, the kiosk): re-read it and redraw both scenes

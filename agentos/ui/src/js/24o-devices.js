@@ -4,10 +4,27 @@
    what it is to Bento, its switches as last read, Controls, Install and Remove. */
 async function renderDevices(body,w){
   const pb=panelShell(body,{title:'Devices',sub:'The machines on your network'});
-  pb.innerHTML=`<div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
-    <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section>`;
+  /* Physical: the devices (the map, the list, Events). Logical: your lead, companies,
+     departments and people, and who each Zero and team talks to (24r-topology.js). */
+  pb.innerHTML=`<div class="seg dev-views" role="tablist">
+      <button role="tab" data-dv="physical">Physical</button><button role="tab" data-dv="logical">Logical</button></div>
+    <div class="dev-physical"><div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
+    <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section></div>
+    <div class="dev-logical" hidden><p class="mut">…</p></div>`;
+  pb.querySelectorAll('[data-dv]').forEach(b=>b.onclick=()=>devViewSet(b.dataset.dv));
+  let v='physical';try{v=localStorage.getItem('devices.view')||'physical'}catch(e){}
+  devViewSet(v);
   await netPaint();
   devEventsLoad();
+}
+async function devViewSet(v){
+  try{localStorage.setItem('devices.view',v)}catch(e){}
+  document.querySelectorAll('.dev-views [data-dv]').forEach(b=>{b.classList.toggle('on',b.dataset.dv===v);b.setAttribute('aria-selected',b.dataset.dv===v)});
+  document.querySelectorAll('.dev-physical').forEach(x=>x.hidden=v!=='physical');
+  const lg=[...document.querySelectorAll('.dev-logical')];lg.forEach(x=>x.hidden=v!=='logical');
+  if(v!=='logical'||!lg.length||typeof topoTreeHTML!=='function')return;
+  try{TOPO.tree=await apiJSON('/api/network/logical')}catch(e){lg.forEach(x=>x.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`);return}
+  lg.forEach(x=>{x.innerHTML=topoTreeHTML(TOPO.tree);topoTreeWire(x)});
 }
 
 /* Events: what happened to the machines here, newest first (devevents.py). Asked for as "in the

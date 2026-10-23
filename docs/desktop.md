@@ -601,11 +601,17 @@ See [Models & Appearance](models.md) for more.
 
 ---
 
+### Chat's tabs
+
+![Chat → Huddles: the tabs above the list, with a huddle kept under its own tab](screenshots/chat-huddles.png)
+
+![Chat on a phone: searching "orders" finds the Pi's chat under Devices](screenshots/chat-search-phone.png)
+
 ## App catalog
 
 | App | Purpose |
 |---|---|
-| **Agent Chat** | talk to the agent — streaming replies, tool activity, approvals, voice |
+| **Agent Chat** | talk to the agent: streaming replies, tool activity, approvals, voice. The list is in tabs, **Desktop**, **Channels** (Telegram, WhatsApp), **Devices** (Zeros and linked teams), **Huddles** and **App builder**, with a search that reads every message. A huddle is listed under Huddles and where it happened |
 | **Office** | watch your agents work in a comic office: they get work, walk over to ask each other and huddle — [The Office](office.md) |
 | **Applications** | launch any program installed on your computer |
 | **Web** | open web pages in your real system browser |

@@ -2442,6 +2442,26 @@ def cfg_for(cfg: dict, flow_name: str) -> dict:
     return cfg
 
 
+def cfg_of(cfg: dict, cid: str) -> dict | None:
+    """The settings one company runs under, by its id: the open company's (an empty id is
+    the open one, which may have no id until a second company exists), or a parked one's
+    own office and settings. None when the person keeps no company by that id."""
+    cid = str(cid or "").strip().lower()
+    cur = (cfg or {}).get("company") or {}
+    if not cid or cid == str(cur.get("id") or ""):
+        return cfg
+    rec = _parked(cfg).get(cid)
+    if not rec:
+        return None
+    return {**cfg, "company": rec["company"], "office": rec.get("office") or {}}
+
+
+def departments_of(cfg: dict, store, cid: str) -> list[dict]:
+    """One company's departments with their live rosters, open or parked."""
+    c = cfg_of(cfg, cid)
+    return departments(c, store) if c is not None else []
+
+
 def rename_for(cfg: dict, store, plan: dict) -> list[str]:
     """People a plan would take from another of the person's companies get this company's
     name on theirs instead (maya → maya-forge). Returns what was renamed, in words."""

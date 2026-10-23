@@ -629,7 +629,7 @@ function companyOverviewPaint(el){
   el.querySelectorAll('[data-hands]').forEach(x=>x.onchange=()=>companyHands(x));
   el.querySelectorAll('[data-code]').forEach(x=>x.onchange=()=>companyCode(x));
   q('.co-perm').onchange=e=>companyPermMode(e.target);
-  q('.co-grid').onclick=()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="team"]')?.click();
+  q('.co-grid').onclick=()=>{openApp('settings');setTimeout(()=>{document.querySelector('.prefs-side button[data-t="agent"]')?.click();
     setTimeout(()=>document.getElementById('s-team-matrix')?.scrollIntoView({block:'start',behavior:'smooth'}),150)},200)};
   el.querySelectorAll('[data-kit]').forEach(b=>b.onclick=()=>companyKitOpen(b.dataset.kit));
   el.querySelectorAll('[data-mcpq]').forEach(b=>b.onclick=()=>companyKitSetUp(b.dataset.mcp,b.dataset.mcpq,b.dataset.mcpc));
