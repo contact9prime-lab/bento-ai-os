@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.91 — 2026-10-23
+
+**A Zero sets up schedules on its hub.** "Every morning at 8, tell me the weather" said at the Pi
+makes a schedule on the hub, kept in the Pi's section. When it fires the hub works it and sends the
+answer back, and the Pi shows and speaks it. It runs exactly as the Pi's chat runs, never as you
+with every tool, and a scheduled run can't schedule more. Network → the Zero → Schedules lists
+them with Cancel.
+
 ## 0.6.90 — 2026-10-23
 
 **Change the Pi's screen from Devices and from chat.** Devices → a Zero → Manage → **Its screen**
