@@ -349,6 +349,11 @@ def run(cfg: dict | None = None) -> None:
     if not exe:
         sys.exit("no Chromium here to draw the screen with: `bento screen on` installs it")
     wait(cfg, timeout=600)
+    if showing():
+        # the installer's own step opened it already (open_now), or a revive did: a second
+        # browser on the same profile only opens a second window, and a Pi drew the page twice
+        print("the screen already shows Bento")
+        return
     args = run_argv(cfg, exe)
     from . import config as cfgmod
     (cfgmod.AGENTOS_HOME / PROFILE_NAME).mkdir(parents=True, exist_ok=True)

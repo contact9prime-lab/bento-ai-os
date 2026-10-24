@@ -9,6 +9,10 @@ Bento answered, after every update and every restart. Found installing five Pis 
 never passed the installer's start check. The browser's profile is now left out of that look, and out
 of backups and cloud standby copies too: it's a cache, and it held the screen's cookies.
 
+**A Pi's screen opens Bento once.** The install opened Bento on the screen, then opened it again at
+the end, and the second one became a second window in the same browser: the Office drawn twice, on a
+Pi. Opening it now leaves a screen that already shows Bento alone.
+
 ## 0.6.94 — 2026-10-24
 
 **The maps are maps.** Agents, Network & Teams and Devices share one view you move through: one

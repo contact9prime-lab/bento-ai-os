@@ -254,3 +254,20 @@ def test_a_screen_that_is_showing_never_holds_up_a_start(tmp_path):
         standbysync.forget_connections()
         for c in held:
             c.close()
+
+
+def test_the_screen_is_opened_once(monkeypatch):
+    """Found on the same five Pis: every screen had Bento open twice. The installer's screen step
+    opens it (open_now), then the end of the install runs `bento screen run` to hand over from its
+    own page, and a browser started on a profile already showing only opens a second window in it:
+    the page drawn twice, on a Pi. `run` leaves a screen that already shows Bento alone."""
+    started = []
+    monkeypatch.setattr(screen, "browser", lambda: "/usr/bin/chromium")
+    monkeypatch.setattr(screen, "wait", lambda cfg=None, timeout=0: True)
+    monkeypatch.setattr(screen.os, "execv", lambda exe, args: started.append(args))
+    monkeypatch.setattr(screen, "showing", lambda: [4242])
+    screen.run({"port": 8321})
+    assert started == []
+    monkeypatch.setattr(screen, "showing", lambda: [])
+    screen.run({"port": 8321})
+    assert len(started) == 1 and started[0][-1] == "http://127.0.0.1:8321/#kiosk"

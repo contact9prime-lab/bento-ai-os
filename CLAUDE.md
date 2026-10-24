@@ -3557,6 +3557,9 @@ decides how the page LOOKS once something opened it; nothing opened it on Pi OS 
   in `backup.SKIP_TOP`). Chromium holds its SQLite files locked while the screen shows, and
   `standbysync.ensure` waited 30 s on each at every start (about 90 s): found when a Pi installed
   from a hub failed the installer's start check. A backup also carried the browser's cookies.
+- **`screen run` leaves a screen that already shows Bento alone** (`showing()`, as `open_now` does).
+  The installer opens it at its screen step and runs `screen run` again at the end; a second Chromium
+  on the same profile opens a second window, so every Pi drew the page twice.
 
 ## Drama, Arena, Watch me once, Time travel: four things a person shows somebody else
 
