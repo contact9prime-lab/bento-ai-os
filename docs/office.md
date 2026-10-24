@@ -89,6 +89,15 @@ press **⤢**.
 Opening the Office window while Office HQ is your desktop moves the 3D office into the
 window, and closing it gives it back. (It used to stay dark: the desktop kept drawing it.)
 
+## On an island
+
+The same office can sit on an island in the sea: each department a district of houses behind its
+terrace, the lighthouse for your agent, and a railway whose train carries work from one room to
+another. Pick it as the Island scene or as the Office's look. [The island](island.md) has the rest,
+including how to build it your way.
+
+![The office on an island, a district of houses for each department](screenshots/island-day.png)
+
 ## What moves, and why
 
 ![The Office after a huddle in democracy mode: the validator walking back to its desk, the researcher at the meeting table, and the panel ending with "The team agreed · 2 of 2"](screenshots/readme-office-vote.png)

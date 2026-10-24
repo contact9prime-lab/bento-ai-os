@@ -67,7 +67,8 @@ function of3Wanted(){
   // are the two looks. Reported as "the 2D comic office I can't see any more, in the scene
   // where we had the boxes", after 3D became the office's default look.
   if(OFFICE.w&&OFFICE.w.scene)return false;
-  if(((v.office||{}).look||'3d')!=='3d')return false;
+  const look=(v.office||{}).look||'3d';
+  if(look!=='3d'&&look!=='island')return false;   // the island is this renderer too (24t-island.js)
   return of3GL();
 }
 function of3GL(){
@@ -315,7 +316,7 @@ function of3Dispose(){
   clearTimeout(OF3.rebuild);
   Object.assign(OF3,{r:null,scene:null,cam:null,cv:null,ui:null,sig:'',names:'',rooms:[],screens:[],sp:{},el:{},
     view:null,target:null,fit:null,anim:null,focus:null,follow:'',followAt:0,userMoved:false,sparks:[],brain:null,papers:[],pet:null,ball:null,cardSig:'',
-    geo:{},chairs:{},table:null,texs:{}});
+    geo:{},chairs:{},table:null,texs:{},island:false});
   if(T)OF3.T=T;
 }
 /* Plan (x, y) to the floor of the world: x stays x, the plan's y is the world's z. */
@@ -344,8 +345,9 @@ function of3Build(){
 }
 function of3BuildNow(){
   const O=OFFICE,T=OF3.T,L=O.L,v=O.view;if(!T||!OF3.r||!L)return;
+  const island=typeof islWanted==='function'&&islWanted();
   const sig=JSON.stringify([L.rooms.map(r=>[r.kind,r.name,r.color,Math.min(OF3_SEATS,r.members.length),Math.round(r.x),Math.round(r.y)]),
-    v.office.style,v.office.decor,v.office.pet,OF3.hq,!!(O.w&&O.w.scene)&&!of3HQ()]);
+    v.office.style,v.office.decor,v.office.pet,OF3.hq,!!(O.w&&O.w.scene)&&!of3HQ(),island,island?v.office.island:0]);
   if(sig===OF3.sig&&OF3.scene){of3Fit();return}
   // The ring follows the window's shape, so a resize moves the rooms. Rebuild once the
   // window has settled: dragging an edge fires this many times a second. Until then the
@@ -359,7 +361,7 @@ function of3BuildNow(){
     const m=o.material;if(m)(Array.isArray(m)?m:[m]).forEach(x=>{if(x.map&&!x.map.userData.shared)x.map.dispose();x.dispose()})});
   OF3_MAT={};OF3.sp={};OF3.screens=[];OF3.papers=[];OF3.pet=null;OF3.ball=null;OF3.chairs={};OF3.table=null;
   Object.values(OF3.el).forEach(e=>e.remove());OF3.el={};OF3.cardSig='';
-  OF3.sig=sig;
+  OF3.sig=sig;OF3.island=island;
   const S=OF3.scene=new T.Scene();
   // the dark the rooms float in, tinted by the office's style (a greenhouse is a green night)
   // The office band on the desktop floats over the wallpaper; a window and Office HQ keep
@@ -367,6 +369,10 @@ function of3BuildNow(){
   const band=!!(O.w&&O.w.scene)&&!of3HQ();
   S.background=band?null:of3Hex(v.style.wall||'#1b2233',['#0e0f1f',.86]);
   OF3.r.setClearColor(0,band?0:1);
+  const still=new T.Group();S.add(still);
+  // the island (24t-island.js): land, sea, houses, the railway and its own light by the hour
+  if(island){islWorld(S,still,L,v);L.rooms.forEach((r,i)=>of3Room(still,r,i,v));if(typeof wlBake==='function')wlBake(T,still);of3Fit();return}
+  if(typeof islControlsOff==='function')islControlsOff();
   S.add(new T.HemisphereLight(0xcfd8ff,0x1a1b30,1.25));
   const sun=new T.DirectionalLight(0xfff1dc,1.55);
   const span=(L.R+300)/OF3_U;
@@ -374,7 +380,6 @@ function of3BuildNow(){
   if(OF3.hq){sun.castShadow=true;const c=sun.shadow.camera;c.left=c.bottom=-span*1.1;c.right=c.top=span*1.1;c.near=.5;c.far=span*4;
     sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-.0006;sun.shadow.normalBias=.02}
   const fill=new T.DirectionalLight(0x8fa8ff,.35);fill.position.set(span,span*.6,span);S.add(fill);
-  const still=new T.Group();S.add(still);
   of3Stars(S,span);
   of3Hub(still,L);
   L.rooms.forEach((r,i)=>of3Room(still,r,i,v));
@@ -475,6 +480,7 @@ function of3Sky(){
 /* A band of windows along a back wall: glass with the city, a frame and mullions.
    axis 'x' runs along the back wall at z; 'z' runs down the left wall at x. */
 function of3Window(par,a0,a1,y0,y1,at,axis){
+  if(OF3.island)return;              // a terrace has no wall to hold a window
   const T=OF3.T,len=a1-a0,h=y1-y0,mid=(a0+a1)/2,my=(y0+y1)/2,tex=of3Sky();
   const glass=of3Mat('window',{color:'#ffffff',map:tex,emissive:'#ffffff',emissiveMap:tex,emissiveIntensity:.75,roughness:.12,metalness:.1});
   const frame=of3Mat('winframe',{color:'#2a2d42',roughness:.5});
@@ -549,18 +555,23 @@ function of3Room(par,r,i,v){
   of3Box(par,W,top,D,slab,cx,top/2,cz);
   const floor=of3Mat('floor:'+col,{color:'#ffffff',map:of3FloorTex(col),roughness:.78});
   of3Box(par,W-.14,.012,D-.14,floor,cx,top+.006,cz,false).receiveShadow=OF3.hq;
+  // on the island a room is an open terrace (24t-island.js): no walls, the district behind it
+  if(!OF3.island){
   const wall=of3Mat('wall:'+col,{color:of3Hex(col,['#1d1b2e',.22]),roughness:.85});
   const cap=of3Mat('cap:'+col,{color:of3Hex(col,['#ffffff',.35])});
   of3Box(par,W,OF3_WALL,.08,wall,cx,top+OF3_WALL/2,z0+.04);
   of3Box(par,.08,OF3_WALL,D,wall,x0+.04,top+OF3_WALL/2,cz);
   of3Box(par,W,.03,.1,cap,cx,top+OF3_WALL+.015,z0+.04,false);
   of3Box(par,.1,.03,D,cap,x0+.04,top+OF3_WALL+.015,cz,false);
+  }
   // the skirting light along the two open edges, in the department's colour
   const led=of3Mat('led:'+col,{color:col,emissive:col,emissiveIntensity:1.3});
   of3Box(par,W-.1,.02,.025,led,cx,top+.01,z0+D-.06,false);of3Box(par,.025,.02,D-.1,led,x0+W-.06,top+.01,cz,false);
   // a soft dark pool under the slab, so the rooms float rather than hang
+  if(!OF3.island){
   const pool=new T.Mesh(new T.PlaneGeometry(W*1.5,D*1.5),new T.MeshBasicMaterial({map:of3Shadow(),transparent:true,depthWrite:false}));
   pool.rotation.x=-Math.PI/2;pool.position.set(cx+.25,-.05,cz+.25);pool.userData.keep=1;OF3.scene.add(pool);
+  }
   const plant=(x,z,big)=>of3Plant(par,x,top,z,big);
   if(r.kind==='lead')return of3LeadRoom(par,r,i,col,decor,{W,D,x0,z0,cx,cz,top});
   if(r.kind==='meeting')return of3MeetRoom(par,r,i,col,{W,D,x0,z0,cx,cz,top});
@@ -797,6 +808,9 @@ function of3FitView(){
     x0=Math.min(x0,sx);x1=Math.max(x1,sx);y0=Math.min(y0,sy);y1=Math.max(y1,sy)};
   L.rooms.forEach(r=>[[r.x,r.y],[r.x+r.w,r.y],[r.x,r.y+r.h],[r.x+r.w,r.y+r.h]].forEach(q=>{
     see(q[0]/OF3_U,-.1,q[1]/OF3_U);see(q[0]/OF3_U,OF3_SLAB+OF3_WALL+.75,q[1]/OF3_U)}));
+  // the island's districts and the lighthouse stand round the rooms
+  if(OF3.island&&ISL.sh){ISL.sh.rooms.forEach(q=>[[q.dx-q.dr*.8,q.dz],[q.dx+q.dr*.8,q.dz],[q.dx,q.dz-q.dr*.8],[q.dx,q.dz+q.dr*.8]].forEach(c=>{see(c[0],-.1,c[1]);see(c[0],1.3,c[1])}));
+    see(ISL.sh.lh.x,2.9,ISL.sh.lh.z)}
   y1+=(y1-y0)*.05;      // the top rooms' cards stand above their walls
   const mx=(x1-x0)*.06;x0-=mx;x1+=mx;   // and the side rooms' cards stick out past them
   const pad=of3Pads(),fh=Math.max(.3,(OF3.ch-pad.t-pad.b)/Math.max(1,OF3.ch));
@@ -944,13 +958,14 @@ function of3Draw(){
   of3Pet();
   of3BrainLight(now);
   of3BoardPaint();
+  if(OF3.island)islTick(now);
   OF3.r.render(OF3.scene,OF3.cam);
   of3Overlay(now);
   OF3.dirty=false;
 }
 /* Is anything in the 3D view still moving? The Office's loop asks officeMoving() for
    its own people; the camera, sparks and the Brain's pulse are this file's. */
-function of3Moving(){return !!(OF3.anim||OF3.sparks.length||(OF3.pulse&&performance.now()-OF3.pulse<1400))}
+function of3Moving(){return !!(OF3.anim||OF3.sparks.length||(OF3.pulse&&performance.now()-OF3.pulse<1400)||(OF3.island&&islMoving()))}
 /* ---------------- people: the painter's pixels, wrapped round boxes ----------------
    A person is a little figure of boxes (head, body, two arms, two legs) and every side
    of every box is cut from the server's body sheet: front, blink, back and side, painted

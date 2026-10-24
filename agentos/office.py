@@ -63,7 +63,16 @@ COLORS: dict[str, str] = {
 DECOR = ("plants", "coffee", "whiteboard", "bookshelf", "arcade", "posters")
 #: How the office is drawn. "3d": rooms round the Brain in 3D (24k-office3d.js), which
 #: falls back to "flat" on a screen with no 3D graphics and says so. "flat": the comic plan.
-LOOKS = {"3d": "3D rooms around the Brain", "flat": "Flat comic plan"}
+#: "island": the same rooms as open terraces on an island in the sea, each department's
+#: district of houses behind its terrace, a railway round the shore (24t-island.js).
+LOOKS = {"3d": "3D rooms around the Brain", "flat": "Flat comic plan",
+         "island": "An island, a district for each department"}
+#: The island builder (the person's own arrangement, look "island"): how many houses each
+#: district grows, whether the railway runs round the shore, how wooded the island is.
+#: Houses are scenery. Who works where is still the departments' members, never a house.
+TREES = ("few", "some", "lots")
+MAX_HOUSES = 12
+ISLAND_DEFAULT: dict = {"houses": {}, "train": True, "trees": "some"}
 PETS = ("none", "cat", "dog", "robot")
 
 MAX_DEPTS = 10         # a company's worth of rooms (company.py), plus the fixed ones
@@ -84,6 +93,7 @@ DEFAULT: dict = {
     "decor": ["plants", "coffee", "whiteboard"],
     "pet": "cat",
     "look": "3d",
+    "island": ISLAND_DEFAULT,
 }
 
 
@@ -120,7 +130,7 @@ def current(cfg: dict) -> dict:
     """The stored office, with every missing field at its default. Never raises: a
     hand-edited config with a bad value draws the default for that field."""
     raw = (cfg or {}).get("office") or {}
-    out = {k: (list(v) if isinstance(v, list) else v) for k, v in DEFAULT.items()}
+    out = json.loads(json.dumps(DEFAULT))       # a deep copy: the island's houses are a dict
     if not isinstance(raw, dict):
         return out
     try:
@@ -150,6 +160,8 @@ def clean(spec: dict, known: list[str] | None) -> tuple[dict, list[str]]:
     if "look" in spec:
         v = str(spec["look"] or "").strip().lower().replace(" ", "")
         out["look"] = _choice({"3-d": "3d", "comic": "flat", "2d": "flat", "plan": "flat"}.get(v, v), LOOKS, "look")
+    if "island" in spec:
+        out["island"] = clean_island(spec["island"])
     if "decor" in spec:
         items = spec["decor"] if isinstance(spec["decor"], list) else str(spec["decor"] or "").split(",")
         out["decor"] = []
@@ -222,6 +234,33 @@ def clean(spec: dict, known: list[str] | None) -> tuple[dict, list[str]]:
         _reporting_lines(depts)
         out["departments"] = depts
     return out, dropped
+
+
+def clean_island(spec) -> dict:
+    """The island builder's settings, each field on its own: a house count is a whole
+    number from 0 to MAX_HOUSES for a district named by its department, the trees one of
+    TREES, the train on or off. A missing field keeps its default, and a district that is
+    not a department any more is simply not drawn (the view skips it), as stale members are."""
+    if not isinstance(spec, dict):
+        raise ValueError("the island is a set of fields: houses, train, trees")
+    out = {"houses": {}, "train": ISLAND_DEFAULT["train"], "trees": ISLAND_DEFAULT["trees"]}
+    houses = spec.get("houses") or {}
+    if not isinstance(houses, dict):
+        raise ValueError("houses is a district name and a number, e.g. {\"Sales\": 6}")
+    for k, n in list(houses.items())[:MAX_DEPTS]:
+        name = _plain(k)
+        if not name:
+            continue
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            raise ValueError(f"{name} needs a number of houses from 0 to {MAX_HOUSES}") from None
+        out["houses"][name] = max(0, min(MAX_HOUSES, n))
+    if "train" in spec:
+        out["train"] = bool(spec["train"]) and str(spec["train"]).lower() not in ("false", "no", "off", "0")
+    if "trees" in spec:
+        out["trees"] = _choice(spec["trees"], TREES, "number of trees")
+    return out
 
 
 def _reporting_lines(depts: list[dict]) -> None:
@@ -333,7 +372,7 @@ def view(cfg: dict, store) -> dict:
         office = {**office, "look": "flat", "pet": "none", "meeting": False, "lounge": False}
     return {"office": office, "rooms": rooms, "agents": [r for r in roster if r.lower() not in away],
             "buddy": one, "zero": is_zero, "brain": _brain_here(cfg, store),
-            "looks": LOOKS,
+            "looks": LOOKS, "trees": list(TREES), "max_houses": MAX_HOUSES,
             "style": STYLES[office["style"]], "styles": STYLES, "colors": COLORS,
             "decor": list(DECOR), "pets": list(PETS), "max_departments": MAX_DEPTS}
 
@@ -393,9 +432,31 @@ def text(v: dict) -> str:
     lines.append(f"  also: {', '.join(shared) or 'no shared rooms'}"
                  f" · decor: {', '.join(o['decor']) or 'none'} · pet: {o['pet']}"
                  f" · look: {LOOKS.get(o.get('look'), o.get('look'))}")
+    if o.get("look") == "island":
+        lines.append("  " + island_text(v))
     if not v["agents"]:
         lines.append("  No specialists yet — ask your agent for one and they take a desk here.")
     return "\n".join(lines)
+
+
+def island_text(v: dict) -> str:
+    """The island builder's settings in one line: houses per district, train, trees."""
+    isl = v["office"].get("island") or ISLAND_DEFAULT
+    depts = [r["name"] for r in v["rooms"] if r["kind"] == "dept"]
+    houses = ", ".join(f"{d} {houses_of(isl, d, v)}" for d in depts) or "no districts yet"
+    return (f"island: houses {houses} · train {'on' if isl.get('train', True) else 'off'}"
+            f" · trees {isl.get('trees', 'some')}")
+
+
+def houses_of(isl: dict, dept: str, v: dict) -> int:
+    """How many houses a district grows: the person's number, or four and two for each
+    of the department's people (a bigger team is a bigger district) until they choose."""
+    got = (isl.get("houses") or {})
+    for k, n in got.items():
+        if k.lower() == dept.lower():
+            return int(n)
+    room = next((r for r in v["rooms"] if r["kind"] == "dept" and r["name"].lower() == dept.lower()), None)
+    return min(MAX_HOUSES, 4 + 2 * len((room or {}).get("members") or []))
 
 
 def record(store, detail: str) -> None:
@@ -440,6 +501,8 @@ def design_prompt(description: str, v: dict) -> tuple[str, str]:
         f'- "decor": a list from {", ".join(DECOR)}\n'
         f'- "pet": one of {", ".join(PETS)}\n'
         f'- "look": one of {", ".join(LOOKS)} ({"; ".join(k + " = " + d for k, d in LOOKS.items())})\n'
+        f'- "island" (for the island look): {{"houses": {{department name: 0 to {MAX_HOUSES}}}, '
+        f'"train": true/false, "trees": one of {", ".join(TREES)}}}\n'
         "Set only the fields the description is about. Keep the current departments unless "
         f"asked to change them. Currently: {json.dumps(current_of(v))}")
     return system, prompt
@@ -447,7 +510,7 @@ def design_prompt(description: str, v: dict) -> tuple[str, str]:
 
 def current_of(v: dict) -> dict:
     o = v["office"]
-    return {k: o[k] for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet", "look")}
+    return {k: o[k] for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet", "look", "island")}
 
 
 def read_design(raw: str, known: list[str]) -> tuple[dict, list[str]]:
@@ -461,7 +524,7 @@ def read_design(raw: str, known: list[str]) -> tuple[dict, list[str]]:
     except Exception:
         return {}, []
     patch, dropped = {}, []
-    for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet", "look"):
+    for k in ("style", "name", "departments", "meeting", "lounge", "decor", "pet", "look", "island"):
         if k not in data:
             continue
         try:
@@ -494,7 +557,9 @@ def from_words(description: str) -> dict:
     for p in PETS[1:]:
         if f" {p} " in t:
             patch["pet"] = p
-    if any(f" {w} " in t for w in ("3d", "3-d", "isometric", "realistic")):
+    if any(f" {w} " in t for w in ("island", "islands", "isle", "archipelago")):
+        patch["look"] = "island"
+    elif any(f" {w} " in t for w in ("3d", "3-d", "isometric", "realistic")):
         patch["look"] = "3d"
     elif any(f" {w} " in t for w in ("flat", "2d", "2-d")):
         patch["look"] = "flat"

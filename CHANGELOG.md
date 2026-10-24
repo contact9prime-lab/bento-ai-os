@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.96 — 2026-10-24
+
+**Your company on an island.** A new scene, Island (Settings → Appearance → Scene), and a new look
+for the Office: the same office, its rooms now open terraces on an island in the sea. Each
+department grows a district of houses in its colour behind its terrace, your agent's office has the
+lighthouse, the Brain is a fountain on the plaza, and a railway runs round it with a station at
+every district. Nothing moves for show: the train sets off when work is really handed from one room
+to another and stops where it went, windows light when somebody in that district is working, and
+huddles still gather at the meeting table. The light follows the real hour, and the clock in the
+corner lets you drag it to any time of day.
+
+**Build it the way you like.** In the Office's Design panel the Island section grows or shrinks each
+district's houses, switches the railway on or off and plants more trees or fewer. Your agent can do
+the same through set_office, and so can `bento office island` from a terminal.
+
 ## 0.6.95 — 2026-10-24
 
 **A Pi with its screen on starts in seconds again.** The screen's browser keeps its profile inside

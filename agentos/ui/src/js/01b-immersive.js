@@ -31,7 +31,9 @@ function applyImmersive(){
   document.body.classList.toggle('imm-movement',IMMERSIVE.on&&IMMERSIVE.scene==='movement');
   document.body.classList.toggle('imm-crew',IMMERSIVE.on&&IMMERSIVE.scene==='crew');
   document.body.classList.toggle('imm-office',IMMERSIVE.on&&IMMERSIVE.scene==='office');
-  document.body.classList.toggle('imm-hq',IMMERSIVE.on&&IMMERSIVE.scene==='hq');
+  // the Island is Office HQ drawn as an island (24t-island.js): it lays out as HQ does
+  document.body.classList.toggle('imm-hq',IMMERSIVE.on&&(IMMERSIVE.scene==='hq'||IMMERSIVE.scene==='island'));
+  document.body.classList.toggle('imm-island',IMMERSIVE.on&&IMMERSIVE.scene==='island');
   document.body.classList.toggle('imm-world',IMMERSIVE.on&&IMMERSIVE.scene==='world');
   document.body.classList.toggle('imm-mind',IMMERSIVE.on&&IMMERSIVE.scene==='mind');
   immersiveParallax(IMMERSIVE.on);
@@ -47,9 +49,11 @@ function applyImmersive(){
   // the Office scene (24d) loads later still; it starts itself on first paint
   // Office HQ is the same office, full screen and always in 3D (24k-office3d.js)
   if(typeof OFFICE_SCENE!=='undefined'){
-    const want=IMMERSIVE.on&&(IMMERSIVE.scene==='office'||IMMERSIVE.scene==='hq'),hq=want&&IMMERSIVE.scene==='hq';
+    const sc=IMMERSIVE.scene,want=IMMERSIVE.on&&(sc==='office'||sc==='hq'||sc==='island'),hq=want&&(sc==='hq'||sc==='island');
+    const isl=want&&sc==='island';
+    if(want&&OFFICE_SCENE.on&&!!OFFICE_SCENE.island!==isl)officeSceneStop();
     if(want&&OFFICE_SCENE.on&&OFFICE_SCENE.hq!==hq)officeSceneStop();
-    if(want){OFFICE_SCENE.hq=hq;officeSceneStart()}
+    if(want){OFFICE_SCENE.island=isl;OFFICE_SCENE.hq=hq;officeSceneStart()}
     else if(!document.body.classList.contains('kiosk'))officeSceneStop()}   // the kiosk keeps its office
   // the World (01e, experimental): leaving this scene is what puts the world to sleep
   if(typeof WORLD!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='world')worldStart();else worldStop()}
@@ -62,7 +66,7 @@ function applyImmersive(){
    this value comes out of localStorage, which outlives any release that renames a
    scene, and a desktop that fails to paint because of a stale string is not a
    trade worth making. */
-var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind'];
+var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island'];
 function setImmersiveScene(scene){
   scene=IMMERSIVE_SCENES.indexOf(scene)<0?'aurora':scene;
   IMMERSIVE.scene=scene;localStorage.setItem('immersive.scene',scene);

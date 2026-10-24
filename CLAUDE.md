@@ -2371,6 +2371,32 @@ things keep it true:
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a
   dark bar over the office — the `[hidden]{display:none}` rule beside it is load-bearing.
 
+**The island is the 3D office's scenery, and it decides nothing** (`24t-island.js`, look `island` in
+office.py, scene `island`; `docs/island.md`, `tests/test_island.py`). Asked for with a video of a cozy island
+builder: "games like railroad builder or island builder, and we put all of these agents and departments on
+that". Six rules:
+- **Same office, other place.** `OF3.island` makes `of3BuildNow` call `islWorld` instead of the stars and the
+  hub, and makes `of3Room`/`of3Window` skip walls: rooms are open terraces, desks and people unchanged. Every
+  walk, paper, balloon, meeting and camera move is still 24d's and 24k's. The land sits at `OF3_SLAB`, so
+  people walking between terraces stand on the grass.
+- **The train runs on papers, and only on papers** (`islPapers`, the one `ISL.queue.push`). 24d flies a paper
+  when work is handed from one room to another; the train goes from that room's station to the other's, the
+  short way round, and no trip outlasts `OF_WALK_S`. A railway that loops for the look says work is moving
+  when none is. Each paper is marked `_isl`, because 24d drops papers that landed.
+- **The railway never crosses a terrace** (`islRailLine`): the line is decided from the shape first, pushed
+  out of every room, and the land follows it (`sh.rail` in `islDist`). Found in the first screenshot, a
+  track through Research's desks. The Node test fails without the push-out.
+- **Houses are scenery, a closed set** (`island.houses` 0 to `MAX_HOUSES` per district, `train`, `trees`;
+  `clean_island`). The default is 4 + 2 per person (`houses_of` in Python, `officeHouses` on the page, kept
+  equal by the test). A house never stands in front of a terrace as the camera sees it unless it is one
+  storey and well clear, or it would hide people.
+- **The hour is an input, per browser** (`island.hour` in localStorage, read only in 24t). Live by default,
+  repainted a quarter of an hour at a time; windows are `toneMapped:false` so a lit one is lit.
+- **At rest the sea is the only thing moving**, at 12 frames a second when `OF3.hq` and 6 otherwise
+  (`sea` in `officeFrame`), like the World's water. Never 30 for the look.
+The Island scene is Office HQ with `OFFICE_SCENE.island` (body gets `imm-hq` and `imm-island`): an island
+switch restarts the scene as an HQ switch does.
+
 **The playground off the Office** (`agentos/playground.py`, `agentos/comic.py`, `24e-playstrip.js`,
 `00f-comic.js`; `tests/test_playground.py`). Same rules, other media:
 

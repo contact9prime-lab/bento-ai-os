@@ -119,7 +119,7 @@ function officeClose(w){
    tapped, and the home screen's "See them at work" chip is the door to the window.
    Faces: GUI/SUI this canvas inside #wall; TUI has no wallpaper (bento office is its
    roll call). */
-var OFFICE_SCENE={on:false,host:null,wake:0,hq:false};
+var OFFICE_SCENE={on:false,host:null,wake:0,hq:false,island:false};
 function officeSceneStart(){
   if(OFFICE_SCENE.on)return;
   const wall=document.getElementById('wall');if(!wall)return;
@@ -851,7 +851,10 @@ function officeFrame(now){
   const work=officeMoving(),decor=!work&&officeDecorMoving(),dt=(now-O.last)/1000;
   // On a small machine people step like an old arcade game (8 a second) rather than glide
   // at 30: the figures are pixel art already, and it is a quarter of the drawing.
-  const light=officeLight(),every=work?(light?1/8:1/30):decor?(light?1/4:1/30):(light?1/2:1/6);
+  // The island's sea is the one thing that moves at rest, so on a machine with a real GPU it
+  // ripples at 12 a second, like the World's water. Software rendering keeps 6.
+  const sea=OF3.island&&OF3.hq&&OF3.cv&&OF3.cv.isConnected;
+  const light=officeLight(),every=work?(light?1/8:1/30):decor?(light?1/4:1/30):(light?1/2:sea?1/12:1/6);
   if(dt<every){
     // not due yet: wait on a timer, not on every refresh (a frame asked for is a frame drawn)
     O.raf=-1;O.wait=setTimeout(()=>{O.raf=requestAnimationFrame(officeFrame)},Math.max(4,(every-dt)*1000-4));return}
@@ -1496,6 +1499,7 @@ function officeDesignPaint(){
     <div class="of-sec">Look</div>
     <div class="of-chips">${Object.entries(v.looks||{'3d':'3D','flat':'Flat'}).map(([k,l])=>`<button class="of-chip${(of.look||'3d')===k?' on':''}" data-look="${k}" aria-pressed="${(of.look||'3d')===k}">${esc(l)}</button>`).join('')}</div>
     ${OF3.why&&(of.look||'3d')==='3d'?`<div class="mut of-row">${esc(OF3.why)}</div>`:''}
+    ${of.look==='island'&&typeof islDesignHTML==='function'?islDesignHTML(v):''}
     <div class="of-sec">Name on the door</div>
     <div class="of-row"><input class="of-name" maxlength="24" value="${esc(of.name)}"></div>
     <div class="of-sec">Departments <span class="mut">${depts.length} of ${v.max_departments}</span></div>
@@ -1540,6 +1544,7 @@ function officeDesignPaint(){
     officeSave({decor:of.decor.includes(d)?of.decor.filter(x=>x!==d):[...of.decor,d]})});
   qa('[data-pet]').forEach(b=>b.onclick=()=>officeSave({pet:b.dataset.pet}));
   qa('[data-look]').forEach(b=>b.onclick=()=>officeSave({look:b.dataset.look}));
+  if(of.look==='island'&&typeof islDesignWire==='function')islDesignWire(el,v);
 }
 /* "Describe it", in the Office, Settings → Appearance and the setup step: one call to
    /api/office/design, which asks the machine's brain to choose from the closed set and
@@ -1671,4 +1676,4 @@ async function officeSave(patch){
   }catch(e){toast('could not change the office')}
 }
 // first paint: 01b ran before this file existed, so the scene starts itself
-if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&(IMMERSIVE.scene==='office'||IMMERSIVE.scene==='hq')){OFFICE_SCENE.hq=IMMERSIVE.scene==='hq';officeSceneStart()}
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&(IMMERSIVE.scene==='office'||IMMERSIVE.scene==='hq'||IMMERSIVE.scene==='island')){OFFICE_SCENE.island=IMMERSIVE.scene==='island';OFFICE_SCENE.hq=IMMERSIVE.scene==='hq'||OFFICE_SCENE.island;officeSceneStart()}
