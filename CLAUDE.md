@@ -3553,6 +3553,10 @@ decides how the page LOOKS once something opened it; nothing opened it on Pi OS 
   `sudo bento screen on`, which would write the unit for root.
 - **Its agent's name is the wake word on that screen**: the Install form's name rides the enrolment
   profile (`agent_name`), and `face.wake_words` always includes the agent's name.
+- **The screen's browser profile is in the home and out of every walk of it** (`screen.PROFILE_NAME`
+  in `backup.SKIP_TOP`). Chromium holds its SQLite files locked while the screen shows, and
+  `standbysync.ensure` waited 30 s on each at every start (about 90 s): found when a Pi installed
+  from a hub failed the installer's start check. A backup also carried the browser's cookies.
 
 ## Drama, Arena, Watch me once, Time travel: four things a person shows somebody else
 

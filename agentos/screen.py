@@ -214,11 +214,16 @@ def policy_text(cfg: dict | None = None) -> str:
     return json.dumps({"AudioCaptureAllowedUrls": [origin], "AutoplayAllowlist": [origin]}, indent=1) + "\n"
 
 
+#: The kiosk browser's profile, inside the home. backup.SKIP_TOP leaves it out of every walk of
+#: the home: its databases are Chromium's, held locked while the screen shows, and a cache.
+PROFILE_NAME = "screen-profile"
+
+
 def run_argv(cfg: dict | None = None, exe: str = "", profile: str = "") -> list[str]:
     """What `run` starts: the browser full screen on the kiosk, nothing else reachable."""
     from . import config as cfgmod
     exe = exe or browser()
-    profile = profile or str(cfgmod.AGENTOS_HOME / "screen-profile")
+    profile = profile or str(cfgmod.AGENTOS_HOME / PROFILE_NAME)
     args = [exe, "--kiosk", "--noerrdialogs", "--disable-infobars", "--no-first-run",
             "--no-default-browser-check", "--disable-session-crashed-bubble",
             "--disable-translate", "--password-store=basic", _ozone(),
@@ -244,7 +249,7 @@ def _ozone() -> str:
 
 def _profile() -> str:
     from . import config as cfgmod
-    return str(cfgmod.AGENTOS_HOME / "screen-profile")
+    return str(cfgmod.AGENTOS_HOME / PROFILE_NAME)
 
 
 def showing() -> list[int]:
@@ -346,7 +351,7 @@ def run(cfg: dict | None = None) -> None:
     wait(cfg, timeout=600)
     args = run_argv(cfg, exe)
     from . import config as cfgmod
-    (cfgmod.AGENTOS_HOME / "screen-profile").mkdir(parents=True, exist_ok=True)
+    (cfgmod.AGENTOS_HOME / PROFILE_NAME).mkdir(parents=True, exist_ok=True)
     sock = _wayland()
     if sock:
         os.environ.setdefault("XDG_RUNTIME_DIR", str(Path(sock).parent))

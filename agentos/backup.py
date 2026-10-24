@@ -75,7 +75,11 @@ MAX_HEADER = 4096
 #: Regenerated, cached or diagnostic: nothing a person would miss, and some of it large
 #: (the MCP catalogue is 12 MB, the speech cache is capped at hundreds of files).
 SKIP_TOP = {"snapshots", "speech-cache", "mcp_index.json", "logs", "boot.html",
-            "layer-shell-failed", "git-askpass.sh", "agentos-autologin.conf", "appwindow"}
+            "layer-shell-failed", "git-askpass.sh", "agentos-autologin.conf", "appwindow",
+            # the kiosk browser's profile (screen.PROFILE_NAME): Chromium's own databases, held
+            # locked while the screen shows. Walked, every start of a Pi with its screen on
+            # waited 30 s on each of them (standbysync), about 90 s in all.
+            "screen-profile"}
 SKIP_NAMES = {"__pycache__", "node_modules", ".DS_Store"}
 SKIP_SUFFIX = (".db-wal", ".db-shm", ".db-journal", ".pyc", ".tmp", ".part")
 #: This module's own working names inside the home, never backed up and never moved.

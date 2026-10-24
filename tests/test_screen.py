@@ -218,3 +218,39 @@ def test_the_name_given_at_install_is_what_wakes_it():
     js = (ROOT / "agentos/ui/src/js/24j-provision.js").read_text()
     assert 'id="dev-agent"' in js and 'id="card-agent"' in js and "agent_name:agent" in js
     assert "'dev-agent'" in (ROOT / "agentos/ui/src/js/24n-network.js").read_text()
+
+
+# ---- the screen's browser keeps out of the home's walks ------------------------------------------
+
+def test_a_screen_that_is_showing_never_holds_up_a_start(tmp_path):
+    """Found installing five Pis from one hub: one of them never passed the installer's start
+    check. Its screen had opened first, and the browser keeps its profile in the home
+    (screen-profile), where Chromium holds its own SQLite files locked. Every start walks the
+    home's databases (standbysync.ensure), waited 30 s on each locked one, about 90 s in all,
+    and a backup would have carried the browser's cookies. The profile is a cache: no walk of
+    the home reads it."""
+    import sqlite3
+    import time
+    from agentos import backup, standbysync
+    home = tmp_path / "home"
+    (home / screen.PROFILE_NAME / "Default").mkdir(parents=True)
+    sqlite3.connect(home / "agentos.db").execute("CREATE TABLE t (x)")
+    held = []
+    for rel in ("first_party_sets.db", "Default/heavy_ad_intervention_opt_out.db"):
+        c = sqlite3.connect(home / screen.PROFILE_NAME / rel, isolation_level=None)
+        c.execute("PRAGMA locking_mode=EXCLUSIVE")
+        c.execute("CREATE TABLE IF NOT EXISTS s (x)")
+        c.execute("BEGIN EXCLUSIVE")          # what a running Chromium does to its own files
+        held.append(c)
+    try:
+        assert screen.PROFILE_NAME in backup.SKIP_TOP
+        assert [rel for rel, _ in standbysync.databases(home)] == ["agentos.db"]
+        assert not any(rel.startswith(screen.PROFILE_NAME) for rel, _ in backup._walk(home))
+        t = time.time()
+        standbysync.ensure(home, on=True)
+        standbysync.ensure(home, on=False)
+        assert time.time() - t < 5
+    finally:
+        standbysync.forget_connections()
+        for c in held:
+            c.close()
