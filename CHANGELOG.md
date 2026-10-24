@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.95 — 2026-10-24
+
+**A Pi with its screen on starts in seconds again.** The screen's browser keeps its profile inside
+Bento's home, and every start looked through the home's databases, Chromium's included. While the
+screen shows, Chromium holds those locked, and each one cost a 30-second wait: about 90 seconds before
+Bento answered, after every update and every restart. Found installing five Pis from one hub, where one
+never passed the installer's start check. The browser's profile is now left out of that look, and out
+of backups and cloud standby copies too: it's a cache, and it held the screen's cookies.
+
+**A Pi's screen opens Bento once.** The install opened Bento on the screen, then opened it again at
+the end, and the second one became a second window in the same browser: the Office drawn twice, on a
+Pi. Opening it now leaves a screen that already shows Bento alone.
+
 ## 0.6.94 — 2026-10-24
 
 **The maps are maps.** Agents, Network & Teams and Devices share one view you move through: one
