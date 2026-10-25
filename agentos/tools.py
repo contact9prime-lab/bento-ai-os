@@ -5760,12 +5760,16 @@ DESKTOP_TOOL_SCHEMAS = [
             "pet": {"type": "string", "enum": ["none", "cat", "dog", "robot"]},
             "look": {"type": "string", "enum": ["3d", "flat", "island"],
                      "description": "3d: rooms around the Brain in 3D; flat: the comic floor plan; island: "
-                                    "the rooms as terraces on an island, a district of houses for each department"},
+                                    "a town, each room a building that opens while it works, in the setting below"},
             "island": {"type": "object",
-                       "description": "The island look's builder: houses per district (department name → "
-                                      "0 to 12), the railway round the shore on or off, and how wooded it is. "
-                                      "Give the whole set; a field left out goes back to its default.",
-                       "properties": {"houses": {"type": "object", "additionalProperties": {"type": "integer"}},
+                       "description": "The town look's builder. setting: the place it stands in (island; islands, "
+                                      "a cluster joined by footbridges; canals, a city like Venice; castle, inside "
+                                      "walls and a moat; forest, by a river). Asked to build a place (\"make it like "
+                                      "Venice\", \"put us in a castle\"), set look island and this setting. Also houses "
+                                      "per district (department name → 0 to 12), the train or boats on or off, and how "
+                                      "wooded it is. A field left out keeps what it was.",
+                       "properties": {"setting": {"type": "string", "enum": ["island", "islands", "canals", "castle", "forest"]},
+                                      "houses": {"type": "object", "additionalProperties": {"type": "integer"}},
                                       "train": {"type": "boolean"},
                                       "trees": {"type": "string", "enum": ["few", "some", "lots"]}}}}},
     },

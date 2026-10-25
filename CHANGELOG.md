@@ -2,18 +2,24 @@
 
 ## 0.6.96 — 2026-10-24
 
-**Your company on an island.** A new scene, Island (Settings → Appearance → Scene), and a new look
-for the Office: the same office, its rooms now open terraces on an island in the sea. Each
-department grows a district of houses in its colour behind its terrace, your agent's office has the
-lighthouse, the Brain is a fountain on the plaza, and a railway runs round it with a station at
-every district. Nothing moves for show: the train sets off when work is really handed from one room
-to another and stops where it went, windows light when somebody in that district is working, and
-huddles still gather at the meeting table. The light follows the real hour, and the clock in the
-corner lets you drag it to any time of day.
+**Your company as a town, in the place you choose.** A new scene, Town (Settings → Appearance →
+Scene), and a new look for the Office: the same office, each room now a building in a town. Pick the
+place: an island in the sea, a cluster of islands joined by footbridges, a city on canals like
+Venice, a castle inside its walls and moat, or a town in a forest by a river. Each department grows a
+district of houses in its colour, your agent's place is the landmark (a lighthouse, a windmill, a bell
+tower, the keep, a watchtower) and the Brain is a fountain on the plaza.
 
-**Build it the way you like.** In the Office's Design panel the Island section grows or shrinks each
-district's houses, switches the railway on or off and plants more trees or fewer. Your agent can do
-the same through set_office, and so can `bento office island` from a terminal.
+**Buildings open while they work.** A quiet room is a closed building. When somebody in it works, walks
+out or talks, or somebody visits, the roof lifts and the walls drop so you see the office inside, and
+it closes again a few seconds after it goes quiet. Nothing moves for show: the train, ferry or gondola
+sets off when work is really handed from one room to another, and the railway runs round the coast,
+clear of every building. The light follows the real hour, and the clock in the corner lets you drag
+it to any time of day.
+
+**Build it the way you like, or say it.** In the Office's Design panel pick the setting, grow or
+shrink each district, switch the train or boats on or off and plant more trees or fewer. Say "build a
+Venice like city" in Describe it or in chat and the town moves there, keeping your houses. From a
+terminal it's `bento office setting` and `bento office island`.
 
 ## 0.6.95 — 2026-10-24
 

@@ -1,7 +1,13 @@
-"""The island (24t-island.js, office.py look "island"): the Office drawn as an island in the
-sea, a district of houses for each department and a railway round it.
+"""The town (24t-island.js, office.py look "island"): the Office drawn as a place of the
+person's choosing (an island, islands, a canal city, a castle, a forest), each room a building
+that opens while it works, a district of houses for each department and a carrier for work.
 
 What this pins:
+- the setting is one closed set on every door (office.SETTINGS = the page's ISL_SETS), said
+  in words ("build a Venice like city") it is the town look in that setting, and changing it
+  keeps the person's houses;
+- a room's building opens only because something happens in it (OFFICE.people), and closes
+  when it goes quiet: decided from the Office's own state, never a timer;
 - the island builder is office.py's closed set on every door: the plan, the agent's
   set_office, `bento office island`, and PUT /api/office (a ledger row like any change);
 - the railway never runs across a terrace (found in the first screenshot: the train went
@@ -35,16 +41,17 @@ def test_the_island_is_a_closed_set():
     got, _ = office.clean({"look": "island", "island": {"houses": {"Sales": 40, " Research ": "3"},
                                                         "train": "off", "trees": "lots"}}, None)
     assert got["look"] == "island"
-    assert got["island"] == {"houses": {"Sales": office.MAX_HOUSES, "Research": 3}, "train": False, "trees": "lots"}
+    assert got["island"] == {"houses": {"Sales": office.MAX_HOUSES, "Research": 3}, "train": False, "trees": "lots",
+                             "setting": "island"}
     with pytest.raises(ValueError, match="number of trees"):
         office.clean({"island": {"trees": "jungle"}}, None)
     with pytest.raises(ValueError, match="from 0 to 12"):
         office.clean({"island": {"houses": {"Sales": "many"}}}, None)
-    with pytest.raises(ValueError, match="houses, train, trees"):
+    with pytest.raises(ValueError, match="setting, houses, train, trees"):
         office.clean({"island": "big"}, None)
     # a stored office with no island draws the default, and it is a copy, never shared
     a, b = office.current({}), office.current({})
-    assert a["island"] == {"houses": {}, "train": True, "trees": "some"}
+    assert a["island"] == {"houses": {}, "train": True, "trees": "some", "setting": "island"}
     a["island"]["houses"]["X"] = 1
     assert b["island"]["houses"] == {} and office.ISLAND_DEFAULT["houses"] == {}
 
@@ -63,8 +70,10 @@ def test_words_and_the_designer_know_the_island():
     assert office.from_words("put my office on a little island")["look"] == "island"
     _, prompt = office.design_prompt("an island", {"agents": [], "office": office.current({})})
     assert '"look": one of 3d, flat, island' in prompt and '"island" (for the island look)' in prompt
+    assert '"setting": one of island, islands, canals, castle, forest' in prompt
+    # only the fields the model named come back: the person's houses are not reset
     patch, dropped = office.read_design('{"look": "island", "island": {"trees": "few"}}', [])
-    assert patch == {"look": "island", "island": {"houses": {}, "train": True, "trees": "few"}} and not dropped
+    assert patch == {"look": "island", "island": {"trees": "few"}} and not dropped
     # the word "world" belongs to the World scene; office.py never names it (test_world)
     assert "world" not in (ROOT / "agentos" / "office.py").read_text().lower()
 
@@ -77,13 +86,21 @@ def test_the_terminal_builds_it(tmp_path):
     (tmp_path / "config.json").write_text(json.dumps(cfg))
     assert run("look", "island").returncode == 0
     r = run("island", "houses", "sales", "9")
-    assert r.returncode == 0 and "island: houses Sales 9" in r.stdout, r.stderr
+    assert r.returncode == 0 and "houses Sales 9" in r.stdout, r.stderr
     r = run("island", "trees", "lots")
     assert r.returncode == 0 and "trees lots" in r.stdout
     r = run("island", "train", "off")
     assert r.returncode == 0 and "train off" in r.stdout
     saved = json.loads((tmp_path / "config.json").read_text())["office"]
-    assert saved["island"] == {"houses": {"Sales": 9}, "train": False, "trees": "lots"}
+    assert saved["island"] == {"houses": {"Sales": 9}, "train": False, "trees": "lots", "setting": "island"}
+    r = run("setting", "venice")
+    assert r.returncode == 0 and "island: canals · houses Sales 9" in r.stdout, r.stderr
+    saved = json.loads((tmp_path / "config.json").read_text())["office"]
+    assert saved["look"] == "island" and saved["island"]["setting"] == "canals" and saved["island"]["houses"] == {"Sales": 9}
+    r = run("setting")
+    assert r.returncode == 0 and "▸ canals" in r.stdout and "forest" in r.stdout
+    r = run("setting", "moon")
+    assert r.returncode == 2 and "choose one of: island, islands, canals, castle, forest" in r.stderr
     r = run("island")
     assert r.returncode == 0 and "Sales" in r.stdout and "▮" * 9 in r.stdout
     r = run("island", "houses", "Nope", "3")
@@ -97,7 +114,8 @@ def test_the_agent_builds_it_with_set_office():
     schema = next(s for s in TOOL_SCHEMAS if (s.get("name") or s.get("function", {}).get("name")) == "set_office")
     props = (schema.get("parameters") or schema["function"]["parameters"])["properties"]
     assert props["look"]["enum"] == ["3d", "flat", "island"]
-    assert set(props["island"]["properties"]) == {"houses", "train", "trees"}
+    assert set(props["island"]["properties"]) == {"setting", "houses", "train", "trees"}
+    assert props["island"]["properties"]["setting"]["enum"] == list(office.SETTINGS)
     assert props["island"]["properties"]["trees"]["enum"] == list(office.TREES)
     src = (ROOT / "agentos" / "tools.py").read_text()
     assert 'patch["island"] = island' in src
@@ -199,7 +217,7 @@ console.log(JSON.stringify(ctx.out));""")
 def test_a_drawing_of_the_3d_office_and_nothing_more():
     # no painter, no loop of its own, no top-level let/const (the bundle is one script)
     assert "/api/avatar.png" not in ISLAND and "getImageData" not in ISLAND
-    assert "setInterval" not in ISLAND and "requestAnimationFrame" not in ISLAND
+    assert "setInterval" not in ISLAND and "requestAnimationFrame" not in ISLAND and "setTimeout" not in ISLAND
     assert not re.search(r"^(let|const) ", ISLAND, re.M)
     k3 = (JS / "24k-office3d.js").read_text()
     # the 3D office hands its scene to the island, and draws rooms as terraces there
@@ -211,7 +229,7 @@ def test_a_drawing_of_the_3d_office_and_nothing_more():
     # the scene is wired where Office HQ is, and Settings offers it
     imm = (JS / "01b-immersive.js").read_text()
     assert "'mind','island'];" in imm and "OFFICE_SCENE.island=isl;OFFICE_SCENE.hq=hq;officeSceneStart()" in imm
-    assert "['island','Island']" in (JS / "11-settings.js").read_text()
+    assert "['island','Town']" in (JS / "11-settings.js").read_text()
     d = (JS / "24d-office.js").read_text()
     assert "OFFICE_SCENE.island=IMMERSIVE.scene==='island'" in d.splitlines()[-1] or \
         "OFFICE_SCENE.island=IMMERSIVE.scene==='island'" in d.strip().splitlines()[-1]
@@ -228,3 +246,56 @@ def test_the_guide_shows_it():
         assert (ROOT / "docs" / "screenshots" / f"{name}.png").stat().st_size > 20_000
     assert "(island.md)" in (ROOT / "docs" / "office.md").read_text()
     assert "(island.md)" in (ROOT / "docs" / "README.md").read_text()
+
+
+# ---- settings and buildings ------------------------------------------------------------
+
+def test_a_setting_is_one_closed_set_and_words_choose_it(tmp_path):
+    # the page draws exactly the settings office.py offers
+    page = re.findall(r"^  (\w+):\{label:", ISLAND, re.M)
+    assert page == list(office.SETTINGS)
+    for words, want in (("build a Venice like city", "canals"), ("make it a castle", "castle"),
+                        ("put us in a forest", "forest"), ("greek islands please", "islands"),
+                        ("an island in the sea", "island")):
+        p = office.from_words(words)
+        assert p["look"] == "island" and p["island"]["setting"] == want, words
+    assert office.clean({"island": {"setting": "Venice"}}, None)[0]["island"]["setting"] == "canals"
+    with pytest.raises(ValueError, match="not a setting"):
+        office.clean({"island": {"setting": "moon"}}, None)
+    # a new setting keeps the person's houses: a patch to the town merges into it
+    cfg = {"office": {"departments": [{"name": "Sales", "color": "sky", "members": []}],
+                      "island": {"houses": {"Sales": 9}, "trees": "lots"}}}
+    class S:
+        def list_subagents(self):
+            return []
+    o, _ = office.save(cfg, S(), {"look": "island", "island": {"setting": "castle"}})
+    assert o["island"] == {"houses": {"Sales": 9}, "train": True, "trees": "lots", "setting": "castle"}
+
+
+def test_a_building_opens_only_because_something_happens_in_it():
+    out = _node(HARNESS + r"""
+vm.runInContext(`var OFFICE={L:{rooms:L.rooms},people:{}};OF3.focus=null;OF3.follow='';
+  const at=r=>({x:r.x+r.w/2,y:r.y+r.h/2}),R=L.rooms;
+  ISL.shells=R.map(r=>({key:r.kind+':'+r.name,name:r.name}));
+  const P=(room,o)=>Object.assign({room,mode:'seat',busy:0,...at(room)},o||{});
+  const keys=w=>Object.keys(w).sort();
+  OFFICE.people={a:P(R[1]),b:P(R[2])};
+  const idle=keys(islShellWant());
+  OFFICE.people.a.busy=123;                                  // somebody at work in R1
+  const busy=keys(islShellWant());
+  OFFICE.people.a.busy=0;Object.assign(OFFICE.people.b,at(R[4]));   // R2's person visiting R4
+  const visit=keys(islShellWant());
+  Object.assign(OFFICE.people.b,at(R[2]),{mode:'walk'});      // walking out of R2
+  const walk=keys(islShellWant());
+  OFFICE.people.b.mode='seat';OF3.focus='R6';                // the person looks into R6
+  const look=keys(islShellWant());
+  this.out={idle,busy,visit,walk,look};`,ctx);
+console.log(JSON.stringify(ctx.out));""")
+    assert out["idle"] == []
+    assert out["busy"] == ["dept:R1"]
+    assert out["visit"] == ["dept:R4"]
+    assert out["walk"] == ["dept:R2"]
+    assert out["look"] == ["dept:R6"]
+    # opening is drawn from that decision each frame, and a quiet room closes a few seconds later
+    assert "const goal=now-s.last<3500?1:0;" in ISLAND
+    assert "islShells(now,dt);" in ISLAND and "islShellsMoving()" in ISLAND

@@ -810,7 +810,8 @@ function of3FitView(){
     see(q[0]/OF3_U,-.1,q[1]/OF3_U);see(q[0]/OF3_U,OF3_SLAB+OF3_WALL+.75,q[1]/OF3_U)}));
   // the island's districts and the lighthouse stand round the rooms
   if(OF3.island&&ISL.sh){ISL.sh.rooms.forEach(q=>[[q.dx-q.dr*.8,q.dz],[q.dx+q.dr*.8,q.dz],[q.dx,q.dz-q.dr*.8],[q.dx,q.dz+q.dr*.8]].forEach(c=>{see(c[0],-.1,c[1]);see(c[0],1.3,c[1])}));
-    see(ISL.sh.lh.x,2.9,ISL.sh.lh.z)}
+    ISL.sh.rooms.forEach(q=>see(q.cx,2.5,q.cz));          // each room's building, roof and all
+    (ISL.fitPts||[]).forEach(p=>see(p[0],p[1],p[2]))}     // the landmark, a castle's walls
   y1+=(y1-y0)*.05;      // the top rooms' cards stand above their walls
   const mx=(x1-x0)*.06;x0-=mx;x1+=mx;   // and the side rooms' cards stick out past them
   const pad=of3Pads(),fh=Math.max(.3,(OF3.ch-pad.t-pad.b)/Math.max(1,OF3.ch));

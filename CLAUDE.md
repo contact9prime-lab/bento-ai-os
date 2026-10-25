@@ -2371,30 +2371,43 @@ things keep it true:
   re-kicks on wake). `.of-empty{display:flex}` outranked its own `hidden` attribute and laid a
   dark bar over the office — the `[hidden]{display:none}` rule beside it is load-bearing.
 
-**The island is the 3D office's scenery, and it decides nothing** (`24t-island.js`, look `island` in
-office.py, scene `island`; `docs/island.md`, `tests/test_island.py`). Asked for with a video of a cozy island
-builder: "games like railroad builder or island builder, and we put all of these agents and departments on
-that". Six rules:
+**The town is the 3D office's scenery, and it decides nothing** (`24t-island.js`, look `island` in
+office.py, scene `island` labelled Town; `docs/island.md`, `tests/test_island.py`). Asked for with a video
+of a cozy island builder ("put all of these agents and departments on that"), then "why is the office on
+a track? it can be inside, and pop out when it works" and "build Venice like city, or a castle, a forest".
+Eight rules:
 - **Same office, other place.** `OF3.island` makes `of3BuildNow` call `islWorld` instead of the stars and the
-  hub, and makes `of3Room`/`of3Window` skip walls: rooms are open terraces, desks and people unchanged. Every
-  walk, paper, balloon, meeting and camera move is still 24d's and 24k's. The land sits at `OF3_SLAB`, so
-  people walking between terraces stand on the grass.
-- **The train runs on papers, and only on papers** (`islPapers`, the one `ISL.queue.push`). 24d flies a paper
-  when work is handed from one room to another; the train goes from that room's station to the other's, the
-  short way round, and no trip outlasts `OF_WALK_S`. A railway that loops for the look says work is moving
-  when none is. Each paper is marked `_isl`, because 24d drops papers that landed.
-- **The railway never crosses a terrace** (`islRailLine`): the line is decided from the shape first, pushed
-  out of every room, and the land follows it (`sh.rail` in `islDist`). Found in the first screenshot, a
-  track through Research's desks. The Node test fails without the push-out.
+  hub, and makes `of3Room`/`of3Window` skip their walls. Every walk, paper, balloon, meeting and camera move
+  is still 24d's and 24k's. The land sits at `OF3_SLAB`, so people walking between rooms stand on the grass.
+- **A setting is one closed set** (`office.SETTINGS` = `ISL_SETS`, the test compares them): island, islands,
+  canals, castle, forest. A setting is a palette and parts (houses, landmark, carrier, trees) plus its shape
+  in `islDist`. Said in words it is the town look in that setting (`_SETTING_WORDS`, the last one named
+  wins; `_SETTING_ALIASES` for Venice and the like). The id stays `island`: a rename would cost saved
+  configs for a word nobody sees. `office.place()` already means moving an agent, so the field is `setting`.
+- **A town patch merges** (`office.save` lays `patch["island"]` over the stored town before `clean`, and
+  `read_design` keeps only the town fields the model named). A new setting from words, the tool or the CLI
+  keeps the person's houses and trees; before, any partial town reset them.
+- **A room is a building that opens because something happens in it** (`islShell`, `islShellWant`,
+  `islShells`): somebody of that room working, speaking, walking, a visitor, or the camera on it (`OF3.focus`,
+  `OF3.follow`). It closes 3.5 s after it goes quiet. Read from `OFFICE.people` every frame, never a timer.
+  Walls, their windows and the roof are three meshes per room OUTSIDE the bake, so they can scale and fade.
+- **The carrier runs on papers, and only on papers** (`islPapers`, the one `ISL.queue.push`): a train, a
+  ferry (`islWaterRing`) or a gondola, from one room's stop to the other's, the short way, no trip longer
+  than `OF_WALK_S`. Each paper is marked `_isl`, because 24d drops papers that landed.
+- **The railway goes round the coast, never round a room** (`islRailLine`): scanned from outside the
+  town, bays taken on a causeway (`sh.rail` in `islDist`), pushed clear of every room at its points AND
+  between them, with a last clearance pass. Hugging the rooms is what read as "an office on a track". The
+  canal city's canal is the `inner` line behind the rooms, at a wider gap (.9), and the castle's wall is
+  scanned from the land's edge so the districts are inside it. The Node test fails on a crossed terrace.
 - **Houses are scenery, a closed set** (`island.houses` 0 to `MAX_HOUSES` per district, `train`, `trees`;
   `clean_island`). The default is 4 + 2 per person (`houses_of` in Python, `officeHouses` on the page, kept
-  equal by the test). A house never stands in front of a terrace as the camera sees it unless it is one
-  storey and well clear, or it would hide people.
+  equal by the test). A house never stands in front of a room as the camera sees it unless it is one storey
+  and well clear, or it would hide people. Ground under everything is darkened round its foot (`ao` in the
+  ground pass): that contact shadow is most of what makes it read as built rather than placed.
 - **The hour is an input, per browser** (`island.hour` in localStorage, read only in 24t). Live by default,
-  repainted a quarter of an hour at a time; windows are `toneMapped:false` so a lit one is lit.
-- **At rest the sea is the only thing moving**, at 12 frames a second when `OF3.hq` and 6 otherwise
-  (`sea` in `officeFrame`), like the World's water. Never 30 for the look.
-The Island scene is Office HQ with `OFFICE_SCENE.island` (body gets `imm-hq` and `imm-island`): an island
+  repainted a quarter of an hour at a time; lit windows are `toneMapped:false`. At rest the water is the
+  only thing moving (and a windmill's sails), at 12 frames a second when `OF3.hq` and 6 otherwise.
+The Town scene is Office HQ with `OFFICE_SCENE.island` (body gets `imm-hq` and `imm-island`): a town
 switch restarts the scene as an HQ switch does.
 
 **The playground off the Office** (`agentos/playground.py`, `agentos/comic.py`, `24e-playstrip.js`,
