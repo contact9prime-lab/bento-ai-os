@@ -25,6 +25,9 @@ terminal it's `bento office setting` and `bento office island`.
 was on screen changed the saved office and left the picture as it was. Only an open Office window
 reloaded, so the scene now loads the new plan too.
 
+**An update waiting for a restart is said once.** A page that had just opened asked twice, once at load
+and once when it connected, and showed the same "installed but not running yet" notice twice.
+
 ## 0.6.95 — 2026-10-24
 
 **A Pi with its screen on starts in seconds again.** The screen's browser keeps its profile inside

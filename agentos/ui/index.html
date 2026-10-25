@@ -42004,7 +42004,7 @@ connect();
 /* The build this page came with: noted the first time it asks, then compared on every
    reconnect. Reported as "my Bento has been updated but the UI doesn't have it": the
    server restarted into new code and the open page kept the old one, saying nothing. */
-var PAGE_BUILD='',PAGE_STALE_SAID='';
+var PAGE_BUILD='',PAGE_STALE_SAID='',PAGE_PENDING_SAID='';
 async function updateWaitingCheck(){
   try{
     const d=await (await fetch('/api/update')).json();
@@ -42017,7 +42017,10 @@ async function updateWaitingCheck(){
         {kind:'warn',ms:600000,label:'Refresh',go:()=>location.reload()});
       return;
     }
-    if(!d.pending_restart)return;
+    // asked at load and again when the socket opens: say it once per waiting build, or a
+    // fresh page stacked the same toast twice
+    if(!d.pending_restart||PAGE_PENDING_SAID===d.pending_restart)return;
+    PAGE_PENDING_SAID=d.pending_restart;
     toast(`An update (build ${d.pending_restart}) is installed but not running yet — this is still build ${d.build}.`,
       {kind:'warn',ms:15000,label:'Restart now',go:async()=>{
         const r=await fetch('/api/update/restart',{method:'POST'});
