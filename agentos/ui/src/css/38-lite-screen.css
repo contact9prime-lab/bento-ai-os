@@ -1,0 +1,13 @@
+/* ================= a small machine's own screen =================
+   body.lite-screen is set by 01b-immersive.js (liteScreen) on a Pi's own screen and never for
+   a phone or laptop looking at it. A decoration that animates forever makes the compositor
+   draw the whole screen sixty times a second: measured with software rendering, the prompt
+   bar's breathing orb alone took 3.6 cores, and the same desktop with it still took 0.3.
+   Only what moves at rest stops here. A spinner or a pulse that shows work in progress keeps
+   moving, because it ends when the work does and it is how the screen says "busy". */
+body.lite-screen #omni-orb:not(.busy),
+body.lite-screen .av-sprite,
+body.lite-screen .br-glow,
+body.lite-screen .stg-bg,
+body.lite-screen .stg-pic img,
+body.lite-screen .dm-bg line{animation:none!important}

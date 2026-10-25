@@ -62,6 +62,9 @@ var OF3_SPARK=/remember|recall|memor|knowledge|kg_|forget/i;
 function of3Wanted(){
   const v=OFFICE.view;if(!v||OF3.failed)return false;
   if(v.zero)return false;           // a Zero's office is one person drawn flat (office.view)
+  // a small machine's own screen draws it flat: three.js there took more than a core at
+  // rest. A phone or laptop looking at it draws for itself and gets the 3D one.
+  if(liteScreen()){OF3.why='This is a small machine, so its own screen draws the office flat. A phone or laptop that opens it shows it in 3D.';return false}
   if(of3HQ())return of3GL();        // the Office HQ scene is this look by definition
   // The Office scene on the desktop is the comic: Office HQ is the 3D one, so the two scenes
   // are the two looks. Reported as "the 2D comic office I can't see any more, in the scene

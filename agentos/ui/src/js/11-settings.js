@@ -563,10 +563,13 @@ function setTab(body,all){
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
          stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town']],
-          (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
-        {desc:'What the wallpaper shows behind your windows.',
-         more:'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs. Town puts your office in a place you choose, an island, a canal city, a castle or a forest. Each room is a building that opens while it works.',
+      /* A small machine's own screen offers only the scenes it draws (01b-immersive.js
+         liteScreen): a choice that changes nothing would be a dead control. */
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town']]
+            .filter(o=>!liteScreen()||LITE_SCENES[o[0]]),
+          (typeof IMMERSIVE!=='undefined'&&immersiveSceneNow())||'aurora'),
+        {desc:liteScreen()?'This small machine shows Aurora or Office on its own screen.':'What the wallpaper shows behind your windows.',
+         more:liteScreen()?'The other scenes draw in 3D or many times a second, which is too much for a machine this size. A phone or laptop that opens Bento here can show any of them. To draw them here anyway, run bento profile full.':'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs. Town puts your office in a place you choose, an island, a canal city, a castle or a forest. Each room is a building that opens while it works.',
          f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections island town venice canal castle forest railroad train builder'}),
       pRow('Wallpaper','<button class="endbtn" onclick="openApp(\'personalize\')">Personalize</button><button class="endbtn" onclick="wpSystem()">Use system</button>',
         {desc:'Make one with AI, pick one from the gallery, or use your system’s.',f:'wallpaper background'}),

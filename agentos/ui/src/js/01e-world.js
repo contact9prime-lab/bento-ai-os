@@ -722,4 +722,4 @@ async function worldAnswer(choice,skip){
 }
 /* 01e loads after 01b: at first paint applyImmersive ran before WORLD existed, so the
    scene starts itself here once, and from then on the switch is handled there. */
-if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='world')setTimeout(worldStart,0);
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='world')setTimeout(worldStart,0);

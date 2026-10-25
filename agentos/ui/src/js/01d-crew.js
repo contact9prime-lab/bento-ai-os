@@ -531,4 +531,4 @@ function crewDraw(dt){
   C.drawn++;
 }
 // first paint: 01b ran before this file existed, so the scene starts itself
-if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='crew')crewStart();

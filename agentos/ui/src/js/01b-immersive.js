@@ -26,16 +26,39 @@ function immersiveStored(){try{return localStorage.getItem('immersive')}catch(e)
 var BUILD_LIVE=false;
 var IMMERSIVE={on:immersiveStored()!=='0',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
+/* A small machine's own screen (a Pi) draws only the light scenes. Measured with software
+   rendering, as a Pi without GPU drawing has it: the Town, the World and the Mind took every
+   core, Movement and Crew 2.6 cores, Office HQ 1.3, the comic Office 1 and a still Aurora 0.3.
+   A phone or laptop looking at the Pi draws for itself and keeps every scene. The choice
+   stays the person's (IMMERSIVE.scene); only what this screen draws changes, and
+   `bento profile full` lifts it. PLATFORM is a `let` in a later file and arrives later
+   still, so until it does the last answer this browser heard is used (screen.lite). */
+var LITE_SCENES={aurora:1,office:1};
+function liteScreen(){
+  let p=null;try{p=PLATFORM}catch(e){}
+  if(p&&typeof p.small==='boolean')return p.small&&!p.remote_client;
+  try{return localStorage.getItem('screen.lite')==='1'}catch(e){return false}
+}
+function immersiveSceneNow(){const s=IMMERSIVE.scene;return liteScreen()&&!LITE_SCENES[s]?'aurora':s}
+/* The platform answer arrived: remember it for the next first paint, and redraw only when
+   it changes what this screen shows. */
+function liteScreenSet(){
+  const on=liteScreen(),was=document.body.classList.contains('lite-screen');
+  try{localStorage.setItem('screen.lite',on?'1':'0')}catch(e){}
+  if(on!==was)applyImmersive();
+}
 function applyImmersive(){
+  const scene=immersiveSceneNow();
+  document.body.classList.toggle('lite-screen',liteScreen());
   document.body.classList.toggle('immersive',IMMERSIVE.on);
-  document.body.classList.toggle('imm-movement',IMMERSIVE.on&&IMMERSIVE.scene==='movement');
-  document.body.classList.toggle('imm-crew',IMMERSIVE.on&&IMMERSIVE.scene==='crew');
-  document.body.classList.toggle('imm-office',IMMERSIVE.on&&IMMERSIVE.scene==='office');
+  document.body.classList.toggle('imm-movement',IMMERSIVE.on&&scene==='movement');
+  document.body.classList.toggle('imm-crew',IMMERSIVE.on&&scene==='crew');
+  document.body.classList.toggle('imm-office',IMMERSIVE.on&&scene==='office');
   // the Island is Office HQ drawn as an island (24t-island.js): it lays out as HQ does
-  document.body.classList.toggle('imm-hq',IMMERSIVE.on&&(IMMERSIVE.scene==='hq'||IMMERSIVE.scene==='island'));
-  document.body.classList.toggle('imm-island',IMMERSIVE.on&&IMMERSIVE.scene==='island');
-  document.body.classList.toggle('imm-world',IMMERSIVE.on&&IMMERSIVE.scene==='world');
-  document.body.classList.toggle('imm-mind',IMMERSIVE.on&&IMMERSIVE.scene==='mind');
+  document.body.classList.toggle('imm-hq',IMMERSIVE.on&&(scene==='hq'||scene==='island'));
+  document.body.classList.toggle('imm-island',IMMERSIVE.on&&scene==='island');
+  document.body.classList.toggle('imm-world',IMMERSIVE.on&&scene==='world');
+  document.body.classList.toggle('imm-mind',IMMERSIVE.on&&scene==='mind');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
@@ -44,21 +67,21 @@ function applyImmersive(){
   // from then on the switch is handled here. Each is tested separately — one
   // early `return` on the first undefined would leave the other permanently
   // unreachable on a first paint, which is the bundle-order trap in a new shape.
-  if(typeof MOVEMENT!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();else movementStop()}
-  if(typeof CREW!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='crew')crewStart();else crewStop()}
+  if(typeof MOVEMENT!=='undefined'){if(IMMERSIVE.on&&scene==='movement')movementStart();else movementStop()}
+  if(typeof CREW!=='undefined'){if(IMMERSIVE.on&&scene==='crew')crewStart();else crewStop()}
   // the Office scene (24d) loads later still; it starts itself on first paint
   // Office HQ is the same office, full screen and always in 3D (24k-office3d.js)
   if(typeof OFFICE_SCENE!=='undefined'){
-    const sc=IMMERSIVE.scene,want=IMMERSIVE.on&&(sc==='office'||sc==='hq'||sc==='island'),hq=want&&(sc==='hq'||sc==='island');
+    const sc=scene,want=IMMERSIVE.on&&(sc==='office'||sc==='hq'||sc==='island'),hq=want&&(sc==='hq'||sc==='island');
     const isl=want&&sc==='island';
     if(want&&OFFICE_SCENE.on&&!!OFFICE_SCENE.island!==isl)officeSceneStop();
     if(want&&OFFICE_SCENE.on&&OFFICE_SCENE.hq!==hq)officeSceneStop();
     if(want){OFFICE_SCENE.island=isl;OFFICE_SCENE.hq=hq;officeSceneStart()}
     else if(!document.body.classList.contains('kiosk'))officeSceneStop()}   // the kiosk keeps its office
   // the World (01e, experimental): leaving this scene is what puts the world to sleep
-  if(typeof WORLD!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='world')worldStart();else worldStop()}
+  if(typeof WORLD!=='undefined'){if(IMMERSIVE.on&&scene==='world')worldStart();else worldStop()}
   // the Mind (01g): your agents and what they know, as one picture
-  if(typeof MIND!=='undefined'){if(IMMERSIVE.on&&IMMERSIVE.scene==='mind')mindStart();else mindStop()}
+  if(typeof MIND!=='undefined'){if(IMMERSIVE.on&&scene==='mind')mindStart();else mindStop()}
 }
 /* Which scene: 'aurora' (a sky that follows the day), 'movement' (a watch movement
    that shows what is running) or 'crew' (the roster, drawn, working). Per browser,
@@ -96,7 +119,7 @@ function immersiveBrainText(){
    scene's minute tick re-checks the band and reloads only when it changes —
    a wallpaper that swaps under an open window every minute would be a bug. */
 function immersiveWallBand(){const h=new Date().getHours();return h>=5&&h<11?'immersive-dawn':h>=11&&h<19?'immersive':'immersive-night'}
-function immersiveWall(){return !IMMERSIVE.on?'':IMMERSIVE.scene==='movement'?'immersive-movement':IMMERSIVE.scene==='crew'?'immersive-crew':immersiveWallBand()}
+function immersiveWall(){const sc=immersiveSceneNow();return !IMMERSIVE.on?'':sc==='movement'?'immersive-movement':sc==='crew'?'immersive-crew':immersiveWallBand()}
 /* ---- the home scene ----
    With no window open the desktop is a place, not a tile board: a greeting by
    the hour (and by name on a machine with accounts), the date, the prompt bar
@@ -203,7 +226,7 @@ function homeRender(){
   homeLinks(h);
   h.hidden=false;
   const band=immersiveWallBand();
-  if(IMMERSIVE.scene==='aurora'&&IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();
+  if(immersiveSceneNow()==='aurora'&&IMMERSIVE.band&&IMMERSIVE.band!==band&&typeof loadWallpaper==='function')loadWallpaper();
   IMMERSIVE.band=band;
   if(!IMMERSIVE.homeT){IMMERSIVE.homeT=setInterval(homeRender,60000);
     if(typeof briefLoad==='function')briefLoad().then(()=>homeRender());}

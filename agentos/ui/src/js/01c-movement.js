@@ -231,4 +231,4 @@ function movementDraw(dt){
   M.drawn++;
 }
 // first paint: 01b ran before this file existed, so the scene starts itself
-if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='movement')movementStart();
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='movement')movementStart();

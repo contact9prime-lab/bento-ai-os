@@ -231,8 +231,7 @@ def test_a_drawing_of_the_3d_office_and_nothing_more():
     assert "'mind','island'];" in imm and "OFFICE_SCENE.island=isl;OFFICE_SCENE.hq=hq;officeSceneStart()" in imm
     assert "['island','Town']" in (JS / "11-settings.js").read_text()
     d = (JS / "24d-office.js").read_text()
-    assert "OFFICE_SCENE.island=IMMERSIVE.scene==='island'" in d.splitlines()[-1] or \
-        "OFFICE_SCENE.island=IMMERSIVE.scene==='island'" in d.strip().splitlines()[-1]
+    assert "OFFICE_SCENE.island=sc==='island'" in d.strip().splitlines()[-1]
     assert "islDesignHTML(v)" in d and "islDesignWire(el,v)" in d
     # the controls are tap-sized, like every control on a phone
     css = (ROOT / "agentos" / "ui" / "src" / "css" / "37-island.css").read_text()
