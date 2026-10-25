@@ -3889,7 +3889,8 @@ class Toolbox(usersmod.Scoped):
 
     async def set_office(self, style: str = "", name: str = "", agent: str = "", department: str = "",
                          color: str = "", departments=None, remove_department: str = "",
-                         meeting=None, lounge=None, decor=None, pet: str = "", look: str = "") -> str:
+                         meeting=None, lounge=None, decor=None, pet: str = "", look: str = "",
+                         island=None) -> str:
         """Look at or redesign the Office playground — the agent's half of its editor
         (the parity law). Every value is from office.py's closed set, and a refusal
         names the choices. With no changes it describes the office and the options,
@@ -3910,6 +3911,8 @@ class Toolbox(usersmod.Scoped):
                 patch["decor"] = decor
             if departments is not None:
                 patch["departments"] = departments
+            if island is not None:
+                patch["island"] = island
             if remove_department:
                 cur = of.current(self.cfg)["departments"]
                 left = [d for d in cur if d["name"].lower() != remove_department.strip().lower()]
@@ -3927,7 +3930,8 @@ class Toolbox(usersmod.Scoped):
                         f"{', '.join(of.COLORS)} — and members from: {', '.join(v['agents']) or 'no specialists yet'}), "
                         f"move one agent with agent+department, remove_department, meeting and lounge "
                         f"(yes/no), decor ({', '.join(of.DECOR)}), pet ({', '.join(of.PETS)}) "
-                        f"and look ({', '.join(of.LOOKS)}).")
+                        f"look ({', '.join(of.LOOKS)}), and for the island look the island: "
+                        f"{of.island_text(v)}.")
         except ValueError as e:
             return f"[error] {e}"
         cfgmod.save_config(self.cfg)
@@ -5754,8 +5758,20 @@ DESKTOP_TOOL_SCHEMAS = [
             "decor": {"type": "array", "items": {"type": "string",
                       "enum": ["plants", "coffee", "whiteboard", "bookshelf", "arcade", "posters"]}},
             "pet": {"type": "string", "enum": ["none", "cat", "dog", "robot"]},
-            "look": {"type": "string", "enum": ["3d", "flat"],
-                     "description": "3d: rooms around the Brain in 3D; flat: the comic floor plan"}}},
+            "look": {"type": "string", "enum": ["3d", "flat", "island"],
+                     "description": "3d: rooms around the Brain in 3D; flat: the comic floor plan; island: "
+                                    "a town, each room a building that opens while it works, in the setting below"},
+            "island": {"type": "object",
+                       "description": "The town look's builder. setting: the place it stands in (island; islands, "
+                                      "a cluster joined by footbridges; canals, a city like Venice; castle, inside "
+                                      "walls and a moat; forest, by a river). Asked to build a place (\"make it like "
+                                      "Venice\", \"put us in a castle\"), set look island and this setting. Also houses "
+                                      "per district (department name → 0 to 12), the train or boats on or off, and how "
+                                      "wooded it is. A field left out keeps what it was.",
+                       "properties": {"setting": {"type": "string", "enum": ["island", "islands", "canals", "castle", "forest"]},
+                                      "houses": {"type": "object", "additionalProperties": {"type": "integer"}},
+                                      "train": {"type": "boolean"},
+                                      "trees": {"type": "string", "enum": ["few", "some", "lots"]}}}}},
     },
     {
         "name": "list_themes",

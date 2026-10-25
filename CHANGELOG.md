@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.6.96 — 2026-10-24
+
+**Your company as a town, in the place you choose.** A new scene, Town (Settings → Appearance →
+Scene), and a new look for the Office: the same office, each room now a building in a town. Pick the
+place: an island in the sea, a cluster of islands joined by footbridges, a city on canals like
+Venice, a castle inside its walls and moat, or a town in a forest by a river. Each department grows a
+district of houses in its colour, your agent's place is the landmark (a lighthouse, a windmill, a bell
+tower, the keep, a watchtower) and the Brain is a fountain on the plaza.
+
+**Buildings open while they work.** A quiet room is a closed building. When somebody in it works, walks
+out or talks, or somebody visits, the roof lifts and the walls drop so you see the office inside, and
+it closes again a few seconds after it goes quiet. Nothing moves for show: the train, ferry or gondola
+sets off when work is really handed from one room to another, and the railway runs round the coast,
+clear of every building. The light follows the real hour, and the clock in the corner lets you drag
+it to any time of day.
+
+**Build it the way you like, or say it.** In the Office's Design panel pick the setting, grow or
+shrink each district, switch the train or boats on or off and plant more trees or fewer. Say "build a
+Venice like city" in Describe it or in chat and the town moves there, keeping your houses. From a
+terminal it's `bento office setting` and `bento office island`.
+
+**Office HQ and the town redraw when the office changes.** Asking Aria for a castle while the Town scene
+was on screen changed the saved office and left the picture as it was. Only an open Office window
+reloaded, so the scene now loads the new plan too.
+
+**An update waiting for a restart is said once.** A page that had just opened asked twice, once at load
+and once when it connected, and showed the same "installed but not running yet" notice twice.
+
 ## 0.6.95 — 2026-10-24
 
 **A Pi with its screen on starts in seconds again.** The screen's browser keeps its profile inside

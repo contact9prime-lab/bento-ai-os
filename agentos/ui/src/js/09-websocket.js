@@ -681,7 +681,11 @@ function handle(ev){
       fabricLiveRefresh(); break;
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged();
       if(typeof officeReload==='function')officeReload(); break;   // a new specialist takes a desk
-    case 'office': refreshApp('office'); break;   // the office's look or its seating changed
+    // the office's look or its seating changed. refreshApp reaches an Office window only;
+    // the desktop scene (Office HQ, the town) holds OFFICE itself and must load it again,
+    // or asking Aria for a castle changed nothing on the screen you were looking at.
+    case 'office': refreshApp('office');
+      if(typeof OFFICE!=='undefined'&&OFFICE.w&&OFFICE.w.scene)officeLoad(); break;
     // the community of machines changed, or somebody asks to join it (pool.py)
     case 'pool': if(typeof poolPaint==='function')poolPaint();
       if(ev.kind==='pool_request')toast((ev.name||'A machine')+' asks to join your community',

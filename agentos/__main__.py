@@ -5742,9 +5742,61 @@ def _office_cli(args):
             of.save(cfg, store, {"pet": rest[0]})
             return done(f"pet: {of.current(cfg)['pet']}")
         if a == "look" and rest:
-            # how the desktop draws it: 3D rooms around the Brain, or the flat comic plan
+            # how the desktop draws it: 3D rooms around the Brain, the flat comic plan, or an island
             of.save(cfg, store, {"look": rest[0]})
             return done(f"look: {of.LOOKS[of.current(cfg)['look']]}")
+        if a == "setting":
+            # the place the town stands in: one of office.SETTINGS. Naming one turns the town on,
+            # as the desktop's Design panel and "Describe it" do.
+            cur = (of.current(cfg).get("island") or {}).get("setting", "island")
+            if not rest:
+                for k, d in of.SETTINGS.items():
+                    print(f"  {'▸' if k == cur else ' '} {k:<8} {d}")
+                if of.current(cfg).get("look") != "island":
+                    print("\n  The office is not drawn as a town yet: bento office setting NAME turns it on.")
+                return
+            of.save(cfg, store, {"look": "island", "island": {"setting": rest[0]}})
+            now = of.current(cfg)["island"]["setting"]
+            return done(f"setting: {now} · {of.SETTINGS[now]}")
+        if a == "island":
+            # the town builder (look "island"): houses per district, the railway, the trees.
+            # The same closed set as the desktop's Design panel and the agent's set_office.
+            isl = dict(of.current(cfg).get("island") or of.ISLAND_DEFAULT)
+            isl["houses"] = dict(isl.get("houses") or {})
+            if not rest:
+                v = of.view(cfg, store)
+                print(f"  {of.island_text(v)}")
+                for r in v["rooms"]:
+                    if r["kind"] == "dept":
+                        n = of.houses_of(isl, r["name"], v)
+                        print(f"    {r['name']:<20} {'▮' * n}{'·' * (of.MAX_HOUSES - n)} {n}")
+                if v["office"].get("look") != "island":
+                    print("\n  The office is not drawn as a town yet: bento office look island")
+                print("\n  The desktop draws it: Settings → Appearance → Scene → Town, or the Office's look.")
+                return
+            what = rest[0].lower()
+            if what == "houses" and len(rest) >= 3:
+                dept = " ".join(rest[1:-1])
+                known = {d["name"].lower(): d["name"] for d in of.current(cfg)["departments"]}
+                if dept.lower() not in known:
+                    raise ValueError(f"there is no department called '{dept}' — the office has: "
+                                     f"{', '.join(known.values()) or 'none yet'}")
+                isl["houses"][known[dept.lower()]] = rest[-1]
+                of.save(cfg, store, {"island": isl})
+                return done(f"island: {known[dept.lower()]} grows {of.current(cfg)['island']['houses'][known[dept.lower()]]} houses")
+            if what == "train" and len(rest) == 2:
+                isl["train"] = rest[1].lower() in ("on", "yes", "true", "1")
+                of.save(cfg, store, {"island": isl})
+                return done(f"island: train {'on' if isl['train'] else 'off'}")
+            if what == "setting" and len(rest) == 2:
+                isl["setting"] = rest[1]
+                of.save(cfg, store, {"island": isl})
+                return done(f"island: setting {of.current(cfg)['island']['setting']}")
+            if what == "trees" and len(rest) == 2:
+                isl["trees"] = rest[1]
+                of.save(cfg, store, {"island": isl})
+                return done(f"island: trees {of.current(cfg)['island']['trees']}")
+            raise ValueError("island · island setting NAME · island houses DEPARTMENT N · island train on|off · island trees few|some|lots")
         if a == "design" and rest:
             # the same designer as the Office's "Describe it": the machine's brain picks
             # from the closed set, and with nothing answering the words are matched
@@ -5830,7 +5882,7 @@ def _office_cli(args):
         sys.exit(2)
     print("  bento office [show] · styles · style NAME · name TEXT · move AGENT [DEPARTMENT] [--color C]\n"
           "  dept-rm DEPARTMENT · meeting on|off · lounge on|off · decor plants coffee … · pet cat|dog|robot|none\n"
-          "  look 3d|flat\n"
+          "  look 3d|flat|island · island [houses DEPARTMENT N | train on|off | trees few|some|lots]\n"
           "  design WORDS · snap [telegram|whatsapp] · picture [FILE.png] · visit LINK",
           file=sys.stderr)
     sys.exit(2)
@@ -9013,10 +9065,12 @@ def main():
     p_of = verb("office", help="the Office playground — its departments, who sits where, and its look")
     p_of.add_argument("action", nargs="?", default="show",
                       choices=["show", "list", "styles", "style", "name", "move", "dept-rm", "meeting",
-                               "lounge", "decor", "pet", "look", "design", "snap", "picture", "visit"])
+                               "lounge", "decor", "pet", "look", "setting", "island", "design", "snap", "picture", "visit"])
     p_of.add_argument("args", nargs="*", help="move: AGENT [DEPARTMENT] · style: pop|loft|tower|cozy|space|garden|night"
                                               " · design: a description in words · snap: telegram|whatsapp"
-                                              " · picture: FILE.png · visit: LINK")
+                                              " · picture: FILE.png · visit: LINK"
+                                              " · setting: island|islands|canals|castle|forest"
+                                              " · island: setting NAME | houses DEPARTMENT N | train on|off | trees few|some|lots")
     p_of.add_argument("--color", default="", help="move: the colour of a NEW department")
     p_of.add_argument("--user", default="", help="whose office, on a machine with users")
     p_tt = verb("timetravel", help="rewind files, memory and the graph to before an agent's step")

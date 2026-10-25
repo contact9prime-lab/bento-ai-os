@@ -3,7 +3,7 @@
 Asked for with a screenshot of an isometric agent HQ and one worry: "when I add so many
 agents it becomes really cluttered". What these defend:
 
-- the look is office.py's closed set (`look`: 3d or flat), on every door: the editor,
+- the look is office.py's closed set (`look`: 3d, flat or island), on every door: the editor,
   `bento office look`, the agent's `set_office`, the designer reading words;
 - the Brain counts rows (memories, knowledge-graph facts), never a guess;
 - a room seats OF3_SEATS people and the rest are on its card; who has a desk follows
@@ -44,7 +44,7 @@ def test_the_look_is_a_closed_set_and_3d_by_default(tmp_path):
     assert office.clean({"look": "flat"}, None)[0] == {"look": "flat"}
     assert office.clean({"look": "3D"}, None)[0] == {"look": "3d"}
     assert office.clean({"look": "comic"}, None)[0] == {"look": "flat"}
-    with pytest.raises(ValueError, match="choose one of: 3d, flat"):
+    with pytest.raises(ValueError, match="choose one of: 3d, flat, island"):
         office.clean({"look": "hologram"}, None)
     # a stored bad value draws the default for that field, never an error
     assert office.current({"office": {"look": "hologram"}})["look"] == "3d"
@@ -54,7 +54,7 @@ def test_the_designer_and_the_words_know_the_look(tmp_path):
     store = Store(tmp_path / "a.db")
     v = office.view({}, store)
     _, prompt = office.design_prompt("make it 3d", v)
-    assert '"look": one of 3d, flat' in prompt
+    assert '"look": one of 3d, flat, island' in prompt
     assert office.from_words("a realistic 3d space station")["look"] == "3d"
     assert office.from_words("just a flat comic")["look"] == "flat"
     patch, dropped = office.read_design('{"look": "flat", "pet": "dog"}', [])
@@ -79,12 +79,12 @@ def test_the_terminal_and_the_agent_set_it(tmp_path):
     assert r.returncode == 0 and "look: Flat comic plan" in r.stdout, r.stderr
     assert json.loads((tmp_path / "config.json").read_text())["office"]["look"] == "flat"
     r = run("look", "hologram")
-    assert r.returncode == 2 and "choose one of: 3d, flat" in r.stderr
+    assert r.returncode == 2 and "choose one of: 3d, flat, island" in r.stderr
 
     from agentos.tools import TOOL_SCHEMAS, Toolbox
     schema = next(s for s in TOOL_SCHEMAS if (s.get("name") or s.get("function", {}).get("name")) == "set_office")
     props = (schema.get("parameters") or schema["function"]["parameters"])["properties"]
-    assert props["look"]["enum"] == ["3d", "flat"]
+    assert props["look"]["enum"] == ["3d", "flat", "island"]
     store = Store(tmp_path / "t.db")
     cfg = {"workspace": str(tmp_path / "ws")}
     tb = Toolbox(cfg, store)

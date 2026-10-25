@@ -107,3 +107,23 @@ def test_a_pane_that_fails_says_why_and_keeps_its_button():
     assert "running older code" in core
     assert "apiJSON('/api/office')" in (JS / "24d-office.js").read_text()
     assert "updateWaitingCheck" in (JS / "30-init.js").read_text()
+
+
+def test_a_waiting_update_is_said_once():
+    # Found filming a reel: a fresh page asks at load and again when its socket opens, and
+    # stacked two identical "installed but not running yet" toasts.
+    import re
+    import shutil
+    import pytest
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    src = (JS / "30-init.js").read_text()
+    decl = re.search(r"^var PAGE_BUILD=.*?;$", src, re.M).group(0)
+    fn = re.search(r"^async function updateWaitingCheck\(\)\{.*?^\}$", src, re.M | re.S).group(0)
+    js = (decl + "\n" + fn + """
+var said=[];function toast(t){said.push(t)}
+var fetch=async()=>({json:async()=>({build:'old',pending_restart:'new'})});
+(async()=>{await updateWaitingCheck();await updateWaitingCheck();await updateWaitingCheck();
+  console.log(said.length)})();""")
+    out = subprocess.run(["node", "-e", js], capture_output=True, text=True, timeout=30)
+    assert out.stdout.strip() == "1", out.stdout + out.stderr

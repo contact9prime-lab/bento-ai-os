@@ -563,11 +563,11 @@ function setTab(body,all){
          f:'immersive experience beta premium look glass wallpaper parallax depth macos'}),
       /* The second scene draws the machine's own moving parts. Its cost is
          stated in the row, and so is the terminal's answer: none. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind']],
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town']],
           (typeof IMMERSIVE!=='undefined'&&IMMERSIVE.scene)||'aurora'),
         {desc:'What the wallpaper shows behind your windows.',
-         more:'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs.',
-         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections'}),
+         more:'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs. Town puts your office in a place you choose, an island, a canal city, a castle or a forest. Each room is a building that opens while it works.',
+         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections island town venice canal castle forest railroad train builder'}),
       pRow('Wallpaper','<button class="endbtn" onclick="openApp(\'personalize\')">Personalize</button><button class="endbtn" onclick="wpSystem()">Use system</button>',
         {desc:'Make one with AI, pick one from the gallery, or use your system’s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
