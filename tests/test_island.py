@@ -299,3 +299,15 @@ console.log(JSON.stringify(ctx.out));""")
     # opening is drawn from that decision each frame, and a quiet room closes a few seconds later
     assert "const goal=now-s.last<3500?1:0;" in ISLAND
     assert "islShells(now,dt);" in ISLAND and "islShellsMoving()" in ISLAND
+
+
+def test_the_scene_redraws_when_the_town_changes():
+    # Found filming the reel: Aria moved the town to a castle, the config said castle, and the
+    # Town scene kept drawing the island. The 'office' event only re-rendered Office WINDOWS;
+    # the desktop scene holds OFFICE itself and has to load the plan again.
+    ws = (JS / "09-websocket.js").read_text()
+    case = re.search(r"case 'office':(.*?)break;", ws, re.S)
+    assert case, "the socket must handle the office event"
+    assert "refreshApp('office')" in case.group(1)
+    assert re.search(r"OFFICE\.w\.scene\)\s*officeLoad\(\)", case.group(1)), \
+        "the desktop scene must reload the office plan when it changes"

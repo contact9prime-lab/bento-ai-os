@@ -21,6 +21,10 @@ shrink each district, switch the train or boats on or off and plant more trees o
 Venice like city" in Describe it or in chat and the town moves there, keeping your houses. From a
 terminal it's `bento office setting` and `bento office island`.
 
+**Office HQ and the town redraw when the office changes.** Asking Aria for a castle while the Town scene
+was on screen changed the saved office and left the picture as it was. Only an open Office window
+reloaded, so the scene now loads the new plan too.
+
 ## 0.6.95 — 2026-10-24
 
 **A Pi with its screen on starts in seconds again.** The screen's browser keeps its profile inside
