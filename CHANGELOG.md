@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.97 — 2026-10-25
+
+**A Pi's own screen stays light.** Checked with Chrome drawing in software, the way a Pi without GPU
+drawing has it. The prompt bar's breathing orb alone kept the screen redrawing at 3.6 cores, and the
+Town, World and Mind scenes used every core. On a small machine's own screen now, only Aurora and the
+Office are drawn, the Office app is flat, the pet sits still and nothing on the desktop animates
+forever. Each of those screens costs about a quarter of a core, and the kiosk's office about half. A
+phone or laptop looking at the Pi keeps the full look, and `bento profile full` draws everything there
+anyway.
+
 ## 0.6.96 — 2026-10-24
 
 **Your company as a town, in the place you choose.** A new scene, Town (Settings → Appearance →

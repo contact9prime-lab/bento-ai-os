@@ -653,4 +653,4 @@ function mindTell(){
 }
 /* Talking to the lead: Jarvis, with this scene's core as its orb (26-mind.css). */
 function mindTalk(){if(typeof jarvisMode==='function')jarvisMode(true);mindKick()}
-if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&IMMERSIVE.scene==='mind')setTimeout(mindStart,0);
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='mind')setTimeout(mindStart,0);

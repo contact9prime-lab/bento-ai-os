@@ -173,12 +173,40 @@ Changing Wi-Fi needs an admin on a machine with accounts.
 
 ### A small machine draws its own screen light
 
-On a small machine (the lite footprint, which a Pi gets), its own screen starts with the glass
-blur off. The Office's pet and its game of fetch move at four frames a second, and the Office
-draws twice a second when nothing is happening. A phone or a laptop looking at the Pi draws
-on its own hardware and keeps the full look. Measured with Chrome drawing in software at
-1920x1080: two windows with the blur took a whole core while nothing happened, and 0.8%
-without it. The kiosk went from 18% to 4%. Glass can be turned back on in Themes → Effects.
+A small machine (the lite footprint, which a Pi gets) keeps its own screen light. A phone or a
+laptop looking at the Pi draws on its own hardware and keeps the full look.
+
+- **The glass blur starts off.** You can turn it back on in Themes → Effects.
+- **Only two scenes are drawn there: Aurora and the Office.** If you chose Office HQ, the Town,
+  the World, the Mind, Movement or Crew, that screen shows Aurora instead and keeps your choice
+  for when you lift it. Settings → Appearance → Scene offers only those two there and says why.
+- **The Office is drawn flat**, and its Design panel says so. The pet sits still, and with
+  nothing happening the Office draws once every two seconds.
+- **Nothing on the desktop animates forever.** The prompt bar's orb stops breathing and the
+  faces stop blinking. Anything that shows work in progress still moves.
+
+To draw everything on that screen anyway, run `bento profile full`.
+
+![Settings on a Pi's own screen offering only Aurora and Office as the scene](screenshots/lite-settings-scene.png)
+
+![The Office drawn flat on a Pi's own screen, with the sentence that says why in its Design panel](screenshots/lite-office-flat.png)
+
+Measured with Chrome drawing in software, as a Pi without GPU drawing has it, at 1280x720 on a
+copy of a real company:
+
+| On the Pi's own screen | Before | After |
+|---|---|---|
+| Aurora (the orb breathing) | 3.6 cores | 0.25 |
+| Town, World, Mind | every core | 0.25 |
+| Movement, Crew | 2.6 cores | 0.25 |
+| Office HQ | 1.3 cores | 0.25 |
+| The Office scene (what the kiosk shows) | 1.3 cores | 0.47 |
+| The Office app | 0.65 | 0.24 |
+
+The scene rows' Before is the scene alone, with the orb held still. With the orb, each was 3.6 cores or more.
+
+Earlier, at 1920x1080: two windows with the blur took a whole core while nothing happened, and
+0.8% without it. The kiosk went from 18% to 4%.
 
 ### On a small screen
 

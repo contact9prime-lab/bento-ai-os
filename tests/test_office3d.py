@@ -132,7 +132,7 @@ def test_no_3d_graphics_means_the_flat_office_and_a_sentence():
     assert "This screen has no 3D graphics, so the office is drawn flat." in SRC
     assert "This screen could not start 3D graphics, so the office is drawn flat." in SRC
     # and Design says it where the look is chosen
-    assert "OF3.why&&(of.look||'3d')==='3d'" in FLAT and "data-look" in FLAT
+    assert "OF3.why&&['3d','island'].includes(of.look||'3d')" in FLAT and "data-look" in FLAT
 
 
 def test_it_is_cheap_where_it_must_be():
@@ -274,7 +274,7 @@ def test_office_hq_is_a_scene_of_its_own():
     assert "desk.insertBefore(ui,home?home.nextSibling:null)" in SRC and "function of3Pads()" in SRC
     css = (ROOT / "agentos/ui/src/css/23-office.css").read_text()
     assert "body.has-win .of3-ui.hq{display:none}" in css
-    assert "kiosk" in (JS / "24h-kiosk.js").read_text() and "IMMERSIVE.scene==='hq'" in (JS / "24h-kiosk.js").read_text()
+    assert "kiosk" in (JS / "24h-kiosk.js").read_text() and "['office','hq','island'].includes(immersiveSceneNow())" in (JS / "24h-kiosk.js").read_text()
 
 
 def test_the_window_takes_the_renderer_from_the_scene():
@@ -342,7 +342,7 @@ def test_the_office_scene_is_the_comic_and_hq_is_3d():
     Office HQ is the 3D one."""
     root = Path(__file__).parent.parent
     o3 = (root / "agentos/ui/src/js/24k-office3d.js").read_text()
-    want = o3[o3.index("function of3Wanted(){"):][:700]
+    want = o3[o3.index("function of3Wanted(){"):][:1100]
     assert "if(OFFICE.w&&OFFICE.w.scene)return false;" in want
     assert want.index("of3HQ()") < want.index("OFFICE.w.scene)return false")
     od = (root / "agentos/ui/src/js/24d-office.js").read_text()

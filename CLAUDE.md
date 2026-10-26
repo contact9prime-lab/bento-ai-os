@@ -3544,6 +3544,17 @@ be on and agents would be working in the office". Five rules:
   alone was a whole core at rest in software rendering, and the Office drew decor at 30 fps forever and
   asked for a frame on every refresh. Remote viewers keep the full look. Measure with CPU throttling
   OFF: Chrome's own throttling costs ~86% of a core on a blank page.
+- **A small machine's own screen draws only what it can afford** (`liteScreen`, `LITE_SCENES`,
+  `immersiveSceneNow` in 01b-immersive.js, `38-lite-screen.css`; `tests/test_lite_screen.py`). Asked
+  as "double check the Pi doesn't have such a heavy UI", and measured with software drawing: the
+  breathing orb alone was 3.6 cores, the Town, World and Mind every core, Movement and Crew 2.6, HQ
+  1.3. There only Aurora and the comic Office are drawn (the person's choice is kept, and every
+  scene's own start line asks `immersiveSceneNow()`, never `IMMERSIVE.scene`), the Office app is
+  flat (`of3Wanted`, with `OF3.why`), the pet sits still and the rest frame is two seconds, and
+  decorations that animate forever stop; a pulse that shows work keeps moving. Settings offers
+  only what that screen draws. A remote viewer keeps everything, and `bento profile full` lifts it.
+  `PLATFORM` is a `let` in a later file, so `liteScreen` reads it in a try and falls back to the
+  last answer this browser heard (`screen.lite`).
 - **A kiosk with no network offers Wi-Fi** (`agentos/wifi.py`, `/api/wifi`, `/api/wifi/connect`, `bento wifi`,
   `kioskNet`/`kioskWifiPaint`; `tests/test_wifi.py`). The desktop's own menu is under the kiosk. nmcli does
   the work; a password goes through `passwd-file` (0600 in a 0700 folder, removed at once) with

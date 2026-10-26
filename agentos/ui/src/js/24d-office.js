@@ -843,7 +843,7 @@ function officeMoving(){
 /* The pet and the game of fetch are decor, not work: on a small machine's own screen they
    move at a few frames a second. They kept a Pi 3 drawing 30 a second with nothing happening. */
 function officeDecorMoving(){const O=OFFICE;return (O.pet&&O.pet.walking)||!!O.ball}
-function officeLight(){try{return !!(PLATFORM&&PLATFORM.small)&&!(typeof remoteClient==='function'&&remoteClient())}catch(e){return false}}
+function officeLight(){return liteScreen()}   // a small machine's own screen (01b-immersive.js)
 function officeFrame(now){
   const O=OFFICE;O.raf=0;
   if(!O.w||!O.ctx)return;
@@ -851,10 +851,13 @@ function officeFrame(now){
   const work=officeMoving(),decor=!work&&officeDecorMoving(),dt=(now-O.last)/1000;
   // On a small machine people step like an old arcade game (8 a second) rather than glide
   // at 30: the figures are pixel art already, and it is a quarter of the drawing.
+  // At rest on a small machine nothing changes but a blink and the clock, so it draws once in
+  // two seconds: measured, the comic office at two frames a second was a whole core of a
+  // software-rendered screen.
   // The island's sea is the one thing that moves at rest, so on a machine with a real GPU it
   // ripples at 12 a second, like the World's water. Software rendering keeps 6.
   const sea=OF3.island&&OF3.hq&&OF3.cv&&OF3.cv.isConnected;
-  const light=officeLight(),every=work?(light?1/8:1/30):decor?(light?1/4:1/30):(light?1/2:sea?1/12:1/6);
+  const light=officeLight(),every=work?(light?1/8:1/30):decor?(light?1/4:1/30):(light?2:sea?1/12:1/6);
   if(dt<every){
     // not due yet: wait on a timer, not on every refresh (a frame asked for is a frame drawn)
     O.raf=-1;O.wait=setTimeout(()=>{O.raf=requestAnimationFrame(officeFrame)},Math.max(4,(every-dt)*1000-4));return}
@@ -1301,7 +1304,9 @@ function officePetNew(){
   return {kind:OFFICE.view.office.pet,room:r,x:r.x+r.w*.6,y:r.y+r.h-40,tx:0,ty:0,wait:2,walking:false,dir:1};
 }
 function officePetStep(dt){
-  const p=OFFICE.pet,r=p.room;if(!r||OFFICE.static)return;
+  // it sits still under reduced motion and on a small machine's own screen: fetch never ends,
+  // and on a Pi's software-rendered screen it kept the office drawing four times a second
+  const p=OFFICE.pet,r=p.room;if(!r||OFFICE.static||officeLight())return;
   if(!OFFICE.L.rooms.includes(r)){OFFICE.pet=officePetNew();return}
   if(officeExtra('sitter'))return officeFetchStep(dt);
   if(p.walking){const dx=p.tx-p.x,dy=p.ty-p.y,l=Math.hypot(dx,dy);
@@ -1498,7 +1503,7 @@ function officeDesignPaint(){
       <i style="background:linear-gradient(135deg,${s.wall} 0 38%,${s.floor[0]} 38% 72%,${s.accent} 72%)"></i><span>${esc(s.label)}</span></button>`).join('')}</div>
     <div class="of-sec">Look</div>
     <div class="of-chips">${Object.entries(v.looks||{'3d':'3D','flat':'Flat'}).map(([k,l])=>`<button class="of-chip${(of.look||'3d')===k?' on':''}" data-look="${k}" aria-pressed="${(of.look||'3d')===k}">${esc(l)}</button>`).join('')}</div>
-    ${OF3.why&&(of.look||'3d')==='3d'?`<div class="mut of-row">${esc(OF3.why)}</div>`:''}
+    ${OF3.why&&['3d','island'].includes(of.look||'3d')?`<div class="mut of-row">${esc(OF3.why)}</div>`:''}
     ${of.look==='island'&&typeof islDesignHTML==='function'?islDesignHTML(v):''}
     <div class="of-sec">Name on the door</div>
     <div class="of-row"><input class="of-name" maxlength="24" value="${esc(of.name)}"></div>
@@ -1676,4 +1681,4 @@ async function officeSave(patch){
   }catch(e){toast('could not change the office')}
 }
 // first paint: 01b ran before this file existed, so the scene starts itself
-if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&(IMMERSIVE.scene==='office'||IMMERSIVE.scene==='hq'||IMMERSIVE.scene==='island')){OFFICE_SCENE.island=IMMERSIVE.scene==='island';OFFICE_SCENE.hq=IMMERSIVE.scene==='hq'||OFFICE_SCENE.island;officeSceneStart()}
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&['office','hq','island'].includes(immersiveSceneNow())){const sc=immersiveSceneNow();OFFICE_SCENE.island=sc==='island';OFFICE_SCENE.hq=sc==='hq'||OFFICE_SCENE.island;officeSceneStart()}
