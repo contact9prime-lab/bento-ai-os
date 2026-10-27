@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0 — 2026-10-27
+
+**The hub knows what each Pi has, down to each sensor.** Devices lists every Pi set up from this hub
+with its board, cameras, temperatures, power state, GPIO pins, I2C, SPI and serial buses, USB devices,
+microphones, speakers, network and Bluetooth, each under its inventory name (`raspberrypi/cpu.temp`,
+`raspberrypi/gpio.17`). The hub reads it once a day, and within a minute when something is plugged in
+or out. What arrived or left, and a Pi going under-voltage, is an event in Devices → Events. Every
+read is written in both machines' diaries and ledgers. Discovery only reads: it never scans a bus,
+opens a camera, sets a pin or installs anything. `bento hardware` lists the machine you are on, and
+`bento network hardware MACHINE [--check]` lists a Pi from its hub. Readings over time, permissions
+for each sensor and provisioning profiles come next (docs/design/devices.md).
+
 ## 0.6.99 — 2026-10-27
 
 No release notes were written for this one; the commits since 0.6.98 are what changed (`bento update` lists them).

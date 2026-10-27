@@ -150,6 +150,7 @@ def test_the_watch_says_what_changed_and_refreshes_a_zero_back_on_a_new_version(
     lk = {"id": "z1", "kind": "machine", "label": "pi", "url": "192.168.1.20:8622", "owner": ""}
     monkeypatch.setattr(teamlink, "_load", lambda: {"links": [lk], "invites": [], "requests": []})
     monkeypatch.setattr(zeromod, "ships_to", lambda x: True)
+    monkeypatch.setattr(tiesmod, "hardware_due", lambda x: "")   # its hardware: test_pi_hardware.py
     said, calls = [], []
 
     async def dev_event(owner, event, label, text, **meta):

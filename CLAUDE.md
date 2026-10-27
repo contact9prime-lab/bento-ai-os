@@ -3304,6 +3304,21 @@ nothing of ours runs there. It reloads when the socket drops and comes back; a k
 browser stuck anyway: the hub sends wire op `zero_refresh` to a Zero back on a new version, and a machine starting
 with its screen's browser showing and no loopback page connected restarts it (`screen.restart_now`, `_screen_revive`).
 
+**The hub knows what each Zero has, down to each sensor** (`agentos/hardware.py`, wire op `zero_hardware`,
+`ties.ask_hardware`/`hardware_due`/`inventory_row`, `server._tie_hardware`, Devices → Hardware, `bento hardware`,
+`bento network hardware`; `docs/design/devices.md`, `tests/test_pi_hardware.py`). Asked for as "the hub is the
+central nervous system for the Pi … the full inventory is with the hub, down to the sensors, mapped to the Pi's
+inventory name". Step 1 of the design doc. Four rules:
+- **Discovery only reads.** /sys, /proc, /dev and the listing tools `rpicam-hello`, `vcgencmd`, `pinctrl get`
+  (the test pins that set). Never an I2C scan, a camera opened, a pin set or an install.
+- **A thing is what it IS, never its node**: ten /dev/video nodes on a Pi are the codec and ISP, not cameras.
+  Ids are stable per machine, and `<machine>/<id>` is the name readings, permissions and profiles will use.
+- **Daily, and on a change within the minute**: the hello to its own hub carries `hardware.quick()` (listings
+  only), and a new hash makes `_ties_check` fetch the whole thing. A reading is never a change (`digest`).
+- **Only its own hub is answered, and both sides write it down** (`hardware.answer` → `is_my_hub`; a diary line
+  and a `device.hardware` row on each machine; `devevents` skips the ledger copy). The hub reads the answer field
+  by field (`hardware.clean`) and keeps it on the inventory row (`inventory.json`).
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their

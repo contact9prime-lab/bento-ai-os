@@ -285,6 +285,28 @@ body.kiosk.kiosk-side #kiosk-hud .kh-wifi{flex:none}
   .net-acts>.endbtn:not(.net-more-b),.net-more .endbtn{flex:1 1 40%;min-height:var(--tap,40px)}
   .net-more-b{min-height:var(--tap,40px)}
   .net-form input{min-height:var(--tap,40px)}}
+/* A Zero's hardware (hardware.py), each thing under its inventory name */
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--acc);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.net-hw{flex:1 1 100%;display:flex;flex-direction:column;gap:10px;margin-top:6px;padding-top:8px;border-top:1px solid color-mix(in srgb,var(--txt) 8%,transparent)}
+.net-hw-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;justify-content:space-between}
+.net-hw-top p{margin:0;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.net-hw-warn{margin:0;padding:6px 10px;border-radius:8px;background:color-mix(in srgb,#f5a524 16%,transparent);font-size:var(--fs-sm,12px)}
+.net-hw-g h4{margin:0 0 4px;font-size:var(--fs-sm,12px);font-weight:600;letter-spacing:.02em}
+.net-hw-g ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.net-hw-g li{display:grid;grid-template-columns:minmax(0,15em) minmax(0,1fr) auto;gap:2px 10px;align-items:baseline;padding:4px 0;
+  border-top:1px solid color-mix(in srgb,var(--txt) 5%,transparent);font-size:var(--fs-sm,12px)}
+.net-hw-g li:first-child{border-top:0}
+.net-hw-g code{font-size:11px;opacity:.75;overflow-wrap:anywhere}
+.net-hw-g li b{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.net-hw-pins{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px}
+.net-hw-pin{display:flex;flex-direction:column;align-items:center;padding:3px 0;border-radius:6px;font-size:12px;font-weight:600;
+  background:color-mix(in srgb,var(--txt) 6%,transparent)}
+.net-hw-pin small{font-weight:400;font-size:10px;opacity:.7}
+.net-hw-pin.hi{background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.net-hw-note{margin:4px 0 0;font-size:11px}
+@media (max-width:600px){.net-hw-g li{grid-template-columns:minmax(0,1fr) auto}
+  .net-hw-g li code{grid-column:1/-1}
+  .net-hw-top .endbtn{min-height:var(--tap,40px);flex:1 1 100%}}
 
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
 .mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}

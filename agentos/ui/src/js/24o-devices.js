@@ -32,7 +32,8 @@ async function devViewSet(v){
    or came back, updated, had its screen refreshed, and every step done to a machine from here.
    A machine's own row has the same list for it alone (Events, 24p-ties.js). */
 var DEVEV={list:null,all:false};
-var DEVEV_ICON={moved:'⇄',offline:'○',online:'●',updated:'⬆',refreshed:'⟳',failed:'✗',installed:'✓',secured:'🔒'};
+var DEVEV_ICON={moved:'⇄',offline:'○',online:'●',updated:'⬆',refreshed:'⟳',failed:'✗',installed:'✓',secured:'🔒',
+  hardware:'▦',found:'＋',gone:'－',power:'⚡',board:'▦'};
 function devEventsList(list){
   const when=s=>new Date(s*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
   return `<ul class="dev-ev">${list.map(e=>`<li class="dev-ev-${esc(e.event)}${e.failed?' bad':''}">

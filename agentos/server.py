@@ -918,6 +918,9 @@ async def _ties_check() -> list[dict]:
             out.append({"event": "updated", "label": label})
             if zeromod.ships_to(lk):
                 _TIE_REFRESH.add(key)
+        if ok and zeromod.ships_to(lk) and (why := tiesmod.hardware_due(lk)):
+            got = await _tie_hardware(lk, why)
+            out.append({"event": "hardware", "label": label, "ok": bool(got.get("ok"))})
         if ok and key in _TIE_REFRESH and zeromod.ships_to(lk):
             _TIE_REFRESH.discard(key)
             got = await teamlink.call(lk, {"op": "zero_refresh"}, timeout=40)
@@ -990,6 +993,57 @@ async def _zero_refresh_from_hub(lk: dict) -> dict:
     return {"ok": True, "said": said}
 
 
+async def _zero_hardware_from_hub(lk: dict) -> dict:
+    """This machine's hub asks what hardware it has (hardware.answer: only its own hub). Read
+    here, and written in this machine's diary and ledger as well as the hub's."""
+    from . import hardware
+    loop = asyncio.get_running_loop()
+    got = await loop.run_in_executor(None, hardware.answer, state.machine_cfg(), lk)
+    with contextlib.suppress(Exception):
+        with usersmod.as_user(""):
+            n = len((got.get("hardware") or {}).get("items") or [])
+            words = (f"{lk.get('label')} read this machine's hardware: {n} things" if got.get("ok")
+                     else f"{lk.get('label')} asked for this machine's hardware: {got.get('error')}")
+            state["store"].log("device", words, {"event": "hardware", "link": lk.get("label")})
+            fabricmod.audit_team(state["store"], "device.hardware", f"link:{lk.get('label')}", words)
+    return got
+
+
+_HW_BUSY: set = set()
+
+
+async def _tie_hardware(lk: dict, why: str) -> dict:
+    """Ask a Zero what it has and keep it on its inventory row (ties.ask_hardware). Every look is
+    a line in the hub's diary and a ledger row; what changed is an event in Devices → Events."""
+    from . import ties as tiesmod
+    key, label, owner = lk.get("id") or "", lk.get("label") or "", lk.get("owner") or ""
+    if key in _HW_BUSY:
+        return {"ok": False, "error": f"already reading {label}'s hardware"}
+    _HW_BUSY.add(key)
+    try:
+        got = await tiesmod.ask_hardware(lk)
+    finally:
+        _HW_BUSY.discard(key)
+    name = got.get("name") or label
+    if got.get("ok"):
+        n = len(got["hardware"]["items"])
+        words = f"read {name}'s hardware ({why}): {n} things" + ("" if got["events"] else ", nothing changed")
+        if got.get("dropped"):
+            words += f"; refused {len(got['dropped'])}: " + ", ".join(got["dropped"][:5])
+    else:
+        words = f"could not read {name}'s hardware ({why}): {got.get('error')}"
+    with contextlib.suppress(Exception):
+        with usersmod.as_user(owner):
+            fabricmod.audit_team(state["store"], "device.hardware", f"link:{label}", words)
+    await _device_event(owner, "hardware" if got.get("ok") else "failed", label, words)
+    for ev, text in got.get("events") or []:
+        if ev == "hardware":
+            continue                    # the first look: the line above already says what was found
+        await _device_event(owner, ev, label, f"{name}: {text}")
+    await _tie_tell({"type": "network"}, owner)
+    return got
+
+
 _ZERO_UPDATING: dict = {}
 
 
@@ -1048,6 +1102,8 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
         from . import edgecode
         with usersmod.as_user(owner):
             return await edgecode.answer(state["store"], state["pdp"], lk, req)
+    if req.get("op") == "zero_hardware":
+        return await _zero_hardware_from_hub(lk)
     if req.get("op") == "zero_update":
         return await _zero_update_from_hub(lk)
     if req.get("op") == "zero_say":
@@ -14410,6 +14466,30 @@ def _net_mac(ip: str) -> str:
     from . import inventory as invmod
     r = next((x for x in invmod.rows(state.machine_cfg()) if x.get("ip") == ip), None)
     return (r or {}).get("mac") or ""
+
+
+@app.post("/api/network/hardware")
+async def api_network_hardware(body: dict):
+    """Read a Zero's hardware now (Devices → Hardware → Check now), rather than wait for the day's
+    look. Admin only, like the rest of the inventory. The machine answers only its own hub."""
+    if (r := _require_admin()):
+        return r
+    from . import inventory as invmod
+    from . import teamlink
+    from . import zero as zeromod
+    row = next((x for x in invmod.rows(state.machine_cfg()) if x.get("key") == str((body or {}).get("key") or "")), None)
+    if not row:
+        return JSONResponse({"error": "no such machine on the list"}, 404)
+    labels = {x.get("label") for x in row.get("links") or []}
+    lk = next((x for x in teamlink._load()["links"] if x.get("label") in labels and zeromod.ships_to(x)), None)
+    if not lk:
+        return JSONResponse({"error": f"{row.get('display')} isn't a machine this hub set up, so it doesn't "
+                                      "report its hardware here"}, 409)
+    got = await _tie_hardware(lk, "checked now")
+    if not got.get("ok"):
+        return JSONResponse({"error": got.get("error") or "no answer"}, 502)
+    return {"ok": True, "name": got["name"], "items": len(got["hardware"]["items"]),
+            "events": [t for _e, t in got["events"]], "dropped": got["dropped"]}
 
 
 @app.post("/api/network/check")

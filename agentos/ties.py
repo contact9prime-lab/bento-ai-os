@@ -33,6 +33,7 @@ VIEW_ROWS = 60
 
 _PROBED: dict[str, tuple[float, bool, str]] = {}
 _VERSION: dict[str, str] = {}      # what each tie said it runs, at its last hello
+_HW: dict[str, str] = {}           # the hash of what is plugged in, at its last hello (hardware.quick)
 
 
 def host_of(lk: dict) -> str:
@@ -126,6 +127,8 @@ async def probe(lks: list[dict], force: bool = False, wait: float = PROBE_TIMEOU
                 # a hello with no version is a Bento from before versions were said: behind, and
                 # never the value an earlier answer left here
                 _VERSION[key] = teamlink.plain(got.get("version") or OLDER, 20, newlines=False).strip()
+                if got.get("hw"):
+                    _HW[key] = teamlink.plain(got["hw"], 16, newlines=False).strip()
         except Exception as e:      # an answer is a sentence, never a traceback
             ok, why = False, _why(e)
         _PROBED[key] = (time.time(), ok, why)
@@ -198,6 +201,67 @@ async def ask_update(lk: dict) -> dict:
         got["error"] = ("it runs a Bento older than 0.6.88, which can't be asked over the link: "
                         "update it once with Controls → Update (or bento network update)")
     return got
+
+
+# ---- what it has: its hardware, down to each sensor (hardware.py) --------------------------
+
+def inventory_row(lk: dict) -> dict | None:
+    """The inventory row this link is folded into (inventory.rows matches it by certificate,
+    then address): the machine whose name every sensor is listed under."""
+    from . import inventory
+    for r in inventory.rows():
+        if any(x.get("label") == lk.get("label") for x in r.get("links") or []):
+            return r
+    return None
+
+
+def hardware_due(lk: dict, now: float | None = None) -> str:
+    """Why the hub should ask this Zero for its whole inventory now, or '' when it need not:
+    never asked, asked over a day ago, or its hello says something was plugged in or out."""
+    from . import hardware
+    r = inventory_row(lk)
+    hw = (r or {}).get("hardware") or {}
+    if not hw.get("items"):
+        return "first look"
+    if (now or time.time()) - float(hw.get("at") or 0) > hardware.EVERY_S:
+        return "daily look"
+    q = _HW.get(lk.get("id") or "")
+    if q and hw.get("quick") and q != hw["quick"]:
+        return "something was plugged in or out"
+    return ""
+
+
+async def ask_hardware(lk: dict) -> dict:
+    """Ask a Zero this hub set up what it has (wire op zero_hardware), and keep the answer on its
+    inventory row. Returns the inventory, what changed since last time and what was dropped."""
+    from . import hardware, inventory, teamlink
+    from . import zero as zeromod
+    if not zeromod.ships_to(lk):
+        return {"ok": False, "error": "only a machine this hub set up tells it what hardware it has"}
+    try:
+        got = await teamlink.call(lk, {"op": "zero_hardware"}, timeout=45)
+    except Exception as e:
+        got = {"ok": False, "error": _why(e)}
+    if not got.get("ok"):
+        if "unknown request" in str(got.get("error") or ""):
+            got["error"] = "it runs a Bento older than 0.7.0: update it, then its hardware is read from here"
+        return got
+    dropped: list[str] = []
+    hw = hardware.clean(got.get("hardware"), dropped)
+    hw["from"] = lk.get("label") or ""
+    r = inventory_row(lk)
+    if not r or not r.get("ip"):
+        host = host_of(lk)
+        r = {"ip": host.rsplit(":", 1)[0] if host else "", "mac": "", "display": lk.get("label") or ""}
+    if not r["ip"]:
+        return {"ok": False, "error": f"{lk.get('label')} has no address on this hub's list"}
+    old = ((r.get("hardware") or {}) if r.get("hardware") else None)
+    events = hardware.diff(old, hw)
+    inventory.record(r["ip"], r.get("mac") or "", hardware=hw)
+    if hw.get("quick"):
+        _HW[lk.get("id") or ""] = hw["quick"]
+    return {"ok": True, "name": r.get("display") or lk.get("label") or "", "hardware": hw,
+            "events": events, "dropped": dropped, "changed": bool(old) and old.get("digest") != hw["digest"]}
 
 
 async def faces_remote(lk: dict, change: dict) -> dict:
