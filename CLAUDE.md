@@ -809,6 +809,11 @@ brief should periodically check on the schedule". Four rules:
   its own story and the trace has them all. A scheduled one is a `task_runs` row (`task_id` brief).
 - **A card is the item, not the run** (`fold`, in `page()`): twins ride on `twins` and the page's
   Done/Later answers them too; a decision is answered once.
+- **A card in the story opens its item** (`_line`, `MEANS`, stage `_OPEN`/`stageCard`/`stageOpenRef`;
+  `test_a_brief_card_says_what_it_is_and_opens_its_item`). Reported as "I can't click or do anything" and
+  "what the brief is trying to do is missing": numbered steps with arrows, titles cut mid-word, bare options.
+  A Brief list is `ordered: false`, each card says what it is about, who filed it and a decision's choices,
+  and taps to that item in the Brief (a phone turns its stack to it). `open` takes only `brief:` doors.
 
 Kept free of HTTP and asyncio, like `jobs.py`: `bento brief` reads and acts on the same
 rows with the server down. Option labels cut at a word (`_short`) because a button that
