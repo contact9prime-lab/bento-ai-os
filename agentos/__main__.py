@@ -4701,6 +4701,24 @@ def _network_cli(args):
         return _ties_cli(rest)
     if a == "hardware":
         return _hardware_cli(rest, args.check)
+    if a == "readings":
+        # Devices → Hardware → a sensor: what the hub kept of it (telemetry.py)
+        from . import telemetry as _tm
+        if len(rest) < 2:
+            r = inv.find(inv.rows(), rest[0]) if rest else None
+            if not r:
+                sys.exit("  bento network readings MACHINE ITEM [--range day|week|month|quarter]")
+            have = _tm.items(r["key"])
+            print(f"  {r['display']} has readings for: " + (", ".join(have) or "nothing yet"))
+            return
+        r = inv.find(inv.rows(), rest[0])
+        if not r:
+            sys.exit(f"  no machine called {rest[0]} on the list")
+        it = next((i for i in ((r.get("hardware") or {}).get("items") or []) if i["id"] == rest[1]), None)
+        if not it:
+            sys.exit(f"  {r['display']} has nothing called {rest[1]} (`bento network hardware {rest[0]}` lists them)")
+        print(_tm.text(r["display"], rest[1], _tm.series(r["key"], rest[1], args.range), it.get("unit") or ""))
+        return
     if a in ("map", "talks"):
         # Network & Teams → Maps (logical) and Team to agent mapping, for the owner of the links
         from . import ties as _ties
@@ -9022,7 +9040,7 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events", "map", "talks", "hardware"],
+                                "events", "map", "talks", "hardware", "readings"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
                             "talks [LINK [lead|DEPARTMENT --company ID]] | "
@@ -9035,7 +9053,8 @@ def main():
                             "firewall [open|done] (the ports machines set up from here need) | "
                             "controls MACHINE --user U | switch MACHINE running|screen|listening|code on|off | "
                             "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U | "
-                            "hardware [MACHINE] [--check] (what a Zero has, down to each sensor)")
+                            "hardware [MACHINE] [--check] (what a Zero has, down to each sensor) | "
+                            "readings MACHINE ITEM [--range day|week|month|quarter] (one sensor over time)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
@@ -9052,6 +9071,8 @@ def main():
     p_net.add_argument("--key-only", action="store_true", help="log in with this machine's key, ask no password")
     p_net.add_argument("--yes", action="store_true", help="install / secure / disconnect / rekey: do not ask first")
     p_net.add_argument("--check", action="store_true", help="hardware: ask the machine now rather than show the last look")
+    p_net.add_argument("--range", default="day", choices=["day", "week", "month", "quarter"],
+                       help="readings: the last day, week, 30 days or 90 days")
     p_net.add_argument("--force", action="store_true",
                        help="disconnect: take the key off even when it is the only way in")
     p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")

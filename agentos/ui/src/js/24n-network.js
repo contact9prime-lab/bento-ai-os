@@ -125,17 +125,28 @@ function netHardwareHTML(r){
   const hw=r.hardware||{},items=hw.items||[],b=hw.board||{},name=r.display||r.ip;
   const top=`<div class="net-hw-top"><p>${esc([b.model,b.ram_mb?b.ram_mb+' MB':'',b.os].filter(Boolean).join(' · ')||'Not read yet.')}
       ${hw.at?`<span class="mut">read ${esc(poolAgo(Math.max(0,Math.round(Date.now()/1000-hw.at))))}</span>`:''}
-      ${pInfo('Its hub reads this once a day, and within a minute when something is plugged in or out. Nothing here can be read or set by an agent yet.')}</p>
+      ${pInfo('Its hub reads this once a day, and within a minute when something is plugged in or out. Tap a reading to see it over 90 days. Nothing here can be read or set by an agent yet.')}</p>
     ${(r.links||[]).length?`<button class="endbtn" data-net="hwcheck" data-key="${esc(r.key)}">Check now</button>`:''}</div>`;
   if(!items.length)return `<div class="net-hw">${top}</div>`;
   const groups=NET_HW_ORDER.map(([k,t])=>[k,t,items.filter(i=>i.kind===k)]).filter(g=>g[2].length);
+  const has=new Set(r.readings||[]);
+  // an item with readings opens its chart (24u-devchart.js) under it
+  const item=i=>has.has(i.id)
+    ?`<li class="net-hw-has"><button class="net-hw-open" data-chart="${esc(i.id)}" data-key="${esc(r.key)}" aria-expanded="${DEVCHART.key===r.key&&DEVCHART.item===i.id}">
+        <code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${esc(netHwValue(i))} <span class="net-hw-chev" aria-hidden="true">›</span></b></button>
+        ${devChartSlot(r.key,i.id)}</li>`
+    :`<li><code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${esc(netHwValue(i))}</b></li>`;
+  const pinOpen=list=>{const p=list.find(i=>DEVCHART.key===r.key&&DEVCHART.item===i.id);return p?devChartSlot(r.key,p.id):''};
   const power=items.find(i=>i.id==='power.throttle'),bad=power&&((power.flags||{}).now||[]).length;
   return `<div class="net-hw">${top}
     ${bad?`<p class="net-hw-warn">⚡ ${esc(name)} is ${esc(power.flags.now.join(', '))} right now. A better power supply usually fixes it.</p>`:''}
     ${groups.map(([k,t,list])=>`<section class="net-hw-g"><h4>${esc(t)} <span class="mut">${list.length}</span></h4>
-      ${k==='gpio'&&list.length>8?`<div class="net-hw-pins">${list.map(i=>`<span class="net-hw-pin${i.value?' hi':''}" title="${esc(name+'/'+i.id+' · '+(i.detail||'')+(i.label?' · '+i.label:''))}">${esc(i.id.replace('gpio.',''))}<small>${esc(netHwValue(i))}</small></span>`).join('')}</div>
-        <p class="mut net-hw-note">${esc(name)}/gpio.N · ${list.filter(i=>i.detail==='input').length} inputs, ${list.filter(i=>i.detail==='output').length} outputs</p>`
-      :`<ul>${list.map(i=>`<li><code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${esc(netHwValue(i))}</b></li>`).join('')}</ul>`}
+      ${k==='gpio'&&list.length>8?`<div class="net-hw-pins">${list.map(i=>{const t=esc(name+'/'+i.id+' · '+(i.detail||'')+(i.label?' · '+i.label:''));
+          const inner=`${esc(i.id.replace('gpio.',''))}<small>${esc(netHwValue(i))}</small>`;
+          return has.has(i.id)?`<button class="net-hw-pin${i.value?' hi':''}${DEVCHART.item===i.id&&DEVCHART.key===r.key?' on':''}" data-chart="${esc(i.id)}" data-key="${esc(r.key)}" title="${t}">${inner}</button>`
+            :`<span class="net-hw-pin${i.value?' hi':''}" title="${t}">${inner}</span>`}).join('')}</div>
+        <p class="mut net-hw-note">${esc(name)}/gpio.N · ${list.filter(i=>i.detail==='input').length} inputs, ${list.filter(i=>i.detail==='output').length} outputs</p>${pinOpen(list)}`
+      :`<ul>${list.map(item).join('')}</ul>`}
     </section>`).join('')}</div>`;
 }
 /* Hidden machines stay one tap away. Hide was "Not this one", and with nothing listing what
@@ -241,6 +252,8 @@ function netWire(box){
   box.querySelectorAll('.dev-console .dev-log').forEach(p=>p.scrollTop=p.scrollHeight);
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
   box.querySelectorAll('[data-pwforget]').forEach(b=>b.onclick=()=>devPwForget(b));
+  box.querySelectorAll('[data-chart]').forEach(b=>b.onclick=()=>devChartOpen(b.dataset.key,b.dataset.chart));
+  if(typeof devChartFill==='function')devChartFill(box);
   box.querySelectorAll('[data-devnode]').forEach(n=>n.onclick=()=>devMapGo(n.dataset.devnode));
   const hd=box.querySelector('.net-hidden');if(hd)hd.ontoggle=()=>{NET.hiddenOpen=hd.open};
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));

@@ -265,11 +265,25 @@ def _audio() -> list[dict]:
 
 
 def _inputs() -> list[dict]:
-    out = []
-    for n, name in enumerate(re.findall(r'^N: Name="([^"]*)"', _read(_p("proc/bus/input/devices"), 65536), re.M)):
+    """Keyboards, mice, buttons. Named by where they are plugged in (the kernel's Phys), so the
+    id stays when the machine restarts or something else is plugged in first."""
+    out, seen = [], set()
+    for block in _read(_p("proc/bus/input/devices"), 65536).split("\n\n"):
+        name = re.search(r'^N: Name="([^"]*)"', block, re.M)
+        if not name:
+            continue
+        name = name.group(1).strip()
         if "hdmi" in name.lower() or "jack" in name.lower():
             continue            # the HDMI port's own events, not something a person plugged in
-        out.append(_item(f"input.{n}", "input", name, can=()))
+        phys = (re.search(r"^P: Phys=(\S*)", block, re.M) or [None, ""])[1]
+        # usb-3f980000.usb-1.3/input1 -> usb.1.3.input1: the port path, without the controller
+        where = re.sub(r"^usb-[^-]+-", "usb.", phys) if phys.startswith("usb-") else phys if "/" in phys else ""
+        slug = re.sub(r"[^a-z0-9.]+", "-", (where or name).lower().replace("/", ".")).strip("-.")[:50] or "device"
+        iid, n = f"input.{slug}", 2
+        while iid in seen:
+            iid, n = f"input.{slug}-{n}", n + 1
+        seen.add(iid)
+        out.append(_item(iid, "input", name, can=()))
     return out
 
 
@@ -346,6 +360,23 @@ def probe(full: bool = True) -> dict:
              + _audio() + _inputs() + _network() + _system())
     out = {"at": time.time(), "board": board(), "items": items[:MAX_ITEMS], "quick": quick()}
     out["digest"] = digest(out)
+    return out
+
+
+def sample() -> dict:
+    """The numbers worth keeping over time, by inventory id: temperatures, power (1 when it is
+    under-voltage or throttled now, else 0), core voltage, 1-Wire thermometers, Wi-Fi signal,
+    load, free memory and disk, and each pin's level. No camera, no listing tool but vcgencmd
+    and pinctrl get: this runs every ten seconds on the Zero (telemetry.Buffer)."""
+    out = {}
+    for it in _temperatures() + _power() + _system() + _network() + _gpio() + \
+            [i for i in _sensors() if i["id"].startswith("w1.")]:
+        if it["id"] == "power.throttle":
+            out[it["id"]] = 1 if (it.get("flags") or {}).get("now") else 0
+        elif it["id"] == "system.uptime":
+            continue
+        elif isinstance(it.get("value"), (int, float)) and not isinstance(it.get("value"), bool):
+            out[it["id"]] = it["value"]
     return out
 
 

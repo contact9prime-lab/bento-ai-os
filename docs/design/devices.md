@@ -1,6 +1,6 @@
 # Devices: the hub is the Pi's nervous system
 
-Status: step 1 (discovery) is built in 0.7.0. The rest is the plan, in the order it will be built.
+Status: discovery is built in 0.7.0, readings and the 90-day view in 0.7.1. The rest is the plan, in the order it will be built.
 
 ## What was asked
 
@@ -174,6 +174,15 @@ Retention is per item, from the profile, enforced daily like `Store.prune`:
 - images: 7 days;
 - events: 90 days.
 
+### Built in 0.7.1
+
+The first cut rides the hello the hub already sends every minute, not the kept-open link (step 2):
+the hello asks `readings_since` {boot, seq} and the Zero answers with what is newer
+(`telemetry.Buffer`, `SEND_MAX` a time). Every item is sampled every 10 s and pins on a change;
+per-item `sample`, `report` and triggers come with profiles. The buffer is in memory only for now.
+Readings are kept per machine in the machine's home (`telemetry.db`), like the inventory, rather
+than per account.
+
 ### The 90-day view
 
 In Devices → Hardware every item with readings opens a chart: the last day, week, 30 days or 90
@@ -222,8 +231,8 @@ on the Pi even if the hub's record is lost.
 
 1. Discovery (0.7.0).
 2. The link kept open, with `caps` and streamed chat.
-3. Heartbeat readings, `telemetry.db`, retention and the 90-day view in Devices. These start from
-   the heartbeat, which needs no new permission because the hub already reads these numbers.
+3. Readings, `telemetry.db`, retention and the 90-day view in Devices (0.7.1). They ride the hello
+   and need no new permission, because the hub already reads these numbers.
 4. `pi-get` / `pi-set`, the two actions, set asked every time (Telegram from the Pi), and the
    agents' tools.
 5. Triggers on the Pi and the `device_event` flow trigger.

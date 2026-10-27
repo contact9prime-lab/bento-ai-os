@@ -3319,6 +3319,20 @@ inventory name". Step 1 of the design doc. Four rules:
   and a `device.hardware` row on each machine; `devevents` skips the ledger copy). The hub reads the answer field
   by field (`hardware.clean`) and keeps it on the inventory row (`inventory.json`).
 
+**A Zero's readings ride the hello, and the hub keeps them 90 days** (`agentos/telemetry.py`, `hardware.sample`,
+`server._readings_sampler`, `ties.probe`'s `readings_since`, `/api/devices/readings`, `24u-devchart.js`,
+`bento network readings`; `tests/test_pi_readings.py`). Asked for as "drill further to see the data visualization
+for the last 90 days". Four rules:
+- **The Zero keeps samples in memory, numbered** (`Buffer`, a new `boot` per start); the hub asks for what is
+  after its cursor, so a batch is taken once. Never write samples to the SD card per sample.
+- **Only a machine a hub set up samples, and only its own hub gets them** (`claimed.leader_fp`; the hello's
+  `is_my_hub` block). Pins are noted on a change.
+- **One store, three resolutions**: raw 7 days, per-minute and per-hour summaries kept up at insert (30 and 90
+  days, `RETAIN`, pruned from the watch). `series` picks the table by range and returns at most `POINTS`. A
+  raw sample equal to the last kept is skipped for `KEEP_ANYWAY`; the summaries count it.
+- **The chart is text nodes** (an item's name is another machine's words) with a crosshair, keyboard, a
+  table of the numbers, and the machine's events on the line.
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their

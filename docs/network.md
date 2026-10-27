@@ -395,6 +395,38 @@ dropped and named in the diary.
 
 ![bento hardware on a Pi, and bento network hardware on its hub](screenshots/devices-hardware-terminal.png)
 
+## A sensor over time
+
+Tap any reading in a Pi's hardware (a temperature, the power state, the Wi-Fi signal, a pin) and it
+opens a chart of that reading over **a day, a week, 30 days or 90 days**.
+
+![A Pi's CPU temperature over the last day, opened from its hardware](screenshots/devices-readings.png)
+
+- The line is the mean and the faint band around it is the lowest to the highest in each slice.
+  For a pin or the power state the line is a step: high or low, fine or not.
+- What happened to the Pi in that range is marked on the line: something plugged in or out, power
+  turning bad, stopping or starting to answer, an update. Hover a mark for what it was.
+- Move along the line (or use the arrow keys) for the value at each moment. **Show the numbers**
+  lists every point the chart draws.
+- A break in the line is a time the hub had nothing from the Pi.
+
+**How the readings get to the hub.** The Pi samples every 10 seconds and keeps the samples in
+memory, never on its SD card. A pin is noted only when it changes. The hub collects them with the
+hello it already sends every minute, so there is no new connection and nothing new to allow: these
+are numbers discovery already reads. While the hub is away, the Pi keeps about an hour and a half
+of samples and sends them when it's back. Anything older is lost, and Events says how many.
+Sampling costs a Pi 3 about 0.4% of one core.
+
+**How long they're kept.** On the hub, in `telemetry.db` beside the inventory: every sample for 7
+days, a summary per minute (lowest, highest, mean) for 30 days, and per hour for 90 days. A day's
+chart reads the samples, a week or a month the minutes, 90 days the hours. A sample equal to the
+last one kept is kept again only after 5 minutes, which is most of a Pi's disk and voltage samples;
+the summaries still count it. Times are the hub's: a Pi whose clock is off is moved onto it.
+
+![The same chart on a phone, with the range buttons across the top](screenshots/devices-readings-phone.png)
+
+![bento network readings in a terminal](screenshots/devices-readings-terminal.png)
+
 ## Hidden machines
 
 **Hide** (behind ⋯, or on a row under New machines) moves a machine to **Hidden** under the
@@ -590,6 +622,7 @@ bento network show 192.168.1.40                 # back on the list
 bento network rekey pi-kitchen                  # it was reformatted: forget its old SSH key
 bento network events [pi-kitchen]               # what happened to the machines here
 bento network hardware [pi-kitchen] [--check]   # what a Pi has, down to each sensor
+bento network readings pi-kitchen cpu.temp --range quarter   # one sensor over 90 days (day, week, month)
 bento hardware                                  # on the Pi itself: what this machine has
 bento network map                               # the logical map: lead, companies, departments, people
 bento network talks studio Sales                # who a team or Zero talks to here, and what it gives it
@@ -631,6 +664,12 @@ forgotten), `network.firewall`, `provision.code` (a machine may hand code here) 
 (its hardware read, on both machines).
 
 ## What was tested, and what wasn't
+
+- `tests/test_pi_readings.py`: the Zero's buffer (numbered, a pin only when it moves, a restart
+  starts over, a long absence sent in pieces with what was lost said), the hub's store (shifted onto
+  its clock, a batch sent twice kept once, a bad id or value dropped), a 90-day range at most 360
+  points from the hour summaries, retention, and readings riding a real mTLS hello from a Zero to its
+  hub. Sampling was timed on the real Pi 3 B+: 45 ms a sample.
 
 - `tests/test_pi_hardware.py`: discovery over a Pi's `/sys`, `/proc` and `/dev` as a real Pi 3 B+
   on trixie laid them out, with its tools' real answers (an under-voltage, 28 pins, no camera

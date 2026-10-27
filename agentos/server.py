@@ -451,6 +451,7 @@ async def startup():
     if not idle:
         asyncio.create_task(_ties_watch())
         asyncio.create_task(_screen_revive())
+        asyncio.create_task(_readings_sampler())
 
     async def wm_events():
         # In the AgentOS session, the compositor tells us the moment a window
@@ -884,6 +885,31 @@ async def _tie_moved(lk: dict, old: str, new: str, how: str) -> None:
     await _tie_tell({"type": "team_links"}, owner)
 
 
+async def _readings_sampler():
+    """On a machine a hub set up: sample its sensors every telemetry.SAMPLE_S seconds into
+    memory, for the hub's next hello to collect (telemetry.Buffer). Nothing on a machine that
+    has no hub, and nothing written to disk."""
+    from . import hardware, provision, telemetry
+    await asyncio.sleep(5)
+    said = False
+    loop = asyncio.get_running_loop()
+    while True:
+        with contextlib.suppress(Exception):
+            if (provision.load().get("claimed") or {}).get("leader_fp"):
+                vals = await loop.run_in_executor(None, hardware.sample)
+                telemetry.BUFFER.add(vals)
+                if not said:
+                    said = True
+                    with usersmod.as_user(""):
+                        state["store"].log("device", f"sampling {len(vals)} readings every {telemetry.SAMPLE_S} s "
+                                                     "for this machine's hub", {"event": "readings"})
+        await asyncio.sleep(telemetry.SAMPLE_S)
+
+
+_READINGS_SAID: set = set()
+_PRUNED = {"at": 0.0}
+
+
 async def _ties_check() -> list[dict]:
     """One round of the watch. Returns the events it raised (the tests read them)."""
     from . import teamlink
@@ -918,6 +944,13 @@ async def _ties_check() -> list[dict]:
             out.append({"event": "updated", "label": label})
             if zeromod.ships_to(lk):
                 _TIE_REFRESH.add(key)
+        rd = tiesmod._READ.pop(key, None) or {}
+        if rd.get("first") and key not in _READINGS_SAID:
+            _READINGS_SAID.add(key)
+            await _device_event(owner, "readings", label, f"{label} sends its readings now, every minute")
+        if rd.get("lost"):
+            await _device_event(owner, "readings", label,
+                                f"{label} lost {rd['lost']} readings while this hub couldn't reach it")
         if ok and zeromod.ships_to(lk) and (why := tiesmod.hardware_due(lk)):
             got = await _tie_hardware(lk, why)
             out.append({"event": "hardware", "label": label, "ok": bool(got.get("ok"))})
@@ -927,6 +960,11 @@ async def _ties_check() -> list[dict]:
             words = got.get("said") or got.get("error") or "no answer"
             await _device_event(owner, "refreshed", label, f"asked {label} to refresh its screen: {words}")
             out.append({"event": "refreshed", "label": label})
+    if time.time() - _PRUNED["at"] > 6 * 3600:          # readings past their retention (telemetry.RETAIN)
+        _PRUNED["at"] = time.time()
+        with contextlib.suppress(Exception):
+            from . import telemetry
+            await asyncio.get_running_loop().run_in_executor(None, telemetry.prune)
     return out
 
 
@@ -13991,6 +14029,10 @@ def _network_view() -> dict:
             r["code_handoff"] = _code_handoff(r)
         with contextlib.suppress(Exception):
             r["pw_saved"] = bool(r.get("ip") and r.get("user") and _pw_saved(r["ip"], r["user"]))
+        if r.get("hardware"):
+            with contextlib.suppress(Exception):
+                from . import telemetry
+                r["readings"] = telemetry.items(r["key"])     # which of its items can open a chart
     return {"rows": rows, "summary": invmod.summary(rows), "can_change": True,
             "ssh_missing": ri.missing(), "pubkey": ri.public_key(),
             "steps": [{"id": s["id"], "title": s["title"], "why": s["why"]} for s in harden.STEPS],
@@ -14490,6 +14532,39 @@ async def api_network_hardware(body: dict):
         return JSONResponse({"error": got.get("error") or "no answer"}, 502)
     return {"ok": True, "name": got["name"], "items": len(got["hardware"]["items"]),
             "events": [t for _e, t in got["events"]], "dropped": got["dropped"]}
+
+
+@app.get("/api/devices/readings")
+async def api_device_readings(key: str = "", item: str = "", range: str = "day"):
+    """One item's readings over a range (Devices → Hardware → a sensor): at most
+    telemetry.POINTS points with min and max, the range's numbers, and the machine's events in
+    that range. Admin only, like the inventory it belongs to."""
+    if (r := _require_admin()):
+        return r
+    from . import devevents, telemetry
+    from . import inventory as invmod
+    row = next((x for x in invmod.rows(state.machine_cfg()) if x.get("key") == key), None)
+    if not row:
+        return JSONResponse({"error": "no such machine on the list"}, 404)
+    if range not in telemetry.RANGES:
+        return JSONResponse({"error": "range is day, week, month or quarter"}, 400)
+    it = next((i for i in ((row.get("hardware") or {}).get("items") or []) if i.get("id") == item), None)
+    if not it:
+        return JSONResponse({"error": f"{row.get('display')} has nothing called {item}"}, 404)
+    s = await asyncio.get_running_loop().run_in_executor(None, telemetry.series, key, item, range)
+    labels = {x.get("label") for x in row.get("links") or []} | {row.get("display")}
+    evs = []
+    with contextlib.suppress(Exception):
+        stores = [state["store"]]
+        with usersmod.as_user(""):
+            stores.append(state["store"])
+        # the same filter as the machine's own Events list: its labels, or its name in the line
+        evs = [{"at": e["at"], "event": e["event"], "text": e["text"]}
+               for e in devevents.gather(stores, who=",".join(x for x in labels if x), limit=400)
+               if e["at"] >= s["start"]
+               and e["event"] in ("found", "gone", "power", "offline", "online", "updated", "board")]
+    return {**s, "machine": row.get("display"), "name": it.get("name"), "unit": it.get("unit") or "",
+            "kind": it.get("kind"), "events": evs[:60]}
 
 
 @app.post("/api/network/check")

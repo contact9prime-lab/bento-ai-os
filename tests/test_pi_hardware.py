@@ -65,7 +65,9 @@ def _pi(root: Path):
                                   "                      bcm2835 Headphones\n")
     _w(root, "proc/asound/pcm", "00-00: MAI PCM i2s-hifi-0 : MAI PCM i2s-hifi-0 : playback 1\n"
                                 "01-00: bcm2835 Headphones : bcm2835 Headphones : playback 8\n")
-    _w(root, "proc/bus/input/devices", 'I: Bus=0000\nN: Name="vc4-hdmi"\n\nN: Name="vc4-hdmi HDMI Jack"\n')
+    _w(root, "proc/bus/input/devices", 'I: Bus=0000\nN: Name="vc4-hdmi"\n\nN: Name="vc4-hdmi HDMI Jack"\n\n'
+           'I: Bus=0003\nN: Name="HS6209 2.4G Wireless Receiver Keyboard"\nP: Phys=usb-3f980000.usb-1.3/input0\n\n'
+           'I: Bus=0003\nN: Name="HS6209 2.4G Wireless Receiver Mouse"\nP: Phys=usb-3f980000.usb-1.3/input1\n')
     for n, st in (("eth0", "down"), ("wlan0", "up"), ("lo", "unknown")):
         _w(root, f"sys/class/net/{n}/operstate", st)
         _w(root, f"sys/class/net/{n}/address", "b8:27:eb:56:2d:48")
@@ -105,7 +107,8 @@ def test_a_pi_is_listed_down_to_each_thing_under_a_stable_id(pi):
     assert "usb.1-1.1.2" in ids and ids["usb.1-1.1.2"]["name"] == "SanDisk Ultra"
     assert "usb.usb1" not in ids and "usb.1-1" not in ids, "hubs and root hubs are plumbing"
     assert ids["audio.out.1.0"]["name"] == "bcm2835 Headphones" and not any(k.startswith("audio.in") for k in ids)
-    assert not any(i["kind"] == "input" for i in got["items"]), "the HDMI port's own events are not an input device"
+    assert sorted(i["id"] for i in got["items"] if i["kind"] == "input") == \
+        ["input.usb.1.3.input0", "input.usb.1.3.input1"], "named by the port, and the HDMI port is not an input"
     assert ids["net.wlan0"]["value"] == -63.0 and ids["net.wlan0"]["unit"] == "dBm" and "net.lo" not in ids
     assert "bluetooth.hci0" in ids and ids["system.memory_free"]["value"] == 383
     assert all(hardware._ID.fullmatch(i) for i in ids)
