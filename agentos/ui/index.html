@@ -5343,8 +5343,51 @@ body.kiosk.kiosk-side #kiosk-hud .kh-wifi{flex:none}
 .net-hw-pin small{font-weight:400;font-size:10px;opacity:.7}
 .net-hw-pin.hi{background:color-mix(in srgb,var(--acc) 22%,transparent)}
 .net-hw-note{margin:4px 0 0;font-size:11px}
+/* an item with readings is a button that opens its chart (24u-devchart.js) */
+.net-hw-g li.net-hw-has{display:block;padding:0}
+.net-hw-open{all:unset;box-sizing:border-box;width:100%;display:grid;grid-template-columns:minmax(0,15em) minmax(0,1fr) auto;
+  gap:2px 10px;align-items:baseline;padding:4px 6px;margin:0 -6px;border-radius:6px;cursor:pointer;font-size:var(--fs-sm,12px)}
+.net-hw-open:hover,.net-hw-open[aria-expanded="true"]{background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.net-hw-open:focus-visible,.net-hw-pin:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.net-hw-chev{display:inline-block;margin-left:4px;opacity:.5;transition:transform .15s}
+.net-hw-open[aria-expanded="true"] .net-hw-chev{transform:rotate(90deg)}
+button.net-hw-pin{border:0;color:inherit;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.net-hw-pin.on{outline:2px solid var(--acc);outline-offset:-2px}
+body.dev-touch .net-hw-open{min-height:var(--tap,40px);align-items:center}
+.dev-chart{margin:6px 0 10px;display:flex;flex-direction:column;gap:8px}
+.dev-chart.busy .dev-chart-plot{opacity:.5}
+.dev-chart-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.dev-chart-stats{display:flex;gap:14px;flex-wrap:wrap}
+.dev-chart-stats span{display:flex;flex-direction:column}
+.dev-chart-stats small{font-size:10px;color:color-mix(in srgb,var(--txt) 55%,transparent);letter-spacing:.04em;text-transform:uppercase}
+.dev-chart-stats b{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.dev-chart-plot{position:relative}
+.dev-chart-svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y}
+.dev-chart-svg:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+.dc-grid{stroke:color-mix(in srgb,var(--txt) 9%,transparent);stroke-width:1}
+.dc-y,.dc-x{fill:color-mix(in srgb,var(--txt) 55%,transparent);font-size:10px;font-variant-numeric:tabular-nums}
+.dc-y{text-anchor:end}
+.dc-band{fill:color-mix(in srgb,var(--acc) 12%,transparent);stroke:none}
+.dc-line{fill:none;stroke:var(--acc);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.dc-cross{stroke:color-mix(in srgb,var(--txt) 35%,transparent);stroke-width:1}
+.dc-dot{fill:var(--acc);stroke:var(--bg2,#111);stroke-width:2}
+.dc-ev line{stroke:color-mix(in srgb,var(--txt) 22%,transparent);stroke-width:1}
+.dc-ev text{fill:color-mix(in srgb,var(--txt) 70%,transparent);font-size:10px}
+.dc-tip{position:absolute;pointer-events:none;display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-radius:8px;
+  background:var(--bg3,var(--bg2,#1b1d24));border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);
+  box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:11px;white-space:nowrap;z-index:2}
+.dc-tip b{font-size:13px}
+.dev-chart-empty,.dev-chart-since{margin:0;font-size:var(--fs-sm,12px)}
+.dev-chart-table summary{cursor:pointer;font-size:11px;color:color-mix(in srgb,var(--txt) 60%,transparent)}
+.dev-chart-table table{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums;margin-top:4px}
+.dev-chart-table th{text-align:left;font-weight:600}
+.dev-chart-table td,.dev-chart-table th{padding:2px 6px 2px 0;border-top:1px solid color-mix(in srgb,var(--txt) 6%,transparent)}
+.dev-chart-table{max-height:240px;overflow:auto}
 @media (max-width:600px){.net-hw-g li{grid-template-columns:minmax(0,1fr) auto}
-  .net-hw-g li code{grid-column:1/-1}
+  .net-hw-g li code,.net-hw-open code{grid-column:1/-1}
+  .net-hw-open{grid-template-columns:minmax(0,1fr) auto}
+  .dev-chart-range{width:100%}
+  .dev-chart-range button{flex:1 1 0;min-height:var(--tap,40px)}
   .net-hw-top .endbtn{min-height:var(--tap,40px);flex:1 1 100%}}
 
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
@@ -37570,17 +37613,28 @@ function netHardwareHTML(r){
   const hw=r.hardware||{},items=hw.items||[],b=hw.board||{},name=r.display||r.ip;
   const top=`<div class="net-hw-top"><p>${esc([b.model,b.ram_mb?b.ram_mb+' MB':'',b.os].filter(Boolean).join(' · ')||'Not read yet.')}
       ${hw.at?`<span class="mut">read ${esc(poolAgo(Math.max(0,Math.round(Date.now()/1000-hw.at))))}</span>`:''}
-      ${pInfo('Its hub reads this once a day, and within a minute when something is plugged in or out. Nothing here can be read or set by an agent yet.')}</p>
+      ${pInfo('Its hub reads this once a day, and within a minute when something is plugged in or out. Tap a reading to see it over 90 days. Nothing here can be read or set by an agent yet.')}</p>
     ${(r.links||[]).length?`<button class="endbtn" data-net="hwcheck" data-key="${esc(r.key)}">Check now</button>`:''}</div>`;
   if(!items.length)return `<div class="net-hw">${top}</div>`;
   const groups=NET_HW_ORDER.map(([k,t])=>[k,t,items.filter(i=>i.kind===k)]).filter(g=>g[2].length);
+  const has=new Set(r.readings||[]);
+  // an item with readings opens its chart (24u-devchart.js) under it
+  const item=i=>has.has(i.id)
+    ?`<li class="net-hw-has"><button class="net-hw-open" data-chart="${esc(i.id)}" data-key="${esc(r.key)}" aria-expanded="${DEVCHART.key===r.key&&DEVCHART.item===i.id}">
+        <code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${esc(netHwValue(i))} <span class="net-hw-chev" aria-hidden="true">›</span></b></button>
+        ${devChartSlot(r.key,i.id)}</li>`
+    :`<li><code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${esc(netHwValue(i))}</b></li>`;
+  const pinOpen=list=>{const p=list.find(i=>DEVCHART.key===r.key&&DEVCHART.item===i.id);return p?devChartSlot(r.key,p.id):''};
   const power=items.find(i=>i.id==='power.throttle'),bad=power&&((power.flags||{}).now||[]).length;
   return `<div class="net-hw">${top}
     ${bad?`<p class="net-hw-warn">⚡ ${esc(name)} is ${esc(power.flags.now.join(', '))} right now. A better power supply usually fixes it.</p>`:''}
     ${groups.map(([k,t,list])=>`<section class="net-hw-g"><h4>${esc(t)} <span class="mut">${list.length}</span></h4>
-      ${k==='gpio'&&list.length>8?`<div class="net-hw-pins">${list.map(i=>`<span class="net-hw-pin${i.value?' hi':''}" title="${esc(name+'/'+i.id+' · '+(i.detail||'')+(i.label?' · '+i.label:''))}">${esc(i.id.replace('gpio.',''))}<small>${esc(netHwValue(i))}</small></span>`).join('')}</div>
-        <p class="mut net-hw-note">${esc(name)}/gpio.N · ${list.filter(i=>i.detail==='input').length} inputs, ${list.filter(i=>i.detail==='output').length} outputs</p>`
-      :`<ul>${list.map(i=>`<li><code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${esc(netHwValue(i))}</b></li>`).join('')}</ul>`}
+      ${k==='gpio'&&list.length>8?`<div class="net-hw-pins">${list.map(i=>{const t=esc(name+'/'+i.id+' · '+(i.detail||'')+(i.label?' · '+i.label:''));
+          const inner=`${esc(i.id.replace('gpio.',''))}<small>${esc(netHwValue(i))}</small>`;
+          return has.has(i.id)?`<button class="net-hw-pin${i.value?' hi':''}${DEVCHART.item===i.id&&DEVCHART.key===r.key?' on':''}" data-chart="${esc(i.id)}" data-key="${esc(r.key)}" title="${t}">${inner}</button>`
+            :`<span class="net-hw-pin${i.value?' hi':''}" title="${t}">${inner}</span>`}).join('')}</div>
+        <p class="mut net-hw-note">${esc(name)}/gpio.N · ${list.filter(i=>i.detail==='input').length} inputs, ${list.filter(i=>i.detail==='output').length} outputs</p>${pinOpen(list)}`
+      :`<ul>${list.map(item).join('')}</ul>`}
     </section>`).join('')}</div>`;
 }
 /* Hidden machines stay one tap away. Hide was "Not this one", and with nothing listing what
@@ -37686,6 +37740,8 @@ function netWire(box){
   box.querySelectorAll('.dev-console .dev-log').forEach(p=>p.scrollTop=p.scrollHeight);
   box.querySelectorAll('[data-net]').forEach(b=>b.onclick=()=>netAct(b.dataset.net,b));
   box.querySelectorAll('[data-pwforget]').forEach(b=>b.onclick=()=>devPwForget(b));
+  box.querySelectorAll('[data-chart]').forEach(b=>b.onclick=()=>devChartOpen(b.dataset.key,b.dataset.chart));
+  if(typeof devChartFill==='function')devChartFill(box);
   box.querySelectorAll('[data-devnode]').forEach(n=>n.onclick=()=>devMapGo(n.dataset.devnode));
   const hd=box.querySelector('.net-hidden');if(hd)hd.ontoggle=()=>{NET.hiddenOpen=hd.open};
   box.querySelectorAll('[data-prov]').forEach(b=>b.onclick=()=>provAct(b.dataset.prov,b).then(()=>netPaint()));
@@ -39770,6 +39826,162 @@ function islDesignWire(el,v){
   el.querySelectorAll('[data-iset]').forEach(b=>b.onclick=()=>{isl.setting=b.dataset.iset;save()});
   const tr=el.querySelector('[data-itrain]');if(tr)tr.onclick=()=>{isl.train=isl.train===false;save()};
   el.querySelectorAll('[data-itrees]').forEach(b=>b.onclick=()=>{isl.trees=b.dataset.itrees;save()});
+}
+/* ---------------- A sensor over time: Devices → Hardware → an item ----------------
+   Asked for as "drill further to see the data visualization for the last 90 days". The hub keeps
+   what each Zero's sensors read (telemetry.py); /api/devices/readings answers one item over a day,
+   a week, 30 or 90 days as at most 360 points of [time, mean, min, max], with the range's numbers
+   and the machine's events in it. One line in the theme's accent, its min to max as a faint band,
+   events as hairlines, a crosshair that finds the time and says the value. Built with DOM nodes,
+   text nodes only: an item's name came from another machine. */
+var DEVCHART={key:'',item:'',range:'day',data:null,busy:false};
+var DEVCHART_RANGES=[['day','Day'],['week','Week'],['month','30 days'],['quarter','90 days']];
+var DEVCHART_EVENT={found:'＋',gone:'－',power:'⚡',offline:'○',online:'●',updated:'⬆',board:'▦'};
+
+function devChartOpen(key,item){
+  const same=DEVCHART.key===key&&DEVCHART.item===item;
+  DEVCHART.key=same?'':key;DEVCHART.item=same?'':item;DEVCHART.data=null;
+  if(typeof netPaint==='function')netPaint();
+}
+/* the placeholder netHardwareHTML puts under the open item; filled after each paint */
+function devChartSlot(key,item){
+  return DEVCHART.key===key&&DEVCHART.item===item?`<div class="dev-chart" data-key="${esc(key)}" data-item="${esc(item)}"></div>`:'';
+}
+async function devChartFill(box){
+  const slot=box.querySelector('.dev-chart');if(!slot)return;
+  if(DEVCHART.data&&DEVCHART.data.item===DEVCHART.item&&DEVCHART.data.range===DEVCHART.range&&DEVCHART.data._key===DEVCHART.key)
+    return devChartDraw(slot,DEVCHART.data);
+  devChartDraw(slot,DEVCHART.data,true);
+  try{
+    const d=await apiJSON(`/api/devices/readings?key=${encodeURIComponent(DEVCHART.key)}&item=${encodeURIComponent(DEVCHART.item)}&range=${DEVCHART.range}`);
+    d._key=DEVCHART.key;DEVCHART.data=d;
+  }catch(e){slot.textContent='';const p=document.createElement('p');p.className='mut';p.textContent=String(e.message||e);slot.appendChild(p);return}
+  document.querySelectorAll('.dev-chart').forEach(s=>devChartDraw(s,DEVCHART.data));
+}
+function devChartBinary(d){return d.kind==='gpio'||d.item==='power.throttle'}
+function devChartFmt(d,v){
+  if(v==null)return '—';
+  if(devChartBinary(d)){
+    if(d.item==='power.throttle')return v>=.5?'under-voltage or throttled':'fine';
+    return v===1?'high':v===0?'low':`high ${Math.round(v*100)}% of the time`;
+  }
+  const n=Math.abs(v)>=100?Math.round(v):Math.round(v*10)/10;
+  return `${n}${d.unit==='°C'?'°C':d.unit?' '+d.unit:''}`;
+}
+function devChartWhen(d,t){
+  const dt=new Date(t*1000);
+  return d.range==='day'?dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+    :dt.toLocaleDateString([],{month:'short',day:'numeric'})+(d.range==='week'?' '+dt.toLocaleTimeString([],{hour:'2-digit'}):'');
+}
+function devEl(tag,attrs,text){
+  const svg=['svg','path','line','rect','circle','text','g','title'].includes(tag);
+  const n=svg?document.createElementNS('http://www.w3.org/2000/svg',tag):document.createElement(tag);
+  for(const k in attrs||{})n.setAttribute(k,attrs[k]);
+  if(text!=null)n.textContent=text;
+  return n;
+}
+function devChartDraw(slot,d,loading){
+  slot.textContent='';
+  const head=devEl('div',{class:'dev-chart-head'});
+  const seg=devEl('div',{class:'seg dev-chart-range',role:'tablist','aria-label':'Range'});
+  DEVCHART_RANGES.forEach(([id,label])=>{
+    const b=devEl('button',{role:'tab','aria-selected':String(DEVCHART.range===id)},label);
+    if(DEVCHART.range===id)b.classList.add('on');
+    b.onclick=()=>{DEVCHART.range=id;devChartFill(slot.closest('.devhub-box,#s-net')||document)};
+    seg.appendChild(b);
+  });
+  head.appendChild(seg);
+  slot.appendChild(head);
+  if(loading&&!d){slot.appendChild(devEl('p',{class:'mut'},'Reading…'));return}
+  if(loading)slot.classList.add('busy');else slot.classList.remove('busy');
+  const st=d.stats||{},pts=d.points||[];
+  const stats=devEl('div',{class:'dev-chart-stats'});
+  [['Last',st.last],['Min',st.min],['Max',st.max],['Mean',st.mean]].forEach(([k,v])=>{
+    if(devChartBinary(d)&&(k==='Min'||k==='Max'))return;
+    const s=devEl('span');s.appendChild(devEl('small',{},k));s.appendChild(devEl('b',{},devChartFmt(d,v)));stats.appendChild(s);
+  });
+  head.appendChild(stats);
+  if(!pts.length){
+    slot.appendChild(devEl('p',{class:'mut dev-chart-empty'},`No readings from ${d.machine} in ${d.words} yet. A Pi on 0.7.1 or later sends them every minute.`));
+    return;
+  }
+  const W=Math.max(280,slot.clientWidth||600),H=W<480?150:180,L=48,R=10,T=16,B=24;
+  let lo=Math.min(...pts.map(p=>p[2])),hi=Math.max(...pts.map(p=>p[3]));
+  if(devChartBinary(d)){lo=0;hi=1}
+  else{if(hi===lo){hi+=1;lo-=1}const pad=(hi-lo)*.08;hi+=pad;lo-=pad}
+  // readings that began well after the range did (a Pi that started sending today) fill the
+  // width from where they begin, and the line under the chart says so
+  const x0=pts[0][0]-d.start>(d.end-d.start)*.2?Math.max(d.start,pts[0][0]-d.step):d.start;
+  const span=d.end-x0,fine=span<2*86400;
+  const x=t=>L+(t-x0)/span*(W-L-R),y=v=>T+(1-(v-lo)/(hi-lo))*(H-T-B);
+  const svg=devEl('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,class:'dev-chart-svg',tabindex:'0',role:'img',
+    'aria-label':`${d.name} on ${d.machine}, ${d.words}: last ${devChartFmt(d,st.last)}, mean ${devChartFmt(d,st.mean)}`});
+  const ticks=devChartBinary(d)?[0,1]:[lo+(hi-lo)*.1,lo+(hi-lo)*.5,lo+(hi-lo)*.9];
+  ticks.forEach(v=>{
+    svg.appendChild(devEl('line',{x1:L,x2:W-R,y1:y(v),y2:y(v),class:'dc-grid'}));
+    const lab=devChartBinary(d)?(d.item==='power.throttle'?(v?'bad':'fine'):(v?'high':'low')):devChartFmt({...d,unit:''},v);
+    svg.appendChild(devEl('text',{x:L-6,y:y(v)+4,class:'dc-y'},lab));
+  });
+  [x0,(x0+d.end)/2,d.end].forEach((t,i)=>svg.appendChild(devEl('text',{x:x(t),y:H-6,class:'dc-x',
+    'text-anchor':['start','middle','end'][i]},i===2?'now':devChartWhen({...d,range:fine?'day':d.range},t))));
+  // runs of points with no gap longer than two and a half steps: a Pi that was away is a break
+  const runs=[];let run=[];
+  pts.forEach((p,i)=>{if(i&&p[0]-pts[i-1][0]>d.step*2.5){runs.push(run);run=[]}run.push(p)});runs.push(run);
+  runs.forEach(r=>{
+    if(!devChartBinary(d)&&r.length>1){
+      const top=r.map((p,i)=>`${i?'L':'M'}${x(p[0]).toFixed(1)},${y(p[3]).toFixed(1)}`).join('');
+      const bot=r.slice().reverse().map(p=>`L${x(p[0]).toFixed(1)},${y(p[2]).toFixed(1)}`).join('');
+      svg.appendChild(devEl('path',{d:top+bot+'Z',class:'dc-band'}));
+    }
+    const step=devChartBinary(d);
+    const line=r.map((p,i)=>i?(step?`H${x(p[0]).toFixed(1)}V${y(p[1]).toFixed(1)}`:`L${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`)
+      :`M${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join('');
+    svg.appendChild(devEl('path',{d:r.length>1?line:line+`h1`,class:'dc-line'}));
+  });
+  // one unplug is several lines (a receiver, its keyboard, its mouse): one mark, every line in it
+  const evs=[];(d.events||[]).forEach(e=>{const same=evs.find(o=>o.event===e.event&&Math.abs(o.at-e.at)<2);
+    if(same)same.text+='\n'+e.text;else evs.push({...e})});
+  evs.forEach(e=>{
+    const ex=x(e.at);if(ex<L||ex>W-R)return;
+    const g=devEl('g',{class:'dc-ev'});g.appendChild(devEl('line',{x1:ex,x2:ex,y1:T,y2:H-B}));
+    g.appendChild(devEl('text',{x:ex,y:T-4,'text-anchor':'middle'},DEVCHART_EVENT[e.event]||'·'));
+    g.appendChild(devEl('title',{},`${devChartWhen({...d,range:'week'},e.at)}: ${e.text}`));svg.appendChild(g);
+  });
+  const cross=devEl('line',{y1:T,y2:H-B,class:'dc-cross',visibility:'hidden'});
+  const dot=devEl('circle',{r:4,class:'dc-dot',visibility:'hidden'});
+  svg.appendChild(cross);svg.appendChild(dot);
+  const tip=devEl('div',{class:'dc-tip',hidden:''});
+  const wrap=devEl('div',{class:'dev-chart-plot'});wrap.appendChild(svg);wrap.appendChild(tip);slot.appendChild(wrap);
+  let at=pts.length-1;
+  const show=i=>{
+    at=Math.max(0,Math.min(pts.length-1,i));const p=pts[at],px=x(p[0]),py=y(p[1]);
+    cross.setAttribute('x1',px);cross.setAttribute('x2',px);cross.setAttribute('visibility','visible');
+    dot.setAttribute('cx',px);dot.setAttribute('cy',py);dot.setAttribute('visibility','visible');
+    tip.textContent='';tip.appendChild(devEl('b',{},devChartFmt(d,p[1])));
+    tip.appendChild(devEl('span',{},devChartWhen({...d,range:d.range==='day'?'day':'week'},p[0])));
+    if(!devChartBinary(d)&&p[2]!==p[3])tip.appendChild(devEl('span',{class:'mut'},`${devChartFmt(d,p[2])} to ${devChartFmt(d,p[3])}`));
+    tip.hidden=false;
+    const r=svg.getBoundingClientRect(),k=r.width/W;
+    tip.style.left=Math.min(r.width-tip.offsetWidth-4,Math.max(4,px*k+10))+'px';tip.style.top=Math.max(0,py*k-40)+'px';
+  };
+  const hide=()=>{cross.setAttribute('visibility','hidden');dot.setAttribute('visibility','hidden');tip.hidden=true};
+  svg.addEventListener('pointermove',e=>{
+    const r=svg.getBoundingClientRect(),t=d.start+((e.clientX-r.left)/r.width*W-L)/(W-L-R)*(d.end-d.start);
+    let best=0;pts.forEach((p,i)=>{if(Math.abs(p[0]-t)<Math.abs(pts[best][0]-t))best=i});show(best);
+  });
+  svg.addEventListener('pointerleave',hide);svg.addEventListener('blur',hide);
+  svg.addEventListener('focus',()=>show(at));
+  svg.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){show(at-1);e.preventDefault()}
+    else if(e.key==='ArrowRight'){show(at+1);e.preventDefault()}});
+  // the numbers without hovering: every point the chart draws
+  if(x0>d.start)slot.appendChild(devEl('p',{class:'mut dev-chart-since'},
+    `${d.machine} has sent readings since ${devChartWhen({...d,range:fine?'day':'week'},pts[0][0]-d.step/2)}. The rest of ${d.words} fills in as it keeps sending.`));
+  const det=devEl('details',{class:'dev-chart-table'});det.appendChild(devEl('summary',{},`Show the numbers (${pts.length})`));
+  const tb=devEl('table');const hr=devEl('tr');['Time','Mean','Min','Max'].forEach(h=>hr.appendChild(devEl('th',{},h)));tb.appendChild(hr);
+  pts.slice().reverse().forEach(p=>{const tr=devEl('tr');
+    [devChartWhen({...d,range:'week'},p[0]),devChartFmt(d,p[1]),devChartFmt(d,p[2]),devChartFmt(d,p[3])].forEach(v=>tr.appendChild(devEl('td',{},v)));
+    tb.appendChild(tr)});
+  det.appendChild(tb);slot.appendChild(det);
 }
 /* ================= file manager app ================= */
 async function renderFiles(body,w){

@@ -304,8 +304,51 @@ body.kiosk.kiosk-side #kiosk-hud .kh-wifi{flex:none}
 .net-hw-pin small{font-weight:400;font-size:10px;opacity:.7}
 .net-hw-pin.hi{background:color-mix(in srgb,var(--acc) 22%,transparent)}
 .net-hw-note{margin:4px 0 0;font-size:11px}
+/* an item with readings is a button that opens its chart (24u-devchart.js) */
+.net-hw-g li.net-hw-has{display:block;padding:0}
+.net-hw-open{all:unset;box-sizing:border-box;width:100%;display:grid;grid-template-columns:minmax(0,15em) minmax(0,1fr) auto;
+  gap:2px 10px;align-items:baseline;padding:4px 6px;margin:0 -6px;border-radius:6px;cursor:pointer;font-size:var(--fs-sm,12px)}
+.net-hw-open:hover,.net-hw-open[aria-expanded="true"]{background:color-mix(in srgb,var(--txt) 5%,transparent)}
+.net-hw-open:focus-visible,.net-hw-pin:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.net-hw-chev{display:inline-block;margin-left:4px;opacity:.5;transition:transform .15s}
+.net-hw-open[aria-expanded="true"] .net-hw-chev{transform:rotate(90deg)}
+button.net-hw-pin{border:0;color:inherit;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.net-hw-pin.on{outline:2px solid var(--acc);outline-offset:-2px}
+body.dev-touch .net-hw-open{min-height:var(--tap,40px);align-items:center}
+.dev-chart{margin:6px 0 10px;display:flex;flex-direction:column;gap:8px}
+.dev-chart.busy .dev-chart-plot{opacity:.5}
+.dev-chart-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.dev-chart-stats{display:flex;gap:14px;flex-wrap:wrap}
+.dev-chart-stats span{display:flex;flex-direction:column}
+.dev-chart-stats small{font-size:10px;color:color-mix(in srgb,var(--txt) 55%,transparent);letter-spacing:.04em;text-transform:uppercase}
+.dev-chart-stats b{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.dev-chart-plot{position:relative}
+.dev-chart-svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y}
+.dev-chart-svg:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+.dc-grid{stroke:color-mix(in srgb,var(--txt) 9%,transparent);stroke-width:1}
+.dc-y,.dc-x{fill:color-mix(in srgb,var(--txt) 55%,transparent);font-size:10px;font-variant-numeric:tabular-nums}
+.dc-y{text-anchor:end}
+.dc-band{fill:color-mix(in srgb,var(--acc) 12%,transparent);stroke:none}
+.dc-line{fill:none;stroke:var(--acc);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.dc-cross{stroke:color-mix(in srgb,var(--txt) 35%,transparent);stroke-width:1}
+.dc-dot{fill:var(--acc);stroke:var(--bg2,#111);stroke-width:2}
+.dc-ev line{stroke:color-mix(in srgb,var(--txt) 22%,transparent);stroke-width:1}
+.dc-ev text{fill:color-mix(in srgb,var(--txt) 70%,transparent);font-size:10px}
+.dc-tip{position:absolute;pointer-events:none;display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-radius:8px;
+  background:var(--bg3,var(--bg2,#1b1d24));border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);
+  box-shadow:0 4px 14px rgba(0,0,0,.25);font-size:11px;white-space:nowrap;z-index:2}
+.dc-tip b{font-size:13px}
+.dev-chart-empty,.dev-chart-since{margin:0;font-size:var(--fs-sm,12px)}
+.dev-chart-table summary{cursor:pointer;font-size:11px;color:color-mix(in srgb,var(--txt) 60%,transparent)}
+.dev-chart-table table{width:100%;border-collapse:collapse;font-size:11px;font-variant-numeric:tabular-nums;margin-top:4px}
+.dev-chart-table th{text-align:left;font-weight:600}
+.dev-chart-table td,.dev-chart-table th{padding:2px 6px 2px 0;border-top:1px solid color-mix(in srgb,var(--txt) 6%,transparent)}
+.dev-chart-table{max-height:240px;overflow:auto}
 @media (max-width:600px){.net-hw-g li{grid-template-columns:minmax(0,1fr) auto}
-  .net-hw-g li code{grid-column:1/-1}
+  .net-hw-g li code,.net-hw-open code{grid-column:1/-1}
+  .net-hw-open{grid-template-columns:minmax(0,1fr) auto}
+  .dev-chart-range{width:100%}
+  .dev-chart-range button{flex:1 1 0;min-height:var(--tap,40px)}
   .net-hw-top .endbtn{min-height:var(--tap,40px);flex:1 1 100%}}
 
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */

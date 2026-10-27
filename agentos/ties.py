@@ -22,6 +22,7 @@ Free of HTTP: the server routes and `bento network ties` call into it.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 
@@ -34,6 +35,7 @@ VIEW_ROWS = 60
 _PROBED: dict[str, tuple[float, bool, str]] = {}
 _VERSION: dict[str, str] = {}      # what each tie said it runs, at its last hello
 _HW: dict[str, str] = {}           # the hash of what is plugged in, at its last hello (hardware.quick)
+_READ: dict[str, dict] = {}        # what its last hello's readings came to (telemetry.store)
 
 
 def host_of(lk: dict) -> str:
@@ -118,8 +120,17 @@ async def probe(lks: list[dict], force: bool = False, wait: float = PROBE_TIMEOU
         if lk.get("kind") != "machine":
             _PROBED[key] = (now, True, "")
             return
+        # a Zero this hub set up sends its sensors' readings with its answer (telemetry.py)
+        req, machine = {"op": "hello"}, ""
+        with contextlib.suppress(Exception):
+            from . import telemetry
+            from . import zero as zeromod
+            if zeromod.ships_to(lk):
+                machine = machine_of(lk)
+                cur = telemetry.cursor(machine)
+                req["readings_since"] = {"boot": cur.get("boot") or "", "seq": cur.get("seq") or 0}
         try:
-            got = await asyncio.wait_for(teamlink.call(lk, {"op": "hello"}, timeout=PROBE_TIMEOUT),
+            got = await asyncio.wait_for(teamlink.call(lk, req, timeout=PROBE_TIMEOUT),
                                          wait + 1)
             ok = bool(got.get("ok"))
             why = "" if ok else teamlink.plain(got.get("error") or "no answer", 120, newlines=False)
@@ -129,6 +140,12 @@ async def probe(lks: list[dict], force: bool = False, wait: float = PROBE_TIMEOU
                 _VERSION[key] = teamlink.plain(got.get("version") or OLDER, 20, newlines=False).strip()
                 if got.get("hw"):
                     _HW[key] = teamlink.plain(got["hw"], 16, newlines=False).strip()
+                if machine and isinstance(got.get("readings"), dict):
+                    from . import telemetry
+                    try:
+                        _READ[key] = telemetry.store(machine, got["readings"])
+                    except Exception as e:      # a reading that can't be kept never fails the hello
+                        _READ[key] = {"stored": 0, "error": _why(e)}
         except Exception as e:      # an answer is a sentence, never a traceback
             ok, why = False, _why(e)
         _PROBED[key] = (time.time(), ok, why)
@@ -213,6 +230,13 @@ def inventory_row(lk: dict) -> dict | None:
         if any(x.get("label") == lk.get("label") for x in r.get("links") or []):
             return r
     return None
+
+
+def machine_of(lk: dict) -> str:
+    """The id a machine's readings are kept under: its inventory row's key (its MAC when known),
+    so they stay with the machine when its link is made again."""
+    r = inventory_row(lk)
+    return (r or {}).get("key") or f"link:{lk.get('id') or lk.get('label')}"
 
 
 def hardware_due(lk: dict, now: float | None = None) -> str:

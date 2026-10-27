@@ -1107,6 +1107,10 @@ class Listener:
                 from . import hardware, zero as zeromod
                 if zeromod.is_my_hub(self.cfg, lk):
                     out["hw"] = hardware.quick()
+                    # and what its sensors read since the hub last asked (telemetry.Buffer)
+                    from . import telemetry
+                    if telemetry.BUFFER.seq:
+                        out["readings"] = telemetry.BUFFER.since(req.get("readings_since"))
             return out
         if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat", "zero_hardware",
                   "zero_update", "zero_say", "zero_face", "zero_refresh", "edge_run", "hear") and self.on_ask:

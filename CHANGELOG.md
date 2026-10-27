@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.1 — 2026-10-27
+
+**Each sensor on a Pi over the last 90 days.** A Pi set up from this hub samples its readings every
+10 seconds: temperatures, power, core voltage, 1-Wire thermometers, Wi-Fi signal, load, free memory
+and disk, and its pins when they change. The hub collects them with the hello it already sends every
+minute. In Devices → Hardware, tap a reading to see it over a day, a week, 30 days or 90 days, with
+its range and what happened to the Pi marked on the line. The hub keeps every sample for 7 days, a
+summary per minute for 30 and per hour for 90. Sampling costs a Pi 3 about 0.4% of one core, and
+nothing is written to its SD card. While the hub is away the Pi keeps about an hour and a half of
+samples and sends them when it's back. `bento network readings MACHINE ITEM --range quarter` shows
+the same in a terminal. Input devices are now named by the port they're plugged into, so their names
+stay the same after a restart.
+
 ## 0.7.0 — 2026-10-27
 
 **The hub knows what each Pi has, down to each sensor.** Devices lists every Pi set up from this hub
