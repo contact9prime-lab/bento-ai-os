@@ -76,6 +76,15 @@ yesterday's.
 The same item filed by several runs (an audit on each run, say) is **one card**, marked ×2. Done or
 Later on it answers all of them.
 
+Every card in the story is a door. Each one says what the item is about, who filed it and, for a
+decision, its choices. Tap it and the Brief opens on that item, with its Done, Later or choice buttons.
+
+![The decisions in a Brief story, each with what it is about and its choices](screenshots/stage-brief-decisions.png)
+
+On a phone the tap turns the Brief's stack to that item:
+
+![A decision opened from the story on a phone](screenshots/stage-brief-phone-tap.png)
+
 ## Every item has hands
 
 Done and Later are one tap. A draft can be sent — through the same gate, as

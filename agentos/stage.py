@@ -57,7 +57,7 @@ FIELDS = {
     "map": ("points", "regions", "view", "unit"),
     "numbers": ("items",),
     "timeline": ("events",),
-    "steps": ("items",),
+    "steps": ("items", "ordered"),
     "table": ("columns", "rows"),
     "image": ("url", "asset", "alt", "credit"),
     "video": ("url", "start"),
@@ -230,7 +230,7 @@ class _KIND:
                 continue
             items.append({"label": _s(it.get("label"), 48), "value": _s(it.get("value"), 24),
                           "unit": _s(it.get("unit"), 12), "delta": _s(it.get("delta"), 24),
-                          "note": _s(it.get("note"), 120)})
+                          "note": _s(it.get("note"), 120), "open": _open(it.get("open"))})
         if not items:
             raise ValueError("numbers needs items: [{label, value, unit?, delta?, note?}]")
         sc["items"] = items
@@ -253,10 +253,13 @@ class _KIND:
             if isinstance(it, str):
                 it = {"title": it}
             if isinstance(it, dict) and (it.get("title") or it.get("text")):
-                items.append({"title": _s(it.get("title"), 80), "text": _s(it.get("text"), 200)})
+                items.append({"title": _s(it.get("title"), 100), "text": _s(it.get("text"), 200),
+                              "note": _s(it.get("note"), 120), "open": _open(it.get("open"))})
         if not items:
             raise ValueError("steps needs items: [{title, text?}], in order")
         sc["items"] = items
+        # ordered: false is a list (things waiting, not a sequence): no numbers, no arrows
+        sc["ordered"] = spec.get("ordered") is not False
 
     @staticmethod
     def image(spec, sc, dropped):
@@ -339,6 +342,14 @@ class _KIND:
 
 
 _ASSET = re.compile(r"^[A-Za-z0-9_-]{4,64}$")
+# A card that opens something on this machine: only a Brief item or a Brief group, so a
+# story the Brief built can be acted on. Nothing a model writes can name another door.
+_OPEN = re.compile(r"^brief:(needs_you|decide|fyi|done|[0-9a-f]{6,32})$")
+
+
+def _open(v) -> str:
+    v = str(v or "").strip()
+    return v if _OPEN.match(v) else ""
 _YT = re.compile(r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})")
 
 

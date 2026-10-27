@@ -67,3 +67,4 @@ body.immersive .hm-now.br-open{pointer-events:auto;cursor:pointer;color:var(--tx
 .br-more summary{list-style:none;cursor:pointer}.br-more summary::-webkit-details-marker{display:none}
 .br-more[open] summary{display:none}
 @media (max-width:560px){.br-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.br-item.br-flash{outline:2px solid var(--acc);outline-offset:2px;transition:outline-color .4s}

@@ -7,6 +7,11 @@ FILES sign and the agents' names did nothing when clicked. Now the Brain opens y
 the Files app, a name puts that agent in the prompt bar, and a click on a room's ground takes you inside.
 A browser that never chose a scene opens on the Town (a Zero keeps Aurora). If you had chosen another
 scene, the update moves you to the Town once, with a toast to keep the old one.
+**The Brief on the Stage can be acted on.** Each card now opens its item in the Brief, where Done,
+Later and a decision's choices are. The story says what the Brief is ("what your missions filed for
+you"), each count says what it means, and each card says what it is about, who filed it and, for a
+decision, its choices. The lists are no longer drawn as numbered steps with arrows, and titles are cut
+at a word.
 
 ## 0.6.97 — 2026-10-25
 
