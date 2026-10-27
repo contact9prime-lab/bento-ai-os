@@ -489,7 +489,7 @@ In Devices, open a Pi's **Hardware** and press **ESP32 nodes**:
 
 ![ESP32 nodes on a zone Pi: the two it looks after, Find on its network and Add node](screenshots/devices-esp32.png)
 
-![The same on a 390px phone](screenshots/devices-esp32-phone.png)
+![ESP32 nodes on a 390px phone: the nodes, Find on its network and Add node](screenshots/devices-esp32-phone.png)
 
 Each sensor or switch is named `<pi>/esp.<node>.<kind>.<name>`, for example
 `zone-cold/esp.cold-2.switch.compressor`. Sensors, contacts and text are read. Switches, lights and
