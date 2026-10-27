@@ -18,8 +18,12 @@ closes again.
 
 ## Where to find it
 
-- **As your desktop:** Settings → Appearance → Scene → Town. It fills the screen behind your
-  windows, like Office HQ.
+- **As your desktop:** Bento opens on the Town unless you chose another scene. Settings →
+  Appearance → Scene changes it. A Zero opens on Aurora, and a small machine's own screen
+  draws only the light scenes. After the update that made the Town the default, a browser
+  that had chosen another scene is moved to the Town once, with a toast to keep the old one.
+- **Tap what you see:** the Brain opens your memory, FILES opens the Files app, a name puts
+  that agent in the prompt bar, and a room's card or its ground takes you inside it.
 - **In the Office app:** ✎ Design → Look → "A town", then pick a Setting.
 - **From a terminal:** `bento office setting canals` (or island, islands, castle, forest).
 

@@ -936,9 +936,9 @@ function of3Tap(e){
   Object.values(O.people).forEach(p=>{if(!of3Shown(p))return;
     const h=of3Project(of3Head(p)),f=of3Project(of3W(p.x,p.y,OF3_SLAB));
     const dx=Math.abs(x-h.x),inY=y>h.y-14&&y<f.y+6;if(dx<22&&inY&&dx<bd){bd=dx;best=p}});
-  if(best)return officeTapPerson(best);
+  if(best)return of3PersonOpen(best);
   const c=officeCabinetAt();
-  if(c){const q=of3Project(of3W(c.x+c.w/2,c.y+c.h/2,OF3_SLAB+.3));if(Math.hypot(x-q.x,y-q.y)<26)return officeFiles(true)}
+  if(c){const q=of3Project(of3W(c.x+c.w/2,c.y+c.h/2,OF3_SLAB+.3));if(Math.hypot(x-q.x,y-q.y)<26)return of3FilesOpen()}
   const b=of3Project(new OF3.T.Vector3(0,.9,0));
   if(Math.hypot(x-b.x,y-b.y)<36)return of3BrainOpen();
   const room=O.L.rooms.find(rm=>{const pts=[[rm.x,rm.y],[rm.x+rm.w,rm.y],[rm.x+rm.w,rm.y+rm.h],[rm.x,rm.y+rm.h]].map(q=>of3Project(of3W(q[0],q[1],OF3_SLAB)));
@@ -947,6 +947,38 @@ function of3Tap(e){
   if(room)of3Focus(OF3.focus===room.name?null:room.name);
 }
 function of3BrainOpen(){if(typeof openApp==='function')openApp('memory')}
+/* The scene has no files drawer and no chat of its own: there the files are the Files
+   app, and a person is a name put in the prompt bar. */
+function of3FilesOpen(){if(of3HQ()){OFFICE.newFiles=0;if(typeof openApp==='function')openApp('files')}else officeFiles(true)}
+function of3PersonOpen(p){
+  if(!p)return;
+  if(!of3HQ())return officeTapPerson(p);
+  p.hop=performance.now();officePop(p,p.busy?'…':'!');officeSay(p,officeGreet(p),'say',2600);
+  const i=document.getElementById('omni-in');
+  if(i){if(p.key!=='@agent')i.value='@'+p.key+' ';i.focus()}
+}
+/* A label over the picture that does what tapping its thing does. In Office HQ and the
+   Town the canvas is in the wall and takes no tap, so the label is the door. */
+function of3Door(e,label,fn){
+  if(e._door)return e;e._door=1;
+  e.setAttribute('role','button');e.tabIndex=0;e.title=label;e.setAttribute('aria-label',label);
+  e.onclick=ev=>{ev.stopPropagation();fn()};
+  e.onkeydown=ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();fn()}};
+  return e;
+}
+/* Office HQ and the Town: a click on open ground reaches the picture (a person, the files,
+   the Brain, a room), the wheel's argument. A drag on the desktop is not a click. */
+var OF3_DOWN=null;
+if(typeof document!=='undefined'&&document.addEventListener){
+  document.addEventListener('pointerdown',e=>{OF3_DOWN={x:e.clientX,y:e.clientY}},true);
+  document.addEventListener('click',e=>{
+    if(!of3HQ()||!OF3.cv||document.body.classList.contains('has-win')||document.body.classList.contains('deck-full'))return;
+    const t=e.target;if(!t||!t.closest)return;
+    if(!(t.id==='desktop'||t.id==='wall'||t.id==='home'||(t.classList&&t.classList.contains('of3-ui'))))return;
+    if(OF3_DOWN&&Math.hypot(e.clientX-OF3_DOWN.x,e.clientY-OF3_DOWN.y)>5)return;
+    of3Tap(e);
+  });
+}
 
 /* ---------------- every frame ---------------- */
 function of3Draw(){
@@ -1201,7 +1233,7 @@ function of3Overlay(now){
   of3Where();
   of3Cards();
   const b=of3Project(new OF3.T.Vector3(0,1.55,0)),br=O.view.brain||{};
-  of3Place(of3El('brain','of3-brain',`<b>THE BRAIN</b><span>${br.on?'on '+esc(br.on):`${(br.memories||0).toLocaleString()} ${br.memories===1?'memory':'memories'} · ${(br.facts||0).toLocaleString()} facts`}</span>`),b.x,b.y);
+  of3Place(of3Door(of3El('brain','of3-brain',`<b>THE BRAIN</b><span>${br.on?'on '+esc(br.on):`${(br.memories||0).toLocaleString()} ${br.memories===1?'memory':'memories'} · ${(br.facts||0).toLocaleString()} facts`}</span>`),'Open memory and knowledge',of3BrainOpen),b.x,b.y);
   const focus=OF3.focus;
   // names: everyone on the move, and every desk in the room you are looking at; two
   // people walking in together get two lines, not one smudge
@@ -1211,7 +1243,7 @@ function of3Overlay(now){
     const moving=p.mode!=='seat'||p.visit,here=focus&&p.room&&p.room.name===focus;
     if(!(moving||here))return;
     const f=of3Project(of3W(p.x,p.y,OF3_SLAB)),label=(p.head?'★ ':'')+p.label;
-    const e=of3El('tag:'+p.key,'of3-tag'+(p.busy?' busy':''),esc(label.length>16?label.slice(0,15)+'…':label));
+    const e=of3Door(of3El('tag:'+p.key,'of3-tag'+(p.busy?' busy':''),esc(label.length>16?label.slice(0,15)+'…':label)),p.label,()=>of3PersonOpen(O.people[p.key]||p));
     const y0=f.y+(p.mode==='seat'&&!p.bench?14:4),w=e.offsetWidth||60;
     // a crowd round one table steps its names up as well as down, so they stay in the room
     const hit=y=>tags.some(q=>Math.abs(q.x-f.x)<(q.w+w)/2&&Math.abs(q.y-y)<15);
@@ -1247,7 +1279,7 @@ function of3Overlay(now){
     of3Place(of3El('meet','of3-meet','▸ '+esc(O.meeting.flow)),q.x,q.y)}}
   const c=officeCabinetAt();
   if(c){const q=of3Project(of3W(c.x+c.w/2,c.y,OF3_SLAB+.75));
-    of3Place(of3El('files','of3-files',`FILES${O.newFiles?` <em>${O.newFiles}</em>`:''}`),q.x,q.y)}
+    of3Place(of3Door(of3El('files','of3-files',`FILES${O.newFiles?` <em>${O.newFiles}</em>`:''}`),'Files your agents made',of3FilesOpen),q.x,q.y)}
   Object.entries(OF3.el).forEach(([k,e])=>{if(!e._seen&&!k.startsWith('card:')){e.remove();delete OF3.el[k]}});
 }
 /* A card over every room: its name, how many are in it, how many are working, and
@@ -1305,5 +1337,5 @@ function of3Roster(){
     if(O.w&&O.w.scene){const k=b.dataset.k;openApp('office');
       setTimeout(()=>{const w=OFFICE.w,i=w&&!w.scene&&w.el.querySelector('.of-chat .cp-in');
         if(i&&k!=='@agent'){i.value='@'+k+' ';i.focus();w.el.querySelector('.of-wrap').classList.add('chat-open')}},500);return}
-    of3Need(p);officeTapPerson(p)});
+    of3Need(p);of3PersonOpen(p)});
 }

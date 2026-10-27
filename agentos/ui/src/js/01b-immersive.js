@@ -24,7 +24,10 @@ var WEEKDAY_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'
 function immersiveStored(){try{return localStorage.getItem('immersive')}catch(e){return null}}
 // a Studio build running for this person; set by buildPulse and state_sync (09-websocket)
 var BUILD_LIVE=false;
-var IMMERSIVE={on:immersiveStored()!=='0',scene:localStorage.getItem('immersive.scene')||'aurora',raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
+/* The scene this browser chose, or null. A browser that never chose gets the Town, except
+   on a Zero: its office is one person drawn flat, so it gets the sky (immersiveSceneNow). */
+function sceneStored(){try{return localStorage.getItem('immersive.scene')}catch(e){return null}}
+var IMMERSIVE={on:immersiveStored()!=='0',scene:sceneStored()||'island',chosen:!!sceneStored(),raf:0,tx:0,ty:0,bound:false,mo:null,homeT:0};
 function immersiveOn(){return IMMERSIVE.on}
 /* A small machine's own screen (a Pi) draws only the light scenes. Measured with software
    rendering, as a Pi without GPU drawing has it: the Town, the World and the Mind took every
@@ -39,13 +42,35 @@ function liteScreen(){
   if(p&&typeof p.small==='boolean')return p.small&&!p.remote_client;
   try{return localStorage.getItem('screen.lite')==='1'}catch(e){return false}
 }
-function immersiveSceneNow(){const s=IMMERSIVE.scene;return liteScreen()&&!LITE_SCENES[s]?'aurora':s}
+/* Is this machine a Zero? PLATFORM arrives late, so the last answer heard is kept too. */
+function zeroScreen(){
+  let p=null;try{p=PLATFORM}catch(e){}
+  if(p&&p.zero&&typeof p.zero==='object')return !!(p.zero.hub||p.zero.on_hub);
+  try{return localStorage.getItem('screen.zero')==='1'}catch(e){return false}
+}
+function immersiveSceneNow(){
+  let s=IMMERSIVE.scene;
+  if(!IMMERSIVE.chosen&&zeroScreen())s='aurora';
+  return liteScreen()&&!LITE_SCENES[s]?'aurora':s;
+}
 /* The platform answer arrived: remember it for the next first paint, and redraw only when
    it changes what this screen shows. */
 function liteScreenSet(){
   const on=liteScreen(),was=document.body.classList.contains('lite-screen');
-  try{localStorage.setItem('screen.lite',on?'1':'0')}catch(e){}
-  if(on!==was)applyImmersive();
+  let zeroWas=false;try{zeroWas=localStorage.getItem('screen.zero')==='1'}catch(e){}
+  const zero=zeroScreen();
+  try{localStorage.setItem('screen.lite',on?'1':'0');localStorage.setItem('screen.zero',zero?'1':'0')}catch(e){}
+  if(on!==was||zero!==zeroWas)applyImmersive();
+  townIntro();
+}
+/* Bento opens on the Town. A browser that chose another scene before that was the default
+   is moved to the Town once, after the update, with a toast to go back. */
+function townIntro(){
+  try{if(localStorage.getItem('immersive.town'))return;localStorage.setItem('immersive.town','1')}catch(e){return}
+  if(!IMMERSIVE.on||!IMMERSIVE.chosen||zeroScreen()||liteScreen()||IMMERSIVE.scene==='island')return;
+  const was=IMMERSIVE.scene,names={aurora:'Aurora',movement:'Movement',crew:'Crew',office:'Office',hq:'Office HQ',world:'World',mind:'Mind'};
+  setImmersiveScene('island');
+  if(typeof toast==='function')toast('Bento now opens on the Town.',{label:'Keep '+(names[was]||was),go:()=>setImmersiveScene(was),ms:12000});
 }
 function applyImmersive(){
   const scene=immersiveSceneNow();
@@ -92,7 +117,7 @@ function applyImmersive(){
 var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island'];
 function setImmersiveScene(scene){
   scene=IMMERSIVE_SCENES.indexOf(scene)<0?'aurora':scene;
-  IMMERSIVE.scene=scene;localStorage.setItem('immersive.scene',scene);
+  IMMERSIVE.scene=scene;IMMERSIVE.chosen=true;try{localStorage.setItem('immersive.scene',scene)}catch(e){}
   applyImmersive();
   if(typeof loadWallpaper==='function')loadWallpaper();
   if(typeof refreshApp==='function')refreshApp('settings');

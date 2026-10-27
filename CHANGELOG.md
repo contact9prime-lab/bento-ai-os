@@ -2,6 +2,11 @@
 
 ## 0.6.98 — 2026-10-27
 
+**Bento opens on the Town, and you can tap what's on it.** In the Town and Office HQ, the Brain, the
+FILES sign and the agents' names did nothing when clicked. Now the Brain opens your memory, FILES opens
+the Files app, a name puts that agent in the prompt bar, and a click on a room's ground takes you inside.
+A browser that never chose a scene opens on the Town (a Zero keeps Aurora). If you had chosen another
+scene, the update moves you to the Town once, with a toast to keep the old one.
 **The Brief on the Stage can be acted on.** Each card now opens its item in the Brief, where Done,
 Later and a decision's choices are. The story says what the Brief is ("what your missions filed for
 you"), each count says what it means, and each card says what it is about, who filed it and, for a
