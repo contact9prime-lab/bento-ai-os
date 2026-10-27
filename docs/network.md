@@ -495,6 +495,9 @@ Each sensor or switch is named `<pi>/esp.<node>.<kind>.<name>`, for example
 `zone-cold/esp.cold-2.switch.compressor`. Sensors, contacts and text are read. Switches, lights and
 fans can also be turned on or off, and a set is read back from the node before it counts as done.
 
+To try it on a desk first, [An ESP32 on your bench](esp32-bench.md) wires an ESP32-S3 with a
+microphone, a touch pad, a vibration switch and a speaker, with a ready ESPHome file.
+
 The node needs `web_server:` in its YAML, because that's what the Pi talks to:
 
 ```yaml

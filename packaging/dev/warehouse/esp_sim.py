@@ -108,6 +108,20 @@ class Node:
         self.add("switch", "Charger", False)
         self.add("sensor", "WiFi signal", -55.0, "dBm", 0, category="diagnostic")
 
+    def _make_bench(self):
+        # the same entities, names, units and kinds as packaging/esphome/bento-bench.yaml
+        self.add("sensor", "Chip temperature", 41.5, "°C")
+        self.add("sensor", "WiFi signal", -52.0, "dBm", 0)
+        self.add("sensor", "Uptime", 0.0, "s", 0)
+        self.add("sensor", "Free memory", 8_150_000.0, "B", 0)
+        self.add("sensor", "Sound level", 42.0, "dB")
+        self.add("binary_sensor", "Touch", False)
+        self.add("binary_sensor", "Vibration", False)
+        self.add("text_sensor", "IP address", self.host)
+        self.add("text_sensor", "ESPHome version", "2026.6.5")
+        self.add("light", "Status LED", False)
+        self.add("switch", "Alarm", False)
+
     def tick(self, dt):
         """Move the room by dt seconds of the model. Returns the entities that changed."""
         g = lambda n: self.ents[n]         # noqa: E731
@@ -140,6 +154,13 @@ class Node:
                     m.value = not m.value
                     changed.append(m)
                 changed += [t, h]
+            elif self.kind == "bench":
+                t, snd, up = g("sensor/Chip temperature"), g("sensor/Sound level"), g("sensor/Uptime")
+                t.value += ((48.0 if g("switch/Alarm").value else 41.5) - t.value) * min(1, 0.02 * dt) \
+                    + random.uniform(-0.05, 0.05)
+                snd.value = max(30.0, (78.0 if g("switch/Alarm").value else 42.0) + random.uniform(-3, 3))
+                up.value += dt
+                changed += [t, snd, up]
             elif self.kind == "charger":
                 on = g("switch/Charger").value
                 b, p = g("sensor/Forklift battery"), g("sensor/Charger power")
@@ -310,6 +331,8 @@ LAYOUTS = {
         "zone-aisle": [("aisle-1", "Aisles 1-6", "aisle"), ("aisle-2", "Aisles 7-12", "aisle")],
     },
     "one": {"zone": [("cold-1", "Cold room A", "coldroom"), ("dock-1", "Loading dock", "dock")]},
+    # one ESP32-S3 on a bench, as packaging/esphome/bento-bench.yaml builds it
+    "bench": {"bench": [("bench-1", "Bench", "bench")]},
 }
 
 

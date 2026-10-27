@@ -13,6 +13,11 @@ adds and removes them; `bento network esp` does the same from a terminal. Tested
 that speaks ESPHome's own API and mDNS: a warehouse of three zone Pis and six nodes, run from one
 hub's chat. A batch of readings sent twice is now always kept once.
 
+**An ESP32 on your bench.** `packaging/esphome/bento-bench.yaml` and [a guide](docs/esp32-bench.md) wire an
+ESP32-S3 with a microphone, a touch pad, a vibration switch, a small screen and a speaker, so you can try the
+above with a few cheap parts: ask for its chip temperature or the room's sound level, and switch its LED or an
+alarm from chat.
+
 ## 0.7.2 — 2026-10-27
 
 **Agents read and set a Pi's hardware through two tools, get and set.** Ask about a Pi's temperature

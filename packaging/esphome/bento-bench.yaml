@@ -1,0 +1,206 @@
+# A bench node for Bento: an ESP32-S3 DevKit (N16R8) with a few cheap parts, flashed with ESPHome,
+# looked after by a Pi set up from your hub (docs/esp32-bench.md).
+#
+# What Bento will see (Devices -> the Pi -> Hardware -> ESP32 nodes):
+#   sensor          Chip temperature, WiFi signal, Uptime, Free memory, Sound level
+#   binary_sensor   Touch, Vibration
+#   text_sensor     IP address, ESPHome version
+#   light           Status LED            (on/off from chat, asked every time)
+#   switch          Alarm                 (beeps on the speaker until switched off)
+#
+# Parts and pins (ESP32-S3 DevKitC-1, N16R8). GPIO 35-37 belong to the octal PSRAM: never use them.
+#   0.91" OLED SSD1306 128x32 (I2C)   SDA GPIO8, SCL GPIO9, VCC 3V3, GND
+#   TTP223 touch pad                  OUT GPIO4, VCC 3V3, GND
+#   SW-18010P vibration switch        one leg GPIO5, the other GND
+#   INMP441 I2S microphone            SCK GPIO12, WS GPIO13, SD GPIO11, L/R GND, VDD 3V3, GND
+#   MAX98357 I2S amplifier            BCLK GPIO15, LRC GPIO16, DIN GPIO17, VIN 5V, GND; a 1.5" speaker on +/-
+#   Onboard RGB LED                   GPIO48 (GPIO38 on board revision 1.1)
+#
+# Validated with ESPHome 2026.6.5 (`esphome config bento-bench.yaml`).
+
+substitutions:
+  name: bench-1
+  friendly: Bench
+  led_pin: GPIO48
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: ${name} setup
+
+captive_portal:
+
+# how a Pi finds the node: the native API announces _esphomelib._tcp over mDNS
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# what the Pi talks to. Plain HTTP: keep the node on its own network or the Pi's Wi-Fi.
+web_server:
+  port: 80
+  version: 3
+  auth:
+    username: bento
+    password: !secret web_password
+
+debug:
+  update_interval: 30s
+
+i2c:
+  sda: GPIO8
+  scl: GPIO9
+  scan: false
+
+i2s_audio:
+  - id: mic_bus
+    i2s_lrclk_pin: GPIO13
+    i2s_bclk_pin: GPIO12
+  - id: amp_bus
+    i2s_lrclk_pin: GPIO16
+    i2s_bclk_pin: GPIO15
+
+microphone:
+  - platform: i2s_audio
+    id: mic
+    i2s_audio_id: mic_bus
+    adc_type: external
+    i2s_din_pin: GPIO11
+    pdm: false
+    channel: left
+    bits_per_sample: 32bit
+
+speaker:
+  - platform: i2s_audio
+    id: amp
+    i2s_audio_id: amp_bus
+    dac_type: external
+    i2s_dout_pin: GPIO17
+
+rtttl:
+  id: chime
+  speaker: amp
+
+sensor:
+  - platform: internal_temperature
+    name: Chip temperature
+    update_interval: 10s
+  - platform: wifi_signal
+    name: WiFi signal
+    update_interval: 30s
+  - platform: uptime
+    name: Uptime
+    update_interval: 60s
+  - platform: debug
+    free:
+      name: Free memory
+  - platform: sound_level
+    microphone: mic
+    passive: false
+    measurement_duration: 2s
+    rms:
+      id: sound_rms
+      name: Sound level
+      filters:
+        # INMP441 reads dB below full scale; +94 dB is about the sound level it was built for
+        - offset: 94
+        - throttle_average: 5s
+
+binary_sensor:
+  - platform: gpio
+    id: touch
+    name: Touch
+    pin: GPIO4
+    filters:
+      - delayed_off: 100ms
+  - platform: gpio
+    id: vibration
+    name: Vibration
+    pin:
+      number: GPIO5
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      # the spring closes in short pulses; one knock reads as two seconds of "on"
+      - delayed_off: 2s
+
+text_sensor:
+  - platform: wifi_info
+    ip_address:
+      name: IP address
+  - platform: version
+    name: ESPHome version
+    hide_timestamp: true
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: status_led
+    name: Status LED
+    pin: ${led_pin}
+    num_leds: 1
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+
+script:
+  - id: alarm_loop
+    mode: restart
+    then:
+      - while:
+          condition:
+            switch.is_on: alarm_switch
+          then:
+            - rtttl.play:
+                id: chime
+                rtttl: "alarm:d=8,o=6,b=180:c,e,g,c7,p,c7,g,e,c"
+            - delay: 3s
+
+switch:
+  - platform: template
+    id: alarm_switch
+    name: Alarm
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - script.execute: alarm_loop
+    on_turn_off:
+      - rtttl.stop:
+          id: chime
+
+font:
+  - file: "gfonts://Roboto"
+    id: small
+    size: 10
+
+display:
+  - platform: ssd1306_i2c
+    model: SSD1306 128x32
+    address: 0x3C
+    update_interval: 1s
+    lambda: |-
+      it.printf(0, 0, id(small), "%s", id(touch).state ? "touch" : "bento bench");
+      it.printf(0, 11, id(small), "sound %.0f dB", id(sound_rms).has_state() ? id(sound_rms).state : 0.0f);
+      it.printf(0, 22, id(small), "%s", id(vibration).state ? "VIBRATION" : "still");

@@ -140,6 +140,33 @@ def test_only_the_pis_own_hub_changes_its_nodes(sim, monkeypatch):
     assert espnodes.answer({}, {"label": "office"}, {"action": "list"})["nodes"][0]["name"] == "cold-1"
 
 
+def test_the_bench_board_reads_as_bento_will_see_it(tmp_path, monkeypatch):
+    """packaging/esphome/bento-bench.yaml: an ESP32-S3 with a mic, a touch pad, a vibration switch,
+    its RGB LED and an alarm on the speaker. The stand-in serves the same entities, so the names,
+    kinds and units Bento files them under are pinned here."""
+    monkeypatch.setattr(teamlink, "home", lambda: tmp_path)
+    monkeypatch.setenv("AGENTOS_VAULT_KEYRING", "0")
+    monkeypatch.setattr(vault, "_home", lambda: tmp_path)
+    espnodes._LAST.clear()
+    base = _free(1)
+    node = esp_sim.build("bench", base, auth={"bench-1": ("bento", "pw")})[0]
+    esp_sim.serve([node], speed=0.0)
+    time.sleep(0.2)
+    assert espnodes.add("bench-1", "127.0.0.1", base, user="bento", password="pw")["ok"]
+    items = {i["id"]: i for i in espnodes.items()}
+    assert items["esp.bench-1.sensor.chip_temperature"]["unit"] == "°C"
+    assert items["esp.bench-1.sensor.sound_level"]["unit"] == "dB"
+    assert items["esp.bench-1.text_sensor.esphome_version"]["value"] == "2026.6.5"
+    assert items["esp.bench-1.binary_sensor.vibration"]["can"] == ["read"]
+    for iid in ("esp.bench-1.light.status_led", "esp.bench-1.switch.alarm"):
+        assert items[iid]["can"] == ["read", "write"] and devio.SET_ID.fullmatch(iid)
+    led = espnodes.write("esp.bench-1.light.status_led", "on")
+    assert led["ok"] and led["detail"] == "on" and node.ents["light/Status LED"].value is True
+    yaml = (ROOT / "packaging/esphome/bento-bench.yaml").read_text()
+    for e in node.ents.values():
+        assert f"name: {e.name}" in yaml, f"{e.name} is in the stand-in but not in the YAML"
+
+
 def test_the_doors():
     srv = (ROOT / "agentos/server.py").read_text()
     h = srv[srv.index("async def _esp_from_hub"):srv.index("def devio_resource_here")]
