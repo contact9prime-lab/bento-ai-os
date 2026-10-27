@@ -104,7 +104,7 @@ def test_the_flat_office_decides_and_the_3d_one_draws():
     assert "if(OFFICE.L&&OFFICE.L.radial)return of3Seat();" in FLAT
     # one rule for the frames, and one door for a tap
     assert "function officeFrameOf(p,seated)" in FLAT and "officeFrameOf(p,!!seat)" in SRC
-    assert "return officeTapPerson(best)" in SRC
+    assert "return of3PersonOpen(best)" in SRC and "if(!of3HQ())return officeTapPerson(p);" in SRC
     # nothing but the Office's own pulse sends a spark to the Brain
     assert re.findall(r"\bof3Tool\(", FLAT) == ["of3Tool("]
     assert "of3Tool(who,label)" in FLAT

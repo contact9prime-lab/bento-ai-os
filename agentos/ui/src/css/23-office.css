@@ -241,6 +241,11 @@ body.immersive #office-scene:not(.hq) canvas.of-cv3{box-shadow:none;border-radiu
 .of3-badge{width:22px;height:22px;border-radius:50%;background:#ef4444;color:#fff;font-size:10.5px;font-weight:900;display:grid;place-items:center;border:2px solid #191827}
 .of3-meet{font-size:11px;font-weight:800;padding:3px 8px;border-radius:7px;background:#fff7d6;color:#7c2d12;border:2px solid #f59e0b}
 .of3-files{font:800 9px/1 ui-monospace,monospace;letter-spacing:.1em;color:#cbd5e1;padding:2px 5px;border-radius:5px;background:rgba(15,16,32,.7)}
+.of3-brain,.of3-files,.of3-tag{pointer-events:auto;cursor:pointer}
+.of3-brain:hover,.of3-files:hover,.of3-brain:focus-visible,.of3-files:focus-visible{border-color:var(--acc,#8b5cf6);outline:none}
+.of3-files{border:1px solid transparent}
+.of3-ui.hq .of3-files{padding:6px 9px;font-size:10px}
+body.dev-touch .of3-ui.hq .of3-files{min-height:var(--tap,40px);display:flex;align-items:center}
 .of3-files em{font-style:normal;color:#fff;background:#ef4444;border-radius:8px;padding:0 4px;margin-left:3px}
 /* inside one room: the whole department, desk or not */
 .of3-ui>.of3-roster{left:auto;right:12px;top:12px;bottom:12px;width:250px;z-index:2;pointer-events:auto;overflow:auto;transform:none;will-change:auto;

@@ -2409,6 +2409,13 @@ Eight rules:
   only thing moving (and a windmill's sails), at 12 frames a second when `OF3.hq` and 6 otherwise.
 The Town scene is Office HQ with `OFFICE_SCENE.island` (body gets `imm-hq` and `imm-island`): a town
 switch restarts the scene as an HQ switch does.
+**The Town is where Bento opens, and its labels are doors** (`IMMERSIVE.chosen`, `zeroScreen`, `townIntro`
+in 01b; `of3Door`, `of3FilesOpen`, `of3PersonOpen` in 24k; `tests/test_town_default.py`). Reported as "I
+am not able to click on the memories, files". In HQ and the Town the canvas is in the wall and takes no
+tap, so the Brain, FILES and the names are buttons over it, and a click on open ground reaches `of3Tap`
+(the wheel's argument; a drag is not a click). A browser that never chose a scene gets the Town, a Zero
+gets Aurora (remembered as `screen.zero` for the first paint). `townIntro` moves a browser that chose
+another scene once (`immersive.town`), after the platform answered, with a toast to keep the old one.
 
 **The playground off the Office** (`agentos/playground.py`, `agentos/comic.py`, `24e-playstrip.js`,
 `00f-comic.js`; `tests/test_playground.py`). Same rules, other media:
