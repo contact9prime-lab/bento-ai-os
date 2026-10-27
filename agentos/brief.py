@@ -348,9 +348,32 @@ def _greeting(now: float) -> str:
     return "Good morning" if 5 <= h < 12 else "Good afternoon" if h < 17 else "Good evening"
 
 
+def _sentence(text: str, n: int = 140) -> str:
+    """The first sentence of an item's body, cut at a word: the context a card needs."""
+    t = " ".join((text or "").split())
+    m = re.match(r"(.+?[.!?])(\s|$)", t)
+    return _short(m.group(1) if m else t, n)
+
+
+def _mission_words(m: str) -> str:
+    return " ".join((m or "").replace("_", "-").split("-")).strip()
+
+
 def _line(i: dict) -> dict:
-    bits = [b for b in (i.get("who"), f"by {i['due']}" if i.get("due") else "", i.get("mission")) if b]
-    return {"title": i["title"][:80], "text": " · ".join(bits)[:200]}
+    """One card: the title whole (cut at a word), what it is about, who filed it, and the
+    door to the item itself. A decision says its choices."""
+    text = _sentence(i.get("body") or "")
+    if i["kind"] == "decide" and i.get("options"):
+        text = (text + " " if text else "") + "Choices: " + " · ".join(i["options"])
+    who = [b for b in (i.get("who"), f"by {i['due']}" if i.get("due") else "",
+                       f"from {_mission_words(i['mission'])}" if i.get("mission") else "") if b]
+    return {"title": _short(i["title"], 100), "text": text[:200], "note": " · ".join(who)[:120],
+            "open": f"brief:{i['id']}" if i.get("id") else ""}
+
+
+# What each part of the Brief is, said once on its tile, so a count is never a bare number.
+MEANS = {"needs_you": "only you can do these", "decide": "an agent is waiting for your answer",
+         "fyi": "worth knowing, nothing to do", "done": "finished for you"}
 
 
 def story(items: list, now: float, since: float = 0, agent: str = "", summary: str = "") -> list[dict]:
@@ -364,27 +387,31 @@ def story(items: list, now: float, since: float = 0, agent: str = "", summary: s
     new = [i for i in live if (i.get("created_at") or 0) > since] if since else []
     who = agent or "your agent"
     scenes = []
-    nums = [{"label": LABELS[k], "value": str(c[k])} for k in KINDS if c.get(k)]
+    nums = [{"label": LABELS[k], "value": str(c[k]), "note": MEANS[k], "open": f"brief:{k}"}
+            for k in KINDS if c.get(k)]
     if new:
         nums.append({"label": "New since the last Brief", "value": str(len(new))})
     head = f"{_greeting(now)}. " + (headline(c).replace(" · ", ", ") + "." if live else "Nothing is waiting for you.")
+    # the first thing heard says what this is: what the missions filed, to act on
+    about = ("This is what your missions filed for you. Tap a card to act on it." if live else "")
     scenes.append({"kind": "numbers", "title": "Your Brief", "source": "your Brief",
-                   "caption": summary or head,
+                   "caption": (summary or head) + (" " + about if about else ""),
                    "say": (summary or head) + (f" {len(new)} of them came in since the last Brief." if new else ""),
                    "items": nums or [{"label": "Waiting for you", "value": "0"}]})
     need = [i for i in live if i["kind"] == "needs_you"]
     if need:
-        scenes.append({"kind": "steps", "title": "What needs you", "items": [_line(i) for i in need[:SHOW]],
-                       "caption": f"{len(need)} thing{'s' if len(need) != 1 else ''} only you can do"
-                                  + (f", {len(need) - SHOW} more in the Brief" if len(need) > SHOW else "") + ".",
+        scenes.append({"kind": "steps", "ordered": False, "title": "What needs you",
+                       "items": [_line(i) for i in need[:SHOW]],
+                       "caption": f"{len(need)} thing{'s' if len(need) != 1 else ''} your missions can't finish without you"
+                                  + (f", {len(need) - SHOW} more in the Brief" if len(need) > SHOW else "")
+                                  + ". Tap one to see it and mark it done.",
                        "say": "What needs you. " + " ".join(i["title"].rstrip(".") + "." for i in need[:3])})
     dec = [i for i in live if i["kind"] == "decide"]
     if dec:
-        scenes.append({"kind": "steps", "title": "Decisions waiting",
-                       "items": [{"title": i["title"][:80], "text": " / ".join(i.get("options") or [])[:200]}
-                                 for i in dec[:SHOW]],
+        scenes.append({"kind": "steps", "ordered": False, "title": "Decisions waiting",
+                       "items": [_line(i) for i in dec[:SHOW]],
                        "caption": (f"{len(dec) - SHOW} more in the Brief. " if len(dec) > SHOW else "")
-                                  + "Each answer goes back to the agent that asked.",
+                                  + "Tap one to choose. Your answer goes back to the agent that asked.",
                        "say": f"{len(dec)} decision{'s' if len(dec) != 1 else ''} waiting. "
                               + " ".join(i["title"].rstrip(".?") + "?" for i in dec[:2])})
     by: dict = {}
@@ -401,11 +428,13 @@ def story(items: list, now: float, since: float = 0, agent: str = "", summary: s
                        "say": f"It comes from {len(by)} missions; {top[0][0]} filed the most."})
     fyi = [i for i in live if i["kind"] == "fyi"]
     if fyi:
-        scenes.append({"kind": "steps", "title": "Worth knowing", "items": [_line(i) for i in fyi[:SHOW]],
+        scenes.append({"kind": "steps", "ordered": False, "title": "Worth knowing",
+                       "items": [_line(i) for i in fyi[:SHOW]],
                        "say": "Worth knowing. " + " ".join(i["title"].rstrip(".") + "." for i in fyi[:2])})
     done = [i for i in live if i["kind"] == "done"]
     if done:
-        scenes.append({"kind": "steps", "title": f"Done for you by {who}", "items": [_line(i) for i in done[:SHOW]],
+        scenes.append({"kind": "steps", "ordered": False, "title": f"Done for you by {who}",
+                       "items": [_line(i) for i in done[:SHOW]],
                        "say": f"And {len(done)} thing{'s' if len(done) != 1 else ''} done for you."})
     return scenes
 

@@ -149,3 +149,34 @@ def test_the_page_plays_it_and_says_so_once():
     loop = srv[srv.index("async def _stage_loop"):][:1500]
     assert "briefmod.due_at(" in loop and '["last_at"] = due' in loop, "claimed before it runs: once"
     assert 'first=not sched["last_at"]' in loop, "the first check after an update only marks the time"
+
+
+def test_a_brief_card_says_what_it_is_and_opens_its_item():
+    """Reported with the morning Brief on the Stage: "I can't click or do anything there"
+    and "context of what the brief is trying to do is missing". Cards were numbered steps
+    joined by arrows, titles cut mid-word, a decision showed bare options, and nothing
+    opened the item."""
+    long = "Add the SUPERSEDED banner to the old audit plan file (no one on the team can edit it today, so the wrong plan keeps being read by people)"
+    items = [{**_item(1, "needs_you", long, "bento-growth-launches-content-desk"), "id": "a1b2c3d4e5",
+              "who": "auditor", "body": "The plan was replaced last week. Readers still land on it."},
+             {**_item(2, "decide", "Where should the demo GIF go?"), "id": "0f0f0f0f0f",
+              "body": "The README links it.", "options": ["docs/assets/", ".github/"]}]
+    scenes = [stage.clean(s)[0] for s in brief.story(items, _at(9))]
+    first, need, dec = scenes[0], scenes[1], scenes[2]
+    assert "what your missions filed for you" in first["caption"] and "Tap a card" in first["caption"]
+    assert first["items"][0]["open"] == "brief:needs_you" and first["items"][0]["note"]
+    assert need["ordered"] is False and dec["ordered"] is False, "a list, not a sequence"
+    card = need["items"][0]
+    assert card["open"] == "brief:a1b2c3d4e5"
+    assert card["title"].endswith("…") and " ".join(card["title"][:-1].split()) in long, "cut at a word"
+    assert card["text"] == "The plan was replaced last week." and "from bento growth" in card["note"]
+    assert dec["items"][0]["text"] == "The README links it. Choices: docs/assets/ · .github/"
+    assert "Tap one to choose" in dec["caption"]
+
+
+def test_a_scene_can_only_open_a_brief_door():
+    sc, _ = stage.clean({"kind": "steps", "title": "x", "items": [
+        {"title": "a", "open": "brief:abcdef12"}, {"title": "b", "open": "javascript:alert(1)"},
+        {"title": "c", "open": "app:settings"}]})
+    assert [i["open"] for i in sc["items"]] == ["brief:abcdef12", "", ""]
+    assert sc["ordered"] is True, "a model's steps stay steps"
