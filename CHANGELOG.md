@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.99 — 2026-10-27
+
+No release notes were written for this one; the commits since 0.6.98 are what changed (`bento update` lists them).
+
 ## 0.6.98 — 2026-10-27
 
 **Bento opens on the Town, and you can tap what's on it.** In the Town and Office HQ, the Brain, the
