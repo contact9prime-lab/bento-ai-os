@@ -281,7 +281,13 @@ async def ask_hardware(lk: dict) -> dict:
         return {"ok": False, "error": f"{lk.get('label')} has no address on this hub's list"}
     old = ((r.get("hardware") or {}) if r.get("hardware") else None)
     events = hardware.diff(old, hw)
-    inventory.record(r["ip"], r.get("mac") or "", hardware=hw)
+    extra = {}
+    if isinstance(got.get("permits"), dict):
+        # what it lets its hub use, as it says itself: the hub's copy follows the machine
+        from . import devio
+        g, st = devio.clean_permits(got["permits"].get("get"), got["permits"].get("set"))
+        extra["device_permits"] = {"get": g, "set": st, "at": float(got["permits"].get("at") or 0)}
+    inventory.record(r["ip"], r.get("mac") or "", hardware=hw, **extra)
     if hw.get("quick"):
         _HW[lk.get("id") or ""] = hw["quick"]
     return {"ok": True, "name": r.get("display") or lk.get("label") or "", "hardware": hw,
@@ -300,6 +306,22 @@ async def faces_remote(lk: dict, change: dict) -> dict:
         got = {"ok": False, "error": _why(e)}
     if not got.get("ok") and "unknown request" in str(got.get("error") or ""):
         got["error"] = "it runs a Bento older than 0.6.90: update it first, then its screen can be changed from here"
+    return got
+
+
+async def device_call(lk: dict, req: dict) -> dict:
+    """Read, set or permit one of a Zero's items over its link (wire ops device_get, device_set,
+    device_permits; devio.answer on the Zero). The request carries who asked and why."""
+    from . import teamlink
+    from . import zero as zeromod
+    if not zeromod.ships_to(lk):
+        return {"ok": False, "error": "only a machine this hub set up lends it its hardware"}
+    try:
+        got = await teamlink.call(lk, req, timeout=20)
+    except Exception as e:
+        got = {"ok": False, "error": _why(e)}
+    if not got.get("ok") and "unknown request" in str(got.get("error") or ""):
+        got["error"] = "it runs a Bento older than 0.7.2: update it, then its hardware can be used from here"
     return got
 
 

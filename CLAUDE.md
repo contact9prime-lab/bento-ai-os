@@ -3333,6 +3333,23 @@ for the last 90 days". Four rules:
 - **The chart is text nodes** (an item's name is another machine's words) with a crosshair, keyboard, a
   table of the numbers, and the machine's events on the line.
 
+**A Zero's hardware is used through two tools, get and set, and two gates** (`agentos/devio.py`, `device_get`/
+`device_set` in tools.py, wire ops `device_get`/`device_set`/`device_permits`, `server._device_tool`/`_device_from_hub`,
+`/api/devices/permits|read`, Devices → What agents may use, `bento network get|set|permit`; `tests/test_pi_get_set.py`).
+Asked for as "the Pi has two MCPs, get and set … the hub is responsible for executing … every set is asked". Found
+because Claude Code asked about a Pi read the hub's `inventory.json` with its own Bash: no door existed. Five rules:
+- **The Pi decides what it lends** (`devices.json` on the Pi, set from Devices): a closed set of readers (`GET_ID`)
+  and one setter (a pin's level via `pinctrl`, read back). Discovered is not usable. A pin lent to a bus is refused.
+- **The hub's gate decides who** (`device.get`/`device.set` on `device:<machine>/<item>`, lower case). A get with no
+  grant asks (remember = the grant); a set with no grant is refused (`device-ungranted`); permitting in Devices writes
+  your own agent's grants (`devio.sync_grants`, source `device`, only those rows are ever revoked).
+- **Every set is asked** (agent.py, after the gate, whatever the grant or autonomy, no remember). From a Zero's own
+  chat the approver is `_linked_approval`, which sends a `device_set` to the owner's Telegram when it is polling.
+- **Who and why are the agent's** (`_who`/`_why` injected by the loop from `principal` and `_said`); in a Zero's
+  section the machine is that Zero's, injected BEFORE the decision so the gate decides the machine that is reached.
+- **Both sides write it down**: a `device` diary line and a `device.*` ledger row on each machine (`devevents` skips
+  the ledger copies). Offered on the team door and to a Zero's chat, so a forwarded brain calls `mcp__bento__device_*`.
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their

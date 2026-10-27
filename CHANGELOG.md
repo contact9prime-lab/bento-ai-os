@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.2 — 2026-10-27
+
+**Agents read and set a Pi's hardware through two tools, get and set.** Ask about a Pi's temperature
+or ask to switch a pin in any chat, a forwarded Claude Code one included, and the hub calls the Pi
+over its encrypted link with who asked and why. Nothing is usable until you allow it in Devices →
+Hardware → What agents may use (Off, Read, or Read and set for a pin). The Pi keeps that list itself
+and refuses anything not on it. A specialist, an app or a mission asks you before its first read.
+Every set is asked, whatever your autonomy, and a set asked at the Pi's own screen goes to your
+Telegram when it's connected. A set is read back from the pin, and a pin lent to I2C, SPI or a serial
+port is never driven. Both machines write every read and set in their diary and ledger.
+`bento network get|set|permit` does the same from a terminal.
+
 ## 0.7.1 — 2026-10-27
 
 **Each sensor on a Pi over the last 90 days.** A Pi set up from this hub samples its readings every

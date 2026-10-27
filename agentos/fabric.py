@@ -890,6 +890,8 @@ ZERO_CHAT_TOOLS = ("delegate", "huddle", "department_task", "linked_teams",
                    "remember", "recall", "kg_query", "kg_add", "fetch_url",
                    # its own screen: "put a timer on" said at the Pi (only its own, _screen_tool)
                    "screen_face",
+                   # its own hardware: read, and set with the owner's yes (devio.py)
+                   "device_get", "device_set",
                    # "every morning at 8, tell me…": runs on the hub as this chat does, answers on its screen
                    "schedule_task")
 ZERO_CHAT_CLI_TOOLS = ("WebSearch", "WebFetch")

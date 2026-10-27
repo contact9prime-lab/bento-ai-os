@@ -1113,7 +1113,8 @@ class Listener:
                         out["readings"] = telemetry.BUFFER.since(req.get("readings_since"))
             return out
         if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat", "zero_hardware",
-                  "zero_update", "zero_say", "zero_face", "zero_refresh", "edge_run", "hear") and self.on_ask:
+                  "zero_update", "zero_say", "zero_face", "zero_refresh", "device_get", "device_set",
+                  "device_permits", "edge_run", "hear") and self.on_ask:
             out = await self.on_ask(lk, req)
             if isinstance(out, dict) and "identity" not in out:
                 out["identity"] = self._ident(lk.get("owner") or "")

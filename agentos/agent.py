@@ -992,6 +992,18 @@ class Agent:
             # had never seen it came from outside. And the space it happens in: a Zero's
             # task on its hub is worked inside that Zero's section (zeromind.py).
             args = {**args, "_taint": list(self.taint), "_space": self.space_id or ""}
+        elif name in ("device_get", "device_set"):
+            # who asked and why travel to the machine and into both ledgers: the agent's own
+            # name and its own words, never the model's arguments. In a Zero's own chat the
+            # machine is that Zero, so the gate decides on the machine the call reaches.
+            from .tools import _zero_label_of
+            args = {k: v for k, v in args.items() if k not in ("_who", "_why")}
+            zl = _zero_label_of(self.space_id) if self.space_id else ""
+            if zl:
+                args["machine"] = zl
+            args.update({"_who": self.principal.id or self.cfg.get("agent_name") or "your agent",
+                         "_why": " ".join(str(getattr(self, "_said", "") or "").split())[:300],
+                         **({"space_id": self.space_id} if self.space_id and "space_id" not in args else {})})
         elif name == "brief_item":
             # which mission and run wrote it: injected from the agent, never an
             # argument — a model must not be able to write into another mission's items
@@ -1054,6 +1066,13 @@ class Agent:
             # code from a specialist: a person says yes each time, and may remember it
             dec.effect = "ask"
             must_person = "code from a specialist"
+        elif name == "device_set" and dec.effect == "allow":
+            # a set changes something in the room: a grant says it MAY, a person says yes to
+            # each one, whatever the grant or the autonomy (devio.py). From a Zero's own
+            # screen the approver sends it to the owner's Telegram (server._linked_approval)
+            dec.effect = "ask"
+            dec.grant_offer = None
+            must_person = "every set is asked"
         elif name == "terminal_send" and args.get("_fg") and dec.effect == "allow" \
                 and dec.rule in ("default", ""):
             # keys into a running program in the person's terminal: a person says yes

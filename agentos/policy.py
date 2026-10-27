@@ -75,14 +75,14 @@ STAGES = (
     ("team", "Team matrix", "Who may ask whom, between your agents and linked teams."),
     ("rules", "Your rules", "Allow and deny rules, from you, a mission or a remembered approval."),
     ("default", "Default", "Nothing matched, so autonomy decides or a person is asked."),
-    ("person", "Always a person", "Power, installs and code from a specialist are confirmed every time."),
+    ("person", "Always a person", "Power, installs, code from a specialist and setting a device are confirmed every time."),
 )
 _STAGE_OF_RULE = {
     "hard-block": "hard", "audit-unavailable": "hard",
     "builtin-deny": "builtin", "reach": "reach", "channel-read-only": "channel",
     "taint": "taint", "quarantined": "rate", "steered": "rate",
     "message-off": "team", "message-flow": "team", "department-same": "team",
-    "swarm": "default", "democracy": "default", "io-gate": "rules",
+    "swarm": "default", "democracy": "default", "io-gate": "rules", "device-ungranted": "default",
     "person": "person",
 }
 
@@ -311,6 +311,11 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     # a machine's own screen: grantable apart from everything else, per machine
     if name == "screen_face":
         return "face.write", f"screen:{args.get('machine') or 'here'}"
+    # a Zero's hardware, per item: "may read the freezer's thermometer" and "may switch pin 17"
+    # are grants of their own, for one agent or one app (devio.py)
+    if name in ("device_get", "device_set"):
+        from .devio import resource as _dev
+        return ("device.get" if name == "device_get" else "device.set"), _dev(args.get("machine"), args.get("item"))
     if name in _SPACE:
         action, res = _SPACE[name]
         if not res:
@@ -1541,6 +1546,22 @@ class PDP(usersmod.Scoped):
             # models default open for everyone; restrict per principal with deny grants
             # (e.g. deny model.use model:anthropic/* for a subagent or app)
             return Decision("allow", rule="default")
+        if action == "device.get" and resource.endswith("/*") and principal.kind != "app":
+            # listing what a machine has, or which machines there are: what Devices shows.
+            # An app is somebody's JavaScript, so it asks even for the list
+            return Decision("allow", rule="default")
+        if action == "device.get":
+            # A reading from a machine in a room: only what a person permitted. Asked, and
+            # "remember" is the grant for this agent; unattended it ends in a refusal.
+            return Decision("ask", reason or f"{principal.id or 'Your agent'} wants to read {resource[7:]}. "
+                                             f"'Remember' lets it read that from now on.",
+                            rule="default", grant_offer=offer)
+        if action == "device.set":
+            # Setting something needs a standing grant first (Devices → the item → Read and
+            # set, or Permissions), and then a person's yes every time (agent.py)
+            return Decision("deny", f"{principal.id or 'your agent'} may not set {resource[7:]}: "
+                                    f"permit it in Devices, under that machine's hardware (Read and set)",
+                            rule="device-ungranted")
         if action in ("mail.read", "calendar.read") and principal.kind != "user":
             # A read, so never escalated by the taint ceiling (the second message
             # read in a triage must not need a human) — but the person's mailbox

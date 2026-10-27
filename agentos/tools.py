@@ -235,6 +235,8 @@ SAFE_TOOLS = {
     "set_avatar", "set_office", "set_wallpaper", "save_asset",
     # a machine's own screen: which face, which widgets. Cosmetic and undone with a tap
     "screen_face",
+    # a Zero's hardware, read: the gate decides it per item (device.get), devio.py
+    "device_get",
     "generate_image", "generate_wallpaper", "llm_generate",
     # to the owner's own chat; another chat or number is risky (see risk_of)
     "telegram_send", "whatsapp_send",
@@ -766,6 +768,7 @@ class Toolbox(usersmod.Scoped):
         self.whatsapp = None   # WhatsAppBridge, wired up in server startup
         self.broadcast = None  # UI event broadcaster, wired up in server startup
         self.screen = None     # async (machine, change, space_id) -> dict: screen faces (server)
+        self.devices = None    # async (verb, machine, item, value, range, space_id, who, why) -> str (server)
         self.broadcast_user = None  # the same, to one account's sessions only
         self.fabric = None     # ControlPlane, wired up in server startup
         self.pdp = None        # policy.PDP — the permission gate, wired up in server startup
@@ -3184,6 +3187,9 @@ class Toolbox(usersmod.Scoped):
             if classify_command(args.get("command", "")) == "risky":
                 return "risky", "Shell command that may modify the system."
             return "safe", ""
+        if name == "device_set":
+            return "risky", (f"Sets {args.get('item') or 'something'} on {args.get('machine') or 'a machine'} "
+                             f"to {args.get('value')}: it changes something in the room.")
         if name == "write_file":
             return "risky", f"Writes to {args.get('path', '?')}."
         if name == "app_window_open":
@@ -3972,6 +3978,26 @@ class Toolbox(usersmod.Scoped):
                          + f". Layouts: {', '.join(got.get('layouts') or [])}. Up to {got.get('max_widgets', 8)} widgets.")
         return " ".join(lines)
 
+    async def device_get(self, machine: str = "", item: str = "", range: str = "", space_id: str = "",
+                         _who: str = "", _why: str = "") -> str:
+        """Read a Zero's hardware through its hub (devio.py): with nothing, the machines; with a
+        machine, everything it has and what may be used; with an item, its value now, read on the
+        machine; with a range too, what the hub kept. Who asked and why go with the request,
+        injected by the agent loop, never the model's."""
+        if not self.devices:
+            return "[error] this machine has no hardware of other machines to read"
+        return await self.devices("get", machine, item, None, range, space_id or "", _who, _why)
+
+    async def device_set(self, machine: str = "", item: str = "", value: str = "", space_id: str = "",
+                         _who: str = "", _why: str = "") -> str:
+        """Set one item on a Zero (a header pin's level), asked of a person every time (agent.py)
+        and read back on the machine."""
+        if not self.devices:
+            return "[error] this machine has no hardware of other machines to set"
+        if not str(machine or "").strip() and not space_id or not str(item or "").strip():
+            return "[error] name the machine and the item, as device_get lists them"
+        return await self.devices("set", machine, item, value, "", space_id or "", _who, _why)
+
     async def set_avatar(self, who: str = "", skin: str = "", hair: str = "", style: str = "",
                          shirt: str = "", pants: str = "", glasses=None, blush=None,
                          outfit: str = "", reroll: bool = False) -> str:
@@ -4533,7 +4559,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())
@@ -5712,6 +5738,33 @@ DESKTOP_TOOL_SCHEMAS = [
             "required": ["who"]},
     },
     {
+        "name": "device_get",
+        "description": "Read the hardware of a small machine this hub set up (a Raspberry Pi or another Zero): "
+                       "its sensors, temperatures, power, Wi-Fi and pins. Call with nothing to list the machines; "
+                       "with machine to list everything it has, each item's id and whether it may be read or set; "
+                       "with machine and item to read it live on that machine; add range (day, week, month, "
+                       "quarter) for what the hub kept over that time, with min, max and average. Use this, "
+                       "never files or a shell, for anything about a machine's hardware: each item is permitted "
+                       "on its own, and every read is recorded on both machines.",
+        "parameters": {"type": "object", "properties": {
+            "machine": {"type": "string", "description": "The machine's name as the list gives it, e.g. raspberrypi."},
+            "item": {"type": "string", "description": "An item id from the list, e.g. cpu.temp, power.throttle, gpio.17, w1.28-0316."},
+            "range": {"type": "string", "enum": ["day", "week", "month", "quarter"],
+                      "description": "Kept readings over this range instead of a live read."}}},
+    },
+    {
+        "name": "device_set",
+        "description": "Set one item on a small machine this hub set up. Today that is a header pin's level "
+                       "(gpio.N to 1 or 0, on or off), and only a pin permitted to be set in Devices. A person "
+                       "is asked every time, and the pin is read back afterwards. Say in your reply why you are "
+                       "setting it: that reason travels with the request.",
+        "parameters": {"type": "object", "properties": {
+            "machine": {"type": "string", "description": "The machine's name, e.g. raspberrypi."},
+            "item": {"type": "string", "description": "What to set, e.g. gpio.17."},
+            "value": {"type": "string", "description": "1 or 0 (on or off)."}},
+            "required": ["machine", "item", "value"]},
+    },
+    {
         "name": "screen_face",
         "description": "Look at or change what a machine's own screen shows (the kiosk on a Raspberry Pi "
                        "or another small screen): which FACE it wears, and the widgets on a face of your "
@@ -6399,6 +6452,7 @@ SPACE_SCOPED_TOOLS = frozenset({
     "list_assets", "save_asset", "generate_image", "timeline",
     # how a schedule asked for at a Zero becomes that Zero's (scheduler.zero_job)
     "schedule_task",
-    # a Zero's chat runs in its section: that is how screen_face knows which screen is its own
-    "screen_face",
+    # a Zero's chat runs in its section: that is how screen_face knows which screen is its own,
+    # and the device tools which machine's hardware
+    "screen_face", "device_get", "device_set",
 })
