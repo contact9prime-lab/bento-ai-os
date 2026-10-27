@@ -4701,6 +4701,8 @@ def _network_cli(args):
         return _ties_cli(rest)
     if a == "hardware":
         return _hardware_cli(rest, args.check)
+    if a in ("get", "set", "permit"):
+        return _device_cli(a, rest, args)
     if a == "readings":
         # Devices → Hardware → a sensor: what the hub kept of it (telemetry.py)
         from . import telemetry as _tm
@@ -5441,6 +5443,90 @@ def _hardware_cli(rest, check: bool):
             print(f"  {t}")
         r = inv.find(inv.rows(), rest[0]) or r
     print(hwmod.text(r["display"], r.get("hardware") or {}))
+
+
+def _device_cli(a, rest, args):
+    """A Zero's get and set from a terminal (devio.py): `get MACHINE [ITEM]`, `set MACHINE ITEM
+    1|0`, `permit MACHINE [ITEM read|set|off]`. You are the person at the hub, so the hub's gate
+    isn't asked; the machine still answers only what it permits, and both sides write it down."""
+    import asyncio
+    import getpass
+    from . import devio
+    from . import inventory as inv
+    from . import teamlink
+    from . import ties as tiesmod
+    from . import users as usersmod
+    from . import zero as zeromod
+    from .memory import Store
+    if not rest:
+        sys.exit(f"  bento network {a} MACHINE" + {"get": " [ITEM]", "set": " ITEM 1|0", "permit": " [ITEM read|set|off]"}[a])
+    r = inv.find([x for x in inv.rows() if not x.get("ignored")], rest[0])
+    if not r:
+        sys.exit(f"  no machine called {rest[0]} on the list")
+    labels = {x.get("label") for x in r.get("links") or []}
+    lk = next((x for x in teamlink._load()["links"] if x.get("label") in labels and zeromod.ships_to(x)), None)
+    if not lk:
+        sys.exit(f"  {r['display']} isn't a machine this hub set up, so its hardware isn't used from here")
+    me = getpass.getuser()
+
+    def record(action, item, words):
+        try:
+            Store().log("device", f"{lk['label']}: {words}", {"event": action.split(".")[1], "link": lk["label"], "item": item})
+            Store().audit_add(principal_kind="user", principal_id="", surface="cli", action=action,
+                              resource=devio.resource(lk["label"], item), effect="allow", rule="person",
+                              outcome="ok", reason=words[:400])
+        except Exception:
+            pass
+
+    if a == "get" and len(rest) < 2 or a == "permit" and len(rest) < 3:
+        if a == "permit" and len(rest) == 2:
+            sys.exit(f"  bento network permit {rest[0]} {rest[1]} read|set|off")
+        print("\n".join("  " + x for x in devio.list_words(lk["label"], r).splitlines()))
+        return
+    if len(rest) < 2:
+        sys.exit(f"  bento network set {rest[0]} ITEM 1|0")
+    item = rest[1].strip().lower()
+    if a == "get":
+        req = {"op": "device_get", "item": item, "who": me, "why": "asked in a terminal"}
+    elif a == "set":
+        if len(rest) < 3 or devio.level(rest[2]) is None:
+            sys.exit(f"  bento network set {rest[0]} {item} 1|0")
+        if not args.yes and input(f"  Set {item} on {lk['label']} to {devio.level(rest[2])}? [y/N] ").strip().lower() != "y":
+            sys.exit("  left as it is")
+        req = {"op": "device_set", "item": item, "value": devio.level(rest[2]), "who": me, "why": "asked in a terminal"}
+    else:
+        how = rest[2].strip().lower()
+        if how not in ("read", "set", "off"):
+            sys.exit(f"  bento network permit {rest[0]} {item} read|set|off")
+        p = r.get("device_permits") or {}
+        g, st = set(p.get("get") or []), set(p.get("set") or [])
+        g.discard(item)
+        st.discard(item)
+        if how in ("read", "set"):
+            g.add(item)
+        if how == "set":
+            st.add(item)
+        dropped: list = []
+        g2, st2 = devio.clean_permits(sorted(g), sorted(st), dropped)
+        if dropped:
+            sys.exit("  " + "; ".join(dropped))
+        req = {"op": "device_permits", "permits": {"get": g2, "set": st2}}
+    got = asyncio.run(tiesmod.device_call(lk, req))
+    words = devio.words(req, got, "you").removeprefix("you ")
+    record("device." + req["op"].split("_", 1)[1], item, words)
+    if not got.get("ok"):
+        sys.exit(f"  ✗ {got.get('error')}")
+    if a == "permit":
+        kept = {"get": got.get("get") or [], "set": got.get("set") or [], "at": got.get("at") or 0}
+        inv.record(r.get("ip") or "", r.get("mac") or "", device_permits=kept)
+        owner = lk.get("owner") or ""
+        devio.sync_grants(usersmod.store_for(owner) if usersmod.enabled() and owner else Store(), lk["label"],
+                          kept["get"], kept["set"])
+        print(f"  ✓ {item} on {lk['label']}: {how}. Agents may read {len(kept['get'])} things and set {len(kept['set'])}.")
+        return
+    unit = f" {got['unit']}" if got.get("unit") else ""
+    print(f"  {got.get('name') or item} on {lk['label']}: {got.get('value', got.get('detail', ''))}{unit}"
+          + (f" (was {got['was']})" if a == "set" else ""))
 
 
 def _ties_cli(rest):
@@ -9040,7 +9126,7 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events", "map", "talks", "hardware", "readings"],
+                                "events", "map", "talks", "hardware", "readings", "get", "set", "permit"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
                             "talks [LINK [lead|DEPARTMENT --company ID]] | "
@@ -9054,7 +9140,8 @@ def main():
                             "controls MACHINE --user U | switch MACHINE running|screen|listening|code on|off | "
                             "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U | "
                             "hardware [MACHINE] [--check] (what a Zero has, down to each sensor) | "
-                            "readings MACHINE ITEM [--range day|week|month|quarter] (one sensor over time)")
+                            "readings MACHINE ITEM [--range day|week|month|quarter] (one sensor over time) | "
+                            "get MACHINE [ITEM] (read it now) | set MACHINE ITEM 1|0 | permit MACHINE [ITEM read|set|off]")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
@@ -9069,7 +9156,7 @@ def main():
     p_net.add_argument("--what", default="", help="disconnect: which ties to remove (default: all of them)")
     p_net.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
     p_net.add_argument("--key-only", action="store_true", help="log in with this machine's key, ask no password")
-    p_net.add_argument("--yes", action="store_true", help="install / secure / disconnect / rekey: do not ask first")
+    p_net.add_argument("--yes", action="store_true", help="install / secure / disconnect / rekey / set: do not ask first")
     p_net.add_argument("--check", action="store_true", help="hardware: ask the machine now rather than show the last look")
     p_net.add_argument("--range", default="day", choices=["day", "week", "month", "quarter"],
                        help="readings: the last day, week, 30 days or 90 days")

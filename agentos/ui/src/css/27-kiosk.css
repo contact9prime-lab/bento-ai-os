@@ -351,6 +351,25 @@ body.dev-touch .net-hw-open{min-height:var(--tap,40px);align-items:center}
   .dev-chart-range button{flex:1 1 0;min-height:var(--tap,40px)}
   .net-hw-top .endbtn{min-height:var(--tap,40px);flex:1 1 100%}}
 
+/* What agents may use on a Zero (devio.py): one row per item with a reader */
+.net-hw-acts{display:flex;flex-wrap:wrap;gap:6px}
+.net-hw-perm{display:inline-block;margin-right:6px;padding:0 6px;border-radius:999px;font-size:10px;font-weight:600;
+  background:color-mix(in srgb,var(--acc) 18%,transparent);vertical-align:1px}
+.net-hw-permits{padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--txt) 4%,transparent);display:flex;flex-direction:column;gap:8px}
+.net-hw-permits h4{margin:0;font-size:var(--fs-sm,12px);font-weight:600;display:flex;align-items:center;gap:6px}
+.net-hw-permits ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.net-hw-permits li{display:grid;grid-template-columns:minmax(0,11em) minmax(0,1fr) 10em 7em;gap:4px 10px;align-items:center;
+  padding:4px 0;border-top:1px solid color-mix(in srgb,var(--txt) 5%,transparent);font-size:var(--fs-sm,12px)}
+.net-hw-permits li:first-child{border-top:0}
+.net-hw-permits code{font-size:11px;opacity:.75;overflow-wrap:anywhere}
+.net-hw-permits select{width:100%}
+.net-hw-permits p{margin:0;font-size:11px}
+@media (max-width:600px){.net-hw-permits li{grid-template-columns:minmax(0,1fr) 7em}
+  .net-hw-permits li code{grid-column:1/-1}
+  .net-hw-permits li>span:not(.mut){grid-column:1/-1}
+  .net-hw-permits select,.net-hw-permits .endbtn{min-height:var(--tap,40px)}
+  .net-hw-acts{width:100%}.net-hw-acts .endbtn{flex:1 1 0}}
+
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
 .mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}
 

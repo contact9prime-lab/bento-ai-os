@@ -427,6 +427,50 @@ the summaries still count it. Times are the hub's: a Pi whose clock is off is mo
 
 ![bento network readings in a terminal](screenshots/devices-readings-terminal.png)
 
+## Reading and setting a Pi from the hub
+
+Your agents use a Pi's hardware through two tools on the hub, **get** and **set**. Ask "what is the
+Pi's temperature?" or "switch on pin 17" in any chat, including a forwarded one on Claude Code (it
+sees them as `mcp__bento__device_get` and `device_set`).
+
+Nothing can be used until you allow it. In Devices, open a Pi's **Hardware** and press **What agents
+may use**. Each thing Bento can read gets a choice:
+
+- **Off**: no agent, app or mission can touch it, and the Pi refuses it too.
+- **Read**: your own agent may read it. A specialist, an app or a mission asks you the first time,
+  and your answer can be remembered.
+- **Read and set** (pins only): your agent may ask to switch it. You're asked every time it does,
+  whatever your autonomy. When the request comes from the Pi's own screen, the question goes to your
+  Telegram if it's connected, and to your screens here if not.
+
+**Read now** beside an allowed item reads it on the Pi straight away.
+
+![What agents may use on a Pi: Off, Read, or Read and set for each thing Bento can read](screenshots/devices-permits.png)
+
+![What agents may use on a 390px phone: each item with its choice and Read now](screenshots/devices-permits-phone.png)
+
+![Aria asks before switching pin 17, with her reason in quotes](screenshots/device-set-asked.png)
+
+![After Allow, the pin is read back from the Pi](screenshots/device-set-done.png)
+
+The Pi keeps its own list of what it lends and checks every request against it, so a hub that was
+tricked still can't reach past it. Things Bento has no reader for yet (a camera, an I2C chip) are
+listed but can't be allowed. A pin that is lent to a bus (I2C, SPI, a serial port) can't be set.
+
+Every read and set travels over the link's encrypted connection with who asked and why, in the
+agent's own words, and both machines write it in their diary and ledger. Devices → Events shows it.
+
+From a terminal on the hub:
+
+```
+bento network get raspberrypi                 # what it has, and what may be used
+bento network permit raspberrypi gpio.17 set  # read, set or off
+bento network get raspberrypi cpu.temp        # read it now
+bento network set raspberrypi gpio.17 1       # asks you first
+```
+
+![bento network get, permit and set on a hub](screenshots/devices-get-set-terminal.png)
+
 ## Hidden machines
 
 **Hide** (behind ⋯, or on a row under New machines) moves a machine to **Hidden** under the

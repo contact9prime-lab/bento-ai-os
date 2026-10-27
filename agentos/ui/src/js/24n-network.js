@@ -11,7 +11,7 @@
    TUI: `bento network`, `bento network check|secure|label|forget`. SUI: identical, a page;
    nothing here touches the compositor. A Zero has no Network tab (00k-zeroface.js): its
    network is its hub's business. */
-var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{}};
+var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{},hwp:{},hwread:{}};
 
 async function netPaint(){
   // Settings → Network and the Devices app draw the same list
@@ -125,20 +125,23 @@ function netHardwareHTML(r){
   const hw=r.hardware||{},items=hw.items||[],b=hw.board||{},name=r.display||r.ip;
   const top=`<div class="net-hw-top"><p>${esc([b.model,b.ram_mb?b.ram_mb+' MB':'',b.os].filter(Boolean).join(' · ')||'Not read yet.')}
       ${hw.at?`<span class="mut">read ${esc(poolAgo(Math.max(0,Math.round(Date.now()/1000-hw.at))))}</span>`:''}
-      ${pInfo('Its hub reads this once a day, and within a minute when something is plugged in or out. Tap a reading to see it over 90 days. Nothing here can be read or set by an agent yet.')}</p>
-    ${(r.links||[]).length?`<button class="endbtn" data-net="hwcheck" data-key="${esc(r.key)}">Check now</button>`:''}</div>`;
+      ${pInfo('Its hub reads this once a day, and within a minute when something is plugged in or out. Tap a reading to see it over 90 days. Agents can read or set only what you allow under What agents may use, and every set is asked.')}</p>
+    ${(r.links||[]).length?`<span class="net-hw-acts">${Object.keys(r.device_can||{}).length?`<button class="endbtn" data-net="hwperm" data-key="${esc(r.key)}" aria-expanded="${!!NET.hwp[r.key]}">What agents may use</button>`:''}<button class="endbtn" data-net="hwcheck" data-key="${esc(r.key)}">Check now</button></span>`:''}</div>`;
   if(!items.length)return `<div class="net-hw">${top}</div>`;
+  const perm=r.device_permits||{},pg=new Set(perm.get||[]),ps=new Set(perm.set||[]);
+  const mark=i=>ps.has(i.id)?'<span class="net-hw-perm">read · set</span>':pg.has(i.id)?'<span class="net-hw-perm">read</span>':'';
   const groups=NET_HW_ORDER.map(([k,t])=>[k,t,items.filter(i=>i.kind===k)]).filter(g=>g[2].length);
   const has=new Set(r.readings||[]);
   // an item with readings opens its chart (24u-devchart.js) under it
   const item=i=>has.has(i.id)
     ?`<li class="net-hw-has"><button class="net-hw-open" data-chart="${esc(i.id)}" data-key="${esc(r.key)}" aria-expanded="${DEVCHART.key===r.key&&DEVCHART.item===i.id}">
-        <code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${esc(netHwValue(i))} <span class="net-hw-chev" aria-hidden="true">›</span></b></button>
+        <code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${mark(i)}${esc(netHwValue(i))} <span class="net-hw-chev" aria-hidden="true">›</span></b></button>
         ${devChartSlot(r.key,i.id)}</li>`
-    :`<li><code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${esc(netHwValue(i))}</b></li>`;
+    :`<li><code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${mark(i)}${esc(netHwValue(i))}</b></li>`;
   const pinOpen=list=>{const p=list.find(i=>DEVCHART.key===r.key&&DEVCHART.item===i.id);return p?devChartSlot(r.key,p.id):''};
   const power=items.find(i=>i.id==='power.throttle'),bad=power&&((power.flags||{}).now||[]).length;
   return `<div class="net-hw">${top}
+    ${NET.hwp[r.key]?netHwPermHTML(r,items):''}
     ${bad?`<p class="net-hw-warn">⚡ ${esc(name)} is ${esc(power.flags.now.join(', '))} right now. A better power supply usually fixes it.</p>`:''}
     ${groups.map(([k,t,list])=>`<section class="net-hw-g"><h4>${esc(t)} <span class="mut">${list.length}</span></h4>
       ${k==='gpio'&&list.length>8?`<div class="net-hw-pins">${list.map(i=>{const t=esc(name+'/'+i.id+' · '+(i.detail||'')+(i.label?' · '+i.label:''));
@@ -148,6 +151,24 @@ function netHardwareHTML(r){
         <p class="mut net-hw-note">${esc(name)}/gpio.N · ${list.filter(i=>i.detail==='input').length} inputs, ${list.filter(i=>i.detail==='output').length} outputs</p>${pinOpen(list)}`
       :`<ul>${list.map(item).join('')}</ul>`}
     </section>`).join('')}</div>`;
+}
+/* What agents may use on this machine: one row per item Bento has a reader for, Off / Read /
+   Read and set (a pin). Saved to the machine, which enforces it, and as your agent's grants.
+   Setting is still asked every time; this only says it MAY be asked. */
+function netHwPermHTML(r,items){
+  const d=NET.hwp[r.key],can=r.device_can||{},name=r.display||r.ip;
+  const rows=items.filter(i=>can[i.id]).map(i=>{const v=d.set.has(i.id)?'set':d.get.has(i.id)?'get':'off',rd=NET.hwread[r.key+'/'+i.id];
+    return `<li><code>${esc(i.id)}</code><span>${esc(i.name)}${rd?` <span class="mut">${esc(rd)}</span>`:''}</span>
+      <select data-hwp="${esc(i.id)}" data-key="${esc(r.key)}" aria-label="${esc(i.name)}">
+        <option value="off"${v==='off'?' selected':''}>Off</option><option value="get"${v==='get'?' selected':''}>Read</option>
+        ${can[i.id]==='set'?`<option value="set"${v==='set'?' selected':''}>Read and set</option>`:''}</select>
+      ${v!=='off'?`<button class="endbtn" data-net="hwread" data-key="${esc(r.key)}" data-item="${esc(i.id)}">Read now</button>`:'<span></span>'}</li>`}).join('');
+  const listed=items.length-items.filter(i=>can[i.id]).length;
+  return `<div class="net-hw-permits"><h4>What agents may use on ${esc(name)} ${pInfo('Off means no agent, app or mission can touch it, and the machine refuses it too. Read lets your own agent read it; other agents ask you first. Read and set lets your agent ask to switch a pin, and you say yes to every set.')}</h4>
+    <ul>${rows}</ul>
+    ${listed?`<p class="mut">${listed} more things are listed but Bento has no reader for them yet, so they can't be used.</p>`:''}
+    <div class="dev-acts"><button class="endbtn" data-net="hwall" data-key="${esc(r.key)}">Read everything</button>
+      <button class="wiz-next" data-net="hwpermsave" data-key="${esc(r.key)}">Save</button></div></div>`;
 }
 /* Hidden machines stay one tap away. Hide was "Not this one", and with nothing listing what
    it hid, a machine rejected by mistake could never be set up from here again. */
@@ -263,6 +284,9 @@ function netWire(box){
   if(ks)ks.onchange=()=>{const ip=DEV.open,c=DEV.check[ip];if(!c||!c.plan)return;
     c.plan=c.plan.replace(/ --screen$/,'')+(ks.checked?' --screen':'');
     const el=box.querySelector('.dev-plan');if(el)el.textContent=c.plan};
+  box.querySelectorAll('[data-hwp]').forEach(c=>c.onchange=()=>{const d=NET.hwp[c.dataset.key];if(!d)return;
+    const id=c.dataset.hwp;d.get.delete(id);d.set.delete(id);
+    if(c.value!=='off')d.get.add(id);if(c.value==='set')d.set.add(id);netPaint()});
   box.querySelectorAll('[data-step]').forEach(c=>c.onchange=()=>{
     const m=NET.steps[c.dataset.ip]=NET.steps[c.dataset.ip]||{};m[c.dataset.step]=c.checked});
 }
@@ -337,6 +361,21 @@ async function netAct(act,b){
     if(act==='more'){NET.more=NET.more===r.key?'':r.key;return netPaint()}
     if(act==='hardware'){NET.more='';const same=NET.open===r.key&&NET.mode==='hardware';
       NET.open=same?'':r.key;NET.mode=same?'':'hardware';return netPaint()}
+    if(act==='hwperm'){const p=r.device_permits||{};
+      NET.hwp[r.key]=NET.hwp[r.key]?null:{get:new Set(p.get||[]),set:new Set(p.set||[])};return netPaint()}
+    if(act==='hwall'){const d=NET.hwp[r.key];if(!d)return;
+      Object.entries(r.device_can||{}).forEach(([id])=>d.get.add(id));return netPaint()}
+    if(act==='hwpermsave'){const d=NET.hwp[r.key];if(!d)return;b.disabled=true;b.textContent='Saving…';
+      try{const res=await post('/api/devices/permits',{key:r.key,get:[...d.get],set:[...d.set]},'PUT');
+        NET.hwp[r.key]=null;
+        toast(`✓ Agents may read ${res.permits.get.length} things on ${r.display||r.ip}`+(res.permits.set.length?` and ask to set ${res.permits.set.length}`:''))}
+      finally{b.disabled=false;b.textContent='Save'}
+      return netPaint()}
+    if(act==='hwread'){const it=b.dataset.item;b.disabled=true;b.textContent='Reading…';
+      try{const g=await post('/api/devices/read',{key:r.key,item:it});
+        NET.hwread[r.key+'/'+it]=`${g.value!==undefined?g.value:(g.detail||'')}${g.unit?' '+g.unit:''} just now`}
+      catch(e){NET.hwread[r.key+'/'+it]='✗ '+(e.message||e)}
+      return netPaint()}
     if(act==='hwcheck'){b.disabled=true;b.textContent='Reading…';
       const d=await post('/api/network/hardware',{key:r.key});
       toast(`✓ ${d.name}: ${d.items} things`+(d.events.length?`. ${d.events.slice(0,3).join('; ')}`:', nothing changed'));

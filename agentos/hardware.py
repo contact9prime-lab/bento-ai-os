@@ -193,17 +193,28 @@ def _cameras(full: bool) -> list[dict]:
     return out
 
 
-def _gpio() -> list[dict]:
-    """The header pins as pinctrl reads them (mode and level), else the gpiochips."""
+# one line of `pinctrl get`: "17: ip    pd | lo // GPIO17 = input"
+GPIO_LINE = re.compile(r"\s*(\d+):\s*(\S+)\s+(\S+)\s*\|\s*(hi|lo)\s*//\s*(\S+)\s*=\s*(\S+)")
+
+
+def gpio_items(listing: str) -> list[dict]:
+    """The pins in a `pinctrl get` listing, each with its mode (input, output or the function
+    it is lent to, like I2C) and its level. devio.py reads one pin through the same words."""
     out = []
-    for line in _run(["pinctrl", "get", "0-27"], 5).splitlines():
-        m = re.match(r"\s*(\d+):\s*(\S+)\s+(\S+)\s*\|\s*(hi|lo)\s*//\s*(\S+)\s*=\s*(\S+)", line)
+    for line in listing.splitlines():
+        m = GPIO_LINE.match(line)
         if not m:
             continue
         n, mode, level, name, fn = int(m.group(1)), m.group(2), m.group(4), m.group(5), m.group(6)
         word = {"ip": "input", "op": "output"}.get(mode, fn if fn not in ("input", "output") else mode)
         out.append(_item(f"gpio.{n}", "gpio", f"GPIO {n}", detail=word, value=1 if level == "hi" else 0,
                          label=name.split("/")[0] if "/" in name else ""))
+    return out
+
+
+def _gpio() -> list[dict]:
+    """The header pins as pinctrl reads them (mode and level), else the gpiochips."""
+    out = gpio_items(_run(["pinctrl", "get", "0-27"], 5))
     if out:
         return out
     for c in _ls(_p("sys/class/gpio")):
@@ -407,7 +418,8 @@ def answer(cfg: dict, lk: dict) -> dict:
     from . import zero as zeromod
     if not zeromod.is_my_hub(cfg, lk):
         return {"ok": False, "error": "only the hub that set this machine up can read its hardware"}
-    return {"ok": True, "hardware": probe()}
+    from . import devio
+    return {"ok": True, "hardware": probe(), "permits": devio.permits()}
 
 
 # ---- on the hub: what arrived, read field by field -----------------------------------------

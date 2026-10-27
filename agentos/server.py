@@ -322,6 +322,7 @@ async def startup():
     # store and gate whoever is signed in, because a community is joined by the machine.
     from . import pool as poolmod
     toolbox.screen = _screen_tool       # screen_face: this machine's faces, or a Zero's over its link
+    toolbox.devices = _device_tool      # device_get / device_set: a Zero's hardware, over its link
     toolbox.pool = poolmod.Pool(cfg=lambda: state.machine_cfg(),
                                 store=lambda: dict.__getitem__(state, "store"),
                                 pdp=lambda: dict.__getitem__(state, "pdp"),
@@ -1047,6 +1048,29 @@ async def _zero_hardware_from_hub(lk: dict) -> dict:
     return got
 
 
+async def _device_from_hub(lk: dict, req: dict) -> dict:
+    """This machine's hub reads, sets or permits one of its items (devio.answer: only its own
+    hub, only what is permitted here). This machine keeps its own record of every one: a diary
+    line and a ledger row with who asked and why, whatever the hub's record says."""
+    from . import devio
+    got = await asyncio.get_running_loop().run_in_executor(None, devio.answer, state.machine_cfg(), lk, req)
+    words = devio.words(req, got, lk.get("label") or "the hub")
+    op = str(req.get("op") or "")
+    with contextlib.suppress(Exception):
+        with usersmod.as_user(""):
+            state["store"].log("device", words, {"event": op.split("_", 1)[1], "link": lk.get("label"),
+                                                 "item": str(req.get("item") or "")[:64],
+                                                 "ok": bool(got.get("ok"))})
+            fabricmod.audit_team(state["store"], op.replace("_", "."),
+                                 devio.resource(_here_name(), req.get("item") or ""), words)
+    return got
+
+
+def _here_name() -> str:
+    from . import teamlink
+    return teamlink.machine_name(state.machine_cfg())
+
+
 _HW_BUSY: set = set()
 
 
@@ -1142,6 +1166,8 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
             return await edgecode.answer(state["store"], state["pdp"], lk, req)
     if req.get("op") == "zero_hardware":
         return await _zero_hardware_from_hub(lk)
+    if req.get("op") in ("device_get", "device_set", "device_permits"):
+        return await _device_from_hub(lk, req)
     if req.get("op") == "zero_update":
         return await _zero_update_from_hub(lk)
     if req.get("op") == "zero_say":
@@ -8029,6 +8055,15 @@ async def _linked_approval(lk: dict, frm: str, agent: str, name: str, args: dict
     fifteen minutes. The card names the team and, when the gate offered one, the choice
     to allow it from now on (a standing permission, policy._standing_offer)."""
     owner = lk.get("owner") or ""
+    if name == "device_set":
+        # Setting something on a machine, asked from that machine's own screen: whoever stands
+        # there asked, and the owner says yes, on their phone when Telegram is connected (asked
+        # for as "a double check"), else on their screens here.
+        with usersmod.as_user(owner):
+            tg = state["telegram"] if "telegram" in state else None     # the owner's own bridge
+            chat = int((tg._t().get("owner_chat_id") or 0)) if tg is not None else 0
+            if tg is not None and chat and getattr(tg, "status", "") == "polling":
+                return bool(await tg.ask_approval(chat, name, args, f"Asked at {frm}. {reason}", timeout=180))
     if not any((state.get("client_uids") or {}).get(ws, "") == owner for ws in state.get("clients") or ()):
         return False
     who = f"{frm} on the linked team '{lk.get('label')}'"
@@ -14033,6 +14068,10 @@ def _network_view() -> dict:
             with contextlib.suppress(Exception):
                 from . import telemetry
                 r["readings"] = telemetry.items(r["key"])     # which of its items can open a chart
+                from . import devio
+                # which items Bento has a reader (and a setter) for: only those can be permitted
+                r["device_can"] = {i["id"]: ("set" if devio.SET_ID.fullmatch(i["id"]) else "get")
+                                   for i in r["hardware"].get("items") or [] if devio.GET_ID.fullmatch(i.get("id") or "")}
     return {"rows": rows, "summary": invmod.summary(rows), "can_change": True,
             "ssh_missing": ri.missing(), "pubkey": ri.public_key(),
             "steps": [{"id": s["id"], "title": s["title"], "why": s["why"]} for s in harden.STEPS],
@@ -14267,6 +14306,86 @@ async def _screen_tool(machine: str, change: dict, space_id: str) -> dict:
                 fabricmod.audit_team(state["store"], "face.write", f"screen:{lk['label']}",
                                      f"changed {lk['label']}'s screen: {', '.join(change)}")
     return got
+
+
+def _device_zero(machine: str, space_id: str = "") -> tuple[dict | None, dict | None, str]:
+    """(link, inventory row, refusal) for a Zero named by a device tool. In a Zero's own chat only
+    that Zero, whatever the model named; otherwise a Zero this hub set up for this account, named
+    exactly as Devices lists it, because the gate decided on that name."""
+    from . import inventory as invmod
+    from . import provision, teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+    me = usersmod.current() or ""
+    # your own Zeros; the machine's (made at the terminal) only for an admin, as Devices is
+    whose = ("", me) if usersmod.is_admin(me) else (me,)
+    zeros = [lk for lk in teamlink._load()["links"] if zeromod.ships_to(lk) and (lk.get("owner") or "") in whose]
+    mine = ""
+    if space_id:
+        mine = next((e.get("label") or "" for e in (provision.load().get("enabled") or {}).values()
+                     if e.get("space") and e.get("space") == space_id), "")
+    machine = str(machine or "").strip()
+    if mine:
+        if machine and machine.lower() != mine.lower():
+            return None, None, f"from {mine}'s chat, only {mine}'s own hardware can be used"
+        machine = mine
+    lk = next((x for x in zeros if machine.lower() == str(x.get("label")).lower()), None)
+    if not lk:
+        return None, None, (f"no machine called '{machine}' was set up from here"
+                            + (f": there are {', '.join(x['label'] for x in zeros)}" if zeros else ""))
+    return lk, tiesmod.inventory_row(lk) or {}, ""
+
+
+async def _device_tool(verb: str, machine: str, item: str = "", value=None, range_: str = "",
+                       space_id: str = "", who: str = "", why: str = "") -> str:
+    """The agents' device_get and device_set (tools.py), after the hub's gate allowed the call.
+    No machine lists the Zeros; a machine and no item lists what it has; an item with a range
+    reads what the hub kept; an item alone reads it live over the link, as does a set. The Zero
+    answers only for what it permits, and both sides write it down."""
+    from . import devio, telemetry, teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+    if not str(machine or "").strip() and not space_id and verb == "get":
+        me = usersmod.current() or ""
+        whose = ("", me) if usersmod.is_admin(me) else (me,)
+        zeros = [lk for lk in teamlink._load()["links"] if zeromod.ships_to(lk) and (lk.get("owner") or "") in whose]
+        if not zeros:
+            return "No machine was set up from this hub, so there's no hardware to use."
+        return "Machines set up from here: " + ", ".join(
+            f"{lk['label']} ({len(((tiesmod.inventory_row(lk) or {}).get('hardware') or {}).get('items') or [])} things)"
+            for lk in zeros) + ". Call device_get with machine to see what one has."
+    lk, row, err = _device_zero(machine, space_id)
+    if err:
+        return f"[error] {err}"
+    item = str(item or "").strip().lower()
+    if verb == "get" and not item:
+        return devio.list_words(lk["label"], row)
+    if verb == "get" and range_:
+        if range_ not in telemetry.RANGES:
+            return "[error] range is day, week, month or quarter"
+        s = await asyncio.get_running_loop().run_in_executor(None, telemetry.series, row.get("key") or tiesmod.machine_of(lk),
+                                                             item, range_)
+        if not s["points"]:
+            return f"The hub has kept no readings of {item} on {lk['label']} for that range."
+        it = next((i for i in ((row.get("hardware") or {}).get("items") or []) if i.get("id") == item), {})
+        return telemetry.text(lk["label"], item, s, it.get("unit") or "")
+    req = {"op": f"device_{verb}", "item": item, "who": who or "an agent", "why": (why or "")[:300]}
+    if verb == "set":
+        req["value"] = value
+    got = await tiesmod.device_call(lk, req)
+    words = devio.words(req, got, "the hub")
+    owner = lk.get("owner") or ""
+    await _device_event(owner, verb if got.get("ok") else "refused", lk["label"],
+                        f"{lk['label']}: " + words.removeprefix("the hub "), item=item)
+    if not got.get("ok"):
+        return f"[error] {got.get('error') or 'it did not answer'}"
+    if verb == "set":
+        return (f"{got.get('name') or item} on {lk['label']} is now {got.get('value')} (it was {got.get('was')}"
+                + (f", and was an {got['was_mode']}" if got.get("was_mode") == "input" else "") + "). Read back from the pin.")
+    unit = f" {got['unit']}" if got.get("unit") else ""
+    return (f"{got.get('name') or item} on {lk['label']}: {got.get('value', got.get('detail', ''))}{unit}"
+            + (f" ({got['detail']})" if got.get("detail") and "value" in got else "")
+            + f", read live at {time.strftime('%H:%M:%S', time.localtime(got.get('at') or time.time()))}.")
 
 
 def _zero_link(label: str, owner: str = "") -> dict | None:
@@ -14508,6 +14627,80 @@ def _net_mac(ip: str) -> str:
     from . import inventory as invmod
     r = next((x for x in invmod.rows(state.machine_cfg()) if x.get("ip") == ip), None)
     return (r or {}).get("mac") or ""
+
+
+def _device_row_link(key: str):
+    """(inventory row, the Zero's link) for Devices' key, or a refusal."""
+    from . import inventory as invmod
+    from . import teamlink
+    from . import zero as zeromod
+    row = next((x for x in invmod.rows(state.machine_cfg()) if x.get("key") == str(key or "")), None)
+    if not row:
+        return None, None, JSONResponse({"error": "no such machine on the list"}, 404)
+    labels = {x.get("label") for x in row.get("links") or []}
+    lk = next((x for x in teamlink._load()["links"] if x.get("label") in labels and zeromod.ships_to(x)), None)
+    if not lk:
+        return row, None, JSONResponse({"error": f"{row.get('display')} isn't a machine this hub set up, so its "
+                                                 "hardware isn't used from here"}, 409)
+    return row, lk, None
+
+
+@app.put("/api/devices/permits")
+async def api_device_permits(body: dict):
+    """What agents may read and set on a Zero (Devices → Hardware → What agents may use). Sent to
+    the machine, which keeps and enforces it, kept here as its copy, and turned into your own
+    agent's grants (devio.sync_grants). Admin only, like the inventory."""
+    if (r := _require_admin()):
+        return r
+    from . import devio
+    from . import inventory as invmod
+    from . import ties as tiesmod
+    b = body or {}
+    row, lk, err = _device_row_link(b.get("key"))
+    if err:
+        return err
+    dropped: list = []
+    g, st = devio.clean_permits(b.get("get"), b.get("set"), dropped)
+    req = {"op": "device_permits", "permits": {"get": g, "set": st}}
+    got = await tiesmod.device_call(lk, req)
+    if not got.get("ok"):
+        return JSONResponse({"error": got.get("error") or "it did not answer"}, 502)
+    kept = {"get": got.get("get") or [], "set": got.get("set") or [], "at": got.get("at") or time.time()}
+    invmod.record(row.get("ip") or "", row.get("mac") or "", device_permits=kept)
+    owner = lk.get("owner") or ""
+    with usersmod.as_user(owner):
+        grants = devio.sync_grants(state["store"], lk["label"], kept["get"], kept["set"])
+    words = (f"{lk['label']}: agents may now read {len(kept['get'])} things and set {len(kept['set'])}"
+             + (f" (set: {', '.join(kept['set'][:8])})" if kept["set"] else ""))
+    _ledger("device.permits", devio.resource(lk["label"]), words)
+    await _device_event(owner, "permits", lk["label"], words)
+    await _tie_tell({"type": "network"}, owner)
+    return {"ok": True, "permits": kept, "dropped": dropped + list(got.get("dropped") or []), "grants": grants}
+
+
+@app.post("/api/devices/read")
+async def api_device_read(body: dict):
+    """Read one permitted item live (Devices → Hardware → Read now): the person asking, so the
+    hub's gate isn't asked, and the machine still answers only what it permits."""
+    if (r := _require_admin()):
+        return r
+    from . import devio
+    from . import ties as tiesmod
+    b = body or {}
+    row, lk, err = _device_row_link(b.get("key"))
+    if err:
+        return err
+    me = _account_name(usersmod.current() or "") if usersmod.current() else "you"
+    req = {"op": "device_get", "item": str(b.get("item") or "").strip().lower(), "who": me or "you",
+           "why": "read in Devices"}
+    got = await tiesmod.device_call(lk, req)
+    words = devio.words(req, got, "the hub")
+    _ledger("device.get", devio.resource(lk["label"], req["item"]), words)
+    await _device_event(lk.get("owner") or "", "get" if got.get("ok") else "refused", lk["label"],
+                        f"{lk['label']}: " + words.removeprefix("the hub "), item=req["item"])
+    if not got.get("ok"):
+        return JSONResponse({"error": got.get("error") or "it did not answer"}, 400)
+    return got
 
 
 @app.post("/api/network/hardware")

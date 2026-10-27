@@ -264,6 +264,8 @@ def rows(cfg: dict | None = None) -> list[dict]:
         r["controls"] = e.get("controls")
         if e.get("hardware"):
             r["hardware"] = e["hardware"]      # what it has, as its hub last read it (hardware.py)
+        if e.get("device_permits"):
+            r["device_permits"] = e["device_permits"]  # what it lets its hub read and set (devio.py)
         cs = (e.get("controls") or {}).get("state") or {}
         if cs.get("agent") and cs.get("installed") is not False:
             r["agent"] = {"name": cs["agent"], "look": cs.get("look") or (r.get("agent") or {}).get("look") or {},

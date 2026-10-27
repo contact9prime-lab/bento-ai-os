@@ -1792,7 +1792,10 @@ TEAM_TOOLS = ("delegate", "huddle", "department_task", "create_flow", "list_flow
               # only where there is a community (Toolbox.schemas), each piece asked for as risky.
               "pool_task", "community_recall",
               # what a machine's own screen shows, here or on a Zero this hub set up (faces.py)
-              "screen_face")
+              "screen_face",
+              # a Zero's hardware: read and set through the gate (devio.py). Without them a
+              # forwarded lead asked about a Pi read the hub's files with its own shell
+              "device_get", "device_set")
 #: What the lead may use for a task a linked team handed it: its own team, and nothing that
 #: reaches this machine directly (fabric.ControlPlane._lead_for_link).
 LINKED_LEAD_TOOLS = ("delegate", "huddle", "department_task", "linked_teams")
@@ -2486,6 +2489,10 @@ def tool_detail(name: str, args: dict) -> str:
                 "read_file", "write_file", "list_dir", "read_source"):
         p = s("file_path", "path", "notebook_path")
         return Path(p).name if p else ""
+    if name in ("device_get", "device_set", "mcp__bento__device_get", "mcp__bento__device_set"):
+        # which machine and which of its things, never the who/why the loop injected
+        what = "/".join(x for x in (s("machine"), s("item")) if x) or "the machines"
+        return what + (f" → {args.get('value')}" if name.endswith("device_set") and args.get("value") is not None else "")
     if name in ("Bash", "run_command"):
         cmd = s("description") or s("command")
         return cmd[:90] + ("…" if len(cmd) > 90 else "")

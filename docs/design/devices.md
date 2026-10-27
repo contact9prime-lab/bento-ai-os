@@ -1,6 +1,6 @@
 # Devices: the hub is the Pi's nervous system
 
-Status: discovery is built in 0.7.0, readings and the 90-day view in 0.7.1. The rest is the plan, in the order it will be built.
+Status: discovery is built in 0.7.0, readings and the 90-day view in 0.7.1, get and set in 0.7.2. The rest is the plan, in the order it will be built.
 
 ## What was asked
 
@@ -111,6 +111,16 @@ id>`, decided by the PDP like every other action:
   hub and is in its signed profile, writes its own ledger row, and only then reads or sets.
 
 The Pi's check means a hub that has been tricked still can't reach past the profile.
+
+### Built in 0.7.2
+
+The two tools are `device_get` and `device_set` on the hub (on the team door, so a forwarded brain
+calls them over MCP), and the Pi's side is `devio.py`, answering wire ops `device_get`, `device_set`
+and `device_permits` on today's per-request link. What a Pi lends is `devices.json` on the Pi, set from
+Devices → What agents may use; there is no signed profile yet (step 6). The readers are a closed set:
+temperatures, power, core voltage, load, memory, disk, network signal, 1-Wire thermometers and pins. The
+one setter is a pin's level through `pinctrl`, read back. A camera snapshot and I2C sensors come with
+custom getters.
 
 ## Step 4: readings, triggers and the 90-day view
 
@@ -234,6 +244,6 @@ on the Pi even if the hub's record is lost.
 3. Readings, `telemetry.db`, retention and the 90-day view in Devices (0.7.1). They ride the hello
    and need no new permission, because the hub already reads these numbers.
 4. `pi-get` / `pi-set`, the two actions, set asked every time (Telegram from the Pi), and the
-   agents' tools.
+   agents' tools (0.7.2, on today's link; the kept-open link of step 2 comes later).
 5. Triggers on the Pi and the `device_event` flow trigger.
 6. Provisioning profiles, signed, with installs through the root helper.

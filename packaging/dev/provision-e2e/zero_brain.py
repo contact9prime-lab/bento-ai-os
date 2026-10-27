@@ -6,6 +6,8 @@ what the system prompt says, and calls the real tools:
                     machine this hub set up")  -> delegate to the writer, saying
                     where the Zero's files go (the folder the prompt names)
   the writer        ("WRITER-SOUL")  -> write_file into that folder
+  asked about a Pi  ("temperature", "pin 17")  -> device_get to list the machines, then
+                    device_get or device_set on the first one (device_run.py)
   after a tool      -> says what came back, naming any path it was given
 
     python zero_brain.py PORT
@@ -61,6 +63,23 @@ def _reply(msgs):
             return _call("schedule_task", {"prompt": "Say: time for tea, the kettle is on",
                                            "schedule_type": "once", "delay_minutes": 0})
         return f"Done: {tool[:200]}", None
+    low = said if ("temperature" in said or "pin 17" in said) else last.lower()
+    if "temperature" in low or "pin 17" in low:
+        if tool and tool.startswith(("[denied]", "[error]")):
+            return "I couldn't do that: " + tool[:300], None
+        # a Pi's hardware through the hub's two tools: find the machine, then read or set
+        if tool is None:
+            return _call("device_get", {})
+        # the machines (asked at the hub), or the one machine's own list (asked at a Zero)
+        m = re.match(r"(?:Machines set up from here: )?([\w.-]+) \(", tool)
+        if m and "pin 17" in low:
+            # words before the call: they travel with the request as its reason
+            return ("Switching on pin 17, the fan, as you asked.",
+                    {"name": "device_set", "arguments": json.dumps({"machine": m.group(1), "item": "gpio.17", "value": "1"})})
+        if m:
+            return ("Reading its CPU temperature.",
+                    {"name": "device_get", "arguments": json.dumps({"machine": m.group(1), "item": "cpu.temp"})})
+        return tool[:400], None
     if "on my screen" in last.lower():
         # a person at a Zero asking for widgets: the tool, then what it said
         if tool is None:
@@ -115,6 +134,8 @@ async def chat(req: Request):
         if "take your time" in " ".join(_text(m.get("content")) for m in msgs if m.get("role") == "user"):
             import asyncio
             await asyncio.sleep(8)
+        if call and text:
+            yield _chunk({"role": "assistant", "content": text})
         if call:
             yield _chunk({"role": "assistant", "tool_calls": [{"index": 0, "id": f"call_{int(time.time()*1000)}",
                                                                "type": "function", "function": call}]})
