@@ -84,7 +84,7 @@ function netRowHTML(r,v,can){
   return `<div class="net-m${open?' open':''}${r.stale?' stale':''}" data-key="${esc(r.key)}" data-ip="${esc(r.ip||'')}">
     <div class="net-top">
       <b title="${esc(r.mac||'')}">${esc(r.display)}</b>${netBadge(r)}
-      <span class="mut">${[r.ip,what,r.owner_name?'for '+r.owner_name:'',busy||seen].filter(Boolean).map(esc).join(' · ')}</span>
+      <span class="mut">${[r.ip,what,r.owner_name?'for '+r.owner_name:'',busy||seen].filter(Boolean).map(esc).join(' · ')}${netHwLink(r)}</span>
       ${netSwitchLine(r)}
     </div>
     ${can?`<div class="net-acts">${netMain(r,v)}
@@ -92,6 +92,7 @@ function netRowHTML(r,v,can){
       ${more?`<div class="net-more">
         ${/data-net="(install|controls)"/.test(netMain(r,v))&&r.ip&&!v.ssh_missing?`<button class="endbtn" data-net="secure" data-key="${esc(r.key)}">${r.secured_n<0?'Secure it':'Security'}</button>`:''}
         ${(r.connections||[]).length?`<button class="endbtn" data-net="unlink" data-key="${esc(r.key)}">Disconnect</button>`:''}
+        ${netHwCan(r)?`<button class="endbtn" data-net="hardware" data-key="${esc(r.key)}">Hardware</button>`:''}
         <button class="endbtn" data-net="label" data-key="${esc(r.key)}">Rename</button>
         <button class="endbtn" data-net="forget" data-key="${esc(r.key)}">Hide</button></div>`:''}`:''}
     ${r.ssh_off?`<p class="mut net-hint">${esc(r.ssh_off)}</p>`:''}
@@ -99,8 +100,43 @@ function netRowHTML(r,v,can){
     ${open&&NET.mode==='secure'?netSecureForm(r):''}
     ${open&&NET.mode==='controls'?netControlsForm(r,v):''}
     ${open&&NET.mode==='unlink'?netUnlinkForm(r):''}
+    ${open&&NET.mode==='hardware'?netHardwareHTML(r):''}
     ${netLogHTML('net-log-',r.ip,run)}
   </div>`;
+}
+/* What a Zero has, down to each sensor, under its inventory name (hardware.py, read by its hub
+   once a day and when something is plugged in or out). Values are what the last look read. */
+function netHwCan(r){return !!r.hardware||(r.links||[]).length>0}
+function netHwLink(r){
+  const n=((r.hardware||{}).items||[]).length;
+  return n?` · <button class="linkbtn" data-net="hardware" data-key="${esc(r.key)}">${n} things</button>`:'';
+}
+var NET_HW_ORDER=[['camera','Cameras'],['temperature','Temperature'],['power','Power'],['sensor','Sensors'],
+  ['gpio','GPIO pins'],['i2c','I2C'],['spi','SPI'],['serial','Serial ports'],['usb','USB devices'],
+  ['audio_in','Microphones'],['audio_out','Speakers and audio out'],['input','Input devices'],
+  ['network','Network'],['bluetooth','Bluetooth'],['system','System']];
+function netHwValue(it){
+  const v=it.value;if(v==null)return '';
+  if(it.kind==='gpio')return v?'high':'low';
+  if(it.unit==='s'){const h=Math.floor(v/3600);return h>=24?`${Math.floor(h/24)} d ${h%24} h`:`${h} h ${Math.floor(v%3600/60)} min`}
+  return `${v}${it.unit==='°C'?'':' '}${it.unit||''}`.trim();
+}
+function netHardwareHTML(r){
+  const hw=r.hardware||{},items=hw.items||[],b=hw.board||{},name=r.display||r.ip;
+  const top=`<div class="net-hw-top"><p>${esc([b.model,b.ram_mb?b.ram_mb+' MB':'',b.os].filter(Boolean).join(' · ')||'Not read yet.')}
+      ${hw.at?`<span class="mut">read ${esc(poolAgo(Math.max(0,Math.round(Date.now()/1000-hw.at))))}</span>`:''}
+      ${pInfo('Its hub reads this once a day, and within a minute when something is plugged in or out. Nothing here can be read or set by an agent yet.')}</p>
+    ${(r.links||[]).length?`<button class="endbtn" data-net="hwcheck" data-key="${esc(r.key)}">Check now</button>`:''}</div>`;
+  if(!items.length)return `<div class="net-hw">${top}</div>`;
+  const groups=NET_HW_ORDER.map(([k,t])=>[k,t,items.filter(i=>i.kind===k)]).filter(g=>g[2].length);
+  const power=items.find(i=>i.id==='power.throttle'),bad=power&&((power.flags||{}).now||[]).length;
+  return `<div class="net-hw">${top}
+    ${bad?`<p class="net-hw-warn">⚡ ${esc(name)} is ${esc(power.flags.now.join(', '))} right now. A better power supply usually fixes it.</p>`:''}
+    ${groups.map(([k,t,list])=>`<section class="net-hw-g"><h4>${esc(t)} <span class="mut">${list.length}</span></h4>
+      ${k==='gpio'&&list.length>8?`<div class="net-hw-pins">${list.map(i=>`<span class="net-hw-pin${i.value?' hi':''}" title="${esc(name+'/'+i.id+' · '+(i.detail||'')+(i.label?' · '+i.label:''))}">${esc(i.id.replace('gpio.',''))}<small>${esc(netHwValue(i))}</small></span>`).join('')}</div>
+        <p class="mut net-hw-note">${esc(name)}/gpio.N · ${list.filter(i=>i.detail==='input').length} inputs, ${list.filter(i=>i.detail==='output').length} outputs</p>`
+      :`<ul>${list.map(i=>`<li><code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${esc(netHwValue(i))}</b></li>`).join('')}</ul>`}
+    </section>`).join('')}</div>`;
 }
 /* Hidden machines stay one tap away. Hide was "Not this one", and with nothing listing what
    it hid, a machine rejected by mistake could never be set up from here again. */
@@ -286,6 +322,12 @@ async function netAct(act,b){
       m.scrollIntoView({block:'center',behavior:'smooth'});const c=m.querySelector('[data-pick]');if(c&&!c.disabled&&!c.checked)c.click();
       (m.querySelector('.prov-code')||m.querySelector('.prov-name'))?.focus({preventScroll:true});return}
     if(act==='more'){NET.more=NET.more===r.key?'':r.key;return netPaint()}
+    if(act==='hardware'){NET.more='';const same=NET.open===r.key&&NET.mode==='hardware';
+      NET.open=same?'':r.key;NET.mode=same?'':'hardware';return netPaint()}
+    if(act==='hwcheck'){b.disabled=true;b.textContent='Reading…';
+      const d=await post('/api/network/hardware',{key:r.key});
+      toast(`✓ ${d.name}: ${d.items} things`+(d.events.length?`. ${d.events.slice(0,3).join('; ')}`:', nothing changed'));
+      return netPaint()}
     if(act==='forget'){await post('/api/network/forget',{key:r.key});NET.more='';
       toast(`${r.display||r.ip} is hidden. It is under Hidden if you want it back.`);
       if(typeof provPaint==='function')provPaint();return netPaint()}

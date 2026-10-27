@@ -4699,6 +4699,8 @@ def _network_cli(args):
                             user=args.user or r.get("user") or "")
     if a == "ties":
         return _ties_cli(rest)
+    if a == "hardware":
+        return _hardware_cli(rest, args.check)
     if a in ("map", "talks"):
         # Network & Teams → Maps (logical) and Team to agent mapping, for the owner of the links
         from . import ties as _ties
@@ -5384,6 +5386,43 @@ def _zero_account(raw: str) -> str:
     if not u:
         sys.exit(f"  there is no account called {v!r} here (`bento users` lists them)")
     return u["id"]
+
+
+def _hardware_cli(rest, check: bool):
+    """Devices → Hardware from a terminal: what each Zero this hub set up has, under its inventory
+    name, as its hub last read it; `--check` asks it now (the link answers without the server)."""
+    import asyncio
+    from . import hardware as hwmod
+    from . import inventory as inv
+    from . import teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+    rows = [r for r in inv.rows() if not r.get("ignored")]
+    if not rest:
+        have = [r for r in rows if r.get("hardware")]
+        if not have:
+            print("  No machine's hardware has been read yet. A Zero set up from here is read once a day.")
+            return
+        for r in have:
+            hw = r["hardware"]
+            print(f"  {r['display']:<24} {(hw.get('board') or {}).get('model', '')[:40]:<40} {len(hw.get('items') or [])} things")
+        print("\n  `bento network hardware MACHINE` lists one, `--check` reads it now.")
+        return
+    r = inv.find(rows, rest[0])
+    if not r:
+        sys.exit(f"  no machine called {rest[0]} on the list")
+    if check:
+        labels = {x.get("label") for x in r.get("links") or []}
+        lk = next((x for x in teamlink._load()["links"] if x.get("label") in labels and zeromod.ships_to(x)), None)
+        if not lk:
+            sys.exit(f"  {r['display']} isn't a machine this hub set up, so it doesn't report its hardware here")
+        got = asyncio.run(tiesmod.ask_hardware(lk))
+        if not got.get("ok"):
+            sys.exit(f"  {got.get('error')}")
+        for _e, t in got["events"]:
+            print(f"  {t}")
+        r = inv.find(inv.rows(), rest[0]) or r
+    print(hwmod.text(r["display"], r.get("hardware") or {}))
 
 
 def _ties_cli(rest):
@@ -8983,7 +9022,7 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events", "map", "talks"],
+                                "events", "map", "talks", "hardware"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
                             "talks [LINK [lead|DEPARTMENT --company ID]] | "
@@ -8995,7 +9034,8 @@ def main():
                             "rekey MACHINE (it was reformatted: forget its old SSH key) | "
                             "firewall [open|done] (the ports machines set up from here need) | "
                             "controls MACHINE --user U | switch MACHINE running|screen|listening|code on|off | "
-                            "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U")
+                            "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U | "
+                            "hardware [MACHINE] [--check] (what a Zero has, down to each sensor)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")
@@ -9011,6 +9051,7 @@ def main():
     p_net.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
     p_net.add_argument("--key-only", action="store_true", help="log in with this machine's key, ask no password")
     p_net.add_argument("--yes", action="store_true", help="install / secure / disconnect / rekey: do not ask first")
+    p_net.add_argument("--check", action="store_true", help="hardware: ask the machine now rather than show the last look")
     p_net.add_argument("--force", action="store_true",
                        help="disconnect: take the key off even when it is the only way in")
     p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")
@@ -9052,6 +9093,8 @@ def main():
                         help="show | buddy auto|on|off | kiosk on|off | wake name|always | "
                              "word [WAKE WORD] | test | hear ENGINE | faces [use ID | add NAME LAYOUT W1,W2 | remove ID]")
     p_face.add_argument("args", nargs="*", help="the value")
+    p_hw = verb("hardware", help="what this machine has: the board, cameras, sensors, pins, buses and ports")
+    p_hw.add_argument("--json", action="store_true", help="the whole answer as JSON")
     p_scr = verb("screen", help="open Bento on this machine's own screen at start: the Office, listening")
     p_scr.add_argument("action", nargs="?", default="status", choices=["status", "on", "off", "run", "wait"],
                        metavar="ACTION", help="status | on | off  (run and wait are what the screen itself starts)")
@@ -9419,6 +9462,13 @@ def main():
         _network_cli(args)
     elif args.cmd == "face":
         _face_cli(args)
+    elif args.cmd == "hardware":
+        # discovery only reads (hardware.py): /sys, /proc and the Pi's own listing tools
+        from . import hardware as _hw
+        import json as _json
+        import platform as _pf
+        got = _hw.probe()
+        print(_json.dumps(got, indent=1) if args.json else _hw.text(_pf.node() or "this machine", got))
     elif args.cmd == "screen":
         _screen_cli(args)
     elif args.cmd == "wifi":

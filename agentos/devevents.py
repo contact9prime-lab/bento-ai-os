@@ -28,7 +28,7 @@ WORDS = {
     "device.failed": "the install stopped", "device.check": "security checked",
     "device.secure": "securing it", "device.secured": "secured", "device.secure_failed": "securing it failed",
     "device.update": "asked to update", "device.remove": "Bento removed", "device.disconnect": "disconnected",
-    "device.switch": "a switch changed", "device.look": "its agent's look changed",
+    "device.switch": "a switch changed", "device.hardware": "its hardware was read", "device.look": "its agent's look changed",
     "link.write": "linked", "link.revoke": "link ended", "link.request": "asked to link",
     "provision.enable": "set up from here", "provision.claimed": "set up by its hub",
     "zero.update": "asked to update",
@@ -54,8 +54,8 @@ def _rows(store, limit: int) -> list[dict]:
                               f"WHERE ({where}) ORDER BY ts DESC LIMIT ?",
                               (*[p + "%" for p in PREFIXES], limit)).fetchall():
         r = dict(r)
-        if r["action"] == "device.moved":
-            continue                    # the watch's own line says it, with how it was found
+        if r["action"] in ("device.moved", "device.hardware"):
+            continue                    # the watch's own line says it (how it was found, what changed)
         out.append({"at": r["ts"] or 0, "event": r["action"].split(".", 1)[1], "action": r["action"],
                     "label": _label(r["resource"]),
                     "text": (r.get("detail") or r.get("reason") or WORDS.get(r["action"]) or r["action"])[:400],

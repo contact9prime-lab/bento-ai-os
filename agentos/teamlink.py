@@ -1100,9 +1100,15 @@ class Listener:
         if op == "hello":
             # the version goes with it: a hub sees which of its Zeros are behind (ties.py)
             from . import __version__
-            return {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"],
-                    "version": __version__, "identity": self._ident(lk.get("owner") or "")}
-        if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat",
+            out = {"ok": True, "name": machine_name(self.cfg), "label_here": lk["label"],
+                   "version": __version__, "identity": self._ident(lk.get("owner") or "")}
+            # to its own hub, a hash of what is plugged in: a change is fetched within the minute
+            with contextlib.suppress(Exception):
+                from . import hardware, zero as zeromod
+                if zeromod.is_my_hub(self.cfg, lk):
+                    out["hw"] = hardware.quick()
+            return out
+        if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat", "zero_hardware",
                   "zero_update", "zero_say", "zero_face", "zero_refresh", "edge_run", "hear") and self.on_ask:
             out = await self.on_ask(lk, req)
             if isinstance(out, dict) and "identity" not in out:

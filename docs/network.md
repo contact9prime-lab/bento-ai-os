@@ -350,6 +350,51 @@ off is refused when it's the only key there and password logins are off, because
 log in over SSH afterwards and a Pi with no screen would need reflashing. Add your own key or
 turn password logins back on first.
 
+## What a Pi has
+
+Every Pi set up from this hub tells it what hardware it has, and Devices lists it down to each
+sensor. Open **⋯ → Hardware** on its row, or tap the count of things beside its address.
+
+![Devices: a Pi 3 B+ and everything on it, each under its inventory name](screenshots/devices-hardware.png)
+
+Each thing has an inventory name, the machine's name and an id: `raspberrypi/cpu.temp`,
+`raspberrypi/power.throttle`, `raspberrypi/gpio.17`, `raspberrypi/usb.1-1.1.2`. That name is how
+everything that comes later refers to it: its readings, who may read or set it, and the
+provisioning profile it belongs to (`docs/design/devices.md`).
+
+What is listed:
+
+- the board: model, serial, memory, operating system;
+- cameras: what `rpicam-hello` lists, and USB cameras. A Pi has ten `/dev/video` nodes and no
+  camera; those are the chip's video codec and image processor, so they aren't listed;
+- temperatures, the power state (under-voltage and throttling, now and since boot) and the core
+  voltage;
+- sensors a driver already exposes: 1-Wire thermometers, IIO sensors, hwmon chips;
+- the 28 GPIO pins with their mode and level;
+- I2C buses and the devices bound on them, SPI and serial ports;
+- USB devices (hubs left out), microphones, speakers and audio outputs, input devices;
+- network interfaces with their Wi-Fi signal, Bluetooth, load, free memory, free disk, uptime.
+
+**When it's read.** Once a day, when the hub first sees the Pi, and within a minute of something
+being plugged in or out: the Pi's hello every minute carries a short hash of what is plugged in,
+and a different hash makes the hub read it all again. **Check now** reads it at once. The values
+shown are what that read found; live readings come with the next step.
+
+**What changed is an event.** Something found, something gone, and a Pi going under-voltage or
+fine again each get a line in Events. A Pi on a weak power supply shows a warning at the top of
+its hardware.
+
+**Discovery only reads.** It lists `/sys`, `/proc` and `/dev`, and asks `rpicam-hello`,
+`vcgencmd` and `pinctrl get` what they see. It never scans an I2C bus, opens a camera, sets a pin
+or installs anything. A Pi answers only the hub that set it up, and every read is a line in both
+machines' diaries and a `device.hardware` row in both ledgers. What the Pi sends is read field
+by field on the hub: an unknown kind, a bad id or a value that isn't a number or short text is
+dropped and named in the diary.
+
+![The same hardware on a 390px phone: the power warning, then each thing with its inventory name above it](screenshots/devices-hardware-phone.png)
+
+![bento hardware on a Pi, and bento network hardware on its hub](screenshots/devices-hardware-terminal.png)
+
 ## Hidden machines
 
 **Hide** (behind ⋯, or on a row under New machines) moves a machine to **Hidden** under the
@@ -544,6 +589,8 @@ bento network hide 192.168.1.40                 # to Hidden (forget does the sam
 bento network show 192.168.1.40                 # back on the list
 bento network rekey pi-kitchen                  # it was reformatted: forget its old SSH key
 bento network events [pi-kitchen]               # what happened to the machines here
+bento network hardware [pi-kitchen] [--check]   # what a Pi has, down to each sensor
+bento hardware                                  # on the Pi itself: what this machine has
 bento network map                               # the logical map: lead, companies, departments, people
 bento network talks studio Sales                # who a team or Zero talks to here, and what it gives it
 bento network firewall                          # this computer's firewall, and the ports to open
@@ -580,9 +627,18 @@ Every step is a row: `device.scan`, `device.check`, `device.secure`, then `devic
 `device.secure_failed`, `device.disconnect`, `device.forget` (hidden), `device.show`, `device.rekey` (an old SSH key
 forgotten), `network.firewall`, `provision.code` (a machine may hand code here) and `edge.code`
 (one run, with what went in and came back), `device.controls`, `device.switch`, `device.update` and
-`device.remove`, and `device.moved` (a machine followed to its new address).
+`device.remove`, `device.moved` (a machine followed to its new address) and `device.hardware`
+(its hardware read, on both machines).
 
 ## What was tested, and what wasn't
+
+- `tests/test_pi_hardware.py`: discovery over a Pi's `/sys`, `/proc` and `/dev` as a real Pi 3 B+
+  on trixie laid them out, with its tools' real answers (an under-voltage, 28 pins, no camera
+  behind ten video nodes); a USB camera plugged in moves the hello's hash and is listed as a
+  camera; a reading never counts as a change; what arrives is read field by field; and a hub and a
+  Zero over real mTLS, where the Zero answers only its own hub and the hub keeps the answer on the
+  Zero's inventory row. Discovery itself was run on that Pi (1.4 s). A Pi answering its live hub
+  over the link needs both on 0.7.0, so that part runs on the owner's machines after the update.
 
 - `tests/test_device_moves.py`, two machines on real mTLS: a Pi heard from a new address is
   followed there, one that stopped answering is found where it is, and a different certificate at

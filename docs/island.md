@@ -27,6 +27,14 @@ closes again.
 - **In the Office app:** ✎ Design → Look → "A town", then pick a Setting.
 - **From a terminal:** `bento office setting canals` (or island, islands, castle, forest).
 
+![A fresh browser opens on the Town](screenshots/town-default.png)
+
+![After the update, a browser that had chosen Aurora is moved to the Town once, with Keep Aurora](screenshots/town-update-toast.png)
+
+![Tapping THE BRAIN in the Town opens Profile on the Memory tab](screenshots/town-brain-opens-memory.png)
+
+![The Town on a 390px phone, the default scene there too](screenshots/town-phone.png)
+
 ## Choose the place
 
 | Setting | What you get |

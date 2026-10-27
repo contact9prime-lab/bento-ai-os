@@ -262,6 +262,8 @@ def rows(cfg: dict | None = None) -> list[dict]:
         r["user"] = e.get("user", "")
         r["security"] = e.get("security")
         r["controls"] = e.get("controls")
+        if e.get("hardware"):
+            r["hardware"] = e["hardware"]      # what it has, as its hub last read it (hardware.py)
         cs = (e.get("controls") or {}).get("state") or {}
         if cs.get("agent") and cs.get("installed") is not False:
             r["agent"] = {"name": cs["agent"], "look": cs.get("look") or (r.get("agent") or {}).get("look") or {},
