@@ -83,7 +83,7 @@ def _reply(msgs):
                         {"name": "device_set", "arguments": json.dumps({"machine": "zone-cold",
                                                                          "item": "esp.cold-2.switch.compressor", "value": "1"})})
             return f"Cold room B is at {t}. Door {('open' if door == 'on' else 'shut')}, compressor {comp}.", None
-        return f"Done. {done[-1]} It should be back under −15 °C within the hour.", None
+        return f"Done. {done[-1]} It should be back under -15 °C within the hour.", None
     if "fans" in ask:
         if not done:
             return ("Switching on the ceiling fan over aisles 7-12.",
