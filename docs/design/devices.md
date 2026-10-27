@@ -1,6 +1,7 @@
 # Devices: the hub is the Pi's nervous system
 
-Status: discovery is built in 0.7.0, readings and the 90-day view in 0.7.1, get and set in 0.7.2. The rest is the plan, in the order it will be built.
+Status: discovery is built in 0.7.0, readings and the 90-day view in 0.7.1, get and set in 0.7.2,
+ESP32 nodes as a Pi's hardware in 0.7.3. The rest is the plan, in the order it will be built.
 
 ## What was asked
 
@@ -121,6 +122,27 @@ Devices → What agents may use; there is no signed profile yet (step 6). The re
 temperatures, power, core voltage, load, memory, disk, network signal, 1-Wire thermometers and pins. The
 one setter is a pin's level through `pinctrl`, read back. A camera snapshot and I2C sensors come with
 custom getters.
+
+### ESP32 nodes, built in 0.7.3
+
+A Pi is one box with a few pins; a building is dozens of sensors. `espnodes.py` lets a Pi look after
+ESP32 boards running ESPHome, so the Pi is a zone controller and the hub still decides everything:
+
+```
+  ESP32 (ESPHome)  ── plain HTTP on the zone's network ──►  zone Pi  ── mTLS link ──►  hub
+  web_server: /events, /{domain}/{name}, turn_on|off          espnodes.py              gate, ledger,
+  mdns: _esphomelib._tcp, _http._tcp                          devio.py                 readings, agents
+```
+
+- A node is added on purpose (from Devices or `bento network esp`), and read before it is kept. mDNS
+  only says who is there.
+- Its entities become the Pi's items, `esp.<node>.<domain>.<name>`, so discovery, readings, permits,
+  grants and the ledger needed no new mechanism. `GET_ID` and `SET_ID` grew one alternative each.
+- What it has is read from its `/events` stream (ESPHome sends every state on connect), so nothing is
+  declared. A set is `POST /{domain}/{name}/turn_on|turn_off`, read back until it shows.
+- The web server is plain HTTP with Basic auth. The words say so; the fix is a network of the nodes'
+  own, which Bento can't make from here. ESPHome's native API (Noise-encrypted) would be the stronger
+  transport and is the next step if nodes have to share a network with people.
 
 ## Step 4: readings, triggers and the 90-day view
 

@@ -1114,7 +1114,7 @@ class Listener:
             return out
         if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat", "zero_hardware",
                   "zero_update", "zero_say", "zero_face", "zero_refresh", "device_get", "device_set",
-                  "device_permits", "edge_run", "hear") and self.on_ask:
+                  "device_permits", "esp_nodes", "edge_run", "hear") and self.on_ask:
             out = await self.on_ask(lk, req)
             if isinstance(out, dict) and "identity" not in out:
                 out["identity"] = self._ident(lk.get("owner") or "")
@@ -1194,6 +1194,17 @@ def _told(view_old, new_host: str, how: str) -> None:
         asyncio.get_running_loop().create_task(ON_MOVED(view_old[0], view_old[1], new_host, how))
 
 
+def local_addr():
+    """Where this machine's own connections leave from: None (the system decides), unless
+    AGENTOS_LINK_FROM names a loopback address. A test stands several machines on one computer
+    that way (127.0.0.2, 127.0.0.3…), so each one has its own address, as Pis on a network do."""
+    a = os.environ.get("AGENTOS_LINK_FROM", "").strip()
+    try:
+        return (a, 0) if a and ipaddress.ip_address(a).is_loopback else None
+    except ValueError:
+        return None
+
+
 def note_seen(fp: str, addr: str) -> tuple[dict, str] | None:
     """A pinned machine just connected from `addr`: remember it (and its MAC), and when the link
     dials another address, move the link there. A loopback address never replaces a real one."""
@@ -1226,7 +1237,7 @@ async def _dial(host: str, port: int, lk: dict, limit: int, wait: float):
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(
             host, port, ssl=_client_ctx(lk["peer_ca"], ensure_pki()), server_hostname=SNI,
-            limit=limit + 1), wait)
+            limit=limit + 1, local_addr=local_addr()), wait)
     except (OSError, asyncio.TimeoutError, ssl.SSLError, ValueError):
         return None
     if _peer_fp(writer) != lk.get("peer_host_fp"):
@@ -1324,7 +1335,7 @@ async def call(lk: dict, req: dict, timeout: float = ASK_TIMEOUT, limit: int = M
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(
             host.strip("[]"), int(port), ssl=_client_ctx(lk["peer_ca"], ident),
-            server_hostname=SNI, limit=limit + 1), 15)
+            server_hostname=SNI, limit=limit + 1, local_addr=local_addr()), 15)
     except (OSError, asyncio.TimeoutError, ssl.SSLError) as e:
         # the address may have moved (DHCP): look for the pinned certificate elsewhere
         found = None
@@ -1371,7 +1382,7 @@ async def join(invite_str: str, owner: str, label: str = "", cfg: dict | None = 
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(
             inv["host"], inv["port"], ssl=_client_ctx(None, ident), server_hostname=SNI,
-            limit=MAX_LINE + 1), 15)
+            limit=MAX_LINE + 1, local_addr=local_addr()), 15)
     except (OSError, asyncio.TimeoutError, ssl.SSLError) as e:
         raise ValueError(f"could not reach {inv['host']}:{inv['port']} ({type(e).__name__}) — "
                          f"is linking switched on there, and the port open?")
@@ -1408,7 +1419,7 @@ async def _tofu(host: str, port: int):
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(
             host, port, ssl=_client_ctx(None, ident), server_hostname=SNI,
-            limit=MAX_LINE + 1), 15)
+            limit=MAX_LINE + 1, local_addr=local_addr()), 15)
     except (OSError, asyncio.TimeoutError, ssl.SSLError) as e:
         raise ConnectionError(f"could not reach {host}:{port} ({type(e).__name__}) — is Bento "
                               f"running there with 'Accept linked teams' on, and the port open?")

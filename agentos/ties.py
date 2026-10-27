@@ -325,6 +325,21 @@ async def device_call(lk: dict, req: dict) -> dict:
     return got
 
 
+async def esp_call(lk: dict, req: dict) -> dict:
+    """The ESP32 nodes a Zero looks after (wire op esp_nodes; espnodes.answer on the Zero)."""
+    from . import teamlink
+    from . import zero as zeromod
+    if not zeromod.ships_to(lk):
+        return {"ok": False, "error": "only a machine this hub set up looks after ESP32 nodes for it"}
+    try:
+        got = await teamlink.call(lk, req, timeout=30)
+    except Exception as e:
+        got = {"ok": False, "error": _why(e)}
+    if not got.get("ok") and "unknown request" in str(got.get("error") or ""):
+        got["error"] = "it runs a Bento older than 0.7.3: update it, then it can look after ESP32 nodes"
+    return got
+
+
 # ---- what it runs on here -------------------------------------------------------------
 
 def brain_for(cfg: dict, lk: dict) -> tuple[str, str, dict]:

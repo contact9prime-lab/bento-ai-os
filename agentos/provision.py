@@ -877,7 +877,9 @@ def _udp_socket(bind_port: int | None = None) -> socket.socket:
             pass
     s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     s.setblocking(False)
-    s.bind(("0.0.0.0", bind_port or 0))
+    # a machine with its own loopback address in a test (teamlink.local_addr) announces from it
+    from . import teamlink
+    s.bind(((teamlink.local_addr() or ("0.0.0.0",))[0], bind_port or 0))
     return s
 
 

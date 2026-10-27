@@ -471,6 +471,62 @@ bento network set raspberrypi gpio.17 1       # asks you first
 
 ![bento network get, permit and set on a hub](screenshots/devices-get-set-terminal.png)
 
+## ESP32 nodes on a Pi
+
+A Pi has a few pins. A cold room needs a thermometer, every dock door a contact and every fan a
+relay, and those are usually ESP32 boards running [ESPHome](https://esphome.io). A Pi set up from this
+hub can look after them: their sensors and switches become part of that Pi, so everything above works
+for them too. They're on its hardware list, kept for 90 days, used only once you allow them, and
+every set is asked.
+
+In Devices, open a Pi's **Hardware** and press **ESP32 nodes**:
+
+- **Find on its network** asks the Pi to listen for ESPHome nodes on its own network (mDNS). A node is
+  heard when its YAML has `api:`. Finding one adds nothing.
+- **Add** reads the node first, through its web server, and keeps it only if it answers. Give it a
+  user and password if its `web_server:` has them; the password goes into the Pi's vault.
+- **Remove** stops the Pi reading it. The node itself isn't touched.
+
+Each sensor or switch is named `<pi>/esp.<node>.<kind>.<name>`, for example
+`zone-cold/esp.cold-2.switch.compressor`. Sensors, contacts and text are read. Switches, lights and
+fans can also be turned on or off, and a set is read back from the node before it counts as done.
+
+The node needs `web_server:` in its YAML, because that's what the Pi talks to:
+
+```yaml
+api:              # how the Pi finds it
+web_server:
+  port: 80
+  auth:           # optional
+    username: admin
+    password: !secret web_password
+```
+
+ESPHome's web server is plain HTTP, and its password is sent with every request, so anybody on that
+network can read it and switch things. Keep the nodes on a network of their own: the Pi's own Wi-Fi
+or a VLAN.
+
+From a terminal on the hub:
+
+```
+bento network esp zone-cold                         # the nodes it looks after
+bento network esp zone-cold find                    # who answers on its network
+bento network esp zone-cold add cold-2 10.0.4.12    # read it, then keep it
+bento network esp zone-cold add dock-1 10.0.4.20 --user admin   # asks the password
+bento network permit zone-cold esp.cold-2.switch.compressor set
+bento network set zone-cold esp.cold-2.switch.compressor 1
+```
+
+### A warehouse, as it was tested
+
+`packaging/dev/warehouse/run.py` stands a warehouse up on one computer: a hub, three zone Pis set up
+from its one line (cold rooms, the loading dock, the aisles) and six ESP32 nodes speaking ESPHome's own
+API and mDNS (`esp_sim.py`). Each zone finds only its own nodes. Nothing is readable until the hub
+allows it, and the zone refuses until then. Asked to walk through the warehouse, the hub's agent reads
+seven things across three zones. When cold room B's compressor trips, the agent reads the room, the
+door and the compressor, asks to switch it back on, and the room starts cooling after a person says
+yes. A set nobody says yes to isn't made.
+
 ## Hidden machines
 
 **Hide** (behind ⋯, or on a row under New machines) moves a machine to **Hidden** under the
@@ -667,6 +723,7 @@ bento network rekey pi-kitchen                  # it was reformatted: forget its
 bento network events [pi-kitchen]               # what happened to the machines here
 bento network hardware [pi-kitchen] [--check]   # what a Pi has, down to each sensor
 bento network readings pi-kitchen cpu.temp --range quarter   # one sensor over 90 days (day, week, month)
+bento network esp pi-kitchen [find|add NAME ADDRESS|remove NAME]   # the ESP32 nodes it looks after
 bento hardware                                  # on the Pi itself: what this machine has
 bento network map                               # the logical map: lead, companies, departments, people
 bento network talks studio Sales                # who a team or Zero talks to here, and what it gives it
@@ -704,10 +761,17 @@ Every step is a row: `device.scan`, `device.check`, `device.secure`, then `devic
 `device.secure_failed`, `device.disconnect`, `device.forget` (hidden), `device.show`, `device.rekey` (an old SSH key
 forgotten), `network.firewall`, `provision.code` (a machine may hand code here) and `edge.code`
 (one run, with what went in and came back), `device.controls`, `device.switch`, `device.update` and
-`device.remove`, `device.moved` (a machine followed to its new address) and `device.hardware`
-(its hardware read, on both machines).
+`device.remove`, `device.moved` (a machine followed to its new address), `device.hardware`
+(its hardware read, on both machines) and `device.esp` (an ESP32 node found, added or removed, on
+both machines; never with its password).
 
 ## What was tested, and what wasn't
+
+- `tests/test_esp_nodes.py` and `packaging/dev/warehouse/run.py`: ESP32 nodes against a stand-in that
+  speaks ESPHome 2026.6's web server API and mDNS, as read from ESPHome's source. A node is kept only
+  after it answers, its password stays in the vault, a contact can't be set, a set is read back (a
+  relay that doesn't move is an error), and found isn't added. No real ESP32 was used: the protocol is
+  ESPHome's, the boards are simulated.
 
 - `tests/test_pi_readings.py`: the Zero's buffer (numbered, a pin only when it moves, a restart
   starts over, a long absence sent in pieces with what was lost said), the hub's store (shifted onto

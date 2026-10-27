@@ -4703,6 +4703,8 @@ def _network_cli(args):
         return _hardware_cli(rest, args.check)
     if a in ("get", "set", "permit"):
         return _device_cli(a, rest, args)
+    if a == "esp":
+        return _esp_cli(rest, args)
     if a == "readings":
         # Devices → Hardware → a sensor: what the hub kept of it (telemetry.py)
         from . import telemetry as _tm
@@ -5445,6 +5447,85 @@ def _hardware_cli(rest, check: bool):
     print(hwmod.text(r["display"], r.get("hardware") or {}))
 
 
+def _esp_cli(rest, args):
+    """The ESP32 nodes a Zero looks after (espnodes.py), from a terminal: `esp MACHINE` lists them,
+    `find` asks its network, `add NAME ADDRESS [PORT] [--user U]` reads one and keeps it (the
+    password is asked here and kept in the Zero's vault), `look` reads them all now, `remove NAME`."""
+    import asyncio
+    import getpass
+    from . import espnodes
+    from . import inventory as inv
+    from . import teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+    from .memory import Store
+    if not rest:
+        sys.exit("  bento network esp MACHINE [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME]")
+    r = inv.find([x for x in inv.rows() if not x.get("ignored")], rest[0])
+    if not r:
+        sys.exit(f"  no machine called {rest[0]} on the list")
+    labels = {x.get("label") for x in r.get("links") or []}
+    lk = next((x for x in teamlink._load()["links"] if x.get("label") in labels and zeromod.ships_to(x)), None)
+    if not lk:
+        sys.exit(f"  {r['display']} isn't a machine this hub set up, so it doesn't look after ESP32 nodes for you")
+    act = rest[1] if len(rest) > 1 else "list"
+    req = {"op": "esp_nodes", "action": act}
+    if act == "add":
+        if len(rest) < 4:
+            sys.exit(f"  bento network esp {rest[0]} add NAME ADDRESS [PORT] [--user U]")
+        req.update(name=rest[2], host=rest[3], port=rest[4] if len(rest) > 4 else 80)
+        if args.user:
+            req["user"] = args.user
+            req["password"] = (sys.stdin.readline().rstrip("\n") if args.password_stdin
+                               else getpass.getpass(f"  {args.user}'s password on {rest[2]}: "))
+    elif act == "remove":
+        if len(rest) < 3:
+            sys.exit(f"  bento network esp {rest[0]} remove NAME")
+        req["name"] = rest[2]
+    elif act not in ("list", "find", "look"):
+        sys.exit("  find, add, look or remove")
+    got = asyncio.run(tiesmod.esp_call(lk, req))
+    if act in ("add", "remove", "find"):
+        words = espnodes.words(req, got, "you").removeprefix("you ") if act != "find" else \
+            f"looked for ESP32 nodes near {lk['label']}: {len(got.get('found') or [])} answered"
+        try:
+            Store().log("device", f"{lk['label']}: {words}", {"event": "esp", "link": lk["label"]})
+            Store().audit_add(principal_kind="user", principal_id="", surface="cli", action="device.esp",
+                              resource=f"device:{lk['label'].lower()}/esp", effect="allow", rule="person",
+                              outcome="ok" if got.get("ok") else "error", reason=words[:400])
+        except Exception:
+            pass
+    if not got.get("ok"):
+        sys.exit(f"  ✗ {got.get('error')}")
+    if act == "find":
+        found = got.get("found") or []
+        if not found:
+            print(f"  No ESPHome node answered on {lk['label']}'s network. A node is heard when it has api: "
+                  f"in its YAML (that is what announces it); web_server: is what Bento talks to.")
+        for f in found:
+            print(f"  {f['name']:<16} {f['title'][:28]:<28} {f['host']}:{f['port']}  {f.get('platform', '')} "
+                  f"{f.get('board', '')}" + ("  (added)" if f.get("added") else "")
+                  + ("" if f.get("web") else "  (no web_server: Bento can't use it)"))
+        return
+    if act == "add":
+        n = got["node"]
+        print(f"  ✓ {n['title']} ({n['name']}) at {n['host']}:{n['port']}: {n['things']} things. "
+              f"They're on {lk['label']}'s hardware list now; permit what agents may use with "
+              f"`bento network permit {rest[0]} ITEM read|set`.")
+        print("  " + got.get("said", ""))
+        return
+    if act == "remove":
+        print(f"  ✓ removed {rest[2]} from {lk['label']}")
+        return
+    nodes = got.get("nodes") or []
+    if not nodes:
+        print(f"  {lk['label']} looks after no ESP32 nodes. `bento network esp {rest[0]} find` asks its network.")
+    for n in nodes:
+        state = ("answering" if n.get("answering") else f"not answering: {n['error']}" if n.get("answering") is False
+                 else "not read yet")
+        print(f"  {n['name']:<16} {n['title'][:28]:<28} {n['host']}:{n['port']}  {n['things']} things, {state}")
+
+
 def _device_cli(a, rest, args):
     """A Zero's get and set from a terminal (devio.py): `get MACHINE [ITEM]`, `set MACHINE ITEM
     1|0`, `permit MACHINE [ITEM read|set|off]`. You are the person at the hub, so the hub's gate
@@ -5525,6 +5606,11 @@ def _device_cli(a, rest, args):
         print(f"  ✓ {item} on {lk['label']}: {how}. Agents may read {len(kept['get'])} things and set {len(kept['set'])}.")
         return
     unit = f" {got['unit']}" if got.get("unit") else ""
+    if got.get("detail") in ("on", "off") and item.startswith("esp."):
+        # a contact, a switch, a light or a fan: on or off, as Devices shows it
+        print(f"  {got.get('name') or item} on {lk['label']}: {got['detail']}"
+              + (f" (was {'on' if got.get('was') else 'off'}, read back from the node)" if a == "set" else ""))
+        return
     print(f"  {got.get('name') or item} on {lk['label']}: {got.get('value', got.get('detail', ''))}{unit}"
           + (f" (was {got['was']})" if a == "set" else ""))
 
@@ -9126,7 +9212,7 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events", "map", "talks", "hardware", "readings", "get", "set", "permit"],
+                                "events", "map", "talks", "hardware", "readings", "get", "set", "permit", "esp"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
                             "talks [LINK [lead|DEPARTMENT --company ID]] | "
@@ -9141,7 +9227,8 @@ def main():
                             "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U | "
                             "hardware [MACHINE] [--check] (what a Zero has, down to each sensor) | "
                             "readings MACHINE ITEM [--range day|week|month|quarter] (one sensor over time) | "
-                            "get MACHINE [ITEM] (read it now) | set MACHINE ITEM 1|0 | permit MACHINE [ITEM read|set|off]")
+                            "get MACHINE [ITEM] (read it now) | set MACHINE ITEM 1|0 | permit MACHINE [ITEM read|set|off] | "
+                            "esp MACHINE [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME] (its ESP32 nodes)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")
     p_net.add_argument("--user", default="", help="install / check / secure / disconnect: the user on that machine")
     p_net.add_argument("--authorize", action="store_true", help="install: let this machine's key in from now on")

@@ -370,6 +370,13 @@ body.dev-touch .net-hw-open{min-height:var(--tap,40px);align-items:center}
   .net-hw-permits select,.net-hw-permits .endbtn{min-height:var(--tap,40px)}
   .net-hw-acts{width:100%}.net-hw-acts .endbtn{flex:1 1 0}}
 
+/* The ESP32 nodes a Zero looks after (espnodes.py) */
+.net-esp li{grid-template-columns:minmax(0,9em) minmax(0,1fr) 7em}
+.net-esp-add{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.net-esp-add input{min-width:0}
+@media (max-width:600px){.net-esp li{grid-template-columns:minmax(0,1fr) 7em}
+  .net-esp-add{grid-template-columns:1fr 1fr}.net-esp-add input{min-height:var(--tap,40px)}}
+
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
 .mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}
 
