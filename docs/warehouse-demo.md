@@ -13,6 +13,14 @@ In **Devices**, at the bottom, **Try it in a simulation** → **Set up the demo*
 takes about half a minute while the hub sets its three zones up. After that a start takes a few
 seconds. Then **Open the floor** and **Open the hub**.
 
+On a machine with accounts, the demo runs as a Bento user of its own, so your chats, devices and
+memory stay out of it. The card asks an admin to create that user (a name and a password), then to
+sign in as it and start the demo there. Use a private window to stay signed in to your own account.
+Only that user can start it; an admin can stop it from any account. On a machine with no accounts it
+starts straight away, because making a first account would hand your whole Bento to it.
+
+![Devices on a phone: the demo asks for a user of its own](screenshots/warehouse-demo-user-phone.png)
+
 Or from a terminal:
 
 ```

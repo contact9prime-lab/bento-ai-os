@@ -12,8 +12,12 @@ starts from Devices or a terminal and stops again:
   the floor        a page of its own (floor.html): every node's readings live, and buttons to
                    trip a compressor or open a dock door, so there is something to ask about
 
-Four rules:
+Five rules:
 
+  * On a machine with accounts it runs as a Bento user of its own, made for it (`owner`): only
+    that user starts it, so a person's own chats, devices and memory never sit beside it. A
+    machine with no accounts runs it as before; making a first account there would hand the
+    whole machine to it.
   * It never touches this machine's Bento. Every server has its own home under the demo folder
     (~/.cache/bento-demo/warehouse), its own ports (BASE onwards, all checked before a start),
     its own discovery port, and no keyring (AGENTOS_VAULT_KEYRING=0). The hub never asks its
@@ -104,6 +108,25 @@ def where() -> Path:
         return Path(os.environ["AGENTOS_DEMO_DIR"])
     cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     return cache / "bento-demo" / "warehouse"
+
+
+def _owner_path() -> Path:
+    # beside the demo's folder, so Start over (which deletes the folder) keeps whose demo it is
+    return where().parent / (where().name + "-owner.json")
+
+
+def owner() -> dict | None:
+    """The Bento user the demo runs as, on a machine with accounts: {"uid", "name"}."""
+    with contextlib.suppress(Exception):
+        d = json.loads(_owner_path().read_text())
+        if d.get("uid"):
+            return d
+    return None
+
+
+def set_owner(uid: str, name: str) -> None:
+    _owner_path().parent.mkdir(parents=True, exist_ok=True)
+    _owner_path().write_text(json.dumps({"uid": uid, "name": name, "at": time.time()}))
 
 
 def urls() -> dict:

@@ -114,3 +114,19 @@ def test_every_face_reaches_it():
 @pytest.mark.parametrize("path", ["packaging/dev/warehouse/esp_sim.py", "packaging/dev/warehouse/warehouse_brain.py"])
 def test_the_dev_run_still_finds_its_parts(path):
     assert "agentos.demos" in (ROOT / path).read_text()
+
+
+def test_with_accounts_it_runs_as_a_user_of_its_own(tmp_path, monkeypatch):
+    """Asked for as "the simulation should be started as a different user … so it wouldn't bother the app"."""
+    monkeypatch.setenv("AGENTOS_DEMO_DIR", str(tmp_path / "warehouse"))
+    assert wh.owner() is None
+    wh.set_owner("abc123", "demo")
+    assert wh.owner()["name"] == "demo" and (tmp_path / "warehouse-owner.json").exists(), \
+        "kept beside the folder, so Start over keeps it"
+    srv = (ROOT / "agentos/server.py").read_text()
+    route = srv[srv.index("def _demo_account"):srv.index('@app.post("/api/devices/esp")')]
+    assert 'return {"need": ""}' in route.split("if not usersmod.enabled():")[1][:40], "no accounts: as before"
+    assert '"need": "create"' in route and '"need": "signin"' in route
+    assert 'role="executor"' in route and '["setup_complete"] = True' in route
+    js = (ROOT / "agentos/ui/src/js/24o-devices.js").read_text()
+    assert "ac.need==='create'" in js and "ac.need==='signin'" in js

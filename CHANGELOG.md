@@ -8,7 +8,9 @@ computer, in a sandbox of their own. The hub thinks with a copy of your brain, o
 that is free and works offline. A floor page shows every node's readings live, with buttons to trip a
 compressor, open a door or drain a battery. Ask the hub what's going on and it reads the nodes, asks
 before it switches anything, and reads the switch back. The first start takes about half a minute,
-later ones a few seconds, and Stop ends every process. Nothing it does reaches your own Bento. The
+later ones a few seconds, and Stop ends every process. On a machine with accounts it runs as a Bento
+user of its own: the card asks an admin to create one, and only that user starts it. Nothing it does
+reaches your own Bento. The
 simulated nodes and the scripted brain now ship inside the package (`agentos/demos/`). See
 docs/warehouse-demo.md.
 ## 0.7.4 — 2026-10-29

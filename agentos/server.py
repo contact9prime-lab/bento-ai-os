@@ -14753,21 +14753,67 @@ async def api_demo_warehouse(request: Request):
     """The warehouse demo (demos/warehouse.py): off, starting, ready or failed, and where it is.
     Its pages are on this machine's loopback, so a browser elsewhere is told it can't open them."""
     from .demos import warehouse as wh
-    return {**wh.status(), "here": remotemod.is_loopback(_client_addr(request))}
+    return {**wh.status(), "here": remotemod.is_loopback(_client_addr(request)), "account": _demo_account()}
+
+
+def _demo_account() -> dict:
+    """Whose demo it is. On a machine with accounts it runs as a user made for it, so it never sits in
+    a person's own account: `need` is create (nobody yet), signin (somebody else is signed in here)
+    or '' (this is the demo's user, or the machine has no accounts)."""
+    from .demos import warehouse as wh
+    if not usersmod.enabled():
+        return {"need": ""}
+    me, o = usersmod.current(), wh.owner()
+    if o and not usersmod.get(o["uid"]):
+        o = None
+    if not o:
+        return {"need": "create", "can_create": usersmod.is_admin(me)}
+    if o["uid"] != me:
+        return {"need": "signin", "name": o["name"]}
+    return {"need": "", "name": o["name"]}
 
 
 @app.post("/api/demo/warehouse")
 async def api_demo_warehouse_act(request: Request, body: dict):
-    """Start or stop it. Admin and at the machine: it starts four servers here, and the hub thinks
-    with a copy of this machine's brain, which spends what the brain costs."""
+    """Start or stop it, at the machine: it starts four servers here, and the hub thinks with a copy of
+    the brain, which spends what the brain costs. With accounts only the demo's own user starts it (an
+    admin made that user for it, and may stop it); `account` makes that user."""
     from .demos import warehouse as wh
     if not remotemod.is_loopback(_client_addr(request)):
         return JSONResponse({"error": "The demo runs on this machine's own addresses, so start it on the "
                                       "machine itself (or with bento demo warehouse)."}, status_code=403)
-    denied = _require_admin()
-    if denied:
-        return denied
     act = body.get("action")
+    acct = _demo_account()
+    if act == "account":
+        # make the user the demo runs as: an admin's act, like adding any account
+        denied = _require_admin()
+        if denied:
+            return denied
+        if acct["need"] != "create":
+            return JSONResponse({"error": "The demo already has a user of its own." if acct["need"] or acct.get("name")
+                                 else "This machine has no accounts, so the demo runs without one."}, status_code=409)
+        try:
+            u = usersmod.create(str(body.get("name") or "demo"), str(body.get("password") or ""), role="executor",
+                                display="Warehouse demo")
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        wh.set_owner(u["id"], u["name"])
+        # it signs in to start a demo, not to set up an agent of its own: no setup wizard
+        ucfg = usersmod.cfg_for(u["id"])
+        ucfg["setup_complete"] = True
+        usersmod.save_user_cfg(u["id"], ucfg)
+        usersmod.reset_caches()
+        _ledger("demo.account", f"user:{u['id']}", f"made the user {u['name']} for the warehouse demo")
+        return {**wh.status(), "here": True, "account": _demo_account()}
+    if acct["need"] == "create":
+        return JSONResponse({"error": "The demo runs as a user of its own. Create one for it first."}, status_code=403)
+    if acct["need"] == "signin" and not (act == "stop" and usersmod.is_admin(usersmod.current())):
+        return JSONResponse({"error": f"The demo runs as the user {acct['name']}. Sign in as {acct['name']} to "
+                                      f"start it."}, status_code=403)
+    if not usersmod.enabled():
+        denied = _require_admin()
+        if denied:
+            return denied
     if act == "stop":
         st = await asyncio.to_thread(wh.stop)
         _ledger("demo.stop", "demo:warehouse", "stopped the warehouse demo")

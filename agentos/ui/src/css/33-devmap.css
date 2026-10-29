@@ -182,6 +182,8 @@ body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
 .dev-demo .bad{color:var(--red,#e5534b)}
 .dev-demo-opt{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin:8px 0;min-height:var(--tap,40px);width:auto}
 .dev-demo-opt input{width:auto;flex:none;margin:0}
+.dev-demo-acct{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.dev-demo-acct>*{flex:1 1 180px;min-height:var(--tap,40px)}
 .dev-demo-bar{height:6px;border-radius:3px;background:color-mix(in srgb,var(--txt) 12%,transparent);overflow:hidden;margin:8px 0}
 .dev-demo-bar i{display:block;height:100%;background:var(--acc-grad,var(--acc))}
 .dev-ev{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
