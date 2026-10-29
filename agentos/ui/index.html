@@ -5409,6 +5409,13 @@ body.dev-touch .net-hw-open{min-height:var(--tap,40px);align-items:center}
   .net-hw-permits select,.net-hw-permits .endbtn{min-height:var(--tap,40px)}
   .net-hw-acts{width:100%}.net-hw-acts .endbtn{flex:1 1 0}}
 
+/* The ESP32 nodes a Zero looks after (espnodes.py) */
+.net-esp li{grid-template-columns:minmax(0,9em) minmax(0,1fr) 7em}
+.net-esp-add{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.net-esp-add input{min-width:0}
+@media (max-width:600px){.net-esp li{grid-template-columns:minmax(0,1fr) 7em}
+  .net-esp-add{grid-template-columns:1fr 1fr}.net-esp-add input{min-height:var(--tap,40px)}}
+
 /* A Zero's memory, graph and soul are kept on its hub (zeromind.py): the line that says so */
 .mind-kept{margin:6px 16px 8px;font-size:12px;line-height:1.45}
 
@@ -37518,7 +37525,7 @@ function taskDeskOf(i){
    TUI: `bento network`, `bento network check|secure|label|forget`. SUI: identical, a page;
    nothing here touches the compositor. A Zero has no Network tab (00k-zeroface.js): its
    network is its hub's business. */
-var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{},hwp:{},hwread:{}};
+var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{},hwp:{},hwread:{},esp:{}};
 
 async function netPaint(){
   // Settings → Network and the Devices app draw the same list
@@ -37621,10 +37628,11 @@ function netHwLink(r){
 var NET_HW_ORDER=[['camera','Cameras'],['temperature','Temperature'],['power','Power'],['sensor','Sensors'],
   ['gpio','GPIO pins'],['i2c','I2C'],['spi','SPI'],['serial','Serial ports'],['usb','USB devices'],
   ['audio_in','Microphones'],['audio_out','Speakers and audio out'],['input','Input devices'],
-  ['network','Network'],['bluetooth','Bluetooth'],['system','System']];
+  ['network','Network'],['bluetooth','Bluetooth'],['esphome','ESP32 nodes'],['system','System']];
 function netHwValue(it){
   const v=it.value;if(v==null)return '';
   if(it.kind==='gpio')return v?'high':'low';
+  if(it.kind==='esphome'&&/^esp\.[^.]+\.(binary_sensor|switch|light|fan)\./.test(it.id))return v?'on':'off';
   if(it.unit==='s'){const h=Math.floor(v/3600);return h>=24?`${Math.floor(h/24)} d ${h%24} h`:`${h} h ${Math.floor(v%3600/60)} min`}
   return `${v}${it.unit==='°C'?'':' '}${it.unit||''}`.trim();
 }
@@ -37633,7 +37641,8 @@ function netHardwareHTML(r){
   const top=`<div class="net-hw-top"><p>${esc([b.model,b.ram_mb?b.ram_mb+' MB':'',b.os].filter(Boolean).join(' · ')||'Not read yet.')}
       ${hw.at?`<span class="mut">read ${esc(poolAgo(Math.max(0,Math.round(Date.now()/1000-hw.at))))}</span>`:''}
       ${pInfo('Its hub reads this once a day, and within a minute when something is plugged in or out. Tap a reading to see it over 90 days. Agents can read or set only what you allow under What agents may use, and every set is asked.')}</p>
-    ${(r.links||[]).length?`<span class="net-hw-acts">${Object.keys(r.device_can||{}).length?`<button class="endbtn" data-net="hwperm" data-key="${esc(r.key)}" aria-expanded="${!!NET.hwp[r.key]}">What agents may use</button>`:''}<button class="endbtn" data-net="hwcheck" data-key="${esc(r.key)}">Check now</button></span>`:''}</div>`;
+    ${(r.links||[]).length?`<span class="net-hw-acts">${Object.keys(r.device_can||{}).length?`<button class="endbtn" data-net="hwperm" data-key="${esc(r.key)}" aria-expanded="${!!NET.hwp[r.key]}">What agents may use</button>`:''}<button class="endbtn" data-net="esp" data-key="${esc(r.key)}" aria-expanded="${!!NET.esp[r.key]}">ESP32 nodes</button><button class="endbtn" data-net="hwcheck" data-key="${esc(r.key)}">Check now</button></span>`:''}</div>
+    ${NET.esp[r.key]?netEspHTML(r):''}`;
   if(!items.length)return `<div class="net-hw">${top}</div>`;
   const perm=r.device_permits||{},pg=new Set(perm.get||[]),ps=new Set(perm.set||[]);
   const mark=i=>ps.has(i.id)?'<span class="net-hw-perm">read · set</span>':pg.has(i.id)?'<span class="net-hw-perm">read</span>':'';
@@ -37658,6 +37667,30 @@ function netHardwareHTML(r){
         <p class="mut net-hw-note">${esc(name)}/gpio.N · ${list.filter(i=>i.detail==='input').length} inputs, ${list.filter(i=>i.detail==='output').length} outputs</p>${pinOpen(list)}`
       :`<ul>${list.map(item).join('')}</ul>`}
     </section>`).join('')}</div>`;
+}
+/* The ESP32 nodes this Zero looks after (espnodes.py). Find asks ITS network over mDNS, Add reads
+   the node first and keeps it, and its sensors and switches join the list above as
+   <machine>/esp.<node>.<domain>.<name>, used through What agents may use like a pin. */
+function netEspHTML(r){
+  const e=NET.esp[r.key],name=r.display||r.ip,f=e.form||{};
+  const node=n=>`<li><code>${esc(n.name)}</code><span>${esc(n.title)} <span class="mut">${esc(n.host)}:${esc(String(n.port))} · ${esc(String(n.things))} things${n.answering===false?' · not answering: '+esc(n.error||''):''}</span></span>
+      <button class="endbtn" data-net="espremove" data-key="${esc(r.key)}" data-node="${esc(n.name)}">Remove</button></li>`;
+  const found=(e.found||[]).filter(x=>!x.added).map(x=>`<li><code>${esc(x.name)}</code><span>${esc(x.title)} <span class="mut">${esc(x.host)}:${esc(String(x.port))} · ${esc([x.platform,x.board].filter(Boolean).join(' '))}${x.web?'':' · no web_server, so Bento can’t use it'}</span></span>
+      ${x.web?`<button class="endbtn" data-net="esppick" data-key="${esc(r.key)}" data-node="${esc(x.name)}" data-host="${esc(x.host)}" data-port="${esc(String(x.port))}">Add</button>`:'<span></span>'}</li>`).join('');
+  return `<div class="net-hw-permits net-esp"><h4>ESP32 nodes ${esc(name)} looks after ${pInfo('Nodes running ESPHome with web_server on. Their sensors and switches become part of '+name+': on its list, kept for 90 days, and usable only once you allow them. ESPHome’s web server is plain HTTP, so keep the nodes on a network of their own.')}</h4>
+    ${e.busy?`<p class="mut">${esc(e.busy)}</p>`:''}
+    ${e.err?`<p class="net-hw-warn">${esc(e.err)}</p>`:''}
+    ${(e.nodes||[]).length?`<ul>${e.nodes.map(node).join('')}</ul>`:(e.nodes?`<p class="mut">None yet.</p>`:'')}
+    ${e.found?(found?`<p class="mut">Answered on ${esc(name)}’s network:</p><ul>${found}</ul>`:`<p class="mut">No other ESPHome node answered on ${esc(name)}’s network. A node is heard when its YAML has api: on.</p>`):''}
+    <div class="net-esp-add">
+      <input id="esp-name-${esc(r.key)}" placeholder="name, like cold-1" value="${esc(f.name||'')}" aria-label="Node name">
+      <input id="esp-host-${esc(r.key)}" placeholder="address" value="${esc(f.host||'')}" aria-label="Node address">
+      <input id="esp-port-${esc(r.key)}" placeholder="80" value="${esc(f.port||'')}" inputmode="numeric" aria-label="Web server port">
+      <input id="esp-user-${esc(r.key)}" placeholder="user (if it has one)" aria-label="Web server user" autocomplete="off">
+      ${secretField('esp-pw-'+r.key,'password')}
+    </div>
+    <div class="dev-acts"><button class="endbtn" data-net="espfind" data-key="${esc(r.key)}">Find on its network</button>
+      <button class="wiz-next" data-net="espadd" data-key="${esc(r.key)}">Add node</button></div></div>`;
 }
 /* What agents may use on this machine: one row per item Bento has a reader for, Off / Read /
    Read and set (a pin). Saved to the machine, which enforces it, and as your agent's grants.
@@ -37870,6 +37903,28 @@ async function netAct(act,b){
       NET.open=same?'':r.key;NET.mode=same?'':'hardware';return netPaint()}
     if(act==='hwperm'){const p=r.device_permits||{};
       NET.hwp[r.key]=NET.hwp[r.key]?null:{get:new Set(p.get||[]),set:new Set(p.set||[])};return netPaint()}
+    if(act==='esp'||act==='espfind'||act==='espadd'||act==='espremove'||act==='esppick'){
+      const k=r.key,q=id=>(document.getElementById(id+'-'+k)||{}).value||'';
+      if(act==='esp'){if(NET.esp[k]){NET.esp[k]=null;return netPaint()}
+        NET.esp[k]={busy:'Asking '+(r.display||r.ip)+'…'};netPaint()}
+      const e=NET.esp[k]||(NET.esp[k]={});e.err='';
+      if(act==='esppick'){e.form={name:b.dataset.node,host:b.dataset.host,port:b.dataset.port};return netPaint()}
+      if(act==='espremove'&&!await osConfirm(`Remove ${b.dataset.node}?`,`${r.display||r.ip} stops reading it, and its things leave the list. The node itself is not touched.`,{confirmText:'Remove'}))return;
+      const body={key:k,action:act==='esp'?'list':act.slice(3)};
+      if(act==='espremove')body.name=b.dataset.node;
+      if(act==='espadd'){Object.assign(body,{name:q('esp-name'),host:q('esp-host'),port:q('esp-port')||80,user:q('esp-user'),password:q('esp-pw')});
+        if(!body.name||!body.host){toast('Give it a name and an address');return}
+        e.form={name:body.name,host:body.host,port:q('esp-port')}}
+      e.busy=act==='espfind'?'Listening on '+(r.display||r.ip)+'’s network…':act==='espadd'?'Reading '+body.name+'…':e.busy;
+      b.disabled=true;netPaint();
+      try{const d=await post('/api/devices/esp',body);
+        if(d.nodes)e.nodes=d.nodes;if(act==='espfind')e.found=d.found||[];
+        if(act==='espadd'){e.form={};e.nodes=(e.nodes||[]).filter(n=>n.name!==d.node.name).concat([d.node]);
+          (e.found||[]).forEach(x=>{if(x.name===d.node.name)x.added=true});
+          toast(`✓ ${d.node.title}: ${d.node.things} things on ${r.display||r.ip}. Allow what agents may use.`)}
+        if(act==='espremove'){e.nodes=(e.nodes||[]).filter(n=>n.name!==b.dataset.node);toast('✓ Removed '+b.dataset.node)}}
+      catch(x){e.err=String(x.message||x)}
+      e.busy='';return netPaint()}
     if(act==='hwall'){const d=NET.hwp[r.key];if(!d)return;
       Object.entries(r.device_can||{}).forEach(([id])=>d.get.add(id));return netPaint()}
     if(act==='hwpermsave'){const d=NET.hwp[r.key];if(!d)return;b.disabled=true;b.textContent='Saving…';

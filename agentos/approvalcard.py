@@ -109,7 +109,8 @@ def intent(text: str) -> str:
     if not paras:
         return ""
     last = " ".join(paras[-1].split())
-    sentences = re.findall(r"[^.!?]+[.!?]*", last)
+    # a sentence ends at a stop followed by a space: "-3.7 °C" or "2.6.1" is never split
+    sentences = [x for x in re.split(r"(?<=[.!?])\s+", last) if x]
     out = ""
     for s in reversed(sentences):        # the whole last paragraph when it fits, else its end
         cand = (s.strip() + " " + out).strip()

@@ -178,3 +178,9 @@ def test_the_tui_card_scrolls_and_keeps_its_buttons_on_screen():
             allow = scr.query_one("#ap-allow", Button).region
             assert allow.height and allow.y + allow.height <= 24, allow
     asyncio.run(walk())
+
+
+def test_a_number_in_the_goal_is_never_split_at_its_point():
+    # found in the warehouse screenshots: "-3.7 °C" read "-3. 7 °C" on the card
+    g = approvalcard.intent("Cold room B is at -3.7 °C and climbing. Updating to 2.6.1 now.")
+    assert g == "Cold room B is at -3.7 °C and climbing. Updating to 2.6.1 now."

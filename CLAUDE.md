@@ -3350,6 +3350,21 @@ because Claude Code asked about a Pi read the hub's `inventory.json` with its ow
 - **Both sides write it down**: a `device` diary line and a `device.*` ledger row on each machine (`devevents` skips
   the ledger copies). Offered on the team door and to a Zero's chat, so a forwarded brain calls `mcp__bento__device_*`.
 
+**A Zero can look after ESP32 nodes, and they are its hardware, nothing more** (`agentos/espnodes.py`,
+wire op `esp_nodes`, `/api/devices/esp`, Devices → Hardware → ESP32 nodes, `bento network esp`;
+`tests/test_esp_nodes.py`, live run `packaging/dev/warehouse/run.py` with `esp_sim.py`). Asked for as
+"think about sense with ESP32 … centrally command a warehouse with AI". Five rules:
+- **Added on purpose, read before kept.** mDNS (`discover`, `_esphomelib._tcp` + `_http._tcp`) only says who is
+  there, asked by the hub and heard on the ZONE's network; `add` keeps a node only after its `/events` answered.
+- **Its entities are the Pi's items** (`esp.<node>.<domain>.<name>`), so `GET_ID`/`SET_ID`, permits, grants,
+  readings and both ledgers needed one alternative each and no new mechanism. Keep it that way.
+- **Only sensors, contacts, text, switches, lights and fans**; a set is on/off on the last three, read back
+  until the node reports it (`SET_WAIT`), else an error that says what it reads.
+- **Plain HTTP is said, never hidden** (`SAY_PLAIN`, the panel's ⓘ, the docs). The password is in the Pi's
+  vault (`esp.<node>`) and is never in esp.json, a diary line or a ledger row.
+- `AGENTOS_LINK_FROM` gives a stand-in machine its own loopback address (`teamlink.local_addr`), so three
+  zones on one computer are three rows, as Pis on a network are. A test hook, like `AGENTOS_DISCOVER_TARGETS`.
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their

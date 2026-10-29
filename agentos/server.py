@@ -1066,6 +1066,39 @@ async def _device_from_hub(lk: dict, req: dict) -> dict:
     return got
 
 
+async def _esp_from_hub(lk: dict, req: dict) -> dict:
+    """This machine's hub lists, finds, adds or removes the ESP32 nodes it looks after
+    (espnodes.answer: only its own hub). Finding asks the network over mDNS from here, because
+    the nodes are on this machine's network, not the hub's. A diary line and a ledger row here,
+    never with the password."""
+    from . import espnodes
+    cfg = state.machine_cfg()
+    if req.get("action") == "find":
+        if not _zero().is_my_hub(cfg, lk):
+            got = {"ok": False, "error": "only the hub that set this machine up can look for its ESP32 nodes"}
+        else:
+            found = await espnodes.discover()
+            got = {"ok": True, "found": found, "nodes": [espnodes.public(n) for n in espnodes.nodes()],
+                   "said": espnodes.SAY_PLAIN}
+        words = (f"{lk.get('label')} looked for ESP32 nodes on this network: {len(got.get('found') or [])} answered"
+                 if got.get("ok") else f"{lk.get('label')} asked to look for ESP32 nodes: {got.get('error')}")
+    else:
+        got = await asyncio.get_running_loop().run_in_executor(None, espnodes.answer, cfg, lk, req)
+        words = espnodes.words(req, got, lk.get("label") or "the hub")
+    if req.get("action") in ("add", "remove", "find"):
+        with contextlib.suppress(Exception):
+            with usersmod.as_user(""):
+                state["store"].log("device", words, {"event": "esp", "link": lk.get("label"),
+                                                     "ok": bool(got.get("ok"))})
+                fabricmod.audit_team(state["store"], "device.esp", devio_resource_here(req.get("name")), words)
+    return got
+
+
+def devio_resource_here(node: str = "") -> str:
+    from . import devio
+    return devio.resource(_here_name(), f"esp.{node}" if node else "esp")
+
+
 def _here_name() -> str:
     from . import teamlink
     return teamlink.machine_name(state.machine_cfg())
@@ -1168,6 +1201,8 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
         return await _zero_hardware_from_hub(lk)
     if req.get("op") in ("device_get", "device_set", "device_permits"):
         return await _device_from_hub(lk, req)
+    if req.get("op") == "esp_nodes":
+        return await _esp_from_hub(lk, req)
     if req.get("op") == "zero_update":
         return await _zero_update_from_hub(lk)
     if req.get("op") == "zero_say":
@@ -14380,9 +14415,17 @@ async def _device_tool(verb: str, machine: str, item: str = "", value=None, rang
     if not got.get("ok"):
         return f"[error] {got.get('error') or 'it did not answer'}"
     if verb == "set":
+        if item.startswith("esp."):
+            return (f"{got.get('name') or item} on {lk['label']} is now {got.get('detail')} (it was "
+                    f"{'on' if got.get('was') else 'off'}). Read back from the node.")
         return (f"{got.get('name') or item} on {lk['label']} is now {got.get('value')} (it was {got.get('was')}"
-                + (f", and was an {got['was_mode']}" if got.get("was_mode") == "input" else "") + "). Read back from the pin.")
+                + (f", and was an {got['was_mode']}" if got.get("was_mode") == "input" else "")
+                + f"). Read back from {got.get('read_back') or 'the pin'}.")
     unit = f" {got['unit']}" if got.get("unit") else ""
+    if got.get("detail") in ("on", "off") and item.startswith("esp."):
+        # a contact, a switch, a light or a fan: on or off says it, a bare 1 doesn't
+        return (f"{got.get('name') or item} on {lk['label']}: {got['detail']}, read live at "
+                f"{time.strftime('%H:%M:%S', time.localtime(got.get('at') or time.time()))}.")
     return (f"{got.get('name') or item} on {lk['label']}: {got.get('value', got.get('detail', ''))}{unit}"
             + (f" ({got['detail']})" if got.get("detail") and "value" in got else "")
             + f", read live at {time.strftime('%H:%M:%S', time.localtime(got.get('at') or time.time()))}.")
@@ -14701,6 +14744,48 @@ async def api_device_read(body: dict):
     if not got.get("ok"):
         return JSONResponse({"error": got.get("error") or "it did not answer"}, 400)
     return got
+
+
+@app.post("/api/devices/esp")
+async def api_device_esp(body: dict):
+    """The ESP32 nodes a Zero looks after (espnodes.py): list, find (mDNS on ITS network), add,
+    look or remove. Admin only, like the rest of the inventory. An add or a remove reads the
+    machine's hardware again, so the new things are on its list at once. The password goes to
+    the machine's vault and is never kept or written here."""
+    if (r := _require_admin()):
+        return r
+    from . import espnodes
+    from . import ties as tiesmod
+    b = body or {}
+    act = str(b.get("action") or "list")
+    if act not in ("list", "find", "add", "look", "remove"):
+        return JSONResponse({"error": "list, find, add, look or remove"}, 400)
+    row, lk, err = _device_row_link(b.get("key"))
+    if err:
+        return err
+    req = {"op": "esp_nodes", "action": act}
+    for k in ("name", "host", "port", "user", "password"):
+        if b.get(k) not in (None, ""):
+            req[k] = b[k]
+    got = await tiesmod.esp_call(lk, req)
+    words = espnodes.words(req, got, "you") if act != "find" else (
+        f"you looked for ESP32 nodes near {lk['label']}: {len(got.get('found') or [])} answered" if got.get("ok")
+        else f"you looked for ESP32 nodes near {lk['label']}: {got.get('error')}")
+    if act in ("add", "remove", "find"):
+        _ledger("device.esp", devio_resource_on(lk["label"], b.get("name")), f"{lk['label']}: {words}")
+        await _device_event(lk.get("owner") or "", "esp" if got.get("ok") else "failed", lk["label"],
+                            f"{lk['label']}: " + words.removeprefix("you "))
+    if not got.get("ok"):
+        return JSONResponse({"error": got.get("error") or "it did not answer"}, 400)
+    if act in ("add", "remove", "look"):
+        await _tie_hardware(lk, "ESP32 nodes changed" if act != "look" else "read its ESP32 nodes")
+    got.pop("identity", None)
+    return got
+
+
+def devio_resource_on(machine: str, node: str = "") -> str:
+    from . import devio
+    return devio.resource(machine, f"esp.{node}" if node else "esp")
 
 
 @app.post("/api/network/hardware")

@@ -143,6 +143,10 @@ def store(machine: str, batch) -> dict:
         off = 0.0
     c = db()
     stored, last_seq = 0, None
+    # a batch sent again is known by its numbers: the clock offset is worked out per call, so a
+    # time rounded a tenth later would read as new and be counted twice in the summaries
+    had = cursor(machine)
+    seen_to = had.get("seq") if had and had.get("boot") == str(batch.get("boot") or "")[:24] else None
     with _DB_LOCK:
         c.execute("BEGIN")
         try:
@@ -150,6 +154,8 @@ def store(machine: str, batch) -> dict:
                 if not isinstance(row, (list, tuple)) or len(row) != 4:
                     continue
                 seq, ts, item, v = row
+                if isinstance(seq, int) and seen_to is not None and seq <= seen_to:
+                    continue
                 ts, v = _num(ts), _num(v)
                 if ts is None or v is None or not isinstance(item, str) or not _ID.fullmatch(item):
                     continue

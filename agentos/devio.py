@@ -42,9 +42,10 @@ from . import hardware
 
 # What Bento can read, by inventory id. Each has a reader below and was checked on a real Pi.
 GET_ID = re.compile(r"(?:[a-z0-9_]+\.temp|power\.(?:throttle|core_volts)|system\.(?:load|memory_free|disk_free|uptime)"
-                    r"|net\.[a-z0-9_.-]{1,30}|gpio\.(?:[0-9]|1[0-9]|2[0-7])|w1\.[a-z0-9_.-]{1,40})")
-# What Bento can set: a header pin's level, nothing else yet
-SET_ID = re.compile(r"gpio\.([0-9]|1[0-9]|2[0-7])")
+                    r"|net\.[a-z0-9_.-]{1,30}|gpio\.(?:[0-9]|1[0-9]|2[0-7])|w1\.[a-z0-9_.-]{1,40}"
+                    r"|esp\.[a-z0-9][a-z0-9-]{0,15}\.(?:sensor|binary_sensor|text_sensor|switch|light|fan)\.[a-z0-9_]{1,24})")
+# What Bento can set: a header pin's level, and an ESP32 node's switch, light or fan (espnodes.py)
+SET_ID = re.compile(r"gpio\.([0-9]|1[0-9]|2[0-7])|esp\.[a-z0-9][a-z0-9-]{0,15}\.(?:switch|light|fan)\.[a-z0-9_]{1,24}")
 VERBS = ("get", "set")
 MAX_PERMITS = 120
 FILE = "devices.json"
@@ -121,7 +122,8 @@ def refusal(verb: str, item: str) -> str:
     item = str(item or "").strip().lower()
     if verb == "set":
         if not SET_ID.fullmatch(item):
-            return f"Bento can't set '{item}' on this machine: only a header pin's level (gpio.N) for now"
+            return (f"Bento can't set '{item}' on this machine: only a header pin's level (gpio.N) or an "
+                    f"ESP32 node's switch, light or fan")
     elif not GET_ID.fullmatch(item):
         return f"Bento has no reader for '{item}' yet, so it can't be used, only listed"
     if item not in permits()[verb]:
@@ -135,6 +137,9 @@ def refusal(verb: str, item: str) -> str:
 def read(item: str) -> dict:
     """One item's value now, with its unit, by the reader Bento has for it."""
     item = str(item or "").strip().lower()
+    if item.startswith("esp."):
+        from . import espnodes
+        return espnodes.read(item)
     if item.startswith("gpio."):
         code, out = _pin("get", item.split(".", 1)[1])
         got = hardware.gpio_items(out)
@@ -169,6 +174,9 @@ def write(item: str, value) -> dict:
     """Set a header pin to a level and read it back. A pin lent to a bus (I2C, SPI, a UART) is
     refused: driving it would talk over whatever is on that bus."""
     item = str(item or "").strip().lower()
+    if item.startswith("esp."):
+        from . import espnodes
+        return espnodes.write(item, value)
     m = SET_ID.fullmatch(item)
     want = level(value)
     if not m or want is None:
@@ -185,7 +193,7 @@ def write(item: str, value) -> dict:
     after = read(item)
     if not after.get("ok") or after.get("value") != want:
         return {"ok": False, "error": f"GPIO {n} reads {after.get('value')} after setting it to {want}"}
-    return {**after, "was": before.get("value"), "was_mode": before.get("detail")}
+    return {**after, "was": before.get("value"), "was_mode": before.get("detail"), "read_back": "the pin"}
 
 
 def answer(cfg: dict, lk: dict, req: dict) -> dict:
@@ -222,7 +230,8 @@ def words(req: dict, got: dict, frm: str) -> str:
         head = f"{frm} set {item} to {req.get('value')} for {who}"
     else:
         head = f"{frm} read {item} for {who}"
-    tail = (f": {got.get('value')}{(' ' + got['unit']) if got.get('unit') else ''}" if got.get("ok") and "value" in got
+    shown = got.get("detail") if str(item).startswith("esp.") and got.get("detail") in ("on", "off") else got.get("value")
+    tail = (f": {shown}{(' ' + got['unit']) if got.get('unit') else ''}" if got.get("ok") and "value" in got
             else "" if got.get("ok") else f", refused: {got.get('error')}")
     return head + tail + (f" (\"{why}\")" if why else "")
 
@@ -261,6 +270,8 @@ def mark(item: str, row: dict) -> str:
     """What may be done with one item from the hub: 'read, set', 'read', 'not permitted'
     (Bento has a reader, nobody allowed it) or 'listed only' (no reader)."""
     p = row.get("device_permits") or {}
+    if re.fullmatch(r"esp\.[a-z0-9-]+", item):
+        return "an ESP32 node: its things follow"
     if item in (p.get("set") or []):
         return "read, set"
     if item in (p.get("get") or []):

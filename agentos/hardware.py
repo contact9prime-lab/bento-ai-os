@@ -41,13 +41,14 @@ from pathlib import Path
 ROOT = Path(os.environ.get("AGENTOS_HW_ROOT") or "/")
 
 KINDS = ("camera", "temperature", "power", "gpio", "i2c", "spi", "serial", "usb", "audio_in",
-         "audio_out", "input", "network", "bluetooth", "sensor", "system")
+         "audio_out", "input", "network", "bluetooth", "sensor", "esphome", "system")
 KIND_WORDS = {"camera": "Cameras", "temperature": "Temperature", "power": "Power", "gpio": "GPIO pins",
               "i2c": "I2C", "spi": "SPI", "serial": "Serial ports", "usb": "USB devices",
               "audio_in": "Microphones", "audio_out": "Speakers and audio out", "input": "Input devices",
-              "network": "Network", "bluetooth": "Bluetooth", "sensor": "Sensors", "system": "System"}
+              "network": "Network", "bluetooth": "Bluetooth", "sensor": "Sensors",
+              "esphome": "ESP32 nodes", "system": "System"}
 VERBS = ("read", "snapshot", "listen", "write")
-MAX_ITEMS = 200
+MAX_ITEMS = 300          # a zone Pi with a few ESP32 nodes (espnodes.py) has ~120
 TOOL_TIMEOUT = 12          # seconds one listing tool may take (rpicam-hello starts the camera stack)
 EVERY_S = 24 * 3600        # the hub asks for the whole inventory at least this often
 _ID = re.compile(r"[a-z0-9][a-z0-9_.:-]{0,63}")
@@ -362,13 +363,25 @@ def _system() -> list[dict]:
     return out
 
 
+def _esp(fresh: bool) -> list[dict]:
+    """The ESP32 nodes this machine looks after, read from each node (espnodes.py). Only nodes
+    somebody added: one heard on the network is never read here."""
+    if ROOT != Path("/"):
+        return []
+    try:
+        from . import espnodes
+        return espnodes.items(fresh)
+    except Exception:
+        return []
+
+
 # ---- the whole answer -----------------------------------------------------------------------
 
 def probe(full: bool = True) -> dict:
     """Everything on this machine, at this moment. `full` also asks the camera stack, which
     takes a few seconds; the minute's hello uses `quick()` instead."""
     items = (_cameras(full) + _temperatures() + _power() + _sensors() + _gpio() + _buses() + _usb()
-             + _audio() + _inputs() + _network() + _system())
+             + _audio() + _inputs() + _network() + _esp(full) + _system())
     out = {"at": time.time(), "board": board(), "items": items[:MAX_ITEMS], "quick": quick()}
     out["digest"] = digest(out)
     return out
@@ -388,6 +401,12 @@ def sample() -> dict:
             continue
         elif isinstance(it.get("value"), (int, float)) and not isinstance(it.get("value"), bool):
             out[it["id"]] = it["value"]
+    if ROOT == Path("/"):
+        try:
+            from . import espnodes
+            out.update(espnodes.sample())
+        except Exception:
+            pass
     return out
 
 
@@ -400,6 +419,12 @@ def quick() -> str:
     for folder in ("sys/bus/i2c/devices", "sys/bus/w1/devices", "sys/bus/iio/devices", "sys/class/sound",
                    "sys/class/net", "sys/class/bluetooth"):
         parts += [folder.rsplit("/", 1)[-1] + ":" + d for d in _ls(_p(folder))]
+    if ROOT == Path("/"):
+        try:
+            from . import espnodes
+            parts += espnodes.quick()
+        except Exception:
+            pass
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()[:16]
 
 
@@ -407,7 +432,7 @@ def digest(p: dict) -> str:
     """What the inventory is, without its readings: two probes with the same things plugged in
     digest the same, whatever the temperature was."""
     shape = [(it.get("id"), it.get("kind"), it.get("name"), it.get("detail") if it.get("kind") not in
-              ("gpio", "power", "network", "system") else "") for it in p.get("items") or []]
+              ("gpio", "power", "network", "system", "esphome") else "") for it in p.get("items") or []]
     b = p.get("board") or {}
     return hashlib.sha256(json.dumps([b.get("model"), b.get("serial"), b.get("ram_mb"), shape]).encode()).hexdigest()[:16]
 
@@ -505,6 +530,8 @@ def value_words(it: dict) -> str:
         return ""
     if it["kind"] == "gpio":
         return "high" if v else "low"
+    if it["kind"] == "esphome" and it["id"].split(".")[2:3] in (["binary_sensor"], ["switch"], ["light"], ["fan"]):
+        return "on" if v else "off"
     if it.get("unit") == "s":
         h = int(v) // 3600
         return f"{h // 24} d {h % 24} h" if h >= 24 else f"{h} h {int(v) % 3600 // 60} min"

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.3 — 2026-10-27
+
+**A Pi can look after ESP32 nodes, so one hub can run a whole building.** A Pi set up from this hub
+finds ESPHome nodes on its own network and, once you add one, reads it and keeps it. Each node's
+sensors, door contacts, switches, lights and fans become part of that Pi: on its hardware list, kept
+for 90 days, and usable only once you allow them in What agents may use. Your agent reads them and
+asks to switch them through the same two tools as a Pi's pins, every set is asked, and a set is read
+back from the node. A node's password is kept in the Pi's vault. ESPHome's web server is plain HTTP,
+so Devices says to keep the nodes on a network of their own. Devices → Hardware → ESP32 nodes finds,
+adds and removes them; `bento network esp` does the same from a terminal. Tested against a stand-in
+that speaks ESPHome's own API and mDNS: a warehouse of three zone Pis and six nodes, run from one
+hub's chat. A batch of readings sent twice is now always kept once.
+
+**An ESP32 on your bench.** `packaging/esphome/bento-bench.yaml` and [a guide](docs/esp32-bench.md) wire an
+ESP32-S3 with a microphone, a touch pad, a vibration switch, a small screen and a speaker, so you can try the
+above with a few cheap parts: ask for its chip temperature or the room's sound level, and switch its LED or an
+alarm from chat.
+
 ## 0.7.2 — 2026-10-27
 
 **Agents read and set a Pi's hardware through two tools, get and set.** Ask about a Pi's temperature
