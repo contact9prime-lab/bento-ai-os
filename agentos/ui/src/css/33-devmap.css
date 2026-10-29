@@ -176,6 +176,14 @@ body.kiosk.kiosk-side #kiosk-hud .kh-upd{flex:none}
 /* Devices → Events (24o-devices.js devEvents*), and a machine's own Events view */
 .dev-events{margin:18px 0 6px}
 .dev-events h3{font-size:13px;font-weight:600;margin:0 0 8px}
+.dev-demo{margin:22px 0 6px;padding:14px 16px;border:1px solid color-mix(in srgb,var(--txt) 12%,transparent);border-radius:12px}
+.dev-demo h3{font-size:13px;font-weight:600;margin:0 0 6px}
+.dev-demo p{margin:6px 0}
+.dev-demo .bad{color:var(--red,#e5534b)}
+.dev-demo-opt{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin:8px 0;min-height:var(--tap,40px);width:auto}
+.dev-demo-opt input{width:auto;flex:none;margin:0}
+.dev-demo-bar{height:6px;border-radius:3px;background:color-mix(in srgb,var(--txt) 12%,transparent);overflow:hidden;margin:8px 0}
+.dev-demo-bar i{display:block;height:100%;background:var(--acc-grad,var(--acc))}
 .dev-ev{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .dev-ev li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:baseline;padding:7px 0;
   border-bottom:1px solid color-mix(in srgb,var(--txt) 6%,transparent);font-size:12.5px}

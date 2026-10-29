@@ -8291,6 +8291,8 @@ SENSITIVE_FOR_APPS = (
     ("POST", "/api/snapshots"), ("DELETE", "/api/snapshots"),
     # a backup is every account's data in one file, and a restore replaces the machine
     ("POST", "/api/backup"), ("POST", "/api/restore"), ("DELETE", "/api/restore"),
+    # the demo starts four servers and spends this machine's brain
+    ("POST", "/api/demo"),
     ("PUT", "/api/telegram"), ("PUT", "/api/widgets"), ("POST", "/api/skills"),
     ("DELETE", "/api/skills"), ("POST", "/api/setup/reset"), ("POST", "/api/factory-reset"),
     ("POST", "/api/power"), ("POST", "/api/store/mcp"), ("DELETE", "/api/mcp/registry"),
@@ -14744,6 +14746,39 @@ async def api_device_read(body: dict):
     if not got.get("ok"):
         return JSONResponse({"error": got.get("error") or "it did not answer"}, 400)
     return got
+
+
+@app.get("/api/demo/warehouse")
+async def api_demo_warehouse(request: Request):
+    """The warehouse demo (demos/warehouse.py): off, starting, ready or failed, and where it is.
+    Its pages are on this machine's loopback, so a browser elsewhere is told it can't open them."""
+    from .demos import warehouse as wh
+    return {**wh.status(), "here": remotemod.is_loopback(_client_addr(request))}
+
+
+@app.post("/api/demo/warehouse")
+async def api_demo_warehouse_act(request: Request, body: dict):
+    """Start or stop it. Admin and at the machine: it starts four servers here, and the hub thinks
+    with a copy of this machine's brain, which spends what the brain costs."""
+    from .demos import warehouse as wh
+    if not remotemod.is_loopback(_client_addr(request)):
+        return JSONResponse({"error": "The demo runs on this machine's own addresses, so start it on the "
+                                      "machine itself (or with bento demo warehouse)."}, status_code=403)
+    denied = _require_admin()
+    if denied:
+        return denied
+    act = body.get("action")
+    if act == "stop":
+        st = await asyncio.to_thread(wh.stop)
+        _ledger("demo.stop", "demo:warehouse", "stopped the warehouse demo")
+        return st
+    if act != "start":
+        return JSONResponse({"error": "action is start or stop"}, status_code=400)
+    st = await asyncio.to_thread(wh.start, state["cfg"], bool(body.get("scripted")), bool(body.get("fresh")))
+    if st.get("error"):
+        return JSONResponse(st, status_code=409)
+    _ledger("demo.start", "demo:warehouse", f"started the warehouse demo on {st.get('brain') or 'a brain'}")
+    return st
 
 
 @app.post("/api/devices/esp")

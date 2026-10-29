@@ -21,7 +21,7 @@
    `bento help --all`, and each place here has a verb there (bento telegram, bento flow,
    bento job, bento mail…). `var`, not `let`: the bundle is one script. */
 var APP_WORDS={
-  devices:['device','devices','device hub','machines','pi','raspberry pi','network','inventory','fleet','zero','remove bento','uninstall'],
+  devices:['device','devices','device hub','machines','pi','raspberry pi','network','inventory','fleet','zero','remove bento','uninstall','demo','warehouse','simulation','simulated','esp32','esphome','sensors','try it'],
   jobs:['mission','missions','job','jobs','flow','flows','workflow','workflows','fabric','orchestrator','recipe'],
   settings:['preferences','prefs','config','configuration','options'],
   timetravel:['undo','rewind','time machine','time travel','go back','revert','restore','fork','checkpoint','history of changes'],

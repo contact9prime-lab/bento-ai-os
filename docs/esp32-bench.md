@@ -122,5 +122,5 @@ and its ESPHome version. Those are the board's own numbers, useful for checking 
 
 The YAML was checked with ESPHome 2026.6.5 (`esphome config`). Bento was tested against a stand-in
 that serves exactly these entities over ESPHome's own web server API
-(`packaging/dev/warehouse/esp_sim.py`, layout `bench`; `tests/test_esp_nodes.py`). It hasn't been run
+(`agentos/demos/esp_sim.py`, layout `bench`; `tests/test_esp_nodes.py`). It hasn't been run
 on a real board yet. The first person to flash one will be the first real test.

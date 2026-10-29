@@ -1,20 +1,18 @@
 """ESP32 nodes running ESPHome, as part of the Pi they are attached to (espnodes.py). Asked for as
 "Bento has a controlling effect on the Pi now, think about sense with ESP32". Tested against
-packaging/dev/warehouse/esp_sim.py, which speaks ESPHome 2026.6's web server API and mDNS."""
+agentos/demos/esp_sim.py, which speaks ESPHome 2026.6's web server API and mDNS."""
 import asyncio
 import json
 import socket
-import sys
 import time
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(ROOT / "packaging/dev/warehouse"))
 
-import esp_sim                                                        # noqa: E402
 from agentos import devio, espnodes, hardware, teamlink, vault       # noqa: E402
+from agentos.demos import esp_sim                                    # noqa: E402
 
 
 def _free(n: int) -> int:

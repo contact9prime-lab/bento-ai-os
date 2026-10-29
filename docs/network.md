@@ -542,6 +542,8 @@ seven things across three zones. When cold room B's compressor trips, the agent 
 door and the compressor, asks to switch it back on, and the room starts cooling after a person says
 yes. A set nobody says yes to isn't made.
 
+You can run the same warehouse yourself and play with it: see [The warehouse demo](warehouse-demo.md).
+
 ![Aria reads cold room B's temperature, door and compressor, then asks to switch the compressor on](screenshots/esp32-set-asked.png)
 
 ![After Allow, the compressor is on, read back from the node](screenshots/esp32-set-done.png)
