@@ -24,6 +24,9 @@ async function topoTies(){
       owner:lk.owner||'',mine:true,talks_to:lk.talks_to||{to:'lead'},agent:{}}))}catch(e){return []}
 }
 function topoKey(t){return (t.owner||'')+'|'+t.label}
+/* A tie is called by its machine, as on both maps: the label is the link's own handle, which a
+   reinstall makes raspberrypi-3, and every Zero's agent starts out with the same name. */
+function topoName(t){return t.peer||t.label}
 
 async function topoMappingPaint(){
   const box=document.getElementById('s-net-mapping');if(!box)return;
@@ -50,11 +53,11 @@ function topoRowHTML(t){
   const k=topoKey(t),a=TOPO.access[k]||{},open=!!TOPO.open[k];
   const kind=t.kind==='zero'?'Zero':t.kind==='account'?'Account':'Team';
   const face=(t.agent&&t.agent.look&&typeof avatarRecipeImg==='function')?avatarRecipeImg(t.agent.look,'av-tool',t.peer):`<span class="tm-ini">${esc((t.peer||t.label||'?')[0].toUpperCase())}</span>`;
-  if(t.mine===false)return `<div class="tm-row"><div class="tm-h">${face}<b>${esc(t.label)}</b><span class="brainchip">${kind}</span></div>
+  if(t.mine===false)return `<div class="tm-row"><div class="tm-h">${face}<b>${esc(topoName(t))}</b><span class="mut">${esc(t.label)}</span><span class="brainchip">${kind}</span></div>
     <p class="mut">Belongs to ${esc(t.owner_name||'another account')}: they map it.</p></div>`;
-  const lead=a.talks_to&&a.talks_to.to==='lead';
+  const lead=a.talks_to&&a.talks_to.to==='lead',name=topoName(t);
   return `<div class="tm-row${lead?' wide':''}">
-    <div class="tm-h">${face}<b>${esc(t.label)}</b><span class="brainchip">${kind}</span>
+    <div class="tm-h">${face}<b>${esc(name)}</b>${name!==t.label?`<span class="mut">${esc(t.label)}</span>`:''}<span class="brainchip">${kind}</span>
       <span class="sp"></span><label class="tm-to"><span>Talks to</span>${topoTargetSelect(t)}</label></div>
     ${a.error?`<p class="tie-warn">${esc(a.error)}</p>`:''}
     ${a.caution?`<p class="tm-caution">⚠ ${esc(a.caution)}</p>`:''}

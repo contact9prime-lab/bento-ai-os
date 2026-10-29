@@ -18,7 +18,7 @@ resolution-markers = [
 
 [[package]]
 name = "agentos"
-version = "0.7.3"
+version = "0.7.4"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography", version = "46.0.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'armv7l'" },

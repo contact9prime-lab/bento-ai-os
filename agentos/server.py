@@ -14273,11 +14273,11 @@ async def api_network_logical():
     """The logical map (topology.logical): the lead, your companies, their departments and people
     down to their permissions, and every tie hung from what it talks to. Yours; an admin also sees
     the machine's ties."""
-    from . import ties as tiesmod
     from . import topology
     me = usersmod.current() or ""
     admin = (not usersmod.enabled()) or usersmod.is_admin(me)
-    ties = [t for t in tiesmod.ties(None) if t["owner"] == me or (admin and not t["owner"])]
+    # _ties_view, so a tie is named by the agent on the other side, as on the device map
+    ties = [t for t in _ties_view() if t["owner"] == me or (admin and not t["owner"])]
     return topology.logical(state["cfg"], state["store"], ties)
 
 

@@ -94,6 +94,12 @@ departments, people and their permissions. The **physical** map starts at this c
 linked teams, Bento machines and the other devices. Both are in Network & Teams → Maps and in the
 Devices app; Settings → Agents has the logical one. `bento network map` prints the logical one.
 
+A Zero or a team is named by its machine on both maps, with its agent's name underneath. A link
+left over from reinstalling a machine isn't drawn: it reaches nothing. Remove it in Network &
+Teams, where it's listed as an old link.
+
+![The physical map's Zeros, each named by its machine: zone-aisle, zone-cold and zone-dock](screenshots/map-zeros-named.png)
+
 ![The logical map zoomed out: Aria, the companies, and a team talking to her](screenshots/map-overview.png)
 
 ![A company opened: its departments around it, with its panel](screenshots/map-company.png)
