@@ -62,6 +62,13 @@ function devChartDraw(slot,d,loading){
     seg.appendChild(b);
   });
   head.appendChild(seg);
+  // a mission that starts when this thing does something (devtrig.py, the Missions editor)
+  if(typeof devWhen==='function'&&typeof netRow==='function'){
+    const r=netRow(DEVCHART.key),m=r.here?r.display:((r.links||[])[0]||{}).label;
+    if(m&&!/\.text_sensor\./.test(DEVCHART.item)){
+      const w=devEl('button',{class:'endbtn dev-chart-when',type:'button'},'Start a mission when…');
+      w.onclick=()=>devWhen(m,DEVCHART.item);head.appendChild(w)}
+  }
   slot.appendChild(head);
   if(loading&&!d){slot.appendChild(devEl('p',{class:'mut'},'Reading…'));return}
   if(loading)slot.classList.add('busy');else slot.classList.remove('busy');

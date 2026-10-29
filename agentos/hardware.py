@@ -46,7 +46,7 @@ KIND_WORDS = {"camera": "Cameras", "temperature": "Temperature", "power": "Power
               "i2c": "I2C", "spi": "SPI", "serial": "Serial ports", "usb": "USB devices",
               "audio_in": "Microphones", "audio_out": "Speakers and audio out", "input": "Input devices",
               "network": "Network", "bluetooth": "Bluetooth", "sensor": "Sensors",
-              "esphome": "ESP32 nodes", "system": "System"}
+              "esphome": "ESP32 nodes and what they have", "system": "System"}
 VERBS = ("read", "snapshot", "listen", "write")
 MAX_ITEMS = 300          # a zone Pi with a few ESP32 nodes (espnodes.py) has ~120
 TOOL_TIMEOUT = 12          # seconds one listing tool may take (rpicam-hello starts the camera stack)
