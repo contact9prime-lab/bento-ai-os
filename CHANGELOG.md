@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.4 — 2026-10-29
+
+**The maps name each Pi by its machine, and leave old links off.** Reinstalling a Pi leaves the
+hub's earlier links to it behind, and the logical map drew every one of them around your lead under
+the link's handle (`raspberrypi-2`, `raspberrypi-3`). The device map named Zeros by their agent, and
+every Zero's agent starts out as Aria, so three Pis read "Aria, Aria, Aria". Both maps, Team to agent
+mapping and `bento network map` now name a Zero or a team by its machine, with its agent underneath,
+and skip a link a newer one replaced.
+
+**The warehouse can be filmed.** `packaging/dev/warehouse/film.py` drives the hub's desktop while
+`run.py --keep` runs and makes a 1080x1920 reel with sound: the readings, the compressor tripping,
+the card, Allow, and the node read back.
+
 ## 0.7.3 — 2026-10-27
 
 **A Pi can look after ESP32 nodes, so one hub can run a whole building.** A Pi set up from this hub

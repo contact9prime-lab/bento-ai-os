@@ -212,8 +212,8 @@ function zmPersonDetail(p){
 }
 function zmAvatar(key){try{return typeof avatarSrc==='function'?avatarSrc(key):''}catch(e){return ''}}
 function zmTieNode(t,where){
-  return {id:'tie:'+where+':'+t.label,label:t.label,kind:'tie '+(t.kind||'team'),kindWord:t.kind==='zero'?'Zero':'Team',
-    st:t.answering===false?'off':'',sub:t.missing?t.missing+' is gone':(t.kind==='zero'?'Zero':'linked team'),glyph:t.kind==='zero'?'◫':'⇄',
+  return {id:'tie:'+where+':'+t.label,label:t.name||t.label,kind:'tie '+(t.kind||'team'),kindWord:t.kind==='zero'?'Zero':'Team',
+    st:t.answering===false?'off':'',sub:t.missing?t.missing+' is gone':(t.kind==='zero'?'Zero':'linked team')+(t.agent?' · agent '+t.agent:''),glyph:t.kind==='zero'?'◫':'⇄',
     detail:()=>`<div class="zm-rows"><div><span class="ag-k">Talks to</span>${esc(where)}</div>
       <div class="zm-acts"><button class="endbtn" onclick="placeSettings('network')()">Who it talks to</button></div></div>`};
 }
@@ -221,7 +221,7 @@ function zmTieGroup(ties,where,gid){
   ties=ties||[];
   if(ties.length<2)return ties.map(t=>zmTieNode(t,where));
   return [{id:'g:'+gid,label:ties.length+' talking to '+where,kind:'group ties',glyph:'⇄',kindWord:'',
-    sub:ties.map(t=>t.label).join(', '),children:ties.map(t=>zmTieNode(t,where))}];
+    sub:ties.map(t=>t.name||t.label).join(', '),children:ties.map(t=>zmTieNode(t,where))}];
 }
 function zmLogical(tree){
   const L=tree.lead||{};
@@ -234,7 +234,7 @@ function zmLogical(tree){
     children:[...(c.departments||[]).map((d,di)=>({id:`d:${ci}:${di}`,label:d.name,kind:'dept',kindWord:'department',glyph:'▸',
         sub:(d.people||[]).length+' people'+(d.head?' · head '+d.head:''),openAtStart:false,
         detail:()=>`<div class="zm-rows">${d.about?`<div>${esc(d.about)}</div>`:''}${d.head?`<div><span class="ag-k">Head</span>${esc(d.head)}</div>`:''}
-          ${(d.ties||[]).length?`<div><span class="ag-k">Talking to it</span>${d.ties.map(t=>esc(t.label)).join(', ')}</div>`:''}</div>`,
+          ${(d.ties||[]).length?`<div><span class="ag-k">Talking to it</span>${d.ties.map(t=>esc(t.name||t.label)).join(', ')}</div>`:''}</div>`,
         children:[...zmTieGroup(d.ties,d.name,`t:${ci}:${di}`),...(d.people||[]).map(p=>person(p,`p:${ci}:${di}`))]})),
       ...(c.people||[]).map(p=>person(p,`p:${ci}`)),
       ...(c.auditor?[person({...c.auditor,label:c.auditor.name+' (auditor)'},`a:${ci}`)]:[])]}));
@@ -247,8 +247,9 @@ function zmPhysical(v){
   const rowOf=t=>rows.find(r=>(r.links||[]).some(l=>l.label===t.label));
   const tied=new Set();ties.forEach(t=>{const r=rowOf(t);if(r)tied.add(r.key)});
   const tieN=t=>{const st=typeof tieState==='function'?tieState(t):{cls:'',word:''},r=rowOf(t);
-    return {id:'tie:'+tieKey(t),label:(t.agent||{}).name||t.peer||t.label,kind:'device '+(t.kind||'team'),kindWord:t.kind==='zero'?'Zero':'Team',
-      st:(t.answering===false?'off':'')+((typeof DEVMAP!=='undefined'&&DEVMAP.busy[t.label])?' busy':''),sub:t.label+(t.addr?' · '+t.addr:''),
+    return {id:'tie:'+tieKey(t),label:t.peer||t.label,kind:'device '+(t.kind||'team'),kindWord:t.kind==='zero'?'Zero':'Team',
+      st:(t.answering===false?'off':'')+((typeof DEVMAP!=='undefined'&&DEVMAP.busy[t.label])?' busy':''),
+      sub:((t.agent||{}).name?'agent '+t.agent.name:'')+(t.addr?((t.agent||{}).name?' · ':'')+t.addr:''),
       img:t.agent&&t.agent.look&&typeof avatarRecipeSrc==='function'?avatarRecipeSrc(t.agent.look):'',glyph:t.kind==='zero'?'◫':'⇄',
       detail:()=>`<div class="zm-rows"><div><span class="ag-k">State</span>${esc(st.word||'')}${t.version?' · '+esc(t.version):''}</div>
         ${t.addr?`<div><span class="ag-k">Address</span>${esc(t.addr)}</div>`:''}${r&&r.mac?`<div><span class="ag-k">MAC</span>${esc(r.mac)}</div>`:''}

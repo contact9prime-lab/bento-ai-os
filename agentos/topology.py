@@ -81,9 +81,16 @@ def logical(cfg: dict, store, ties: list[dict] | None = None) -> dict:
                           "default": True, "departments": [],
                           "people": loose})
     for t in ties or []:
+        # a link left over from a reinstall reaches nothing: the device map leaves it off, so does this
+        if t.get("stale"):
+            continue
         tt = t.get("talks_to") or {"to": "lead"}
+        ag = t.get("agent") if isinstance(t.get("agent"), dict) else {}
+        # named for the machine: a link's label grows -2, -3 with each reinstall, and every
+        # Zero's agent starts out as Aria, so neither tells two Pis apart
         node = {"label": t.get("label"), "kind": t.get("kind"), "peer": t.get("peer"),
-                "answering": t.get("answering"), "stale": t.get("stale")}
+                "name": t.get("peer") or t.get("label"), "agent": ag.get("name") or "",
+                "answering": t.get("answering"), "stale": False}
         if tt.get("to") == "department":
             for c in companies:
                 if (c["id"] or "") != (tt.get("company") or "") and not (c.get("open") and not tt.get("company")):
@@ -159,7 +166,9 @@ def text(tree: dict) -> str:
     lead = tree["lead"]
 
     def tie_line(x, pad):
-        return f"{pad}⇠ {x['label']} ({x.get('kind')})" + (f"  · {x['missing']} is gone" if x.get("missing") else "")
+        name = x.get("name") or x["label"]
+        return (f"{pad}⇠ {name} ({x.get('kind')}" + (f", agent {x['agent']}" if x.get("agent") else "")
+                + (f", link {x['label']}" if x["label"] != name else "") + ")") + (f"  · {x['missing']} is gone" if x.get("missing") else "")
     lines.append(f"{lead['name']} (lead)")
     for x in lead.get("ties") or []:
         lines.append(tie_line(x, "  "))

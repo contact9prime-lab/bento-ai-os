@@ -168,6 +168,22 @@ def test_the_logical_map_and_a_links_access_are_one_reading(tmp_path, monkeypatc
         assert {p["name"] for p in narrow["reach"]} == set(d and [p["name"] for p in d["people"]])
 
 
+def test_the_logical_map_names_a_tie_by_its_agent_and_leaves_old_links_off(tmp_path):
+    # reported as "the connections show two Pis, not with the right name": a reinstalled Pi
+    # left raspberrypi and raspberrypi-2 behind, and the map hung every link off the lead by
+    # its handle
+    c, store, _ = _hub(tmp_path)
+    tree = topology.logical(c, store, [
+        {"label": "raspberrypi-3", "kind": "zero", "peer": "raspberrypi", "agent": {"name": "Mr. Pi"}},
+        {"label": "raspberrypi-2", "kind": "zero", "peer": "raspberrypi", "stale": True},
+        {"label": "raspberrypi", "kind": "team", "peer": "raspberrypi", "stale": True},
+        {"label": "studio", "kind": "team", "peer": "studio-mac", "agent": {"name": ""}}])
+    assert [(t["label"], t["name"], t["agent"]) for t in tree["lead"]["ties"]] == [
+        ("raspberrypi-3", "raspberrypi", "Mr. Pi"), ("studio", "studio-mac", "")]
+    js = (Path(__file__).resolve().parents[1] / "agentos/ui/src/js/24s-zmap.js").read_text()
+    assert "label:t.name||t.label" in js and "label:t.peer||t.label" in js, "both maps draw the machine's name"
+
+
 def test_a_conversation_has_one_home_tab_and_a_huddle_is_also_under_huddles(tmp_path):
     st = Store(tmp_path / "c.db")
     ids = {k: st.create_conversation(t, origin=o) for k, (t, o) in {
