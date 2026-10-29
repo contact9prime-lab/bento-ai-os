@@ -3365,6 +3365,23 @@ wire op `esp_nodes`, `/api/devices/esp`, Devices → Hardware → ESP32 nodes, `
 - `AGENTOS_LINK_FROM` gives a stand-in machine its own loopback address (`teamlink.local_addr`), so three
   zones on one computer are three rows, as Pis on a network are. A test hook, like `AGENTOS_DISCOVER_TARGETS`.
 
+**The warehouse is a demo anyone can start** (`agentos/demos/warehouse.py`, `floor.html`, `esp_sim.py`,
+`warehouse_brain.py`, `/api/demo/warehouse`, Devices → Try it in a simulation, `bento demo warehouse`;
+`docs/warehouse-demo.md`, `tests/test_warehouse_demo.py`). Asked for as "something people can try with
+Bento, to play around, for demos". Five rules:
+- **With accounts it runs as a user of its own** (`warehouse.owner`, beside the demo folder so Start over
+  keeps it; `server._demo_account`): an admin makes that user from the card (setup marked done, no
+  wizard), only it starts the demo, an admin may stop it. With no accounts it starts as before: a first
+  account would `adopt` the whole machine.
+- **It never touches this machine's Bento**: own homes under `~/.cache/bento-demo`, own ports from
+  `AGENTOS_DEMO_PORT` (all checked before a start), no keyring, and `zero_updates` off on its hub, because
+  a zone's code root is this install and an update there would pull it.
+- **Your brain is copied by value** (`BRAIN_KEYS`, an agent CLI's folder dropped, 0600); no brain or
+  `--scripted` is the scripted one, said on every face.
+- **One supervisor owns every process** in a session of its own; Stop is a killpg. status.json is what the
+  CLI, the route and the floor page read.
+- **Start is loopback** (its pages are on 127.0.0.1); the floor's poke refuses another Origin.
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their

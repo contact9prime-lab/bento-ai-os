@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Warehouse floor</title>
+<style>
+:root{--bg:#0d0f1a;--card:#161a2b;--line:#272c45;--txt:#eef0fb;--mut:#9aa0bf;--acc:#8b7bff;--on:#3ad29f;--warn:#ffb547;--bad:#ff6b7d;
+  --r:14px;font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark}
+@media (prefers-color-scheme:light){:root{--bg:#f4f5fb;--card:#fff;--line:#e2e4f0;--txt:#161a2b;--mut:#5d6383;--acc:#5b4ae0;
+  --on:#0f9d6e;--warn:#b86e00;--bad:#d4364c;color-scheme:light}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt)}
+main{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;justify-content:space-between;margin-bottom:16px}
+h1{font-size:24px;margin:0}
+h1 small{display:block;font-size:13px;font-weight:500;color:var(--mut);margin-top:2px}
+h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:24px 0 10px}
+a.hub,button{font:inherit;border-radius:10px;min-height:40px;padding:8px 14px;cursor:pointer;border:1px solid var(--line);
+  background:var(--card);color:var(--txt);text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+a.hub{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button:hover,a.hub:hover{filter:brightness(1.12)}
+button:focus-visible,a.hub:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.banner{border:1px solid var(--line);background:var(--card);border-radius:var(--r);padding:12px 16px;margin-bottom:8px}
+.banner.bad{border-color:var(--bad)}
+.bar{height:6px;border-radius:3px;background:var(--line);margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc);transition:width .4s}
+.brain{color:var(--mut);font-size:13px}
+.try{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.try button{justify-content:space-between;text-align:left;width:100%}
+.try button span:last-child{color:var(--mut);font-size:12px;flex:none}
+.trouble{display:flex;flex-wrap:wrap;gap:8px}
+.trouble button.on{border-color:var(--warn);color:var(--warn)}
+.zones{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.zone{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.zone h3{margin:0 0 2px;font-size:16px}
+.zone .pi{color:var(--mut);font-size:12px;margin-bottom:6px}
+.node{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.node b{display:block;font-size:14px;margin-bottom:4px}
+.node b span{color:var(--mut);font-weight:400;font-size:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:36px}
+.row .v{font-variant-numeric:tabular-nums;font-weight:600}
+.row .v.on{color:var(--on)}.row .v.warn{color:var(--warn)}
+.row button{min-height:32px;padding:4px 10px;font-size:13px}
+.mut{color:var(--mut)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--card);border:1px solid var(--line);
+  padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100% - 32px)}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Warehouse floor<small>A simulation: six ESP32 nodes on three zone Pis, run by one hub</small></h1>
+    <a class="hub" id="hub" href="#" target="_blank" rel="noopener">Open the hub ↗</a>
+  </header>
+  <div id="banner" class="banner" hidden></div>
+  <p class="brain" id="brain"></p>
+  <h2>Ask the hub</h2>
+  <div class="try" id="try"></div>
+  <h2>Cause trouble</h2>
+  <div class="trouble" id="trouble"></div>
+  <h2>The floor, live</h2>
+  <div class="zones" id="zones"><p class="mut">…</p></div>
+</main>
+<div id="toast" role="status"></div>
+<script>
+const ZONE_NAMES={'zone-cold':'Cold rooms','zone-dock':'Loading dock','zone-aisle':'Aisles'};
+// what a person can break, and how to put it back: [node, entity, broken value, words]
+const TROUBLE=[
+  ['cold-2','Compressor',false,'Trip cold room B’s compressor','Put the compressor back on'],
+  ['cold-1','Cold room door',true,'Leave cold room A’s door open','Shut cold room A’s door'],
+  ['dock-1','Dock door 2',true,'Open dock door 2','Shut dock door 2'],
+  ['charge-1','Forklift battery',12,'Drain the forklift battery','Charge the battery to 80%'],
+];
+let S=null;
+function h(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){
+  if(k==='on')e.onclick=v;else if(k==='cls')e.className=v;else e.setAttribute(k,v)}
+  for(const k of kids)if(k!=null)e.append(k);return e}
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');
+  clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2600)}
+function ent(node,name){for(const ns of Object.values(S.zones||{}))for(const n of ns)if(n.node===node)
+  return n.ents.find(e=>e.name===name);return null}
+function fmt(e){
+  if(e.domain==='binary_sensor')return /door/i.test(e.name)?(e.value?'open':'shut'):(e.value?'yes':'no');
+  if(e.domain==='switch'||e.domain==='light'||e.domain==='fan')return e.value?'on':'off';
+  if(typeof e.value==='number')return e.value.toFixed(e.decimals??1).replace('-','−')+(e.uom?' '+e.uom:'');
+  return String(e.value)}
+async function poke(node,entity,value){
+  try{const r=await fetch('/poke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node,entity,value})});
+    const d=await r.json();if(!d.ok)return toast(d.error||'That didn’t work');load()}catch(e){toast('The demo isn’t answering')}}
+function paint(){
+  document.getElementById('hub').href=S.hub;
+  const b=document.getElementById('banner');
+  if(S.phase==='starting'){b.hidden=false;b.className='banner';b.replaceChildren(
+    h('div',{},`Setting up, step ${S.done+1} of ${S.of}: ${S.step}…`),
+    h('div',{cls:'bar'},h('i',{style:`width:${Math.round(100*S.done/S.of)}%`})))}
+  else if(S.phase==='failed'){b.hidden=false;b.className='banner bad';b.textContent=S.error||'The demo stopped.'}
+  else b.hidden=true;
+  document.getElementById('brain').textContent=S.brain?'The hub thinks with '+S.brain+'.':'';
+  document.getElementById('try').replaceChildren(...S.try.map(t=>h('button',{on:async()=>{
+    try{await navigator.clipboard.writeText(t);toast('Copied. Paste it into the hub’s Chat.')}catch(e){toast(t)}}},
+    h('span',{},'“'+t+'”'),h('span',{},'Copy'))));
+  document.getElementById('trouble').replaceChildren(...TROUBLE.map(([node,name,bad,say,fix])=>{
+    const e=ent(node,name);if(!e)return null;
+    const broken=typeof bad==='number'?e.value<=bad+1:e.value===bad;
+    return h('button',{cls:broken?'on':'',on:()=>poke(node,name,broken?(typeof bad==='number'?80:!bad):bad)},broken?fix:say)}));
+  const zs=document.getElementById('zones');
+  zs.replaceChildren(...Object.entries(S.zones||{}).map(([z,ns])=>h('section',{cls:'zone','aria-label':ZONE_NAMES[z]||z},
+    h('h3',{},ZONE_NAMES[z]||z),h('div',{cls:'pi'},'Zone Pi '+z),
+    ...ns.map(n=>h('div',{cls:'node'},h('b',{},n.title+' ',h('span',{},'ESP32 '+n.node)),
+      ...n.ents.map(e=>{
+        const v=h('span',{cls:'v'+((e.domain==='switch'&&e.value)?' on':'')+((/door/i.test(e.name)&&e.value)?' warn':'')},fmt(e));
+        const flip=(e.domain==='switch'||e.domain==='binary_sensor')?h('button',{'aria-label':(e.domain==='switch'?'Switch ':'Flip ')+e.name,
+          on:()=>poke(n.node,e.name,!e.value)},e.domain==='switch'?(e.value?'Turn off':'Turn on'):(/door/i.test(e.name)?(e.value?'Shut':'Open'):'Flip')):null;
+        return h('div',{cls:'row'},h('span',{},e.name),h('span',{},v,flip?' ':null,flip))}))))));
+}
+async function load(){try{S=await (await fetch('/state')).json();paint()}catch(e){
+  const b=document.getElementById('banner');b.hidden=false;b.className='banner bad';b.textContent='The demo isn’t running. Start it again from Devices, or with bento demo warehouse.'}}
+load();setInterval(()=>{if(!document.hidden)load()},1500);
+</script>
+</body>
+</html>

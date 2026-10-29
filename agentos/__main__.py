@@ -5909,6 +5909,101 @@ def _drama_cli(args):
         print(f"forgot {drama.clear(uid)} beats")
 
 
+def _demo_cli(args):
+    """`bento demo warehouse`: a hub, three zone Pis and six ESP32 nodes to play with, in a sandbox
+    of their own (demos/warehouse.py), on this machine's brain or the scripted one. Start waits and
+    prints each step; the floor page and the hub are then on loopback."""
+    from .demos import warehouse as wh
+    if args.name not in ("", "warehouse"):
+        sys.exit(f"there is no demo called {args.name!r}; `bento demo` lists them")
+    a = args.action
+    if not args.name:
+        st = wh.status()
+        print("  warehouse   a hub, three zone Pis and six ESP32 nodes running a warehouse (simulated)")
+        print(f"              {st['phase']}" + (f": {st['floor']}" if st["phase"] == "ready" else ""))
+        print("\n  bento demo warehouse          start it (on your brain, or --scripted)")
+        print("  bento demo warehouse stop     stop it")
+        return
+    if a == "stop":
+        wh.stop()
+        print("the warehouse demo is stopped. Its homes are kept, so the next start is quick; --fresh starts over.")
+        return
+    if a == "status":
+        st = wh.status()
+        print(f"warehouse demo: {st['phase']}" + (f", {st['step'].lower()}" if st["phase"] == "starting" else ""))
+        if st.get("error"):
+            print(f"  {st['error']}")
+        if st["phase"] == "ready":
+            print(f"  floor  {st['floor']}\n  hub    {st['hub']}\n  brain  {st['brain']}")
+        return
+    if a == "floor":
+        try:
+            fl = wh.floor()
+        except OSError:
+            sys.exit("the warehouse demo isn't running: bento demo warehouse")
+        for z, ns in fl["zones"].items():
+            print(z)
+            for n in ns:
+                vals = ", ".join(f"{e['name']} {_demo_value(e)}" for e in n["ents"])
+                print(f"  {n['node']:<9} {n['title']:<13} {vals}")
+        return
+    if a == "poke":
+        if len(args.rest) != 3:
+            sys.exit('bento demo warehouse poke NODE "ENTITY" VALUE   e.g. poke cold-2 Compressor off')
+        try:
+            out = wh.poke(*args.rest)
+        except OSError:
+            sys.exit("the warehouse demo isn't running: bento demo warehouse")
+        if not out.get("ok"):
+            sys.exit(out.get("error") or "that didn't work")
+        print(f"{out['node']}: {out['entity']} is now {out['value']}")
+        return
+    from .config import load_config
+    st = wh.start(load_config(), scripted=args.scripted, fresh=args.fresh)
+    if st.get("error"):
+        sys.exit(st["error"])
+    if st.get("note"):
+        print(st["note"])
+    if st["phase"] == "ready":
+        print("the warehouse demo is already running")
+    elif args.no_wait:
+        print(f"starting; `bento demo warehouse status` says how far it got. Logs: {st['dir']}")
+        return
+    else:
+        print(f"starting the warehouse demo on {st['brain']}" + ("" if st["set_up"] else
+              ". The first start sets the three zones up from the hub and takes a minute or two."))
+        said = ""
+        while st["phase"] == "starting":
+            if st["step"] and st["step"] != said:
+                said = st["step"]
+                print(f"  {st['done'] + 1}/{st['of']} {said}")
+            time.sleep(0.5)
+            st = wh.status()
+        if st["phase"] != "ready":
+            sys.exit(st.get("error") or f"it stopped. Logs: {st['dir']}")
+    print(f"\n  the floor  {st['floor']}   readings live, and trouble to cause")
+    print(f"  the hub    {st['hub']}   ask it in Chat")
+    print("\n  try asking:")
+    for t in st["try"]:
+        print(f"    {t}")
+    print("\n  bento demo warehouse poke cold-2 Compressor off   trips cold room B's compressor")
+    print("  bento demo warehouse stop                         ends it")
+    if args.open:
+        import webbrowser
+        webbrowser.open(st["floor"])
+
+
+def _demo_value(e: dict) -> str:
+    v = e["value"]
+    if e["domain"] == "binary_sensor":
+        return ("open" if v else "shut") if "door" in e["name"].lower() else ("yes" if v else "no")
+    if e["domain"] in ("switch", "light", "fan"):
+        return "on" if v else "off"
+    if isinstance(v, float):
+        return f"{v:.{e.get('decimals', 1)}f}" + (f" {e['uom']}" if e.get("uom") else "")
+    return str(v)
+
+
 def _office_cli(args):
     """`bento office` — the Office playground, as a terminal can have it.
 
@@ -9330,6 +9425,14 @@ def main():
     p_ar.add_argument("--vs", action="append", help="a brain: its number from `bento arena brains`, "
                                                     "or EXECUTOR:MODEL (repeat 2 to 4 times)")
     p_ar.add_argument("--user", default="", help="whose arena, on a machine with users")
+    p_demo = verb("demo", help="a warehouse to play with: a hub, three zone Pis and six ESP32s, simulated")
+    p_demo.add_argument("name", nargs="?", default="", help="the demo: warehouse")
+    p_demo.add_argument("action", nargs="?", default="start", choices=["start", "stop", "status", "floor", "poke"])
+    p_demo.add_argument("rest", nargs="*", help="poke: NODE ENTITY VALUE")
+    p_demo.add_argument("--scripted", action="store_true", help="the hub runs on the scripted brain: free and offline")
+    p_demo.add_argument("--fresh", action="store_true", help="set it up again from nothing")
+    p_demo.add_argument("--no-wait", action="store_true", help="start it and return")
+    p_demo.add_argument("--open", action="store_true", help="open the floor page when it is ready")
     p_dr = verb("drama", help="the crew's latest drama as a story; strip FILE.png paints it")
     p_dr.add_argument("action", nargs="?", default="show", choices=["show", "story", "beats", "strip", "clear"])
     p_dr.add_argument("file", nargs="?", default="", help="strip: where to write the PNG")
@@ -9680,6 +9783,8 @@ def main():
         _arena_cli(args)
     elif args.cmd == "drama":
         _drama_cli(args)
+    elif args.cmd == "demo":
+        _demo_cli(args)
     elif args.cmd == "office":
         _office_cli(args)
     elif args.cmd == "files":
