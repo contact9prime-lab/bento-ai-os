@@ -143,6 +143,26 @@ def test_a_held_stream_hears_a_door_open_for_under_a_second(sim):
         espnodes.remove("cold-1")
 
 
+def test_a_short_read_closing_does_not_cut_a_held_stream_off(sim):
+    """Found filming the demo: the zone heard pings and no state for minutes. The simulated node
+    removed a closed connection's queue with list.remove, and every empty queue equals every other,
+    so a snapshot closing took the HELD stream's queue out of its listeners."""
+    assert espnodes.add("cold-1", "127.0.0.1", sim["cold-1"].port)["ok"]
+    heard = []
+    try:
+        espnodes.stream_sync(heard.append)
+        assert _wait(lambda: espnodes.live("cold-1"))
+        for _ in range(3):                                   # short reads, as a look or a sample makes
+            assert espnodes.snapshot(espnodes.node("cold-1"))["ok"]
+        _poke(sim["cold-1"], "binary_sensor/Cold room door", True)
+        assert _wait(lambda: any(e["item"] == DOOR and e["value"] == 1 and not e.get("first") for e in heard)), \
+            "the held stream still hears a change after short reads closed"
+    finally:
+        espnodes.stream_stop()
+        espnodes.remove("cold-1")
+        _poke(sim["cold-1"], "binary_sensor/Cold room door", False)
+
+
 def test_a_node_that_goes_away_is_said_and_tried_again(sim, monkeypatch):
     monkeypatch.setattr(espnodes, "STREAM_BACKOFF", (0.2, 0.2, 0.2, 0.2))
     assert espnodes.add("cold-1", "127.0.0.1", sim["cold-1"].port)["ok"]

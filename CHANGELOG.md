@@ -21,7 +21,8 @@ and `bento network esp here` does the same from a terminal.
 approval still waiting for your account. Before, a mission that asked at night was never seen.
 
 **Smaller things.** Only switches, lights, fans and pins that change write a diary line, so a motion
-sensor no longer fills Devices → Events. The mission editor's trigger rows wrap, and on a phone its
+sensor no longer fills Devices → Events. In the warehouse demo, a held stream no longer goes deaf after a short read: the simulated
+node removed a closed connection's queue by equality, so any empty queue could go, including the held one. The mission editor's trigger rows wrap, and on a phone its
 two columns stack. Events no longer shows an added node or a started mission twice.
 
 ## 0.7.5 — 2026-10-29
