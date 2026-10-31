@@ -105,10 +105,14 @@ already owns due-polling, the claim-on-fire that prevents double-firing, cooldow
 file/idle/notification/login pollers; a second implementation of any of that is a second set
 of bugs. Flows also show up in the Tasks app, the TUI and the CLI for free.
 
-**Message**, **webhook** and **flow_done** triggers have no time dimension and get no task
+**Message**, **webhook**, **flow_done** and **device** triggers have no time dimension and get no task
 row — a row with `next_run IS NULL` and no trigger kind is an invisible row nothing polls.
 They dispatch from `telegram._handle`, the chat turn path, the hook route, and (for
-`flow_done`) the moment the upstream run returns.
+`flow_done`) the moment the upstream run returns, and (for `device`) the device watch in
+`server._device_observe`: a change heard from one of the hub's own ESP32 nodes, or relayed live by
+a Pi over its link (wire op `device_events`), is judged by `devtrig.Watch`, which fires on the edge
+and holds a `for` condition with a one-second tick. Firing is `_start_flow`, the door `flow_done`
+uses, with the trigger's cooldown on top.
 
 Two of the four **OS events cannot fire on every machine**, and the editor must say so
 rather than offer them. `notification` needs AgentOS to own the session — the daemon claims

@@ -197,3 +197,18 @@ body.dev-touch .job-ai-btns button,body.dev-touch #job-ai-go{min-height:var(--ta
 .task-last.ok{color:var(--ok,#22c55e)}.task-last.failed{color:var(--err,#ef4444)}.task-last.skipped{color:var(--warn,#f59e0b)}
 body.dev-touch .job-hchips .of-chip,body.dev-touch .job-hrow .endbtn,body.dev-touch .task-row button{min-height:var(--tap)}
 @media (max-width:600px){.job-hrow{flex-wrap:wrap}.job-hrow .endbtn{margin-left:auto}}
+
+/* The mission editor (13-fabric.js). A trigger's row wraps: a device trigger is a machine, a
+   thing, a condition, a value and a hold, and in one line it ran off its column. On a phone the
+   two columns stack; side by side, the right one's 300px left the definition a sliver. */
+.flw-trig{flex-wrap:wrap}
+.flw-trig>*{flex:0 1 auto;min-width:0}
+.flw-trig>select{max-width:100%}
+.flw-trig>.flw-trig-note{order:9}
+@media (max-width:720px){
+  .flw-box{flex-direction:column;overflow:auto;padding:16px!important}
+  .flw-box>.flw-l,.flw-box>.flw-r{flex:none!important;min-width:0!important;max-height:none!important;overflow:visible!important}
+  .flw-l .row:has(textarea){flex-wrap:wrap}
+  .flw-l .row:has(textarea)>*{flex:1 1 100%!important;min-width:0}
+  .flw-trig>button{min-width:var(--tap,44px);min-height:var(--tap,44px)}
+}

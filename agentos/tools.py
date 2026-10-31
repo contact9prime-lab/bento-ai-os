@@ -5739,8 +5739,9 @@ DESKTOP_TOOL_SCHEMAS = [
     },
     {
         "name": "device_get",
-        "description": "Read the hardware of a small machine this hub set up (a Raspberry Pi or another Zero): "
-                       "its sensors, temperatures, power, Wi-Fi and pins. Call with nothing to list the machines; "
+        "description": "Read the hardware of a small machine this hub set up (a Raspberry Pi or another Zero), "
+                       "or of this hub itself when it holds ESP32 boards directly: sensors, temperatures, power, "
+                       "Wi-Fi, pins and the boards' sensors and switches. Call with nothing to list the machines; "
                        "with machine to list everything it has, each item's id and whether it may be read or set; "
                        "with machine and item to read it live on that machine; add range (day, week, month, "
                        "quarter) for what the hub kept over that time, with min, max and average. Use this, "
@@ -5754,13 +5755,14 @@ DESKTOP_TOOL_SCHEMAS = [
     },
     {
         "name": "device_set",
-        "description": "Set one item on a small machine this hub set up. Today that is a header pin's level "
-                       "(gpio.N to 1 or 0, on or off), and only a pin permitted to be set in Devices. A person "
+        "description": "Set one item on a small machine this hub set up, or on this hub's own ESP32 boards: a "
+                       "header pin's level (gpio.N to 1 or 0) or a board's switch, light or fan (on or off), and "
+                       "only what is permitted to be set in Devices. A person "
                        "is asked every time, and the pin is read back afterwards. Say in your reply why you are "
                        "setting it: that reason travels with the request.",
         "parameters": {"type": "object", "properties": {
             "machine": {"type": "string", "description": "The machine's name, e.g. raspberrypi."},
-            "item": {"type": "string", "description": "What to set, e.g. gpio.17."},
+            "item": {"type": "string", "description": "What to set, e.g. gpio.17 or esp.bench-1.switch.alarm."},
             "value": {"type": "string", "description": "1 or 0 (on or off)."}},
             "required": ["machine", "item", "value"]},
     },

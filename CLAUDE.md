@@ -3365,6 +3365,32 @@ wire op `esp_nodes`, `/api/devices/esp`, Devices → Hardware → ESP32 nodes, `
 - `AGENTOS_LINK_FROM` gives a stand-in machine its own loopback address (`teamlink.local_addr`), so three
   zones on one computer are three rows, as Pis on a network are. A test hook, like `AGENTOS_DISCOVER_TARGETS`.
 
+**A device does something, and a mission starts** (`agentos/devtrig.py`, espnodes `_SSE`/`_Stream`/
+`stream_sync`, server `_device_streams`/`_device_changes`/`_device_events_from`/`_device_observe`/
+`_device_fire`, wire op `device_events`, flow trigger kind `device`; `tests/test_device_events.py`, live run on
+the warehouse demo). Asked for as "proactive rather than reactive … if the Pi is relaying it, it must give
+inventory context to the hub, and if it's directly connected to the hub then the hub should get the events".
+Measured before: a change took 25 s to reach the hub and 1 of 8 three-second door openings was seen. Five rules:
+- **Whoever holds a node holds its /events open**, on a raw socket (`_SSE`: http.client can't be read again
+  after a timeout, and ESP-IDF may send it chunked). A burst is read to its end before it counts as settled.
+  The hub may hold nodes itself (`here`, `_esp_here`, admin only), named `<hub>/esp.…`.
+- **A Pi relays, the hub names.** A machine a hub set up sends each change on at once (sensors at most every
+  `DEV_SENSOR_GAP`, on/off always) and keeps what could not go (`DEV_BACKLOG`). The hub reads each field alone,
+  names it from ITS copy of the Pi's inventory, and accepts only from `zero.ships_to`, in the link owner's account.
+  A Pi on older code sends nothing; its rules are judged on the minute readings (`telemetry.store`'s `latest`).
+- **A rule is a closed set judged on the edge** (`devtrig.clean`, `Watch`): fires once when it becomes true and
+  has held `for`, again only after it went false; `tick` fires a held condition with no new reading. A text
+  sensor's words never reach a rule or a brief.
+- **The watch only decides.** Firing is `_start_flow`, the `flow_done` door, with the trigger's cooldown, a
+  `device.trigger` ledger row and `devtrig.brief` as the mission's task. A disabled flow holds no trigger.
+- **A mission reaches only the devices its definition names** (`permissions.devices`, `clean_devices`,
+  `declared_grants` → `device.get`/`device.set` for the roster), and every set is still asked of a person.
+- **Its question waits for a screen.** Found live: a mission a device started asked while no page was open,
+  and a page opened later never heard the card. Every approval keeps its event (`entry["ev"]`) and `/ws`
+  sends each one still waiting for that account after `state_sync`; the page re-homes one it already drew.
+- **The diary is for what was SWITCHED** (switch, light, fan, pin). The aisles' motion sensors wrote a line
+  every few seconds; contacts and motion stay live in Devices and still drive rules.
+
 **The warehouse is a demo anyone can start** (`agentos/demos/warehouse.py`, `floor.html`, `esp_sim.py`,
 `warehouse_brain.py`, `/api/demo/warehouse`, Devices → Try it in a simulation, `bento demo warehouse`;
 `docs/warehouse-demo.md`, `tests/test_warehouse_demo.py`). Asked for as "something people can try with

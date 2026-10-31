@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.6 — 2026-10-29
+
+**A device can start a mission, with nobody asking.** A mission can now start when a sensor goes
+over or under a value, a contact or switch turns on or off, or a machine stops answering, and
+"for 2 minutes" asks the condition to hold first. It starts once when the condition becomes true,
+and is told the reading, the machine and the time. Add one in Missions → Build (**＋ device**), from
+**Start a mission when…** under a sensor's chart, or with `bento flow trigger --kind device`.
+
+**Changes arrive as they happen.** A Pi or the hub holds each ESP32 node's event stream open and
+hears a change in about half a second. Measured on the warehouse demo before this: a change took
+25 s to reach the hub, and 1 of 8 three-second door openings was seen at all. A Pi sends each change
+straight on to its hub, which names it from its own copy of that Pi's inventory. A Pi on an older
+Bento still works: its rules are judged on the minute readings.
+
+**ESP32 boards can sit on the hub itself.** Devices has a **This hub** card with its own ESP32 nodes,
+and `bento network esp here` does the same from a terminal.
+
+**A question asked while no screen is open now waits for you.** A page opened later shows every
+approval still waiting for your account. Before, a mission that asked at night was never seen.
+
+**Smaller things.** Only switches, lights, fans and pins that change write a diary line, so a motion
+sensor no longer fills Devices → Events. In the warehouse demo, a held stream no longer goes deaf after a short read: the simulated
+node removed a closed connection's queue by equality, so any empty queue could go, including the held one. The mission editor's trigger rows wrap, and on a phone its
+two columns stack. Events no longer shows an added node or a started mission twice.
+
 ## 0.7.5 — 2026-10-29
 
 **A warehouse to play with, for trying Bento with hardware and showing people.** Devices → Try it in a

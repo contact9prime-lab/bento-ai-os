@@ -532,6 +532,76 @@ bento network set zone-cold esp.cold-2.switch.compressor 1
 
 ![bento network esp, get and set on the hub: a door contact can't be set](screenshots/esp32-terminal.png)
 
+### ESP32 nodes on the hub itself
+
+A node next to the hub doesn't need a Pi in between. In Devices, **This hub** has its own
+**ESP32 nodes**, with the same Find, Add and Remove, and its sensors and switches are named
+`<hub>/esp.<node>.<kind>.<name>`. Only an admin can lend or use them, as only an admin can use the
+hub's own shell. From a terminal, `bento network esp here add cold-2 10.0.4.12`.
+
+![This hub in Devices: a board held directly, heard live, with its readings](screenshots/devices-this-hub.png)
+
+![This hub on a 390px phone: the board and its readings](screenshots/devices-this-hub-phone.png)
+
+## When something happens
+
+A Pi or the hub holds an open connection to each of its nodes and hears every change as it happens,
+in about half a second. A door opened for three seconds is heard. Before, readings were taken once a
+minute and a short opening was usually missed.
+
+- **On the hub**, every change is shown live in Devices. A switch, light, fan or pin that changes is
+  also written in its diary ("Cold room B: Compressor on zone-cold turned off"). Contacts and motion
+  sensors change all day, so they aren't.
+- **On a Pi**, the change goes straight on to its hub over the link, with what it is. The hub names it
+  from its own copy of that Pi's inventory, so a node can't call itself something else. A change the
+  hub couldn't be told about waits on the Pi and goes with the next one.
+- A Pi's own pins are watched the same way.
+
+A Pi on an older Bento doesn't send changes. The hub then judges its readings once a minute, so a
+mission still starts, a little later.
+
+### A mission that starts on its own
+
+A mission can start when a device does something, with nobody asking. In Missions → Build, add a
+trigger and choose **device**, or press **Start a mission when…** under a sensor's chart:
+
+- **on / off**: a contact, switch, light, fan or pin turns on or off
+- **above / below**: a number goes over or under a value
+- **changes**: an on/off thing changes either way
+- **stops answering / answers again**: the machine itself
+
+**For** asks the condition to hold first: "above -15 for 2 minutes" is a warm room, not a door
+opened once. A rule starts its mission once when the condition becomes true, and again only after
+it went false. The mission's cooldown applies on top.
+
+The mission is told what started it: the reading, the machine, the time and the rule. It may read
+and set only the devices its definition names, and every set is still asked of you.
+
+![A device trigger in the mission editor: zone-cold, cold room temperature, above -15, for 20 seconds](screenshots/device-trigger-editor.png)
+
+![The same trigger on a 390px phone](screenshots/device-trigger-editor-phone.png)
+
+A question a mission asks while no screen is open waits for you, and the next page you open shows
+it. Here cold room B's compressor tripped at night: the zone sent the change on at once, the room
+went above -15 °C, the mission started by itself, read the room, and asked to switch the
+compressor back on.
+
+![The mission's question on a page opened after it asked](screenshots/device-mission-asked.png)
+
+![The same question on a 390px phone](screenshots/device-mission-asked-phone.png)
+
+![Devices → Events: the compressor off, the mission started, three reads, the set, the compressor on](screenshots/device-mission-done.png)
+
+From a terminal:
+
+```
+bento flow trigger cold-room-guard --kind device --machine zone-cold \
+    --item esp.cold-2.sensor.cold_room_temperature --when above --value -15 --for 120
+bento flow doctor          # says whether each device rule can be met here
+```
+
+![bento network esp here, a device trigger added from a terminal, and bento flow doctor](screenshots/device-triggers-terminal.png)
+
 ### A warehouse, as it was tested
 
 `packaging/dev/warehouse/run.py` stands a warehouse up on one computer: a hub, three zone Pis set up
