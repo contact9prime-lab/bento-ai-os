@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.7 — 2026-11-01
+
+**The warehouse demo acts on its own from the first start.** It now ships with one mission switched on,
+cold-room-guard. Trip cold room B's compressor (`bento demo warehouse poke cold-2 Compressor off`) and
+ask nothing: when the room is above -15 °C for 20 seconds, the mission starts, reads the room and asks
+you to switch the compressor back on. It can read zone-cold and switch only that compressor, and every
+switch is still asked. Before, it needed a mission you built yourself. A demo home from before gets it
+on its next start; one you changed or deleted is left alone.
+
+**The front page shows it.** The README opens on a GIF of that real run, one sentence on what Bento is,
+the install line and `bento demo warehouse --scripted`, which needs no key and no hardware. All eleven
+translations have the same top. A new guide, [Add your sensor](docs/add-your-sensor.md), goes from "any
+ESPHome board already works" to sharing yours and teaching the simulator, with an issue form for a
+board and a first-PR section in CONTRIBUTING.
+
 ## 0.7.6 — 2026-10-29
 
 **A device can start a mission, with nobody asking.** A mission can now start when a sensor goes

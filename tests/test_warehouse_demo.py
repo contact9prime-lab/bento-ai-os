@@ -130,3 +130,45 @@ def test_with_accounts_it_runs_as_a_user_of_its_own(tmp_path, monkeypatch):
     assert 'role="executor"' in route and '["setup_complete"] = True' in route
     js = (ROOT / "agentos/ui/src/js/24o-devices.js").read_text()
     assert "ac.need==='create'" in js and "ac.need==='signin'" in js
+
+
+def test_the_demo_starts_with_one_mission_that_can_switch_one_thing():
+    """The README says: break something and watch a mission ask to fix it. So the demo ships that
+    mission switched on, and it may switch exactly cold room B's compressor; everything else it can
+    only read, and only in zone-cold. Every switch is still asked of a person."""
+    from agentos import devtrig, flows
+    m = wh.MISSION
+    assert [r["subagent"] for r in m["roster"]] == [wh.WATCHER["name"]]
+    assert set(wh.WATCHER["tools"]) == {"device_get", "device_set"}
+    rows = flows.declared_grants({**m, "roster": [wh.WATCHER["name"]]})
+    sets = {r["resource"] for r in rows if r["action"] == "device.set"}
+    gets = {r["resource"] for r in rows if r["action"] == "device.get"}
+    assert sets == {"device:zone-cold/esp.cold-2.switch.compressor"}
+    assert all(g.startswith("device:zone-cold/") for g in gets)
+    for t in m["triggers"]:
+        assert devtrig.clean(dict(t["config"]))["machine"] == "zone-cold"
+    assert wh.STEPS[-1] == "Switching on the cold room mission"
+
+
+def test_the_mission_is_made_once_and_a_kept_one_is_left_alone(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENTOS_DEMO_DIR", str(tmp_path))
+    calls = []
+
+    def fake(m, method, path, body=None, timeout=60):
+        calls.append((method, path))
+        if method == "GET":
+            return 200, {"flows": [{"name": have}] if have else []}
+        return 200, {}
+    monkeypatch.setattr(wh, "_http", fake)
+    sup = wh._Supervisor.__new__(wh._Supervisor)
+    have = "cold-room-guard"
+    sup.mission()
+    assert calls == [("GET", "/api/flows")], "a hub that has it already keeps its own"
+    (tmp_path / "mission.json").unlink()
+    calls.clear()
+    have = ""
+    sup.mission()
+    assert ("POST", "/api/flows/cold-room-guard/enable") in calls
+    calls.clear()
+    sup.mission()
+    assert calls == [], "made once; a mission the person deleted stays deleted"

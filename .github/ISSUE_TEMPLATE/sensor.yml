@@ -1,0 +1,37 @@
+name: A sensor or board
+description: You have hardware Bento should read, or a board you'd like to share.
+labels: ["hardware"]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Most ESPHome boards already work with no code. [Add your sensor](https://github.com/contact9prime-lab/bento-ai-os/blob/master/docs/add-your-sensor.md)
+        says how, and how to share yours.
+  - type: textarea
+    id: board
+    attributes:
+      label: The board and what's on it
+      description: The ESP32 (or other board), each sensor or switch, and how it's wired.
+    validations:
+      required: true
+  - type: textarea
+    id: want
+    attributes:
+      label: What you want your agents to do with it
+      description: For example, "start a mission when the soil is dry", or "turn the fan on from chat".
+    validations:
+      required: true
+  - type: textarea
+    id: yaml
+    attributes:
+      label: Your ESPHome YAML, if you have it
+      description: Leave out Wi-Fi passwords and keys.
+      render: yaml
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you like to send it as a PR?
+      options:
+        - Yes, with a little help
+        - Yes, I know my way around
+        - No, I'm reporting it

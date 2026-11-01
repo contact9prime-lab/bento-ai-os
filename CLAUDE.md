@@ -3407,6 +3407,9 @@ Bento, to play around, for demos". Five rules:
 - **One supervisor owns every process** in a session of its own; Stop is a killpg. status.json is what the
   CLI, the route and the floor page read.
 - **Start is loopback** (its pages are on 127.0.0.1); the floor's poke refuses another Origin.
+- **It starts with one mission switched on** (`MISSION`/`WATCHER`, step 7, `_Supervisor.mission`): the README's GIF is
+  that mission, so a fresh demo must show it. It reads zone-cold and sets only cold room B's compressor; made once
+  (`mission.json`), and a hub that already has one by that name keeps its own.
 
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
