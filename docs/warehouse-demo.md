@@ -26,12 +26,13 @@ Or from a terminal:
 ```
 $ bento demo warehouse
 starting the warehouse demo on Claude Code. The first start sets the three zones up from the hub and takes a minute or two.
-  1/6 Starting the six ESP32 nodes
-  2/6 Starting the hub
-  3/6 Setting up the three zone Pis from the hub
-  4/6 Waiting for each zone to answer
-  5/6 Adding each zone's ESP32 nodes
-  6/6 Allowing the sensors and switches
+  1/7 Starting the six ESP32 nodes
+  2/7 Starting the hub
+  3/7 Setting up the three zone Pis from the hub
+  4/7 Waiting for each zone to answer
+  5/7 Adding each zone's ESP32 nodes
+  6/7 Allowing the sensors and switches
+  7/7 Switching on the cold room mission
 
   the floor  http://127.0.0.1:18900/   readings live, and trouble to cause
   the hub    http://127.0.0.1:18901/   ask it in Chat
@@ -66,11 +67,12 @@ brain set up here, the demo uses it anyway and says so.
 4. Tap **Allow**. The compressor comes back on, read back from the node, and the room starts cooling.
 5. Try saying no to a switch, opening a dock door, or draining the forklift battery.
 
-To see it act on its own, give it a mission that starts on a device: in Missions → Build, a mission
-whose specialist has `device_get` and `device_set` in its tools, a **device** trigger on zone-cold's *Cold room B: Cold room temperature*
-**is above** -15 **for** 20 seconds, and `zone-cold/*` under Devices it may read. Trip the
-compressor and don't ask anything. Within a minute the mission starts, reads the room, and asks you
-to switch the compressor back on. See
+To see it act on its own, trip the compressor and don't ask anything. The demo starts with one
+mission switched on, **cold-room-guard**: when cold room B is above -15 °C for 20 seconds, or its
+door has been open for two minutes, it starts by itself, reads the room, and asks you to switch the
+compressor back on. It can read zone-cold and switch nothing but that compressor, and every switch
+is still asked of you. It's an ordinary mission in Missions → Build, so you can change it, switch it
+off or delete it, and the demo leaves it as you left it. See
 [A mission that starts on its own](network.md#a-mission-that-starts-on-its-own).
 
 From a terminal, `bento demo warehouse floor` lists every reading and

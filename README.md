@@ -1,4 +1,4 @@
-# Bento Box AI: an operating system run by a team of AI agents
+# Bento Box AI: a team of AI agents on your own hardware, and they ask before they act
 
 <p align="right"><sub>
 <b>English</b> ·
@@ -14,6 +14,28 @@
 <a href="docs/i18n/README.hi.md">हिन्दी</a> ·
 <a href="docs/i18n/README.ar.md">العربية</a>
 </sub></p>
+
+![A real take, sped up in step 2: a cold room's compressor fails, the temperature climbs past -15 °C, Bento's mission asks before switching it back on, Allow, and the room cools](docs/screenshots/readme-hero.gif)
+
+**AI agents that run on your own machine, from a laptop down to a $35 Raspberry Pi and the ESP32
+sensors around it. They do standing work on their own and ask you before anything that matters.**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
+```
+
+**See it work in a minute, with no API key and no hardware:**
+
+```bash
+bento demo warehouse --scripted
+```
+
+That starts a simulated warehouse (a hub, three Raspberry Pis and six ESP32 boards) on a free,
+offline brain. Ask the hub *"Morning. Walk me through the warehouse."*, then break something with
+`bento demo warehouse poke cold-2 Compressor off` and watch a mission ask you to fix it. That's the
+GIF above. More in [docs/warehouse-demo.md](docs/warehouse-demo.md).
+
+---
 
 > Chat assistants answer you. Bento gives your machine a team: a lead agent and specialists
 > that do standing work for you, talk things through with each other, and ask you before
@@ -35,11 +57,7 @@ lands in a tamper-evident ledger.
 ![Platforms](https://img.shields.io/badge/platform-Linux%20·%20macOS%20·%20Windows-lightgrey)
 ![Local-first](https://img.shields.io/badge/AI-local--first%20·%20Ollama%20·%20cloud%20optional-5eead4)
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/contact9prime-lab/bento-ai-os/master/install.sh | sh
-```
-
-Then open **http://127.0.0.1:8321**. It listens on localhost only until you turn on
+After the install, open **http://127.0.0.1:8321**. It listens on localhost only until you turn on
 [remote access](docs/remote-access.md) yourself. There's no account to create, no telemetry, and
 no cloud unless you add a key.
 

@@ -65,7 +65,25 @@ TRY = ("Morning. Walk me through the warehouse.",
        "Cold room B looks warm. What's going on?",
        "Put the fans on in aisles 7-12.")
 STEPS = ("Starting the six ESP32 nodes", "Starting the hub", "Setting up the three zone Pis from the hub",
-         "Waiting for each zone to answer", "Adding each zone's ESP32 nodes", "Allowing the sensors and switches")
+         "Waiting for each zone to answer", "Adding each zone's ESP32 nodes", "Allowing the sensors and switches",
+         "Switching on the cold room mission")
+# The one mission the demo starts with, switched on: it is what "break something and watch it ask" shows.
+# It reads zone-cold and may switch one thing, cold room B's compressor, and every switch is still asked.
+WATCHER = {"name": "floor-watch", "tools": ["device_get", "device_set"],
+           "soul": "You look after the warehouse floor through the device tools. Read what the mission is about, "
+                   "check it with device_get, and if something must be switched, ask with device_set. Say what you read."}
+MISSION = {
+    "name": "cold-room-guard",
+    "mission": "A cold room is warming. Find out why from its sensors and fix it if a switch will.",
+    "roster": [{"subagent": "floor-watch", "why": "reads and switches the floor"}],
+    "permissions": {"tools": ["device_get", "device_set"], "memory": "read-space", "talk": False,
+                    "devices": {"read": ["zone-cold/*"], "set": ["zone-cold/esp.cold-2.switch.compressor"]}},
+    "triggers": [
+        {"kind": "device", "cooldown_secs": 60, "config": {"machine": "zone-cold", "when": "above", "value": -15,
+                                                           "item": "esp.cold-2.sensor.cold_room_temperature", "for": 20}},
+        {"kind": "device", "cooldown_secs": 60, "config": {"machine": "zone-cold", "when": "on", "for": 120,
+                                                           "item": "esp.cold-2.binary_sensor.cold_room_door"}}],
+}
 SOUL = """You are Aria. You look after a warehouse from this hub. Three Raspberry Pis, one per zone, each
 look after ESP32 nodes: zone-cold (cold rooms A and B), zone-dock (the loading dock and the forklift
 bay) and zone-aisle (aisles 1-6 and 7-12). You read them with device_get and switch them with
@@ -436,12 +454,35 @@ class _Supervisor:
                 if st != 200:
                     raise RuntimeError(f"{zone} wouldn't take its permits: {p.get('error') or st}")
             (where() / "ready.json").write_text(json.dumps({"keys": keys, "at": time.time()}))
+        self.step(6)
+        self.mission()
         _write_status(phase="ready", step="", done=len(STEPS))
         while not self.stopping:
             for m, p in list(self.procs.items()):
                 if p.poll() is not None and not self.stopping:
                     raise RuntimeError(f"{m} stopped. Its log is in {where()}. Start the demo again.")
             time.sleep(2)
+
+    def mission(self) -> None:
+        """The cold room mission, made and switched on once. A demo home from before it existed gets it on
+        its next start; one the person deleted or switched off is left as they left it."""
+        if (where() / "mission.json").exists():
+            return
+        st, have = _http(HUB, "GET", "/api/flows")
+        names = {f.get("name") for f in ((have.get("flows") if isinstance(have, dict) else have) or [])}
+        if MISSION["name"] in names:
+            (where() / "mission.json").write_text(json.dumps({"at": time.time(), "kept": True}))
+            return
+        st, a = _http(HUB, "POST", "/api/subagents", WATCHER)
+        if st != 200:
+            raise RuntimeError(f"The hub wouldn't make its floor watcher: {a.get('error') or st}")
+        st, f = _http(HUB, "POST", "/api/flows", MISSION)
+        if st != 200:
+            raise RuntimeError(f"The hub wouldn't take the cold room mission: {f.get('error') or st}")
+        st, e = _http(HUB, "POST", f"/api/flows/{MISSION['name']}/enable", {"enabled": True})
+        if st != 200:
+            raise RuntimeError(f"The hub wouldn't switch the cold room mission on: {e.get('error') or st}")
+        (where() / "mission.json").write_text(json.dumps({"at": time.time()}))
 
     def end(self, *_):
         self.stopping = True

@@ -25,6 +25,17 @@ under `/private/var`, which is an environment fact rather than a regression. CI
 runs on Linux for that reason. Everything else should be green before you open a
 PR.
 
+## Your first PR
+
+Three good places to start, smallest first:
+
+- **Issues labelled [`good first issue`](https://github.com/contact9prime-lab/bento-ai-os/labels/good%20first%20issue).**
+  Each one says which files it touches and how to check it.
+- **Share a board that works.** If you have an ESPHome board reading something, its YAML in
+  `packaging/esphome/` is a whole PR. See [Add your sensor](docs/add-your-sensor.md).
+- **Try the warehouse demo and tell us what confused you.** `bento demo warehouse --scripted`
+  needs no key and no hardware. A confusing first minute is a bug, so file it as one.
+
 ## The three rules that catch most PRs
 
 **1. A feature is built for all three faces.** GUI (a browser or app window), TUI
