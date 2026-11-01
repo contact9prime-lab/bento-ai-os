@@ -82,6 +82,13 @@ class Buffer:
 
 
 BUFFER = Buffer()
+HERE = Buffer()                  # a machine with no hub that holds ESP32 nodes itself: its own readings
+HERE_KEY = "here"                # what they are kept under, on that machine
+
+
+def keep_here() -> dict:
+    """This machine's own samples (HERE), kept in its own readings store."""
+    return store(HERE_KEY, HERE.since(cursor(HERE_KEY)))
 
 
 # ---- on the hub -----------------------------------------------------------------------------
@@ -143,6 +150,7 @@ def store(machine: str, batch) -> dict:
         off = 0.0
     c = db()
     stored, last_seq = 0, None
+    latest: dict[str, tuple] = {}      # item -> (time, value): what each read last, for the device rules
     # a batch sent again is known by its numbers: the clock offset is worked out per call, so a
     # time rounded a tenth later would read as new and be counted twice in the summaries
     had = cursor(machine)
@@ -162,6 +170,8 @@ def store(machine: str, batch) -> dict:
                 ts = round(ts + off, 1)
                 if ts < now - RETAIN["raw"] or ts > now + 60:
                     continue
+                if ts >= latest.get(item, (0, None))[0]:
+                    latest[item] = (ts, v)
                 last_seq = seq if isinstance(seq, int) else last_seq
                 key = (machine, item)
                 kept = _KEPT.get(key)          # (value kept, when kept, the newest time seen)
@@ -188,7 +198,7 @@ def store(machine: str, batch) -> dict:
             c.execute("ROLLBACK")
             raise
     return {"stored": stored, "first": first, "more": bool(batch.get("more")),
-            "lost": int(_num(batch.get("lost")) or 0)}
+            "lost": int(_num(batch.get("lost")) or 0), "latest": latest}
 
 
 def items(machine: str) -> list[str]:

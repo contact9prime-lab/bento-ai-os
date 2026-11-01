@@ -11,6 +11,7 @@ import html as html_mod
 import socket
 import time
 import uuid
+import traceback
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -453,6 +454,7 @@ async def startup():
         asyncio.create_task(_ties_watch())
         asyncio.create_task(_screen_revive())
         asyncio.create_task(_readings_sampler())
+        asyncio.create_task(_device_streams())
 
     async def wm_events():
         # In the AgentOS session, the compositor tells us the moment a window
@@ -888,27 +890,300 @@ async def _tie_moved(lk: dict, old: str, new: str, how: str) -> None:
 
 async def _readings_sampler():
     """On a machine a hub set up: sample its sensors every telemetry.SAMPLE_S seconds into
-    memory, for the hub's next hello to collect (telemetry.Buffer). Nothing on a machine that
-    has no hub, and nothing written to disk."""
-    from . import hardware, provision, telemetry
+    memory, for the hub's next hello to collect (telemetry.Buffer), and hand a pin that moved to
+    the device events at once. On a machine with no hub that holds ESP32 nodes itself (a hub
+    with boards on its own network), the same samples are kept here, as this machine's own
+    readings (telemetry.HERE_KEY). Nothing written to disk on a Zero."""
+    from . import espnodes, hardware, provision, telemetry
     await asyncio.sleep(5)
     said = False
+    pins: dict = {}
     loop = asyncio.get_running_loop()
     while True:
         with contextlib.suppress(Exception):
             if (provision.load().get("claimed") or {}).get("leader_fp"):
                 vals = await loop.run_in_executor(None, hardware.sample)
                 telemetry.BUFFER.add(vals)
+                for item, v in vals.items():
+                    if item.startswith("gpio.") and item in pins and pins[item] != v:
+                        _dev_put({"item": item, "value": v, "prev": pins[item], "at": round(time.time(), 2),
+                                  "name": f"GPIO {item.split('.', 1)[1]}"})
+                    if item.startswith("gpio."):
+                        pins[item] = v
                 if not said:
                     said = True
                     with usersmod.as_user(""):
                         state["store"].log("device", f"sampling {len(vals)} readings every {telemetry.SAMPLE_S} s "
                                                      "for this machine's hub", {"event": "readings"})
+            else:
+                with usersmod.as_user(""):
+                    if espnodes.nodes():
+                        vals = await loop.run_in_executor(None, espnodes.sample)
+                        if vals:
+                            telemetry.HERE.add(vals)
+                            await loop.run_in_executor(None, telemetry.keep_here)
         await asyncio.sleep(telemetry.SAMPLE_S)
 
 
 _READINGS_SAID: set = set()
 _PRUNED = {"at": 0.0}
+
+
+# ---- device events: what a board or a pin did, as it happened ---------------------------------
+#
+# Asked for as "this should be proactive rather than reactive … if the Pi is relaying it, it must
+# give inventory context to the hub, and if it is directly connected to the hub then the hub
+# should get the events". Whoever holds an ESP32 node holds its /events stream open
+# (espnodes.stream_sync); each change lands in _DEV_Q. A machine a hub set up relays the changes
+# to that hub at once (wire op device_events), each with its inventory context; a machine with
+# no hub (the hub itself, or one on its own) uses them here. Either way they reach
+# _device_observe: the live value, a diary line for an on/off change, and the device triggers
+# (devtrig.py) that start missions. A Pi on an older Bento sends no events; its rules are judged
+# on the readings its hello brings (_ties_check), a minute late, and `bento flow doctor` says so.
+
+_DEV_Q: "asyncio.Queue | None" = None
+_DEV_LOOP: dict = {}
+_DEVWATCH = None
+_DEV_LAST: dict = {}               # (owner, machine lower, item) -> the newest event
+_DEV_LIVE: dict = {}               # machine lower -> when it last relayed an event here
+_DEV_SAID: dict = {}               # (machine, item) -> when its last on/off line was written
+_DEV_RELAY: list = []              # events a Pi could not hand its hub yet (DEV_BACKLOG at most)
+_DEV_SENSOR: dict = {}             # item -> when its last sensor change was sent on (DEV_SENSOR_GAP)
+DEV_FLUSH_S = 0.5                  # how long changes gather before they go out together
+DEV_SENSOR_GAP = 2.0               # a sensor's changes go on at most this often; an on/off change always
+DEV_BACKLOG = 200
+DEV_LIVE_S = 120                   # a machine that relayed within this long sends its events live
+DEV_SAY_GAP = 10                   # an on/off thing flapping writes one diary line in this long
+
+
+def _devwatch():
+    global _DEVWATCH
+    if _DEVWATCH is None:
+        from . import devtrig
+        _DEVWATCH = devtrig.Watch()
+    return _DEVWATCH
+
+
+def _dev_put(ev: dict) -> None:
+    """From a stream's thread (espnodes) or the sampler: one change, into the queue."""
+    loop = _DEV_LOOP.get("loop")
+    if loop and _DEV_Q is not None:
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(_DEV_Q.put_nowait, ev)
+
+
+def _dev_here_owners() -> list[str]:
+    """Whose rules a board held by THIS machine is judged against: the machine's, and every
+    admin's (the hub's own hardware is the machine's, and an admin is who runs it)."""
+    if not usersmod.enabled():
+        return [""]
+    return [""] + [u["id"] for u in usersmod.list_users() if u.get("role") == "admin"]
+
+
+async def _device_streams():
+    """Hold every ESP32 node's stream open here, and hand on what they say."""
+    global _DEV_Q
+    from . import espnodes
+    _DEV_Q = asyncio.Queue(maxsize=5000)
+    _DEV_LOOP["loop"] = asyncio.get_running_loop()
+    last_sync = 0.0
+    asyncio.create_task(_device_ticks())
+    while True:
+        try:
+            if time.time() - last_sync > 30:
+                last_sync = time.time()
+                with usersmod.as_user(""):
+                    if espnodes.nodes():
+                        espnodes.stream_sync(_dev_put)
+                    else:
+                        espnodes.stream_stop()
+        except Exception:
+            traceback.print_exc()          # said in the server log; the loop carries on
+        batch = []
+        try:
+            batch.append(await asyncio.wait_for(_DEV_Q.get(), timeout=5))
+        except asyncio.TimeoutError:
+            pass
+        if batch:
+            await asyncio.sleep(DEV_FLUSH_S)
+            while not _DEV_Q.empty() and len(batch) < 500:
+                batch.append(_DEV_Q.get_nowait())
+        if batch or _DEV_RELAY:
+            try:
+                await _device_changes(batch)
+            except Exception:
+                traceback.print_exc()
+
+
+def _dev_keep(batch: list[dict]) -> list[dict]:
+    """The newest change per item; a sensor's at most every DEV_SENSOR_GAP, an on/off one always."""
+    newest: dict = {}
+    for ev in batch:
+        newest[ev.get("item")] = ev
+    out, now = [], time.time()
+    for item, ev in newest.items():
+        if ev.get("domain") == "sensor" and not ev.get("first"):
+            if now - _DEV_SENSOR.get(item, 0) < DEV_SENSOR_GAP:
+                continue
+            _DEV_SENSOR[item] = now
+        out.append(ev)
+    return out
+
+
+async def _device_changes(batch: list[dict]) -> None:
+    """What this machine's boards and pins just did: to its hub, or used here."""
+    from . import provision, teamlink, zeromind
+    events = _dev_keep(batch)
+    cfg = state.machine_cfg()
+    here = _here_name()
+    if (provision.load().get("claimed") or {}).get("leader_fp"):
+        lk = zeromind.hub_link(cfg)
+        if not lk:
+            return
+        out = (_DEV_RELAY + [{**e, "machine": here, "inventory": f"{here}/{e['item']}"} for e in events])[-DEV_BACKLOG:]
+        _DEV_RELAY.clear()
+        if not out:
+            return
+        try:
+            got = await teamlink.call(lk, {"op": "device_events", "machine": here, "events": out}, timeout=10)
+        except Exception as e:
+            got = {"ok": False, "error": str(e)}
+        if not got.get("ok") and "unknown request" not in str(got.get("error") or ""):
+            _DEV_RELAY.extend(out[-DEV_BACKLOG:])        # its hub is away: send them with the next
+        return
+    for i, owner in enumerate(_dev_here_owners()):
+        await _device_observe(owner, here, events, live=True, say=i == 0)
+
+
+async def _device_events_from(lk: dict, req: dict) -> dict:
+    """Wire op device_events: a machine this hub set up says what its boards and pins just did.
+    Read field by field (its words are another machine's), named from this hub's own copy of its
+    inventory where that has the item, then judged as if it happened here."""
+    from . import espnodes, hardware, teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+    if not zeromod.ships_to(lk):
+        return {"ok": False, "error": "only a machine this hub set up sends its device events here"}
+    label = lk.get("label") or ""
+    known = {it.get("id"): it for it in (((tiesmod.inventory_row(lk) or {}).get("hardware") or {}).get("items") or [])}
+    now = time.time()
+    events = []
+    for e in (req.get("events") or [])[:DEV_BACKLOG]:
+        if not isinstance(e, dict):
+            continue
+        item = str(e.get("item") or "")[:64].lower()
+        v = e.get("value")
+        if not hardware._ID.fullmatch(item) or isinstance(v, str) or v is None:
+            continue
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            continue
+        it = known.get(item) or {}
+        at = e.get("at")
+        at = float(at) if isinstance(at, (int, float)) and abs(float(at) - now) < 300 else now
+        ev = {"item": item, "value": v, "at": at,
+              "name": teamlink.plain(it.get("name") or e.get("name") or item, 80, newlines=False),
+              "domain": e["domain"] if e.get("domain") in espnodes.DOMAINS else "",
+              "unit": teamlink.plain(it.get("unit") or e.get("unit") or "", 8, newlines=False)}
+        if isinstance(e.get("prev"), (int, float, bool)):
+            ev["prev"] = float(e["prev"])
+        if e.get("first"):
+            ev["first"] = True
+        events.append(ev)
+    await _device_observe(lk.get("owner") or "", label, events, live=True)
+    return {"ok": True, "got": len(events)}
+
+
+async def _device_observe(owner: str, machine: str, events: list[dict], live: bool, say: bool = True) -> None:
+    """Changes from one machine, here: the newest value, a diary line for an on/off change, the
+    screens told, and the device triggers judged. `say` False when the same changes are judged
+    for a second account (the diary is the machine's: one line is enough)."""
+    from . import devtrig
+    if not events:
+        return
+    m = str(machine or "").lower()
+    now = time.time()
+    if live:
+        _DEV_LIVE[m] = now
+    said = []
+    for ev in events:
+        _DEV_LAST[(owner, m, ev["item"])] = ev
+        # a line for something that was SWITCHED (a switch, light, fan or pin): a contact or a
+        # motion sensor changes all day, is live in Devices and drives rules, and a line each
+        # time filled the diary with a warehouse's aisles
+        switched = (ev.get("domain") or devtrig.domain_of(ev["item"])) in ("switch", "light", "fan", "gpio")
+        if say and live and switched and not ev.get("first") and ev.get("prev") is not None and ev.get("prev") != ev.get("value"):
+            if now - _DEV_SAID.get((m, ev["item"]), 0) >= DEV_SAY_GAP:
+                _DEV_SAID[(m, ev["item"])] = now
+                word = ("high" if ev["value"] else "low") if ev["item"].startswith("gpio.") else (
+                    "on" if ev["value"] else "off")
+                said.append(f"{ev.get('name') or ev['item']} on {machine} turned {word}")
+    for text in said:
+        await _device_event(owner, "changed", machine, text)
+    with contextlib.suppress(Exception):
+        await _tie_tell({"type": "device_live", "machine": machine,
+                         "events": [{k: e.get(k) for k in ("item", "value", "at")} for e in events]}, owner)
+    with usersmod.as_user(owner):
+        rules = state["store"].flow_triggers(kind="device", enabled_only=True)
+        if not rules:
+            return
+        for rule, ev in _devwatch().feed(owner, rules, machine, events, now):
+            await _device_fire(owner, rule, {**ev, "machine": machine})
+
+
+async def _device_machine(owner: str, machine: str, up: bool) -> None:
+    """A machine stopped or started answering (the ties watch): the offline / online rules."""
+    with contextlib.suppress(Exception):
+        with usersmod.as_user(owner):
+            rules = state["store"].flow_triggers(kind="device", enabled_only=True)
+            for rule, ev in _devwatch().machine(owner, rules, machine, up):
+                await _device_fire(owner, rule, ev)
+
+
+async def _device_ticks():
+    """Every few seconds: a condition that has held long enough with no new reading (a warm room
+    whose sensor reports only on change) fires now, not at its next reading."""
+    while True:
+        await asyncio.sleep(5)
+        with contextlib.suppress(Exception):
+            for owner in {k[0] for k in _DEV_LAST}:
+                with usersmod.as_user(owner):
+                    rules = [r for r in state["store"].flow_triggers(kind="device", enabled_only=True)
+                             if (r.get("config") or {}).get("for")]
+                    if not rules:
+                        continue
+                    last = {(k[1], k[2]): v for k, v in _DEV_LAST.items() if k[0] == owner}
+                    for rule, ev in _devwatch().tick(owner, rules, time.time(), last):
+                        await _device_fire(owner, rule, {**ev, "machine": (rule.get("config") or {}).get("machine")})
+
+
+async def _device_fire(owner: str, rule: dict, ev: dict) -> None:
+    """Start the mission a rule belongs to, through the door a flow_done uses: its consent is its
+    being on, its cooldown holds, and what it was started by is a diary line and a ledger row."""
+    from . import devtrig
+    with usersmod.as_user(owner):
+        store = state["store"]
+        now = time.time()
+        if (rule.get("cooldown_secs") or 0) - (now - (rule.get("last_fired") or 0)) > 0:
+            store.flow_trigger_fired(rule["id"], dropped=True)
+            return
+        flow = store.get_flow(rule["flow"])
+        if not flow or not flow.get("enabled"):
+            return
+        store.flow_trigger_fired(rule["id"])
+        rule["last_fired"] = now
+        text = devtrig.brief(rule, ev)
+        c = rule.get("config") or {}
+        with contextlib.suppress(Exception):
+            fabricmod.audit_team(store, "device.trigger", f"flow:{flow['name']}",
+                                 f"started {flow['name']}: {devtrig.words(c)}")
+        machine = c.get("machine") or ev.get("machine") or ""
+        await _device_event(owner, "trigger", machine, f"{machine}: started mission {flow['name']} "
+                                                       f"({devtrig.words(c, ev.get('name') or '')})", flow=flow["name"])
+        with contextlib.suppress(Exception):
+            await _start_flow(flow, text, origin={"surface": "device", "ref": f"{machine}/{c.get('item') or ''}"},
+                              trigger_id=rule["id"])
 
 
 async def _ties_check() -> list[dict]:
@@ -938,6 +1213,7 @@ async def _ties_check() -> list[dict]:
         if ev:
             await _device_event(owner, ev[0], label, ev[1])
             out.append({"event": ev[0], "label": label})
+            await _device_machine(owner, label, ev[0] == "online")
         now_v = tiesmod._VERSION.get(key)
         if ok and before.get(key) and now_v and now_v != before[key]:
             await _device_event(owner, "updated", label, f"{label} is on {now_v} now (was {before[key]})",
@@ -946,6 +1222,15 @@ async def _ties_check() -> list[dict]:
             if zeromod.ships_to(lk):
                 _TIE_REFRESH.add(key)
         rd = tiesmod._READ.pop(key, None) or {}
+        if rd.get("latest") and time.time() - _DEV_LIVE.get(label.lower(), 0) > DEV_LIVE_S:
+            # a Pi that sends no events (an older Bento): its rules are judged on the minute's readings
+            known = {it.get("id"): it for it in (((tiesmod.inventory_row(lk) or {}).get("hardware") or {})
+                                                 .get("items") or [])}
+            evs = [{"item": i, "value": v, "at": t, "name": (known.get(i) or {}).get("name") or i,
+                    "unit": (known.get(i) or {}).get("unit") or "", "domain": ""}
+                   for i, (t, v) in rd["latest"].items()]
+            with contextlib.suppress(Exception):
+                await _device_observe(owner, label, evs, live=False)
         if rd.get("first") and key not in _READINGS_SAID:
             _READINGS_SAID.add(key)
             await _device_event(owner, "readings", label, f"{label} sends its readings now, every minute")
@@ -1104,6 +1389,63 @@ def _here_name() -> str:
     return teamlink.machine_name(state.machine_cfg())
 
 
+async def _esp_here(req: dict) -> JSONResponse | dict:
+    """Devices → This hub → ESP32 nodes: the boards on this hub's own network, held here. The same
+    functions a Pi runs for its hub (espnodes), a diary line and a ledger row, and the streams
+    started or let go at once."""
+    from . import espnodes
+    act = req.get("action")
+    loop = asyncio.get_running_loop()
+    with usersmod.as_user(""):
+        if act == "find":
+            found = await espnodes.discover()
+            got = {"ok": True, "found": found}
+        elif act == "add":
+            got = await loop.run_in_executor(None, lambda: espnodes.add(
+                req.get("name") or "", req.get("host") or "", req.get("port") or 80, req.get("user") or "",
+                str(req.get("password") or "")[:128], by=_account_name(usersmod.current() or "") or "you"))
+        elif act == "remove":
+            got = espnodes.remove(espnodes.node_name(req.get("name")))
+        else:
+            if act == "look":
+                await loop.run_in_executor(None, lambda: espnodes.look_all(skip_down=False))
+            got = {"ok": True}
+        if got.get("ok"):
+            got.update(nodes=[espnodes.public(n) for n in espnodes.nodes()], said=espnodes.SAY_PLAIN)
+            if act in ("add", "remove"):
+                espnodes.stream_sync(_dev_put) if espnodes.nodes() else espnodes.stream_stop()
+    here = _here_name()
+    words = espnodes.words(req, got, "you") if act != "find" else (
+        f"you looked for ESP32 nodes on this hub's network: {len(got.get('found') or [])} answered")
+    if act in ("add", "remove", "find"):
+        _ledger("device.esp", devio_resource_on(here, req.get("name")), f"{here}: {words}")
+        await _device_event("", "esp" if got.get("ok") else "failed", here, f"{here}: " + words.removeprefix("you "))
+    if not got.get("ok"):
+        return JSONResponse({"error": got.get("error") or "it did not answer"}, 400)
+    return got
+
+
+async def _device_here(req: dict) -> dict:
+    """A device_get or device_set on THIS hub's own hardware (the ESP32 nodes it holds): what a
+    Zero does for its hub (devio.answer), done here. Only what this machine permits, a set read
+    back, and a diary line and a ledger row, as on a Pi."""
+    from . import devio, teamlink
+    verb = "set" if req.get("op") == "device_set" else "get"
+    item = teamlink.plain(req.get("item"), 64, newlines=False).strip().lower()
+    loop = asyncio.get_running_loop()
+    with usersmod.as_user(""):
+        why = devio.refusal(verb, item)
+    if why:
+        got = {"ok": False, "error": why, "refused": True}
+    else:
+        got = await loop.run_in_executor(None, (lambda: devio.write(item, req.get("value"))) if verb == "set"
+                                         else (lambda: devio.read(item)))
+    with contextlib.suppress(Exception):
+        fabricmod.audit_team(state["store"], f"device.{verb}", devio.resource(_here_name(), item),
+                             devio.words(req, got, "this hub"))
+    return got
+
+
 _HW_BUSY: set = set()
 
 
@@ -1203,6 +1545,8 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
         return await _device_from_hub(lk, req)
     if req.get("op") == "esp_nodes":
         return await _esp_from_hub(lk, req)
+    if req.get("op") == "device_events":
+        return await _device_events_from(lk, req)
     if req.get("op") == "zero_update":
         return await _zero_update_from_hub(lk)
     if req.get("op") == "zero_say":
@@ -7690,6 +8034,7 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
         # Office's chat), and floats it when that place is not on screen
         ev["conversation_id"] = conversation_id
         entry["conversation_id"] = conversation_id
+    entry["ev"] = ev
     if evsend is not None:
         await evsend(ev)
     else:
@@ -14120,7 +14465,29 @@ def _network_view() -> dict:
             "look_choices": _look_choices(),
             "switches": _switches_meta(),
             "ties": _ties_view(),
-            "zero_updates": __import__("agentos.ties", fromlist=["x"]).update_mode(state.machine_cfg())}
+            "zero_updates": __import__("agentos.ties", fromlist=["x"]).update_mode(state.machine_cfg()),
+            "here": _here_row()}
+
+
+def _here_row() -> dict:
+    """This hub as a machine with hardware of its own: the ESP32 nodes it holds directly (boards
+    on its own network, no Pi between). Drawn first in Devices as "This hub"; its key is `here`,
+    its readings are kept under telemetry.HERE_KEY, and what agents may use is this machine's own
+    permits (devio.permits), as a Zero keeps its own."""
+    from . import devio, espnodes, telemetry
+    with usersmod.as_user(""):
+        items = espnodes.items()
+        perm = devio.permits()
+        nodes = [espnodes.public(n) for n in espnodes.nodes()]
+    row = {"key": "here", "here": True, "display": _here_name(), "links": [],
+           "hardware": {"items": items, "at": time.time() if items else 0, "board": {"model": "this hub"}},
+           "device_permits": {"get": perm.get("get") or [], "set": perm.get("set") or []},
+           "esp_nodes": nodes, "live": sum(1 for n in nodes if n.get("live"))}
+    with contextlib.suppress(Exception):
+        row["readings"] = telemetry.items(telemetry.HERE_KEY)
+    row["device_can"] = {i["id"]: ("set" if devio.SET_ID.fullmatch(i["id"]) else "get")
+                         for i in items if devio.GET_ID.fullmatch(i.get("id") or "")}
+    return row
 
 
 def _ties_view() -> list[dict]:
@@ -14366,10 +14733,15 @@ def _device_zero(machine: str, space_id: str = "") -> tuple[dict | None, dict | 
         if machine and machine.lower() != mine.lower():
             return None, None, f"from {mine}'s chat, only {mine}'s own hardware can be used"
         machine = mine
+    here = _here_name()
+    if not mine and machine.lower() == here.lower() and usersmod.is_admin(me):
+        # this hub's own boards (the ESP32 nodes it holds directly): the machine's, so an admin's
+        return {"label": here, "here": True, "owner": ""}, _here_row(), ""
     lk = next((x for x in zeros if machine.lower() == str(x.get("label")).lower()), None)
     if not lk:
+        names = [x["label"] for x in zeros] + ([here] if usersmod.is_admin(me) else [])
         return None, None, (f"no machine called '{machine}' was set up from here"
-                            + (f": there are {', '.join(x['label'] for x in zeros)}" if zeros else ""))
+                            + (f": there are {', '.join(names)}" if names else ""))
     return lk, tiesmod.inventory_row(lk) or {}, ""
 
 
@@ -14386,11 +14758,13 @@ async def _device_tool(verb: str, machine: str, item: str = "", value=None, rang
         me = usersmod.current() or ""
         whose = ("", me) if usersmod.is_admin(me) else (me,)
         zeros = [lk for lk in teamlink._load()["links"] if zeromod.ships_to(lk) and (lk.get("owner") or "") in whose]
-        if not zeros:
-            return "No machine was set up from this hub, so there's no hardware to use."
-        return "Machines set up from here: " + ", ".join(
-            f"{lk['label']} ({len(((tiesmod.inventory_row(lk) or {}).get('hardware') or {}).get('items') or [])} things)"
-            for lk in zeros) + ". Call device_get with machine to see what one has."
+        own = len((_here_row().get("hardware") or {}).get("items") or []) if usersmod.is_admin(me) else 0
+        if not zeros and not own:
+            return "No machine was set up from this hub and it holds no boards itself, so there's no hardware to use."
+        return "Machines with hardware: " + ", ".join(
+            [f"{_here_name()} (this hub itself, {own} things)"] * bool(own)
+            + [f"{lk['label']} ({len(((tiesmod.inventory_row(lk) or {}).get('hardware') or {}).get('items') or [])} things)"
+               for lk in zeros]) + ". Call device_get with machine to see what one has."
     lk, row, err = _device_zero(machine, space_id)
     if err:
         return f"[error] {err}"
@@ -14400,8 +14774,9 @@ async def _device_tool(verb: str, machine: str, item: str = "", value=None, rang
     if verb == "get" and range_:
         if range_ not in telemetry.RANGES:
             return "[error] range is day, week, month or quarter"
-        s = await asyncio.get_running_loop().run_in_executor(None, telemetry.series, row.get("key") or tiesmod.machine_of(lk),
-                                                             item, range_)
+        s = await asyncio.get_running_loop().run_in_executor(
+            None, telemetry.series, telemetry.HERE_KEY if lk.get("here") else row.get("key") or tiesmod.machine_of(lk),
+            item, range_)
         if not s["points"]:
             return f"The hub has kept no readings of {item} on {lk['label']} for that range."
         it = next((i for i in ((row.get("hardware") or {}).get("items") or []) if i.get("id") == item), {})
@@ -14409,7 +14784,7 @@ async def _device_tool(verb: str, machine: str, item: str = "", value=None, rang
     req = {"op": f"device_{verb}", "item": item, "who": who or "an agent", "why": (why or "")[:300]}
     if verb == "set":
         req["value"] = value
-    got = await tiesmod.device_call(lk, req)
+    got = await (_device_here(req) if lk.get("here") else tiesmod.device_call(lk, req))
     words = devio.words(req, got, "the hub")
     owner = lk.get("owner") or ""
     await _device_event(owner, verb if got.get("ok") else "refused", lk["label"],
@@ -14675,10 +15050,13 @@ def _net_mac(ip: str) -> str:
 
 
 def _device_row_link(key: str):
-    """(inventory row, the Zero's link) for Devices' key, or a refusal."""
+    """(inventory row, the Zero's link) for Devices' key, or a refusal. `here` is this hub itself,
+    with a stand-in link that says so (`here: True`)."""
     from . import inventory as invmod
     from . import teamlink
     from . import zero as zeromod
+    if str(key or "") == "here":
+        return _here_row(), {"label": _here_name(), "here": True, "owner": ""}, None
     row = next((x for x in invmod.rows(state.machine_cfg()) if x.get("key") == str(key or "")), None)
     if not row:
         return None, None, JSONResponse({"error": "no such machine on the list"}, 404)
@@ -14707,11 +15085,16 @@ async def api_device_permits(body: dict):
     dropped: list = []
     g, st = devio.clean_permits(b.get("get"), b.get("set"), dropped)
     req = {"op": "device_permits", "permits": {"get": g, "set": st}}
-    got = await tiesmod.device_call(lk, req)
+    if lk.get("here"):
+        with usersmod.as_user(""):
+            got = {"ok": True, **devio.save_permits(g, st, by=_account_name(usersmod.current() or "") or "you")}
+    else:
+        got = await tiesmod.device_call(lk, req)
     if not got.get("ok"):
         return JSONResponse({"error": got.get("error") or "it did not answer"}, 502)
     kept = {"get": got.get("get") or [], "set": got.get("set") or [], "at": got.get("at") or time.time()}
-    invmod.record(row.get("ip") or "", row.get("mac") or "", device_permits=kept)
+    if not lk.get("here"):
+        invmod.record(row.get("ip") or "", row.get("mac") or "", device_permits=kept)
     owner = lk.get("owner") or ""
     with usersmod.as_user(owner):
         grants = devio.sync_grants(state["store"], lk["label"], kept["get"], kept["set"])
@@ -14721,6 +15104,38 @@ async def api_device_permits(body: dict):
     await _device_event(owner, "permits", lk["label"], words)
     await _tie_tell({"type": "network"}, owner)
     return {"ok": True, "permits": kept, "dropped": dropped + list(got.get("dropped") or []), "grants": grants}
+
+
+@app.get("/api/devices/things")
+async def api_device_things():
+    """What a device trigger can name (Missions → Build → ＋ device): this hub's own boards for an
+    admin, and the machines this hub set up for you, each thing with its id, name, kind and unit,
+    and whether the machine sends its events live. Reads what is kept here; asks no machine."""
+    from . import devtrig, teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+    me = usersmod.current() or ""
+    whose = ("", me) if usersmod.is_admin(me) else (me,)
+    out = []
+
+    def things(items):
+        # what Bento can read (devio.GET_ID), and never a text sensor: a rule judges numbers only
+        from . import devio
+        return [{"id": i["id"], "name": i.get("name") or i["id"], "unit": i.get("unit") or "",
+                 "onoff": devtrig.onoff(i["id"], "")}
+                for i in items if i.get("id") and devio.GET_ID.fullmatch(i["id"])
+                and devtrig.domain_of(i["id"]) != "text_sensor"]
+    if usersmod.is_admin(me):
+        here = _here_row()
+        if (here.get("hardware") or {}).get("items"):
+            out.append({"machine": here["display"], "here": True, "live": True,
+                        "things": things(here["hardware"]["items"])})
+    for lk in teamlink._load()["links"]:
+        if zeromod.ships_to(lk) and (lk.get("owner") or "") in whose:
+            items = ((tiesmod.inventory_row(lk) or {}).get("hardware") or {}).get("items") or []
+            out.append({"machine": lk["label"], "live": time.time() - _DEV_LIVE.get(lk["label"].lower(), 0) < DEV_LIVE_S,
+                        "things": things(items)})
+    return {"machines": out, "whens": list(devtrig.WHENS)}
 
 
 @app.post("/api/devices/read")
@@ -14738,7 +15153,7 @@ async def api_device_read(body: dict):
     me = _account_name(usersmod.current() or "") if usersmod.current() else "you"
     req = {"op": "device_get", "item": str(b.get("item") or "").strip().lower(), "who": me or "you",
            "why": "read in Devices"}
-    got = await tiesmod.device_call(lk, req)
+    got = await (_device_here(req) if lk.get("here") else tiesmod.device_call(lk, req))
     words = devio.words(req, got, "the hub")
     _ledger("device.get", devio.resource(lk["label"], req["item"]), words)
     await _device_event(lk.get("owner") or "", "get" if got.get("ok") else "refused", lk["label"],
@@ -14848,6 +15263,8 @@ async def api_device_esp(body: dict):
     for k in ("name", "host", "port", "user", "password"):
         if b.get(k) not in (None, ""):
             req[k] = b[k]
+    if lk.get("here"):
+        return await _esp_here(req)
     got = await tiesmod.esp_call(lk, req)
     words = espnodes.words(req, got, "you") if act != "find" else (
         f"you looked for ESP32 nodes near {lk['label']}: {len(got.get('found') or [])} answered" if got.get("ok")
@@ -14902,7 +15319,7 @@ async def api_device_readings(key: str = "", item: str = "", range: str = "day")
         return r
     from . import devevents, telemetry
     from . import inventory as invmod
-    row = next((x for x in invmod.rows(state.machine_cfg()) if x.get("key") == key), None)
+    row = _here_row() if key == "here" else next((x for x in invmod.rows(state.machine_cfg()) if x.get("key") == key), None)
     if not row:
         return JSONResponse({"error": "no such machine on the list"}, 404)
     if range not in telemetry.RANGES:
@@ -14910,7 +15327,8 @@ async def api_device_readings(key: str = "", item: str = "", range: str = "day")
     it = next((i for i in ((row.get("hardware") or {}).get("items") or []) if i.get("id") == item), None)
     if not it:
         return JSONResponse({"error": f"{row.get('display')} has nothing called {item}"}, 404)
-    s = await asyncio.get_running_loop().run_in_executor(None, telemetry.series, key, item, range)
+    s = await asyncio.get_running_loop().run_in_executor(None, telemetry.series,
+                                                         telemetry.HERE_KEY if key == "here" else key, item, range)
     labels = {x.get("label") for x in row.get("links") or []} | {row.get("display")}
     evs = []
     with contextlib.suppress(Exception):
@@ -19576,6 +19994,11 @@ async def ws_endpoint(ws: WebSocket):
                 "build_running": bool(build.get("task") and not build["task"].done()),
                 "build_mine": bool(build.get("task") and not build["task"].done()
                                    and str(build.get("uid", "") or "") == ws_uid)})
+    # and every question still waiting for this account: a mission a device started at night
+    # asked while no screen was open, and a page opened after that never heard the card
+    for entry in list((state.get("pending_approvals") or {}).values()):
+        if entry.get("ev") and not entry["fut"].done() and _approval_mine(entry, ws_uid):
+            await send(entry["ev"])
 
     def _stop(tinfo: dict):
         """Cooperative abort first; hard-cancel after a grace period — a model that

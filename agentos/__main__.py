@@ -2674,6 +2674,9 @@ def _flow_cli(args):
             conf = {"event": args.event or "file_change", "path": args.path, "match": args.match}
         elif kind == "flow_done":
             conf = {"flow": args.after, "status": args.status}
+        elif kind == "device":
+            conf = {"machine": args.machine, "item": args.item, "when": args.when, "value": args.value,
+                    "for": args.for_s}
         else:
             conf = {}
         # Keep the triggers it already has; this ADDS one.
@@ -2689,8 +2692,11 @@ def _flow_cli(args):
             print(f"✗ {e}")           # includes the os_event 'not on this machine' sentence
             sys.exit(1)
         trigs = store.flow_triggers(args.name)
-        print(f"✓ '{args.name}' now starts on: "
-              f"{', '.join(t['kind'] for t in trigs) or 'nothing'}")
+        from . import devtrig
+
+        def _said(t):
+            return devtrig.words(t.get("config") or {}) if t["kind"] == "device" else t["kind"]
+        print(f"✓ '{args.name}' now starts on: " + ("; ".join(_said(t) for t in trigs) or "nothing"))
         if kind == "webhook":
             new = [t for t in trigs if t["kind"] == "webhook"][-1]
             print(f"\n  curl -X POST '{flowsmod.hook_url(cfg, args.name, new)}' -d '{{}}'")
@@ -2794,6 +2800,8 @@ def _flow_cli(args):
                     up = (t["config"] or {}).get("flow") or ""
                     if not store.get_flow(up):
                         why = f"follows '{up}', which does not exist"
+                if t["kind"] == "device":
+                    why = _device_rule_problem(cfg, t["config"] or {})
                 if t["kind"] == "webhook":
                     q = store.quarantined("hook", t["id"])
                     exp = float(t.get("secret_expires_at") or 0)
@@ -2807,6 +2815,9 @@ def _flow_cli(args):
                 fired = (f"  fired {t['fires']}×" + (f", {t['dropped']} dropped" if t['dropped'] else "")
                          if t["fires"] or t["dropped"] else "  never fired")
                 print(f"    {mark} {t['kind']:10}{fired}{extra}")
+                if t["kind"] == "device" and not why:
+                    from . import devtrig
+                    print(f"      {devtrig.words(t['config'] or {})}")
                 problems += bool(why)
         held = [q for q in store.quarantine_list() if q["principal_kind"] in ("hook", "flow")]
         if held:
@@ -5447,6 +5458,26 @@ def _hardware_cli(rest, check: bool):
     print(hwmod.text(r["display"], r.get("hardware") or {}))
 
 
+def _device_rule_problem(cfg: dict, c: dict) -> str:
+    """Why a device trigger can't fire as written, from what this hub knows with the server down:
+    the machine is one this hub set up (or itself), and the item is on its hardware list."""
+    from . import espnodes, teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+    m = str(c.get("machine") or "")
+    if m.lower() == teamlink.machine_name(cfg).lower():
+        items = [i["id"] for i in espnodes.items()]
+    else:
+        lk = next((x for x in teamlink._load()["links"] if str(x.get("label") or "").lower() == m.lower()
+                   and zeromod.ships_to(x)), None)
+        if not lk:
+            return f"no machine called {m} was set up from here"
+        items = [i.get("id") for i in (((tiesmod.inventory_row(lk) or {}).get("hardware") or {}).get("items") or [])]
+    if c.get("item") and c["item"] not in items:
+        return f"{m} has nothing called {c['item']} on its hardware list (Devices → its row → Hardware)"
+    return ""
+
+
 def _esp_cli(rest, args):
     """The ESP32 nodes a Zero looks after (espnodes.py), from a terminal: `esp MACHINE` lists them,
     `find` asks its network, `add NAME ADDRESS [PORT] [--user U]` reads one and keeps it (the
@@ -5460,14 +5491,45 @@ def _esp_cli(rest, args):
     from . import zero as zeromod
     from .memory import Store
     if not rest:
-        sys.exit("  bento network esp MACHINE [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME]")
-    r = inv.find([x for x in inv.rows() if not x.get("ignored")], rest[0])
-    if not r:
-        sys.exit(f"  no machine called {rest[0]} on the list")
-    labels = {x.get("label") for x in r.get("links") or []}
-    lk = next((x for x in teamlink._load()["links"] if x.get("label") in labels and zeromod.ships_to(x)), None)
-    if not lk:
-        sys.exit(f"  {r['display']} isn't a machine this hub set up, so it doesn't look after ESP32 nodes for you")
+        sys.exit("  bento network esp MACHINE|here [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME]")
+    from .config import load_config
+    me = teamlink.machine_name(load_config())
+    if rest[0].lower() in ("here", me.lower()):
+        # this hub holds the boards itself (no Pi between): the same functions, run here. A
+        # running server picks a new node's stream up within half a minute.
+        lk = {"label": me, "here": True}
+        port = int(os.environ.get("AGENTOS_PORT") or load_config().get("port") or 8321)
+        up = _server_answers(port)
+
+        async def call(_lk, req):
+            act_ = req.get("action")
+            if up and act_ != "find":
+                # the running server holds the streams: it says which are heard live, and a
+                # node added through it is held at once, with its diary line and ledger row
+                return _api_call(port, "/api/devices/esp", "POST", {**req, "key": "here"})
+            if act_ == "find":
+                return {"ok": True, "found": await espnodes.discover()}
+            if act_ == "add":
+                got_ = espnodes.add(req["name"], req["host"], req.get("port") or 80, req.get("user") or "",
+                                    req.get("password") or "", by="the terminal")
+            elif act_ == "remove":
+                got_ = espnodes.remove(espnodes.node_name(req["name"]))
+            else:
+                if act_ == "look":
+                    espnodes.look_all(skip_down=False)
+                got_ = {"ok": True}
+            if got_.get("ok"):
+                got_["nodes"] = [espnodes.public(n) for n in espnodes.nodes()]
+            return got_
+    else:
+        r = inv.find([x for x in inv.rows() if not x.get("ignored")], rest[0])
+        if not r:
+            sys.exit(f"  no machine called {rest[0]} on the list (`here` is this hub's own boards)")
+        labels = {x.get("label") for x in r.get("links") or []}
+        lk = next((x for x in teamlink._load()["links"] if x.get("label") in labels and zeromod.ships_to(x)), None)
+        if not lk:
+            sys.exit(f"  {r['display']} isn't a machine this hub set up, so it doesn't look after ESP32 nodes for you")
+        call = tiesmod.esp_call
     act = rest[1] if len(rest) > 1 else "list"
     req = {"op": "esp_nodes", "action": act}
     if act == "add":
@@ -5484,7 +5546,7 @@ def _esp_cli(rest, args):
         req["name"] = rest[2]
     elif act not in ("list", "find", "look"):
         sys.exit("  find, add, look or remove")
-    got = asyncio.run(tiesmod.esp_call(lk, req))
+    got = asyncio.run(call(lk, req))
     if act in ("add", "remove", "find"):
         words = espnodes.words(req, got, "you").removeprefix("you ") if act != "find" else \
             f"looked for ESP32 nodes near {lk['label']}: {len(got.get('found') or [])} answered"
@@ -5523,7 +5585,8 @@ def _esp_cli(rest, args):
     for n in nodes:
         state = ("answering" if n.get("answering") else f"not answering: {n['error']}" if n.get("answering") is False
                  else "not read yet")
-        print(f"  {n['name']:<16} {n['title'][:28]:<28} {n['host']}:{n['port']}  {n['things']} things, {state}")
+        print(f"  {n['name']:<16} {n['title'][:28]:<28} {n['host']}:{n['port']}  {n['things']} things, {state}"
+              + (", live" if n.get("live") else ""))
 
 
 def _device_cli(a, rest, args):
@@ -9183,7 +9246,7 @@ def main():
     p_flow.add_argument("--agents", default="",
                         help="with `add`: comma-separated roster, e.g. researcher,writer")
     p_flow.add_argument("--kind", default="",
-                        help="with `trigger`: cron | message | webhook | os_event | flow_done")
+                        help="with `trigger`: cron | message | webhook | os_event | flow_done | device")
     p_flow.add_argument("--at", default="", help="cron daily time, HH:MM")
     p_flow.add_argument("--every", type=int, default=0, help="cron interval, in minutes")
     p_flow.add_argument("--pattern", default="", help="message trigger pattern")
@@ -9192,6 +9255,12 @@ def main():
     p_flow.add_argument("--match", default="", help="os_event notification: text to match")
     p_flow.add_argument("--after", default="", help="flow_done: the flow this one follows")
     p_flow.add_argument("--status", default="any", help="flow_done: any | ok | failed")
+    p_flow.add_argument("--machine", default="", help="device: the machine, as Devices lists it")
+    p_flow.add_argument("--item", default="", help="device: the item, e.g. esp.cold-2.sensor.cold_room_temperature")
+    p_flow.add_argument("--when", default="", help="device: on | off | above | below | changes | offline | online")
+    p_flow.add_argument("--value", type=float, default=None, help="device: the number for above / below")
+    p_flow.add_argument("--for", dest="for_s", type=int, default=0,
+                        help="device: seconds the condition must hold first")
     p_flow.add_argument("--cooldown", type=int, default=60, help="seconds between fires")
     p_flow.add_argument("--days", type=float, default=0,
                         help="with `rotate`: expire the new secret after N days (0 = never)")

@@ -403,7 +403,7 @@ async function jobDraftAI(body){
 }
 function jobAIDraftHTML(r){
   const f=r.flow,grants=(r.would_grant||[]).filter(g=>g.effect!=='deny');
-  const trig=(f.triggers||[]).map(t=>t.kind==='cron'?'on a schedule':t.kind==='os_event'?(t.config&&t.config.event==='file_change'?'when '+(t.config.path||'a folder')+' changes':'on '+(t.config&&t.config.event||'an event')):t.kind).join(', ');
+  const trig=(f.triggers||[]).map(t=>t.kind==='device'&&typeof devTrigWords==='function'?devTrigWords(t.config||{}):t.kind==='cron'?'on a schedule':t.kind==='os_event'?(t.config&&t.config.event==='file_change'?'when '+(t.config.path||'a folder')+' changes':'on '+(t.config&&t.config.event||'an event')):t.kind).join(', ');
   return `<div class="job-ai-card">
     <div class="job-ai-h"><b>${esc(f.name)}</b> <span class="brainchip">off until you turn it on</span>
       <span style="flex:1"></span><button class="endbtn" data-x aria-label="Dismiss">✕</button></div>

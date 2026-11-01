@@ -843,6 +843,7 @@ function trigLabel(t){
   if(t.kind==='message')return 'message "'+(c.pattern||'')+'"';
   if(t.kind==='os_event')return 'on '+(c.event||'event');
   if(t.kind==='flow_done')return 'after '+(c.flow||'another flow')+(c.status&&c.status!=='any'?' ('+c.status+')':'');
+  if(t.kind==='device')return devTrigWords(c);
   return 'webhook';
 }
 /* One flow, in full. Everything that used to be crammed into a card, with room to read it. */
@@ -1099,7 +1100,7 @@ function fgAgo(t){
 }
 var FG_ORIGIN={task:'on its schedule',cron:'on its schedule',gui:'by you',tui:'by you from a terminal',api:'by you',
   webhook:'by a webhook',telegram:'from Telegram',whatsapp:'from WhatsApp',flow:'after another mission',
-  os_event:'by something on this machine',message:'by a message'};
+  os_event:'by something on this machine',message:'by a message',device:'by a device'};
 function fgClock(){
   if(!FG.run)return;
   const m=FG.meta||{},node=FG.nodes.get(FG.run)||{},st=node.status||(FG.ended?'done':'running');
@@ -1257,16 +1258,27 @@ async function delFlow(name){
 
 /* --- the flow editor: permissions and triggers are part of the DEFINITION ---------- */
 var FLW=null;
+/* A device trigger in words (devtrig.words): "when zone-cold: Cold room B temperature is above -15 for 2 min". */
+var DEV_WHEN_WORDS={on:'turns on',off:'turns off',above:'is above',below:'is below',changes:'changes',
+  offline:'stops answering',online:'answers again'};
+function devTrigWords(c){
+  const m=c.machine||'a machine',w=c.when||'';
+  const what=(w==='offline'||w==='online')?m:m+': '+String(c.item||'a thing').replace(/^esp\.[^.]+\.[^.]+\./,'').replace(/_/g,' ');
+  const sec=+c.for||0;
+  return 'when '+what+' '+(DEV_WHEN_WORDS[w]||w)+((w==='above'||w==='below')?' '+(c.value??''):'')
+    +(sec?' for '+(sec<60?sec+' s':Math.round(sec/60)+' min'):'');
+}
 async function openFLW(name,draft){
-  const [subs,tools,skills,models,links]=await Promise.all([
+  const [subs,tools,skills,models,links,devs]=await Promise.all([
     fetch('/api/subagents').then(r=>r.json()).catch(()=>({subagents:[]})),
     fetch('/api/tools').then(r=>r.json()).catch(()=>({tools:[]})),
     fetch('/api/skills').then(r=>r.json()).catch(()=>({skills:[]})),
     fetch('/api/models').then(r=>r.json()).catch(()=>({models:[]})),
-    fetch('/api/team/links').then(r=>r.json()).catch(()=>({links:[]}))]);
+    fetch('/api/team/links').then(r=>r.json()).catch(()=>({links:[]})),
+    fetch('/api/devices/things').then(r=>r.json()).catch(()=>({machines:[]}))]);
   const ex=name?FLOWS_CACHE.find(f=>f.name===name):null;
   FLW={exists:!!ex,subs:subs.subagents||[],tools:tools.tools||[],skills:skills.skills||[],
-    links:(links.links||[]).map(l=>l.label),
+    links:(links.links||[]).map(l=>l.label),devices:(devs&&devs.machines)||[],
     models:models.models||[],q:'',draft:(draft||null),
     d:ex?JSON.parse(JSON.stringify(ex))
        :Object.assign({name:'',description:'',mission:'',roster:[],model:'',
@@ -1348,7 +1360,8 @@ function flwAddTrigger(kind){
   const c=kind==='cron'?{type:'daily',at:'08:00'}
     :kind==='message'?{pattern:'',mode:'prefix',surfaces:['telegram','gui']}
     :kind==='os_event'?{event:flwFirstOsEvent(),match:''}
-    :kind==='flow_done'?{flow:'',status:'any'}:{};
+    :kind==='flow_done'?{flow:'',status:'any'}
+    :kind==='device'?{machine:((FLW.devices||[])[0]||{}).machine||'',item:'',when:'above',value:'',for:0}:{};
   FLW.d.triggers=(FLW.d.triggers||[]).concat([{kind,config:c,cooldown_secs:60,enabled:1}]);
   drawFLW();
 }
@@ -1361,7 +1374,39 @@ function flwFirstOsEvent(){
 function flwDelTrigger(i){FLW.d.triggers.splice(i,1);drawFLW()}
 function flwTrigSet(i,key,val){
   const t=FLW.d.triggers[i];if(!t)return;
-  if(key==='cooldown_secs')t.cooldown_secs=+val||0;else t.config[key]=val;
+  if(key==='cooldown_secs')t.cooldown_secs=+val||0;
+  else if(t.kind==='device'&&(key==='value'||key==='for'))t.config[key]=val===''?'':+val;
+  else t.config[key]=val;
+}
+/* ＋ device: a machine (this hub's own boards, or one it set up), one of its things, and what it
+   does. Only what Bento can read is offered, and never a text sensor: a rule judges numbers. */
+function flwDeviceFields(t,i){
+  const c=t.config||{},ms=FLW.devices||[];
+  if(!ms.length)return `<span class="sub">No machine has hardware here yet. Add boards or set up a Pi in Devices.</span>`;
+  const m=ms.find(x=>x.machine===c.machine)||{things:[]};
+  const th=(m.things||[]).find(x=>x.id===c.item);
+  const machineOnly=c.when==='offline'||c.when==='online';
+  const whens=machineOnly||!th?['on','off','changes','above','below','offline','online']
+    :th.onoff?['on','off','changes','offline','online']:['above','below','offline','online'];
+  const sel=(k,opts)=>`<select data-trig="${i}" data-key="${k}" style="width:auto;max-width:220px" onchange="flwCollect();drawFLW()">${opts}</select>`;
+  return sel('machine',`<option value="">— a machine —</option>`+ms.map(x=>`<option value="${esc(x.machine)}" ${x.machine===c.machine?'selected':''}>${esc(x.machine)}${x.here?' (this hub)':''}</option>`).join(''))
+    +(machineOnly?'':sel('item',`<option value="">— a thing —</option>`+(m.things||[]).map(x=>`<option value="${esc(x.id)}" ${x.id===c.item?'selected':''}>${esc(x.name)}${x.unit?' ('+esc(x.unit)+')':''}</option>`).join('')))
+    +sel('when',whens.map(w=>`<option value="${w}" ${c.when===w?'selected':''}>${DEV_WHEN_WORDS[w]}</option>`).join(''))
+    +((c.when==='above'||c.when==='below')?`<input data-trig="${i}" data-key="value" type="number" step="any" value="${esc(String(c.value??''))}" placeholder="value" style="width:80px">`:'')
+    +(machineOnly?'':`<span class="sub">for</span><input data-trig="${i}" data-key="for" type="number" min="0" max="3600" value="${+c.for||0}" title="seconds it must hold first" style="width:70px"><span class="sub">s</span>`)
+    +(c.machine?`<div class="sub flw-trig-note" style="flex-basis:100%">${esc(devTrigWords(c))}${m.live?' · heard as it happens':' · heard each minute until it runs this version'}</div>`:'');
+}
+/* Devices → a thing → When…: a new mission that starts on it. */
+async function devWhen(machine,item){
+  await openFLW(null);
+  if(!FLW)return;
+  const m=(FLW.devices||[]).find(x=>x.machine===machine)||{things:[]};
+  const th=(m.things||[]).find(x=>x.id===item)||{};
+  FLW.d.triggers=[{kind:'device',config:{machine,item,when:th.onoff?'on':'above',value:'',for:0},cooldown_secs:60,enabled:1}];
+  FLW.d.permissions.devices={read:[machine+'/*'],set:[]};
+  ['device_get','device_set'].forEach(t=>{if(!FLW.d.permissions.tools.includes(t))FLW.d.permissions.tools.push(t)});
+  FLW.d.mission='When this happens, find out what is going on and tell me. If something should be switched, ask me first.';
+  drawFLW();
 }
 async function flwPreview(){
   const box=$('#flw-preview');if(!box)return;
@@ -1387,6 +1432,7 @@ function flwCollect(){
   d.permissions.net=lines(g('#flw-net'));
   d.permissions.fs_read=lines(g('#flw-fsr'));
   d.permissions.fs_write=lines(g('#flw-fsw'));
+  if($('#flw-devr'))d.permissions.devices={read:lines(g('#flw-devr')),set:lines(g('#flw-devs'))};
   d.permissions.memory=g('#flw-mem')||'read-space';
   {const t=document.querySelector('#flw-talk');if(t)d.permissions.talk=!!t.checked;}
   (d.triggers||[]).forEach((t,i)=>{
@@ -1466,19 +1512,20 @@ function drawFLW(){
         ${['any','ok','failed'].map(x=>`<option ${c.status===x?'selected':''}>${x}</option>`).join('')}</select>
       <span class="sub">its output becomes this flow's input</span>`;
     }
+    else if(t.kind==='device')f=flwDeviceFields(t,i);
     else f=`<span class="sub">a URL with its own secret is minted on save${t.secret?' (already minted)':''}</span>`;
-    return `<div class="row" style="gap:5px;margin-bottom:5px;align-items:center">
+    return `<div class="row flw-trig" style="gap:5px;margin-bottom:5px;align-items:center">
       <span class="lbadge">${esc(t.kind)}</span>${f}
-      <input data-trig="${i}" data-key="cooldown_secs" type="number" value="${t.cooldown_secs||60}" title="cooldown seconds" style="width:70px">
+      <span class="sub">at most every</span><input data-trig="${i}" data-key="cooldown_secs" type="number" value="${t.cooldown_secs||60}" title="cooldown seconds" style="width:70px"><span class="sub">s</span>
       <button onclick="flwCollect();flwDelTrigger(${i})">✕</button></div>`;
   }).join('');
   const mopts=['<option value="">inherit from control plane (OS default)</option>']
     .concat(FLW.models.map(m=>`<option value="${m.id}" ${d.model===m.id?'selected':''}>${esc(m.id)}</option>`)).join('');
 
-  ov.innerHTML=`<div style="width:1060px;max-width:96vw;max-height:90vh;background:var(--bg2,#111419);
+  ov.innerHTML=`<div class="flw-box" style="width:1060px;max-width:96vw;max-height:90vh;background:var(--bg2,#111419);
       border:1px solid var(--line,#232a35);border-radius:16px;padding:22px 24px;display:flex;gap:18px"
       onclick="event.stopPropagation()">
-   <div style="flex:1.35;min-width:0;overflow:auto;max-height:82vh;padding-right:4px">
+   <div class="flw-l" style="flex:1.35;min-width:0;overflow:auto;max-height:82vh;padding-right:4px">
     <div class="sawh">${FLW.exists?'Edit':(FLW.draft?'Review this draft':'New flow')}</div>
     <div class="sawsub">A standing mission. The master orchestrator plans it, picks from the roster while it runs,
       and stitches what comes back. What it may touch and what starts it are part of this definition — saving writes
@@ -1517,6 +1564,12 @@ function drawFLW(){
       <div style="flex:1"><label>Files it may read</label><textarea id="flw-fsr" rows="2" placeholder="~/Documents/launch/*">${esc((p.fs_read||[]).join('\n'))}</textarea></div>
       <div style="flex:1"><label>Files it may write</label><textarea id="flw-fsw" rows="2">${esc((p.fs_write||[]).join('\n'))}</textarea></div>
     </div>
+    ${(FLW.devices||[]).length||(p.devices&&((p.devices.read||[]).length||(p.devices.set||[]).length))?`<div class="row" style="gap:8px">
+      <div style="flex:1"><label>Devices it may read ${pInfo('One per line, as machine/thing, or machine/* for everything that machine lets agents read. Its agents also need device_get in their tools.')}</label>
+        <textarea id="flw-devr" rows="2" placeholder="zone-cold/*">${esc(((p.devices||{}).read||[]).join('\n'))}</textarea></div>
+      <div style="flex:1"><label>Devices it may ask to set ${pInfo('One thing per line. You are asked before every switch, whatever this says.')}</label>
+        <textarea id="flw-devs" rows="2" placeholder="zone-cold/esp.cold-2.switch.compressor">${esc(((p.devices||{}).set||[]).join('\n'))}</textarea></div>
+    </div>`:''}
     <label class="flw-talk"><input type="checkbox" id="flw-talk" ${p.talk?'checked':''} onchange="flwPreview()">
       Specialists may consult each other — on this mission, the agents on its roster may ask one
       another mid-task (within the team's limits). Off: they only work through the orchestrator.</label>
@@ -1525,7 +1578,7 @@ function drawFLW(){
     <div class="sawgrp">What starts it</div>
     ${trigs||'<p class="mut">Nothing yet — it runs when you press Run.</p>'}
     <div class="row" style="gap:6px;flex-wrap:wrap">
-      ${['cron','message','webhook','os_event','flow_done'].map(k=>
+      ${['cron','message','webhook','os_event','flow_done','device'].map(k=>
         `<button class="sawchip" onclick="flwCollect();flwAddTrigger('${k}')">＋ ${k}</button>`).join('')}
     </div>
 
@@ -1544,7 +1597,7 @@ function drawFLW(){
     </div>
     <p class="mut" style="font-size:12px">Working seconds exclude time spent waiting for you to answer an approval.</p>
    </div>
-   <div style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:8px;max-height:82vh">
+   <div class="flw-r" style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:8px;max-height:82vh">
     <div class="sawgrp" style="margin-top:0">The flow</div>
     <div id="flw-chart" style="border:1px solid var(--line,#232a35);border-radius:10px;padding:6px;
       overflow-x:auto">${fgPredictSvg(d)}</div>

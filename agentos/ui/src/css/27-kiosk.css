@@ -421,3 +421,8 @@ body.zero-face .of-co{display:none}
 .dev-form>.net-sws,.dev-form>.net-look,.dev-form>.net-remove,.dev-form>.dev-pw-opts{flex:1 1 100%}
 .dev-pw-opts .prov-opt{display:inline-flex;align-items:center;gap:8px}
 .dev-pw-opts input[type=checkbox]{width:18px;height:18px;min-height:0}
+/* a value that just changed, from a device event (24n-network.js netLive) */
+@keyframes netLiveBlink{from{background:color-mix(in srgb,var(--acc) 35%,transparent)}to{background:transparent}}
+.net-live-blink{animation:netLiveBlink 1.2s ease-out 1;border-radius:4px}
+.dev-chart-when{margin-left:auto}
+@media (prefers-reduced-motion:reduce){.net-live-blink{animation:none}}

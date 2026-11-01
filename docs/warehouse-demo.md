@@ -66,6 +66,13 @@ brain set up here, the demo uses it anyway and says so.
 4. Tap **Allow**. The compressor comes back on, read back from the node, and the room starts cooling.
 5. Try saying no to a switch, opening a dock door, or draining the forklift battery.
 
+To see it act on its own, give it a mission that starts on a device: in Missions → Build, a mission
+whose specialist has `device_get` and `device_set` in its tools, a **device** trigger on zone-cold's *Cold room B: Cold room temperature*
+**is above** -15 **for** 20 seconds, and `zone-cold/*` under Devices it may read. Trip the
+compressor and don't ask anything. Within a minute the mission starts, reads the room, and asks you
+to switch the compressor back on. See
+[A mission that starts on its own](network.md#a-mission-that-starts-on-its-own).
+
 From a terminal, `bento demo warehouse floor` lists every reading and
 `bento demo warehouse poke cold-2 Compressor off` trips the compressor.
 

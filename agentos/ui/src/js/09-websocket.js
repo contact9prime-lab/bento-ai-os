@@ -558,6 +558,8 @@ function handle(ev){
       }
       toast('a price is needed before this model runs'); scrollDown(); break;}
     case 'approval_request':{
+      // a reconnect is sent every question still waiting: one already drawn is only re-homed
+      if(APPROVALS[ev.id]){approvalHome(ev.id);break;}
       // the turn is not slow here, it is waiting on a human — say which
       actMove(_cid,'approve',{name:ev.name||'',goal:apGoalLine(apCard(ev))});
       APPROVALS[ev.id]=ev;
@@ -743,6 +745,9 @@ function handle(ev){
       break;
     case 'zero_behind':   // a Zero this hub set up runs an older Bento (server._zeros_keep_current)
       toast(`${ev.peer||ev.label} runs ${ev.version}, this hub ${ev.hub}`,{label:'Update it',go:()=>tieUpdate(ev.label,ev.owner),ms:20000});
+      break;
+    case 'device_live':   // a board's or a pin's change, as it happened (server._device_observe)
+      if(typeof netLive==='function')netLive(ev);
       break;
     case 'device_event':   // a machine moved, stopped answering, came back, updated (server._ties_check)
       if(typeof devEventLive==='function')devEventLive(ev);

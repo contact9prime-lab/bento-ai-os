@@ -35,6 +35,7 @@ async function netPaint(){
   if(can&&!hh.engine&&hh.line&&(v.rows||[]).some(r=>!r.ignored&&['set up','linked','installed'].includes(r.bento)))
     rows.push(`<div class="net-fw"><p>${esc(hh.line)}</p><div class="net-fw-acts">
       <button class="endbtn" data-net="hearsetup">Set up listening</button></div></div>`);
+  if(v.here&&can)rows.push(netHereHTML(v.here));
   const list=(v.rows||[]).filter(r=>!r.ignored),hidden=(v.rows||[]).filter(r=>r.ignored);
   if(list.length)rows.push(`<div class="net-list">${list.map(r=>netRowHTML(r,v,can)).join('')}</div>`);
   else if(s.machines===0&&!hidden.length)rows.push(`<p class="mut prov-empty">Nothing listed yet.</p>`);
@@ -107,6 +108,24 @@ function netRowHTML(r,v,can){
 /* What a Zero has, down to each sensor, under its inventory name (hardware.py, read by its hub
    once a day and when something is plugged in or out). Values are what the last look read. */
 function netHwCan(r){return !!r.hardware||(r.links||[]).length>0}
+/* This hub as a machine with boards of its own (server._here_row): ESP32 nodes on its own
+   network, held here with no Pi between, their events heard as they happen. */
+function netHereHTML(h){
+  const open=NET.open==='here'&&NET.mode==='hardware',n=(h.esp_nodes||[]).length;
+  return `<div class="net-m${open?' open':''}" data-key="here">
+    <div class="net-top"><b>${esc(h.display)}</b><span class="net-b on">This hub</span>
+      <span class="mut">${n?`${n} ESP32 node${n>1?'s':''} on this hub’s own network${h.live?` · ${h.live} heard live`:''}`
+        :'Boards on this hub’s own network can be held here, with no Pi between'}${netHwLink(h)}</span></div>
+    <div class="net-acts"><button class="endbtn" data-net="${n?'hardware':'hereadd'}" data-key="here">${n?'Hardware':'Add ESP32 boards'}</button></div>
+    ${open?netHardwareHTML(h):''}</div>`;
+}
+/* A thing's value, kept current as the device events arrive (server._device_observe → device_live). */
+function netLive(ev){
+  (ev.events||[]).forEach(e=>{
+    document.querySelectorAll(`[data-live="${CSS.escape(ev.machine+'|'+e.item)}"]`).forEach(sp=>{
+      sp.textContent=netHwValue({id:e.item,kind:sp.dataset.kind,unit:sp.dataset.unit,value:e.value});
+      sp.classList.remove('net-live-blink');void sp.offsetWidth;sp.classList.add('net-live-blink')})})
+}
 function netHwLink(r){
   const n=((r.hardware||{}).items||[]).length;
   return n?` · <button class="linkbtn" data-net="hardware" data-key="${esc(r.key)}">${n} things</button>`:'';
@@ -114,7 +133,7 @@ function netHwLink(r){
 var NET_HW_ORDER=[['camera','Cameras'],['temperature','Temperature'],['power','Power'],['sensor','Sensors'],
   ['gpio','GPIO pins'],['i2c','I2C'],['spi','SPI'],['serial','Serial ports'],['usb','USB devices'],
   ['audio_in','Microphones'],['audio_out','Speakers and audio out'],['input','Input devices'],
-  ['network','Network'],['bluetooth','Bluetooth'],['esphome','ESP32 nodes'],['system','System']];
+  ['network','Network'],['bluetooth','Bluetooth'],['esphome','ESP32 nodes and what they have'],['system','System']];
 function netHwValue(it){
   const v=it.value;if(v==null)return '';
   if(it.kind==='gpio')return v?'high':'low';
@@ -124,10 +143,12 @@ function netHwValue(it){
 }
 function netHardwareHTML(r){
   const hw=r.hardware||{},items=hw.items||[],b=hw.board||{},name=r.display||r.ip;
-  const top=`<div class="net-hw-top"><p>${esc([b.model,b.ram_mb?b.ram_mb+' MB':'',b.os].filter(Boolean).join(' · ')||'Not read yet.')}
-      ${hw.at?`<span class="mut">read ${esc(poolAgo(Math.max(0,Math.round(Date.now()/1000-hw.at))))}</span>`:''}
-      ${pInfo('Its hub reads this once a day, and within a minute when something is plugged in or out. Tap a reading to see it over 90 days. Agents can read or set only what you allow under What agents may use, and every set is asked.')}</p>
-    ${(r.links||[]).length?`<span class="net-hw-acts">${Object.keys(r.device_can||{}).length?`<button class="endbtn" data-net="hwperm" data-key="${esc(r.key)}" aria-expanded="${!!NET.hwp[r.key]}">What agents may use</button>`:''}<button class="endbtn" data-net="esp" data-key="${esc(r.key)}" aria-expanded="${!!NET.esp[r.key]}">ESP32 nodes</button><button class="endbtn" data-net="hwcheck" data-key="${esc(r.key)}">Check now</button></span>`:''}</div>
+  const top=`<div class="net-hw-top"><p>${r.here?`The boards this hub holds directly${r.live?`, ${r.live} heard live`:''}.`
+        :esc([b.model,b.ram_mb?b.ram_mb+' MB':'',b.os].filter(Boolean).join(' · ')||'Not read yet.')}
+      ${hw.at&&!r.here?`<span class="mut">read ${esc(poolAgo(Math.max(0,Math.round(Date.now()/1000-hw.at))))}</span>`:''}
+      ${pInfo(r.here?'Each board’s changes reach this hub the moment they happen. Tap a reading to see it over 90 days, or to start a mission when it changes. Agents can read or set only what you allow under What agents may use, and every set is asked.'
+        :'Its hub reads this once a day, and within a minute when something is plugged in or out. Its boards’ changes reach the hub as they happen. Tap a reading to see it over 90 days, or to start a mission when it changes. Agents can read or set only what you allow under What agents may use, and every set is asked.')}</p>
+    ${(r.links||[]).length||r.here?`<span class="net-hw-acts">${Object.keys(r.device_can||{}).length?`<button class="endbtn" data-net="hwperm" data-key="${esc(r.key)}" aria-expanded="${!!NET.hwp[r.key]}">What agents may use</button>`:''}<button class="endbtn" data-net="esp" data-key="${esc(r.key)}" aria-expanded="${!!NET.esp[r.key]}">ESP32 nodes</button>${r.here?'':`<button class="endbtn" data-net="hwcheck" data-key="${esc(r.key)}">Check now</button>`}</span>`:''}</div>
     ${NET.esp[r.key]?netEspHTML(r):''}`;
   if(!items.length)return `<div class="net-hw">${top}</div>`;
   const perm=r.device_permits||{},pg=new Set(perm.get||[]),ps=new Set(perm.set||[]);
@@ -135,11 +156,13 @@ function netHardwareHTML(r){
   const groups=NET_HW_ORDER.map(([k,t])=>[k,t,items.filter(i=>i.kind===k)]).filter(g=>g[2].length);
   const has=new Set(r.readings||[]);
   // an item with readings opens its chart (24u-devchart.js) under it
+  const lm=r.here?r.display:((r.links||[])[0]||{}).label||name;
+  const val=i=>`<span data-live="${esc(lm+'|'+i.id)}" data-kind="${esc(i.kind||'')}" data-unit="${esc(i.unit||'')}">${esc(netHwValue(i))}</span>`;
   const item=i=>has.has(i.id)
     ?`<li class="net-hw-has"><button class="net-hw-open" data-chart="${esc(i.id)}" data-key="${esc(r.key)}" aria-expanded="${DEVCHART.key===r.key&&DEVCHART.item===i.id}">
-        <code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${mark(i)}${esc(netHwValue(i))} <span class="net-hw-chev" aria-hidden="true">›</span></b></button>
+        <code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${mark(i)}${val(i)} <span class="net-hw-chev" aria-hidden="true">›</span></b></button>
         ${devChartSlot(r.key,i.id)}</li>`
-    :`<li><code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${mark(i)}${esc(netHwValue(i))}</b></li>`;
+    :`<li><code>${esc(name)}/${esc(i.id)}</code><span>${esc(i.name)}${i.detail&&i.detail!==i.name?` <span class="mut">${esc(i.detail)}</span>`:''}</span><b>${mark(i)}${val(i)}</b></li>`;
   const pinOpen=list=>{const p=list.find(i=>DEVCHART.key===r.key&&DEVCHART.item===i.id);return p?devChartSlot(r.key,p.id):''};
   const power=items.find(i=>i.id==='power.throttle'),bad=power&&((power.flags||{}).now||[]).length;
   return `<div class="net-hw">${top}
@@ -316,7 +339,7 @@ function netWire(box){
   box.querySelectorAll('[data-step]').forEach(c=>c.onchange=()=>{
     const m=NET.steps[c.dataset.ip]=NET.steps[c.dataset.ip]||{};m[c.dataset.step]=c.checked});
 }
-function netRow(key){return ((NET.v||{}).rows||[]).find(r=>r.key===key)||{}}
+function netRow(key){return key==='here'?((NET.v||{}).here||{}):((NET.v||{}).rows||[]).find(r=>r.key===key)||{}}
 async function netAct(act,b){
   const r=netRow(b.dataset.key);
   const post=async(url,body,method)=>{const res=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
@@ -387,6 +410,8 @@ async function netAct(act,b){
     if(act==='more'){NET.more=NET.more===r.key?'':r.key;return netPaint()}
     if(act==='hardware'){NET.more='';const same=NET.open===r.key&&NET.mode==='hardware';
       NET.open=same?'':r.key;NET.mode=same?'':'hardware';return netPaint()}
+    if(act==='hereadd'){NET.open='here';NET.mode='hardware';NET.esp.here=null;
+      b.dataset.key='here';return netAct('esp',b)}
     if(act==='hwperm'){const p=r.device_permits||{};
       NET.hwp[r.key]=NET.hwp[r.key]?null:{get:new Set(p.get||[]),set:new Set(p.set||[])};return netPaint()}
     if(act==='esp'||act==='espfind'||act==='espadd'||act==='espremove'||act==='esppick'){

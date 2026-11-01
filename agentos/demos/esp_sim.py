@@ -272,8 +272,9 @@ def handler_for(node: Node):
             except (BrokenPipeError, ConnectionResetError, OSError):
                 pass
             finally:
-                if q in node.listeners:
-                    node.listeners.remove(q)
+                # by identity: every empty queue EQUALS every other, so `remove(q)` took the first empty one,
+                # and a short read closing cut a held /events stream off from every change after it
+                node.listeners[:] = [x for x in node.listeners if x is not q]
             self.close_connection = True
     return H
 

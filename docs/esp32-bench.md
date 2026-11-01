@@ -91,6 +91,9 @@ bento network permit my-pi esp.bench-1.sensor.chip_temperature read
 bento network permit my-pi esp.bench-1.light.status_led set
 ```
 
+No Pi? The hub can hold the board itself: in Devices, **This hub** has the same **ESP32 nodes**,
+or `bento network esp here add bench-1 192.168.1.57 --user bento`.
+
 ## Try it
 
 In any chat on the hub:
@@ -101,6 +104,10 @@ In any chat on the hub:
 - "Turn on the status LED on the bench." You're asked first, then it's read back from the board.
 - "Sound the alarm on the bench." Asked, then the speaker chimes every 3 seconds until you say
   "turn the alarm off".
+
+It can also act with nobody asking. Give a mission a **device** trigger on
+`esp.bench-1.binary_sensor.vibration` **turns on**, knock on the table, and the mission starts within
+a second. See [A mission that starts on its own](network.md#a-mission-that-starts-on-its-own).
 
 Every value is sampled every 10 seconds and kept for 90 days. In Devices, tap a reading to see its
 chart. Clap a few times and the sound level shows it.

@@ -26,7 +26,7 @@ import re
 import secrets
 import time
 
-TRIGGER_KINDS = ("cron", "message", "webhook", "os_event", "flow_done")
+TRIGGER_KINDS = ("cron", "message", "webhook", "os_event", "flow_done", "device")
 FLOW_DONE_STATUSES = ("any", "ok", "failed")
 OS_EVENTS = ("notification", "file_change", "login", "idle")
 CRON_TYPES = ("interval", "daily", "weekly", "once")
@@ -146,6 +146,8 @@ def validate(body: dict, store=None, pending: set | None = None) -> dict:
     if mem not in MEMORY_SCOPES:
         raise ValueError(f"memory must be one of {', '.join(MEMORY_SCOPES)}")
     perms = {**perms, "memory": mem, "talk": bool(perms.get("talk"))}
+    if perms.get("devices"):
+        perms["devices"] = clean_devices(perms["devices"])
     out = {
         "name": name,
         "description": (body.get("description") or "").strip()[:500],
@@ -248,6 +250,9 @@ def schedule_words(store, name: str) -> str:
             out.append(f"on {c.get('event', 'an OS event')}")
         elif k == "flow_done":
             out.append("after another mission")
+        elif k == "device":
+            from . import devtrig
+            out.append(devtrig.words(c))
     return ", ".join(dict.fromkeys(out)) or "when started by hand"
 
 
@@ -319,6 +324,10 @@ def _validate_trigger(t: dict) -> dict:
         if st not in FLOW_DONE_STATUSES:
             raise ValueError(f"a flow_done status is one of {', '.join(FLOW_DONE_STATUSES)}")
         conf["flow"], conf["status"] = upstream, st
+    elif kind == "device":
+        # A device did something (devtrig.py): read field by field, a closed set of conditions.
+        from . import devtrig
+        conf = devtrig.clean(conf)
     return {"kind": kind, "config": conf,
             "cooldown_secs": max(0, int(t.get("cooldown_secs") or 60)),
             "enabled": int(bool(t.get("enabled", 1))),
@@ -328,6 +337,28 @@ def _validate_trigger(t: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Permissions: a definition, expressed as grants
 # ---------------------------------------------------------------------------
+
+DEVICE_SCOPE = re.compile(r"([A-Za-z0-9][\w .'-]{0,39})/(\*|[a-z0-9_.-]{1,64})")
+
+
+def clean_devices(d) -> dict:
+    """What a mission's roster may read and ask to set on machines' hardware, as
+    "machine/item" ("zone-cold/*" for everything a machine permits). Read field by field;
+    anything else is dropped. A set is still asked of a person every time (agent.py) and the
+    machine still lends only what it permits (devio): this only says the roster MAY ask."""
+    from .hardware import _ID
+    d = d if isinstance(d, dict) else {}
+    out = {}
+    for verb in ("read", "set"):
+        keep = []
+        for x in (d.get(verb) or [])[:40]:
+            m = DEVICE_SCOPE.fullmatch(str(x or "").strip())
+            if m and (m.group(2) == "*" or _ID.fullmatch(m.group(2))) and not (verb == "set" and m.group(2) == "*"):
+                keep.append(f"{m.group(1)}/{m.group(2)}")
+        if keep:
+            out[verb] = list(dict.fromkeys(keep))
+    return out
+
 
 def declared_grants(flow: dict) -> list[dict]:
     """The exact grant rows this definition implies.
@@ -394,6 +425,19 @@ def declared_grants(flow: dict) -> list[dict]:
                 if other != sub:
                     add("subagent", sub, "agent.message", f"agent:subagent/{other}",
                         note=f"may consult {other} inside flow '{name}'")
+        # hardware on machines this hub set up (or its own boards): read, and asking to set.
+        # The machine still lends only what it permits, and every set is still asked.
+        dev = perms.get("devices") or {}
+        for scope in dev.get("read") or []:
+            machine, _, item = scope.partition("/")
+            add("subagent", sub, "device.get", f"device:{machine.lower()}/{item}",
+                note=f"may read {'everything ' + machine + ' permits' if item == '*' else item + ' on ' + machine} "
+                     f"for flow '{name}'")
+        for scope in dev.get("set") or []:
+            machine, _, item = scope.partition("/")
+            add("subagent", sub, "device.get", f"device:{machine.lower()}/{item}", note=f"granted by flow '{name}'")
+            add("subagent", sub, "device.set", f"device:{machine.lower()}/{item}",
+                note=f"may ask you to set {item} on {machine} for flow '{name}' (you say yes to every set)")
         for m in (perms.get("models_deny") or []):
             add("subagent", sub, "model.use", f"model:{m}", effect="deny",
                 note=f"denied by flow '{name}'")
@@ -481,6 +525,9 @@ def _canonical(kind: str, config: dict) -> str:
                 f"{c.get('glob') or ''}{c.get('minutes') or ''}")
     if kind == "flow_done":
         return f"flow_done:{(c.get('flow') or '').lower()}:{c.get('status') or 'any'}"
+    if kind == "device":
+        from . import devtrig
+        return devtrig.canonical(c)
     return "webhook"
 
 
@@ -515,7 +562,7 @@ def _task_fields(flow: dict, trig: dict) -> dict | None:
         tconf = {k: v for k, v in conf.items() if k in ("match", "path", "glob", "minutes")}
         return {**common, "schedule_type": "trigger", "interval_seconds": None, "at_time": None,
                 "next_run": None, "trigger": ev, "trigger_config": tconf}
-    # message / webhook / flow_done: nothing polls a clock for these. flow_done is
+    # message / webhook / flow_done / device: nothing polls a clock for these. flow_done is
     # dispatched in-process the moment the upstream run ends, so a tasks row would
     # only be a second thing to keep in step.
     return None
@@ -832,7 +879,9 @@ RULES
   verify it, return a dense sourced summary.").
 - Triggers: cron {{"type":"daily","at":"HH:MM"}}, {{"type":"weekly","day":"friday","at":"HH:MM"}} or {{"type":"interval","minutes":N}};
   message {{"pattern":"...","mode":"prefix|substring|regex"}}; webhook {{}};
-  os_event {{"event":"notification|file_change|login|idle", ...}}.
+  os_event {{"event":"notification|file_change|login|idle", ...}};
+  device {{"machine":"<as Devices lists it>","item":"<its inventory item>","when":"on|off|above|below|changes|offline|online","value":N,"for":SECONDS}}
+  (for example "when cold room B is above -15 for 2 minutes").
   Add a trigger ONLY if the user asked for one. A flow with no trigger runs when they say so.
 - Sinks: origin (answer wherever it was triggered from — the usual choice), telegram, gui,
   notify, report.
@@ -922,7 +971,10 @@ def _lift_trigger(t) -> dict | None:
     kind = t.get("kind") or conf.pop("type", "") or ""
     if kind not in TRIGGER_KINDS:
         # infer from what the fields say it is, before giving up on it
-        if conf.get("event") in OS_EVENTS:
+        if conf.get("when") in ("on", "off", "above", "below", "changes", "offline", "online") \
+                and conf.get("machine"):
+            kind = "device"
+        elif conf.get("event") in OS_EVENTS:
             kind = "os_event"
         elif conf.get("pattern"):
             kind = "message"

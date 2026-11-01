@@ -55,7 +55,8 @@ def _rows(store, limit: int) -> list[dict]:
                               f"WHERE ({where}) ORDER BY ts DESC LIMIT ?",
                               (*[p + "%" for p in PREFIXES], limit)).fetchall():
         r = dict(r)
-        if r["action"] in ("device.moved", "device.hardware", "device.get", "device.set", "device.permits"):
+        if r["action"] in ("device.moved", "device.hardware", "device.get", "device.set", "device.permits", "device.esp",
+                           "device.trigger"):
             continue                    # the watch's own line says it (how it was found, what changed)
         out.append({"at": r["ts"] or 0, "event": r["action"].split(".", 1)[1], "action": r["action"],
                     "label": _label(r["resource"]),

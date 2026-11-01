@@ -10,6 +10,8 @@ can't be better than what the nodes said. It is free and works offline, which is
                            the door shut, it asks to switch it back on (device_set)
   a room by name           cold room a, the dock, the aisles, the forklift bay: what it has, read
   "fans|lights|charger|compressor" with "on" or "off"   device_set on each, asked of a person
+  a mission's orchestrator  delegate the task to its roster, read what came back, finish
+                           (a device trigger starts one with nobody asking)
 
     python -m agentos.demos.warehouse_brain PORT
 """
@@ -168,6 +170,28 @@ def _reply(msgs):
             "the fans, the dock lights, the charger or a compressor on or off."), None
 
 
+def _orchestrate(body, msgs):
+    """A mission's orchestrator (a flow run, which a device trigger starts on its own): hand the
+    whole task to the first agent on its roster, read what came back, and finish with it."""
+    tools = {t["function"]["name"]: t["function"] for t in body.get("tools") or []
+             if isinstance(t, dict) and isinstance(t.get("function"), dict)}
+    if "delegate" not in tools or "finish" not in tools:
+        return None
+    i = max((k for k, m in enumerate(msgs) if m.get("role") == "user"), default=0)
+    task = _text(msgs[i].get("content"))
+    done = [_text(m.get("content")) for m in msgs[i + 1:] if m.get("role") == "tool"]
+    if not done:
+        desc = str(((tools["delegate"].get("parameters") or {}).get("properties") or {}).get("subagent", {})
+                   .get("description") or "")
+        who = desc.split("one of:", 1)[-1].split(",")[0].strip()
+        return "Handing this to the floor's watcher.", {"name": "delegate", "arguments": json.dumps(
+            {"subagent": who, "task": task})}
+    m = re.search(r"handle (\w+)", done[0])
+    if len(done) == 1 and m and "read_handle" in tools:
+        return "", {"name": "read_handle", "arguments": json.dumps({"handle": m.group(1)})}
+    return "", {"name": "finish", "arguments": json.dumps({"summary": done[-1][:3000]})}
+
+
 def _num(s):
     m = re.search(r"-?\d+(?:\.\d+)?", str(s).replace("−", "-"))
     return float(m.group(0)) if m else 0.0
@@ -181,7 +205,7 @@ async def models():
 @app.post("/v1/chat/completions")
 async def chat(req: Request):
     body = await req.json()
-    text, call = _reply(body.get("messages", []))
+    text, call = _orchestrate(body, body.get("messages", [])) or _reply(body.get("messages", []))
 
     async def gen():
         import asyncio

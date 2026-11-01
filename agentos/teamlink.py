@@ -1114,7 +1114,7 @@ class Listener:
             return out
         if op in ("ask", "roster", "mission", "chat", "chat_pull", "office", "zero_mind", "zero_chat", "zero_hardware",
                   "zero_update", "zero_say", "zero_face", "zero_refresh", "device_get", "device_set",
-                  "device_permits", "esp_nodes", "edge_run", "hear") and self.on_ask:
+                  "device_permits", "device_events", "esp_nodes", "edge_run", "hear") and self.on_ask:
             out = await self.on_ask(lk, req)
             if isinstance(out, dict) and "identity" not in out:
                 out["identity"] = self._ident(lk.get("owner") or "")

@@ -166,6 +166,14 @@ row says *for Volume Compression Tracker* with **Open app**, App Studio lists it
 
 ![Missions → Schedule with a schedule set up for an app, and its Open app button](screenshots/missions-schedule-app.png)
 
+## When a device does something
+
+A mission can also start because of a device: a cold room going above -15 °C for two minutes, a dock
+door opening, a Pi that stops answering. The trigger is **device**, and its mission is told the
+reading that started it. Nothing is polled for it: the hub hears each change as it happens, from its
+own ESP32 nodes and from every Pi it set up. See
+[A mission that starts on its own](network.md#a-mission-that-starts-on-its-own).
+
 ## From a terminal
 
 The same catalogue, the same install, no wizard — which is where a standing
