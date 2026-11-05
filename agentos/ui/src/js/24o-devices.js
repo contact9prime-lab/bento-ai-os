@@ -8,13 +8,15 @@ async function renderDevices(body,w){
      departments and people, and who each Zero and team talks to (24r-topology.js). */
   pb.innerHTML=`<div class="seg dev-views" role="tablist">
       <button role="tab" data-dv="physical">Physical</button><button role="tab" data-dv="logical">Logical</button></div>
-    <div class="dev-physical"><div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
+    <div class="dev-physical"><section class="dev-alarms" aria-label="Alarms" hidden><h3>Alarms</h3><div class="dev-al-box"></div></section>
+    <div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
     <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section>
     <section class="dev-demo" aria-label="Warehouse demo"><h3>Try it in a simulation</h3><div class="dev-demo-box"><p class="mut">…</p></div></section></div>
     <div class="dev-logical" hidden><p class="mut">…</p></div>`;
   pb.querySelectorAll('[data-dv]').forEach(b=>b.onclick=()=>devViewSet(b.dataset.dv));
   let v='physical';try{v=localStorage.getItem('devices.view')||'physical'}catch(e){}
   devViewSet(v);
+  devAlarmsLoad();
   await netPaint();
   devEventsLoad();
   if(w)winTick(w,devDemoLoad,2500,{key:'demo'});else devDemoLoad();
@@ -29,13 +31,43 @@ async function devViewSet(v){
   lg.forEach(x=>{x.classList.add('zm-host');x.dataset.zm='devlogical';zmMount(x,zmLogical(TOPO.tree),{label:'The logical map'})});
 }
 
+/* Alarms: what is wrong on your devices now (devboard.py), the same rows as the Devices scene.
+   Shown once there is something to watch: a machine set up here, or boards of its own. The way to
+   the live board is the desktop that shows it, or this desktop made to. */
+var DEVAL={d:null};
+async function devAlarmsLoad(){
+  const secs=[...document.querySelectorAll('.dev-alarms')];if(!secs.length)return;
+  try{DEVAL.d=await apiJSON('/api/devices/board')}catch(e){secs.forEach(x=>x.hidden=true);return}
+  devAlarmsPaint();
+}
+function devAlarmsPaint(){
+  const d=DEVAL.d||{},al=d.alarms||[],ms=d.machines||[];
+  const loud=al.filter(a=>a.state==='active'&&a.level==='alarm'&&!a.ack).length,n=typeof deskShowing==='function'?deskShowing('devices'):0;
+  document.querySelectorAll('.dev-alarms').forEach(sec=>{
+    sec.hidden=!ms.length;if(!ms.length)return;
+    const box=sec.querySelector('.dev-al-box');
+    box.innerHTML=devAlarmsHTML(al,loud)+`<div class="dev-acts">
+      <button class="endbtn" data-dva="board">${n?`See them live on Desktop ${n}`:'Show them live on this desktop'}</button>
+      <button class="endbtn" data-dva="rules">Your alarms…</button></div>`;
+    box.querySelectorAll('[data-dvs]').forEach(b=>b.onclick=()=>devSceneAct(b.dataset.dvs,b));
+    box.querySelectorAll('[data-dva]').forEach(b=>b.onclick=()=>{
+      if(b.dataset.dva==='rules')DEVSCENE.edit=true;
+      const k=deskShowing('devices');
+      if(k&&k!==deskNow())return switchDesk(k);
+      if(!k)setImmersiveScene('devices');else devScenePaint();
+      // the board is behind this window on this desktop: tuck the windows here away so it is seen
+      WM.wins.forEach(w=>{if(!w.min&&(w.desk||1)===deskNow())minimizeWin(w)})})});
+}
+function devAlarmsLive(){if(document.querySelector('.dev-alarms'))devAlarmsLoad()}
+
 /* Events: what happened to the machines here, newest first (devevents.py). Asked for as "in the
    devices section we need to have events": a Pi that moved to another address, stopped answering
    or came back, updated, had its screen refreshed, and every step done to a machine from here.
    A machine's own row has the same list for it alone (Events, 24p-ties.js). */
 var DEVEV={list:null,all:false};
 var DEVEV_ICON={moved:'⇄',offline:'○',online:'●',updated:'⬆',refreshed:'⟳',failed:'✗',installed:'✓',secured:'🔒',
-  hardware:'▦',found:'＋',gone:'－',power:'⚡',board:'▦'};
+  hardware:'▦',found:'＋',gone:'－',power:'⚡',board:'▦',
+  alarm:'⚠',cleared:'✓',acknowledged:'👁'};
 function devEventsList(list){
   const when=s=>new Date(s*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
   return `<ul class="dev-ev">${list.map(e=>`<li class="dev-ev-${esc(e.event)}${e.failed?' bad':''}">

@@ -232,6 +232,8 @@ DEFAULTS = {
     "companies": {},
     # the Stage (stage.py): Answer BIG shows answers without being asked; app "" is the Stage
     "stage": {"big": True, "app": ""},
+    # the alarms this person watches their devices for (devboard.py), shown on the Devices scene
+    "device_alarms": [],
     "brief": {"times": ["08:00"], "days": "daily", "summary": "plain", "telegram": True},
     # Typing again while a turn is running queues the message. With this on, the agent
     # decides at each step boundary whether that message belongs to the run in flight

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.9 — 2026-11-05
+
+**A hub shows its devices, live, with alarms.** A new scene, **Devices**: every machine the hub set up and
+every board it holds, each reading as it changes, and the alarms on top. An alarm holds while its
+condition is true and clears by itself; **Acknowledge** marks that you saw it. A machine that stops
+answering, a sensor with no reading, and anything a mission that's on watches for are alarms too, and
+**Alarms…** adds your own. Raised and cleared alarms are lines in Devices → Events, Devices has an
+**Alarms** list, and away from the board a new alarm is a toast with the way there.
+
+**Each desktop shows its own scene.** Pick one per desktop in Settings → Appearance and the desktop
+numbers switch between them. On a hub with devices, desktop 2 shows Devices; the warehouse demo's hub
+opens on Devices with the Town on desktop 2, and starts with nine alarm rules, one for each kind of
+trouble on its floor. `bento network board` prints the board.
+
 ## 0.7.8 — 2026-11-05
 
 **Open the floor opens again.** A Bento server started at boot has no screen address of its own, so

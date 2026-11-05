@@ -36,7 +36,7 @@ function immersiveOn(){return IMMERSIVE.on}
    stays the person's (IMMERSIVE.scene); only what this screen draws changes, and
    `bento profile full` lifts it. PLATFORM is a `let` in a later file and arrives later
    still, so until it does the last answer this browser heard is used (screen.lite). */
-var LITE_SCENES={aurora:1,office:1};
+var LITE_SCENES={aurora:1,office:1,devices:1};
 function liteScreen(){
   let p=null;try{p=PLATFORM}catch(e){}
   if(p&&typeof p.small==='boolean')return p.small&&!p.remote_client;
@@ -48,23 +48,64 @@ function zeroScreen(){
   if(p&&p.zero&&typeof p.zero==='object')return !!(p.zero.hub||p.zero.on_hub);
   try{return localStorage.getItem('screen.zero')==='1'}catch(e){return false}
 }
+/* Each desktop shows a scene of its own (asked for as "an easier way of switching between the
+   device scene and the town scene, so the desktops could be used for that"). A desktop that was
+   never given one shows the browser's scene, except on a hub with devices: there desktop 2 shows
+   the Devices scene (01h-devscene.js), and on a browser that never chose, desktop 1 does and
+   desktop 2 is the Town. Desktop 1's choice is still `immersive.scene`, as before desktops had
+   scenes; the others are `immersive.scene.d<n>`. curDesk and DESKS are `let`s in a later file. */
+var IMMERSIVE_NAMES={aurora:'Aurora',movement:'Movement',crew:'Crew',office:'Office',hq:'Office HQ',world:'World',mind:'Mind',island:'Town',devices:'Devices'};
+function deskNow(){try{return curDesk}catch(e){try{return +localStorage.getItem('curDesk')||1}catch(e2){return 1}}}
+function deskCount(){try{return DESKS}catch(e){try{return +localStorage.getItem('desks')||2}catch(e2){return 2}}}
+function deviceHub(){
+  let p=null;try{p=PLATFORM}catch(e){}
+  if(p&&typeof p.device_hub==='boolean')return p.device_hub;
+  try{return localStorage.getItem('screen.devhub')==='1'}catch(e){return false}
+}
+function immersiveSceneKey(n){let s=null;try{s=localStorage.getItem(n===1?'immersive.scene':'immersive.scene.d'+n)}catch(e){}
+  return s&&IMMERSIVE_SCENES.indexOf(s)>=0?s:null}
+function immersiveSceneOf(n){
+  const own=immersiveSceneKey(n);if(own&&(n!==1||IMMERSIVE.chosen))return own;
+  if(deviceHub()){
+    if(!IMMERSIVE.chosen)return n===1?'devices':n===2?'island':IMMERSIVE.scene;
+    if(n===2&&IMMERSIVE.scene!=='devices')return 'devices';
+  }
+  return IMMERSIVE.scene;
+}
+/* The first desktop that shows a scene, or 0. */
+function deskShowing(scene){for(let i=1;i<=deskCount();i++)if(immersiveSceneOf(i)===scene)return i;return 0}
 function immersiveSceneNow(){
-  let s=IMMERSIVE.scene;
-  if(!IMMERSIVE.chosen&&zeroScreen())s='aurora';
+  const n=deskNow();
+  let s=immersiveSceneOf(n);
+  if(!IMMERSIVE.chosen&&zeroScreen()&&!immersiveSceneKey(n))s='aurora';
   return liteScreen()&&!LITE_SCENES[s]?'aurora':s;
+}
+/* Another desktop came to the front: its scene, if it is a different one. */
+function immersiveDeskChanged(was){
+  if(!IMMERSIVE.on||immersiveSceneNow()===was)return;
+  applyImmersive();
+  if(typeof loadWallpaper==='function')loadWallpaper();
 }
 /* The platform answer arrived: remember it for the next first paint, and redraw only when
    it changes what this screen shows. */
 function liteScreenSet(){
   const on=liteScreen(),was=document.body.classList.contains('lite-screen');
-  let zeroWas=false;try{zeroWas=localStorage.getItem('screen.zero')==='1'}catch(e){}
-  const zero=zeroScreen();
-  try{localStorage.setItem('screen.lite',on?'1':'0');localStorage.setItem('screen.zero',zero?'1':'0')}catch(e){}
-  if(on!==was||zero!==zeroWas)applyImmersive();
+  let zeroWas=false,hubWas=false;try{zeroWas=localStorage.getItem('screen.zero')==='1';hubWas=localStorage.getItem('screen.devhub')==='1'}catch(e){}
+  const zero=zeroScreen(),hub=deviceHub();
+  try{localStorage.setItem('screen.lite',on?'1':'0');localStorage.setItem('screen.zero',zero?'1':'0');
+    localStorage.setItem('screen.devhub',hub?'1':'0')}catch(e){}
+  if(on!==was||zero!==zeroWas||hub!==hubWas){applyImmersive();if(typeof buildPager==='function')buildPager()}
+  if(hub&&!hubWas&&IMMERSIVE.on)deviceHubIntro();
   townIntro();
 }
 /* Bento opens on the Town. A browser that chose another scene before that was the default
    is moved to the Town once, after the update, with a toast to go back. */
+/* A hub that has devices now: say once which desktop shows them. */
+function deviceHubIntro(){
+  try{if(localStorage.getItem('immersive.devhub.said'))return;localStorage.setItem('immersive.devhub.said','1')}catch(e){return}
+  const n=deskShowing('devices');if(!n||typeof toast!=='function')return;
+  if(n!==deskNow())toast(`Desktop ${n} shows your devices, live, with their alarms.`,{label:'Go there',go:()=>switchDesk(n),ms:12000});
+}
 function townIntro(){
   try{if(localStorage.getItem('immersive.town'))return;localStorage.setItem('immersive.town','1')}catch(e){return}
   if(!IMMERSIVE.on||!IMMERSIVE.chosen||zeroScreen()||liteScreen()||IMMERSIVE.scene==='island')return;
@@ -84,6 +125,7 @@ function applyImmersive(){
   document.body.classList.toggle('imm-island',IMMERSIVE.on&&scene==='island');
   document.body.classList.toggle('imm-world',IMMERSIVE.on&&scene==='world');
   document.body.classList.toggle('imm-mind',IMMERSIVE.on&&scene==='mind');
+  document.body.classList.toggle('imm-devices',IMMERSIVE.on&&scene==='devices');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
@@ -107,6 +149,8 @@ function applyImmersive(){
   if(typeof WORLD!=='undefined'){if(IMMERSIVE.on&&scene==='world')worldStart();else worldStop()}
   // the Mind (01g): your agents and what they know, as one picture
   if(typeof MIND!=='undefined'){if(IMMERSIVE.on&&scene==='mind')mindStart();else mindStop()}
+  // the Devices scene (01h): the floor, live, with its alarms
+  if(typeof DEVSCENE!=='undefined'){if(IMMERSIVE.on&&scene==='devices')devSceneStart();else devSceneStop()}
 }
 /* Which scene: 'aurora' (a sky that follows the day), 'movement' (a watch movement
    that shows what is running) or 'crew' (the roster, drawn, working). Per browser,
@@ -114,11 +158,17 @@ function applyImmersive(){
    this value comes out of localStorage, which outlives any release that renames a
    scene, and a desktop that fails to paint because of a stale string is not a
    trade worth making. */
-var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island'];
+var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island','devices'];
+/* The scene of the desktop in front. A browser choosing for the first time keeps what every other
+   desktop showed until then, so choosing on desktop 2 never moves desktop 1. */
 function setImmersiveScene(scene){
   scene=IMMERSIVE_SCENES.indexOf(scene)<0?'aurora':scene;
-  IMMERSIVE.scene=scene;IMMERSIVE.chosen=true;try{localStorage.setItem('immersive.scene',scene)}catch(e){}
+  const n=deskNow(),put=(i,v)=>{try{localStorage.setItem(i===1?'immersive.scene':'immersive.scene.d'+i,v)}catch(e){}};
+  if(!IMMERSIVE.chosen)for(let i=1;i<=deskCount();i++)if(i!==n)put(i,immersiveSceneOf(i));
+  put(n,scene);
+  IMMERSIVE.scene=immersiveSceneKey(1)||scene;IMMERSIVE.chosen=true;
   applyImmersive();
+  if(typeof buildPager==='function')buildPager();
   if(typeof loadWallpaper==='function')loadWallpaper();
   if(typeof refreshApp==='function')refreshApp('settings');
 }

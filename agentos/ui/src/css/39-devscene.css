@@ -1,0 +1,97 @@
+/* The Devices scene (01h-devscene.js): the floor, live, with its alarms. Words in the desktop layer
+   over the sky wallpaper; no blur (the one blurred surface is the active window, 20-immersive.css),
+   colours mixed from the theme's tokens so it reads on every theme. The prompt bar is a right-hand
+   column on a wide screen, as in Office HQ, and under the board on a narrow one. */
+#devscene{position:absolute;z-index:4;left:16px;right:16px;top:calc(var(--mbh,28px) + 14px);bottom:100px;
+  overflow:auto;overscroll-behavior:contain;color:var(--txt);font-family:var(--sans);scrollbar-width:thin;
+  padding:2px 4px 12px 2px}
+#devscene[hidden],body:not(.imm-devices) #devscene{display:none}
+body.has-win #devscene,body.deck-full #devscene,body.exposing #devscene{opacity:0;pointer-events:none}
+body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,body.imm-devices .hm-now,
+  body.imm-devices .hm-links{display:none!important}
+@media (min-width:901px){
+  body.imm-devices:not(.dev-mobile) #devscene{right:min(470px,calc(34vw + 30px))}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar{top:calc(var(--mbh,28px) + 14px);bottom:auto;
+    left:auto;right:16px;transform:none;width:min(440px,34vw)}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{width:min(440px,34vw)}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--mbh,28px) + 82px);bottom:auto;
+    left:auto;right:16px;transform:none;width:min(440px,34vw);flex-direction:column}
+}
+@media (max-width:900px){
+  body.imm-devices #devscene{bottom:156px}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full) #omnibar{top:auto;bottom:92px}
+}
+.dvs-wait{margin:18vh auto 0;max-width:520px;text-align:center;color:var(--dim);font-size:var(--fs-md)}
+.dvs-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 16px;margin:0 0 12px}
+.dvs-head h1{margin:0;font-size:var(--fs-2xl);font-weight:700;letter-spacing:-.01em}
+.dvs-sum{margin:2px 0 0;color:var(--dim);font-size:var(--fs-sm)}
+.dvs-sum b.ok{color:var(--ok)}.dvs-sum b.warn{color:var(--warn)}.dvs-sum b.bad,.dvs-sum .bad{color:var(--err)}
+.dvs-acts{display:flex;flex-wrap:wrap;gap:8px}
+.dvs-acts .endbtn,.dvs-al .endbtn{min-height:var(--tap,36px)}
+
+/* alarms: the first thing read, loud only while something is wrong and nobody has seen it */
+.dvs-alarms{display:grid;gap:8px;margin:0 0 14px}
+.dvs-clear{margin:0;padding:12px 14px;border-radius:var(--r-lg);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);
+  background:color-mix(in srgb,var(--bg2) 88%,var(--ok));color:var(--txt);font-size:var(--fs-sm)}
+.dvs-al{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--r-lg);
+  background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid var(--line);border-left-width:4px}
+.dvs-al.alarm.active{border-color:color-mix(in srgb,var(--err) 60%,transparent);border-left-color:var(--err);
+  background:color-mix(in srgb,var(--bg2) 82%,var(--err))}
+.dvs-al.warning.active{border-left-color:var(--warn);background:color-mix(in srgb,var(--bg2) 88%,var(--warn))}
+.dvs-al.pending{border-left-color:var(--dim2,var(--dim));opacity:.85}
+.dvs-al.acked{background:color-mix(in srgb,var(--bg2) 92%,transparent)}
+.dvs-al-i{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;
+  background:color-mix(in srgb,var(--txt) 10%,transparent)}
+.dvs-al.alarm.active .dvs-al-i{background:var(--err);color:#fff}
+.dvs-al.warning.active .dvs-al-i{background:var(--warn);color:#1b1300}
+.dvs-al.alarm.active:not(.acked) .dvs-al-i{animation:dvs-pulse 1.6s ease-in-out 4}
+@keyframes dvs-pulse{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--err) 25%,transparent)}}
+.dvs-al-t{flex:1;min-width:0}
+.dvs-al-t b{display:block;font-size:var(--fs-md);font-weight:600;overflow-wrap:anywhere}
+.dvs-al-t span{display:block;color:var(--dim);font-size:var(--fs-xs);margin-top:2px}
+
+/* the machines: one card each, its nodes inside, each thing a row with its value */
+.dvs-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));align-items:start}
+.dvs-m{border-radius:var(--r-xl);padding:12px 14px 10px;background:color-mix(in srgb,var(--bg2) 90%,transparent);
+  border:1px solid var(--line);box-shadow:var(--el-2)}
+.dvs-m.alarm{border-color:color-mix(in srgb,var(--err) 55%,transparent)}
+.dvs-m.warning{border-color:color-mix(in srgb,var(--warn) 55%,transparent)}
+.dvs-m.down{opacity:.75;border-style:dashed}
+.dvs-m h2{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:var(--fs-lg);font-weight:650}
+.dvs-m h2 span{margin-left:auto;font-size:var(--fs-xs);font-weight:500;color:var(--dim)}
+.dvs-dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}
+.dvs-m.warning .dvs-dot{background:var(--warn)}.dvs-m.alarm .dvs-dot{background:var(--err)}.dvs-m.down .dvs-dot{background:var(--dim)}
+.dvs-g{border-top:1px solid var(--line);padding-top:6px;margin-top:6px}
+.dvs-g h3{margin:0 0 2px;font-size:var(--fs-2xs);letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.dvs-t{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-height:26px;padding:2px 6px;margin:0 -6px;
+  border-radius:var(--r-sm);font-size:var(--fs-sm)}
+.dvs-t span{color:var(--dim);min-width:0;overflow-wrap:anywhere}
+.dvs-t b{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.dvs-t.lit b{color:var(--ok)}
+.dvs-t.warning{background:color-mix(in srgb,var(--warn) 16%,transparent)}.dvs-t.warning b{color:var(--warn)}
+.dvs-t.alarm{background:color-mix(in srgb,var(--err) 18%,transparent)}.dvs-t.alarm b{color:var(--err)}
+.dvs-t.pending b{color:var(--warn)}
+.dvs-blink{animation:dvs-blink .9s ease-out}
+@keyframes dvs-blink{from{background:color-mix(in srgb,var(--acc) 28%,transparent)}}
+@media (prefers-reduced-motion:reduce){.dvs-blink,.dvs-al .dvs-al-i{animation:none!important}}
+
+/* the person's alarm rules */
+.dvs-rules{margin:0 0 14px;padding:12px 14px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);
+  border:1px solid var(--line)}
+.dvs-rules h2{margin:0 0 8px;font-size:var(--fs-md)}
+.dvs-rules ul{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:4px}
+.dvs-rules li{display:flex;align-items:center;gap:10px;font-size:var(--fs-sm);min-height:var(--tap,30px)}
+.dvs-rules li span:nth-child(2){flex:1;min-width:0}
+.dvs-lv{font-size:var(--fs-2xs);padding:1px 7px;border-radius:var(--r-full);background:color-mix(in srgb,var(--err) 25%,transparent)}
+.dvs-lv.warning{background:color-mix(in srgb,var(--warn) 25%,transparent)}
+.dvs-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.dvs-form select,.dvs-form input{min-height:var(--tap,34px);max-width:100%}
+.dvs-form input[data-f=value]{width:90px}.dvs-form input[data-f=for]{width:64px}
+body.dev-mobile #devscene{left:12px;right:12px}
+body.dev-mobile .dvs-grid{grid-template-columns:1fr}
+
+/* the pager says which scene each desktop shows (03-virtual-desktops.js) */
+#pager .pgb .pgs{font-size:9px;line-height:1;margin-left:2px;opacity:.8;vertical-align:super}
+#pager .pgb[data-scene=devices] .pgs{color:var(--acc)}
+/* Devices → Alarms */
+.dev-alarms{margin:0 0 14px}.dev-alarms h3{margin:0 0 8px}

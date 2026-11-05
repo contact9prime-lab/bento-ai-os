@@ -601,7 +601,10 @@ USER_KEYS = ("channels", "telegram", "whatsapp", "mcp_servers", "credentials", "
              "companies",
              # how MY answers are shown (stage.py): Answer BIG, and which of my apps
              # draws them. It costs nothing and reaches nothing.
-             "stage")
+             "stage",
+             # the alarms I watch my devices for (devboard.py): what I want to see is mine;
+             # switching anything is still device_set, asked every time
+             "device_alarms")
 
 
 def machine_view(cfg: dict) -> dict:

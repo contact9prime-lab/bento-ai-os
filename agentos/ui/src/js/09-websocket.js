@@ -748,6 +748,11 @@ function handle(ev){
       break;
     case 'device_live':   // a board's or a pin's change, as it happened (server._device_observe)
       if(typeof netLive==='function')netLive(ev);
+      if(typeof devSceneLive==='function')devSceneLive(ev);
+      break;
+    case 'device_alarm':   // an alarm raised, cleared or acknowledged (server._alarms_judge, devboard.py)
+      if(typeof devSceneAlarm==='function')devSceneAlarm(ev);
+      if(typeof devAlarmsLive==='function')devAlarmsLive(ev);
       break;
     case 'device_event':   // a machine moved, stopped answering, came back, updated (server._ties_check)
       if(typeof devEventLive==='function')devEventLive(ev);

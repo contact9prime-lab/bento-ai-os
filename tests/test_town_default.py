@@ -23,7 +23,8 @@ def test_a_new_browser_opens_on_the_town_unless_it_is_a_zero():
     assert "scene:sceneStored()||'island'" in IMM
     assert "chosen:!!sceneStored()" in IMM
     now = IMM[IMM.index("function immersiveSceneNow(){"):][:220]
-    assert "if(!IMMERSIVE.chosen&&zeroScreen())s='aurora';" in now
+    # a desktop given a scene of its own keeps it, even on a Zero (01b immersiveSceneOf)
+    assert "if(!IMMERSIVE.chosen&&zeroScreen()&&!immersiveSceneKey(n))s='aurora';" in now
     # the Zero answer is remembered for the next first paint, like screen.lite
     assert "localStorage.setItem('screen.zero'" in IMM
     # choosing a scene is a choice, and a stale stored name still falls back
@@ -37,7 +38,7 @@ def test_an_updated_browser_is_moved_to_the_town_once_with_a_way_back():
     assert "setImmersiveScene('island')" in intro
     assert "go:()=>setImmersiveScene(was)" in intro
     # it runs once the platform answered, so a Zero is known before it decides
-    assert "townIntro();" in IMM[IMM.index("function liteScreenSet(){"):][:500]
+    assert "townIntro();" in IMM[IMM.index("function liteScreenSet(){"):][:900]
 
 
 def test_the_brain_files_and_names_are_doors():

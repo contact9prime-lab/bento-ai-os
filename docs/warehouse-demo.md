@@ -75,6 +75,37 @@ is still asked of you. It's an ordinary mission in Missions → Build, so you ca
 off or delete it, and the demo leaves it as you left it. See
 [A mission that starts on its own](network.md#a-mission-that-starts-on-its-own).
 
+## The hub's Devices scene
+
+Open the hub and it's already showing the floor: every zone, every node and every reading, live,
+with the alarms on top. That's the **Devices** scene. It sits on desktop 1, and the Town is on
+desktop 2, so the desktop numbers in the menu bar (or **⇄ Town** on the board) switch between them.
+
+![The hub's Devices scene: three zones live, cold room B's compressor off and the forklift battery low as alarms](screenshots/devices-scene.png)
+
+Each "cause trouble" button on the floor page raises one: a compressor that's off, a cold room or a
+dock door left open, a flat forklift battery, an aisle that's too hot. An alarm is a condition
+that's true now. It shows while it holds, clears by itself when it stops, and both are a line in
+Devices → Events. **Acknowledge** marks that you saw it; it fixes nothing. A machine that stops
+answering, or a sensor with no reading, is an alarm with no rule needed, and so is anything a
+mission that's on is watching for.
+
+**Alarms…** on the board lists the hub's alarm rules, and you can add your own: a machine, one of
+its things, above or below a number, on or off, for how long, and whether it's an alarm or a
+warning. The demo starts with nine. Away from the board, a new alarm is a toast with the way to it,
+and Devices has the same list under **Alarms**.
+
+![Alarms… on the board: the demo's nine rules, and a form to add one](screenshots/devices-scene-alarms.png)
+
+![The Devices scene on a phone: the alarms first, then each zone](screenshots/devices-scene-phone.png)
+
+![Desktop 2 on the hub is the Town; the desktop numbers show which scene each one has](screenshots/devices-scene-town-desk2.png)
+
+On any hub with devices it's the same: the Pis it set up and the ESP32 boards it holds. A desktop
+you never gave a scene shows the one you picked in Settings → Appearance; on a hub, desktop 2 shows
+Devices. Pick a scene on each desktop there. From a terminal, `bento network board` prints the
+board.
+
 From a terminal, `bento demo warehouse floor` lists every reading and
 `bento demo warehouse poke cold-2 Compressor off` trips the compressor.
 

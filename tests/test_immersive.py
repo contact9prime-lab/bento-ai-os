@@ -199,7 +199,8 @@ def test_movement_is_a_scene_of_the_look_picked_in_settings():
     look = SETTINGS.split("if(want('look'))")[1].split("if(want('system'))")[0]
     assert "pSelect('s-imm-scene'" in look and "'movement'" in look and "'aurora'" in look
     assert "setImmersiveScene(sc.value)" in SETTINGS
-    assert "function setImmersiveScene" in JS and "localStorage.setItem('immersive.scene'" in JS
+    # desktop 1's scene is still `immersive.scene`; the others are immersive.scene.d<n>
+    assert "function setImmersiveScene" in JS and "i===1?'immersive.scene':'immersive.scene.d'+i" in JS
     # the honesty in the row: what it costs, and when it does not draw
     assert "twenty times a second" in look and "reduced motion" in look and "no blur" in look
 
