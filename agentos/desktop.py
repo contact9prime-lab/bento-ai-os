@@ -216,12 +216,49 @@ def _run(cmd: list[str]) -> tuple[bool, str]:
 
 # --- cross-platform host helpers -----------------------------------------------------
 
+# What a program needs to know to draw on the person's desktop.
+SESSION_KEYS = ("DISPLAY", "WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE",
+                "XDG_SESSION_DESKTOP", "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY")
+
+
+def session_env(environ: dict | None = None, systemd_env: str | None = None) -> dict | None:
+    """The environment a desktop program should start with, or None when there is no screen.
+
+    A server started by systemd at boot, before anybody logged in, has no DISPLAY or
+    WAYLAND_DISPLAY: the desktop session imports them into the user manager later
+    (`systemctl --user import-environment`), and a running service never sees that. So
+    xdg-open handed the URL to a Chrome with nowhere to draw. It kept running without a
+    window, held the profile, and every later open went into it too. Found on the owner's
+    machine: "Open the floor" said "opened in your browser" and nothing appeared."""
+    env = dict(os.environ if environ is None else environ)
+    if env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
+        return env
+    text = systemd_env
+    if text is None:
+        try:
+            text = subprocess.run(["systemctl", "--user", "show-environment"], capture_output=True,
+                                  text=True, timeout=3).stdout
+        except Exception:
+            text = ""
+    for line in (text or "").splitlines():
+        k, _, v = line.partition("=")
+        if k in SESSION_KEYS and v and not env.get(k):
+            env[k] = v
+    if not (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")):
+        run = env.get("XDG_RUNTIME_DIR") or (f"/run/user/{os.getuid()}" if hasattr(os, "getuid") else "")
+        socks = sorted(Path(run).glob("wayland-[0-9]")) if run else []
+        if socks:
+            env["WAYLAND_DISPLAY"] = socks[0].name
+    return env if (env.get("DISPLAY") or env.get("WAYLAND_DISPLAY")) else None
+
+
 def open_path(target: str) -> str | None:
     """Open a file/URL with the host OS default handler. Returns an error string or None."""
     try:
         if IS_WIN:
             os.startfile(target)  # noqa: S606 — the whole point is host handoff
             return None
+        env = None
         if IS_MAC:
             opener, cmd = "open", ["open", target]
         else:
@@ -229,7 +266,10 @@ def open_path(target: str) -> str | None:
             if not opener:
                 return "no host opener (xdg-open/gio) available"
             cmd = [opener, "open", target] if opener.endswith("gio") else [opener, target]
-        subprocess.Popen(cmd, start_new_session=True,
+            env = session_env()
+            if env is None:
+                return "this computer has no desktop open to show it on"
+        subprocess.Popen(cmd, start_new_session=True, env=env,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return None
     except Exception as e:
