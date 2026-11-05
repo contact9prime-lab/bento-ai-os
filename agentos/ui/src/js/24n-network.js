@@ -13,11 +13,15 @@
    network is its hub's business. */
 var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{},hwp:{},hwread:{},esp:{}};
 
+/* A person who is not an admin opens Devices too: the demo user does. The routes refuse them in
+   the server's words ("only an admin can do that"), which read like a broken pane; say what it means. */
+function devAdminWords(e){const m=String((e&&e.message)||e||'');
+  return /only an admin/i.test(m)?'The machines on this network are for an admin to see and change.':m}
 async function netPaint(){
   // Settings → Network and the Devices app draw the same list
   const boxes=[document.getElementById('s-net'),...document.querySelectorAll('.devhub-box')].filter(Boolean);
   if(!boxes.length)return;
-  let v;try{v=await apiJSON('/api/network')}catch(e){boxes.forEach(b=>b.innerHTML=`<p class="mut prov-empty">${esc(String(e.message||e))}</p>`);return}
+  let v;try{v=await apiJSON('/api/network')}catch(e){boxes.forEach(b=>b.innerHTML=`<p class="mut prov-empty">${esc(devAdminWords(e))}</p>`);return}
   NET.v=v;
   const can=v.can_change,rows=[],s=v.summary||{};
   rows.push(pRow('Machines',`<button class="endbtn" data-net="scan"${can?'':' disabled'}>Look at the network</button>`,

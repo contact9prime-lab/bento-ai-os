@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.8 — 2026-11-05
+
+**Open the floor opens again.** A Bento server started at boot has no screen address of its own, so
+"Open the floor", "Open the hub" and every other open-in-your-browser button started a browser with no
+window, which then swallowed every later open too. It now borrows the desktop session's display, and says
+so when there is no desktop to open on. Devices also tells someone who is not an admin that the machine
+list is an admin's, instead of "only an admin can do that" twice.
+
 ## 0.7.7 — 2026-11-01
 
 **The warehouse demo acts on its own from the first start.** It now ships with one mission switched on,

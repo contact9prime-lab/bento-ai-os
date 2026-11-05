@@ -45,7 +45,8 @@ function devEventsList(list){
 async function devEventsLoad(){
   const boxes=[...document.querySelectorAll('.dev-ev-box')];if(!boxes.length)return;
   try{DEVEV.list=(await apiJSON('/api/network/events?limit=200')).events||[]}
-  catch(e){boxes.forEach(b=>b.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`);return}
+  catch(e){if(/only an admin/i.test(String(e.message||e))){boxes.forEach(b=>{const s=b.closest('.dev-events');if(s)s.hidden=true});return}
+    boxes.forEach(b=>b.innerHTML=`<p class="mut">${esc(String(e.message||e))}</p>`);return}
   devEventsPaint();
 }
 function devEventsPaint(){
