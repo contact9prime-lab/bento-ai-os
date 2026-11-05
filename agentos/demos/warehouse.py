@@ -166,6 +166,29 @@ def urls() -> dict:
     return {"floor": f"http://127.0.0.1:{FLOOR}/", "hub": f"http://127.0.0.1:{http_port(HUB)}/"}
 
 
+def hub_board(timeout: float = 3) -> dict | None:
+    """The demo hub's Devices board (/api/devices/board), for this machine's own Devices scene:
+    the demo's devices are its hub's, a Bento of its own, so the screen a person is looking at
+    would otherwise say "0 machines" while the floor is on fire. None when it isn't running."""
+    if os.environ.get("AGENTOS_DEMO_MACHINE") or status().get("phase") != "ready":
+        return None
+    with contextlib.suppress(Exception):
+        with urllib.request.urlopen(urls()["hub"] + "api/devices/board", timeout=timeout) as r:
+            return json.loads(r.read() or b"{}")
+    return None
+
+
+def hub_ack(alarm: str, timeout: float = 3) -> dict | None:
+    """Acknowledge one of the demo hub's alarms from here."""
+    with contextlib.suppress(Exception):
+        req = urllib.request.Request(urls()["hub"] + "api/devices/alarms/ack", method="POST",
+                                     data=json.dumps({"id": alarm}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read() or b"{}")
+    return None
+
+
 # ---- the person's side: start, stop, status, poke --------------------------------------------
 
 def _alive(pid: int) -> bool:
@@ -321,6 +344,8 @@ def _home(m: str) -> Path:
 def _env(m: str, extra: dict | None = None) -> dict:
     env = {k: v for k, v in os.environ.items() if not k.startswith("AGENTOS_")}
     env.update({"AGENTOS_HOME": str(_home(m)), "AGENTOS_VAULT_KEYRING": "0", "PYTHONUNBUFFERED": "1",
+                # a machine of the demo is never the screen that shows the demo (hub_board)
+                "AGENTOS_DEMO_MACHINE": m,
                 "AGENTOS_DISCOVER_UDP": str(UDP), "NO_PROXY": "127.0.0.1,localhost", "no_proxy": "127.0.0.1,localhost",
                 # the hub hears its zones on loopback; a zone's broadcast goes nowhere (TEST-NET-3)
                 "AGENTOS_DISCOVER_TARGETS": "127.255.255.255" if m == HUB else "203.0.113.255"})

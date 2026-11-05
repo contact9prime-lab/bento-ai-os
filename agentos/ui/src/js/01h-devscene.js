@@ -104,17 +104,64 @@ function devScenePaint(){
     const st=m.up===false?'down':mHot[ml]||'ok';
     return `<article class="dvs-m ${st}" aria-label="${esc(m.machine)}">
       <h2><i class="dvs-dot" aria-hidden="true"></i>${esc(m.machine)}
-        <span>${m.up===false?'not answering':m.here?'this hub':m.live?'live':'every minute'}</span></h2>
+        <span>${m.demo?'warehouse demo · ':''}${m.up===false?'not answering':m.here?'this hub':m.live?'live':'every minute'}</span></h2>
       ${groups.map(g=>`<div class="dvs-g"><h3>${esc(g.name)}</h3>${g.list.map(t=>{
         const h=hot[ml+'|'+t.id]||'';
-        return `<div class="dvs-t${h?' '+h:''}${t.onoff&&t.value?' lit':''}"><span>${esc(devSceneShort(t))}</span>
-          <b data-dvl="${esc(m.machine+'|'+t.id)}">${esc(devSceneVal(t))}</b></div>`}).join('')}</div>`).join('')
+        return `<div class="dvs-t${h?' '+h:''}${t.onoff&&t.value?' lit':''}${t.trend?' has-tr':''}"><span>${esc(devSceneShort(t))}</span>
+          ${t.trend?devSceneSpark(t):''}
+          <b data-dvl="${esc(m.machine+'|'+t.id)}">${esc(devSceneVal(t))}</b>
+          ${t.trend?`<small class="dvs-tr">${devSceneTrendWords(t)}</small>`:''}</div>`}).join('')}</div>`).join('')
         ||'<p class="mut">Nothing on this machine can be read yet.</p>'}
     </article>`}).join('')
     :`<p class="dvs-wait">No devices yet. Machines this hub sets up, and ESP32 boards it holds, show here. ${pInfo('Set a Raspberry Pi up from Devices, or add ESP32 boards to this hub. The warehouse demo in Devices has three zones to try.')}</p>`;
-  el.innerHTML=head+(DEVSCENE.edit?devSceneRulesHTML():'')+alarms+`<div class="dvs-grid">${cards}</div>`;
+  el.innerHTML=head+devSceneStatsHTML(d.analytics||{})+(DEVSCENE.edit?devSceneRulesHTML():'')+alarms+`<div class="dvs-grid">${cards}</div>`;
   el.querySelectorAll('[data-dvs]').forEach(b=>b.onclick=()=>devSceneAct(b.dataset.dvs,b));
   if(DEVSCENE.edit)devSceneRulesWire(el);
+}
+/* ---- the analytics: what the floor did, not only what it reads now ----
+   Asked for as "the devices screen should be super analytical". Each number carries its last
+   hour (telemetry.trend: the hub's own kept readings, a minute apart) as a line with its range,
+   mean and change, and the board opens on the day's numbers: machines answering, readings in,
+   alarms now and in the last 24 hours by hour, which came back most, and the longest open.
+   Every figure is also words, so nothing is colour alone; each mark has a tooltip. */
+function devSceneNum(v,unit){
+  if(v===null||v===undefined||isNaN(v))return '—';
+  const a=Math.abs(v),n=a>=100||v===Math.round(v)?String(Math.round(v)):v.toFixed(1);
+  return n.replace('-','−')+(unit?(unit==='°C'||unit==='%'?'':' ')+unit:'');
+}
+function devSceneTrendWords(t){
+  const r=t.trend,d=(r.last!=null&&r.first!=null)?r.last-r.first:null;
+  const arrow=d===null||Math.abs(d)<1e-9?'→':d>0?'↑':'↓';
+  return `1 h: ${devSceneNum(r.min,t.unit)} to ${devSceneNum(r.max,t.unit)} · avg ${devSceneNum(r.mean,t.unit)} · ${arrow} ${d===null?'—':devSceneNum(Math.abs(d),t.unit)}`;
+}
+function devSceneSpark(t){
+  const r=t.trend,p=r.points||[],W=96,H=22,lo=r.min,hi=r.max,span=(hi-lo)||1;
+  const x=i=>(i/(p.length-1||1))*(W-2)+1,y=v=>H-2-((v-lo)/span)*(H-4);
+  let path='',pen=false;
+  p.forEach((v,i)=>{if(v===null){pen=false;return}path+=(pen?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';pen=true});
+  const li=p.map((v,i)=>v===null?-1:i).filter(i=>i>=0).pop();
+  const dot=li>=0?`<circle cx="${x(li).toFixed(1)}" cy="${y(p[li]).toFixed(1)}" r="2.2"/>`:'';
+  return `<svg class="dvs-spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+    aria-label="${esc(devSceneShort(t))}, last hour: ${esc(devSceneTrendWords(t))}"><title>${esc(devSceneTrendWords(t))}</title>
+    <path d="${path}"/>${dot}</svg>`;
+}
+function devSceneStatsHTML(an){
+  if(!an||an.machines===undefined)return '';
+  const tile=(k,v,sub,cls)=>`<div class="dvs-k${cls?' '+cls:''}"><span>${esc(k)}</span><b>${v}</b>${sub?`<small>${sub}</small>`:''}</div>`;
+  const hrs=an.by_hour||[],mx=Math.max(1,...hrs),W=240,H=40,bw=W/24;
+  const bars=hrs.map((n,i)=>{const h=n?Math.max(2,(n/mx)*(H-4)):0,ago=23-i;
+    return `<rect x="${(i*bw+1).toFixed(1)}" y="${(H-h).toFixed(1)}" width="${(bw-2).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"><title>${n} alarm${n===1?'':'s'} raised ${ago?ago+' h ago':'this hour'}</title></rect>`}).join('');
+  return `<section class="dvs-stats" aria-label="The last 24 hours">
+    ${tile('Machines answering',`${an.answering}/${an.machines}`,'',an.answering<an.machines?'bad':'')}
+    ${tile('Readings in',`${an.reading}/${an.things}`,'things reporting a value','')}
+    ${tile('Alarms now',String(an.alarms_now),`${an.warnings_now} warning${an.warnings_now===1?'':'s'} · ${an.acked} seen${an.pending?` · ${an.pending} building`:''}`,an.alarms_now?'bad':an.warnings_now?'warn':'')}
+    ${tile('Longest open',an.active?devSceneAgo(an.longest):'—','','')}
+    ${tile('Last 24 hours',`${an.raised_24h} raised`,`${an.cleared_24h} cleared`,'')}
+    <div class="dvs-k dvs-hist"><span>Alarms by hour, last 24 h</span>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none" role="img"
+        aria-label="Alarms raised per hour over the last 24 hours: ${hrs.join(', ')}">${bars}<line x1="0" y1="${H-.5}" x2="${W}" y2="${H-.5}"/></svg>
+      ${(an.top||[]).length?`<small>Most often: ${an.top.slice(0,3).map(([t,n])=>`${esc(t)} (${n})`).join(' · ')}</small>`:'<small>No alarms in the last day.</small>'}</div>
+  </section>`;
 }
 /* The alarms, as a list: the scene and Devices → Alarms draw the same rows. Ack buttons carry
    data-dvs="ack" and data-id; the caller wires them to devSceneAct. */
@@ -126,7 +173,7 @@ function devAlarmsHTML(al,loud){
           <span>${esc(a.machine)} · ${a.state==='active'?`${esc(DEVSCENE_LEVEL[a.level]||a.level)} for ${devSceneAgo(a.held)}`
             :`holding ${devSceneAgo(a.held)} of ${devSceneAgo(a.for)}`}${a.flow?` · mission ${esc(a.flow)} watches this`:''}
             ${a.ack?` · seen by ${esc(a.ack.by)}`:''}</span></div>
-        ${a.state==='active'&&!a.ack?`<button class="endbtn" data-dvs="ack" data-id="${esc(a.id)}">Acknowledge</button>`:''}</div>`).join('')
+        ${a.state==='active'&&!a.ack?`<button class="endbtn" data-dvs="ack" data-id="${esc(a.id)}"${a.demo?' data-demo="1"':''}>Acknowledge</button>`:''}</div>`).join('')
         :'<p class="dvs-clear">✓ No alarms. Every machine is answering and nothing is out of range.</p>'}</section>`;
 }
 async function devSceneAct(act,b){
@@ -134,7 +181,7 @@ async function devSceneAct(act,b){
   if(act==='app')return openApp('devices');
   if(act==='rules'){DEVSCENE.edit=!DEVSCENE.edit;return devScenePaint()}
   if(act==='ack'){b.disabled=true;
-    try{const r=await fetch('/api/devices/alarms/ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
+    try{const r=await fetch('/api/devices/alarms/ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id,demo:!!b.dataset.demo})});
       const d=await r.json();if(!r.ok)toast(d.error||'That alarm could not be acknowledged',{kind:'err'})}
     catch(e){toast(String(e.message||e),{kind:'err'})}
     if(typeof devAlarmsLoad==='function')devAlarmsLoad();
@@ -158,7 +205,7 @@ function devSceneRuleWords(r){
   return `${what} ${devSceneWhen(r.when,t)}${r.value!==undefined&&(r.when==='above'||r.when==='below')?' '+r.value+(t&&t.unit?' '+t.unit:''):''}${r.for?` for ${devSceneAgo(r.for)}`:''}`;
 }
 function devSceneRulesHTML(){
-  const d=DEVSCENE.d||{},rules=d.rules||[],ms=d.machines||[],f=DEVSCENE.form||(DEVSCENE.form={machine:(ms[0]||{}).machine||'',item:'',when:'above',value:'',for:'0',level:'alarm'});
+  const d=DEVSCENE.d||{},rules=d.rules||[],ms=(d.machines||[]).filter(m=>!m.demo),f=DEVSCENE.form||(DEVSCENE.form={machine:(ms[0]||{}).machine||'',item:'',when:'above',value:'',for:'0',level:'alarm'});
   const m=ms.find(x=>x.machine===f.machine)||ms[0]||{things:[]};
   const t=m.things.find(x=>x.id===f.item)||m.things[0];
   if(t&&!f.item)f.item=t.id;
@@ -170,6 +217,7 @@ function devSceneRulesHTML(){
     ${rules.length?`<ul>${rules.map((r,i)=>`<li><span class="dvs-lv ${esc(r.level)}">${esc(DEVSCENE_LEVEL[r.level]||r.level)}</span>
       <span>${esc(devSceneRuleWords(r))}</span><button class="linkbtn" data-dvr="del" data-i="${i}">Remove</button></li>`).join('')}</ul>`
       :'<p class="mut">No alarms of your own yet.</p>'}
+    ${(d.machines||[]).some(m=>m.demo)?'<p class="mut">The warehouse demo’s alarms are set on its own hub (Open the hub in Devices).</p>':''}
     ${ms.length?`<div class="dvs-form">
       <select data-f="machine" aria-label="Machine">${ms.map(x=>opt(x.machine,x.machine,x.machine===m.machine)).join('')}</select>
       ${f.when!=='offline'?`<select data-f="item" aria-label="Thing">${m.things.map(x=>opt(x.id,x.name,t&&x.id===t.id)).join('')}</select>`:''}

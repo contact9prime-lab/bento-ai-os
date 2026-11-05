@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.11 — 2026-11-05
+
+**The Devices scene is analytical.** It opens on the day's numbers: machines answering, readings in,
+alarms now and how many you've seen, the longest open, and the last 24 hours of alarms by hour with the
+ones that came back most. Every reading shows its last hour as a line with its range, average and change.
+
+**Your desktop shows the warehouse demo.** While the demo runs, your own Bento's Devices scene shows its
+three zones and their alarms (for the demo's user and admins), so it no longer says "0 machines". The
+board also has a backing of its own, so it reads on a photo wallpaper.
+
 ## 0.7.10 — 2026-11-05
 
 **A department at work shows where you asked.** When Aria hands a department a task, she walks it to

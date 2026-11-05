@@ -1254,11 +1254,12 @@ def _board_machines(owner: str) -> list[dict]:
             here = _here_row()
             if (here.get("hardware") or {}).get("items"):
                 out.append({"machine": here["display"], "key": "here", "here": True, "up": True, "live": True,
-                            "things": things(here["hardware"]["items"])})
+                            "tkey": "here", "things": things(here["hardware"]["items"])})
     for lk in teamlink._load()["links"]:
         if zeromod.ships_to(lk) and (lk.get("owner") or "") == owner:
             items = ((tiesmod.inventory_row(lk) or {}).get("hardware") or {}).get("items") or []
             out.append({"machine": lk["label"], "key": lk["id"], "here": False, "up": _TIE_UP.get(lk["id"]),
+                        "tkey": tiesmod.machine_of(lk),
                         "live": time.time() - _DEV_LIVE.get(lk["label"].lower(), 0) < DEV_LIVE_S,
                         "things": things(items)})
     return out
@@ -3472,8 +3473,10 @@ async def api_platform(request: Request):
     # A hub with devices (Zeros it set up, or ESP32 boards of its own) opens a desktop on the
     # Devices scene (01h-devscene.js): the floor live, with its alarms, a desktop away from the Town.
     with contextlib.suppress(Exception):
+        from .demos import warehouse as _wh
         state_["device_hub"] = bool(_board_machines(usersmod.current() or "")
-                                    or (usersmod.is_admin(usersmod.current() or "") and _board_machines("")))
+                                    or (usersmod.is_admin(usersmod.current() or "") and _board_machines(""))
+                                    or (_demo_shows(usersmod.current() or "") and _wh.status().get("phase") == "ready"))
     # The windows that are live streams of real processes: the shared browser, terminal
     # sessions that outlive their window, and native apps projected into a window. Each
     # says whether it can run here and, if not, why and which component would fix it.
@@ -15469,13 +15472,52 @@ async def api_device_board():
                     t["value"], t["at"] = ev.get("value"), ev.get("at")
         alarms += await _alarms_judge(o, machines=ms)
         machines += [m for m in ms if m["machine"] not in {x["machine"] for x in machines}]
+    # the analytics: each number's last hour (telemetry.trend, kept a minute at a time on
+    # this hub) and the alarms of the last day (the Events diary), read off the loop
+    def _analyse():
+        from . import devboard, devevents, telemetry
+        for m in machines:
+            for t in m["things"]:
+                if t.get("kind") in ("sensor", "") and not t.get("onoff"):
+                    with contextlib.suppress(Exception):
+                        tr = telemetry.trend(m.get("tkey") or "", t["id"])
+                        if tr:
+                            t["trend"] = tr
+        evs = []
+        with contextlib.suppress(Exception):
+            stores = [state["store"]]
+            with usersmod.as_user(""):
+                stores.append(state["store"])
+            evs = [e for e in devevents.gather(stores, limit=600) if e.get("event") in ("alarm", "cleared")]
+        return evs
+    evs = await asyncio.get_running_loop().run_in_executor(None, _analyse)
+    # the warehouse demo's floor, for its own user (or an admin, or anyone without accounts):
+    # its devices are on the demo's hub, and this screen would say "0 machines" beside it
+    if _demo_shows(me):
+        from .demos import warehouse as wh
+        d = await asyncio.get_running_loop().run_in_executor(None, wh.hub_board)
+        if d:
+            machines += [{**m, "demo": True} for m in d.get("machines") or []]
+            alarms += [{**a, "demo": True} for a in d.get("alarms") or []]
+            evs += [{**e, "demo": True} for e in ((d.get("analytics") or {}).get("recent") or [])]
     seen, out = set(), []
     for a in alarms:
         if a["id"] not in seen:
             seen.add(a["id"])
             out.append(a)
+    from . import devboard
+    an = devboard.analytics(evs, out, machines)
+    an["recent"] = [{k: e.get(k) for k in ("at", "event", "text")} for e in evs[:200]]
     return {"machines": machines, "alarms": out, "rules": state["cfg"].get("device_alarms") or [],
-            "at": time.time()}
+            "analytics": an, "at": time.time()}
+
+
+def _demo_shows(me: str) -> bool:
+    if not usersmod.enabled():
+        return True
+    from .demos import warehouse as wh
+    o = wh.owner() or {}
+    return bool(me) and (me == o.get("uid") or usersmod.is_admin(me))
 
 
 @app.post("/api/devices/alarms/ack")
@@ -15491,6 +15533,11 @@ async def api_device_alarm_ack(body: dict):
                                 f"{by or 'Someone'} acknowledged on {got['machine']}: {got['text']}", alarm=aid)
             await _tie_tell({"type": "device_alarm", "phase": "ack", "alarm": got}, o)
             return {"ok": True, "alarm": got}
+    if (body or {}).get("demo") and _demo_shows(me):
+        from .demos import warehouse as wh
+        got = await asyncio.get_running_loop().run_in_executor(None, wh.hub_ack, aid)
+        if got and got.get("ok"):
+            return got
     return JSONResponse({"error": "that alarm is not raised now"}, 404)
 
 
