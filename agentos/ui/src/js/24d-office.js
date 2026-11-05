@@ -445,6 +445,9 @@ function officeLive(p){
     // dark twelve seconds into a build that ran for minutes ("the office is silent")
     if(c==='build'&&typeof BUILD_LIVE!=='undefined'&&BUILD_LIVE)return true;
   }
+  // a run of theirs still open (a specialist in a mission, a department's head): a CLI
+  // or a long think sends no steps for minutes, and the desk went dark after twelve seconds
+  for(const r in O.runs)if(O.runs[r]===p.key)return true;
   return false;
 }
 /* What is already running when the Office opens (or is rebuilt). Events only reach an
@@ -489,6 +492,15 @@ function officePulse(kind,label,ev){
       const to=officeMatch((ev.args||{}).subagent);
       if(to){officeHandOver(who,to,(ev.args||{}).task||'');
         officeLog(`${officeName(who.key)} handed ${to.label} some work`)}
+    }
+    // a task for a whole department: the lead walks it to that department's head
+    if(label==='department_task'){
+      const d=String((ev.args||{}).department||'').toLowerCase();
+      const room=((O.view&&O.view.rooms)||[]).find(r=>r.kind==='dept'&&String(r.name||'').toLowerCase()===d);
+      const to=room&&room.lead?officeMatch(room.lead):null;
+      if(to&&to!==who){officeHandOver(who,to,(ev.args||{}).task||'');
+        officeLog(`${officeName(who.key)} handed ${room.name} a task: ${String((ev.args||{}).task||'').slice(0,90)}`)}
+      else if(room)officeLog(`${officeName(who.key)} handed ${room.name} a task`);
     }
     if(OF_WRITES.has(label)){const c=officeCabinetAt();
       if(c)officePaper(officeHead(who),{x:c.x+c.w/2,y:c.y+10,board:1},()=>{O.newFiles=(O.newFiles||0)+1;officeKick()})}
@@ -690,7 +702,7 @@ function officeFabric(ev){
   if(e==='node_add'){
     const to=officeMatch(ev.agent);
     if(to){officePaper(officeBoardPoint(),to,()=>{officeWork(to,true);officePop(to,'!');
-      officeSay(to,'on it: '+(ev.task||''),'think',3600)});
+      officeSay(to,'on it: '+(ev.task||''),'think',20000)});
       officeLog(`${to.label} got work: ${String(ev.task||'').slice(0,90)}`)}
     else if(ev.agent&&String(ev.agent).includes('@'))officeLog(`work went to ${ev.agent} on a linked team`);
     return;
@@ -721,7 +733,12 @@ function officeFabric(ev){
     if(ev.parent_run)officePaper(officeHead(p),{x:officeBoardPoint().x,y:officeBoardPoint().y+20,board:1});
     return;
   }
+  // what someone is doing right now, said over their desk until the next thing
+  if(e==='thinking'){const p=O.people[O.runs[ev.run_id]];
+    if(p&&ev.text&&(!p.say||p.say.kind==='think')&&performance.now()-(p.thinkAt||0)>4000){p.thinkAt=performance.now();
+      officeSay(p,'… '+String(ev.text).replace(/\s+/g,' ').trim().slice(-90),'think',15000)}return}
   if(e==='step'&&ev.status==='start'){const p=O.people[O.runs[ev.run_id]];if(p){officeBurst(p,ev.tool);
+    officeSay(p,String(ev.tool||'working')+(ev.detail?' · '+String(ev.detail):''),'think',60000);
     if(OF_WRITES.has(ev.tool)){const c=officeCabinetAt();
       if(c)officePaper(officeHead(p),{x:c.x+c.w/2,y:c.y+10,board:1},()=>{O.newFiles=(O.newFiles||0)+1;officeKick()})}}return}
   if(e==='approval'){

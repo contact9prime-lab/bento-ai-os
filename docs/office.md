@@ -89,6 +89,12 @@ press **⤢**.
 Opening the Office window while Office HQ is your desktop moves the 3D office into the
 window, and closing it gives it back. (It used to stay dark: the desktop kept drawing it.)
 
+A department working on a task looks like this: its head's room says "1 running", and the
+balloon says what they're on. In the chat that asked, the `department_task` card follows the run
+line by line: who got which piece, which tool each is on, who finished and who signed it off.
+
+![The Office while Research works a task: the room says 1 running and the balloon reads "run_python · walk-forward T2 cointegration"](screenshots/office-department-working.png)
+
 ## As a town
 
 The same office can be a town in a place you choose: an island, a cluster of islands, a city on
@@ -110,6 +116,8 @@ Everything in the office moves because something really happened on this machine
 |---|---|
 | Your agent **gets up, carries the work over** to a specialist's desk, says what it wants and walks back | Your agent handed that specialist a task |
 | A **paper flies** from the mission board to a desk, and a **!** pops over the specialist | A mission handed that specialist work (a mission's lead has no desk to walk from) |
+| Your agent **walks a task to a department's head** | Your agent gave that department a task (`department_task`, or `@Research …` in chat) |
+| A balloon over a desk says **what that person is doing**: the tool and what it's on, or a line of their thinking | That specialist is working on a step right now. The desk stays lit until its run ends, however long it takes |
 | The **monitor lights** in the department's colour and the specialist **types** | Its run started; a tag above its head names the AI provider it is answering on |
 | A **comic burst** ("FETCH!", "SCRIBBLE!") with the real tool name under it | It called that tool |
 | One agent **gets up and walks** across the office to another's desk, asks in a speech balloon, waits for the answer, says thanks and walks back | It asked that colleague something (the team's permission matrix let it) |

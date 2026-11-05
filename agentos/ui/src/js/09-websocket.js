@@ -680,6 +680,7 @@ function handle(ev){
       // State first, painting second: the graph must stay correct even when the Team
       // window is closed, so opening it shows the truth rather than a replay.
       if(typeof fgApply==='function')fgApply(ev);
+      if(typeof deptCardLive==='function')deptCardLive(ev);
       fabricLiveRefresh(); break;
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged();
       if(typeof officeReload==='function')officeReload(); break;   // a new specialist takes a desk

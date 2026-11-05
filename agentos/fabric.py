@@ -54,6 +54,21 @@ CONTEXT_BUDGET = 24_000     # chars of handle content handed to one child
 BOARD_BUDGET = 1_200        # chars of board index appended to every tool result
 
 
+def _can_words(tools) -> str:
+    """What a roster member can do, for its master: 'can run code, read files' / 'cannot
+    run code, write files or use a shell'. Without it the master guessed, and turned "run
+    the five backtests" into "write a plan" for a head that could not run code."""
+    have = set(tools or [])
+    pairs = (("run_python", "run code"), ("run_command", "use a shell"), ("write_file", "write files"),
+             ("read_file", "read files"), ("fetch_url", "read the web"))
+    can = [w for t, w in pairs if t in have]
+    cannot = [w for t, w in pairs[:3] if t not in have]
+    out = ("can " + ", ".join(can)) if can else ""
+    if cannot:
+        out += ("; " if out else "") + "cannot " + ", ".join(cannot)
+    return out or "reads and reports only"
+
+
 def min_autonomy(a: str, b: str) -> str:
     order = sorted([a or "balanced", b or "balanced"], key=lambda x: _AUTONOMY_ORDER.get(x, 1))
     return order[0]
@@ -2326,7 +2341,8 @@ class ControlPlane(usersmod.Scoped):
         # origin "chat": the answer is the reply in the conversation that asked, so the
         # desk's own delivery never sends it a second time to the same phone
         res = await self.run_flow(flow, str(task or "").strip(),
-                                  origin={"surface": "chat", "ref": dept["name"]},
+                                  origin={"surface": "chat", "ref": dept["name"], "department": dept["name"],
+                                          "head": dept.get("lead") or ""},
                                   conversation_id=conversation_id, approver=approver,
                                   ui_emit=ui_emit, agent_slot=agent_slot, tainted=tainted,
                                   space_id=space_id)
@@ -3028,7 +3044,8 @@ class ControlPlane(usersmod.Scoped):
                 continue
             defn = self.store.get_subagent(r["subagent"]) or {}
             soul = " ".join((defn.get("soul") or "").split())[:200]
-            lines.append(f"  - {r['subagent']}: {soul}" + (f"  (use it for: {why})" if why else ""))
+            lines.append(f"  - {r['subagent']}: {soul}" + (f"  (use it for: {why})" if why else "")
+                         + f"  [{_can_words(defn.get('tools') or SAFE_TOOLS)}]")
         return "\n\n".join([
             "=== You are the MASTER ORCHESTRATOR of a flow ===",
             f"Flow '{flow['name']}'. Mission:\n{flow.get('mission') or ''}",
@@ -3046,6 +3063,16 @@ class ControlPlane(usersmod.Scoped):
             "keeping.\n"
             "  5. `finish` with the deliverable when the mission is met — or when a step has "
             "failed and it cannot be.\n\n"
+            "Keep the scope you were given. Every part of the task is done, or named in `finish` "
+            "as not done with the reason. Never turn it into something smaller because nobody "
+            "here has a tool for it: a plan is not a result, and 'write the plan' is not 'run the "
+            "tests'. When the person who should do a step can't (the brackets above say what each "
+            "can do), give them the whole step anyway and tell them in the task text to ask for "
+            "the ability with `request_capability` first; the person says yes or no on a card.\n"
+            "Ask for depth. Tell each specialist what a thorough answer contains for their step: "
+            "every case asked for, the numbers behind each claim, what was checked and how, what "
+            "failed, and what is still unknown. Read their output, and send a step back with what "
+            "is missing when it is thin.\n"
             "You plan and aggregate. You do NOT do the work yourself: you have no tools for "
             "fetching, writing files or running commands, on purpose. If something cannot be "
             "delegated to anyone on the roster, say so in `finish` rather than improvising.\n"
@@ -3129,6 +3156,11 @@ class ControlPlane(usersmod.Scoped):
                               "origin": {"surface": origin.get("surface", ""),
                                          "ref": str(origin.get("ref", "") or "")},
                               "roster": roster, "space_id": space_id,
+                              # who it is for: the chat that asked (its card shows the run's
+                              # progress) and, for a department's desk, the head it goes to
+                              "conversation_id": conversation_id or "",
+                              "department": str(origin.get("department") or ""),
+                              "head": str(origin.get("head") or ""),
                               "input": (input_text or "")[:200], "tainted": bool(tainted)})
 
         # the trigger's own payload is the first thing on the board

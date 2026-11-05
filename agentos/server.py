@@ -108,6 +108,20 @@ state: _State = _State()  # cfg, store, toolbox, scheduler, clients
 PER_USER_SERVICES = ("telegram", "whatsapp", "mcp")
 
 
+def _owner_send(uid: str | None = None):
+    """A bridge's broadcast: its events to the screens of the account it belongs to.
+    `uid` None is the machine's own bridge: whoever the turn runs as, and on a machine
+    with accounts a turn that belongs to nobody goes to the admins (as _tie_tell does)."""
+    async def send(event: dict):
+        who = usersmod.current() if uid is None else uid
+        if who or not usersmod.enabled():
+            return await state["broadcast_user"](event, who or "")
+        for u in usersmod.list_users():
+            if usersmod.is_admin(u["id"]):
+                await state["broadcast_user"](event, u["id"])
+    return send
+
+
 def _build_user_services(uid: str, toolbox, broadcast) -> dict:
     """This person's own bridges, and the loops that drive them.
 
@@ -122,8 +136,11 @@ def _build_user_services(uid: str, toolbox, broadcast) -> dict:
     already answer for whoever the turn belongs to.
     """
     cfg, store = usersmod.cfg_for(uid, machine=state.machine_cfg()), usersmod.store_for(uid)
-    tg = TelegramBridge(cfg, store, toolbox, broadcast)
-    wa = WhatsAppBridge(cfg, store, toolbox, broadcast)
+    # A phone turn is this person's: its events go to their screens only. Handed the
+    # machine-wide broadcast, one account's Telegram message lit every account's
+    # Chat and Office as if Aria had taken it there too.
+    tg = TelegramBridge(cfg, store, toolbox, _owner_send(uid))
+    wa = WhatsAppBridge(cfg, store, toolbox, _owner_send(uid))
     mcp = MCPManager(cfg, store)
     bag = {"telegram": tg, "whatsapp": wa, "mcp": mcp}
 
@@ -295,11 +312,11 @@ async def startup():
     toolbox.scheduler = scheduler
     mcp = MCPManager(cfg, store)
     toolbox.mcp = mcp
-    telegram = TelegramBridge(cfg, store, toolbox, broadcast)
+    telegram = TelegramBridge(cfg, store, toolbox, _owner_send())
     toolbox.telegram = telegram
     # No run_forever: WhatsApp is a webhook, so there is nothing to poll. The bridge
     # exists from startup so its state can be reported before it is configured.
-    whatsapp = WhatsAppBridge(cfg, store, toolbox, broadcast)
+    whatsapp = WhatsAppBridge(cfg, store, toolbox, _owner_send())
     toolbox.whatsapp = whatsapp
     toolbox.broadcast = broadcast
     toolbox.broadcast_user = broadcast_user
@@ -11710,6 +11727,11 @@ async def api_users_update(uid: str, body: dict):
                             status_code=403)
     try:
         if b.get("password"):
+            # changing your own asks for the one you have now: an unattended open
+            # session must not be a way to take the account over. An admin resetting
+            # somebody else's (they forgot it) needs only their own session.
+            if uid == me and not usersmod.check_password(uid, str(b.get("current") or "")):
+                return JSONResponse({"error": "that isn't your current password"}, status_code=403)
             usersmod.set_password(uid, str(b["password"]))
         if b.get("role"):
             if not admin:

@@ -123,7 +123,7 @@ function usersRoster(){
         ? `<select class="usr-role" data-uid="${esc(u.id)}">${USERS.roles.map(r=>
             `<option value="${esc(r)}"${r===u.role?' selected':''}>${esc(usersRoleName(r))}</option>`).join('')}</select>`
         : `<span class="usr-tag ${u.role==='admin'?'adm':''}">${esc(usersRoleName(u.role))}</span>`}
-      <button class="usr-pw" data-uid="${esc(u.id)}">Password…</button>
+      ${isMe||me.admin?`<button class="usr-pw" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">${isMe?'Change my password…':'Reset password…'}</button>`:''}
       ${me.admin&&!isMe?`<button class="usr-del danger" data-uid="${esc(u.id)}"
         data-name="${esc(u.name)}">Remove</button>`:''}
     </div>`;
@@ -137,8 +137,8 @@ function usersRoster(){
     ${rows}
     ${(USERS.me||{}).admin?`<details class="usr-add"><summary>Add somebody</summary>
       ${usersForm('Add the account',false)}</details>`
-      :`<p class="dim usr-foot">Only an admin can add or remove accounts. Everything
-        inside your own home — agents, flows, channels, credentials — is yours.</p>`}
+      :`<p class="dim usr-foot">Only an admin can add or remove accounts, or reset somebody else’s
+        password. Your own password, and everything inside your home, is yours.</p>`}
   </div>`;
 }
 
@@ -327,10 +327,14 @@ function usersWire(pb,w){
   });
   pb.querySelectorAll('.usr-pw').forEach(b=>{
     b.onclick=async()=>{
+      // your own: the one you have now first. Somebody else's (an admin resetting it): only the new one.
+      let current='';
+      if(b.dataset.me){current=await osPrompt('Your current password',{placeholder:'••••••••',password:true,confirmText:'Next'});
+        if(!current)return}
       const pw=await osPrompt('New password',{message:'At least 8 characters.',
         placeholder:'••••••••',password:true,confirmText:'Change it'});
       if(!pw)return;
-      const r=await usersPut(b.dataset.uid,{password:pw});
+      const r=await usersPut(b.dataset.uid,current?{password:pw,current}:{password:pw});
       toast(r.error||'✓ password changed');
     };
   });

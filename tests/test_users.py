@@ -716,7 +716,8 @@ def test_anybody_can_change_their_own_password(api):
     b = api.post("/api/users", json={"name": "bob", "password": "hunter2hunter",
                                      "role": "executor"}).json()["user"]
     api.post("/api/users/login", json={"name": "bob", "password": "hunter2hunter"})
-    assert api.put(f"/api/users/{b['id']}", json={"password": "a-new-one!!"}).status_code == 200
+    assert api.put(f"/api/users/{b['id']}", json={"password": "a-new-one!!",
+                                                  "current": "hunter2hunter"}).status_code == 200
     api.post("/api/users/logout")
     assert api.post("/api/users/login",
                     json={"name": "bob", "password": "a-new-one!!"}).status_code == 200
@@ -1177,3 +1178,21 @@ def test_a_queued_message_carries_the_account_into_the_next_turn(api):
     item = servermod.state["queues"]["cid-x"][0]
     assert item["uid"] == "someuid"
     servermod.state["queues"].pop("cid-x", None)
+
+
+def test_an_executor_changes_only_their_own_password_and_says_the_current_one(api):
+    """Asked as "how can the demo user change its password? It cannot be an admin". Your
+    own is yours, with the one you have now; somebody else's is an admin's reset."""
+    ada = api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"}).json()["user"]
+    bob = api.post("/api/users", json={"name": "bob", "password": "hunter2hunter",
+                                       "role": "executor"}).json()["user"]
+    api.post("/api/users/login", json={"name": "bob", "password": "hunter2hunter"})
+    assert api.put(f"/api/users/{ada['id']}", json={"password": "bob-owns-ada-now"}).status_code == 403
+    r = api.put(f"/api/users/{bob['id']}", json={"password": "new-bob-pass-1", "current": "wrong-one-x"})
+    assert r.status_code == 403 and "current" in r.json()["error"]
+    assert api.put(f"/api/users/{bob['id']}", json={"password": "new-bob-pass-1",
+                                                    "current": "hunter2hunter"}).status_code == 200
+    assert api.post("/api/users/login", json={"name": "bob", "password": "new-bob-pass-1"}).status_code == 200
+    # an admin resets somebody who forgot theirs, with no current password
+    api.post("/api/users/login", json={"name": "ada", "password": "hunter2hunter"})
+    assert api.put(f"/api/users/{bob['id']}", json={"password": "reset-by-ada-1"}).status_code == 200
