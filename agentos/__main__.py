@@ -4716,6 +4716,23 @@ def _network_cli(args):
         return _device_cli(a, rest, args)
     if a == "esp":
         return _esp_cli(rest, args)
+    if a == "board":
+        # the Devices scene in a terminal: the running server holds the newest readings
+        import json as _json
+        import urllib.error
+        import urllib.request
+        from . import config as _cfgmod
+        from . import devboard
+        base = f"http://127.0.0.1:{_cfgmod.load_config().get('port', 8321)}"
+        try:
+            with urllib.request.urlopen(base + "/api/devices/board", timeout=10) as r:
+                print(devboard.text(_json.loads(r.read() or b"{}")))
+        except urllib.error.HTTPError as e:
+            sys.exit("  this machine has accounts, so the board needs a sign-in: it is in Devices on the desktop"
+                     if e.code == 401 else f"  the server said {e.code}")
+        except Exception as e:
+            sys.exit(f"  the live board comes from the running server, and it isn't answering at {base} ({e})")
+        return
     if a == "readings":
         # Devices → Hardware → a sensor: what the hub kept of it (telemetry.py)
         from . import telemetry as _tm
@@ -9376,7 +9393,7 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events", "map", "talks", "hardware", "readings", "get", "set", "permit", "esp"],
+                                "events", "map", "talks", "hardware", "readings", "board", "get", "set", "permit", "esp"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
                             "talks [LINK [lead|DEPARTMENT --company ID]] | "
@@ -9391,6 +9408,7 @@ def main():
                             "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U | "
                             "hardware [MACHINE] [--check] (what a Zero has, down to each sensor) | "
                             "readings MACHINE ITEM [--range day|week|month|quarter] (one sensor over time) | "
+                            "board (every device live, with its alarms) | "
                             "get MACHINE [ITEM] (read it now) | set MACHINE ITEM 1|0 | permit MACHINE [ITEM read|set|off] | "
                             "esp MACHINE [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME] (its ESP32 nodes)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")

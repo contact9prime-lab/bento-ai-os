@@ -58,7 +58,8 @@ def test_a_small_machines_own_screen_draws_only_the_light_scenes():
     got = _scenes({"small": True, "remote_client": False})
     assert got["lite"] is True
     for scene, drawn in got["out"].items():
-        assert drawn == (scene if scene in ("aurora", "office") else "aurora"), (scene, drawn)
+        # Devices is words and numbers, refreshed every few seconds: a Pi can draw it
+        assert drawn == (scene if scene in ("aurora", "office", "devices") else "aurora"), (scene, drawn)
 
 
 def test_a_phone_looking_at_the_pi_keeps_every_scene():

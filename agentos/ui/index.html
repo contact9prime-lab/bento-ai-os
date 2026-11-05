@@ -6682,6 +6682,103 @@ body.lite-screen .br-glow,
 body.lite-screen .stg-bg,
 body.lite-screen .stg-pic img,
 body.lite-screen .dm-bg line{animation:none!important}
+/* The Devices scene (01h-devscene.js): the floor, live, with its alarms. Words in the desktop layer
+   over the sky wallpaper; no blur (the one blurred surface is the active window, 20-immersive.css),
+   colours mixed from the theme's tokens so it reads on every theme. The prompt bar is a right-hand
+   column on a wide screen, as in Office HQ, and under the board on a narrow one. */
+#devscene{position:absolute;z-index:4;left:16px;right:16px;top:calc(var(--mbh,28px) + 14px);bottom:100px;
+  overflow:auto;overscroll-behavior:contain;color:var(--txt);font-family:var(--sans);scrollbar-width:thin;
+  padding:2px 4px 12px 2px}
+#devscene[hidden],body:not(.imm-devices) #devscene{display:none}
+body.has-win #devscene,body.deck-full #devscene,body.exposing #devscene{opacity:0;pointer-events:none}
+body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,body.imm-devices .hm-now,
+  body.imm-devices .hm-links{display:none!important}
+@media (min-width:901px){
+  body.imm-devices:not(.dev-mobile) #devscene{right:min(470px,calc(34vw + 30px))}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar{top:calc(var(--mbh,28px) + 14px);bottom:auto;
+    left:auto;right:16px;transform:none;width:min(440px,34vw)}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{width:min(440px,34vw)}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--mbh,28px) + 82px);bottom:auto;
+    left:auto;right:16px;transform:none;width:min(440px,34vw);flex-direction:column}
+}
+@media (max-width:900px){
+  body.imm-devices #devscene{bottom:156px}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full) #omnibar{top:auto;bottom:92px}
+}
+.dvs-wait{margin:18vh auto 0;max-width:520px;text-align:center;color:var(--dim);font-size:var(--fs-md)}
+.dvs-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 16px;margin:0 0 12px}
+.dvs-head h1{margin:0;font-size:var(--fs-2xl);font-weight:700;letter-spacing:-.01em}
+.dvs-sum{margin:2px 0 0;color:var(--dim);font-size:var(--fs-sm)}
+.dvs-sum b.ok{color:var(--ok)}.dvs-sum b.warn{color:var(--warn)}.dvs-sum b.bad,.dvs-sum .bad{color:var(--err)}
+.dvs-acts{display:flex;flex-wrap:wrap;gap:8px}
+.dvs-acts .endbtn,.dvs-al .endbtn{min-height:var(--tap,36px)}
+
+/* alarms: the first thing read, loud only while something is wrong and nobody has seen it */
+.dvs-alarms{display:grid;gap:8px;margin:0 0 14px}
+.dvs-clear{margin:0;padding:12px 14px;border-radius:var(--r-lg);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);
+  background:color-mix(in srgb,var(--bg2) 88%,var(--ok));color:var(--txt);font-size:var(--fs-sm)}
+.dvs-al{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--r-lg);
+  background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid var(--line);border-left-width:4px}
+.dvs-al.alarm.active{border-color:color-mix(in srgb,var(--err) 60%,transparent);border-left-color:var(--err);
+  background:color-mix(in srgb,var(--bg2) 82%,var(--err))}
+.dvs-al.warning.active{border-left-color:var(--warn);background:color-mix(in srgb,var(--bg2) 88%,var(--warn))}
+.dvs-al.pending{border-left-color:var(--dim2,var(--dim));opacity:.85}
+.dvs-al.acked{background:color-mix(in srgb,var(--bg2) 92%,transparent)}
+.dvs-al-i{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;
+  background:color-mix(in srgb,var(--txt) 10%,transparent)}
+.dvs-al.alarm.active .dvs-al-i{background:var(--err);color:#fff}
+.dvs-al.warning.active .dvs-al-i{background:var(--warn);color:#1b1300}
+.dvs-al.alarm.active:not(.acked) .dvs-al-i{animation:dvs-pulse 1.6s ease-in-out 4}
+@keyframes dvs-pulse{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--err) 25%,transparent)}}
+.dvs-al-t{flex:1;min-width:0}
+.dvs-al-t b{display:block;font-size:var(--fs-md);font-weight:600;overflow-wrap:anywhere}
+.dvs-al-t span{display:block;color:var(--dim);font-size:var(--fs-xs);margin-top:2px}
+
+/* the machines: one card each, its nodes inside, each thing a row with its value */
+.dvs-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));align-items:start}
+.dvs-m{border-radius:var(--r-xl);padding:12px 14px 10px;background:color-mix(in srgb,var(--bg2) 90%,transparent);
+  border:1px solid var(--line);box-shadow:var(--el-2)}
+.dvs-m.alarm{border-color:color-mix(in srgb,var(--err) 55%,transparent)}
+.dvs-m.warning{border-color:color-mix(in srgb,var(--warn) 55%,transparent)}
+.dvs-m.down{opacity:.75;border-style:dashed}
+.dvs-m h2{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:var(--fs-lg);font-weight:650}
+.dvs-m h2 span{margin-left:auto;font-size:var(--fs-xs);font-weight:500;color:var(--dim)}
+.dvs-dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}
+.dvs-m.warning .dvs-dot{background:var(--warn)}.dvs-m.alarm .dvs-dot{background:var(--err)}.dvs-m.down .dvs-dot{background:var(--dim)}
+.dvs-g{border-top:1px solid var(--line);padding-top:6px;margin-top:6px}
+.dvs-g h3{margin:0 0 2px;font-size:var(--fs-2xs);letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.dvs-t{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-height:26px;padding:2px 6px;margin:0 -6px;
+  border-radius:var(--r-sm);font-size:var(--fs-sm)}
+.dvs-t span{color:var(--dim);min-width:0;overflow-wrap:anywhere}
+.dvs-t b{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.dvs-t.lit b{color:var(--ok)}
+.dvs-t.warning{background:color-mix(in srgb,var(--warn) 16%,transparent)}.dvs-t.warning b{color:var(--warn)}
+.dvs-t.alarm{background:color-mix(in srgb,var(--err) 18%,transparent)}.dvs-t.alarm b{color:var(--err)}
+.dvs-t.pending b{color:var(--warn)}
+.dvs-blink{animation:dvs-blink .9s ease-out}
+@keyframes dvs-blink{from{background:color-mix(in srgb,var(--acc) 28%,transparent)}}
+@media (prefers-reduced-motion:reduce){.dvs-blink,.dvs-al .dvs-al-i{animation:none!important}}
+
+/* the person's alarm rules */
+.dvs-rules{margin:0 0 14px;padding:12px 14px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);
+  border:1px solid var(--line)}
+.dvs-rules h2{margin:0 0 8px;font-size:var(--fs-md)}
+.dvs-rules ul{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:4px}
+.dvs-rules li{display:flex;align-items:center;gap:10px;font-size:var(--fs-sm);min-height:var(--tap,30px)}
+.dvs-rules li span:nth-child(2){flex:1;min-width:0}
+.dvs-lv{font-size:var(--fs-2xs);padding:1px 7px;border-radius:var(--r-full);background:color-mix(in srgb,var(--err) 25%,transparent)}
+.dvs-lv.warning{background:color-mix(in srgb,var(--warn) 25%,transparent)}
+.dvs-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.dvs-form select,.dvs-form input{min-height:var(--tap,34px);max-width:100%}
+.dvs-form input[data-f=value]{width:90px}.dvs-form input[data-f=for]{width:64px}
+body.dev-mobile #devscene{left:12px;right:12px}
+body.dev-mobile .dvs-grid{grid-template-columns:1fr}
+
+/* the pager says which scene each desktop shows (03-virtual-desktops.js) */
+#pager .pgb .pgs{font-size:9px;line-height:1;margin-left:2px;opacity:.8;vertical-align:super}
+#pager .pgb[data-scene=devices] .pgs{color:var(--acc)}
+/* Devices → Alarms */
+.dev-alarms{margin:0 0 14px}.dev-alarms h3{margin:0 0 8px}
 </style>
 </head>
 <body>
@@ -8737,7 +8834,7 @@ function immersiveOn(){return IMMERSIVE.on}
    stays the person's (IMMERSIVE.scene); only what this screen draws changes, and
    `bento profile full` lifts it. PLATFORM is a `let` in a later file and arrives later
    still, so until it does the last answer this browser heard is used (screen.lite). */
-var LITE_SCENES={aurora:1,office:1};
+var LITE_SCENES={aurora:1,office:1,devices:1};
 function liteScreen(){
   let p=null;try{p=PLATFORM}catch(e){}
   if(p&&typeof p.small==='boolean')return p.small&&!p.remote_client;
@@ -8749,23 +8846,64 @@ function zeroScreen(){
   if(p&&p.zero&&typeof p.zero==='object')return !!(p.zero.hub||p.zero.on_hub);
   try{return localStorage.getItem('screen.zero')==='1'}catch(e){return false}
 }
+/* Each desktop shows a scene of its own (asked for as "an easier way of switching between the
+   device scene and the town scene, so the desktops could be used for that"). A desktop that was
+   never given one shows the browser's scene, except on a hub with devices: there desktop 2 shows
+   the Devices scene (01h-devscene.js), and on a browser that never chose, desktop 1 does and
+   desktop 2 is the Town. Desktop 1's choice is still `immersive.scene`, as before desktops had
+   scenes; the others are `immersive.scene.d<n>`. curDesk and DESKS are `let`s in a later file. */
+var IMMERSIVE_NAMES={aurora:'Aurora',movement:'Movement',crew:'Crew',office:'Office',hq:'Office HQ',world:'World',mind:'Mind',island:'Town',devices:'Devices'};
+function deskNow(){try{return curDesk}catch(e){try{return +localStorage.getItem('curDesk')||1}catch(e2){return 1}}}
+function deskCount(){try{return DESKS}catch(e){try{return +localStorage.getItem('desks')||2}catch(e2){return 2}}}
+function deviceHub(){
+  let p=null;try{p=PLATFORM}catch(e){}
+  if(p&&typeof p.device_hub==='boolean')return p.device_hub;
+  try{return localStorage.getItem('screen.devhub')==='1'}catch(e){return false}
+}
+function immersiveSceneKey(n){let s=null;try{s=localStorage.getItem(n===1?'immersive.scene':'immersive.scene.d'+n)}catch(e){}
+  return s&&IMMERSIVE_SCENES.indexOf(s)>=0?s:null}
+function immersiveSceneOf(n){
+  const own=immersiveSceneKey(n);if(own&&(n!==1||IMMERSIVE.chosen))return own;
+  if(deviceHub()){
+    if(!IMMERSIVE.chosen)return n===1?'devices':n===2?'island':IMMERSIVE.scene;
+    if(n===2&&IMMERSIVE.scene!=='devices')return 'devices';
+  }
+  return IMMERSIVE.scene;
+}
+/* The first desktop that shows a scene, or 0. */
+function deskShowing(scene){for(let i=1;i<=deskCount();i++)if(immersiveSceneOf(i)===scene)return i;return 0}
 function immersiveSceneNow(){
-  let s=IMMERSIVE.scene;
-  if(!IMMERSIVE.chosen&&zeroScreen())s='aurora';
+  const n=deskNow();
+  let s=immersiveSceneOf(n);
+  if(!IMMERSIVE.chosen&&zeroScreen()&&!immersiveSceneKey(n))s='aurora';
   return liteScreen()&&!LITE_SCENES[s]?'aurora':s;
+}
+/* Another desktop came to the front: its scene, if it is a different one. */
+function immersiveDeskChanged(was){
+  if(!IMMERSIVE.on||immersiveSceneNow()===was)return;
+  applyImmersive();
+  if(typeof loadWallpaper==='function')loadWallpaper();
 }
 /* The platform answer arrived: remember it for the next first paint, and redraw only when
    it changes what this screen shows. */
 function liteScreenSet(){
   const on=liteScreen(),was=document.body.classList.contains('lite-screen');
-  let zeroWas=false;try{zeroWas=localStorage.getItem('screen.zero')==='1'}catch(e){}
-  const zero=zeroScreen();
-  try{localStorage.setItem('screen.lite',on?'1':'0');localStorage.setItem('screen.zero',zero?'1':'0')}catch(e){}
-  if(on!==was||zero!==zeroWas)applyImmersive();
+  let zeroWas=false,hubWas=false;try{zeroWas=localStorage.getItem('screen.zero')==='1';hubWas=localStorage.getItem('screen.devhub')==='1'}catch(e){}
+  const zero=zeroScreen(),hub=deviceHub();
+  try{localStorage.setItem('screen.lite',on?'1':'0');localStorage.setItem('screen.zero',zero?'1':'0');
+    localStorage.setItem('screen.devhub',hub?'1':'0')}catch(e){}
+  if(on!==was||zero!==zeroWas||hub!==hubWas){applyImmersive();if(typeof buildPager==='function')buildPager()}
+  if(hub&&!hubWas&&IMMERSIVE.on)deviceHubIntro();
   townIntro();
 }
 /* Bento opens on the Town. A browser that chose another scene before that was the default
    is moved to the Town once, after the update, with a toast to go back. */
+/* A hub that has devices now: say once which desktop shows them. */
+function deviceHubIntro(){
+  try{if(localStorage.getItem('immersive.devhub.said'))return;localStorage.setItem('immersive.devhub.said','1')}catch(e){return}
+  const n=deskShowing('devices');if(!n||typeof toast!=='function')return;
+  if(n!==deskNow())toast(`Desktop ${n} shows your devices, live, with their alarms.`,{label:'Go there',go:()=>switchDesk(n),ms:12000});
+}
 function townIntro(){
   try{if(localStorage.getItem('immersive.town'))return;localStorage.setItem('immersive.town','1')}catch(e){return}
   if(!IMMERSIVE.on||!IMMERSIVE.chosen||zeroScreen()||liteScreen()||IMMERSIVE.scene==='island')return;
@@ -8785,6 +8923,7 @@ function applyImmersive(){
   document.body.classList.toggle('imm-island',IMMERSIVE.on&&scene==='island');
   document.body.classList.toggle('imm-world',IMMERSIVE.on&&scene==='world');
   document.body.classList.toggle('imm-mind',IMMERSIVE.on&&scene==='mind');
+  document.body.classList.toggle('imm-devices',IMMERSIVE.on&&scene==='devices');
   immersiveParallax(IMMERSIVE.on);
   immersiveIcons(IMMERSIVE.on);
   homeRender();
@@ -8808,6 +8947,8 @@ function applyImmersive(){
   if(typeof WORLD!=='undefined'){if(IMMERSIVE.on&&scene==='world')worldStart();else worldStop()}
   // the Mind (01g): your agents and what they know, as one picture
   if(typeof MIND!=='undefined'){if(IMMERSIVE.on&&scene==='mind')mindStart();else mindStop()}
+  // the Devices scene (01h): the floor, live, with its alarms
+  if(typeof DEVSCENE!=='undefined'){if(IMMERSIVE.on&&scene==='devices')devSceneStart();else devSceneStop()}
 }
 /* Which scene: 'aurora' (a sky that follows the day), 'movement' (a watch movement
    that shows what is running) or 'crew' (the roster, drawn, working). Per browser,
@@ -8815,11 +8956,17 @@ function applyImmersive(){
    this value comes out of localStorage, which outlives any release that renames a
    scene, and a desktop that fails to paint because of a stale string is not a
    trade worth making. */
-var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island'];
+var IMMERSIVE_SCENES=['aurora','movement','crew','office','hq','world','mind','island','devices'];
+/* The scene of the desktop in front. A browser choosing for the first time keeps what every other
+   desktop showed until then, so choosing on desktop 2 never moves desktop 1. */
 function setImmersiveScene(scene){
   scene=IMMERSIVE_SCENES.indexOf(scene)<0?'aurora':scene;
-  IMMERSIVE.scene=scene;IMMERSIVE.chosen=true;try{localStorage.setItem('immersive.scene',scene)}catch(e){}
+  const n=deskNow(),put=(i,v)=>{try{localStorage.setItem(i===1?'immersive.scene':'immersive.scene.d'+i,v)}catch(e){}};
+  if(!IMMERSIVE.chosen)for(let i=1;i<=deskCount();i++)if(i!==n)put(i,immersiveSceneOf(i));
+  put(n,scene);
+  IMMERSIVE.scene=immersiveSceneKey(1)||scene;IMMERSIVE.chosen=true;
   applyImmersive();
+  if(typeof buildPager==='function')buildPager();
   if(typeof loadWallpaper==='function')loadWallpaper();
   if(typeof refreshApp==='function')refreshApp('settings');
 }
@@ -11990,6 +12137,234 @@ function mindTell(){
 /* Talking to the lead: Jarvis, with this scene's core as its orb (26-mind.css). */
 function mindTalk(){if(typeof jarvisMode==='function')jarvisMode(true);mindKick()}
 if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='mind')setTimeout(mindStart,0);
+/* ================= the Devices scene: the floor, live, with its alarms =================
+   Asked for as "when we are in the device mode the device screen should be there on the hub, so I
+   can see all the devices in real time along with alarms … like a device hub instead of the town,
+   and an easier way of switching between the device scene and the town, so the desktops could be
+   used for that". A scene like the Town, chosen per desktop (01b immersiveSceneNow): on a hub with
+   devices one desktop shows the Town and another this board, and the pager switches between them.
+
+   What it draws is the server's one answer, /api/devices/board (devboard.py): every machine this
+   hub set up for you and this hub's own boards, each thing as last heard, and the alarms now. The
+   values move as device_live arrives (devSceneLive); an alarm raised or cleared refetches. It is
+   words and numbers in the desktop layer, so it costs what a page of text costs: no canvas, no
+   frame loop, a 4 s refresh that stops while hidden or covered. Nothing here switches anything:
+   a switch is device_set, asked of a person, from Devices or a chat.
+
+   Faces: GUI this. TUI: `bento network board` prints the same answer. SUI: the same page, in the
+   BACKGROUND layer like every scene; native windows sit above it as they sit above the Town. */
+var DEVSCENE={on:false,d:null,el:null,t:0,busy:false,err:'',edit:false,form:null,shown:0};
+var DEVSCENE_LEVEL={alarm:'Alarm',warning:'Warning'};
+
+function devSceneStart(){
+  if(DEVSCENE.on)return;
+  DEVSCENE.on=true;
+  const desk=document.getElementById('desktop'),home=document.getElementById('home');
+  if(!desk)return;
+  let el=document.getElementById('devscene');
+  if(!el){el=document.createElement('div');el.id='devscene';el.className='dvs';el.setAttribute('role','region');
+    el.setAttribute('aria-label','Devices, live');desk.insertBefore(el,home?home.nextSibling:null)}
+  DEVSCENE.el=el;el.hidden=false;
+  if(!el.firstChild)el.innerHTML='<p class="dvs-wait">Reading your devices…</p>';
+  devSceneLoad();
+  clearInterval(DEVSCENE.t);
+  DEVSCENE.t=setInterval(()=>{if(!document.hidden&&!document.body.classList.contains('has-win'))devSceneLoad()},4000);
+}
+function devSceneStop(){
+  if(!DEVSCENE.on)return;
+  DEVSCENE.on=false;clearInterval(DEVSCENE.t);DEVSCENE.t=0;
+  const el=document.getElementById('devscene');if(el)el.hidden=true;
+}
+async function devSceneLoad(){
+  if(!DEVSCENE.on||DEVSCENE.busy)return;
+  DEVSCENE.busy=true;
+  try{const r=await fetch('/api/devices/board');const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'The board could not be read');DEVSCENE.d=d;DEVSCENE.err=''}
+  catch(e){DEVSCENE.err=String(e.message||e)}
+  DEVSCENE.busy=false;
+  // a repaint would take the caret out of the alarm form
+  const a=document.activeElement;if(a&&DEVSCENE.el&&DEVSCENE.el.contains(a)&&/INPUT|SELECT/.test(a.tagName))return;
+  devScenePaint();
+}
+
+function devSceneVal(t){
+  const v=t.value;if(v===undefined||v===null)return t.kind==='sensor'?'no reading':'—';
+  if(t.onoff){
+    if(t.kind==='gpio')return v?'high':'low';
+    if(t.kind==='binary_sensor'&&/door/i.test(t.name))return v?'open':'shut';
+    if(t.kind==='binary_sensor'&&/motion/i.test(t.name))return v?'moving':'still';
+    return v?'on':'off';
+  }
+  if(typeof v==='number'&&t.unit==='s'){const h=Math.floor(v/3600);return h>=24?`${Math.floor(h/24)} d ${h%24} h`:`${h} h ${Math.floor(v%3600/60)} min`}
+  if(typeof v==='number'&&t.unit==='MB'&&v>=1024)return (v/1024).toFixed(1)+' GB';
+  if(typeof v==='number'){const n=Math.abs(v)>=100||v===Math.round(v)?String(Math.round(v)):v.toFixed(1);
+    return n.replace('-','−')+(t.unit?(t.unit==='°C'||t.unit==='%'?'':' ')+t.unit:'')}
+  return String(v);
+}
+function devSceneAgo(s){
+  s=Math.max(0,Math.round(s));
+  return s<60?`${s} s`:s<3600?`${Math.floor(s/60)} min`:`${Math.floor(s/3600)} h ${Math.floor(s%3600/60)} min`;
+}
+/* The thing's name without its node's ("Cold room B: Compressor" under Cold room B). */
+function devSceneShort(t){const p=(t.group_name||'')+': ';return t.name.indexOf(p)===0?t.name.slice(p.length):t.name}
+
+/* The desktop that shows another scene, for the button that goes there. */
+function devSceneOther(){
+  const n=typeof DESKS!=='undefined'?DESKS:1,cur=deskNow();
+  for(let i=1;i<=n;i++)if(i!==cur&&immersiveSceneOf(i)!=='devices')return i;
+  return 0;
+}
+
+function devScenePaint(){
+  const el=DEVSCENE.el;if(!el||!DEVSCENE.on)return;
+  const d=DEVSCENE.d;
+  if(!d){el.innerHTML=`<p class="dvs-wait">${esc(DEVSCENE.err||'Reading your devices…')}</p>`;return}
+  const ms=d.machines||[],al=d.alarms||[];
+  const raised=al.filter(a=>a.state==='active'),loud=raised.filter(a=>a.level==='alarm'&&!a.ack);
+  const things=ms.reduce((n,m)=>n+m.things.length,0);
+  const other=devSceneOther(),otherName=other?(IMMERSIVE_NAMES[immersiveSceneOf(other)]||'the other scene'):'';
+  const hot={};al.forEach(a=>{if(a.item)hot[a.machine.toLowerCase()+'|'+a.item]=a.state==='active'?a.level:'pending'});
+  const mHot={};al.forEach(a=>{if(a.state==='active'){const k=a.machine.toLowerCase();mHot[k]=mHot[k]==='alarm'?'alarm':a.level}});
+  const head=`<header class="dvs-head">
+      <div><h1>Devices</h1><p class="dvs-sum">${ms.length} machine${ms.length===1?'':'s'} · ${things} thing${things===1?'':'s'} ·
+        <b class="${loud.length?'bad':raised.length?'warn':'ok'}">${raised.length?`${raised.length} alarm${raised.length===1?'':'s'}`:'all clear'}</b>
+        ${DEVSCENE.err?`<span class="bad"> · ${esc(DEVSCENE.err)}</span>`:''}</p></div>
+      <div class="dvs-acts">
+        ${other?`<button class="endbtn" data-dvs="desk" data-n="${other}" title="Desktop ${other}">⇄ ${esc(otherName)}</button>`:''}
+        <button class="endbtn" data-dvs="rules">${DEVSCENE.edit?'Done':'Alarms…'}</button>
+        <button class="endbtn" data-dvs="app">Open Devices</button></div></header>`;
+  const alarms=devAlarmsHTML(al,loud.length);
+  const cards=ms.length?ms.map(m=>{
+    const ml=m.machine.toLowerCase(),groups=[];
+    // the nodes first, the machine's own board last, and on the board only what reads something
+    m.things.forEach(t=>{if(t.group==='board'&&(t.value===undefined||t.value===null))return;
+      let g=groups.find(x=>x.id===t.group);if(!g)groups.push(g={id:t.group,name:t.group==='board'?'The machine itself':t.group_name,list:[]});g.list.push(t)});
+    groups.sort((a,b)=>(a.id==='board')-(b.id==='board'));
+    const st=m.up===false?'down':mHot[ml]||'ok';
+    return `<article class="dvs-m ${st}" aria-label="${esc(m.machine)}">
+      <h2><i class="dvs-dot" aria-hidden="true"></i>${esc(m.machine)}
+        <span>${m.up===false?'not answering':m.here?'this hub':m.live?'live':'every minute'}</span></h2>
+      ${groups.map(g=>`<div class="dvs-g"><h3>${esc(g.name)}</h3>${g.list.map(t=>{
+        const h=hot[ml+'|'+t.id]||'';
+        return `<div class="dvs-t${h?' '+h:''}${t.onoff&&t.value?' lit':''}"><span>${esc(devSceneShort(t))}</span>
+          <b data-dvl="${esc(m.machine+'|'+t.id)}">${esc(devSceneVal(t))}</b></div>`}).join('')}</div>`).join('')
+        ||'<p class="mut">Nothing on this machine can be read yet.</p>'}
+    </article>`}).join('')
+    :`<p class="dvs-wait">No devices yet. Machines this hub sets up, and ESP32 boards it holds, show here. ${pInfo('Set a Raspberry Pi up from Devices, or add ESP32 boards to this hub. The warehouse demo in Devices has three zones to try.')}</p>`;
+  el.innerHTML=head+(DEVSCENE.edit?devSceneRulesHTML():'')+alarms+`<div class="dvs-grid">${cards}</div>`;
+  el.querySelectorAll('[data-dvs]').forEach(b=>b.onclick=()=>devSceneAct(b.dataset.dvs,b));
+  if(DEVSCENE.edit)devSceneRulesWire(el);
+}
+/* The alarms, as a list: the scene and Devices → Alarms draw the same rows. Ack buttons carry
+   data-dvs="ack" and data-id; the caller wires them to devSceneAct. */
+function devAlarmsHTML(al,loud){
+  return `<section class="dvs-alarms${loud?' loud':''}" aria-label="Alarms" aria-live="polite">
+      ${al.length?al.map(a=>`<div class="dvs-al ${esc(a.level)} ${esc(a.state)}${a.ack?' acked':''}">
+        <span class="dvs-al-i" aria-hidden="true">${a.state!=='active'?'◔':a.level==='alarm'?'⚠':'!'}</span>
+        <div class="dvs-al-t"><b>${esc(a.text)}</b>
+          <span>${esc(a.machine)} · ${a.state==='active'?`${esc(DEVSCENE_LEVEL[a.level]||a.level)} for ${devSceneAgo(a.held)}`
+            :`holding ${devSceneAgo(a.held)} of ${devSceneAgo(a.for)}`}${a.flow?` · mission ${esc(a.flow)} watches this`:''}
+            ${a.ack?` · seen by ${esc(a.ack.by)}`:''}</span></div>
+        ${a.state==='active'&&!a.ack?`<button class="endbtn" data-dvs="ack" data-id="${esc(a.id)}">Acknowledge</button>`:''}</div>`).join('')
+        :'<p class="dvs-clear">✓ No alarms. Every machine is answering and nothing is out of range.</p>'}</section>`;
+}
+async function devSceneAct(act,b){
+  if(act==='desk')return switchDesk(+b.dataset.n);
+  if(act==='app')return openApp('devices');
+  if(act==='rules'){DEVSCENE.edit=!DEVSCENE.edit;return devScenePaint()}
+  if(act==='ack'){b.disabled=true;
+    try{const r=await fetch('/api/devices/alarms/ack',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
+      const d=await r.json();if(!r.ok)toast(d.error||'That alarm could not be acknowledged',{kind:'err'})}
+    catch(e){toast(String(e.message||e),{kind:'err'})}
+    if(typeof devAlarmsLoad==='function')devAlarmsLoad();
+    return devSceneLoad()}
+}
+
+/* ---- the person's alarm rules (devboard.clean_rule), edited in place ---- */
+var DEVSCENE_WHEN={above:'is above',below:'is below',on:'is on',off:'is off',offline:'stops answering'};
+/* A door is open or shut, a pin high or low, the rest on or off: the words a person says. */
+function devSceneWhen(w,t){
+  if(t&&t.onoff&&(w==='on'||w==='off')){
+    if(/door/i.test(t.name))return w==='on'?'is open':'is shut';
+    if(t.kind==='gpio')return w==='on'?'is high':'is low';
+  }
+  return DEVSCENE_WHEN[w]||w;
+}
+function devSceneRuleWords(r){
+  const d=DEVSCENE.d||{},m=(d.machines||[]).find(x=>x.machine.toLowerCase()===String(r.machine).toLowerCase());
+  const t=m&&m.things.find(x=>x.id===r.item);
+  const what=r.when==='offline'?r.machine:(t?t.name:r.item)+' on '+r.machine;
+  return `${what} ${devSceneWhen(r.when,t)}${r.value!==undefined&&(r.when==='above'||r.when==='below')?' '+r.value+(t&&t.unit?' '+t.unit:''):''}${r.for?` for ${devSceneAgo(r.for)}`:''}`;
+}
+function devSceneRulesHTML(){
+  const d=DEVSCENE.d||{},rules=d.rules||[],ms=d.machines||[],f=DEVSCENE.form||(DEVSCENE.form={machine:(ms[0]||{}).machine||'',item:'',when:'above',value:'',for:'0',level:'alarm'});
+  const m=ms.find(x=>x.machine===f.machine)||ms[0]||{things:[]};
+  const t=m.things.find(x=>x.id===f.item)||m.things[0];
+  if(t&&!f.item)f.item=t.id;
+  const whens=f.when==='offline'?['offline']:t&&t.onoff?['on','off','offline']:['above','below','offline'];
+  if(whens.indexOf(f.when)<0)f.when=whens[0];
+  const opt=(v,l,sel)=>`<option value="${esc(v)}"${sel?' selected':''}>${esc(l)}</option>`;
+  return `<section class="dvs-rules" aria-label="Your alarms">
+    <h2>Your alarms ${pInfo('An alarm shows here while its condition holds, and clears by itself when it stops. Acknowledge only marks that you saw it. Missions that are on watch their own rules, and those show too.')}</h2>
+    ${rules.length?`<ul>${rules.map((r,i)=>`<li><span class="dvs-lv ${esc(r.level)}">${esc(DEVSCENE_LEVEL[r.level]||r.level)}</span>
+      <span>${esc(devSceneRuleWords(r))}</span><button class="linkbtn" data-dvr="del" data-i="${i}">Remove</button></li>`).join('')}</ul>`
+      :'<p class="mut">No alarms of your own yet.</p>'}
+    ${ms.length?`<div class="dvs-form">
+      <select data-f="machine" aria-label="Machine">${ms.map(x=>opt(x.machine,x.machine,x.machine===m.machine)).join('')}</select>
+      ${f.when!=='offline'?`<select data-f="item" aria-label="Thing">${m.things.map(x=>opt(x.id,x.name,t&&x.id===t.id)).join('')}</select>`:''}
+      <select data-f="when" aria-label="Condition">${whens.map(w=>opt(w,devSceneWhen(w,t),w===f.when)).join('')}</select>
+      ${f.when==='above'||f.when==='below'?`<input data-f="value" inputmode="decimal" value="${esc(f.value)}" placeholder="value" aria-label="Value">`:''}
+      <label>for <input data-f="for" inputmode="numeric" value="${esc(f.for)}" aria-label="Seconds it must hold"> s</label>
+      <select data-f="level" aria-label="Level">${opt('alarm','Alarm',f.level==='alarm')}${opt('warning','Warning',f.level==='warning')}</select>
+      <button class="wiz-next" data-dvr="add">Add alarm</button></div>`:''}</section>`;
+}
+function devSceneRulesWire(el){
+  el.querySelectorAll('[data-f]').forEach(x=>x.onchange=()=>{const f=DEVSCENE.form;f[x.dataset.f]=x.value;
+    if(x.dataset.f==='machine')f.item='';if(x.dataset.f==='machine'||x.dataset.f==='item'||x.dataset.f==='when')devScenePaint()});
+  el.querySelectorAll('[data-dvr]').forEach(b=>b.onclick=()=>{
+    const rules=((DEVSCENE.d||{}).rules||[]).slice();
+    if(b.dataset.dvr==='del')rules.splice(+b.dataset.i,1);
+    else{el.querySelectorAll('[data-f]').forEach(x=>DEVSCENE.form[x.dataset.f]=x.value);
+      const f=DEVSCENE.form,r={machine:f.machine,when:f.when,for:+f.for||0,level:f.level};
+      if(f.when!=='offline')r.item=f.item;
+      if(f.when==='above'||f.when==='below'){if(f.value===''||isNaN(+f.value))return toast('Give it a number to compare with',{kind:'warn'});r.value=+f.value}
+      rules.push(r)}
+    devSceneRulesSave(rules)});
+}
+async function devSceneRulesSave(rules){
+  try{const r=await fetch('/api/devices/alarms',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({alarms:rules})});
+    const d=await r.json();if(!r.ok)throw new Error(d.error||'Those alarms could not be saved');
+    if((d.dropped||[]).length)toast('Not kept: '+d.dropped.join('; '),{kind:'warn'});
+    if(DEVSCENE.d)DEVSCENE.d.rules=d.alarms}
+  catch(e){toast(String(e.message||e),{kind:'err'})}
+  devSceneLoad();
+}
+
+/* A value changed (device_live): the number moves in place, and the board is read again soon
+   after, so an alarm it raised shows without waiting for the next refresh. */
+function devSceneLive(ev){
+  if(!DEVSCENE.on||!DEVSCENE.d)return;
+  const m=(DEVSCENE.d.machines||[]).find(x=>x.machine===ev.machine);
+  (ev.events||[]).forEach(e=>{const t=m&&m.things.find(x=>x.id===e.item);if(!t)return;
+    t.value=e.value;t.at=e.at;
+    document.querySelectorAll(`#devscene [data-dvl="${CSS.escape(ev.machine+'|'+e.item)}"]`).forEach(b=>{
+      b.textContent=devSceneVal(t);const row=b.parentNode;row.classList.toggle('lit',!!(t.onoff&&t.value));
+      row.classList.remove('dvs-blink');void row.offsetWidth;row.classList.add('dvs-blink')})});
+  clearTimeout(DEVSCENE.soon);DEVSCENE.soon=setTimeout(devSceneLoad,900);
+}
+/* An alarm raised, cleared or acknowledged (server._alarms_judge). Off this scene a raised alarm
+   is a toast with the way to the board: the desktop that shows it, or the Devices app. */
+function devSceneAlarm(ev){
+  if(DEVSCENE.on)devSceneLoad();
+  const a=ev.alarm||{};
+  if(ev.phase!=='raised')return;
+  const seen=DEVSCENE.on&&!document.body.classList.contains('has-win');
+  if(seen||a.level!=='alarm')return;
+  const n=typeof deskShowing==='function'?deskShowing('devices'):0;
+  toast(`⚠ ${a.machine}: ${a.text}`,{kind:'err',label:'See devices',ms:12000,go:()=>n?switchDesk(n):openApp('devices')});
+}
+// first paint: 01b ran before this file existed, so the scene starts itself (as 01c and 01g do)
+if(typeof IMMERSIVE!=='undefined'&&IMMERSIVE.on&&immersiveSceneNow()==='devices')setTimeout(devSceneStart,0);
 /* ================= themes ================= */
 // A theme is not just colors — it can carry a web font and extra CSS that restyles the whole
 // desktop (taskbar, windows, icons, widgets). Built-in themes:
@@ -12370,7 +12745,12 @@ function buildPager(){
     const td=typeof taskDeskOf==='function'?taskDeskOf(i):null;
     if(td){b.classList.add('task');if(!td.done)b.classList.add('run');
       const l=document.createElement('span');l.className='pgt';l.textContent=td.title.slice(0,14);b.append(l)}
+    // the scene each desktop shows (01b immersiveSceneOf), when they are not all the same one
+    const sc=typeof immersiveSceneOf==='function'&&IMMERSIVE.on?immersiveSceneOf(i):'';
+    if(sc&&deskScenesDiffer()){const g=document.createElement('span');g.className='pgs';g.textContent=DESK_SCENE_GLYPH[sc]||'·';
+      g.setAttribute('aria-hidden','true');b.append(g);b.dataset.scene=sc}
     b.title=(td?`Desktop ${i}: “${td.title}”, ${td.done?'done':'working'}`:`Desktop ${i}`)
+      +(sc&&deskScenesDiffer()?` · ${IMMERSIVE_NAMES[sc]||sc}`:'')
       +(names.length?` — ${names.join(', ')}`:' — empty')
       +'\nclick to switch · right-click to send the active window here · drop a window to move it';
     b.classList.toggle('has',names.length>0);
@@ -12395,6 +12775,11 @@ function buildPager(){
   if(DESKS<6){const a=document.createElement('button');a.className='pgb add';a.textContent='+';a.title='add a desktop';
     a.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager()};p.appendChild(a)}
 }
+var DESK_SCENE_GLYPH={island:'⌂',devices:'▦',aurora:'✦',movement:'◷',crew:'☺',office:'▤',hq:'▤',world:'❀',mind:'✺'};
+function deskScenesDiffer(){
+  if(typeof immersiveSceneOf!=='function')return false;
+  const s=new Set();for(let i=1;i<=DESKS;i++)s.add(immersiveSceneOf(i));return s.size>1;
+}
 function deskVisible(w){return (w.desk||1)===curDesk}
 function applyDeskVisibility(){
   WM.wins.forEach(w=>{
@@ -12411,7 +12796,10 @@ function switchDesk(n){
   // outgoing windows slide away, incoming slide in from the travel direction
   const out=[];WM.wins.forEach(w=>{if(deskVisible(w)&&!w.min)out.push(w)});
   out.forEach(w=>Motion.run(w.el,[{transform:'none',opacity:1},{transform:`translateX(${-46*dir}px)`,opacity:0}],{duration:200,easing:EASE.in}));
+  const sceneWas=typeof immersiveSceneNow==='function'?immersiveSceneNow():'';
   curDesk=n;localStorage.setItem('curDesk',n);
+  // each desktop shows its own scene: the Town on one, the Devices board on another
+  if(typeof immersiveDeskChanged==='function')immersiveDeskChanged(sceneWas);
   // In session mode a desktop is a real sway workspace, so external windows move
   // with it instead of following you everywhere. The shell comes along too.
   if(typeof PLATFORM!=='undefined'&&PLATFORM.mode==='de')
@@ -14692,7 +15080,7 @@ window.addEventListener('message',e=>{
    `bento help --all`, and each place here has a verb there (bento telegram, bento flow,
    bento job, bento mail…). `var`, not `let`: the bundle is one script. */
 var APP_WORDS={
-  devices:['device','devices','device hub','machines','pi','raspberry pi','network','inventory','fleet','zero','remove bento','uninstall','demo','warehouse','simulation','simulated','esp32','esphome','sensors','try it'],
+  devices:['device','devices','device hub','machines','pi','raspberry pi','network','inventory','fleet','zero','remove bento','uninstall','demo','warehouse','simulation','simulated','esp32','esphome','sensors','try it','alarms','alarm','faults','fault','live'],
   jobs:['mission','missions','job','jobs','flow','flows','workflow','workflows','fabric','orchestrator','recipe'],
   settings:['preferences','prefs','config','configuration','options'],
   timetravel:['undo','rewind','time machine','time travel','go back','revert','restore','fork','checkpoint','history of changes'],
@@ -17464,6 +17852,11 @@ function handle(ev){
       break;
     case 'device_live':   // a board's or a pin's change, as it happened (server._device_observe)
       if(typeof netLive==='function')netLive(ev);
+      if(typeof devSceneLive==='function')devSceneLive(ev);
+      break;
+    case 'device_alarm':   // an alarm raised, cleared or acknowledged (server._alarms_judge, devboard.py)
+      if(typeof devSceneAlarm==='function')devSceneAlarm(ev);
+      if(typeof devAlarmsLive==='function')devAlarmsLive(ev);
       break;
     case 'device_event':   // a machine moved, stopped answering, came back, updated (server._ties_check)
       if(typeof devEventLive==='function')devEventLive(ev);
@@ -19287,12 +19680,12 @@ function setTab(body,all){
          stated in the row, and so is the terminal's answer: none. */
       /* A small machine's own screen offers only the scenes it draws (01b-immersive.js
          liteScreen): a choice that changes nothing would be a dead control. */
-      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town']]
+      pRow('Scene',pSelect('s-imm-scene',[['aurora','Aurora'],['movement','Movement'],['crew','Crew at work'],['office','Office'],['hq','Office HQ (3D)'],['world','World (experimental)'],['mind','Mind'],['island','Town'],['devices','Devices']]
             .filter(o=>!liteScreen()||LITE_SCENES[o[0]]),
           (typeof IMMERSIVE!=='undefined'&&immersiveSceneNow())||'aurora'),
-        {desc:liteScreen()?'This small machine shows Aurora or Office on its own screen.':'What the wallpaper shows behind your windows.',
-         more:liteScreen()?'The other scenes draw in 3D or many times a second, which is too much for a machine this size. A phone or laptop that opens Bento here can show any of them. To draw them here anyway, run bento profile full.':'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs. Town puts your office in a place you choose, an island, a canal city, a castle or a forest. Each room is a building that opens while it works.',
-         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections island town venice canal castle forest railroad train builder'}),
+        {desc:liteScreen()?'This small machine shows Aurora, Office or Devices on its own screen.':'What this desktop shows behind your windows. Each desktop can show its own.',
+         more:liteScreen()?'The other scenes draw in 3D or many times a second, which is too much for a machine this size. A phone or laptop that opens Bento here can show any of them. To draw them here anyway, run bento profile full.':'Aurora is a sky that follows the day. Office is the whole office behind your windows. Movement draws at most twenty times a second, pauses when hidden, holds still under reduced motion and uses no blur. Crew shows only the specialists you actually have. World is an experiment: your agents get feelings from what they really do, and all of it sleeps when you pick another scene. Mind draws every memory, fact, mission and run as a strand from your lead, and sparks only when something runs. Town puts your office in a place you choose, an island, a canal city, a castle or a forest. Each room is a building that opens while it works. Devices is every machine and sensor this hub looks after, live, with its alarms. Pick a scene on each desktop and switch between them from the desktop numbers.',
+         f:'scene movement watch automatic aurora wallpaper live crew characters avatars figures specialists animated world sims feelings emotions experimental mind brain neural connections island town venice canal castle forest railroad train builder devices sensors alarms faults hub floor desktop'}),
       pRow('Wallpaper','<button class="endbtn" onclick="openApp(\'personalize\')">Personalize</button><button class="endbtn" onclick="wpSystem()">Use system</button>',
         {desc:'Make one with AI, pick one from the gallery, or use your system’s.',f:'wallpaper background'}),
       pRow('Fullscreen','<button class="endbtn" onclick="toggleFullscreen()">Toggle (F11)</button>',{f:'fullscreen'}),
@@ -38108,13 +38501,15 @@ async function renderDevices(body,w){
      departments and people, and who each Zero and team talks to (24r-topology.js). */
   pb.innerHTML=`<div class="seg dev-views" role="tablist">
       <button role="tab" data-dv="physical">Physical</button><button role="tab" data-dv="logical">Logical</button></div>
-    <div class="dev-physical"><div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
+    <div class="dev-physical"><section class="dev-alarms" aria-label="Alarms" hidden><h3>Alarms</h3><div class="dev-al-box"></div></section>
+    <div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
     <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section>
     <section class="dev-demo" aria-label="Warehouse demo"><h3>Try it in a simulation</h3><div class="dev-demo-box"><p class="mut">…</p></div></section></div>
     <div class="dev-logical" hidden><p class="mut">…</p></div>`;
   pb.querySelectorAll('[data-dv]').forEach(b=>b.onclick=()=>devViewSet(b.dataset.dv));
   let v='physical';try{v=localStorage.getItem('devices.view')||'physical'}catch(e){}
   devViewSet(v);
+  devAlarmsLoad();
   await netPaint();
   devEventsLoad();
   if(w)winTick(w,devDemoLoad,2500,{key:'demo'});else devDemoLoad();
@@ -38129,13 +38524,43 @@ async function devViewSet(v){
   lg.forEach(x=>{x.classList.add('zm-host');x.dataset.zm='devlogical';zmMount(x,zmLogical(TOPO.tree),{label:'The logical map'})});
 }
 
+/* Alarms: what is wrong on your devices now (devboard.py), the same rows as the Devices scene.
+   Shown once there is something to watch: a machine set up here, or boards of its own. The way to
+   the live board is the desktop that shows it, or this desktop made to. */
+var DEVAL={d:null};
+async function devAlarmsLoad(){
+  const secs=[...document.querySelectorAll('.dev-alarms')];if(!secs.length)return;
+  try{DEVAL.d=await apiJSON('/api/devices/board')}catch(e){secs.forEach(x=>x.hidden=true);return}
+  devAlarmsPaint();
+}
+function devAlarmsPaint(){
+  const d=DEVAL.d||{},al=d.alarms||[],ms=d.machines||[];
+  const loud=al.filter(a=>a.state==='active'&&a.level==='alarm'&&!a.ack).length,n=typeof deskShowing==='function'?deskShowing('devices'):0;
+  document.querySelectorAll('.dev-alarms').forEach(sec=>{
+    sec.hidden=!ms.length;if(!ms.length)return;
+    const box=sec.querySelector('.dev-al-box');
+    box.innerHTML=devAlarmsHTML(al,loud)+`<div class="dev-acts">
+      <button class="endbtn" data-dva="board">${n?`See them live on Desktop ${n}`:'Show them live on this desktop'}</button>
+      <button class="endbtn" data-dva="rules">Your alarms…</button></div>`;
+    box.querySelectorAll('[data-dvs]').forEach(b=>b.onclick=()=>devSceneAct(b.dataset.dvs,b));
+    box.querySelectorAll('[data-dva]').forEach(b=>b.onclick=()=>{
+      if(b.dataset.dva==='rules')DEVSCENE.edit=true;
+      const k=deskShowing('devices');
+      if(k&&k!==deskNow())return switchDesk(k);
+      if(!k)setImmersiveScene('devices');else devScenePaint();
+      // the board is behind this window on this desktop: tuck the windows here away so it is seen
+      WM.wins.forEach(w=>{if(!w.min&&(w.desk||1)===deskNow())minimizeWin(w)})})});
+}
+function devAlarmsLive(){if(document.querySelector('.dev-alarms'))devAlarmsLoad()}
+
 /* Events: what happened to the machines here, newest first (devevents.py). Asked for as "in the
    devices section we need to have events": a Pi that moved to another address, stopped answering
    or came back, updated, had its screen refreshed, and every step done to a machine from here.
    A machine's own row has the same list for it alone (Events, 24p-ties.js). */
 var DEVEV={list:null,all:false};
 var DEVEV_ICON={moved:'⇄',offline:'○',online:'●',updated:'⬆',refreshed:'⟳',failed:'✗',installed:'✓',secured:'🔒',
-  hardware:'▦',found:'＋',gone:'－',power:'⚡',board:'▦'};
+  hardware:'▦',found:'＋',gone:'－',power:'⚡',board:'▦',
+  alarm:'⚠',cleared:'✓',acknowledged:'👁'};
 function devEventsList(list){
   const when=s=>new Date(s*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
   return `<ul class="dev-ev">${list.map(e=>`<li class="dev-ev-${esc(e.event)}${e.failed?' bad':''}">

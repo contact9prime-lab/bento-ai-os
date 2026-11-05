@@ -10,7 +10,12 @@ function buildPager(){
     const td=typeof taskDeskOf==='function'?taskDeskOf(i):null;
     if(td){b.classList.add('task');if(!td.done)b.classList.add('run');
       const l=document.createElement('span');l.className='pgt';l.textContent=td.title.slice(0,14);b.append(l)}
+    // the scene each desktop shows (01b immersiveSceneOf), when they are not all the same one
+    const sc=typeof immersiveSceneOf==='function'&&IMMERSIVE.on?immersiveSceneOf(i):'';
+    if(sc&&deskScenesDiffer()){const g=document.createElement('span');g.className='pgs';g.textContent=DESK_SCENE_GLYPH[sc]||'·';
+      g.setAttribute('aria-hidden','true');b.append(g);b.dataset.scene=sc}
     b.title=(td?`Desktop ${i}: “${td.title}”, ${td.done?'done':'working'}`:`Desktop ${i}`)
+      +(sc&&deskScenesDiffer()?` · ${IMMERSIVE_NAMES[sc]||sc}`:'')
       +(names.length?` — ${names.join(', ')}`:' — empty')
       +'\nclick to switch · right-click to send the active window here · drop a window to move it';
     b.classList.toggle('has',names.length>0);
@@ -35,6 +40,11 @@ function buildPager(){
   if(DESKS<6){const a=document.createElement('button');a.className='pgb add';a.textContent='+';a.title='add a desktop';
     a.onclick=()=>{DESKS++;localStorage.setItem('desks',DESKS);buildPager()};p.appendChild(a)}
 }
+var DESK_SCENE_GLYPH={island:'⌂',devices:'▦',aurora:'✦',movement:'◷',crew:'☺',office:'▤',hq:'▤',world:'❀',mind:'✺'};
+function deskScenesDiffer(){
+  if(typeof immersiveSceneOf!=='function')return false;
+  const s=new Set();for(let i=1;i<=DESKS;i++)s.add(immersiveSceneOf(i));return s.size>1;
+}
 function deskVisible(w){return (w.desk||1)===curDesk}
 function applyDeskVisibility(){
   WM.wins.forEach(w=>{
@@ -51,7 +61,10 @@ function switchDesk(n){
   // outgoing windows slide away, incoming slide in from the travel direction
   const out=[];WM.wins.forEach(w=>{if(deskVisible(w)&&!w.min)out.push(w)});
   out.forEach(w=>Motion.run(w.el,[{transform:'none',opacity:1},{transform:`translateX(${-46*dir}px)`,opacity:0}],{duration:200,easing:EASE.in}));
+  const sceneWas=typeof immersiveSceneNow==='function'?immersiveSceneNow():'';
   curDesk=n;localStorage.setItem('curDesk',n);
+  // each desktop shows its own scene: the Town on one, the Devices board on another
+  if(typeof immersiveDeskChanged==='function')immersiveDeskChanged(sceneWas);
   // In session mode a desktop is a real sway workspace, so external windows move
   // with it instead of following you everywhere. The shell comes along too.
   if(typeof PLATFORM!=='undefined'&&PLATFORM.mode==='de')

@@ -1124,6 +1124,8 @@ async def _device_observe(owner: str, machine: str, events: list[dict], live: bo
     with contextlib.suppress(Exception):
         await _tie_tell({"type": "device_live", "machine": machine,
                          "events": [{k: e.get(k) for k in ("item", "value", "at")} for e in events]}, owner)
+    with contextlib.suppress(Exception):
+        await _alarms_judge(owner, say=say)
     with usersmod.as_user(owner):
         rules = state["store"].flow_triggers(kind="device", enabled_only=True)
         if not rules:
@@ -1139,6 +1141,8 @@ async def _device_machine(owner: str, machine: str, up: bool) -> None:
             rules = state["store"].flow_triggers(kind="device", enabled_only=True)
             for rule, ev in _devwatch().machine(owner, rules, machine, up):
                 await _device_fire(owner, rule, ev)
+    with contextlib.suppress(Exception):
+        await _alarms_judge(owner)
 
 
 async def _device_ticks():
@@ -1146,6 +1150,9 @@ async def _device_ticks():
     whose sensor reports only on change) fires now, not at its next reading."""
     while True:
         await asyncio.sleep(5)
+        for owner in _alarm_owners():
+            with contextlib.suppress(Exception):
+                await _alarms_judge(owner)
         with contextlib.suppress(Exception):
             for owner in {k[0] for k in _DEV_LAST}:
                 with usersmod.as_user(owner):
@@ -1184,6 +1191,114 @@ async def _device_fire(owner: str, rule: dict, ev: dict) -> None:
         with contextlib.suppress(Exception):
             await _start_flow(flow, text, origin={"surface": "device", "ref": f"{machine}/{c.get('item') or ''}"},
                               trigger_id=rule["id"])
+
+
+# The device board (devboard.py): every machine's things as last heard, and the alarms among them.
+# Judged after every change, every few seconds by _device_ticks, and when a machine stops or starts
+# answering; a raised and a cleared alarm are each a line in Devices → Events and an event on the screens.
+
+_ALARMS = None
+
+
+def _alarms():
+    global _ALARMS
+    if _ALARMS is None:
+        from . import devboard
+        _ALARMS = devboard.Alarms()
+    return _ALARMS
+
+
+def _board_machines(owner: str) -> list[dict]:
+    """The machines whose things this account sees on its board: the ones this hub set up for it
+    (Zeros), and this hub's own boards for the machine and its admins. Reads what is kept here."""
+    from . import devio, devtrig, teamlink
+    from . import ties as tiesmod
+    from . import zero as zeromod
+
+    def things(items):
+        # an ESP32 node's things are grouped under the node (esp.<node>), the rest under the board
+        groups = {i["id"]: i.get("name") or i["id"] for i in items
+                  if str(i.get("id") or "").startswith("esp.") and i["id"].count(".") == 1}
+        out = []
+        for i in items:
+            if not (i.get("id") and devio.GET_ID.fullmatch(i["id"]) and devtrig.domain_of(i["id"]) != "text_sensor"):
+                continue
+            g = ".".join(i["id"].split(".")[:2]) if i["id"].startswith("esp.") else "board"
+            t = {"id": i["id"], "name": i.get("name") or i["id"], "unit": i.get("unit") or "",
+                 "kind": devtrig.domain_of(i["id"]) or i.get("kind") or "", "onoff": devtrig.onoff(i["id"], ""),
+                 "group": g, "group_name": groups.get(g) or ("This board" if g == "board" else g)}
+            if isinstance(i.get("value"), (int, float, bool)):
+                t["value"] = i["value"]
+            out.append(t)
+        return out
+    out = []
+    if owner in _dev_here_owners():
+        with contextlib.suppress(Exception):
+            here = _here_row()
+            if (here.get("hardware") or {}).get("items"):
+                out.append({"machine": here["display"], "key": "here", "here": True, "up": True, "live": True,
+                            "things": things(here["hardware"]["items"])})
+    for lk in teamlink._load()["links"]:
+        if zeromod.ships_to(lk) and (lk.get("owner") or "") == owner:
+            items = ((tiesmod.inventory_row(lk) or {}).get("hardware") or {}).get("items") or []
+            out.append({"machine": lk["label"], "key": lk["id"], "here": False, "up": _TIE_UP.get(lk["id"]),
+                        "live": time.time() - _DEV_LIVE.get(lk["label"].lower(), 0) < DEV_LIVE_S,
+                        "things": things(items)})
+    return out
+
+
+def _alarm_rules(owner: str) -> list[dict]:
+    """An account's alarm rules, and the device rules of its missions that are on."""
+    from . import devboard
+    out = []
+    with usersmod.as_user(owner):
+        for a in (state["cfg"].get("device_alarms") or []):
+            with contextlib.suppress(ValueError):
+                c = devboard.clean_rule(a)
+                out.append({"id": c["id"], "config": c, "level": c["level"], "source": "alarm"})
+        with contextlib.suppress(Exception):
+            for r in state["store"].flow_triggers(kind="device", enabled_only=True):
+                out.append({"id": f"m{r['id']}", "config": r.get("config") or {}, "level": "alarm",
+                            "source": "mission", "flow": r.get("flow") or ""})
+    return out
+
+
+async def _alarms_judge(owner: str, say: bool = True, machines: list | None = None) -> list[dict]:
+    """The alarms this account has now; a raised or cleared one is said once."""
+    machines = _board_machines(owner) if machines is None else machines
+    names, up = {}, {}
+    for m in machines:
+        ml = m["machine"].lower()
+        names[(ml, "")] = (m["machine"], "")
+        up[ml] = m.get("up")
+        for t in m["things"]:
+            names[(ml, t["id"])] = (t["name"], t["unit"])
+    last = {(k[1], k[2]): {**v, "machine": names.get((k[1], ""), (k[1], ""))[0]}
+            for k, v in list(_DEV_LAST.items()) if k[0] == owner and (k[1], "") in names}
+    alarms, raised, cleared = _alarms().judge(owner, _alarm_rules(owner), last, up, names)
+    for a in raised:
+        if say:
+            await _device_event(owner, "alarm", a["machine"], f"Alarm on {a['machine']}: {a['text']}",
+                                alarm=a["id"], level=a["level"])
+        with contextlib.suppress(Exception):
+            await _tie_tell({"type": "device_alarm", "phase": "raised", "alarm": a}, owner)
+    for a in cleared:
+        if say:
+            await _device_event(owner, "cleared", a["machine"], f"Cleared on {a['machine']}: {a['text']}",
+                                alarm=a["id"])
+        with contextlib.suppress(Exception):
+            await _tie_tell({"type": "device_alarm", "phase": "cleared", "alarm": a}, owner)
+    return alarms
+
+
+def _alarm_owners() -> set:
+    from . import teamlink
+    from . import zero as zeromod
+    out = {k[0] for k in _DEV_LAST}
+    for lk in teamlink._load()["links"]:
+        if zeromod.ships_to(lk):
+            out.add(lk.get("owner") or "")
+    return out
 
 
 async def _ties_check() -> list[dict]:
@@ -3337,6 +3452,11 @@ async def api_platform(request: Request):
     zs = _zero().state(state.machine_cfg())
     state_["zero"] = ({"hub": zs.get("hub", ""), "on_hub": zs.get("execution") == "hub"}
                       if zs else {})
+    # A hub with devices (Zeros it set up, or ESP32 boards of its own) opens a desktop on the
+    # Devices scene (01h-devscene.js): the floor live, with its alarms, a desktop away from the Town.
+    with contextlib.suppress(Exception):
+        state_["device_hub"] = bool(_board_machines(usersmod.current() or "")
+                                    or (usersmod.is_admin(usersmod.current() or "") and _board_machines("")))
     # The windows that are live streams of real processes: the shared browser, terminal
     # sessions that outlive their window, and native apps projected into a window. Each
     # says whether it can run here and, if not, why and which component would fix it.
@@ -15308,6 +15428,63 @@ async def api_network_hardware(body: dict):
         return JSONResponse({"error": got.get("error") or "no answer"}, 502)
     return {"ok": True, "name": got["name"], "items": len(got["hardware"]["items"]),
             "events": [t for _e, t in got["events"]], "dropped": got["dropped"]}
+
+
+@app.get("/api/devices/board")
+async def api_device_board():
+    """The Devices scene and Devices → Live: every machine you have, each thing as last heard,
+    and the alarms now (devboard.py). An admin sees the machine's own as well. Asks no machine."""
+    me = usersmod.current() or ""
+    whose = sorted({"", me}) if usersmod.is_admin(me) else [me]
+    machines, alarms = [], []
+    for o in whose:
+        ms = _board_machines(o)
+        for m in ms:
+            ml = m["machine"].lower()
+            for t in m["things"]:
+                ev = _DEV_LAST.get((o, ml, t["id"]))
+                if ev:
+                    t["value"], t["at"] = ev.get("value"), ev.get("at")
+        alarms += await _alarms_judge(o, machines=ms)
+        machines += [m for m in ms if m["machine"] not in {x["machine"] for x in machines}]
+    seen, out = set(), []
+    for a in alarms:
+        if a["id"] not in seen:
+            seen.add(a["id"])
+            out.append(a)
+    return {"machines": machines, "alarms": out, "rules": state["cfg"].get("device_alarms") or [],
+            "at": time.time()}
+
+
+@app.post("/api/devices/alarms/ack")
+async def api_device_alarm_ack(body: dict):
+    """Acknowledge a raised alarm: a mark saying who saw it, gone with the alarm. Fixes nothing."""
+    me = usersmod.current() or ""
+    aid = str((body or {}).get("id") or "")[:120]
+    by = _account_name(me) if usersmod.enabled() else "you"
+    for o in (sorted({"", me}) if usersmod.is_admin(me) else [me]):
+        got = _alarms().ack(o, aid, by or "someone")
+        if got:
+            await _device_event(o, "acknowledged", got["machine"],
+                                f"{by or 'Someone'} acknowledged on {got['machine']}: {got['text']}", alarm=aid)
+            await _tie_tell({"type": "device_alarm", "phase": "ack", "alarm": got}, o)
+            return {"ok": True, "alarm": got}
+    return JSONResponse({"error": "that alarm is not raised now"}, 404)
+
+
+@app.put("/api/devices/alarms")
+async def api_device_alarms_set(body: dict):
+    """Your alarm rules (devboard.clean_rule), all of them at once, as the scene's editor sends them."""
+    from . import devboard
+    cfg = state["cfg"]
+    kept, dropped = devboard.clean_rules((body or {}).get("alarms"))
+    cfg["device_alarms"] = kept
+    cfgmod.save_config(cfg)
+    _ledger("device.alarms", "device:alarms", f"{len(kept)} alarm rules")
+    for o in _alarm_owners() | {usersmod.current() or ""}:
+        with contextlib.suppress(Exception):
+            await _alarms_judge(o)
+    return {"ok": True, "alarms": kept, "dropped": dropped}
 
 
 @app.get("/api/devices/readings")

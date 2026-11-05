@@ -3411,6 +3411,25 @@ Bento, to play around, for demos". Five rules:
   that mission, so a fresh demo must show it. It reads zone-cold and sets only cold room B's compressor; made once
   (`mission.json`), and a hub that already has one by that name keeps its own.
 
+**A hub with devices has a Devices scene, and each desktop shows its own scene** (`agentos/devboard.py`,
+`server._alarms_judge`/`_board_machines`, `/api/devices/board|alarms|alarms/ack`, `01h-devscene.js`,
+`39-devscene.css`, `immersiveSceneOf` in 01b, `bento network board`; `tests/test_device_board.py`). Asked for as
+"the device screen should be there on the hub, so I can see all the devices in real time along with alarms … like a
+device hub instead of the town … the desktops could be used for switching". Five rules:
+- **An alarm is a state judged on the newest reading**, never an event: raised when it has held its `for`, cleared
+  by itself, one Events line each. Rules are the person's `device_alarms` (a USER_KEY, devtrig's closed set plus a
+  level), the device rules of missions that are on, a machine set up here not answering, and a sensor with no number.
+  Acknowledge is a mark that goes with the alarm and fixes nothing. Nothing on the board switches anything.
+- **Judged after every change, every 5 s (`_device_ticks`) and on offline/online**, in memory like devtrig's Watch.
+- **A scene per desktop**: desktop 1's is still `immersive.scene`, the others `immersive.scene.d<n>`. A desktop never
+  given one shows the browser's, except on a device hub (`/api/platform` `device_hub`): desktop 2 is Devices, and a
+  browser that never chose gets Devices on 1 and the Town on 2. Choosing for the first time pins every other desktop's
+  scene first, so choosing on desktop 2 never moves desktop 1. `switchDesk` calls `immersiveDeskChanged`.
+- **`curDesk`/`DESKS` are `let`s in 03**: 01b reads them through `deskNow()`/`deskCount()` in a try. And 01h starts
+  itself at load, as 01c and 01g do: the first paint runs before it exists.
+- **Words and numbers, no frame loop**: a 4 s refresh that skips while hidden or covered, values moved in place by
+  `device_live`. It is in `LITE_SCENES`, so a Pi's own screen can show it.
+
 **A Zero belongs to an account, and is light** (`provision.zero_key(owner)`, `enable(owner=)`,
 `server._zero_for`, `00k-zeroface.js`, `face.buddy`; `tests/test_zero_accounts.py`, live run
 `packaging/dev/provision-e2e/zero_accounts_run.py`). Asked as "integrations per user, each with their

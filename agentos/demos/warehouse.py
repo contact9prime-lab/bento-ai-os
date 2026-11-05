@@ -84,6 +84,21 @@ MISSION = {
         {"kind": "device", "cooldown_secs": 60, "config": {"machine": "zone-cold", "when": "on", "for": 120,
                                                            "item": "esp.cold-2.binary_sensor.cold_room_door"}}],
 }
+# The alarms the hub watches the floor for (devboard.py), shown on its Devices scene: each "cause
+# trouble" button on the floor raises one. A person's own edits stay (setdefault).
+ALARMS = [
+    {"machine": "zone-cold", "item": "esp.cold-2.switch.compressor", "when": "off", "for": 5, "level": "alarm"},
+    {"machine": "zone-cold", "item": "esp.cold-1.sensor.cold_room_temperature", "when": "above", "value": -15,
+     "for": 20, "level": "alarm"},
+    {"machine": "zone-cold", "item": "esp.cold-1.binary_sensor.cold_room_door", "when": "on", "for": 30,
+     "level": "warning"},
+    *({"machine": "zone-dock", "item": f"esp.dock-1.binary_sensor.dock_door_{i}", "when": "on", "for": 30,
+       "level": "warning"} for i in (1, 2, 3)),
+    {"machine": "zone-dock", "item": "esp.charge-1.sensor.forklift_battery", "when": "below", "value": 20,
+     "level": "warning"},
+    *({"machine": "zone-aisle", "item": f"esp.{n}.sensor.aisle_temperature", "when": "above", "value": 33,
+       "for": 60, "level": "warning"} for n in ("aisle-1", "aisle-2")),
+]
 SOUL = """You are Aria. You look after a warehouse from this hub. Three Raspberry Pis, one per zone, each
 look after ESP32 nodes: zone-cold (cold rooms A and B), zone-dock (the loading dock and the forklift
 bay) and zone-aisle (aisles 1-6 and 7-12). You read them with device_get and switch them with
@@ -333,6 +348,7 @@ def _config(m: str, brain: dict) -> None:
                              "providers": {"custom": {"enabled": True, "base_url": f"http://127.0.0.1:{BRAIN}/v1",
                                                       "models": [SCRIPTED.split("/", 1)[1]]}}})
         cfg["setup_complete"] = True
+        cfg.setdefault("device_alarms", ALARMS)
         cfg["provision"] = {**(cfg.get("provision") or {}), "zero_updates": "off"}
         soul = home / "soul.md"
         if not soul.exists():

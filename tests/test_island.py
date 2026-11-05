@@ -228,7 +228,7 @@ def test_a_drawing_of_the_3d_office_and_nothing_more():
     assert "look!=='3d'&&look!=='island'" in k3
     # the scene is wired where Office HQ is, and Settings offers it
     imm = (JS / "01b-immersive.js").read_text()
-    assert "'mind','island'];" in imm and "OFFICE_SCENE.island=isl;OFFICE_SCENE.hq=hq;officeSceneStart()" in imm
+    assert "'mind','island'," in imm.split("var IMMERSIVE_SCENES=")[1].split("\n")[0] and "OFFICE_SCENE.island=isl;OFFICE_SCENE.hq=hq;officeSceneStart()" in imm
     assert "['island','Town']" in (JS / "11-settings.js").read_text()
     d = (JS / "24d-office.js").read_text()
     assert "OFFICE_SCENE.island=sc==='island'" in d.strip().splitlines()[-1]

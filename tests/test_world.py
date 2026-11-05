@@ -337,7 +337,7 @@ def test_from_words_says_it_matched():
 def test_the_scene_is_a_scene_and_nothing_else():
     js = ROOT / "agentos" / "ui" / "src" / "js"
     imm = (js / "01b-immersive.js").read_text()
-    assert "'world'" in imm.split("IMMERSIVE_SCENES")[1].split("\n")[0]
+    assert "'world'" in imm.split("var IMMERSIVE_SCENES=")[1].split("\n")[0]
     w = (js / "01e-world.js").read_text()
     assert "/api/world/enter" in w and "/api/world/leave" in w and "/api/world/beat" in w
     assert "import('/assets/three.module.min.js')" in w, "three.js is ours and loads only here"
