@@ -113,7 +113,9 @@ def test_the_lead_hands_work_to_a_department_through_the_gate(tmp_path, monkeypa
         "department": "Sales", "task": "find ten clinics", "_desk": "some-other-flow",
         "_conv": "someone-elses-chat"}))
     assert ok and "Ten clinics" in out and "Sales · ok" in out
-    assert ran == [(desk, "find ten clinics", {"surface": "chat", "ref": "Sales"}, "conv-1")]
+    head = next(d for d in company.departments(c, store) if d["name"] == "Sales").get("lead") or ""
+    assert ran == [(desk, "find ten clinics", {"surface": "chat", "ref": "Sales", "department": "Sales",
+                                               "head": head}, "conv-1")]
     rows = store.audit_rows(limit=5) if hasattr(store, "audit_rows") else None
     if rows is not None:
         assert any(r.get("resource") == f"agent:flow/{desk}" for r in rows)
@@ -425,3 +427,47 @@ def test_who_you_are_reaches_every_forwarded_turn():
     assert "identity_note(cfg, store, company=False)" in door
     co = (ROOT / "agentos/company.py").read_text()
     assert "def profile_note(" in co
+
+
+def test_the_desk_master_knows_who_can_run_code_and_keeps_the_scope(tmp_path):
+    """Measured on the owner's machine: asked to RUN five backtests, the Research desk told its
+    head "write a TEST PLAN (no code runs needed)", because nobody there could run code, and
+    asked a data analyst with no write or code tool to write a cleaned CSV. The master now
+    hears what each person can do, keeps the person's scope, and has them ask for the ability."""
+    c, store, tb = _company(tmp_path)
+    store.save_subagent({"name": "coder", "soul": "You code.", "tools": ["run_python", "read_file"]})
+    store.save_subagent({"name": "reader", "soul": "You read.", "tools": ["read_file", "save_report"]})
+    p = tb.fabric._master_persona({"name": "desk", "mission": "m", "roster": ["coder", "reader"]})
+    assert "coder: You code.  [can run code, read files; cannot use a shell, write files]" in p
+    assert "reader: You read.  [can read files; cannot run code, use a shell, write files]" in p
+    assert "a plan is not a result" in p and "request_capability" in p and "send a step back" in p
+
+
+def test_a_department_run_says_which_chat_and_head_it_is_for(tmp_path, monkeypatch):
+    """Reported as "the hand-over happened but I can't see it in the town or the office, and
+    what the other department is acting on is not known". The desk's flow_start now names the
+    chat that asked, the department and its head, so the chat card follows the run and the
+    Office walks the work to that head; a working specialist's desk stays lit for the whole run."""
+    c, store, tb = _company(tmp_path)
+    seen = []
+
+    async def emit(run_id, event, payload, persist=True):
+        seen.append((event, payload))
+    monkeypatch.setattr(tb.fabric, "_emit", emit)
+
+    async def go():
+        try:
+            await tb.fabric.department_task("Sales", "find ten clinics", conversation_id="c1", decided=True)
+        except Exception:
+            pass                              # no brain here: the run fails after it starts
+    asyncio.run(go())
+    start = next(p for e, p in seen if e == "flow_start")
+    head = next(d for d in company.departments(c, store) if d["name"] == "Sales").get("lead") or ""
+    assert start["conversation_id"] == "c1" and start["department"] == "Sales" and start["head"] == head
+    office = (ROOT / "agentos/ui/src/js/24d-office.js").read_text()
+    live = office.split("function officeLive(p){")[1].split("\n}")[0]
+    assert "O.runs" in live, "a run still open keeps its desk lit"
+    assert "label==='department_task'" in office and "room.lead" in office
+    assert "e==='thinking'" in office and "ev.detail" in office
+    hand = (ROOT / "agentos/ui/src/js/10a-handoff.js").read_text()
+    assert "function deptCardLive(ev)" in hand and "deptCardLive(ev)" in (ROOT / "agentos/ui/src/js/09-websocket.js").read_text()

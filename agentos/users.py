@@ -303,6 +303,11 @@ def adopt(uid: str) -> None:
     cfg_path_for(uid).write_text(json.dumps(own, indent=2))
     os.chmod(cfg_path_for(uid), 0o600)
     cfgmod.save_config(machine_view(machine))
+    # and out of the live machine dict too, or its bridge kept polling the first
+    # account's bot as the machine's until the next restart
+    if _machine[0] is not None:
+        for k in OWN_CHANNELS:
+            _machine[0].pop(k, None)
 
 
 def share_own_workspace(uid: str) -> bool:
@@ -534,6 +539,10 @@ def cfg_for(uid: str | None = None, machine: dict | None = None) -> dict:
             own = json.loads(cfg_path_for(uid).read_text())
         except Exception:
             own = _fresh_user_cfg()
+        # a phone channel is somebody's identity: never the machine's, seen through
+        # (an account with no Telegram of its own read the machine's token as its own)
+        for k in OWN_CHANNELS:
+            base[k] = {}
         for k, v in own.items():
             base[k] = v
         base["_uid"] = uid
@@ -633,6 +642,9 @@ def save_user_cfg(uid: str, cfg: dict) -> None:
 #: The server's own machine config, the live dict `state.machine_cfg()` returns.
 #: Registered at start by `bind_machine`, so an admin's save reaches it too.
 _machine: list = [None]
+
+
+OWN_CHANNELS = ("telegram", "whatsapp")
 
 
 def bind_machine(cfg: dict) -> None:

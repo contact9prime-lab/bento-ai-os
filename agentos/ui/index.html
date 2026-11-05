@@ -17784,6 +17784,7 @@ function handle(ev){
       // State first, painting second: the graph must stay correct even when the Team
       // window is closed, so opening it shows the truth rather than a replay.
       if(typeof fgApply==='function')fgApply(ev);
+      if(typeof deptCardLive==='function')deptCardLive(ev);
       fabricLiveRefresh(); break;
     case 'fabric_defs': refreshApp('fabric'); if(typeof avatarsChanged==='function')avatarsChanged();
       if(typeof officeReload==='function')officeReload(); break;   // a new specialist takes a desk
@@ -18799,6 +18800,47 @@ function handoffEmit(ev,cid,sink,inChat){
   if(sink&&sink.handoff)sink.handoff(h);
   if(inChat&&typeof feed!=='undefined'&&feed&&typeof curBody!=='undefined'&&curBody)
     curBody.parentNode.insertBefore(handoffChip(h),curBody);
+}
+
+/* A department's work, followed in the chat that asked for it. Reported as "the other
+   department, what it is acting on is not known": the department_task card said
+   "running" for six minutes and nothing else. The desk's run says which chat asked
+   (flow_start carries conversation_id and department, fabric.department_task); from then
+   on its runs write into that card: who got which piece, what tool they are on, who
+   finished. Every card on the page for that call follows, wherever the chat is drawn. */
+var DEPTCARD={runs:{}};
+function deptCardFind(ev){
+  const want=String(ev.department||'').toLowerCase();
+  return [...document.querySelectorAll('.tool')].filter(c=>{
+    const n=c.querySelector('.tname2'),st=c.querySelector('.tstat');
+    return n&&n.textContent==='department_task'&&st&&st.classList.contains('run')&&!c.dataset.deptRun
+      &&(!want||String(c.querySelector('.targ')&&c.querySelector('.targ').textContent||'').toLowerCase().includes(want))});
+}
+function deptCardLine(run,text){
+  const d=DEPTCARD.runs[run];if(!d)return;
+  d.lines.push(text);if(d.lines.length>40)d.lines.shift();
+  document.querySelectorAll(`.tool[data-dept-run="${CSS.escape(d.top)}"]`).forEach(c=>{
+    const out=c.querySelector('.out');if(out){out.textContent=d.lines.join('\n');c.classList.add('open')}
+    const st=c.querySelector('.tstat');if(st)st.title=text});
+}
+function deptCardLive(ev){
+  const e=ev.event,run=ev.run_id;if(!run)return;
+  if(e==='flow_start'&&ev.department&&ev.conversation_id){
+    const cards=deptCardFind(ev);if(!cards.length)return;
+    DEPTCARD.runs[run]={top:run,lines:[]};
+    cards.forEach(c=>c.dataset.deptRun=run);
+    deptCardLine(run,`${ev.department} has it${ev.head?`, led by ${ev.head}`:''}`);return}
+  // a child run of a followed desk is followed too
+  if(e==='status'&&ev.parent_run&&DEPTCARD.runs[ev.parent_run]&&!DEPTCARD.runs[run])
+    DEPTCARD.runs[run]={...DEPTCARD.runs[ev.parent_run],who:ev.ref};
+  const d=DEPTCARD.runs[run];if(!d)return;
+  if(e==='node_add')deptCardLine(run,`→ ${ev.agent}: ${String(ev.task||'').replace(/\s+/g,' ').slice(0,160)}`);
+  else if(e==='status'&&ev.ref&&ev.kind!=='review')deptCardLine(run,ev.status==='running'?`${ev.ref} is working`
+    :`${ev.ref} ${ev.status==='ok'||ev.status==='done'?'finished':'stopped ('+ev.status+')'}`);
+  else if(e==='step'&&ev.status==='start')deptCardLine(run,`  ${d.who||'the desk'} · ${ev.tool}${ev.detail?' · '+String(ev.detail).slice(0,80):''}`);
+  else if(e==='review'&&ev.phase==='start')deptCardLine(run,`${ev.reviewer||'a boss'} is checking it`);
+  else if(e==='review'&&ev.phase&&ev.phase!=='start')deptCardLine(run,`${ev.reviewer||'a boss'}: ${ev.verdict||ev.phase}`);
+  else if(e==='flow_end'){deptCardLine(run,`${ev.status==='ok'||!ev.status?'done':ev.status}`);delete DEPTCARD.runs[run]}
 }
 /* ================= Huddles: agents talking to each other =================
    A huddle is two to four specialists talking a question through, in turns, each on
@@ -30115,7 +30157,7 @@ function usersRoster(){
         ? `<select class="usr-role" data-uid="${esc(u.id)}">${USERS.roles.map(r=>
             `<option value="${esc(r)}"${r===u.role?' selected':''}>${esc(usersRoleName(r))}</option>`).join('')}</select>`
         : `<span class="usr-tag ${u.role==='admin'?'adm':''}">${esc(usersRoleName(u.role))}</span>`}
-      <button class="usr-pw" data-uid="${esc(u.id)}">Password…</button>
+      ${isMe||me.admin?`<button class="usr-pw" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">${isMe?'Change my password…':'Reset password…'}</button>`:''}
       ${me.admin&&!isMe?`<button class="usr-del danger" data-uid="${esc(u.id)}"
         data-name="${esc(u.name)}">Remove</button>`:''}
     </div>`;
@@ -30129,8 +30171,8 @@ function usersRoster(){
     ${rows}
     ${(USERS.me||{}).admin?`<details class="usr-add"><summary>Add somebody</summary>
       ${usersForm('Add the account',false)}</details>`
-      :`<p class="dim usr-foot">Only an admin can add or remove accounts. Everything
-        inside your own home — agents, flows, channels, credentials — is yours.</p>`}
+      :`<p class="dim usr-foot">Only an admin can add or remove accounts, or reset somebody else’s
+        password. Your own password, and everything inside your home, is yours.</p>`}
   </div>`;
 }
 
@@ -30319,10 +30361,14 @@ function usersWire(pb,w){
   });
   pb.querySelectorAll('.usr-pw').forEach(b=>{
     b.onclick=async()=>{
+      // your own: the one you have now first. Somebody else's (an admin resetting it): only the new one.
+      let current='';
+      if(b.dataset.me){current=await osPrompt('Your current password',{placeholder:'••••••••',password:true,confirmText:'Next'});
+        if(!current)return}
       const pw=await osPrompt('New password',{message:'At least 8 characters.',
         placeholder:'••••••••',password:true,confirmText:'Change it'});
       if(!pw)return;
-      const r=await usersPut(b.dataset.uid,{password:pw});
+      const r=await usersPut(b.dataset.uid,current?{password:pw,current}:{password:pw});
       toast(r.error||'✓ password changed');
     };
   });
@@ -31785,6 +31831,9 @@ function officeLive(p){
     // dark twelve seconds into a build that ran for minutes ("the office is silent")
     if(c==='build'&&typeof BUILD_LIVE!=='undefined'&&BUILD_LIVE)return true;
   }
+  // a run of theirs still open (a specialist in a mission, a department's head): a CLI
+  // or a long think sends no steps for minutes, and the desk went dark after twelve seconds
+  for(const r in O.runs)if(O.runs[r]===p.key)return true;
   return false;
 }
 /* What is already running when the Office opens (or is rebuilt). Events only reach an
@@ -31829,6 +31878,15 @@ function officePulse(kind,label,ev){
       const to=officeMatch((ev.args||{}).subagent);
       if(to){officeHandOver(who,to,(ev.args||{}).task||'');
         officeLog(`${officeName(who.key)} handed ${to.label} some work`)}
+    }
+    // a task for a whole department: the lead walks it to that department's head
+    if(label==='department_task'){
+      const d=String((ev.args||{}).department||'').toLowerCase();
+      const room=((O.view&&O.view.rooms)||[]).find(r=>r.kind==='dept'&&String(r.name||'').toLowerCase()===d);
+      const to=room&&room.lead?officeMatch(room.lead):null;
+      if(to&&to!==who){officeHandOver(who,to,(ev.args||{}).task||'');
+        officeLog(`${officeName(who.key)} handed ${room.name} a task: ${String((ev.args||{}).task||'').slice(0,90)}`)}
+      else if(room)officeLog(`${officeName(who.key)} handed ${room.name} a task`);
     }
     if(OF_WRITES.has(label)){const c=officeCabinetAt();
       if(c)officePaper(officeHead(who),{x:c.x+c.w/2,y:c.y+10,board:1},()=>{O.newFiles=(O.newFiles||0)+1;officeKick()})}
@@ -32030,7 +32088,7 @@ function officeFabric(ev){
   if(e==='node_add'){
     const to=officeMatch(ev.agent);
     if(to){officePaper(officeBoardPoint(),to,()=>{officeWork(to,true);officePop(to,'!');
-      officeSay(to,'on it: '+(ev.task||''),'think',3600)});
+      officeSay(to,'on it: '+(ev.task||''),'think',20000)});
       officeLog(`${to.label} got work: ${String(ev.task||'').slice(0,90)}`)}
     else if(ev.agent&&String(ev.agent).includes('@'))officeLog(`work went to ${ev.agent} on a linked team`);
     return;
@@ -32061,7 +32119,12 @@ function officeFabric(ev){
     if(ev.parent_run)officePaper(officeHead(p),{x:officeBoardPoint().x,y:officeBoardPoint().y+20,board:1});
     return;
   }
+  // what someone is doing right now, said over their desk until the next thing
+  if(e==='thinking'){const p=O.people[O.runs[ev.run_id]];
+    if(p&&ev.text&&(!p.say||p.say.kind==='think')&&performance.now()-(p.thinkAt||0)>4000){p.thinkAt=performance.now();
+      officeSay(p,'… '+String(ev.text).replace(/\s+/g,' ').trim().slice(-90),'think',15000)}return}
   if(e==='step'&&ev.status==='start'){const p=O.people[O.runs[ev.run_id]];if(p){officeBurst(p,ev.tool);
+    officeSay(p,String(ev.tool||'working')+(ev.detail?' · '+String(ev.detail):''),'think',60000);
     if(OF_WRITES.has(ev.tool)){const c=officeCabinetAt();
       if(c)officePaper(officeHead(p),{x:c.x+c.w/2,y:c.y+10,board:1},()=>{O.newFiles=(O.newFiles||0)+1;officeKick()})}}return}
   if(e==='approval'){

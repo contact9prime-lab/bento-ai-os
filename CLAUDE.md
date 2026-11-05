@@ -573,6 +573,32 @@ user." Six rules:
   and then set up from ticked departments lost the line. Removing a company switches its desks
   and missions off (nothing would sign their work off) and keeps its agents and space.
 
+**A department at work is seen where it was asked, and the desk master keeps the scope** (`fabric._can_words`,
+`_master_persona`, flow_start's `conversation_id`/`department`/`head`, `officeLive` over `O.runs`, the
+`department_task` branch in `officePulse`, `deptCardLive` in 10a-handoff.js; `tests/test_department_routing.py`).
+Measured on the owner's machine: asked to RUN five backtests, the Research desk told its head "write a TEST PLAN (no
+code runs needed)" because nobody there could run code, gave a data analyst with no code tool a pandas job, and the
+Office showed nothing for six minutes. Four rules:
+- **The master hears what each person can do** (`[can run code, read files; cannot …]` on each roster line) and is told
+  to keep the person's scope: a plan is not a result, and a step whose person lacks a tool goes to them anyway with
+  the instruction to `request_capability` first. It asks for depth and sends thin steps back.
+- **A run still open keeps its desk lit** (`officeLive` reads `O.runs`): a CLI or a long think sends no steps, and
+  the desk went dark after `OF_WORK_MS`. The Town reads the same `p.busy`.
+- **`department_task` is a walk to the department's head** (the room's `lead` in `OFFICE.view`), never only a burst.
+  A step's tool and detail, or a line of thinking, is said over the worker's desk.
+- **The chat card follows the desk's run**: flow_start names the chat, the department and the head; the page binds the
+  open `department_task` card to that run and writes each hand-over, step, finish and sign-off into it.
+
+**A phone turn is its owner's, on every screen** (`server._owner_send`, `users.OWN_CHANNELS`;
+`tests/test_telegram_owner.py`). Reported as "the instruction given by Telegram to the tied user is accepted by Aria in
+all the users": every Telegram and WhatsApp bridge was built with the machine-wide `broadcast`, so one account's phone
+turn lit every account's Chat and Office. Bridges get `_owner_send(uid)` (the machine's own sends to whoever the turn
+runs as, or the admins). An account never inherits the machine's `telegram`/`whatsapp` dicts (`cfg_for`), and `adopt`
+drops them from the live machine dict, not only the file.
+
+**Your own password needs the current one; somebody else's is an admin's reset** (`PUT /api/users/{uid}` `current`,
+23a-users.js). A non-admin sees "Change my password…" on their row only.
+
 **What the forwarded lead reads first decides what it does** (`open_team_door`;
 `tests/test_department_routing.py`). Measured on the reporting machine with its real Claude
 Code: the preamble said "you cannot use AgentOS's own tools" (`NO_DOOR_LINE`, swapped for

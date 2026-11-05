@@ -140,3 +140,44 @@ function handoffEmit(ev,cid,sink,inChat){
   if(inChat&&typeof feed!=='undefined'&&feed&&typeof curBody!=='undefined'&&curBody)
     curBody.parentNode.insertBefore(handoffChip(h),curBody);
 }
+
+/* A department's work, followed in the chat that asked for it. Reported as "the other
+   department, what it is acting on is not known": the department_task card said
+   "running" for six minutes and nothing else. The desk's run says which chat asked
+   (flow_start carries conversation_id and department, fabric.department_task); from then
+   on its runs write into that card: who got which piece, what tool they are on, who
+   finished. Every card on the page for that call follows, wherever the chat is drawn. */
+var DEPTCARD={runs:{}};
+function deptCardFind(ev){
+  const want=String(ev.department||'').toLowerCase();
+  return [...document.querySelectorAll('.tool')].filter(c=>{
+    const n=c.querySelector('.tname2'),st=c.querySelector('.tstat');
+    return n&&n.textContent==='department_task'&&st&&st.classList.contains('run')&&!c.dataset.deptRun
+      &&(!want||String(c.querySelector('.targ')&&c.querySelector('.targ').textContent||'').toLowerCase().includes(want))});
+}
+function deptCardLine(run,text){
+  const d=DEPTCARD.runs[run];if(!d)return;
+  d.lines.push(text);if(d.lines.length>40)d.lines.shift();
+  document.querySelectorAll(`.tool[data-dept-run="${CSS.escape(d.top)}"]`).forEach(c=>{
+    const out=c.querySelector('.out');if(out){out.textContent=d.lines.join('\n');c.classList.add('open')}
+    const st=c.querySelector('.tstat');if(st)st.title=text});
+}
+function deptCardLive(ev){
+  const e=ev.event,run=ev.run_id;if(!run)return;
+  if(e==='flow_start'&&ev.department&&ev.conversation_id){
+    const cards=deptCardFind(ev);if(!cards.length)return;
+    DEPTCARD.runs[run]={top:run,lines:[]};
+    cards.forEach(c=>c.dataset.deptRun=run);
+    deptCardLine(run,`${ev.department} has it${ev.head?`, led by ${ev.head}`:''}`);return}
+  // a child run of a followed desk is followed too
+  if(e==='status'&&ev.parent_run&&DEPTCARD.runs[ev.parent_run]&&!DEPTCARD.runs[run])
+    DEPTCARD.runs[run]={...DEPTCARD.runs[ev.parent_run],who:ev.ref};
+  const d=DEPTCARD.runs[run];if(!d)return;
+  if(e==='node_add')deptCardLine(run,`→ ${ev.agent}: ${String(ev.task||'').replace(/\s+/g,' ').slice(0,160)}`);
+  else if(e==='status'&&ev.ref&&ev.kind!=='review')deptCardLine(run,ev.status==='running'?`${ev.ref} is working`
+    :`${ev.ref} ${ev.status==='ok'||ev.status==='done'?'finished':'stopped ('+ev.status+')'}`);
+  else if(e==='step'&&ev.status==='start')deptCardLine(run,`  ${d.who||'the desk'} · ${ev.tool}${ev.detail?' · '+String(ev.detail).slice(0,80):''}`);
+  else if(e==='review'&&ev.phase==='start')deptCardLine(run,`${ev.reviewer||'a boss'} is checking it`);
+  else if(e==='review'&&ev.phase&&ev.phase!=='start')deptCardLine(run,`${ev.reviewer||'a boss'}: ${ev.verdict||ev.phase}`);
+  else if(e==='flow_end'){deptCardLine(run,`${ev.status==='ok'||!ev.status?'done':ev.status}`);delete DEPTCARD.runs[run]}
+}

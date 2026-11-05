@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.10 — 2026-11-05
+
+**A department at work shows where you asked.** When Aria hands a department a task, she walks it to
+that department's head in the Office and the Town. The head's desk stays lit for the whole run, not
+just twelve seconds, and a balloon says what each person is on. The `department_task` card in Chat now
+follows the run line by line: who got which piece, which tool they're on, who finished, who signed off.
+
+**Desks keep the scope you asked for.** A department's coordinator now knows what each person on it can
+do. When nobody can run code, it no longer quietly turns "run these five tests" into "write a plan": it
+gives the step to the right person and has them ask you for the ability. It also asks for depth and
+sends thin work back.
+
+**A Telegram message reaches only its own account.** Every phone bridge sent its turn to every
+signed-in screen, so one person's Telegram instruction showed up as Aria working in everybody's Chat
+and Office. Accounts also no longer inherit the machine's Telegram or WhatsApp settings.
+
+**Change your own password.** Anyone can change theirs from Users, after typing the current one. Only
+an admin resets somebody else's, so a non-admin like the demo user no longer sees a button that fails.
+
 ## 0.7.9 — 2026-11-05
 
 **A hub shows its devices, live, with alarms.** A new scene, **Devices**: every machine the hub set up and
