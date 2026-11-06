@@ -24,6 +24,11 @@ Four rules:
   * Nothing here acts. Switching is still device_set, asked of a person every time, and a mission's
     rule still fires through devtrig's own watch and the flow's own consent.
   * Text sensors are never judged and their words never reach a line: a value here is a number.
+  * An alarm outlives a restart, and only a device's answer ends it. What was open is read back from
+    the diary (`episodes`, `Alarms.restore`) and checked against what the machines say now: still
+    true keeps its first time and its acknowledgement with no second "raised" line; no longer true
+    is cleared with a line that says so. While a machine can't be asked it reads "checking", never
+    clear and never raised. Before this a restart forgot them, so the day read "9 raised, 1 cleared".
 
 Free of HTTP and asyncio, like devtrig.py: the server, the CLI and the tests call the same functions.
 """
@@ -37,6 +42,7 @@ from . import devtrig
 LEVELS = ("alarm", "warning")
 MAX_RULES = 50
 JUDGED = ("on", "off", "above", "below", "offline")      # a state; 'changes' and 'online' are moments
+GRACE_S = 150                                            # how long a restart waits for a reading before giving up on one
 
 
 def _rule_id(c: dict) -> str:
@@ -101,13 +107,55 @@ def text_of(c: dict, name: str = "", unit: str = "") -> str:
 
 
 class Alarms:
-    """Which alarms are raised, since when, and who acknowledged them, per account. In memory: a
-    hub that restarts judges everything again from the next reading."""
+    """Which alarms are raised, since when, and who acknowledged them, per account. Held in memory
+    and judged from the newest readings; `restore` brings back what the diary says was open."""
+
+    restored = False        # a class attribute so tests/conftest.py can turn the diary read off
 
     def __init__(self):
         self.since: dict[tuple, float] = {}
         self.active: dict[str, dict] = {}
         self.acks: dict[tuple, dict] = {}
+        self.checking: dict[tuple, float] = {}    # (owner, alarm) brought back by a restart -> give up at
+
+    def restore(self, owner: str, rows: list[dict], now: float | None = None) -> None:
+        """Alarms the diary says were open when this hub last stopped. They stay raised, under their
+        first time, until judge() has a reading that says otherwise."""
+        now = now or time.time()
+        on = self.active.setdefault(owner, {})
+        for r in rows:
+            aid = r["id"]
+            if aid in on:
+                continue
+            on[aid] = {"id": aid, "level": r.get("level") or "alarm", "machine": r.get("machine") or "",
+                       "item": r.get("item") or "", "name": r.get("item") or "", "text": r.get("text") or "",
+                       "since": r["since"], "for": 0, "source": r.get("source") or "", "flow": ""}
+            self.since[(owner, aid)] = r["since"]
+            self.checking[(owner, aid)] = now + GRACE_S
+            if r.get("ack"):
+                self.acks[(owner, aid)] = r["ack"]
+
+    @staticmethod
+    def _verdict(a: dict, rule: dict | None, last: dict, up: dict, late: bool) -> str | None:
+        """Why a restored alarm that is not true by the readings has ended, or None while nobody can
+        say. Readings decide; a machine that can't be asked keeps it open for as long as that lasts."""
+        aid, ml = a["id"], str(a.get("machine") or "").lower()
+        fault = aid.startswith("na:")
+        if not rule and not fault and not aid.startswith("off:"):
+            return "its rule is gone"
+        if ml not in up:
+            return "that machine is no longer on this hub"
+        c = (rule or {}).get("config") or {}
+        if aid.startswith("off:") or c.get("when") == "offline":
+            if up.get(ml) is True:
+                return "the machine answers again"
+        else:
+            item = aid.split("/", 1)[1] if fault else c.get("item")
+            if (ml, item) in last:
+                return "the device reads normal now"
+        if up.get(ml) is False or not late:
+            return None
+        return "no reading says it is still true"
 
     def judge(self, owner: str, rules: list[dict], last: dict, up: dict, names: dict | None = None,
               now: float | None = None) -> tuple[list[dict], list[dict], list[dict]]:
@@ -175,7 +223,23 @@ class Alarms:
             a["held"] = round(max(0.0, now - a["since"]))
             a["state"] = "active" if a["held"] >= a["for"] else "pending"
         was = self.active.get(owner, {})
-        now_on = {k: a for k, a in found.items() if a["state"] == "active"}
+        # what a restart brought back: confirmed by the readings above, ended, or not yet known
+        ruled = {r["id"]: r for r in rules}
+        for key, give_up in list(self.checking.items()):
+            if key[0] != owner:
+                continue
+            aid = key[1]
+            a = was.get(aid)
+            if aid in found or not a:
+                self.checking.pop(key, None)
+                continue
+            why = self._verdict(a, ruled.get(aid), last, up, now >= give_up)
+            if why:
+                a["why"] = why
+                self.checking.pop(key, None)
+            else:
+                found[aid] = {**a, "state": "unconfirmed", "held": round(max(0.0, now - a["since"]))}
+        now_on = {k: a for k, a in found.items() if a["state"] != "pending"}
         raised = [a for k, a in now_on.items() if k not in was]
         cleared = [a for k, a in was.items() if k not in now_on]
         for a in cleared:
@@ -197,6 +261,66 @@ class Alarms:
         mark = {"by": str(by or "someone")[:60], "at": now or time.time()}
         self.acks[(owner, aid)] = mark
         return {**a, "ack": mark}
+
+
+def _said(line: str) -> str:
+    """'Alarm on zone-cold: Door is open' → 'Door is open'."""
+    return str(line or "").split(": ", 1)[-1]
+
+
+def episodes(lines: list[dict]) -> tuple[list[dict], list[dict]]:
+    """The diary's alarm lines (devevents: event alarm, cleared, acknowledged) as alarms: each raised
+    with its end. Returns (ended, open), oldest first. Two raised lines with no clear between them
+    mean the hub stopped in between, so the earlier one ended at a time nobody recorded."""
+    ended, opened = [], {}
+    for e in sorted(lines, key=lambda x: float(x.get("at") or 0)):
+        ev, at = e.get("event"), float(e.get("at") or 0)
+        key = (e.get("owner") or "", e.get("alarm") or _said(e.get("text")))
+        if ev == "alarm":
+            if key in opened:
+                ended.append(opened.pop(key))
+            opened[key] = {"id": key[1], "owner": key[0], "level": e.get("level") or "alarm",
+                           "machine": e.get("label") or "", "item": e.get("item") or "", "source": e.get("source") or "",
+                           "text": _said(e.get("text")), "since": at, "ended": None, "why": "", "ack": None}
+        elif ev == "acknowledged" and key in opened:
+            opened[key]["ack"] = {"by": str(e.get("by") or "someone")[:60], "at": at}
+        elif ev == "cleared" and key in opened:
+            a = opened.pop(key)
+            a["ended"], a["why"] = at, str(e.get("why") or "")
+            ended.append(a)
+    return ended, list(opened.values())
+
+
+def history(lines: list[dict], now_ids=(), hours: int = 24, now: float | None = None, limit: int = 200) -> list[dict]:
+    """The alarms that are over, newest first: raised or ended in the last `hours`. A line still open
+    in the diary and not raised now (`now_ids`) ended unrecorded too."""
+    now = now or time.time()
+    ended, still = episodes(lines)
+    now_ids = set(now_ids)
+    rows = ended + [a for a in still if a["id"] not in now_ids]
+    rows = [a for a in rows if max(a["ended"] or 0, a["since"]) >= now - hours * 3600]
+    rows.sort(key=lambda a: a["ended"] or a["since"], reverse=True)
+    for a in rows:
+        a["lasted"] = round(a["ended"] - a["since"]) if a["ended"] else None
+    return rows[:limit]
+
+
+def rule_rows(rules: list[dict], names: dict | None = None, alarms=()) -> list[dict]:
+    """Every rule that can raise an alarm, in one list, with what it says now. rules is what
+    _alarm_rules returns; a person's can be edited, a mission's belongs to the mission."""
+    names = names or {}
+    now = {a["id"]: a.get("state") for a in alarms}
+    out = []
+    for r in rules:
+        c = r.get("config") or {}
+        if c.get("when") not in JUDGED:
+            continue
+        name, unit = names.get((str(c.get("machine") or "").lower(), c.get("item")), ("", ""))
+        out.append({"id": r["id"], "machine": c.get("machine"), "item": c.get("item") or "", "when": c.get("when"),
+                    "value": c.get("value"), "for": int(c.get("for") or 0), "level": r.get("level") or "alarm",
+                    "source": r.get("source") or "alarm", "flow": r.get("flow") or "",
+                    "editable": r.get("source") == "alarm", "text": text_of(c, name, unit), "now": now.get(r["id"]) or "clear"})
+    return out
 
 
 def _val(t: dict) -> str:
@@ -221,8 +345,18 @@ def text(board: dict) -> str:
         if a.get("state") != "active":
             mark = " ~"
         seen = f", seen by {a['ack']['by']}" if a.get("ack") else ""
+        if a.get("state") == "unconfirmed":
+            mark, seen = " ?", ", being checked with the machine"
         lines.append(f"  {mark} {a.get('machine')}: {a.get('text')} ({a.get('level')}, {a.get('held', 0)} s{seen})")
     if al:
+        lines.append("")
+    past = board.get("history") or []
+    if past:
+        lines.append("  Earlier, the last 24 hours")
+        for a in past[:10]:
+            at = time.strftime("%H:%M", time.localtime(a.get("since") or 0))
+            end = f"cleared after {a['lasted']} s" if a.get("lasted") is not None else "ended, time not recorded"
+            lines.append(f"     {at}  {a.get('machine')}: {a.get('text')} ({a.get('level')}, {end})")
         lines.append("")
     for m in ms:
         st = "not answering" if m.get("up") is False else ("this hub" if m.get("here") else "")
@@ -235,6 +369,21 @@ def text(board: dict) -> str:
             name = str(t.get("name") or "")
             name = name[len(group) + 2:] if group and name.startswith(group + ": ") else name
             lines.append(f"      {name:<28} {_val(t)}")
+    return "\n".join(lines)
+
+
+def rules_text(board: dict) -> str:
+    """The alarm rules in a terminal (`bento network alarms`), numbered for `remove`."""
+    lines, n = [], 0
+    for r in board.get("rule_list") or []:
+        who = f"mission {r.get('flow')}" if r.get("source") == "mission" else ("demo" if r.get("demo") else "yours")
+        tag = "   "
+        if r.get("editable") and not r.get("demo"):
+            n += 1
+            tag = f"{n:>2}."
+        held = f" for {r['for']} s" if r.get("for") else ""
+        lines.append(f"  {tag} {r.get('level'):<8}{r.get('machine')}: {r.get('text')}{held}  ({who}, {r.get('now')})")
+    lines.append("      always on: a machine that stops answering, and a sensor with no reading")
     return "\n".join(lines)
 
 

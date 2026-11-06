@@ -4716,6 +4716,8 @@ def _network_cli(args):
         return _device_cli(a, rest, args)
     if a == "esp":
         return _esp_cli(rest, args)
+    if a == "alarms":
+        return _alarm_rules_cli(rest, args)
     if a == "board":
         # the Devices scene in a terminal: the running server holds the newest readings
         import json as _json
@@ -5493,6 +5495,64 @@ def _device_rule_problem(cfg: dict, c: dict) -> str:
     if c.get("item") and c["item"] not in items:
         return f"{m} has nothing called {c['item']} on its hardware list (Devices → its row → Hardware)"
     return ""
+
+
+def _alarm_rules_cli(rest, args):
+    """`bento network alarms`: the rules that raise alarms; `add` and `remove` change your own. The
+    running server holds them (and on a machine with accounts wants a sign-in, as `board` does)."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+    from . import config as _cfgmod
+    from . import devboard
+    base = f"http://127.0.0.1:{_cfgmod.load_config().get('port', 8321)}"
+
+    def ask(path, method="GET", body=None):
+        req = urllib.request.Request(base + path, method=method, data=_json.dumps(body).encode() if body else None,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return _json.loads(r.read() or b"{}")
+        except urllib.error.HTTPError as e:
+            sys.exit("  this machine has accounts, so alarm rules need a sign-in: they are in Devices on the desktop"
+                     if e.code == 401 else f"  the server said {e.code}")
+        except OSError as e:
+            sys.exit(f"  alarm rules are held by the running server, and it isn't answering at {base} ({e})")
+
+    board = ask("/api/devices/board")
+    if not rest:
+        print(devboard.rules_text(board))
+        print("\n  bento network alarms add <machine> <item> above|below|on|off [value] [for <seconds>] [warning]")
+        print("  bento network alarms remove <number>")
+        return
+    rules = board.get("rules") or []
+    if rest[0] == "remove":
+        try:
+            del rules[int(rest[1]) - 1]
+        except (IndexError, ValueError):
+            sys.exit("  bento network alarms remove <number>, from the list `bento network alarms` prints")
+    elif rest[0] == "add" and len(rest) >= 4:
+        words = list(rest[4:])
+        r = {"machine": rest[1], "item": rest[2], "when": rest[3], "level": "alarm"}
+        if "warning" in words:
+            words.remove("warning")
+            r["level"] = "warning"
+        if "for" in words:
+            i = words.index("for")
+            r["for"] = words[i + 1] if i + 1 < len(words) else 0
+            del words[i:i + 2]
+        if words:
+            r["value"] = words[0]
+        try:
+            rules.append(devboard.clean_rule(r))
+        except ValueError as e:
+            sys.exit(f"  {e}")
+    else:
+        sys.exit("  bento network alarms [add <machine> <item> <when> [value] [for <seconds>] [warning] | remove <number>]")
+    got = ask("/api/devices/alarms", "PUT", {"alarms": rules})
+    for d in got.get("dropped") or []:
+        print(f"  not kept: {d}")
+    print(f"  {len(got.get('alarms') or [])} alarm rules of your own")
 
 
 def _esp_cli(rest, args):
@@ -9393,7 +9453,7 @@ def main():
     p_net.add_argument("action", nargs="?", default="list",
                        choices=["list", "look", "install", "check", "secure", "letin", "disconnect", "label",
                                 "forget", "hide", "show", "rekey", "firewall", "controls", "switch", "remove", "update", "ties",
-                                "events", "map", "talks", "hardware", "readings", "board", "get", "set", "permit", "esp"],
+                                "events", "map", "talks", "hardware", "readings", "board", "alarms", "get", "set", "permit", "esp"],
                        metavar="ACTION",
                        help="list | ties [LINK [sessions|memory|knowledge|logs|update]] | events [MACHINE] | map | "
                             "talks [LINK [lead|DEPARTMENT --company ID]] | "
@@ -9408,7 +9468,7 @@ def main():
                             "remove MACHINE --user U (Bento off it, its data kept) | update MACHINE --user U | "
                             "hardware [MACHINE] [--check] (what a Zero has, down to each sensor) | "
                             "readings MACHINE ITEM [--range day|week|month|quarter] (one sensor over time) | "
-                            "board (every device live, with its alarms) | "
+                            "board (every device live, with its alarms) | alarms [add MACHINE ITEM WHEN [VALUE] [for S] [warning] | remove N] | "
                             "get MACHINE [ITEM] (read it now) | set MACHINE ITEM 1|0 | permit MACHINE [ITEM read|set|off] | "
                             "esp MACHINE [find | add NAME ADDRESS [PORT] [--user U] | look | remove NAME] (its ESP32 nodes)")
     p_net.add_argument("args", nargs="*", help="the machine (its address, name or MAC) and a value")

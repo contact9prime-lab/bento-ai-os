@@ -32,26 +32,60 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
 .dvs-acts{display:flex;flex-wrap:wrap;gap:8px}
 .dvs-acts .endbtn,.dvs-al .endbtn{min-height:var(--tap,36px)}
 
-/* alarms: the first thing read, loud only while something is wrong and nobody has seen it */
-.dvs-alarms{display:grid;gap:8px;margin:0 0 14px}
-.dvs-clear{margin:0;padding:12px 14px;border-radius:var(--r-lg);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);
+/* alarms: a table, open ones first. Colour is the level and the level is always a word too; a
+   raised alarm nobody has acknowledged blinks (only its chip and status, opacity only). */
+.dvs-alarms{margin:0 0 14px;padding:10px 14px 12px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);border:1px solid var(--line)}
+.dvs-al-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 8px}
+.dvs-al-head h2{margin:0;font-size:var(--fs-md);font-weight:650}
+.dvs-al-head .linkbtn{margin-left:auto}
+.dvs-tabs{display:flex;gap:2px;padding:2px;border-radius:var(--r-md);background:color-mix(in srgb,var(--txt) 7%,transparent)}
+.dvs-tabs button{min-height:var(--tap,28px);padding:2px 10px;border:0;border-radius:var(--r-sm);background:none;color:var(--dim);font:inherit;font-size:var(--fs-xs);cursor:pointer}
+.dvs-tabs button.on{background:var(--bg3,var(--bg2));color:var(--txt)}
+.dvs-tabs em{font-style:normal;font-variant-numeric:tabular-nums;opacity:.75}
+.dvs-clear{margin:0 0 8px;padding:10px 12px;border-radius:var(--r-md);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);
   background:color-mix(in srgb,var(--bg2) 88%,var(--ok));color:var(--txt);font-size:var(--fs-sm)}
-.dvs-al{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--r-lg);
-  background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid var(--line);border-left-width:4px}
-.dvs-al.alarm.active{border-color:color-mix(in srgb,var(--err) 60%,transparent);border-left-color:var(--err);
-  background:color-mix(in srgb,var(--bg2) 82%,var(--err))}
-.dvs-al.warning.active{border-left-color:var(--warn);background:color-mix(in srgb,var(--bg2) 88%,var(--warn))}
-.dvs-al.pending{border-left-color:var(--dim2,var(--dim));opacity:.85}
-.dvs-al.acked{background:color-mix(in srgb,var(--bg2) 92%,transparent)}
-.dvs-al-i{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;
-  background:color-mix(in srgb,var(--txt) 10%,transparent)}
-.dvs-al.alarm.active .dvs-al-i{background:var(--err);color:#fff}
-.dvs-al.warning.active .dvs-al-i{background:var(--warn);color:#1b1300}
-.dvs-al.alarm.active:not(.acked) .dvs-al-i{animation:dvs-pulse 1.6s ease-in-out 4}
-@keyframes dvs-pulse{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--err) 25%,transparent)}}
-.dvs-al-t{flex:1;min-width:0}
-.dvs-al-t b{display:block;font-size:var(--fs-md);font-weight:600;overflow-wrap:anywhere}
-.dvs-al-t span{display:block;color:var(--dim);font-size:var(--fs-xs);margin-top:2px}
+.dvs-tw{overflow-x:auto}
+.dvs-tab{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.dvs-tab th{padding:4px 8px;text-align:left;font-size:var(--fs-2xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);white-space:nowrap}
+.dvs-tab td{padding:7px 8px;vertical-align:middle;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-variant-numeric:tabular-nums}
+.dvs-tab tr:last-child td{border-bottom:0}
+.dvs-what{min-width:180px}
+.dvs-what b{display:block;font-weight:600;overflow-wrap:anywhere}
+.dvs-what small{display:block;margin-top:1px;color:var(--dim);font-size:var(--fs-xs)}
+.dvs-tab td[data-l="Raised"],.dvs-tab td[data-l="Open for"]{white-space:nowrap}
+.dvs-do{text-align:right;white-space:nowrap}
+.dvs-do .linkbtn,.dvs-al-head .linkbtn{min-height:var(--tap,auto)}
+.dvs-do .endbtn{min-height:var(--tap,30px);margin-right:4px}
+.dvs-row.alarm.active{background:color-mix(in srgb,var(--err) 16%,transparent)}
+.dvs-row.warning.active{background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.dvs-row.active.fresh td:first-child{box-shadow:inset 3px 0 0 var(--err)}
+.dvs-row.warning.active.fresh td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+.dvs-row.ended b{font-weight:500;color:var(--dim)}
+.dvs-sev{display:inline-flex;align-items:center;gap:5px;padding:1px 8px 1px 6px;border-radius:var(--r-full);font-size:var(--fs-xs);font-weight:650;white-space:nowrap}
+.dvs-sev i{font-style:normal}
+.dvs-sev.alarm{background:var(--err);color:#fff}
+.dvs-sev.warning{background:var(--warn);color:#1b1300}
+.dvs-row.ended .dvs-sev.alarm{background:color-mix(in srgb,var(--err) 22%,transparent);color:var(--txt)}
+.dvs-row.ended .dvs-sev.warning{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--txt)}
+.dvs-sev.blink,.dvs-row.fresh .dvs-st.new{animation:dvs-flash 1.2s steps(2,jump-none) var(--ph,0s) infinite}
+@keyframes dvs-flash{50%{opacity:.35}}
+.dvs-st{font-size:var(--fs-xs);color:var(--dim)}
+.dvs-st.new{font-weight:700;color:var(--err)}
+.dvs-row.warning .dvs-st.new{color:var(--warn)}
+.dvs-st.seen{color:var(--txt)}
+.dvs-st.ok{color:var(--ok)}
+.dvs-st.wait{color:var(--warn)}
+@media (max-width:640px){
+  .dvs-tab thead{display:none}
+  .dvs-tab,.dvs-tab tbody{display:block}
+  .dvs-tab tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 12px;padding:8px;border-bottom:1px solid var(--line)}
+  .dvs-tab td{padding:2px 0;border:0}
+  .dvs-tab td.dvs-what,.dvs-tab td.dvs-do{grid-column:1/-1;text-align:left;white-space:normal}
+  .dvs-tab td.dvs-do:empty{display:none}
+  .dvs-tab td[data-l]::before{content:attr(data-l);display:block;font-size:var(--fs-2xs);color:var(--dim)}
+  .dvs-tab td[data-l="Level"]::before{display:none}
+  .dvs-do .endbtn{width:100%;margin:2px 0 4px}
+}
 
 /* the machines: one card each, its nodes inside, each thing a row with its value */
 .dvs-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));align-items:start}
@@ -76,17 +110,15 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
 .dvs-t.pending b{color:var(--warn)}
 .dvs-blink{animation:dvs-blink .9s ease-out}
 @keyframes dvs-blink{from{background:color-mix(in srgb,var(--acc) 28%,transparent)}}
-@media (prefers-reduced-motion:reduce){.dvs-blink,.dvs-al .dvs-al-i{animation:none!important}}
+@media (prefers-reduced-motion:reduce){.dvs-blink,.dvs-sev.blink,.dvs-row.fresh .dvs-st.new{animation:none!important}}
 
 /* the person's alarm rules */
 .dvs-rules{margin:0 0 14px;padding:12px 14px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);
   border:1px solid var(--line)}
 .dvs-rules h2{margin:0 0 8px;font-size:var(--fs-md)}
-.dvs-rules ul{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:4px}
-.dvs-rules li{display:flex;align-items:center;gap:10px;font-size:var(--fs-sm);min-height:var(--tap,30px)}
-.dvs-rules li span:nth-child(2){flex:1;min-width:0}
-.dvs-lv{font-size:var(--fs-2xs);padding:1px 7px;border-radius:var(--r-full);background:color-mix(in srgb,var(--err) 25%,transparent)}
-.dvs-lv.warning{background:color-mix(in srgb,var(--warn) 25%,transparent)}
+.dvs-rules h3{margin:10px 0 6px;font-size:var(--fs-sm);font-weight:600}
+.dvs-always{margin:8px 0 0;font-size:var(--fs-xs)}
+.dvs-rules tr.focus td,.dvs-rules tr.editing td{background:color-mix(in srgb,var(--acc) 14%,transparent)}
 .dvs-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .dvs-form select,.dvs-form input{min-height:var(--tap,34px);max-width:100%}
 .dvs-form input[data-f=value]{width:90px}.dvs-form input[data-f=for]{width:64px}
@@ -97,7 +129,7 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 #pager .pgb .pgs{font-size:9px;line-height:1;margin-left:2px;opacity:.8;vertical-align:super}
 #pager .pgb[data-scene=devices] .pgs{color:var(--acc)}
 /* Devices → Alarms */
-.dev-alarms{margin:0 0 14px}.dev-alarms h3{margin:0 0 8px}
+.dev-alarms{margin:0 0 14px}
 
 /* the analytics (01h devSceneStatsHTML, devSceneSpark) */
 .dvs-stats{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:0 0 12px}
@@ -107,7 +139,7 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 .dvs-k>small{display:block;color:var(--dim);font-size:var(--fs-xs);margin-top:2px;overflow-wrap:anywhere}
 .dvs-k.bad{border-color:color-mix(in srgb,var(--err) 55%,transparent)}.dvs-k.bad>b{color:var(--err)}
 .dvs-k.warn{border-color:color-mix(in srgb,var(--warn) 55%,transparent)}
-.dvs-hist{grid-column:span 2}
+.dvs-hist{grid-column:1/-1}
 .dvs-hist svg{display:block;margin-top:6px}
 .dvs-hist rect{fill:var(--acc)}.dvs-hist rect:hover{fill:var(--txt)}
 .dvs-hist line{stroke:var(--line);stroke-width:1}
@@ -116,4 +148,4 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 .dvs-spark path{fill:none;stroke:var(--acc);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
 .dvs-spark circle{fill:var(--acc);stroke:var(--bg2);stroke-width:1.2}
 .dvs-tr{grid-column:1/-1;color:var(--dim);font-size:var(--fs-2xs);font-variant-numeric:tabular-nums;margin-top:-1px}
-@media (max-width:640px){.dvs-hist{grid-column:1/-1}.dvs-spark{width:64px}}
+@media (max-width:640px){.dvs-spark{width:64px}}

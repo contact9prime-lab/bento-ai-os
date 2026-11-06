@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.12 — 2026-11-06
+
+**Alarms are a table, and you can see the old ones.** What's open comes first, then what happened
+earlier today with when it cleared and how long it was open. A new alarm blinks until you acknowledge
+it, and colour follows severity, always with the word beside it.
+
+**Alarms clear themselves after a restart.** What was open comes back reading "Checking", and the hub
+asks each machine what it reads now. Still true keeps its first time and your acknowledgement; no
+longer true is cleared with a line saying why. Before, a restart forgot them, so the day read
+"9 raised, 1 cleared" with nothing to look at.
+
+**Every alarm rule is in one list.** Alarm rules shows yours, the demo's and the missions', what each
+reads now and who owns it, with Edit and Remove. Your desktop can change the demo's rules, and an
+alarm's Rule button opens its rule. `bento network alarms` does the same from a terminal.
+
+**Fixed:** another account's machines showed in your day's alarm numbers. On and off readings (a door,
+a switch) were dropped when a machine's hardware was read, so they showed as "—" after a restart.
+
 ## 0.7.11 — 2026-11-05
 
 **The Devices scene is analytical.** It opens on the day's numbers: machines answering, readings in,

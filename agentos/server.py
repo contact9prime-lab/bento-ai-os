@@ -1215,6 +1215,7 @@ async def _device_fire(owner: str, rule: dict, ev: dict) -> None:
 # answering; a raised and a cleared alarm are each a line in Devices → Events and an event on the screens.
 
 _ALARMS = None
+_ALARM_SYNCED: set = set()           # links asked for their readings since this hub started or they came back
 
 
 def _alarms():
@@ -1281,8 +1282,70 @@ def _alarm_rules(owner: str) -> list[dict]:
     return out
 
 
+def _alarm_lines(whose=None, limit: int = 2000) -> list[dict]:
+    """The diary's alarm lines, each with the account it belongs to. The diary is the machine's and
+    one list for everybody, so a screen keeps only `whose`: a line written before lines named their
+    owner belongs to the link's owner, and to the machine when no link has that name."""
+    from . import devevents, teamlink
+    with usersmod.as_user(""):
+        store = state["store"]
+    owners = {lk.get("label"): lk.get("owner") or "" for lk in teamlink._load()["links"]}
+    out = []
+    for e in devevents.gather([store], limit=limit):
+        if e.get("event") in ("alarm", "cleared", "acknowledged"):
+            e.setdefault("owner", owners.get(e.get("label"), ""))
+            if whose is None or e["owner"] in whose:
+                out.append(e)
+    return out
+
+
+def _alarms_restore() -> None:
+    """Once, on the first judgement after a start: what the diary says was still open comes back
+    open, to be confirmed or ended by what the machines say now (devboard.Alarms.restore)."""
+    al = _alarms()
+    if al.restored:
+        return
+    al.restored = True
+    from . import devboard
+    with contextlib.suppress(Exception):
+        _ended, still = devboard.episodes(_alarm_lines())
+        for a in still:
+            al.restore(a["owner"], [a])
+
+
+def _alarm_names(owner: str, machine: str) -> bool:
+    """Is anything of this account's watching that machine? Only then is it worth asking."""
+    ml = machine.lower()
+    if any(str((r.get("config") or {}).get("machine") or "").lower() == ml for r in _alarm_rules(owner)):
+        return True
+    return any(k[0] == owner and str(_alarms().active.get(owner, {}).get(k[1], {}).get("machine") or "").lower() == ml
+               for k in _alarms().checking)
+
+
+async def _alarm_sync(lk: dict) -> None:
+    """After a start, or when a machine comes back: read everything it has now. A Pi sends only what
+    changes, so a door left open before this hub restarted would otherwise never be judged again,
+    and an alarm from before would hang on it. It only fills in what hasn't been heard; nothing is
+    switched, and no mission starts from it until the watch's next judgement of a held condition."""
+    key, label, owner = lk.get("id") or "", lk.get("label") or "", lk.get("owner") or ""
+    got = await _tie_hardware(lk, "to check its alarms")
+    if not got.get("ok"):
+        _ALARM_SYNCED.discard(key)          # try again at the next round of the watch
+        return
+    for it in got["hardware"].get("items") or []:
+        v = it.get("value")
+        if not it.get("id") or not isinstance(v, (int, float, bool)):
+            continue
+        # what the machine itself told us since it came back is newer than this list could be
+        _DEV_LAST.setdefault((owner, label.lower(), it["id"]),
+                             {"item": it["id"], "value": float(v), "at": time.time(), "name": it.get("name") or it["id"],
+                              "unit": it.get("unit") or "", "domain": "", "first": True})
+    await _alarms_judge(owner)
+
+
 async def _alarms_judge(owner: str, say: bool = True, machines: list | None = None) -> list[dict]:
     """The alarms this account has now; a raised or cleared one is said once."""
+    _alarms_restore()
     machines = _board_machines(owner) if machines is None else machines
     names, up = {}, {}
     for m in machines:
@@ -1297,13 +1360,15 @@ async def _alarms_judge(owner: str, say: bool = True, machines: list | None = No
     for a in raised:
         if say:
             await _device_event(owner, "alarm", a["machine"], f"Alarm on {a['machine']}: {a['text']}",
-                                alarm=a["id"], level=a["level"])
+                                alarm=a["id"], level=a["level"], item=a.get("item") or "",
+                                source=a.get("source") or "", whose=owner)
         with contextlib.suppress(Exception):
             await _tie_tell({"type": "device_alarm", "phase": "raised", "alarm": a}, owner)
     for a in cleared:
         if say:
-            await _device_event(owner, "cleared", a["machine"], f"Cleared on {a['machine']}: {a['text']}",
-                                alarm=a["id"])
+            await _device_event(owner, "cleared", a["machine"], f"Cleared on {a['machine']}: {a['text']}"
+                                + (f" ({a['why']})" if a.get("why") else ""),
+                                alarm=a["id"], level=a.get("level") or "alarm", whose=owner, why=a.get("why") or "")
         with contextlib.suppress(Exception):
             await _tie_tell({"type": "device_alarm", "phase": "cleared", "alarm": a}, owner)
     return alarms
@@ -1312,7 +1377,7 @@ async def _alarms_judge(owner: str, say: bool = True, machines: list | None = No
 def _alarm_owners() -> set:
     from . import teamlink
     from . import zero as zeromod
-    out = {k[0] for k in _DEV_LAST}
+    out = {k[0] for k in _DEV_LAST} | set(_alarms().active)
     for lk in teamlink._load()["links"]:
         if zeromod.ships_to(lk):
             out.add(lk.get("owner") or "")
@@ -1347,6 +1412,14 @@ async def _ties_check() -> list[dict]:
             await _device_event(owner, ev[0], label, ev[1])
             out.append({"event": ev[0], "label": label})
             await _device_machine(owner, label, ev[0] == "online")
+            if ev[0] == "offline":
+                _ALARM_SYNCED.discard(key)
+        if ok and key not in _ALARM_SYNCED and zeromod.ships_to(lk):
+            with contextlib.suppress(Exception):      # the watch carries on whatever this says
+                _alarms_restore()
+                if _alarm_names(owner, label):
+                    _ALARM_SYNCED.add(key)
+                    asyncio.create_task(_alarm_sync(lk))
         now_v = tiesmod._VERSION.get(key)
         if ok and before.get(key) and now_v and now_v != before[key]:
             await _device_event(owner, "updated", label, f"{label} is on {now_v} now (was {before[key]})",
@@ -15485,12 +15558,15 @@ async def api_device_board():
                             t["trend"] = tr
         evs = []
         with contextlib.suppress(Exception):
-            stores = [state["store"]]
-            with usersmod.as_user(""):
-                stores.append(state["store"])
-            evs = [e for e in devevents.gather(stores, limit=600) if e.get("event") in ("alarm", "cleared")]
+            evs = _alarm_lines(set(whose), limit=800)      # asked every few seconds while the board shows
         return evs
     evs = await asyncio.get_running_loop().run_in_executor(None, _analyse)
+    from . import devboard
+    past = devboard.history(evs, {a["id"] for a in alarms})
+    names = {(m["machine"].lower(), t["id"]): (t["name"], t["unit"]) for m in machines for t in m["things"]}
+    rule_list = [r for o in whose
+                 for r in devboard.rule_rows(_alarm_rules(o), names, alarms)]
+    demo_rules = None
     # the warehouse demo's floor, for its own user (or an admin, or anyone without accounts):
     # its devices are on the demo's hub, and this screen would say "0 machines" beside it
     if _demo_shows(me):
@@ -15500,15 +15576,25 @@ async def api_device_board():
             machines += [{**m, "demo": True} for m in d.get("machines") or []]
             alarms += [{**a, "demo": True} for a in d.get("alarms") or []]
             evs += [{**e, "demo": True} for e in ((d.get("analytics") or {}).get("recent") or [])]
+            past = sorted(past + [{**a, "demo": True} for a in d.get("history") or []],
+                          key=lambda a: a.get("ended") or a.get("since") or 0, reverse=True)
+            rule_list += [{**r, "demo": True} for r in d.get("rule_list") or []]
+            demo_rules = d.get("rules") or []
     seen, out = set(), []
     for a in alarms:
         if a["id"] not in seen:
             seen.add(a["id"])
             out.append(a)
-    from . import devboard
     an = devboard.analytics(evs, out, machines)
     an["recent"] = [{k: e.get(k) for k in ("at", "event", "text")} for e in evs[:200]]
-    return {"machines": machines, "alarms": out, "rules": state["cfg"].get("device_alarms") or [],
+    seen_r, rows = set(), []
+    for r in rule_list:
+        if (r["id"], bool(r.get("demo"))) not in seen_r:
+            seen_r.add((r["id"], bool(r.get("demo"))))
+            rows.append(r)
+    return {"machines": machines, "alarms": out, "history": past, "rule_list": rows,
+            "rules": devboard.clean_rules(state["cfg"].get("device_alarms") or [])[0],
+            **({"demo_rules": demo_rules} if demo_rules is not None else {}),
             "analytics": an, "at": time.time()}
 
 
@@ -15530,7 +15616,8 @@ async def api_device_alarm_ack(body: dict):
         got = _alarms().ack(o, aid, by or "someone")
         if got:
             await _device_event(o, "acknowledged", got["machine"],
-                                f"{by or 'Someone'} acknowledged on {got['machine']}: {got['text']}", alarm=aid)
+                                f"{by or 'Someone'} acknowledged on {got['machine']}: {got['text']}",
+                                alarm=aid, by=by or "someone", whose=o)
             await _tie_tell({"type": "device_alarm", "phase": "ack", "alarm": got}, o)
             return {"ok": True, "alarm": got}
     if (body or {}).get("demo") and _demo_shows(me):
@@ -15543,10 +15630,20 @@ async def api_device_alarm_ack(body: dict):
 
 @app.put("/api/devices/alarms")
 async def api_device_alarms_set(body: dict):
-    """Your alarm rules (devboard.clean_rule), all of them at once, as the scene's editor sends them."""
+    """Your alarm rules (devboard.clean_rule), all of them at once, as the scene's editor sends them.
+    With `demo` they are the warehouse demo's, which its own hub keeps and judges."""
     from . import devboard
     cfg = state["cfg"]
     kept, dropped = devboard.clean_rules((body or {}).get("alarms"))
+    if (body or {}).get("demo"):
+        if not _demo_shows(usersmod.current() or ""):
+            return JSONResponse({"error": "the warehouse demo isn't yours to change"}, 403)
+        from .demos import warehouse as wh
+        got = await asyncio.get_running_loop().run_in_executor(None, wh.hub_alarms, kept)
+        if not got or not got.get("ok"):
+            return JSONResponse({"error": "the warehouse demo's hub isn't answering"}, 502)
+        _ledger("device.alarms", "device:alarms", f"{len(kept)} alarm rules on the warehouse demo")
+        return {"ok": True, "alarms": got.get("alarms") or kept, "dropped": dropped + (got.get("dropped") or [])}
     cfg["device_alarms"] = kept
     cfgmod.save_config(cfg)
     _ledger("device.alarms", "device:alarms", f"{len(kept)} alarm rules")

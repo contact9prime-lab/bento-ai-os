@@ -477,10 +477,10 @@ def clean(p, dropped: list | None = None) -> dict:
         c = {"id": iid, "kind": kind, "name": _plain(it.get("name"), 80) or iid,
              "detail": _plain(it.get("detail"), 160), "can": [v for v in (it.get("can") or []) if v in VERBS][:4]}
         v = it.get("value")
-        if isinstance(v, bool) or v is None:
+        if v is None:
             pass
-        elif isinstance(v, (int, float)):
-            c["value"] = v
+        elif isinstance(v, (bool, int, float)):
+            c["value"] = v              # a door open or shut is a reading too: the alarms read it after a restart
         else:
             c["value"] = _plain(v, 40)
         for k, n in (("unit", 8), ("label", 40), ("sensor", 40), ("mac", 17), ("node", 40), ("path", 120)):

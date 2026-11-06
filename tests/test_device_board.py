@@ -247,3 +247,168 @@ def test_a_trend_is_the_kept_readings_of_the_last_hour(tmp_path, monkeypatch):
     assert t["first"] == -18.0 and abs(t["last"] - (-14.1)) < 1e-6 and t["min"] == -18.0
     assert len(t["points"]) == 30 and any(p is None for p in t["points"][:4])
     assert telemetry.trend("m", "nothing", now=now) == {}
+
+
+# ---- a restart: what was open comes back, and the devices decide ---------------------------
+
+def _diary_alarm(at, aid, text, machine="zone-cold", level="alarm", event="alarm", **kw):
+    word = {"alarm": "Alarm", "cleared": "Cleared"}.get(event, "Someone acknowledged")
+    return {"at": at, "event": event, "alarm": aid, "label": machine, "level": level, "owner": "",
+            "text": f"{word} on {machine}: {text}", **kw}
+
+
+def test_the_diary_says_which_alarms_are_open_and_when_each_ended():
+    """Reported as "it shows alarms but I can't see them": 9 raised, 1 cleared, and nothing on screen.
+    A raised line with no cleared line is either still open, or ended while Bento was stopped."""
+    lines = [_diary_alarm(100, "a1", "Door is open"), _diary_alarm(130, "a1", "Door is open", event="cleared", why="x"),
+             _diary_alarm(200, "a2", "Compressor is off"), _diary_alarm(900, "a2", "Compressor is off"),
+             _diary_alarm(300, "a3", "Battery is low", event="alarm", level="warning"),
+             _diary_alarm(310, "a3", "Battery is low", event="acknowledged", by="Ada")]
+    ended, still = devboard.episodes(lines)
+    assert [a["id"] for a in ended] == ["a1", "a2"], "a2's first run ended when the second began: no recorded end"
+    assert {a["id"] for a in still} == {"a2", "a3"}
+    a3 = next(a for a in still if a["id"] == "a3")
+    assert a3["ack"]["by"] == "Ada" and a3["level"] == "warning" and a3["text"] == "Battery is low"
+    now = 1000.0
+    rows = devboard.history(lines, {"a2"}, now=now)
+    by = {(a["id"], a["since"]): a for a in rows}
+    assert by[("a1", 100.0)]["lasted"] == 30 and by[("a1", 100.0)]["why"] == "x"
+    assert by[("a2", 200.0)]["ended"] is None and by[("a2", 200.0)]["lasted"] is None
+    assert ("a2", 900.0) not in by, "still raised now, so it is in the open list and not in the past"
+    assert ("a3", 300.0) in by, "open in the diary and not raised now: over, at a time nobody recorded"
+    assert devboard.history(lines, set(), hours=0, now=now + 90000) == []
+
+
+def test_a_restart_keeps_what_is_still_true_and_clears_what_is_not():
+    """Asked for as "if the alarms are stale they should be autocleared by syncing with the devices"."""
+    al = devboard.Alarms()
+    door, comp = _r(item=DOOR, when="on"), _r(item=COMP, when="off")
+    al.restore("", [{"id": door["id"], "machine": "zone-cold", "text": "Door is open", "level": "warning", "since": 100.0,
+                     "ack": {"by": "Ada", "at": 120.0}},
+                    {"id": comp["id"], "machine": "zone-cold", "text": "Compressor is off", "since": 100.0}], now=1000.0)
+    up = {"zone-cold": True}
+    # nothing heard yet: neither raised again nor cleared, and it says it is being checked
+    out, raised, cleared = al.judge("", [door, comp], {}, up, now=1001.0)
+    assert not raised and not cleared
+    assert {a["state"] for a in out} == {"unconfirmed"}
+    # the door is still open and the compressor runs again
+    last = {("zone-cold", DOOR): _ev(DOOR, 1.0, 1002.0), ("zone-cold", COMP): _ev(COMP, 1.0, 1002.0)}
+    out, raised, cleared = al.judge("", [door, comp], last, up, now=1003.0)
+    assert not raised, "the same alarm carrying on is not a second one"
+    assert [a["id"] for a in cleared] == [comp["id"]] and cleared[0]["why"] == "the device reads normal now"
+    assert len(out) == 1 and out[0]["id"] == door["id"] and out[0]["state"] == "active"
+    assert out[0]["since"] == 100.0 and out[0]["ack"]["by"] == "Ada", "its first time and its mark survive"
+
+
+def test_a_restored_alarm_waits_for_a_machine_that_cannot_answer_and_ends_when_nothing_can_confirm_it():
+    door = _r(item=DOOR, when="on")
+    row = [{"id": door["id"], "machine": "zone-cold", "text": "Door is open", "since": 100.0}]
+    al = devboard.Alarms()
+    al.restore("", row, now=1000.0)
+    late = 1000.0 + devboard.GRACE_S + 1
+    out, _r2, cleared = al.judge("", [door], {}, {"zone-cold": False}, now=late)
+    assert not cleared and any(a["id"] == door["id"] and a["state"] == "unconfirmed" for a in out), \
+        "a machine that can't be asked proves nothing"
+    out, _r2, cleared = al.judge("", [door], {}, {"zone-cold": True}, now=late + 1)
+    assert [a["why"] for a in cleared if a["id"] == door["id"]] == ["no reading says it is still true"]
+    for rules, up, why in (([], {"zone-cold": True}, "its rule is gone"), ([door], {}, "that machine is no longer on this hub")):
+        al = devboard.Alarms()
+        al.restore("", row, now=1000.0)
+        _o, _r2, cleared = al.judge("", rules, {}, up, now=1001.0)
+        assert [a["why"] for a in cleared] == [why]
+    # a machine's own "not answering" line, once it answers
+    al = devboard.Alarms()
+    al.restore("", [{"id": "off:pi", "machine": "pi", "text": "pi is not answering", "since": 5.0}], now=1000.0)
+    _o, _r2, cleared = al.judge("", [], {}, {"pi": True}, now=1001.0)
+    assert cleared[0]["why"] == "the machine answers again"
+
+
+def test_a_hub_that_restarts_reads_the_machines_and_ends_the_stale_alarm(monkeypatch):
+    """The whole round on the server: the diary from before a restart, the machine asked for what it
+    reads now (a Pi sends only changes), one cleared line, and only your own account's lines shown."""
+    from fastapi.testclient import TestClient
+    from agentos import server, teamlink, zero as zeromod
+    with TestClient(server.app) as c:
+        rule = devboard.clean_rule({"machine": "zone-cold", "item": COMP, "when": "off"})
+        lk = {"id": "L1", "label": "zone-cold", "owner": "", "kind": "machine"}
+        machines = [{"machine": "zone-cold", "key": "L1", "up": True, "live": True, "things": [
+            {"id": COMP, "name": "Compressor", "unit": "", "kind": "switch", "onoff": True, "group": "board", "group_name": "x"}]}]
+        monkeypatch.setattr(server, "_board_machines", lambda o: [dict(m, things=[dict(t) for t in m["things"]]) for m in machines] if o == "" else [])
+        monkeypatch.setattr(server, "_demo_shows", lambda me: False)
+        said = []
+
+        async def event(owner, ev, label, text, **meta):
+            said.append((ev, text, meta))
+        monkeypatch.setattr(server, "_device_event", event)
+
+        async def tell(ev, owner):
+            pass
+        monkeypatch.setattr(server, "_tie_tell", tell)
+
+        async def hw(link, why):
+            return {"ok": True, "hardware": {"items": [{"id": COMP, "name": "Compressor", "value": True}]}}
+        monkeypatch.setattr(server, "_tie_hardware", hw)
+        monkeypatch.setattr(teamlink, "_load", lambda: {"links": [lk]})
+        monkeypatch.setattr(zeromod, "ships_to", lambda link: True)
+        monkeypatch.setitem(server.state.machine_cfg(), "device_alarms", [rule])
+        monkeypatch.setitem(server.state["cfg"], "device_alarms", [rule])
+        before = time.time() - 5000
+        monkeypatch.setattr(server, "_alarm_lines", lambda whose=None, limit=0: [
+            {"at": before, "event": "alarm", "alarm": rule["id"], "label": "zone-cold", "level": "alarm", "owner": "",
+             "text": "Alarm on zone-cold: Compressor is off"}])
+        monkeypatch.setattr(devboard.Alarms, "restored", False)
+        server._ALARMS = None
+        for k in [k for k in server._DEV_LAST if k[0] == ""]:
+            monkeypatch.delitem(server._DEV_LAST, k)
+        b = c.get("/api/devices/board").json()
+        assert [a["state"] for a in b["alarms"]] == ["unconfirmed"], "back after the restart, and not yet judged"
+        assert b["rule_list"][0]["editable"] and b["rule_list"][0]["now"] == "unconfirmed"
+        assert server._alarm_names("", "zone-cold")
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(server._alarm_sync(lk))
+        finally:
+            loop.close()
+        assert [e for e, *_ in said] == ["cleared"] and "reads normal" in said[0][1] and said[0][2]["why"]
+        assert c.get("/api/devices/board").json()["alarms"] == []
+        server._ALARMS = None
+        server._DEV_LAST.pop(("", "zone-cold", COMP), None)
+
+
+def test_the_diary_shows_each_account_only_its_own_alarms(monkeypatch):
+    """Found on the owner's screen: the demo's user saw "raspberrypi-3 is not answering", the admin's
+    machine. The diary is one list for the machine, so the board filters it."""
+    from agentos import devevents, server, teamlink
+    rows = [{"at": 1, "event": "alarm", "label": "raspberrypi-3", "text": "machine's", "alarm": "x"},
+            {"at": 2, "event": "alarm", "label": "theirs", "text": "the link's owner's", "alarm": "y"},
+            {"at": 3, "event": "alarm", "label": "z", "text": "named", "alarm": "z", "owner": "ada"},
+            {"at": 4, "event": "hardware", "label": "theirs", "text": "not an alarm"}]
+    monkeypatch.setattr(devevents, "gather", lambda stores, limit=0: [dict(r) for r in rows])
+    monkeypatch.setattr(teamlink, "_load", lambda: {"links": [{"label": "theirs", "owner": "bob"}]})
+    assert [e["text"] for e in server._alarm_lines({"bob"})] == ["the link's owner's"]
+    assert [e["text"] for e in server._alarm_lines({"ada"})] == ["named"]
+    assert [e["text"] for e in server._alarm_lines({""})] == ["machine's"]
+    assert len(server._alarm_lines()) == 3
+
+
+def test_every_rule_is_listed_with_what_it_reads_now_and_who_it_belongs_to():
+    mine = _r(item=TEMP, when="above", value=-15)
+    mission = {"id": "m7", "level": "alarm", "source": "mission", "flow": "guard",
+               "config": {"machine": "zone-cold", "item": DOOR, "when": "on", "for": 120}}
+    moment = {"id": "m8", "source": "mission", "flow": "x", "config": {"machine": "zone-cold", "when": "online"}}
+    rows = devboard.rule_rows([mine, mission, moment], {("zone-cold", TEMP): ("Cold room temperature", "°C")},
+                              [{"id": mine["id"], "state": "active"}])
+    assert [r["id"] for r in rows] == [mine["id"], "m7"], "a moment is no state, so it raises no alarm"
+    assert rows[0]["editable"] and rows[0]["now"] == "active" and "above -15" in rows[0]["text"]
+    assert not rows[1]["editable"] and rows[1]["flow"] == "guard" and rows[1]["now"] == "clear" and rows[1]["for"] == 120
+    text = devboard.rules_text({"rule_list": rows})
+    assert " 1." in text and "mission guard" in text and "always on" in text
+
+
+def test_the_alarm_table_blinks_what_is_new_and_says_it_in_words():
+    s, css = (JS / "01h-devscene.js").read_text(), (ROOT / "agentos/ui/src/css/39-devscene.css").read_text()
+    for w in ("<table", ">New<", "Earlier today", "Alarm rules", "Ended, time not recorded", "Checking with"):
+        assert w in s, w
+    assert "No alarms of your own" not in s and "Your alarms" not in s
+    assert "--ph:-" in s, "a repaint must not restart the blink"
+    assert "dvs-flash" in css and "prefers-reduced-motion:reduce){.dvs-blink,.dvs-sev.blink" in css
