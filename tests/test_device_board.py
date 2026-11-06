@@ -405,6 +405,38 @@ def test_every_rule_is_listed_with_what_it_reads_now_and_who_it_belongs_to():
     assert " 1." in text and "mission guard" in text and "always on" in text
 
 
+def test_the_chat_folds_and_only_a_person_folds_it():
+    """Asked for as "chat can sit there on the right top but the screen below can be used for the
+    devices, and once it opens it shows a decent animation to open up the right panel"."""
+    s = (JS / "01h-devscene.js").read_text()
+    omni = (JS / "28a-omnibar.js").read_text()
+    css = (ROOT / "agentos/ui/src/css/39-devscene.css").read_text()
+    shell = (ROOT / "agentos/ui/src/shell.html").read_text()
+    assert 'id="omni-fold"' in shell and "aria-expanded" in shell
+    assert "localStorage.getItem('devscene.chat')==='open'" in s, "folded unless this browser chose open"
+    # a press, typing, a hotkey or a new answer opens it; a caret the page placed doesn't
+    assert "addEventListener('pointerdown'" in omni and "focusin" not in omni
+    for where in ("omniSummon(true);                       // come to the front", "wrap.classList.add('raised');",
+                  "if(inp.value&&typeof devChatOpen"):
+        tail = omni[omni.index(where):omni.index(where) + 120]
+        assert "devChatOpen" in tail, where
+    # the only callers that fold: the arrow, and Esc on an empty bar
+    assert omni.count("devChatFold") == 2 and "if(!was&&typeof devChatFold" in omni
+    assert "devChatFold" not in s.replace("function devChatFold", "").replace("{devChatFold();return}", "")
+    # the panel keeps its answers, and leaving the scene gives the bar back
+    assert omni.count("devChatKeeps") == 4 and "c.dataset.done&&c._close" in s
+    # (1,0,1) beats a bare id: written plain, the arrow showed on every scene and on a phone
+    assert "#omnibar #omni-fold,#devchat{display:none}" in css
+    assert "not(.dev-mobile) #omnibar #omni-fold{display:flex" in css
+    # it moves, except where it can't afford to or was asked not to
+    assert "--dvc-t:300ms" in css and "body.lite-screen.imm-devices{--dvc-t:0ms}" in css
+    assert "transition:right var(--dvc-t)" in css and "translateX(calc(100% + 24px))" in css
+    # the table reads its own width, because the panel narrows it on a wide screen
+    assert "container-type:inline-size" in css and "@container (max-width:720px)" in css
+    # a docked bar has no centring transform for the launcher's bounce to keep
+    assert "getComputedStyle(bar).transform==='none'" in omni
+
+
 def test_the_alarm_table_blinks_what_is_new_and_says_it_in_words():
     s, css = (JS / "01h-devscene.js").read_text(), (ROOT / "agentos/ui/src/css/39-devscene.css").read_text()
     for w in ("<table", ">New<", "Earlier today", "Alarm rules", "Ended, time not recorded", "Checking with"):

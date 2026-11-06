@@ -15,6 +15,11 @@ longer true is cleared with a line saying why. Before, a restart forgot them, so
 reads now and who owns it, with Edit and Remove. Your desktop can change the demo's rules, and an
 alarm's Rule button opens its rule. `bento network alarms` does the same from a terminal.
 
+**The chat folds on the Devices scene.** It sits small at the top right and the board takes the whole
+screen under it. Press it or start typing and a panel slides in while the board makes room. Answers stay
+there until you close them, a dot says when one finished while it was folded, and the arrow or Esc on an
+empty bar folds it again. The board's header stays in view as you scroll.
+
 **Fixed:** another account's machines showed in your day's alarm numbers. On and off readings (a door,
 a switch) were dropped when a machine's hardware was read, so they showed as "—" after a restart.
 

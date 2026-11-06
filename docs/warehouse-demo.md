@@ -83,6 +83,13 @@ desktop 2, so the desktop numbers in the menu bar (or **⇄ Town** on the board)
 
 ![The alarm table: new alarms blink, warnings amber, alarms red, and what cleared earlier today below them](screenshots/devices-scene.png)
 
+The chat sits small at the top right, so the board has the screen. Press it or start typing and it
+opens as a panel on the right, with the board making room beside it. Answers stay in the panel until you
+close them, and if one finishes while it's folded, a dot on the arrow says so. The arrow folds it, and so
+does Esc on an empty bar. On a phone the bar stays under the board.
+
+![The chat open on the right, with an answer, beside the board](screenshots/devices-scene-chat.png)
+
 The board opens on the day's numbers: machines answering, readings coming in, alarms now (and how
 many you've seen), the longest one open, and the alarms of the last 24 hours by hour with the ones
 that came back most. Every reading carries its last hour as a small line, with its range, average

@@ -6684,8 +6684,9 @@ body.lite-screen .stg-pic img,
 body.lite-screen .dm-bg line{animation:none!important}
 /* The Devices scene (01h-devscene.js): the floor, live, with its alarms. Words in the desktop layer
    over the sky wallpaper; no blur (the one blurred surface is the active window, 20-immersive.css),
-   colours mixed from the theme's tokens so it reads on every theme. The prompt bar is a right-hand
-   column on a wide screen, as in Office HQ, and under the board on a narrow one. */
+   colours mixed from the theme's tokens so it reads on every theme. On a wide screen the prompt bar
+   folds to the top right and opens as a panel (devChatOpen in 01h); on a narrow one it sits under
+   the board. */
 #devscene{position:absolute;z-index:4;left:16px;right:16px;top:calc(var(--mbh,28px) + 14px);bottom:100px;
   overflow:auto;overscroll-behavior:contain;color:var(--txt);font-family:var(--sans);scrollbar-width:thin;
   padding:2px 4px 12px 2px}
@@ -6693,13 +6694,70 @@ body.lite-screen .dm-bg line{animation:none!important}
 body.has-win #devscene,body.deck-full #devscene,body.exposing #devscene{opacity:0;pointer-events:none}
 body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,body.imm-devices .hm-now,
   body.imm-devices .hm-links{display:none!important}
+#omnibar #omni-fold,#devchat{display:none}
 @media (min-width:901px){
-  body.imm-devices:not(.dev-mobile) #devscene{right:min(470px,calc(34vw + 30px))}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar{top:calc(var(--mbh,28px) + 14px);bottom:auto;
-    left:auto;right:16px;transform:none;width:min(440px,34vw)}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{width:min(440px,34vw)}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--mbh,28px) + 82px);bottom:auto;
-    left:auto;right:16px;transform:none;width:min(440px,34vw);flex-direction:column}
+  /* Folded: a small bar at the top right, over the end of a header that stays put, so nothing ever
+     scrolls under it and the board has the full width. Open: a panel slides in and the board makes
+     room in the same breath. */
+  body.imm-devices:not(.dev-mobile){--dvc-w:min(440px,34vw);--dvc-pill:min(290px,25vw);--dvc-t:300ms;
+    --dvc-top:calc(var(--mbh,28px) + 14px)}
+  body.imm-devices:not(.dev-mobile) #devscene{padding-top:0;transition:right var(--dvc-t) var(--ease-out)}
+  body.imm-devices.dvc-open:not(.dev-mobile) #devscene{right:calc(var(--dvc-w) + 30px)}
+  body.imm-devices:not(.dev-mobile) .dvs-head{position:sticky;top:0;z-index:2;
+    background:var(--bg2);
+    padding-right:calc(var(--dvc-pill) + 26px);transition:padding-right var(--dvc-t) var(--ease-out)}
+  body.imm-devices.dvc-open:not(.dev-mobile) .dvs-head{padding-right:14px}
+
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{top:calc(var(--dvc-top) + 11px);bottom:auto;
+    left:auto;right:28px;transform:none;width:var(--dvc-pill);height:44px;padding:0 6px 0 12px;gap:8px;
+    transition:width var(--dvc-t) var(--ease-out),right var(--dvc-t) var(--ease-out),top var(--dvc-t) var(--ease-out),
+      height var(--dvc-t) var(--ease-out),box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{
+    top:calc(var(--dvc-top) + 10px);right:26px;width:calc(var(--dvc-w) - 20px);height:50px;padding:0 8px 0 14px}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{font-size:var(--fs-base);min-width:0;text-overflow:ellipsis}
+  /* what the small bar has room for: type, talk, open */
+  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-shot,
+  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-chat{display:none}
+
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar #omni-fold{display:flex;position:relative;
+    color:var(--txt);transition:background var(--d-fast) var(--ease-out)}
+  #omni-fold svg{transition:transform var(--dvc-t,300ms) var(--ease-out)}
+  body.dvc-open #omni-fold svg{transform:rotate(180deg)}
+  #omni-fold i{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:var(--acc);
+    box-shadow:0 0 0 2px var(--bg2);opacity:0;transform:scale(.4);transition:opacity var(--d-fast),transform var(--d-fast)}
+  #omnibar.dvc-news #omni-fold i{opacity:1;transform:none}
+
+  body.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{display:block;position:absolute;z-index:6;
+    top:var(--dvc-top);right:16px;bottom:100px;width:var(--dvc-w);box-sizing:border-box;padding:76px 18px 16px;
+    border-radius:var(--r-lg);border:1px solid var(--line);background:color-mix(in srgb,var(--bg2) 96%,transparent);
+    box-shadow:var(--el-4);
+    transform:translateX(calc(100% + 24px));opacity:0;visibility:hidden;
+    transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s linear var(--dvc-t)}
+  body.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{transform:none;opacity:1;visibility:visible;
+    transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s}
+  .dvc-hint{margin:0;color:var(--dim);font-size:var(--fs-sm);line-height:1.45}
+  body:has(#omnicards .ocard) .dvc-hint{visibility:hidden}
+
+  /* the answers follow the panel in a moment after it, and leave first */
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--dvc-top) + 74px);bottom:112px;
+    left:auto;right:28px;transform:translateX(36px);width:calc(var(--dvc-w) - 24px);flex-direction:column;
+    overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;opacity:0;visibility:hidden;
+    transition:transform 180ms var(--ease-out),opacity 180ms var(--ease-out),visibility 0s linear 180ms}
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile):not(.omni-pop) #omnicards{transform:none;opacity:1;visibility:visible;
+    transition:transform var(--dvc-t) var(--ease-out) 90ms,opacity var(--dvc-t) var(--ease-out) 90ms,visibility 0s}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{flex:none}
+  /* a window over the scene hides the board; a finished answer waits in the panel, not over the window */
+  body.imm-devices.has-win:not(.dev-mobile) #omnicards .ocard[data-done]{display:none}
+
+  /* what floats keeps clear of the panel, and of the small bar */
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float,
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #aibubble{right:calc(var(--dvc-w) + 32px)}
+  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float{top:calc(var(--dvc-top) + var(--mbh,28px) + 76px)}
+  /* a Pi's own screen doesn't animate this; the board just takes its place */
+  body.lite-screen.imm-devices{--dvc-t:0ms}
+  body.lite-screen #omnibar,body.lite-screen #devchat,body.lite-screen #omnicards{transition-duration:0ms!important;transition-delay:0ms!important}
 }
 @media (max-width:900px){
   body.imm-devices #devscene{bottom:156px}
@@ -6728,7 +6786,8 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
 .dvs-tabs em{font-style:normal;font-variant-numeric:tabular-nums;opacity:.75}
 .dvs-clear{margin:0 0 8px;padding:10px 12px;border-radius:var(--r-md);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);
   background:color-mix(in srgb,var(--bg2) 88%,var(--ok));color:var(--txt);font-size:var(--fs-sm)}
-.dvs-tw{overflow-x:auto}
+/* the table reads its own width, not the screen's: the open chat panel narrows it on a wide screen */
+.dvs-tw{overflow-x:auto;container-type:inline-size}
 .dvs-tab{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
 .dvs-tab th{padding:4px 8px;text-align:left;font-size:var(--fs-2xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);white-space:nowrap}
 .dvs-tab td{padding:7px 8px;vertical-align:middle;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-variant-numeric:tabular-nums}
@@ -6759,7 +6818,7 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
 .dvs-st.seen{color:var(--txt)}
 .dvs-st.ok{color:var(--ok)}
 .dvs-st.wait{color:var(--warn)}
-@media (max-width:640px){
+@container (max-width:720px){
   .dvs-tab thead{display:none}
   .dvs-tab,.dvs-tab tbody{display:block}
   .dvs-tab tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 12px;padding:8px;border-bottom:1px solid var(--line)}
@@ -6772,7 +6831,8 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
 }
 
 /* the machines: one card each, its nodes inside, each thing a row with its value */
-.dvs-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));align-items:start}
+.dvs-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));align-items:start}
+.dvs-grid>.dvs-m{max-width:640px}
 .dvs-m{border-radius:var(--r-xl);padding:12px 14px 10px;background:color-mix(in srgb,var(--bg2) 90%,transparent);
   border:1px solid var(--line);box-shadow:var(--el-2)}
 .dvs-m.alarm{border-color:color-mix(in srgb,var(--err) 55%,transparent)}
@@ -6816,14 +6876,16 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 .dev-alarms{margin:0 0 14px}
 
 /* the analytics (01h devSceneStatsHTML, devSceneSpark) */
-.dvs-stats{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:0 0 12px}
+/* flex, not a grid: the row spanning a grid keeps every empty column, and the folded chat's width went unused */
+.dvs-stats{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.dvs-stats>.dvs-k{flex:1 1 150px;min-width:0}
 .dvs-k{padding:10px 12px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid var(--line);min-width:0}
 .dvs-k>span{display:block;font-size:var(--fs-2xs);letter-spacing:.05em;text-transform:uppercase;color:var(--dim)}
 .dvs-k>b{display:block;font-size:var(--fs-xl);font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
 .dvs-k>small{display:block;color:var(--dim);font-size:var(--fs-xs);margin-top:2px;overflow-wrap:anywhere}
 .dvs-k.bad{border-color:color-mix(in srgb,var(--err) 55%,transparent)}.dvs-k.bad>b{color:var(--err)}
 .dvs-k.warn{border-color:color-mix(in srgb,var(--warn) 55%,transparent)}
-.dvs-hist{grid-column:1/-1}
+.dvs-stats>.dvs-hist{flex:1 1 100%}
 .dvs-hist svg{display:block;margin-top:6px}
 .dvs-hist rect{fill:var(--acc)}.dvs-hist rect:hover{fill:var(--txt)}
 .dvs-hist line{stroke:var(--line);stroke-width:1}
@@ -6941,6 +7003,7 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
     <button id="omni-shot" data-ic="camera" title="Attach a screenshot"></button>
     <button id="omni-mic" title="Voice"></button>
     <button id="omni-chat" data-ic="expand" title="Open Chat">⤢</button>
+    <button id="omni-fold" type="button" aria-controls="omnicards" aria-expanded="false" aria-label="Open the chat panel" title="Open the chat panel"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><i aria-hidden="true"></i></button>
   </div>
 </div>
 <button id="shell-exit" onclick="applyTheme('agentos')">⊞ Standard desktop</button>
@@ -12219,6 +12282,7 @@ function devSceneStart(){
   if(!el){el=document.createElement('div');el.id='devscene';el.className='dvs';el.setAttribute('role','region');
     el.setAttribute('aria-label','Devices, live');desk.insertBefore(el,home?home.nextSibling:null)}
   DEVSCENE.el=el;el.hidden=false;
+  devChatMount();
   if(!el.firstChild)el.innerHTML='<p class="dvs-wait">Reading your devices…</p>';
   devSceneLoad();
   clearInterval(DEVSCENE.t);
@@ -12228,6 +12292,62 @@ function devSceneStop(){
   if(!DEVSCENE.on)return;
   DEVSCENE.on=false;clearInterval(DEVSCENE.t);DEVSCENE.t=0;
   const el=document.getElementById('devscene');if(el)el.hidden=true;
+  // leaving the scene gives the bar back: answers kept for the panel have nowhere to stay
+  const wrap=document.getElementById('omnicards');
+  if(wrap)[...wrap.children].forEach(c=>{if(c.dataset.done&&c._close)c._close()});
+  const bar=document.getElementById('omnibar');if(bar)bar.classList.remove('dvc-news');
+}
+
+/* The chat folds to the top right, so the board has the whole screen under it. Asked for as "chat
+   can sit there on the right top but the screen below can be used for the devices, and once it opens
+   it shows a decent animation to open up the right panel". It is the prompt bar and its answer cards,
+   the same turns as anywhere, with a panel behind them that slides in while the board makes room.
+   Folded is the default, and the choice is per browser. Pressing the bar, typing, a hotkey or a new
+   answer opens it; only the button or Esc on an empty bar folds it, so a turn never hides itself.
+   While it's folded an answer lights a dot on the button, and an approval floats on its own (the
+   hidden card fails approvalShown). On a phone or a narrow window there's no room for a panel, so the
+   bar stays under the board. TUI: not applicable, `bento chat` already is the whole screen. SUI: the
+   same page, nothing here touches the compositor. */
+var DEVCHAT={open:false,read:false};
+function devChatWide(){return !!DEVSCENE.on&&innerWidth>900&&!document.body.classList.contains('dev-mobile')}
+function devChatKeeps(){return devChatWide()}
+function devChatMount(){
+  if(!DEVCHAT.read){DEVCHAT.read=true;
+    try{DEVCHAT.open=localStorage.getItem('devscene.chat')==='open'}catch(e){}}
+  let p=document.getElementById('devchat');
+  if(!p){const bar=document.getElementById('omnicards');if(!bar)return;
+    p=document.createElement('aside');p.id='devchat';
+    p.innerHTML='<p class="dvc-hint">Ask about a machine, an alarm or a reading. Answers stay here until you close them.</p>';
+    bar.parentNode.insertBefore(p,bar)}
+  devChatPaint();
+}
+function devChatPaint(){
+  document.body.classList.toggle('dvc-open',DEVCHAT.open);
+  const b=document.getElementById('omni-fold');if(!b)return;
+  const say=DEVCHAT.open?'Fold the chat panel':'Open the chat panel';
+  b.setAttribute('aria-expanded',DEVCHAT.open?'true':'false');b.setAttribute('aria-label',say);b.title=say;
+  if(DEVCHAT.open)document.getElementById('omnibar').classList.remove('dvc-news');
+}
+function devChatSet(open){
+  DEVCHAT.open=open;
+  try{localStorage.setItem('devscene.chat',open?'open':'fold')}catch(e){}
+  devChatPaint();
+}
+function devChatOpen(){if(devChatWide()&&!DEVCHAT.open)devChatSet(true)}
+function devChatFold(){
+  if(!devChatWide()||!DEVCHAT.open)return;
+  devChatSet(false);
+  // a launcher left open or a caret in the bar would sit in the small pill
+  if(typeof omniPop==='function'&&OMNI.pop)omniPop(false);
+  const inp=document.getElementById('omni-in');if(inp&&document.activeElement===inp)inp.blur();
+}
+function devChatToggle(){
+  if(DEVCHAT.open){devChatFold();return}
+  devChatOpen();
+  const inp=document.getElementById('omni-in');if(inp)inp.focus();
+}
+function devChatNews(){
+  if(devChatWide()&&!DEVCHAT.open)document.getElementById('omnibar').classList.add('dvc-news');
 }
 async function devSceneLoad(){
   if(!DEVSCENE.on||DEVSCENE.busy)return;
@@ -42491,7 +42611,9 @@ function omniPop(on){
     if(changed)popCloseAll();     // the palette is a popover too: not beside Quick Settings
     if(document.activeElement!==inp)inp.focus();
     omniRender(inp.value);
-    if(changed)Motion.run(bar,[{transform:'translateX(-50%) scale(.97)'},{transform:'translateX(-50%) scale(1)'}],
+    // a bar docked on the right has no centring transform to keep: this threw it half its width left
+    const x=getComputedStyle(bar).transform==='none'?'':'translateX(-50%) ';
+    if(changed)Motion.run(bar,[{transform:x+'scale(.97)'},{transform:x+'scale(1)'}],
       {duration:180,easing:EASE.spring});
   }else{
     $('#omnilist').classList.remove('on');
@@ -42512,6 +42634,7 @@ function omniSummon(on){
 function omniFocus(){
   const inp=$('#omni-in');if(!inp)return;
   omniSummon(true);                       // come to the front, over any window
+  if(typeof devChatOpen==='function')devChatOpen();
   inp.focus();inp.select();
   omniPop(true);
 }
@@ -42631,6 +42754,7 @@ function omniCard(question){
       <button class="oc-chat">Open in Chat</button><button class="oc-x">✕</button></div>`;
   wrap.appendChild(card);
   wrap.classList.add('raised');
+  if(typeof devChatOpen==='function')devChatOpen();
   while(wrap.children.length>3)wrap.firstChild.remove();
   popIn(card,{origin:'bottom'});
   const close=()=>{popOut(card,()=>{card.remove();
@@ -42651,6 +42775,7 @@ function omniCard(question){
 function omniCardsYield(){
   const wrap=$('#omnicards');if(!wrap||!wrap.children.length)return;
   wrap.classList.remove('raised');
+  if(typeof devChatKeeps==='function'&&devChatKeeps())return;   // the panel keeps its answers
   [...wrap.children].forEach(c=>{if(c.dataset.done&&c._close&&!c.matches(':hover'))c._close()});
 }
 function omniContext(){
@@ -42704,8 +42829,10 @@ async function omniAsk(q){
     onEnd:()=>{
     stopBtn.style.display='none';
     card.dataset.done='1';
+    if(typeof devChatNews==='function')devChatNews();
     // linger, then fade — unless the pointer is on it or an approval is pending
-    setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)'))close()},30000);
+    setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)')
+      &&!(typeof devChatKeeps==='function'&&devChatKeeps()))close()},30000);
   }});
   const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:omniTitle(q),images:imgs,
     context:omniContext(),sink,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
@@ -42740,10 +42867,16 @@ async function omniAsk(q){
   bar.addEventListener('dragleave',()=>bar.classList.remove('dropping'));
   $('#omni-mic').onmousedown=e=>{e.preventDefault();jarvisMode(true)};
   $('#omni-chat').onmousedown=e=>{e.preventDefault();openApp('chat');if(OMNI.cid)openConv(OMNI.cid)};
+  const fold=$('#omni-fold');
+  if(fold){fold.onmousedown=e=>e.preventDefault();fold.onclick=()=>devChatToggle()}
+  // pressing on the bar opens the Devices scene's panel; only a press or typing does, so a caret
+  // the page puts there by itself never moves the board
+  bar.addEventListener('pointerdown',e=>{if(!e.target.closest('button')&&typeof devChatOpen==='function')devChatOpen()});
   // clicking anywhere on the bar puts the caret in it
   bar.addEventListener('mousedown',e=>{if(!e.target.closest('button')&&e.target!==inp){e.preventDefault();omniFocus()}});
   // typing opens the launcher; clearing it collapses back to the bare bar
-  inp.addEventListener('input',()=>{if(inp.value.trim())omniPop(true);else if(OMNI.pop)omniRender('')});
+  inp.addEventListener('input',()=>{if(inp.value&&typeof devChatOpen==='function')devChatOpen();
+    if(inp.value.trim())omniPop(true);else if(OMNI.pop)omniRender('')});
   inp.addEventListener('keydown',e=>{
     if(e.key==='ArrowDown'){e.preventDefault();OMNI.idx=Math.min(OMNI.idx+1,OMNI.matches.length-1);omniPaint();return}
     if(e.key==='ArrowUp'){e.preventDefault();OMNI.idx=Math.max(OMNI.idx-1,0);omniPaint();return}
@@ -42752,7 +42885,8 @@ async function omniAsk(q){
       if(e.shiftKey){omniAsk(inp.value);return}         // ⇧⏎ always asks the agent
       if(OMNI.matches.length)omniRun();else omniAsk(inp.value);
       return}
-    if(e.key==='Escape'){e.preventDefault();inp.value='';omniPop(false);omniSummon(false);inp.blur()}
+    if(e.key==='Escape'){e.preventDefault();const was=inp.value;inp.value='';omniPop(false);omniSummon(false);inp.blur();
+      if(!was&&typeof devChatFold==='function')devChatFold()}
   });
   // clicking away collapses the launcher (the bar itself stays, always)
   document.addEventListener('mousedown',e=>{

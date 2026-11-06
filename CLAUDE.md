@@ -3472,6 +3472,13 @@ device hub instead of the town … the desktops could be used for switching". Fi
 - **One rule list, one alarm table** (`devboard.rule_rows`, `history`, `devAlarmsHTML`). A rule on a demo machine is PUT
   with `demo` and passed on to its hub (`warehouse.hub_alarms`); a mission's is read-only here. New alarms blink with a
   phase from the clock (`--ph`), or the 4 s repaint restarts it. `bento network alarms` is the terminal's face.
+- **The chat folds to the top right, and only a person folds it** (`devChatOpen`/`Fold`/`Toggle`/`Keeps`/`News` in 01h,
+  `#omni-fold`, `#devchat`, `body.dvc-open`; wide screens only). It's the prompt bar and its cards with a panel behind them. Pressing
+  the bar, typing, a hotkey or a new answer opens it; the page putting a caret there doesn't, or every load moved the board. The
+  panel keeps finished answers (`devChatKeeps` skips the 30 s linger) until the scene is left. The table reads its own width
+  (`@container` on `.dvs-tw`), because the panel narrows it on a wide screen. `#omnibar button` is (1,0,1), so `#omni-fold` needs
+  `#omnibar #omni-fold`: written plain, the button showed on every scene and on phones. `omniPop` skips the centring transform on
+  a docked bar, or it threw the bar half its width left.
 - **Words and numbers, no frame loop**: a 4 s refresh that skips while hidden or covered, values moved in place by
   `device_live`. It is in `LITE_SCENES`, so a Pi's own screen can show it.
 

@@ -1,7 +1,8 @@
 /* The Devices scene (01h-devscene.js): the floor, live, with its alarms. Words in the desktop layer
    over the sky wallpaper; no blur (the one blurred surface is the active window, 20-immersive.css),
-   colours mixed from the theme's tokens so it reads on every theme. The prompt bar is a right-hand
-   column on a wide screen, as in Office HQ, and under the board on a narrow one. */
+   colours mixed from the theme's tokens so it reads on every theme. On a wide screen the prompt bar
+   folds to the top right and opens as a panel (devChatOpen in 01h); on a narrow one it sits under
+   the board. */
 #devscene{position:absolute;z-index:4;left:16px;right:16px;top:calc(var(--mbh,28px) + 14px);bottom:100px;
   overflow:auto;overscroll-behavior:contain;color:var(--txt);font-family:var(--sans);scrollbar-width:thin;
   padding:2px 4px 12px 2px}
@@ -9,13 +10,70 @@
 body.has-win #devscene,body.deck-full #devscene,body.exposing #devscene{opacity:0;pointer-events:none}
 body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,body.imm-devices .hm-now,
   body.imm-devices .hm-links{display:none!important}
+#omnibar #omni-fold,#devchat{display:none}
 @media (min-width:901px){
-  body.imm-devices:not(.dev-mobile) #devscene{right:min(470px,calc(34vw + 30px))}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar{top:calc(var(--mbh,28px) + 14px);bottom:auto;
-    left:auto;right:16px;transform:none;width:min(440px,34vw)}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{width:min(440px,34vw)}
-  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--mbh,28px) + 82px);bottom:auto;
-    left:auto;right:16px;transform:none;width:min(440px,34vw);flex-direction:column}
+  /* Folded: a small bar at the top right, over the end of a header that stays put, so nothing ever
+     scrolls under it and the board has the full width. Open: a panel slides in and the board makes
+     room in the same breath. */
+  body.imm-devices:not(.dev-mobile){--dvc-w:min(440px,34vw);--dvc-pill:min(290px,25vw);--dvc-t:300ms;
+    --dvc-top:calc(var(--mbh,28px) + 14px)}
+  body.imm-devices:not(.dev-mobile) #devscene{padding-top:0;transition:right var(--dvc-t) var(--ease-out)}
+  body.imm-devices.dvc-open:not(.dev-mobile) #devscene{right:calc(var(--dvc-w) + 30px)}
+  body.imm-devices:not(.dev-mobile) .dvs-head{position:sticky;top:0;z-index:2;
+    background:var(--bg2);
+    padding-right:calc(var(--dvc-pill) + 26px);transition:padding-right var(--dvc-t) var(--ease-out)}
+  body.imm-devices.dvc-open:not(.dev-mobile) .dvs-head{padding-right:14px}
+
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{top:calc(var(--dvc-top) + 11px);bottom:auto;
+    left:auto;right:28px;transform:none;width:var(--dvc-pill);height:44px;padding:0 6px 0 12px;gap:8px;
+    transition:width var(--dvc-t) var(--ease-out),right var(--dvc-t) var(--ease-out),top var(--dvc-t) var(--ease-out),
+      height var(--dvc-t) var(--ease-out),box-shadow var(--d-base) var(--ease-out),border-color var(--d-base) var(--ease-out)}
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar,
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar.pop{
+    top:calc(var(--dvc-top) + 10px);right:26px;width:calc(var(--dvc-w) - 20px);height:50px;padding:0 8px 0 14px}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omni-in{font-size:var(--fs-base);min-width:0;text-overflow:ellipsis}
+  /* what the small bar has room for: type, talk, open */
+  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-shot,
+  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) #omni-chat{display:none}
+
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnibar #omni-fold{display:flex;position:relative;
+    color:var(--txt);transition:background var(--d-fast) var(--ease-out)}
+  #omni-fold svg{transition:transform var(--dvc-t,300ms) var(--ease-out)}
+  body.dvc-open #omni-fold svg{transform:rotate(180deg)}
+  #omni-fold i{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:var(--acc);
+    box-shadow:0 0 0 2px var(--bg2);opacity:0;transform:scale(.4);transition:opacity var(--d-fast),transform var(--d-fast)}
+  #omnibar.dvc-news #omni-fold i{opacity:1;transform:none}
+
+  body.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{display:block;position:absolute;z-index:6;
+    top:var(--dvc-top);right:16px;bottom:100px;width:var(--dvc-w);box-sizing:border-box;padding:76px 18px 16px;
+    border-radius:var(--r-lg);border:1px solid var(--line);background:color-mix(in srgb,var(--bg2) 96%,transparent);
+    box-shadow:var(--el-4);
+    transform:translateX(calc(100% + 24px));opacity:0;visibility:hidden;
+    transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s linear var(--dvc-t)}
+  body.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #devchat{transform:none;opacity:1;visibility:visible;
+    transition:transform var(--dvc-t) var(--ease-out),opacity var(--dvc-t) var(--ease-out),visibility 0s}
+  .dvc-hint{margin:0;color:var(--dim);font-size:var(--fs-sm);line-height:1.45}
+  body:has(#omnicards .ocard) .dvc-hint{visibility:hidden}
+
+  /* the answers follow the panel in a moment after it, and leave first */
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards{top:calc(var(--dvc-top) + 74px);bottom:112px;
+    left:auto;right:28px;transform:translateX(36px);width:calc(var(--dvc-w) - 24px);flex-direction:column;
+    overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;opacity:0;visibility:hidden;
+    transition:transform 180ms var(--ease-out),opacity 180ms var(--ease-out),visibility 0s linear 180ms}
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile):not(.omni-pop) #omnicards{transform:none;opacity:1;visibility:visible;
+    transition:transform var(--dvc-t) var(--ease-out) 90ms,opacity var(--dvc-t) var(--ease-out) 90ms,visibility 0s}
+  body.immersive.imm-devices:not(.has-win):not(.deck-full):not(.dev-mobile) #omnicards .ocard{flex:none}
+  /* a window over the scene hides the board; a finished answer waits in the panel, not over the window */
+  body.imm-devices.has-win:not(.dev-mobile) #omnicards .ocard[data-done]{display:none}
+
+  /* what floats keeps clear of the panel, and of the small bar */
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float,
+  body.immersive.imm-devices.dvc-open:not(.has-win):not(.deck-full):not(.dev-mobile) #aibubble{right:calc(var(--dvc-w) + 32px)}
+  body.immersive.imm-devices:not(.dvc-open):not(.has-win):not(.deck-full):not(.dev-mobile) .approval.ap-float{top:calc(var(--dvc-top) + var(--mbh,28px) + 76px)}
+  /* a Pi's own screen doesn't animate this; the board just takes its place */
+  body.lite-screen.imm-devices{--dvc-t:0ms}
+  body.lite-screen #omnibar,body.lite-screen #devchat,body.lite-screen #omnicards{transition-duration:0ms!important;transition-delay:0ms!important}
 }
 @media (max-width:900px){
   body.imm-devices #devscene{bottom:156px}
@@ -44,7 +102,8 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
 .dvs-tabs em{font-style:normal;font-variant-numeric:tabular-nums;opacity:.75}
 .dvs-clear{margin:0 0 8px;padding:10px 12px;border-radius:var(--r-md);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);
   background:color-mix(in srgb,var(--bg2) 88%,var(--ok));color:var(--txt);font-size:var(--fs-sm)}
-.dvs-tw{overflow-x:auto}
+/* the table reads its own width, not the screen's: the open chat panel narrows it on a wide screen */
+.dvs-tw{overflow-x:auto;container-type:inline-size}
 .dvs-tab{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
 .dvs-tab th{padding:4px 8px;text-align:left;font-size:var(--fs-2xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--line);white-space:nowrap}
 .dvs-tab td{padding:7px 8px;vertical-align:middle;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-variant-numeric:tabular-nums}
@@ -75,7 +134,7 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
 .dvs-st.seen{color:var(--txt)}
 .dvs-st.ok{color:var(--ok)}
 .dvs-st.wait{color:var(--warn)}
-@media (max-width:640px){
+@container (max-width:720px){
   .dvs-tab thead{display:none}
   .dvs-tab,.dvs-tab tbody{display:block}
   .dvs-tab tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 12px;padding:8px;border-bottom:1px solid var(--line)}
@@ -88,7 +147,8 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
 }
 
 /* the machines: one card each, its nodes inside, each thing a row with its value */
-.dvs-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));align-items:start}
+.dvs-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));align-items:start}
+.dvs-grid>.dvs-m{max-width:640px}
 .dvs-m{border-radius:var(--r-xl);padding:12px 14px 10px;background:color-mix(in srgb,var(--bg2) 90%,transparent);
   border:1px solid var(--line);box-shadow:var(--el-2)}
 .dvs-m.alarm{border-color:color-mix(in srgb,var(--err) 55%,transparent)}
@@ -132,14 +192,16 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 .dev-alarms{margin:0 0 14px}
 
 /* the analytics (01h devSceneStatsHTML, devSceneSpark) */
-.dvs-stats{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:0 0 12px}
+/* flex, not a grid: the row spanning a grid keeps every empty column, and the folded chat's width went unused */
+.dvs-stats{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.dvs-stats>.dvs-k{flex:1 1 150px;min-width:0}
 .dvs-k{padding:10px 12px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid var(--line);min-width:0}
 .dvs-k>span{display:block;font-size:var(--fs-2xs);letter-spacing:.05em;text-transform:uppercase;color:var(--dim)}
 .dvs-k>b{display:block;font-size:var(--fs-xl);font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
 .dvs-k>small{display:block;color:var(--dim);font-size:var(--fs-xs);margin-top:2px;overflow-wrap:anywhere}
 .dvs-k.bad{border-color:color-mix(in srgb,var(--err) 55%,transparent)}.dvs-k.bad>b{color:var(--err)}
 .dvs-k.warn{border-color:color-mix(in srgb,var(--warn) 55%,transparent)}
-.dvs-hist{grid-column:1/-1}
+.dvs-stats>.dvs-hist{flex:1 1 100%}
 .dvs-hist svg{display:block;margin-top:6px}
 .dvs-hist rect{fill:var(--acc)}.dvs-hist rect:hover{fill:var(--txt)}
 .dvs-hist line{stroke:var(--line);stroke-width:1}

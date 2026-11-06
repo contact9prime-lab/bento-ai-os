@@ -26,6 +26,7 @@ function devSceneStart(){
   if(!el){el=document.createElement('div');el.id='devscene';el.className='dvs';el.setAttribute('role','region');
     el.setAttribute('aria-label','Devices, live');desk.insertBefore(el,home?home.nextSibling:null)}
   DEVSCENE.el=el;el.hidden=false;
+  devChatMount();
   if(!el.firstChild)el.innerHTML='<p class="dvs-wait">Reading your devices…</p>';
   devSceneLoad();
   clearInterval(DEVSCENE.t);
@@ -35,6 +36,62 @@ function devSceneStop(){
   if(!DEVSCENE.on)return;
   DEVSCENE.on=false;clearInterval(DEVSCENE.t);DEVSCENE.t=0;
   const el=document.getElementById('devscene');if(el)el.hidden=true;
+  // leaving the scene gives the bar back: answers kept for the panel have nowhere to stay
+  const wrap=document.getElementById('omnicards');
+  if(wrap)[...wrap.children].forEach(c=>{if(c.dataset.done&&c._close)c._close()});
+  const bar=document.getElementById('omnibar');if(bar)bar.classList.remove('dvc-news');
+}
+
+/* The chat folds to the top right, so the board has the whole screen under it. Asked for as "chat
+   can sit there on the right top but the screen below can be used for the devices, and once it opens
+   it shows a decent animation to open up the right panel". It is the prompt bar and its answer cards,
+   the same turns as anywhere, with a panel behind them that slides in while the board makes room.
+   Folded is the default, and the choice is per browser. Pressing the bar, typing, a hotkey or a new
+   answer opens it; only the button or Esc on an empty bar folds it, so a turn never hides itself.
+   While it's folded an answer lights a dot on the button, and an approval floats on its own (the
+   hidden card fails approvalShown). On a phone or a narrow window there's no room for a panel, so the
+   bar stays under the board. TUI: not applicable, `bento chat` already is the whole screen. SUI: the
+   same page, nothing here touches the compositor. */
+var DEVCHAT={open:false,read:false};
+function devChatWide(){return !!DEVSCENE.on&&innerWidth>900&&!document.body.classList.contains('dev-mobile')}
+function devChatKeeps(){return devChatWide()}
+function devChatMount(){
+  if(!DEVCHAT.read){DEVCHAT.read=true;
+    try{DEVCHAT.open=localStorage.getItem('devscene.chat')==='open'}catch(e){}}
+  let p=document.getElementById('devchat');
+  if(!p){const bar=document.getElementById('omnicards');if(!bar)return;
+    p=document.createElement('aside');p.id='devchat';
+    p.innerHTML='<p class="dvc-hint">Ask about a machine, an alarm or a reading. Answers stay here until you close them.</p>';
+    bar.parentNode.insertBefore(p,bar)}
+  devChatPaint();
+}
+function devChatPaint(){
+  document.body.classList.toggle('dvc-open',DEVCHAT.open);
+  const b=document.getElementById('omni-fold');if(!b)return;
+  const say=DEVCHAT.open?'Fold the chat panel':'Open the chat panel';
+  b.setAttribute('aria-expanded',DEVCHAT.open?'true':'false');b.setAttribute('aria-label',say);b.title=say;
+  if(DEVCHAT.open)document.getElementById('omnibar').classList.remove('dvc-news');
+}
+function devChatSet(open){
+  DEVCHAT.open=open;
+  try{localStorage.setItem('devscene.chat',open?'open':'fold')}catch(e){}
+  devChatPaint();
+}
+function devChatOpen(){if(devChatWide()&&!DEVCHAT.open)devChatSet(true)}
+function devChatFold(){
+  if(!devChatWide()||!DEVCHAT.open)return;
+  devChatSet(false);
+  // a launcher left open or a caret in the bar would sit in the small pill
+  if(typeof omniPop==='function'&&OMNI.pop)omniPop(false);
+  const inp=document.getElementById('omni-in');if(inp&&document.activeElement===inp)inp.blur();
+}
+function devChatToggle(){
+  if(DEVCHAT.open){devChatFold();return}
+  devChatOpen();
+  const inp=document.getElementById('omni-in');if(inp)inp.focus();
+}
+function devChatNews(){
+  if(devChatWide()&&!DEVCHAT.open)document.getElementById('omnibar').classList.add('dvc-news');
 }
 async function devSceneLoad(){
   if(!DEVSCENE.on||DEVSCENE.busy)return;
