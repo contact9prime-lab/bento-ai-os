@@ -3453,6 +3453,10 @@ device hub instead of the town … the desktops could be used for switching". Fi
   scene first, so choosing on desktop 2 never moves desktop 1. `switchDesk` calls `immersiveDeskChanged`.
 - **`curDesk`/`DESKS` are `let`s in 03**: 01b reads them through `deskNow()`/`deskCount()` in a try. And 01h starts
   itself at load, as 01c and 01g do: the first paint runs before it exists.
+- **It is analytical, and every figure is also words** (`devboard.analytics` from the Events diary, `telemetry.trend`
+  per number: the hub's kept readings of the last hour). The demo's floor joins this machine's board for its user and
+  admins (`warehouse.hub_board`); a demo machine has `AGENTOS_DEMO_MACHINE` and never fetches it, or the hub asked
+  itself, and a throwaway demo's hub read the owner's real one (its children strip `AGENTOS_` from the env).
 - **Words and numbers, no frame loop**: a 4 s refresh that skips while hidden or covered, values moved in place by
   `device_live`. It is in `LITE_SCENES`, so a Pi's own screen can show it.
 

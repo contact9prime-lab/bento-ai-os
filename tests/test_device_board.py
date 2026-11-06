@@ -139,6 +139,7 @@ def test_the_hub_raises_an_alarm_says_it_once_and_serves_it_on_the_board(monkeyp
             told.append(ev)
         monkeypatch.setattr(server, "_device_event", event)
         monkeypatch.setattr(server, "_tie_tell", tell)
+        monkeypatch.setattr(server, "_demo_shows", lambda me: False)    # never a demo running on this machine
         server._ALARMS = None
         r = c.put("/api/devices/alarms", json={"alarms": [{"machine": here, "item": COMP, "when": "off"},
                                                            {"machine": here, "when": "sometimes"}]})
@@ -200,3 +201,49 @@ def test_the_scene_draws_no_frames_and_writes_text_safely():
         assert "${" + name + "}" not in markup, f"{name} reaches the markup without esc()"
     css = (ROOT / "agentos/ui/src/css/39-devscene.css").read_text()
     assert "backdrop-filter" not in css, "the one blurred surface is the active window"
+
+
+def test_the_demo_floor_shows_on_this_machines_board_but_never_on_its_own_hub(monkeypatch):
+    """Reported with a screenshot: the demo's user on this machine's desktop saw "0 machines",
+    because the demo's devices are its own hub's. Its board is brought in here; a demo machine
+    (its own env) never fetches it, or the hub asked itself, or another demo's hub."""
+    from agentos.demos import warehouse
+    monkeypatch.setattr(warehouse, "status", lambda: {"phase": "ready"})
+    calls = []
+    monkeypatch.setattr(warehouse.urllib.request, "urlopen", lambda *a, **k: calls.append(a) or (_ for _ in ()).throw(OSError("x")))
+    monkeypatch.setenv("AGENTOS_DEMO_MACHINE", "warehouse-hub")
+    assert warehouse.hub_board() is None and calls == []
+    monkeypatch.delenv("AGENTOS_DEMO_MACHINE")
+    assert warehouse.hub_board() is None and len(calls) == 1, "asked, and an unreachable hub is no board"
+    assert warehouse._env("warehouse-hub", {})["AGENTOS_DEMO_MACHINE"] == "warehouse-hub"
+
+
+def test_the_board_carries_the_days_numbers_and_each_numbers_hour():
+    now = 100000.0
+    evs = [{"at": now - 30, "event": "alarm", "text": "Alarm on zone-cold: Compressor is off"},
+           {"at": now - 4000, "event": "alarm", "text": "Alarm on zone-cold: Compressor is off"},
+           {"at": now - 3900, "event": "cleared", "text": "Cleared on zone-cold: Compressor is off"},
+           {"at": now - 90000, "event": "alarm", "text": "too old"}]
+    ms = [{"machine": "zone-cold", "up": True, "things": [{"value": 1}, {"value": None}]},
+          {"machine": "zone-dock", "up": False, "things": []}]
+    al = [{"state": "active", "level": "alarm", "held": 30, "ack": None},
+          {"state": "active", "level": "warning", "held": 400, "ack": {"by": "x"}}, {"state": "pending"}]
+    a = devboard.analytics(evs, al, ms, now)
+    assert (a["answering"], a["machines"], a["reading"], a["things"]) == (1, 2, 1, 2)
+    assert (a["alarms_now"], a["warnings_now"], a["acked"], a["pending"], a["longest"]) == (1, 1, 1, 1, 400)
+    assert a["raised_24h"] == 2 and a["cleared_24h"] == 1 and a["by_hour"][23] == 1 and a["by_hour"][22] == 1
+    assert a["top"] == [("Compressor is off", 2)]
+    s = (JS / "01h-devscene.js").read_text()
+    assert "function devSceneSpark" in s and "<title>" in s and "aria-label" in s, "each mark says its numbers"
+
+
+def test_a_trend_is_the_kept_readings_of_the_last_hour(tmp_path, monkeypatch):
+    from agentos import telemetry
+    monkeypatch.setattr(telemetry, "path", lambda: tmp_path / "t.db")
+    now = time.time()
+    telemetry.db().executemany("INSERT INTO raw VALUES (?,?,?,?)",
+                               [("m", "i", now - 3000 + 60 * k, -18.0 + k * .1) for k in range(40)])
+    t = telemetry.trend("m", "i", now=now)
+    assert t["first"] == -18.0 and abs(t["last"] - (-14.1)) < 1e-6 and t["min"] == -18.0
+    assert len(t["points"]) == 30 and any(p is None for p in t["points"][:4])
+    assert telemetry.trend("m", "nothing", now=now) == {}

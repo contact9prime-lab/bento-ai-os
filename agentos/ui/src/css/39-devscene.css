@@ -21,7 +21,10 @@ body.imm-devices .hm-greet,body.imm-devices .hm-chips,body.imm-devices .hm-play,
   body.imm-devices #devscene{bottom:156px}
   body.immersive.imm-devices:not(.has-win):not(.deck-full) #omnibar{top:auto;bottom:92px}
 }
-.dvs-wait{margin:18vh auto 0;max-width:520px;text-align:center;color:var(--dim);font-size:var(--fs-md)}
+.dvs-wait{margin:18vh auto 0;max-width:520px;text-align:center;color:var(--txt);font-size:var(--fs-md);
+  padding:14px 18px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 92%,transparent);border:1px solid var(--line)}
+/* the header sits on a backing of its own: a photo wallpaper (a bright sky) made it unreadable */
+.dvs-head{padding:10px 14px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid var(--line)}
 .dvs-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 16px;margin:0 0 12px}
 .dvs-head h1{margin:0;font-size:var(--fs-2xl);font-weight:700;letter-spacing:-.01em}
 .dvs-sum{margin:2px 0 0;color:var(--dim);font-size:var(--fs-sm)}
@@ -95,3 +98,22 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 #pager .pgb[data-scene=devices] .pgs{color:var(--acc)}
 /* Devices → Alarms */
 .dev-alarms{margin:0 0 14px}.dev-alarms h3{margin:0 0 8px}
+
+/* the analytics (01h devSceneStatsHTML, devSceneSpark) */
+.dvs-stats{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin:0 0 12px}
+.dvs-k{padding:10px 12px;border-radius:var(--r-lg);background:color-mix(in srgb,var(--bg2) 90%,transparent);border:1px solid var(--line);min-width:0}
+.dvs-k>span{display:block;font-size:var(--fs-2xs);letter-spacing:.05em;text-transform:uppercase;color:var(--dim)}
+.dvs-k>b{display:block;font-size:var(--fs-xl);font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.dvs-k>small{display:block;color:var(--dim);font-size:var(--fs-xs);margin-top:2px;overflow-wrap:anywhere}
+.dvs-k.bad{border-color:color-mix(in srgb,var(--err) 55%,transparent)}.dvs-k.bad>b{color:var(--err)}
+.dvs-k.warn{border-color:color-mix(in srgb,var(--warn) 55%,transparent)}
+.dvs-hist{grid-column:span 2}
+.dvs-hist svg{display:block;margin-top:6px}
+.dvs-hist rect{fill:var(--acc)}.dvs-hist rect:hover{fill:var(--txt)}
+.dvs-hist line{stroke:var(--line);stroke-width:1}
+.dvs-t.has-tr{display:grid;grid-template-columns:minmax(0,1fr) auto auto;column-gap:10px;align-items:center}
+.dvs-spark{width:96px;height:22px;overflow:visible}
+.dvs-spark path{fill:none;stroke:var(--acc);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+.dvs-spark circle{fill:var(--acc);stroke:var(--bg2);stroke-width:1.2}
+.dvs-tr{grid-column:1/-1;color:var(--dim);font-size:var(--fs-2xs);font-variant-numeric:tabular-nums;margin-top:-1px}
+@media (max-width:640px){.dvs-hist{grid-column:1/-1}.dvs-spark{width:64px}}

@@ -236,3 +236,34 @@ def text(board: dict) -> str:
             name = name[len(group) + 2:] if group and name.startswith(group + ": ") else name
             lines.append(f"      {name:<28} {_val(t)}")
     return "\n".join(lines)
+
+
+def analytics(events: list[dict], alarms: list[dict], machines: list[dict], now: float | None = None) -> dict:
+    """The board's numbers for the last 24 hours, read from the Events diary (alarm and cleared
+    lines, devevents.gather) and the board itself: how many machines answer, how many alarms were
+    raised and cleared, by hour, which came back most often, and how long the open ones have held."""
+    now = now or time.time()
+    day = [e for e in events if now - float(e.get("at") or 0) <= 86400]
+    raised = [e for e in day if e.get("event") == "alarm"]
+    cleared = [e for e in day if e.get("event") == "cleared"]
+    hours = [0] * 24
+    for e in raised:
+        h = int((now - float(e["at"])) // 3600)
+        if 0 <= h < 24:
+            hours[23 - h] += 1
+    top: dict = {}
+    for e in raised:
+        t = str(e.get("text") or "").split(": ", 1)[-1]
+        top[t] = top.get(t, 0) + 1
+    active = [a for a in alarms if a.get("state") == "active"]
+    things = sum(len(m.get("things") or []) for m in machines)
+    reading = sum(1 for m in machines for t in m.get("things") or [] if t.get("value") is not None)
+    return {"machines": len(machines), "answering": sum(1 for m in machines if m.get("up") is not False),
+            "things": things, "reading": reading,
+            "active": len(active), "alarms_now": sum(1 for a in active if a.get("level") == "alarm"),
+            "warnings_now": sum(1 for a in active if a.get("level") == "warning"),
+            "acked": sum(1 for a in active if a.get("ack")),
+            "pending": sum(1 for a in alarms if a.get("state") == "pending"),
+            "raised_24h": len(raised), "cleared_24h": len(cleared), "by_hour": hours,
+            "top": sorted(top.items(), key=lambda kv: -kv[1])[:5],
+            "longest": max((a.get("held") or 0 for a in active), default=0)}

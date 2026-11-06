@@ -83,6 +83,14 @@ desktop 2, so the desktop numbers in the menu bar (or **⇄ Town** on the board)
 
 ![The hub's Devices scene: three zones live, cold room B's compressor off and the forklift battery low as alarms](screenshots/devices-scene.png)
 
+The board opens on the day's numbers: machines answering, readings coming in, alarms now (and how
+many you've seen), the longest one open, and the alarms of the last 24 hours by hour with the ones
+that came back most. Every reading carries its last hour as a small line, with its range, average
+and how far it moved, so a room that is warming shows it before it crosses a line.
+
+Your own Bento's Devices scene shows the demo too while it runs, for the demo's user and for
+admins. The demo's machines are on its own hub, so without that it said "0 machines".
+
 Each "cause trouble" button on the floor page raises one: a compressor that's off, a cold room or a
 dock door left open, a flat forklift battery, an aisle that's too hot. An alarm is a condition
 that's true now. It shows while it holds, clears by itself when it stops, and both are a line in

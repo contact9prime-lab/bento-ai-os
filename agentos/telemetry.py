@@ -277,3 +277,28 @@ def text(name: str, item: str, s: dict, unit: str = "") -> str:
         said = (f"last {r(st.get('last'))}{u} · min {r(st.get('min'))}{u} · max {r(st.get('max'))}{u} · "
                 f"mean {r(st.get('mean'))}{u}")
     return "\n".join([head, f"  {line}", f"  {said} · {len(pts)} points"])
+
+
+def trend(machine: str, item: str, span: int = 3600, points: int = 30, now: float | None = None) -> dict:
+    """A small trend for a board: the last `span` seconds of raw samples in `points` buckets
+    (the bucket's mean, None where nothing was kept), and the span's min, max, mean, first and
+    last. Empty when nothing was kept: a board says "no history yet" rather than draw a line."""
+    now = now or time.time()
+    start = now - span
+    step = max(1, span // points)
+    rows = db().execute(f"SELECT min(CAST((ts - ?) / ? AS INTEGER), {points - 1}) AS k, avg(v), min(v), max(v) "
+                        "FROM raw WHERE m=? AND i=? AND ts>=? GROUP BY k ORDER BY k",
+                        (start, step, machine, item, start)).fetchall()
+    if not rows:
+        return {}
+    pts: list = [None] * points
+    for k, a, _lo, _hi in rows:
+        if k is not None and 0 <= k < points:
+            pts[k] = round(a, 3)
+    first = db().execute("SELECT v FROM raw WHERE m=? AND i=? AND ts>=? ORDER BY ts LIMIT 1",
+                         (machine, item, start)).fetchone()
+    last = db().execute("SELECT v FROM raw WHERE m=? AND i=? AND ts>=? ORDER BY ts DESC LIMIT 1",
+                        (machine, item, start)).fetchone()
+    return {"points": pts, "min": min(r[2] for r in rows), "max": max(r[3] for r in rows),
+            "mean": round(sum(r[1] for r in rows) / len(rows), 3),
+            "first": first[0] if first else None, "last": last[0] if last else None, "span": span}
