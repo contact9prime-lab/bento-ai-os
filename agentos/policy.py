@@ -298,6 +298,12 @@ def person_rule(principal, name: str, args: dict, dec, pdp=None, level: str = ""
         must = f"typed into {args['_fg']}, not the shell"
     if dec.effect == "ask" and dec.rule == "taint":
         must = "after untrusted content"
+    elif not must and dec.effect == "ask" and dec.rule == "default" \
+            and getattr(dec, "action", "") in ("agent.message", "device.get"):
+        # Autonomy is what an agent may do. An empty cell of the matrix and a reading nobody
+        # permitted are questions autonomy has no answer to: a channel's full-autonomy approver
+        # said yes to both. The card's remember stays, because it writes the cell or the grant.
+        must = "who may ask whom" if dec.action == "agent.message" else "a reading nobody permitted"
     return must
 
 

@@ -1,5 +1,6 @@
 """Holes the first security pass found outside its lists. Each test fails on the old code."""
 import ast
+import asyncio
 from pathlib import Path
 
 import agentos
@@ -52,3 +53,213 @@ def test_auto_learn_leaves_a_pinned_memory_alone(tmp_path, monkeypatch):
     text = (ROOT / "knowledge.py").read_text()
     assert 'hit and hit.get("pinned")' in text
     assert store.find_memory("the door code rule")["id"] == mid
+
+
+# -- item 1: a tool that reaches the host is an admin's --------------------------------------------
+from agentos import config as cfgmod                     # noqa: E402
+from agentos import fabric as fabricmod                  # noqa: E402
+from agentos import policy as policymod                  # noqa: E402
+from agentos import tools as toolsmod                    # noqa: E402
+from agentos import users as usersmod                    # noqa: E402
+
+import pytest                                            # noqa: E402
+
+# What counts as reaching the host from a Toolbox method: these modules and server helpers.
+_HOST_MODULES = {"host", "hostctl", "appstream", "compositor", "session", "desktop", "upower", "brightness", "audio"}
+_HOST_SERVER = {"capture_screen", "power_exec"}
+# A tool that touches one of those and is not in HOST_TOOLS has to say why it is fine here.
+_NOT_HOST_TOOLS = {
+    "notify": "a non-admin's goes to their own pages, tested below",
+    "desktop_state": "a non-admin hears only their own pages, tested below",
+    "control_desktop": "shell_command reaches only this account's own pages, tested below",
+    "wifi": "its writes check is_admin themselves, and a status is a read",
+    "bluetooth": "its writes check is_admin themselves, and a status is a read",
+}
+
+
+def _reaches_host(fn) -> set:
+    hits = set()
+    for n in ast.walk(fn):
+        if isinstance(n, ast.ImportFrom):
+            hits |= {a.name for a in n.names if a.name in _HOST_MODULES}
+            hits |= {n.module for _a in n.names if n.module in _HOST_MODULES}
+        if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name):
+            if n.value.id == "srv" and n.attr in _HOST_SERVER:
+                hits.add(n.attr)
+            if n.value.id == "self" and n.attr == "shell":
+                hits.add("shell")
+    return hits
+
+
+def test_a_tool_that_reaches_the_host_says_who_may():
+    src = (ROOT / "tools.py").read_text()
+    cls = next(n for n in ast.parse(src).body if isinstance(n, ast.ClassDef) and n.name == "Toolbox")
+    named = {t["name"] for t in toolsmod.TOOL_SCHEMAS}
+    unplaced = []
+    for fn in cls.body:
+        if not isinstance(fn, (ast.AsyncFunctionDef, ast.FunctionDef)) or fn.name not in named:
+            continue
+        if not _reaches_host(fn) or fn.name in toolsmod.HOST_TOOLS or fn.name in _NOT_HOST_TOOLS:
+            continue
+        if "_admin_only(" in ast.get_source_segment(src, fn):
+            continue
+        unplaced.append(fn.name)
+    assert not unplaced, f"reach the host with no admin check: {unplaced}"
+    assert set(toolsmod.HOST_TOOLS) <= named
+
+
+@pytest.fixture()
+def accounts():
+    usersmod.reset_caches()
+    usersmod.set_current("")
+    ada = usersmod.create("ada", "hunter2hunter")["id"]
+    bob = usersmod.create("bob", "hunter2hunter", role="executor")["id"]
+    yield ada, bob
+    usersmod.reset_caches()
+    usersmod.set_current("")
+
+
+@pytest.fixture()
+def box(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    cfg = cfgmod.load_config()
+    cfg["workspace"] = str(ws)
+    return Toolbox(cfg, Store(tmp_path / "db.sqlite"))
+
+
+def run(c):
+    return asyncio.run(c)
+
+
+HOST_ARGS = {"take_screenshot": {}, "open_app": {"target": "/etc/passwd"}, "launch_native_app": {"name": "xterm"},
+             "list_windows": {}, "focus_window": {"title": "x"}, "manage_window": {"window_id": "1", "action": "close"},
+             "system_control": {"action": "mute"}, "set_brightness": {"percent": 1}, "audio": {},
+             "power_profile": {}, "lock_screen": {}, "power_action": {"action": "reboot"},
+             "list_notifications": {}, "app_windows": {}, "app_window_open": {"app": "xterm"},
+             "app_window_look": {}, "app_window_act": {}}
+
+
+def test_a_non_admins_agent_cannot_reach_the_host(box, accounts, monkeypatch):
+    assert set(HOST_ARGS) == set(toolsmod.HOST_TOOLS)
+    ran = []
+    for name in HOST_ARGS:
+        async def spy(*a, _n=name, **k):
+            ran.append(_n)
+            return "ran"
+        monkeypatch.setattr(box, name, spy)
+    with usersmod.as_user(accounts[1]):
+        for name, args in HOST_ARGS.items():
+            out = run(box.execute(name, args))
+            assert out.startswith("[denied]"), (name, out)
+    assert not ran
+    with usersmod.as_user(accounts[0]):
+        for name, args in HOST_ARGS.items():
+            assert run(box.execute(name, args)) == "ran", name
+
+
+def test_a_machine_with_no_accounts_is_unchanged(box, monkeypatch):
+    async def spy(*a, **k):
+        return "ran"
+    monkeypatch.setattr(box, "take_screenshot", spy)
+    usersmod.reset_caches()
+    assert run(box.execute("take_screenshot", {})) == "ran"
+
+
+def test_desktop_state_tells_a_non_admin_nothing_about_the_host(box, accounts, monkeypatch):
+    from agentos import host
+    monkeypatch.setattr(host, "list_windows", lambda: {"available": True, "windows": [
+        {"id": "1", "app": "x", "title": "admin's secret doc", "focused": True}]})
+    with usersmod.as_user(accounts[1]):
+        assert "secret doc" not in run(box.execute("desktop_state", {}))
+    with usersmod.as_user(accounts[0]):
+        assert "secret doc" in run(box.execute("desktop_state", {}))
+
+
+def test_a_non_admins_notify_stays_off_the_hosts_desktop(box, accounts, monkeypatch):
+    from agentos import desktop, server as srv
+    popped, heard = [], []
+    monkeypatch.setattr(desktop, "send_notification", lambda t, m="": popped.append(t) or True)
+
+    async def fake(ev, uid):
+        heard.append((ev, uid))
+    monkeypatch.setitem(srv.state, "broadcast_user", fake)
+    with usersmod.as_user(accounts[1]):
+        run(box.execute("notify", {"title": "hi"}))
+    assert not popped and heard[0][1] == accounts[1]
+    with usersmod.as_user(accounts[0]):
+        run(box.execute("notify", {"title": "hi"}))
+    assert popped == ["hi"]
+
+
+def test_a_shell_command_reaches_only_the_asking_accounts_pages(accounts, monkeypatch):
+    from agentos import server as srv
+    ada, bob = accounts
+    sent = []
+
+    async def fake(ev, uid):
+        sent.append(uid)
+        srv.state["shell_pending"][ev["id"]].set_result({"ok": True, "data": "mine"})
+    monkeypatch.setitem(srv.state, "broadcast_user", fake)
+    monkeypatch.setitem(srv.state, "clients", {"ws-ada"})
+    monkeypatch.setitem(srv.state, "client_uids", {"ws-ada": ada})
+    monkeypatch.setitem(srv.state, "shell_pending", {})
+    monkeypatch.setitem(srv.state, "shell_owner", {})
+    with usersmod.as_user(bob):
+        ok, why = run(srv.shell_command("list_open_apps"))
+    assert not ok and "no desktop shell" in why and not sent, "bob's agent heard ada's browser"
+    with usersmod.as_user(ada):
+        assert run(srv.shell_command("list_open_apps")) == (True, "mine")
+    assert sent == [ada]
+
+
+def test_another_accounts_page_cannot_answer_a_shell_command(accounts, monkeypatch):
+    from agentos import server as srv
+    ada, bob = accounts
+
+    async def main():
+        fut = asyncio.get_event_loop().create_future()
+        monkeypatch.setitem(srv.state, "shell_pending", {"c1": fut})
+        monkeypatch.setitem(srv.state, "shell_owner", {"c1": ada})
+        with usersmod.as_user(bob):
+            r = await srv.api_shell_result({"id": "c1", "ok": True, "data": "forged"})
+        assert getattr(r, "status_code", 200) == 404 and not fut.done()
+        with usersmod.as_user(ada):
+            await srv.api_shell_result({"id": "c1", "ok": True, "data": "real"})
+        assert fut.result()["data"] == "real"
+    run(main())
+
+
+# -- item 2: a pin to an agent CLI is the machine's login -----------------------------------------
+def test_a_non_admin_cannot_pin_an_agent_to_a_cli(box, accounts, monkeypatch):
+    from agentos import executors
+    monkeypatch.setattr(executors, "probe", lambda e: {"installed": True})
+    monkeypatch.setattr(usersmod, "_machine", [{"engine": "aria"}])
+    d = {"name": "res", "model": "claude-code/default"}
+    with usersmod.as_user(accounts[1]):
+        box.store.save_subagent({"name": "res", "persona": "x", "tools": []})
+        with pytest.raises(ValueError):
+            fabricmod.set_agent_model(box.store, box.cfg, "res", "claude-code/default")
+        b = fabricmod.agent_brain(box.cfg, d)
+        assert not b.get("own") and "admin" in b["note"]
+    with usersmod.as_user(accounts[0]):
+        assert fabricmod.agent_brain(box.cfg, d).get("own")
+    # the brain the admin already chose is one everybody rides
+    monkeypatch.setattr(usersmod, "_machine", [{"engine": "claude-code"}])
+    with usersmod.as_user(accounts[1]):
+        assert fabricmod.agent_brain(box.cfg, d).get("own")
+
+
+# -- item 3: full autonomy doesn't answer for an empty cell ----------------------------------------
+@pytest.mark.parametrize("action", ["agent.message", "device.get"])
+def test_an_undecided_ask_needs_a_person_at_full_autonomy(action):
+    dec = policymod.Decision("ask", "why", rule="default", grant_offer={"x": 1})
+    dec.action = action
+    assert policymod.person_rule(policymod.MAIN, "ask_agent", {}, dec, None)
+    assert dec.grant_offer, "the card still offers to fill the cell"
+
+
+def test_an_ordinary_ask_is_still_autonomys():
+    dec = policymod.Decision("ask", "why", rule="default")
+    dec.action = "fs.write"
+    assert not policymod.person_rule(policymod.MAIN, "write_file", {}, dec, None)

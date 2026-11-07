@@ -78,6 +78,19 @@ def min_autonomy(a: str, b: str) -> str:
 _KEYED = ("anthropic", "openai", "google", "openrouter", "deepseek", "moonshot")
 
 
+def _cli_pin_refused(cli: str) -> str:
+    """Why this account may not pin an agent to that CLI, or ''. A CLI runs on the MACHINE's login
+    and spend, so this is `server._agent_cli_refused` for a pin. Riding the brain an admin already
+    chose is fine, and with nobody signed in (the terminal, the machine's own work) nobody is asking."""
+    from . import users as usersmod
+    uid = usersmod.current()
+    if not uid or not usersmod.enabled() or usersmod.is_admin(uid):
+        return ""
+    if str((usersmod._machine[0] or {}).get("engine") or "aria") == cli:
+        return ""
+    return "Only an admin can put an agent on an agent CLI on this machine."
+
+
 def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
     """Which brain an agent answers with, and why — the ONE answer, read by the run
     itself, the roster, the Crew stage's provider tag, Settings and the CLI.
@@ -107,6 +120,8 @@ def agent_brain(cfg: dict, defn: dict | None, override: str = "") -> dict:
         title = executors.EXECUTORS_BY_ID.get(pid, {}).get("title", pid)
         if not own_ok:
             note = "every agent uses this machine's brain (Team & Communications)"
+        elif _cli_pin_refused(pid):
+            note = f"only an admin can put an agent on {title}"
         elif pid not in executors.MCP_ENGINES:
             note = f"{title} cannot be handed this OS's tools yet"
         elif not executors.probe(pid).get("installed"):
@@ -168,6 +183,8 @@ def set_agent_model(store, cfg: dict, name: str, model: str) -> dict:
         # one of the agent CLIs: its documented aliases, or "default" (its own setting)
         m = model.split("/", 1)[1] if "/" in model else ""
         ok = {i for i, _n in executors.AGENT_MODELS.get(cli, ()) if i} | {"default"}
+        if (why := _cli_pin_refused(cli)):
+            raise ValueError(why)
         if cli not in executors.MCP_ENGINES:
             raise ValueError(f"{cli} cannot be handed this OS's tools yet")
         if m not in ok:

@@ -554,6 +554,29 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
 # host. ALWAYS_ASK by name would ask for a status read too, so the loop asks when risk_of says
 # the action changes something (connect, forget, pair...), at every autonomy level.
 RADIO_TOOLS = {"wifi", "bluetooth"}
+# Tools that reach the host itself: its screen, its native windows and apps, its sound and power.
+# A machine has one of each, whoever is signed in, and a native app runs outside every account's
+# jail, so on a machine with accounts these are an admin's (`Toolbox.execute`, the one check),
+# as `machineroutes.py` says of the routes that do the same. With no accounts nothing changes.
+HOST_TOOLS = {
+    "take_screenshot": "see this machine's screen",
+    "open_app": "open things on this machine's screen",
+    "launch_native_app": "start an app on this machine",
+    "list_windows": "see this machine's windows",
+    "focus_window": "change this machine's windows",
+    "manage_window": "change this machine's windows",
+    "system_control": "change this machine's settings",
+    "set_brightness": "change this machine's brightness",
+    "audio": "use this machine's sound",
+    "power_profile": "use this machine's power settings",
+    "lock_screen": "lock this machine's screen",
+    "power_action": "change this machine's power state",
+    "list_notifications": "read this machine's notifications",
+    "app_windows": "use this machine's native apps",
+    "app_window_open": "use this machine's native apps",
+    "app_window_look": "use this machine's native apps",
+    "app_window_act": "use this machine's native apps",
+}
 
 
 # Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
@@ -1947,6 +1970,12 @@ class Toolbox(usersmod.Scoped):
 
     async def notify(self, title: str, message: str = "") -> str:
         from . import desktop as desktopmod
+        if usersmod.current() and self._admin_only("x"):
+            # the host's desktop may be somebody else's screen: this person's own pages hear it
+            from . import server as srv
+            await srv.state["broadcast_user"]({"type": "toast", "text": f"{title}: {message}" if message else title},
+                                              usersmod.current() or "")
+            return "notification sent to your screens"
         if desktopmod.send_notification(title, message):
             return "notification sent"
         return "[error] no desktop notification mechanism available"
@@ -3114,6 +3143,8 @@ class Toolbox(usersmod.Scoped):
     async def manage_models(self, action: str = "list", name: str = "") -> str:
         """Manage local Ollama models. action: 'list' (installed + GPU), 'pull' (download `name`),
         'remove' (delete `name`). Pulling can take minutes; it runs in the background."""
+        if action != "list" and (deny := self._admin_only("change this machine's models")):
+            return deny
         base = self.cfg["providers"]["ollama"]["base_url"]
         async with httpx.AsyncClient(timeout=None) as c:
             if action == "list":
@@ -4712,6 +4743,8 @@ class Toolbox(usersmod.Scoped):
         return _truncate(body if code < 400 else f"[error] HTTP {code}: {body[:800]}")
 
     async def trainforge_service(self, action: str = "status") -> str:
+        if action in ("start", "stop") and (deny := self._admin_only("start or stop this machine's services")):
+            return deny
         tf, err = self._tf()
         if err:
             return err
@@ -4843,6 +4876,9 @@ class Toolbox(usersmod.Scoped):
                     out["shell_apps"] = data
             except Exception:
                 pass
+        if self._admin_only("x"):
+            # the host's windows, sound and power are the machine's (HOST_TOOLS)
+            return json.dumps(out, indent=1) if out else "(no desktop state available for this account)"
         try:
             w = host.list_windows()
             if w.get("available"):
@@ -5630,6 +5666,8 @@ class Toolbox(usersmod.Scoped):
         fn = getattr(self, name, None)
         if fn is None or name not in {t["name"] for t in TOOL_SCHEMAS}:
             return f"[error] unknown tool: {name}"
+        if name in HOST_TOOLS and (deny := self._admin_only(HOST_TOOLS[name])):
+            return deny
         if set(args.keys()) == {"_raw"}:
             # the streamed tool-call JSON was cut off mid-argument (output token limit)
             return (f"[error] your {name} tool call was cut off at the output token limit — "

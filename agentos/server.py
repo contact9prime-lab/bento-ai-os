@@ -9032,14 +9032,19 @@ async def _approval_send(entry: dict, ev: dict):
 async def shell_command(action: str, args: dict | None = None, timeout: float = 8.0):
     """Send one command to the connected shell and await its answer. Returns
     (ok, data); never raises — no shell / no answer comes back as (False, sentence)."""
-    if not state.get("clients"):
+    # Only this account's own pages: whichever browser answered first used to be the answer, so
+    # one person's agent could list another's open windows or change their theme.
+    uid = usersmod.current() or ""
+    owners = state.get("client_uids") or {}
+    if not any(owners.get(ws, "") == uid for ws in state.get("clients") or ()):
         return False, ("no desktop shell is connected (open the AgentOS UI in a "
                        "browser) — shell actions need a live shell")
-    cid = uuid.uuid4().hex[:8]
+    cid = uuid.uuid4().hex[:16]
     fut = asyncio.get_event_loop().create_future()
     state.setdefault("shell_pending", {})[cid] = fut
-    await state["broadcast"]({"type": "shell_cmd", "id": cid, "action": action,
-                              "args": args or {}})
+    state.setdefault("shell_owner", {})[cid] = uid
+    await state["broadcast_user"]({"type": "shell_cmd", "id": cid, "action": action,
+                                   "args": args or {}}, uid)
     try:
         res = await asyncio.wait_for(fut, timeout=timeout)
         return bool(res.get("ok")), res.get("data")
@@ -9049,6 +9054,7 @@ async def shell_command(action: str, args: dict | None = None, timeout: float = 
                        "shell_cmd support")
     finally:
         state["shell_pending"].pop(cid, None)
+        state["shell_owner"].pop(cid, None)
 
 
 @app.post("/api/shell/result")
@@ -9056,6 +9062,8 @@ async def api_shell_result(body: dict):
     """The shell's answer to a shell_cmd event (contract above). Sensitive: user-built
     apps are blocked from posting here — they could spoof shell results."""
     fut = state.get("shell_pending", {}).get(str(body.get("id", "")))
+    if fut is not None and state.get("shell_owner", {}).get(str(body.get("id", "")), "") != (usersmod.current() or ""):
+        fut = None                  # another account's command: it reads as unknown to them
     if fut is None or fut.done():
         return JSONResponse({"error": "unknown or expired shell_cmd id"}, status_code=404)
     fut.set_result({"ok": bool(body.get("ok")), "data": body.get("data")})

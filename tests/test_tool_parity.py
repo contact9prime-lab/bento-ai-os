@@ -255,10 +255,10 @@ async def test_shell_command_without_a_shell(monkeypatch):
 
 async def test_shell_command_times_out_cleanly(monkeypatch):
     sent = []
-    async def broadcast(ev):
+    async def broadcast(ev, uid=""):
         sent.append(ev)
     monkeypatch.setitem(servermod.state, "clients", {object()})
-    monkeypatch.setitem(servermod.state, "broadcast", broadcast)
+    monkeypatch.setitem(servermod.state, "broadcast_user", broadcast)
     monkeypatch.setitem(servermod.state, "shell_pending", {})
     ok, msg = await servermod.shell_command("list_open_apps", timeout=0.1)
     assert not ok and "did not answer" in msg
@@ -267,12 +267,12 @@ async def test_shell_command_times_out_cleanly(monkeypatch):
 
 
 async def test_shell_command_resolved_by_result_post(monkeypatch):
-    async def broadcast(ev):
+    async def broadcast(ev, uid=""):
         # the "shell": answer the command the way POST /api/shell/result does
         fut = servermod.state["shell_pending"][ev["id"]]
         fut.set_result({"ok": True, "data": ["Notes", "Browser"]})
     monkeypatch.setitem(servermod.state, "clients", {object()})
-    monkeypatch.setitem(servermod.state, "broadcast", broadcast)
+    monkeypatch.setitem(servermod.state, "broadcast_user", broadcast)
     monkeypatch.setitem(servermod.state, "shell_pending", {})
     ok, data = await servermod.shell_command("list_open_apps", timeout=2)
     assert ok and data == ["Notes", "Browser"]
