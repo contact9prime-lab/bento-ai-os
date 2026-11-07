@@ -53,6 +53,7 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "pool.leader": ("This community's leader changed", 1, 300),
     "pool.claim": ("A machine tried to take over this community", 1, 300),
     "provision.refused": ("A machine's claim was refused", 3, 300),
+    "device.key": ("A saved device password was held back: that machine's SSH key is not the one it was saved for", 1, 300),
     "beacon.flood": ("Many machines announced themselves at once", 1, 300),
     "gate.unlisted_tool": ("A model called a tool it was not offered", 3, 300),
     "gate.forged_field": ("A call tried to set a field only this OS sets", 3, 300),

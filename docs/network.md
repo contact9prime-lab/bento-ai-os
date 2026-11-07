@@ -19,7 +19,8 @@ still one row, matched by its network card's address, its IP and its certificate
 - what it is (board or maker), its address, and when it was last heard;
 - whether Bento runs there (*No Bento*, *Bento, waiting*, *Bento*, *Bento, linked*), and once
   it has been checked, how secure it is (*2 of 4 in place* or *secured*). That is always what
-  Bento measured on the machine the last time it logged in, never a note that a run finished;
+  Bento measured on the machine the last time it logged in (sshd's own settings and the loaded
+  firewall, which need root, so without a sudo password it says it can't tell), never a note that a run finished;
 - whose it is, for a Zero that belongs to an account.
 
 Each row has one button for the thing it most needs: *Install Bento*, *Secure it* (or

@@ -150,7 +150,7 @@ async function provAgents(){
    used once (or this machine's key), shows what the machine is and the exact command, and runs
    the real installer with a key made for that one machine, so it is set up the moment it is
    heard. The SD card writer is for the screen the card is plugged into. */
-var DEV={open:'',check:{},log:{},err:{},rekey:{}};
+var DEV={open:'',check:{},log:{},err:{},rekey:{},first:{}};
 function provDevicesHTML(v,can){
   /* The machines themselves (with Install Bento) are the inventory above, in Network
      (24n-network.js); this keeps the two ways in that need no machine yet. */
@@ -186,7 +186,7 @@ function provDevForm(d){
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
     <label class="prov-opt">${pSwitch('dev-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label></div>
     ${DEV.err[d.ip]?`<p class="warn dev-err">✗ ${esc(DEV.err[d.ip])}</p>`:''}
-    ${sshRekeyHTML(d.ip,sshPort,DEV.rekey[d.ip])}
+    ${sshRekeyHTML(d.ip,sshPort,DEV.rekey[d.ip])}${sshFirstKeyHTML(d.ip,sshPort,DEV.first[d.ip])}
     ${c?`<div class="dev-facts dev-found"><b>${esc([c.board||c.arch,c.os].filter(Boolean).join(' · '))}</b>
       <span class="mut">${esc([c.ram_mb+' MB memory',c.free_mb+' MB free'].join(' · '))}${c.bento?' · Bento is already there':''}</span>
       ${c.host_key?`<span class="mut dev-hostkey">Its key: ${esc(c.host_key)}</span>`:''}
@@ -206,11 +206,16 @@ function devPwSaved(ip,user){
   const r=(((typeof NET!=='undefined'&&NET.v)||{}).rows||[]).find(x=>x.ip===ip);
   return !!(r&&r.pw_saved&&(!user||r.user===user));
 }
+function sshFirstKeyHTML(ip,port,k){
+  if(!k)return '';
+  return `<div class="dev-rekey"><p class="mut">Bento hasn’t met this machine before. Its key is <code>${esc(k.fingerprint||'')}</code></p>
+    <button class="endbtn" data-prov="trustkey" data-ip="${esc(ip)}" data-port="${Number(port)||22}" data-fp="${esc(k.fingerprint||'')}">That’s the one: trust it</button></div>`;
+}
 function devPwHTML(id,ip,user){
   const saved=devPwSaved(ip,user);
   return `<label>Password <input id="${id}" type="text" class="dev-secret" autocomplete="off" data-lpignore="true"
       placeholder="${saved?'saved, encrypted: leave blank':'blank: use this machine’s key'}"></label>
-    <div class="dev-pw-opts"><label class="prov-opt"><input type="checkbox" id="${id}-keep"${saved?'':' checked'}>
+    <div class="dev-pw-opts"><label class="prov-opt"><input type="checkbox" id="${id}-keep">
       ${saved?'Replace the saved one with what I type':'Remember it, encrypted on this computer'}</label>
       ${saved?`<button class="dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
 }
@@ -363,6 +368,10 @@ async function provAct(act,b){
   const post=async(url,body,method)=>{const r=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
     const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('could not do that ('+r.status+')')),{data:d});return d};
   try{
+    if(act==='trustkey'){const ip=b.dataset.ip;
+      await post('/api/devices/trust-key',{ip,port:Number(b.dataset.port)||22,fingerprint:b.dataset.fp});
+      delete DEV.first[ip];delete DEV.err[ip];if(typeof NET!=='undefined'&&NET.first){delete NET.first[ip];delete NET.err[ip]}
+      toast('✓ trusted. Check it again.');if(typeof netPaint==='function')netPaint();return provPaint()}
     if(act==='rekey'){const ip=b.dataset.ip,k=DEV.rekey[ip]||(typeof NET!=='undefined'&&NET.rekey&&NET.rekey[ip])||{};
       if(!await osConfirm(`Forget the old key of ${ip}?`,
         `Do this only if you reformatted or reinstalled it. Old key: ${k.old||'unknown'}. It now shows: ${k.new||'unknown'}. The next login keeps the new one.`,
@@ -386,6 +395,7 @@ async function provAct(act,b){
       try{DEV.check[b.dataset.ip]=Object.assign(await post('/api/devices/check',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c}),{user:c.user});delete DEV.err[b.dataset.ip]}
       catch(e){delete DEV.check[b.dataset.ip];DEV.err[b.dataset.ip]=String(e.message||e);
         if(e.data&&e.data.key_changed){DEV.rekey[b.dataset.ip]=e.data.key_changed;return}
+        if(e.data&&e.data.first_key){DEV.first[b.dataset.ip]=e.data.first_key;return}
         delete DEV.rekey[b.dataset.ip];throw e}
       finally{provPaint()}
       return}

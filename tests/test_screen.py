@@ -6,6 +6,7 @@ page existed; nothing drew it on a Pi's screen at boot. Checked live with the re
 (headless) and Chromium: `bento screen run` waited for the server, then the Office kiosk filled
 the screen (docs/screenshots/screen-kiosk.png).
 """
+import json
 import os
 import subprocess
 import sys
@@ -271,3 +272,12 @@ def test_the_screen_is_opened_once(monkeypatch):
     monkeypatch.setattr(screen, "showing", lambda: [])
     screen.run({"port": 8321})
     assert len(started) == 1 and started[0][-1] == "http://127.0.0.1:8321/#kiosk"
+
+
+def test_the_kiosk_policy_keeps_devtools_and_other_addresses_off_and_the_mic_on():
+    """A keyboard at the Pi reaches this browser: --kiosk hides the buttons, a policy holds."""
+    pol = json.loads(screen.policy_text({"port": 8400}))
+    assert pol["DeveloperToolsAvailability"] == 2
+    assert pol["URLBlocklist"] == ["*"] and "127.0.0.1:8400" in pol["URLAllowlist"]
+    assert not any(u.startswith(("file", "chrome")) for u in pol["URLAllowlist"])
+    assert pol["AudioCaptureAllowedUrls"] == ["http://127.0.0.1:8400"], "the mic stays for this page"

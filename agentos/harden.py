@@ -44,16 +44,11 @@ STEPS = (
     {"id": "passwords", "title": "Turn off password logins",
      "why": "A guessed or default password no longer gets anybody in, and root can't log in over SSH. "
             "Your own password login stops too, so let your own key in first.",
-     "check": ("if grep -qi '^PasswordAuthentication no' " + DROPIN + " 2>/dev/null"
-               " && grep -qiE '^Include /etc/ssh/sshd_config.d' /etc/ssh/sshd_config 2>/dev/null;"
-               " then echo ok; else echo no; fi")},
+     "check": "$PW"},
     {"id": "firewall", "title": "Turn on a firewall",
      "why": "Only SSH and Bento answer, and only from your network and Tailscale. "
             "If you reach this machine over SSH from the internet, that stops working.",
-     "check": ("if grep -q 'table inet bento' /etc/bento-firewall.nft 2>/dev/null"
-               " && grep -qF 'bento-firewall.nft' /etc/nftables.conf 2>/dev/null"
-               " && {{ ! sudo -n true 2>/dev/null || sudo -n nft list table inet bento >/dev/null 2>&1; }};"
-               " then echo ok; else echo no; fi")},
+     "check": "$FW"},
     {"id": "updates", "title": "Install security updates by itself",
      "why": "Security fixes are installed every day without anybody remembering to.",
      "check": ("if dpkg-query -W -f='${{Status}}' unattended-upgrades 2>/dev/null | grep -q 'ok installed'"
@@ -197,8 +192,40 @@ def plan(steps, ssh_port: int = 22, sudo_pw: bool = False, mine: str = "") -> li
                     for s in STEPS if s["id"] in clean_steps(steps)]
 
 
-def _check_script(pk: str) -> str:
-    parts = [f"echo {s['id']}=$({s['check'].format(pk=shlex.quote(pk))})" for s in STEPS]
+# What the machine actually does, read as root: sshd's own answer, after every included file and
+# with the Match blocks applied to this very login, and the firewall as it is loaded. A file of
+# ours saying "no" proves nothing when an earlier file or a Match block says "yes".
+MEASURE_ROOT = (
+    "good() { printf '%s\\n' \"$1\" | grep -qix 'passwordauthentication no' && "
+    "printf '%s\\n' \"$1\" | grep -qiE '^(kbdinteractiveauthentication|challengeresponseauthentication) no$' && "
+    "printf '%s\\n' \"$1\" | grep -qix 'permitrootlogin no'; }; "
+    "PATH=$PATH:/usr/sbin:/sbin; all=$(sshd -T 2>/dev/null); "
+    "this=$(sshd -T -C \"user=$1,host=bento,addr=${2:-127.0.0.1}\" 2>/dev/null); "
+    "if [ -z \"$all\" ]; then echo m_pw=unknown; elif good \"$all\" && { [ -z \"$this\" ] || good \"$this\"; }; "
+    "then echo m_pw=ok; else echo m_pw=no; fi; "
+    "if nft list table inet bento >/dev/null 2>&1; then echo m_fw=ok; else echo m_fw=no; fi")
+
+
+def _measure(have_password: bool) -> str:
+    """Sets $PW and $FW to ok, no or unknown. Without root neither can be known: reading our own
+    drop-in said "secured" while another file kept passwords on. A sudo password, when there is
+    one, comes in on stdin (`check`), never on a command line."""
+    body = shlex.quote(MEASURE_ROOT)
+    args = '_ "$(id -un)" "${SSH_CLIENT%% *}"'
+    root = f"sudo -n sh -c {body} {args}"
+    if have_password:
+        root = f"if sudo -n true 2>/dev/null; then {root}; else sudo -S -p '' sh -c {body} {args}; fi"
+    return (f"M=$({root} 2>/dev/null); "
+            'case "$M" in *m_pw=ok*) PW=ok;; *m_pw=no*) PW=no;; *) PW=unknown;; esac; '
+            'case "$M" in *m_fw=ok*) FW=ok;; *m_fw=no*) FW=no;; *) FW=unknown;; esac; '
+            "grep -q 'table inet bento' /etc/bento-firewall.nft 2>/dev/null && "
+            "grep -qF 'bento-firewall.nft' /etc/nftables.conf 2>/dev/null || FW=no")
+
+
+def _check_script(pk: str, have_password: bool = False) -> str:
+    parts = [_measure(have_password)]
+    parts += [f"echo {s['id']}={s['check'] if s['check'].startswith('$') else '$(' + s['check'].format(pk=shlex.quote(pk)) + ')'}"
+              for s in STEPS]
     parts.append("echo sudo=$(sudo -n true 2>/dev/null && echo ok || echo no)")
     parts.append("echo apt=$(command -v apt-get >/dev/null && echo ok || echo no)")
     return "; ".join(parts)
@@ -216,14 +243,19 @@ def _guard(host: str, user: str) -> None:
         raise ri.InstallError(bad)
 
 
-async def check(host: str, user: str, password: str = "", port: int = 22) -> dict:
-    """Which steps are already in place there. Changes nothing."""
+async def check(host: str, user: str, password: str = "", port: int = 22, sudo_password: str = "") -> dict:
+    """Which steps are in place there, as measured, and which can't be told without root.
+    Changes nothing."""
     _guard(host, user)
     password_ok = bool(password)
-    script = _check_script(_pk())
+    sudo_with = sudo_password or password
+    pk = _pk()
+    script = _check_script(pk)
+    login = password
     code, out, err = await ri._run(host, user, port, password, script, ri.CHECK_TIMEOUT)
     if code != 0 and password and "permission denied" in (err or "").lower():
         # password logins may already be off there; this machine's key may still get in
+        login = ""
         code, out, err2 = await ri._run(host, user, port, "", script, ri.CHECK_TIMEOUT)
         if code == 0:
             password_ok = False
@@ -232,7 +264,14 @@ async def check(host: str, user: str, password: str = "", port: int = 22) -> dic
     if code != 0:
         raise ri.InstallError(ri._why(err, code, bool(password)))
     facts = dict(ln.split("=", 1) for ln in out.splitlines() if "=" in ln)
+    if sudo_with and facts.get("sudo") != "ok" and "unknown" in facts.values():
+        # sudo wants a password here, and one was typed: once more, with it on stdin
+        c2, o2, _ = await ri._run(host, user, port, login, _check_script(pk, True), ri.CHECK_TIMEOUT,
+                                  stdin=sudo_with + "\n")
+        if c2 == 0:
+            facts = dict(ln.split("=", 1) for ln in o2.splitlines() if "=" in ln)
     done = {s: facts.get(s) == "ok" for s in IDS}
+    unknown = [s for s in IDS if facts.get(s) == "unknown"]
     sudo, apt = facts.get("sudo") == "ok", facts.get("apt") == "ok"
     problems = []
     if not apt:
@@ -240,7 +279,7 @@ async def check(host: str, user: str, password: str = "", port: int = 22) -> dic
     if not sudo and not password:
         problems.append(f"{user} needs a password for sudo there; type it and check again")
     todo = [s for s in IDS if not done[s]]
-    return {"host": host, "user": user, "done": done, "sudo": sudo, "apt": apt, "problems": problems,
+    return {"host": host, "user": user, "done": done, "unknown": unknown, "sudo": sudo, "apt": apt, "problems": problems,
             "login": "password" if password_ok else "key",
             "host_key": ri.fingerprint(host, port), "plan": plan(todo, port, not sudo)}
 
@@ -316,8 +355,8 @@ async def secure(host: str, user: str, password: str = "", port: int = 22, steps
                                       "back in (" + ri._why(err, code) + ")")
         ran.append(sid)
         await say(f"✓ {TITLES[sid]}")
-    after = await check(host, user, login, port)
-    return {"ok": True, "ran": ran, "done": after["done"], "host_key": after["host_key"]}
+    after = await check(host, user, login, port, sudo_password=password)
+    return {"ok": True, "ran": ran, "done": after["done"], "unknown": after.get("unknown", []), "host_key": after["host_key"]}
 
 
 async def let_in(host: str, user: str, password: str = "", port: int = 22, mine: str = "",

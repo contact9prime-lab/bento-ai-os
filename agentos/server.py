@@ -14494,7 +14494,9 @@ def _ssh_refusal(e) -> JSONResponse:
     body = {"error": str(e)}
     if isinstance(e, ri.KeyChanged):
         body["key_changed"] = e.facts()
-    return JSONResponse(body, status_code=409 if "key_changed" in body else 400)
+    if isinstance(e, ri.NewKey):
+        body["first_key"] = e.facts()
+    return JSONResponse(body, status_code=409 if "key_changed" in body or "first_key" in body else 400)
 
 
 @app.post("/api/devices/forget-key")
@@ -14515,14 +14517,34 @@ async def api_devices_forget_key(body: dict):
     return {"forgot": old}
 
 
+@app.post("/api/devices/trust-key")
+async def api_devices_trust_key(body: dict):
+    """A person looked at the key a machine shows and said yes. Kept only if the machine still
+    shows that one. Until then Bento logs in to nothing there. Admin only, and a ledger row."""
+    if (r := _require_admin()):
+        return r
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, port, fp = str(b.get("ip") or ""), int(b.get("port") or 22), str(b.get("fingerprint") or "")
+    try:
+        ok = await asyncio.to_thread(ri.pin_host, ip, port, fp)
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if not ok:
+        return JSONResponse({"error": "that machine no longer shows that key"}, status_code=409)
+    _ledger("device.trust", f"device:{ip}", f"trusted the SSH key of {ip} ({fp})")
+    return {"trusted": fp}
+
+
 def _device_creds(b: dict) -> tuple[str, str, str, int]:
     """The address, user, password and SSH port for one login. A blank password is the one saved
-    for that machine and user in this computer's vault, if one was; a typed one is used as typed
-    and saved only by `_remember_pw`, after it worked and when the person asked."""
-    ip, user, pw = str(b.get("ip") or ""), str(b.get("user") or ""), str(b.get("password") or "")
+    for that machine and user in this computer's vault, if one was and if this machine shows the
+    key it was saved for. A typed one is used as typed and saved only by `_remember_pw`, after it
+    worked and when the person asked."""
+    ip, user, pw, port = str(b.get("ip") or ""), str(b.get("user") or ""), str(b.get("password") or ""), int(b.get("port") or 22)
     if not pw and ip and user:
-        pw = _saved_pw(ip, user)
-    return ip, user, pw, int(b.get("port") or 22)
+        pw = _saved_pw(ip, user, port)
+    return ip, user, pw, port
 
 
 def _pw_name(ip: str, user: str) -> str:
@@ -14533,10 +14555,33 @@ def _pw_name(ip: str, user: str) -> str:
     return "ssh." + (mac or ip).replace(":", "-") + "." + user
 
 
-def _saved_pw(ip: str, user: str) -> str:
-    from . import vault
+PW_BOUND = "bound:"                    # a saved password's value: bound:<host key>\n<password>
+
+
+def _saved_pw(ip: str, user: str, port: int = 22) -> str:
+    """The saved password, only for the machine it was saved for. An entry is found by MAC, and
+    anybody on the network can claim a MAC on a new address, so what decides is the host key:
+    the pin here must be the one it was saved with, or the machine must be showing that key.
+    One saved before keys were kept is bound to a pin already here, or held back."""
+    from . import remoteinstall as ri
+    from . import secevents, vault
     with usersmod.as_user(""):             # the machines on the network are the machine's
-        return vault.get(_pw_name(ip, user), actor="device login")
+        raw = vault.get(_pw_name(ip, user), actor="device login") or ""
+    if not raw:
+        return ""
+    pinned = ri.fingerprint(ip, port)
+    if not raw.startswith(PW_BOUND):
+        if not pinned:
+            return ""
+        with contextlib.suppress(Exception), usersmod.as_user(""):
+            vault.put(_pw_name(ip, user), f"{PW_BOUND}{pinned}\n{raw}")
+        return raw
+    head, _, pw = raw.partition("\n")
+    want = head[len(PW_BOUND):]
+    if pinned == want or (not pinned and ri.pin_host(ip, port, want)):
+        return pw
+    secevents.flag("device.key", f"{user}@{ip}", source=ip)
+    return ""
 
 
 def _pw_saved(ip: str, user: str) -> bool:
@@ -14556,9 +14601,13 @@ def _remember_pw(b: dict) -> str:
     if not (ip and user and pw and b.get("remember")):
         return ""
     had = _pw_saved(ip, user)
+    from . import remoteinstall as ri
+    key = ri.fingerprint(ip, int(b.get("port") or 22))
+    if not key:
+        return "not saved: this machine has no key on record for it"
     try:
         with usersmod.as_user(""):
-            vault.put(_pw_name(ip, user), pw)
+            vault.put(_pw_name(ip, user), f"{PW_BOUND}{key}\n{pw}")
     except Exception as e:                 # a locked vault says so; the login itself worked
         return f"not saved: {e}"
     _ledger("device.password", f"device:{ip}", f"{'replaced the saved' if had else 'saved the'} password for "

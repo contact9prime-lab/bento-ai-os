@@ -4654,6 +4654,9 @@ def _ssh_says(e) -> str:
     """A refused login for the terminal. A changed host key (a reformatted machine) says both
     fingerprints and the command that forgets the old one."""
     from . import remoteinstall as ri
+    if isinstance(e, ri.NewKey):
+        return (f"  {e}.\n  If that is the key it should have: "
+                f"bento network trust {e.host} {e.seen}" + (f" --port {e.port}" if e.port != 22 else ""))
     if not isinstance(e, ri.KeyChanged):
         return "  " + str(e)
     f = e.facts()
@@ -4695,7 +4698,7 @@ def _network_cli(args):
                 sys.exit(f"  bento network {a} MACHINE (an address, a name or a MAC; see `bento network`)")
             return None
         r = inv.find(inv.rows(), rest[0])
-        if r is None and a in ("check", "secure", "install", "letin", "rekey", "controls", "switch", "remove", "update"):
+        if r is None and a in ("check", "secure", "install", "letin", "rekey", "trust", "controls", "switch", "remove", "update"):
             return {"ip": rest[0], "mac": "", "display": rest[0], "user": "", "ssh": True, "ports": [22],
                     "connections": [], "key": rest[0]}
         if r is None:
@@ -5003,7 +5006,8 @@ def _network_cli(args):
             sys.exit(_ssh_says(e))
         inv.note_security(r["ip"], r.get("mac") or "", c["done"], user, by="cli")
         for s_ in harden.STEPS:
-            print(f"  {'✓' if c['done'][s_['id']] else '·'} {s_['title']}")
+            shown = "✓" if c["done"][s_["id"]] else "?" if s_["id"] in c.get("unknown", []) else "·"
+            print(f"  {shown} {s_['title']}" + ("  (can't tell without root there)" if shown == "?" else ""))
         for p in c["problems"]:
             print(f"  ✗ {p}")
         ledger("device.check", f"device:{r['ip']}", f"checked {user}@{r['ip']}")
@@ -5086,6 +5090,19 @@ def _network_cli(args):
         inv.hide(r)
         ledger("device.forget", f"device:{r['ip'] or r['key']}", f"hid {r['display']}")
         print(f"  ✓ {r['display']} is hidden. `bento network show {r['ip'] or r['key']}` lists it again.")
+        return
+    if a == "trust":
+        r = machine()
+        if len(rest) < 2:
+            sys.exit("  bento network trust MACHINE SHA256:…   (the key it shows, as a login printed it)")
+        try:
+            ok = ri.pin_host(r["ip"], port(r), rest[1])
+        except ri.InstallError as e:
+            sys.exit(_ssh_says(e))
+        if not ok:
+            sys.exit("  That machine no longer shows that key.")
+        ledger("device.trust", f"device:{r['ip']}", f"trusted the SSH key of {r['ip']} ({rest[1]})")
+        print(f"  ✓ Bento will log in to {r['display']} with that key from now on.")
         return
     if a == "rekey":
         r = machine()

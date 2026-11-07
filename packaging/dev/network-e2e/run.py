@@ -120,6 +120,9 @@ def main():
 
     # 2. checked, nothing changed
     code, c = api("/api/network/check", {"ip": ip, "user": "pi", "password": PW})
+    if code == 409 and c.get("first_key"):     # a person looks at the key on the first visit
+        api("/api/devices/trust-key", {"ip": ip, "fingerprint": c["first_key"]["fingerprint"]})
+        code, c = api("/api/network/check", {"ip": ip, "user": "pi", "password": PW})
     assert code == 200 and not any(c["done"].values()), c
     step("2. Check read all four steps as off", done=c["done"], plan=[p["id"] for p in c["plan"]],
          host_key=c.get("host_key") or "(pinned)")
