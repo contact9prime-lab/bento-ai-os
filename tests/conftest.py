@@ -27,6 +27,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 def _never_touch_the_real_config(tmp_path, monkeypatch):
     """Point every config write at a throwaway directory, for every test."""
     from agentos import config as cfgmod
+    # The server's store is opened at import, on the developer's own home. A judgement that read
+    # the real diary would clear the real machine's alarms and write that back into it.
+    from agentos import devboard
+    monkeypatch.setattr(devboard.Alarms, "restored", True)
 
     home = tmp_path / "agentos-home"
     home.mkdir(parents=True, exist_ok=True)

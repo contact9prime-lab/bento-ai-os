@@ -189,6 +189,17 @@ def hub_ack(alarm: str, timeout: float = 3) -> dict | None:
     return None
 
 
+def hub_alarms(rules: list, timeout: float = 5) -> dict | None:
+    """Change the alarm rules on the demo's hub from here: they are that Bento's, and it judges them."""
+    with contextlib.suppress(Exception):
+        req = urllib.request.Request(urls()["hub"] + "api/devices/alarms", method="PUT",
+                                     data=json.dumps({"alarms": rules}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read() or b"{}")
+    return None
+
+
 # ---- the person's side: start, stop, status, poke --------------------------------------------
 
 def _alive(pid: int) -> bool:

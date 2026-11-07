@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.7.12 — 2026-11-06
+
+**Alarms are a table, and you can see the old ones.** What's open comes first, then what happened
+earlier today with when it cleared and how long it was open. A new alarm blinks until you acknowledge
+it, and colour follows severity, always with the word beside it.
+
+**Alarms clear themselves after a restart.** What was open comes back reading "Checking", and the hub
+asks each machine what it reads now. Still true keeps its first time and your acknowledgement; no
+longer true is cleared with a line saying why. Before, a restart forgot them, so the day read
+"9 raised, 1 cleared" with nothing to look at.
+
+**Every alarm rule is in one list.** Alarm rules shows yours, the demo's and the missions', what each
+reads now and who owns it, with Edit and Remove. Your desktop can change the demo's rules, and an
+alarm's Rule button opens its rule. `bento network alarms` does the same from a terminal.
+
+**The chat folds on the Devices scene.** It sits small at the top right and the board takes the whole
+screen under it. Press it or start typing and a panel slides in while the board makes room. Answers stay
+there until you close them, a dot says when one finished while it was folded, and the arrow or Esc on an
+empty bar folds it again. The board's header stays in view as you scroll.
+
+**Fixed:** another account's machines showed in your day's alarm numbers. On and off readings (a door,
+a switch) were dropped when a machine's hardware was read, so they showed as "—" after a restart.
+
 ## 0.7.11 — 2026-11-05
 
 **The Devices scene is analytical.** It opens on the day's numbers: machines answering, readings in,

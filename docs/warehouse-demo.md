@@ -81,7 +81,14 @@ Open the hub and it's already showing the floor: every zone, every node and ever
 with the alarms on top. That's the **Devices** scene. It sits on desktop 1, and the Town is on
 desktop 2, so the desktop numbers in the menu bar (or **⇄ Town** on the board) switch between them.
 
-![The hub's Devices scene: three zones live, cold room B's compressor off and the forklift battery low as alarms](screenshots/devices-scene.png)
+![The alarm table: new alarms blink, warnings amber, alarms red, and what cleared earlier today below them](screenshots/devices-scene.png)
+
+The chat sits small at the top right, so the board has the screen. Press it or start typing and it
+opens as a panel on the right, with the board making room beside it. Answers stay in the panel until you
+close them, and if one finishes while it's folded, a dot on the arrow says so. The arrow folds it, and so
+does Esc on an empty bar. On a phone the bar stays under the board.
+
+![The chat open on the right, with an answer, beside the board](screenshots/devices-scene-chat.png)
 
 The board opens on the day's numbers: machines answering, readings coming in, alarms now (and how
 many you've seen), the longest one open, and the alarms of the last 24 hours by hour with the ones
@@ -92,18 +99,32 @@ Your own Bento's Devices scene shows the demo too while it runs, for the demo's 
 admins. The demo's machines are on its own hub, so without that it said "0 machines".
 
 Each "cause trouble" button on the floor page raises one: a compressor that's off, a cold room or a
-dock door left open, a flat forklift battery, an aisle that's too hot. An alarm is a condition
-that's true now. It shows while it holds, clears by itself when it stops, and both are a line in
-Devices → Events. **Acknowledge** marks that you saw it; it fixes nothing. A machine that stops
-answering, or a sensor with no reading, is an alarm with no rule needed, and so is anything a
-mission that's on is watching for.
+dock door left open, a flat forklift battery, an aisle that's too hot.
 
-**Alarms…** on the board lists the hub's alarm rules, and you can add your own: a machine, one of
-its things, above or below a number, on or off, for how long, and whether it's an alarm or a
-warning. The demo starts with nine. Away from the board, a new alarm is a toast with the way to it,
-and Devices has the same list under **Alarms**.
+**The alarm table** shows what's open first, then what happened earlier today. Red is an alarm and
+amber is a warning, and each row says so in words. A raised alarm nobody has seen blinks and says
+**New** until you press **Acknowledge**, which marks that you saw it and fixes nothing. An alarm is a
+condition that's true now: it shows while it holds and clears by itself when it stops, and the row
+moves down with when it cleared and for how long it was open. Use **All**, **Open** and **Earlier
+today** to narrow it. Everything is also a line in Devices → Events.
 
-![Alarms… on the board: the demo's nine rules, and a form to add one](screenshots/devices-scene-alarms.png)
+**Alarms clear themselves after a restart.** What was open when Bento stopped comes back reading
+"Checking with zone-cold", and the hub asks the machines what they read now. If it's still true the
+alarm carries on, with its first time and your acknowledgement. If it isn't, it's cleared with a line
+that says why. A machine that can't be reached keeps its alarms on "Checking", because nobody can say
+yet. A row that says "Ended, time not recorded" is from before this existed.
+
+**Alarm rules** on the board lists everything that can raise an alarm, what each one reads now and
+who it belongs to. The **Rule** button on an alarm opens its rule. Edit or remove any rule, or add
+one: a machine, one of its things, above or below a number, on or off, for how long, and whether it's
+an alarm or a warning. The demo's nine are in the same list, on your own desktop as well as on its
+hub. A mission's rules are listed too and you change those in the mission. A machine that stops
+answering and a sensor with no reading are always on. From a terminal, `bento network alarms` lists
+them, and `add` and `remove` change your own.
+
+Away from the board, a new alarm is a toast with the way to it, and Devices has the same table.
+
+![Alarm rules on the board: every rule, what it reads now, and the form to edit one](screenshots/devices-scene-alarms.png)
 
 ![The Devices scene on a phone: the alarms first, then each zone](screenshots/devices-scene-phone.png)
 

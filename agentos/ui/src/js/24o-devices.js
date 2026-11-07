@@ -8,7 +8,7 @@ async function renderDevices(body,w){
      departments and people, and who each Zero and team talks to (24r-topology.js). */
   pb.innerHTML=`<div class="seg dev-views" role="tablist">
       <button role="tab" data-dv="physical">Physical</button><button role="tab" data-dv="logical">Logical</button></div>
-    <div class="dev-physical"><section class="dev-alarms" aria-label="Alarms" hidden><h3>Alarms</h3><div class="dev-al-box"></div></section>
+    <div class="dev-physical"><section class="dev-alarms" aria-label="Alarms" hidden><div class="dev-al-box"></div></section>
     <div class="devhub-box" id="devhub-${esc(w&&w.id||'0')}"><p class="mut">…</p></div>
     <section class="dev-events" aria-label="Events"><h3>Events</h3><div class="dev-ev-box"><p class="mut">…</p></div></section>
     <section class="dev-demo" aria-label="Warehouse demo"><h3>Try it in a simulation</h3><div class="dev-demo-box"><p class="mut">…</p></div></section></div>
@@ -42,21 +42,21 @@ async function devAlarmsLoad(){
 }
 function devAlarmsPaint(){
   const d=DEVAL.d||{},al=d.alarms||[],ms=d.machines||[];
-  const loud=al.filter(a=>a.state==='active'&&a.level==='alarm'&&!a.ack).length,n=typeof deskShowing==='function'?deskShowing('devices'):0;
+  const n=typeof deskShowing==='function'?deskShowing('devices'):0;
   document.querySelectorAll('.dev-alarms').forEach(sec=>{
     sec.hidden=!ms.length;if(!ms.length)return;
     const box=sec.querySelector('.dev-al-box');
-    box.innerHTML=devAlarmsHTML(al,loud)+`<div class="dev-acts">
-      <button class="endbtn" data-dva="board">${n?`See them live on Desktop ${n}`:'Show them live on this desktop'}</button>
-      <button class="endbtn" data-dva="rules">Your alarms…</button></div>`;
+    box.innerHTML=devAlarmsHTML(d)+`<div class="dev-acts">
+      <button class="endbtn" data-dva="board">${n?`See them live on Desktop ${n}`:'Show them live on this desktop'}</button></div>`;
     box.querySelectorAll('[data-dvs]').forEach(b=>b.onclick=()=>devSceneAct(b.dataset.dvs,b));
-    box.querySelectorAll('[data-dva]').forEach(b=>b.onclick=()=>{
-      if(b.dataset.dva==='rules')DEVSCENE.edit=true;
-      const k=deskShowing('devices');
-      if(k&&k!==deskNow())return switchDesk(k);
-      if(!k)setImmersiveScene('devices');else devScenePaint();
-      // the board is behind this window on this desktop: tuck the windows here away so it is seen
-      WM.wins.forEach(w=>{if(!w.min&&(w.desk||1)===deskNow())minimizeWin(w)})})});
+    box.querySelectorAll('[data-dva]').forEach(b=>b.onclick=devBoardShow)});
+}
+/* Go to the board: the desktop that shows it, or this desktop with its windows tucked away. */
+function devBoardShow(){
+  const k=deskShowing('devices');
+  if(k&&k!==deskNow())return switchDesk(k);
+  if(!k)setImmersiveScene('devices');else devScenePaint();
+  WM.wins.forEach(w=>{if(!w.min&&(w.desk||1)===deskNow())minimizeWin(w)});
 }
 function devAlarmsLive(){if(document.querySelector('.dev-alarms'))devAlarmsLoad()}
 

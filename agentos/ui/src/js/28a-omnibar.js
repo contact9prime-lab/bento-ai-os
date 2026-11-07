@@ -41,7 +41,9 @@ function omniPop(on){
     if(changed)popCloseAll();     // the palette is a popover too: not beside Quick Settings
     if(document.activeElement!==inp)inp.focus();
     omniRender(inp.value);
-    if(changed)Motion.run(bar,[{transform:'translateX(-50%) scale(.97)'},{transform:'translateX(-50%) scale(1)'}],
+    // a bar docked on the right has no centring transform to keep: this threw it half its width left
+    const x=getComputedStyle(bar).transform==='none'?'':'translateX(-50%) ';
+    if(changed)Motion.run(bar,[{transform:x+'scale(.97)'},{transform:x+'scale(1)'}],
       {duration:180,easing:EASE.spring});
   }else{
     $('#omnilist').classList.remove('on');
@@ -62,6 +64,7 @@ function omniSummon(on){
 function omniFocus(){
   const inp=$('#omni-in');if(!inp)return;
   omniSummon(true);                       // come to the front, over any window
+  if(typeof devChatOpen==='function')devChatOpen();
   inp.focus();inp.select();
   omniPop(true);
 }
@@ -181,6 +184,7 @@ function omniCard(question){
       <button class="oc-chat">Open in Chat</button><button class="oc-x">✕</button></div>`;
   wrap.appendChild(card);
   wrap.classList.add('raised');
+  if(typeof devChatOpen==='function')devChatOpen();
   while(wrap.children.length>3)wrap.firstChild.remove();
   popIn(card,{origin:'bottom'});
   const close=()=>{popOut(card,()=>{card.remove();
@@ -201,6 +205,7 @@ function omniCard(question){
 function omniCardsYield(){
   const wrap=$('#omnicards');if(!wrap||!wrap.children.length)return;
   wrap.classList.remove('raised');
+  if(typeof devChatKeeps==='function'&&devChatKeeps())return;   // the panel keeps its answers
   [...wrap.children].forEach(c=>{if(c.dataset.done&&c._close&&!c.matches(':hover'))c._close()});
 }
 function omniContext(){
@@ -254,8 +259,10 @@ async function omniAsk(q){
     onEnd:()=>{
     stopBtn.style.display='none';
     card.dataset.done='1';
+    if(typeof devChatNews==='function')devChatNews();
     // linger, then fade — unless the pointer is on it or an approval is pending
-    setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)'))close()},30000);
+    setTimeout(()=>{if(card.isConnected&&!card.matches(':hover')&&!card.querySelector('.approval:not(.resolved)')
+      &&!(typeof devChatKeeps==='function'&&devChatKeeps()))close()},30000);
   }});
   const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:omniTitle(q),images:imgs,
     context:omniContext(),sink,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
@@ -290,10 +297,16 @@ async function omniAsk(q){
   bar.addEventListener('dragleave',()=>bar.classList.remove('dropping'));
   $('#omni-mic').onmousedown=e=>{e.preventDefault();jarvisMode(true)};
   $('#omni-chat').onmousedown=e=>{e.preventDefault();openApp('chat');if(OMNI.cid)openConv(OMNI.cid)};
+  const fold=$('#omni-fold');
+  if(fold){fold.onmousedown=e=>e.preventDefault();fold.onclick=()=>devChatToggle()}
+  // pressing on the bar opens the Devices scene's panel; only a press or typing does, so a caret
+  // the page puts there by itself never moves the board
+  bar.addEventListener('pointerdown',e=>{if(!e.target.closest('button')&&typeof devChatOpen==='function')devChatOpen()});
   // clicking anywhere on the bar puts the caret in it
   bar.addEventListener('mousedown',e=>{if(!e.target.closest('button')&&e.target!==inp){e.preventDefault();omniFocus()}});
   // typing opens the launcher; clearing it collapses back to the bare bar
-  inp.addEventListener('input',()=>{if(inp.value.trim())omniPop(true);else if(OMNI.pop)omniRender('')});
+  inp.addEventListener('input',()=>{if(inp.value&&typeof devChatOpen==='function')devChatOpen();
+    if(inp.value.trim())omniPop(true);else if(OMNI.pop)omniRender('')});
   inp.addEventListener('keydown',e=>{
     if(e.key==='ArrowDown'){e.preventDefault();OMNI.idx=Math.min(OMNI.idx+1,OMNI.matches.length-1);omniPaint();return}
     if(e.key==='ArrowUp'){e.preventDefault();OMNI.idx=Math.max(OMNI.idx-1,0);omniPaint();return}
@@ -302,7 +315,8 @@ async function omniAsk(q){
       if(e.shiftKey){omniAsk(inp.value);return}         // ⇧⏎ always asks the agent
       if(OMNI.matches.length)omniRun();else omniAsk(inp.value);
       return}
-    if(e.key==='Escape'){e.preventDefault();inp.value='';omniPop(false);omniSummon(false);inp.blur()}
+    if(e.key==='Escape'){e.preventDefault();const was=inp.value;inp.value='';omniPop(false);omniSummon(false);inp.blur();
+      if(!was&&typeof devChatFold==='function')devChatFold()}
   });
   // clicking away collapses the launcher (the bar itself stays, always)
   document.addEventListener('mousedown',e=>{

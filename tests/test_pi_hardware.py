@@ -148,7 +148,7 @@ def test_what_arrives_is_read_field_by_field():
     assert [i["id"] for i in got["items"]] == ["cpu.temp", "gpio.4", "power.throttle"]
     assert len(dropped) == 3 and "x.y" in " ".join(dropped)
     assert "\x1b" not in got["board"]["model"] and got["board"]["ram_mb"] == 905 and "evil" not in got
-    assert got["items"][1]["can"] == ["read"] and "value" not in got["items"][1]
+    assert got["items"][1]["can"] == ["read"] and got["items"][1]["value"] is True, "a door or a pin is a reading too"
     assert got["items"][2]["flags"]["now"] == ["under-voltage"]
 
 

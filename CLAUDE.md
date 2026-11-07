@@ -3457,6 +3457,28 @@ device hub instead of the town … the desktops could be used for switching". Fi
   per number: the hub's kept readings of the last hour). The demo's floor joins this machine's board for its user and
   admins (`warehouse.hub_board`); a demo machine has `AGENTOS_DEMO_MACHINE` and never fetches it, or the hub asked
   itself, and a throwaway demo's hub read the owner's real one (its children strip `AGENTOS_` from the env).
+- **An alarm outlives a restart, and only a device's answer ends it** (`devboard.episodes`/`Alarms.restore`/`_verdict`,
+  `server._alarms_restore`/`_alarm_sync`). Reported as "9 raised, 1 cleared, and I can't see them": open alarms were
+  memory only. The diary already says what was open, so nothing new is stored. A restored alarm reads `unconfirmed` until a
+  reading says otherwise: still true keeps its `since` and ack with no second raised line; false, or its rule or machine
+  gone, is cleared with `why`; a machine that can't answer holds it, and one that answers with no reading ends it after
+  `GRACE_S`. A Pi sends only changes, so `_alarm_sync` asks each watched machine once after a start and after it comes
+  back, and only fills what hasn't been heard (`setdefault`: a Pi's backlog is newer than the list). `hardware.clean`
+  must keep booleans, or doors can't be judged. **`tests/conftest.py` sets `Alarms.restored`**: the suite's server store is
+  the developer's real database, and a judgement that read its diary would write Cleared lines back into it.
+- **The diary is the machine's, so a screen filters it** (`server._alarm_lines(whose)`): lines carry `whose` (never
+  `owner=`, which is `_device_event`'s own argument and is swallowed by the observers' `suppress`), older ones go to the
+  link's owner. Unfiltered, a demo user read the admin's "raspberrypi-3 is not answering".
+- **One rule list, one alarm table** (`devboard.rule_rows`, `history`, `devAlarmsHTML`). A rule on a demo machine is PUT
+  with `demo` and passed on to its hub (`warehouse.hub_alarms`); a mission's is read-only here. New alarms blink with a
+  phase from the clock (`--ph`), or the 4 s repaint restarts it. `bento network alarms` is the terminal's face.
+- **The chat folds to the top right, and only a person folds it** (`devChatOpen`/`Fold`/`Toggle`/`Keeps`/`News` in 01h,
+  `#omni-fold`, `#devchat`, `body.dvc-open`; wide screens only). It's the prompt bar and its cards with a panel behind them. Pressing
+  the bar, typing, a hotkey or a new answer opens it; the page putting a caret there doesn't, or every load moved the board. The
+  panel keeps finished answers (`devChatKeeps` skips the 30 s linger) until the scene is left. The table reads its own width
+  (`@container` on `.dvs-tw`), because the panel narrows it on a wide screen. `#omnibar button` is (1,0,1), so `#omni-fold` needs
+  `#omnibar #omni-fold`: written plain, the button showed on every scene and on phones. `omniPop` skips the centring transform on
+  a docked bar, or it threw the bar half its width left.
 - **Words and numbers, no frame loop**: a 4 s refresh that skips while hidden or covered, values moved in place by
   `device_live`. It is in `LITE_SCENES`, so a Pi's own screen can show it.
 
