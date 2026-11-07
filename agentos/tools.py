@@ -192,7 +192,13 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               "install_skill",
               # a department or an agent asking for an ability it lacks (running code):
               # the person's yes, every time, whoever asks (agentos/tools.py ABILITIES)
-              "request_capability"}
+              "request_capability",
+              # this OS's own code and a restart that loads it, and who the agent is from now
+              # on. No autonomy level answers these, and neither does a remembered yes
+              "develop_agentos", "restart_agentos", "update_soul",
+              # which folders the jail opens, and which agent answers every turn: one of those
+              # leaves this gate altogether. Admin only, and asked of that admin every time
+              "share_folder", "set_engine"}
 
 
 # Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
@@ -294,6 +300,89 @@ def classify_command(command: str) -> str:
         if _segment_writes(base, parts, seg):
             return "risky"
     return "safe"
+
+
+# What `configure_agentos` may touch: an allow-list, because the next key added to config is one
+# nobody thought about here. "A model-reachable path to a security setting is a defect, whatever
+# autonomy level it needs": the sandbox, Rules, autonomy and channels were all on this tool.
+CONFIG_SAFE_KEYS = frozenset({"agent_name", "default_model", "max_steps", "memory"})
+# Named only so the refusal can say where to go instead of reading as a typo.
+CONFIG_PERSON_KEYS = frozenset({
+    "autonomy", "policies", "sandbox", "workspace", "mcp_servers", "telegram", "whatsapp",
+    "security", "remote", "users", "providers", "executors", "engine", "team", "github", "port",
+    "host", "hands", "face", "provision", "updates", "signin", "mail", "calendar", "oauth_clients",
+})
+MAX_STEPS_CEILING = 200
+_MEMORY_VALUES = {"auto_extract": bool, "inject_user": int, "inject_session": int, "inject_facts": int,
+                  "rollup_after_hours": (int, float)}
+
+
+def _memory_value_ok(key: str, value) -> bool:
+    want = _MEMORY_VALUES.get(key)
+    if want is None or (want is not bool and isinstance(value, bool)):
+        return False
+    return isinstance(value, want) and (want is bool or 0 <= value <= 1000)
+
+
+# Named settings that make git start a program, or that change where it reads from. `-c` is read
+# after the repo's own file, so these win over whatever the folder says.
+_GIT_OFF = [c for kv in (
+    "core.hooksPath=/dev/null", "core.fsmonitor=false", "core.attributesFile=/dev/null",
+    "core.pager=cat", "core.editor=true", "sequence.editor=true", "core.askPass=",
+    "core.alternateRefsCommand=true", "credential.helper=", "commit.gpgSign=false", "tag.gpgSign=false",
+    "gpg.program=false", "protocol.ext.allow=never", "gc.auto=0", "maintenance.auto=false",
+    "diff.ignoreSubmodules=all", "status.submoduleSummary=false",
+    "fetch.recurseSubmodules=false", "push.recurseSubmodules=no", "submodule.recurse=false",
+    "safe.bareRepository=explicit", "core.sshCommand=ssh",
+) for c in ("-c", kv)]
+# The environment's own spelling of the same, which git reads first or instead. An empty
+# GIT_PROXY_COMMAND also stops core.gitProxy, which -c cannot, because the first match wins there.
+_GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": "", "GIT_PAGER": "cat",
+            "GIT_EDITOR": "true", "GIT_SEQUENCE_EDITOR": "true", "GIT_PROXY_COMMAND": "",
+            "GIT_SSH_COMMAND": "ssh -oBatchMode=yes", "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_ALLOW_PROTOCOL": "https:http:ssh:git:file"}
+_GIT_NAMED = (
+    (re.compile(r"filter\.(.+)\.(clean|smudge|process)", re.S), ""),
+    (re.compile(r"diff\.(.+)\.(command|textconv)", re.S), ""),
+    (re.compile(r"merge\.(.+)\.driver", re.S), "true"),
+    (re.compile(r"remote\.(.+)\.uploadpack", re.S), "git-upload-pack"),
+    (re.compile(r"remote\.(.+)\.receivepack", re.S), "git-receive-pack"),
+    (re.compile(r"remote\.(.+)\.vcs", re.S), ""),
+)
+# What a tool's child must not inherit: this server's keys, and git's own overrides
+_ENV_SECRET = re.compile(r"(?i)^(agentos_|bento_|git_)|token|secret|passw|passphrase|api_?key|_key$|credential|cookie")
+
+
+def _tool_env() -> dict:
+    return {k: v for k, v in os.environ.items() if not _ENV_SECRET.search(k)}
+
+
+def _python_binds() -> list[str]:
+    """The folders this interpreter lives in, when the jail would blank them (a venv under
+    /home). Read-only, and nothing but Python is in them."""
+    return [p for p in {os.path.realpath(sys.prefix), os.path.realpath(sys.base_prefix)}
+            if p.startswith("/home/") and os.path.isdir(p)]
+
+
+def _dashed(value) -> bool:
+    return str(value or "").startswith("-")
+
+
+def _git_overrides(names: list[str]) -> list[str] | None:
+    """`-c` overrides for the settings this repo's config names itself, or None when it points
+    git at another folder altogether."""
+    out: list[str] = []
+    for name in names:
+        name = name.strip("\n")
+        if name == "core.worktree":
+            return None
+        for pat, value in _GIT_NAMED:
+            if pat.fullmatch(name):
+                out += ["-c", f"{name}={value}"]
+                if name.startswith("filter."):
+                    out += ["-c", f"{name.rsplit('.', 1)[0]}.required=false"]
+                break
+    return out
 
 
 class _TextExtractor(html.parser.HTMLParser):
@@ -2071,7 +2160,8 @@ class Toolbox(usersmod.Scoped):
         return f"This machine now answers with {msg}."
 
     async def configure_agentos(self, changes: str) -> str:
-        """Apply a JSON config patch to AgentOS itself (autonomy, model, name, policies, MCP, telegram)."""
+        """Change this agent's name, its default model, its step limit or how it remembers.
+        Security and connections are the person's, in Settings (see CONFIG_SAFE_KEYS)."""
         from . import config as cfgmod
         try:
             patch = json.loads(changes) if isinstance(changes, str) else dict(changes)
@@ -2083,7 +2173,26 @@ class Toolbox(usersmod.Scoped):
                    "policies", "telegram", "mcp_servers", "sandbox", "memory"}
         applied, skipped = [], []
         for k, v in patch.items():
-            if k not in allowed:
+            if k in CONFIG_PERSON_KEYS:
+                refused.append(k)
+            elif k not in CONFIG_SAFE_KEYS:
+                skipped.append(k)
+            elif k == "memory":
+                if not isinstance(v, dict):
+                    skipped.append(k)
+                    continue
+                vals = {kk: vv for kk, vv in v.items() if _memory_value_ok(kk, vv)}
+                skipped += [f"memory.{kk}" for kk in v if kk not in vals]
+                if vals:
+                    self.cfg.setdefault("memory", {}).update(vals)
+                    applied.append(k)
+            elif k == "max_steps":
+                if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= MAX_STEPS_CEILING:
+                    skipped.append(k)
+                    continue
+                self.cfg[k] = v
+                applied.append(k)
+            elif not isinstance(v, str) or not v.strip() or len(v) > 200:
                 skipped.append(k)
                 continue
             if k in ("telegram", "mcp_servers", "memory") and isinstance(v, dict):
@@ -2097,7 +2206,7 @@ class Toolbox(usersmod.Scoped):
                 self.cfg[k] = v
             applied.append(k)
         if not applied:
-            return f"[error] nothing applied; allowed keys: {sorted(allowed)}"
+            return refusal or f"[error] nothing applied; allowed keys: {sorted(CONFIG_SAFE_KEYS)}"
         cfgmod.save_config(self.cfg)
         self.store.log("system", f"config changed by agent: {', '.join(applied)}")
         if "mcp_servers" in applied and self.mcp:
@@ -2209,10 +2318,21 @@ class Toolbox(usersmod.Scoped):
 
     async def develop_agentos(self, path: str, content: str, restart: bool = False) -> str:
         """Write a file into AgentOS's OWN source tree — modify or extend the operating system itself
-        (e.g. add a new integration like WhatsApp). Set restart=true to reload the service after."""
+        (e.g. add a new integration like WhatsApp). Set restart=true to reload the service after.
+        Admin only, a person's yes every time, and never the gate's own code (protected.py)."""
+        if (deny := self._admin_only("change this OS's code")):
+            return deny
         p = self._repo_path(path)
         if p is None:
             return "[error] path escapes the AgentOS source tree"
+        rel = p.relative_to(self._repo_root()).as_posix()
+        # `p` is resolved, so a link inside the tree cannot name one file and write another
+        existing = ""
+        if rel.startswith("tests/") and p.is_file():
+            existing = p.read_text(errors="replace")
+        if (why := protected.develop_refused(rel, existing)):
+            secevents.flag("develop.refused", rel, source="develop_agentos", uid=usersmod.current() or "")
+            return f"[denied] {why}"
         p.parent.mkdir(parents=True, exist_ok=True)
         # always snapshot before touching our own source — corruption insurance
         snap = self._make_snapshot(f"auto before editing {path}")
@@ -2256,10 +2376,39 @@ class Toolbox(usersmod.Scoped):
             py, "-m", "pytest", "-q", "--no-header", cwd=workdir,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return "[error] tests timed out after 600s"
+            if path:
+                workdir = os.path.realpath(self._abs(path))
+                if not os.path.isdir(workdir):
+                    return f"[error] not a directory: {workdir}"
+                if (deny := self._sandbox_deny(workdir)):      # a read-only share stays read-only in the jail
+                    return deny
+                argv, jailed, refusal = self._jailed(argv, workdir, ro=_python_binds())
+                if refusal:
+                    return refusal
+            else:
+                # This OS's own suite, an admin's. Not in the jail: it tests the jail, and a jail
+                # can't start inside one, so a green suite would be impossible. It runs what this
+                # checkout holds, which no agent can write, and which a restart would run anyway.
+                # Its home is a throwaway, because a bare pytest writes the real database.
+                if (deny := self._admin_only("run this OS's test suite")):
+                    return deny
+                workdir = str(src_root)
+                from . import config as cfgmod
+                os.makedirs(cfgmod.AGENTOS_HOME, exist_ok=True)
+                scratch = tempfile.mkdtemp(prefix=".tests-", dir=str(cfgmod.AGENTOS_HOME))
+                env.update(HOME=scratch, AGENTOS_HOME=os.path.join(scratch, "agentos"),
+                           PYTHONDONTWRITEBYTECODE="1", PYTEST_ADDOPTS="-p no:cacheprovider")
+            proc = await asyncio.create_subprocess_exec(
+                *argv, cwd=None if jailed else workdir, env=env,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+            try:
+                out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
+            except asyncio.TimeoutError:
+                proc.kill()
+                return "[error] tests timed out after 600s"
+        finally:
+            if scratch:
+                shutil.rmtree(scratch, ignore_errors=True)
         text = out.decode(errors="replace")
         tail = "\n".join(text.strip().splitlines()[-25:])
         summary = next((ln for ln in reversed(text.strip().splitlines())
@@ -2297,6 +2446,8 @@ class Toolbox(usersmod.Scoped):
     async def restart_agentos(self) -> str:
         """Restart the AgentOS service to load code changes — gated on the test
         suite: a self-modification that breaks the tests must not go live."""
+        if (deny := self._admin_only("restart this OS")):
+            return deny
         tests = await self.run_tests()
         if tests.startswith("[exit code"):
             return ("[error] refusing to restart: the test suite fails against the current "
@@ -3536,8 +3687,31 @@ class Toolbox(usersmod.Scoped):
             return 1, f"[error] git timed out after {timeout}s"
         return proc.returncode or 0, out.decode(errors="replace")
 
-    def _git_repo(self, path: str) -> tuple[str | None, str]:
-        p = os.path.realpath(os.path.expanduser(path or self.cfg["workspace"]))
+    async def _git(self, repo: str, *argv: str, env: dict | None = None,
+                   timeout: int = 120) -> tuple[int, str]:
+        """Git, with everything a repository's own files can make it run switched off, inside
+        this account's jail. A repo's config is written by whoever wrote the folder, and git
+        reads it before anything else: `core.fsmonitor` runs on `git status`, hooks on a commit,
+        a filter driver on `git add`. Some of those have names the repo itself chooses, so its
+        config is read first and each is overridden by name (`-c` is read last)."""
+        e = {**_tool_env(), **_GIT_ENV, **(env or {})}
+        ro = [e["GIT_ASKPASS"]] if e.get("GIT_ASKPASS") else []
+        wrap, jailed, refusal = self._jailed(["git"], repo, ro=ro)
+        if refusal:
+            return 1, refusal
+        if jailed:
+            # inside the jail $HOME is a folder the agent writes, so a ~/.gitconfig there is the
+            # repo's words too, and some settings are honoured only from that file
+            e["GIT_CONFIG_GLOBAL"] = os.devnull
+        code, names = await self._git_exec([*wrap, "-C", repo, "config", "--list", "--name-only", "-z"],
+                                           repo, e, timeout)
+        extra = _git_overrides(names.split("\0")) if code == 0 else []
+        if extra is None:
+            return 1, "[error] this repository's config points git at another folder, so it was not touched"
+        return await self._git_exec([*wrap, *_GIT_OFF, *extra, "-C", repo, *argv], repo, e, timeout)
+
+    def _git_repo(self, path: str, write: bool = False) -> tuple[str | None, str]:
+        p = os.path.realpath(self._abs(path or self.cfg["workspace"]))
         if (deny := self._sandbox_deny(Path(p), write=True)):
             return None, deny
         if not os.path.isdir(p):
