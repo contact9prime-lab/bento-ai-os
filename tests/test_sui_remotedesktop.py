@@ -160,7 +160,7 @@ def test_relay_and_install_are_gated():
     assert "_ws_origin_ok(ws)" in gate and "_ws_authed(ws)" in gate, \
         "the WS gate must refuse cross-origin AND unauthenticated handshakes"
     store = server.split('async def api_native_store_act')[1][:900]
-    assert "is_loopback" in store, "installing software must be loopback-only"
+    assert "_local_admin_refusal" in store, "installing software must be loopback-only"
     sui = server.split("async def api_shell_sui")[1][:900]
     assert "is_loopback" in sui, "only the machine's own desktop may claim the session UI"
 
