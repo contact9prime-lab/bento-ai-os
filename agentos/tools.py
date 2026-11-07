@@ -4400,23 +4400,58 @@ class Toolbox(usersmod.Scoped):
                 return None, f"[denied] {why}"
         return p, ""
 
-    def _git_auth_env(self) -> dict:
+    def _git_auth_env(self, url: str) -> dict:
         """GIT_ASKPASS-based credentials: the token comes from config (Settings →
-        github.token) via the environment — never argv, never remotes, never output."""
+        github.token) via the environment — never argv, never remotes, never output.
+        Only for `url`'s host when the token belongs there: a remote is a line in a repository's
+        config, and anyone who wrote that folder could name a server that collects it. The
+        script checks git's own prompt too, for what a redirect or a rewrite changes afterwards."""
         token = (self.cfg.get("github") or {}).get("token", "")
-        if not token:
+        host = self._git_token_host(url)
+        if not token or not host:
             return {}
         from . import config as cfgmod
         askpass = cfgmod.AGENTOS_HOME / "git-askpass.sh"
-        if not askpass.exists() or "AGENTOS_GIT" not in askpass.read_text():
+        if not askpass.exists() or "AGENTOS_GIT_HOST" not in askpass.read_text():
             askpass.write_text("#!/bin/sh\n# AGENTOS_GIT askpass helper\n"
+                               "case \"$1\" in\n"
+                               "  *\"://$AGENTOS_GIT_HOST'\"*|*\"@$AGENTOS_GIT_HOST'\"*) ;;\n"
+                               "  *) exit 1;;\n"
+                               "esac\n"
                                "case \"$1\" in\n"
                                "  *sername*) echo \"${AGENTOS_GIT_USER:-x-access-token}\";;\n"
                                "  *) echo \"$AGENTOS_GIT_TOKEN\";;\n"
                                "esac\n")
             askpass.chmod(0o700)
-        return {"GIT_ASKPASS": str(askpass), "AGENTOS_GIT_TOKEN": token,
+        return {"GIT_ASKPASS": str(askpass), "AGENTOS_GIT_TOKEN": token, "AGENTOS_GIT_HOST": host,
                 "AGENTOS_GIT_USER": (self.cfg.get("github") or {}).get("username") or "x-access-token"}
+
+    def _git_token_host(self, url: str) -> str:
+        """The host in `url` if the GitHub token may go there, else ''. https only, because
+        http would carry it in the clear. `github.host` in config names a GitHub Enterprise."""
+        url = str(url or "").strip()
+        if not url or "\\" in url or any(ord(c) <= 32 for c in url):
+            return ""
+        try:
+            from urllib.parse import urlsplit
+            u = urlsplit(url)
+            host, port = (u.hostname or "").lower(), u.port
+        except ValueError:
+            return ""
+        if u.scheme != "https" or port not in (None, 443) or not host:
+            return ""
+        return host if host in {"github.com", str((self.cfg.get("github") or {}).get("host") or "").lower()} else ""
+
+    async def _git_auth_for(self, repo: str, remote: str, push: bool = False) -> dict:
+        """The credentials for one remote of a repository, as git itself resolves its URLs
+        (`insteadOf` included). Every URL it would use must be one the token belongs to."""
+        if "://" in remote:
+            urls = [remote]
+        else:
+            code, out = await self._git(repo, "remote", "get-url", "--all", *(["--push"] if push else []), remote)
+            urls = out.split() if code == 0 else []
+        envs = [self._git_auth_env(u) for u in urls]
+        return envs[0] if envs and all(envs) else {}
 
     async def git_status(self, path: str = "") -> str:
         repo, err = self._git_repo(path)
@@ -4525,7 +4560,7 @@ class Toolbox(usersmod.Scoped):
         if _dashed(remote) or _dashed(branch):
             return "[error] a remote or branch cannot start with a dash"
         argv = ["pull", remote] + ([branch] if branch else [])
-        code, out = await self._git(repo, *argv, env=self._git_auth_env(), timeout=300)
+        code, out = await self._git(repo, *argv, env=await self._git_auth_for(repo, remote), timeout=300)
         return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_clone(self, url: str, path: str) -> str:
@@ -4544,7 +4579,7 @@ class Toolbox(usersmod.Scoped):
                 return self._net_refused(e, "git_clone")
             except httpx.HTTPError:
                 pass                   # a name that does not resolve: git says so
-        auth = self._git_auth_env()
+        auth = self._git_auth_env(url)
         e = {**_tool_env(), **_GIT_ENV, **auth}
         ro = [e["GIT_ASKPASS"]] if e.get("GIT_ASKPASS") else []
         wrap, jailed, refusal = self._jailed(["git"], parent, ro=ro, own_env=True)
@@ -4597,9 +4632,11 @@ class Toolbox(usersmod.Scoped):
             add_code, add_out = await self._git(repo, "remote", "add", remote, clone_url)
             if add_code != 0:
                 return f"[error] {add_out.strip()[:400]}"
-        env = self._git_auth_env()
+        env = await self._git_auth_for(repo, remote, push=True)
         if not env:
-            hint = " (no GitHub token configured — add one in Settings → Integrations for private/auth pushes)"
+            hint = (" (the GitHub token goes only to https://github.com, so it wasn't offered to this remote)"
+                    if (self.cfg.get("github") or {}).get("token") else
+                    " (no GitHub token configured — add one in Settings → Integrations for private/auth pushes)")
         else:
             hint = ""
         # A remote on a local path: its receive-pack starts in THAT repo and drops our `-c`, so

@@ -242,7 +242,10 @@ async def answer(store, cfg: dict, lk: dict, req: dict) -> dict:
         for u in (req.get("updates") or [])[:5]:
             if isinstance(u, dict):
                 hit = mine.get(str(u.get("old") or "").strip().lower())
-                if hit and _text(u.get("new")):
+                if hit and hit.get("pinned"):
+                    store.log("memory", "left a pinned memory alone: auto-learn wanted to correct it",
+                              {"memory": hit["id"]})
+                elif hit and _text(u.get("new")):
                     store.update_memory(hit["id"], content=_text(u.get("new")))
                     added["updated"] += 1
         for old in (req.get("retractions") or [])[:5]:

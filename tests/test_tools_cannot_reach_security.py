@@ -250,7 +250,7 @@ def test_a_token_reaches_a_push_in_the_jail_through_the_askpass_file(box, tmp_pa
         return await real(self, argv, workdir, env, timeout)
     monkeypatch.setattr(toolsmod.Toolbox, "_git_exec", spy)
     repo = _repo_with(Path(box.cfg["workspace"]) / "r")
-    run(box._git(str(repo), "status", env=box._git_auth_env()))
+    run(box._git(str(repo), "status", env=box._git_auth_env("https://github.com/o/r.git")))
     askpass = captured["env"]["GIT_ASKPASS"]
     assert askpass in captured["argv"], "the jail would not see the helper"
     assert not any("tok-123" in a for a in captured["argv"]), "the token reached a command line"
@@ -259,7 +259,7 @@ def test_a_token_reaches_a_push_in_the_jail_through_the_askpass_file(box, tmp_pa
     assert "--clearenv" not in captured["argv"]
     assert "ANTHROPIC_API_KEY" not in captured["env"], "the server's keys stay out of it"
     i = captured["argv"].index("git")
-    jail = [*captured["argv"][:i], "/bin/sh", "-c", '"$GIT_ASKPASS" Password']
+    jail = [*captured["argv"][:i], "/bin/sh", "-c", '"$GIT_ASKPASS" "Password for \'https://x@github.com\': "']
     said = subprocess.run(jail, env=captured["env"], capture_output=True, text=True, timeout=20)
     assert said.stdout.strip() == "tok-123", said.stderr
 

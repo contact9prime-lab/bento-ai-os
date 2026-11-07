@@ -338,7 +338,12 @@ async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
         for u in (data.get("updates") or [])[:5]:
             old, new = (u.get("old") or "").strip(), (u.get("new") or "").strip()
             hit = store.find_memory(old) if old else None
-            if hit and new:
+            if hit and hit.get("pinned"):
+                # a pin is the person's, like a retraction below: the model may disagree in a
+                # new memory, and the log says one was left alone
+                store.log("memory", "left a pinned memory alone: auto-learn wanted to correct it",
+                          {"memory": hit["id"]})
+            elif hit and new:
                 store.update_memory(hit["id"], content=new)
                 added["updated"] += 1
         for old in (data.get("retractions") or [])[:5]:
