@@ -254,6 +254,14 @@ def test_a_token_reaches_a_push_in_the_jail_through_the_askpass_file(box, tmp_pa
     askpass = captured["env"]["GIT_ASKPASS"]
     assert askpass in captured["argv"], "the jail would not see the helper"
     assert not any("tok-123" in a for a in captured["argv"]), "the token reached a command line"
+    # and it really reaches the helper: the jail's --clearenv would have dropped it silently
+    assert captured["env"]["AGENTOS_GIT_TOKEN"] == "tok-123"
+    assert "--clearenv" not in captured["argv"]
+    assert "ANTHROPIC_API_KEY" not in captured["env"], "the server's keys stay out of it"
+    i = captured["argv"].index("git")
+    jail = [*captured["argv"][:i], "/bin/sh", "-c", '"$GIT_ASKPASS" Password']
+    said = subprocess.run(jail, env=captured["env"], capture_output=True, text=True, timeout=20)
+    assert said.stdout.strip() == "tok-123", said.stderr
 
 
 @JAIL
@@ -263,12 +271,12 @@ def test_an_account_runs_git_and_tests_in_its_own_home(box, accounts):
     theirs.write_text("ada's")
     home = Path(usersmod.home_for(bob))
     with usersmod.as_user(bob):
-        repo = home / "r"
-        repo.mkdir()
+        repo = home / "workspace" / "r"
+        repo.mkdir(parents=True)
         assert "Initialized" in run(box.git_init(str(repo)))
         (repo / "a").write_text("x")
         assert not run(box.git_commit(str(repo), "first")).startswith("[error]")
-        proj = home / "p"
+        proj = home / "workspace" / "p"
         proj.mkdir()
         (proj / "test_a.py").write_text(
             f"import os\ndef test_a():\n    assert not os.path.exists({str(theirs)!r})\n")
@@ -327,8 +335,8 @@ def test_no_jail_on_a_machine_with_accounts_is_a_refusal(box, accounts, monkeypa
     monkeypatch.setattr(toolsmod, "sandbox_mechanism", lambda: "")
     with usersmod.as_user(ada):
         home = usersmod.home_for(ada)
-        repo = _repo_with(Path(home) / "r")
-        proj = Path(home) / "p"
+        repo = _repo_with(Path(home) / "workspace" / "r")
+        proj = Path(home) / "workspace" / "p"
         proj.mkdir()
         assert run(box.run_tests(str(proj))).startswith("[denied]")
         assert "jail" in run(box.git_status(str(repo)))
@@ -394,7 +402,8 @@ def test_the_sandbox_and_the_tenant_wall_hold_for_both_tools(box, tmp_path, acco
 
 def test_a_wallpaper_is_its_accounts_own(box, accounts, tmp_path):
     ada, bob = accounts
-    pic = Path(usersmod.home_for(bob)) / "b.png"
+    pic = Path(usersmod.home_for(bob)) / "workspace" / "b.png"
+    pic.parent.mkdir(exist_ok=True)
     pic.write_bytes(PNG)
     with usersmod.as_user(bob):
         assert run(box.set_wallpaper(str(pic))).startswith("wallpaper set")

@@ -205,13 +205,16 @@ def stdio_launch(conf: dict, name: str = "") -> tuple[str, list[str], dict]:
     if sandbox_mechanism() == "bwrap":
         # the whole machine home is blanked, not only users/: where it sits outside /home
         # (a container's /data) its session key would otherwise be readable from here
+        # own_env: a server's own settings often hold its API key, which --setenv would put on a
+        # command line. The environment below is the program's whole environment.
         argv = bwrap_argv(home, [exe, *cmd[1:], *args], chdir=home, extra=rw, ro_extra=ro,
-                          hide=[os.path.realpath(str(cfgmod.AGENTOS_HOME))])
+                          hide=[os.path.realpath(str(cfgmod.AGENTOS_HOME))], own_env=True)
     else:
         argv = sandbox_exec_argv(home, shlex.join([exe, *cmd[1:], *args]), chdir=home, extra=rw, ro_extra=ro,
                                  hide=[os.path.realpath(str(cfgmod.AGENTOS_HOME))])
     argv[0] = shutil.which(argv[0]) or argv[0]
-    env = {"PATH": _extended_path(), "HOME": home, "LANG": os.environ.get("LANG", "C.UTF-8"),
+    from .tools import jail_env, jail_root
+    env = {**jail_env(jail_root(home)), "PATH": _extended_path(),
            **{k: v for k, v in own.items() if not _ENV_LOADER.match(k)}}
     return argv[0], argv[1:], env
 

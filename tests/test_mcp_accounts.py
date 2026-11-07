@@ -52,11 +52,25 @@ def test_an_account_program_is_jailed(two, monkeypatch):
                                                   "env": {"MINE": "1", "LD_PRELOAD": "/x/evil.so"}})
     assert exe.endswith("bwrap")
     assert "/bin/sh" in argv and "--tmpfs" in argv
-    assert str(usersmod.home_for(b["id"])) in argv
+    assert str(usersmod.home_for(b["id"]) / "workspace") in argv, "its own workspace, never its whole home"
     assert os.path.realpath(cfgmod.AGENTOS_HOME) in argv, "the machine's home is blanked"
     assert env.get("MINE") == "1"
     assert "LD_PRELOAD" not in env, "set on the jail program, it would run before the jail exists"
     assert "ANTHROPIC_API_KEY" not in env and "BENTO_STORAGE_SECRET" not in env
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="needs bubblewrap")
+def test_a_jailed_program_gets_its_own_settings_and_none_of_them_on_a_command_line(two):
+    """Its API key is what its settings are for. --clearenv would drop it, --setenv would show it."""
+    a, b = two
+    if not toolsmod.sandbox_mechanism():
+        pytest.skip("this machine cannot enter a jail")
+    with usersmod.as_user(b["id"]):
+        exe, argv, env = mcp_client.stdio_launch({"command": "/bin/sh", "args": "-c 'echo got:$MINE:$HOME'",
+                                                  "env": {"MINE": "s3cret"}})
+    assert not any("s3cret" in a for a in argv)
+    out = subprocess.run([exe, *argv], env=env, capture_output=True, text=True, timeout=20).stdout
+    assert out.startswith("got:s3cret:") and out.strip().endswith("workspace")
 
 
 def test_with_no_jail_an_account_program_does_not_start(two, monkeypatch):

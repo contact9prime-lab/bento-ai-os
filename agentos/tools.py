@@ -1188,7 +1188,8 @@ def account_root(cfg: dict, uid: str | None = None) -> str:
 
 def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
                hide: list[str] | None = None, extra: list[str] | None = None,
-               ro_extra: list[str] | None = None, new_session: bool = True) -> list[str]:
+               ro_extra: list[str] | None = None, new_session: bool = True,
+               own_ro: list[str] | None = None, own_env: bool = False) -> list[str]:
     """Jail: whole FS read-only, every home hidden, only `root` writable & visible.
 
     `hide` names extra directories to blank with a tmpfs BEFORE `root` is bound
@@ -1210,6 +1211,11 @@ def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
     outside the jail with `systemd-run --user`, and a read-only bind stops no connect() on a
     socket, so /run/docker.sock was root. The network stays (agents need it), which leaves abstract
     sockets in reach; the server's own door is guarded by a process check, not by this.
+
+    `own_ro` are this OS's own files a tool needs in there, bound past the check a person's share
+    goes through. `own_env` means the caller built the program's whole environment from `jail_env`
+    and set it on the bwrap process itself: what it holds (a server's own API key, a git token) must
+    not go on a command line through --setenv, so the environment is left alone.
 
     `new_session` cuts the command off the terminal, so it cannot push keystrokes at whatever reads
     that terminal next. The interactive Terminal keeps it off, because a shell with no controlling
@@ -1237,6 +1243,7 @@ def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
     binds = [("--bind", root)]              # …then this user's own folder reappears
     binds += [("--ro-bind", e) for e in (ro_extra or []) if _jail_path_ok(e)]   # shared, not to be written
     binds += [("--bind", e) for e in (extra or []) if _jail_path_ok(e)]         # shared read-write
+    binds += [("--ro-bind", e) for e in (own_ro or [])]
     holders = [b for b in binds if any(h != b[1] and _under_any(h, [b[1]]) for h in hidden)]
     for flag, path in holders:
         argv += [flag, path, path]
@@ -1246,11 +1253,13 @@ def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
     for flag, path in binds:
         if (flag, path) not in holders:
             argv += [flag, path, path]
-    argv += ["--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent", "--clearenv"]
+    argv += ["--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent"]
     if new_session:
         argv.append("--new-session")
-    for k, v in jail_env(root).items():
-        argv += ["--setenv", k, v]
+    if not own_env:
+        argv.append("--clearenv")
+        for k, v in jail_env(root).items():
+            argv += ["--setenv", k, v]
     argv += ["--chdir", chdir, *tail]
     return argv
 
@@ -2980,8 +2989,8 @@ class Toolbox(usersmod.Scoped):
             msg += ". Call again with restart=true (or use restart_agentos) to load the change."
         return msg
 
-    def _jailed(self, tail: list[str], workdir: str,
-                ro: list[str] | None = None) -> tuple[list[str] | None, bool, str]:
+    def _jailed(self, tail: list[str], workdir: str, ro: list[str] | None = None,
+                own_env: bool = False) -> tuple[list[str] | None, bool, str]:
         """(argv, is it jailed, refusal) for a program a tool starts for this account, the same
         walls as run_command: with accounts the account's home with the others blanked, and no
         jail is a refusal; with the sandbox on its root; off, the person's choice stands."""
@@ -3002,11 +3011,11 @@ class Toolbox(usersmod.Scoped):
             return list(tail), False, ""
         os.makedirs(top, exist_ok=True)
         ro_extra, extra = folder_binds(self.cfg)
-        ro_extra = [*ro_extra, *(ro or [])]
         if mech == "bwrap":
-            return bwrap_argv(top, list(tail), chdir=workdir, hide=hide, extra=extra, ro_extra=ro_extra), True, ""
+            return (bwrap_argv(top, list(tail), chdir=workdir, hide=hide, extra=extra, ro_extra=ro_extra,
+                               own_ro=ro, own_env=own_env), True, "")
         return sandbox_exec_argv(top, shlex.join(tail), chdir=workdir, hide=hide, extra=extra,
-                                 ro_extra=ro_extra), True, ""
+                                 ro_extra=[*ro_extra, *(ro or [])]), True, ""
 
     async def run_tests(self, path: str = "") -> str:
         """Run the AgentOS test suite (or a project's tests). The Test pillar's workhorse:
@@ -4351,13 +4360,13 @@ class Toolbox(usersmod.Scoped):
         config is read first and each is overridden by name (`-c` is read last)."""
         e = {**_tool_env(), **_GIT_ENV, **(env or {})}
         ro = [e["GIT_ASKPASS"]] if e.get("GIT_ASKPASS") else []
-        wrap, jailed, refusal = self._jailed(["git"], repo, ro=ro)
+        wrap, jailed, refusal = self._jailed(["git"], repo, ro=ro, own_env=True)
         if refusal:
             return 1, refusal
         if jailed:
             # inside the jail $HOME is a folder the agent writes, so a ~/.gitconfig there is the
             # repo's words too, and some settings are honoured only from that file
-            e["GIT_CONFIG_GLOBAL"] = os.devnull
+            e = {**jail_env(repo), **_GIT_ENV, **(env or {}), "GIT_CONFIG_GLOBAL": os.devnull}
         code, names = await self._git_exec([*wrap, "-C", repo, "config", "--list", "--name-only", "-z"],
                                            repo, e, timeout)
         extra = _git_overrides(names.split("\0")) if code == 0 else []
@@ -4526,13 +4535,14 @@ class Toolbox(usersmod.Scoped):
                 return self._net_refused(e, "git_clone")
             except httpx.HTTPError:
                 pass                   # a name that does not resolve: git says so
-        e = {**_tool_env(), **_GIT_ENV, **self._git_auth_env()}
+        auth = self._git_auth_env()
+        e = {**_tool_env(), **_GIT_ENV, **auth}
         ro = [e["GIT_ASKPASS"]] if e.get("GIT_ASKPASS") else []
-        wrap, jailed, refusal = self._jailed(["git"], parent, ro=ro)
+        wrap, jailed, refusal = self._jailed(["git"], parent, ro=ro, own_env=True)
         if refusal:
             return refusal
         if jailed:
-            e["GIT_CONFIG_GLOBAL"] = os.devnull
+            e = {**jail_env(parent), **_GIT_ENV, **auth, "GIT_CONFIG_GLOBAL": os.devnull}
         code, text = await self._git_exec([*wrap, *_GIT_OFF, "clone", "--", url, dest], parent, e, 600)
         return _truncate(text) if code == 0 else f"[error] {text.strip()[:800]}"
 

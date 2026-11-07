@@ -172,8 +172,8 @@ def test_the_wifi_and_bluetooth_tools_ask_and_are_an_admins(bob):
     import asyncio
 
     from agentos import tools as toolsmod
-    src = inspect.getsource(sys.modules["agentos.agent"])
-    assert "name in RADIO_TOOLS and level == \"risky\"" in src
+    from agentos import policy as policymod
+    assert "name in RADIO_TOOLS and level == \"risky\"" in inspect.getsource(policymod.person_rule)
     box = toolsmod.Toolbox.__new__(toolsmod.Toolbox)
     u = usersmod.by_name("bob")
     with usersmod.as_user(u["id"]):
