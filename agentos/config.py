@@ -448,6 +448,8 @@ def save_config(cfg: dict) -> None:
         usersmod.machine_changed(cfg)
     AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+    from . import integrity
+    integrity.noted(CONFIG_PATH)      # the OS's own write, so the watcher can tell it from another's
 
 
 def is_first_run() -> bool:

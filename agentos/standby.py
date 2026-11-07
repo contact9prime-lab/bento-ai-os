@@ -1100,6 +1100,8 @@ def after_swap(report: dict, home=None) -> dict:
             cfg.pop(k, None)
     if cfg:
         _write(cp, cfg)
+        from . import integrity
+        integrity.noted(cp)
     door_p.unlink(missing_ok=True)
     st = load(home)
     swaps = [w for w in st.get("asides", []) if isinstance(w, list)]

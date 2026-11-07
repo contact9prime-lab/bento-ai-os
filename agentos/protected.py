@@ -55,7 +55,8 @@ SECURITY_MODULES = frozenset({
 # vault key is reading every password; writing a database is writing your own grants.
 SECRET_FILES = frozenset({
     "session.key", "vault.key", "vault.json", "users.json",
-    "security-events.jsonl", "integrity.json", "integrity.anchor",
+    "security-events.jsonl", "integrity.json", "integrity.keys", "integrity.held",
+    "integrity.writes", "integrity.updating", "integrity.lock", "ledger.key", "ledger.anchor",
 })
 WRITE_LOCKED_FILES = frozenset({
     "config.json", "agentos.db", "agentos.db-wal", "agentos.db-shm", "provision.json",

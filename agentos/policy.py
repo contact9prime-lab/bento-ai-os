@@ -34,6 +34,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
+from . import integrity
 from . import users as usersmod
 
 
@@ -66,6 +67,7 @@ class Decision:
 # which one decided each row. A request stops at the first step that decides, so
 # everything before it was passed and everything after it never looked.
 STAGES = (
+    ("held", "Security hold", "A security file changed, so agents wait until a person clears it."),
     ("hard", "Hard blocks", "Commands that would wreck the machine are always refused."),
     ("builtin", "Built-in protection", "Apps, agents and other machines may never change the OS's own rules."),
     ("reach", "Hands", "The tools, folders and sites this agent can reach at all."),
@@ -78,7 +80,7 @@ STAGES = (
     ("person", "Always a person", "Power, installs, code from a specialist and setting a device are confirmed every time."),
 )
 _STAGE_OF_RULE = {
-    "hard-block": "hard", "audit-unavailable": "hard",
+    "integrity-hold": "held", "hard-block": "hard", "audit-unavailable": "hard",
     "builtin-deny": "builtin", "reach": "reach", "channel-read-only": "channel",
     "taint": "taint", "quarantined": "rate", "steered": "rate",
     "message-off": "team", "message-flow": "team", "department-same": "team",
@@ -1307,6 +1309,10 @@ class PDP(usersmod.Scoped):
                 context: dict | None = None) -> Decision:
         ctx = context or {}
         risk = ctx.get("risk", "safe")
+        # 0. the security hold (integrity.py). Before everything, whoever asks and whatever the
+        # autonomy: the code that would decide this may be the code that changed.
+        if integrity.held():
+            return Decision("deny", integrity.REFUSAL, rule="integrity-hold")
         # 1. hard blocks (BLOCKED_PATTERNS + legacy deny policies, via risk_of)
         if risk == "blocked":
             return Decision("deny", ctx.get("reason") or "blocked", rule="hard-block")

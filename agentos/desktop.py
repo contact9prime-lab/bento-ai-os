@@ -624,6 +624,21 @@ def service_restart() -> tuple[bool, str]:
     return _spawn_server(port)
 
 
+def served_home_matches(port: int | None = None) -> bool:
+    """A server answers on the port and says it serves this home."""
+    import urllib.error
+    import urllib.request
+    from . import config as _c
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port or _port()}/api/platform", timeout=2) as r:
+            theirs = r.headers.get("X-Bento-Home") or ""
+    except urllib.error.HTTPError as e:
+        theirs = e.headers.get("X-Bento-Home") or ""
+    except Exception:
+        return False
+    return bool(theirs) and theirs == _c.home_id()
+
+
 def served_root(port: int | None = None) -> "Path | None":
     """The checkout the RUNNING server's code comes from, when it is one and is not
     the one this process runs from.

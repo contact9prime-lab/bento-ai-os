@@ -140,6 +140,8 @@ def _write(d: dict) -> None:
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(d, indent=2))
     os.replace(tmp, p)
+    from . import integrity
+    integrity.noted(p)
     os.chmod(p, 0o600)          # it holds password hashes
 
 
@@ -302,6 +304,8 @@ def adopt(uid: str) -> None:
     own.setdefault("setup_complete", bool(machine.get("setup_complete")))
     cfg_path_for(uid).write_text(json.dumps(own, indent=2))
     os.chmod(cfg_path_for(uid), 0o600)
+    from . import integrity
+    integrity.noted(cfg_path_for(uid))
     cfgmod.save_config(machine_view(machine))
     # and out of the live machine dict too, or its bridge kept polling the first
     # account's bot as the machine's until the next restart
@@ -636,6 +640,8 @@ def save_user_cfg(uid: str, cfg: dict) -> None:
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(own, indent=2))
     os.replace(tmp, p)
+    from . import integrity
+    integrity.noted(p)
     os.chmod(p, 0o600)          # it holds their channel tokens and credentials
 
 

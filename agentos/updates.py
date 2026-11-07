@@ -48,6 +48,11 @@ from . import __version__
 DEFAULT_REPO = "contact9prime-lab/bento-ai-os"
 RAW = f"https://raw.githubusercontent.com/{DEFAULT_REPO}"
 DEFAULT_BRANCH = "master"          # HEAD on this remote; `main` is stale (see install.sh)
+#: Keys a release is signed with: key id -> base64 Ed25519 public key. Deliberately EMPTY until the
+#: owner mints theirs (`bento integrity keygen`, docs/security.md has the steps). A key whose
+#: private half ever sat on a build machine would make "verified" mean nothing. A person may add
+#: their own with `bento integrity trust`; nothing else adds one.
+SIGNING_KEYS: dict[str, str] = {}
 
 #: Files this OS rewrites on its own, which a checkout therefore "changes" without
 #: anybody having edited them: `uv sync` re-resolves the lockfile on a machine whose
@@ -68,6 +73,10 @@ def _run(args: list[str], cwd: Path | None = None, timeout: int = 60,
          env: dict | None = None) -> tuple[bool, str]:
     try:
         full_env = {**os.environ, **env} if env else None
+        if args[:1] == ["git"] and cwd:
+            from . import integrity
+            if integrity.is_locked(cwd):   # root owns a locked checkout, and git refuses that otherwise
+                args = ["git", "-c", f"safe.directory={Path(cwd).resolve()}", *args[1:]]
         p = subprocess.run(args, cwd=str(cwd) if cwd else None, capture_output=True,
                            text=True, timeout=timeout, env=full_env)
         return p.returncode == 0, (p.stdout + p.stderr).strip()
@@ -320,6 +329,10 @@ def can_apply(cfg: dict, switch: bool = False) -> tuple[bool, str]:
     if not root:
         return False, ("This copy was not installed from git, so it cannot update itself. "
                        "Reinstall with the installer, or update however you installed it.")
+    from . import integrity
+    if integrity.is_locked(root):
+        return False, ("The code is locked, so this user can't change it. Run bento integrity unlock, "
+                       "update, then bento integrity lock.")
     ok, _ = _run(["git", "--version"])
     if not ok:
         return False, "git is not available on this machine."
@@ -632,7 +645,23 @@ async def pending(cfg: dict, limit: int = 20) -> list[dict]:
     return commits("HEAD", f"{remote}/{branch}", limit=limit, root=root)
 
 
-async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False) -> dict:
+def tip_release(cfg: dict) -> dict:
+    """Is what an update would install a signed release? Fetches and says, moving nothing."""
+    from . import integrity
+    root = install_dir()
+    if not root:
+        return {"state": "unsigned"}
+    branch = conf(cfg).get("branch") or DEFAULT_BRANCH
+    remote = remote_name(cfg)
+    ensure_remote(cfg, root)
+    if not _run(["git", "fetch", remote, branch], cwd=root, timeout=120)[0]:
+        return {"state": "unsigned", "error": "could not fetch"}
+    _run(["git", "fetch", remote, integrity.TAG_REFSPEC], cwd=root, timeout=120)
+    return integrity.release_state(root, _run(["git", "rev-parse", f"{remote}/{branch}"], cwd=root)[1].strip())
+
+
+async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False,
+                need_verified: bool = False, allow_unsigned: bool = False) -> dict:
     """`_apply` on a worker thread. Every step is a blocking subprocess (git, uv, the
     whole test suite for minutes), and run on the server's loop they froze it: the
     page sat on "Updating…", nothing answered, and the suite's own CLI tests timed out
@@ -640,10 +669,18 @@ async def apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = Fals
     is called from that thread, so a caller on a loop must hop back with
     `call_soon_threadsafe`."""
     import asyncio
-    return await asyncio.to_thread(_apply, cfg, run_tests, log, switch)
+
+    from . import integrity
+
+    def marked():
+        # The watcher waits while the code moves, then checks what `rebaseline` recorded.
+        with integrity.updating():
+            return _apply(cfg, run_tests, log, switch, need_verified, allow_unsigned)
+    return await asyncio.to_thread(marked)
 
 
-def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False) -> dict:
+def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False,
+           need_verified: bool = False, allow_unsigned: bool = False) -> dict:
     """Pull, sync dependencies, verify, and report what to do next.
 
     Restarting is deliberately NOT done here. This function's caller owns the
@@ -682,6 +719,31 @@ def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False) ->
     if not ok:
         return {"ok": False, "error": f"fetch failed: {out[-400:]}"}
 
+    # Is what arrived signed? Asked here, before anything moves. A signature that fails is
+    # refused whoever asks. Unsigned is a person's call and never an automatic update's.
+    from . import integrity
+    _run(["git", "fetch", remote, integrity.TAG_REFSPEC], cwd=root, timeout=120)
+    tip = _run(["git", "rev-parse", ref], cwd=root)[1].strip()
+    release = integrity.release_state(root, tip)
+    if release["state"] == "bad-signature":
+        integrity.secevents.flag("integrity.unsigned", f"{ref} {tip[:12]}: its signature does not check",
+                                 source=repo_of(cfg))
+        return {"ok": False, "release": release, "error": (
+            f"The update from {repo_of(cfg)} carries a signature that does not check, "
+            "so it was not installed. Nothing changed.")}
+    if release["state"] != "verified":
+        if need_verified:
+            return {"ok": False, "needs_person": True, "release": release, "error": (
+                "This update is not signed, so it waits for a person to ask for it.")}
+        if release.get("pinned") and not allow_unsigned:
+            return {"ok": False, "release": release, "error": (
+                "This update is not signed by a key this machine trusts, so it was not installed. "
+                "Wait for a signed release, or run bento update --apply --allow-unsigned yourself.")}
+        say("this update is not signed" + ("" if release.get("pinned") else
+                                           ": no release key is pinned on this machine yet"))
+    else:
+        say(f"signed by {release.get('key_id')} ({release.get('tag')})")
+
     switched = ""
     ok, on = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root)
     if ok and on.strip() != branch:
@@ -706,6 +768,9 @@ def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False) ->
         _run(["git", "reset", "--hard", before], cwd=root, timeout=120)
         return {"ok": False, "rolled_back": True, "from": before[:8],
                 "error": f"{reason} — rolled back to {before[:8]}, nothing changed."}
+
+    if release["state"] == "verified" and integrity.digest_of(integrity.hash_tree(root)) != release.get("digest"):
+        return rollback("the code that arrived does not match its signature")
 
     changed = _run(["git", "diff", "--name-only", before, "HEAD"], cwd=root)[1].splitlines()
     if any(f in ("pyproject.toml", "uv.lock") for f in changed):
@@ -777,6 +842,11 @@ def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False) ->
                  "from_branch": switched or branch, "to_branch": branch,
                  "from_version": current(), "to_version": _version_on_disk(root) or "",
                  "source": f"{repo_of(cfg)} @ {branch}"})
+    if after != before or switched:
+        # The one path that moves the watcher's baseline: the update that just finished.
+        integrity.rebaseline(root, by="update", update={
+            **{k: release.get(k) for k in ("state", "key_id", "tag", "sig", "digest") if release.get(k)},
+            "commit": after, "version": _version_on_disk(root) or ""})
     # What was actually pulled, from git rather than from a file somebody has to
     # remember to write. Computed AFTER the merge, so it describes what landed
     # rather than what was expected to.
@@ -785,6 +855,7 @@ def _apply(cfg: dict, run_tests: bool = True, log=None, switch: bool = False) ->
             "version": _version_on_disk(root) or current(),
             "unchanged": after == before and not switched,
             "files": len(changed), "restored": restored, "switched": switched,
+            "release": release["state"],
             "source": f"{repo_of(cfg)} @ {branch}"}
 
 
@@ -842,12 +913,22 @@ async def rollback(cfg: dict, log=None) -> dict:
     was on before, dependencies follow the lockfile there, and updates track that
     branch again. The data stays as it is: migrations only ever add, so the older code
     reads a database the newer one touched. Restarting is the caller's, as in apply."""
+    from . import integrity
+    with integrity.updating():
+        return _rollback(cfg, log)
+
+
+def _rollback(cfg: dict, log=None) -> dict:
+    from . import integrity
+
     def say(msg):
         if log:
             log(msg)
     root = install_dir()
     if not root:
         return {"ok": False, "error": "This copy was not installed from git, so it cannot roll back."}
+    if integrity.is_locked(root):
+        return {"ok": False, "error": "The code is locked. Run bento integrity unlock first."}
     e = last_update(root)
     if not e:
         return {"ok": False, "error": "There is no update to roll back. The code here is not "
@@ -885,6 +966,7 @@ async def rollback(cfg: dict, log=None) -> dict:
         _history_path().write_text(json.dumps(h, indent=1))
     except OSError:
         pass
+    integrity.rebaseline(root, by="rollback", update={"state": "unsigned", "commit": e["from"]})
     return {"ok": True, "from": head[:8], "to": e["from"][:8], "branch": back,
             "version": _version_on_disk(root) or "", "was": e.get("to_version") or "",
             "files": len(changed)}
