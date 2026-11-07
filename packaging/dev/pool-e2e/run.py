@@ -169,7 +169,7 @@ def main():
 
         assert http(port("big-box"), "POST", "/api/pool/create", {"name": "Home"})[0] == 200
         assert http(port("pi-garage"), "PUT", "/api/pool", {"lead_ok": True})[0] == 200
-        st, r = http(port("pi-kitchen"), "POST", "/api/pool/join", {"label": labels["pi-kitchen"]})
+        st, r = http(port("pi-kitchen"), "POST", "/api/pool/join", {"label": labels["pi-kitchen"], "use_brain": True})
         assert st == 200 and r["role"] == "pending" and r["using_brain"], r
         st, r = http(port("pi-garage"), "POST", "/api/pool/join", {"label": labels["pi-garage"], "use_brain": False})
         assert st == 200, r
