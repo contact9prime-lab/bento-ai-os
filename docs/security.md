@@ -270,6 +270,13 @@ $ bento integrity status
 ```
 
 ![The Security card with agents stopped](screenshots/security-card-held.png)
+![The same card on a phone](screenshots/security-card-held-phone.png)
+
+With nothing wrong it is one quiet line, and details open under it:
+
+![The Security card, quiet](screenshots/security-card-quiet.png)
+![The Security card, quiet, on a phone](screenshots/security-card-quiet-phone.png)
+![The Security card with its details open](screenshots/security-card-details.png)
 
 There is no route, button or tool that clears it. The card in Settings → Permissions → Security only reads.
 

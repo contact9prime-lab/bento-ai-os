@@ -720,9 +720,9 @@ def test_an_agents_routine_carries_what_its_turn_read(tmp_path):
     store.save_automation("Morning", json.dumps([{"kind": "tool", "tool": "write_file", "args": "{}"}]))
     sent = []
 
-    async def broadcast(ev):
+    async def to_owner(ev, uid):
         sent.append(ev)
-    tb.broadcast = broadcast
+    tb.broadcast_user = to_owner
     asyncio.run(tb.run_automation("Morning", _taint=WEB))
     run = sent[-1]["run"]
     assert tools.automation_taint(run) == WEB

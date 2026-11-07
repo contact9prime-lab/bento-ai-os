@@ -425,7 +425,7 @@ def test_who_you_are_reaches_every_forwarded_turn():
     fw = src[src.index("async def forward("):][:4500]
     assert "if not token:" in fw and "identity_note(cfg, _store_of(cfg))" in fw
     door = src[src.index("def open_team_door("):][:6000]
-    assert "identity_note(cfg, store, company=False)" in door
+    assert "identity_note(cfg, store, company=False, space_id=space_id)" in door
     co = (ROOT / "agentos/company.py").read_text()
     assert "def profile_note(" in co
 
