@@ -61,6 +61,8 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "integrity.unsigned": ("This code is not signed by a key this machine trusts", 1, 86400),
     "ledger.broken": ("The ledger's chain does not verify", 1, 300),
     "jail.missing": ("The sandbox is not working on this machine", 1, 86400),
+    "net.refused": ("A tool tried to reach an address on this machine or its private network", 3, 300),
+    "develop.refused": ("An agent tried to change this OS's security code", 1, 300),
 }
 UNKNOWN = ("Something happened that the security record does not have a name for", 1, 300)
 

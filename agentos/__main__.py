@@ -8794,9 +8794,34 @@ def _grants_why(args):
         print(f"  rule {g['id']}: {g['effect']} {g['action']} {g['resource']} ({g.get('source') or 'user'})")
 
 
+def _fetch_allow_cli(args):
+    """The terminal's face of Settings → Permissions → Local addresses (netguard.py). A person at
+    the machine's own terminal: no agent tool reaches this list."""
+    from . import config as cfgmod
+    from . import netguard
+    cfg = cfgmod.load_config()
+    sec = cfg.setdefault("security", {})
+    have = list(sec.get(netguard.CONFIG_KEY) or [])
+    if args.allow:
+        clean, why = netguard.clean_entry(args.allow)
+        if why:
+            print(f"✗ {why}")
+            sys.exit(1)
+        have = [*have, clean] if clean not in have else have
+    if args.disallow:
+        have = [h for h in have if h != args.disallow.strip().lower()]
+    if args.allow or args.disallow:
+        sec[netguard.CONFIG_KEY] = have
+        cfgmod.save_config(cfg)
+        print("Saved. Restart AgentOS if it is running, so it keeps this list.")
+    print("\n".join(have) if have else "No local addresses are allowed. Fetches reach public addresses only.")
+
+
 def _security_cli(args):
     """`bento security`: what the machine noticed. Reads the file, so it works with the server down."""
     from . import secevents
+    if args.allow or args.disallow or args.local:
+        return _fetch_allow_cli(args)
     rows = secevents.recent(args.limit, alerts_only=args.alerts)
     if args.json:
         print(json.dumps(rows, indent=2))
@@ -9228,6 +9253,10 @@ def main():
     p_security.add_argument("--limit", type=int, default=50)
     p_security.add_argument("--alerts", action="store_true", help="only what raised an alert")
     p_security.add_argument("--json", action="store_true")
+    p_security.add_argument("--allow", metavar="ADDRESS",
+                            help="let fetches reach this local address (host, host:port or a network)")
+    p_security.add_argument("--disallow", metavar="ADDRESS", help="take a local address off that list")
+    p_security.add_argument("--local", action="store_true", help="list the local addresses fetches may reach")
 
     p_grants = verb("grants", help="who may do what without asking — list, add, revoke")
     p_grants.add_argument("action", nargs="?", default="list",

@@ -62,6 +62,7 @@ from .telegram import TelegramBridge
 from . import whatsapp as whatsappmod
 from .whatsapp import WhatsAppBridge
 from . import tools
+from . import netguard
 from .tools import ALWAYS_ASK, Toolbox
 from .trainforge import TrainForge
 
@@ -4991,6 +4992,14 @@ async def api_put_config(patch: dict):
         # Settings → Permissions → The ledger: refuse an action whose ledger row failed
         if isinstance(patch["security"].get("audit_fail_closed"), bool):
             cfg.setdefault("security", {})["audit_fail_closed"] = patch["security"]["audit_fail_closed"]
+        # Settings → Permissions → Local addresses: what a person lets fetches reach (netguard.py)
+        if isinstance(patch["security"].get(netguard.CONFIG_KEY), list):
+            kept, dropped = netguard.clean_entries(patch["security"][netguard.CONFIG_KEY])
+            if dropped:
+                return JSONResponse({"error": dropped[0]}, status_code=400)
+            if kept != (cfg.get("security") or {}).get(netguard.CONFIG_KEY, []):
+                _ledger("system.fetch_allow", "config:security.fetch_allow", f"local addresses → {kept}"[:300])
+            cfg.setdefault("security", {})[netguard.CONFIG_KEY] = kept
     if isinstance(patch.get("history"), dict):
         h = cfg.setdefault("history", {})
         for k in ("tool_trace", "compact", "model"):
@@ -5440,7 +5449,8 @@ async def _agent_bundle_of(body: dict):
                 {"error": f"'{source}' is not a URL or an owner/repo"}, status_code=400)
         import httpx
         last = ""
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        # a name somebody typed or pasted, fetched by this server: the guarded client, every hop
+        async with netguard.client(timeout=30, follow_redirects=True) as client:
             for cand in candidates:
                 try:
                     r = await client.get(cand)
@@ -7838,7 +7848,7 @@ async def api_app_import(body: dict):
                                 status_code=400)
         import httpx
         last = ""
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        async with netguard.client(timeout=30, follow_redirects=True) as client:
             for cand in candidates:
                 try:
                     r = await client.get(cand)
@@ -10615,7 +10625,7 @@ async def api_install_skill(body: dict):
         return {"ok": False, "error": "no source given"}
     try:
         if src.endswith(".md") or "raw.githubusercontent.com" in src:
-            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            async with netguard.client(timeout=30, follow_redirects=True) as client:
                 r = await client.get(src)
             if r.status_code != 200:
                 return {"ok": False, "error": f"HTTP {r.status_code}"}
@@ -10624,7 +10634,11 @@ async def api_install_skill(body: dict):
             store.save_skill(name, desc, content, source=src)
             store.log("system", f"skill installed from URL: {name}")
             return {"ok": True, "count": 1}
-        # treat as a git repo
+        # treat as a git repo. Only a web address: `ext::` runs a command and a leading dash is
+        # an option. git does the connecting, so this judges the address it starts from.
+        if not src.startswith(("https://", "http://")):
+            return {"ok": False, "error": "a skill repo has to be an http or https address"}
+        await netguard.check_url(src)
         with tempfile.TemporaryDirectory() as tmp:
             proc = await asyncio.create_subprocess_exec(
                 "git", "clone", "--depth", "1", src, tmp,

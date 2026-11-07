@@ -22,6 +22,9 @@ import uuid
 from pathlib import Path
 
 import httpx
+from . import netguard
+from . import protected
+from . import secevents
 from . import users as usersmod
 
 MAX_OUTPUT = 12_000  # chars of tool output fed back to the model
@@ -206,7 +209,7 @@ ASK_FROM_SPECIALISTS = {"run_python"}
 # given its own line in risk_of.
 # Tools that act for ONE app when the caller is that app (its appTool) or is building
 # it (App Studio): the agent loop and /api/tool inject `_app`, never the model or the page.
-APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data")
+APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data", "fetch_url")
 
 SAFE_TOOLS = {
     # reading
@@ -1120,18 +1123,29 @@ class Toolbox(usersmod.Scoped):
                 + (". You can use it from your next step." if target == _from else
                    f". Hand the step to {defn['name']} again: its next run has it."))
 
-    async def fetch_url(self, url: str) -> str:
+    async def fetch_url(self, url: str, _app: str = "") -> str:
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True,
-                                     headers={"User-Agent": "AgentOS/0.1"}) as client:
-            r = await client.get(url)
+        # `_app` is the caller's, never the model's (APP_BOUND_TOOLS). An app is often a
+        # stranger's, and its fetches are free, so a person's allow-list is not for it.
+        try:
+            async with netguard.client(strict=bool(_app), timeout=30.0, follow_redirects=True,
+                                       headers={"User-Agent": "AgentOS/0.1"}) as client:
+                r = await client.get(url)
+        except netguard.Refused as e:
+            return self._net_refused(e, _app or "fetch_url")
         ctype = r.headers.get("content-type", "")
         if "html" in ctype:
             ex = _TextExtractor()
             ex.feed(r.text)
             return _truncate(f"[{r.status_code}] {url}\n" + "\n".join(ex.parts))
         return _truncate(f"[{r.status_code}] {url}\n{r.text}")
+
+    def _net_refused(self, e: netguard.Refused, who: str) -> str:
+        """A model or an app named an address nobody here offered. A page can ask for it, so
+        it goes on the security record, and the sentence is ours and not the page's."""
+        secevents.flag("net.refused", e.host, source=str(who)[:40], uid=usersmod.current() or "")
+        return f"[denied] {e}"
 
     async def llm_generate(self, prompt: str, system: str = "", model: str = "") -> str:
         from . import providers
@@ -1588,11 +1602,12 @@ class Toolbox(usersmod.Scoped):
                 await self.broadcast({"type": "wallpaper"})
             return "wallpaper reset to the default"
         if source.startswith(("http://", "https://")):
-            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-                r = await client.get(source)
-            if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
-                return f"[error] not an image (HTTP {r.status_code})"
-            dest.write_bytes(r.content)
+            try:
+                status, ctype, data = await netguard.read_capped(source, WALLPAPER_MAX)
+            except netguard.Refused as e:
+                return self._net_refused(e, "set_wallpaper")
+            if status != 200 or not ctype.startswith("image"):
+                return f"[error] not an image (HTTP {status})"
         else:
             p = Path(os.path.expanduser(source))
             if not p.is_file():
@@ -1679,7 +1694,7 @@ class Toolbox(usersmod.Scoped):
             return "[error] source is required (a local path or an http(s) URL)"
         try:
             if src.startswith(("http://", "https://")):
-                async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                async with netguard.client(timeout=120, follow_redirects=True) as client:
                     r = await client.get(src)
                     r.raise_for_status()
                     data, mime = r.content, r.headers.get("content-type", "").split(";")[0]
@@ -1698,6 +1713,8 @@ class Toolbox(usersmod.Scoped):
                     self.store, p.read_bytes(), name=p.name, title=title or p.name,
                     source="tool:save_asset", space_id=space_id,
                     conversation_id=conversation_id)
+        except netguard.Refused as e:
+            return self._net_refused(e, "save_asset")
         except Exception as e:
             return f"[error] could not save asset: {type(e).__name__}: {e}"
         if not row:
@@ -3550,18 +3567,27 @@ class Toolbox(usersmod.Scoped):
         parent, err = self._git_repo(os.path.dirname(os.path.expanduser(path)) or self.cfg["workspace"])
         if err:
             return err
-        dest = os.path.realpath(os.path.expanduser(path))
-        proc_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", **self._git_auth_env()}
-        proc = await asyncio.create_subprocess_exec(
-            "git", "clone", url, dest,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=proc_env)
-        try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return "[error] git clone timed out after 600s"
-        text = out.decode(errors="replace")
-        return _truncate(text) if proc.returncode == 0 else f"[error] {text.strip()[:800]}"
+        dest = os.path.realpath(self._abs(path))
+        if (deny := self._sandbox_deny(dest, write=True)):
+            return deny
+        if (why := protected.write_refused(os.path.join(dest, "x"))):
+            return f"[denied] {why}"
+        if url.startswith(("http://", "https://")):
+            try:
+                await netguard.check_url(url)
+            except netguard.Refused as e:
+                return self._net_refused(e, "git_clone")
+            except httpx.HTTPError:
+                pass                   # a name that does not resolve: git says so
+        e = {**_tool_env(), **_GIT_ENV, **self._git_auth_env()}
+        ro = [e["GIT_ASKPASS"]] if e.get("GIT_ASKPASS") else []
+        wrap, jailed, refusal = self._jailed(["git"], parent, ro=ro)
+        if refusal:
+            return refusal
+        if jailed:
+            e["GIT_CONFIG_GLOBAL"] = os.devnull
+        code, text = await self._git_exec([*wrap, *_GIT_OFF, "clone", "--", url, dest], parent, e, 600)
+        return _truncate(text) if code == 0 else f"[error] {text.strip()[:800]}"
 
     async def _github_api(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
         token = (self.cfg.get("github") or {}).get("token", "")
@@ -3707,6 +3733,13 @@ class Toolbox(usersmod.Scoped):
                 body["name"] = name
             code, data = await tf.api("POST", "/api/datasets/import-hub", body)
         elif action == "import_url":
+            # the training service does the fetching, so this judges the address it starts from
+            try:
+                await netguard.check_url(url)
+            except netguard.Refused as e:
+                return self._net_refused(e, "train_datasets")
+            except httpx.HTTPError as e:
+                return f"[error] {e}"
             code, data = await tf.api("POST", "/api/datasets/import-url",
                                       {"url": url, **({"name": name} if name else {})})
         elif action == "get":
@@ -4379,6 +4412,18 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {e}"
 
     async def browser_open(self, url: str, new_tab: bool = False) -> str:
+        # The agent's own navigation: never this machine or a metadata address. A person's
+        # typed address is not this path, and a page's own links and redirects are the
+        # browser's (docs/live-windows.md). The LAN stays open here, as for a person.
+        from . import cdpbrowser
+        try:
+            if (u := cdpbrowser.normalise(url)).startswith(("http://", "https://")):
+                await netguard.check_url(u, local_ok=True)
+                netguard.refuse_loopback(u)
+        except netguard.Refused as e:
+            return self._net_refused(e, "browser_open")
+        except httpx.HTTPError:
+            pass                    # a name that does not resolve: the browser says so better
         return await self._browser_do(lambda m, b: m.tool_open(b, url, bool(new_tab)))
 
     async def browser_read(self) -> str:
