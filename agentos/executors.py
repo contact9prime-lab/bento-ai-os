@@ -159,7 +159,11 @@ class Envelope:
         # UI-supplied and it lands in a system prompt, so it gets the same
         # treatment the local agent's extra_system gets: capped, and stripped of
         # control characters that could forge structure in the prompt.
-        ctx = "".join(c for c in str(self.context or "")[:4096]
+        # The page's own text is capped where it enters (context_for). This one holds what this OS
+        # composes too: its identity, Stage, company, team and door notes come to about 8,000
+        # characters, and at 4096 the team list was cut in half and the rule to use this OS's doors
+        # was gone. Still a limit, because a context is sent with every turn.
+        ctx = "".join(c for c in str(self.context or "")[:MAX_CONTEXT]
                       if c in "\n\t" or ord(c) >= 32)
         return Envelope(workspace=ws, tools=tools, model=self.model,
                         budget_usd=budget, session_id=self.session_id, context=ctx,
@@ -567,6 +571,10 @@ DOOR_LINE = ("- AgentOS's own tools reach you as mcp__bento__*: your team, its d
              "tools are for the work that is yours to do.")
 
 
+MAX_UI_CONTEXT = 4096     # what a page may add to a prompt
+MAX_CONTEXT = 24000       # what a forwarded turn's system prompt may hold, this OS's notes included
+
+
 def context_for(ui_context: str) -> str:
     """Translate the UI's per-surface context for an executor.
 
@@ -581,7 +589,7 @@ def context_for(ui_context: str) -> str:
     App Studio — false, and App Studio cannot edit Settings either. That belongs
     per-app, in `app_note`, where the kind is actually known.
     """
-    lines = [ln for ln in str(ui_context or "").splitlines()
+    lines = [ln for ln in str(ui_context or "")[:MAX_UI_CONTEXT].splitlines()
              if not ln.startswith(_LOCAL_TOOLS_HINT)]
     body = "\n".join(lines).strip()
     preamble = (
@@ -1986,6 +1994,13 @@ def team_hint(subagents: list) -> str:
                          "`@name <the task>` in chat, which reaches that specialist directly.")
 
 
+#: A jailed CLI has no `bento`, and setting up a company has no door tool: creating departments and
+#: moving a surface's space is a person's review (preview, ticks, apply). So the lead says where it is.
+COMPANY_DOOR_LINE = ("\n\nYou can't set up, switch or remove a company from here. If you're asked to, "
+                     "tell the person it's on the desktop, in the Office under Company, or "
+                     "`bento company new` in a terminal on this machine.")
+
+
 def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
                    conversation_id: str = "", surface: str = "gui", space_id: str = "",
                    text: str = "", taint: list | None = None, only: tuple | None = None) -> str:
@@ -2003,8 +2018,8 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     Chat, Telegram and WhatsApp call this; a scheduled turn does not (nobody is there
     to approve a hand-over, and a mission is the way to give a schedule a team)."""
     subs = [sa for sa in (store.list_subagents() if store else []) if sa.get("enabled") is not False]
-    # Where the person is asking from, for a `bento …` the agent runs in its shell: a
-    # company started from Telegram moves Telegram to it, not the desktop.
+    # Where the person is asking from, for a `bento …` run by an agent an admin let out of the
+    # jail: a company started from Telegram moves Telegram to it, not the desktop.
     from .policy import SURFACES as _SURFACES
     env.extra_env["AGENTOS_SURFACE"] = surface if surface in _SURFACES else "gui"
     if toolbox is None:
@@ -2052,7 +2067,7 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         from . import stage as _stage
         stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
-        + identity_note(cfg, store, company=False, space_id=space_id) + stage_note + dept_note \
+        + identity_note(cfg, store, company=False, space_id=space_id) + stage_note + dept_note + COMPANY_DOOR_LINE \
         + team_note(subs, in_departments=grouped) + linked_note(cfg, store) + _zero_note(cfg) \
         + _pool_note(door) \
         + workspace_note() + capability_note()

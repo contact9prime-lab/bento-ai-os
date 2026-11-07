@@ -558,9 +558,11 @@ def test_a_builtin_app_with_source_is_told_where_to_look():
 def test_context_is_capped_and_stripped():
     """It lands in a system prompt and comes from the UI."""
     env = ex.Envelope(workspace="/tmp/ws",
-                             context="a" * 9000 + "\x00\x07bad").sanitized()
-    assert len(env.context) <= 4096
+                             context="a" * 9000 + "\x00\x07bad" + "b" * ex.MAX_CONTEXT).sanitized()
+    assert len(env.context) <= ex.MAX_CONTEXT
     assert "\x00" not in env.context and "\x07" not in env.context
+    assert "a" * 9000 in env.context, "what this OS composes is about 8,000 characters and must survive"
+    assert len(ex.context_for("u" * 9000)) < ex.MAX_UI_CONTEXT + 1000, "a page's own text keeps the old cap"
 
 
 # ------------------------------- editing an app that is not a file on disk

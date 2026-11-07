@@ -64,7 +64,7 @@ function themeExport(){
 }
 async function themeImport(){
   try{const t=JSON.parse($('#th-imp').value);if(!t.name)return toast('theme needs a "name"');
-    await themeSave(t,true);await loadThemes();applyTheme(t.name);toast('imported '+t.name);refreshApp('themes');
+    await themeSave(t,true);await loadThemes();applyTheme(t.name);const fn=themeFontNote(t.font&&t.font.url);toast(fn?'! imported '+t.name+'. '+fn:'imported '+t.name);refreshApp('themes');
   }catch(e){toast('invalid JSON: '+e.message)}
 }
 async function themeDel(name){
@@ -159,7 +159,8 @@ function themeBuilder(from){
       <label>Font<select id="tb-font">${TB_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${((WB.font&&WB.font.family)||'')===f?'selected':''}>${esc(l)}</option>`).join('')}<option value="__custom" ${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'selected':''}>Another web font…</option></select></label>
       <div id="tb-fcustom" style="display:${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'flex':'none'};gap:8px;flex-wrap:wrap">
         <input id="tb-furl" value="${esc((WB.font&&WB.font.url)||'')}" placeholder="https://fonts.googleapis.com/css2?family=…" style="flex:2;min-width:200px">
-        <input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="family, e.g. Sora" style="flex:1;min-width:120px"></div>
+        <input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="family, e.g. Sora" style="flex:1;min-width:120px">
+        <p class="mut" id="tb-fnote" style="flex-basis:100%;margin:0">${esc(themeFontNote((WB.font&&WB.font.url)||''))}</p></div>
       <label class="tb-slide">Text size <input type="range" id="tb-fs" min="12" max="17" step="1" value="${fsb}"><output id="tb-fs-o">${fsb}px</output></label></div>
     <div class="tb-sec"><b>Wallpaper</b>
       <select id="tb-wall"><option value="">Keep whatever is set</option><option value="__gen" ${WB.css.includes('/*tb:wall*/')?'selected':''}>Made from these colours</option>
@@ -191,7 +192,7 @@ function themeBuilder(from){
     const [blur,pct]=TB_GLASS[b.dataset.g];WB.v['glass-blur']=blur;WB.v['glass-tint']=`color-mix(in srgb,var(--bg2) ${pct}%,transparent)`;preview()};
   q('#tb-font').onchange=e=>{const f=e.target.value;q('#tb-fcustom').style.display=f==='__custom'?'flex':'none';
     if(f==='__custom')return;WB.font=f?{family:f,url:'https://fonts.googleapis.com/css2?family='+encodeURIComponent(f).replace(/%20/g,'+')+':wght@400;500;600;700&display=swap'}:null;preview()};
-  q('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value;preview()};
+  q('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value;q('#tb-fnote').textContent=themeFontNote(e.target.value);preview()};
   q('#tb-ffam').oninput=e=>{WB.font=WB.font||{};WB.font.family=e.target.value;preview()};
   q('#tb-fs').oninput=e=>{const n=+e.target.value;Object.assign(WB.v,{'fs-xs':(n-3)+'px','fs-sm':(n-2)+'px','fs-md':(n-1)+'px','fs-base':n+'px','fs-lg':(n+2)+'px'});q('#tb-fs-o').textContent=n+'px';preview()};
   q('#tb-wall').onchange=e=>{const x=e.target.value;WB.css=WB.css.replace(/\/\*tb:wall\*\/[^\n]*\n?/g,'');WB.wall_img='';
@@ -224,7 +225,14 @@ async function tbSave(exportOnly){
   const out={name:WB.name,mode:WB.mode,v:WB.v,css:WB.css,font:WB.font||undefined,wall_img:WB.wall_img||undefined};
   if(exportOnly){const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=WB.name.replace(/\s+/g,'-')+'.theme.json';a.click();return}
-  await themeSave(out,true);await loadThemes();applyTheme(WB.name);toast('saved '+WB.name);refreshApp('themes');
+  await themeSave(out,true);await loadThemes();applyTheme(WB.name);
+  const fnote=themeFontNote(out.font&&out.font.url);toast(fnote?'! saved '+WB.name+'. '+fnote:'saved '+WB.name);refreshApp('themes');
+}
+/* The desktop's content policy takes stylesheets from Google Fonts only (_DESKTOP_CSP in server.py),
+   so another address would fail with nothing on screen to say why. */
+function themeFontNote(url){
+  url=String(url||'').trim();
+  return url&&!url.startsWith('https://fonts.googleapis.com/')?"This font won't load. This desktop only takes fonts from fonts.googleapis.com.":'';
 }
 
 /* ================= personalize app + wallpaper gallery ================= */

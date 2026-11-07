@@ -263,3 +263,119 @@ def test_an_ordinary_ask_is_still_autonomys():
     dec = policymod.Decision("ask", "why", rule="default")
     dec.action = "fs.write"
     assert not policymod.person_rule(policymod.MAIN, "write_file", {}, dec, None)
+
+
+# -- item 4: losing a config key must not hand out the machine --------------------------------------
+def test_a_config_that_lost_its_migration_key_grants_no_app_everything(monkeypatch):
+    import json
+    from fastapi.testclient import TestClient
+    srv = _srv()
+    monkeypatch.setattr(srv, "_propose_manifest", lambda *a: None)
+    with TestClient(srv.app):
+        aid = srv.state["store"].save_app("old-app", "", "", "<html></html>")
+        srv.state["store"].db.execute("UPDATE user_apps SET manifest_status='none' WHERE id=?", (aid,))
+        srv.state["store"].db.commit()
+    data = json.loads(cfgmod.CONFIG_PATH.read_text())
+    data.pop("permissions_migrated", None)
+    cfgmod.CONFIG_PATH.write_text(json.dumps(data))
+    with TestClient(srv.app):
+        rows = srv.state["store"].db.execute(
+            "SELECT * FROM grants WHERE principal_kind='app' AND principal_id=? AND action='*'", (aid,)).fetchall()
+    assert not rows, "losing one config key gave an app the whole machine"
+
+
+# -- item 9: a credential inside a value with an innocent name ---------------------------------------
+def _srv():
+    from agentos import server
+    return server
+
+
+def test_a_credential_inside_a_tool_servers_address_or_args_is_masked():
+    m = _srv()._mask_secrets
+    conf = {"url": "https://u:hunter2@x.example/sse?token=abc123&v=1", "command": "npx foo --api-key sk-zzz",
+            "args": ["--api-key", "tok-999", "--port", "80", "--token=tok-888", "https://tok777@x.example/"]}
+    shown = m({"mcp_servers": {"s": conf}})["mcp_servers"]["s"]
+    text = str(shown)
+    for secret in ("hunter2", "abc123", "sk-zzz", "tok-999", "tok-888", "tok777"):
+        assert secret not in text, secret
+    assert "x.example" in shown["url"] and shown["args"][1] == "•••" and shown["args"][3] == "80"
+
+
+def test_a_masked_address_sent_back_keeps_the_real_one():
+    srv = _srv()
+    old = {"s": {"url": "https://u:hunter2@x.example/sse", "args": ["--api-key", "tok-999", "--port", "80"],
+                 "command": "npx foo --token abc"}}
+    shown = srv._mask_secrets(old)
+    assert srv._keep_masked(shown, old) == old
+    # a changed port is kept, the secret beside it comes back
+    shown["s"]["args"][3] = "81"
+    assert srv._keep_masked(shown, old)["s"]["args"] == ["--api-key", "tok-999", "--port", "81"]
+    # a mask carried to a new host must not take the secret with it
+    shown["s"]["url"] = "https://u:•••@evil.example/sse"
+    assert srv._keep_masked(shown, old)["s"]["url"] == old["s"]["url"]
+
+
+# -- item 10: spending on the machine's providers goes through the gate -------------------------------
+def test_the_model_plane_is_decided_and_on_the_ledger(tmp_path, monkeypatch):
+    srv = _srv()
+    from agentos.policy import PDP
+    store = Store(tmp_path / "db.sqlite")
+    cfg = cfgmod.load_config()
+    pdp = PDP(cfg, store)
+    monkeypatch.setitem(srv.state, "pdp", pdp)
+    monkeypatch.setitem(srv.state, "store", store)
+    monkeypatch.setitem(srv.state, "cfg", cfg)
+
+    async def chat(*a, **k):
+        yield {"type": "text", "text": "hi"}
+    monkeypatch.setattr(srv.providers, "chat", chat)
+    out = run(srv.api_plane_llm({"model": "openai/x", "messages": []}))
+    assert out["content"] == "hi"
+    rows = store.db.execute("SELECT * FROM audit WHERE action='model.use'").fetchall()
+    assert rows and dict(rows[-1])["resource"] == "model:openai/x"
+    store.add_grant("user", "", "model.use", "model:openai/*", effect="deny", source="user")
+    assert run(srv.api_plane_llm({"model": "openai/x", "messages": []})).status_code == 403
+    r = run(srv.api_evals_run({"models": ["openai/x"]}))
+    assert r.status_code == 403
+
+
+# -- item 11: a font this desktop will refuse is said ------------------------------------------------
+def test_a_font_the_csp_refuses_is_said(box):
+    out = run(box.execute("create_theme", {"name": "T", "font_url": "https://fonts.example.com/a.css", "font_family": "A"}))
+    assert "fonts.googleapis.com" in out
+    ok = run(box.execute("create_theme", {"name": "U", "font_url": "https://fonts.googleapis.com/css2?family=A"}))
+    assert "won't load" not in ok
+    js = (ROOT / "ui/src/js/18-themes-personalize.js").read_text()
+    assert "function themeFontNote" in js and "tb-fnote" in js
+
+
+# -- item 12: the Remote Desktop app frames its own page ---------------------------------------------
+def test_only_the_desktop_may_frame_remote_desktop():
+    from fastapi.testclient import TestClient
+    srv = _srv()
+    with TestClient(srv.app, base_url="http://127.0.0.1:8000", client=("127.0.0.1", 5000)) as c:
+        r = c.get("/remote-desktop")
+        csp = r.headers["content-security-policy"]
+        assert "frame-ancestors 'self'" in csp and r.headers["x-frame-options"] == "SAMEORIGIN"
+        d = c.get("/login")
+        assert "frame-ancestors 'none'" in d.headers["content-security-policy"]
+
+
+# -- item 13: the rules at the end of a forwarded lead's note survive --------------------------------
+def test_a_forwarded_leads_whole_note_reaches_it(tmp_path):
+    from agentos import executors as ex
+    subs = [{"name": f"agent{i}", "description": "does a real job with several words in it", "tools": [],
+             "enabled": True} for i in range(12)]
+    note = ex.context_for("") + "\n\n" + "s" * 3000 + ex.team_note(subs) + ex.workspace_note() + ex.capability_note()
+    kept = ex.Envelope(workspace=str(tmp_path), context=note).sanitized().context
+    assert ex.capability_note().strip() in kept, "the rule to use this OS's doors was cut off"
+    assert ex.team_note(subs).strip() in kept, "half the team list was cut off"
+
+
+# -- item 14: a jailed CLI has no `bento`, so the note says where a company is made --------------------
+def test_the_door_says_a_company_is_not_made_from_here():
+    from agentos import executors as ex
+    src = (ROOT / "executors.py").read_text()
+    door = src[src.index("def open_team_door("):src.index("def _pool_note(")]
+    assert "dept_note + COMPANY_DOOR_LINE" in door
+    assert "can't set up" in ex.COMPANY_DOOR_LINE and "Office" in ex.COMPANY_DOOR_LINE

@@ -650,19 +650,17 @@ async def startup():
                 cfg["setup_complete"] = False
             cfgmod.save_config(cfg)
 
-    # one-time permissions migration: apps that predate the framework get a VISIBLE
-    # legacy full-access grant (revocable in the Permissions app) so nothing breaks;
-    # approving their manifest later swaps it for scoped grants
+    # One-time permissions migration: an app that predates the framework gets a draft manifest to
+    # review. It used to get an `app * *` grant too, decided by one config key, so a config that lost
+    # that key handed every app with no manifest the whole machine at the next start. An unapproved
+    # app now asks, like any other.
     if not cfg.get("permissions_migrated") and cfgmod.CONFIG_PATH.exists():
         for a in store.list_apps():
             if (a.get("manifest_status") or "none") == "none":
-                store.add_grant("app", a["id"], "*", "*", source="legacy",
-                                note="pre-permissions app — full access until you approve "
-                                     "its manifest")
                 _propose_manifest(a["id"])  # draft from its source, ready for review
         cfg["permissions_migrated"] = True
         cfgmod.save_config(cfg)
-        store.log("system", "permissions framework: legacy grants seeded for existing apps")
+        store.log("system", "permissions framework: manifests drafted for existing apps")
 
 
 def _team_who(owner: str) -> dict:
@@ -4838,26 +4836,54 @@ def _mask_secrets(value, key: str = "", under_env: bool = False):
         return {k: _mask_secrets(v, str(k), under_env or k in ("env", "headers"))
                 for k, v in value.items() if k not in _NEVER_SENT}
     if isinstance(value, list):
+        if key == "args":
+            # `--api-key` and its value are two items, which only the list as a whole can show
+            flag = re.compile(r"(?i)^--?[a-z_-]*(?:key|token|secret|pass(?:word|wd)?|auth)$")
+            return ["•••" if isinstance(v, str) and i and isinstance(value[i - 1], str) and flag.match(value[i - 1])
+                    else _mask_secrets(v, key, under_env) for i, v in enumerate(value)]
         return [_mask_secrets(v, key, under_env) for v in value]
     if isinstance(value, str) and value and not value.startswith("•••"):
         if value in ("oauth", "bearer", "none") and key.lower() == "auth":
             return value
         if under_env or tracemod.SECRET.search(key):
             return "•••" + value[-4:] if len(value) > 8 else "•••"
+        if key in _HOLDS_TEXT_SECRETS:
+            return tracemod._scrub_text(value)
     return value
+
+
+# A value with an innocent name that can hold a credential inside it: a tool server's address,
+# its command line, and what its errors repeat of them. A token in a URL's path can't be told
+# from the path, so that one still shows.
+_HOLDS_TEXT_SECRETS = frozenset({"url", "base_url", "endpoint", "auth_url", "command", "args", "error"})
 
 
 # Offline-cracking material and half the session key: no reader has a use for them.
 _NEVER_SENT = frozenset({"pass_hash", "pass_salt", "salt"})
 
 
-def _keep_masked(new, old):
+def _keep_masked(new, old, key: str = ""):
     """What a page read through `_mask_secrets` and sent back: a value it still shows as a
-    mask means "unchanged", so the real one stays. Saving the mask over it would lose a key."""
+    mask means "unchanged", so the real one stays. Saving the mask over it would lose a key.
+    A URL or command edited around its mask keeps the old value whole, because moving the secret
+    to a new host on a write would be a way to read it."""
     if isinstance(new, dict):
         was = old if isinstance(old, dict) else {}
-        return {k: _keep_masked(v, was.get(k)) for k, v in new.items()}
-    if isinstance(new, str) and new.startswith("•••"):
+        return {k: _keep_masked(v, was.get(k), str(k)) for k, v in new.items()}
+    if isinstance(new, list) and key in _HOLDS_TEXT_SECRETS:
+        was = old if isinstance(old, list) else []
+        shown = _mask_secrets(was, key)
+        by_mask = dict(zip(shown, was))
+        out = []
+        for i, v in enumerate(new):
+            if not (isinstance(v, str) and "•••" in v):
+                out.append(v)
+            elif i < len(was) and shown[i] == v:
+                out.append(was[i])
+            elif v in by_mask:
+                out.append(by_mask[v])
+        return out
+    if isinstance(new, str) and (new.startswith("•••") or (key in _HOLDS_TEXT_SECRETS and "•••" in new)):
         return old if isinstance(old, str) else ""
     return new
 
@@ -9653,6 +9679,11 @@ async def security_headers(request: Request, call_next):
             resp.headers.setdefault("Content-Security-Policy", _desktop_csp(request))
         else:
             resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        if path == "/remote-desktop":
+            # The Remote Desktop app draws this page in a frame of the desktop, and nobody else may
+            resp.headers["Content-Security-Policy"] = resp.headers["Content-Security-Policy"].replace(
+                "frame-ancestors 'none'", "frame-ancestors 'self'")
+            resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         resp.headers.setdefault("X-Frame-Options", "DENY")
     return resp
 
@@ -18882,11 +18913,24 @@ async def api_fabric_observability():
             "live": state["fabric"].live_instances()}
 
 
+def _model_gate(*models: str):
+    """The decision and the ledger row a chat turn gets for spending on a model (agent.py). A deny
+    grant stops it, and every call says who spent what on the record. Returns the refusal, or None."""
+    from .policy import MAIN
+    for m in models:
+        dec = state["pdp"].decide(MAIN, "model.use", f"model:{m}", {"surface": "gui"})
+        if dec.effect == "deny":
+            return JSONResponse({"error": f"you may not use {m} ({dec.reason or 'Permissions'})"}, status_code=403)
+    return None
+
+
 @app.post("/api/plane/llm")
 async def api_plane_llm(body: dict):
     """Model plane: data planes reach LLMs through the control plane's provider config,
     never with their own keys. L0 calls in-process; L1+ will call this over mTLS."""
     model = body.get("model") or state["cfg"].get("default_model", "")
+    if (refused := _model_gate(model)):
+        return refused
     messages = body.get("messages") or []
     text, calls, usage = [], [], {"input": 0, "output": 0}
     try:
@@ -20570,6 +20614,8 @@ async def api_evals_run(body: dict | None = None):
     models = [m for m in models if m]
     if not models:
         return JSONResponse({"error": "no model configured to test"}, status_code=400)
+    if (refused := _model_gate(*models)):
+        return refused
     bcast = state.get("broadcast")
 
     async def progress(r):

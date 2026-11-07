@@ -62,6 +62,7 @@ _IN_TEXT = (
     (re.compile(r"(?i)((?<![\w-])--?[a-z-]*(?:key|token|secret|pass(?:word|wd)?|auth)[= ]+)\S+"), r"\1•••"),
     (re.compile(r"(?i)([?&][a-z_-]*(?:key|token|secret|pass(?:word|wd)?|auth|sig)=)[^&\s\"']+"), r"\1•••"),
     (re.compile(r"(://[^/\s:@\"']+:)[^/\s@\"']+@"), r"\1•••@"),
+    (re.compile(r"://(?!git@)[^/\s:@\"']+@"), r"://•••@"),
 )
 
 

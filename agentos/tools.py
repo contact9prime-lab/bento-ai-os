@@ -2638,6 +2638,10 @@ class Toolbox(usersmod.Scoped):
         self.store.log("system", f"theme {'refined' if refining else 'created'} by agent: {name}")
         extras = (" + custom CSS" if theme.get("css") else "") + (" + a full replacement shell" if theme.get("shell") else "")
         changed = ", ".join(sorted(v)) if v else "no color changes"
+        font = str((theme.get("font") or {}).get("url") or "")
+        if font and not font.startswith("https://fonts.googleapis.com/"):
+            # The desktop's content policy loads stylesheets only from Google Fonts (_DESKTOP_CSP)
+            extras += ". That font won't load, because this desktop only takes fonts from fonts.googleapis.com"
         return (f"theme '{name}' {'refined in place (changed: ' + changed + ')' if refining else 'created'} "
                 f"and applied live — {len(theme.get('v') or {})} color variables{extras}. "
                 f"To iterate further, call create_theme again with the SAME name and only the fields to change.")

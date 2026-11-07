@@ -283,6 +283,7 @@ def test_the_forwarded_lead_hears_who_does_the_work_first(tmp_path):
         assert ctx.index("YOUR COMPANY") < ctx.index("MISSIONS") < ctx.index("FINDING WHAT")
         assert "- animator:" not in ctx, "another company's people are that company's"
         assert "- auditor:" not in ctx
+        assert executors.COMPANY_DOOR_LINE.strip() in ctx, "a jailed CLI has no bento, so it hears where a company is made"
         argv = executors.build_command("x", env)
         conf = json.loads(open(argv[argv.index("--mcp-config") + 1]).read())
         assert conf["mcpServers"]["bento"]["timeout"] == executors.BRIDGE_CALL_MS >= 30 * 60 * 1000
