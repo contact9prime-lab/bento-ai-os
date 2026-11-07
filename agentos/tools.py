@@ -3946,7 +3946,15 @@ class Toolbox(usersmod.Scoped):
             hint = " (no GitHub token configured — add one in Settings → Integrations for private/auth pushes)"
         else:
             hint = ""
-        code, out = await self._git(repo, "push", "-u", remote, branch, env=env, timeout=300)
+        # A remote on a local path: its receive-pack starts in THAT repo and drops our `-c`, so
+        # the hooks a planted bare repo holds would run. Over a network the far side runs its own.
+        over = []
+        got, where = await self._git(repo, "remote", "get-url", "--push", remote)
+        where = where.strip()
+        if got == 0 and ("://" not in where or where.startswith("file://")) \
+                and not re.match(r"^[^/]+:", where):
+            over = ["--receive-pack=git -c core.hooksPath=/dev/null -c core.fsmonitor=false receive-pack"]
+        code, out = await self._git(repo, "push", *over, "-u", remote, branch, env=env, timeout=300)
         if code != 0:
             return f"[error] git push failed{hint}: {out.strip()[:600]}"
         done = f"pushed {branch} -> {remote}"

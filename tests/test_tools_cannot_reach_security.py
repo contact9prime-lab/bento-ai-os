@@ -648,3 +648,29 @@ def test_a_device_taint_names_a_device(tmp_path):
     # read from the source: the wording of a card must not call a device a webhook
     src = (protected._code_root() / "agentos" / "fabric.py").read_text()
     assert 'a device reading that started' in src
+
+
+@pytest.mark.parametrize("jailed", [False, pytest.param(True, marks=JAIL)])
+def test_no_hook_runs_on_a_pull_or_a_push_in_or_out_of_the_jail(box, tmp_path, jailed):
+    """Reported by the jail group: git_commit and git_pull ran a workspace's hooks unjailed."""
+    box.cfg["sandbox"] = {"enabled": jailed, "root": ""}
+    ws = Path(box.cfg["workspace"])
+    marker = ws / "ran"      # inside the workspace, so a hook in the jail could write it too
+    bare = ws / "remote.git"
+    subprocess.run(["git", "init", "--bare", "-b", "main", str(bare)], check=True, capture_output=True)
+    repo = _repo_with(ws / "r")
+    (repo / "a").write_text("one\n")
+    assert not run(box.git_commit(str(repo), "first")).startswith("[error]")
+    assert not run(box.git_remote_set(str(repo), str(bare))).startswith("[error]")
+    hooks = [repo / ".git" / "hooks" / h for h in ("pre-push", "post-merge", "post-checkout", "pre-commit",
+                                                    "post-commit", "reference-transaction", "post-rewrite")]
+    hooks += [bare / "hooks" / h for h in ("pre-receive", "update", "post-receive")]
+    for h in hooks:
+        h.write_text(f"#!/bin/sh\ntouch {marker}\n")
+        h.chmod(0o755)
+    (repo / "a").write_text("two\n")
+    assert not run(box.git_commit(str(repo), "second")).startswith("[error]")
+    assert run(box.git_push(str(repo))).startswith("pushed")
+    assert not run(box.git_pull(str(repo), branch="main")).startswith("[error]")
+    assert not run(box.git_branch(str(repo), name="other")).startswith("[error]")
+    assert not marker.exists(), "a hook ran"
