@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from . import constcmp
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
@@ -862,9 +863,9 @@ def verify_chain(db, db_path, *, limit: int | None = None, after: tuple | None =
             return {"ok": False, "reason": "broken link (a row was deleted or reordered)",
                     "at_seq": seq, "checked": checked}
         fields = _old_fields(r)
-        if not hmac.compare_digest(ledger_mac(key, prev_hash, fields), r["row_hash"] or ""):
+        if not constcmp.same(ledger_mac(key, prev_hash, fields), r["row_hash"] or ""):
             return {"ok": False, "reason": "row was altered after it was recorded", "at_seq": seq, "checked": checked}
-        if not hmac.compare_digest(
+        if not constcmp.same(
                 outcome_mac(key, r["row_hash"] or "", r["outcome"] or "", r["detail"] or "",
                             int(r["duration_ms"] or 0)), r["out_mac"] or ""):
             return {"ok": False, "reason": "what the row says happened was altered after it was recorded",

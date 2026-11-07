@@ -65,6 +65,7 @@ import ssl
 import struct
 import time
 from pathlib import Path
+from . import constcmp
 
 MAGIC = "bento-provision/1"
 UDP_PORT = 8620                 # announcements and "who is there?" (one port, every machine)
@@ -696,11 +697,11 @@ def check_claim(req: dict, nonce: str) -> tuple[bool, str, str]:
             ca_ok = False
         if not ca_ok:
             return False, "the claim comes from a different community than this machine's key", ""
-        if not hmac.compare_digest(got, proof(k["secret"], leader_fp, mine, nonce)):
+        if not constcmp.same(got, proof(k["secret"], leader_fp, mine, nonce)):
             return False, "the enrolment key did not match", ""
         return True, "", k["secret"]
     code = pin()
-    if hmac.compare_digest(got, proof(code, leader_fp, mine, nonce)):
+    if constcmp.same(got, proof(code, leader_fp, mine, nonce)):
         return True, "", code
     d = load()
     d["pin_bad"] = int(d.get("pin_bad") or 0) + 1
@@ -1316,7 +1317,7 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
         raise ValueError(out.get("error") or "it refused")
     if out.get("host_fp") != fp or not str(out.get("ca") or "").startswith("-----BEGIN CERTIFICATE"):
         raise ValueError("it answered with a different certificate — refused")
-    if key and not hmac.compare_digest(str(out.get("proof_back") or ""),
+    if key and not constcmp.same(str(out.get("proof_back") or ""),
                                        proof(secret, ident["host_fp"], fp, nonce2, side="member")):
         raise ValueError("it does not really hold the enrolment key — refused")
     td = teamlink._load()

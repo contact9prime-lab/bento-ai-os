@@ -57,7 +57,6 @@ from __future__ import annotations
 
 import contextvars
 import hashlib
-import hmac
 import copy
 import json
 import os
@@ -68,6 +67,7 @@ import time
 from pathlib import Path
 
 from . import config as cfgmod
+from . import constcmp
 
 ROLES = ("admin", "executor")
 
@@ -267,7 +267,7 @@ def check_password(uid: str, password: str) -> bool:
     if not u or not u.get("pass_hash"):
         return False
     got, _ = hash_password(password or "", u.get("salt", ""))
-    return hmac.compare_digest(got, u["pass_hash"])
+    return constcmp.same(got, u["pass_hash"])
 
 
 # What a sign-in spends on a name nobody has, so that a name that exists takes no longer to refuse.

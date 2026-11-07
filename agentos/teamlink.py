@@ -54,6 +54,7 @@ import time
 from pathlib import Path
 
 from . import config as cfgmod
+from . import constcmp
 
 SNI = "bento-team"              # a fixed name, so SNI is sent even when dialling an IP
 INVITE_TTL = 600                # seconds a pairing code lives
@@ -541,7 +542,7 @@ def parse_invite(s: str) -> dict:
 def _take_invite(d: dict, code: str, kind: str) -> dict | None:
     h, now = _hash(code or ""), time.time()
     for inv in d["invites"]:
-        if (secrets.compare_digest(inv["hash"], h) and inv["kind"] == kind
+        if (constcmp.same(inv["hash"], h) and inv["kind"] == kind
                 and inv["expires"] > now and not inv.get("used")):
             inv["used"] = True
             return inv
@@ -994,7 +995,7 @@ class Listener:
         h = _hash(str(req.get("token") or ""))
         d = _load()
         r = next((x for x in d["requests"] if x.get("kind") == "machine"
-                  and secrets.compare_digest(x.get("token_hash", ""), h)), None)
+                  and constcmp.same(x.get("token_hash", ""), h)), None)
         if not r:
             self._guess.setdefault(addr, []).append(time.time())
             from . import secevents

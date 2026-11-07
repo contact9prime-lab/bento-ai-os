@@ -41,7 +41,6 @@ server down. The server's loops call these functions in a thread.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import ipaddress
 import json
 import os
@@ -54,6 +53,7 @@ import threading
 import time
 from pathlib import Path
 from urllib.parse import urlparse
+from . import constcmp
 
 DIR = ".standby"                   # starts with a PRIVATE prefix of backup.py: never copied or moved
 STATE = "state.json"
@@ -227,7 +227,7 @@ def accept(body: dict, home=None) -> dict:
         p.unlink(missing_ok=True)
         raise StandbyError("That code has expired. Make a new one on the cloud machine.")
     off["tries"] = off.get("tries", 0) + 1
-    if not hmac.compare_digest(_hash(_norm_code(body.get("code", ""))), off.get("hash", "")):
+    if not constcmp.same(_hash(_norm_code(body.get("code", ""))), off.get("hash", "")):
         if off["tries"] >= CODE_TRIES:
             p.unlink(missing_ok=True)
             raise StandbyError("Too many wrong codes. Make a new one on the cloud machine.")
@@ -253,7 +253,7 @@ def token_ok(presented: str, home=None) -> bool:
     want = st.get("token_hash", "")
     if st.get("role") != "standby" or not want or not presented:
         return False
-    return hmac.compare_digest(_hash(presented), want)
+    return constcmp.same(_hash(presented), want)
 
 
 _BAD: dict[str, list] = {}

@@ -43,6 +43,7 @@ import json
 import os
 import secrets
 import time
+from . import constcmp
 
 # Cookies ignore ports. A second Bento on 127.0.0.1 (the warehouse demo's four) would overwrite this
 # machine's own sign-in with its cookie unless each has a name of its own.
@@ -80,7 +81,7 @@ def check_passphrase(cfg: dict, passphrase: str) -> bool:
         got, _ = hash_passphrase(passphrase, r["pass_salt"])
     except ValueError:
         return False
-    return hmac.compare_digest(got, r["pass_hash"])
+    return constcmp.same(got, r["pass_hash"])
 
 
 def passphrase_problem(passphrase: str) -> str:
@@ -188,7 +189,7 @@ def _verify(cfg: dict, token: str) -> tuple[dict | None, str]:
         return None, "forged"
     body, _, sig = token.rpartition(".")
     want = hmac.new(_secret(cfg), body.encode(), hashlib.sha256).hexdigest()[:32]
-    if not hmac.compare_digest(sig.encode(), want.encode()):
+    if not constcmp.same(sig, want):
         return None, "forged"
     try:
         pad = "=" * (-len(body) % 4)
@@ -471,7 +472,7 @@ def entry_token() -> str:
 
 def entry_matches(presented: str) -> bool:
     want = entry_token()
-    return bool(want) and bool(presented) and hmac.compare_digest(str(presented).encode(), want.encode())
+    return bool(want) and bool(presented) and constcmp.same(presented, want)
 
 
 # A browser this server starts for the person is its descendant, so peercheck would refuse it as it refuses
@@ -497,7 +498,7 @@ def spend_ticket(ticket: str) -> bool:
     except ValueError:
         return False
     want = hmac.new(_machine_key(), f"desk|{exp}|{nonce}".encode(), hashlib.sha256).hexdigest()[:32]
-    if not hmac.compare_digest(sig.encode(), want.encode()) or nonce in _tickets_used:
+    if not constcmp.same(sig, want) or nonce in _tickets_used:
         return False
     now = time.time()
     for k, v in list(_tickets_used.items()):

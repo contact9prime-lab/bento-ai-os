@@ -64,6 +64,7 @@ import tarfile
 import tempfile
 import time
 from pathlib import Path, PurePosixPath
+from . import constcmp
 
 FORMAT = "bento-backup/1"
 MAGIC = b"BENTOBK1\n"
@@ -237,7 +238,7 @@ class _Opener(io.RawIOBase):
             self.prefix = base64.b64decode(h["nonce"])
         except (KeyError, ValueError, TypeError):
             raise BackupError("This backup's header is damaged.")
-        if not hmac.compare_digest(str(h.get("check") or ""), _check(key)):
+        if not constcmp.same(str(h.get("check") or ""), _check(key)):
             raise BackupError("The passphrase is wrong. It is the one chosen when the backup was made.")
         self.box, self.ad, self.i = _aead(key), MAGIC + head, 0
         self.chunk = int(h.get("chunk") or CHUNK)

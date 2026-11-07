@@ -54,6 +54,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+from .. import constcmp
 
 HUB = "warehouse-hub"
 ZONES = ("zone-cold", "zone-dock", "zone-aisle")
@@ -639,7 +640,7 @@ class _Supervisor:
 
             def _keyed(self) -> bool:
                 got = parse_qs(urlsplit(self.path).query).get("k", [""])[0]
-                return bool(got) and hmac.compare_digest(got.encode(), entry_key().encode())
+                return bool(got) and constcmp.same(got, entry_key())
 
             def do_GET(self):
                 path = urlsplit(self.path).path

@@ -72,6 +72,7 @@ from . import tools
 from . import netguard
 from .tools import ALWAYS_ASK, Toolbox
 from .trainforge import TrainForge
+from . import constcmp
 
 UI_DIR = Path(__file__).parent / "ui"
 
@@ -6318,7 +6319,7 @@ async def api_mcp_run(token: str, request: Request):
     auth = request.headers.get("authorization") or ""
     bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
     # the URL carries the token, or for Codex its digest (mcpbridge.url_id); the header is the secret
-    named = secrets.compare_digest(bearer, token) or secrets.compare_digest(mcpbridge.url_id(bearer), token)
+    named = constcmp.same(bearer, token) or constcmp.same(mcpbridge.url_id(bearer), token)
     token = bearer
     if mcpbridge.get(token) is None or not named:
         return JSONResponse({"error": "unknown or expired run token — this bridge answers "
@@ -6692,7 +6693,7 @@ async def api_whatsapp_test():
 async def api_whatsapp_verify(request: Request):
     """Meta's one-time handshake. Echo the challenge as plain text, or 403.
 
-    Compared with `compare_digest` inside the bridge: this value is chosen by the
+    Compared in constant time inside the bridge: this value is chosen by the
     user and checked against a value from the internet, which is the exact shape of
     a timing oracle.
     """
@@ -18716,7 +18717,7 @@ async def api_flow_hook(name: str, trigger_id: str, request: Request):
         return JSONResponse({"error": "this hook is quarantined — release it in "
                                       "Settings → Quarantine, or `bento quarantine`"},
                             status_code=429)
-    if not hmac.compare_digest(str(given), str(trig.get("secret") or "\0")):
+    if not constcmp.same(str(given), str(trig.get("secret") or "\0")):
         store.log("error", f"webhook: bad secret for flow '{name}'",
                   {"trigger": trigger_id, "from": addr})
         return JSONResponse({"error": "bad secret"}, status_code=401)

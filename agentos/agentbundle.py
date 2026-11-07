@@ -61,6 +61,7 @@ from pathlib import Path
 from . import flows as flowsmod
 from .appregistry import (canonical, static_scan, tofu_check, trusted_keys,
                           verdict_of)
+from . import constcmp
 
 FORMAT = "agentos-agent/1"
 
@@ -649,12 +650,11 @@ def peer_for_key(cfg: dict, key: str) -> tuple[str, str]:
     distrust, 'revoked' is an arrangement that ended, and 'expired' means
     rotate it — hunting a leak that never happened is the failure mode a vague
     refusal buys."""
-    import hmac as _hmac
     key = (key or "").strip()
     if not key:
         return "", "no key presented"
     for name, p in share_conf(cfg)["peers"].items():
-        if _hmac.compare_digest(str(p.get("key") or "\0"), key):
+        if constcmp.same(str(p.get("key") or "\0"), key):
             if p.get("revoked_at"):
                 return "", f"the key for '{name}' was revoked — this share has ended"
             exp = float(p.get("expires_at") or 0)

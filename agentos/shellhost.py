@@ -209,7 +209,9 @@ def bridge_script(token: str) -> str:
 
 def bridge_sender_ok(data, token: str) -> bool:
     """Did this message come through the top frame's `suiCall`?"""
-    return isinstance(data, dict) and hmac.compare_digest(str(data.get("token") or ""), token)
+    # Encoded here rather than through constcmp: this file runs under a system python, on its own.
+    return isinstance(data, dict) and hmac.compare_digest(
+        str(data.get("token") or "").encode("utf-8", "surrogatepass"), token.encode("utf-8", "surrogatepass"))
 
 
 def main(argv: list[str] | None = None) -> int:

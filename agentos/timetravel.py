@@ -51,6 +51,7 @@ import secrets
 import shutil
 import time
 from pathlib import Path
+from . import constcmp
 
 TABLES = ("memories", "kg_nodes", "kg_edges", "skills")
 KEEP_DAYS = 7
@@ -108,7 +109,7 @@ def _mac(home: Path, row: dict, key: bytes) -> str:
 def signed(home: Path, row: dict) -> bool:
     """`row` as it is in the table (`files` still its JSON text)."""
     key, mac = _key(make=False), str(row.get("mac") or "")
-    return bool(key and mac) and hmac.compare_digest(_mac(home, row, key), mac)
+    return bool(key and mac) and constcmp.same(_mac(home, row, key), mac)
 
 
 # ---- the journal -----------------------------------------------------------------
