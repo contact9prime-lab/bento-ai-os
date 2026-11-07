@@ -100,7 +100,7 @@ function secretField(id,ph,cls){
 function pSecret(id,hasKey,masked,ph){
   if(!hasKey)return secretField(id,ph);
   return `<span class="psecret" id="${id}-wrap"><i>saved</i><code>${esc(masked||'••••')}</code>
-    <button class="endbtn" onclick="pSecretReplace('${id}')">Replace</button></span>`;
+    <button class="endbtn" onclick="pSecretReplace('${jsq(id)}')">Replace</button></span>`;
 }
 function pSecretReplace(id){
   const w=document.getElementById(id+'-wrap');if(!w)return;
@@ -847,7 +847,7 @@ function verRollback(d){
   const r=d&&d.rollback;if(!r)return '';
   const when=r.at?new Date(r.at*1000).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}):'';
   return `<div class="upd-back"><span class="mut">Updated${when?' '+esc(when):''}${r.version?' from '+esc(r.version):''}${r.branch?' on '+esc(r.branch):''}.</span>
-    <button class="endbtn" onclick="updateRollback(this,'${esc(r.to)}','${esc(r.version||r.to)}')">Roll back to ${esc(r.version||r.to)}</button></div>`;
+    <button class="endbtn" onclick="updateRollback(this,'${jsq(r.to)}','${jsq(r.version||r.to)}')">Roll back to ${esc(r.version||r.to)}</button></div>`;
 }
 async function updateRollback(btn,to,label){
   if(!confirm('Roll back to '+label+' ('+to+')? AgentOS restarts on the older code. Your data stays, and you can update again later.'))return;
@@ -1170,8 +1170,8 @@ async function renderExecutors(){
     const how=off.command?`Install runs ${off.command}${off.available?'':'. '+(off.reason||'It is not available here')}`
       :'There is no installer for it here. Install it yourself and it shows up.';
     const more=[rest,r.why_not&&r.why_not!=='not installed'?r.why_not:'',how,'Licence: '+(r.licence||'unknown')].filter(Boolean).join(' ');
-    const btns=(off.command?`<button class="endbtn" title="${esc(off.command)}" onclick="execInstallComponent('${esc(r.id)}',this)">Install</button>`:'')
-      +(r.docs?`<button class="endbtn" onclick="openInBrowser('${esc(r.docs)}')">Docs</button>`:'');
+    const btns=(off.command?`<button class="endbtn" title="${esc(off.command)}" onclick="execInstallComponent('${jsq(r.id)}',this)">Install</button>`:'')
+      +(r.docs?`<button class="endbtn" onclick="openInBrowser('${jsq(r.docs)}')">Docs</button>`:'');
     return pRow(r.title,btns||'<span class="mut">install it yourself</span>',
       {desc:esc(first(r.what))+` <span class="chdot">${esc(r.licence||'licence unknown')}</span>`,more,f:'install executor '+r.id+' '+r.title});
   });
@@ -1197,7 +1197,7 @@ async function renderExecutors(){
           {desc:`Runs <code>${esc(ex.install_cmd)}</code> in your own account, without sudo.`,
            f:'install claude code executor'})}
         <pre id="exec-instlog" class="exec-log" hidden></pre>`:''}
-      ${ex.install?`<p class="mut"><button class="endbtn" onclick="openInBrowser('${esc(ex.install)}')">Read the docs</button></p>`:''}`;
+      ${ex.install?`<p class="mut"><button class="endbtn" onclick="openInBrowser('${jsq(ex.install)}')">Read the docs</button></p>`:''}`;
     return;
   }
   const c=ex.config||{}, tools=c.tools||[];
@@ -1398,7 +1398,7 @@ function chanCard(c){
     ${c.id==='whatsapp'?'<div id="wa-extra" class="wa-extra"></div>':''}
     ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel. See the Permissions app.</div>`:'')}
     <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
-      <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
+      <div class="pc"><button class="endbtn" ${doAttrs('chanSave',c.id)}>Save</button></div></div>
   </div>`;
 }
 async function chanSave(id){
@@ -1555,11 +1555,11 @@ function tlkReqHTML(r){
   const team=id.agent_name?` <span class="mut">· ${esc(id.agent_name)}’s team${id.person?', '+esc(id.person):''}</span>`:'';
   if(r.kind==='account')return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} asks to link teams with you.</p>
       <small class="mut">You’re both on this machine, so there’s nothing to compare.</small></div>
-    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+    <div class="tlk-req-act"><button class="pact" ${doAttrs('teamLinkAnswer',r.id,'approve')}>Approve</button><button class="endbtn" ${doAttrs('teamLinkAnswer',r.id,'deny')}>Deny</button></div></div>`;
   return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} <span class="mut">(${esc(r.addr||'')})</span> asks to link its team with yours.</p>
       <div class="tlk-sas-row">Check that ${who} shows <span class="tlk-sas">${esc(r.sas||'')}</span></div>
       <small class="mut">If the digits differ, something is in between you, so deny it. After you approve, you still choose which of your agents they can ask.</small></div>
-    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+    <div class="tlk-req-act"><button class="pact" ${doAttrs('teamLinkAnswer',r.id,'approve')}>Approve</button><button class="endbtn" ${doAttrs('teamLinkAnswer',r.id,'deny')}>Deny</button></div></div>`;
 }
 function tlkOutHTML(r){
   const who=esc(r.name||r.to_name||'?');
@@ -1571,7 +1571,7 @@ function tlkOutHTML(r){
     :st==='denied'?`<b>${who}</b> said no.`
     :st==='expired'?`Nobody at <b>${who}</b> answered in ten minutes.`
     :`<b>${who}</b>: ${esc(r.error||st)}`;
-  return `<div class="tlk-req out"><div><p>${line}</p></div>${st==='pending'?`<div class="tlk-req-act"><button class="endbtn" onclick="teamLinkWithdraw('${esc(r.id)}')">Withdraw</button></div>`:''}</div>`;
+  return `<div class="tlk-req out"><div><p>${line}</p></div>${st==='pending'?`<div class="tlk-req-act"><button class="endbtn" ${doAttrs('teamLinkWithdraw',r.id)}>Withdraw</button></div>`:''}</div>`;
 }
 async function paintTeamLinks(){
   const box=document.getElementById('s-team-links');if(!box)return;
@@ -1587,9 +1587,9 @@ async function paintTeamLinks(){
   const links=(d.links||[]).map(l=>{const id=l.peer_identity||{};return `<div class="tlk-card">
       <div class="tlk-head">${avatarRecipeImg(id.agent,'av-tool',(id.agent_name||'their agent'))}<b>${esc(l.label)}</b>${id.agent_name?`<span class="mut">${esc(id.agent_name)}’s team${id.person?' · '+esc(id.person):''}</span>`:''}<span class="brainchip">${l.kind==='account'?'account here':'machine · mTLS'}</span>
         <span class="mut">${esc(l.kind==='machine'?(l.url||'they can reach you, you can’t reach them'):'')}</span>
-        <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
-        <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
-        <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
+        <button class="endbtn" ${doAttrs('openTeamChat',l.label)}>Message</button>
+        <button class="endbtn" onclick="teamLinkCheck('${jsq(l.label)}',this)">Check</button>
+        <button class="endbtn" ${doAttrs('teamLinkRemove',l.label)}>Remove</button></div>
       ${l.pass?tlPassHTML(l):`<label class="tlk-sub tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="lead" ${(l.theirs_may_ask||[]).includes('lead')?'checked':''}> ${avatarImg('@agent','av-tool')}<span>They may hand whole tasks to ${esc(agentName())}, who works them with your team${pInfo('Your lead takes the task, hands parts to your specialists and departments, and answers. It can’t touch this machine’s files or shell for them, and anything that needs a person comes to you.')}</span></label>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists here, so their work comes to your lead</span>'}</div>
       <div class="tlk-sub tlk-runs"><span>Their work here runs on</span>${typeof tieBrainSelect==='function'?tieBrainSelect({label:l.label,owner:l.owner||'',brain:l.brain||{}}).replace('data-tie="brain"','data-link-brain="'+esc(l.label)+'"'):''}</div>
@@ -1673,7 +1673,7 @@ function tlPassHTML(l){
   const face=avatarImg(lent?p.agent:p.agent+'@'+l.label,'av-tool');
   return `<div class="tlk-pass">${face}
     <span>${lent?`You lent <b>${esc(p.agent)}</b>. It answers in words only.`:`<b>${esc(p.agent)}</b> is on loan to you.`} ${left} left</span>
-    ${lent?'':`<button class="endbtn" onclick="tlPassHuddle('${esc(p.agent)}','${lab}')">Bring into a huddle</button>`}</div>`;
+    ${lent?'':`<button class="endbtn" ${doAttrs('tlPassHuddle',p.agent,l.label)}>Bring into a huddle</button>`}</div>`;
 }
 async function tlPassHuddle(agent,label){
   // a huddle seats two or more: the guest and one of yours. Prefilled, never sent.
@@ -1711,12 +1711,12 @@ function tlStandHTML(l,mine,d){
   return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
     <p class="mut tlk-why">Questions from ${lab} can make your agents read and answer, but any change needs a person here to say yes. ${pInfo('Allow one thing ahead of time: one agent, one action, in one folder. If the agent also read a web page or an email on the way, you’re asked again.')}</p>
     ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
-    ${rows.map(x=>`<div class="tlk-stand-row">${x.agent==='*'?'':avatarImg(x.agent,'av-tool')}<span><b>${x.agent==='*'?'Any agent here':esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
+    ${rows.map(x=>`<div class="tlk-stand-row">${x.agent==='*'?'':avatarImg(x.agent,'av-tool')}<span><b>${x.agent==='*'?'Any agent here':esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" ${doAttrs('tlStandRemove',l.label,x.id)}>Remove</button></div>`).join('')}
     ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
       <select data-sa="action" aria-label="May do">${(d.standing_actions||[]).map(a=>`<option value="${esc(a)}">${esc(TL_ACT_WORDS[a]||a)}</option>`).join('')}</select>
       <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">
       <input data-sa="days" type="number" min="1" inputmode="numeric" placeholder="days (blank: until removed)">
-      <button class="pact" onclick="tlStandAdd('${lab}',this)">Allow</button></div>`
+      <button class="pact" onclick="tlStandAdd('${jsq(l.label)}',this)">Allow</button></div>`
       :'<p class="mut tlk-why">You have no specialists yet. This is for them.</p>'}
   </details>`;
 }
@@ -1734,7 +1734,7 @@ function tlMissionsHTML(l){
         <span class="brainchip">${m.stopped?'stopped by you':m.enabled===false?'off on their side':'on'}</span>
         ${(m.agents||[]).map(a=>avatarImg(a,'av-tool')+esc(a)).join(' ')}
         <div class="mut tlk-why">${m.schedule?esc(m.schedule)+' · ':''}asked ${m.runs} time${m.runs===1?'':'s'}, last ${esc(when(m.last_used))}${m.text?' · '+esc(m.text):''}</div></div>
-      <button class="endbtn" onclick="tlMissionStop('${lab}','${esc(m.mission)}',${m.stopped?'false':'true'})">${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
+      <button class="endbtn" ${doAttrs('tlMissionStop',l.label,m.mission,!m.stopped)}>${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
   </div>`;
 }
 async function tlMissionStop(label,mission,stop){

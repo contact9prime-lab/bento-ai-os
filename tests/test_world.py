@@ -707,7 +707,7 @@ def test_the_team_moves_calmly_and_shows_work_as_a_bubble():
     door = scene.split("function worldOpenWork(", 1)[1].split("\n}", 1)[0]
     assert "openConv(w.id)" in door and "openApp('studio')" in door and "fgWatch(w.id)" in door
     # on a phone the head can sit under the prompt bar, so the card is a second door
-    assert "worldOpenWork('${esc(name)}')" in scene.split("function worldCard(", 1)[1]
+    assert "worldOpenWork('${jsq(name)}')" in scene.split("function worldCard(", 1)[1]
 
 
 def test_the_view_says_what_each_agent_is_working_on(store):

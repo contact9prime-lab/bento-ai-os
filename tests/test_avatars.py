@@ -338,7 +338,7 @@ def test_every_surface_shows_the_face_through_one_door():
     assert "case 'avatars':" in ws, "an edit anywhere must repaint every open desktop"
     assert "avatarImg(avatarKeyOf(m.principal),'av-log')" in _js("16-mcp-telegram-logs.js")
     fab = _js("13-fabric.js")
-    assert "avatarImg(s.name,'av-card')" in fab and "avatarEdit('${esc(s.name)}')" in fab
+    assert "avatarImg(s.name,'av-card')" in fab and "avatarEdit('${jsq(s.name)}')" in fab
     assert "avatarImg('@agent','av-home')" in _js("01b-immersive.js")
     st = _js("11-settings.js")
     assert "avatarEdit('@me')" in st and "avatarEdit('@agent')" in st and "setAvatarsOff(" in st

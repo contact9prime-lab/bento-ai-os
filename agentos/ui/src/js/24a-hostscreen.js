@@ -117,7 +117,7 @@ async function hsControl(){
            machine, native apps included.</p>${web}
          <p class="mut" style="margin-top:10px">Or point a native VNC client through a tunnel:</p>
          <div class="rm-addr"><div class="rm-row"><code>${esc(d.tunnel)}</code>
-           <button class="endbtn" onclick="rmCopy('${esc(d.tunnel)}')">Copy</button></div></div>
+           <button class="endbtn" onclick="rmCopy('${jsq(d.tunnel)}')">Copy</button></div></div>
          <p class="mut" style="margin-top:8px">${esc(d.note)}</p>
          <button class="endbtn" style="margin-top:10px" onclick="hsControlSet('stop')">Stop remote control</button>`
       : `<p class="mut" style="margin-top:6px">Installed and ready. Start it to control the machine from
@@ -160,7 +160,7 @@ async function renderRemoteDesk(body,w){
         <code>127.0.0.1</code>.</p>
       ${missing?`<p class="mut" style="margin-top:8px">Needs <b>${esc(missing)}</b>, a distribution
           package AgentOS does not bundle.</p>
-        <button class="pact" style="margin-top:10px" onclick="installComponent('${esc(missing)}')">Install ${esc(missing)}…</button>`
+        <button class="pact" style="margin-top:10px" onclick="installComponent('${jsq(missing)}')">Install ${esc(missing)}…</button>`
        :`<p class="mut" style="margin-top:8px">Everything is installed — the service is just off.</p>
          <button class="pact" style="margin-top:10px" onclick="hsControlSet('start').then(()=>refreshApp('remotedesk'))">Turn Remote Desktop on</button>`}
       <p class="mut" style="margin-top:10px">See also <b>Host Screen</b>, which shows the same

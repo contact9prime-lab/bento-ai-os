@@ -78,7 +78,16 @@ function ctxShow(e,m,opts){
 }
 function showCtxItems(e,items,opts){
   const m=$('#ctxmenu');
-  m.innerHTML=items.map((it,i)=>it===null?'<hr>':`<button data-i="${i}"${it.danger?' style="color:var(--err)"':''}>${it.label}</button>`).join('');
+  // A label is text, and may be somebody's: an app's own name reaches the Window and Help menus.
+  m.innerHTML='';
+  items.forEach((it,i)=>{
+    if(it===null){m.appendChild(document.createElement('hr'));return}
+    const b=document.createElement('button');b.dataset.i=i;
+    if(it.danger)b.style.color='var(--err)';
+    b.textContent=it.label;
+    if(it.keys){const k=document.createElement('span');k.className='mk';k.textContent=it.keys;b.appendChild(k)}
+    m.appendChild(b);
+  });
   m.querySelectorAll('button').forEach(b=>b.onclick=()=>{popClose(m);const it=items[+b.dataset.i];if(it&&it.fn)it.fn()});
   ctxShow(e,m,opts);
 }

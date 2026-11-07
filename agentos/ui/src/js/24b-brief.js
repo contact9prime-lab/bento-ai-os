@@ -30,19 +30,19 @@ function briefItemHTML(it,idx){
   const meta=[it.who?esc(it.who):'',it.due?'by '+esc(it.due):'',it.mission?'<i>'+esc(it.mission)+'</i>':''].filter(Boolean).join(' · ');
   let hands='';
   if(open&&it.kind==='decide'){
-    hands=(it.options||[]).map(o=>`<button class="endbtn br-opt" onclick="briefAct('${esc(it.id)}','decide','${esc(o)}')">${esc(o)}</button>`).join('');
+    hands=(it.options||[]).map(o=>`<button class="endbtn br-opt" ${doAttrs('briefAct',it.id,'decide',o)}>${esc(o)}</button>`).join('');
   }else if(open){
-    hands=`<button class="endbtn" onclick="briefAct('${esc(it.id)}','done')">Done</button>
-      <button class="endbtn" onclick="briefAct('${esc(it.id)}','later')">Later</button>`;
+    hands=`<button class="endbtn" ${doAttrs('briefAct',it.id,'done')}>Done</button>
+      <button class="endbtn" ${doAttrs('briefAct',it.id,'later')}>Later</button>`;
   }else{
     const who=(typeof agentName==='function')?agentName():'the agent';
     hands=`<span class="br-state">${it.state==='decided'?'decided: '+esc(it.decision||'')+(it.answer_cid?'':' · '+esc(who)+' is writing the reply…'):esc(it.state)}</span>
-      <button class="endbtn" onclick="briefAct('${esc(it.id)}','reopen')">Reopen</button>`;
+      <button class="endbtn" ${doAttrs('briefAct',it.id,'reopen')}>Reopen</button>`;
   }
-  if(it.draft&&open)hands+=`<button class="endbtn" onclick="briefSend('${esc(it.id)}')" title="Send the draft as you — it will ask first">Send draft…</button>`;
-  if(src.type==='mail'&&src.ref)hands+=`<button class="endbtn" onclick="briefOpenMail('${esc(src.ref)}')">Open mail</button>`;
+  if(it.draft&&open)hands+=`<button class="endbtn" onclick="briefSend('${jsq(it.id)}')" title="Send the draft as you — it will ask first">Send draft…</button>`;
+  if(src.type==='mail'&&src.ref)hands+=`<button class="endbtn" ${doAttrs('briefOpenMail',src.ref)}>Open mail</button>`;
   if(src.type==='report'&&src.ref)hands+=`<button class="endbtn" onclick="openApp('files')">Open report</button>`;
-  if(it.answer_cid)hands+=`<button class="endbtn" onclick="openApp('chat');setTimeout(()=>openConv('${esc(it.answer_cid)}'),500)">The reply</button>`;
+  if(it.answer_cid)hands+=`<button class="endbtn" onclick="openApp('chat');setTimeout(()=>openConv('${jsq(it.answer_cid)}'),500)">The reply</button>`;
   return `<div class="br-item k-${esc(it.kind)} s-${esc(it.state)}" data-id="${esc(it.id)}">
     <div class="br-head"><span class="br-kind">${esc(kindTag)}</span>${(it.twins||[]).length?`<span class="br-twins" title="Filed by ${it.twins.length+1} runs; one tap answers all of them">×${it.twins.length+1}</span>`:''}${idx!=null?`<span class="br-n">${idx+1}</span>`:''}</div>
     <b class="br-title">${esc(it.title)}</b>
@@ -85,7 +85,7 @@ async function renderBrief(body){
   }
   const c=pg.counts||{};
   const tiles=[['needs_you','Need you'],['decide','Decide'],['fyi','FYI'],['done','Done for you']]
-    .map(([k,l])=>`<button class="br-tile k-${k}" onclick="briefJump('${k}')" ${c[k]?'':'disabled'}><b>${c[k]||0}</b><span>${l}</span></button>`).join('');
+    .map(([k,l])=>`<button class="br-tile k-${k}" onclick="briefJump('${jsq(k)}')" ${c[k]?'':'disabled'}><b>${c[k]||0}</b><span>${l}</span></button>`).join('');
   const h=new Date().getHours(),greet=h<5?'Good evening':h<12?'Good morning':h<17?'Good afternoon':'Good evening';
   body.innerHTML=`<div class="pad br-app">
     <div class="br-hero"><div class="br-glow"></div>

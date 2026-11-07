@@ -71,7 +71,7 @@ def test_an_old_pattern_reads_as_words():
 
 
 def test_every_rule_says_when_it_was_approved():
-    js = JS + "\nfunction esc(x){return String(x)}function permLasts(){return ''}function permSurfBadge(){return ''}"
+    js = JS + "\nfunction esc(x){return String(x)}function jsq(x){return String(x)}function permLasts(){return ''}function permSurfBadge(){return ''}"
     if not shutil.which("node"):
         pytest.skip("node is not installed")
     import time

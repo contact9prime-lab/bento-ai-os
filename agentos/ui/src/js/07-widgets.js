@@ -48,7 +48,7 @@ function renderPlacedWidgets(){
     const list=WIDGETS.filter(w=>w.place==='bar'&&apps[w.app_id]);
     bar.classList.toggle('on',list.length>0);
     bar.innerHTML=list.map(w=>`<div class="barwidget"><div class="bw-h">${esc(apps[w.app_id].name)}
-        <button onclick="setWidgetPlace('${esc(w.app_id)}','')" title="Unpin">✕</button></div>
+        <button onclick="setWidgetPlace('${jsq(w.app_id)}','')" title="Unpin">✕</button></div>
       <iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=${esc((apps[w.app_id].widget_size)||'m')}" sandbox="allow-scripts allow-forms"></iframe></div>`).join('');
   }
   // menu bar: a thin always-visible readout

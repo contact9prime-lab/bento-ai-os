@@ -122,10 +122,15 @@ async function runAutomation(a){
   AUTO_RUNNING=false;
   document.body.classList.remove('auto-running');
 }
-/* Fired by the server (a schedule, the agent's run_automation tool, another
-   window) — the payload carries the whole automation so this client runs the
-   same steps even if its list is stale. */
-function onAutomationBroadcast(a){if(a&&a.steps)runAutomation(a)}
+/* Fired by the server (a schedule, the agent's run_automation tool, another window). It
+   names an automation, and the steps come from this account's own list, re-read here so a
+   stale list still runs the current steps. Steps in the event are ignored: a page must run
+   nothing it did not read from its own account. */
+async function onAutomationBroadcast(ev){
+  await loadAutomations();
+  const a=AUTOMATIONS.find(x=>x.id===(ev&&ev.id));
+  if(a)runAutomation(a);
+}
 
 async function saveAutomation(name,steps,icon){
   const r=await fetch('/api/automations',{method:'POST',headers:{'Content-Type':'application/json'},

@@ -536,7 +536,7 @@ function worldMenuHTML(){
     <button class="endbtn wd-calm" onclick="worldCalm()">🍵 Calm everyone down</button>
     ${WORLD.why?`<p class="wd-why">${esc(WORLD.why)}</p>`:''}
     <div class="wd-h">Worlds</div>
-    <div class="wd-worlds">${list.map(w=>`<div class="wd-wrow"><button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${esc(w.id)}')">
+    <div class="wd-worlds">${list.map(w=>`<div class="wd-wrow"><button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${jsq(w.id)}')">
         <b>${esc(w.name)}</b><span>${esc(w.emotions.slice(0,6).map(e=>e.emoji).join(' '))}</span>
         <small>${esc(w.ladder.join(' → '))}</small></button>${w.builtin?'':
         /* your own worlds are deleted from their row: at the bottom of a long menu the
@@ -648,18 +648,18 @@ function worldCard(name,quiet){
   WORLD.open=name;const m=a.mood,l=a.level;
   if(a.guest){
     const g=a.guest;card.hidden=false;card.style.setProperty('--mh',m.hue);
-    card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
+    card.innerHTML=`<button class="wd-x" onclick="worldCard('${jsq(name)}')" aria-label="Close">✕</button>
       <div class="wd-who">${avatarRecipeImg(g.look,'wd-face',g.agent)}<div><b>${esc(g.agent)}</b>
         <div class="wd-feel">a guest from ${esc(g.team?g.team+'’s team':g.label)}</div></div></div>
       <p class="wd-quiet">Lent to you for a little while. It answers in words only, from its own machine, and leaves when the pass ends.</p>
       <div class="wd-grow"><span>Time left</span><small class="wd-left" data-pass-until="${+g.until}">${worldLeft(g)}</small></div>
-      <div class="wd-acts"><button class="endbtn" onclick="tlPassHuddle('${esc(g.agent)}','${esc(g.label)}')">Bring into a huddle</button></div>`;
+      <div class="wd-acts"><button class="endbtn" ${doAttrs('tlPassHuddle',g.agent,g.label)}>Bring into a huddle</button></div>`;
     if(typeof tlPassTick==='function')tlPassTick();
     return;
   }
   const ago=s=>s<60?'just now':s<3600?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago';
   card.hidden=false;card.style.setProperty('--mh',m.hue);
-  card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
+  card.innerHTML=`<button class="wd-x" onclick="worldCard('${jsq(name)}')" aria-label="Close">✕</button>
     <div class="wd-who">${avatarImg(name,'wd-face')}<div><b>${esc(worldLabel(name))}</b>
       <div class="wd-feel">${esc(m.emoji)} ${esc(m.name)}${a.busy?' · at work':''}</div>
       ${(o=>o?`<div class="wd-org" style="--dc:${esc(o.hex)}">${esc(o.title?o.title+' · '+o.dept:o.head?'Head of '+o.dept:o.dept)}</div>`:'')(worldOrg(name))}</div></div>
@@ -671,8 +671,8 @@ function worldCard(name,quiet){
     ${a.friend?`<p class="wd-friend">Works best with ${esc(worldLabel(a.friend))}</p>`:''}
     ${worldStaff(name).length?`<div class="wd-h">${esc(worldStaffHead(name))}</div><ul class="wd-staff">${worldStaff(name).map(x=>
       `<li><b>${esc(x.mood.emoji)}</b> ${esc(x.name)} <small>${esc(x.mood.name)}${x.busy?' · at work':''}</small></li>`).join('')}</ul>`:''}
-    <div class="wd-acts">${a.busy&&a.work?`<button class="endbtn wd-work" onclick="worldOpenWork('${esc(name)}')">${a.work.kind==='build'?'Open App Studio':a.work.kind==='run'?'Open the run':'Open the chat'}</button>`:''}<button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>
-      <button class="endbtn wd-calm1" onclick="worldCalm('${esc(name)}')">Calm down</button></div>`;
+    <div class="wd-acts">${a.busy&&a.work?`<button class="endbtn wd-work" onclick="worldOpenWork('${jsq(name)}')">${a.work.kind==='build'?'Open App Studio':a.work.kind==='run'?'Open the run':'Open the chat'}</button>`:''}<button class="endbtn wd-pat" onclick="worldPat('${jsq(name)}')">Pat on the back</button>
+      <button class="endbtn wd-calm1" onclick="worldCalm('${jsq(name)}')">Calm down</button></div>`;
 }
 /* Calm the team (or one agent) down: the person's act, like a pat on the back. Every
    feeling fades to its quiet tail and the world's resting mood shows; the why list says
@@ -705,7 +705,7 @@ function worldAsk(){
   if(WORLD.busyAsk)return;
   box.innerHTML=`<div class="wd-who">${avatarImg('@agent','wd-face')}<div><b>${esc(lead)}</b>
       <p class="wd-q">${esc(c.question||'How are you feeling today?')}</p></div></div>
-    <div class="wd-choices">${(c.choices||[]).map(ch=>`<button class="wd-ch" onclick="worldAnswer('${esc(ch.id)}')"><span>${esc(ch.emoji)}</span>${esc(ch.label)}</button>`).join('')}</div>
+    <div class="wd-choices">${(c.choices||[]).map(ch=>`<button class="wd-ch" onclick="worldAnswer('${jsq(ch.id)}')"><span>${esc(ch.emoji)}</span>${esc(ch.label)}</button>`).join('')}</div>
     <input id="wd-words" maxlength="280" placeholder="In a few words, if you like">
     <div class="wd-acts"><button class="endbtn wd-skip" onclick="worldAnswer('',true)">Not today</button>
       <small>Only this world keeps it.</small></div>`;

@@ -11,7 +11,7 @@ function cap(id){return PLATFORM.capabilities?.[id]||{available:false,supported:
 function capNote(id){
   const c=cap(id);if(c.available)return '';
   return `<p class="mut" style="margin-top:6px;opacity:.8">${esc(c.reason||'Not available here.')}
-    ${c.component?`<button class="endbtn" style="margin-left:6px" onclick="installComponent('${esc(c.component)}')">Install…</button>`:''}</p>`;
+    ${c.component?`<button class="endbtn" style="margin-left:6px" onclick="installComponent('${jsq(c.component)}')">Install…</button>`:''}</p>`;
 }
 async function installComponent(id){
   let comp=null;
@@ -62,7 +62,7 @@ async function renderControl(body){
   const sharedComp=shared?(['audio.devices','brightness.set','net.wifi.join','power.profile']
     .map(id=>cap(id)).find(c=>c.reason===shared&&c.component)||{}).component:'';
   body.innerHTML=`<div class="pad">
-    ${shared?`<p class="mut cc-owned">${esc(shared)}${sharedComp?` <button class="endbtn" onclick="installComponent('${esc(sharedComp)}')">Install…</button>`:''}</p>`:''}
+    ${shared?`<p class="mut cc-owned">${esc(shared)}${sharedComp?` <button class="endbtn" onclick="installComponent('${jsq(sharedComp)}')">Install…</button>`:''}</p>`:''}
     <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('volume',16)}</span>Sound</div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
         <button class="endbtn" id="c-mute" style="flex:0 0 72px">${a.muted?'Unmute':'Mute'}</button>
@@ -114,7 +114,7 @@ async function renderControl(body){
         <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
           <span class="mut" style="flex:0 0 110px;overflow:hidden;text-overflow:ellipsis">${esc(disp.monitor||disp.name)}</span>
           <input type="range" min="1" max="100" value="${disp.percent??50}" style="flex:1"
-            onchange="setBrightness('${esc(disp.name)}','${disp.kind}',this.value)">
+            onchange="setBrightness('${jsq(disp.name)}','${jsq(disp.kind)}',this.value)">
         </div>`).join('')||'<p class="mut" style="margin-top:6px">no adjustable displays</p>';
     }catch(e){br.innerHTML='<p class="mut" style="margin-top:6px">brightness unavailable</p>'}
   // the shared reason is said once at the top; the tile says so rather than going blank
@@ -135,7 +135,7 @@ async function renderControl(body){
     try{
       const p=await (await fetch('/api/power/profile')).json();
       prof.innerHTML=(p.profiles||[]).map(x=>
-        `<button class="endbtn ${x===p.active?'on':''}" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${esc(x)}')">${esc(x)}</button>`).join('');
+        `<button class="endbtn ${x===p.active?'on':''}" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${jsq(x)}')">${esc(x)}</button>`).join('');
     }catch(e){}
   }else prof.innerHTML=ccNote('power.profile');
 

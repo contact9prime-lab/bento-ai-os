@@ -462,7 +462,7 @@ function deckWidgetsHTML(){
   const here=(WIDGETS||[]).filter(w=>w.place==='deck'&&apps[w.app_id]);
   return here.map(w=>`<div class="deck-group deck-wgroup" data-w="${esc(w.app_id)}">
     <div class="deck-gname">${esc(apps[w.app_id].name)}
-      <button class="deck-wx" title="Unpin" onclick="setWidgetPlace('${esc(w.app_id)}','')">✕</button></div>
+      <button class="deck-wx" title="Unpin" onclick="setWidgetPlace('${jsq(w.app_id)}','')">✕</button></div>
     <div class="deck-wframe"><iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget" sandbox="allow-scripts allow-forms"></iframe></div>
   </div>`).join('');
 }
