@@ -4660,6 +4660,9 @@ async def api_brain_fallbacks_set(body: dict):
         got = fallbackmod.clean((body or {}).get("fallbacks") or [], cfg)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    if any(_agent_cli_refused(f["executor"]) for f in got):
+        return JSONResponse({"error": "only an admin can choose which agent answers on this machine"},
+                            status_code=403)
     cfg["brain_fallbacks"] = got
     cfgmod.save_config(cfg)
     return await api_brain_fallbacks()
@@ -8325,7 +8328,8 @@ async def request_price(model: str, evsend=None) -> bool:
         return True                       # already being asked about; don't stack cards
     pid = uuid.uuid4().hex[:8]
     fut = asyncio.get_event_loop().create_future()
-    state.setdefault("pending_prices", {})[pid] = {"fut": fut, "model": model}
+    state.setdefault("pending_prices", {})[pid] = {"fut": fut, "model": model,
+                                                   "uid": usersmod.current()}
     state.setdefault("price_pending", {})[model] = True
     found = await usagemod.discover_price(state["cfg"], model)
     ev = {"type": "price_request", "id": pid, "model": model, "suggested": found}
@@ -8350,10 +8354,14 @@ async def request_price(model: str, evsend=None) -> bool:
         state.get("price_pending", {}).pop(model, None)
 
 
-async def resolve_price(pid: str, action: str, price_in: float = 0, price_out: float = 0):
-    """Answer a price card: `set` | `skip` | `cancel`."""
+async def resolve_price(pid: str, action: str, price_in: float = 0, price_out: float = 0,
+                        uid: str | None = None):
+    """Answer a price card: `set` | `skip` | `cancel`. Only the account being asked answers."""
     entry = state.get("pending_prices", {}).get(pid)
     if not entry or entry["fut"].done():
+        return
+    if uid is not None and str(entry.get("uid", "") or "") != str(uid or ""):
+        secevents.flag("ws.foreign_turn", "price", source="ws", uid=uid)
         return
     model = entry["model"]
     if action == "set":
@@ -13307,7 +13315,7 @@ async def api_arena_list():
     models = await providers.available_models(cfg)
     brains = await asyncio.to_thread(execmod.brains, cfg, models)
     live = [k[1] for k in _ARENAS if k[0] == uid]
-    return {"choices": arenamod.choices(brains), "recent": arenamod.recent(uid), "live": live,
+    return {"choices": arenamod.choices(_brains_for_caller(brains)), "recent": arenamod.recent(uid), "live": live,
             "min": arenamod.MIN, "max": arenamod.MAX}
 
 
@@ -13325,7 +13333,7 @@ async def api_arena_start(body: dict):
     models = await providers.available_models(cfg)
     brains = await asyncio.to_thread(execmod.brains, cfg, models)
     try:
-        seats = arenamod.contenders(brains, (body or {}).get("contenders"))
+        seats = arenamod.contenders(_brains_for_caller(brains), (body or {}).get("contenders"))
         a = arenamod.new((body or {}).get("task", ""), seats, execmod.default_workspace(cfg))
     except arenamod.ArenaError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
@@ -13431,7 +13439,8 @@ async def api_timetravel_fork(pid: str, body: dict):
     model = str((body or {}).get("model") or "")
     if model:
         brains = await asyncio.to_thread(execmod.brains, state["cfg"], await providers.available_models(state["cfg"]))
-        ok = {c["model"] if c["kind"] == "provider" else c["executor"] for c in arenamod.choices(brains)}
+        ok = {c["model"] if c["kind"] == "provider" else c["executor"]
+              for c in arenamod.choices(_brains_for_caller(brains))}
         if model not in ok:
             return JSONResponse({"error": f"{model!r} is not a brain this machine can run right now"}, status_code=400)
     store = state["store"]
@@ -18729,6 +18738,19 @@ def _queue_add(cid: str, data: dict) -> dict:
     return item
 
 
+def _turn_mine(slot: dict, uid: str, gone: bool = False) -> bool:
+    """Is this running turn or build this account's? `gone` also says yes to a slot that has
+    ended, which is nobody's to protect (a Stop that arrives just after the turn ended)."""
+    if gone and not slot:
+        return True
+    return str((slot or {}).get("uid", "") or "") == str(uid or "")
+
+
+def _queue_mine(cid: str, uid: str) -> bool:
+    """Every message waiting in this chat was sent by this account (an empty queue is)."""
+    return all(str(i.get("uid", "") or "") == str(uid or "") for i in state["queues"].get(cid) or [])
+
+
 def _queue_public(cid: str) -> list[dict]:
     """The queue as the UI sees it — text and decision only, never image payloads."""
     return [{"id": i["id"], "text": i["text"], "images": len(i["images"]),
@@ -18791,7 +18813,8 @@ async def _queue_flush(cid: str):
             "surface": item["surface"], "origin": item["origin"],
             "context": item["context"], "conversation_id": cid,
             "uid": item.get("uid", "")}
-    state["turns"][cid] = {"agent": None, "task": None, "model": ""}   # claim, then start
+    # claim, then start, with the owner on it: `_queue_broadcast` and every owner check read it
+    state["turns"][cid] = {"agent": None, "task": None, "model": "", "uid": item.get("uid", "")}
     state["turns"][cid]["task"] = asyncio.create_task(run_chat(cid, data))
     await _queue_broadcast(cid, started={"id": item["id"], "text": item["text"]})
 
@@ -18858,6 +18881,29 @@ async def run_chat(cid: str, data: dict):
         return await _run_chat(cid, data)
 
 
+def _agent_cli_refused(requested: str) -> str:
+    """Why this account may not name that agent CLI for one turn, or '' when it may.
+
+    An agent CLI runs on the MACHINE's login and spend, which is why choosing one as the
+    machine's brain is an admin's call (`api_set_brain`). Naming it per turn is the same
+    choice, so it gets the same answer. Riding the brain an admin already chose is fine."""
+    from . import executors as execmod
+    requested = str(requested or "")
+    if requested == "aria" or requested not in execmod.ENGINES:
+        return ""
+    if not usersmod.enabled() or usersmod.is_admin(usersmod.current()):
+        return ""
+    if str(state.machine_cfg().get("engine") or "aria") == requested:
+        return ""
+    return "Only an admin can choose which agent answers on this machine, so this wasn't sent."
+
+
+def _brains_for_caller(brains: dict) -> dict:
+    """The brain list without the agent CLIs this account may not name."""
+    return {**brains, "executors": [e for e in (brains or {}).get("executors") or []
+                                    if e.get("kind") != "agent" or not _agent_cli_refused(e.get("id"))]}
+
+
 class _FallingBack(Exception):
     """The turn goes to the next brain: nothing is saved for this one."""
 
@@ -18892,6 +18938,11 @@ async def _run_chat(cid: str, data: dict):
     # surface it arrived from — chat, omnibar, copilot panel. An explicit engine
     # in the request still wins, so one chat can opt out of the machine setting.
     from . import executors as execmod
+    if (why := _agent_cli_refused(data.get("model") or "")):
+        await evsend({"type": "error", "message": why})
+        await evsend({"type": "turn_end", "conversation_id": cid})
+        turns.pop(cid, None)
+        return
     engine = execmod.resolve_engine(cfg, data.get("model") or "")
     if engine != "aria":
         model = engine
@@ -19312,7 +19363,9 @@ async def _run_chat(cid: str, data: dict):
             if (not said or said.startswith("[error]")) and fallbackmod.unavailable(turn_errors + [said]):
                 fb_tried.append(fallbackmod.key(engine if engine != "aria" else "aria",
                                                 "" if engine != "aria" else model))
-                fb_next = fallbackmod.next_for(cfg, fb_tried)
+                fb_next = fallbackmod.next_for(cfg, fb_tried + [
+                    fallbackmod.key(f["executor"], f["model"]) for f in fallbackmod.chain(cfg)
+                    if _agent_cli_refused(f["executor"])])
         except Exception:
             fb_next = None
         # Saving the reply comes first and alone. Everything after it is
@@ -19758,7 +19811,10 @@ async def build_status():
     """Reconnect support: a reloaded App Studio asks whether a build is still running."""
     b = state.get("build") or {}
     running = bool(b.get("task") and not b["task"].done())
-    return {"running": running, "app_id": b.get("app_id", ""),
+    if not _turn_mine(b, usersmod.current()):
+        # one build at a time, so somebody else's still says "busy", and nothing about it
+        return {"running": running, "app_id": "", "prompt": "", "started_at": 0, "mine": False}
+    return {"running": running, "app_id": b.get("app_id", ""), "mine": True,
             "prompt": b.get("prompt", ""), "started_at": b.get("started_at", 0)}
 
 
@@ -19773,11 +19829,19 @@ async def run_build(data: dict):
 async def _run_build(data: dict):
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     build = state["build"]
-    bcast = state["broadcast"]
+    owner = str(data.get("uid", "") or "")
+
+    async def bcast(ev: dict):
+        # the prompt and the app's source are in these events, so they are the owner's only
+        await state["broadcast_user"](ev, owner)
+
     prompt = (data.get("prompt") or "").strip()
     if not prompt:
         return
     req_model = (data.get("model") or "").strip()
+    if (why := _agent_cli_refused(req_model)):
+        await bcast({"type": "build_error", "message": why})
+        return
     # empty or "auto" ⇒ let the builder pick the most build-capable model available
     model = "" if req_model.lower() in ("", "auto") else req_model
     app_id = data.get("app_id") or ""
@@ -20300,7 +20364,7 @@ async def _run_build(data: dict):
             # anything the repair pass could not fix ships as an explicit warning,
             # never as a silent "success"
             manifest_status, remaining = _finish_build_checks(built["id"])
-        await state["broadcast"]({"type": "apps"})
+        await bcast({"type": "apps"})
         if built:
             await terminal({"type": "build_done", "app_id": built["id"], "name": built["name"],
                             "summary": result["content"][:600],
@@ -20390,12 +20454,31 @@ async def ws_endpoint(ws: WebSocket):
         while True:
             raw = await ws.receive_text()
             data = json.loads(raw)
+            if not isinstance(data, dict):
+                continue
+            # Who this message is from is the socket's signed cookie, before any branch can
+            # read it. `uid` and the turn's own `_` fields are set by this server, so what a
+            # client sent under those names goes here, on arrival: a queued message used to
+            # keep the client's `uid` and run as whoever it named.
+            forged = [k for k in data if k == "uid" or str(k).startswith("_")]
+            for k in forged:
+                data.pop(k, None)
+            if forged:
+                secevents.flag("gate.forged_field", "a socket message named " + ",".join(forged)[:60],
+                               source="ws", uid=ws_uid)
+            data["uid"] = ws_uid
             t = data.get("type")
             if t == "chat":
                 text = (data.get("text") or "").strip()
                 if not text and not _chat_images(data):
                     continue
                 cid = data.get("conversation_id")
+                if cid and cid in turns and not _turn_mine(turns[cid], ws_uid):
+                    # somebody else's running chat: it is not a chat of theirs to steer
+                    secevents.flag("ws.foreign_turn", "chat", source="ws", uid=ws_uid)
+                    await send({"type": "error", "conversation_id": cid,
+                                "message": "That chat isn't yours, so nothing was sent."})
+                    continue
                 if cid and cid in turns:
                     # busy: queue it instead of dropping it. The running agent decides
                     # at its next step boundary whether this belongs to what it is
@@ -20444,21 +20527,23 @@ async def ws_endpoint(ws: WebSocket):
                 # claim before the task starts, stamped with the owner so a
                 # state_sync racing the task creation still scopes it correctly
                 turns[cid] = {"agent": None, "task": None, "model": "", "uid": ws_uid}
-                data["uid"] = ws_uid   # server-set, never from the client
                 turns[cid]["task"] = asyncio.create_task(run_chat(cid, data))
             elif t == "build":
                 if build.get("task") and not build["task"].done():
                     await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
-                    data["uid"] = ws_uid
                     build["uid"] = ws_uid   # whose build it is, for the World's "at work"
                     build["task"] = asyncio.create_task(run_build(data))
             elif t == "build_abort":
+                if not _turn_mine(build, ws_uid):   # one build at a time, and it is its owner's to stop
+                    if build.get("task") and not build["task"].done():
+                        secevents.flag("ws.foreign_turn", "build_abort", source="ws", uid=ws_uid)
+                    continue
                 build["cancel_requested"] = True
                 if build.get("agent"):
                     build["agent"].aborted = True
                 if build.get("task") and not build["task"].done():
-                    await state["broadcast"]({"type": "build_text", "text": "\n(cancelling…)\n"})
+                    await state["broadcast_user"]({"type": "build_text", "text": "\n(cancelling…)\n"}, ws_uid)
                     asyncio.create_task(_force_cancel(build["task"], grace=15.0))
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
@@ -20466,9 +20551,12 @@ async def ws_endpoint(ws: WebSocket):
                                        uid=ws_uid if usersmod.enabled() else "")
             elif t == "price":
                 await resolve_price(data.get("id", ""), str(data.get("action") or "cancel"),
-                                    float(data.get("in") or 0), float(data.get("out") or 0))
+                                    float(data.get("in") or 0), float(data.get("out") or 0), uid=ws_uid)
             elif t == "queue_remove":
                 cid = data.get("conversation_id")
+                if cid and not _queue_mine(cid, ws_uid):
+                    secevents.flag("ws.foreign_turn", "queue_remove", source="ws", uid=ws_uid)
+                    continue
                 if cid and _queue_drop(cid, str(data.get("id") or "")):
                     ag = (turns.get(cid) or {}).get("agent")
                     if ag is not None:   # never triage a message the user took back
@@ -20479,7 +20567,9 @@ async def ws_endpoint(ws: WebSocket):
                     await _queue_broadcast(cid, removed=data.get("id"))
             elif t == "abort":
                 cid = data.get("conversation_id")
-                if cid:  # stop one conversation's turn
+                if cid and not (_queue_mine(cid, ws_uid) and _turn_mine(turns.get(cid) or {}, ws_uid, gone=True)):
+                    secevents.flag("ws.foreign_turn", "abort", source="ws", uid=ws_uid)
+                elif cid:  # stop one conversation's turn
                     # stop means stop: the backlog goes with it, or the next queued
                     # message would start the instant this turn dies
                     if _queue_drop(cid):
@@ -20489,19 +20579,20 @@ async def ws_endpoint(ws: WebSocket):
                         await _queue_broadcast(cid, cleared=True)
                     if cid in turns:
                         _stop(turns[cid])
-                else:    # legacy/global abort: stop every running turn + build
-                    for qcid in list(state["queues"]):
+                else:    # legacy/global abort: stop everything of THIS account's
+                    for qcid in [c for c in state["queues"] if _queue_mine(c, ws_uid)]:
                         _queue_drop(qcid)
                         await _queue_broadcast(qcid, cleared=True)
-                    for tinfo in list(turns.values()):
+                    for tinfo in [i for i in turns.values() if _turn_mine(i, ws_uid)]:
                         if tinfo.get("agent") is not None:
                             tinfo["agent"].clear_inbox()
                         _stop(tinfo)
-                    build["cancel_requested"] = True
-                    if build.get("agent"):
-                        build["agent"].aborted = True
-                    if build.get("task") and not build["task"].done():
-                        asyncio.create_task(_force_cancel(build["task"], grace=15.0))
+                    if _turn_mine(build, ws_uid):
+                        build["cancel_requested"] = True
+                        if build.get("agent"):
+                            build["agent"].aborted = True
+                        if build.get("task") and not build["task"].done():
+                            asyncio.create_task(_force_cancel(build["task"], grace=15.0))
                     for entry in state["pending_approvals"].values():
                         # this person's questions only: a Stop on one account's desk
                         # must not refuse what another account is being asked
