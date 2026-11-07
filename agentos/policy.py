@@ -127,7 +127,9 @@ _NO_PLUGIN_WRITE = [("plugin.install", "*"), ("plugin.enable", "*")]
 _NO_MCP_INSTALL = [("mcp.install", "*")]
 # And a skill from the open: a stranger's procedure the agent will follow from then on.
 _NO_SKILL_INSTALL = [("skill.install", "*")]
-_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE + _NO_MCP_INSTALL + _NO_SKILL_INSTALL
+# And a page drawn over the whole desktop: the person's, and nobody else's to ask for.
+_NO_THEME_SHELL = [("theme.shell", "*")]
+_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE + _NO_MCP_INSTALL + _NO_SKILL_INSTALL + _NO_THEME_SHELL
 # Asking the person for an ability is the team's: the lead, a specialist, a mission's master.
 # Never an app's, a peer's, a linked team's or a pool's: none of them is on this team.
 _NO_CAPABILITY = [("capability.grant", "*")]
@@ -323,6 +325,8 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return action, res
     if name == "use_skill":
         return "skill.use", f"skill:{args.get('name', '') or '*'}"
+    if name == "create_theme_shell":
+        return "theme.shell", f"theme:{str(args.get('name') or '').strip() or '*'}"
     if name == "install_skill":
         return "skill.install", f"skill:{str(args.get('source') or '').strip() or '*'}"
     # An ability for somebody: its own action, so apps, peers and linked teams are refused
@@ -505,7 +509,7 @@ TAINT_MODES = ("off", "ask", "strict")
 # After untrusted content these are held for a person like a risky step, because a web
 # page that can get one line into memory or a skill is a page that speaks in every later
 # turn. Reading stays free; only the write that outlives the turn is shown.
-TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation"}
+TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation", "run_automation"}
 
 # Paranoid is "ask before anything that isn't just reading". Before 0.6.18 it behaved
 # exactly like balanced, under a label that said "asks before every action".

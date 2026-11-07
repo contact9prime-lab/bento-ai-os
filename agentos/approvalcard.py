@@ -63,6 +63,8 @@ GOALS = {
     "run_python": "Run Python code",
     "install_mcp_server": "Install a tool server",
     "install_skill": "Install a skill from the internet",
+    "create_theme": "Change how the whole desktop looks",
+    "create_theme_shell": "Draw a page over the whole desktop",
     "request_capability": "Give a department or an agent an ability it lacks",
     "add_mcp_server": "Add a tool server",
     "install_openclaw_plugin": "Install a plugin",

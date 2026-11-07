@@ -189,7 +189,10 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               "install_skill",
               # a department or an agent asking for an ability it lacks (running code):
               # the person's yes, every time, whoever asks (agentos/tools.py ABILITIES)
-              "request_capability"}
+              "request_capability",
+              # a whole page the agent wrote, drawn over the desktop. It runs in a sandbox and
+              # reaches nothing, and it can still look like this desktop asking for a password
+              "create_theme_shell"}
 
 
 # Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
@@ -206,7 +209,7 @@ ASK_FROM_SPECIALISTS = {"run_python"}
 # given its own line in risk_of.
 # Tools that act for ONE app when the caller is that app (its appTool) or is building
 # it (App Studio): the agent loop and /api/tool inject `_app`, never the model or the page.
-APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data")
+APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data", "desktop_state")
 
 SAFE_TOOLS = {
     # reading
@@ -225,7 +228,7 @@ SAFE_TOOLS = {
     "linked_teams",
     # the community's shared notes (pool.py): read only, and UNTRUSTED (agent.py)
     "community_recall",
-    # this OS's own records and looks. The ones that write something an agent reads
+    # this OS's own records and looks (create_theme is risky: see risk_of). The ones that write something an agent reads
     # back later (memory, the graph, skills, automations) are held for a person after
     # untrusted content: see policy.TAINT_WATCH.
     "remember", "forget", "kg_add", "save_skill", "save_automation", "run_automation",
@@ -1790,10 +1793,11 @@ class Toolbox(usersmod.Scoped):
         bg3, bg4, line, txt, dim, dim2, acc, acc2, warn, err, ok, glass — hex/rgba). `css` is
         extra CSS to restyle the desktop chrome (#menubar, #taskbar, .win, .aicon, .widget,
         #desktop). Optional web font via font_url + font_family. `shell_html` (optional) is a
-        COMPLETE replacement interface — full HTML+CSS+JS that takes over the whole screen
-        instead of the stock desktop; it can call every endpoint in GET /api/registry (fetch +
-        /ws websocket). Pass shell_html="" to remove an existing shell."""
+        no longer taken here: see create_theme_shell."""
         import json as _j
+        if shell_html is not None:
+            return ("[error] create_theme no longer takes shell_html. Use create_theme_shell, "
+                    "which asks the person first.")
         try:
             v = _j.loads(vars) if isinstance(vars, str) and vars.strip() else (vars or {})
         except Exception as e:
@@ -1813,22 +1817,47 @@ class Toolbox(usersmod.Scoped):
                              "family": font_family or (theme.get("font") or {}).get("family", "")}
         elif font_family and theme.get("font"):
             theme["font"]["family"] = font_family
-        if shell_html is not None:
-            if shell_html.strip():
-                theme["shell"] = shell_html
-            else:
-                theme.pop("shell", None)   # explicit empty string removes the shell
         theme.update(name=name, custom=True, apply=True)
         self.store.save_theme(name, _j.dumps(theme))
-        if self.broadcast:
-            await self.broadcast({"type": "themes"})
-            await self.broadcast({"type": "theme_apply", "theme": theme})
+        await self._theme_tell(theme)
         self.store.log("system", f"theme {'refined' if refining else 'created'} by agent: {name}")
         extras = (" + custom CSS" if theme.get("css") else "") + (" + a full replacement shell" if theme.get("shell") else "")
         changed = ", ".join(sorted(v)) if v else "no color changes"
         return (f"theme '{name}' {'refined in place (changed: ' + changed + ')' if refining else 'created'} "
                 f"and applied live — {len(theme.get('v') or {})} color variables{extras}. "
                 f"To iterate further, call create_theme again with the SAME name and only the fields to change.")
+
+    async def create_theme_shell(self, name: str, shell_html: str = "") -> str:
+        """Put a whole page of the agent's over the desktop, on a theme by that name, or
+        take it off with shell_html="". The person is asked every time (ALWAYS_ASK). The page
+        runs in a sandboxed frame with an opaque origin and no network: it holds no cookie and
+        cannot call the API or open a socket, so it draws and animates and that is all. It can
+        open a desktop app with parent.postMessage({bento_shell: 'open', app: 'chat'}, '*')."""
+        import json as _j
+        name = (name or "").strip()
+        if not name:
+            return "[error] a shell needs the name of a theme"
+        theme = next((t for t in self.store.list_themes()
+                      if t.get("name", "").lower() == name.lower()), None) \
+            or {"mode": "dark", "v": {}, "css": ""}
+        if (shell_html or "").strip():
+            theme["shell"] = shell_html
+        else:
+            theme.pop("shell", None)
+        theme.update(name=name, custom=True, apply=True)
+        self.store.save_theme(name, _j.dumps(theme))
+        await self._theme_tell(theme)
+        self.store.log("system", f"theme shell {'set' if theme.get('shell') else 'removed'} by agent: {name}")
+        return (f"theme '{name}': the shell is {'on' if theme.get('shell') else 'off'}. It runs "
+                "in a sandbox with no network and cannot reach the API.")
+
+    async def _theme_tell(self, theme: dict) -> None:
+        """A theme is news for its owner's screens only: it lives in their own database."""
+        send = getattr(self, "broadcast_user", None)
+        if send:
+            me = usersmod.current()
+            await send({"type": "themes"}, me)
+            await send({"type": "theme_apply", "theme": theme}, me)
 
     # ---- machine verbs: the things Settings can do, sayable in a sentence ----
     #
@@ -3339,7 +3368,9 @@ class Toolbox(usersmod.Scoped):
         if name == "list_folders":
             return "safe", ""
         if name == "create_theme":
-            return "safe", ""
+            return "risky", "Restyles the whole desktop, approval cards included."
+        if name == "create_theme_shell":
+            return "risky", "Draws a page the agent wrote over the whole desktop."
         if name == "create_app":
             return "risky", "Installs a UI app (HTML/JS) onto the AgentOS desktop."
         if name in ("develop_agentos", "restart_agentos"):
@@ -3778,15 +3809,21 @@ class Toolbox(usersmod.Scoped):
     _NO_SHELL = ("[error] not supported on this platform: no desktop shell channel — "
                  "the browser UI is the shell and it isn't connected")
 
-    async def desktop_state(self) -> str:
+    async def desktop_state(self, _app: str = "") -> str:
         """One live snapshot of the desktop: shell apps, native windows + focus,
         workspace, battery, power profile, network, volume, brightness, and unread
-        notifications. Every section is best-effort; unavailable ones are omitted."""
+        notifications. Every section is best-effort; unavailable ones are omitted.
+        An app asking (`_app`, the runtime's and never the model's) doesn't hear which other
+        apps are open: an app's id was how one app reached another's source and data."""
         from . import host
         out: dict = {}
         if self.shell is not None:
             try:
                 ok, data = await self.shell("list_open_apps", {}, timeout=3)
+                if ok and _app and isinstance(data, dict):
+                    data = {**data, "open": [w for w in data.get("open") or []
+                                             if not str(w.get("app", "")).startswith("ua_")
+                                             or w.get("app") == f"ua_{_app}"]}
                 if ok:
                     out["shell_apps"] = data
             except Exception:
@@ -4120,8 +4157,10 @@ class Toolbox(usersmod.Scoped):
             known = ", ".join(r["name"] for r in self.store.list_automations()) or "none saved"
             return f"[error] no automation named {name!r}. Saved: {known}"
         self.store.mark_automation_run(a["id"])
-        if self.broadcast:
-            await self.broadcast({"type": "automation.run", "automation": a})
+        # Its id, to its owner's screens: the page reads the steps from its own account's list
+        send = getattr(self, "broadcast_user", None)
+        if send:
+            await send({"type": "automation.run", "id": a["id"], "name": a["name"]}, usersmod.current())
         self.store.log("automation", f"ran {a['name']}", {"via": "agent"})
         return f"ran automation '{a['name']}' ({len(a['steps'])} steps)"
 
@@ -4992,10 +5031,8 @@ TOOL_SCHEMAS = [
                        "(corner radii), el-2..el-5 (shadows), glass-tint/glass-blur (the glass recipe), "
                        "fs-base (text size)). `css` is extra CSS to restyle chrome: windows (.win, .ttl), the top menu "
                        "bar (#menubar), the dock (#taskbar), app icons (.aicon), widgets (.widget), the desktop "
-                       "(#desktop). Optional web font (font_url + font_family, e.g. a Google Fonts URL). For a "
-                       "TOTAL redesign pass shell_html: complete HTML+CSS+JS that replaces the stock desktop with "
-                       "your own interface — it runs same-origin and may use every endpoint listed by GET "
-                       "/api/registry (REST + the /ws websocket), so it can do anything the stock UI does. "
+                       "(#desktop). Optional web font (font_family + font_url, a Google Fonts URL: other hosts "
+                       "don't load). For a page that replaces the desktop, see create_theme_shell. "
                        "Applies live; saved to the Themes app. Use when the user asks to restyle, redesign, "
                        "tweak, or completely reimagine the UI.",
         "parameters": {
@@ -5007,9 +5044,24 @@ TOOL_SCHEMAS = [
                 "css": {"type": "string", "description": "extra CSS restyling the desktop chrome/widgets; omit when refining to keep the current css"},
                 "font_url": {"type": "string", "description": "optional stylesheet URL for a web font, e.g. a Google Fonts CSS link"},
                 "font_family": {"type": "string", "description": "the CSS font-family name that font provides, e.g. 'Inter'"},
-                "shell_html": {"type": "string", "description": "optional full replacement interface (HTML+CSS+JS) that takes over the screen; omit to keep an existing shell, pass \"\" to remove it; call GET /api/registry for the endpoints it can use"},
             },
             "required": ["name", "vars"],
+        },
+    },
+    {
+        "name": "create_theme_shell",
+        "description": "Replace the desktop with a page you write (HTML, CSS and JS), on a theme by that name, or "
+                       "take it off with shell_html=\"\". The person is asked every time. It runs in a sandboxed "
+                       "frame with no network: it cannot call the API, open a socket or load scripts from elsewhere, "
+                       "so it can only draw. It may open a desktop app with parent.postMessage({bento_shell: 'open', "
+                       "app: 'chat'}, '*').",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "the theme this shell belongs to"},
+                "shell_html": {"type": "string", "description": "the whole page, or \"\" to remove the shell"},
+            },
+            "required": ["name"],
         },
     },
     {

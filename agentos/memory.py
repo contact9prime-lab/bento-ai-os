@@ -634,6 +634,12 @@ CREATE INDEX IF NOT EXISTS idx_usage_conv ON usage(conversation_id, ts);
 """
 
 
+def plain_app_name(name) -> str:
+    """An app's name is plain text. It comes from a package or from a <title> a model wrote,
+    and it is drawn all over the desktop, so markup and control characters stop here."""
+    return "".join(c for c in str(name or "") if c not in "<>" and (ord(c) >= 32 and ord(c) != 127)).strip()
+
+
 class Store:
     def __init__(self, db_path: Path | None = None):
         # No path is the machine's own database: the terminal verbs (`bento pool`, `bento
@@ -1726,7 +1732,7 @@ class Store:
 
     def save_app(self, name: str, icon: str, description: str, html: str,
                  note: str = "", conversation_id: str = "") -> str:
-        name = name.strip()
+        name = plain_app_name(name)
         now = time.time()
         row = self.db.execute("SELECT id, html FROM user_apps WHERE name=? COLLATE NOCASE", (name,)).fetchone()
         if row:
@@ -1755,7 +1761,7 @@ class Store:
             return "app not found"
         sets, params = [], []
         if name and name.strip() and name.strip() != app["name"]:
-            name = name.strip()[:60]
+            name = plain_app_name(name)[:60]
             clash = self.db.execute(
                 "SELECT id FROM user_apps WHERE name=? COLLATE NOCASE AND id!=?",
                 (name, aid)).fetchone()
