@@ -34,8 +34,8 @@ starting the warehouse demo on Claude Code. The first start sets the three zones
   6/7 Allowing the sensors and switches
   7/7 Switching on the cold room mission
 
-  the floor  http://127.0.0.1:18900/   readings live, and trouble to cause
-  the hub    http://127.0.0.1:18901/   ask it in Chat
+  the floor  http://127.0.0.1:18900/?k=…       readings live, and trouble to cause
+  the hub    http://127.0.0.1:18901/?entry=…   ask it in Chat
 
   try asking:
     Morning. Walk me through the warehouse.
@@ -45,6 +45,10 @@ starting the warehouse demo on Claude Code. The first start sets the three zones
 
 `bento demo warehouse stop` ends it. `--fresh` sets it up again from nothing, `--open` opens the
 floor when it's ready.
+
+Those addresses carry a key made for this run. The demo's servers have no accounts, so without it
+anything running on this computer could use them as an admin. Devices gives them to the demo's own user and
+to an admin, and `bento demo warehouse status` prints them.
 
 ![Devices on a phone: the demo is running, with Open the floor, Open the hub and Stop](screenshots/warehouse-demo-devices-phone.png)
 

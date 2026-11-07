@@ -1,8 +1,10 @@
 """Configuration: loaded from ~/.agentos/config.json, env vars fill in API keys."""
 
+import contextlib
 import copy
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from . import modelcatalog as _mc
@@ -352,6 +354,8 @@ DEFAULTS = {
     #   session_days  — how long a signed-in device stays signed in
     #   trust_loopback— requests from this machine skip the login (the socket
     #                   proves they are local; a LAN client cannot forge it)
+    #   allowed_hosts — names this machine answers to besides its own (a domain in
+    #                   front of it). "*.example.com" covers a domain, "*" every name.
     "remote": {
         "enabled": False,
         "bind": "0.0.0.0",
@@ -359,6 +363,7 @@ DEFAULTS = {
         "pass_salt": "",
         "session_days": 30,
         "trust_loopback": True,
+        "allowed_hosts": [],
     },
 }
 
@@ -451,7 +456,35 @@ def save_config(cfg: dict) -> None:
         # now, so it has to be told
         usersmod.machine_changed(cfg)
     AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+    lock_home()
+    write_private(CONFIG_PATH, json.dumps(cfg, indent=2))
+
+
+def write_private(path, data) -> None:
+    """Replace a file so that it is 0600 from its first byte. Writing and then chmod-ing leaves a
+    window at the umask's mode, and `write_text` alone left config.json at 0664 for good, with the
+    provider keys and the passphrase hash in it. mkstemp creates 0600, and the rename is atomic, so
+    a reader sees the old file or the new one. A symlink is written through: a home may link its
+    config elsewhere."""
+    target = os.path.realpath(path)
+    folder = os.path.dirname(target)
+    os.makedirs(folder, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{os.path.basename(target)}.")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data.encode() if isinstance(data, str) else data)
+        os.replace(tmp, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def lock_home() -> None:
+    """The home holds every secret on the machine, so it is the owner's alone. A home that is a mount
+    the owner cannot chmod stays as it is, and the files inside are still 0600."""
+    with contextlib.suppress(OSError):
+        os.chmod(AGENTOS_HOME, 0o700)
 
 
 def is_first_run() -> bool:
@@ -483,4 +516,8 @@ def mark_setup_complete(cfg: dict) -> None:
 
 def ensure_dirs(cfg: dict) -> None:
     AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
+    lock_home()
+    # an install from before this was written 0600 keeps its old mode until something saves
+    with contextlib.suppress(OSError):
+        os.chmod(CONFIG_PATH, 0o600)
     Path(cfg["workspace"]).expanduser().mkdir(parents=True, exist_ok=True)

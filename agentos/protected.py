@@ -67,9 +67,10 @@ SECURITY_MODULES = frozenset({
 # is writing your own grants, and reading it is reading every conversation at once.
 SECRET_FILES = frozenset({
     "session.key", "vault.key", "vault.json", "users.json",
-    "security-events.jsonl", "integrity.json", "integrity.anchor",
+    "security-events.jsonl", "integrity.json", "integrity.anchor", "entry.token",
     "config.json", "agentos.db", "agentos.db-wal", "agentos.db-shm", "provision.json",
     "git-askpass.sh", "registry_signing.key", "timetravel.key",
+    "session-denied.json", "session.locked",
 })
 WRITE_LOCKED_FILES = frozenset({"inventory.json", "update-history.json"})
 # Sign-ins (MCP tokens, the WhatsApp device, the browser's cookies), and whole copies of a home

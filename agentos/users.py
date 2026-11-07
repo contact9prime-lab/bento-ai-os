@@ -124,24 +124,57 @@ def assets_root_for(uid: str) -> Path:
 # The registry
 # ---------------------------------------------------------------------------
 
+# The last good copy of the registry, and whether the file now on disk could not be read. `absent` and
+# `unreadable` used to be one answer, "nobody", and that answer takes the login away: a hand edit, a
+# damaged file or running out of descriptors made every account vanish and left the machine open.
+_last_good: dict = {}
+_unreadable = [False]
+
+
 def _read() -> dict:
     p = registry_path()
+    key = str(p)
     if not p.exists():
+        _unreadable[0] = False
+        _last_good.pop(key, None)
         return {"users": []}
     try:
         d = json.loads(p.read_text())
-        return d if isinstance(d, dict) and isinstance(d.get("users"), list) else {"users": []}
-    except Exception:
-        return {"users": []}
+        if not isinstance(d, dict) or not isinstance(d.get("users"), list):
+            raise ValueError("not an accounts file")
+    except Exception as e:
+        return _unreadable_answer(key, e)
+    _unreadable[0] = False
+    _last_good[key] = json.dumps(d)
+    return d
+
+
+def _unreadable_answer(key: str, why: Exception) -> dict:
+    """A fault that passes (out of descriptors) keeps the accounts this process last read. With no such
+    copy there is no telling who the accounts are, and `unreadable()` makes the gate shut the network out."""
+    from . import secevents
+    secevents.flag("account.unreadable", why.__class__.__name__, source="users.json")
+    good = _last_good.get(key)
+    if good is not None:
+        _unreadable[0] = False
+        return json.loads(good)
+    _unreadable[0] = True
+    return {"users": []}
+
+
+def unreadable() -> bool:
+    """The accounts file exists and could not be read, so nobody can say who may come in."""
+    _read()
+    return _unreadable[0]
 
 
 def _write(d: dict) -> None:
+    if _unreadable[0]:
+        # whatever is in there may be every account on the machine, and this would replace it
+        raise ValueError("the accounts file can't be read, so it was left alone. Repair or remove "
+                         f"{registry_path()} first")
     p = registry_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(d, indent=2))
-    os.replace(tmp, p)
-    os.chmod(p, 0o600)          # it holds password hashes
+    cfgmod.write_private(p, json.dumps(d, indent=2))      # it holds password hashes
 
 
 def enabled() -> bool:
@@ -180,6 +213,25 @@ def by_name(name: str) -> dict | None:
     return None
 
 
+def session_gen(uid: str) -> int:
+    """Which generation of this account's sessions is still good. A cookie carries the number it was
+    issued under, and one from before the number existed counts as 0, so an account that never changed
+    keeps its sign-ins through the upgrade."""
+    u = get(uid)
+    return int((u or {}).get("sgen") or 0)
+
+
+def end_sessions(uid: str) -> int:
+    """Every cookie this account holds stops working, on every device. Returns the new generation."""
+    d = _read()
+    gen = 0
+    for x in d["users"]:
+        if x["id"] == uid:
+            gen = x["sgen"] = int(x.get("sgen") or 0) + 1
+    _write(d)
+    return gen
+
+
 def is_admin(uid: str) -> bool:
     """A machine with no users has no one to refuse: the single user IS the admin.
 
@@ -214,6 +266,20 @@ def check_password(uid: str, password: str) -> bool:
         return False
     got, _ = hash_password(password or "", u.get("salt", ""))
     return hmac.compare_digest(got, u["pass_hash"])
+
+
+# What a sign-in spends on a name nobody has, so that a name that exists takes no longer to refuse.
+_DUMMY_SALT = secrets.token_hex(16)
+
+
+def verify_login(name: str, password: str) -> dict | None:
+    """The account these credentials open, or None. The password is hashed either way: skipping it for
+    an unknown name made the answer about 17 ms faster, which tells a stranger which names exist."""
+    u = by_name(name)
+    if not u or not u.get("pass_hash"):
+        hash_password(password or "", _DUMMY_SALT)
+        return None
+    return u if check_password(u["id"], password) else None
 
 
 def password_problem(password: str) -> str:
@@ -301,8 +367,7 @@ def adopt(uid: str) -> None:
     machine = cfgmod.load_config()
     own = {k: machine[k] for k in USER_KEYS if k in machine}
     own.setdefault("setup_complete", bool(machine.get("setup_complete")))
-    cfg_path_for(uid).write_text(json.dumps(own, indent=2))
-    os.chmod(cfg_path_for(uid), 0o600)
+    cfgmod.write_private(cfg_path_for(uid), json.dumps(own, indent=2))
     cfgmod.save_config(machine_view(machine))
     # and out of the live machine dict too, or its bridge kept polling the first
     # account's bot as the machine's until the next restart
@@ -368,8 +433,7 @@ def provision(uid: str) -> Path:
     except OSError:
         pass
     if not cfg_path_for(uid).exists():
-        cfg_path_for(uid).write_text(json.dumps(_fresh_user_cfg(uid), indent=2))
-        os.chmod(cfg_path_for(uid), 0o600)
+        cfgmod.write_private(cfg_path_for(uid), json.dumps(_fresh_user_cfg(uid), indent=2))
     return h
 
 
@@ -384,11 +448,23 @@ def set_role(uid: str, role: str) -> dict:
     if u.get("role") == "admin" and role != "admin" and admin_count() <= 1:
         raise ValueError("this is the last admin — promote somebody else first")
     d = _read()
+    changed = u.get("role") != role
     for x in d["users"]:
         if x["id"] == uid:
             x["role"] = role
+            # a cookie says who, the file says what they may do; ending the sessions is what makes a
+            # demotion felt by a phone that is signed in now
+            if changed:
+                x["sgen"] = int(x.get("sgen") or 0) + 1
     _write(d)
+    if changed:
+        _account_flag(u, f"role of {u.get('name')} is now {role}")
     return {"ok": True, "role": role}
+
+
+def _account_flag(u: dict, detail: str) -> None:
+    from . import secevents
+    secevents.flag("account.role", detail, uid=str(u.get("id") or ""))
 
 
 def set_password(uid: str, password: str) -> dict:
@@ -401,10 +477,12 @@ def set_password(uid: str, password: str) -> dict:
     for x in d["users"]:
         if x["id"] == uid:
             x["pass_hash"], x["salt"] = pw, salt
-            found = True
+            x["sgen"] = int(x.get("sgen") or 0) + 1     # a stolen cookie must not outlive the password
+            found = x
     if not found:
         raise ValueError("no such user")
     _write(d)
+    _account_flag(found, f"password of {found.get('name')} changed")
     return {"ok": True}
 
 
@@ -678,12 +756,8 @@ def save_user_cfg(uid: str, cfg: dict) -> None:
     if "workspace" in cfg and workspace_problem(uid, cfg["workspace"]):
         cfg["workspace"] = str(home_for(uid) / "workspace")
     own = {k: cfg[k] for k in USER_KEYS if k in cfg}
-    p = cfg_path_for(uid)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(own, indent=2))
-    os.replace(tmp, p)
-    os.chmod(p, 0o600)          # it holds their channel tokens and credentials
+    # it holds their channel tokens and credentials
+    cfgmod.write_private(cfg_path_for(uid), json.dumps(own, indent=2))
 
 
 #: The server's own machine config, the live dict `state.machine_cfg()` returns.

@@ -46,6 +46,7 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "host.refused": ("A request named a host this machine does not answer to", 5, 300),
     "origin.refused": ("A cross-origin request was refused", 5, 300),
     "child.refused": ("A process this server started tried to use the person's access", 1, 300),
+    "peer.other_user": ("Another user on this computer tried to use the person's access", 1, 300),
     "account.role": ("An account's role or password changed", 1, 300),
     "account.reach": ("An account tried to reach outside its own home", 3, 300),
     "account.unreadable": ("The accounts file could not be read", 1, 300),

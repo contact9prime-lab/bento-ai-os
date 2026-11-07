@@ -93,7 +93,13 @@ def test_a_waiting_update_keeps_the_page_the_server_started_with(monkeypatch):
         assert "x-bento-waiting" not in r.headers and "the page this server started with" not in r.text
         # restarting is replacing the code that enforces everything: never from afar
         monkeypatch.setattr(servermod.remotemod, "is_loopback", lambda addr: False)
+        assert cl.post("/api/update/restart").status_code == 401, "remote is off: the gate refuses it first"
+        rem = servermod.state.machine_cfg()["remote"]
+        rem["pass_hash"], rem["pass_salt"] = servermod.remotemod.hash_passphrase("a good long phrase")
+        rem["enabled"] = True
+        cl.cookies.set(servermod.remotemod.COOKIE, servermod.remotemod.issue_session(servermod.state.machine_cfg()))
         assert cl.post("/api/update/restart").status_code == 403
+        rem["enabled"], rem["pass_hash"], rem["pass_salt"] = False, "", ""
 
 
 def test_a_pane_that_fails_says_why_and_keeps_its_button():

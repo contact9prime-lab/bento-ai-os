@@ -451,7 +451,7 @@ def test_the_routes_are_admin_only_and_the_card_is_loopback_only():
         body = src[i:i + 900]
         assert "_require_admin()" in body, route
     i = src.index('@app.post("/api/devices/sdcard")')
-    assert "is_loopback" in src[i:i + 900]
+    assert "_at_machine" in src[i:i + 900]
 
 
 def test_no_ssh_library_is_a_dependency():
