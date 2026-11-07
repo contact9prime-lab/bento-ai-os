@@ -112,32 +112,33 @@ def test_a_key_based_remote_still_writes_headers_and_no_auth():
 
 # ---- token storage --------------------------------------------------------------
 
+_URL = "https://mcp.canva.example/mcp"
+
+
 def test_tokens_round_trip_and_are_not_world_readable(tmp_path, monkeypatch):
-    monkeypatch.setattr(mcp_oauth, "TOKEN_DIR", tmp_path / "oauth")
-    assert not mcp_oauth.has_tokens("canva")
-    mcp_oauth._write("canva", {"tokens": {"access_token": "secret"}})
-    assert mcp_oauth.has_tokens("canva")
-    mode = (tmp_path / "oauth" / "canva.json").stat().st_mode & 0o777
+    assert not mcp_oauth.has_tokens("canva", _URL)
+    mcp_oauth._write("canva", _URL, {"tokens": {"access_token": "secret"}})
+    assert mcp_oauth.has_tokens("canva", _URL)
+    mode = mcp_oauth._token_path("canva", _URL).stat().st_mode & 0o777
     assert mode == 0o600, oct(mode)   # a refresh token is a standing credential
     assert mcp_oauth.forget("canva") is True
-    assert not mcp_oauth.has_tokens("canva")
+    assert not mcp_oauth.has_tokens("canva", _URL)
     assert mcp_oauth.forget("canva") is False
 
 
 def test_token_filename_cannot_escape_the_directory(tmp_path, monkeypatch):
-    monkeypatch.setattr(mcp_oauth, "TOKEN_DIR", tmp_path / "oauth")
-    p = mcp_oauth._token_path("../../etc/passwd")
-    assert p.parent == tmp_path / "oauth" and "/" not in p.name
+    from agentos import config as cfgmod
+    p = mcp_oauth._token_path("../../etc/passwd", _URL)
+    assert p.parent == cfgmod.AGENTOS_HOME / "oauth" and "/" not in p.name
 
 
 def test_forget_drops_the_client_registration_too(tmp_path, monkeypatch):
     """Keeping the DCR client would silently reuse an authorisation the user just
     ended, so Disconnect has to remove both halves."""
-    monkeypatch.setattr(mcp_oauth, "TOKEN_DIR", tmp_path / "oauth")
-    mcp_oauth._write("canva", {"tokens": {"access_token": "a"},
+    mcp_oauth._write("canva", _URL, {"tokens": {"access_token": "a"},
                                "client": {"client_id": "c"}})
     mcp_oauth.forget("canva")
-    assert mcp_oauth._read("canva") == {}
+    assert mcp_oauth._read("canva", _URL) == {}
 
 
 # ---- the pending-authorisation handshake ----------------------------------------
@@ -149,25 +150,25 @@ def test_resolve_reports_whether_anything_was_waiting():
 @pytest.mark.asyncio
 async def test_callback_wakes_the_waiting_connection():
     p = mcp_oauth.Pending("canva", "https://auth.test/x")
-    mcp_oauth._pending["canva"] = p
+    mcp_oauth._pending[("", "canva")] = p
     try:
         assert [x["name"] for x in mcp_oauth.pending_status()] == ["canva"]
         assert mcp_oauth.pending_url("canva") == "https://auth.test/x"
         assert mcp_oauth.resolve("canva", "the-code", "the-state") is True
         assert p.event.is_set() and p.code == "the-code" and p.state == "the-state"
     finally:
-        mcp_oauth._pending.pop("canva", None)
+        mcp_oauth._pending.pop(("", "canva"), None)
 
 
 @pytest.mark.asyncio
 async def test_cancel_unblocks_with_an_error():
     p = mcp_oauth.Pending("canva", "https://auth.test/x")
-    mcp_oauth._pending["canva"] = p
+    mcp_oauth._pending[("", "canva")] = p
     try:
         assert mcp_oauth.cancel("canva") is True
         assert p.event.is_set() and p.error == "cancelled"
     finally:
-        mcp_oauth._pending.pop("canva", None)
+        mcp_oauth._pending.pop(("", "canva"), None)
 
 
 def test_redirect_uri_is_per_server(monkeypatch):

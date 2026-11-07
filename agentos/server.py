@@ -391,7 +391,8 @@ async def startup():
     # An OAuth server asks for consent from inside its own connection attempt, which
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
-    mcp_oauth.set_notifier(broadcast, ui_probe=lambda: bool(clients))
+    # The consent URL is one person's: on a machine with accounts it reaches only them.
+    mcp_oauth.set_notifier(_owner_send(), ui_probe=lambda: bool(clients))
     # The vault: every read of a secret is one diary line saying who it was for,
     # and a config that still holds a password in clear hands it over now.
     vaultmod.set_reader_log(lambda name, actor: state["store"].log(
@@ -5187,6 +5188,11 @@ async def api_put_mcp(body: dict):
     """Replace the MCP server config and reconnect."""
     servers = body.get("servers")
     if isinstance(servers, dict):
+        servers = _keep_masked(servers, state["cfg"].get("mcp_servers") or {})
+        from . import mcp_client
+        for name, conf in servers.items():
+            if (why := mcp_client.refusal(conf if isinstance(conf, dict) else {})):
+                return JSONResponse({"error": f"{name}: {why}"}, status_code=403)
         state["cfg"]["mcp_servers"] = servers
         cfgmod.save_config(state["cfg"])
         await state["mcp"].reload()
@@ -6983,7 +6989,7 @@ async def api_mcp_oauth_connect(name: str):
         url = mcp_oauth.pending_url(name)
         if url:
             return {"ok": True, "url": url, "authorized": False}
-    return {"ok": True, "url": "", "authorized": mcp_oauth.has_tokens(name)}
+    return {"ok": True, "url": "", "authorized": mcp_oauth.has_tokens(name, conf.get("url", ""))}
 
 
 @app.delete("/api/mcp/oauth/{name}")

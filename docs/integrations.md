@@ -244,8 +244,9 @@ bento mcp disconnect canva     # forget the tokens and the registration
   authenticate **natively** — AgentOS speaks OAuth 2.1 itself (`agentos/mcp_oauth.py`):
   it discovers the authorisation server from the `401`, registers itself dynamically,
   runs the code+PKCE exchange and refreshes the token when it expires. No Node, no
-  subprocess, no bridge. Tokens live in `~/.agentos/oauth/<server>.json` at mode `0600`,
-  and **Sign out** deletes both the tokens and the client registration, so the next
+  subprocess, no bridge. Tokens live under the account's own home in `oauth/`, one file per
+  server name and address at mode `0600`, so another account naming a server the same gets
+  nothing. **Sign out** deletes both the tokens and the client registration, so the next
   sign-in genuinely asks again.
 
   Each server gets its own callback path (`/api/mcp/oauth/callback/<name>`), which is how

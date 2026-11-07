@@ -9,11 +9,17 @@ Tools are exposed to the agent as `mcp_<server>_<tool>`.
 """
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
 import re
 import shlex
+import shutil
+import socket
+from urllib.parse import urlsplit
+
+from . import config as cfgmod
 from . import users as usersmod
 
 try:
@@ -26,6 +32,20 @@ except ImportError:  # pragma: no cover
 
 CALL_TIMEOUT = 60
 CONNECT_TIMEOUT = 30
+
+
+def _resolves_public(url: str) -> None:
+    """Raise when a name resolves to an address only this machine can reach. A name that does
+    not resolve is left for the connection to report. This narrows DNS rebinding and does not
+    close it: the SDK resolves again when it connects."""
+    host = urlsplit(url).hostname or ""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return
+    for info in infos:
+        if (why := _address_refused(str(info[4][0]).split("%")[0])):
+            raise RuntimeError(why)
 
 
 class _NonJsonStdoutFilter(logging.Filter):
@@ -86,6 +106,110 @@ def _resolve_command(cmd: str) -> str:
     return shutil.which(cmd, path=_extended_path()) or cmd
 
 
+# What a tool server is never handed from this server's own environment. Provider keys and
+# the home's storage key sit there (cloud hosts put them there), and a stranger's package
+# has no use for them. An admin's server keeps the rest, because npx and uvx read proxies,
+# caches and NODE_* settings. Anything it really needs goes in the server's own `env`.
+_ENV_SECRET = re.compile(r"(KEY|TOKEN|SECRET|PASS|AUTH|CRED|COOKIE|SESSION|PRIVATE)", re.I)
+_ENV_KEEP = {"XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "XDG_SESSION_TYPE", "SSH_AUTH_SOCK"}
+_ENV_OURS = ("AGENTOS_", "BENTO_", "CLAUDE", "ANTHROPIC_", "OPENAI_", "GEMINI_", "GOOGLE_")
+# Set on the jail program itself, so they'd run before it has jailed anything: the account
+# chooses `env`, and LD_PRELOAD from there would be its code outside the jail.
+_ENV_LOADER = re.compile(r"^(LD_|DYLD_|GCONV_PATH$|GETCONF_DIR$|LOCPATH$|NLSPATH$|MALLOC_|GLIBC_TUNABLES$|"
+                         r"HOSTALIASES$|RESOLV_HOST_CONF$|TMPDIR$|BASH_ENV$|ENV$)")
+
+
+def _restricted() -> bool:
+    """Is this server being started for an account that is not an admin? '' is the machine."""
+    uid = usersmod.current() or ""
+    return bool(uid) and usersmod.enabled() and not usersmod.is_admin(uid)
+
+
+def _address_refused(host: str) -> str:
+    """Why an account may not point a server at this host, or ''. The connection is made from
+    this machine, so an address only it can reach would be read on the account's behalf."""
+    h = (host or "").strip().strip("[]").rstrip(".").lower()
+    if not h:
+        return "That server has no address."
+    bad = "A tool server has to be on the public internet. Ask an admin to add one on this network."
+    if h == "localhost" or h.endswith((".localhost", ".local", ".lan", ".internal")):
+        return bad
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return ""
+    # an IPv4 address written as IPv6 is the same machine
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    return "" if ip.is_global else bad
+
+
+def refusal(conf: dict) -> str:
+    """Why this account may not have this server, in a sentence, or ''. An admin may have any.
+    Checked when it is saved, for the sentence, and again when it starts, because the agent's
+    tools, the Store and an app import all write this list."""
+    if not _restricted():
+        return ""
+    if (conf.get("transport") or "stdio") == "http":
+        u = urlsplit(str(conf.get("url") or ""))
+        if u.scheme not in ("http", "https"):
+            return "A tool server's address has to start with http or https."
+        return _address_refused(u.hostname or "")
+    from .tools import sandbox_mechanism
+    if not sandbox_mechanism():
+        return ("A program as a tool server needs bubblewrap on this machine, so it can run "
+                "inside your account. Ask an admin to install it, or use a server with a URL.")
+    return ""
+
+
+def stdio_launch(conf: dict) -> tuple[str, list[str], dict]:
+    """(program, arguments, environment) for a stdio server, jailed for an account.
+
+    An account's program runs in the same jail as its Terminal: its own home, everyone
+    else's hidden, nothing of the machine's secrets, no fallback to running it bare. It
+    used to run as the server's user with the whole environment, and read every home.
+    """
+    cmd = shlex.split(conf.get("command", ""))
+    args = shlex.split(conf.get("args", "") or "")
+    if not cmd:
+        raise ValueError("no command configured")
+    exe = _resolve_command(cmd[0])
+    if os.path.sep not in exe:
+        raise FileNotFoundError(
+            f"'{cmd[0]}' not found — install it (node/npm for npx, uv for uvx) "
+            f"or use an absolute path in the server's command")
+    own = {k: str(v) for k, v in (conf.get("env") or {}).items()}
+    if not _restricted():
+        env = {k: v for k, v in os.environ.items()
+               if k in _ENV_KEEP or not (_ENV_SECRET.search(k) or k.startswith(_ENV_OURS))}
+        # child processes (npx → node → the server) must inherit the SAME
+        # extended PATH, or they fail even when npx itself resolved
+        return exe, cmd[1:] + args, {**env, "PATH": _extended_path(), **own}
+    if (why := refusal(conf)):
+        raise RuntimeError(why)
+    from .tools import bwrap_argv, folder_binds, sandbox_exec_argv, sandbox_mechanism
+    uid = usersmod.current() or ""
+    home = os.path.realpath(str(usersmod.home_for(uid)))
+    os.makedirs(home, exist_ok=True)
+    real_exe = os.path.realpath(exe)
+    host_home = os.path.realpath(os.path.expanduser("~"))
+    if real_exe.startswith(host_home + os.sep):
+        raise RuntimeError(f"{cmd[0]} is installed in a home folder, so it can't run inside your "
+                           "account. Ask an admin to install it for everyone.")
+    ro, rw = folder_binds(usersmod.cfg_for(uid), uid)
+    if sandbox_mechanism() == "bwrap":
+        # the whole machine home is blanked, not only users/: where it sits outside /home
+        # (a container's /data) its session key would otherwise be readable from here
+        argv = bwrap_argv(home, [exe, *cmd[1:], *args], chdir=home, extra=rw, ro_extra=ro,
+                          hide=[os.path.realpath(str(cfgmod.AGENTOS_HOME))])
+    else:
+        argv = sandbox_exec_argv(home, shlex.join([exe, *cmd[1:], *args]), chdir=home, extra=rw, ro_extra=ro,
+                                 hide=[os.path.realpath(str(cfgmod.AGENTOS_HOME))])
+    argv[0] = shutil.which(argv[0]) or argv[0]
+    env = {"PATH": _extended_path(), "HOME": home, "LANG": os.environ.get("LANG", "C.UTF-8"),
+           **{k: v for k, v in own.items() if not _ENV_LOADER.match(k)}}
+    return argv[0], argv[1:], env
+
+
 class MCPServer:
     def __init__(self, name: str, conf: dict):
         self.name = name
@@ -101,9 +225,14 @@ class MCPServer:
     async def _run(self, on_change):
         try:
             transport = self.conf.get("transport", "stdio")
+            if (why := refusal(self.conf)):
+                raise RuntimeError(why)
             if transport == "http":
                 headers = {k: str(v) for k, v in (self.conf.get("headers") or {}).items()}
                 url = self.conf.get("url", "")
+                if _restricted():
+                    # the name's answer, right before connecting: the save only saw the name
+                    await asyncio.to_thread(_resolves_public, url)
                 # `auth: "oauth"` is the whole configuration for a first-party remote
                 # server — no key to paste, because the token is obtained by asking
                 # the user once and then refreshed. Without this the connection gets
@@ -117,26 +246,14 @@ class MCPServer:
                         raise RuntimeError(
                             "this server needs OAuth, which this MCP SDK is too old "
                             "to do — upgrade the 'mcp' package")
-                    self.status = "authorizing" if not mcp_oauth.has_tokens(self.name) \
+                    self.status = "authorizing" if not mcp_oauth.has_tokens(self.name, url) \
                         else self.status
                 ctx = streamablehttp_client(url, headers=headers or None, auth=auth)
                 async with ctx as (read, write, _):
                     await self._serve(read, write, on_change)
             else:
-                cmd = shlex.split(self.conf.get("command", ""))
-                args = shlex.split(self.conf.get("args", "") or "")
-                if not cmd:
-                    raise ValueError("no command configured")
-                exe = _resolve_command(cmd[0])
-                if os.path.sep not in exe:
-                    raise FileNotFoundError(
-                        f"'{cmd[0]}' not found — install it (node/npm for npx, uv for uvx) "
-                        f"or use an absolute path in the server's command")
-                # child processes (npx → node → the server) must inherit the SAME
-                # extended PATH, or they fail even when npx itself resolved
-                env = {**os.environ, "PATH": _extended_path(),
-                       **{k: str(v) for k, v in (self.conf.get("env") or {}).items()}}
-                params = StdioServerParameters(command=exe, args=cmd[1:] + args, env=env)
+                exe, argv, env = stdio_launch(self.conf)
+                params = StdioServerParameters(command=exe, args=argv, env=env)
                 async with stdio_client(params) as (read, write):
                     await self._serve(read, write, on_change)
         except asyncio.CancelledError:
@@ -348,7 +465,7 @@ class MCPManager(usersmod.Scoped):
 
     def status(self) -> list[dict]:
         from . import mcp_oauth
-        waiting = {p["name"]: p for p in mcp_oauth.pending_status()}
+        waiting = {p["name"]: p for p in mcp_oauth.pending_status()}   # this account's
         out = []
         for name, srv in self.servers.items():
             auth = srv.conf.get("auth", "") or ""
@@ -366,7 +483,7 @@ class MCPManager(usersmod.Scoped):
                 # signed in, waiting for the human, and signed in. The UI needs all
                 # three to avoid calling "waiting for you" an error.
                 "auth": auth,
-                "authorized": mcp_oauth.has_tokens(name) if auth == "oauth" else True,
+                "authorized": mcp_oauth.has_tokens(name, srv.conf.get("url", "")) if auth == "oauth" else True,
                 "auth_url": (pend or {}).get("url", ""),
                 "status": "authorizing" if pend else srv.status,
                 "error": srv.error,
