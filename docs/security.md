@@ -192,6 +192,137 @@ your own disk is yours, and marking every file read untrusted would escalate hal
 in the OS and train you to click through the prompt. A file you downloaded is the honest gap
 that leaves, and closing it needs provenance on the file rather than on the tool.
 
+## The watcher: if the code changes, you hear and the agents stop
+
+Asked for as "there should be a watcher if the file has been changed by the AI". `agentos/integrity.py`
+hashes the code tree (`agentos/**`, `install.sh`, `pyproject.toml`) when the server starts and looks again
+every 30 seconds. It also watches the locked files in every home: `session.key`, `vault.key`, `ledger.key`,
+the link CA, `users.json`, and the security settings in `config.json`.
+
+When one changes without the OS having done it:
+
+1. The security record gets a line naming the file, and an alert reaches your screens and your Telegram or WhatsApp.
+2. **The agents stop.** The gate refuses every step (`integrity-hold`, ahead of every grant and autonomy level),
+   new turns are refused with a sentence, running turns are ended, and running agent CLIs are stopped.
+3. It stays that way across a restart until a person clears it, at a terminal outside Bento:
+
+```bash
+bento integrity status     # what changed, sealed or not, signed or not, locked or not
+bento integrity accept     # after you've looked. It lists what it takes as correct, and you type the word.
+```
+
+What it looks like, after a file appeared in the code tree:
+
+```
+$ bento integrity status
+  Agents are stopped because agentos/zz_planted.py changed. If that was you, run bento integrity accept at this machine's terminal.
+  code: ~/.local/src/bento
+  differs from the record: agentos/zz_planted.py
+
+$ bento integrity accept
+✗ This needs a person at a terminal, and this isn't a terminal.
+
+$ bento integrity accept
+  Code: ~/.local/src/bento (353 files)
+  This will be taken as correct:
+    agentos/zz_planted.py
+  Type accept to go on: accept
+✓ Accepted. The server lets agents run within a minute.
+
+$ bento integrity status
+  Watching 353 files, sealed, unsigned.
+  code: ~/.local/src/bento
+```
+
+![The Security card with agents stopped](screenshots/security-card-held.png)
+
+There is no route, button or tool that clears it. The card in Settings → Permissions → Security only reads.
+
+The server and anything that isn't in a jail run as the same Unix user, so here is exactly what each layer does
+about somebody with that access:
+
+| Layer | Same-user code **can't** | Same-user code **can** |
+|---|---|---|
+| Memory baseline | Change a file unseen while the server runs | Kill the server and change files while it's down |
+| Record, unsigned (`bento integrity seal`) | Change code while stopped with nothing noticing, unless it also rewrites the record | Rewrite the record too. It reads "unsigned" everywhere for that reason |
+| Record, signed (`keygen`, `trust`, `seal --key`) | Forge a record, or accept a change, without the key that stays off this machine | Replace `integrity.py` itself so it stops checking, then restart |
+| The hold | Lift it through any tool, route or model | Detach from the server, fake a terminal and type the phrase. On a machine with a signing key that gets nowhere, because accept needs the key |
+| **Root lock (`bento integrity lock`)** | **Write its own gate at all, or swap a dependency in `.venv`** | Read what this user can read, and run its own programs as this user |
+| Ledger key | (Reaching only the database) rewrite a row and have it verify | (Reading `ledger.key`) re-chain the ledger and move the anchor |
+
+The lock is the only real boundary in this table. Everything above it makes a change noticed, or makes it take
+more than one step. For a machine that must hold up against its own agents, run agent CLIs under a separate user
+as well: the lock protects the code, not this user's other files.
+
+### Seal, keys and the lock
+
+```bash
+bento integrity keygen /media/usb/bento.key   # on a USB stick, not on this disk
+bento integrity trust <public key>            # from now on every seal here must be signed
+bento integrity seal --key /media/usb/bento.key
+bento integrity lock                          # chown the checkout to root. Shows the command, then asks
+bento integrity unlock                        # before an update. The update says so if you forget
+```
+
+Without a seal, a change made while Bento is stopped goes unseen, and the card says so. A key is optional, and
+once you add one, `accept`, `seal` and `dev` all need it.
+
+`lock` tries passwordless sudo, then a prompt, then hands you the exact command. It also sets the immutable flag
+on the folder where the filesystem has one. The folders above the checkout are still yours, so whoever runs as you
+can rename them and put another copy there. The status line says so. Installing under `/opt` closes that.
+
+**On a development checkout**, a `.git` folder exempts nothing, because an agent can make one. Your own edits hold
+like anybody's, loudly. `bento integrity dev on` (typed at a terminal) makes that checkout warn instead, and the
+warning includes changes an agent makes.
+
+An update (`bento update`, the Settings button, a Zero asked by its hub) and a rollback re-record the code as
+they finish. Nothing else does: `restart_agentos` re-reads the record, so a change is still a change. A file git
+calls dirty is not adopted.
+
+Measured on this development machine (352 files, 13 MB): 16 ms to hash everything at start, 1 ms for an idle look,
+so 0.003% of a core at one look per 30 s. A Pi 3 has no SHA instructions and reads from an SD card, so expect about
+a second at start and about ten times the look, on a thread either way.
+
+### Signed releases, and what the owner has to do
+
+`updates.SIGNING_KEYS` ships empty. Nothing in this repository holds a private key. Until a key is pinned, an update
+still works when a person runs it and says it isn't signed, and a Zero on automatic updates asks instead of
+installing. A signature that fails is refused whoever asks.
+
+To turn it on, on a machine the key can sit on:
+
+```bash
+bento integrity keygen /media/usb/bento-release.key     # prints the key id and the public key
+# 1. Pin the public half in agentos/updates.py:  SIGNING_KEYS = {"bento-xxxxxxxx": "<public key>"}
+# 2. Commit it, and release as usual. The first signed release has to reach machines unsigned,
+#    because they don't know the key yet.
+# 3. At each release commit, with a clean checkout on the release commit:
+bento integrity sign-release --key /media/usb/bento-release.key
+git push origin bento-<version>
+```
+
+`sign-release` puts one line in an annotated tag `bento-<version>`, an Ed25519 signature over the commit and the
+SHA-256 digest of the code. Updates fetch `bento-*` tags, check the signature before anything moves, and roll back
+if the code that arrived has another digest. Commits between signed tags read as unsigned, so a machine with a key
+pinned takes those only with `bento update --apply --allow-unsigned`. To sign everything on the branch, sign each
+commit you want machines to take.
+
+### The ledger
+
+Each ledger row is an HMAC chained to the one before it, under `ledger.key` beside that home's database. `outcome`,
+`detail` and `duration_ms` have a MAC of their own, because the OS stamps them later. The newest row's sequence and
+hash are also written to `ledger.anchor`, outside the database, so deleting the newest rows shows. It is verified at
+start, every ten minutes for new rows, once a day in full, and when you press Check it. A break raises
+`ledger.broken`.
+
+Rows from before the key verify by the old scheme up to a recorded boundary row, whose hash is in the key file, so
+they can't be rewritten and recomputed. If the old rows already had a break when the key was made, it is noted once
+and isn't a new alarm. After a power cut, up to 64 rows may be gone, which is what a WAL without a sync per commit
+can lose. That is a note in a later boot and a break in the same one. There are no SQL triggers refusing edits:
+anybody who can write the file can drop them.
+
+A decision went from about 85 µs to about 105 µs here, nearly all of it still SQLite's commit.
+
 ## The known trade-offs (read this)
 
 - **Local trust:** the HTTP/WS surface has no authentication — protection is the localhost
@@ -215,8 +346,8 @@ that leaves, and closing it needs provenance on the file rather than on the tool
 agentos doctor
 ```
 
-flags: port conflicts and duplicate instances, a crash-looping service, DB integrity, VRAM
-pinning — and **network exposure** (e.g. an Ollama configured on `0.0.0.0`, which anyone on
+flags: port conflicts and duplicate instances, a crash-looping service, DB integrity, whether
+agents are held and the code sealed (`bento integrity status`), VRAM pinning — and **network exposure** (e.g. an Ollama configured on `0.0.0.0`, which anyone on
 your network can use; set `OLLAMA_HOST=127.0.0.1` unless you truly mean to share it).
 
 ## Incident recovery
