@@ -6114,7 +6114,10 @@ async def api_mcp_run(token: str, request: Request):
                             status_code=403)
     auth = request.headers.get("authorization") or ""
     bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-    if mcpbridge.get(token) is None or not secrets.compare_digest(bearer, token):
+    # the URL carries the token, or for Codex its digest (mcpbridge.url_id); the header is the secret
+    named = secrets.compare_digest(bearer, token) or secrets.compare_digest(mcpbridge.url_id(bearer), token)
+    token = bearer
+    if mcpbridge.get(token) is None or not named:
         return JSONResponse({"error": "unknown or expired run token — this bridge answers "
                                       "only the run it was minted for, and only while it "
                                       "runs"}, status_code=401)
@@ -19118,6 +19121,7 @@ async def _run_chat(cid: str, data: dict):
             commits: list[tuple[bool, str]] = []
             # a message typed while it works reaches it at its next step (Run.steer)
             env.steerable = model == "claude-code"
+            env.person = True     # a person's own chat: the CLI reads their user-level settings
             try:
                 await execmod.run_task(text, env, _relay, run)
                 turn_done = True

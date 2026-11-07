@@ -109,7 +109,7 @@ def test_claude_code_is_handed_every_share_and_keeps_read_only_ones_read_only(tm
     deny = cmd[cmd.index("--disallowedTools") + 1]
     assert deny == f"Edit(/{ro}/**)", deny          # `//abs/path` is its absolute form
     assert not any(rw in a for a in cmd[cmd.index("--disallowedTools"):cmd.index("--disallowedTools") + 3])
-    prompt = cmd[cmd.index("--append-system-prompt") + 1]
+    prompt = open(cmd[cmd.index("--append-system-prompt-file") + 1]).read()
     assert f"{ro} (read only)" in prompt and f"{rw} (read and write)" in prompt
     assert "2 shared folders" in env.describe()
 
@@ -126,10 +126,11 @@ def test_gemini_cannot_keep_a_folder_read_only_so_a_writing_run_says_so(tmp_path
     cfg = _cfg(tmp_path, [{"path": ro, "mode": "ro", "users": []},
                           {"path": rw, "mode": "rw", "users": []}])
     cfg["executors"] = {"claude_code": {"tools": ["Read", "Write"]}}
-    cmd = ex.build_command("x", ex.envelope_from(cfg, cfg["workspace"], "gemini-cli"))
+    e = ex.envelope_from(cfg, cfg["workspace"], "gemini-cli")
+    cmd = ex.build_command("x", e)
     inc = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--include-directories"]
     assert inc == [rw]
-    prompt = cmd[cmd.index("--prompt") + 1]
+    prompt = ex.prompt_of("x", e)
     assert "Not available in this run" in prompt and ro in prompt
     # read-only, it gets both
     cfg["executors"] = {"claude_code": {"tools": ["Read"]}}
@@ -142,9 +143,10 @@ def test_codex_gets_the_writable_shares_when_it_may_write(tmp_path):
     cfg = _cfg(tmp_path, [{"path": ro, "mode": "ro", "users": []},
                           {"path": rw, "mode": "rw", "users": []}])
     cfg["executors"] = {"claude_code": {"tools": ["Read", "Edit"]}}
-    cmd = ex.build_command("x", ex.envelope_from(cfg, cfg["workspace"], "codex"))
+    e = ex.envelope_from(cfg, cfg["workspace"], "codex")
+    cmd = ex.build_command("x", e)
     assert [cmd[i + 1] for i, a in enumerate(cmd) if a == "--add-dir"] == [rw]
-    assert ro in cmd[-1], "the prompt names the read-only share it can read"
+    assert ro in ex.prompt_of("x", e), "the prompt names the read-only share it can read"
     cfg["executors"] = {"claude_code": {"tools": ["Read"]}}
     cmd = ex.build_command("x", ex.envelope_from(cfg, cfg["workspace"], "codex"))
     assert "--add-dir" not in cmd

@@ -22,6 +22,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# The suite's fake CLIs live in temp folders, which a forwarded CLI's jail hides. The tests that
+# are about the jail switch it back on (tests/test_cli_jail.py).
+from agentos import executors as _executors  # noqa: E402
+_executors.JAIL_ENFORCED = False
+
 
 @pytest.fixture(autouse=True)
 def _never_touch_the_real_config(tmp_path, monkeypatch):

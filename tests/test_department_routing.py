@@ -284,7 +284,7 @@ def test_the_forwarded_lead_hears_who_does_the_work_first(tmp_path):
         assert "- animator:" not in ctx, "another company's people are that company's"
         assert "- auditor:" not in ctx
         argv = executors.build_command("x", env)
-        conf = json.loads(argv[argv.index("--mcp-config") + 1])
+        conf = json.loads(open(argv[argv.index("--mcp-config") + 1]).read())
         assert conf["mcpServers"]["bento"]["timeout"] == executors.BRIDGE_CALL_MS >= 30 * 60 * 1000
     finally:
         mcpbridge.close_session(tok)
@@ -292,7 +292,8 @@ def test_the_forwarded_lead_hears_who_does_the_work_first(tmp_path):
 
 def test_a_mission_on_claude_code_waits_for_its_specialists():
     src = (ROOT / "agentos/executors.py").read_text()
-    assert src.count('"timeout": BRIDGE_CALL_MS') == 2
+    # chat and missions write the same `--mcp-config` file
+    assert src.count('"timeout": BRIDGE_CALL_MS') == 1 and src.count("_mcp_file(scratch, url, token)") == 2
 
 
 def test_the_lead_signs_off_without_tools():

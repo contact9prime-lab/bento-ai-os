@@ -151,8 +151,13 @@ def test_the_bridge_command_confines_the_executor_to_our_tools():
     assert "--strict-mcp-config" in cmd                       # nothing from ~/.claude.json
     assert cmd[cmd.index("--allowedTools") + 1] == "mcp__bento"
     assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
-    assert "--system-prompt" in cmd and "--append-system-prompt" not in cmd
-    assert '"Authorization": "Bearer T"' in s and '"type": "http"' in s
+    assert "--setting-sources" in cmd and cmd[cmd.index("--setting-sources") + 1] == ""   # no hook runs
+    assert "SYS" not in s and "do it" not in s and "Bearer" not in s, "nothing private in argv"
+    assert open(cmd[cmd.index("--system-prompt-file") + 1]).read() == "SYS"
+    path = cmd[cmd.index("--mcp-config") + 1]
+    assert (os.stat(path).st_mode & 0o777) == 0o600
+    conf = open(path).read()
+    assert '"Authorization": "Bearer T"' in conf and '"type": "http"' in conf
     assert cmd[cmd.index("--model") + 1] == "sonnet"
 
 
