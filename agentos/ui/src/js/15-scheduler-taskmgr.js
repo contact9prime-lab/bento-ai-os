@@ -9,14 +9,14 @@ async function renderTasks(body){
     const last=t.last_status?`last run ${st[t.last_status]||t.last_status}${t.last_at?' '+jobAgo(t.last_at):''}`:'has not run yet';
     return `<div class="item task-row" data-f="${esc(t.title||t.prompt)}"><div class="grow">
       ${t.flow?`<span class="job-hkind">mission</span> `:''}${esc(t.title||t.prompt)}
-      ${t.app_name?`<div class="sub task-app">for <b>${esc(t.app_name)}</b> <button class="endbtn" onclick="taskOpenApp('${esc(t.app_id)}')">Open app</button></div>`
+      ${t.app_name?`<div class="sub task-app">for <b>${esc(t.app_name)}</b> <button class="endbtn" onclick="taskOpenApp('${jsq(t.app_id)}')">Open app</button></div>`
         :t.app_gone?'<div class="sub">for an app that was deleted</div>':''}
       <div class="sub">${esc(t.words||'')} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'waiting for its event'):'switched off'}</div>
       <div class="sub"><span class="task-last ${esc(t.last_status||'')}">${esc(last)}</span>${t.runs_7d?` · ${t.runs_7d} run${t.runs_7d===1?'':'s'} this week`:''}${t.failed_7d?` · <b class="job-bad">${t.failed_7d} failed</b>`:''}</div>
       ${t.last_said?`<div class="sub job-hsaid">${esc(t.last_said)}</div>`:''}</div>
-    <button class="endbtn" onclick="jobHistoryFor({task_id:'${esc(t.id)}'})">Runs</button>
-    <button title="${t.enabled?'Pause':'Resume'}" aria-label="${t.enabled?'Pause':'Resume'}" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
-    <button title="Delete" aria-label="Delete" onclick="delTask('${t.id}')">✕</button></div>`}).join('');
+    <button class="endbtn" onclick="jobHistoryFor({task_id:'${jsq(t.id)}'})">Runs</button>
+    <button title="${t.enabled?'Pause':'Resume'}" aria-label="${t.enabled?'Pause':'Resume'}" onclick="toggleTask('${jsq(t.id)}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
+    <button title="Delete" aria-label="Delete" onclick="delTask('${jsq(t.id)}')">✕</button></div>`}).join('');
   const pb=panelShell(body,{
     title:'Schedule',
     sub:`${d.tasks.length} task${d.tasks.length===1?'':'s'} · ${d.tasks.filter(t=>t.enabled).length} active`,

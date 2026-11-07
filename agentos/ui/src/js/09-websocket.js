@@ -852,7 +852,7 @@ function handle(ev){
     // the server never runs an automation itself — it says "run this" and the
     // desktop does, so a schedule, the agent's tool and the palette all land in
     // the same runner
-    case 'automation.run': onAutomationBroadcast(ev.automation,ev.run); break;
+    case 'automation.run': onAutomationBroadcast(ev); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'eval_result': case 'evals_done':

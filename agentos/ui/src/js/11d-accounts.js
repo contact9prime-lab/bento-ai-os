@@ -33,9 +33,9 @@ function acctSigninCard(){
     const status=on?`signed in as <b>${esc(rec.email)}</b> · reads ${esc(uses.join(' and ')||'nothing yet')}${(rec.uses||[]).includes('send')?' · can send':''}${rec.problem?' · <span class="warn">'+esc(rec.problem)+'</span>':''}`
       :(s.available?'not signed in':'');
     const pend=ACCTS.pending.find(p=>p.provider===s.id);
-    const btns=on?`<button class="endbtn" onclick="acctSignin('${s.id}')">Sign in again</button>
-        <button class="endbtn" onclick="acctSignout('${s.id}')">Sign out</button>`
-      :(s.available?`<button class="endbtn acct-signin" onclick="acctSignin('${s.id}')">Sign in with ${esc(s.label)}</button>`
+    const btns=on?`<button class="endbtn" onclick="acctSignin('${jsq(s.id)}')">Sign in again</button>
+        <button class="endbtn" onclick="acctSignout('${jsq(s.id)}')">Sign out</button>`
+      :(s.available?`<button class="endbtn acct-signin" onclick="acctSignin('${jsq(s.id)}')">Sign in with ${esc(s.label)}</button>`
         :`<button class="endbtn" disabled title="${esc(s.why)}">Sign in with ${esc(s.label)}</button>`);
     const why=(!on&&!s.available)?`<span class="acct-why">Register an app for this machine first. <a href="#" onclick="acctShowClients();return false">App registration ↓</a></span>`:'';
     const wait=pend?`<div class="ghint">waiting for you to finish signing in (${pend.waiting_for}s). <a href="${esc(pend.url)}" target="_blank" rel="noopener">open the page again</a></div>`:'';
@@ -84,7 +84,7 @@ function acctCard(a){
   const doorOpts=[['form',a.id==='mail'?'App password (below)':'An address or app password (below)'],['mcp','Through an MCP server']]
     .concat(ACCTS.signin.filter(s=>s.signed_in&&s.signed_in.email).map(s=>[s.id,'Signed in with '+s.label]));
   const doorSel=pSelect('ac-'+a.id+'-'+wayKey,doorOpts,signedWay?way:(way==='mcp'?'mcp':'form'))
-    .replace('<select','<select onchange="acctDoor(\''+a.id+'\')"');
+    .replace('<select','<select onchange="acctDoor(\''+jsq(a.id)+'\')"');
   const mcpRow=way==='mcp'?pRow('MCP server',pSelect('ac-'+a.id+'-mcp_server',[['','choose a connected server']].concat((a.mcp_servers||[]).map(n=>[n,n])),a.mcp_server||''),
       {desc:(a.mcp_servers||[]).length?'Missions will use this server\'s tools for this account.':'No MCP server is connected yet. Add one in the MCP app first.',f:a.id+' mcp server'}):'';
   const fields=signedWay||way==='mcp'?'':`<details class="acct-adv chsteps"><summary>Another provider: an app password${a.id==='calendar'?' or an ICS address':''}</summary>`+a.fields.map(f=>{
@@ -104,8 +104,8 @@ function acctCard(a){
     ${a.hint&&!signedWay?`<div class="ghint acct-hint" id="ac-${a.id}-hint">${esc(a.hint)}</div>`:`<div class="ghint acct-hint mut" id="ac-${a.id}-hint"></div>`}
     ${fields}
     <div class="prow"><div class="pl"><small id="ac-${a.id}-msg" class="mut"></small></div>
-      <div class="pc"><button class="endbtn" onclick="acctTest('${esc(a.id)}')">Test</button>
-        <button class="endbtn" onclick="acctSave('${esc(a.id)}')">Save</button></div></div>
+      <div class="pc"><button class="endbtn" onclick="acctTest('${jsq(a.id)}')">Test</button>
+        <button class="endbtn" onclick="acctSave('${jsq(a.id)}')">Save</button></div></div>
   </div>`;
 }
 /* this install's OAuth clients — the machine's, so an admin's; the redirect URI is

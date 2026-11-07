@@ -61,7 +61,7 @@ GROUPS = {
                         "generate_wallpaper"],
     "Desktop": ["open_app", "launch_native_app", "list_windows", "focus_window", "manage_window",
                 "desktop_state", "control_desktop", "take_screenshot", "set_wallpaper",
-                "create_theme", "list_themes", "pin_widget", "list_notifications", "system_info",
+                "create_theme", "create_theme_shell", "list_themes", "pin_widget", "list_notifications", "system_info",
                 "system_control", "wifi", "bluetooth", "set_brightness", "audio", "power_profile",
                 "lock_screen", "power_action"],
     "Apps & missions": ["create_app", "read_app_data", "update_app_data", "create_flow", "enable_flow", "list_flows",

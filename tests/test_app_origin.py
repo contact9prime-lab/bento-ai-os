@@ -163,3 +163,12 @@ def test_the_icon_guard_rejects_urls_and_markup():
     assert re.search(r"\\s", fn), "whitespace must disqualify a glyph"
     assert "a-z0-9+.-" in fn, "a URL/data: scheme must disqualify a glyph"
     assert "[...v].length" in fn, "length must be counted in code points, not UTF-16 units"
+
+
+def test_an_app_page_is_opaque_whoever_opens_it(api):
+    """The iframe attribute only protects a page opened in a frame. The response says the same
+    thing itself, so a tab on this URL can't run the app on the desktop's origin (S-34)."""
+    aid = servermod.state["store"].save_app("tab-probe", "", "", "<h1>x</h1>")
+    csp = api.get(f"/api/apps/{aid}/page").headers["content-security-policy"]
+    assert "sandbox allow-scripts allow-forms" in csp
+    assert "allow-same-origin" not in csp and "frame-ancestors 'self'" in csp

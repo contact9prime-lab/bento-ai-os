@@ -55,6 +55,7 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "pool.leader": ("This community's leader changed", 1, 300),
     "provision.refused": ("A machine's claim was refused", 3, 300),
     "beacon.flood": ("Many machines announced themselves at once", 1, 300),
+    "ws.foreign_turn": ("A socket tried to act on another account's work", 1, 300),
     "gate.unlisted_tool": ("A model called a tool it was not offered", 3, 300),
     "cli.folder_refused": ("An agent's CLI was pointed at another account's or a private folder", 1, 300),
     "store.package_refused": ("A public registry entry asked to run something this OS won't", 3, 300),

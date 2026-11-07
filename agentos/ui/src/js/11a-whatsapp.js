@@ -51,7 +51,7 @@ async function waPanel(){
     ? `<div class="wa-line"><b>Other numbers that wrote in</b></div>`
       +chats.map(c=>`<div class="item wa-row"><div class="grow">
           <code>+${esc(c.wa_id)}</code> ${esc(c.name||'')}</div>
-        <button class="endbtn" onclick="waAllow('${esc(c.wa_id)}',${c.allowed?0:1})">
+        <button class="endbtn" onclick="waAllow('${jsq(c.wa_id)}',${c.allowed?0:1})">
           ${c.allowed?'Block':'Allow'}</button></div>`).join('')
     : '';
   // The way back. Without it, choosing the Business API once is a one-way door:

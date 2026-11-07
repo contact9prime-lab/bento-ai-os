@@ -19,7 +19,7 @@ function skillsCatalogHTML(installed){
   const have=e=>installed.some(x=>(x.source||'')===e.src);
   return `<div data-fgroup><div class="sect">Catalog — open-source skills (MIT / Apache-2.0), one click to install</div>
     <div class="cat">${SKILLS_CATALOG.map(e=>`
-      <button class="catcard${have(e)?' inst':''}" data-f="${esc(e.n+' '+e.d)}" onclick="installSkillFrom('${e.src}','${esc(e.n)}')">
+      <button class="catcard${have(e)?' inst':''}" data-f="${esc(e.n+' '+e.d)}" onclick="installSkillFrom('${jsq(e.src)}','${jsq(e.n)}')">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
         <span class="ck" style="color:var(--ok)">${e.lic}</span>
       </button>`).join('')}
@@ -35,8 +35,8 @@ async function renderSkills(body){
   const r=await fetch('/api/skills');const d=await r.json();
   const items=d.skills.map(s=>`<div class="item" data-f="${esc(s.name+' '+(s.description||''))}">
       <div class="grow"><b>${esc(s.name)}</b><div class="sub">${esc(s.description||'')}</div></div>
-      <button title="edit" onclick="editSkill('${s.id}')">✎</button>
-      <button onclick="delSkill('${s.id}')">✕</button></div>`).join('');
+      <button title="edit" onclick="editSkill('${jsq(s.id)}')">✎</button>
+      <button onclick="delSkill('${jsq(s.id)}')">✕</button></div>`).join('');
   const pb=panelShell(body,{
     title:'Skills',
     sub:`${d.skills.length} installed — procedures the agent loads when relevant`,
@@ -321,7 +321,7 @@ async function renderModels(body){
   // provider's model list and wondered why nothing happened. Now the whole row
   // is the control and it says what it does.
   const configured=all.map(m=>`<div class="item${m.id===dft?' on':''}" data-f="${esc(m.id+' '+m.provider)}"
-      style="cursor:pointer" onclick="modelSetDefault('${esc(m.id)}')"
+      style="cursor:pointer" ${doAttrs('modelSetDefault',m.id)}
       title="${m.id===dft?'This is what answers every turn':'Answer with '+esc(m.id)}">
       <div class="grow"><b>${esc(m.name)}</b> ${provBadge(m.provider)} ${m.id===dft?'<span class="badge ok">✓ answering</span>':''}
         <div class="sub">${esc(m.id)}</div></div>
@@ -358,14 +358,14 @@ async function renderModels(body){
     <div id="mdl-list">${(d.models||[]).map(m=>`<div class="item" data-f="${esc(m.name+' '+(m.family||'')+' '+(m.params||''))}">
       <div class="grow"><b>${esc(m.name)}</b> ${running.has(m.name)?'<span class="badge ok">● loaded</span>':''}
         <div class="sub">${fmtB(m.size)}${m.params?' · '+esc(m.params):''}${m.family?' · '+esc(m.family):''}</div></div>
-      <button onclick="modelDelete('${esc(m.name)}')" title="delete">✕</button></div>`).join('')||emptyBox('No local models yet','Pull one from the catalog below — downloads run in the background and show progress here.')}</div>
+      <button ${doAttrs('modelDelete',m.name)} title="delete">✕</button></div>`).join('')||emptyBox('No local models yet','Pull one from the catalog below — downloads run in the background and show progress here.')}</div>
     <div id="mdl-prog" class="mut" style="margin:8px 0"></div></div>
     <div data-fgroup><div class="sect">Get more models</div>
     <div class="cat">${MODEL_CATALOG.map(e=>`
       <div class="catcard${installed.has(e.n)?' inst':''}" data-f="${esc(e.n+' '+e.d)}">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
         <span class="ck" style="color:var(--dim2)">${esc(e.s)}</span>
-        <button class="save" style="margin-top:8px;padding:6px" ${installed.has(e.n)?'disabled':''} onclick="modelPull('${e.n}')">${installed.has(e.n)?'✓ Installed':'Pull'}</button>
+        <button class="save" style="margin-top:8px;padding:6px" ${installed.has(e.n)?'disabled':''} onclick="modelPull('${jsq(e.n)}')">${installed.has(e.n)?'✓ Installed':'Pull'}</button>
       </div>`).join('')}</div>
     <div class="row" style="margin-top:8px"><input id="mdl-name" placeholder="any model from ollama.com/library — e.g. qwen3:8b" list="mdl-sug">
       <datalist id="mdl-sug">${MODEL_SUGGEST.map(s=>`<option value="${s}">`).join('')}</datalist>

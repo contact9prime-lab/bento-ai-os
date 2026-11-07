@@ -19,7 +19,7 @@ async function sysNet(el){
   if(d.error){el.innerHTML=`<p class="mut">${esc(d.error)}</p>`;return}
   el.innerHTML=`<div class="provbox"><div class="ptitle">Wi-Fi</div>
     <div class="row" style="margin-top:8px">
-      <button class="endbtn" onclick="wifiAct({action:'${d.wifi_enabled?'disable':'enable'}'})">${d.wifi_enabled?'Turn Wi-Fi off':'Turn Wi-Fi on'}</button>
+      <button class="endbtn" onclick="wifiAct({action:'${jsq(d.wifi_enabled?'disable':'enable')}'})">${d.wifi_enabled?'Turn Wi-Fi off':'Turn Wi-Fi on'}</button>
       <button class="endbtn" onclick="wifiAct({action:'airplane',on:true})">✈ Airplane mode</button>
       <button class="endbtn" onclick="refreshApp('syssettings')">↻ Rescan</button>
     </div></div>
@@ -29,8 +29,8 @@ async function sysNet(el){
         <div style="font-weight:${n.connected?'700':'500'}">${esc(n.ssid)} ${n.connected?'<span class="mut">· connected</span>':''}</div>
         <div class="mut" style="font-size:11px">${esc(n.security)}${n.saved?' · saved':''}</div>
       </div>
-      ${n.connected?'':`<button class="endbtn" onclick="wifiJoin('${esc(n.ssid).replace(/'/g,"\\'")}','${n.security}',${n.saved})">Join</button>`}
-      ${n.saved?`<button class="endbtn" onclick="wifiAct({action:'forget',ssid:'${esc(n.ssid).replace(/'/g,"\\'")}'})">Forget</button>`:''}
+      ${n.connected?'':`<button class="endbtn" ${doAttrs('wifiJoin',n.ssid,n.security,!!n.saved)}>Join</button>`}
+      ${n.saved?`<button class="endbtn" ${doAttrs('wifiAct',{action:'forget',ssid:n.ssid})}>Forget</button>`:''}
     </div>`).join('')||'<p class="mut">no networks in range</p>'}`;
 }
 async function wifiJoin(ssid,security,saved){
@@ -52,8 +52,8 @@ async function sysBt(el){
   const ad=(d.adapters||[])[0];
   el.innerHTML=`<div class="provbox"><div class="ptitle">Bluetooth</div>
     ${ad?`<div class="row" style="margin-top:8px">
-      <button class="endbtn" onclick="btAct({action:'power',adapter:'${ad.path}',on:${!ad.powered}})">${ad.powered?'Turn off':'Turn on'}</button>
-      <button class="endbtn" onclick="btAct({action:'discover',adapter:'${ad.path}',on:${!ad.discovering}})">${ad.discovering?'Stop scanning':'Scan for devices'}</button>
+      <button class="endbtn" onclick="btAct({action:'power',adapter:'${jsq(ad.path)}',on:${!ad.powered}})">${ad.powered?'Turn off':'Turn on'}</button>
+      <button class="endbtn" onclick="btAct({action:'discover',adapter:'${jsq(ad.path)}',on:${!ad.discovering}})">${ad.discovering?'Stop scanning':'Scan for devices'}</button>
     </div>`:'<p class="mut" style="margin-top:6px">no adapter</p>'}</div>
     ${(d.devices||[]).map(dev=>`<div class="provbox" style="display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
@@ -62,10 +62,10 @@ async function sysBt(el){
           ${dev.battery!=null?`<span class="mut">· 🔋${dev.battery}%</span>`:''}</div>
         <div class="mut" style="font-size:11px">${esc(dev.address)}</div>
       </div>
-      ${dev.connected?`<button class="endbtn" onclick="btAct({action:'disconnect',device:'${dev.path}'})">Disconnect</button>`
-        :dev.paired?`<button class="endbtn" onclick="btAct({action:'connect',device:'${dev.path}'})">Connect</button>`
-        :`<button class="endbtn" onclick="btAct({action:'pair',device:'${dev.path}'})">Pair</button>`}
-      ${dev.paired?`<button class="endbtn" onclick="btRemove('${dev.path}','${esc(dev.name).replace(/'/g,"\\'")}')">✕</button>`:''}
+      ${dev.connected?`<button class="endbtn" onclick="btAct({action:'disconnect',device:'${jsq(dev.path)}'})">Disconnect</button>`
+        :dev.paired?`<button class="endbtn" onclick="btAct({action:'connect',device:'${jsq(dev.path)}'})">Connect</button>`
+        :`<button class="endbtn" onclick="btAct({action:'pair',device:'${jsq(dev.path)}'})">Pair</button>`}
+      ${dev.paired?`<button class="endbtn" ${doAttrs('btRemove',dev.path,dev.name)}>✕</button>`:''}
     </div>`).join('')||'<p class="mut">no devices — scan to discover nearby ones</p>'}`;
 }
 async function btRemove(path,name){
@@ -89,12 +89,12 @@ async function sysDisplays(el){
       return `<option value="${v}" ${on?'selected':''}>${v}</option>`}).join('');
     return `<div class="provbox"><div class="ptitle">${esc(o.name)} ${o.active?'':'· off'} <span class="mut">${esc([o.make,o.model].filter(Boolean).join(' '))}</span></div>
       <div class="row" style="margin-top:8px;align-items:center;gap:8px;flex-wrap:wrap">
-        <select onchange="outCfg('${esc(o.name)}',{mode:this.value})">${modes}</select>
-        <select onchange="outCfg('${esc(o.name)}',{scale:+this.value})">
+        <select onchange="outCfg('${jsq(o.name)}',{mode:this.value})">${modes}</select>
+        <select onchange="outCfg('${jsq(o.name)}',{scale:+this.value})">
           ${[1,1.25,1.5,1.75,2].map(s=>`<option value="${s}" ${Math.abs((o.scale||1)-s)<.01?'selected':''}>${s*100}%</option>`).join('')}</select>
-        <select onchange="outCfg('${esc(o.name)}',{transform:this.value})">
+        <select onchange="outCfg('${jsq(o.name)}',{transform:this.value})">
           ${['normal','90','180','270'].map(t=>`<option ${o.transform===t?'selected':''}>${t}</option>`).join('')}</select>
-        <button class="endbtn" onclick="outCfg('${esc(o.name)}',{enabled:${!o.active}})">${o.active?'Turn off':'Turn on'}</button>
+        <button class="endbtn" onclick="outCfg('${jsq(o.name)}',{enabled:${!o.active}})">${o.active?'Turn off':'Turn on'}</button>
       </div></div>`}).join('')||'<p class="mut">no outputs reported</p>';
   el.insertAdjacentHTML('beforeend',await nightLightBox());
 }
@@ -170,14 +170,14 @@ async function sysSound(el){
   if(!d||d.error){el.innerHTML=`<div class="provbox"><div class="ptitle">Sound</div>${capNote('audio.devices')||`<p class="mut" style="margin-top:6px">${esc(d?.error||'unavailable')}</p>`}</div>`;return}
   el.innerHTML=`<div class="provbox"><div class="ptitle">Output devices</div>
     ${(d.sinks||[]).map(s=>`<div class="row" style="margin-top:8px;align-items:center">
-      <button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${s.id})">${s.default?'✓ ':''}${esc(s.description)}</button>
+      <button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${+s.id})">${s.default?'✓ ':''}${esc(s.description)}</button>
     </div>`).join('')||'<p class="mut" style="margin-top:6px">none</p>'}</div>
   <div class="provbox"><div class="ptitle">Input devices</div>
-    ${(d.sources||[]).map(s=>`<div class="row" style="margin-top:8px"><button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${s.id})">${s.default?'✓ ':''}${esc(s.description)}</button></div>`).join('')||'<p class="mut" style="margin-top:6px">none</p>'}</div>
+    ${(d.sources||[]).map(s=>`<div class="row" style="margin-top:8px"><button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${+s.id})">${s.default?'✓ ':''}${esc(s.description)}</button></div>`).join('')||'<p class="mut" style="margin-top:6px">none</p>'}</div>
   <div class="provbox"><div class="ptitle">App volumes</div>
     ${(d.streams||[]).map(s=>`<div style="display:flex;align-items:center;gap:10px;margin-top:8px">
       <span class="mut" style="flex:0 0 130px;overflow:hidden;text-overflow:ellipsis">${esc(s.app)}</span>
-      <input type="range" min="0" max="100" value="70" style="flex:1" onchange="audioVol(${s.id},this.value)">
+      <input type="range" min="0" max="100" value="70" style="flex:1" onchange="audioVol(${+s.id},this.value)">
     </div>`).join('')||'<p class="mut" style="margin-top:6px">nothing playing</p>'}</div>`;
 }
 async function audioDefault(id){await fetch('/api/audio/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'default',id})});toast('✓ default changed');setTimeout(()=>refreshApp('syssettings'),400)}
@@ -188,7 +188,7 @@ async function sysPower(el){
   let profHtml='';
   if(cap('power.profile').available){
     try{const p=await (await fetch('/api/power/profile')).json();
-      profHtml=(p.profiles||[]).map(x=>`<button class="endbtn" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${esc(x)}')">${x===p.active?'✓ ':''}${esc(x)}</button>`).join('');
+      profHtml=(p.profiles||[]).map(x=>`<button class="endbtn" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${jsq(x)}')">${x===p.active?'✓ ':''}${esc(x)}</button>`).join('');
     }catch(e){}
   }else profHtml=capNote('power.profile');
   el.innerHTML=`<div class="provbox"><div class="ptitle">Battery</div>
@@ -212,7 +212,7 @@ async function sysSession(el){
   el.innerHTML=`<div class="provbox"><div class="ptitle">Desktop mode</div>
       <p class="mut" style="margin-top:6px">${esc(PLATFORM.summary||'')} (running: <b>${esc(PLATFORM.mode)}</b>, detected: ${esc(PLATFORM.detected_mode)})</p>
       <div class="row" style="margin-top:8px">${modes.map(m=>
-        `<button class="endbtn" style="${m===pin?'border-color:var(--acc,#5eead4)':''}" onclick="pinMode('${m}')">${m===pin?'✓ ':''}${m}</button>`).join('')}</div>
+        `<button class="endbtn" style="${m===pin?'border-color:var(--acc,#5eead4)':''}" onclick="pinMode('${jsq(m)}')">${m===pin?'✓ ':''}${m}</button>`).join('')}</div>
       <p class="mut" style="margin-top:8px">"auto" follows how you logged in. Pinning takes effect on the next server start.</p></div>
     <div class="provbox"><div class="ptitle">AgentOS as your desktop</div>
       <p class="mut" style="margin-top:6px">Install AgentOS as a login session — it appears next to Ubuntu at the login
@@ -250,7 +250,7 @@ async function sysComponents(el){
         ${c.available&&!c.installed?`<div class="mut" style="font-size:11px;margin-top:3px;font-family:monospace">${esc(c.command)}</div>`:''}
       </div>
       ${c.installed?'<span class="mut">✓ installed</span>'
-        :c.available?`<button class="endbtn" onclick="installComponent('${c.id}')">Install…</button>`
+        :c.available?`<button class="endbtn" onclick="installComponent('${jsq(c.id)}')">Install…</button>`
         :`<span class="mut" style="max-width:200px;text-align:right;font-size:11.5px">${esc(c.reason||'unavailable here')}</span>`}
     </div>`;
   el.innerHTML=head+COMPGROUPS.map(([g,label,note])=>{
@@ -333,10 +333,10 @@ async function sysRemote(el){
       ${(TUNNEL.reachable||[]).length?`<div class="rm-addr">${TUNNEL.reachable.map(a=>`
           <div class="rm-row"><code>${esc(a.url)}</code>
             <span class="rm-via ${a.via==='Tailscale'?'far':''}">${esc(a.via)} · ${esc(a.who)}</span>
-            <button class="endbtn" onclick="rmCopy('${esc(a.url)}')">Copy</button></div>`).join('')}</div>`
+            <button class="endbtn" onclick="rmCopy('${jsq(a.url)}')">Copy</button></div>`).join('')}</div>`
         :(REMOTE.addresses||[]).length?`<div class="rm-addr">${REMOTE.addresses.map(a=>`
           <div class="rm-row"><code>${esc(a)}</code>
-            <button class="endbtn" onclick="rmCopy('${esc(a)}')">Copy</button></div>`).join('')}</div>`
+            <button class="endbtn" onclick="rmCopy('${jsq(a)}')">Copy</button></div>`).join('')}</div>`
         :'<p class="mut" style="margin-top:6px">No network address detected.</p>'}
     ${/* The LAN list alone made a machine that was already reachable from
           anywhere look like it only worked in the same room. If there is a
@@ -355,18 +355,18 @@ async function sysRemote(el){
       <p class="mut" style="margin-top:8px;line-height:1.6">
         <b>${esc(p.title)}</b> — ${esc(p.what||'')}
         ${p.available?(p.needs?`<br><span style="color:var(--warn)">${esc(p.needs)}</span>${
-            p.needs_url?` <button class="endbtn" onclick="openInBrowser('${esc(p.needs_url)}')">Open</button>`:''}`
+            p.needs_url?` <button class="endbtn" onclick="openInBrowser('${jsq(p.needs_url)}')">Open</button>`:''}`
           :'<br>ready to publish a proper https:// address.')
          :`<br>${esc(p.reason||'')}${p.install_cmd?`
             <br><span class="mut">${esc(p.install_note||'')}</span>
             <br><code class="rm-cmd">${esc(p.install_cmd)}</code>
             <br><button class="endbtn" id="tun-inst-${esc(p.id)}"
-                 onclick="tunInstall('${esc(p.id)}')">Install ${esc(p.title)}</button>`
-           :''}${p.install?` <button class="endbtn" onclick="openInBrowser('${esc(p.install)}')">Docs</button>`:''}`}</p>`).join('')}
+                 onclick="tunInstall('${jsq(p.id)}')">Install ${esc(p.title)}</button>`
+           :''}${p.install?` <button class="endbtn" onclick="openInBrowser('${jsq(p.install)}')">Docs</button>`:''}`}</p>`).join('')}
     ${(TUNNEL.published&&TUNNEL.url)?`<div class="rm-offer live">
         <b>Published${TUNNEL.kind==='public'?' to the internet':''}:</b>
         <code>${esc(TUNNEL.url)}</code>
-        <button class="endbtn" onclick="rmCopy('${esc(TUNNEL.url)}')">Copy</button>
+        <button class="endbtn" onclick="rmCopy('${jsq(TUNNEL.url)}')">Copy</button>
         <button class="endbtn" onclick="tunStop()">Stop</button></div>`
       :(TUNNEL.providers||[]).some(p=>p.available&&!p.needs)?`
         <p class="mut" style="margin-top:8px">

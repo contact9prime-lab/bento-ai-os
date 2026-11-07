@@ -4,7 +4,7 @@ async function renderMission(body,w){
   body.style.cssText='padding:16px;overflow:auto;height:100%';
   body.innerHTML='<div class="mut">loading lifecycle state…</div>';
   const lane=(title,app,rows,accent)=>`
-    <div class="provbox" style="cursor:pointer;margin:0" onclick="openApp('${app}')">
+    <div class="provbox" style="cursor:pointer;margin:0" onclick="openApp('${jsq(app)}')">
       <div class="ptitle" style="display:flex;justify-content:space-between;align-items:center">
         <span>${title}</span><span style="font-size:10px;color:var(--mut)">open ↗</span></div>
       ${rows.map(([k,v,warn])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">

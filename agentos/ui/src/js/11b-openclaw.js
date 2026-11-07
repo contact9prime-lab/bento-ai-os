@@ -55,7 +55,7 @@ async function renderOcPlugins(){
         ${p.held?`<div class="sub" style="color:var(--err)">held: ${esc(p.held_reason)}. Release it in Permissions → Quarantine.</div>`:''}
       </div>
       ${state}
-      <button class="endbtn" onclick="ocpReview('${esc(p.id)}')">Review</button>
+      <button class="endbtn" ${doAttrs('ocpReview',p.id)}>Review</button>
     </div>`;
   }).join('');
   box.innerHTML = `<h3>OpenClaw plugins</h3>
@@ -88,7 +88,7 @@ async function ocpSearch(){
   out.innerHTML = d.results.map(r => `<div class="item">
       <div class="grow"><b>${esc(r.name)}</b>${r.version?`<span class="mut"> ${esc(r.version)}</span>`:''}
         <div class="sub mut">${esc(r.summary||'no summary')}</div></div>
-      <button class="endbtn" onclick="ocpInstall('${esc(r.spec)}')">Install</button>
+      <button class="endbtn" ${doAttrs('ocpInstall',r.spec)}>Install</button>
     </div>`).join('');
 }
 
@@ -164,14 +164,14 @@ async function ocpReview(pid){
     ${ocpDisclaimer(p)}
     <div class="prow" style="margin-top:12px;flex-wrap:wrap">
       ${p.enabled
-        ? `<button class="endbtn" onclick="ocpEnable('${esc(p.id)}',false)">Turn off</button>`
-        : `<button class="endbtn" onclick="ocpEnable('${esc(p.id)}',true)">Turn on</button>`}
-      <button class="endbtn" onclick="ocpUpdate('${esc(p.id)}')">Update</button>
-      ${((p.native||{}).buildable)?`<button class="endbtn" onclick="ocpNative('${esc(p.id)}')">Build it natively instead</button>`:''}
-      <button class="endbtn" onclick="ocpVerify('${esc(p.id)}')">Check the native build</button>
-      <button class="endbtn" onclick="ocpReport('${esc(p.id)}')">Report</button>
-      ${p.enabled?`<button class="endbtn" onclick="ocpHold('${esc(p.id)}')">Hold it now</button>`:''}
-      <button class="endbtn" onclick="ocpUninstall('${esc(p.id)}')">Uninstall</button>
+        ? `<button class="endbtn" ${doAttrs('ocpEnable',p.id,false)}>Turn off</button>`
+        : `<button class="endbtn" ${doAttrs('ocpEnable',p.id,true)}>Turn on</button>`}
+      <button class="endbtn" ${doAttrs('ocpUpdate',p.id)}>Update</button>
+      ${((p.native||{}).buildable)?`<button class="endbtn" ${doAttrs('ocpNative',p.id)}>Build it natively instead</button>`:''}
+      <button class="endbtn" ${doAttrs('ocpVerify',p.id)}>Check the native build</button>
+      <button class="endbtn" ${doAttrs('ocpReport',p.id)}>Report</button>
+      ${p.enabled?`<button class="endbtn" ${doAttrs('ocpHold',p.id)}>Hold it now</button>`:''}
+      <button class="endbtn" ${doAttrs('ocpUninstall',p.id)}>Uninstall</button>
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Close</button>
     </div>
     <div class="ghint mut">Changes take effect after OpenClaw's gateway restarts.</div>
@@ -229,8 +229,8 @@ async function ocpNative(pid){
       ${pInfo("It comes from the plugin's own manifest, so it only asks for what the plugin declared.")}</div>
     <pre style="white-space:pre-wrap;font-size:12px;max-height:340px;overflow:auto">${esc(d.prompt)}</pre>
     <div class="prow" style="flex-wrap:wrap">
-      <button class="endbtn" onclick="ocpSendBrief(${JSON.stringify(pid).replace(/"/g,'&quot;')})">Hand it to the agent</button>
-      <button class="endbtn" onclick="ocpReview('${esc(pid)}')">Back</button>
+      <button class="endbtn" ${doAttrs('ocpSendBrief',pid)}>Hand it to the agent</button>
+      <button class="endbtn" ${doAttrs('ocpReview',pid)}>Back</button>
     </div></div>`;
   window.__ocpBrief = window.__ocpBrief || {};
   window.__ocpBrief[pid] = d.prompt;
@@ -267,7 +267,7 @@ async function ocpVerify(pid){
     ${(d.results||[]).map(r=>`<div class="mtool"><code>${r.ok?'✓':'✗'} ${esc(r.target)}</code>
         <span>${esc(r.item)}: ${esc(r.note)}</span></div>`).join('')}
     <div class="ghint mut">${esc(d.note||'')}</div>
-    <div class="prow"><button class="endbtn" onclick="ocpReview('${esc(pid)}')">Back</button></div>
+    <div class="prow"><button class="endbtn" ${doAttrs('ocpReview',pid)}>Back</button></div>
   </div>`;
   toast(d.line || '');
 }
@@ -301,9 +301,9 @@ async function ocpReport(pid){
         ${lost}</details>`:''}
     <h3 style="margin-top:12px">What would you like to do?</h3>
     <div class="prow" style="flex-wrap:wrap">
-      ${(d.proposal||{}).build_the_rest?`<button class="endbtn" onclick="ocpNative('${esc(pid)}')">Have the agent build the rest</button>`:''}
+      ${(d.proposal||{}).build_the_rest?`<button class="endbtn" ${doAttrs('ocpNative',pid)}>Have the agent build the rest</button>`:''}
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Continue as it is</button>
-      ${(d.proposal||{}).keep_the_plugin?`<button class="endbtn" onclick="ocpReview('${esc(pid)}')">Keep running the original</button>`:''}
+      ${(d.proposal||{}).keep_the_plugin?`<button class="endbtn" ${doAttrs('ocpReview',pid)}>Keep running the original</button>`:''}
     </div>
     <div class="ghint mut">If the port covers what you actually use, it's fine to stop here.</div>
   </div>`;

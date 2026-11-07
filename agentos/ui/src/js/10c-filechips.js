@@ -23,7 +23,7 @@ function fileChipIcon(ext){
   return `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 3h8l5 5v13H6Z" fill="${c}" opacity=".18"/><path d="M6 3h8l5 5v13H6Z M14 3v5h5" fill="none" stroke="${c}" stroke-width="1.6" stroke-linejoin="round"/><text x="12.5" y="18" text-anchor="middle" font-size="5.2" font-weight="800" fill="${c}" font-family="system-ui,sans-serif">${esc((ext||'').slice(0,4).toUpperCase())}</text></svg>`;
 }
 function fileChipSize(n){return n<1024?n+' B':n<1e6?Math.round(n/1024)+' KB':(n/1e6).toFixed(1)+' MB'}
-function fileGetURL(path,download){return '/api/files/get?path='+encodeURIComponent(path)+(download?'&download=1':'')}
+function fileGetURL(path,download){return '/api/files/get?path='+encodeURIComponent(path)+(download?'&download=1':'&view=1')}
 async function fileOpen(path,ext){
   if(typeof remoteClient==='function'&&remoteClient()){
     // opening on the host would start an app in another room: show it here instead

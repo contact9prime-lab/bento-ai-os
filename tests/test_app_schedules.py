@@ -98,7 +98,7 @@ def test_the_app_is_the_callers_never_the_models():
     assert "if name in APP_BOUND_TOOLS:" in agent and 'k != "_app"' in agent
     assert 'args["_app"] = self.app_id' in agent
     # fetch_url: an app's fetch never gets the person's allow-list of local addresses (netguard.py)
-    assert set(APP_BOUND_TOOLS) == {"schedule_task", "create_trigger", "update_app_data", "fetch_url"}
+    assert set(APP_BOUND_TOOLS) == {"schedule_task", "create_trigger", "update_app_data", "fetch_url", "desktop_state"}
     tools = (ROOT / "agentos/tools.py").read_text()
     assert '{"_app"} if name in APP_BOUND_TOOLS' in tools
     # an app's own appTool call is filed under that app, after the `_` strip
@@ -210,7 +210,7 @@ def test_the_history_says_which_app_a_run_refreshed(tmp_path):
     row = runlog.history(store)["runs"][0]
     assert (row["app_id"], row["app_name"]) == (aid, "Volume Tracker")
     hist = (JS / "14c-history.js").read_text()
-    assert "r.app_name?'for '+esc(r.app_name)" in hist and "taskOpenApp('${esc(r.app_id)}')" in hist
+    assert "r.app_name?'for '+esc(r.app_name)" in hist and "taskOpenApp('${jsq(r.app_id)}')" in hist
 
 
 def test_an_answered_approval_takes_its_toast_with_it():

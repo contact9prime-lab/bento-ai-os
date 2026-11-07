@@ -70,7 +70,7 @@ async function tcThread(main){
   const w=tcWho(t);
   main.innerHTML=`<div class="tc-head">${document.body.classList.contains('dev-mobile')?'<button class="endbtn tc-back" onclick="TEAMCHAT.cur=\'\';refreshApp(\'teamchat\')">‹</button>':''}
       ${w.face}<div class="tc-head-txt"><b>${esc(w.name)}</b><small class="mut">${esc(w.sub)}</small></div>
-      <label class="tlk-chk tc-mute"><input type="checkbox" ${t.muted?'':'checked'} onchange="tcMute('${esc(label)}',!this.checked)"><span>Take messages</span></label></div>
+      <label class="tlk-chk tc-mute"><input type="checkbox" ${t.muted?'':'checked'} onchange="tcMute('${jsq(label)}',!this.checked)"><span>Take messages</span></label></div>
     <div class="tc-feed" id="tc-feed"><p class="mut pad">Reading…</p></div>
     <div class="tc-compose"><textarea id="tc-in" rows="2" placeholder="Write to ${esc(label)}…" maxlength="4000"></textarea>
       <button class="pact" id="tc-send">Send</button></div>

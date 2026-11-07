@@ -84,7 +84,7 @@ async function renderAgsHost(){
     const last = p.last_fetch ? new Date(p.last_fetch*1000).toLocaleString() : 'never';
     return `<div class="item"><div class="grow"><b>${esc(p.name)}</b>
         <span class="mut"> last take: ${esc(last)}</span></div>${st}
-      ${p.revoked?'':`<button class="endbtn" onclick="agsRevokePeer('${esc(p.name)}')">Revoke</button>`}
+      ${p.revoked?'':`<button class="endbtn" onclick="agsRevokePeer('${jsq(p.name)}')">Revoke</button>`}
     </div>`;
   }).join('');
   box.innerHTML = `

@@ -95,10 +95,10 @@ async function renderSpaces(body){
     <div class="grow"><b>${s.icon?esc(s.icon)+' ':''}${esc(s.name)}</b>
       ${s.id===cur?'<span class="badge" style="margin-left:6px">active</span>':''}
       <div class="sub">${esc(s.description||'no description — the agent uses this to decide what belongs here')}</div></div>
-    <button onclick="switchSpace('${s.id}')" ${s.id===cur?'disabled':''}>Work here</button>
-    <button title="stop offering this space; nothing is deleted" onclick="spaceDispose('${s.id}','archive')">Archive</button>
-    <button title="move everything in it to the shared scope" onclick="spaceDispose('${s.id}','global')">Make shared</button>
-    <button title="delete the space and everything scoped to it" onclick="spaceDispose('${s.id}','delete')">✕</button></div>`;
+    <button onclick="switchSpace('${jsq(s.id)}')" ${s.id===cur?'disabled':''}>Work here</button>
+    <button title="stop offering this space; nothing is deleted" onclick="spaceDispose('${jsq(s.id)}','archive')">Archive</button>
+    <button title="move everything in it to the shared scope" onclick="spaceDispose('${jsq(s.id)}','global')">Make shared</button>
+    <button title="delete the space and everything scoped to it" onclick="spaceDispose('${jsq(s.id)}','delete')">✕</button></div>`;
   const pb=panelShell(body,{title:'Spaces',sub:'the things you are working on',
     actions:`<button class="pact" onclick="newSpace()">New space</button>`});
   pb.innerHTML=`

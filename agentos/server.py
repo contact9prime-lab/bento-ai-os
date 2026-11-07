@@ -3214,7 +3214,7 @@ async def api_open(body: dict):
 
 
 @app.get("/api/files/raw")
-async def api_file_raw(path: str, download: int = 0):
+async def api_file_raw(path: str, download: int = 0, view: int = 0):
     import mimetypes
     p = _safe_file(path)
     if p is None or not p.is_file():
@@ -3222,9 +3222,12 @@ async def api_file_raw(path: str, download: int = 0):
     mt, _ = mimetypes.guess_type(str(p))
     # render text/html/images inline in the Browser; everything else downloads
     inline = (mt or "").startswith(("text/", "image/")) or (mt == "application/pdf") or p.suffix.lower() in (".html", ".htm", ".md", ".txt", ".json", ".csv", ".log")
+    if _active_doc(mt, p.name) and not view:
+        inline = False
     headers = {}
     if download or not inline:
-        headers["Content-Disposition"] = f'attachment; filename="{p.name}"'
+        from urllib.parse import quote
+        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(p.name)}"
     if p.suffix.lower() in (".md", ".txt", ".log", ".csv", ".json"):
         mt = "text/plain; charset=utf-8"
     return _send_checked(p, media_type=mt or "application/octet-stream", headers=headers)
@@ -3256,9 +3259,11 @@ async def api_files_recent(limit: int = 30):
 
 
 @app.get("/api/files/get")
-async def api_files_get(path: str, download: int = 0):
-    """One file by its full path, from the folders outputs.roots allows. Images, PDFs,
-    text and HTML show inline; everything else (a .pptx, a .zip) downloads."""
+async def api_files_get(path: str, download: int = 0, view: int = 0):
+    """One file by its full path, from the folders outputs.roots allows. Images, PDFs
+    and text show inline; everything else (a .pptx, a .zip) downloads. HTML, SVG and XML
+    can carry script, so they download unless the page asks to `view` one, and either way
+    they come with `sandbox` (`security_headers`): no script, no cookie, not this origin."""
     import mimetypes
     from . import outputs
     p = outputs.reachable(path, _output_roots())
@@ -3266,6 +3271,8 @@ async def api_files_get(path: str, download: int = 0):
         return JSONResponse({"error": "not found, or not in a folder you can reach"}, status_code=404)
     mt, _ = mimetypes.guess_type(str(p))
     inline = (mt or "").startswith(("text/", "image/")) or mt == "application/pdf"
+    if _active_doc(mt, p.name) and not view:
+        inline = False
     headers = {}
     if download or not inline:
         from urllib.parse import quote
@@ -4767,6 +4774,9 @@ async def api_brain_fallbacks_set(body: dict):
         got = fallbackmod.clean((body or {}).get("fallbacks") or [], cfg)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    if any(_agent_cli_refused(f["executor"]) for f in got):
+        return JSONResponse({"error": "only an admin can choose which agent answers on this machine"},
+                            status_code=403)
     cfg["brain_fallbacks"] = got
     cfgmod.save_config(cfg)
     return await api_brain_fallbacks()
@@ -7040,6 +7050,8 @@ async def api_mcp_oauth_callback(name: str, code: str = "", state_: str = "",
     st = qp.get("state") or state_ or None
     err = error or qp.get("error", "")
     ok = mcp_oauth.resolve(name, code or qp.get("code", ""), st, error=err)
+    # Both come from the URL, and this route takes no cookie and needs no sign-in waiting.
+    name, err = html_mod.escape(str(name)), html_mod.escape(str(err))
     if not ok:
         msg, detail = "Nothing was waiting", (
             f"AgentOS is not currently signing in to '{name}'. The attempt may have "
@@ -7287,16 +7299,19 @@ async def api_save_theme(body: dict):
     if not name:
         return JSONResponse({"error": "theme needs a name"}, status_code=400)
     state["store"].save_theme(name, json.dumps(body))
-    await state["broadcast"]({"type": "themes"})
+    # A theme lives in this person's own database, so it is news for their screens only.
+    # Sent machine-wide, one account's theme (css, and a shell) landed on another's desktop.
+    me = usersmod.current()
+    await state["broadcast_user"]({"type": "themes"}, me)
     if body.get("apply"):
-        await state["broadcast"]({"type": "theme_apply", "theme": body})
+        await state["broadcast_user"]({"type": "theme_apply", "theme": body}, me)
     return {"ok": True, "name": name}
 
 
 @app.delete("/api/themes/{name}")
 async def api_delete_theme(name: str):
     state["store"].delete_theme(name)
-    await state["broadcast"]({"type": "themes"})
+    await state["broadcast_user"]({"type": "themes"}, usersmod.current())
     return {"ok": True}
 
 
@@ -8503,7 +8518,8 @@ async def request_price(model: str, evsend=None) -> bool:
         return True                       # already being asked about; don't stack cards
     pid = uuid.uuid4().hex[:8]
     fut = asyncio.get_event_loop().create_future()
-    state.setdefault("pending_prices", {})[pid] = {"fut": fut, "model": model}
+    state.setdefault("pending_prices", {})[pid] = {"fut": fut, "model": model,
+                                                   "uid": usersmod.current()}
     state.setdefault("price_pending", {})[model] = True
     found = await usagemod.discover_price(state["cfg"], model)
     ev = {"type": "price_request", "id": pid, "model": model, "suggested": found}
@@ -8528,10 +8544,14 @@ async def request_price(model: str, evsend=None) -> bool:
         state.get("price_pending", {}).pop(model, None)
 
 
-async def resolve_price(pid: str, action: str, price_in: float = 0, price_out: float = 0):
-    """Answer a price card: `set` | `skip` | `cancel`."""
+async def resolve_price(pid: str, action: str, price_in: float = 0, price_out: float = 0,
+                        uid: str | None = None):
+    """Answer a price card: `set` | `skip` | `cancel`. Only the account being asked answers."""
     entry = state.get("pending_prices", {}).get(pid)
     if not entry or entry["fut"].done():
+        return
+    if uid is not None and str(entry.get("uid", "") or "") != str(uid or ""):
+        secevents.flag("ws.foreign_turn", "price", source="ws", uid=uid)
         return
     model = entry["model"]
     if action == "set":
@@ -9165,6 +9185,17 @@ def _valid_app_token(request: Request) -> bool:
     return bool(tok) and tok in state.get("app_tokens", {})
 
 
+def _page_fetch(request: Request) -> bool:
+    """Is this a fetch of an app page, and not a frame or a tab navigating to it? A GET
+    navigation sends no Origin, and Sec-Fetch-Mode says so where the browser sends it (it
+    doesn't over plain http off loopback). No header at all is a non-browser client, which
+    has no cookie and no frame to read it from."""
+    if request.method not in ("GET", "HEAD"):
+        return True
+    mode = request.headers.get("sec-fetch-mode", "")
+    return bool(request.headers.get("origin")) or (bool(mode) and mode != "navigate")
+
+
 def _cors_headers(request: Request) -> dict:
     """Let the opaque app read its own runtime responses. The authority is the app
     token, not the origin, so reflecting `null` is safe: a foreign site's sandboxed
@@ -9183,6 +9214,19 @@ async def csrf_origin_guard(request: Request, call_next):
     app_runtime = _is_app_runtime(path)
     if method == "OPTIONS" and app_runtime:          # the opaque app's CORS preflight
         return Response(status_code=204, headers=_cors_headers(request))
+    is_page = path.startswith("/api/apps/") and path.endswith("/page")
+    if is_page and _page_fetch(request):
+        # A frame loads its page by navigating. Fetching one is another app reading
+        # that app's source and a fresh token for it, so it is never served as data.
+        secevents.flag("origin.refused", "fetched an app page", source=_client_addr(request))
+        return JSONResponse({"error": "denied: an app page opens in a frame"}, status_code=403)
+    if app_runtime and not is_page and method not in _MUTATING \
+            and _same_origin(request) is False and not _valid_app_token(request):
+        # the read half of the rule below: loopback trust must not answer an opaque frame
+        secevents.flag("origin.refused", "a tokenless read of the app runtime",
+                       source=_client_addr(request))
+        return JSONResponse({"error": "denied: this needs a valid app token "
+                             "(cross-origin request)"}, status_code=403)
     if method in _MUTATING and not path.startswith(REMOTE_OPEN_PATHS):
         so = _same_origin(request)
         if app_runtime:
@@ -9201,7 +9245,7 @@ async def csrf_origin_guard(request: Request, call_next):
                                  "reach the OS only through appTool and its grants)"},
                                 status_code=403)
     resp = await call_next(request)
-    if app_runtime and _same_origin(request) is False:
+    if app_runtime and not is_page and _same_origin(request) is False:
         for k, v in _cors_headers(request).items():
             resp.headers.setdefault(k, v)
     return resp
@@ -9480,6 +9524,46 @@ async def remote_access_gate(request: Request, call_next):
 _HOME_ID = cfgmod.home_id()
 
 
+# Sandboxed apps keep their own freedom inside the frame: the flags match the iframe's.
+_APP_PAGE_CSP = "sandbox allow-scripts allow-forms; frame-ancestors 'self'"
+# A document under /api/ draws itself with inline styles and nothing else. `sandbox` makes it
+# an opaque origin with no script, so what a file says it is cannot reach this desktop.
+_API_DOC_CSP = ("sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; "
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
+# What the desktop really reaches, found by reading the bundle and watching a real page:
+#   fonts.googleapis.com, fonts.gstatic.com  the themes' web fonts
+#   https: images                            a Stage scene's picture, an app's or a server's icon
+#   www.youtube-nocookie.com                 a Stage video, in a frame
+#   127.0.0.1, localhost in frames           the Train app's own service on this machine
+_DESKTOP_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                "font-src 'self' data: https://fonts.gstatic.com; "
+                "img-src 'self' data: blob: https:; media-src 'self' data: blob:; "
+                "connect-src 'self'%s; "
+                "frame-src 'self' https://www.youtube-nocookie.com http://127.0.0.1:* http://localhost:*; "
+                "worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; "
+                "form-action 'self'; frame-ancestors 'none'")
+_HOST_OK = re.compile(r"^[A-Za-z0-9.\-]+(:[0-9]+)?$|^\[[0-9A-Fa-f:.]+\](:[0-9]+)?$")
+_ACTIVE_TYPES = ("text/html", "application/xhtml", "image/svg", "text/xml", "application/xml",
+                 "text/xsl", "application/xslt", "application/mathml", "multipart/")
+_ACTIVE_SUFFIXES = (".html", ".htm", ".shtml", ".xhtml", ".xht", ".svg", ".svgz", ".xml", ".xsl",
+                    ".xslt", ".mht", ".mhtml")
+
+
+def _active_doc(content_type: str | None, name: str = "") -> bool:
+    """Would a browser run this as a document of its own? Then it never gets our origin."""
+    ct = (content_type or "").split(";")[0].strip().lower()
+    return ct.startswith(_ACTIVE_TYPES) or ct.endswith("+xml") \
+        or str(name or "").lower().endswith(_ACTIVE_SUFFIXES)
+
+
+def _desktop_csp(request: Request) -> str:
+    # 'self' covers ws: on current browsers. Older WebKit, which a session host may be
+    # built on, needs the socket named, and only a host that looks like a host goes in.
+    host = request.headers.get("host", "")
+    return _DESKTOP_CSP % (f" ws://{host} wss://{host}" if _HOST_OK.match(host) else "")
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     """Headers that are cheap, safe, and were simply not being sent.
@@ -9500,9 +9584,14 @@ async def security_headers(request: Request, call_next):
     should ever frame it — so `frame-ancestors 'none'`. An APP page is meant to
     be framed, but only by the desktop that served it — so `frame-ancestors
     'self'`, which keeps a foreign site from embedding somebody's app and
-    reading their clicks. A full script-src CSP is deliberately NOT set here: the
-    hand-written desktop uses inline handlers throughout, and a policy that
-    breaks the whole OS to add a header nobody measured is the wrong trade.
+    reading their clicks.
+
+    The rest is what a page may load and run, and it is a choke point on purpose, so
+    a new route cannot forget it: the app page is `sandbox` whether or not a frame
+    asked for it, the desktop gets `_desktop_csp`, and anything else under /api/ that
+    a browser would run as a document (a server-rendered page, a file somebody made)
+    gets `_API_DOC_CSP`. The desktop keeps `'unsafe-inline'` because the bundle uses
+    inline handlers throughout. It still stops a remote script loading.
     """
     resp = await call_next(request)
     # which home this server serves (config.home_id), on every answer, a locked 401
@@ -9522,11 +9611,19 @@ async def security_headers(request: Request, call_next):
     path = request.url.path
     is_app_page = path.startswith("/api/apps/") and path.rstrip("/").endswith("/page")
     if is_app_page:
-        # framed by the desktop (same origin), by nobody else
-        resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'self'")
-    elif not path.startswith("/api/") and not path.startswith("/ws"):
+        # Framed by the desktop (same origin), by nobody else. `sandbox` is in the RESPONSE
+        # because the iframe attribute only protects a page opened in a frame: a click on
+        # this URL in a chat ran the app on the desktop's origin, with the cookie.
+        resp.headers.setdefault("Content-Security-Policy", _APP_PAGE_CSP)
+    elif path.startswith("/api/"):
+        if _active_doc(resp.headers.get("content-type", ""), ""):
+            resp.headers.setdefault("Content-Security-Policy", _API_DOC_CSP)
+    elif not path.startswith("/ws"):
         # a document: the desktop, the login page, the manifest. Never framed.
-        resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        if resp.headers.get("content-type", "").lower().startswith("text/html"):
+            resp.headers.setdefault("Content-Security-Policy", _desktop_csp(request))
+        else:
+            resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
         resp.headers.setdefault("X-Frame-Options", "DENY")
     return resp
 
@@ -11541,7 +11638,9 @@ async def api_automation_run(key: str):
         return JSONResponse({"error": f"no automation named {key!r}"}, status_code=404)
     state["store"].mark_automation_run(a["id"])
     state["store"].log("automation", f"ran {a['name']}", {"steps": len(a["steps"])})
-    await state["broadcast"]({"type": "automation.run", "automation": a})
+    # Its id and to its owner: the steps come from that person's own list, read by their page.
+    await state["broadcast_user"]({"type": "automation.run", "id": a["id"], "name": a["name"]},
+                                  usersmod.current())
     return {"ok": True, "name": a["name"], "steps": len(a["steps"])}
 
 
@@ -11798,8 +11897,13 @@ async def api_asset_file(aid: str):
     if not path:
         return JSONResponse(
             {"error": "the file behind this asset is missing from disk"}, status_code=410)
-    return FileResponse(path, media_type=row.get("mime") or "application/octet-stream",
-                        headers={"Cache-Control": "max-age=31536000, immutable"})
+    mime = row.get("mime") or "application/octet-stream"
+    hdrs = {"Cache-Control": "max-age=31536000, immutable"}
+    # A fetched asset keeps the type the remote server gave it. An SVG stays viewable (the
+    # gallery opens it, and `sandbox` keeps its script off); HTML and XML download.
+    if _active_doc(mime, "") and mime.split(";")[0].strip().lower() != "image/svg+xml":
+        hdrs["Content-Disposition"] = "attachment"
+    return FileResponse(path, media_type=mime, headers=hdrs)
 
 
 @app.get("/api/assets/{aid}/thumb")
@@ -13838,7 +13942,7 @@ async def api_arena_list():
     models = await providers.available_models(cfg)
     brains = await asyncio.to_thread(execmod.brains, cfg, models)
     live = [k[1] for k in _ARENAS if k[0] == uid]
-    return {"choices": arenamod.choices(brains), "recent": arenamod.recent(uid), "live": live,
+    return {"choices": arenamod.choices(_brains_for_caller(brains)), "recent": arenamod.recent(uid), "live": live,
             "min": arenamod.MIN, "max": arenamod.MAX}
 
 
@@ -13856,7 +13960,7 @@ async def api_arena_start(body: dict):
     models = await providers.available_models(cfg)
     brains = await asyncio.to_thread(execmod.brains, cfg, models)
     try:
-        seats = arenamod.contenders(brains, (body or {}).get("contenders"))
+        seats = arenamod.contenders(_brains_for_caller(brains), (body or {}).get("contenders"))
         a = arenamod.new((body or {}).get("task", ""), seats, execmod.default_workspace(cfg))
     except arenamod.ArenaError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
@@ -13967,7 +14071,8 @@ async def api_timetravel_fork(pid: str, body: dict):
     model = str((body or {}).get("model") or "")
     if model:
         brains = await asyncio.to_thread(execmod.brains, state["cfg"], await providers.available_models(state["cfg"]))
-        ok = {c["model"] if c["kind"] == "provider" else c["executor"] for c in arenamod.choices(brains)}
+        ok = {c["model"] if c["kind"] == "provider" else c["executor"]
+              for c in arenamod.choices(_brains_for_caller(brains))}
         if model not in ok:
             return JSONResponse({"error": f"{model!r} is not a brain this machine can run right now"}, status_code=400)
     store = state["store"]
@@ -19342,6 +19447,19 @@ def _queue_add(cid: str, data: dict) -> dict:
     return item
 
 
+def _turn_mine(slot: dict, uid: str, gone: bool = False) -> bool:
+    """Is this running turn or build this account's? `gone` also says yes to a slot that has
+    ended, which is nobody's to protect (a Stop that arrives just after the turn ended)."""
+    if gone and not slot:
+        return True
+    return str((slot or {}).get("uid", "") or "") == str(uid or "")
+
+
+def _queue_mine(cid: str, uid: str) -> bool:
+    """Every message waiting in this chat was sent by this account (an empty queue is)."""
+    return all(str(i.get("uid", "") or "") == str(uid or "") for i in state["queues"].get(cid) or [])
+
+
 def _queue_public(cid: str) -> list[dict]:
     """The queue as the UI sees it — text and decision only, never image payloads."""
     return [{"id": i["id"], "text": i["text"], "images": len(i["images"]),
@@ -19404,7 +19522,8 @@ async def _queue_flush(cid: str):
             "surface": item["surface"], "origin": item["origin"],
             "context": item["context"], "conversation_id": cid,
             "uid": item.get("uid", "")}
-    state["turns"][cid] = {"agent": None, "task": None, "model": ""}   # claim, then start
+    # claim, then start, with the owner on it: `_queue_broadcast` and every owner check read it
+    state["turns"][cid] = {"agent": None, "task": None, "model": "", "uid": item.get("uid", "")}
     state["turns"][cid]["task"] = asyncio.create_task(run_chat(cid, data))
     await _queue_broadcast(cid, started={"id": item["id"], "text": item["text"]})
 
@@ -19471,6 +19590,29 @@ async def run_chat(cid: str, data: dict):
         return await _run_chat(cid, data)
 
 
+def _agent_cli_refused(requested: str) -> str:
+    """Why this account may not name that agent CLI for one turn, or '' when it may.
+
+    An agent CLI runs on the MACHINE's login and spend, which is why choosing one as the
+    machine's brain is an admin's call (`api_set_brain`). Naming it per turn is the same
+    choice, so it gets the same answer. Riding the brain an admin already chose is fine."""
+    from . import executors as execmod
+    requested = str(requested or "")
+    if requested == "aria" or requested not in execmod.ENGINES:
+        return ""
+    if not usersmod.enabled() or usersmod.is_admin(usersmod.current()):
+        return ""
+    if str(state.machine_cfg().get("engine") or "aria") == requested:
+        return ""
+    return "Only an admin can choose which agent answers on this machine, so this wasn't sent."
+
+
+def _brains_for_caller(brains: dict) -> dict:
+    """The brain list without the agent CLIs this account may not name."""
+    return {**brains, "executors": [e for e in (brains or {}).get("executors") or []
+                                    if e.get("kind") != "agent" or not _agent_cli_refused(e.get("id"))]}
+
+
 class _FallingBack(Exception):
     """The turn goes to the next brain: nothing is saved for this one."""
 
@@ -19505,6 +19647,11 @@ async def _run_chat(cid: str, data: dict):
     # surface it arrived from — chat, omnibar, copilot panel. An explicit engine
     # in the request still wins, so one chat can opt out of the machine setting.
     from . import executors as execmod
+    if (why := _agent_cli_refused(data.get("model") or "")):
+        await evsend({"type": "error", "message": why})
+        await evsend({"type": "turn_end", "conversation_id": cid})
+        turns.pop(cid, None)
+        return
     engine = execmod.resolve_engine(cfg, data.get("model") or "")
     if engine != "aria":
         model = engine
@@ -19929,7 +20076,9 @@ async def _run_chat(cid: str, data: dict):
             if (not said or said.startswith("[error]")) and fallbackmod.unavailable(turn_errors + [said]):
                 fb_tried.append(fallbackmod.key(engine if engine != "aria" else "aria",
                                                 "" if engine != "aria" else model))
-                fb_next = fallbackmod.next_for(cfg, fb_tried)
+                fb_next = fallbackmod.next_for(cfg, fb_tried + [
+                    fallbackmod.key(f["executor"], f["model"]) for f in fallbackmod.chain(cfg)
+                    if _agent_cli_refused(f["executor"])])
         except Exception:
             fb_next = None
         # Saving the reply comes first and alone. Everything after it is
@@ -20375,7 +20524,10 @@ async def build_status():
     """Reconnect support: a reloaded App Studio asks whether a build is still running."""
     b = state.get("build") or {}
     running = bool(b.get("task") and not b["task"].done())
-    return {"running": running, "app_id": b.get("app_id", ""),
+    if not _turn_mine(b, usersmod.current()):
+        # one build at a time, so somebody else's still says "busy", and nothing about it
+        return {"running": running, "app_id": "", "prompt": "", "started_at": 0, "mine": False}
+    return {"running": running, "app_id": b.get("app_id", ""), "mine": True,
             "prompt": b.get("prompt", ""), "started_at": b.get("started_at", 0)}
 
 
@@ -20390,11 +20542,26 @@ async def run_build(data: dict):
 async def _run_build(data: dict):
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     build = state["build"]
-    bcast = state["broadcast"]
+    owner = str(data.get("uid", "") or "")
+
+    async def bcast(ev: dict):
+        # the prompt and the app's source are in these events, so they are the owner's only
+        await state["broadcast_user"](ev, owner)
+
     prompt = (data.get("prompt") or "").strip()
     if not prompt:
         return
+    # What an app said about itself, sent on by the page's "Fix it". It reached that page by
+    # postMessage, so it is the app's text and never the person's request.
+    from .teamlink import plain as _plain
+    app_error = _plain(str(data.get("app_error") or ""))[:300]
+    if app_error:
+        from .agent import fence
+        prompt += "\n\nThe error the app reported:\n" + fence("the app's own error message", app_error)
     req_model = (data.get("model") or "").strip()
+    if (why := _agent_cli_refused(req_model)):
+        await bcast({"type": "build_error", "message": why})
+        return
     # empty or "auto" ⇒ let the builder pick the most build-capable model available
     model = "" if req_model.lower() in ("", "auto") else req_model
     app_id = data.get("app_id") or ""
@@ -20566,6 +20733,9 @@ async def _run_build(data: dict):
                           extra_system=extra, tool_filter=tf)
             agent.app_id = build_app_id
             agent.nudge_unfinished = False   # the build path owns its own retries
+            if app_error:
+                # the turn acts on the app's own words, so a step that changes things asks
+                agent.taint.append({"tool": "app_error", "source": "the app's own error message"})
             build["agent"] = agent
             knowledge.turn_started()
             try:
@@ -20917,7 +21087,7 @@ async def _run_build(data: dict):
             # anything the repair pass could not fix ships as an explicit warning,
             # never as a silent "success"
             manifest_status, remaining = _finish_build_checks(built["id"])
-        await state["broadcast"]({"type": "apps"})
+        await bcast({"type": "apps"})
         if built:
             await terminal({"type": "build_done", "app_id": built["id"], "name": built["name"],
                             "summary": result["content"][:600],
@@ -21007,6 +21177,19 @@ async def ws_endpoint(ws: WebSocket):
         while True:
             raw = await ws.receive_text()
             data = json.loads(raw)
+            if not isinstance(data, dict):
+                continue
+            # Who this message is from is the socket's signed cookie, before any branch can
+            # read it. `uid` and the turn's own `_` fields are set by this server, so what a
+            # client sent under those names goes here, on arrival: a queued message used to
+            # keep the client's `uid` and run as whoever it named.
+            forged = [k for k in data if k == "uid" or str(k).startswith("_")]
+            for k in forged:
+                data.pop(k, None)
+            if forged:
+                secevents.flag("gate.forged_field", "a socket message named " + ",".join(forged)[:60],
+                               source="ws", uid=ws_uid)
+            data["uid"] = ws_uid
             t = data.get("type")
             if t == "chat":
                 text = (data.get("text") or "").strip()
@@ -21015,6 +21198,12 @@ async def ws_endpoint(ws: WebSocket):
                 if data.get("automation"):
                     data["text"] = text = _automation_words(data, text)
                 cid = data.get("conversation_id")
+                if cid and cid in turns and not _turn_mine(turns[cid], ws_uid):
+                    # somebody else's running chat: it is not a chat of theirs to steer
+                    secevents.flag("ws.foreign_turn", "chat", source="ws", uid=ws_uid)
+                    await send({"type": "error", "conversation_id": cid,
+                                "message": "That chat isn't yours, so nothing was sent."})
+                    continue
                 if cid and cid in turns:
                     # busy: queue it instead of dropping it. The running agent decides
                     # at its next step boundary whether this belongs to what it is
@@ -21063,21 +21252,23 @@ async def ws_endpoint(ws: WebSocket):
                 # claim before the task starts, stamped with the owner so a
                 # state_sync racing the task creation still scopes it correctly
                 turns[cid] = {"agent": None, "task": None, "model": "", "uid": ws_uid}
-                data["uid"] = ws_uid   # server-set, never from the client
                 turns[cid]["task"] = asyncio.create_task(run_chat(cid, data))
             elif t == "build":
                 if build.get("task") and not build["task"].done():
                     await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
-                    data["uid"] = ws_uid
                     build["uid"] = ws_uid   # whose build it is, for the World's "at work"
                     build["task"] = asyncio.create_task(run_build(data))
             elif t == "build_abort":
+                if not _turn_mine(build, ws_uid):   # one build at a time, and it is its owner's to stop
+                    if build.get("task") and not build["task"].done():
+                        secevents.flag("ws.foreign_turn", "build_abort", source="ws", uid=ws_uid)
+                    continue
                 build["cancel_requested"] = True
                 if build.get("agent"):
                     build["agent"].aborted = True
                 if build.get("task") and not build["task"].done():
-                    await state["broadcast"]({"type": "build_text", "text": "\n(cancelling…)\n"})
+                    await state["broadcast_user"]({"type": "build_text", "text": "\n(cancelling…)\n"}, ws_uid)
                     asyncio.create_task(_force_cancel(build["task"], grace=15.0))
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
@@ -21085,9 +21276,12 @@ async def ws_endpoint(ws: WebSocket):
                                        uid=ws_uid if usersmod.enabled() else "")
             elif t == "price":
                 await resolve_price(data.get("id", ""), str(data.get("action") or "cancel"),
-                                    float(data.get("in") or 0), float(data.get("out") or 0))
+                                    float(data.get("in") or 0), float(data.get("out") or 0), uid=ws_uid)
             elif t == "queue_remove":
                 cid = data.get("conversation_id")
+                if cid and not _queue_mine(cid, ws_uid):
+                    secevents.flag("ws.foreign_turn", "queue_remove", source="ws", uid=ws_uid)
+                    continue
                 if cid and _queue_drop(cid, str(data.get("id") or "")):
                     ag = (turns.get(cid) or {}).get("agent")
                     if ag is not None:   # never triage a message the user took back
@@ -21098,7 +21292,9 @@ async def ws_endpoint(ws: WebSocket):
                     await _queue_broadcast(cid, removed=data.get("id"))
             elif t == "abort":
                 cid = data.get("conversation_id")
-                if cid:  # stop one conversation's turn
+                if cid and not (_queue_mine(cid, ws_uid) and _turn_mine(turns.get(cid) or {}, ws_uid, gone=True)):
+                    secevents.flag("ws.foreign_turn", "abort", source="ws", uid=ws_uid)
+                elif cid:  # stop one conversation's turn
                     # stop means stop: the backlog goes with it, or the next queued
                     # message would start the instant this turn dies
                     if _queue_drop(cid):
@@ -21108,19 +21304,20 @@ async def ws_endpoint(ws: WebSocket):
                         await _queue_broadcast(cid, cleared=True)
                     if cid in turns:
                         _stop(turns[cid])
-                else:    # legacy/global abort: stop every running turn + build
-                    for qcid in list(state["queues"]):
+                else:    # legacy/global abort: stop everything of THIS account's
+                    for qcid in [c for c in state["queues"] if _queue_mine(c, ws_uid)]:
                         _queue_drop(qcid)
                         await _queue_broadcast(qcid, cleared=True)
-                    for tinfo in list(turns.values()):
+                    for tinfo in [i for i in turns.values() if _turn_mine(i, ws_uid)]:
                         if tinfo.get("agent") is not None:
                             tinfo["agent"].clear_inbox()
                         _stop(tinfo)
-                    build["cancel_requested"] = True
-                    if build.get("agent"):
-                        build["agent"].aborted = True
-                    if build.get("task") and not build["task"].done():
-                        asyncio.create_task(_force_cancel(build["task"], grace=15.0))
+                    if _turn_mine(build, ws_uid):
+                        build["cancel_requested"] = True
+                        if build.get("agent"):
+                            build["agent"].aborted = True
+                        if build.get("task") and not build["task"].done():
+                            asyncio.create_task(_force_cancel(build["task"], grace=15.0))
                     for entry in state["pending_approvals"].values():
                         # this person's questions only: a Stop on one account's desk
                         # must not refuse what another account is being asked

@@ -322,9 +322,9 @@ function jobRow(j){
       <div class="sub">${lastLine}</div>
       <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'} · this week: ${j.runs_7d} run${j.runs_7d===1?'':'s'}, ${j.ok_7d} ok · ${(j.tokens_7d||0).toLocaleString()} tokens · holds ${j.grants} permission${j.grants===1?'':'s'}</div>
     </div>
-    <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
-    ${last.run_id?`<button class="endbtn" onclick="jobHistoryFor({mission:'${esc(j.name)}'})">Runs</button>`:''}
-    <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
+    <button class="endbtn" onclick="jobRunNow('${jsq(j.name)}')">Run now</button>
+    ${last.run_id?`<button class="endbtn" onclick="jobHistoryFor({mission:'${jsq(j.name)}'})">Runs</button>`:''}
+    <button class="endbtn" onclick="openFLW('${jsq(j.name)}')">Edit</button>
   </div>`;
 }
 async function renderJobs(body,w){

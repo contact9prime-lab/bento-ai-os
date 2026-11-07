@@ -136,7 +136,7 @@ _NO_SKILL_INSTALL = [("skill.install", "*")]
 # tool's own jail is what bounds that; nothing from outside the team has business there.
 MACHINE_TOOLS = ("share_folder", "set_engine", "update_agentos", "power_action", "create_theme",
                  "wifi", "bluetooth", "power_profile", "lock_screen", "manage_models",
-                 "trainforge_service")
+                 "trainforge_service", "create_theme_shell")
 _NO_MACHINE = [("folder.share", "*"), ("system.engine", "*"), ("system.update", "*"),
                ("system.power", "*"), ("tool.use", "tool:create_theme*"), ("tool.use", "tool:wifi*"),
                ("tool.use", "tool:bluetooth*"), ("tool.use", "tool:power_profile*"),
@@ -144,7 +144,9 @@ _NO_MACHINE = [("folder.share", "*"), ("system.engine", "*"), ("system.update", 
                ("tool.use", "tool:trainforge_service*")]
 OUTSIDER_TOOLS = ("run_tests", "run_evals")
 _NO_OUTSIDER = [("tool.use", "tool:run_tests*"), ("tool.use", "tool:run_evals*")]
-_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE + _NO_MCP_INSTALL + _NO_SKILL_INSTALL + _NO_MACHINE
+# And a page drawn over the whole desktop: the person's, and nobody else's to ask for.
+_NO_THEME_SHELL = [("theme.shell", "*")]
+_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE + _NO_MCP_INSTALL + _NO_SKILL_INSTALL + _NO_MACHINE + _NO_THEME_SHELL
 # Asking the person for an ability is the team's: the lead, a specialist, a mission's master.
 # Never an app's, a peer's, a linked team's or a pool's: none of them is on this team.
 _NO_CAPABILITY = [("capability.grant", "*")]
@@ -473,6 +475,8 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return action, res
     if name == "use_skill":
         return "skill.use", f"skill:{args.get('name', '') or '*'}"
+    if name == "create_theme_shell":
+        return "theme.shell", f"theme:{str(args.get('name') or '').strip() or '*'}"
     if name == "install_skill":
         return "skill.install", f"skill:{str(args.get('source') or '').strip() or '*'}"
     # An ability for somebody: its own action, so apps, peers and linked teams are refused
