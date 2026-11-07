@@ -161,6 +161,11 @@ What now holds whenever accounts exist, verified against a running toolbox:
   back — so a shell cannot even *see* another account's files, not merely not write
   them. If no jail mechanism exists, the command is refused rather than run
   unconfined: no jail cannot mean no walls.
+- **The jail keeps its network**, because agents need curl, pip and git, so a jailed command can reach
+  this server on loopback. What cuts it off from the person's authority is `agentos/peercheck.py`: a
+  loopback connection from a descendant of the server gets no trust on any route or socket, on Linux. A
+  token still works there, because a token does not rest on that trust. See
+  [remote access](../remote-access.md#loopback-is-trusted-and-only-for-a-person).
 - **The Terminal WebSocket** opens the same per-account jail in that account's own
   home (not the OS user's `$HOME`), or refuses if no jail is available.
 - **A single-user machine is untouched** — no second tenant to wall off, so the

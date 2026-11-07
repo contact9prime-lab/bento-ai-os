@@ -172,6 +172,9 @@ works on them.
 
 ## When something goes wrong
 
+**"This machine doesn't answer to the name …".** Render's and Fly's own names work by themselves. For your
+own domain, or any other host, set `AGENTOS_ALLOWED_HOSTS=bento.example.com` in the host's environment.
+
 - **The deploy says it failed its health check.** The first build is slow, and the free machine
   takes about a minute to start. Render checks `/login`, which answers once the server is up; give
   it the full five minutes before retrying.

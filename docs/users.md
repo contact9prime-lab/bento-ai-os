@@ -329,6 +329,8 @@ signed cookie with a lock inside it, and three things follow from where it lives
   check, so the API and every WebSocket — the terminal included — go quiet with the
   page. A desktop that kept streaming a turn behind the lock screen would be a lock
   over the pixels only;
+- the cookie from before the lock is ended (`remote.end_session`, kept on disk until it would have
+  expired), so a copy of it does not open the screen, and open sockets are closed at once;
 - it keeps **who** you are. `resolve_user` still resolves a locked cookie's owner, so
   coming back asks for one password and not a username. That is the entire difference
   from Sign out, and the lock screen says whose desktop it is guarding.
