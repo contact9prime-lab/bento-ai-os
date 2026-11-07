@@ -17,6 +17,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -204,7 +205,7 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
 # Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
 # somebody wrote an explicit grant (the card's "remember" is one). A department that can
 # run code was the owner's choice on exactly those terms (company.set_code).
-ASK_FROM_SPECIALISTS = {"run_python"}
+ASK_FROM_SPECIALISTS = {"run_python", "run_tests"}
 
 
 # Tools that change nothing outside this OS's own records, named one by one. risk_of
@@ -1759,6 +1760,8 @@ class Toolbox(usersmod.Scoped):
             if self.broadcast:
                 await self.broadcast({"type": "wallpaper"})
             return "wallpaper reset to the default"
+        # Served back to whoever is signed in, so only an image may arrive here. Checked by its
+        # bytes: this used to copy any readable file, session.key included, to a served path.
         if source.startswith(("http://", "https://")):
             try:
                 status, ctype, data = await netguard.read_capped(source, WALLPAPER_MAX)
@@ -2169,9 +2172,7 @@ class Toolbox(usersmod.Scoped):
             return f"[error] changes must be a valid JSON object: {e}"
         if not isinstance(patch, dict):
             return "[error] changes must be a JSON object"
-        allowed = {"agent_name", "default_model", "autonomy", "max_steps", "workspace",
-                   "policies", "telegram", "mcp_servers", "sandbox", "memory"}
-        applied, skipped = [], []
+        applied, skipped, refused = [], [], []
         for k, v in patch.items():
             if k in CONFIG_PERSON_KEYS:
                 refused.append(k)
@@ -2194,27 +2195,19 @@ class Toolbox(usersmod.Scoped):
                 applied.append(k)
             elif not isinstance(v, str) or not v.strip() or len(v) > 200:
                 skipped.append(k)
-                continue
-            if k in ("telegram", "mcp_servers", "memory") and isinstance(v, dict):
-                target = self.cfg.setdefault(k, {})
-                for kk, vv in v.items():
-                    if vv is None:
-                        target.pop(kk, None)   # null deletes an entry (e.g. remove an MCP server)
-                    else:
-                        target[kk] = vv
             else:
                 self.cfg[k] = v
-            applied.append(k)
+                applied.append(k)
+        refusal = (f"[denied] {', '.join(sorted(refused))} can't be changed by an agent. "
+                   "Ask the person to change it in Settings." if refused else "")
         if not applied:
             return refusal or f"[error] nothing applied; allowed keys: {sorted(CONFIG_SAFE_KEYS)}"
         cfgmod.save_config(self.cfg)
         self.store.log("system", f"config changed by agent: {', '.join(applied)}")
-        if "mcp_servers" in applied and self.mcp:
-            await self.mcp.reload()
         if self.broadcast:
             await self.broadcast({"type": "config"})
-        note = f" (ignored unknown keys: {', '.join(skipped)})" if skipped else ""
-        return "updated: " + ", ".join(applied) + note
+        note = f" (ignored: {', '.join(skipped)})" if skipped else ""
+        return "updated: " + ", ".join(applied) + note + (f"\n{refusal}" if refusal else "")
 
     async def create_app(self, name: str, icon: str = "", description: str = "",
                          html: str = "", permissions: str = "", _conv: str = "") -> str:
@@ -2363,18 +2356,44 @@ class Toolbox(usersmod.Scoped):
             msg += ". Call again with restart=true (or use restart_agentos) to load the change."
         return msg
 
+    def _jailed(self, tail: list[str], workdir: str,
+                ro: list[str] | None = None) -> tuple[list[str] | None, bool, str]:
+        """(argv, is it jailed, refusal) for a program a tool starts for this account, the same
+        walls as run_command: with accounts the account's home with the others blanked, and no
+        jail is a refusal; with the sandbox on its root; off, the person's choice stands."""
+        mech = sandbox_mechanism()
+        hide = None
+        enabled, sb_root = sandbox_conf(self.cfg)
+        if usersmod.enabled():
+            if not mech:
+                secevents.flag("jail.missing", "git or tests", source="tools", uid=usersmod.current() or "")
+                return None, False, ("[denied] this machine has accounts, so this has to run in a "
+                                     "per-account jail, and none is available here. Install "
+                                     "bubblewrap (Linux) so each account's programs stay in its home.")
+            top = os.path.realpath(str(usersmod.home_for(usersmod.current() or "")))
+            hide = [os.path.realpath(str(usersmod.users_root()))]
+        elif enabled:
+            top = sb_root
+        else:
+            return list(tail), False, ""
+        os.makedirs(top, exist_ok=True)
+        ro_extra, extra = folder_binds(self.cfg)
+        ro_extra = [*ro_extra, *(ro or [])]
+        if mech == "bwrap":
+            return bwrap_argv(top, list(tail), chdir=workdir, hide=hide, extra=extra, ro_extra=ro_extra), True, ""
+        return sandbox_exec_argv(top, shlex.join(tail), chdir=workdir, hide=hide, extra=extra,
+                                 ro_extra=ro_extra), True, ""
+
     async def run_tests(self, path: str = "") -> str:
-        """Run the AgentOS test suite (or a project's tests). The Test pillar's
-        workhorse: self-modification calls this before restarting."""
+        """Run the AgentOS test suite (or a project's tests). The Test pillar's workhorse:
+        self-modification calls this before restarting. A test suite is whatever code the
+        folder holds, so it runs in the jail, with no keys in its environment."""
         import agentos
         src_root = Path(agentos.__file__).resolve().parent.parent
-        workdir = os.path.realpath(os.path.expanduser(path)) if path else str(src_root)
-        if not os.path.isdir(workdir):
-            return f"[error] not a directory: {workdir}"
-        py = sys.executable
-        proc = await asyncio.create_subprocess_exec(
-            py, "-m", "pytest", "-q", "--no-header", cwd=workdir,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        scratch = ""
+        env = _tool_env()
+        argv = [sys.executable, "-m", "pytest", "-q", "--no-header"]
+        jailed = False
         try:
             if path:
                 workdir = os.path.realpath(self._abs(path))
@@ -2719,11 +2738,15 @@ class Toolbox(usersmod.Scoped):
     async def save_report(self, title: str, content: str, to_telegram: bool = False) -> str:
         """Save a report as an HTML file in the workspace 'reports' folder (visible in the File Manager,
         opens in the Browser). `content` may be HTML or plain text. Set to_telegram to also send a summary."""
+        import html as _html
         import re as _re
         import time as _t
         root = os.path.expanduser(self.cfg["workspace"])
         reports = Path(root) / "reports"
-        reports.mkdir(parents=True, exist_ok=True)
+        # A planted `reports` link wrote into another account's folder: this tool is safe, so
+        # nobody was asked. A link anywhere on the way is refused, then the real place is judged.
+        if reports.is_symlink():
+            return "[denied] the reports folder is a link, so nothing was saved there."
         slug = _re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:50] or "report"
         stamp = _t.strftime("%Y-%m-%d")
         fname = f"{stamp}-{slug}.html"
@@ -3526,9 +3549,10 @@ class Toolbox(usersmod.Scoped):
             return "risky", (f"Grants '{args.get('name', '?')}' the permissions its definition "
                              f"declares and arms its triggers.")
         if name in ("git_status", "git_log", "git_diff"):
-            return "safe", ""
+            return "safe", ""     # reading, with everything a repo can make git run switched off (_git)
         if name in ("git_init", "git_commit", "git_branch"):
-            # local, reversible history inside the workspace runs free; outside it, ask
+            # local, reversible history inside the workspace runs free; outside it, ask.
+            # After untrusted content it is held for a person (policy.TAINT_WATCH)
             ws = os.path.realpath(os.path.expanduser(self.cfg["workspace"]))
             p = os.path.realpath(os.path.expanduser(args.get("path") or ws))
             if p == ws or p.startswith(ws + os.sep):
@@ -3563,15 +3587,12 @@ class Toolbox(usersmod.Scoped):
         if name == "trainforge_service":
             return "safe", ""
         if name == "run_tests":
-            # running a test suite executes that project's code
-            p = args.get("path") or ""
-            if not p:
-                return "safe", ""  # AgentOS's own suite
-            ws = os.path.realpath(os.path.expanduser(self.cfg["workspace"]))
-            rp = os.path.realpath(os.path.expanduser(p))
-            if rp == ws or rp.startswith(ws + os.sep):
-                return "safe", ""
-            return "risky", f"Runs the test suite (arbitrary code) in {rp}."
+            # A conftest.py is a program, in the workspace as much as anywhere. Risky is what
+            # also holds it after untrusted content, and a specialist's call goes to a person
+            # (ASK_FROM_SPECIALISTS) unless the mission it works for declared it.
+            p = str(args.get("path") or "")
+            where = os.path.realpath(self._abs(p)) if p else "this OS's own code"
+            return "risky", f"Runs a test suite, which is code, in {where}."
         if name == "request_capability":
             who = str(args.get("who") or args.get("_from") or "an agent")
             return "risky", (f"Gives {who} an ability it does not have: "
@@ -3583,7 +3604,7 @@ class Toolbox(usersmod.Scoped):
         if name == "update_soul":
             return "risky", "Rewrites the agent's soul (its persistent identity and behavior)."
         if name == "configure_agentos":
-            return "risky", "Changes AgentOS configuration (autonomy, policies, integrations)."
+            return "risky", "Changes this agent's name, default model, step limit or memory settings."
         if name == "update_agentos":
             return "risky", "Installs a new version of AgentOS itself."
         if name == "share_folder":
@@ -3597,7 +3618,7 @@ class Toolbox(usersmod.Scoped):
         if name == "create_app":
             return "risky", "Installs a UI app (HTML/JS) onto the AgentOS desktop."
         if name in ("develop_agentos", "restart_agentos"):
-            return "risky", "Modifies/restarts AgentOS's own source code (self-modification)."
+            return "risky", "Changes or restarts this OS's own code, which then runs with all its authority."
         if name == "pin_widget":
             return "safe", ""
         if name == "add_mcp_server":
@@ -3674,12 +3695,9 @@ class Toolbox(usersmod.Scoped):
     # ask for approval) and pushes authenticate via the GitHub token from Settings
     # without the token ever appearing in a command line or tool output.
 
-    async def _git(self, repo: str, *argv: str, env: dict | None = None,
-                   timeout: int = 120) -> tuple[int, str]:
-        e = {**os.environ, "GIT_TERMINAL_PROMPT": "0", **(env or {})}
+    async def _git_exec(self, argv: list[str], workdir: str, env: dict, timeout: int) -> tuple[int, str]:
         proc = await asyncio.create_subprocess_exec(
-            "git", "-C", repo, *argv,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=e)
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -3716,6 +3734,15 @@ class Toolbox(usersmod.Scoped):
             return None, deny
         if not os.path.isdir(p):
             return None, f"[error] not a directory: {p}"
+        if write:
+            # a pull, a branch switch or a commit in this OS's own checkout is a write to its
+            # code by another door, and `.git` itself is a folder of programs
+            why = protected.write_refused(os.path.join(p, "x"))
+            code = str(protected._code_root())
+            if not why and (p == code or p.startswith(code + os.sep)):
+                why = "This is this OS's own code. No agent can change it."
+            if why:
+                return None, f"[denied] {why}"
         return p, ""
 
     def _git_auth_env(self) -> dict:
@@ -3740,7 +3767,7 @@ class Toolbox(usersmod.Scoped):
         repo, err = self._git_repo(path)
         if err:
             return err
-        code, out = await self._git(repo, "status", "--short", "--branch")
+        code, out = await self._git(repo, "status", "--short", "--branch", "--ignore-submodules=all")
         if code != 0:
             return f"[error] {out.strip()[:800]}"
         _, remotes = await self._git(repo, "remote", "-v")
@@ -3758,7 +3785,9 @@ class Toolbox(usersmod.Scoped):
         repo, err = self._git_repo(path)
         if err:
             return err
-        argv = ["diff", "--stat", "-p"]
+        if _dashed(ref):
+            return "[error] a ref cannot start with a dash"
+        argv = ["diff", "--stat", "-p", "--no-ext-diff", "--no-textconv"]
         if staged:
             argv.append("--staged")
         if ref:
@@ -3767,14 +3796,14 @@ class Toolbox(usersmod.Scoped):
         return _truncate(out or "(no changes)") if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_init(self, path: str) -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
         code, out = await self._git(repo, "init", "-b", "main")
         return out.strip() if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_commit(self, path: str, message: str, add_all: bool = True) -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
         if not message.strip():
@@ -3784,19 +3813,36 @@ class Toolbox(usersmod.Scoped):
             if code != 0:
                 return f"[error] git add: {out.strip()[:800]}"
         # per-invocation identity fallback so a fresh machine can still commit
-        idargs = []
-        code, _ = await self._git(repo, "config", "user.email")
-        if code != 0:
-            idargs = ["-c", "user.name=AgentOS", "-c", "user.email=agentos@localhost"]
+        idargs = await self._git_identity(repo)
         code, out = await self._git(repo, *idargs, "commit", "-m", message)
         if code != 0 and "nothing to commit" in out:
             return "nothing to commit — working tree clean"
         return out.strip()[:800] if code == 0 else f"[error] {out.strip()[:800]}"
 
+    async def _git_identity(self, repo: str) -> list[str]:
+        """Who a commit is from. The jail can't see the person's ~/.gitconfig, so with no accounts
+        it is read here, from that file alone. An account's commits are the repo's or AgentOS's."""
+        code, _ = await self._git(repo, "config", "user.email")
+        if code == 0:
+            return []
+        if not usersmod.enabled():
+            got = []
+            for key in ("user.name", "user.email"):
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "config", "--global", key, env=_tool_env(),
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                out, _ = await proc.communicate()
+                got.append(out.decode(errors="replace").strip())
+            if all(got):
+                return ["-c", f"user.name={got[0]}", "-c", f"user.email={got[1]}"]
+        return ["-c", "user.name=AgentOS", "-c", "user.email=agentos@localhost"]
+
     async def git_branch(self, path: str, name: str = "", checkout: bool = True) -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=bool(name))
         if err:
             return err
+        if _dashed(name):
+            return "[error] a branch name cannot start with a dash"
         if not name:
             code, out = await self._git(repo, "branch", "-a", "-v")
             return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
@@ -3805,9 +3851,11 @@ class Toolbox(usersmod.Scoped):
         return out.strip()[:400] if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_remote_set(self, path: str, url: str, name: str = "origin") -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
+        if _dashed(name) or _dashed(url):
+            return "[error] a remote cannot start with a dash"
         code, out = await self._git(repo, "remote", "get-url", name)
         if code == 0:
             code, out = await self._git(repo, "remote", "set-url", name, url)
@@ -3816,9 +3864,11 @@ class Toolbox(usersmod.Scoped):
         return f"remote {name} -> {url}" if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_pull(self, path: str = "", remote: str = "origin", branch: str = "") -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
+        if _dashed(remote) or _dashed(branch):
+            return "[error] a remote or branch cannot start with a dash"
         argv = ["pull", remote] + ([branch] if branch else [])
         code, out = await self._git(repo, *argv, env=self._git_auth_env(), timeout=300)
         return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
@@ -3867,6 +3917,8 @@ class Toolbox(usersmod.Scoped):
         repo, err = self._git_repo(path)
         if err:
             return err
+        if _dashed(remote) or _dashed(branch):
+            return "[error] a remote or branch cannot start with a dash"
         if not branch:
             code, out = await self._git(repo, "rev-parse", "--abbrev-ref", "HEAD")
             branch = out.strip() if code == 0 else "main"
@@ -5359,12 +5411,11 @@ TOOL_SCHEMAS = [
                          "required": ["engine"]},
     }, {
         "name": "configure_agentos",
-        "description": "Reconfigure AgentOS itself. Pass a JSON object with any of: agent_name, "
-                       "default_model, autonomy ('paranoid'|'balanced'|'full'), max_steps, workspace, "
-                       "policies (list of {action:'allow'|'deny', match:'pattern *'}), "
-                       "telegram ({enabled, bot_token}), mcp_servers ({name:{transport:'stdio', command, args, "
-                       "env, enabled} or name:null to remove}). Use when the user asks to change settings, "
-                       "add MCP servers, set policies, etc.",
+        "description": "Change your own name, the default model, the step limit or how you remember. "
+                       "Pass a JSON object with any of: agent_name, default_model, max_steps, memory "
+                       "({auto_extract, inject_user, inject_session, inject_facts, rollup_after_hours}). "
+                       "Autonomy, permissions, the sandbox, the workspace, MCP servers and channels are "
+                       "the person's, in Settings: tell them where, you can't change those.",
         "parameters": {
             "type": "object",
             "properties": {"changes": {"type": "string", "description": "JSON object of config changes."}},
@@ -5416,7 +5467,8 @@ TOOL_SCHEMAS = [
     {
         "name": "develop_agentos",
         "description": "Modify or EXTEND AgentOS itself by writing a file into its own source tree "
-                       "(e.g. add a WhatsApp integration module, a new API endpoint, or a new tool). "
+                       "(e.g. add a WhatsApp integration module). An admin says yes every time, and its "
+                       "security modules, tests of them and the page can't be written from here at all. "
                        "Python files are syntax-checked before writing and the previous version is backed up. "
                        "Set restart=true to reload the service and apply the change. Read the relevant source "
                        "with read_source first so your edit fits the existing code.",

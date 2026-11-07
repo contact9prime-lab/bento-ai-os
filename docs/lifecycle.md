@@ -37,7 +37,8 @@ Two different questions live here, and for a long time only one of them was answ
 **Does the OS work?**
 
 - **The OS tests itself.** `tests/` holds the pytest suite; the agent's `run_tests` tool runs
-  it (or any project's suite in your workspace).
+  it (admin only, with a throwaway home) or any project's suite, which runs in the jail because a
+  `conftest.py` is a program.
 - **The self-modification gate:** `develop_agentos(..., restart=true)` and `restart_agentos`
   refuse to restart if the suite fails — a self-modification that breaks the tests cannot go
   live. (Snapshots remain the recovery hatch.)
@@ -78,7 +79,8 @@ Mission Control surfaces the 24-hour pulse (turns, errors, running work).
 **App Studio** turns a sentence into an installed desktop app, with versions and rollback.
 Builds stream honest progress (including failed tool calls), survive page reloads, always end
 in an explicit done/error, and validate completeness before install. The agent can also modify
-AgentOS's own source (`develop_agentos`) behind a snapshot + syntax check + test gate.
+AgentOS's own source (`develop_agentos`) behind an admin's yes + snapshot + syntax check + test
+gate. The security modules are refused even with that yes: you change those from your own terminal.
 
 ## Ship
 

@@ -511,7 +511,9 @@ TAINT_MODES = ("off", "ask", "strict")
 # After untrusted content these are held for a person like a risky step, because a web
 # page that can get one line into memory or a skill is a page that speaks in every later
 # turn. Reading stays free; only the write that outlives the turn is shown.
-TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation"}
+TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation",
+               # history a person trusts later, and a page's words are not theirs to commit
+               "git_init", "git_commit", "git_branch"}
 
 # Paranoid is "ask before anything that isn't just reading". Before 0.6.18 it behaved
 # exactly like balanced, under a label that said "asks before every action".

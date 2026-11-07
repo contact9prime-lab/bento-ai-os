@@ -1210,6 +1210,7 @@ async def _device_fire(owner: str, rule: dict, ev: dict) -> None:
         await _device_event(owner, "trigger", machine, f"{machine}: started mission {flow['name']} "
                                                        f"({devtrig.words(c, ev.get('name') or '')})", flow=flow["name"])
         with contextlib.suppress(Exception):
+            # tainted: a reading started this, and a node on the network can say anything
             await _start_flow(flow, text, origin={"surface": "device", "ref": f"{machine}/{c.get('item') or ''}"},
                               trigger_id=rule["id"], tainted=True)
 
@@ -5447,7 +5448,6 @@ async def _agent_bundle_of(body: dict):
         if not candidates:
             return None, "", JSONResponse(
                 {"error": f"'{source}' is not a URL or an owner/repo"}, status_code=400)
-        import httpx
         last = ""
         # a name somebody typed or pasted, fetched by this server: the guarded client, every hop
         async with netguard.client(timeout=30, follow_redirects=True) as client:
@@ -7846,7 +7846,6 @@ async def api_app_import(body: dict):
         if not candidates:
             return JSONResponse({"error": f"'{source}' is not a URL or an owner/repo"},
                                 status_code=400)
-        import httpx
         last = ""
         async with netguard.client(timeout=30, follow_redirects=True) as client:
             for cand in candidates:
@@ -10618,7 +10617,6 @@ async def api_install_skill(body: dict):
     """Install skills from a raw .md URL or a git repo (scans *.md files)."""
     import tempfile
 
-    import httpx
     src = (body.get("source") or "").strip()
     store = state["store"]
     if not src:
@@ -10641,7 +10639,8 @@ async def api_install_skill(body: dict):
         await netguard.check_url(src)
         with tempfile.TemporaryDirectory() as tmp:
             proc = await asyncio.create_subprocess_exec(
-                "git", "clone", "--depth", "1", src, tmp,
+                "git", "-c", "protocol.ext.allow=never", "-c", "core.hooksPath=/dev/null",
+                "clone", "--depth", "1", "--", src, tmp,
                 stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
             _, err = await asyncio.wait_for(proc.communicate(), timeout=120)
             if proc.returncode != 0:
@@ -10682,7 +10681,7 @@ async def api_wallpaper():
     p = tools.wallpaper_file()
     if p:
         return FileResponse(p, media_type="image/png",
-                            headers={"Cache-Control": "no-store"})
+                            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
     return JSONResponse({"exists": False}, status_code=404)
 
 
@@ -10823,6 +10822,8 @@ async def api_wallpaper_system():
         if r.returncode != 0:
             return JSONResponse({"error": f"could not convert {path.suffix} wallpaper: "
                                           f"{(r.stderr or r.stdout).strip()}"}, status_code=500)
+        data = dest.read_bytes()
+        dest.unlink(missing_ok=True)
     else:
         data = path.read_bytes()
     if not tools.image_kind(data):
@@ -11164,7 +11165,7 @@ async def api_wallpaper_file(wid: str):
     p = _wallpaper_item(wid)
     if not p:
         return JSONResponse({"error": "not found"}, status_code=404)
-    return FileResponse(p, media_type="image/png")
+    return FileResponse(p, media_type="image/png", headers={"X-Content-Type-Options": "nosniff"})
 
 
 @app.post("/api/wallpapers/{wid}/set")
