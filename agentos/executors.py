@@ -573,7 +573,7 @@ def _store_of(cfg: dict):
         return None
 
 
-def identity_note(cfg: dict, store=None, company: bool = True) -> str:
+def identity_note(cfg: dict, store=None, company: bool = True, space_id: str = "") -> str:
     """Who the forwarded turn speaks as: the agent's name, its soul, and (for a turn with no
     team door) the company it works for. A forwarded CLI's own prompt knows none of this,
     and `context_for` only said what it cannot do: on Claude Code, Aria answered chat and
@@ -583,7 +583,8 @@ def identity_note(cfg: dict, store=None, company: bool = True) -> str:
     try:
         from . import zeromind
         # a Zero's soul is on its hub: the hub's last word, or the copy here while it is away
-        soul = " ".join((zeromind.soul_now(cfg) if zeromind.on_hub(cfg or {})
+        here = zeromind.section_soul(store, space_id)     # a turn for a Zero: its soul, not the hub's
+        soul = " ".join((here if here is not None else zeromind.soul_now(cfg) if zeromind.on_hub(cfg or {})
                          else _cfgmod.load_soul()).split())[:1500]
     except Exception:
         soul = ""
@@ -2016,7 +2017,7 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         from . import stage as _stage
         stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
-        + identity_note(cfg, store, company=False) + stage_note + dept_note \
+        + identity_note(cfg, store, company=False, space_id=space_id) + stage_note + dept_note \
         + team_note(subs, in_departments=grouped) + linked_note(cfg, store) + _zero_note(cfg) \
         + _pool_note(door) \
         + workspace_note() + capability_note()

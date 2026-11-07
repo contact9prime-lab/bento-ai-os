@@ -520,6 +520,7 @@ CREATE TABLE IF NOT EXISTS spaces (
     description TEXT DEFAULT '',  -- shown to the extraction model: what this space IS
     workspace TEXT DEFAULT '',    -- optional filesystem dir this space maps to
     archived INTEGER DEFAULT 0,
+    section INTEGER DEFAULT 0,    -- a Zero's section: reads exactly, never the global rows
     created_at REAL,
     updated_at REAL
 );
@@ -666,6 +667,8 @@ class Store:
 
     def _migrate(self):
         """Add columns introduced after the first release to existing databases."""
+        if "section" not in {r["name"] for r in self.db.execute("PRAGMA table_info(spaces)").fetchall()}:
+            self.db.execute("ALTER TABLE spaces ADD COLUMN section INTEGER DEFAULT 0")
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(memories)").fetchall()}
         for col, ddl in (("scope", "TEXT DEFAULT 'user'"),
                          ("conversation_id", "TEXT"),
@@ -925,11 +928,34 @@ class Store:
     def only(cls, sid: str) -> str:
         return f"{cls.ONLY}{sid}"
 
+    # A Zero's section is the one kind of space that does not see the global rows. Whatever
+    # is asked in it is answered to whoever stands at that Zero's screen, so the hub's own
+    # memory stays out of the prompt, recall and the graph, for the lead and for anybody it
+    # hands to. Decided here because the turn's space is all those doors have in common.
+    def section_ids(self) -> set:
+        ids = getattr(self, "_section_ids", None)
+        if ids is None:
+            ids = self._section_ids = {r["id"] for r in self.db.execute(
+                "SELECT id FROM spaces WHERE COALESCE(section,0)=1").fetchall()}
+        return ids
+
+    def is_section(self, sid: str) -> bool:
+        return bool(sid) and sid in self.section_ids()
+
+    def mark_section(self, sid: str) -> None:
+        if sid and sid not in self.section_ids():
+            self.db.execute("UPDATE spaces SET section=1 WHERE id=?", (sid,))
+            self.db.commit()
+            self.section_ids().add(sid)
+
     def search_memories(self, query: str = "", limit: int = 20, scope: str = "",
                         conversation_id: str = "", space: str = "") -> list[dict]:
         """Search memory. `space` widens nothing and hides nothing global: passing a
         space means "what is true here", which is this space's memories UNION the
-        ones true everywhere. Pass Store.GLOBAL_ONLY for global alone."""
+        ones true everywhere (a Zero's section excepted: see section_ids). Pass
+        Store.GLOBAL_ONLY for global alone."""
+        if self.is_section(space):
+            space = self.only(space)
         where, params = [], []
         if scope:
             where.append("scope=?")
@@ -1402,7 +1428,10 @@ class Store:
 
     def _space_clause(self, space: str, col: str = "space_id") -> tuple[str, list]:
         """The one visibility rule, in one place: a space sees its own rows and the
-        global ones. Returns ('', []) when no space was asked for."""
+        global ones, and a Zero's section only its own (section_ids). Returns ('', []) when
+        no space was asked for."""
+        if self.is_section(space):
+            space = self.only(space)
         if space == self.GLOBAL_ONLY:
             return f" AND COALESCE({col},'')=''", []
         if space.startswith(self.ONLY):

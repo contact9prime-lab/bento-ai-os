@@ -10,8 +10,9 @@ spaces and the visibility rule already understand it. Two things make it a SECTI
 than a project:
 
   * the Zero reads and writes ONLY its own rows (Store.only): never the hub's global
-    memory, never another Zero's. The hub's agents working a task for it see the section
-    and the hub's global rows, which is the ordinary space rule; they are the hub's team.
+    memory, never another Zero's. So does the hub's team working for it, lead and hand-overs
+    alike (Store.section_ids): what they answer goes back to whoever is at that screen, so
+    what they can read is what that screen can read. A hub's global memory is for the hub.
   * a Zero cannot write anywhere else: every write is filed under its space whatever it
     asked, and an entity is shared but an assertion is the section's.
 
@@ -52,16 +53,40 @@ def section(store, lk: dict) -> str:
     d, e = _entry(lk)
     sid = str(e.get("space") or "")
     if sid and store.get_space(sid):
+        store.mark_section(sid)          # one made before sections read exactly
         return sid
     label = str(lk.get("label") or "zero")
     sid = store.create_space(SECTION.format(label=label),
                              description=f"What the Zero {label} remembers and knows. It sees only "
-                                         f"this section; the hub's agents working for it see this "
-                                         f"and what is true everywhere.")
+                                         f"this section, and so do the hub's agents working for it.")
+    store.mark_section(sid)
     if e:
         e["space"] = sid
         provision.save(d)
     return sid
+
+
+def link_of_section(space_id: str, owner: str) -> dict | None:
+    """The link of the Zero whose section `space_id` is, if it belongs to `owner`. Found through
+    the machine's own record and its certificate. A label is unique only per account, and comes
+    from the Zero's hostname, so two people's Pis can both be `raspberrypi`."""
+    from . import provision, teamlink
+    if not space_id:
+        return None
+    fp = next((fp for fp, e in provision.load()["enabled"].items() if e.get("space") == space_id), "")
+    lk = teamlink._by_fp(fp) if fp else None
+    if not lk or (lk.get("owner") or "") != (owner or "") or not zeromod.ships_to(lk):
+        return None
+    return lk
+
+
+def section_soul(store, space_id: str) -> str | None:
+    """The soul for a turn in a Zero's section: that Zero's, never the hub's. None elsewhere."""
+    from .tools import _zero_label_of
+    if not store or not store.is_section(space_id):
+        return None
+    label = _zero_label_of(space_id)
+    return soul_of(label) if label else ""
 
 
 def soul_file(label: str) -> Path:

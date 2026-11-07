@@ -1971,20 +1971,22 @@ class ControlPlane(usersmod.Scoped):
                 f"its full path in the answer.")
 
     def _ship_back(self, lk: dict, text: str, since: float = 0.0) -> dict:
-        """Files this answer names, back with it. For a Zero this hub set up to run here
-        (zero.ships_to): whatever it names under the roots. For any other linked team: only
-        what was MADE for this task, and only while the link's `file.send files:made` allows
-        it (linkfiles.py); a named file older than the task stays here, and the answer says so."""
+        """Files this answer names, back with it: only what was MADE for this task, never a
+        hidden one, under the roots the link's OWNER may reach, and only while the link's
+        `file.send files:made` allows it (linkfiles.py). A named file older than the task
+        stays here, and the answer says so. A Zero gets the same rule as any linked team: a
+        reply is model output and anybody at its screen can steer it, so naming a file must
+        not be a way to fetch it. Its row is written on first need, because a Zero made before
+        this rule has none."""
         from . import zero as zeromod
         from . import outputs
         from . import linkfiles
-        kept: list = []
         if zeromod.ships_to(lk):
-            files, left = zeromod.pack(text, outputs.roots(self.cfg))
-        elif linkfiles.may_send_back(self.store, getattr(self.toolbox, "pdp", None), lk["label"]):
-            files, left, kept = linkfiles.made_for_task(text, outputs.roots(self.cfg), since or time.time())
-        else:
+            linkfiles.ensure_zero_back(self.store, lk["label"])
+        if not linkfiles.may_send_back(self.store, getattr(self.toolbox, "pdp", None), lk["label"]):
             return {}
+        roots = outputs.roots(self.cfg, admin=usersmod.is_admin(lk.get("owner") or ""))
+        files, left, kept = linkfiles.made_for_task(text, roots, since or time.time())
         if not files and not left and not kept:
             return {}
         if files or left:

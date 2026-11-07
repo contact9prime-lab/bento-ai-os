@@ -875,6 +875,8 @@ class Agent:
             workspace=self.cfg["workspace"],
             sandbox=sb_text,
             soul=((zctx or {}).get("soul") or (zeromind.soul_now(self.cfg) if zctx is not None
+                                                 else zeromind.section_soul(store, self.space_id)
+                                                 if store.is_section(self.space_id)
                                                  else cfgmod.load_soul()))[:4000],
             memories=mem_text,
             machine=await _machine_state(self.toolbox),

@@ -1214,7 +1214,9 @@ class Toolbox(usersmod.Scoped):
             # a Zero's memory is on its hub, in its section (zeromind.py)
             return await zeromind.tool(self.cfg, self.store, "remember", content=content,
                                        scope=scope, conversation_id=conversation_id or "")
-        target_space = "" if everywhere else (space_id or "")
+        # a Zero's turn files in its section, whatever the call says: `everywhere` there would
+        # be the room in front of a Pi writing into the hub's own memory
+        target_space = "" if everywhere and not self.store.is_section(space_id) else (space_id or "")
         mid = self.store.add_memory(content, scope=scope,
                                     conversation_id=conversation_id or None, source="agent",
                                     space_id=target_space)
@@ -1612,7 +1614,7 @@ class Toolbox(usersmod.Scoped):
         if zeromind.on_hub(self.cfg):
             return await zeromind.tool(self.cfg, self.store, "kg_add", subject=subject, relation=relation,
                                        object=object, subject_type=subject_type, object_type=object_type)
-        target_space = "" if everywhere else (space_id or "")
+        target_space = "" if everywhere and not self.store.is_section(space_id) else (space_id or "")
         eid = self.store.kg_add(subject, relation, object, subject_type, object_type,
                                 space_id=target_space)
         where = "everywhere" if not target_space else "in this space"
@@ -3120,6 +3122,13 @@ class Toolbox(usersmod.Scoped):
         # Zero's. It is kept in the section, runs as the Zero's chat runs, and its answer goes
         # to the Zero's screen (scheduler.zero_job). Any other turn's space is not recorded.
         zero_space = space_id if space_id and _zero_label_of(space_id) else ""
+        if zero_space:
+            # every firing is a model turn on the hub's money, and anybody at the Pi can ask
+            if schedule_type == "interval" and 0 < int(interval_minutes or 0) < ZERO_MIN_INTERVAL:
+                return f"[error] a Zero's schedule runs at most every {ZERO_MIN_INTERVAL} minutes"
+            if sum(1 for t in self.store.list_tasks() if t.get("space_id") == zero_space) >= ZERO_MAX_SCHEDULES:
+                return (f"[error] this Zero already has {ZERO_MAX_SCHEDULES} schedules. "
+                        f"Remove one in Missions → Schedule on the hub first")
         return self.scheduler.create_task(prompt, schedule_type, interval_minutes, at_time,
                                           delay_minutes, weekday=weekday, app_id=app_id,
                                           space_id=zero_space)
@@ -6439,6 +6448,10 @@ TOOL_SCHEMAS.extend(CAPABILITY_REQUEST_SCHEMAS)
 
 #: Tools whose reads and writes belong to the turn's space. The agent loop injects
 #: `space_id` for these; nothing else in the OS decides scope on the model's behalf.
+ZERO_MAX_SCHEDULES = 16         # schedules one Zero's screen may have standing on its hub
+ZERO_MIN_INTERVAL = 5           # minutes between a repeating one's firings
+
+
 def _zero_label_of(space_id: str) -> str:
     """The Zero whose section `space_id` is, on the hub that set it up, or ''."""
     from . import provision

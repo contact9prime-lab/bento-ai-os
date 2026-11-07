@@ -227,7 +227,9 @@ def inventory_row(lk: dict) -> dict | None:
     then address): the machine whose name every sensor is listed under."""
     from . import inventory
     for r in inventory.rows():
-        if any(x.get("label") == lk.get("label") for x in r.get("links") or []):
+        if any(x.get("fp") == lk.get("peer_host_fp") if lk.get("peer_host_fp")
+               else x.get("label") == lk.get("label") and x.get("owner") == (lk.get("owner") or "")
+               for x in r.get("links") or []):
             return r
     return None
 

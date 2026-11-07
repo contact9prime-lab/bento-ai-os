@@ -778,12 +778,14 @@ async def _zero_job(task: dict):
     (fabric.zero_chat, with its tools, its taint, its section and its brain), then sent to its
     screen (wire op zero_say). None when the task's space is no Zero's section."""
     from . import teamlink
-    from . import zero as zeromod
+    from . import zeromind
     from .tools import _zero_label_of
     label = _zero_label_of(task.get("space_id") or "")
     if not label:
         return None
-    lk = next((x for x in teamlink._load()["links"] if x.get("label") == label and zeromod.ships_to(x)), None)
+    # the task's own account and the section's certificate, never the label: labels repeat
+    # between accounts, and the first match ran one person's schedule as another
+    lk = zeromind.link_of_section(task.get("space_id") or "", usersmod.current() or "")
     if not lk:
         return "", f"[error] {label} is no longer linked here, so its schedule had nowhere to run"
     owner = lk.get("owner") or ""
