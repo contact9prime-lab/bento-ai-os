@@ -528,6 +528,15 @@ _ENV_REFUSED = re.compile(r"^(PATH|HOME|SHELL|BASH_ENV|ENV|NODE_OPTIONS|NODE_PAT
 def _package_command(cand: dict) -> tuple[str, str]:
     """(command, args) for a registry package, pinned to the version that was listed. `npx -y
     name` runs whatever the name means on the day it connects, which is not what anybody agreed to."""
+    try:
+        return _pinned(cand)
+    except PackageRefused:
+        from . import secevents
+        secevents.flag("store.package_refused", str(cand.get("registry_name") or "")[:80], source="registry")
+        raise
+
+
+def _pinned(cand: dict) -> tuple[str, str]:
     kind = str(cand.get("registry_type") or "")
     who = cand.get("registry_name") or cand.get("identifier") or "This server"
     if kind not in RUNNERS:

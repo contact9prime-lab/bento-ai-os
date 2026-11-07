@@ -2986,6 +2986,8 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
                 "message": "starting up — waking the agent and its tools"})
     if note:
         await emit({"type": "status", "message": note})
+    if JAIL_ENFORCED and jail_ready():
+        env.context = (env.context + "\n\n" if env.context else "") + JAIL_NOTE
 
     # only Claude Code reads a stream of messages on its input
     if env.steerable and env.engine not in ("claude-code", ""):
@@ -3146,6 +3148,11 @@ async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | Non
 # builder made and knows nothing else about the run. It is not `tools.bwrap_argv`, which keeps
 # a jailed shell's home writable; a CLI's jail has to keep its credentials working and take
 # everything else in the home away.
+
+#: Told to every jailed run, or it reads a missing home as a broken machine and goes looking.
+JAIL_NOTE = ("You run in a jail. You can reach the folders named for this run and nothing else of the "
+             "person's: their home, keys and other projects are hidden, and `bento` isn't available. "
+             "When you need something outside, say so instead of hunting for it.")
 
 #: Off only in the test suite (tests/conftest.py), whose fake CLIs live in a temp folder this
 #: jail hides. Python state on purpose: no environment variable or setting can switch it.
@@ -3399,7 +3406,7 @@ def jail_cli(argv: list[str], *, engine: str, cwd: str, rw=(), ro=(), scratch: s
     inside something hidden reappears and something hidden inside a given folder stays hidden,
     whichever way round they nest."""
     from . import config as _cfgmod
-    from . import protected
+    from . import protected, secevents
     home, data, code = _real("~"), _real(_cfgmod.AGENTOS_HOME), source_root()
     cwd = _real(cwd)
     given = [("rw", _real(p)) for p in rw if p] + [("ro", _real(p)) for p in ro if p]
@@ -3408,11 +3415,13 @@ def jail_cli(argv: list[str], *, engine: str, cwd: str, rw=(), ro=(), scratch: s
             raise JailRefused(f"{path} is too wide to give an agent's CLI, because it holds your whole "
                               "home or this OS's data. Pick a folder inside it.")
         if any(os.path.exists(os.path.join(path, f)) for f in ("vault.key", "agentos.db")):
+            secevents.flag("cli.folder_refused", "holds a home's private files", source=engine)
             raise JailRefused(f"{path} holds an account's private data, so an agent's CLI can't have it. "
                               "Pick another folder.")
         if set(Path(path).parts) & {".ssh", ".gnupg", ".aws", ".kube"}:
             raise JailRefused(f"{path} holds keys, so an agent's CLI can't have it. Pick another folder.")
         if _someone_elses(path):
+            secevents.flag("cli.folder_refused", "another account's folder", source=engine)
             raise JailRefused("That folder belongs to another account on this machine.")
     entries: list[tuple] = [("tmpfs", p) for p in (*_HIDDEN, home, data) if os.path.isdir(p)]
     resolv = _real("/etc/resolv.conf")         # usually a link into /run, which is hidden

@@ -55,6 +55,11 @@ def test_nothing_private_is_in_argv_with_a_team_door(engine, tmp_path):
     assert "Bearer" not in text and "THE-SOUL" not in text and "TOKEN9" not in text
 
 
+def test_the_new_fields_survive_sanitising(tmp_path):
+    e = ex.Envelope(workspace=str(tmp_path), person=True, unjailed_ok=True, shell_for_accounts=True).sanitized()
+    assert e.person and e.unjailed_ok and e.shell_for_accounts
+
+
 def test_the_private_files_are_0600(tmp_path):
     env = ex.Envelope(workspace=str(tmp_path), team_mcp=("u", "t"), context="c", scratch=str(tmp_path))
     cmd = ex.build_command("x", env)

@@ -54,6 +54,8 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "provision.refused": ("A machine's claim was refused", 3, 300),
     "beacon.flood": ("Many machines announced themselves at once", 1, 300),
     "gate.unlisted_tool": ("A model called a tool it was not offered", 3, 300),
+    "cli.folder_refused": ("An agent's CLI was pointed at another account's or a private folder", 1, 300),
+    "store.package_refused": ("A public registry entry asked to run something this OS won't", 3, 300),
     "gate.forged_field": ("A call tried to set a field only this OS sets", 3, 300),
     "gate.refused_burst": ("A run of steps was refused", 8, 120),
     "taint.steering": ("Outside content tried to steer the agent", 1, 300),
