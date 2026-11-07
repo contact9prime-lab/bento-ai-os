@@ -1172,7 +1172,7 @@ class Agent:
                 dec = Decision("ask", reason)
             else:
                 dec = Decision("allow")
-        must_person = person_rule(self.principal, name, args, dec, self.toolbox.pdp)
+        must_person = person_rule(self.principal, name, args, dec, self.toolbox.pdp, level=level)
         note_refusal(name, self.principal, dec)
         # The sandbox is on and cannot start here: code runs only on a person's yes, each time, with
         # no remember and whatever a grant or the autonomy says. tools.run_command refuses without it.

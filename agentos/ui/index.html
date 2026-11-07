@@ -7168,6 +7168,17 @@ function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
    knows; the ~400 older calls are read by their first words ("could not…" is a
    failure, "saved…" a success). A guess only picks an icon — the words are always
    shown as written, so a wrong guess costs a colour, never the message. */
+/* A machine-only route refused this account (machineroutes.py). One door, so every button that
+   reaches one says why. A read is not something the person pressed, and a call the desktop makes
+   by itself says `quiet`. */
+if(window.fetch&&!window.__adminFetch){
+  window.__adminFetch=window.fetch;
+  window.fetch=async function(u,o){
+    const r=await window.__adminFetch.apply(this,arguments);
+    if(r.status===403&&r.headers.get('X-Bento-Admin-Only')&&o&&o.method&&o.method!=='GET'&&!o.quiet)toast('Only an admin can do that on this machine.',{kind:'warn'});
+    return r;
+  };
+}
 var TOAST_IC={ok:'M5 12.5l4.5 4.5L19 7.5',err:'M7 7l10 10M17 7L7 17',warn:'M12 6.5v7M12 17v.5',info:'M12 10.5v7M12 6.5v.5'};
 function toastKind(t,act){
   if(act&&act.kind&&TOAST_IC[act.kind])return act.kind;
@@ -13117,7 +13128,7 @@ function switchDesk(n){
   // In session mode a desktop is a real sway workspace, so external windows move
   // with it instead of following you everywhere. The shell comes along too.
   if(typeof PLATFORM!=='undefined'&&PLATFORM.mode==='de')
-    fetch('/api/wm/desktop',{method:'POST',headers:{'Content-Type':'application/json'},
+    fetch('/api/wm/desktop',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
       body:JSON.stringify({desktop:n})}).then(()=>{
         if(typeof updateNativeWindows==='function')setTimeout(updateNativeWindows,200)}).catch(()=>{});
   const go=()=>{
@@ -14574,7 +14585,7 @@ function menuNative(w){
 function raiseShell(on){
   if(typeof suiRaise==='function'&&suiRaise(on))return Promise.resolve();
   if(PLATFORM.mode!=='de')return Promise.resolve();
-  return fetch('/api/shell/raise',{method:'POST',headers:{'Content-Type':'application/json'},
+  return fetch('/api/shell/raise',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
     body:JSON.stringify({on:on!==false})}).catch(()=>{});
 }
 /* ---- the menu bar renders the focused window's menus ---- */
@@ -30855,7 +30866,7 @@ async function openNotifPanel(){
   await renderNotifList();
   popOpen(p,{anchor:$('#tray-bell')});
   popIn(p,{origin:'top right'});
-  await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
+  await fetch('/api/notifications',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
   updateBell();
 }
 async function dismissNotif(id){
@@ -35433,7 +35444,7 @@ function provZeroHTML(v,can){
       :'Paste one line on a Pi and it is set up from here, with nobody at it.',
      more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
      f:'zero pi curl one line install tailscale zero touch hub'}));
-  if(z)rows.push(`<div class="zero-out">${z.for&&z.for.name?`<p class="mut">For ${esc(z.for.name)}</p>`:''}<code class="zero-line">${esc(z.line)}</code>
+  if(z)rows.push(`<div class="zero-out">${z.for&&z.for.name?`<p class="mut">For ${esc(z.for.name)}</p>`:''}${z.held?`<p class="mut">${esc(z.held)}</p>`:''}<code class="zero-line">${esc(z.line)}</code>
       <button class="endbtn" data-prov="zerocopy">Copy</button>
       <p class="mut">${(z.addresses||[]).map(a=>`${esc(a.addr)} ${a.via==='tailscale'?'over Tailscale':'on your network'}`).join(' · ')
         ||'This hub has no address another machine can reach.'}${(z.addresses||[]).some(a=>a.via==='tailscale')?'':

@@ -58,6 +58,7 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import hmac
+import copy
 import json
 import os
 import re
@@ -534,11 +535,14 @@ def cfg_for(uid: str | None = None, machine: dict | None = None) -> dict:
         return machine if machine is not None else cfgmod.load_config()
     c = _cfgs.get(uid)
     if c is None:
-        base = dict(machine if machine is not None else cfgmod.load_config())
+        # A deep copy: a shallow one shared every nested dict, so a person's write to
+        # cfg["providers"]["x"]["api_key"] changed the machine's live config, and their
+        # provider then answered everybody's prompts.
+        base = copy.deepcopy(machine if machine is not None else cfgmod.load_config())
         try:
             own = json.loads(cfg_path_for(uid).read_text())
         except Exception:
-            own = _fresh_user_cfg()
+            own = _fresh_user_cfg(uid)
         # a phone channel is somebody's identity: never the machine's, seen through
         # (an account with no Telegram of its own read the machine's token as its own)
         for k in OWN_CHANNELS:
@@ -546,6 +550,7 @@ def cfg_for(uid: str | None = None, machine: dict | None = None) -> dict:
         for k, v in own.items():
             base[k] = v
         base["_uid"] = uid
+        base["workspace"] = workspace_of(base)
         _cfgs[uid] = c = base
         # secrets this person's file still holds in clear go into THEIR vault
         from . import vault
@@ -556,6 +561,44 @@ def cfg_for(uid: str | None = None, machine: dict | None = None) -> dict:
         except Exception:
             pass
     return c
+
+
+def workspace_problem(uid: str | None, path) -> str:
+    """Why this folder cannot be this account's workspace, or ''.
+
+    A workspace is what the Files app, a forwarded CLI's --add-dir and the agent's jail
+    all start from, so choosing one must never be a way to reach a folder. An admin chooses
+    freely: they can reach the machine anyway. '' is the machine itself, with no account.
+    The shared-folder rules are the way to give someone a folder outside their home.
+    """
+    if not uid or not enabled() or is_admin(uid):
+        return ""
+    bad = "A workspace has to be a folder inside your own home on this machine."
+    raw = str(path or "").strip()
+    if not raw or "\x00" in raw:
+        return bad
+    real = os.path.realpath(os.path.expanduser(raw))
+    home = os.path.realpath(str(home_for(uid)))
+    if not real.startswith(home + os.sep):
+        return bad
+    from . import protected
+    return bad if protected.secret(real) else ""
+
+
+def workspace_of(cfg: dict) -> str:
+    """The workspace this config may really use, read from the account it belongs to. A value
+    somebody stored before this check, or that an admin kept when they stopped being one,
+    falls back to the account's own folder rather than reaching anything."""
+    cfg = cfg or {}
+    uid = cfg.get("_uid") or ""
+    ws = cfg.get("workspace") or ""
+    return str(home_for(uid) / "workspace") if workspace_problem(uid, ws) else ws
+
+
+def confine_folder(cfg: dict, path) -> str:
+    """`path`, or this account's own workspace when it may not work there. Settings →
+    Executors is the machine's, so its folder is not somebody else's to be handed."""
+    return workspace_of(cfg) if workspace_problem((cfg or {}).get("_uid"), path) else str(path or "")
 
 
 #: The keys a user owns. Everything else in the config is the machine's, and only
@@ -630,6 +673,10 @@ def save_user_cfg(uid: str, cfg: dict) -> None:
     if not uid:
         cfgmod.save_config(cfg)
         return
+    # Every writer passes here, the agent's tools included, so a value the route would
+    # have refused neither stays in the live view nor reaches the file.
+    if "workspace" in cfg and workspace_problem(uid, cfg["workspace"]):
+        cfg["workspace"] = str(home_for(uid) / "workspace")
     own = {k: cfg[k] for k in USER_KEYS if k in cfg}
     p = cfg_path_for(uid)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -665,14 +712,19 @@ def machine_changed(machine: dict) -> None:
     gone and the Terminal's jail never bound it.
     """
     live = _machine[0]
-    if live is not None:
+    # Each view gets its own copy, or this would undo cfg_for's: one person's nested write
+    # would reach everybody again. A section already the same object stays, because the code
+    # that saved may still hold it and write to it next.
+    if live is not None and live is not machine:
         for k, v in machine.items():
-            if k not in USER_KEYS and k != "_uid":
-                live[k] = v
-    for uid, c in _cfgs.items():
+            if k not in USER_KEYS and k != "_uid" and live.get(k) is not v:
+                live[k] = copy.deepcopy(v)
+    for _uid, c in _cfgs.items():
+        if c is machine:
+            continue
         for k, v in machine.items():
-            if k not in USER_KEYS:
-                c[k] = v
+            if k not in USER_KEYS and k != "_uid" and c.get(k) is not v:
+                c[k] = copy.deepcopy(v)
 
 
 def _forget(uid: str) -> None:

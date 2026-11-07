@@ -20,6 +20,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, Response)
 
 from . import agentbundle
+from . import machineroutes
 from . import secevents
 from . import turnerrors
 from . import appcheck
@@ -403,7 +404,8 @@ async def startup():
     # An OAuth server asks for consent from inside its own connection attempt, which
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
-    mcp_oauth.set_notifier(broadcast, ui_probe=lambda: bool(clients))
+    # The consent URL is one person's: on a machine with accounts it reaches only them.
+    mcp_oauth.set_notifier(_owner_send(), ui_probe=lambda: bool(clients))
     # The vault: every read of a secret is one diary line saying who it was for,
     # and a config that still holds a password in clear hands it over now.
     vaultmod.set_reader_log(lambda name, actor: state["store"].log(
@@ -2068,6 +2070,13 @@ def _my_name() -> str:
         return ""
 
 
+def _zero_waits_for_admin(key: dict) -> bool:
+    """Would a machine with this key be the first thing to open this machine's link door,
+    on the word of somebody who is not an admin?"""
+    owner = str(key.get("owner") or "")
+    return bool(owner) and not usersmod.is_admin(owner) and not state.get("team_listener")
+
+
 async def _provision_new(b: dict):
     """A machine turned on and said it is waiting. Ask whoever may set it up — and if it
     carries one of this machine's keys marked automatic, set it up now (the zero-touch
@@ -2079,6 +2088,13 @@ async def _provision_new(b: dict):
                 f"{b['name']} ({hw.get('board') or hw.get('arch') or 'a machine'}) at {b.get('addr')} "
                 f"is waiting to be set up, heard {zeromod.via_words(b.get('via', ''))}")
     auto = next((k for k in provmod.load()["keys"] if k.get("auto") and k["id"] == b.get("key_id")), None)
+    if auto and _zero_waits_for_admin(auto):
+        # Setting it up would open this machine's link port and start a community. Anyone
+        # may make their own Zero, but that part is the machine's, so an admin says yes once.
+        _sys_ledger("provision.held", f"provision:{b['fp'][:16]}",
+                    f"{b['name']} is held: its line came from an account that is not an admin, and "
+                    "this machine has not opened its link port yet")
+        auto = None
     if auto:
         # heard twice at once (the announcement and a direct ask): set it up once
         if b["fp"] in _PROV_BUSY or provmod.was_enabled_here(b["fp"]):
@@ -2533,9 +2549,28 @@ def _files_root() -> Path:
 def _safe_file(rel: str) -> Path | None:
     root = _files_root().resolve()
     p = (root / rel).resolve()
-    if p == root or root in p.parents:
+    if (p == root or root in p.parents) and not _file_refused(p):
         return p
     return None
+
+
+def _file_refused(p: Path) -> bool:
+    """The check every file route passes, on the REAL path, whatever root it came from.
+    Nobody reads a session key or a vault through the Files app. On a machine with accounts,
+    someone who is not an admin reaches their own home and the folders shared with them.
+    The agent's file tools have held this line for a long time (`_tenant_deny`); the routes
+    never called it, so a workspace of `/` handed over every account and the session key."""
+    from . import protected
+    if protected.secret(p):
+        return True
+    if not usersmod.enabled() or usersmod.is_admin(usersmod.current()):
+        return False
+    from .tools import _under_any, shares_for
+    real = os.path.realpath(str(p))
+    home = os.path.realpath(str(usersmod.home_for(usersmod.current())))
+    if real == home or real.startswith(home + os.sep):
+        return False
+    return not _under_any(real, [s["path"] for s in shares_for(state["cfg"])])
 
 
 @app.get("/api/locale")
@@ -2650,6 +2685,16 @@ async def api_input_set(body: dict):
     from . import session as sessionmod
     cfg = state["cfg"]
     inp = cfg.setdefault("input", {})
+    b = body or {}
+    try:
+        sessionmod.clean_keyboard(b.get("keyboard") if isinstance(b.get("keyboard"), dict) else {}, strict=True)
+        for k in ("repeat_delay", "repeat_rate"):
+            if (b.get("keyboard") or {}).get(k) not in (None, ""):
+                int(b["keyboard"][k])
+        if (b.get("touchpad") or {}).get("accel") not in (None, ""):
+            float(b["touchpad"]["accel"])
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     for section in ("keyboard", "touchpad"):
         if isinstance(body.get(section), dict):
             inp.setdefault(section, {}).update(body[section])
@@ -3099,6 +3144,8 @@ async def api_files(path: str = "", root: str = ""):
         p = (base / path).resolve() if path else base
         if not (p == base or base in p.parents):
             p = base
+        if _file_refused(p):
+            return JSONResponse({"error": "that folder is not shared with you"}, status_code=404)
     else:
         base = _files_root()
         base.mkdir(parents=True, exist_ok=True)
@@ -3139,7 +3186,7 @@ async def api_open(body: dict):
         # a file an agent made, by its full path: only from the folders you may reach
         from . import outputs
         p = outputs.reachable(full, _output_roots())
-        if p is None:
+        if p is None or _file_refused(p):
             return JSONResponse({"error": "not found, or not in a folder you can reach"},
                                 status_code=404)
         target = str(p)
@@ -3210,7 +3257,7 @@ async def api_files_get(path: str, download: int = 0):
     import mimetypes
     from . import outputs
     p = outputs.reachable(path, _output_roots())
-    if p is None:
+    if p is None or _file_refused(p):
         return JSONResponse({"error": "not found, or not in a folder you can reach"}, status_code=404)
     mt, _ = mimetypes.guess_type(str(p))
     inline = (mt or "").startswith(("text/", "image/")) or mt == "application/pdf"
@@ -3516,6 +3563,11 @@ async def api_wm_output_configure(body: dict):
         kw["position"] = (int(p.get("x", 0)), int(p.get("y", 0)))
     if body.get("enabled") is not None:
         kw["enabled"] = bool(body["enabled"])
+    from .compositor import clean_output
+    try:
+        clean_output({"name": name, **{k: v for k, v in kw.items() if k != "position"}})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     ok, msg = host.configure_output(name, **kw)
     # A display setting must outlive the session that made it: applying a mode
     # over IPC lasts until logout, so the accepted layout is also written to a
@@ -3526,7 +3578,8 @@ async def api_wm_output_configure(body: dict):
             cfg = state["cfg"]
             outs = cfg.setdefault("displays", {})
             saved = outs.setdefault(name, {})
-            saved.update({k: v for k, v in body.items() if k != "name"})
+            saved.update({k: v for k, v in body.items()
+                          if k in ("mode", "scale", "transform", "position", "enabled")})
             if isinstance(saved.get("position"), dict):
                 p = saved["position"]
                 saved["position"] = f"{int(p.get('x', 0))},{int(p.get('y', 0))}"
@@ -3552,7 +3605,10 @@ async def api_platform(request: Request):
     """
     from . import host
     state_ = host.platform_state()
-    state_["remote_client"] = not remotemod.is_loopback(_client_addr(request))
+    # An account that is not an admin is treated the same way, wherever it sits: the host's
+    # screen is not theirs, so a file opens in the browser and native apps say why they can't.
+    state_["remote_client"] = (not remotemod.is_loopback(_client_addr(request))
+                               or (usersmod.enabled() and not usersmod.is_admin(usersmod.current())))
     state_["hostname"] = socket.gethostname()
     # Is the desktop a native layer-shell surface right now, and could it be?
     # The UI shows this in About/System Settings, and the doctor uses the second
@@ -4032,6 +4088,11 @@ async def api_notifications():
     if not d:
         return {"available": False, "items": [], "unread": 0, "dnd": False,
                 "reason": "Your desktop environment shows notifications in hosted mode."}
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        # what the host's apps announce is whoever is at the screen's, and this is polled,
+        # so it answers "none here" rather than a 403
+        return {"available": False, "items": [], "unread": 0, "dnd": False,
+                "reason": machineroutes.REFUSAL}
     from . import attention
     st = d.state()  # items carry additive per-item `importance` once triage scored them
     dg = attention.digest_state(state["store"])
@@ -4734,6 +4795,39 @@ async def api_set_brain(body: dict):
     return {"ok": True, "message": msg, **out}
 
 
+def _mask_secrets(value, key: str = "", under_env: bool = False):
+    """Every secret-named value masked at any depth, so a new section cannot forget. The env
+    and headers of a tool server have names nobody here chose, so every value under those is
+    masked. `auth` also names how a server signs in ("oauth"), which is not a secret."""
+    from . import trace as tracemod
+    if isinstance(value, dict):
+        return {k: _mask_secrets(v, str(k), under_env or k in ("env", "headers"))
+                for k, v in value.items() if k not in _NEVER_SENT}
+    if isinstance(value, list):
+        return [_mask_secrets(v, key, under_env) for v in value]
+    if isinstance(value, str) and value and not value.startswith("•••"):
+        if value in ("oauth", "bearer", "none") and key.lower() == "auth":
+            return value
+        if under_env or tracemod.SECRET.search(key):
+            return "•••" + value[-4:] if len(value) > 8 else "•••"
+    return value
+
+
+# Offline-cracking material and half the session key: no reader has a use for them.
+_NEVER_SENT = frozenset({"pass_hash", "pass_salt", "salt"})
+
+
+def _keep_masked(new, old):
+    """What a page read through `_mask_secrets` and sent back: a value it still shows as a
+    mask means "unchanged", so the real one stays. Saving the mask over it would lose a key."""
+    if isinstance(new, dict):
+        was = old if isinstance(old, dict) else {}
+        return {k: _keep_masked(v, was.get(k)) for k, v in new.items()}
+    if isinstance(new, str) and new.startswith("•••"):
+        return old if isinstance(old, str) else ""
+    return new
+
+
 @app.get("/api/config")
 async def api_get_config():
     cfg = json.loads(json.dumps(state["cfg"]))
@@ -4756,7 +4850,7 @@ async def api_get_config():
     if cfg.get("github", {}).get("token"):
         cfg["github"]["token"] = "•••" + cfg["github"]["token"][-4:]
         cfg["github"]["_has_token"] = True
-    return cfg
+    return _mask_secrets(cfg)
 
 
 @app.get("/api/tunnel")
@@ -4850,7 +4944,7 @@ async def api_executors(refresh: bool = False):
         await asyncio.to_thread(execmod.forget_probes)
     conf = (state["cfg"].get("executors") or {}).get("claude_code") or {}
     info = execmod.available()
-    workspace = conf.get("workspace") or execmod.default_workspace(state["cfg"])
+    workspace = usersmod.confine_folder(state["cfg"], conf.get("workspace") or execmod.default_workspace(state["cfg"]))
     env = execmod.Envelope(
         workspace=workspace,
         tools=tuple(conf.get("tools") or execmod.DEFAULT_TOOLS),
@@ -4911,6 +5005,9 @@ async def api_put_config(patch: dict):
             return JSONResponse(
                 {"error": "only an admin can change machine settings on this machine "
                           f"({', '.join(sorted(theirs)[:6])})"}, status_code=403)
+    if "workspace" in (patch or {}) and (why := usersmod.workspace_problem(mine, patch["workspace"])):
+        secevents.flag("account.reach", "a workspace outside the account's home", uid=mine or "")
+        return JSONResponse({"error": why}, status_code=403)
     cfg = state["cfg"]
     # Three of these decide what runs without asking. A change to any of them is a
     # permission change, so it is on the record with the grants' own changes.
@@ -5142,7 +5239,7 @@ async def api_clear_conversation(cid: str):
 
 @app.get("/api/mcp")
 async def api_mcp():
-    return {"available": MCP_AVAILABLE, "servers": state["mcp"].status()}
+    return {"available": MCP_AVAILABLE, "servers": _mask_secrets(state["mcp"].status())}
 
 
 @app.put("/api/mcp")
@@ -5150,6 +5247,11 @@ async def api_put_mcp(body: dict):
     """Replace the MCP server config and reconnect."""
     servers = body.get("servers")
     if isinstance(servers, dict):
+        servers = _keep_masked(servers, state["cfg"].get("mcp_servers") or {})
+        from . import mcp_client
+        for name, conf in servers.items():
+            if (why := mcp_client.refusal(conf if isinstance(conf, dict) else {})):
+                return JSONResponse({"error": f"{name}: {why}"}, status_code=403)
         state["cfg"]["mcp_servers"] = servers
         cfgmod.save_config(state["cfg"])
         await state["mcp"].reload()
@@ -6021,7 +6123,7 @@ async def api_accounts():
     cfg = state["cfg"]
     return {"accounts": accountsmod.state(cfg, mcp_servers=_connected_mcp()),
             "signin": signinmod.doors(cfg), "vault": vaultmod.status(),
-            "pending": signinmod.pending_status(),
+            "pending": signinmod.pending_status(usersmod.current() or ""),
             "admin": usersmod.is_admin(usersmod.current())}
 
 
@@ -6094,7 +6196,7 @@ async def api_signin_out(provider: str):
     cfg = state["cfg"]
     if provider not in signinmod.PROVIDERS:
         return JSONResponse({"error": f"no sign-in called '{provider}'"}, status_code=404)
-    signinmod.cancel(provider)
+    signinmod.cancel(provider, usersmod.current() or "")
     existed = await asyncio.to_thread(signinmod.disconnect, cfg, provider)
     cfgmod.save_config(cfg)
     state["store"].log("accounts", f"signed out of {provider}")
@@ -6946,7 +7048,7 @@ async def api_mcp_oauth_connect(name: str):
         url = mcp_oauth.pending_url(name)
         if url:
             return {"ok": True, "url": url, "authorized": False}
-    return {"ok": True, "url": "", "authorized": mcp_oauth.has_tokens(name)}
+    return {"ok": True, "url": "", "authorized": mcp_oauth.has_tokens(name, conf.get("url", ""))}
 
 
 @app.delete("/api/mcp/oauth/{name}")
@@ -9083,6 +9185,20 @@ async def app_privilege_guard(request: Request, call_next):
 
 
 @app.middleware("http")
+async def machine_only_gate(request: Request, call_next):
+    """The machine's own routes, for an admin (machineroutes.py). Registered before
+    `resolve_user` so it runs after it, and it reads the path the router matches on."""
+    if machineroutes.machine_only(request.method, request.scope.get("path", "")) \
+            and usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        # `available`/`reason` are what the page's capability checks already read,
+        # so a pane says the sentence rather than drawing nothing
+        return JSONResponse({"error": machineroutes.REFUSAL, "ok": False, "available": False,
+                             "reason": machineroutes.REFUSAL},
+                            status_code=403, headers={"X-Bento-Admin-Only": "1"})
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def standby_gate(request: Request, call_next):
     """A side that is paired and not the one working serves its standing-by page and
     refuses the API, so nothing reads or changes a home that is not the live one.
@@ -10562,11 +10678,17 @@ def _running_version() -> str:
         return ""
 
 
+def _snap_of(sid: str) -> Path | None:
+    """A snapshot's folder. An id is the time it was taken, digits only: `..` here was
+    AGENTOS_HOME, and DELETE emptied every account on the machine."""
+    return _snap_dir() / sid if re.fullmatch(r"[0-9]{1,20}", sid or "") else None
+
+
 @app.post("/api/snapshots/{sid}/restore")
 async def api_snapshot_restore(sid: str):
     import shutil
-    d = _snap_dir() / sid
-    if not d.is_dir():
+    d = _snap_of(sid)
+    if d is None or not d.is_dir():
         return JSONResponse({"error": "not found"}, status_code=404)
     home = cfgmod.AGENTOS_HOME
     for f in ("config.json", "soul.md", "agentos.db"):
@@ -10595,7 +10717,9 @@ async def api_snapshot_restore(sid: str):
 @app.delete("/api/snapshots/{sid}")
 async def api_snapshot_delete(sid: str):
     import shutil
-    d = _snap_dir() / sid
+    d = _snap_of(sid)
+    if d is None:
+        return JSONResponse({"error": "no such snapshot"}, status_code=404)
     if d.is_dir():
         shutil.rmtree(d)
     return {"ok": True}
@@ -11736,7 +11860,17 @@ async def api_setup_state():
 @app.post("/api/setup")
 async def api_setup_apply(body: dict):
     from . import setup as setupmod
-    report = setupmod.apply_setup(state["cfg"], body or {})
+    choices = dict(body or {})
+    held = []
+    # Every new account walks this wizard, so the route stays open. A provider key and the
+    # machine's autostart are the machine's, and they are the two things it may not set.
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        for k, words in (("providers", "provider keys"), ("autostart", "starting at boot")):
+            if choices.pop(k, None):
+                held.append(words)
+    report = setupmod.apply_setup(state["cfg"], choices)
+    if held:
+        report["held"] = f"Only an admin can change {' and '.join(held)} on this machine."
     state["store"].log("system", "first-run setup completed via wizard", report)
     await state["broadcast"]({"type": "config"})
     return {"ok": True, "report": report}
@@ -14389,6 +14523,8 @@ async def api_provision_zero(body: dict):
     await _provision_sync()
     u = usersmod.get(owner) if owner else None
     return {"line": line, "hubs": hubs, "addresses": addrs, "key": {k: key[k] for k in ("id", "label", "auto")},
+            "held": ("An admin has to set the first machine up here, because that opens this "
+                     "machine's link port." if _zero_waits_for_admin({"owner": owner}) else ""),
             "for": {"id": owner, "name": u["name"] if u else ""},
             "standard": provmod.standard()}
 
@@ -18383,6 +18519,16 @@ def _ws_authed(ws) -> bool:
     return remotemod.valid_session(cfg, ws.cookies.get(remotemod.COOKIE, ""))
 
 
+async def _ws_not_admin(ws) -> bool:
+    """A socket's half of machine_only_gate, which never sees one. True when it was
+    refused and closed: the host's screen and native apps are the machine's."""
+    if usersmod.enabled() and not usersmod.is_admin(_ws_user(ws) or ""):
+        with contextlib.suppress(Exception):
+            await ws.close(code=4403)
+        return True
+    return False
+
+
 def _ws_user(ws) -> str | None:
     """Which account this socket belongs to, from the SIGNED cookie only.
 
@@ -18432,6 +18578,8 @@ async def ws_vnc(ws: WebSocket):
     why it is the same job websockify does, and why AgentOS does not need it.
     """
     if await _ws_reject(ws):
+        return
+    if await _ws_not_admin(ws):
         return
     if not _vnc_running():
         # Refuse rather than hang: a client waiting forever on a socket that will
@@ -18604,6 +18752,8 @@ async def api_appstream_close(sid: str):
 async def ws_appstream(ws: WebSocket):
     """One window onto a projected app: frames out (binary), the person's input in."""
     if await _ws_reject(ws):
+        return
+    if await _ws_not_admin(ws):
         return
     uid = _ws_user(ws) or ""
     await ws.accept()

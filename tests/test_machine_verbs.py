@@ -88,6 +88,9 @@ async def test_an_admin_may(tmp_path, monkeypatch):
     monkeypatch.setattr(usersmod, "enabled", lambda: True)
     monkeypatch.setattr(usersmod, "is_admin", lambda uid: True)
     monkeypatch.setattr(usersmod, "users_root", lambda: tmp_path / "users")
+    # the server's machine dict, which start registers: an account's view is a copy of it now,
+    # so the save is what reaches it (machine_changed), never a shared nested dict
+    monkeypatch.setattr(usersmod, "_machine", [cfg])
     d = tmp_path / "d"
     d.mkdir()
     with usersmod.as_user("ada"):

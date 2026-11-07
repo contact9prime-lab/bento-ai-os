@@ -537,6 +537,12 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               "request_capability"}
 
 
+# The machine's radios: a joined network sees its traffic, and a paired keyboard types on the
+# host. ALWAYS_ASK by name would ask for a status read too, so the loop asks when risk_of says
+# the action changes something (connect, forget, pair...), at every autonomy level.
+RADIO_TOOLS = {"wifi", "bluetooth"}
+
+
 # Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
 # somebody wrote an explicit grant (the card's "remember" is one). A department that can
 # run code was the owner's choice on exactly those terms (company.set_code).
@@ -719,6 +725,10 @@ def sandbox_conf(cfg: dict) -> tuple[bool, str]:
     sandbox on and no bubblewrap had no walls at all while config and docs said it did."""
     sb = cfg.get("sandbox") or {}
     root = os.path.realpath(os.path.expanduser(sb.get("root") or cfg["workspace"]))
+    # `sandbox.root` is the machine's, and an account that is not an admin starts from its
+    # own folder: `_files_root` and the jail both begin here
+    if usersmod.workspace_problem(cfg.get("_uid"), root):
+        root = os.path.realpath(usersmod.workspace_of(cfg))
     return bool(sb.get("enabled")), root
 
 
@@ -4755,6 +4765,8 @@ class Toolbox(usersmod.Scoped):
 
     async def wifi(self, action: str = "status", ssid: str = "", password: str = "") -> str:
         """Wifi via NetworkManager: status | list | connect | forget | enable | disable."""
+        if action in ("connect", "forget", "enable", "disable") and not usersmod.is_admin(usersmod.current()):
+            return "[denied] only an admin can change this machine's wifi"
         try:
             from .hostctl import HostCtlError, network
         except Exception as e:
@@ -4793,6 +4805,8 @@ class Toolbox(usersmod.Scoped):
 
     async def bluetooth(self, action: str = "status", device: str = "") -> str:
         """Bluetooth via BlueZ: status | scan | pair | connect | disconnect | forget."""
+        if action in ("pair", "connect", "disconnect", "forget") and not usersmod.is_admin(usersmod.current()):
+            return "[denied] only an admin can change this machine's bluetooth"
         try:
             from .hostctl import HostCtlError
             from .hostctl import bluetooth as bt

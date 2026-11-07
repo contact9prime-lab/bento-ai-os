@@ -141,6 +141,22 @@ install a copy:
 
 ![The shared library showing market-watcher — "agent · shared by ada" — with Install a copy and Remove buttons](screenshots/sharing-library.png)
 
+**What only an admin may touch.** A machine has one screen, one Wi-Fi radio, one compositor
+and one set of installed packages, so the routes that drive those are refused for anyone else:
+the host's windows and pixels, native apps, Wi-Fi and Bluetooth, sound and power, installing
+software, opening a port, publishing the machine, snapshots. The list is one table,
+`agentos/machineroutes.py`, and a test fails on any new route that isn't decided there.
+
+**A workspace stays inside your own home.** It is the root of the Files app, of a forwarded
+CLI's folder and of the agent's jail, so someone who is not an admin can't set it anywhere
+else, and a value stored before this rule falls back to their own folder when it's read. A
+folder outside the home is given by sharing it (Safe folders, below).
+
+**A tool server runs as the account.** A program as an MCP server runs in the same jail as that
+account's Terminal, and doesn't start at all where there's no jail. A server with a URL has to
+be on the public internet, because the connection comes from this machine. A sign-in to one
+(OAuth) belongs to one account and one address.
+
 ## Adding the first account
 
 This is the consequential moment, and the UI says so before the button:

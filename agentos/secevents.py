@@ -47,6 +47,7 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "origin.refused": ("A cross-origin request was refused", 5, 300),
     "child.refused": ("A process this server started tried to use the person's access", 1, 300),
     "account.role": ("An account's role or password changed", 1, 300),
+    "account.reach": ("An account tried to reach outside its own home", 3, 300),
     "account.unreadable": ("The accounts file could not be read", 1, 300),
     "link.guess": ("Wrong link codes were tried", 5, 300),
     "standby.token": ("A bad standby token was presented", 3, 300),

@@ -258,15 +258,16 @@ def wrote_on_purpose(grant: dict | None) -> bool:
     return src == "user" and not str(grant.get("note") or "").lower().startswith("allowed")
 
 
-def person_rule(principal, name: str, args: dict, dec, pdp=None) -> str:
+def person_rule(principal, name: str, args: dict, dec, pdp=None, level: str = "") -> str:
     """The gate's last word on a tool call: why this step must be a person's ('' when it
     need not). It may turn the decision into an ask. One function, because the agent loop
     and /api/tool used to hold two copies and an app's device set skipped "every set is
     asked" through the second one."""
-    from .tools import ALWAYS_ASK, ASK_FROM_SPECIALISTS
+    from .tools import ALWAYS_ASK, ASK_FROM_SPECIALISTS, RADIO_TOOLS
     must = ""
     args = args or {}
-    if name in ALWAYS_ASK and dec.effect in ("allow", "ask"):
+    # A radio's change is asked every time, and reading its status is not a change
+    if (name in ALWAYS_ASK or (name in RADIO_TOOLS and level == "risky")) and dec.effect in ("allow", "ask"):
         # confirmed every time, full autonomy included, and never remembered from a card
         row = pdp.grant_row(dec.rule) if pdp is not None and dec.effect == "allow" else None
         if not wrote_on_purpose(row):

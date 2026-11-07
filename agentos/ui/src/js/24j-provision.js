@@ -107,7 +107,7 @@ function provZeroHTML(v,can){
       :'Paste one line on a Pi and it is set up from here, with nobody at it.',
      more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
      f:'zero pi curl one line install tailscale zero touch hub'}));
-  if(z)rows.push(`<div class="zero-out">${z.for&&z.for.name?`<p class="mut">For ${esc(z.for.name)}</p>`:''}<code class="zero-line">${esc(z.line)}</code>
+  if(z)rows.push(`<div class="zero-out">${z.for&&z.for.name?`<p class="mut">For ${esc(z.for.name)}</p>`:''}${z.held?`<p class="mut">${esc(z.held)}</p>`:''}<code class="zero-line">${esc(z.line)}</code>
       <button class="endbtn" data-prov="zerocopy">Copy</button>
       <p class="mut">${(z.addresses||[]).map(a=>`${esc(a.addr)} ${a.via==='tailscale'?'over Tailscale':'on your network'}`).join(' · ')
         ||'This hub has no address another machine can reach.'}${(z.addresses||[]).some(a=>a.via==='tailscale')?'':

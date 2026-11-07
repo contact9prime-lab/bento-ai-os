@@ -130,7 +130,7 @@ function menuNative(w){
 function raiseShell(on){
   if(typeof suiRaise==='function'&&suiRaise(on))return Promise.resolve();
   if(PLATFORM.mode!=='de')return Promise.resolve();
-  return fetch('/api/shell/raise',{method:'POST',headers:{'Content-Type':'application/json'},
+  return fetch('/api/shell/raise',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
     body:JSON.stringify({on:on!==false})}).catch(()=>{});
 }
 /* ---- the menu bar renders the focused window's menus ---- */
