@@ -175,7 +175,7 @@ these commands asked every time.
 |---|---|---|---|
 | **Ask me** (the default) | asks you; nobody there = no | talks | refused |
 | **Swarm** | talks, without asking | talks | refused |
-| **Democracy** | the team votes; 2 of 3 decide | talks | refused |
+| **Democracy** | you're asked, with the team's view on the card; nobody there = no | talks | refused |
 | **Off** | refused | refused | refused |
 
 Swarm is the matrix switched wide open. It is not a second system: every limit below still
@@ -183,43 +183,43 @@ holds, every message is still a run and a ledger row, and a cell you blocked sta
 
 Swarm also opens your lead agent's hand-overs. When your agent gives one of your specialists
 a task, or pulls a few of them into a huddle, it no longer asks you first. Some things still
-ask: an agent on a linked team, starting a mission, and anything that runs on a schedule or
-from a webhook, because nobody is there to watch it. Blocking a specialist in Permissions
+ask: an agent on a linked team, starting a mission, anything that runs on a schedule or
+from a webhook, because nobody is there to watch it, and a turn that has read something from
+outside. Blocking a specialist in Permissions
 still stops it. Under *Ask me* your lead asks once per specialist, and *Allow & remember*
 makes that stick.
 
-### Democracy: the team votes, and 2 of 3 decide
+### Democracy: the team gives its view, and you decide
 
-Democracy is swarm with a vote. The same steps swarm lets through without asking go to a
-council instead: a specialist asking a colleague, and your lead handing work over or
-starting a huddle, on a surface somebody is at. Three agents vote and a majority decides.
+Democracy puts the team's opinion on your card. The steps swarm lets through without asking,
+a specialist asking a colleague and your lead handing work over or starting a huddle, come to
+you instead, and three agents say what they think first. A vote never opens anything: no
+security is controlled by AI, and with nobody there to answer the step is refused.
 
-- **Who votes.** Your lead agent, when it has a brain to answer with and isn't the one
+- **Who is asked.** Your lead agent, when it has a brain to answer with and isn't the one
   asking, plus your specialists, the one being asked included (it knows best whether it can
-  help). Agents on different brains get seats first, so the vote isn't one model asked three
+  help). Agents on different brains get seats first, so the view isn't one model asked three
   times. That is where a team of Claude Code, Gemini CLI and Codex is worth having. The one
   proposing the step never votes.
 - **How it's read.** Each voter answers YES or NO with one reason. Anything else counts as
-  no. A vote that goes against the step is a refusal that carries the team's reasons back to
-  the agent that asked.
-- **A step you asked for** counts in its favour unless it would do harm. The voters see your
-  request, and the question tells them a vote is not a way to overrule you on style. Found by
-  running it: three real voters turned down a hand-over the person had asked for as "too
-  simple to delegate".
-- **When there's no council** (fewer than two agents to vote), you're asked, as in *Ask me*.
-- **What a vote never decides:** anything that must be yours. A step after untrusted content,
-  the actions confirmed every time, a linked team's agent, a mission and anything unattended
-  are asked or refused exactly as before. A cell you blocked stays blocked.
-- **Every vote is a ledger row** (`team.vote`, with the tally), and each ballot is a run of its
-  own with no tools, so a vote can't act, message anyone or call another vote.
+  no. The tally and the reasons are on your card.
+- **When there's no council** (fewer than two agents to ask), you're asked with no view, as in
+  *Ask me*.
+- **After untrusted content, or unattended,** nobody votes and swarm doesn't open either. A page
+  the agent read must not get to recruit your team, so those turns ask you as *Ask me* does. A
+  linked team's agent and a mission are asked or refused exactly as before. A cell you blocked
+  stays blocked.
+- **Every vote is a ledger row** (`team.vote`, effect `advice`, with the tally), and each ballot is
+  a run of its own with no tools, so a vote can't act, message anyone or call another vote.
 
 **A huddle ends with a vote** in democracy mode. Everybody in the room votes on the last thing
-said, and the card shows whether the team agreed and who said what:
+said, and the card shows whether the team agreed and who said what. It opens no gate: it's the
+team's answer to your question, and you read it.
 
 ![A huddle on Gemini CLI, Claude Code and Codex, ending "The team agreed · 2 of 3"](screenshots/huddle-vote.png)
 
-A vote costs one short run per voter, so democracy spends a little more than swarm. It is off
-unless you choose it.
+A view costs one short run per voter, so democracy spends a little more than *Ask me*. It is
+off unless you choose it.
 
 ### The shape of a conversation, and the limits you set
 
@@ -894,7 +894,7 @@ the link's own name, which you chose, is what is verified.
 | A message | `ask_agent` → `agent.message` (the gate) → `ControlPlane.message` (loops, hops, budget, taint) — `agent_msg` events |
 | The matrix | `fabric.matrix` / `fabric.set_cell` (grant rows) — `GET/PUT /api/team/matrix`, `bento team matrix/allow/block/ask` |
 | The mode | `team.talk` = `matrix` \| `swarm` \| `democracy` \| `off` — `policy.team_talk`, Settings, `bento team talk` |
-| The vote | `ControlPlane.council` / `council_of` / `ballot`, `fabric.read_vote`; the agent loop hands a `democracy` ask to it (`agent._council_ask`); a huddle's vote is `vote_line` |
+| The vote | `ControlPlane.council` / `council_of` / `ballot`, `fabric.read_vote`; the agent loop puts its answer on the person's card for a `democracy` ask (`agent._council_ask`); a huddle's vote is `vote_line` |
 | The limits | `team.limits` — `fabric.LIMITS` / `team_limits` / `set_limits`, `GET /api/team/limits`, `bento team limits` |
 | In a mission | `permissions.talk` — `flows.declared_grants` writes the roster's pairs; the gate counts only that mission's rows |
 | People on linked teams | `agentos/teamchat.py` (message shape, delivery, the mute and the ceiling) — the `team_messages` table; `/api/team/chat*`, Team Chat (`24c-teamchat.js`), `bento link say/chat` |
