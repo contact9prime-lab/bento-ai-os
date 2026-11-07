@@ -2645,6 +2645,16 @@ async def api_input_set(body: dict):
     from . import session as sessionmod
     cfg = state["cfg"]
     inp = cfg.setdefault("input", {})
+    b = body or {}
+    try:
+        sessionmod.clean_keyboard(b.get("keyboard") if isinstance(b.get("keyboard"), dict) else {}, strict=True)
+        for k in ("repeat_delay", "repeat_rate"):
+            if (b.get("keyboard") or {}).get(k) not in (None, ""):
+                int(b["keyboard"][k])
+        if (b.get("touchpad") or {}).get("accel") not in (None, ""):
+            float(b["touchpad"]["accel"])
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     for section in ("keyboard", "touchpad"):
         if isinstance(body.get(section), dict):
             inp.setdefault(section, {}).update(body[section])
@@ -3513,6 +3523,11 @@ async def api_wm_output_configure(body: dict):
         kw["position"] = (int(p.get("x", 0)), int(p.get("y", 0)))
     if body.get("enabled") is not None:
         kw["enabled"] = bool(body["enabled"])
+    from .compositor import clean_output
+    try:
+        clean_output({"name": name, **{k: v for k, v in kw.items() if k != "position"}})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     ok, msg = host.configure_output(name, **kw)
     # A display setting must outlive the session that made it: applying a mode
     # over IPC lasts until logout, so the accepted layout is also written to a
@@ -3523,7 +3538,8 @@ async def api_wm_output_configure(body: dict):
             cfg = state["cfg"]
             outs = cfg.setdefault("displays", {})
             saved = outs.setdefault(name, {})
-            saved.update({k: v for k, v in body.items() if k != "name"})
+            saved.update({k: v for k, v in body.items()
+                          if k in ("mode", "scale", "transform", "position", "enabled")})
             if isinstance(saved.get("position"), dict):
                 p = saved["position"]
                 saved["position"] = f"{int(p.get('x', 0))},{int(p.get('y', 0))}"
