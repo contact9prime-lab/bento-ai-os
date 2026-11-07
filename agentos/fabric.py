@@ -732,19 +732,15 @@ def stop_mission(store, label: str, mission: str, stop: bool = True) -> dict:
 
 
 def forget_link_grants(store, label: str) -> int:
-    """A link ended: every cell that named it goes, both directions — and every standing
-    permission it held (those are team:<label>/* rows too)."""
+    """A link ended: everything that named it goes, both directions. Every row whose principal
+    is on that link, whatever its action, and every row of ours that names the link as where
+    something goes. Labels are reused once a link is gone, so a row left here would be consent
+    a later link with the same name inherited. A list of actions missed file.send."""
     n = 0
     for g in store.list_grants():
-        if g.get("action") in ("team.act", MISSION_ACTION, "code.run", "speech.hear") and g.get("principal_kind") == "team" and \
-                str(g.get("principal_id") or "").startswith(f"{label}/"):
-            n += bool(store.revoke_grant(g["id"]))
-            continue
-        if g.get("action") != "agent.message":
-            continue
         pid, res = str(g.get("principal_id") or ""), str(g.get("resource") or "")
         if (g.get("principal_kind") == "team" and pid.startswith(f"{label}/")) or \
-                res.endswith(f"@{label}"):
+                res.endswith(f"@{label}") or res == f"team:{label}":
             n += bool(store.revoke_grant(g["id"]))
     return n
 

@@ -749,3 +749,28 @@ def test_installing_again_stops_the_install_still_running_there(tmp_path):
     assert out.splitlines() == ["second one", "== bento install ended: 0"]
     with pytest.raises(ProcessLookupError):
         os.kill(old, 0)
+
+
+def _mdns_answer(name: str) -> bytes:
+    enc = b"".join(bytes([len(p.encode())]) + p.encode() for p in name.split(".")) + b"\0"
+    return ((0).to_bytes(2, "big") + (0x8400).to_bytes(2, "big") + (0).to_bytes(2, "big") + (1).to_bytes(2, "big")
+            + (0).to_bytes(4, "big") + enc + (1).to_bytes(2, "big") + (1).to_bytes(2, "big")
+            + (120).to_bytes(4, "big") + (4).to_bytes(2, "big") + bytes([192, 168, 1, 50]))
+
+
+def test_a_name_on_the_network_reaches_nobody_with_escapes_in_it():
+    from agentos import netscan
+    name, ip = netscan.parse_mdns(_mdns_answer("rasp\x1b[31mberry‮pi.local"))[0]
+    assert "\x1b" not in name and "‮" not in name and ip == "192.168.1.50"
+    seen: dict = {}
+    netscan.remember(seen, {"ip": "10.0.0.1", "name": "x\x1b]52;c;AAA\x07y", "banner": "SSH\x1b[2J", "os": "‮evil"})
+    e = seen["10.0.0.1"]
+    assert not any(c in (e["name"] + e["banner"] + e["os"]) for c in "\x1b\x07‮")
+
+
+def test_a_device_list_full_of_names_keeps_what_a_person_installed():
+    from agentos import netscan
+    seen = {"aa:aa": {"ip": "10.0.0.2", "state": "installed", "last": 1}}
+    for i in range(400):
+        netscan.remember(seen, {"ip": f"10.1.{i // 250}.{i % 250}", "name": "flood"})
+    assert "aa:aa" in seen and len(seen) <= 256

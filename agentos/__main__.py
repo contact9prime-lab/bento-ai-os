@@ -5286,8 +5286,11 @@ def _provision_cli(args, cfg, a, rest, val, run):
             print("  revoked" if prov.drop_key(rest[1] if len(rest) > 1 else "") else "  no such key")
             return
         prof = {"kiosk": bool(getattr(args, "kiosk", False))} if getattr(args, "kiosk", False) else {}
-        k = prov.make_key(val, bool(getattr(args, "auto", False)), prof)
-        print(f"  Enrolment key '{k['label']}'" + (" (sets machines up the moment they are heard)" if k["auto"] else ""))
+        k = prov.make_key(val, bool(getattr(args, "auto", False)), prof,
+                          reusable=bool(getattr(args, "reusable", False)))
+        print(f"  Enrolment key '{k['label']}'"
+              + (" (sets every machine up the moment it is heard)" if k["reusable"] and k["auto"] else
+                 " (sets one machine up the moment it is heard; the next one asks you)" if k["auto"] else ""))
         print(f"\n    {k['text']}\n")
         print("  Save it as bento-enroll.txt on a new Pi's SD card (the boot partition), or run")
         print("  `bento pool enroll KEY` there. It is shown once.")
@@ -5353,6 +5356,10 @@ def _provision_cli(args, cfg, a, rest, val, run):
     if a == "enroll":
         if not val:
             sys.exit("  bento pool enroll bento-enroll-1.…")
+        if val == "forget":
+            print("  This machine no longer carries a key. It shows a code instead." if prov.drop_own_key()
+                  else "  This machine carries no key.")
+            return
         prov.adopt_key(val)
         print("  This machine carries the key and waits to be set up. A running server announces it now.")
         return
@@ -9532,7 +9539,9 @@ def main():
     p_pool.add_argument("--kiosk", action="store_true",
                         help="enable / key: set the new machine up as a kiosk; install / sdcard: also open it on its screen")
     p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
-    p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
+    p_pool.add_argument("--auto", action="store_true", help="key: set the first machine that carries it up at once")
+    p_pool.add_argument("--reusable", action="store_true",
+                        help="key: with --auto, keep setting machines up with nobody asked (a batch of SD cards)")
     p_pool.add_argument("--tailscale-key", default="", help="zero: put this Tailscale auth key in the line (not kept)")
     p_pool.add_argument("--for", dest="for_account", default="",
                         help="zero / enable: the account it belongs to (its agents and integrations answer it)")

@@ -52,7 +52,9 @@ Zero also sends its announcement straight to each hub address in the line. The h
 which way it arrived, read from the address the announcement came from: *over Tailscale* for an
 address in Tailscale's range, *on your network* otherwise.
 
-The Zero carries the hub's automatic key, so the hub sets it up the moment it hears it: no code
+Each line carries an automatic key good for one machine, and the Zero forgets it once it is set
+up. A second machine with the same line waits for you to press Enable, and removing a Zero ends
+its key. The Zero carries the key, so the hub sets it up the moment it hears it: no code
 to type, no button to press. That is still a ledger row on both machines and a toast on the
 hub.
 

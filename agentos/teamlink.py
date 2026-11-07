@@ -85,6 +85,8 @@ def report(text: str) -> None:
 REQUEST_TTL = 600               # seconds a link request waits for somebody to answer it
 REQUEST_LIMIT = 5               # link requests one address may make per GUESS_WINDOW
 MAX_PENDING = 8                 # requests waiting on this machine at once
+PENDING_PER_ADDR = 2            # of those, from one address
+REQUEST_SKEW = 900              # seconds a request's signature may be off this machine's clock
 POLL_EVERY = 2.0                # seconds between the requester's "decided yet?"
 MAX_OPEN = 64                   # connections handled at once; more are closed at the door
 FIRST_LINE = 10.0               # seconds a connection has to say what it wants
@@ -419,6 +421,15 @@ def remove(owner: str, label: str) -> bool:
             d["links"] = [x for x in d["links"] if not (
                 x.get("kind") == "account" and x.get("pair_id") == lk.get("pair_id"))]
     _save(d)
+    # "set up from here" is what lets a machine rejoin with nobody asked, and it was kept on a
+    # record the link did not own. Ending the link ends it, so coming back needs a person.
+    left = {x.get("peer_host_fp") for x in keep}
+    for lk in gone:
+        fp = lk.get("peer_host_fp")
+        if lk.get("kind") == "machine" and fp and fp not in left:
+            from . import provision
+            with contextlib.suppress(Exception):
+                provision.forget_machine(fp)
     return True
 
 
@@ -621,6 +632,50 @@ def _chains(host_pem_or_der, ca_pem: str) -> bool:
         return host.issuer == ca.subject
     except Exception:
         return False
+
+
+def _request_words(server_fp: str, host_fp: str, name: str, to: str, port: int, ts: int) -> bytes:
+    return f"bento-link-request|{server_fp}|{host_fp}|{name}|{to}|{port}|{ts}".encode()
+
+
+def request_proof(ident: dict, server_fp: str, name: str, to: str, port: int, ts: int) -> str:
+    """The asker's host key signing WHICH machine it is asking, as it saw that machine. The
+    TLS door cannot ask for this: a client certificate here must chain to a CA already paired
+    with, and the asker has none. A certificate is public, so without this anybody could send
+    somebody else's, replacing that machine's card under digits that still match."""
+    import base64
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    key = serialization.load_pem_private_key(Path(ident["host_key"]).read_bytes(), password=None)
+    sig = key.sign(_request_words(server_fp, ident["host_fp"], name, to, port, ts), ec.ECDSA(hashes.SHA256()))
+    return base64.b64encode(sig).decode()
+
+
+def _request_proved(host_pem: str, server_fp: str, req: dict) -> str:
+    """'' when the request carries a good signature by the key of the certificate it sent,
+    else why not. Also refuses one signed for another machine, so a machine in the middle
+    cannot pass a request on, and one from long ago."""
+    import base64
+    from cryptography import x509
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    proof = str(req.get("proof") or "")
+    if not proof:
+        return "the asking machine did not prove it holds its certificate (it may need updating; an invite still works)"
+    try:
+        ts = int(req.get("ts") or 0)
+        cert = x509.load_pem_x509_certificate(host_pem.encode())
+        cert.public_key().verify(
+            base64.b64decode(proof, validate=True),
+            _request_words(server_fp, fingerprint(host_pem), str(req.get("name") or ""),
+                           str(req.get("to") or ""), int(req.get("port") or 0), ts),
+            ec.ECDSA(hashes.SHA256()))
+    except (InvalidSignature, ValueError, TypeError):
+        return "the asking machine could not prove it holds that certificate"
+    if abs(time.time() - ts) > REQUEST_SKEW:
+        return "that request is too old (check the clocks on both machines)"
+    return ""
 
 
 def _req_view(r: dict) -> dict:
@@ -905,6 +960,11 @@ class Listener:
         fp = fingerprint(host)
         if not _chains(host, ca):
             return {"ok": False, "error": "the asking machine's certificate is not signed by its own CA"}
+        why = _request_proved(host, ensure_pki()["host_fp"], req)
+        if why:
+            from . import secevents
+            secevents.flag("link.guess", "a link request without proof of its certificate", source=addr)
+            return {"ok": False, "error": why}
         d = _load()
         if any(lk.get("peer_host_fp") == fp for lk in d["links"]):
             return {"ok": False, "error": "that machine is already linked here"}
@@ -912,6 +972,8 @@ class Listener:
         d["requests"] = [r for r in d["requests"] if r.get("peer_host_fp") != fp]
         if sum(1 for r in d["requests"] if r["kind"] == "machine" and r.get("state") == "pending") >= MAX_PENDING:
             return {"ok": False, "error": "this machine has too many link requests waiting — try later"}
+        if sum(1 for r in d["requests"] if r.get("addr") == addr and r.get("state") == "pending") >= PENDING_PER_ADDR:
+            return {"ok": False, "error": "this address has too many link requests waiting — try later"}
         token = secrets.token_urlsafe(24)
         ident = ensure_pki()
         r = {"id": secrets.token_hex(4), "kind": "machine", "token_hash": _hash(token),
@@ -935,6 +997,8 @@ class Listener:
                   and secrets.compare_digest(x.get("token_hash", ""), h)), None)
         if not r:
             self._guess.setdefault(addr, []).append(time.time())
+            from . import secevents
+            secevents.flag("link.guess", "a poll with an unknown token", source=addr)
             return {"ok": True, "state": "expired"}
         if cancel:
             d["requests"].remove(r)
@@ -1057,6 +1121,8 @@ class Listener:
             inv = _take_invite(d, str(req.get("code") or ""), "machine")
             if not inv:
                 self._guess.setdefault(addr, []).append(time.time())
+                from . import secevents
+                secevents.flag("link.guess", "a wrong pairing code", source=addr)
                 return {"ok": False, "error": "that code is wrong, used or expired"}
             peer_ca, peer_fp = str(req.get("ca") or ""), str(req.get("host_fp") or "")
             if not peer_ca.startswith("-----BEGIN CERTIFICATE") or not re.fullmatch(r"[0-9a-f]{64}", peer_fp):
@@ -1428,12 +1494,15 @@ async def _tofu(host: str, port: int):
     return reader, writer, hashlib.sha256(der).hexdigest() if der else "", der
 
 
-async def _once(host: str, port: int, payload: dict, pin: str = "") -> tuple[dict, str, bytes]:
+async def _once(host: str, port: int, payload, pin: str = "") -> tuple[dict, str, bytes]:
+    """`payload` may be a function of the certificate seen: a request signs who it is asking."""
     reader, writer, fp, der = await _tofu(host, port)
     try:
         if pin and fp != pin:
             raise ValueError("a different machine answered at that address than the one "
                              "you asked (its certificate changed) — nothing was sent")
+        if callable(payload):
+            payload = payload(fp)
         writer.write((json.dumps(payload) + "\n").encode())
         await writer.drain()
         return await _read_line(reader), fp, der
@@ -1452,10 +1521,11 @@ async def request_link(address: str, owner: str, cfg: dict | None = None, my_por
         to, rest = rest.split("@", 1)
     host, port = parse_address(rest, cfg)
     ident = ensure_pki()
-    got, fp, _ = await _once(host, port, {"op": "request", "name": machine_name(cfg),
-                                          "ca": ident["ca"], "host": ident["host"],
-                                          "port": int(my_port or 0), "identity": identity or {},
-                                          "to": to.strip().lower()})
+    name, whom, mine, ts = machine_name(cfg), to.strip().lower(), int(my_port or 0), int(time.time())
+    got, fp, _ = await _once(host, port, lambda seen: {
+        "op": "request", "name": name, "ca": ident["ca"], "host": ident["host"], "port": mine,
+        "identity": identity or {}, "to": whom, "ts": ts,
+        "proof": request_proof(ident, seen, name, whom, mine, ts)})
     if not got.get("ok"):
         raise ValueError(got.get("error") or "the other machine refused")
     if fp == ident["host_fp"]:

@@ -1968,6 +1968,9 @@ def _device_heard(name: str, ip: str):
     if any(e.get("addr") == ip for e in provmod.load()["seen"].values()):
         return                          # it runs Bento: provision.py has it
     d = provmod.load()
+    # a new name is a write, a knock and maybe a toast, and anyone on the network can say one
+    if not any(e.get("ip") == ip for e in d["devices"].values()) and not provmod.newcomer_allowed(ip):
+        return
     if netscan.remember(d["devices"], {"ip": ip, "name": name}):
         provmod.save(d)
         asyncio.ensure_future(_device_look(ip, name))
@@ -14344,7 +14347,8 @@ async def api_provision_key(body: dict):
         return r
     from . import provision as provmod
     b = body or {}
-    k = provmod.make_key(str(b.get("label") or ""), bool(b.get("auto")), b.get("profile"))
+    k = provmod.make_key(str(b.get("label") or ""), bool(b.get("auto")), b.get("profile"),
+                         reusable=bool(b.get("reusable")))
     _ledger("provision.key", f"provision:key/{k['id']}",
             f"made an enrolment key '{k['label']}'" + (" (automatic)" if k["auto"] else ""))
     await _provision_sync()

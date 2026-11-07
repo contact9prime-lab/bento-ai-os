@@ -85,7 +85,9 @@ place, or `bento pool key "kitchen Pis"`). Put the key on the new Pi before its 
 - save it as `bento-enroll.txt` on the SD card's boot partition, or
 - install with `install.sh --enroll=KEY`, or run `bento pool enroll KEY` on it.
 
-A Pi carrying your key needs no code. Mark the key **automatic** and the Pi is set up the
+A Pi carrying your key needs no code. An **automatic** key sets up one machine by itself and
+the next one carrying it asks you (`bento pool key NAME --auto --reusable` keeps going, for a
+batch of SD cards). Mark the key **automatic** and the Pi is set up the
 moment it is heard, with the profile you gave the key. You still get a toast saying so.
 
 ### From a terminal

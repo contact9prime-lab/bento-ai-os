@@ -180,3 +180,11 @@ def test_the_doors():
     js = (ROOT / "agentos/ui/src/js/24n-network.js").read_text()
     e = js[js.index("function netEspHTML"):js.index("function netHwPermHTML")]
     assert "secretField('esp-pw-'" in e and "plain HTTP" in e and "Find on its network" in e
+
+
+def test_a_nodes_words_are_clean_where_they_arrive():
+    from agentos import espnodes
+    e = espnodes._entity({"name_id": "text_sensor/Door\x1b[31m‮", "value": "open\x1b]52;c;AA\x07", "uom": "\x1b[2J"})
+    assert e and not any(c in (e["name"] + e["value"]) for c in "\x1b\x07‮")
+    e2 = espnodes._entity({"name_id": "sensor/Temp", "value": 3.0, "uom": "C\x1b"})
+    assert e2["unit"] == "C"

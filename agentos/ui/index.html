@@ -35394,11 +35394,11 @@ async function provPaint(){
   more.push(provDevicesHTML(v,can));
   const ks=(v.keys||[]).filter(k=>!k.single);
   more.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
-      <label class="prov-opt">${pSwitch('prov-auto-'+k.id,!!k.auto)} automatic</label>
+      <label class="prov-opt">${pSwitch('prov-auto-'+k.id,!!k.auto)} automatic</label>${k.spent?' <span class="ghint">Used once. The next machine asks you.</span>':''}
       <button class="endbtn" data-prov="dropkey" data-kid="${esc(k.id)}">Revoke</button></span>`).join('')}
       <button class="endbtn" data-prov="key"${can?'':' disabled'}>Make a key</button>`,
     {desc:'Put a key on a new machine and nobody has to read a code off its screen.',
-     more:'Save it as bento-enroll.txt on the SD card’s boot partition, or install with --enroll. Automatic sets the machine up the moment it is heard.',
+     more:'Save it as bento-enroll.txt on the SD card’s boot partition, or install with --enroll. Automatic sets one machine up the moment it is heard, and the next one asks you. Turn it on again for one more, or use bento pool key --auto --reusable for a batch of cards.',
      f:'provision enrolment key zero touch sd card automatic'}));
   more.push('<div id="prov-out" aria-live="polite"></div>');
   rows.push(`<div class="prov-add${PROV.more?' open':''}">${pRow('Add a machine',
