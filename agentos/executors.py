@@ -400,7 +400,8 @@ def default_workspace(cfg: dict) -> str:
     instead, so a deck Claude Code made for somebody signed in landed in a folder their
     Files app never shows, and every account's forwarded turns shared one folder."""
     from . import config as _cfgmod
-    return os.path.expanduser(str((cfg or {}).get("workspace") or (_cfgmod.AGENTOS_HOME / "workspace")))
+    from . import users as _users
+    return os.path.expanduser(str(_users.workspace_of(cfg or {}) or (_cfgmod.AGENTOS_HOME / "workspace")))
 
 
 def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code") -> "Envelope":
@@ -412,8 +413,10 @@ def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code"
     ex = (cfg or {}).get("executors") or {}
     conf = ex.get("claude_code") or {}
     engine = engine if engine in DRIVEN else "claude-code"
+    from . import users as _users
     return Envelope(
-        workspace=conf.get("workspace") or workspace_default,
+        # both are checked: Settings → Executors is the machine's folder, not somebody else's
+        workspace=_users.confine_folder(cfg, conf.get("workspace") or workspace_default),
         tools=tuple(conf.get("tools") or DEFAULT_TOOLS),
         model=str((ex.get(_exec_conf_key(engine)) or {}).get("model", "")),
         budget_usd=float(conf.get("budget_usd") or default_budget()),

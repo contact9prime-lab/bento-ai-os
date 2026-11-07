@@ -2493,9 +2493,28 @@ def _files_root() -> Path:
 def _safe_file(rel: str) -> Path | None:
     root = _files_root().resolve()
     p = (root / rel).resolve()
-    if p == root or root in p.parents:
+    if (p == root or root in p.parents) and not _file_refused(p):
         return p
     return None
+
+
+def _file_refused(p: Path) -> bool:
+    """The check every file route passes, on the REAL path, whatever root it came from.
+    Nobody reads a session key or a vault through the Files app. On a machine with accounts,
+    someone who is not an admin reaches their own home and the folders shared with them.
+    The agent's file tools have held this line for a long time (`_tenant_deny`); the routes
+    never called it, so a workspace of `/` handed over every account and the session key."""
+    from . import protected
+    if protected.secret(p):
+        return True
+    if not usersmod.enabled() or usersmod.is_admin(usersmod.current()):
+        return False
+    from .tools import _under_any, shares_for
+    real = os.path.realpath(str(p))
+    home = os.path.realpath(str(usersmod.home_for(usersmod.current())))
+    if real == home or real.startswith(home + os.sep):
+        return False
+    return not _under_any(real, [s["path"] for s in shares_for(state["cfg"])])
 
 
 @app.get("/api/locale")
@@ -3059,6 +3078,8 @@ async def api_files(path: str = "", root: str = ""):
         p = (base / path).resolve() if path else base
         if not (p == base or base in p.parents):
             p = base
+        if _file_refused(p):
+            return JSONResponse({"error": "that folder is not shared with you"}, status_code=404)
     else:
         base = _files_root()
         base.mkdir(parents=True, exist_ok=True)
@@ -3099,7 +3120,7 @@ async def api_open(body: dict):
         # a file an agent made, by its full path: only from the folders you may reach
         from . import outputs
         p = outputs.reachable(full, _output_roots())
-        if p is None:
+        if p is None or _file_refused(p):
             return JSONResponse({"error": "not found, or not in a folder you can reach"},
                                 status_code=404)
         target = str(p)
@@ -3170,7 +3191,7 @@ async def api_files_get(path: str, download: int = 0):
     import mimetypes
     from . import outputs
     p = outputs.reachable(path, _output_roots())
-    if p is None:
+    if p is None or _file_refused(p):
         return JSONResponse({"error": "not found, or not in a folder you can reach"}, status_code=404)
     mt, _ = mimetypes.guess_type(str(p))
     inline = (mt or "").startswith(("text/", "image/")) or mt == "application/pdf"
@@ -4807,7 +4828,7 @@ async def api_executors(refresh: bool = False):
         await asyncio.to_thread(execmod.forget_probes)
     conf = (state["cfg"].get("executors") or {}).get("claude_code") or {}
     info = execmod.available()
-    workspace = conf.get("workspace") or execmod.default_workspace(state["cfg"])
+    workspace = usersmod.confine_folder(state["cfg"], conf.get("workspace") or execmod.default_workspace(state["cfg"]))
     env = execmod.Envelope(
         workspace=workspace,
         tools=tuple(conf.get("tools") or execmod.DEFAULT_TOOLS),
@@ -4868,6 +4889,9 @@ async def api_put_config(patch: dict):
             return JSONResponse(
                 {"error": "only an admin can change machine settings on this machine "
                           f"({', '.join(sorted(theirs)[:6])})"}, status_code=403)
+    if "workspace" in (patch or {}) and (why := usersmod.workspace_problem(mine, patch["workspace"])):
+        secevents.flag("account.reach", "a workspace outside the account's home", uid=mine or "")
+        return JSONResponse({"error": why}, status_code=403)
     cfg = state["cfg"]
     # Three of these decide what runs without asking. A change to any of them is a
     # permission change, so it is on the record with the grants' own changes.
@@ -11674,7 +11698,17 @@ async def api_setup_state():
 @app.post("/api/setup")
 async def api_setup_apply(body: dict):
     from . import setup as setupmod
-    report = setupmod.apply_setup(state["cfg"], body or {})
+    choices = dict(body or {})
+    held = []
+    # Every new account walks this wizard, so the route stays open. A provider key and the
+    # machine's autostart are the machine's, and they are the two things it may not set.
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        for k, words in (("providers", "provider keys"), ("autostart", "starting at boot")):
+            if choices.pop(k, None):
+                held.append(words)
+    report = setupmod.apply_setup(state["cfg"], choices)
+    if held:
+        report["held"] = f"Only an admin can change {' and '.join(held)} on this machine."
     state["store"].log("system", "first-run setup completed via wizard", report)
     await state["broadcast"]({"type": "config"})
     return {"ok": True, "report": report}

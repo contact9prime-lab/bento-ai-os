@@ -21,7 +21,7 @@ from . import toolscope
 # package, so this direction cannot cycle.)
 from .executors import tool_detail
 from .policy import MAIN, Principal
-from .tools import ALWAYS_ASK, APP_BOUND_TOOLS, ASK_FROM_SPECIALISTS, SPACE_SCOPED_TOOLS, Toolbox
+from .tools import ALWAYS_ASK, APP_BOUND_TOOLS, ASK_FROM_SPECIALISTS, RADIO_TOOLS, SPACE_SCOPED_TOOLS, Toolbox
 
 TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"   # = fabric.TAINTED_REPLY
 
@@ -1062,7 +1062,8 @@ class Agent:
             else:
                 dec = Decision("allow")
         must_person = ""
-        if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
+        if (name in ALWAYS_ASK or (name in RADIO_TOOLS and level == "risky")) \
+                and dec.effect == "allow" and dec.rule in ("default", ""):
             # power/session actions confirm EVERY time — full autonomy included;
             # only an explicit user-written grant (rule != default) skips the ask
             dec.effect = "ask"

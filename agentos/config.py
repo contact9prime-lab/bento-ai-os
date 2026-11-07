@@ -446,6 +446,10 @@ def save_config(cfg: dict) -> None:
             return
         cfg = usersmod.machine_view(cfg)
         usersmod.machine_changed(cfg)
+    elif usersmod.enabled():
+        # the machine's own save (a background job, a link): every view holds its own copy
+        # now, so it has to be told
+        usersmod.machine_changed(cfg)
     AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
 
