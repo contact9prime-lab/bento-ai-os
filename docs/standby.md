@@ -14,7 +14,7 @@ You need Bento running on a cloud machine that your machine can reach. The quick
 is one click: [Put Bento in the cloud](cloud.md) (Settings → System, or `bento cloud`)
 gives you one on Render with HTTPS and a disk in about five minutes. The
 [Docker image](../Dockerfile) runs anywhere else, with a passphrase so it can listen on
-a port. Put it behind HTTPS, or reach it over Tailscale or your LAN.
+a port. Put it behind HTTPS, or reach it over Tailscale.
 
 1. **On the cloud machine**, open Settings → System → Cloud standby and press
    **Show a code**. Or in a terminal there: `bento standby wait`.
@@ -114,9 +114,18 @@ differ. Update the cloud when you update your machine.
 
 - Copies are sealed with a secret only the two machines hold (the same AES-256-GCM format
   as a [backup](backup.md)). The transport is not what protects them.
-- Pairing wants `https://` for a machine on the internet, because the machine's token
-  travels in these requests. Plain `http://` is accepted for private addresses (LAN,
-  Tailscale's 100.64/10 and `.ts.net`, `.local`, loopback).
+- Pairing wants `https://`, or Tailscale (100.64/10 and `.ts.net`, which encrypts on its own),
+  or this machine itself, because the machine's token and the secret that seals its copies
+  travel in these requests. Anyone on a LAN can read plain `http://`. To accept that on a
+  network you trust, say so: `bento standby pair http://192.168.1.4:8321 CODE --plain-http`.
+  It never works for an address on the internet.
+- **Pairing means trusting the cloud with everything.** It holds a copy of your whole home,
+  and it can seal a copy your machine will accept. So when work comes back, your machine takes
+  the conversations, memory, files and missions, and keeps its own permissions, MCP servers,
+  AI providers, accounts and links. Changes to those made in the cloud are not taken, and a
+  mission or schedule that is new or changed comes back switched off. What the cloud wrote
+  into memory, skills or souls does arrive, and you should read it if you think the cloud was
+  broken into. What was here before is kept aside after every swap.
 - The machine-to-machine routes live under `/api/standby/peer/`. Each checks the pairing
   token in constant time, and twenty wrong tokens from one address in ten minutes lock
   that address out for a while.

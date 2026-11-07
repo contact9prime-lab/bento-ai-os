@@ -3496,8 +3496,8 @@ def _standby_cli(args):
             say("  or Settings → System → Cloud standby. The code works once, for ten minutes.")
         elif act == "pair":
             if len(args.rest) != 2:
-                raise SystemExit("usage: bento standby pair URL CODE")
-            s = sb.pair(args.rest[0], args.rest[1])
+                raise SystemExit("usage: bento standby pair URL CODE [--plain-http]")
+            s = sb.pair(args.rest[0], args.rest[1], plain_ok=bool(getattr(args, "plain_http", False)))
             say(f"  ✓ Paired. {s['peer_host']} now stands by for this machine.")
             say("  Restart Bento here (or keep it running: a running server starts copying within a minute).")
         elif act == "copy":
@@ -8968,6 +8968,8 @@ def main():
                       help="status | wait (on the cloud: show a pairing code) | pair URL CODE | "
                            "copy | takeover | move | back | adopt | keep | off | set")
     p_sb.add_argument("rest", nargs="*", help="for pair: the cloud's address and its code")
+    p_sb.add_argument("--plain-http", action="store_true",
+                      help="pair: accept plain http on a private network, which anyone on it can read")
     p_sb.add_argument("--grace", type=int, default=0, help="set: minutes of silence before taking over")
     p_sb.add_argument("--auto", dest="auto", action="store_true", default=None,
                       help="set: take over by itself")

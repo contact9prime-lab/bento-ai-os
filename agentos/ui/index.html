@@ -22876,7 +22876,10 @@ async function standbyPair(btn){
   const url=document.getElementById('sb-url').value.trim(),code=document.getElementById('sb-code').value.trim();
   if(!url||!code)return toast('Give the cloud machine’s address and its code',{kind:'warn'});
   btn.disabled=true;btn.textContent='Pairing…';
-  try{const d=await standbyPost('/api/standby/pair',{url,code});toast(`Paired. ${d.peer_host} now stands by for this machine.`);paintStandby()}
+  try{let d;try{d=await standbyPost('/api/standby/pair',{url,code})}
+    catch(e){if(!String(e.message).includes('--plain-http')||!confirm('Plain http shows the pairing secret to anyone on this network. Pair anyway?'))throw e;
+      d=await standbyPost('/api/standby/pair',{url,code,plain_http:true})}
+    toast(`Paired. ${d.peer_host} now stands by for this machine.`);paintStandby()}
   catch(e){toast('Not paired: '+e.message,{kind:'err'})}finally{btn.disabled=false;btn.textContent='Pair'}
 }
 async function standbyOffer(btn){

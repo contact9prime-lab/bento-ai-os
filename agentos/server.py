@@ -10390,8 +10390,9 @@ async def api_standby_offer(request: Request):
 @app.post("/api/standby/pair")
 async def api_standby_pair(body: dict, request: Request):
     b = body or {}
-    out = await _standby_do(request, standbymod.pair, "standby.pair",
-                            str(b.get("url", "")), str(b.get("code", "")))
+    out = await _standby_do(request, lambda: standbymod.pair(str(b.get("url", "")), str(b.get("code", "")),
+                                                             plain_ok=b.get("plain_http") is True),
+                            "standby.pair")
     if isinstance(out, dict) and out.get("role") == "primary":
         _standby_start()
     return out
