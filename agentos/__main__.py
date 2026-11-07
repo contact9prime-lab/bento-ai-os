@@ -4566,6 +4566,16 @@ def _pool_cli(args):
                 _cfgmod.save_config(cfg)
                 print("  This machine will think with the leader's brain (restart the server to use it now).")
             return show()
+        if a == "vouch":
+            if not rest:
+                sys.exit("  bento pool vouch MACHINE [off]")
+            off = rest[-1] == "off" and len(rest) > 1
+            try:
+                e = poolmod.set_vouch(" ".join(rest[:-1] if off else rest), not off)
+            except ValueError as err:
+                sys.exit(f"  {err}")
+            print(f"  {e.get('name')} {'may not' if off else 'may'} take over if the leader goes.")
+            return show()
         if a in ("approve", "remove"):
             if not val:
                 sys.exit(f"  bento pool {a} MACHINE")
@@ -9524,7 +9534,7 @@ def main():
                        help="disconnect: take the key off even when it is the only way in")
     p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")
     p_pool.add_argument("action", nargs="?", default="status",
-                        choices=["status", "show", "create", "join", "approve", "remove", "leave",
+                        choices=["status", "show", "create", "join", "approve", "remove", "vouch", "leave",
                                  "lead", "brain", "pin", "notes", "share", "forget", "task",
                                  "discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll",
                                  "zero", "standard", "hub", "mind",

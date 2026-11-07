@@ -1374,6 +1374,10 @@ class Agent:
         # page" followed by "go ahead" is the obvious way round a per-turn rule.
         if any(_TAINT_MARK in (m.get("content") or "") for m in history):
             self.taint.append({"tool": "history", "source": "content read earlier in this conversation"})
+        # A community's brain is another machine. Whatever it answers, and every step it asks
+        # for, comes from outside this one, so a risky step needs a person here.
+        if str(self.model_id or "").startswith("pool/") and not any(t.get("tool") == "community" for t in self.taint):
+            self.taint.append({"tool": "community", "source": "the community's leader, which thinks for this machine"})
         if self.toolbox.pdp:
             mdec = self.toolbox.pdp.decide(self.principal, "model.use",
                                            f"model:{self.model_id}",

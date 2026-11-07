@@ -14128,6 +14128,23 @@ async def api_pool_approve(body: dict):
     return _pool_view()
 
 
+@app.post("/api/pool/vouch")
+async def api_pool_vouch(body: dict):
+    """Whether a member may take over if the leader goes. Only the machine that started the
+    community can say, because the signature is what every other machine checks."""
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    b = body or {}
+    try:
+        with usersmod.as_user(""):
+            e = poolmod.set_vouch(str(b.get("who") or ""), b.get("on") is not False)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _pool_changed(f"{e.get('name')} {'may' if b.get('on') is not False else 'may not'} take over")
+    return _pool_view()
+
+
 @app.post("/api/pool/remove")
 async def api_pool_remove(body: dict):
     if (r := _require_admin()):

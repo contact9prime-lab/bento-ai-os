@@ -51,6 +51,7 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "link.guess": ("Wrong link codes were tried", 5, 300),
     "standby.token": ("A bad standby token was presented", 3, 300),
     "pool.leader": ("This community's leader changed", 1, 300),
+    "pool.claim": ("A machine tried to take over this community", 1, 300),
     "provision.refused": ("A machine's claim was refused", 3, 300),
     "beacon.flood": ("Many machines announced themselves at once", 1, 300),
     "gate.unlisted_tool": ("A model called a tool it was not offered", 3, 300),

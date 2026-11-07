@@ -36,7 +36,7 @@ async function poolPaint(){
         const c=m.cap||{},st=m.here?'this machine':m.state==='pending'?'asking to join':m.alive?'up':m.seen!=null?`last heard ${poolAgo(m.seen)}`:'not heard yet';
         const acts=v.role==='leader'&&!m.here&&can?(m.state==='pending'
           ?`<button class="endbtn" data-pool="approve" data-who="${esc(m.fp)}">Let in</button><button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Turn away</button>`
-          :`<button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Remove</button>`):'';
+          :`${v.founder?`<button class="endbtn" data-pool="${m.vouched?'unvouch':'vouch'}" data-who="${esc(m.fp)}">${m.vouched?'Can’t take over':'Can take over'}</button>`:''}<button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Remove</button>`):'';
         return `<div class="pool-m${m.alive||m.here?' up':''}"><b>${m.role==='leader'?'★ ':''}${esc(m.name)}</b>
           <span class="mut">${esc(st)} · ${c.ram_mb||0} MB · ${c.cores||0} cores${c.board?' · '+esc(c.board):''}${m.eligible?' · may lead':''}${m.busy?' · working':''}</span>${acts}</div>`}).join('')||'<span class="mut">Nobody yet.</span>'}</div>`,
       {stack:true,desc:'Every machine in the community and when it was last heard.',f:'community machines members roster'}));
@@ -45,7 +45,7 @@ async function poolPaint(){
         ?pSelect('pool-pin',[['','The most capable'],...next.map(m=>[m.fp,m.name])],v.pin||'')
         :'<span class="mut">No other machine may lead yet.</span>',
       {desc:'If this machine goes away, this one leads next.',
-       more:'Only machines whose own admin switched on This machine may lead are listed.',
+       more:'Only machines whose own admin switched on This machine may lead, and that the machine that started the community said can take over, are listed.',
        f:'community pin next leader failover'}));
     rows.push(pRow('This machine may lead',pSwitch('pool-lead',!!v.lead_ok),
       {desc:'If the leader goes away, this machine can take over and pay for the thinking.',
@@ -77,8 +77,9 @@ async function poolAct(act,who){
   if(act==='notes')return poolNotes();
   if(act==='leave'&&!confirm('Leave the community? This machine stops sharing notes and taking work.'))return;
   const body=act==='create'?{name:(document.getElementById('pool-name')||{}).value||''}
-    :act==='join'?{label:(document.getElementById('pool-join-to')||{}).value||''}:{who};
-  const r=await fetch('/api/pool/'+act,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    :act==='join'?{label:(document.getElementById('pool-join-to')||{}).value||''}
+    :act==='unvouch'?{who,on:false}:{who};
+  const r=await fetch('/api/pool/'+(act==='unvouch'?'vouch':act),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json().catch(()=>({}));
   if(!r.ok){toast(d.error||'could not do that');return}
   toast({create:'✓ community started',join:'✓ asked to join',approve:'✓ let in',remove:'✓ removed',leave:'✓ left the community'}[act]||'✓ done');

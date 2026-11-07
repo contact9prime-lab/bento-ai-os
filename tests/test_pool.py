@@ -271,7 +271,10 @@ def test_when_the_leader_goes_the_next_machine_that_may_lead_takes_over(net):
             return [ev async for ev in pool.chat(A["cfg"], "default", [{"role": "user", "content": "hi"}], [])]
     assert loop.run_until_complete(ask())[0]["text"].startswith("pi-garage thought"), \
         "now the new leader lends its brain, through its own gate"
-    # the old leader comes back on its old port, hears nobody, asks, and steps down
+    # the old leader comes back on its old port, hears nobody, asks, and steps down. A new
+    # start: the beats it heard before going away say nothing about now.
+    L["pool"] = pool.Pool(cfg=lambda: L["cfg"], store=lambda: L["store"], pdp=lambda: L["pdp"],
+                          chat=_brain(L["name"]), work=None)
     loop.run_until_complete(_listen(L, port=L["port"]))
     loop.run_until_complete(_tick(L))
     with _at(L):
@@ -352,3 +355,237 @@ def test_the_leaders_line_is_the_only_bigger_buffer():
     h = src[src.index("    async def _handle"):src.index("    async def _dispatch")]
     assert "known = bool(fp and _by_fp(fp))" in h and "POOL_LINE if known else MAX_LINE" in h, \
         "a stranger's first line stays small"
+
+
+# ---- leadership: who may say so (S-44) -----------------------------------------------------
+
+def _flags(monkeypatch):
+    from agentos import secevents
+    got = []
+    monkeypatch.setattr(secevents, "flag", lambda kind, detail="", **k: got.append(kind))
+    return got
+
+
+def _fp(m):
+    with _at(m):
+        return pool.me()["fp"]
+
+
+def _consenting(L, A, B, loop):
+    """B's admin agreed to lead before it joined, and L let it in: vouched for."""
+    with _at(B):
+        pool.set_lead_ok(True)
+    _form(L, A, B, loop)
+    loop.run_until_complete(_tick(A))
+
+
+def test_a_link_that_is_no_member_cannot_demote_the_leader(net, monkeypatch):
+    L, A, B, loop = net
+    flags = _flags(monkeypatch)
+    _form(L, A, B, loop)
+    stranger = {"peer_host_fp": "a" * 64, "label": "unrelated", "kind": "machine"}
+
+    async def go():
+        with _at(L):
+            return await L["pool"]._pool_beat(stranger, {"op": "pool_beat", "term": 999999,
+                                                         "leader": {"fp": "a" * 64, "name": "evil"}})
+    r = loop.run_until_complete(go())
+    assert r["state"] == "unknown"
+    with _at(L):
+        d = pool.load()
+        assert d["role"] == "leader" and d["term"] == 1 and d["leader"]["fp"] == pool.me()["fp"]
+        assert [g for g in L["store"].list_grants() if g["principal_kind"] == "pool"], "members keep their grants"
+
+
+def test_a_member_naming_a_new_leader_cannot_demote_a_leader_it_can_not_show(net, monkeypatch):
+    L, A, B, loop = net
+    flags = _flags(monkeypatch)
+    _form(L, A, B, loop)
+
+    async def go():
+        with _at(L):
+            lk = next(x for x in teamlink._load()["links"] if x["peer_host_fp"] == fp_a)
+            return await L["pool"]._pool_beat(lk, {"op": "pool_beat", "term": 50, "cap": {},
+                                                   "leader": {"fp": "a" * 64, "name": "evil"}})
+
+    fp_a = _fp(A)
+    r = loop.run_until_complete(go())
+    assert r["state"] == "member", "it is just a heartbeat now"
+    with _at(L):
+        assert pool.load()["role"] == "leader" and pool.load()["term"] == 1
+    assert "pool.claim" in flags
+
+
+def test_what_a_machine_says_about_itself_does_not_let_it_lead(net, monkeypatch):
+    L, A, B, loop = net
+    flags = _flags(monkeypatch)
+    _form(L, A, B, loop)                # B was let in without offering to lead
+    with _at(B):
+        pool.set_lead_ok(True)          # and says so now, on every heartbeat
+    loop.run_until_complete(_tick(B))
+    loop.run_until_complete(_tick(A))
+    with _at(A):
+        roster = pool.load()["roster"]
+        assert not pool.successors(roster, _fp(L)), "no vouch, no place in the line"
+
+    async def go():
+        with _at(B):
+            return await teamlink.call(_peer("pi-kitchen"), {"op": "pool_claim", "term": 99}, timeout=10)
+    got = loop.run_until_complete(go())
+    assert not got["ok"] and "not one this community lets lead" in got["error"]
+    assert "pool.claim" in flags
+
+
+def test_a_forged_vouch_is_dropped_where_the_roster_arrives(net):
+    L, A, B, loop = net
+    _consenting(L, A, B, loop)
+    with _at(A):
+        d = pool.load()
+        good = next(e for e in d["roster"] if e["fp"] == _fp(B))
+        assert good.get("vouch"), "the founder's signature travels with the roster"
+        assert pool.clean_roster(d["roster"], d)[1].get("vouch") or pool.clean_roster(d["roster"], d)[2].get("vouch")
+        bigger = {**good, "vouch": {**good["vouch"], "ram_mb": 1 << 22}}
+        assert not pool.clean_roster([bigger], d)[0].get("vouch"), "the numbers are signed too"
+        other = {**good, "fp": "c" * 64}
+        assert not pool.clean_roster([other], d)[0].get("vouch"), "and so is whom it is for"
+
+
+def test_a_vouched_member_cannot_take_over_while_its_leader_answers_a_member(net, monkeypatch):
+    L, A, B, loop = net
+    flags = _flags(monkeypatch)
+    _consenting(L, A, B, loop)
+
+    async def go():
+        with _at(B):
+            return await teamlink.call(_peer("pi-kitchen"), {"op": "pool_claim", "term": 99}, timeout=10)
+    got = loop.run_until_complete(go())
+    assert not got["ok"] and "still answers" in got["error"]
+    with _at(A):
+        assert pool.load()["term"] == 1 and pool.load()["leader"]["name"] == "big-box"
+    assert "pool.claim" in flags
+
+
+def test_a_vouched_member_cannot_push_out_a_leader_still_leading_others(net, monkeypatch):
+    L, A, B, loop = net
+    flags = _flags(monkeypatch)
+    _consenting(L, A, B, loop)
+
+    async def go():
+        with _at(L):
+            lk = next(x for x in teamlink._load()["links"] if x["peer_host_fp"] == _fp(B))
+            return await L["pool"]._pool_claim(lk, {"term": 99})
+    got = loop.run_until_complete(go())
+    assert not got["ok"] and "still leading" in got["error"]
+    with _at(L):
+        assert pool.load()["role"] == "leader"
+
+
+def test_being_told_of_a_leader_is_believed_only_from_that_leader(net, monkeypatch):
+    L, A, B, loop = net
+    flags = _flags(monkeypatch)
+    _consenting(L, A, B, loop)
+
+    async def lie(lk, req, **k):
+        if req.get("op") == "pool_beat":
+            return {"ok": True, "state": "not_leader", "term": 40, "leader": {"fp": "a" * 64, "name": "evil"}}
+        return {"ok": False, "error": "away"}
+    A["pool"]._call = lie
+    loop.run_until_complete(_tick(A))
+    with _at(A):
+        d = pool.load()
+        assert d["leader"]["name"] == "big-box" and d["term"] == 1, "a stranger is on no roster"
+    assert "pool.claim" in flags
+
+    async def lie_about_b(lk, req, **k):
+        if req.get("op") == "pool_beat":
+            return {"ok": True, "state": "not_leader", "term": 40, "leader": {"fp": _fp(B), "name": "pi-garage"}}
+        return {"ok": True, "role": "member", "term": 1, "leader": {}}     # B says it does not lead
+    A["pool"]._call = lie_about_b
+    loop.run_until_complete(_tick(A))
+    with _at(A):
+        assert pool.load()["leader"]["name"] == "big-box", "B is vouched for, and B says otherwise"
+
+
+def test_every_change_of_leader_is_flagged(net, monkeypatch):
+    L, A, B, loop = net
+    flags = _flags(monkeypatch)
+    _consenting(L, A, B, loop)
+    loop.run_until_complete(L["lst"].stop())
+    L["lst"] = None
+    _stale(A)
+    loop.run_until_complete(_tick(A))
+    with _at(B):
+        assert pool.load()["role"] == "leader", "the real failover still works"
+    assert flags.count("pool.leader") >= 2, "the one who took over, and the one who followed"
+
+
+def test_a_later_leader_cannot_replace_who_vouches(net):
+    L, A, B, loop = net
+    _consenting(L, A, B, loop)
+    with _at(A):
+        d = pool.load()
+        founder = d["pool"]["founder"]["fp"]
+        assert founder == _fp(L)
+        pool._pin_pool(d, {"id": "other", "name": "x", "founder": {"fp": "b" * 64, "cert": "x"}}, _fp(B))
+        assert d["pool"]["founder"]["fp"] == founder and d["pool"]["id"] != "other"
+    loop.run_until_complete(L["lst"].stop())
+    L["lst"] = None
+    _stale(A)
+    loop.run_until_complete(_tick(A))
+    with _at(B):
+        assert not pool.is_founder(pool.load())
+        with pytest.raises(ValueError, match="started this community"):
+            pool.set_vouch("pi-kitchen", True)
+
+
+def test_a_community_from_before_vouching_keeps_its_line_of_succession(net):
+    L, A, B, loop = net
+    _consenting(L, A, B, loop)
+    with _at(L):
+        d = pool.load()
+        d["pool"].pop("founder")
+        for e in d["members"].values():
+            e.pop("vouch", None)
+        pool.save(d)
+    loop.run_until_complete(_tick(L))
+    loop.run_until_complete(_tick(A))
+    with _at(A):
+        assert [c["name"] for c in pool.successors(pool.load()["roster"], _fp(L))] == ["pi-garage"]
+
+
+def test_a_person_takes_a_vouch_away_and_a_machine_set_up_from_here_has_none(net):
+    from agentos import provision
+    L, A, B, loop = net
+    _consenting(L, A, B, loop)
+    with _at(L):
+        assert pool.set_vouch("pi-garage", False)
+    loop.run_until_complete(_tick(A))
+    with _at(A):
+        assert not pool.successors(pool.load()["roster"], _fp(L))
+    with _at(L):
+        d = pool.load()
+        e = pool._entry_from_link({"peer_host_fp": "d" * 64, "label": "z"}, pool.clean_cap({"brain": True, "lead_ok": True}))
+        d["members"]["d" * 64] = e
+        pool.save(d)
+        assert not pool.approve(L["store"], "d" * 64, may_lead=False).get("vouch")
+
+
+def test_a_community_brain_turn_is_marked_as_from_outside(tmp_path, monkeypatch):
+    from agentos.agent import Agent
+    from agentos.tools import Toolbox
+    cfg = {"workspace": str(tmp_path), "default_model": "pool/default", "memory": {}}
+    st = Store(tmp_path / "a.db")
+    tb = Toolbox(cfg, st)
+
+    async def emit(ev):
+        pass
+    ag = Agent(cfg, tb, "pool/default", emit, None)
+    seen = []
+
+    async def stop(*a, **k):
+        seen.append(list(ag.taint))
+        raise RuntimeError("stop here")
+    monkeypatch.setattr(ag, "_system", stop)
+    with pytest.raises(RuntimeError):
+        asyncio.run(ag.run([{"role": "user", "content": "hi"}]))
+    assert any(t["tool"] == "community" for t in seen[0])
