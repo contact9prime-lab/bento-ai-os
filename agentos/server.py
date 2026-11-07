@@ -62,7 +62,7 @@ from .telegram import TelegramBridge
 from . import whatsapp as whatsappmod
 from .whatsapp import WhatsAppBridge
 from . import tools
-from .tools import ALWAYS_ASK, Toolbox
+from .tools import Toolbox
 from .trainforge import TrainForge
 
 UI_DIR = Path(__file__).parent / "ui"
@@ -9303,6 +9303,20 @@ async def api_resume_app(aid: str):
     return {"ok": True}
 
 
+def _automation_words(data: dict, text: str) -> str:
+    """An `agent` step of a routine is not the person typing. The agent reads it as what it is,
+    and when an agent's turn started the routine, its words are fenced like anything else
+    from outside, which is also what marks the conversation for later turns (agent._TAINT_MARK)."""
+    from . import secevents
+    name = secevents.plain(data.pop("automation", ""), 80) or "a routine"
+    taint = tools.automation_taint(str(data.pop("automation_run", "") or ""))
+    if taint:
+        from .agent import fence
+        from .policy import taint_summary
+        text = fence(taint_summary(taint), text)
+    return f"[From the saved routine \"{name}\". The person did not type this just now.]\n{text}"
+
+
 @app.post("/api/tool")
 async def api_run_tool(body: dict, request: Request):
     """Let a user-built app invoke an agent or MCP tool and get its output. Every call
@@ -9333,17 +9347,24 @@ async def api_run_tool(body: dict, request: Request):
     # item under any mission, or speak in a message chain as somebody it is not.
     if not isinstance(args, dict):
         return JSONResponse({"error": "args must be an object"}, status_code=400)
-    args = {k: v for k, v in args.items() if not str(k).startswith("_")}
+    from .agent import gate_fields, note_refusal, strip_forged
+    args = strip_forged(name, args, source=principal.label)
+    # what only the OS can say (the site, the terminal's foreground, who asked): the same
+    # fields the agent loop fills, so the gate decides the same thing for both
+    args = gate_fields(name, args, principal.id or principal.label)
     level, reason = toolbox.risk_of(name, args)
     # apps render inside the desktop, so their calls arrive via the GUI gate
     surface = "gui" if principal.kind == "app" else "api"
+    # A step of a routine an agent started carries what that agent's turn had read. The page
+    # replays it, and it holds a server-made ticket. A person pressing Run has none.
     dec = state["pdp"].decide_tool(principal, name, args, level, reason=reason,
                                    autonomy=state["cfg"].get("autonomy", ""),
                                    surface=surface,
+                                   taint=tools.automation_taint(str(body.get("automation_run") or "")),
                                    base_risk=toolbox.base_risk(name, args))
-    if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
-        dec.effect = "ask"   # power/session actions confirm every time, autonomy aside
-        dec.grant_offer = None
+    from .policy import person_rule
+    person_rule(principal, name, args, dec, state["pdp"])
+    note_refusal(name, principal, dec)
 
     def _plog(outcome: str, approved=None):
         state["store"].log("policy",
@@ -9478,8 +9499,7 @@ async def api_policy_trace(body: dict):
     It is a probe (audit=False): nothing runs, nothing is metered, no ledger row.
     The agent loop's last word (ALWAYS_ASK, code from a specialist) is applied
     here as it is there, so the answer is what a real call would get."""
-    from .policy import Principal, STAGES, stage_of
-    from .tools import ALWAYS_ASK, ASK_FROM_SPECIALISTS
+    from .policy import Principal, STAGES, person_rule, stage_of
     toolbox, cfg, store = state["toolbox"], state["cfg"], state["store"]
     pdp = getattr(toolbox, "pdp", None)
     if pdp is None:
@@ -9502,8 +9522,7 @@ async def api_policy_trace(body: dict):
                           autonomy=cfg.get("autonomy", ""), surface=surface,
                           taint=taint, audit=False)
     effect, rule, why = dec.effect, dec.rule, dec.reason
-    if dec.effect == "allow" and dec.rule in ("default", "") and (
-            tool in ALWAYS_ASK or (tool in ASK_FROM_SPECIALISTS and kind == "subagent")):
+    if person_rule(principal, tool, args, dec, pdp) and dec.rule != "taint":
         effect, rule = "ask", "person"
         why = "This is confirmed by a person every time, whatever the autonomy."
     stage = stage_of(rule, dec.action)
@@ -20395,6 +20414,8 @@ async def ws_endpoint(ws: WebSocket):
                 text = (data.get("text") or "").strip()
                 if not text and not _chat_images(data):
                     continue
+                if data.get("automation"):
+                    data["text"] = text = _automation_words(data, text)
                 cid = data.get("conversation_id")
                 if cid and cid in turns:
                     # busy: queue it instead of dropping it. The running agent decides

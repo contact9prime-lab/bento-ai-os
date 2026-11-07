@@ -150,7 +150,7 @@ def test_the_forwarded_lead_finds_and_calls_through_the_gate(tmp_path, monkeypat
          "parameters": {"type": "object", "properties": {}}}])
     called = []
 
-    async def fake_call(name, args, call_id=""):
+    async def fake_call(name, args, call_id="", offered=False):
         called.append((name, args))
         return "ok", True, None, False
     monkeypatch.setattr(ag, "call_tool", fake_call)

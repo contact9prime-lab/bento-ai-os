@@ -13869,7 +13869,7 @@ function agentQueueFlush(cid){
   setTimeout(()=>agentTurn(o),150);
 }
 function agentTurn(o){
-  // o: {text, cid?, origin, title?, context?, sink, onCid?}
+  // o: {text, cid?, origin, title?, context?, sink, onCid?, automation?: {name, run}}
   if(!ws||ws.readyState!==1){toast('not connected to the server');return false}
   if(o.cid&&RUNNING.has(o.cid)){
     TURN_QUEUE.push(o);
@@ -13899,7 +13899,7 @@ function agentTurn(o){
   if(o.sink&&o.sink.start)o.sink.start({conversation_id:o.cid||''});
   ws.send(JSON.stringify({type:'chat',text:o.text,conversation_id:o.cid||null,
     images:o.images||[],model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
-    context:o.context||''}));
+    context:o.context||'',...(o.automation?{automation:o.automation.name,automation_run:o.automation.run||''}:{})}));
   return true;
 }
 
@@ -18270,7 +18270,7 @@ function handle(ev){
     // the server never runs an automation itself — it says "run this" and the
     // desktop does, so a schedule, the agent's tool and the palette all land in
     // the same runner
-    case 'automation.run': onAutomationBroadcast(ev.automation); break;
+    case 'automation.run': onAutomationBroadcast(ev.automation,ev.run); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'eval_result': case 'evals_done':
@@ -19841,10 +19841,10 @@ function setTab(body,all){
       pRow('Agents message each other',pSelect('s-team-talk',[
           ['matrix','Ask me first (the matrix below)'],
           ['swarm','Swarm: they work together freely'],
-          ['democracy','Democracy: 2 of 3 decide'],
+          ['democracy','Democracy: you decide, with the team\'s view'],
           ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
-         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy those same steps go to a vote of three of your agents, on different brains where they can be, and a majority decides. Huddles end with a vote too. Loops are refused and each task has a question limit.',
+         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy you are asked for those same steps, and the card shows what three of your agents think. Their view is advice. Huddles end with their view too. Loops are refused and each task has a question limit.',
          f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
       pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
         {stack:true,desc:'Rows ask, columns answer. Tap a cell to switch between ask me, allow and block.',
@@ -20949,7 +20949,7 @@ async function paintTeamMatrix(){
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
       const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: you are asked for each empty cell, and the card shows what three of your agents think. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
       ${dn.length>=2?` <button class="co-link tm-level" data-mode="department">Decide it per department instead</button>`:''}</div>`;
   box.querySelector('.tm-level')?.addEventListener('click',e=>teamMatrixLevel(e.target.dataset.mode));
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
@@ -27191,7 +27191,9 @@ function automationStepLabel(s){
   return s.kind;
 }
 
-async function runAutomationStep(s){
+/* `a` is the routine and `run` the server's ticket when an agent started it: what that agent's
+   turn had read goes along with each step (tools.automation_ticket). Pressing Run has none. */
+async function runAutomationStep(s,a,run){
   switch(s.kind){
     case 'app':      if(APPS[s.app]){openApp(s.app);if(s.view)automationView(s.app,s.view)} else toast('automation: no app "'+s.app+'"'); break;
     case 'place':    {const p=(typeof PLACES!=='undefined'?PLACES:[]).find(x=>x.label===s.place);
@@ -27201,11 +27203,11 @@ async function runAutomationStep(s){
     case 'wallpaper':await setBuiltinWallpaper(s.wallpaper); break;
     case 'desktop':  switchDesk(Math.max(1,Math.min(DESKS,+s.desk||1))); break;
     case 'wait':     await new Promise(r=>setTimeout(r,Math.min(60000,+s.ms||0))); break;
-    case 'agent':    palAsk(s.prompt); break;
+    case 'agent':    palAsk(s.prompt,{name:(a&&a.name)||'a routine',run:run||''}); break;
     // tool and python go to the server, where the permission gate lives — an
     // automation gets no more reach than the agent does, it just skips the model
-    case 'tool':     await runAutomationTool(s.tool,s.args); break;
-    case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code})); break;
+    case 'tool':     await runAutomationTool(s.tool,s.args,run); break;
+    case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code}),run); break;
   }
 }
 /* An app opened at a view: a Settings tab, a Missions tab, a Logs filter. The three a
@@ -27215,12 +27217,12 @@ function automationView(app,view){
   if(app==='jobs'&&typeof JOB_TABS!=='undefined'&&JOB_TABS.indexOf(view)>=0){JOBS.tab=view;return refreshApp('jobs')}
   if(app==='logs'){const w=winsOf('logs')[0];if(w){w.kind=view;w.app.render(w.el.querySelector('.wbody'),w)}}
 }
-async function runAutomationTool(name,args){
+async function runAutomationTool(name,args,run){
   let parsed={};
   try{parsed=args?JSON.parse(args):{}}catch(e){return toast('automation: '+name+' args are not valid JSON')}
   try{
     const r=await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,args:parsed})});
+      body:JSON.stringify({name,args:parsed,...(run?{automation_run:run}:{})})});
     const d=await r.json();
     // /api/tool answers {output} on success and {error} when the permission gate
     // says no (403) — an automation must surface the refusal, not swallow it
@@ -27240,7 +27242,7 @@ function automationOutput(name,out){
     +esc(out.slice(0,4000))+'</pre>';
 }
 let AUTO_RUNNING=false;
-async function runAutomation(a){
+async function runAutomation(a,run){
   if(typeof a==='string')a=automationByName(a)||AUTOMATIONS.find(x=>x.id===a);
   if(!a)return toast('no such automation');
   if(AUTO_RUNNING)return toast('an automation is already running');
@@ -27249,7 +27251,7 @@ async function runAutomation(a){
   toast('▶ '+a.name);
   try{
     for(const s of (a.steps||[])){
-      await runAutomationStep(s);
+      await runAutomationStep(s,a,run);
       // a beat between steps: windows animate in, and a theme swap runs a view
       // transition — firing the next step mid-flight looks (and feels) broken
       if(s.kind!=='wait')await new Promise(r=>setTimeout(r,160));
@@ -27261,7 +27263,7 @@ async function runAutomation(a){
 /* Fired by the server (a schedule, the agent's run_automation tool, another
    window) — the payload carries the whole automation so this client runs the
    same steps even if its list is stale. */
-function onAutomationBroadcast(a){if(a&&a.steps)runAutomation(a)}
+function onAutomationBroadcast(a,run){if(a&&a.steps)runAutomation(a,run)}
 
 async function saveAutomation(name,steps,icon){
   const r=await fetch('/api/automations',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -42816,7 +42818,7 @@ async function omniShoot(){
     omniFocus();
   }catch(e){toast('screenshot failed')}
 }
-async function omniAsk(q){
+async function omniAsk(q,automation){
   q=(q||'').trim();
   const imgs=OMNI.imgs.slice();
   if(!q&&!imgs.length)return;
@@ -42839,7 +42841,7 @@ async function omniAsk(q){
       &&!(typeof devChatKeeps==='function'&&devChatKeeps()))close()},30000);
   }});
   const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:omniTitle(q),images:imgs,
-    context:omniContext(),sink,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
+    context:omniContext(),sink,automation,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
     onQueued:stop=>{
       const tools=card.querySelector('.oc-tools');
       // Only one stop on a card that has not started: "Stop" would kill the turn
@@ -43257,10 +43259,10 @@ function palIntentAsync(q){
     }catch(e){}
   },350);
 }
-function palAsk(q){
+function palAsk(q,automation){
   // quick asks flow through the omnibar's Desktop thread (an answer card),
   // not a full Chat window — escalation is one click on the card
-  if(typeof omniAsk==='function'){omniAsk(q);return}
+  if(typeof omniAsk==='function'){omniAsk(q,automation);return}
   openApp('chat');
   if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}
 }

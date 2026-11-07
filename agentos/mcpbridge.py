@@ -222,7 +222,8 @@ async def handle(token: str, msg: dict) -> tuple[int, dict | None]:
                 s.seen.append(CONNECTED)
                 return 200, _text(rid, refusal, is_error=True)
         s.seen.append(name)
-        output, ok, _image, _untrusted = await s.agent.call_tool(name, args, call_id)
+        # `offered`: held against this run's list above, the same check the loop makes itself
+        output, ok, _image, _untrusted = await s.agent.call_tool(name, args, call_id, offered=True)
     return 200, _text(rid, str(output or ""), is_error=not ok)
 
 

@@ -55,7 +55,9 @@ function automationStepLabel(s){
   return s.kind;
 }
 
-async function runAutomationStep(s){
+/* `a` is the routine and `run` the server's ticket when an agent started it: what that agent's
+   turn had read goes along with each step (tools.automation_ticket). Pressing Run has none. */
+async function runAutomationStep(s,a,run){
   switch(s.kind){
     case 'app':      if(APPS[s.app]){openApp(s.app);if(s.view)automationView(s.app,s.view)} else toast('automation: no app "'+s.app+'"'); break;
     case 'place':    {const p=(typeof PLACES!=='undefined'?PLACES:[]).find(x=>x.label===s.place);
@@ -65,11 +67,11 @@ async function runAutomationStep(s){
     case 'wallpaper':await setBuiltinWallpaper(s.wallpaper); break;
     case 'desktop':  switchDesk(Math.max(1,Math.min(DESKS,+s.desk||1))); break;
     case 'wait':     await new Promise(r=>setTimeout(r,Math.min(60000,+s.ms||0))); break;
-    case 'agent':    palAsk(s.prompt); break;
+    case 'agent':    palAsk(s.prompt,{name:(a&&a.name)||'a routine',run:run||''}); break;
     // tool and python go to the server, where the permission gate lives — an
     // automation gets no more reach than the agent does, it just skips the model
-    case 'tool':     await runAutomationTool(s.tool,s.args); break;
-    case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code})); break;
+    case 'tool':     await runAutomationTool(s.tool,s.args,run); break;
+    case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code}),run); break;
   }
 }
 /* An app opened at a view: a Settings tab, a Missions tab, a Logs filter. The three a
@@ -79,12 +81,12 @@ function automationView(app,view){
   if(app==='jobs'&&typeof JOB_TABS!=='undefined'&&JOB_TABS.indexOf(view)>=0){JOBS.tab=view;return refreshApp('jobs')}
   if(app==='logs'){const w=winsOf('logs')[0];if(w){w.kind=view;w.app.render(w.el.querySelector('.wbody'),w)}}
 }
-async function runAutomationTool(name,args){
+async function runAutomationTool(name,args,run){
   let parsed={};
   try{parsed=args?JSON.parse(args):{}}catch(e){return toast('automation: '+name+' args are not valid JSON')}
   try{
     const r=await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,args:parsed})});
+      body:JSON.stringify({name,args:parsed,...(run?{automation_run:run}:{})})});
     const d=await r.json();
     // /api/tool answers {output} on success and {error} when the permission gate
     // says no (403) — an automation must surface the refusal, not swallow it
@@ -104,7 +106,7 @@ function automationOutput(name,out){
     +esc(out.slice(0,4000))+'</pre>';
 }
 let AUTO_RUNNING=false;
-async function runAutomation(a){
+async function runAutomation(a,run){
   if(typeof a==='string')a=automationByName(a)||AUTOMATIONS.find(x=>x.id===a);
   if(!a)return toast('no such automation');
   if(AUTO_RUNNING)return toast('an automation is already running');
@@ -113,7 +115,7 @@ async function runAutomation(a){
   toast('▶ '+a.name);
   try{
     for(const s of (a.steps||[])){
-      await runAutomationStep(s);
+      await runAutomationStep(s,a,run);
       // a beat between steps: windows animate in, and a theme swap runs a view
       // transition — firing the next step mid-flight looks (and feels) broken
       if(s.kind!=='wait')await new Promise(r=>setTimeout(r,160));
@@ -125,7 +127,7 @@ async function runAutomation(a){
 /* Fired by the server (a schedule, the agent's run_automation tool, another
    window) — the payload carries the whole automation so this client runs the
    same steps even if its list is stale. */
-function onAutomationBroadcast(a){if(a&&a.steps)runAutomation(a)}
+function onAutomationBroadcast(a,run){if(a&&a.steps)runAutomation(a,run)}
 
 async function saveAutomation(name,steps,icon){
   const r=await fetch('/api/automations',{method:'POST',headers:{'Content-Type':'application/json'},

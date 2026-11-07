@@ -25,6 +25,9 @@ import httpx
 from . import users as usersmod
 
 MAX_OUTPUT = 12_000  # chars of tool output fed back to the model
+# A tool's answer carries words this OS did not write: the same string as fabric and agent,
+# and the agent loop strips it and marks the turn (agent.TAINT_CARRIERS).
+TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"
 APP_MAX_OUTPUT = 400_000  # a user-built app parses output in JS — no context to protect
 
 # Per-call override of MAX_OUTPUT. The cap exists to keep a tool result from
@@ -33,111 +36,405 @@ APP_MAX_OUTPUT = 400_000  # a user-built app parses output in JS — no context 
 # response at 12k shreds the JSON it came for.
 output_limit = contextvars.ContextVar("output_limit", default=MAX_OUTPUT)
 
-# Read-only commands that are always safe to run.
-SAFE_COMMANDS = {
-    "ls", "cat", "head", "tail", "grep", "rg", "find", "wc", "sort", "uniq", "cut",
-    "echo", "pwd", "whoami", "id", "date", "cal", "uptime", "uname", "hostname",
-    "df", "du", "free", "ps", "top", "lscpu", "lsblk", "lsusb", "lspci", "ip",
-    "which", "whereis", "type", "file", "stat", "history",
-    "diff", "md5sum", "sha256sum", "basename", "dirname", "realpath",
-    "xrandr", "sensors", "nvidia-smi", "acpi", "ping", "dig", "nslookup", "host",
-    "curl", "wget", "tree", "less", "more", "jq", "column", "nl",
-}
-# Not in the list above, on purpose: `env` and `awk` run other programs (`env rm -rf ~`,
-# `awk 'BEGIN{system(…)}'`), `sed` does too (`sed -n '1e id'`) and writes files (`w`),
-# and `printenv` hands the model every key in the server's environment. Each one was
-# classed safe until 0.6.18, which let a web page's instructions run them unasked.
+# Read-only commands that may run without asking, each with the flags it may run with
+# (_SAFE_FLAGS below). Anything not named there, a flag not listed for it, or a line this
+# reader cannot be sure about, asks.
 #
-# The rest are read-only only in their usual form. Each entry below says what turns
-# one into a write, a run or a change to the machine, and classify_command asks then.
-_VALUE_FLAGS = {  # flags that take the next word as their value
-    "curl": {"-m", "--max-time", "--connect-timeout", "-A", "--user-agent", "-H", "--header",
-             "-w", "--write-out", "--retry", "--retry-delay", "--retry-max-time", "-e",
-             "--referer", "--resolve", "--interface"},
-    "wget": {"-T", "--timeout", "-t", "--tries", "--max-redirect", "-U", "--user-agent",
-             "--header", "-O", "--output-document"},
-}
-_CURL_READ_FLAGS = {"-s", "--silent", "-S", "--show-error", "-L", "--location", "-I", "--head",
-                    "-i", "--include", "-f", "--fail", "--fail-with-body", "--compressed",
-                    "-v", "--verbose", "-G", "--get", "-4", "-6", "-k", "--insecure",
-                    "--http1.1", "--http2", "-N", "--no-buffer", "-sS", "-sL", "-fsSL",
-                    "-sSL", "-Ls", "-sI", "-Is", "-sf", "-fs", "-fsS", "-sSf", "-ks", "-sk"}
-_WGET_READ_FLAGS = {"-q", "--quiet", "-S", "--server-response", "--spider", "-nv",
-                    "--no-verbose", "--no-check-certificate", "-qO-", "-O-"}
+# Not on the list, on purpose: `env` and `awk` run other programs (`env rm -rf ~`,
+# `awk 'BEGIN{system(…)}'`), `sed` does too (`sed -n '1e id'`) and writes files (`w`), and
+# `printenv` hands the model every key in the server's environment. `curl` and `wget` send
+# things as well as fetch them (`curl -H @-`, `--data`, `-o`), and no flag list stays right
+# about that: quoted and attached forms slipped past one that tried.
 
 
-def _flags_ok(base: str, parts: list[str], allowed: set) -> bool:
-    """Every flag is one that only reads; a value flag's value is skipped."""
-    vals = _VALUE_FLAGS.get(base, set())
-    i = 1
-    while i < len(parts):
-        p = parts[i]
-        if p.startswith("-"):
-            name = p.split("=", 1)[0]
-            if name in vals:
-                i += 1 if "=" in p else 2
-                continue
-            if p not in allowed:
-                return False
+class _Word:
+    """One word of a command line as the shell would see it."""
+    __slots__ = ("value", "quoted_name", "escaped", "glob", "lead_glob", "brace", "any_quote", "open_brace")
+
+    def __init__(self):
+        self.value = ""
+        self.quoted_name = False    # a quote in or before a flag's name: `'-o'`, `-ex'ec'`
+        self.escaped = False        # a backslash outside quotes
+        self.glob = False           # an unquoted * ? [
+        self.lead_glob = False      # ...before anything literal, so it can expand to `-o…`
+        self.brace = False          # brace expansion: {-o,FILE}
+        self.any_quote = False
+        self.open_brace = False     # an unquoted {, which a comma or .. makes an expansion
+
+
+def shell_parse(cmd: str) -> list | None:
+    """The command line as segments of words, split where the shell would split it, or
+    None when this reader cannot be sure what the shell would do. str.split left quotes
+    in the word, so `-ex'ec'` read as a harmless string and ran as `-exec`."""
+    segs, words = [], []
+    cur = None
+
+    def end():
+        nonlocal cur
+        if cur is not None:
+            cur.brace = cur.open_brace and ("," in cur.value or ".." in cur.value)
+            words.append(cur)
+            cur = None
+
+    i, n = 0, len(cmd)
+    while i < n:
+        c = cmd[i]
+        if c in " \t":
+            end()
+            i += 1
+        elif c in ";|&":
+            end()
+            j = i
+            while j < n and cmd[j] in ";|&":
+                j += 1
+            if cmd[i:j] not in (";", "|", "||", "&&") or not words:
+                return None
+            segs.append(words)
+            words = []
+            i = j
+        elif c in "()<>`$#" and (c != "#" or cur is None) or ord(c) < 32 or ord(c) == 127:
+            return None
+        else:
+            if cur is None:
+                cur = _Word()
+            if c == "'":
+                close = cmd.find("'", i + 1)
+                if close < 0:
+                    return None
+                cur.any_quote = True
+                if "=" not in cur.value:
+                    cur.quoted_name = True
+                cur.value += cmd[i + 1:close]
+                i = close + 1
+            elif c == '"':
+                cur.any_quote = True
+                if "=" not in cur.value:
+                    cur.quoted_name = True
+                i += 1
+                while True:
+                    if i >= n:
+                        return None
+                    d = cmd[i]
+                    if d == '"':
+                        i += 1
+                        break
+                    if d in "$`":
+                        return None
+                    if d == "\\":
+                        if i + 1 >= n:
+                            return None
+                        if cmd[i + 1] in '"\\$`':
+                            cur.value += cmd[i + 1]
+                        else:
+                            cur.value += cmd[i:i + 2]
+                        i += 2
+                        continue
+                    cur.value += d
+                    i += 1
+            elif c == "\\":
+                if i + 1 >= n or ord(cmd[i + 1]) < 32:
+                    return None
+                cur.escaped = True
+                cur.value += cmd[i + 1]
+                i += 2
+            else:
+                if c == "{":
+                    cur.open_brace = True
+                if c in "*?[":
+                    cur.glob = True
+                    if not cur.value:
+                        cur.lead_glob = True
+                cur.value += c
+                i += 1
+    end()
+    if words:
+        segs.append(words)
+    elif segs and not cmd.rstrip().endswith(";"):
+        return None                 # a pipe or && with nothing after it
+    return segs
+
+
+class _Flags:
+    """What one read-only command may run with. `short` are single-letter switches, `val`
+    are single letters that take a value, `long` is a space-separated list: `--x` alone,
+    `--x=` takes a value, `--x?` may have `=value`. Names are matched whole, because getopt
+    takes abbreviations: `--outp=` IS `--output=`, and only an exact match cannot be fooled."""
+    __slots__ = ("short", "val", "long", "pos", "any", "guard", "esc", "check")
+
+    def __init__(self, short="", val="", long="", pos=None, any=False, guard=True, esc="", check=None):
+        self.short, self.val, self.pos, self.any = short, val, pos, any
+        self.guard, self.esc, self.check = guard, esc, check
+        self.long = {}
+        for w in long.split():
+            if w.endswith("="):
+                self.long[w[:-1]] = "value"
+            elif w.endswith("?"):
+                self.long[w[:-1]] = "optional"
+            else:
+                self.long[w] = "bare"
+
+
+def _flags_safe(spec: _Flags, words: list) -> bool:
+    """`words[0]` is the command. Every flag must be on the command's list; a word that is
+    only a flag once the shell has processed it (quoted, escaped, globbed) is refused, so
+    what is checked here is what the program gets."""
+    i, dd, positional = 1, False, []
+    while i < len(words):
+        w = words[i]
+        v = w.value
         i += 1
+        if w.brace or (w.escaped and v not in spec.esc):
+            return False
+        if dd or v == "-" or not v.startswith("-"):
+            if w.lead_glob and spec.guard:
+                return False
+            positional.append(v)
+            continue
+        if w.quoted_name or w.glob or w.escaped:
+            return False
+        if spec.any:
+            continue
+        if v == "--":
+            dd = True
+            continue
+        name, eq, _ = v.partition("=")
+        kind = spec.long.get(name)
+        if kind is not None:
+            if kind == "bare" and eq:
+                return False
+            if kind == "value" and not eq:
+                if i >= len(words) or words[i].brace or (words[i].lead_glob and spec.guard):
+                    return False
+                i += 1
+            continue
+        if v.startswith("--"):
+            return False
+        for j in range(1, len(v)):
+            c = v[j]
+            if c in spec.val:
+                if j == len(v) - 1:
+                    if i >= len(words) or words[i].brace or (words[i].lead_glob and spec.guard):
+                        return False
+                    i += 1
+                break
+            if c not in spec.short:
+                return False
+    if spec.pos is not None and len(positional) > spec.pos:
+        return False
+    return spec.check(positional) if spec.check else True
+
+
+_DIGITS = "0123456789"
+_JQ_REACH = re.compile(r"\b(env|input_filename|import|include|getpath_env|halt_error)\b")
+_IP_OBJECTS = {"a", "addr", "address", "l", "link", "r", "ro", "route", "n", "neigh",
+               "neighbor", "neighbour", "maddr", "rule"}
+_IP_VERBS = {"show", "s", "sh", "list", "ls", "lst"}
+
+
+def _ip_reads(pos: list) -> bool:
+    if not pos:
+        return True
+    return pos[0] in _IP_OBJECTS and (len(pos) == 1 or pos[1] in _IP_VERBS)
+
+
+# One line each. Unknown flags ask, which costs a click, so these name what people use.
+# `guard=False` means the command has no flag that writes or runs anything, so `cat *`
+# cannot be turned into something else by a file called `-o`.
+_SAFE_FLAGS = {
+    "ls": _Flags("aAbBcCdfFgGhHiklLmnNopqQrRsStuUvxXZ1", "IwT",
+                 "--all --almost-all --human-readable --recursive --reverse --size --directory --classify "
+                 "--inode --dereference --no-group --numeric-uid-gid --si --group-directories-first "
+                 "--full-time --sort= --time= --time-style= --color? --format= --width= --ignore= --hide= "
+                 "--block-size=", guard=False),
+    "cat": _Flags("AbeEnstTuv", "", "--number --number-nonblank --show-all --show-ends --show-tabs "
+                  "--show-nonprinting --squeeze-blank", guard=False),
+    "head": _Flags("qvz" + _DIGITS, "nc", "--lines= --bytes= --quiet --silent --verbose --zero-terminated",
+                   guard=False),
+    "tail": _Flags("qvzfF" + _DIGITS, "ncs", "--lines= --bytes= --quiet --silent --verbose --follow? --retry "
+                   "--sleep-interval= --zero-terminated", guard=False),
+    "grep": _Flags("EFGPiIvwxyclLnHhoqsbUTZraRz" + _DIGITS, "efmABCdD",
+                   "--ignore-case --no-ignore-case --recursive --dereference-recursive --line-number --count "
+                   "--files-with-matches --files-without-match --invert-match --word-regexp --line-regexp "
+                   "--only-matching --quiet --silent --no-messages --with-filename --no-filename --color? "
+                   "--colour? --extended-regexp --fixed-strings --perl-regexp --basic-regexp --byte-offset "
+                   "--binary-files= --text --null --null-data --initial-tab --include= --exclude= --exclude-dir= "
+                   "--max-count= --after-context= --before-context= --context= --regexp= --file=", guard=False),
+    "rg": _Flags("iIsSvwxclLnNoqFPUHaup" + _DIGITS, "egtTmABCMjrd",
+                 "--ignore-case --smart-case --case-sensitive --hidden --no-ignore --files --files-with-matches "
+                 "--files-without-match --count --count-matches --line-number --no-line-number --heading --no-heading "
+                 "--json --vimgrep --fixed-strings --word-regexp --line-regexp --invert-match --only-matching --quiet "
+                 "--multiline --no-messages --with-filename --no-filename --follow --pretty --stats --type= --type-not= "
+                 "--glob= --iglob= --max-count= --max-depth= --context= --after-context= --before-context= --regexp= "
+                 "--color= --sort= --sortr= --threads= --replace= --max-columns="),
+    "find": _Flags("", "", "-H -L -P -depth -follow -mount -xdev -noleaf -daystart -print -print0 -ls -prune -true "
+                   "-false -not -a -o -and -or -empty -readable -writable -executable -nouser -nogroup -warn -nowarn "
+                   "-name= -iname= -path= -ipath= -wholename= -iwholename= -regex= -iregex= -regextype= -lname= "
+                   "-ilname= -type= -xtype= -maxdepth= -mindepth= -mtime= -mmin= -atime= -amin= -ctime= -cmin= "
+                   "-newer= -anewer= -cnewer= -size= -user= -group= -uid= -gid= -perm= -links= -inum= -samefile= "
+                   "-fstype= -printf=", esc="()"),
+    "wc": _Flags("clmwL", "", "--bytes --chars --lines --words --max-line-length", guard=False),
+    "sort": _Flags("bdfgiMhnRrVcCmsuz", "ktS", "--reverse --numeric-sort --unique --human-numeric-sort "
+                   "--general-numeric-sort --version-sort --month-sort --ignore-case --ignore-leading-blanks "
+                   "--dictionary-order --stable --check? --merge --zero-terminated --random-sort "
+                   "--key= --field-separator= --buffer-size="),
+    "uniq": _Flags("cdDiuz", "fsw", "--count --repeated --unique --ignore-case --zero-terminated "
+                   "--skip-fields= --skip-chars= --check-chars=", pos=1),
+    "cut": _Flags("snz", "bcdf", "--only-delimited --complement --zero-terminated --bytes= --characters= "
+                  "--delimiter= --fields= --output-delimiter=", guard=False),
+    "echo": _Flags(any=True, guard=False),
+    "pwd": _Flags("LP", pos=0),
+    "whoami": _Flags(pos=0),
+    "id": _Flags("ugGnrzZ", "", "--user --group --groups --name --real", pos=1),
+    "date": _Flags("uRI", "dr", "--utc --universal --rfc-email --iso-8601? --rfc-3339= --date= --reference=",
+                   check=lambda pos: all(p.startswith("+") for p in pos)),   # `date 0101` sets the clock
+    "cal": _Flags("13ymjwh", "AB", pos=3),
+    "uptime": _Flags("ps", "", "--pretty --since", pos=0),
+    "uname": _Flags("asnrvmpio", "", "--all --kernel-name --nodename --kernel-release --machine", pos=0),
+    "hostname": _Flags("fisIAdy", "", "--fqdn --short --ip-address --all-ip-addresses --all-fqdns --domain", pos=0),
+    "df": _Flags("ahHiklPTx", "tB", "--all --human-readable --si --inodes --local --portability --print-type "
+                 "--output? --type= --exclude-type= --block-size=", guard=False),
+    "du": _Flags("achHsSklmbxLPD0" + _DIGITS, "dtB", "--all --apparent-size --bytes --human-readable --si --summarize "
+                 "--total --one-file-system --dereference --separate-dirs --max-depth= --exclude= --threshold= "
+                 "--block-size= --time?", guard=False),
+    "free": _Flags("bkmghtwlv", "sc", "--human --total --wide --si --bytes --kilo --mega --giga --lohi "
+                   "--seconds= --count=", pos=0),
+    # BSD words are letters too: `ps e` prints every process's environment, keys included
+    "ps": _Flags("efFlyAaNHwjmxTuv", "opUgGCt", "--forest --no-headers --sort= --pid= --ppid= --user= --format= "
+                 "--cols= --columns= --width=",
+                 check=lambda pos: all(re.fullmatch(r"[auxwfTrlm]+|[0-9,]+", p) for p in pos)),
+    "top": _Flags("bcHiSs", "dnpuUwoOE", pos=0),
+    "lscpu": _Flags("aepbcsxyJ", "", "--all --online --offline --json --extended? --parse? --hex"),
+    "lsblk": _Flags("abdDfilmnOpPrStJ", "oxeIT", "--all --bytes --fs --list --json --nodeps --noheadings --paths "
+                    "--perms --raw --topology --ascii --output= --sort= --pairs"),
+    "lsusb": _Flags("vt", "sd", "--verbose --tree"),
+    "lspci": _Flags("mvknxtbDPqQ", "sd"),
+    "ip": _Flags("46sdrhjoc", "", "-br -brief -c -color -j -json -d -details -s -stats -o -oneline -h -human --brief "
+                 "--color? --json --details --stats --oneline --human", check=_ip_reads),
+    "which": _Flags("as", "", "--all"),
+    "whereis": _Flags("bmsu", "", ""),
+    "type": _Flags("afptP"),
+    # -C compiles a magic file, and writes it
+    "file": _Flags("bikLhzZ", "fFe", "--brief --mime --mime-type --mime-encoding --dereference "
+                   "--no-dereference --uncompress --keep-going"),
+    "stat": _Flags("LfternZ", "c", "--dereference --file-system --terse --format= --printf=", guard=False),
+    "history": _Flags(pos=0),                      # -c clears, -w writes
+    "diff": _Flags("aBbdEiNpqrstTuwyZ", "UCIxWF", "--brief --report-identical-files --recursive --unified? "
+                   "--context? --side-by-side --ignore-case --ignore-all-space --ignore-space-change "
+                   "--ignore-blank-lines --new-file --text --color? --exclude= --ignore-matching-lines=",
+                   guard=False),
+    "md5sum": _Flags("bctzw", "", "--binary --check --text --quiet --status --warn --strict", guard=False),
+    "sha256sum": _Flags("bctzw", "", "--binary --check --text --quiet --status --warn --strict", guard=False),
+    "basename": _Flags("az", "s", "--multiple --zero --suffix="),
+    "dirname": _Flags("z", "", "--zero"),
+    "realpath": _Flags("emqsLPz", "", "--canonicalize-existing --canonicalize-missing --quiet --no-symlinks "
+                       "--strip --relative-to= --relative-base=", guard=False),
+    "xrandr": _Flags("q", "", "--query --listmonitors --listactivemonitors --current --verbose --prop --properties",
+                     pos=0),
+    "sensors": _Flags("uAj", "", "--no-adapter --version"),
+    "nvidia-smi": _Flags("qLx", "id", "--query --list-gpus --xml-format --query-gpu= --query-compute-apps= "
+                         "--format= --id= --display=", pos=0),
+    "acpi": _Flags("bBatTcCVsifFpP", "", "--battery --ac-adapter --thermal --cooling --everything --details", pos=0),
+    # -f flood, -p puts chosen bytes in the packet
+    "ping": _Flags("46nqvDO", "ciswWI"),
+    # -f reads names from a file or stdin, -k and -y are keys
+    "dig": _Flags("46rmu", "cpqtx"),
+    "nslookup": _Flags("", "", "-type= -query= -timeout= -port= -debug -nodebug",
+                       # with no name, or `-`, it reads lookups from stdin: `cat key | nslookup`
+                       check=lambda pos: bool(pos) and "-" not in pos),
+    "host": _Flags("aCdlrsTv46", "cNRtW"),
+    "tree": _Flags("adfilsuhDFCJpgxnNtrUv" + _DIGITS, "LIP", "--dirsfirst --noreport --du --si --prune --gitignore "
+                   "--charset= --filelimit= --sort= --matchdirs --ignore-case"),
+    # less and more: `+cmd` runs a command at start, -o and -O keep a log file
+    "less": _Flags("NSRrFXeEiIMmn" + _DIGITS, "xjh", check=lambda pos: not any(p.startswith("+") for p in pos)),
+    "more": _Flags("dlfsu" + _DIGITS, "n", check=lambda pos: not any(p.startswith("+") for p in pos)),
+    # jq reads the environment (`jq -n env`) and loads modules; it never writes
+    "jq": _Flags("rjacCMsSne", "", "--raw-output --raw-output0 --join-output --ascii-output --compact-output "
+                 "--color-output --monochrome-output --slurp --raw-input --sort-keys --null-input --exit-status "
+                 "--tab --indent=", check=lambda pos: not any(_JQ_REACH.search(p) for p in pos)),
+    "column": _Flags("tnexJ", "csNOR", "--table --separator= --columns="),
+    "nl": _Flags("p", "bdfhilnsvw", "--no-renumber"),
+}
+SAFE_COMMANDS = frozenset(_SAFE_FLAGS)
+
+_GIT_DIFF_LONG = ("--stat? --shortstat --numstat --dirstat? --summary --patch --no-patch --raw --minimal --patience "
+                  "--histogram --name-only --name-status --check --no-color --color? --color-moved? --word-diff? "
+                  "--ignore-space-change --ignore-all-space --ignore-blank-lines --ignore-space-at-eol --ignore-cr-at-eol "
+                  "--unified= --abbrev? --no-abbrev --no-ext-diff --no-textconv --full-index --binary --exit-code "
+                  "--quiet --find-renames? --find-copies? --diff-filter= --pickaxe-regex --pickaxe-all --relative? ")
+_GIT_LOG_LONG = (_GIT_DIFF_LONG + "--oneline --graph --all --branches? --tags? --remotes? --decorate? --no-decorate "
+                 "--format= --pretty? --abbrev-commit --no-abbrev-commit --since= --until= --after= --before= --author= "
+                 "--committer= --grep= --max-count= --skip= --follow --reverse --merges --no-merges --first-parent "
+                 "--date= --name-only --show-signature --left-right --cherry-pick --date-order --topo-order "
+                 "--author-date-order --ignore-case --invert-grep --extended-regexp --fixed-strings --no-walk? "
+                 "--source --full-history --simplify-merges --boundary --log-size --relative-date --parents --children")
+_GIT_REV_ANY = {"--all", "--list", "-l", "--contains", "--no-contains", "--merged", "--no-merged", "--points-at"}
+_GIT_SPECS = {
+    "status": _Flags("sbuvz", "", "--short --branch --porcelain? --long --verbose --show-stash --untracked-files? "
+                     "--ignored? --renames --no-renames --ahead-behind --no-ahead-behind --column? --no-column"),
+    "log": _Flags("pswbezumcW" + _DIGITS, "nSGLU", _GIT_LOG_LONG),
+    "show": _Flags("pswbezumcW" + _DIGITS, "SGLU", _GIT_LOG_LONG),
+    "diff": _Flags("pswbzuaRW" + _DIGITS, "SGU", _GIT_DIFF_LONG + "--cached --staged --merge-base"),
+    "shortlog": _Flags("sne", "", "--summary --numbered --email --all --since= --until= --author= --group= --no-merges"),
+    "blame": _Flags("lstfnewcp", "LMC", "--porcelain --line-porcelain --show-name --show-number --show-stats "
+                    "--date= --ignore-rev= --root --abbrev="),
+    "describe": _Flags("", "", "--tags --all --always --long --dirty? --broken? --abbrev= --exact-match --match= "
+                       "--exclude= --first-parent --candidates="),
+    "rev-parse": _Flags("q", "", "--short? --abbrev-ref? --verify --quiet --show-toplevel --show-prefix --show-cdup "
+                        "--git-dir --git-common-dir --absolute-git-dir --is-inside-work-tree --is-inside-git-dir "
+                        "--is-bare-repository --symbolic-full-name --symbolic --sq --default= --all --branches? --tags?"),
+    "ls-files": _Flags("cdmoiskutvz", "x", "--cached --deleted --modified --others --ignored --stage --unmerged "
+                       "--killed --exclude-standard --error-unmatch --full-name --directory --no-empty-directory "
+                       "--exclude= --exclude-from= --eol --deduplicate --recurse-submodules"),
+    "ls-remote": _Flags("qht", "", "--heads --tags --refs --quiet --symref --get-url --sort= --exit-code"),
+    "reflog": _Flags("pswz" + _DIGITS, "n", "--oneline --all --max-count= --date= --format= --pretty? --since= --until= "
+                     "--grep= --author= --stat?", check=lambda pos: not (pos and pos[0] in ("expire", "delete", "drop"))),
+    # `git config <key>` reads, a second word or any of its other switches writes
+    "config": _Flags("lz", "", "--get --get-all --get-regexp --list --show-origin --show-scope --global --local --system "
+                     "--name-only --null --type=", pos=2,
+                     check=lambda pos: len(pos) <= 1),
+    # a bare name creates a branch, a tag or (with `update`) goes to the network
+    "branch": _Flags("arvl", "", "--all --remotes --verbose --list --show-current --no-color --color? --abbrev= "
+                     "--contains? --no-contains? --merged? --no-merged? --points-at= --sort= --format= --column?"),
+    "tag": _Flags("ln" + _DIGITS, "", "--list --contains? --no-contains? --merged? --no-merged? --points-at= --sort= "
+                  "--format= --column? --no-column --ignore-case"),
+    "remote": _Flags("v", "", "--verbose", check=lambda pos: not pos or pos[0] in ("show", "get-url")),
+}
+# Only these read-only subcommands auto-run; everything else asks (or use the structured
+# git_* tools, which carry their own risk levels).
+GIT_SAFE_SUBCOMMANDS = frozenset(_GIT_SPECS)
+
+
+def _git_reads(words: list) -> bool:
+    i = 1
+    if len(words) > i and words[i].value == "--no-pager" and not words[i].any_quote:
+        i += 1
+    # anything else before the subcommand (-c, -C, --exec-path, --git-dir, --config-env)
+    # runs a configured program or points git somewhere else
+    if len(words) <= i or words[i].any_quote or words[i].escaped or words[i].glob:
+        return False
+    sub = words[i].value
+    spec = _GIT_SPECS.get(sub)
+    if spec is None or not _flags_safe(spec, words[i:]):
+        return False
+    rest = {w.value.split("=", 1)[0] for w in words[i + 1:]}
+    if sub in ("branch", "tag"):
+        # listing takes a pattern; without one of these a name creates something
+        names = [w.value for w in words[i + 1:] if not w.value.startswith("-")]
+        if names and not (rest & _GIT_REV_ANY):
+            return False
     return True
 
 
-def _segment_writes(base: str, parts: list[str], seg: str) -> bool:
-    """Does this otherwise read-only command write, run something or change the
-    machine in the form it was written?"""
-    args = parts[1:]
-    flags = {a.split("=", 1)[0] for a in args if a.startswith("-")}
-    words = [a for a in args if not a.startswith("-")]
-    if base == "find":
-        return bool(flags & {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint",
-                             "-fprint0", "-fprintf", "-fls"})
-    if base == "curl":
-        # anything that sends data, saves a file, reads a config or changes the method
-        return not _flags_ok("curl", parts, _CURL_READ_FLAGS)
-    if base == "wget":
-        # wget SAVES what it fetches unless told to print it or only check it
-        to_stdout = ("-O" in args and args[args.index("-O") + 1:args.index("-O") + 2] == ["-"]) \
-            or any(a in ("-qO-", "-O-", "--output-document=-", "--spider") for a in args)
-        return not to_stdout or not _flags_ok("wget", parts, _WGET_READ_FLAGS)
-    if base == "sort":
-        return bool(flags & {"-o", "--output", "--compress-program"})
-    if base == "uniq":
-        return len(words) > 1                      # `uniq in out` writes out
-    if base == "tree":
-        return "-o" in flags
-    if base == "date":
-        return bool(flags & {"-s", "--set"})
-    if base == "hostname":
-        return bool(words) or bool(flags & {"-F", "--file", "-b", "--boot"})
-    if base == "history":
-        return bool(args)                          # -c clears, -w writes
-    if base == "ip":
-        return bool({"add", "del", "delete", "set", "flush", "change", "replace", "append",
-                     "prepend", "exec", "up", "down"} & set(words))
-    if base == "xrandr":
-        return any(a not in ("-q", "--query", "--listmonitors", "--listactivemonitors",
-                             "--current", "--verbose", "--prop", "--properties")
-                   for a in args)
-    if base == "nvidia-smi":
-        return bool(flags & {"-pl", "--power-limit", "-r", "--gpu-reset", "-pm",
-                             "--persistence-mode", "-c", "--compute-mode", "-ac",
-                             "--applications-clocks", "-rac", "-lgc", "-rgc", "-e",
-                             "--ecc-config", "-am", "-mig", "-lmc", "-rmc"})
-    if base == "sensors":
-        return bool(flags & {"-s", "--set"})
-    if base == "rg":
-        return bool(flags & {"--pre"})             # runs a preprocessor on every file
-    if base == "git":
+def segment_reads(words: list) -> bool:
+    """Does this one command only read, in the form the shell would run it? A program
+    named by a path can be anything (`./ls`), and a quoted program name is never needed."""
+    prog = words[0]
+    if prog.any_quote or prog.escaped or prog.glob or prog.brace or "/" in prog.value:
         return False
-    return False
-# git is NOT blanket-safe: `git push`/`reset --hard`/`clean -fdx` mutate and publish.
-# Only these read-only subcommands auto-run; everything else asks (or use the
-# structured git_* tools, which carry their own risk levels).
-GIT_SAFE_SUBCOMMANDS = {
-    "status", "log", "diff", "show", "branch", "remote", "tag", "describe",
-    "rev-parse", "ls-files", "ls-remote", "shortlog", "blame", "reflog", "config",
-}
+    if prog.value == "git":
+        return _git_reads(words)
+    spec = _SAFE_FLAGS.get(prog.value)
+    return spec is not None and _flags_safe(spec, words)
 # Commands never run even with approval.
 BLOCKED_PATTERNS = [
     r"\brm\s+(-[a-zA-Z]*\s+)*/(\s|$)",   # rm on filesystem root
@@ -150,9 +447,57 @@ CONNECTORS = re.compile(r"\s*(?:\|\||&&|;|\|)\s*")
 # not a connector the classifier splits on, so `ls & rm -rf ~/x` read as one `ls`.
 BACKGROUND = re.compile(r"(?<!&)&(?!&)")
 # What a shell command fetches from outside this machine, and so what taints the turn
-# (agent.is_untrusted): its output is somebody else's words, like fetch_url's.
-FETCHES = re.compile(r"(^|[\s;&|(])(curl|wget|http|lynx|w3m|links|aria2c|nc|ncat|ssh|scp|rsync|"
-                     r"git\s+(clone|pull|fetch))\b|https?://")
+# (agent.is_untrusted): its output is somebody else's words, like fetch_url's. Read from
+# the program each command runs: a pattern over the text missed `/usr/bin/curl`, `cu'rl'`
+# and `sudo curl`, and marked `grep curl notes.txt`.
+FETCH_PROGRAMS = {"curl", "wget", "http", "https", "lynx", "w3m", "links", "elinks", "aria2c", "nc",
+                  "ncat", "netcat", "socat", "ssh", "scp", "sftp", "rsync", "telnet", "ftp"}
+_FETCH_GIT = {"clone", "pull", "fetch", "ls-remote", "submodule"}
+_RUNS_ANOTHER = {"sudo", "doas", "env", "nice", "ionice", "nohup", "timeout", "time", "xargs", "stdbuf",
+                 "setsid", "command", "exec", "builtin", "busybox", "watch", "parallel",
+                 "sh", "bash", "dash", "zsh", "ksh", "fish"}
+_UNNAMED_PROGRAM = re.compile(r"(?:^|[;&|(\n`])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*([\"']?(?:\$|`)[^\s]*)")
+_URL_IN = re.compile(r"\b(?:https?|ftp)://", re.I)
+# Python and friends: the same question, asked of code rather than of a command line
+FETCHES = re.compile(r"\b(?:curl|wget|aria2c|urllib|urllib2|urllib3|requests|httpx|aiohttp|http\.client|"
+                     r"socket|ftplib|telnetlib|paramiko)\b|\b(?:https?|ftp)://", re.I)
+
+
+def shell_fetches(text: str) -> str:
+    """The word that makes this shell line a download ('' when it is not one). This reads
+    lines the classifier would refuse as well (substitutions, redirects), so it splits
+    wherever a command could start rather than giving up on them. A program it cannot
+    name (`$c url`) counts, because a variable can hold curl."""
+    t = str(text or "")
+    m = _URL_IN.search(t)
+    if m:
+        return m.group(0)
+    m = _UNNAMED_PROGRAM.search(t)
+    if m:
+        return m.group(1).strip()[:40]
+    bare = re.sub(r"\\\n", "", t)
+    bare = re.sub(r"[\"'\\]", "", bare)
+    for seg in re.split(r"[;&|()\n`<>{}]|\$\(", bare):
+        words = [w for w in seg.split() if w]
+        while words and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[0]):
+            words.pop(0)
+        if not words:
+            continue
+        if words[0].startswith("$"):
+            return words[0][:40]
+        prog = os.path.basename(words[0])
+        if prog in FETCH_PROGRAMS:
+            return prog
+        if prog == "git" and _FETCH_GIT & set(words[1:]):
+            return "git " + next(w for w in words[1:] if w in _FETCH_GIT)
+        if prog in _RUNS_ANOTHER:
+            for w in words[1:]:
+                if os.path.basename(w) in FETCH_PROGRAMS:
+                    return os.path.basename(w)
+                if os.path.basename(w) == "git" and _FETCH_GIT & set(words):
+                    return "git"
+    return ""
+
 
 # Stock theme ids the desktop ships (keys of THEMES in ui/src/js/02-themes-shells.js);
 # custom themes from the Themes store merge in at call time (list_themes).
@@ -228,7 +573,7 @@ SAFE_TOOLS = {
     # this OS's own records and looks. The ones that write something an agent reads
     # back later (memory, the graph, skills, automations) are held for a person after
     # untrusted content: see policy.TAINT_WATCH.
-    "remember", "forget", "kg_add", "save_skill", "save_automation", "run_automation",
+    "remember", "forget", "kg_add", "save_skill", "run_automation",
     "brief_item", "notify", "save_report", "create_space", "snapshot_os",
     # the Stage: drawn on the person's own screen and kept with the chat (stage.py)
     "show_scene",
@@ -254,43 +599,45 @@ SAFE_TOOLS = {
 def classify_command(command: str) -> str:
     """Return 'safe', 'risky', or 'blocked' for a shell command.
 
-    Safe = every segment of a pipe/&&/; chain is a known read-only command,
-    with no redirects or command substitution anywhere.
+    Safe = every command of a pipe/&&/; chain is a known read-only program, named plainly,
+    running only with flags on its list, with no redirects or substitution anywhere.
     """
     for pat in BLOCKED_PATTERNS:
         if re.search(pat, command):
             return "blocked"
     if DANGEROUS_META.search(command) or BACKGROUND.search(command):
         return "risky"
-    segments = [s for s in CONNECTORS.split(command.strip()) if s.strip()]
+    segments = shell_parse(command.strip())
     if not segments:
-        return "risky"
-    for seg in segments:
-        parts = seg.strip().split()
-        base = os.path.basename(parts[0]) if parts else ""
-        if base == "git":
-            sub = next((p for p in parts[1:] if not p.startswith("-")), "")
-            if sub not in GIT_SAFE_SUBCOMMANDS:
-                return "risky"
-            if any(p.startswith(("--output", "--ext-diff", "--exec")) or p == "-c" for p in parts):
-                return "risky"  # writes a file, or runs a configured program
-            if sub == "config":
-                # `git config <key>` reads; `git config <key> <value>` writes
-                args = [p for p in parts[2:] if not p.startswith("-")]
-                if len(args) > 1:
-                    return "risky"
-            if sub == "branch" and any(p in parts for p in ("-d", "-D", "-m", "-M", "--delete")):
-                return "risky"
-            if sub == "tag" and any(not p.startswith("-") for p in parts[2:]):
-                return "risky"  # creating/deleting a tag; bare `git tag` lists
-            if sub == "remote" and any(p in parts for p in ("add", "remove", "rm", "set-url", "rename")):
-                return "risky"
-            continue
-        if base not in SAFE_COMMANDS:
-            return "risky"
-        if _segment_writes(base, parts, seg):
-            return "risky"
-    return "safe"
+        return "risky"                     # nothing to run, or a line this reader cannot be sure of
+    return "safe" if all(segment_reads(words) for words in segments) else "risky"
+
+
+# An automation an agent started on a turn that had read something from outside. The page
+# replays its steps, so this is how that fact survives the trip: a ticket the server made,
+# looked up here, naming the taint. A step with a ticket nobody knows is treated as tainted.
+_AUTOMATION_RUNS: dict = {}
+AUTOMATION_TICKET_S = 900
+
+
+def automation_ticket(name: str, taint) -> str:
+    now = time.time()
+    for k in [k for k, v in _AUTOMATION_RUNS.items() if v["until"] < now]:
+        del _AUTOMATION_RUNS[k]
+    tok = uuid.uuid4().hex
+    _AUTOMATION_RUNS[tok] = {"name": str(name)[:80], "taint": list(taint or []),
+                             "uid": usersmod.current() or "", "until": now + AUTOMATION_TICKET_S}
+    return tok
+
+
+def automation_taint(ticket: str) -> list:
+    """The taint a replayed step carries. '' is a person pressing Run: nothing."""
+    if not ticket:
+        return []
+    got = _AUTOMATION_RUNS.get(str(ticket))
+    if not got or got["until"] < time.time() or got["uid"] != (usersmod.current() or ""):
+        return [{"tool": "automation", "source": "a saved automation an agent started"}]
+    return list(got["taint"]) or [{"tool": "automation", "source": f"the automation {got['name']}"}]
 
 
 class _TextExtractor(html.parser.HTMLParser):
@@ -1320,7 +1667,12 @@ class Toolbox(usersmod.Scoped):
                                              taint=list(_taint or []) or None, space_id=_space or "")
         head = f"[subagent {defn['name']} · {res['status']} · model {res['model']}]"
         body = res["content"] or res["fault"] or "(no output)"
-        return f"{head}\n{body[:3500]}"
+        # what the specialist read comes back with its answer, or the lead acts on a page's
+        # words with no ceiling. Only what is new: taint this turn already carries needs
+        # no second mark, and a new mark would end a link's standing permissions (policy)
+        known = list(_taint or [])
+        fresh = any(t not in known for t in res.get("taint") or []) if "taint" in res else res.get("tainted")
+        return (TAINTED_REPLY if fresh else "") + f"{head}\n{body[:3500]}"
 
     async def linked_teams(self) -> str:
         """Each linked team and who there this team may give work to, asked over the link."""
@@ -1369,7 +1721,7 @@ class Toolbox(usersmod.Scoped):
                                            conversation_id=conversation_id, say=say)
         except ValueError as e:
             return f"[error] {e}"
-        return res["text"]
+        return (TAINTED_REPLY if res.get("tainted") else "") + res["text"]
 
     async def ask_agent(self, agent: str, question: str, _from: str = "", _chain=None,
                         _root: str = "", _run_id: str = "", _conv: str = "", _space: str = "",
@@ -3048,7 +3400,8 @@ class Toolbox(usersmod.Scoped):
         res = await self.fabric.run_flow(defn, input, origin={"surface": "api"},
                                          conversation_id=conversation_id)
         head = (f"[flow {defn['name']} · {res['status']} · {res['delegations']} delegations]")
-        return f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}"
+        return ((TAINTED_REPLY if res.get("tainted") else "")
+                + f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}")
 
     async def department_task(self, department: str, task: str, _conv: str = "") -> str:
         """Hand a task to a department of the company: a run of its desk, led by its
@@ -3066,7 +3419,8 @@ class Toolbox(usersmod.Scoped):
         res = got["result"]
         head = (f"[{got['department']} · {res['status']} · led by {got['head'] or 'its head'} · "
                 f"{res['delegations']} hand-over{'' if res['delegations'] == 1 else 's'}]")
-        return f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}"
+        return ((TAINTED_REPLY if res.get("tainted") else "")
+                + f"{head}\n{(res['content'] or res['fault'] or '(no output)')[:3500]}")
 
     async def telegram_send(self, message: str, chat_id: int = 0) -> str:
         """`chat_id` 0 means the owner's chat. It exists so work that arrived from a
@@ -3238,6 +3592,10 @@ class Toolbox(usersmod.Scoped):
             # definition and may create specialists, which is a change to the OS.
             return "risky", (f"Defines the flow '{args.get('name', '?')}' and any specialists it "
                              f"needs. It stays disabled until you enable it.")
+        if name == "save_automation":
+            # it runs later as if you had started it, so what it holds is shown first
+            return "risky", (f"Saves the routine '{args.get('name', '?')}'. Its steps run when "
+                             f"it fires, the way you would run them yourself.")
         if name == "pool_task":
             n = len(args.get("pieces") or []) if isinstance(args.get("pieces"), list) else 1
             return "risky", (f"Hands {n} piece{'' if n == 1 else 's'} of work to machines in your "
@@ -4113,15 +4471,19 @@ class Toolbox(usersmod.Scoped):
             out.append(f"- {a['name']}  ({len(a['steps'])} steps: {steps})")
         return "\n".join(out)
 
-    async def run_automation(self, name: str) -> str:
-        """Fire a saved automation on the desktop, exactly as the user set it up."""
+    async def run_automation(self, name: str, _taint=None) -> str:
+        """Fire a saved automation on the desktop, exactly as the user set it up. The page
+        replays the steps, so what this turn has read goes with them under a ticket the
+        server made (automation_ticket): the page carries it, and /api/tool and an `agent`
+        step look it up. `_taint` is the agent loop's, never the model's."""
         a = self.store.get_automation(name)
         if not a:
             known = ", ".join(r["name"] for r in self.store.list_automations()) or "none saved"
             return f"[error] no automation named {name!r}. Saved: {known}"
         self.store.mark_automation_run(a["id"])
         if self.broadcast:
-            await self.broadcast({"type": "automation.run", "automation": a})
+            await self.broadcast({"type": "automation.run", "automation": a,
+                                  **({"run": automation_ticket(a["name"], _taint)} if _taint else {})})
         self.store.log("automation", f"ran {a['name']}", {"via": "agent"})
         return f"ran automation '{a['name']}' ({len(a['steps'])} steps)"
 
@@ -4559,7 +4921,7 @@ class Toolbox(usersmod.Scoped):
                     f"payload (e.g. a whole app's html), emit it as a ```html code block in "
                     f"plain text instead of a tool call, or produce a smaller version.")
         try:
-            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else
+            keep = ({"_flow", "_run_id"} if name == "brief_item" else {"_conv"} if name in ("create_app", "department_task", "show_scene", "create_subagent") else {"_from"} if name == "request_capability" else {"_who", "_why"} if name in ("device_get", "device_set") else {"_taint", "_space", "_files", "_files_note", "_root"} if name == "delegate" else {"_taint"} if name == "run_automation" else
                     {"_app"} if name in APP_BOUND_TOOLS else
                     {"_from", "_chain", "_root", "_run_id", "_conv", "_space", "_taint"}
                     if name == "ask_agent" else set())

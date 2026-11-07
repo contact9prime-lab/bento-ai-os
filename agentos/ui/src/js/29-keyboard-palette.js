@@ -322,10 +322,10 @@ function palIntentAsync(q){
     }catch(e){}
   },350);
 }
-function palAsk(q){
+function palAsk(q,automation){
   // quick asks flow through the omnibar's Desktop thread (an answer card),
   // not a full Chat window — escalation is one click on the card
-  if(typeof omniAsk==='function'){omniAsk(q);return}
+  if(typeof omniAsk==='function'){omniAsk(q,automation);return}
   openApp('chat');
   if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}
 }

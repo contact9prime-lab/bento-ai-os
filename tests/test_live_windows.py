@@ -85,7 +85,7 @@ def test_the_model_cannot_name_the_site(tmp_path):
     """`_site` is the browser's, injected by the agent loop after the model's args."""
     src = (ROOT / "agentos/agent.py").read_text()
     i = src.index("if name in BROWSER_ACTS:")
-    assert '"_site": _browser_site()' in src[i:i + 400]
+    assert 'args["_site"] = _browser_site()' in src[i:i + 400]
 
 
 def test_same_site_taint_lifts_only_for_that_site():
@@ -148,8 +148,8 @@ def test_typing_into_a_program_is_never_autonomy(tmp_path):
     lvl, why = tb.risk_of("terminal_send", {"text": "ls", "_fg": "vim"})
     assert lvl == "risky" and "vim" in why
     assert tb.risk_of("terminal_send", {"text": "rm -rf /"})[0] == "blocked"
-    src = (ROOT / "agentos/agent.py").read_text()
-    assert 'must_person = f"typed into {args[\'_fg\']}, not the shell"' in src
+    src = (ROOT / "agentos/policy.py").read_text()
+    assert 'must = f"typed into {args[\'_fg\']}, not the shell"' in src
 
 
 # ---- native apps in a window ----

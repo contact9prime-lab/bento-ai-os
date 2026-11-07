@@ -659,8 +659,9 @@ class WhatsAppBridge(usersmod.Scoped):
         async def approver(name, args, reason, offer=None) -> bool:
             # full autonomy answers for you — except a step that must be a
             # person's (policy.needs_person): you are right here, so you are asked
-            from .policy import needs_person
-            if self.cfg.get("autonomy") == "full" and not needs_person():
+            # The channel's own posture counts: "ask over WhatsApp" has to mean it.
+            from .policy import effective_autonomy, needs_person
+            if effective_autonomy(self.cfg, "whatsapp") == "full" and not needs_person():
                 return True
             return await self.ask_approval(wa_id, name, args, reason, offer=offer)
 

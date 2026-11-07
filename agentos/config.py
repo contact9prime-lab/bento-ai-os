@@ -154,8 +154,8 @@ DEFAULTS = {
     # "one bill, one provider" switch. The machine's, not a person's: it decides spend.
     # talk: how specialists may message each other — "matrix" (each pair is a
     # permission; an empty cell asks), "swarm" (every cell not explicitly blocked is
-    # open), "democracy" (the steps swarm would open go to a vote of three agents; a
-    # majority decides) or "off". Matrix by default: agents recruiting agents is a
+    # open), "democracy" (the steps swarm would open come to you, with what three
+    # agents think on the card) or "off". Matrix by default: agents recruiting agents is a
     # consent question.
     "team": {"own_brains": True, "talk": "matrix"},
     "executors": {"claude_code": {"enabled": False, "workspace": "", "model": "",

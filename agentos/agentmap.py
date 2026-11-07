@@ -173,7 +173,7 @@ def graph(ov: dict) -> dict:
                 if f != t and (f"agent:{f}", f"agent:{t}") not in have:
                     edges.append({"from": f"agent:{f}", "to": f"agent:{t}", "kind": "talk",
                                   "label": "may ask (swarm)" if ov.get("talk") == "swarm"
-                                  else "may ask if the team votes yes"})
+                                  else "may ask if you say yes, with the team's view"})
     return {"nodes": list(nodes.values()), "edges": edges}
 
 

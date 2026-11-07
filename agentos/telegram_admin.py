@@ -134,15 +134,13 @@ class Console:
         pdp = getattr(self.tg.toolbox, "pdp", None)
         if pdp is None:                     # policy off: the console is off with it
             return False, "policy is not available on this machine right now"
-        from .policy import MAIN
-        from .tools import ALWAYS_ASK
+        from .policy import MAIN, person_rule
         tb = self.tg.toolbox
         risk, why = tb.risk_of(tool, args)
         dec = pdp.decide_tool(MAIN, tool, args, risk, reason=reason or why,
                               surface="telegram",
                               base_risk=tb.base_risk(tool, args) if hasattr(tb, "base_risk") else risk)
-        if tool in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
-            dec.effect, dec.grant_offer = "ask", None   # confirmed every time, as at the desk
+        person_rule(MAIN, tool, args, dec, pdp)       # confirmed every time, as at the desk
 
         def close(outcome: str, detail: str = ""):
             # the ledger row says what happened, like every other gated call

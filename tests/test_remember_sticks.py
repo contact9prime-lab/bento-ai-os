@@ -138,10 +138,11 @@ def test_always_covers_every_program_in_a_chain(tmp_path):
     store = Store(tmp_path / "s.db")
     pdp = PDP(CFG, store)
     dec = _shell(pdp, "cd app && npm test")
-    assert dec.grant_offer["resource"] == "tool:run_command {cd*,npm*}"
+    assert dec.grant_offer["resource"] == "tool:run_command {cd*,npm test*}"
     _always(store, dec)
     assert _shell(pdp, "cd app && npm test").effect == "allow"
-    assert _shell(pdp, "cd web && npm run build").effect == "allow", "the same programs, other arguments"
+    assert _shell(pdp, "cd web && npm test -- --watch").effect == "allow", "the same work, other arguments"
+    assert _shell(pdp, "cd web && npm exec rimraf x").effect == "ask", "not the whole of npm (S-61)"
     assert _shell(pdp, "cd app && rm -rf build").effect == "ask", "a program you never allowed"
 
 
@@ -159,7 +160,8 @@ def test_a_simple_command_is_still_one_pattern(tmp_path):
     store = Store(tmp_path / "p.db")
     pdp = PDP(CFG, store)
     dec = _shell(pdp, "git status")
-    assert dec.grant_offer["resource"] == "tool:run_command git*"
+    assert dec.grant_offer["resource"] == "tool:run_command git status*"
     _always(store, dec)
-    assert _shell(pdp, "git log --oneline").effect == "allow"
-    assert _shell(pdp, "git log; bash").effect == "ask", "a chain is still read one command at a time"
+    assert _shell(pdp, "git status --short").effect == "allow"
+    assert _shell(pdp, "git push").effect == "ask", "git status is not all of git (S-61)"
+    assert _shell(pdp, "git status; bash").effect == "ask", "a chain is still read one command at a time"

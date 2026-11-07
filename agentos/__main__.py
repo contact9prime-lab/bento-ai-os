@@ -6652,7 +6652,7 @@ def _team_cli(args):
                   f"  bento team talk matrix|swarm|democracy|off\n"
                   f"    matrix: each pair asks you first\n"
                   f"    swarm: they work together, and your agent hands them work, without asking\n"
-                  f"    democracy: the same steps go to a vote of three of your agents, and 2 of 3 decide")
+                  f"    democracy: you are asked for the same steps, with what three of your agents think")
             return
         mcfg = cfgmod.load_config()
         mcfg.setdefault("team", {})["talk"] = want

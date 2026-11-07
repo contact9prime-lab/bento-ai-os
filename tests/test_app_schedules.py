@@ -103,7 +103,7 @@ def test_the_app_is_the_callers_never_the_models():
     # an app's own appTool call is filed under that app, after the `_` strip
     i = SERVER.index("async def api_run_tool")
     route = SERVER[i:SERVER.index("# ---- Grants:", i)]
-    assert route.index('str(k).startswith("_")') < route.index('"_app": principal.id')
+    assert route.index('strip_forged(') < route.index('"_app": principal.id')
     assert 'principal.kind == "app" and name in tools.APP_BOUND_TOOLS' in route
 
 
