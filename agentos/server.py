@@ -4712,6 +4712,39 @@ async def api_set_brain(body: dict):
     return {"ok": True, "message": msg, **out}
 
 
+def _mask_secrets(value, key: str = "", under_env: bool = False):
+    """Every secret-named value masked at any depth, so a new section cannot forget. The env
+    and headers of a tool server have names nobody here chose, so every value under those is
+    masked. `auth` also names how a server signs in ("oauth"), which is not a secret."""
+    from . import trace as tracemod
+    if isinstance(value, dict):
+        return {k: _mask_secrets(v, str(k), under_env or k in ("env", "headers"))
+                for k, v in value.items() if k not in _NEVER_SENT}
+    if isinstance(value, list):
+        return [_mask_secrets(v, key, under_env) for v in value]
+    if isinstance(value, str) and value and not value.startswith("•••"):
+        if value in ("oauth", "bearer", "none") and key.lower() == "auth":
+            return value
+        if under_env or tracemod.SECRET.search(key):
+            return "•••" + value[-4:] if len(value) > 8 else "•••"
+    return value
+
+
+# Offline-cracking material and half the session key: no reader has a use for them.
+_NEVER_SENT = frozenset({"pass_hash", "pass_salt", "salt"})
+
+
+def _keep_masked(new, old):
+    """What a page read through `_mask_secrets` and sent back: a value it still shows as a
+    mask means "unchanged", so the real one stays. Saving the mask over it would lose a key."""
+    if isinstance(new, dict):
+        was = old if isinstance(old, dict) else {}
+        return {k: _keep_masked(v, was.get(k)) for k, v in new.items()}
+    if isinstance(new, str) and new.startswith("•••"):
+        return old if isinstance(old, str) else ""
+    return new
+
+
 @app.get("/api/config")
 async def api_get_config():
     cfg = json.loads(json.dumps(state["cfg"]))
@@ -4734,7 +4767,7 @@ async def api_get_config():
     if cfg.get("github", {}).get("token"):
         cfg["github"]["token"] = "•••" + cfg["github"]["token"][-4:]
         cfg["github"]["_has_token"] = True
-    return cfg
+    return _mask_secrets(cfg)
 
 
 @app.get("/api/tunnel")
@@ -5123,7 +5156,7 @@ async def api_clear_conversation(cid: str):
 
 @app.get("/api/mcp")
 async def api_mcp():
-    return {"available": MCP_AVAILABLE, "servers": state["mcp"].status()}
+    return {"available": MCP_AVAILABLE, "servers": _mask_secrets(state["mcp"].status())}
 
 
 @app.put("/api/mcp")
@@ -6002,7 +6035,7 @@ async def api_accounts():
     cfg = state["cfg"]
     return {"accounts": accountsmod.state(cfg, mcp_servers=_connected_mcp()),
             "signin": signinmod.doors(cfg), "vault": vaultmod.status(),
-            "pending": signinmod.pending_status(),
+            "pending": signinmod.pending_status(usersmod.current() or ""),
             "admin": usersmod.is_admin(usersmod.current())}
 
 
@@ -6075,7 +6108,7 @@ async def api_signin_out(provider: str):
     cfg = state["cfg"]
     if provider not in signinmod.PROVIDERS:
         return JSONResponse({"error": f"no sign-in called '{provider}'"}, status_code=404)
-    signinmod.cancel(provider)
+    signinmod.cancel(provider, usersmod.current() or "")
     existed = await asyncio.to_thread(signinmod.disconnect, cfg, provider)
     cfgmod.save_config(cfg)
     state["store"].log("accounts", f"signed out of {provider}")
