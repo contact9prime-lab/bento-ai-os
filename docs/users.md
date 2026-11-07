@@ -289,8 +289,8 @@ phone that added AgentOS to its home screen months ago has that URL cached and a
 What signing in gets somebody is their own **data**, kept private from the other
 accounts. Through AgentOS's own surfaces that boundary holds even at the shell: the
 agent's file tools refuse another account's home, and `run_command` and the
-Terminal run inside a per-account `bwrap` jail — rooted at that account's home with
-every other account's home blanked out — or refuse to run if no jail is available
+Terminal run inside a per-account `bwrap` jail — rooted at that account's workspace, with
+every home blanked out, its own included — or refuse to run if no jail is available
 (no jail cannot mean no walls). An executor cannot `cat` another account's memory
 through AgentOS. The one exception is a folder an admin has deliberately shared
 with them, which is the whole subject of [Safe

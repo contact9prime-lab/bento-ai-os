@@ -41,8 +41,10 @@ WALK_CAP = 6000
 _PATH = re.compile(r"(?:~|/|\.{1,2}/)?(?:[\w.@+-]+/)*[\w.@()+-]+\.[A-Za-z0-9]{1,8}")
 
 
-def roots(cfg: dict, admin: bool = True) -> list[Path]:
-    """The folders a file may be handed over from, most personal first."""
+def roots(cfg: dict, admin: bool = False) -> list[Path]:
+    """The folders a file may be handed over from, most personal first. `admin` adds the machine's
+    own folders, so it is False unless the caller knows: it was True, and every account could send
+    the machine's workspace over a link by a caller simply not saying."""
     out: list[Path] = []
 
     def add(p):

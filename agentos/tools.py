@@ -1027,7 +1027,7 @@ class Toolbox(usersmod.Scoped):
         return ("[denied] this belongs to another account on this machine. Each account's "
                 "files, memory and credentials are private to it.")
 
-    def _sandbox_deny(self, path, write: bool = False) -> str | None:
+    def _sandbox_deny(self, path, write: bool = False, flag: bool = True) -> str | None:
         """`write` is what makes a read-only share mean anything. A shared folder
         the tools let you overwrite is not read-only, whatever the setting says.
 
@@ -1042,7 +1042,7 @@ class Toolbox(usersmod.Scoped):
                                                           root, *safe_folders(self.cfg, write=write)])
         if why:
             from . import secevents
-            secevents.flag("protected.refused", os.path.basename(str(path))[:80],
+            flag and secevents.flag("protected.refused", os.path.basename(str(path))[:80],
                            source="agent", uid=usersmod.current() or "")
             return f"[denied] {why}"
         if not enabled:
@@ -1176,13 +1176,19 @@ class Toolbox(usersmod.Scoped):
         return f"wrote {len(content)} chars to {p}"
 
     async def list_dir(self, path: str = "") -> str:
+        from . import safeopen
         p = self._abs(path or self.cfg["workspace"])
-        if (deny := self._sandbox_deny(p)):
+        real = os.path.realpath(str(p))
+        if (deny := self._sandbox_deny(real)):
             return deny
-        if not p.is_dir():
+        try:
+            entries = safeopen.list_dir(real)
+        except (FileNotFoundError, NotADirectoryError):
             return f"[error] not a directory: {p}"
-        entries = sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name.lower()))
-        lines = [f"{'d' if e.is_dir() else 'f'}  {e.name}" for e in entries[:300]]
+        except safeopen.Moved:
+            return f"[denied] {p} changed while it was being opened."
+        entries.sort(key=lambda e: (not e[1], e[0].lower()))
+        lines = [f"{'d' if d else 'f'}  {n}" for n, d in entries[:300]]
         return f"{p}\n" + ("\n".join(lines) if lines else "(empty)")
 
     # -- accounts: the mailbox and the calendar the person let this machine read ----
@@ -1915,14 +1921,16 @@ class Toolbox(usersmod.Scoped):
                     self.store, data, name=name, mime=mime, title=title, source="url",
                     origin_url=src, space_id=space_id, conversation_id=conversation_id)
             else:
+                from . import safeopen
                 p = Path(os.path.expanduser(src))
-                deny = self._sandbox_deny(p)
+                real = os.path.realpath(str(p))
+                deny = self._sandbox_deny(real)
                 if deny:
                     return deny
-                if not p.is_file():
+                if not os.path.isfile(real):
                     return f"[error] file not found: {p}"
                 row = await assetmod.put_bytes(
-                    self.store, p.read_bytes(), name=p.name, title=title or p.name,
+                    self.store, safeopen.read_bytes(real), name=p.name, title=title or p.name,
                     source="tool:save_asset", space_id=space_id,
                     conversation_id=conversation_id)
         except Exception as e:

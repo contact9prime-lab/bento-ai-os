@@ -2497,6 +2497,33 @@ def _read_cpu() -> tuple[int, int]:
     return idle, sum(nums)
 
 
+class _OpenedFile(FileResponse):
+    """A file by its descriptor, so what was checked is what is sent. Starlette reopens it through
+    /proc/self/fd, which is the same file whatever has happened to the name since, and Range keeps
+    working. A link swapped in between the route's check and the send was a read of anybody's file."""
+
+    def __init__(self, fd: int, **kw):
+        self._fd = fd
+        base = "/proc/self/fd" if os.path.isdir("/proc/self/fd") else "/dev/fd"
+        super().__init__(f"{base}/{fd}", stat_result=os.fstat(fd), **kw)
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with contextlib.suppress(OSError):
+                os.close(self._fd)
+
+
+def _send_checked(p: Path, **kw):
+    """`p` is real and has passed its check. A 404 when it moved since, as for any file not there."""
+    from . import safeopen
+    try:
+        return _OpenedFile(safeopen.open_file(str(p)), **kw)
+    except OSError:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+
 def _files_root() -> Path:
     from .tools import sandbox_conf
     _, root = sandbox_conf(state["cfg"])
@@ -3148,7 +3175,7 @@ async def api_file_raw(path: str, download: int = 0):
         headers["Content-Disposition"] = f'attachment; filename="{p.name}"'
     if p.suffix.lower() in (".md", ".txt", ".log", ".csv", ".json"):
         mt = "text/plain; charset=utf-8"
-    return FileResponse(p, media_type=mt or "application/octet-stream", headers=headers)
+    return _send_checked(p, media_type=mt or "application/octet-stream", headers=headers)
 
 
 def _output_roots():
@@ -3193,7 +3220,7 @@ async def api_files_get(path: str, download: int = 0):
         headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(p.name)}"
     if p.suffix.lower() in (".md", ".txt", ".log", ".csv", ".json"):
         mt = "text/plain; charset=utf-8"
-    return FileResponse(p, media_type=mt or "application/octet-stream", headers=headers)
+    return _send_checked(p, media_type=mt or "application/octet-stream", headers=headers)
 
 
 @app.get("/api/native/apps")
@@ -13410,6 +13437,8 @@ async def api_timetravel_plan(pid: str):
         return timetravel.plan(db, home, pid)
     except KeyError:
         return JSONResponse({"error": "no such checkpoint"}, status_code=404)
+    except timetravel.Forged as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
 
 
 @app.post("/api/timetravel/{pid}/rewind")
@@ -13424,7 +13453,10 @@ async def api_timetravel_rewind(pid: str):
     if p["conversation_id"] and p["conversation_id"] in state["turns"]:
         return JSONResponse({"error": "That conversation is still working. Stop it or let it finish, then rewind."},
                             status_code=409)
-    got = await asyncio.to_thread(timetravel.rewind, db, home, pid)
+    try:
+        got = await asyncio.to_thread(timetravel.rewind, db, home, pid)
+    except timetravel.Forged as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     state["store"].log("system", f"time travel: rewound to before {p['tool']} ({pid}): " + ", ".join(got["words"]))
     await state["broadcast_user"]({"type": "timetravel", "rewound": pid, "conversation_id": p["conversation_id"]},
                                   usersmod.current())
@@ -18600,19 +18632,22 @@ def _terminal_argv(uid: str) -> tuple[list, str, str]:
     sb_ro, sb_extra = folder_binds(state.machine_cfg(), uid or None)
     shell = os.environ.get("SHELL", "/bin/bash")
 
-    def jailed(root, hide=None):
+    def jailed(root, hide=None, chdir=None):
         # new_session stays off here, and bwrap_argv says why: a Terminal needs its job control
         if sandbox_mechanism() == "sandbox-exec":
-            return sandbox_exec_argv(root, "exec /bin/bash -l", hide=hide, extra=sb_extra, ro_extra=sb_ro)
-        return bwrap_argv(root, ["/bin/bash", "-l"], hide=hide, extra=sb_extra, ro_extra=sb_ro,
+            return sandbox_exec_argv(root, "exec /bin/bash -l", chdir=chdir, hide=hide, extra=sb_extra, ro_extra=sb_ro)
+        return bwrap_argv(root, ["/bin/bash", "-l"], chdir=chdir, hide=hide, extra=sb_extra, ro_extra=sb_ro,
                           new_session=False)
 
     if usersmod.enabled():
         if not sandbox_mechanism():
             return [], "", ("This machine has accounts, so the Terminal must run in a per-account "
                             "jail. Install bubblewrap to enable it.")
-        root = account_root(usersmod.cfg_for(uid, state.machine_cfg()), uid)
-        return jailed(root, [os.path.realpath(str(usersmod.users_root()))]), root, ""
+        ucfg = usersmod.cfg_for(uid, state.machine_cfg())
+        root = account_root(ucfg, uid)
+        # the first account keeps ~/AgentOS as its workspace, shared into the jail: it opens there
+        ws = os.path.realpath(os.path.expanduser(str(ucfg.get("workspace") or "")))
+        return jailed(root, [os.path.realpath(str(usersmod.users_root()))], chdir=ws), root, ""
     sandboxed, sb_root = sandbox_conf(state.machine_cfg())
     if sandboxed and sandbox_mechanism():
         sb_root = jail_root(sb_root)

@@ -68,3 +68,38 @@ def test_it_is_reachable_everywhere():
     assert 'verb("trace"' in cli and "def _trace_cli(" in cli
     src = (ROOT / "agentos/trace.py").read_text()
     assert "import asyncio" not in src and "fastapi" not in src, "works with the server down"
+
+
+def _leaky_cfg():
+    return {"mcp_servers": {"p": {"command": "x", "args": ["--api-key", "sk-abcdefgh12345abcdefgh12345"],
+                                  "url": "https://h/x?key=abc12345678",
+                                  "env": {"DATABASE_URL": "postgres://u:pw1234567@h/db",
+                                          "GITHUB_PAT": "ghp_abcdefghijklmnopqrstuvwx", "MY_THING": "plainsecretvalue"},
+                                  "headers": {"X-Custom": "headersecretvalue"}}}}
+
+
+def test_an_mcp_server_goes_as_its_shape():
+    """Masking went by key name, so DATABASE_URL, MY_THING and --api-key in args stayed clear."""
+    view = json.dumps(trace._finished({"config": trace.mask(trace._config_view(_leaky_cfg()))}), ensure_ascii=False)
+    for secret in ("sk-abcdefgh12345", "abc12345678", "pw1234567", "ghp_abcdefgh", "plainsecretvalue", "headersecretvalue"):
+        assert secret not in view, secret
+    assert "env_template" in view and "DATABASE_URL" in view      # the shape stays: it is the useful part
+
+
+def test_a_credential_pasted_into_a_chat_does_not_leave_either(tmp_path):
+    from agentos.agentbundle import leak_scan
+    from agentos.memory import Store
+    store = Store(tmp_path / "t.db")
+    cid = store.create_conversation("t")
+    store.add_message(cid, "user", "use sk-ant-abcdefghijklmnop1234 and postgres://me:hunter2hunter@db/x "
+                                   "and curl https://h/a?token=abcdef123456 --password hunter3hunter")
+    store.add_message(cid, "assistant", "ok", {"token": "a-long-token-value-1234"})
+    doc = trace.conversation(store, {"workspace": "/tmp/x"}, cid)
+    out = trace.dumps(doc)
+    for secret in ("sk-ant-abcdef", "hunter2hunter", "abcdef123456", "hunter3hunter", "a-long-token-value"):
+        assert secret not in out, secret
+    assert not leak_scan(out)
+
+
+def test_prose_is_left_alone():
+    assert trace.scrub("the well-known-key value is fine, see ?author=bob") == "the well-known-key value is fine, see ?author=bob"

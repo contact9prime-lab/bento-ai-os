@@ -906,6 +906,11 @@ class Agent:
             home = _P(self.toolbox.store.path).parent        # the store's own home: whoever's turn
             files = timetravel.targets(name, args, self.toolbox._abs, cfgmod.soul_path(),
                                        (self.toolbox.cfg or {}).get("workspace", ""))
+            # The gate allowed the tool, and the tool's own path rule has not run yet. What it is
+            # about to refuse must not be copied: a denied write still put the victim's key in the
+            # caller's blobs. The soul is named by this OS, never by the call.
+            if name != "update_soul":
+                files = [f for f in files if not self.toolbox._sandbox_deny(f, write=True, flag=False)]
             pt = timetravel.checkpoint(self.toolbox.store.db, home, name, tool_detail(name, args), files,
                                        self.conversation_id, getattr(self, "run_id", ""), self.steps_used)
             await self.emit({"type": "checkpoint", "id": pt["id"], "tool": name, "unseen": bool(pt["unseen"])})

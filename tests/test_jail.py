@@ -425,3 +425,101 @@ def test_the_sentence_is_protected_too():
     # a new kind must exist before it can be flagged
     assert "protected.refused" in secevents.KINDS and "jail.missing" in secevents.KINDS
     assert "agentos/safeopen.py" in protected.SECURITY_MODULES
+
+
+def test_a_file_route_sends_what_it_checked(tmp_path):
+    """The route's check then FileResponse by name was the same gap as read_file."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from agentos import server
+    f = tmp_path / "f.txt"
+    f.write_text("0123456789")
+    other = tmp_path / "victim.txt"
+    other.write_text("VICTIM")
+    link = tmp_path / "l"
+    link.symlink_to(other)
+    app = FastAPI()
+
+    @app.get("/ok")
+    def ok():
+        return server._send_checked(f, media_type="text/plain")
+
+    @app.get("/link")
+    def viaLink():
+        return server._send_checked(link, media_type="text/plain")
+
+    c = TestClient(app)
+    assert c.get("/ok").text == "0123456789"
+    r = c.get("/ok", headers={"Range": "bytes=2-4"})
+    assert r.status_code == 206 and r.text == "234"
+    assert c.get("/link").status_code == 404
+
+
+def _agent(cfg, machine, approver):
+    from agentos import policy
+    from agentos.agent import Agent
+    from agentos.memory import Store
+    store = Store(machine / "agent-test.db")
+    tb = toolsmod.Toolbox(cfg, store)
+    tb.pdp = policy.PDP(cfg, store)
+
+    async def emit(e):
+        pass
+    return Agent(cfg, tb, "ollama/x", emit, approver, conversation_id="c")
+
+
+@pytest.mark.parametrize("autonomy", ["full", "balanced"])
+def test_with_no_jail_autonomy_and_grants_do_not_answer_for_a_person(no_jail, autonomy):
+    from agentos import policy
+    asked = []
+
+    async def approver(name, args, reason, offer):
+        asked.append((name, reason, offer, policy.needs_person()))
+        return True
+    cfg = {**_cfg(no_jail), "autonomy": autonomy}
+    ag = _agent(cfg, no_jail, approver)
+    out = run(ag.call_tool("run_command", {"command": "echo RAN-IT"}))
+    assert "RAN-IT" in out[0]
+    assert len(asked) == 1 and asked[0][0] == "run_command"
+    assert asked[0][2] is None, "no remember: it is asked every time"
+    assert "cannot run on this machine" in asked[0][3]
+
+
+def test_with_no_jail_a_no_runs_nothing(no_jail):
+    async def approver(name, args, reason, offer):
+        return False
+    ag = _agent({**_cfg(no_jail), "autonomy": "full"}, no_jail, approver)
+    out = run(ag.call_tool("run_command", {"command": "echo RAN-IT > ran.txt"}))
+    assert out[0].startswith("[denied]")
+    assert not (no_jail / "workspace" / "ran.txt").exists()
+
+
+def test_a_waived_step_does_not_leak_into_the_next(no_jail):
+    async def approver(name, args, reason, offer):
+        return True
+    ag = _agent({**_cfg(no_jail), "autonomy": "full"}, no_jail, approver)
+    run(ag.call_tool("run_command", {"command": "true"}))
+    assert toolsmod._jail_waived.get() is False
+
+
+def test_with_a_working_jail_nothing_extra_is_asked(machine):
+    asked = []
+
+    async def approver(name, args, reason, offer):
+        asked.append(name)
+        return True
+    if toolsmod.sandbox_mechanism() != "bwrap":
+        pytest.skip("needs a bwrap that can be entered")
+    ag = _agent({**_cfg(machine), "autonomy": "full"}, machine, approver)
+    out = run(ag.call_tool("run_command", {"command": "echo RAN-IT"}))
+    assert "RAN-IT" in out[0] and asked == []
+
+
+def test_a_folder_is_listed_through_its_descriptor(tmp_path):
+    (tmp_path / "d").mkdir()
+    (tmp_path / "d" / "f").write_text("x")
+    (tmp_path / "d" / "sub").mkdir()
+    assert sorted(safeopen.list_dir(str(tmp_path / "d"))) == [("f", False), ("sub", True)]
+    (tmp_path / "l").symlink_to(tmp_path / "d")
+    with pytest.raises(safeopen.Moved):
+        safeopen.list_dir(str(tmp_path / "l"))

@@ -5353,7 +5353,8 @@ def _provision_cli(args, cfg, a, rest, val, run):
     if a == "enroll":
         if not val:
             sys.exit("  bento pool enroll bento-enroll-1.…")
-        prov.adopt_key(val)
+        # `-` reads it from stdin, which is how the installer passes it: arguments show in `ps`
+        prov.adopt_key(sys.stdin.read().strip() if val == "-" else val)
         print("  This machine carries the key and waits to be set up. A running server announces it now.")
         return
     if a == "wait":
@@ -5930,6 +5931,9 @@ def _timetravel_cli(args):
         pl = tt.plan(store.db, home, args.id)
     except KeyError:
         print(f"no checkpoint {args.id!r}")
+        sys.exit(2)
+    except tt.Forged as e:
+        print(str(e))
         sys.exit(2)
     print(f"going back to before {pl['point']['tool']} ({pl['point']['detail']}) would undo {pl['steps']} step(s):")
     for w in pl["words"]:

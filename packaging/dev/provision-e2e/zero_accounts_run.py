@@ -193,7 +193,7 @@ def main():
              cli=cli.stdout.strip().splitlines()[0] if cli.stdout else cli.stderr)
         assert st_ada == 400 and st_own == 200 and zown["for"]["name"] == "ada" and "accounts" not in pv, (za, zown)
 
-        enroll = re.search(r"--enroll=(\S+)", z["line"]).group(1)
+        enroll = re.search(r"AGENTOS_ENROLL=(\S+)", z["line"]).group(1)
         hubs = re.search(r"--hub=(\S+)", z["line"]).group(1)
         assert bento("pi-zero", "pool", "hub", hubs).returncode == 0
         start("pi-zero", {"AGENTOS_ENROLL": enroll}, probe="/api/provision")

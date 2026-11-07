@@ -60,7 +60,7 @@ SECRET_FILES = frozenset({
     "session.key", "vault.key", "vault.json", "users.json",
     "security-events.jsonl", "integrity.json", "integrity.anchor",
     "config.json", "agentos.db", "agentos.db-wal", "agentos.db-shm", "provision.json",
-    "git-askpass.sh", "registry_signing.key",
+    "git-askpass.sh", "registry_signing.key", "timetravel.key",
 })
 WRITE_LOCKED_FILES = frozenset({"inventory.json", "update-history.json"})
 # Sign-ins (MCP tokens, the WhatsApp device, the browser's cookies), and whole copies of a home

@@ -47,7 +47,8 @@ def resolve_out(cfg: dict, paths) -> tuple[list[Path], list[str]]:
     """The files a hand-over may carry: real files under this machine's roots, not hidden,
     within the caps. Returns (paths, refused-with-why)."""
     from . import outputs
-    roots = outputs.roots(cfg)
+    from . import users as usersmod
+    roots = outputs.roots(cfg, admin=usersmod.is_admin(usersmod.current()))
     ok, refused, total = [], [], 0
     for raw in (paths if isinstance(paths, list) else [paths])[: zeromod.SHIP_FILES * 2]:
         raw = str(raw or "").strip()

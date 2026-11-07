@@ -97,6 +97,26 @@ def open_file(real: str, *, write: bool = False, make_dirs: bool = False, mode: 
     return fd
 
 
+def list_dir(real: str) -> list[tuple[str, bool]]:
+    """(name, is a folder) for each entry of the folder at `real`, read through its descriptor."""
+    dfd, leaf = _walk(real, False) if real != os.sep else (os.open(os.sep, _DIR), ".")
+    try:
+        try:
+            fd = os.open(leaf, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dfd)
+        except OSError as e:
+            if e.errno in (errno.ELOOP, errno.ENOTDIR):
+                raise Moved(e.errno, "that is not a plain folder", real) from e
+            raise
+    finally:
+        os.close(dfd)
+    try:
+        _confirm(fd, real)
+        with os.scandir(fd) as it:
+            return [(e.name, e.is_dir()) for e in it]
+    finally:
+        os.close(fd)
+
+
 def read_bytes(real: str) -> bytes:
     with os.fdopen(open_file(real), "rb") as f:
         return f.read()

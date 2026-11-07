@@ -219,3 +219,29 @@ def test_every_face_has_it():
     assert '"send_files"' in (ROOT / "agentos/approvalcard.py").read_text()
     tools = (ROOT / "agentos/tools.py").read_text()
     assert '"files": {"type": "array"' in tools, "the model can name files for a hand-over"
+
+
+def test_a_non_admin_sends_only_from_their_own_folders(tmp_path, monkeypatch):
+    """roots() defaulted to admin, so any account could send the machine's workspace over a link."""
+    from agentos import config as cfgmod, linkfiles, outputs, users as usersmod
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "config.json")
+    usersmod.reset_caches()
+    usersmod.set_current("")
+    machine_ws = tmp_path / "workspace"
+    machine_ws.mkdir()
+    (machine_ws / "machine.txt").write_text("the machine's")
+    usersmod.create("ada", "hunter2hunter")
+    bob = usersmod.create("bob", "hunter2hunter", role="executor")["id"]
+    try:
+        cfg = dict(usersmod.cfg_for(bob))
+        (Path(cfg["workspace"]) / "mine.txt").write_text("bob's")
+        assert machine_ws.resolve() not in outputs.roots(cfg)
+        with usersmod.as_user(bob):
+            ok, refused = linkfiles.resolve_out(cfg, [str(machine_ws / "machine.txt"),
+                                                      str(Path(cfg["workspace"]) / "mine.txt")])
+        assert [p.name for p in ok] == ["mine.txt"]
+        assert any("machine.txt" in r for r in refused)
+    finally:
+        usersmod.reset_caches()
+        usersmod.set_current("")

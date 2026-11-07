@@ -13,7 +13,8 @@ AgentOS is built to be the opposite of that story.
 | Remote sessions | passphrase + signed cookie | PBKDF2-SHA256 (210k rounds), never the passphrase itself; the cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` over a tunnel; failed attempts back off per source address; the switch itself is only reachable from loopback, so nothing signed in remotely can widen its own access |
 | WebSocket handshakes | origin-checked before auth | every socket (`/ws`, `/ws/terminal`, `/ws/vnc`) passes one gate that refuses a cross-origin — or `null` — Origin, closing the Cross-Site WebSocket Hijacking path a foreign page would otherwise use to reach the shell socket. A browser sets Origin and cannot forge it; a non-browser client with no Origin carries no cookie jar and is left to the auth gate |
 | Clickjacking | the desktop cannot be framed | the desktop's one-click Allow/Deny grants real capability, so it ships `frame-ancestors 'none'` + `X-Frame-Options: DENY`; an app page ships `frame-ancestors 'self'` so only its own desktop may embed it. `nosniff`, `no-referrer`, `same-origin` opener, and HSTS-over-TLS are on every response |
-| Filesystem | OS sandbox ON | agent commands and file tools are jailed to the workspace **plus any safe folders you name** (`sandbox.folders` — see [Configuration](configuration.md#safe-folders)). Linux: **bubblewrap** (whole FS read-only, `/home` hidden). macOS: **sandbox-exec** (whole FS readable, writes confined to those folders + tmp/caches). Same guarantee — the agent's shell cannot modify files outside them. A folder holding another account is refused, so widening the jail can never breach account isolation |
+| Filesystem | OS sandbox ON | agent commands and file tools are jailed to the workspace **plus any safe folders you name** (`sandbox.folders` — see [Configuration](configuration.md#safe-folders)). Linux: **bubblewrap** (whole FS read-only; every home hidden, wherever it is; `/run` blanked; own process, IPC and hostname namespaces; a cleared environment). macOS: **sandbox-exec** (FS readable except the AgentOS home and the usual credential folders, writes confined to those folders + tmp/caches; not yet run on a real Mac). The network stays open to a jailed program. A folder holding another account is refused, so widening the jail can never breach account isolation. Where the sandbox is on and cannot start, see [Containers](#containers-and-a-sandbox-that-cannot-start) |
+| Security files | refused, whatever the settings | `agentos/protected.py`: no agent reads or writes the vault key, session key, accounts file, `config.json`, the databases, `pki/`, sign-ins or a copy of a home, on any machine, with the sandbox on or off, whatever a grant or autonomy says. The rest of a home is closed too unless named as open. With the sandbox switched **off**, an unjailed `run_command` is the person's own shell and this list does not reach it |
 | Capabilities | one policy decision point | every tool/model/MCP/skill/app-data access, for every principal (you, apps, subagents, flows), passes through the PDP: allow / ask / deny + persisted, revocable grants |
 | Shell | risk-classified | read-only commands run free; mutating commands ask; destructive patterns are hard-blocked and non-overridable. `git push`, config writes, and remote changes ask |
 | Secrets | masked & env-injected | API keys and the GitHub token are masked in the API; git auth goes through an askpass helper — tokens never enter command lines, remotes, or logs |
@@ -224,3 +225,34 @@ your network can use; set `OLLAMA_HOST=127.0.0.1` unless you truly mean to share
 Snapshots (one click, or automatic before self-modification) capture config + DB + source;
 restore rolls the OS back in time. `factory-reset` starts truly fresh. The audit trail
 (Logs + the policy ledger) records every tool call and every consent decision.
+
+## Containers and a sandbox that cannot start
+
+The server enters the jail once when it starts, and believes that rather than `which bwrap`. Bubblewrap can be
+installed and still refused: Docker's default seccomp and AppArmor refuse it, and so does Ubuntu 24.04's
+`kernel.apparmor_restrict_unprivileged_userns`.
+
+With the sandbox on and no jail that can start:
+
+- File tools still hold the folder rule and the list above, in the server itself.
+- `run_command`, `run_python` and typing into a terminal ask a person every time, with no "remember", at every
+  autonomy level, whatever a grant says. With nobody there (a schedule, a mission, an app) they are refused. A
+  command a person lets through has no jail: it gets an environment without the server's keys, and it can
+  still read `/proc/<server>/environ`, which is why it is asked.
+- On a machine with accounts the shell and the Terminal are refused outright, as they always were.
+- Settings → Permissions, `bento doctor`, the agent's own prompt and the security record (`jail.missing`) all say so.
+
+The shipped image installs bubblewrap and does not change Docker's defaults, so a plain `docker run` is in
+this reduced mode. That includes hosts where you do not choose the flags, such as Render's free plan: agents
+still answer, read and write the workspace, browse and remember, and a command waits for your yes.
+
+To have the jail in a container on a host you control, this is what was measured to work on Docker with Ubuntu's
+AppArmor rule on:
+
+```sh
+docker run --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined ...
+```
+
+`--security-opt seccomp=unconfined` alone was still refused there, and `--privileged` also works and gives away
+far more. These flags weaken what Docker itself protects the host from, in exchange for what the jail protects
+your keys from. If the machine runs nothing else, that is usually the right trade. Check it with `bento doctor`.
