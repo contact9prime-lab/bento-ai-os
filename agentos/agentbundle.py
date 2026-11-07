@@ -714,6 +714,19 @@ def fetch_peer(url: str, key: str, timeout: int = 30) -> tuple[dict, str]:
         u = "http://" + u
     if not u.endswith("/api/agent/mcp"):
         u += "/api/agent/mcp"
+    # A peer is often on the LAN, and a person typed this address: metadata addresses and this
+    # machine are refused, and a redirect is not followed (the guard would not see the next hop).
+    from . import netguard
+    try:
+        netguard.check_url_sync(u, local_ok=True)
+        netguard.refuse_loopback(u)
+    except Exception as e:                                       # noqa: BLE001
+        return {}, str(e)
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *a, **k):
+            return None
+    opener = urllib.request.build_opener(_NoRedirect)
 
     def rpc(method: str, params: dict, rid: int):
         req = urllib.request.Request(
@@ -721,7 +734,7 @@ def fetch_peer(url: str, key: str, timeout: int = 30) -> tuple[dict, str]:
                                 "params": params}).encode(),
             headers={"Content-Type": "application/json",
                      "Authorization": f"Bearer {key}"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with opener.open(req, timeout=timeout) as r:
             return json.loads(r.read())
 
     try:

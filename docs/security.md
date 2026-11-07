@@ -176,6 +176,12 @@ So AgentOS does not try to detect the attack. It bounds the blast radius:
   a hosted plugin's tool and a git clone or pull now taint the turn like `fetch_url` does.
   A chat forwarded to Claude Code or Gemini CLI that reads the web with its own tools marks
   the team door, so a specialist it starts after that is held too.
+- **Memory is not a way around it.** Auto-learn skips any conversation that read outside
+  content (a forwarded turn that doesn't say what it read counts), each thing it writes is a
+  ledger row, and memories reach the prompt as notes that can't close their block. `update_soul`
+  asks a person every time.
+- **A device's words count too.** `device_get` taints the turn, a mission a device started begins
+  tainted, and its brief carries the item's id and a number, never a name a node chose.
 - Taint survives a turn boundary: a conversation whose history contains fenced content starts
   its next turn tainted. "Fetch this page" … "ok, go ahead" is the obvious way around a
   per-turn rule.
@@ -284,3 +290,18 @@ docker run --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt 
 `--security-opt seccomp=unconfined` alone was still refused there, and `--privileged` also works and gives away
 far more. These flags weaken what Docker itself protects the host from, in exchange for what the jail protects
 your keys from. If the machine runs nothing else, that is usually the right trade. Check it with `bento doctor`.
+
+## What a fetch can reach
+
+`agentos/netguard.py` is the one client for an address somebody named: `fetch_url`, a wallpaper or
+asset from a URL, calendars, app and agent imports, skills. It refuses this machine, private and
+link-local networks and cloud metadata addresses, resolves the name once and connects to the address
+it checked, so a name can't change its answer, and it checks again on every redirect.
+
+You can open it for your own network in Settings → Permissions → Local addresses, or with `bento
+security --allow nas.local`. A model can't write that list, an app never gets it, and no list opens a
+metadata address or this server's own port. Loopback needs a named port.
+
+What it does not hold: a shell command (`curl` in `run_command`) and a page's own links in the
+shared browser go through their own rules. git and the training service are judged on the address
+they start from, not on what they are redirected to.

@@ -19961,6 +19961,10 @@ function setTab(body,all){
         {desc:'How much your agent does before it asks you.',
          more:'Some steps always ask a person, like sending mail or acting on what a web page said. Applies right away.',
          f:'autonomy paranoid balanced full ask approve risky level'}),
+      pRow('Local addresses',pText('s-fetch-allow',((cfg.security&&cfg.security.fetch_allow)||[]).join(', '),'nas.local, 192.168.1.20:8080'),
+        {desc:'Things on your own network your agents and calendars may fetch.',
+         more:'Anything on this machine or a private network is refused until it is listed here. Apps can never reach them. Loopback needs a port.',
+         f:'local address network lan private fetch allow ssrf nas calendar'}),
       pRow('After reading a web page or an MCP reply',pSelect('s-taint',[
         ['ask','Ask before changing anything'],
         ['strict','Refuse to change anything'],
@@ -20464,6 +20468,7 @@ async function saveSettings(){
   if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
   if(val('s-taint')!==undefined||on('s-audit-strict')!==undefined){
     patch.security={};
+    if(val('s-fetch-allow')!==undefined)patch.security.fetch_allow=list('s-fetch-allow');
     if(val('s-taint')!==undefined)patch.security.taint=val('s-taint');
     if(on('s-audit-strict')!==undefined)patch.security.audit_fail_closed=on('s-audit-strict');
   }
@@ -20507,9 +20512,10 @@ async function saveSettings(){
   }
   if(!Object.keys(patch).length){if(el('v-tts'))setSavedMark(true);return}
   let ok=false;
-  try{ok=(await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)})).ok}catch(e){}
+  let why='';
+  try{const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});ok=r.ok;if(!ok)why=(await r.json().catch(()=>({}))).error||''}catch(e){}
   setSavedMark(ok);
-  if(!ok){toast('could not save that setting');return}
+  if(!ok){toast(why?'could not save: '+why:'could not save that setting');return}
   loadModels();loadConfig();
 }
 /* Settings save themselves. There used to be one Save at the foot of every tab, and
@@ -20521,7 +20527,7 @@ async function saveSettings(){
    before its first await, so a field committed by clicking another tab is still in the
    page when it is read. Cards with a form of their own (a channel, a mail account, the
    locale) keep their own button: those talk to another service and can be refused. */
-var SET_AUTO=/^(s-(workspace|steps|name|sb-on|sb-root|taint|audit-strict|hist-compact|ollama-url|ant-|oai-|or-|cus-|goo-|build-model|img-|gh-|upd-on|upd-repo|upd-branch|exec-)|v-(tts|voice|rate|lang|agents|live)$)/;
+var SET_AUTO=/^(s-(workspace|steps|name|sb-on|sb-root|taint|fetch-allow|audit-strict|hist-compact|ollama-url|ant-|oai-|or-|cus-|goo-|build-model|img-|gh-|upd-on|upd-repo|upd-branch|exec-)|v-(tts|voice|rate|lang|agents|live)$)/;
 function setAutoSave(e){
   const t=e&&e.target;if(!t)return;
   if(!(t.dataset&&t.dataset.tool)&&!SET_AUTO.test(t.id||''))return;

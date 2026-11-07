@@ -63,7 +63,8 @@ from .telegram import TelegramBridge
 from . import whatsapp as whatsappmod
 from .whatsapp import WhatsAppBridge
 from . import tools
-from .tools import Toolbox
+from . import netguard
+from .tools import ALWAYS_ASK, Toolbox
 from .trainforge import TrainForge
 
 UI_DIR = Path(__file__).parent / "ui"
@@ -1224,8 +1225,9 @@ async def _device_fire(owner: str, rule: dict, ev: dict) -> None:
         await _device_event(owner, "trigger", machine, f"{machine}: started mission {flow['name']} "
                                                        f"({devtrig.words(c, ev.get('name') or '')})", flow=flow["name"])
         with contextlib.suppress(Exception):
+            # tainted: a reading started this, and a node on the network can say anything
             await _start_flow(flow, text, origin={"surface": "device", "ref": f"{machine}/{c.get('item') or ''}"},
-                              trigger_id=rule["id"])
+                              trigger_id=rule["id"], tainted=True)
 
 
 # The device board (devboard.py): every machine's things as last heard, and the alarms among them.
@@ -5144,6 +5146,14 @@ async def api_put_config(patch: dict):
         # Settings → Permissions → The ledger: refuse an action whose ledger row failed
         if isinstance(patch["security"].get("audit_fail_closed"), bool):
             cfg.setdefault("security", {})["audit_fail_closed"] = patch["security"]["audit_fail_closed"]
+        # Settings → Permissions → Local addresses: what a person lets fetches reach (netguard.py)
+        if isinstance(patch["security"].get(netguard.CONFIG_KEY), list):
+            kept, dropped = netguard.clean_entries(patch["security"][netguard.CONFIG_KEY])
+            if dropped:
+                return JSONResponse({"error": dropped[0]}, status_code=400)
+            if kept != (cfg.get("security") or {}).get(netguard.CONFIG_KEY, []):
+                _ledger("system.fetch_allow", "config:security.fetch_allow", f"local addresses → {kept}"[:300])
+            cfg.setdefault("security", {})[netguard.CONFIG_KEY] = kept
     if isinstance(patch.get("history"), dict):
         h = cfg.setdefault("history", {})
         for k in ("tool_trace", "compact", "model"):
@@ -5596,9 +5606,9 @@ async def _agent_bundle_of(body: dict):
         if not candidates:
             return None, "", JSONResponse(
                 {"error": f"'{source}' is not a URL or an owner/repo"}, status_code=400)
-        import httpx
         last = ""
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        # a name somebody typed or pasted, fetched by this server: the guarded client, every hop
+        async with netguard.client(timeout=30, follow_redirects=True) as client:
             for cand in candidates:
                 try:
                     r = await client.get(cand)
@@ -8000,9 +8010,8 @@ async def api_app_import(body: dict):
         if not candidates:
             return JSONResponse({"error": f"'{source}' is not a URL or an owner/repo"},
                                 status_code=400)
-        import httpx
         last = ""
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        async with netguard.client(timeout=30, follow_redirects=True) as client:
             for cand in candidates:
                 try:
                     r = await client.get(cand)
@@ -10813,14 +10822,13 @@ async def api_install_skill(body: dict):
     """Install skills from a raw .md URL or a git repo (scans *.md files)."""
     import tempfile
 
-    import httpx
     src = (body.get("source") or "").strip()
     store = state["store"]
     if not src:
         return {"ok": False, "error": "no source given"}
     try:
         if src.endswith(".md") or "raw.githubusercontent.com" in src:
-            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            async with netguard.client(timeout=30, follow_redirects=True) as client:
                 r = await client.get(src)
             if r.status_code != 200:
                 return {"ok": False, "error": f"HTTP {r.status_code}"}
@@ -10829,10 +10837,15 @@ async def api_install_skill(body: dict):
             store.save_skill(name, desc, content, source=src)
             store.log("system", f"skill installed from URL: {name}")
             return {"ok": True, "count": 1}
-        # treat as a git repo
+        # treat as a git repo. Only a web address: `ext::` runs a command and a leading dash is
+        # an option. git does the connecting, so this judges the address it starts from.
+        if not src.startswith(("https://", "http://")):
+            return {"ok": False, "error": "a skill repo has to be an http or https address"}
+        await netguard.check_url(src)
         with tempfile.TemporaryDirectory() as tmp:
             proc = await asyncio.create_subprocess_exec(
-                "git", "clone", "--depth", "1", src, tmp,
+                "git", "-c", "protocol.ext.allow=never", "-c", "core.hooksPath=/dev/null",
+                "clone", "--depth", "1", "--", src, tmp,
                 stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
             _, err = await asyncio.wait_for(proc.communicate(), timeout=120)
             if proc.returncode != 0:
@@ -10870,10 +10883,10 @@ async def api_install_skill(body: dict):
 
 @app.get("/api/wallpaper")
 async def api_wallpaper():
-    p = cfgmod.AGENTOS_HOME / "wallpaper.png"
-    if p.exists():
+    p = tools.wallpaper_file()
+    if p:
         return FileResponse(p, media_type="image/png",
-                            headers={"Cache-Control": "no-store"})
+                            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
     return JSONResponse({"exists": False}, status_code=404)
 
 
@@ -11006,16 +11019,21 @@ async def api_wallpaper_system():
             msg += (" — if you just denied an Automation prompt, allow it in System Settings → "
                     "Privacy & Security → Automation, or set a static image as your wallpaper")
         return JSONResponse({"error": msg}, status_code=404)
-    dest = cfgmod.AGENTOS_HOME / "wallpaper.png"
     # browsers can't render HEIC/TIFF (Apple's default wallpapers) — convert via sips
     if _sys.platform == "darwin" and path.suffix.lower() in (".heic", ".tif", ".tiff", ".bmp"):
+        dest = tools.wallpaper_home() / ".wallpaper-converted.png"
         r = subprocess.run(["sips", "-s", "format", "png", str(path), "--out", str(dest)],
                            capture_output=True, text=True, timeout=30)
         if r.returncode != 0:
             return JSONResponse({"error": f"could not convert {path.suffix} wallpaper: "
                                           f"{(r.stderr or r.stdout).strip()}"}, status_code=500)
+        data = dest.read_bytes()
+        dest.unlink(missing_ok=True)
     else:
-        shutil.copy2(path, dest)
+        data = path.read_bytes()
+    if not tools.image_kind(data):
+        return JSONResponse({"error": "the system wallpaper is not a picture this can show"}, status_code=415)
+    tools.save_wallpaper(data)
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True, "source": str(path)}
 
@@ -11329,40 +11347,54 @@ async def api_wallpapers_builtin():
 
 @app.get("/api/wallpapers")
 async def api_wallpapers():
-    d = cfgmod.AGENTOS_HOME / "wallpapers"
-    ids = sorted((p.stem for p in d.glob("*.png")), reverse=True) if d.exists() else []
-    return {"wallpapers": ids}
+    ids = {p.stem for d in _wallpaper_dirs() for p in d.glob("*.png")}
+    return {"wallpapers": sorted(ids, reverse=True)}
+
+
+def _wallpaper_dirs() -> list[Path]:
+    """A gallery is its owner's. An admin also sees the machine's older one."""
+    dirs = [tools.wallpaper_home() / "wallpapers"]
+    if usersmod.enabled() and usersmod.is_admin(usersmod.current() or ""):
+        dirs.append(cfgmod.AGENTOS_HOME / "wallpapers")
+    return [d for d in dirs if d.is_dir()]
+
+
+def _wallpaper_item(wid: str) -> Path | None:
+    if not re.fullmatch(r"[\w-]{1,80}", wid or ""):
+        return None
+    return next((d / f"{wid}.png" for d in _wallpaper_dirs() if (d / f"{wid}.png").is_file()), None)
 
 
 @app.get("/api/wallpapers/{wid}")
 async def api_wallpaper_file(wid: str):
-    p = (cfgmod.AGENTOS_HOME / "wallpapers" / f"{wid}.png")
-    if not p.is_file() or ".." in wid or "/" in wid:
+    p = _wallpaper_item(wid)
+    if not p:
         return JSONResponse({"error": "not found"}, status_code=404)
-    return FileResponse(p, media_type="image/png")
+    return FileResponse(p, media_type="image/png", headers={"X-Content-Type-Options": "nosniff"})
 
 
 @app.post("/api/wallpapers/{wid}/set")
 async def api_wallpaper_set(wid: str):
-    p = (cfgmod.AGENTOS_HOME / "wallpapers" / f"{wid}.png")
-    if not p.is_file() or ".." in wid or "/" in wid:
+    p = _wallpaper_item(wid)
+    data = p.read_bytes() if p else b""
+    if not tools.image_kind(data):
         return JSONResponse({"error": "not found"}, status_code=404)
-    (cfgmod.AGENTOS_HOME / "wallpaper.png").write_bytes(p.read_bytes())
+    tools.save_wallpaper(data)
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True}
 
 
 @app.delete("/api/wallpapers/{wid}")
 async def api_wallpaper_delete(wid: str):
-    p = (cfgmod.AGENTOS_HOME / "wallpapers" / f"{wid}.png")
-    if p.is_file() and ".." not in wid and "/" not in wid:
+    p = _wallpaper_item(wid)
+    if p:
         p.unlink()
     return {"ok": True}
 
 
 @app.delete("/api/wallpaper")
 async def api_wallpaper_reset():
-    (cfgmod.AGENTOS_HOME / "wallpaper.png").unlink(missing_ok=True)
+    tools.clear_wallpaper()
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True}
 
@@ -19347,8 +19379,11 @@ async def _run_chat(cid: str, data: dict):
             # a run that never started.
             await evsend({"type": "status", "message": f"starting {ex_title}"})
             collected: list[str] = []
+            read_outside = [False]      # did its own tools read anything? auto-learn asks (knowledge.py)
 
             async def _relay(ev: dict):
+                if ev.get("type") == "tool_start" and knowledge.cli_tool_reads_outside(ev.get("name")):
+                    read_outside[0] = True
                 if ev.get("type") == "text_delta":
                     collected.append(ev.get("text", ""))
                 elif ev.get("type") == "tool_start" and collected and \
@@ -19409,7 +19444,7 @@ async def _run_chat(cid: str, data: dict):
                 await state["broadcast"]({"type": "apps"})
             header = ""
             result = {"content": "".join(collected),
-                      "steps": [{"type": "executor", "name": model,
+                      "steps": [{"type": "executor", "name": model, "read_outside": read_outside[0],
                                  "cost_usd": run.cost_usd, "turns": run.turns,
                                  "denials": run.denials, "envelope": env.describe()}],
                       # who actually answered, so a reloaded conversation still

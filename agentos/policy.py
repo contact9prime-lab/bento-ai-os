@@ -387,6 +387,12 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "mcp.install", f"mcp:{who or '*'}"
     if name in _FS_READ:
         return "fs.read", f"fs:{args.get('path', '') or '*'}"
+    # A local file copied to a place it can be fetched from again is a read of that file:
+    # fs grants and denies, folder envelopes and hands all decide it, as for read_file.
+    if name in ("set_wallpaper", "save_asset"):
+        src = str(args.get("source") or "").strip()
+        if src and not src.startswith(("http://", "https://")):
+            return "fs.read", f"fs:{src}"
     if name == "write_file":
         return "fs.write", f"fs:{args.get('path', '') or '*'}"
     if name == "fetch_url":
@@ -658,7 +664,9 @@ TAINT_MODES = ("off", "ask", "strict")
 # turn. Reading stays free; only the write that outlives the turn is shown.
 TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation",
                # a routine replays steps as if you had started it: never on a page's say-so
-               "run_automation"}
+               "run_automation",
+               # history a person trusts later, and a page's words are not theirs to commit
+               "git_init", "git_commit", "git_branch"}
 
 # Paranoid is "ask before anything that isn't just reading". Before 0.6.18 it behaved
 # exactly like balanced, under a label that said "asks before every action".

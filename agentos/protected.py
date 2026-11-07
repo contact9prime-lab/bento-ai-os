@@ -17,6 +17,8 @@ the source. `SECRET_FILES` are refused for reads as well, because reading those 
 from __future__ import annotations
 
 import os
+import posixpath
+import re
 from pathlib import Path
 
 # The modules that decide who may do what. The whole code tree is refused for an agent's writes;
@@ -25,13 +27,20 @@ from pathlib import Path
 SECURITY_MODULES = frozenset({
     "agentos/agent.py",
     "agentos/approvalcard.py",
+    "agentos/__init__.py",
+    "agentos/__main__.py",
+    "agentos/backup.py",
+    "agentos/config.py",
     "agentos/edgecode.py",
     "agentos/executors.py",
     "agentos/fabric.py",
+    "agentos/flows.py",
     "agentos/hands.py",
     "agentos/integrity.py",
     "agentos/mcpbridge.py",
     "agentos/mcp_client.py",
+    "agentos/memory.py",
+    "agentos/netguard.py",
     "agentos/migrate.py",
     "agentos/peercheck.py",
     "agentos/policy.py",
@@ -196,6 +205,45 @@ def write_refused(path) -> str:
     return ""
 
 
+# Never written by `develop_agentos`, whatever the file: each runs by itself, or decides what runs.
+_DEVELOP_NAMES = frozenset({
+    "conftest.py", "pytest.ini", "tox.ini", "setup.py", "setup.cfg", "sitecustomize.py", "uv.lock",
+    "MANIFEST.in", "Makefile", ".gitattributes", ".gitmodules",
+})
+_DEVELOP_SUFFIXES = (".so", ".pyd", ".pyc", ".pth", ".sh", ".service")
+_DEVELOP_TOP = frozenset({".git", ".github", "packaging", "scripts", ".venv"})
+_MODULE_NAMES = tuple(sorted(m[len("agentos/"):-3] for m in SECURITY_MODULES
+                             if m.startswith("agentos/") and m.endswith(".py")))
+_TEST_NAMES_MODULE = re.compile(r"\bagentos(?:\.|\s+import\s+[^\n]*\b)(?:" + "|".join(_MODULE_NAMES) + r")\b")
+
+
+def develop_refused(rel_path: str, existing_text: str = "") -> str:
+    """Why `develop_agentos` may not write this path, or ''. A person's yes does not change it:
+    they change the gate themselves, from their own terminal. `existing_text` is what a test
+    file holds now, because a test that pins the gate is part of the gate."""
+    rel = posixpath.normpath(str(rel_path).replace(os.sep, "/"))
+    rel = "" if rel == "." else rel
+    parts = rel.split("/")
+    out = "A person changes this from their own terminal."
+    if not rel or ".." in parts or any(part in AGENT_CONFIG_NAMES or part == "__pycache__" for part in parts):
+        return f"{rel or 'that path'} cannot be written from here. {out}"
+    if is_security_module(rel):
+        return f"{rel} is part of this OS's security. {out}"
+    # A package beats a module of the same name, so agentos/policy/__init__.py would replace policy.py
+    if parts[0] == "agentos" and len(parts) > 2 and parts[1] in _MODULE_NAMES:
+        return f"{rel} would replace agentos/{parts[1]}.py, which is part of this OS's security. {out}"
+    if parts[0] == "agentos" and len(parts) == 2 and parts[1].split(".", 1)[0] in _MODULE_NAMES:
+        return f"{rel} would replace agentos/{parts[1].split('.', 1)[0]}.py. {out}"
+    # The page holds the session and answers approval cards: a script in it is a person's click.
+    if parts[:2] == ["agentos", "ui"]:
+        return f"{rel} runs in the signed-in page, which answers approval cards. {out}"
+    if parts[0] in _DEVELOP_TOP or parts[-1] in _DEVELOP_NAMES or parts[-1].endswith(_DEVELOP_SUFFIXES):
+        return f"{rel} runs by itself or decides what runs. {out}"
+    if parts[0] == "tests" and _TEST_NAMES_MODULE.search(existing_text or ""):
+        return f"{rel} tests this OS's security, so it stays as it is. {out}"
+    return ""
+
+
 def is_security_module(rel_path: str) -> bool:
     """`develop_agentos` refuses these even with a person's yes."""
-    return str(rel_path).replace(os.sep, "/").lstrip("./") in SECURITY_MODULES
+    return posixpath.normpath(str(rel_path).replace(os.sep, "/")) in SECURITY_MODULES

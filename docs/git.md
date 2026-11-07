@@ -8,8 +8,8 @@ ever appearing in a command line, a remote URL, or tool output.
 
 | Tool | Does | Risk |
 |---|---|---|
-| `git_status` / `git_log` / `git_diff` | inspect a repo | safe — runs free |
-| `git_init` / `git_commit` / `git_branch` | local, reversible history | safe **inside the workspace**; asks elsewhere |
+| `git_status` / `git_log` / `git_diff` | inspect a repo | safe — runs free. Hooks, fsmonitor, filters and diff drivers a repo names are off, and it runs in the jail |
+| `git_init` / `git_commit` / `git_branch` | local, reversible history | safe **inside the workspace**; asks elsewhere and after untrusted content. Hooks don't run, commits aren't signed, and this OS's own checkout is refused |
 | `git_remote_set` / `git_pull` / `git_clone` | remotes & external code | asks |
 | `git_push` | publish commits (optionally **creates the GitHub repo** first) | asks |
 | `export_app_to_git` | app → real project folder + git repo (+ optional push) | safe; asks when pushing |

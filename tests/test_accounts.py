@@ -247,6 +247,13 @@ def dav_port():
     srv.shutdown()
 
 
+@pytest.fixture(autouse=True)
+def _the_stand_in_calendar_is_allowed(request, monkeypatch):
+    """A calendar on loopback is a local address, so a person lists it (netguard.py)."""
+    if "dav_port" in request.fixturenames:
+        monkeypatch.setenv("AGENTOS_FETCH_ALLOW", f"127.0.0.1:{request.getfixturevalue('dav_port')}")
+
+
 def _cfg(tmp_path, imap_port=None, dav_port=None, kind="ics"):
     c = {"agent_name": "Aria", "autonomy": "balanced", "max_steps": 6, "default_model": "ollama/x",
          "workspace": str(tmp_path), "providers": {}, "memory": {"inject_facts": 0, "inject_user": 0}}

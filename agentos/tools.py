@@ -17,11 +17,15 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
 
 import httpx
+from . import netguard
+from . import protected
+from . import secevents
 from . import users as usersmod
 
 MAX_OUTPUT = 12_000  # chars of tool output fed back to the model
@@ -534,7 +538,13 @@ ALWAYS_ASK = {"power_action", "enable_flow", "enable_openclaw_plugin",
               "install_skill",
               # a department or an agent asking for an ability it lacks (running code):
               # the person's yes, every time, whoever asks (agentos/tools.py ABILITIES)
-              "request_capability"}
+              "request_capability",
+              # this OS's own code and a restart that loads it, and who the agent is from now
+              # on. No autonomy level answers these, and neither does a remembered yes
+              "develop_agentos", "restart_agentos", "update_soul",
+              # which folders the jail opens, and which agent answers every turn: one of those
+              # leaves this gate altogether. Admin only, and asked of that admin every time
+              "share_folder", "set_engine"}
 
 
 # The machine's radios: a joined network sees its traffic, and a paired keyboard types on the
@@ -546,7 +556,7 @@ RADIO_TOOLS = {"wifi", "bluetooth"}
 # Asked of a PERSON every time a specialist calls them, at every autonomy level, unless
 # somebody wrote an explicit grant (the card's "remember" is one). A department that can
 # run code was the owner's choice on exactly those terms (company.set_code).
-ASK_FROM_SPECIALISTS = {"run_python"}
+ASK_FROM_SPECIALISTS = {"run_python", "run_tests"}
 
 
 # Tools that change nothing outside this OS's own records, named one by one. risk_of
@@ -557,7 +567,7 @@ ASK_FROM_SPECIALISTS = {"run_python"}
 # given its own line in risk_of.
 # Tools that act for ONE app when the caller is that app (its appTool) or is building
 # it (App Studio): the agent loop and /api/tool inject `_app`, never the model or the page.
-APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data")
+APP_BOUND_TOOLS = ("schedule_task", "create_trigger", "update_app_data", "fetch_url")
 
 SAFE_TOOLS = {
     # reading
@@ -644,6 +654,89 @@ def automation_taint(ticket: str) -> list:
     if not got or got["until"] < time.time() or got["uid"] != (usersmod.current() or ""):
         return [{"tool": "automation", "source": "a saved automation an agent started"}]
     return list(got["taint"]) or [{"tool": "automation", "source": f"the automation {got['name']}"}]
+
+
+# What `configure_agentos` may touch: an allow-list, because the next key added to config is one
+# nobody thought about here. "A model-reachable path to a security setting is a defect, whatever
+# autonomy level it needs": the sandbox, Rules, autonomy and channels were all on this tool.
+CONFIG_SAFE_KEYS = frozenset({"agent_name", "default_model", "max_steps", "memory"})
+# Named only so the refusal can say where to go instead of reading as a typo.
+CONFIG_PERSON_KEYS = frozenset({
+    "autonomy", "policies", "sandbox", "workspace", "mcp_servers", "telegram", "whatsapp",
+    "security", "remote", "users", "providers", "executors", "engine", "team", "github", "port",
+    "host", "hands", "face", "provision", "updates", "signin", "mail", "calendar", "oauth_clients",
+})
+MAX_STEPS_CEILING = 200
+_MEMORY_VALUES = {"auto_extract": bool, "inject_user": int, "inject_session": int, "inject_facts": int,
+                  "rollup_after_hours": (int, float)}
+
+
+def _memory_value_ok(key: str, value) -> bool:
+    want = _MEMORY_VALUES.get(key)
+    if want is None or (want is not bool and isinstance(value, bool)):
+        return False
+    return isinstance(value, want) and (want is bool or 0 <= value <= 1000)
+
+
+# Named settings that make git start a program, or that change where it reads from. `-c` is read
+# after the repo's own file, so these win over whatever the folder says.
+_GIT_OFF = [c for kv in (
+    "core.hooksPath=/dev/null", "core.fsmonitor=false", "core.attributesFile=/dev/null",
+    "core.pager=cat", "core.editor=true", "sequence.editor=true", "core.askPass=",
+    "core.alternateRefsCommand=true", "credential.helper=", "commit.gpgSign=false", "tag.gpgSign=false",
+    "gpg.program=false", "protocol.ext.allow=never", "gc.auto=0", "maintenance.auto=false",
+    "diff.ignoreSubmodules=all", "status.submoduleSummary=false",
+    "fetch.recurseSubmodules=false", "push.recurseSubmodules=no", "submodule.recurse=false",
+    "safe.bareRepository=explicit", "core.sshCommand=ssh",
+) for c in ("-c", kv)]
+# The environment's own spelling of the same, which git reads first or instead. An empty
+# GIT_PROXY_COMMAND also stops core.gitProxy, which -c cannot, because the first match wins there.
+_GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": "", "GIT_PAGER": "cat",
+            "GIT_EDITOR": "true", "GIT_SEQUENCE_EDITOR": "true", "GIT_PROXY_COMMAND": "",
+            "GIT_SSH_COMMAND": "ssh -oBatchMode=yes", "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_ALLOW_PROTOCOL": "https:http:ssh:git:file"}
+_GIT_NAMED = (
+    (re.compile(r"filter\.(.+)\.(clean|smudge|process)", re.S), ""),
+    (re.compile(r"diff\.(.+)\.(command|textconv)", re.S), ""),
+    (re.compile(r"merge\.(.+)\.driver", re.S), "true"),
+    (re.compile(r"remote\.(.+)\.uploadpack", re.S), "git-upload-pack"),
+    (re.compile(r"remote\.(.+)\.receivepack", re.S), "git-receive-pack"),
+    (re.compile(r"remote\.(.+)\.vcs", re.S), ""),
+)
+# What a tool's child must not inherit: this server's keys, and git's own overrides
+_ENV_SECRET = re.compile(r"(?i)^(agentos_|bento_|git_)|token|secret|passw|passphrase|api_?key|_key$|credential|cookie")
+
+
+def _tool_env() -> dict:
+    return {k: v for k, v in os.environ.items() if not _ENV_SECRET.search(k)}
+
+
+def _python_binds() -> list[str]:
+    """The folders this interpreter lives in, when the jail would blank them (a venv under
+    /home). Read-only, and nothing but Python is in them."""
+    return [p for p in {os.path.realpath(sys.prefix), os.path.realpath(sys.base_prefix)}
+            if p.startswith("/home/") and os.path.isdir(p)]
+
+
+def _dashed(value) -> bool:
+    return str(value or "").startswith("-")
+
+
+def _git_overrides(names: list[str]) -> list[str] | None:
+    """`-c` overrides for the settings this repo's config names itself, or None when it points
+    git at another folder altogether."""
+    out: list[str] = []
+    for name in names:
+        name = name.strip("\n")
+        if name == "core.worktree":
+            return None
+        for pat, value in _GIT_NAMED:
+            if pat.fullmatch(name):
+                out += ["-c", f"{name}={value}"]
+                if name.startswith("filter."):
+                    out += ["-c", f"{name.rsplit('.', 1)[0]}.required=false"]
+                break
+    return out
 
 
 class _TextExtractor(html.parser.HTMLParser):
@@ -1241,6 +1334,63 @@ def jail_argv(root: str, command: str, chdir: str | None = None,
     return None
 
 
+WALLPAPER_MAX = 40 * 1024 * 1024
+
+
+def wallpaper_home() -> Path:
+    """Where this person's wallpaper lives: their own home, the machine's with no accounts.
+    It was one machine-wide file any signed-in account could read back."""
+    return Path(usersmod.home_for(usersmod.current() or ""))
+
+
+def save_wallpaper(data: bytes) -> None:
+    """This person's wallpaper. An admin's is also the machine's, which is what the session's
+    background and lock screen read: nobody else's picture reaches those."""
+    home = wallpaper_home()
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "wallpaper.png").write_bytes(data)
+    if usersmod.enabled() and usersmod.is_admin(usersmod.current() or ""):
+        from . import config as cfgmod
+        (Path(cfgmod.AGENTOS_HOME) / "wallpaper.png").write_bytes(data)
+
+
+def clear_wallpaper() -> None:
+    (wallpaper_home() / "wallpaper.png").unlink(missing_ok=True)
+    if usersmod.enabled() and usersmod.is_admin(usersmod.current() or ""):
+        from . import config as cfgmod
+        (Path(cfgmod.AGENTOS_HOME) / "wallpaper.png").unlink(missing_ok=True)
+
+
+def wallpaper_file() -> Path | None:
+    """What this person sees: their own, else the machine's, and only if it is an image. A file
+    planted here before the bytes were checked is never served."""
+    from . import config as cfgmod
+    for p in (wallpaper_home() / "wallpaper.png", Path(cfgmod.AGENTOS_HOME) / "wallpaper.png"):
+        try:
+            with open(p, "rb") as fh:
+                if image_kind(fh.read(16)):
+                    return p
+        except OSError:
+            continue
+    return None
+
+
+def image_kind(data: bytes) -> str:
+    """What the bytes say they are, or ''. Never SVG: a page opened from this origin runs it."""
+    head = bytes(data[:16])
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+    if head.startswith((b"GIF87a", b"GIF89a")):
+        return "gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "webp"
+    if head.startswith(b"BM"):
+        return "bmp"
+    return ""
+
+
 def _truncate(text: str, limit: int | None = None) -> str:
     if limit is None:
         limit = output_limit.get()
@@ -1707,18 +1857,29 @@ class Toolbox(usersmod.Scoped):
                 + (". You can use it from your next step." if target == _from else
                    f". Hand the step to {defn['name']} again: its next run has it."))
 
-    async def fetch_url(self, url: str) -> str:
+    async def fetch_url(self, url: str, _app: str = "") -> str:
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True,
-                                     headers={"User-Agent": "AgentOS/0.1"}) as client:
-            r = await client.get(url)
+        # `_app` is the caller's, never the model's (APP_BOUND_TOOLS). An app is often a
+        # stranger's, and its fetches are free, so a person's allow-list is not for it.
+        try:
+            async with netguard.client(strict=bool(_app), timeout=30.0, follow_redirects=True,
+                                       headers={"User-Agent": "AgentOS/0.1"}) as client:
+                r = await client.get(url)
+        except netguard.Refused as e:
+            return self._net_refused(e, _app or "fetch_url")
         ctype = r.headers.get("content-type", "")
         if "html" in ctype:
             ex = _TextExtractor()
             ex.feed(r.text)
             return _truncate(f"[{r.status_code}] {url}\n" + "\n".join(ex.parts))
         return _truncate(f"[{r.status_code}] {url}\n{r.text}")
+
+    def _net_refused(self, e: netguard.Refused, who: str) -> str:
+        """A model or an app named an address nobody here offered. A page can ask for it, so
+        it goes on the security record, and the sentence is ours and not the page's."""
+        secevents.flag("net.refused", e.host, source=str(who)[:40], uid=usersmod.current() or "")
+        return f"[denied] {e}"
 
     async def llm_generate(self, prompt: str, system: str = "", model: str = "") -> str:
         from . import providers
@@ -2155,10 +2316,12 @@ class Toolbox(usersmod.Scoped):
         data, src = await self._generate_image(prompt, 1280, 720)
         if data is None:
             return f"[error] image generation failed — {src}"
-        gallery = cfgmod.AGENTOS_HOME / "wallpapers"
+        if not image_kind(data):
+            return "[error] image generation answered with something that is not an image"
+        gallery = wallpaper_home() / "wallpapers"
         gallery.mkdir(parents=True, exist_ok=True)
         (gallery / f"{int(_t.time())}.png").write_bytes(data)       # keep in the gallery
-        (cfgmod.AGENTOS_HOME / "wallpaper.png").write_bytes(data)   # apply as current
+        save_wallpaper(data)                                        # apply as current
         self.store.log("system", f"wallpaper generated via {src}: {prompt[:120]}")
         if self.broadcast:
             await self.broadcast({"type": "wallpaper"})
@@ -2170,29 +2333,45 @@ class Toolbox(usersmod.Scoped):
                     "came from the free service — try again later for the pinned one." + note)
         return f"wallpaper generated with {src} ({len(data) // 1024} KB), saved to the gallery, and applied.{note}"
 
+    def _local_source(self, source: str) -> tuple[Path | None, str]:
+        """A file a tool is about to copy somewhere it can be fetched again: (the real path, a
+        refusal). The same reach as read_file, plus the security files, which no read gets."""
+        p = Path(os.path.realpath(self._abs(source)))
+        if (deny := self._sandbox_deny(p)):
+            return None, deny
+        if (why := protected.secret(p)):
+            return None, f"[denied] {why}"
+        if not p.is_file():
+            return None, f"[error] file not found: {p}"
+        return p, ""
+
     async def set_wallpaper(self, source: str = "") -> str:
-        """Set the desktop wallpaper from a local file or URL; empty source resets to the default."""
-        from . import config as cfgmod
-        dest = cfgmod.AGENTOS_HOME / "wallpaper.png"
+        """Set the desktop wallpaper from a local image or URL; empty source resets to the default."""
         if not source.strip():
-            dest.unlink(missing_ok=True)
+            clear_wallpaper()
             if self.broadcast:
                 await self.broadcast({"type": "wallpaper"})
             return "wallpaper reset to the default"
+        # Served back to whoever is signed in, so only an image may arrive here. Checked by its
+        # bytes: this used to copy any readable file, session.key included, to a served path.
         if source.startswith(("http://", "https://")):
-            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-                r = await client.get(source)
-            if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
-                return f"[error] not an image (HTTP {r.status_code})"
-            dest.write_bytes(r.content)
+            try:
+                status, ctype, data = await netguard.read_capped(source, WALLPAPER_MAX)
+            except netguard.Refused as e:
+                return self._net_refused(e, "set_wallpaper")
+            if status != 200 or not ctype.startswith("image"):
+                return f"[error] not an image (HTTP {status})"
         else:
-            p = Path(os.path.expanduser(source))
-            # the wallpaper is served to whoever asks: this was a way to read any file on the disk
-            if (deny := self._sandbox_deny(p)):
-                return deny
-            if not p.is_file():
-                return f"[error] file not found: {p}"
-            dest.write_bytes(p.read_bytes())
+            from . import safeopen
+            p, why = self._local_source(source)
+            if why:
+                return why
+            if p.stat().st_size > WALLPAPER_MAX:
+                return f"[error] that file is larger than {WALLPAPER_MAX // (1024 * 1024)} MB"
+            data = safeopen.read_bytes(str(p))
+        if not image_kind(data):
+            return "[error] that file is not an image (PNG, JPEG, GIF or WebP)"
+        save_wallpaper(data)
         if self.broadcast:
             await self.broadcast({"type": "wallpaper"})
         return f"wallpaper set from {source}"
@@ -2274,7 +2453,7 @@ class Toolbox(usersmod.Scoped):
             return "[error] source is required (a local path or an http(s) URL)"
         try:
             if src.startswith(("http://", "https://")):
-                async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                async with netguard.client(timeout=120, follow_redirects=True) as client:
                     r = await client.get(src)
                     r.raise_for_status()
                     data, mime = r.content, r.headers.get("content-type", "").split(";")[0]
@@ -2284,17 +2463,16 @@ class Toolbox(usersmod.Scoped):
                     origin_url=src, space_id=space_id, conversation_id=conversation_id)
             else:
                 from . import safeopen
-                p = Path(os.path.expanduser(src))
-                real = os.path.realpath(str(p))
-                deny = self._sandbox_deny(real)
-                if deny:
-                    return deny
-                if not os.path.isfile(real):
-                    return f"[error] file not found: {p}"
+                p, why = self._local_source(src)
+                if why:
+                    return why
+                real = str(p)
                 row = await assetmod.put_bytes(
                     self.store, safeopen.read_bytes(real), name=p.name, title=title or p.name,
                     source="tool:save_asset", space_id=space_id,
                     conversation_id=conversation_id)
+        except netguard.Refused as e:
+            return self._net_refused(e, "save_asset")
         except Exception as e:
             return f"[error] could not save asset: {type(e).__name__}: {e}"
         if not row:
@@ -2580,7 +2758,8 @@ class Toolbox(usersmod.Scoped):
         return f"This machine now answers with {msg}."
 
     async def configure_agentos(self, changes: str) -> str:
-        """Apply a JSON config patch to AgentOS itself (autonomy, model, name, policies, MCP, telegram)."""
+        """Change this agent's name, its default model, its step limit or how it remembers.
+        Security and connections are the person's, in Settings (see CONFIG_SAFE_KEYS)."""
         from . import config as cfgmod
         try:
             patch = json.loads(changes) if isinstance(changes, str) else dict(changes)
@@ -2588,33 +2767,42 @@ class Toolbox(usersmod.Scoped):
             return f"[error] changes must be a valid JSON object: {e}"
         if not isinstance(patch, dict):
             return "[error] changes must be a JSON object"
-        allowed = {"agent_name", "default_model", "autonomy", "max_steps", "workspace",
-                   "policies", "telegram", "mcp_servers", "sandbox", "memory"}
-        applied, skipped = [], []
+        applied, skipped, refused = [], [], []
         for k, v in patch.items():
-            if k not in allowed:
+            if k in CONFIG_PERSON_KEYS:
+                refused.append(k)
+            elif k not in CONFIG_SAFE_KEYS:
                 skipped.append(k)
-                continue
-            if k in ("telegram", "mcp_servers", "memory") and isinstance(v, dict):
-                target = self.cfg.setdefault(k, {})
-                for kk, vv in v.items():
-                    if vv is None:
-                        target.pop(kk, None)   # null deletes an entry (e.g. remove an MCP server)
-                    else:
-                        target[kk] = vv
+            elif k == "memory":
+                if not isinstance(v, dict):
+                    skipped.append(k)
+                    continue
+                vals = {kk: vv for kk, vv in v.items() if _memory_value_ok(kk, vv)}
+                skipped += [f"memory.{kk}" for kk in v if kk not in vals]
+                if vals:
+                    self.cfg.setdefault("memory", {}).update(vals)
+                    applied.append(k)
+            elif k == "max_steps":
+                if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= MAX_STEPS_CEILING:
+                    skipped.append(k)
+                    continue
+                self.cfg[k] = v
+                applied.append(k)
+            elif not isinstance(v, str) or not v.strip() or len(v) > 200:
+                skipped.append(k)
             else:
                 self.cfg[k] = v
-            applied.append(k)
+                applied.append(k)
+        refusal = (f"[denied] {', '.join(sorted(refused))} can't be changed by an agent. "
+                   "Ask the person to change it in Settings." if refused else "")
         if not applied:
-            return f"[error] nothing applied; allowed keys: {sorted(allowed)}"
+            return refusal or f"[error] nothing applied; allowed keys: {sorted(CONFIG_SAFE_KEYS)}"
         cfgmod.save_config(self.cfg)
         self.store.log("system", f"config changed by agent: {', '.join(applied)}")
-        if "mcp_servers" in applied and self.mcp:
-            await self.mcp.reload()
         if self.broadcast:
             await self.broadcast({"type": "config"})
-        note = f" (ignored unknown keys: {', '.join(skipped)})" if skipped else ""
-        return "updated: " + ", ".join(applied) + note
+        note = f" (ignored: {', '.join(skipped)})" if skipped else ""
+        return "updated: " + ", ".join(applied) + note + (f"\n{refusal}" if refusal else "")
 
     async def create_app(self, name: str, icon: str = "", description: str = "",
                          html: str = "", permissions: str = "", _conv: str = "") -> str:
@@ -2718,10 +2906,21 @@ class Toolbox(usersmod.Scoped):
 
     async def develop_agentos(self, path: str, content: str, restart: bool = False) -> str:
         """Write a file into AgentOS's OWN source tree — modify or extend the operating system itself
-        (e.g. add a new integration like WhatsApp). Set restart=true to reload the service after."""
+        (e.g. add a new integration like WhatsApp). Set restart=true to reload the service after.
+        Admin only, a person's yes every time, and never the gate's own code (protected.py)."""
+        if (deny := self._admin_only("change this OS's code")):
+            return deny
         p = self._repo_path(path)
         if p is None:
             return "[error] path escapes the AgentOS source tree"
+        rel = p.relative_to(self._repo_root()).as_posix()
+        # `p` is resolved, so a link inside the tree cannot name one file and write another
+        existing = ""
+        if rel.startswith("tests/") and p.is_file():
+            existing = p.read_text(errors="replace")
+        if (why := protected.develop_refused(rel, existing)):
+            secevents.flag("develop.refused", rel, source="develop_agentos", uid=usersmod.current() or "")
+            return f"[denied] {why}"
         p.parent.mkdir(parents=True, exist_ok=True)
         # always snapshot before touching our own source — corruption insurance
         snap = self._make_snapshot(f"auto before editing {path}")
@@ -2752,23 +2951,78 @@ class Toolbox(usersmod.Scoped):
             msg += ". Call again with restart=true (or use restart_agentos) to load the change."
         return msg
 
+    def _jailed(self, tail: list[str], workdir: str,
+                ro: list[str] | None = None) -> tuple[list[str] | None, bool, str]:
+        """(argv, is it jailed, refusal) for a program a tool starts for this account, the same
+        walls as run_command: with accounts the account's home with the others blanked, and no
+        jail is a refusal; with the sandbox on its root; off, the person's choice stands."""
+        mech = sandbox_mechanism()
+        hide = None
+        enabled, sb_root = sandbox_conf(self.cfg)
+        if usersmod.enabled():
+            if not mech:
+                secevents.flag("jail.missing", "git or tests", source="tools", uid=usersmod.current() or "")
+                return None, False, ("[denied] this machine has accounts, so this has to run in a "
+                                     "per-account jail, and none is available here. Install "
+                                     "bubblewrap (Linux) so each account's programs stay in its home.")
+            top = os.path.realpath(str(usersmod.home_for(usersmod.current() or "")))
+            hide = [os.path.realpath(str(usersmod.users_root()))]
+        elif enabled:
+            top = sb_root
+        else:
+            return list(tail), False, ""
+        os.makedirs(top, exist_ok=True)
+        ro_extra, extra = folder_binds(self.cfg)
+        ro_extra = [*ro_extra, *(ro or [])]
+        if mech == "bwrap":
+            return bwrap_argv(top, list(tail), chdir=workdir, hide=hide, extra=extra, ro_extra=ro_extra), True, ""
+        return sandbox_exec_argv(top, shlex.join(tail), chdir=workdir, hide=hide, extra=extra,
+                                 ro_extra=ro_extra), True, ""
+
     async def run_tests(self, path: str = "") -> str:
-        """Run the AgentOS test suite (or a project's tests). The Test pillar's
-        workhorse: self-modification calls this before restarting."""
+        """Run the AgentOS test suite (or a project's tests). The Test pillar's workhorse:
+        self-modification calls this before restarting. A test suite is whatever code the
+        folder holds, so it runs in the jail, with no keys in its environment."""
         import agentos
         src_root = Path(agentos.__file__).resolve().parent.parent
-        workdir = os.path.realpath(os.path.expanduser(path)) if path else str(src_root)
-        if not os.path.isdir(workdir):
-            return f"[error] not a directory: {workdir}"
-        py = sys.executable
-        proc = await asyncio.create_subprocess_exec(
-            py, "-m", "pytest", "-q", "--no-header", cwd=workdir,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        scratch = ""
+        env = _tool_env()
+        argv = [sys.executable, "-m", "pytest", "-q", "--no-header"]
+        jailed = False
         try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return "[error] tests timed out after 600s"
+            if path:
+                workdir = os.path.realpath(self._abs(path))
+                if not os.path.isdir(workdir):
+                    return f"[error] not a directory: {workdir}"
+                if (deny := self._sandbox_deny(workdir)):      # a read-only share stays read-only in the jail
+                    return deny
+                argv, jailed, refusal = self._jailed(argv, workdir, ro=_python_binds())
+                if refusal:
+                    return refusal
+            else:
+                # This OS's own suite, an admin's. Not in the jail: it tests the jail, and a jail
+                # can't start inside one, so a green suite would be impossible. It runs what this
+                # checkout holds, which no agent can write, and which a restart would run anyway.
+                # Its home is a throwaway, because a bare pytest writes the real database.
+                if (deny := self._admin_only("run this OS's test suite")):
+                    return deny
+                workdir = str(src_root)
+                from . import config as cfgmod
+                os.makedirs(cfgmod.AGENTOS_HOME, exist_ok=True)
+                scratch = tempfile.mkdtemp(prefix=".tests-", dir=str(cfgmod.AGENTOS_HOME))
+                env.update(HOME=scratch, AGENTOS_HOME=os.path.join(scratch, "agentos"),
+                           PYTHONDONTWRITEBYTECODE="1", PYTEST_ADDOPTS="-p no:cacheprovider")
+            proc = await asyncio.create_subprocess_exec(
+                *argv, cwd=None if jailed else workdir, env=env,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+            try:
+                out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
+            except asyncio.TimeoutError:
+                proc.kill()
+                return "[error] tests timed out after 600s"
+        finally:
+            if scratch:
+                shutil.rmtree(scratch, ignore_errors=True)
         text = out.decode(errors="replace")
         tail = "\n".join(text.strip().splitlines()[-25:])
         summary = next((ln for ln in reversed(text.strip().splitlines())
@@ -2806,6 +3060,8 @@ class Toolbox(usersmod.Scoped):
     async def restart_agentos(self) -> str:
         """Restart the AgentOS service to load code changes — gated on the test
         suite: a self-modification that breaks the tests must not go live."""
+        if (deny := self._admin_only("restart this OS")):
+            return deny
         tests = await self.run_tests()
         if tests.startswith("[exit code"):
             return ("[error] refusing to restart: the test suite fails against the current "
@@ -3080,28 +3336,41 @@ class Toolbox(usersmod.Scoped):
     async def save_report(self, title: str, content: str, to_telegram: bool = False) -> str:
         """Save a report as an HTML file in the workspace 'reports' folder (visible in the File Manager,
         opens in the Browser). `content` may be HTML or plain text. Set to_telegram to also send a summary."""
+        import html as _html
         import re as _re
         import time as _t
         root = os.path.expanduser(self.cfg["workspace"])
         reports = Path(root) / "reports"
-        reports.mkdir(parents=True, exist_ok=True)
+        # A planted `reports` link wrote into another account's folder: this tool is safe, so
+        # nobody was asked. A link anywhere on the way is refused, then the real place is judged.
+        if reports.is_symlink():
+            return "[denied] the reports folder is a link, so nothing was saved there."
         slug = _re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:50] or "report"
         stamp = _t.strftime("%Y-%m-%d")
         fname = f"{stamp}-{slug}.html"
-        body = content if "<" in content and ">" in content else f"<pre>{content}</pre>"
-        html = (f"<!doctype html><html><head><meta charset='utf-8'><title>{title}</title>"
+        target = reports / fname
+        if target.is_symlink():
+            return "[denied] that report is a link, so nothing was saved there."
+        real = os.path.realpath(target)
+        if (deny := self._sandbox_deny(real, write=True)):
+            return deny
+        if (why := protected.write_refused(real)):
+            return f"[denied] {why}"
+        reports.mkdir(parents=True, exist_ok=True)
+        # The body may be HTML, which is the point of a report, and the page is served in a
+        # sandbox. The title is a line of text, so it stays text.
+        body = content if "<" in content and ">" in content else f"<pre>{_html.escape(content)}</pre>"
+        safe_title = _html.escape(title)
+        html = (f"<!doctype html><html><head><meta charset='utf-8'><title>{safe_title}</title>"
                 "<style>body{background:#0e1116;color:#e6ebf2;font-family:-apple-system,Segoe UI,Roboto,sans-serif;"
                 "line-height:1.6;max-width:820px;margin:0 auto;padding:34px}h1,h2,h3{color:#5eead4}"
                 "a{color:#22d3ee}code,pre{background:#171b22;border:1px solid #232a35;border-radius:6px;padding:2px 6px}"
                 "pre{padding:12px;overflow:auto;white-space:pre-wrap}table{border-collapse:collapse;width:100%}"
                 "td,th{border:1px solid #232a35;padding:6px 9px;text-align:left}"
                 f".meta{{color:#5c6577;font-size:12px;margin-bottom:18px}}</style></head><body>"
-                f"<h1>{title}</h1><div class='meta'>Generated {_t.strftime('%Y-%m-%d %H:%M')}</div>{body}</body></html>")
+                f"<h1>{safe_title}</h1><div class='meta'>Generated {_t.strftime('%Y-%m-%d %H:%M')}</div>{body}</body></html>")
         # `reports` is in the workspace, where a jailed shell can make it a link to anywhere
         from . import safeopen
-        real = os.path.realpath(str(reports / fname))
-        if (deny := self._sandbox_deny(real, write=True)):
-            return deny
         try:
             safeopen.write_bytes(real, html.encode("utf-8"))
         except OSError as e:
@@ -3886,9 +4155,10 @@ class Toolbox(usersmod.Scoped):
             return "risky", (f"Grants '{args.get('name', '?')}' the permissions its definition "
                              f"declares and arms its triggers.")
         if name in ("git_status", "git_log", "git_diff"):
-            return "safe", ""
+            return "safe", ""     # reading, with everything a repo can make git run switched off (_git)
         if name in ("git_init", "git_commit", "git_branch"):
-            # local, reversible history inside the workspace runs free; outside it, ask
+            # local, reversible history inside the workspace runs free; outside it, ask.
+            # After untrusted content it is held for a person (policy.TAINT_WATCH)
             ws = os.path.realpath(os.path.expanduser(self.cfg["workspace"]))
             p = os.path.realpath(os.path.expanduser(args.get("path") or ws))
             if p == ws or p.startswith(ws + os.sep):
@@ -3923,15 +4193,12 @@ class Toolbox(usersmod.Scoped):
         if name == "trainforge_service":
             return "safe", ""
         if name == "run_tests":
-            # running a test suite executes that project's code
-            p = args.get("path") or ""
-            if not p:
-                return "safe", ""  # AgentOS's own suite
-            ws = os.path.realpath(os.path.expanduser(self.cfg["workspace"]))
-            rp = os.path.realpath(os.path.expanduser(p))
-            if rp == ws or rp.startswith(ws + os.sep):
-                return "safe", ""
-            return "risky", f"Runs the test suite (arbitrary code) in {rp}."
+            # A conftest.py is a program, in the workspace as much as anywhere. Risky is what
+            # also holds it after untrusted content, and a specialist's call goes to a person
+            # (ASK_FROM_SPECIALISTS) unless the mission it works for declared it.
+            p = str(args.get("path") or "")
+            where = os.path.realpath(self._abs(p)) if p else "this OS's own code"
+            return "risky", f"Runs a test suite, which is code, in {where}."
         if name == "request_capability":
             who = str(args.get("who") or args.get("_from") or "an agent")
             return "risky", (f"Gives {who} an ability it does not have: "
@@ -3943,7 +4210,7 @@ class Toolbox(usersmod.Scoped):
         if name == "update_soul":
             return "risky", "Rewrites the agent's soul (its persistent identity and behavior)."
         if name == "configure_agentos":
-            return "risky", "Changes AgentOS configuration (autonomy, policies, integrations)."
+            return "risky", "Changes this agent's name, default model, step limit or memory settings."
         if name == "update_agentos":
             return "risky", "Installs a new version of AgentOS itself."
         if name == "share_folder":
@@ -3957,7 +4224,7 @@ class Toolbox(usersmod.Scoped):
         if name == "create_app":
             return "risky", "Installs a UI app (HTML/JS) onto the AgentOS desktop."
         if name in ("develop_agentos", "restart_agentos"):
-            return "risky", "Modifies/restarts AgentOS's own source code (self-modification)."
+            return "risky", "Changes or restarts this OS's own code, which then runs with all its authority."
         if name == "pin_widget":
             return "safe", ""
         if name == "add_mcp_server":
@@ -4034,12 +4301,9 @@ class Toolbox(usersmod.Scoped):
     # ask for approval) and pushes authenticate via the GitHub token from Settings
     # without the token ever appearing in a command line or tool output.
 
-    async def _git(self, repo: str, *argv: str, env: dict | None = None,
-                   timeout: int = 120) -> tuple[int, str]:
-        e = {**os.environ, "GIT_TERMINAL_PROMPT": "0", **(env or {})}
+    async def _git_exec(self, argv: list[str], workdir: str, env: dict, timeout: int) -> tuple[int, str]:
         proc = await asyncio.create_subprocess_exec(
-            "git", "-C", repo, *argv,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=e)
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=env)
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
@@ -4047,12 +4311,44 @@ class Toolbox(usersmod.Scoped):
             return 1, f"[error] git timed out after {timeout}s"
         return proc.returncode or 0, out.decode(errors="replace")
 
-    def _git_repo(self, path: str) -> tuple[str | None, str]:
-        p = os.path.realpath(os.path.expanduser(path or self.cfg["workspace"]))
+    async def _git(self, repo: str, *argv: str, env: dict | None = None,
+                   timeout: int = 120) -> tuple[int, str]:
+        """Git, with everything a repository's own files can make it run switched off, inside
+        this account's jail. A repo's config is written by whoever wrote the folder, and git
+        reads it before anything else: `core.fsmonitor` runs on `git status`, hooks on a commit,
+        a filter driver on `git add`. Some of those have names the repo itself chooses, so its
+        config is read first and each is overridden by name (`-c` is read last)."""
+        e = {**_tool_env(), **_GIT_ENV, **(env or {})}
+        ro = [e["GIT_ASKPASS"]] if e.get("GIT_ASKPASS") else []
+        wrap, jailed, refusal = self._jailed(["git"], repo, ro=ro)
+        if refusal:
+            return 1, refusal
+        if jailed:
+            # inside the jail $HOME is a folder the agent writes, so a ~/.gitconfig there is the
+            # repo's words too, and some settings are honoured only from that file
+            e["GIT_CONFIG_GLOBAL"] = os.devnull
+        code, names = await self._git_exec([*wrap, "-C", repo, "config", "--list", "--name-only", "-z"],
+                                           repo, e, timeout)
+        extra = _git_overrides(names.split("\0")) if code == 0 else []
+        if extra is None:
+            return 1, "[error] this repository's config points git at another folder, so it was not touched"
+        return await self._git_exec([*wrap, *_GIT_OFF, *extra, "-C", repo, *argv], repo, e, timeout)
+
+    def _git_repo(self, path: str, write: bool = False) -> tuple[str | None, str]:
+        p = os.path.realpath(self._abs(path or self.cfg["workspace"]))
         if (deny := self._sandbox_deny(Path(p), write=True)):
             return None, deny
         if not os.path.isdir(p):
             return None, f"[error] not a directory: {p}"
+        if write:
+            # a pull, a branch switch or a commit in this OS's own checkout is a write to its
+            # code by another door, and `.git` itself is a folder of programs
+            why = protected.write_refused(os.path.join(p, "x"))
+            code = str(protected._code_root())
+            if not why and (p == code or p.startswith(code + os.sep)):
+                why = "This is this OS's own code. No agent can change it."
+            if why:
+                return None, f"[denied] {why}"
         return p, ""
 
     def _git_auth_env(self) -> dict:
@@ -4077,7 +4373,7 @@ class Toolbox(usersmod.Scoped):
         repo, err = self._git_repo(path)
         if err:
             return err
-        code, out = await self._git(repo, "status", "--short", "--branch")
+        code, out = await self._git(repo, "status", "--short", "--branch", "--ignore-submodules=all")
         if code != 0:
             return f"[error] {out.strip()[:800]}"
         _, remotes = await self._git(repo, "remote", "-v")
@@ -4095,7 +4391,9 @@ class Toolbox(usersmod.Scoped):
         repo, err = self._git_repo(path)
         if err:
             return err
-        argv = ["diff", "--stat", "-p"]
+        if _dashed(ref):
+            return "[error] a ref cannot start with a dash"
+        argv = ["diff", "--stat", "-p", "--no-ext-diff", "--no-textconv"]
         if staged:
             argv.append("--staged")
         if ref:
@@ -4104,14 +4402,14 @@ class Toolbox(usersmod.Scoped):
         return _truncate(out or "(no changes)") if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_init(self, path: str) -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
         code, out = await self._git(repo, "init", "-b", "main")
         return out.strip() if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_commit(self, path: str, message: str, add_all: bool = True) -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
         if not message.strip():
@@ -4121,19 +4419,36 @@ class Toolbox(usersmod.Scoped):
             if code != 0:
                 return f"[error] git add: {out.strip()[:800]}"
         # per-invocation identity fallback so a fresh machine can still commit
-        idargs = []
-        code, _ = await self._git(repo, "config", "user.email")
-        if code != 0:
-            idargs = ["-c", "user.name=AgentOS", "-c", "user.email=agentos@localhost"]
+        idargs = await self._git_identity(repo)
         code, out = await self._git(repo, *idargs, "commit", "-m", message)
         if code != 0 and "nothing to commit" in out:
             return "nothing to commit — working tree clean"
         return out.strip()[:800] if code == 0 else f"[error] {out.strip()[:800]}"
 
+    async def _git_identity(self, repo: str) -> list[str]:
+        """Who a commit is from. The jail can't see the person's ~/.gitconfig, so with no accounts
+        it is read here, from that file alone. An account's commits are the repo's or AgentOS's."""
+        code, _ = await self._git(repo, "config", "user.email")
+        if code == 0:
+            return []
+        if not usersmod.enabled():
+            got = []
+            for key in ("user.name", "user.email"):
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "config", "--global", key, env=_tool_env(),
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+                out, _ = await proc.communicate()
+                got.append(out.decode(errors="replace").strip())
+            if all(got):
+                return ["-c", f"user.name={got[0]}", "-c", f"user.email={got[1]}"]
+        return ["-c", "user.name=AgentOS", "-c", "user.email=agentos@localhost"]
+
     async def git_branch(self, path: str, name: str = "", checkout: bool = True) -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=bool(name))
         if err:
             return err
+        if _dashed(name):
+            return "[error] a branch name cannot start with a dash"
         if not name:
             code, out = await self._git(repo, "branch", "-a", "-v")
             return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
@@ -4142,9 +4457,11 @@ class Toolbox(usersmod.Scoped):
         return out.strip()[:400] if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_remote_set(self, path: str, url: str, name: str = "origin") -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
+        if _dashed(name) or _dashed(url):
+            return "[error] a remote cannot start with a dash"
         code, out = await self._git(repo, "remote", "get-url", name)
         if code == 0:
             code, out = await self._git(repo, "remote", "set-url", name, url)
@@ -4153,9 +4470,11 @@ class Toolbox(usersmod.Scoped):
         return f"remote {name} -> {url}" if code == 0 else f"[error] {out.strip()[:800]}"
 
     async def git_pull(self, path: str = "", remote: str = "origin", branch: str = "") -> str:
-        repo, err = self._git_repo(path)
+        repo, err = self._git_repo(path, write=True)
         if err:
             return err
+        if _dashed(remote) or _dashed(branch):
+            return "[error] a remote or branch cannot start with a dash"
         argv = ["pull", remote] + ([branch] if branch else [])
         code, out = await self._git(repo, *argv, env=self._git_auth_env(), timeout=300)
         return _truncate(out) if code == 0 else f"[error] {out.strip()[:800]}"
@@ -4164,18 +4483,27 @@ class Toolbox(usersmod.Scoped):
         parent, err = self._git_repo(os.path.dirname(os.path.expanduser(path)) or self.cfg["workspace"])
         if err:
             return err
-        dest = os.path.realpath(os.path.expanduser(path))
-        proc_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", **self._git_auth_env()}
-        proc = await asyncio.create_subprocess_exec(
-            "git", "clone", url, dest,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=proc_env)
-        try:
-            out, _ = await asyncio.wait_for(proc.communicate(), timeout=600)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return "[error] git clone timed out after 600s"
-        text = out.decode(errors="replace")
-        return _truncate(text) if proc.returncode == 0 else f"[error] {text.strip()[:800]}"
+        dest = os.path.realpath(self._abs(path))
+        if (deny := self._sandbox_deny(dest, write=True)):
+            return deny
+        if (why := protected.write_refused(os.path.join(dest, "x"))):
+            return f"[denied] {why}"
+        if url.startswith(("http://", "https://")):
+            try:
+                await netguard.check_url(url)
+            except netguard.Refused as e:
+                return self._net_refused(e, "git_clone")
+            except httpx.HTTPError:
+                pass                   # a name that does not resolve: git says so
+        e = {**_tool_env(), **_GIT_ENV, **self._git_auth_env()}
+        ro = [e["GIT_ASKPASS"]] if e.get("GIT_ASKPASS") else []
+        wrap, jailed, refusal = self._jailed(["git"], parent, ro=ro)
+        if refusal:
+            return refusal
+        if jailed:
+            e["GIT_CONFIG_GLOBAL"] = os.devnull
+        code, text = await self._git_exec([*wrap, *_GIT_OFF, "clone", "--", url, dest], parent, e, 600)
+        return _truncate(text) if code == 0 else f"[error] {text.strip()[:800]}"
 
     async def _github_api(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
         token = (self.cfg.get("github") or {}).get("token", "")
@@ -4195,6 +4523,8 @@ class Toolbox(usersmod.Scoped):
         repo, err = self._git_repo(path)
         if err:
             return err
+        if _dashed(remote) or _dashed(branch):
+            return "[error] a remote or branch cannot start with a dash"
         if not branch:
             code, out = await self._git(repo, "rev-parse", "--abbrev-ref", "HEAD")
             branch = out.strip() if code == 0 else "main"
@@ -4321,6 +4651,13 @@ class Toolbox(usersmod.Scoped):
                 body["name"] = name
             code, data = await tf.api("POST", "/api/datasets/import-hub", body)
         elif action == "import_url":
+            # the training service does the fetching, so this judges the address it starts from
+            try:
+                await netguard.check_url(url)
+            except netguard.Refused as e:
+                return self._net_refused(e, "train_datasets")
+            except httpx.HTTPError as e:
+                return f"[error] {e}"
             code, data = await tf.api("POST", "/api/datasets/import-url",
                                       {"url": url, **({"name": name} if name else {})})
         elif action == "get":
@@ -5003,6 +5340,18 @@ class Toolbox(usersmod.Scoped):
             return f"[error] {e}"
 
     async def browser_open(self, url: str, new_tab: bool = False) -> str:
+        # The agent's own navigation: never this machine or a metadata address. A person's
+        # typed address is not this path, and a page's own links and redirects are the
+        # browser's (docs/live-windows.md). The LAN stays open here, as for a person.
+        from . import cdpbrowser
+        try:
+            if (u := cdpbrowser.normalise(url)).startswith(("http://", "https://")):
+                await netguard.check_url(u, local_ok=True)
+                netguard.refuse_loopback(u)
+        except netguard.Refused as e:
+            return self._net_refused(e, "browser_open")
+        except httpx.HTTPError:
+            pass                    # a name that does not resolve: the browser says so better
         return await self._browser_do(lambda m, b: m.tool_open(b, url, bool(new_tab)))
 
     async def browser_read(self) -> str:
@@ -5678,12 +6027,11 @@ TOOL_SCHEMAS = [
                          "required": ["engine"]},
     }, {
         "name": "configure_agentos",
-        "description": "Reconfigure AgentOS itself. Pass a JSON object with any of: agent_name, "
-                       "default_model, autonomy ('paranoid'|'balanced'|'full'), max_steps, workspace, "
-                       "policies (list of {action:'allow'|'deny', match:'pattern *'}), "
-                       "telegram ({enabled, bot_token}), mcp_servers ({name:{transport:'stdio', command, args, "
-                       "env, enabled} or name:null to remove}). Use when the user asks to change settings, "
-                       "add MCP servers, set policies, etc.",
+        "description": "Change your own name, the default model, the step limit or how you remember. "
+                       "Pass a JSON object with any of: agent_name, default_model, max_steps, memory "
+                       "({auto_extract, inject_user, inject_session, inject_facts, rollup_after_hours}). "
+                       "Autonomy, permissions, the sandbox, the workspace, MCP servers and channels are "
+                       "the person's, in Settings: tell them where, you can't change those.",
         "parameters": {
             "type": "object",
             "properties": {"changes": {"type": "string", "description": "JSON object of config changes."}},
@@ -5735,7 +6083,8 @@ TOOL_SCHEMAS = [
     {
         "name": "develop_agentos",
         "description": "Modify or EXTEND AgentOS itself by writing a file into its own source tree "
-                       "(e.g. add a WhatsApp integration module, a new API endpoint, or a new tool). "
+                       "(e.g. add a WhatsApp integration module). An admin says yes every time, and its "
+                       "security modules, tests of them and the page can't be written from here at all. "
                        "Python files are syntax-checked before writing and the previous version is backed up. "
                        "Set restart=true to reload the service and apply the change. Read the relevant source "
                        "with read_source first so your edit fits the existing code.",

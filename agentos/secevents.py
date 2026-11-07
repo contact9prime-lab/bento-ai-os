@@ -66,6 +66,8 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "protected.refused": ("An agent tried to reach a security file", 3, 300),
     "timetravel.forged": ("A time travel record did not carry this machine's signature", 1, 300),
     "jail.missing": ("The sandbox is not working on this machine", 1, 86400),
+    "net.refused": ("A tool tried to reach an address on this machine or its private network", 3, 300),
+    "develop.refused": ("An agent tried to change this OS's security code", 1, 300),
 }
 UNKNOWN = ("Something happened that the security record does not have a name for", 1, 300)
 

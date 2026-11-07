@@ -97,7 +97,8 @@ def test_the_app_is_the_callers_never_the_models():
     agent = (ROOT / "agentos/agent.py").read_text()
     assert "if name in APP_BOUND_TOOLS:" in agent and 'k != "_app"' in agent
     assert 'args["_app"] = self.app_id' in agent
-    assert set(APP_BOUND_TOOLS) == {"schedule_task", "create_trigger", "update_app_data"}
+    # fetch_url: an app's fetch never gets the person's allow-list of local addresses (netguard.py)
+    assert set(APP_BOUND_TOOLS) == {"schedule_task", "create_trigger", "update_app_data", "fetch_url"}
     tools = (ROOT / "agentos/tools.py").read_text()
     assert '{"_app"} if name in APP_BOUND_TOOLS' in tools
     # an app's own appTool call is filed under that app, after the `_` strip

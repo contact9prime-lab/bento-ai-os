@@ -254,7 +254,8 @@ class MCPServer:
                             "to do — upgrade the 'mcp' package")
                     self.status = "authorizing" if not mcp_oauth.has_tokens(self.name, url) \
                         else self.status
-                ctx = streamablehttp_client(url, headers=headers or None, auth=auth)
+                ctx = streamablehttp_client(url, headers=headers or None, auth=auth,
+                                            **_guarded_for_account())
                 async with ctx as (read, write, _):
                     await self._serve(read, write, on_change)
             else:
@@ -291,6 +292,20 @@ class MCPServer:
         self._closed.set()
         if self.task and not self.task.done():
             self.task.cancel()
+
+
+def _guarded_for_account() -> dict:
+    """An account that isn't an admin chooses its own server address, and this machine connects
+    to it: the guarded client, every hop. An admin's or a single user's local MCP server is theirs
+    to run on this machine, so that path keeps working, minus the metadata addresses."""
+    from . import netguard
+    from . import users as usersmod
+
+    local_ok = not usersmod.enabled() or usersmod.is_admin(usersmod.current() or "")
+
+    def factory(headers=None, timeout=None, auth=None):
+        return netguard.client(local_ok=local_ok, follow_redirects=True, headers=headers, timeout=timeout, auth=auth)
+    return {"httpx_client_factory": factory}
 
 
 class MCPManager(usersmod.Scoped):

@@ -13,6 +13,7 @@ A periodic maintenance loop keeps the knowledge healthy:
 """
 
 import asyncio
+import contextlib
 import json
 import math
 import re
@@ -240,6 +241,50 @@ async def backfill_embeddings(cfg: dict, store, batch: int = 64) -> int:
 # Per-turn extraction
 # ---------------------------------------------------------------------------
 
+# What a forwarded brain did on its own never passes the gate and never gets a fence, so the name
+# of the tool is the only mark a page's words leave. This OS's own door is fenced by its gate.
+_CLI_OUTSIDE_TOOLS = ("webfetch", "websearch", "web_fetch", "web_search", "fetch", "browser", "bash", "shell")
+
+
+def cli_tool_reads_outside(name: str) -> bool:
+    n = str(name or "").lower()
+    return (n.startswith("mcp__") and not n.startswith("mcp__bento__")) or any(w in n for w in _CLI_OUTSIDE_TOOLS)
+
+
+def turn_tainted(store, cid: str) -> bool:
+    """Has this conversation read something nobody here wrote? One page in a thread and the
+    whole thread is untrusted (agent.py carries it the same way), so nothing is learned from it.
+    Read from what was kept, so every door that schedules learning gets one answer. A store that
+    can't say counts as yes, and so does a forwarded turn that doesn't say what it read: learning
+    is optional, and a planted memory speaks in every later turn with no gate between."""
+    from .agent import _TAINT_MARK
+    try:
+        for m in store.get_messages(cid)[-200:]:
+            if _TAINT_MARK in (m.get("content") or ""):
+                return True
+            for step in ((m.get("meta") or {}).get("steps") or []):
+                if not isinstance(step, dict):
+                    continue
+                if step.get("type") == "executor" and step.get("read_outside") is not False:
+                    return True
+                if _TAINT_MARK in str(step.get("output") or "") or (
+                        step.get("type") != "tool" and cli_tool_reads_outside(step.get("name"))):
+                    return True
+    except Exception:                                # noqa: BLE001
+        return True
+    return False
+
+
+def _learned(store, added: dict, cid: str, model: str, space_id: str = "") -> None:
+    """A write nobody approved gets a ledger row, as the gate gives every approved one."""
+    with contextlib.suppress(Exception):
+        from . import users as usersmod
+        store.audit_add(uid=usersmod.current() or "", principal_kind="system", principal_id="auto-learn",
+                        action="memory.write", resource="memory:auto", effect="allow", rule="auto-learn",
+                        outcome="ok", conversation_id=cid, space_id=space_id,
+                        detail=(", ".join(f"{v} {k}" for k, v in added.items() if v) + f" from {model}")[:300])
+
+
 async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
                             assistant_text: str, broadcast=None):
     """Fire-and-forget after a chat turn. Must never raise into the caller."""
@@ -248,6 +293,8 @@ async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
         return
     model = mc.get("model") or cfg.get("default_model") or ""
     if not model or not (assistant_text or "").strip():
+        return
+    if turn_tainted(store, cid):
         return
     from . import zeromind
     if zeromind.on_hub(cfg):
@@ -328,6 +375,7 @@ async def extract_from_turn(cfg: dict, store, cid: str, user_text: str,
             except Exception:
                 continue
         if any(added.values()):
+            _learned(store, added, cid, model, space_id)
             store.log("memory", "auto-extracted: " + ", ".join(
                 f"{v} {k}" for k, v in added.items() if v),
                 {"conversation_id": cid, "model": model, "space_id": space_id},

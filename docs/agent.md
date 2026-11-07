@@ -86,7 +86,7 @@ Everything the agent can do is a tool. The built-in tools:
 - `remember`, `recall`, `forget` — memory, with two scopes: `user` (durable, all conversations)
   and `session` (this conversation only)
 - `kg_add`, `kg_query` — structured knowledge graph
-- `update_soul` — evolve the agent's persistent identity
+- `update_soul` — evolve the agent's persistent identity (a person says yes every time)
 - `read_app_data` — read the data stored inside a built app
 
 **Team & delegation**
@@ -100,7 +100,7 @@ Everything the agent can do is a tool. The built-in tools:
 **Building & configuring the OS**
 - `create_app` — build a UI app that appears on the desktop
 - `pin_widget` — pin an app to the desktop as a live widget
-- `configure_agentos` — change settings (autonomy, model, policies, integrations, name)
+- `configure_agentos` — change its own name, the default model, the step limit and memory settings. Autonomy, permissions, the sandbox, MCP servers and channels are yours, in Settings
 - `add_mcp_server` — connect an external tool "channel"
 - `manage_models` — list, download, or remove local Ollama models
 
@@ -116,7 +116,7 @@ Everything the agent can do is a tool. The built-in tools:
 - `telegram_send` — message your paired Telegram chat
 
 **Self-extension**
-- `read_source`, `develop_agentos`, `restart_agentos` — read and modify AgentOS's own source code
+- `read_source`, `develop_agentos`, `restart_agentos` — read and modify AgentOS's own source code (an admin says yes every time, and the gate's own modules, tests of them and the page can't be written this way at all)
 - `snapshot_os` — save a restore point of the whole system
 
 Plus every tool from any connected **MCP server**, which appears as `mcp_<server>_<tool>`.
