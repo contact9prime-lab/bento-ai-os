@@ -7168,7 +7168,6 @@ function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
    knows; the ~400 older calls are read by their first words ("could not…" is a
    failure, "saved…" a success). A guess only picks an icon — the words are always
    shown as written, so a wrong guess costs a colour, never the message. */
-var TOAST_IC={ok:'M5 12.5l4.5 4.5L19 7.5',err:'M7 7l10 10M17 7L7 17',warn:'M12 6.5v7M12 17v.5',info:'M12 10.5v7M12 6.5v.5'};
 /* A machine-only route refused this account (machineroutes.py). One door, so every button that
    reaches one says why. A read is not something the person pressed, and a call the desktop makes
    by itself says `quiet`. */
@@ -7180,6 +7179,7 @@ if(window.fetch&&!window.__adminFetch){
     return r;
   };
 }
+var TOAST_IC={ok:'M5 12.5l4.5 4.5L19 7.5',err:'M7 7l10 10M17 7L7 17',warn:'M12 6.5v7M12 17v.5',info:'M12 10.5v7M12 6.5v.5'};
 function toastKind(t,act){
   if(act&&act.kind&&TOAST_IC[act.kind])return act.kind;
   const s=String(t==null?'':t).trim().toLowerCase();
