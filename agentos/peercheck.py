@@ -5,8 +5,8 @@ machine and the jail keeps its network (agents need curl, pip and git): `curl 12
 from a jailed shell arrived as the person, wrote a grant recorded as the person's, and could answer its
 own approval card. So every trust given to a loopback connection first asks here who is at the other end.
 
-How it answers, on Linux: find the connection's row in /proc/net/tcp{,6} by its two ports (that gives
-the socket's owner uid and its inode), then look for that inode among the file descriptors of this
+How it answers, on Linux: ask the kernel for the client's half of the connection (sock_diag, or the
+/proc/net/tcp row where that is not available), which gives the socket's owner uid and its inode, then look for that inode among the file descriptors of this
 server's descendants. Six things are load-bearing, and each is an attack somebody can write:
 
 - **A connection with no owner is refused.** A process can send its request and close the socket before
@@ -31,10 +31,10 @@ server's descendants. Six things are load-bearing, and each is an attack somebod
 - **The server's own process counts as ours.** Agent tools that fetch run in-process, and a fetch of
   http://127.0.0.1:<port>/ must not arrive as the person.
 
-Cost, measured on a desktop with ~400 processes: see tests/test_peercheck.py's `measure` helper and the
-commit message. The table is read per cookie-less request (a browser that holds a cookie never comes
-here), the process walk once per connection per CACHE_S. A cached answer is keyed on (port, inode), so a
-port somebody re-binds after the person's browser closed it is a different key.
+Cost: the numbers are beside CACHE_S below. The lookup runs per
+cookie-less request (a browser holding a cookie never comes here), the process walk once per connection
+per CACHE_S. A cached answer is keyed on (port, inode), so a port somebody re-binds after the person's
+browser closed it is a different key.
 
 Not Linux: there is no /proc to read, so `classify` answers NO_ANSWER and the caller keeps its old
 loopback trust. macOS has no jail with this property either; docs/remote-access.md says so.
@@ -43,8 +43,11 @@ loopback trust. macOS has no jail with this property either; docs/remote-access.
 from __future__ import annotations
 
 import contextlib
+import errno
 import ipaddress
 import os
+import socket
+import struct
 import time
 
 OUTSIDE = "outside"        # a process that is not ours, and of this Unix user
@@ -55,13 +58,54 @@ NO_ANSWER = "no-answer"    # no real socket (an in-process test client), or no /
 
 REFUSED = frozenset({CHILD, OTHER_USER, GONE})
 
-CACHE_S = 5.0
+# Measured on a desktop with ~550 processes and ~650 sockets: sock_diag lookup 0.012 ms, the /proc/net/tcp
+# fallback 6 ms, the process walk 6.5 ms, the fd scan 0.1 ms with five descendants.
+CACHE_S = 30.0             # who owns a live socket does not change, short of somebody passing the fd
 CACHE_MAX = 256
 ZOMBIE_GRACE_S = 30.0      # a child somebody is about to wait() on must keep its exit status
 
 _cache: dict[tuple[int, int], tuple[str, float]] = {}
 _armed = False
 _zombies: dict[int, float] = {}
+
+
+def _diag(client_ip: str, client_port: int, server_ip: str, server_port: int) -> tuple[int, int] | None:
+    """(uid, inode) of the client's socket, by asking the kernel for that one connection over sock_diag:
+    (-1, -1) when it says there is no such socket, None when this kernel will not say (no inet_diag, a
+    sandbox), and the caller reads /proc/net/tcp instead. The table costs ~6.5 ms per read on a desktop
+    with ~500 sockets, because the kernel formats every row, and this runs per cookie-less request."""
+    NETLINK_SOCK_DIAG, SOCK_DIAG_BY_FAMILY, NLM_F_REQUEST, NLMSG_ERROR = 4, 20, 1, 2
+    try:
+        cli = ipaddress.ip_address(client_ip.split("%")[0])
+        srv = ipaddress.ip_address(server_ip.split("%")[0])
+        if cli.version == 6 and cli.ipv4_mapped:
+            cli = cli.ipv4_mapped
+        if srv.version == 6 and srv.ipv4_mapped:
+            srv = srv.ipv4_mapped
+        if cli.version != srv.version:
+            return None
+        fam = socket.AF_INET if cli.version == 4 else socket.AF_INET6
+        idbytes = (struct.pack("!HH", client_port, server_port)
+                   + cli.packed.ljust(16, b"\0") + srv.packed.ljust(16, b"\0")
+                   + struct.pack("=III", 0, 0xffffffff, 0xffffffff))
+        req = struct.pack("=BBBBI", fam, socket.IPPROTO_TCP, 0, 0, 0xffffffff) + idbytes
+        head = struct.pack("=IHHII", 16 + len(req), SOCK_DIAG_BY_FAMILY, NLM_F_REQUEST, 1, 0)
+        with socket.socket(socket.AF_NETLINK, socket.SOCK_RAW, NETLINK_SOCK_DIAG) as s:
+            s.settimeout(1)
+            s.send(head + req)
+            got = s.recv(8192)
+        if len(got) < 20:
+            return None
+        kind = struct.unpack_from("=H", got, 4)[0]
+        if kind == NLMSG_ERROR:
+            err = -struct.unpack_from("=i", got, 16)[0]
+            return (-1, -1) if err == errno.ENOENT else None
+        if kind != SOCK_DIAG_BY_FAMILY or len(got) < 16 + 72:
+            return None
+        # inet_diag_msg: 4 bytes, the 48-byte id, then expires rqueue wqueue uid inode
+        return struct.unpack_from("=II", got, 16 + 4 + 48 + 12)
+    except (OSError, ValueError, AttributeError, struct.error):
+        return None             # AF_NETLINK is Linux only
 
 
 def _rows() -> bytes:
@@ -182,16 +226,25 @@ def classify(client_ip: str, client_port: int, server_ip: str, server_port: int)
     except ValueError:
         return NO_ANSWER        # TestClient's "testclient"/"testserver": there is no socket at all
     try:
-        table = _rows()
-        got = _find(table, int(client_port), int(server_port))
-    except (OSError, ValueError, TypeError):
-        return NO_ANSWER        # not Linux, or no /proc
-    if got is None:
+        client_port, server_port = int(client_port), int(server_port)
+    except (ValueError, TypeError):
         return NO_ANSWER
-    listening, uid, inode = got
-    if uid < 0 or inode <= 0:
-        # the row is gone, or the kernel keeps it with no owner (TIME_WAIT, FIN_WAIT2)
-        return GONE if listening else NO_ANSWER
+    asked = _diag(client_ip, client_port, server_ip, server_port)
+    if asked is not None:
+        uid, inode = asked
+        if uid < 0 or inode <= 0:       # the kernel looked: no such socket, or one with no owner
+            return GONE
+    else:
+        try:
+            got = _find(_rows(), client_port, server_port)
+        except (OSError, ValueError):
+            return NO_ANSWER    # not Linux, or no /proc
+        if got is None:
+            return NO_ANSWER
+        listening, uid, inode = got
+        if uid < 0 or inode <= 0:
+            # the row is gone, or the kernel keeps it with no owner (TIME_WAIT, FIN_WAIT2)
+            return GONE if listening else NO_ANSWER
     if uid not in (os.geteuid(), 0):
         return OTHER_USER
     now = time.monotonic()

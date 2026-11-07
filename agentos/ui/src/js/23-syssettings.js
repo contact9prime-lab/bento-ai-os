@@ -312,6 +312,14 @@ async function sysRemote(el){
         <a href="#" onclick="openApp('users');return false">Users</a> — they lock this
         themselves, and give each person their own desktop.</p>`}
 
+      ${!byAccounts&&set?`<button class="endbtn" style="margin-top:10px" onclick="rmEndEverywhere()">Sign out every device</button>`:''}
+
+      <label style="margin-top:14px">Other names for this machine ${pInfo('A page can point its own name at this machine to reach it, so Bento only answers to names it knows. Add a domain in front of it here. Its own name, its addresses and Tailscale names already work.')}</label>
+      <div class="row" style="gap:8px">
+        <input id="rm-hosts" value="${esc((REMOTE.allowed_hosts||[]).join(', '))}" placeholder="bento.example.com" style="flex:1">
+        <button class="endbtn" onclick="rmSetHosts()">Save</button>
+      </div>
+
       <div class="row" style="margin-top:16px;gap:10px;align-items:center">
         <button class="save" style="margin:0;width:auto;padding:10px 18px${on?';background:var(--err);color:#fff':''}"
                 onclick="rmToggle(${on?'false':'true'})" ${set?'':'disabled title="set a passphrase or add accounts first"'}>
@@ -401,8 +409,20 @@ async function rmToggle(on){
       {confirmText:'Turn it on',danger:true}))return;
   const d=await rmPost({enabled:on});
   if(!d)return;
-  toast(on?'remote access on — restart AgentOS to start listening':'remote access off');
+  const gone=(d.tunnels_stopped||[]).length?` Stopped ${d.tunnels_stopped.join(' and ')}.`:'';
+  toast(on?'remote access on — restart AgentOS to start listening':(d.note||'remote access off')+gone);
   refreshApp('syssettings');
+}
+async function rmSetHosts(){
+  const names=$('#rm-hosts').value.split(',').map(x=>x.trim()).filter(Boolean);
+  if(await rmPost({allowed_hosts:names})){toast('✓ saved');refreshApp('syssettings')}
+}
+async function rmEndEverywhere(){
+  if(!await osConfirm('Sign out every device?','Every phone and browser signed in here will have to sign in again.',{confirmText:'Sign out',danger:true}))return;
+  const r=await fetch('/api/session/everywhere',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(d.error||'could not sign them out');
+  toast('✓ every device is signed out');refreshApp('syssettings');
 }
 function rmCopy(a){navigator.clipboard.writeText(a).then(()=>toast('copied: '+a),()=>toast(a))}
 

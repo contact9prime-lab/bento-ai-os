@@ -173,11 +173,11 @@ is an unauthenticated door left open.
 |---|---|
 | **Off by default** | `remote.enabled` starts false, and `enabled` without a passphrase is not a reachable state — the config is re-checked on every load, so hand-editing `config.json` cannot open it. |
 | **Refuses to bind** | `agentos serve --host 0.0.0.0` exits with an error unless remote access is properly on. The flag alone is not consent. |
-| **Loopback is trusted** | Using AgentOS on the machine it runs on is unchanged, signed in or not. The kernel decides the source address, so a LAN client cannot forge it — this is a real boundary, not a header check. |
+| **Loopback is trusted, for a person** | Using AgentOS on the machine it runs on is unchanged, signed in or not. The kernel decides the source address, so a LAN client cannot forge it. A request naming a host this machine doesn't answer to, one carrying a proxy's headers, and a process Bento started are not given that trust, as below. |
 | **Everything else needs a session** | Passphrase → PBKDF2-SHA256 (210k rounds) → an HMAC-signed cookie. The passphrase itself is never stored. |
 | **Websockets too** | `/ws` and `/ws/terminal` are gated by hand, because they bypass HTTP middleware — and the terminal one is literally a shell. |
 | **Backoff** | Five wrong guesses from one address and it starts waiting, doubling up to an hour. Every attempt is written to the Logs app. |
-| **Only from the machine** | `POST /api/remote` is refused unless it comes from loopback. An agent, an app, or someone already signed in remotely cannot widen access. |
+| **Only from the machine** | `POST /api/remote` is refused unless it comes from somebody at this machine who is its admin. An agent, an app, a process Bento started, or someone already signed in remotely cannot widen access. |
 | **Nothing cached** | The desktop shell and the lock screen are the same URL with different answers, so both are `no-store` — a browser can never serve one in place of the other. |
 | **Changing the passphrase signs everyone out** | Sessions are signed with the passphrase hash. |
 
@@ -186,7 +186,7 @@ is an unauthenticated door left open.
 ## What it is not
 
 This is **one shared passphrase protecting one machine**, not multi-user authentication. There are
-no accounts, no roles, and no per-device revocation beyond changing the passphrase.
+no accounts and no roles. Sign out every device ends all of its sessions, and changing the passphrase does too.
 
 It also speaks **plain HTTP**. On your own network that is a reasonable trade; on the open internet
 it is not — the passphrase would cross the wire in the clear, and so would everything else.
@@ -198,6 +198,56 @@ it is not — the passphrase would cross the wire in the clear, and so would eve
 - **A reverse proxy you trust** (Caddy, nginx, Cloudflare Tunnel) terminating TLS and adding its
   own authentication in front. Keep the AgentOS passphrase on as well — defence in depth.
 
+### Which names it answers to
+
+A web page can point its own name at 127.0.0.1 (DNS rebinding), and then its requests look local and
+same-origin. So Bento only answers to names it knows, and refuses the rest with a 421 saying what to do:
+
+- any IP address, `localhost`, and this machine's own name, including `<name>.local`, `.lan` and `.home`
+- Tailscale names (`.ts.net`), a live cloudflared tunnel, and Render's and Fly's names for the service
+- what you add: `bento remote --allow-host bento.example.com`, or Settings → Remote access
+- on a host with no shell, `AGENTOS_ALLOWED_HOSTS=bento.example.com,*.example.org` in its environment.
+  `*` switches the check off, which puts this hole back on any machine that trusts loopback.
+
+Webhooks, the run bridge, the standby door and sign-in callbacks are not name-checked: each has its own secret.
+
+### Behind a proxy
+
+Bento never treats a request as local when it carries a proxy's headers (`X-Forwarded-For`, `Forwarded`,
+`X-Real-IP` and friends), and uvicorn is pinned not to rewrite the client address from them. Tailscale,
+cloudflared, Caddy and a normal nginx setup all send them.
+
+A forward that adds no header (`ssh -R`, socat, frp, an nginx `proxy_pass` with no `proxy_set_header`)
+arrives as an ordinary loopback connection, and nothing on this machine can tell. If you run one of those
+to reach this machine from elsewhere, set `remote.trust_loopback` to false, so loopback needs a sign-in too.
+
+### Loopback is trusted, and only for a person
+
+On a machine with no accounts, a loopback connection with no cookie is the person at the machine, unless
+it comes from a process Bento started: an agent's shell, a forwarded CLI, an MCP server, the agent's
+browser, or a command in Bento's own Terminal. Those are refused on every route and socket, and the attempt
+is on the security record (`bento security`). The agent's jail keeps its network, because agents need curl,
+pip and git, so this check is what stops jailed code using your authority. It also refuses another Unix
+user's process. Tokens still work: the run bridge, apps and webhooks each carry their own.
+
+So in Bento's own Terminal, `bento` verbs that talk to the server say they can't act as you. Those verbs
+work in a terminal outside Bento, and verbs that read the files directly work anywhere. A browser Bento
+opens for you comes with a one-time ticket, which it swaps for a session cookie.
+
+This check reads Linux's `/proc`. **On macOS and Windows there is no answer, and loopback stays trusted**,
+so a process started by the agent there can still use your access. Use accounts on such a machine. It also
+cannot see a process somebody else starts on request: unjailed code that asks `systemd-run`, cron or ssh to
+localhost to run something has left the tree, and it could edit Bento's files anyway. The jail takes away
+the session bus for that reason.
+
+### Locking
+
+Lock covers the browser it was pressed in. On a machine with no accounts, it also stops loopback trust
+until somebody unlocks with the passphrase, so a private window can't walk round it, and `bento` verbs that
+talk to the server say it is locked until then. Open sockets close when you lock, sign out or lose the
+account, and a cookie copied before a lock or sign-out stops working. A password or role change, or
+`bento user signout <name>`, signs that account out on every device.
+
 ---
 
 ## Turning it off
@@ -206,5 +256,6 @@ it is not — the passphrase would cross the wire in the clear, and so would eve
 agentos remote --off
 ```
 
-or the same switch in System Settings. Existing sessions stop working immediately; the server goes
-back to listening on loopback only after a restart.
+or the same switch in System Settings. Everything from the network is refused immediately, sessions included,
+and anything publishing this machine is stopped (a cloudflared quick tunnel, and `tailscale serve` if it
+publishes this port). The socket itself stays bound until the next restart, and the answer says so.

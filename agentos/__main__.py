@@ -240,7 +240,9 @@ def _server_answers(port: int, timeout: float = 1.5) -> bool:
         from . import config as _c
         return theirs == _c.home_id()
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/platform",
+        # /login, which is open to everybody: this also runs inside the server's own process, and that
+        # asking for the API would read as a process of its own trying to use the person's access
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/login",
                                     timeout=timeout) as r:
             return r.status < 500 and ours(r.headers)
     except urllib.error.HTTPError as e:
@@ -267,7 +269,9 @@ def _open_when_ready(url: str, port: int, timeout: float = 90.0) -> None:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if _server_answers(port):
-                webbrowser.open(url)
+                # it would be this server's child, so it comes with a ticket for a cookie (peercheck)
+                from . import remote as remotemod
+                webbrowser.open(remotemod.ticket_url(url))
                 return
             time.sleep(0.25)
         print(f"\n  (the server has not answered after {int(timeout)}s — not opening a "
@@ -386,7 +390,13 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
         print("  sign in with your passphrase; local use is unchanged.\n")
     if open_browser:
         _open_when_ready(url, port)
-    uvicorn.run("agentos.server:app", host=host, port=port, log_level="warning")
+    from . import peercheck
+    peercheck.arm()
+    # proxy_headers off: uvicorn's default rewrites the client address from X-Forwarded-For for any peer
+    # on 127.0.0.1, so a visitor's "X-Forwarded-For: 127.0.0.1" through a proxy became a loopback client.
+    # remote.client_addr reads the header itself and never lets it say loopback.
+    uvicorn.run("agentos.server:app", host=host, port=port, log_level="warning",
+                proxy_headers=False, forwarded_allow_ips="")
 
 
 def ask(prompt: str, model: str | None, full: bool):
@@ -6060,7 +6070,7 @@ def _demo_cli(args):
     if not args.name:
         st = wh.status()
         print("  warehouse   a hub, three zone Pis and six ESP32 nodes running a warehouse (simulated)")
-        print(f"              {st['phase']}" + (f": {st['floor']}" if st["phase"] == "ready" else ""))
+        print(f"              {st['phase']}" + (f": {wh.keyed_urls()['floor']}" if st["phase"] == "ready" else ""))
         print("\n  bento demo warehouse          start it (on your brain, or --scripted)")
         print("  bento demo warehouse stop     stop it")
         return
@@ -6074,7 +6084,7 @@ def _demo_cli(args):
         if st.get("error"):
             print(f"  {st['error']}")
         if st["phase"] == "ready":
-            print(f"  floor  {st['floor']}\n  hub    {st['hub']}\n  brain  {st['brain']}")
+            print(f"  floor  {wh.keyed_urls()['floor']}\n  hub    {wh.keyed_urls()['hub']}\n  brain  {st['brain']}")
         return
     if a == "floor":
         try:
@@ -6121,8 +6131,9 @@ def _demo_cli(args):
             st = wh.status()
         if st["phase"] != "ready":
             sys.exit(st.get("error") or f"it stopped. Logs: {st['dir']}")
-    print(f"\n  the floor  {st['floor']}   readings live, and trouble to cause")
-    print(f"  the hub    {st['hub']}   ask it in Chat")
+    doors = wh.keyed_urls()
+    print(f"\n  the floor  {doors['floor']}   readings live, and trouble to cause")
+    print(f"  the hub    {doors['hub']}   ask it in Chat")
     print("\n  try asking:")
     for t in st["try"]:
         print(f"    {t}")
@@ -6130,7 +6141,7 @@ def _demo_cli(args):
     print("  bento demo warehouse stop                         ends it")
     if args.open:
         import webbrowser
-        webbrowser.open(st["floor"])
+        webbrowser.open(wh.keyed_urls()["floor"])
 
 
 def _demo_value(e: dict) -> str:
@@ -7927,6 +7938,18 @@ def _remote_cli(args):
             r["pass_hash"], r["pass_salt"] = remotemod.hash_passphrase(pw)
     if args.bind:
         r["bind"] = args.bind
+    allow, forget = getattr(args, "allow_host", None) or [], getattr(args, "forget_host", None) or []
+    if allow or forget:
+        names = [str(h).lower() for h in (r.get("allowed_hosts") or [])]
+        for h in allow:
+            h = h.strip().lower()
+            if h != "*" and not remotemod.parse_host(h.removeprefix("*.")):
+                print(f"{h} isn't a host name")
+                sys.exit(1)
+            if h not in names:
+                names.append(h)
+        names = [h for h in names if h not in [x.strip().lower() for x in forget]]
+        r["allowed_hosts"] = names
     if args.on:
         if not r.get("pass_hash") and not by_accounts:
             print("this machine has no lock, and an open port here is an open shell.\n"
@@ -7936,7 +7959,13 @@ def _remote_cli(args):
         r["enabled"] = True
     if args.off:
         r["enabled"] = False
-    if args.on or args.off or pw or args.bind or args.port:
+        # a tailnet keeps publishing past a restart, so off has to reach it here
+        import asyncio as _aio
+
+        from . import tunnel as tunmod
+        for t in _aio.run(tunmod.stop_published(cfg)):
+            print(f"stopped {t}, which was publishing this machine")
+    if args.on or args.off or pw or args.bind or args.port or allow or forget:
         remotemod.sanitize_remote(cfg)
         cfgmod.save_config(cfg)
         if args.port:
@@ -7966,6 +7995,10 @@ def _remote_cli(args):
         print(f"  reach:   {a}")
     if st["enabled"]:
         print("  restart AgentOS for a bind change to take effect.")
+    elif args.off:
+        print("  a running server keeps its address until it restarts: bento service restart")
+    if st["allowed_hosts"]:
+        print(f"  also answers to: {', '.join(st['allowed_hosts'])}")
 
 
 # ---------------------------------------------------------------------------
@@ -8020,7 +8053,7 @@ def _user_cli(args):
         print(f"✓ {u['name']} ({u['role']}) — home {usersmod.home_for(u['id'])}")
         return
 
-    if act in ("role", "passwd", "remove"):
+    if act in ("role", "passwd", "signout", "remove"):
         u = usersmod.by_name(args.name or "")
         if not u:
             print(f"no user called {args.name!r}")
@@ -8031,6 +8064,9 @@ def _user_cli(args):
             elif act == "passwd":
                 usersmod.set_password(u["id"], args.password or getpass.getpass("new password: "))
                 print("✓ password changed")
+            elif act == "signout":
+                usersmod.end_sessions(u["id"])
+                print(f"✓ every device signed in as {u['name']} is signed out")
             else:
                 # `--wipe` is separate and explicit: taking somebody's access away
                 # and destroying what they made are two decisions.
@@ -9391,7 +9427,7 @@ def main():
     p_user = verb("user", help="accounts — several people on one machine, "
                                          "each with their own home")
     p_user.add_argument("action", nargs="?", default="list",
-                        choices=["list", "add", "role", "passwd", "remove"])
+                        choices=["list", "add", "role", "passwd", "signout", "remove"])
     p_user.add_argument("name", nargs="?", default="")
     p_user.add_argument("--role", default="executor", choices=["admin", "executor"])
     p_user.add_argument("--display", default="", help="the name shown on screen")
@@ -9691,6 +9727,10 @@ def main():
     p_remote = verb("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
+    p_remote.add_argument("--allow-host", action="append", default=[], metavar="NAME",
+                          help="a name this machine also answers to (a domain in front of it). *.example.com covers a domain")
+    p_remote.add_argument("--forget-host", action="append", default=[], metavar="NAME",
+                          help="stop answering to a name added with --allow-host")
     p_remote.add_argument("--passphrase", default="", help="set the sign-in passphrase (prompted if omitted)")
     p_remote.add_argument("--bind", default="", help="interface to listen on once enabled (default 0.0.0.0)")
     p_remote.add_argument("--port", type=int, default=0,

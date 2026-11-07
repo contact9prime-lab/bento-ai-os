@@ -42,4 +42,9 @@ def _never_touch_the_real_config(tmp_path, monkeypatch):
     # every time on a machine running Ollama; other route tests flickered). A test that
     # wants a model sets one.
     monkeypatch.setenv("AGENTOS_NO_AUTOPICK", "1")
+    # TestClient's own name for the server. The Host guard reads this at call time.
+    monkeypatch.setenv("AGENTOS_ALLOWED_HOSTS", "testserver")
+    # Switching remote access off stops tunnels. In a test that must never reach the real tailscale.
+    from agentos import tunnel
+    monkeypatch.setattr(tunnel, "_which", lambda name: "")
     yield

@@ -149,7 +149,9 @@ def _server_up(port: int) -> bool:
 
 def _start_server_thread(port: int):
     import uvicorn
-    config = uvicorn.Config("agentos.server:app", host="127.0.0.1", port=port, log_level="warning")
+    # proxy_headers off for the reason given in __main__.serve
+    config = uvicorn.Config("agentos.server:app", host="127.0.0.1", port=port, log_level="warning",
+                            proxy_headers=False, forwarded_allow_ips="")
     server = uvicorn.Server(config)
     threading.Thread(target=server.run, daemon=True).start()
     for _ in range(60):
@@ -168,6 +170,10 @@ def app_mode():
         _start_server_thread(port)
         started_here = True
     url = f"http://127.0.0.1:{port}"
+    # With the server in this process the window is its child, which peercheck refuses: it comes with a
+    # ticket for a session cookie instead. Harmless when the server is somebody else's.
+    from . import remote as remotemod
+    url = remotemod.ticket_url(url)
 
     browser = find_browser()
     if browser:

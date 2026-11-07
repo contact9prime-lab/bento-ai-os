@@ -124,6 +124,7 @@ function usersRoster(){
             `<option value="${esc(r)}"${r===u.role?' selected':''}>${esc(usersRoleName(r))}</option>`).join('')}</select>`
         : `<span class="usr-tag ${u.role==='admin'?'adm':''}">${esc(usersRoleName(u.role))}</span>`}
       ${isMe||me.admin?`<button class="usr-pw" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">${isMe?'Change my password…':'Reset password…'}</button>`:''}
+      ${isMe||me.admin?`<button class="usr-end" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">Sign out everywhere</button>`:''}
       ${me.admin&&!isMe?`<button class="usr-del danger" data-uid="${esc(u.id)}"
         data-name="${esc(u.name)}">Remove</button>`:''}
     </div>`;
@@ -289,6 +290,7 @@ function usersWire(pb,w){
   if(form)form.onsubmit=e=>{e.preventDefault();usersCreate(pb,w)};
   const out=pb.querySelector('#usr-signout');
   if(out)out.onclick=()=>usersSignOut();
+  document.querySelectorAll('.usr-end').forEach(b=>b.onclick=()=>usersEndEverywhere(b.dataset.uid,!!b.dataset.me));
 
   /* shared folders */
   const ff=pb.querySelector('#usr-fform');
@@ -426,6 +428,15 @@ async function lockDesktop(){
   }catch(e){toast('could not lock the desktop: '+e)}
 }
 
+async function usersEndEverywhere(uid,mine){
+  if(!await osConfirm('Sign out everywhere?',mine?'Every browser and phone signed in as you has to sign in again, this one too.'
+      :'Every browser and phone signed in as this person has to sign in again.',{confirmText:'Sign out everywhere',danger:true}))return;
+  const r=await fetch('/api/session/everywhere',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(d.error||'could not sign them out');
+  if(mine)return location.reload();
+  toast('✓ signed out everywhere');
+}
 async function usersSignOut(){
   if(!await osConfirm('Sign out?','Anything running keeps running — it belongs to '+
     'your account, not to this window.',{confirmText:'Sign out'}))return;

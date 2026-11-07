@@ -324,11 +324,18 @@ def test_a_restore_is_started_only_by_an_admin_at_the_machine(tmp_path, monkeypa
         assert up.status_code == 200 and up.json()["pending"]["staging"]
         assert cl.get("/api/backup").json()["pending"]
         assert cl.delete("/api/restore").json()["cancelled"]
-        # from another machine on the network: refused, and it says where to do it
+        # from another machine on the network: with remote access off, the gate refuses it first
         monkeypatch.setattr(servermod.remotemod, "is_loopback", lambda h: False)
+        assert cl.post("/api/restore/apply", json={"confirm": True}).status_code == 401
+        # and with it on and a good cookie, the route refuses it and says where to do it
+        rem = servermod.state.machine_cfg()["remote"]
+        rem["pass_hash"], rem["pass_salt"] = servermod.remotemod.hash_passphrase("a good long phrase")
+        rem["enabled"] = True
+        cl.cookies.set(servermod.remotemod.COOKIE, servermod.remotemod.issue_session(servermod.state.machine_cfg()))
         up = cl.post("/api/restore", content=r.content, headers={"X-Bento-Passphrase": PW})
         assert up.status_code == 403 and "machine itself" in up.json()["error"]
         assert cl.post("/api/restore/apply", json={"confirm": True}).status_code == 403
+        rem["enabled"], rem["pass_hash"], rem["pass_salt"] = False, "", ""
     srv = (ROOT / "agentos/server.py").read_text()
     for route in ('("POST", "/api/backup")', '("POST", "/api/restore")', '("DELETE", "/api/restore")'):
         assert route in srv, route

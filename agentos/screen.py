@@ -75,7 +75,9 @@ def _port(cfg: dict | None = None) -> int:
 
 def url(cfg: dict | None = None) -> str:
     """The page the screen shows: this machine's own server, as the kiosk."""
-    return f"http://127.0.0.1:{_port(cfg)}/#kiosk"
+    # started from the server with no systemd to hand it to, this browser is the server's child (open_now)
+    ticket = os.environ.get("AGENTOS_DESK_TICKET", "")
+    return f"http://127.0.0.1:{_port(cfg)}/{'?desk=' + ticket if ticket else ''}#kiosk"
 
 
 def _linux() -> bool:
@@ -273,8 +275,15 @@ def open_now(cfg: dict | None = None) -> bool:
     rd, _ = road()
     if rd != "desktop" or not browser() or showing() or not (_wayland() or os.environ.get("DISPLAY")):
         return False
-    subprocess.Popen(open_argv(), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    argv = open_argv()
+    env = dict(os.environ)
+    if argv[0] != "systemd-run":
+        # Stays in the server's process tree, which peercheck refuses as it refuses a jailed shell.
+        from . import remote as remotemod
+        if not remotemod.accounts_lock():
+            env["AGENTOS_DESK_TICKET"] = remotemod.mint_ticket()
+    subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True, env=env)
     return True
 
 

@@ -1111,10 +1111,16 @@ def test_a_socket_resolves_to_the_signed_in_account_not_the_machine(api):
     cookie = dict(api.cookies)[servermod.remotemod.COOKIE]
 
     class WS:
+        headers: dict = {}
+        scope: dict = {}
         cookies = {servermod.remotemod.COOKIE: cookie}
         client = type("c", (), {"host": "10.0.0.9"})()   # not loopback, on purpose
+    servermod.state.machine_cfg().setdefault("remote", {})["enabled"] = True
     assert servermod._ws_user(WS) == b["id"]
     assert servermod._ws_authed(WS) is True
+    # switched off, the network gets nothing, even with a good cookie and the socket still bound
+    servermod.state.machine_cfg()["remote"]["enabled"] = False
+    assert servermod._ws_authed(WS) is False
 
 
 def test_a_socket_with_a_bad_cookie_is_refused_not_promoted(api):
@@ -1124,6 +1130,8 @@ def test_a_socket_with_a_bad_cookie_is_refused_not_promoted(api):
     api.post("/api/users", json={"name": "ada", "password": "hunter2hunter"})
 
     class WS:
+        headers: dict = {}
+        scope: dict = {}
         cookies = {servermod.remotemod.COOKIE: "forged.forged"}
         client = type("c", (), {"host": "10.0.0.9"})()
     assert servermod._ws_user(WS) is None
@@ -1164,6 +1172,8 @@ def test_a_single_user_socket_is_the_machine_account(api):
     from agentos import server as servermod
 
     class WS:
+        headers: dict = {}
+        scope: dict = {}
         cookies = {}
         client = type("c", (), {"host": "127.0.0.1"})()
     assert servermod._ws_user(WS) == ""

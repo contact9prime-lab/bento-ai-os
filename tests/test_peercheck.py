@@ -102,6 +102,25 @@ def test_an_aborted_connection_is_refused(listener):
     conn.close()
 
 
+def test_the_proc_table_gives_the_same_answers_where_sock_diag_is_missing(listener, monkeypatch):
+    """A kernel with no inet_diag module, or a sandbox that refuses netlink."""
+    monkeypatch.setattr(peercheck, "_diag", lambda *a: None)
+    c = socket.create_connection(listener.getsockname())
+    conn, peer = _accept(listener)
+    assert _verdict(listener, peer) == peercheck.CHILD
+    c.close()
+    time.sleep(.05)
+    assert _verdict(listener, peer) == peercheck.GONE
+    conn.close()
+
+
+def test_an_unknowable_table_does_not_shut_the_person_out(listener, monkeypatch):
+    """A sandbox that fakes /proc: no listener in the table means the table says nothing."""
+    monkeypatch.setattr(peercheck, "_diag", lambda *a: None)
+    monkeypatch.setattr(peercheck, "_rows", lambda: b"  sl  local_address\n")
+    assert peercheck.classify("127.0.0.1", 55555, "127.0.0.1", 8321) == peercheck.NO_ANSWER
+
+
 def test_no_socket_at_all_is_no_answer():
     """Starlette's TestClient: there is no peer to look for, and the suite's loopback stands."""
     assert peercheck.classify("testclient", 50000, "testserver", 80) == peercheck.NO_ANSWER

@@ -1,6 +1,7 @@
 """AgentOS server: web UI, WebSocket event stream, REST API."""
 
 import asyncio
+import base64
 import contextlib
 import hmac
 import json
@@ -9,15 +10,18 @@ import re
 import secrets
 import html as html_mod
 import socket
+import threading
 import time
 import uuid
 import traceback
+import weakref
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from urllib.parse import urlsplit
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
-                               PlainTextResponse, Response)
+                               PlainTextResponse, RedirectResponse, Response)
 
 from . import agentbundle
 from . import secevents
@@ -34,6 +38,7 @@ from . import onboarding as onboardmod
 from . import users as usersmod
 from . import knowledge
 from . import providers
+from . import peercheck
 from . import remote as remotemod
 from . import mcpbridge
 from . import accounts as accountsmod
@@ -470,6 +475,8 @@ async def startup():
     # where the linked machines are now, and whether they answer: Devices → Events
     from . import teamlink as _tl
     _tl.ON_MOVED = _tie_moved
+    asyncio.create_task(_perimeter_loop())
+    threading.Thread(target=remotemod.learn_names, daemon=True).start()
     if not idle:
         asyncio.create_task(_ties_watch())
         asyncio.create_task(_screen_revive())
@@ -2798,9 +2805,8 @@ async def api_restart(request: Request):
     The restart is scheduled after the response flushes, or the caller cannot tell
     "it restarted" from "it died".
     """
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "a restart can only be started from this machine"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "a restart can only be started from this machine")):
+        return no
     from . import desktop as desktopmod
 
     async def _finish():
@@ -2829,9 +2835,8 @@ async def api_update_apply(request: Request, body: dict | None = None):
     handler kills the connection carrying the result, and a browser cannot tell
     "the update worked and the server went away" from "the update failed".
     """
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "an update can only be started from this machine"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "an update can only be started from this machine")):
+        return no
     from . import updates as updmod
     body = body or {}
     if (body.get("skip") or "").strip():          # "not now, and stop asking for this one"
@@ -2871,9 +2876,8 @@ async def api_update_rollback(request: Request):
     """Take the last update back (updates.rollback), then restart into the older code.
     Loopback only, like installing one: it replaces the code that enforces every other
     permission here."""
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "a rollback can only be started from this machine"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "a rollback can only be started from this machine")):
+        return no
     from . import updates as updmod
 
     async def say(msg):
@@ -2903,9 +2907,8 @@ async def api_update_restart(request: Request):
     """Restart into the code on disk — what the "an update is waiting" notice's button
     does. Loopback only, like installing: restarting is replacing the code that
     enforces every other permission here. The page is told to reload first."""
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "restart it from the machine itself: bento service restart"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "restart it from the machine itself: bento service restart")):
+        return no
 
     async def _go():
         await state["broadcast"]({"type": "reload", "delay": 6000})
@@ -3215,10 +3218,8 @@ async def api_native_store_act(request: Request, body: dict):
     right place to authorise it. The user is asked in the UI first; the exact
     command is always returned.
     """
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse(
-            {"error": "installing software is only allowed from the machine itself"},
-            status_code=403)
+    if (no := _local_admin_refusal(request, "installing software is only allowed from the machine itself")):
+        return no
     from . import appstore
     action = str((body or {}).get("action") or "install")
     pkg = str((body or {}).get("id") or "")
@@ -3956,8 +3957,8 @@ async def api_component_install(body: dict, request: Request):
     silently while reporting "could not install". Loopback-only — this changes
     the machine.
     """
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "only from this machine"}, status_code=403)
+    if (no := _local_admin_refusal(request, "only from this machine")):
+        return no
     from . import components as compmod
     cid = str((body or {}).get("id") or "")
     res = await compmod.install(cid)
@@ -4784,8 +4785,12 @@ async def api_channels():
 
 
 @app.put("/api/channels/{channel_id}")
-async def api_channel_save(channel_id: str, body: dict):
+async def api_channel_save(channel_id: str, body: dict, request: Request):
     from . import channels as chmod
+    # the Remote browser channel is the same switch as /api/remote, so it has the same door
+    if channel_id == "remote" and (no := _local_admin_refusal(
+            request, "remote access can only be changed from the machine itself")):
+        return no
     ok, message = chmod.save(state["cfg"], channel_id, body or {})
     cfgmod.save_config(state["cfg"])
     await state["broadcast"]({"type": "channels"})
@@ -6382,7 +6387,7 @@ async def api_whatsapp(request: Request):
     reach = await wamod.reachability(state["cfg"])
     # Fall back to how this request actually arrived, so a machine already behind a
     # reverse proxy is not told to go and set up a tunnel it does not need.
-    base = str(request.base_url).rstrip("/")
+    base = _base_url(request)
     if not reach["reachable"] and base.startswith("https://"):
         reach = {"reachable": True, "base": base, "via": "this address",
                  "webhook": wamod.webhook_url(state["cfg"], base), "why": ""}
@@ -6436,7 +6441,7 @@ async def api_whatsapp_link(request: Request):
     # Loopback only, like every other route that changes what this machine is
     # connected to: a linked WhatsApp device IS a credential, and starting one
     # is not something a remote browser should be able to do on your behalf.
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "only from this machine"}, status_code=403)
     from . import whatsapp as wamod
     from . import wa_baileys
@@ -6469,7 +6474,7 @@ async def api_whatsapp_link(request: Request):
 async def api_whatsapp_unlink(request: Request):
     """Unlink the device, forget the credentials, and clear the paired owner.
     Not merely a disconnect: the stored keys ARE the linked device."""
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "only from this machine"}, status_code=403)
     res = await state["whatsapp"].unlink()
     await state["broadcast"]({"type": "config"})
@@ -8241,7 +8246,7 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
     card = approvalcard.card(name, args, _approval_said())
     entry = {"fut": fut, "offer": offer, "ws": ws, "name": name, "uid": uid,
              "args": args, "reason": reason, "run_id": run_id, "card": card,
-             "flow": flow, "asked_at": time.time()}
+             "flow": flow, "asked_at": time.time(), "must_person": _approval_must_person()}
     state["pending_approvals"][aid] = entry
     ev = {"type": "approval_request", "id": aid, "name": name, "args": args,
           "reason": reason, "offer": offer, "run_id": run_id, "flow": flow, "card": card}
@@ -8753,6 +8758,11 @@ def _approval_mine(entry: dict, uid) -> bool:
     return (entry.get("uid") or "") == (uid or "")
 
 
+def _approval_must_person() -> bool:
+    from .policy import needs_person
+    return bool(needs_person())
+
+
 async def resolve_approval(aid: str, approved: bool, remember=False, uid=None) -> bool:
     """Settle an approval. `remember` is the scope the person chose ('chat', 'hour',
     'always', or True from an older page). Returns False when there is nothing to
@@ -8927,6 +8937,14 @@ def _same_origin(request: Request):
     return urlsplit(o).netloc == request.headers.get("host", "")
 
 
+def _session_jti_of(request: Request) -> str:
+    """The id in this browser's cookie even when its generation was just ended by this very request."""
+    with contextlib.suppress(Exception):
+        body = request.cookies.get(remotemod.COOKIE, "").rpartition(".")[0]
+        return str(json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))).get("jti") or "")
+    return ""
+
+
 def _session_jti(request: Request) -> str:
     """The id of this browser's session cookie, '' with none."""
     claims = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE, ""))
@@ -8999,11 +9017,13 @@ async def csrf_origin_guard(request: Request, call_next):
             # e.g. an automation step running a tool as the user). A cross-origin
             # request with no token is a foreign site or a tokenless app — refused.
             if not (_valid_app_token(request) or so is True or so is None):
+                secevents.flag("origin.refused", f"{method} {path}", source=_client_addr(request))
                 return JSONResponse({"error": "denied: this needs a valid app token "
                                      "(cross-origin request)"}, status_code=403)
         elif so is False:
             # A cross-origin mutation of a non-runtime route is either an app trying
             # to escape its sandbox or a cross-site forgery. Neither is the user.
+            secevents.flag("origin.refused", f"{method} {path}", source=_client_addr(request))
             return JSONResponse({"error": "denied: cross-origin request refused (apps "
                                  "reach the OS only through appTool and its grants)"},
                                 status_code=403)
@@ -9112,18 +9132,45 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      "/api/standby/peer/")
 
 
-def _client_addr(request: Request) -> str:
-    return (request.client.host if request.client else "") or ""
+def _client_addr(conn) -> str:
+    """Who to treat this request or socket as. A proxy on this machine arrives from 127.0.0.1, so a
+    proxied visitor's own address is used, and never loopback (remote.client_addr)."""
+    return remotemod.client_addr((conn.client.host if conn.client else "") or "", conn.headers)
 
 
-def _authed(request: Request) -> bool:
+def _peer_verdict(conn) -> str:
+    """peercheck's answer for this connection. Nothing to look at is NO_ANSWER: a test's in-process client."""
+    client, server = conn.client, conn.scope.get("server")
+    if not client or not server or server[1] is None:
+        return peercheck.NO_ANSWER
+    return peercheck.classify(client.host, client.port, server[0], server[1])
+
+
+def _at_machine(conn) -> bool:
+    """Is this somebody at this machine? A real loopback peer, carrying nobody else, that this server did
+    not start. Everything that loopback used to mean goes through here."""
+    return remotemod.is_loopback(_client_addr(conn)) and _peer_verdict(conn) not in peercheck.REFUSED
+
+
+def _authed(conn) -> bool:
+    """May this request or socket come in? One function for both, because an HTTP gate and a socket gate
+    that disagree are how the shell ends up behind the weaker one."""
     cfg = state.machine_cfg()
+    token = conn.cookies.get(remotemod.COOKIE, "")
     # A locked screen outranks every reason to let somebody in, loopback included:
     # the person who locked it is the person sitting at that keyboard, and "you are
     # physically here" is exactly the claim they just withdrew. Checked first so the
     # API and the sockets go quiet with the page — a desktop that kept streaming a
     # turn behind the lock screen would be a lock over the pixels only.
-    if remotemod.session_locked(cfg, request.cookies.get(remotemod.COOKIE, "")):
+    if remotemod.session_locked(cfg, token):
+        return False
+    # An accounts file we cannot read means nobody can say who may come in. It must never read as "no
+    # accounts, so nothing to gate": the person at the machine can still reach it to repair it.
+    if usersmod.unreadable():
+        return _at_machine(conn)
+    local = remotemod.is_loopback(_client_addr(conn))
+    # Remote off means the network gets nothing, even with the socket still bound until the next restart.
+    if not local and not remotemod.enabled(cfg):
         return False
     # Adding a second person is what turns this machine into one that needs a login.
     # Loopback trust cannot survive it: "whoever is sitting here" is exactly the
@@ -9131,13 +9178,49 @@ def _authed(request: Request) -> bool:
     # and without this everybody at the keyboard would share the machine store
     # rather than reaching their own.
     if usersmod.enabled():
-        uid = remotemod.session_user(cfg, request.cookies.get(remotemod.COOKIE, ""))
+        uid = remotemod.session_user(cfg, token)
         return bool(uid) and usersmod.get(uid) is not None
-    if not remotemod.enabled(cfg):
-        return True                                     # loopback-only: nothing to gate
-    if cfg["remote"].get("trust_loopback", True) and remotemod.is_loopback(_client_addr(request)):
+    if remotemod.valid_session(cfg, token):
         return True
-    return remotemod.valid_session(cfg, request.cookies.get(remotemod.COOKIE, ""))
+    if not local:
+        return False
+    # Below here is trust with no credential at all, so only a real person at this machine gets it.
+    if remotemod.entry_token():
+        bearer = conn.headers.get("authorization", "")
+        return bearer.startswith("Bearer ") and remotemod.entry_matches(bearer[7:].strip())
+    if remotemod.desk_locked(cfg):
+        return False
+    if remotemod.enabled(cfg) and not cfg["remote"].get("trust_loopback", True):
+        return False
+    return _peer_verdict(conn) not in peercheck.REFUSED
+
+
+CHILD_WORDS = ("This is running inside Bento, so it can't act as you on this machine. "
+               "Run it in a terminal outside Bento, or sign in.")
+OTHER_USER_WORDS = "Another user on this computer can't use this person's Bento. Sign in."
+LOCKED_WORDS = "This desktop is locked. Unlock it in its browser, or sign in with the passphrase."
+
+
+def _refused_words(conn) -> str:
+    """Why this was refused, when the reason is worth a sentence, and on the record when it is an attack.
+    Called only on a refusal of something that is not open to everybody."""
+    cfg = state.machine_cfg()
+    token = conn.cookies.get(remotemod.COOKIE, "")
+    src = _client_addr(conn)
+    if token and remotemod.cookie_forged(cfg, token):
+        secevents.flag("session.forged", conn.url.path, source=src)
+    if not remotemod.is_loopback(src) or remotemod.valid_session(cfg, token):
+        return ""
+    verdict = _peer_verdict(conn)
+    if verdict == peercheck.OTHER_USER:
+        secevents.flag("peer.other_user", conn.url.path, source=src)
+        return OTHER_USER_WORDS
+    if verdict in peercheck.REFUSED:
+        secevents.flag("child.refused", conn.url.path, source=verdict)
+        return CHILD_WORDS
+    if not usersmod.enabled() and remotemod.desk_locked(cfg):
+        return LOCKED_WORDS
+    return ""
 
 
 @app.middleware("http")
@@ -9171,16 +9254,38 @@ async def resolve_user(request: Request, call_next):
         usersmod._current.reset(token)
 
 
+def _take_entry(request: Request):
+    """A browser this server started carries a ticket (`?desk=`), and a demo's page its key (`?entry=`):
+    swap it for a cookie, and take it out of the address bar. Only for somebody really on loopback on a
+    machine with no accounts, where a session cookie means the machine. None when this is neither."""
+    q = request.query_params
+    if request.method != "GET" or request.url.path.startswith(("/api/", "/ws")) or not ("desk" in q or "entry" in q):
+        return None
+    if usersmod.enabled() or not remotemod.is_loopback(_client_addr(request)):
+        return None
+    if remotemod.desk_locked(state.machine_cfg()) and not remotemod.entry_token():
+        return None             # a new browser is not a way round a lock
+    if not (remotemod.entry_matches(q.get("entry", "")) or remotemod.spend_ticket(q.get("desk", ""))):
+        return None
+    resp = RedirectResponse(request.url.path, status_code=303, headers=NO_STORE)
+    _set_session_cookie(resp, request, remotemod.issue_session(state.machine_cfg()))
+    return resp
+
+
 @app.middleware("http")
 async def remote_access_gate(request: Request, call_next):
+    entered = _take_entry(request)
+    if entered is not None:
+        return entered
     if _authed(request) or _app_token_admits(request):
         return await call_next(request)
     path = request.url.path
     if path.startswith(REMOTE_OPEN_PATHS):
         return await call_next(request)
+    words = _refused_words(request)
     # an API caller gets a machine-readable 401; a browser gets the sign-in page
     if path.startswith("/api/") or path.startswith("/ws"):
-        return JSONResponse({"error": "sign in required", "login": "/login"},
+        return JSONResponse({"error": words or "sign in required", "login": "/login"},
                             status_code=401, headers=NO_STORE)
     return FileResponse(UI_DIR / "login.html", headers=NO_STORE)
 
@@ -9248,6 +9353,40 @@ def _is_https(request) -> bool:
     if (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip() == "https":
         return True
     return request.url.scheme == "https"
+
+
+# The doors that do not rest on who the caller seems to be: each holds its own secret, and the name a
+# webhook's sender or a paired machine uses for this one is its own business.
+HOST_OPEN = ("/api/hooks/", "/api/agent/mcp", "/api/mcp/run/", "/api/accounts/oauth/callback/",
+             "/api/standby/peer/")
+
+
+def _host_words(host: str) -> str:
+    return (f"This machine doesn't answer to the name {host or 'in this request'}. If that name is yours, "
+            f"run bento remote --allow-host {remotemod.parse_host(host) or 'NAME'} on the machine, "
+            "or set AGENTOS_ALLOWED_HOSTS where it is hosted.")
+
+
+@app.middleware("http")
+async def host_guard(request: Request, call_next):
+    """Registered last, so it runs first, before anything decides who this is. A page at evil.example can
+    re-point its name at 127.0.0.1: the browser then sends a matching Host and Origin from a loopback
+    address, and every other check here passes. The name is the one thing it cannot make ours."""
+    host = request.headers.get("host", "")
+    if request.url.path.startswith(HOST_OPEN) or remotemod.host_allowed(state.machine_cfg(), host):
+        return await call_next(request)
+    secevents.flag("host.refused", secevents.plain(host, 120), source=_client_addr(request))
+    words = _host_words(host)
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"error": words}, status_code=421, headers=NO_STORE)
+    return Response(words, status_code=421, media_type="text/plain; charset=utf-8", headers=NO_STORE)
+
+
+def _base_url(request) -> str:
+    """This server's address as this request reached it. uvicorn is pinned not to rewrite the scheme, so
+    the proxy's word for it is read here, and it is only ever used to build a link."""
+    base = str(request.base_url).rstrip("/")
+    return "https://" + base[len("http://"):] if _is_https(request) and base.startswith("http://") else base
 
 
 def _set_session_cookie(resp, request, token: str, days: int = 30) -> None:
@@ -9764,7 +9903,7 @@ async def api_backup(body: dict):
 
 
 def _restore_refusal(request: Request):
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "A restore replaces this whole machine, so it can only be "
                                       "started on the machine itself (or with bento restore)."},
                             status_code=403)
@@ -10891,19 +11030,22 @@ async def api_remote_login(body: dict, request: Request):
     addr = _client_addr(request)
     if usersmod.enabled():
         return await api_users_login(body, request)
-    if not remotemod.enabled(cfg):
+    if not remotemod.enabled(cfg) and not remotemod.desk_locked(cfg):
         return {"ok": True}                        # nothing to sign in to
-    wait = remotemod.locked_for(addr)
+    addr = _login_source(request)
+    wait = remotemod.locked_for(addr) or (0 if _at_machine(request) else remotemod.target_locked_for("passphrase"))
     if wait:
         return JSONResponse({"error": f"too many attempts — try again in {wait}s"},
                             status_code=429)
     if not remotemod.check_passphrase(cfg, (body or {}).get("passphrase", "")):
-        held = remotemod.note_failure(addr)
+        held = _login_failed(addr, "passphrase", "the passphrase")
         state["store"].log("system", "remote sign-in failed", {"from": addr})
         return JSONResponse(
             {"error": "wrong passphrase" + (f" — locked out for {held}s" if held else "")},
             status_code=401)
     remotemod.note_success(addr)
+    remotemod.note_target_success("passphrase")
+    remotemod.set_desk_locked(False)               # whoever holds the key has unlocked this machine
     state["store"].log("system", "remote sign-in", {"from": addr})
     resp = JSONResponse({"ok": True})
     _set_session_cookie(resp, request, remotemod.issue_session(cfg),
@@ -10912,9 +11054,44 @@ async def api_remote_login(body: dict, request: Request):
 
 
 @app.post("/api/remote/logout")
-async def api_remote_logout():
+async def api_remote_logout(request: Request):
+    return await _sign_out(request)
+
+
+def _login_source(request: Request) -> str:
+    """Whose backoff a guess counts against. Everything on loopback shares one address, so a jailed
+    command guessing must not lock out the person whose browser is also 127.0.0.1."""
+    addr = _client_addr(request)
+    if remotemod.is_loopback(addr) and _peer_verdict(request) in peercheck.REFUSED:
+        return "child"
+    return addr
+
+
+def _login_failed(addr: str, target: str, what: str) -> int:
+    """One wrong password, on the source's count and the account's, and on the record. Returns how long
+    the source must now wait."""
+    held = remotemod.note_failure(addr)
+    held_target = remotemod.note_target_failure(target)
+    secevents.flag("login.failed", what, source=addr)
+    if held or held_target:
+        secevents.flag("login.locked", what, source=addr)
+    return held
+
+
+def _end_token_session(sid: str):
+    for k, e in list(state.get("app_tokens", {}).items()):
+        if sid and e.get("sid") == sid:
+            state["app_tokens"].pop(k, None)
+
+
+async def _sign_out(request: Request):
+    """This browser's session ends, and so does any copy of its cookie: its apps, its sockets, the id."""
+    claims = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE, ""))
+    _end_token_session(str((claims or {}).get("jti") or ""))
+    remotemod.end_session(claims)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(remotemod.COOKIE, path="/")
+    await _ws_recheck()
     return resp
 
 
@@ -10970,7 +11147,13 @@ async def api_session_lock(request: Request):
     new_sid = str((remotemod.session_claims(cfg, locked) or {}).get("jti") or "")
     for e in _app_tokens_of_session(_session_jti(request)):
         e["locked"], e["sid"] = True, new_sid
+    # The cookie from before the lock must not open the screen from a copy, and on a machine with no
+    # accounts a window that sends no cookie at all must not walk round it.
+    remotemod.end_session(remotemod.session_claims(cfg, request.cookies.get(remotemod.COOKIE, "")))
+    if not usersmod.enabled():
+        remotemod.set_desk_locked(True)
     state["store"].log("system", "desktop locked")
+    await _ws_recheck()
     return resp
 
 
@@ -10991,11 +11174,13 @@ async def api_session_unlock(body: dict, request: Request):
                             status_code=401, headers=NO_STORE)
     if not claims.get("lk"):
         return {"ok": True}          # already open: a double submit, not an error
-    addr = _client_addr(request)
-    if (wait := remotemod.locked_for(addr)):
+    addr = _login_source(request)
+    uid = str(claims.get("uid") or "")
+    target = (usersmod.get(uid) or {}).get("name", uid) if uid else "passphrase"
+    wait = remotemod.locked_for(addr) or (0 if _at_machine(request) else remotemod.target_locked_for(target))
+    if wait:
         return JSONResponse({"error": f"too many attempts — wait {wait}s"},
                             status_code=429)
-    uid = str(claims.get("uid") or "")
     pw = str((body or {}).get("password") or "")
     if usersmod.enabled():
         if not uid or usersmod.get(uid) is None:
@@ -11005,9 +11190,12 @@ async def api_session_unlock(body: dict, request: Request):
     else:
         ok = remotemod.check_passphrase(cfg, pw)
     if not ok:
-        remotemod.note_failure(addr)
+        _login_failed(addr, target, f"unlock of {target}")
         return JSONResponse({"error": "that password does not match"}, status_code=401)
     remotemod.note_success(addr)
+    remotemod.note_target_success(target)
+    remotemod.set_desk_locked(False)
+    remotemod.end_session(claims)
     resp = JSONResponse({"ok": True})
     opened = remotemod.issue_session(cfg, uid)
     _set_session_cookie(resp, request, opened)
@@ -11033,13 +11221,12 @@ async def api_remote_configure(body: dict, request: Request):
     come from loopback. An agent, an app, or someone already signed in remotely
     cannot widen this on their own.
     """
-    cfg = state["cfg"]
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse(
-            {"error": "remote access can only be changed from the machine itself"},
-            status_code=403)
+    if (no := _local_admin_refusal(request, "remote access can only be changed from the machine itself")):
+        return no
+    cfg = state.machine_cfg()
     body = body or {}
     r = cfg.setdefault("remote", {})
+    was_on = remotemod.enabled(cfg)
 
     if "passphrase" in body:
         pw = body["passphrase"] or ""
@@ -11051,6 +11238,8 @@ async def api_remote_configure(body: dict, request: Request):
             remotemod.reset_failures()
         else:
             r["pass_hash"] = r["pass_salt"] = ""      # clearing it also disarms below
+        remotemod.set_desk_locked(False)
+        remotemod.quiet_forgeries()                   # every old cookie now reads as a bad signature
 
     if "enabled" in body:
         want = bool(body["enabled"])
@@ -11065,15 +11254,35 @@ async def api_remote_configure(body: dict, request: Request):
     for k in ("bind", "session_days", "trust_loopback"):
         if k in body:
             r[k] = body[k]
+    if "allowed_hosts" in body:
+        names = [str(h).strip().lower() for h in (body["allowed_hosts"] or []) if str(h).strip()]
+        bad = [h for h in names if h != "*" and not remotemod.parse_host(h.removeprefix("*."))]
+        if bad:
+            return JSONResponse({"error": f"{bad[0]} isn't a host name"}, status_code=400)
+        r["allowed_hosts"] = names
 
     remotemod.sanitize_remote(cfg)
     cfgmod.save_config(cfg)
-    state["store"].log("system", f"remote access {'enabled' if remotemod.enabled(cfg) else 'disabled'}",
+    on = remotemod.enabled(cfg)
+    state["store"].log("system", f"remote access {'enabled' if on else 'disabled'}",
                        {"bind": r.get("bind")})
+    _ledger("remote.write", "remote", f"remote access {'on' if on else 'off'}")
     await state["broadcast"]({"type": "remote"})
     st = remotemod.status(cfg)
-    st["restart_required"] = remotemod.enabled(cfg) and \
-        os.environ.get("AGENTOS_BOUND_HOST", "127.0.0.1") != remotemod.bind_host(cfg)
+    bound = os.environ.get("AGENTOS_BOUND_HOST", "127.0.0.1")
+    st["restart_required"] = bound != remotemod.bind_host(cfg)
+    if not on:
+        # Off means off now. A tunnel keeps its own door open past a restart (`tailscale serve --bg`), and
+        # the socket stays bound until one, so say what is still there rather than imply it is gone.
+        st["tunnels_stopped"] = []
+        if was_on:
+            from . import tunnel as tunmod
+            st["tunnels_stopped"] = await tunmod.stop_published(cfg)
+        if not remotemod.is_loopback(bound):
+            st["still_bound"] = bound
+            st["note"] = (f"Remote access is off. The server still listens on {bound} until it restarts, "
+                          "and refuses everything from the network.")
+    await _ws_recheck()
     return st
 
 
@@ -11721,6 +11930,14 @@ def _require_admin():
     return None
 
 
+def _local_admin_refusal(request, words: str):
+    """For what changes the whole machine: somebody really at this machine, who is also its admin. Being
+    on loopback alone also describes a signed-in non-admin at the keyboard, and their jailed Terminal."""
+    if not _at_machine(request):
+        return JSONResponse({"error": words}, status_code=403)
+    return _require_admin()
+
+
 def _ledger(action: str, resource: str, reason: str = "", surface: str = "gui"):
     """A person's decision about permissions, on the record like the gate's own. For
     the changes that are not grants (grants audit themselves): letting something out of
@@ -11757,19 +11974,22 @@ async def api_users_who(request: Request):
 async def api_users_login(body: dict, request: Request):
     name = str((body or {}).get("name") or "").strip().lower()
     pw = str((body or {}).get("password") or "")
-    addr = _client_addr(request)
-    wait = remotemod.locked_for(addr)
+    addr = _login_source(request)
+    # An account's own count holds whoever guesses at it, from anywhere. The person at the machine is
+    # exempt, or a stranger guessing could keep the owner out of their own desktop.
+    wait = remotemod.locked_for(addr) or (0 if _at_machine(request) else remotemod.target_locked_for(name))
     if wait:
         return JSONResponse({"error": f"too many attempts — wait {wait}s"},
                             status_code=429)
-    u = usersmod.by_name(name)
     # One message for both failures, on purpose: "no such user" tells somebody
-    # probing which names exist.
-    if not u or not usersmod.check_password(u["id"], pw):
-        remotemod.note_failure(addr)
+    # probing which names exist. And the same work for both, or the clock says it.
+    u = usersmod.verify_login(name, pw)
+    if not u:
+        _login_failed(addr, name, f"sign-in as {name}")
         return JSONResponse({"error": "that username and password do not match"},
                             status_code=401)
     remotemod.note_success(addr)
+    remotemod.note_target_success(name)
     tok = remotemod.issue_session(state.machine_cfg(), u["id"])
     resp = JSONResponse({"ok": True, "id": u["id"], "name": u["name"],
                          "role": u["role"]})
@@ -11780,14 +12000,52 @@ async def api_users_login(body: dict, request: Request):
 
 @app.post("/api/users/logout")
 async def api_users_logout(request: Request):
-    # the apps this browser opened stop with the session: their tokens are dropped
-    sid = _session_jti(request)
-    for k, e in list(state.get("app_tokens", {}).items()):
-        if sid and e.get("sid") == sid:
-            state["app_tokens"].pop(k, None)
+    return await _sign_out(request)
+
+
+@app.post("/api/session/everywhere")
+async def api_session_everywhere(request: Request, body: dict | None = None):
+    """Every device signed in as this account stops, this one included. An admin may name somebody else's
+    account. On a machine with no accounts it is the machine's sessions, and there must be a key to come
+    back with."""
+    cfg = state.machine_cfg()
+    me = usersmod.current()
     resp = JSONResponse({"ok": True})
-    resp.delete_cookie(remotemod.COOKIE, path="/")
+    if usersmod.enabled():
+        uid = str((body or {}).get("uid") or me)
+        if uid != me and not usersmod.is_admin(me):
+            return JSONResponse({"error": "only an admin can sign somebody else out"}, status_code=403)
+        if not usersmod.get(uid):
+            return JSONResponse({"error": "no such user"}, status_code=404)
+        usersmod.end_sessions(uid)
+        _end_account_tokens(uid)
+        if uid == me:
+            resp.delete_cookie(remotemod.COOKIE, path="/")
+        _ledger("session.end", f"user:{uid}", "signed out everywhere")
+    else:
+        if not remotemod.lock_kind(cfg):
+            return JSONResponse({"error": "This machine has no sign-in to end. Set a passphrase first."},
+                                status_code=400)
+        r = cfg.setdefault("remote", {})
+        r["sgen"] = int(r.get("sgen") or 0) + 1
+        cfgmod.save_config(cfg)
+        _end_account_tokens("")
+        resp.delete_cookie(remotemod.COOKIE, path="/")
+        _ledger("session.end", "machine", "signed out everywhere")
+    await _ws_recheck()
     return resp
+
+
+def _end_account_tokens(uid: str, keep_sid: str = "", new_sid: str = "") -> None:
+    """An app's token is good for the session that opened it, so it ends with that account's sessions.
+    `keep_sid` is the browser that made the change and has just been given a new cookie."""
+    for k, e in list(state.get("app_tokens", {}).items()):
+        if str(e.get("uid") or "") != uid:
+            continue
+        if keep_sid and e.get("sid") == keep_sid:
+            e["sid"] = new_sid
+        else:
+            state["app_tokens"].pop(k, None)
 
 
 @app.get("/api/users")
@@ -11827,10 +12085,11 @@ async def api_users_create(body: dict, request: Request):
 
 
 @app.put("/api/users/{uid}")
-async def api_users_update(uid: str, body: dict):
+async def api_users_update(uid: str, body: dict, request: Request):
     b = body or {}
     me = usersmod.current()
     admin = usersmod.is_admin(me)
+    ended = False
     # Your own password is yours. Everything else about an account is the machine's.
     if not admin and uid != me:
         return JSONResponse({"error": "only an admin can change another account"},
@@ -11840,19 +12099,42 @@ async def api_users_update(uid: str, body: dict):
             # changing your own asks for the one you have now: an unattended open
             # session must not be a way to take the account over. An admin resetting
             # somebody else's (they forgot it) needs only their own session.
-            if uid == me and not usersmod.check_password(uid, str(b.get("current") or "")):
-                return JSONResponse({"error": "that isn't your current password"}, status_code=403)
+            if uid == me:
+                who = (usersmod.get(uid) or {}).get("name", uid)
+                if (wait := remotemod.target_locked_for(who)):
+                    return JSONResponse({"error": f"too many attempts — wait {wait}s"}, status_code=429)
+                if not usersmod.check_password(uid, str(b.get("current") or "")):
+                    _login_failed(_login_source(request), who, f"current password of {who}")
+                    return JSONResponse({"error": "that isn't your current password"}, status_code=403)
             usersmod.set_password(uid, str(b["password"]))
+            _ledger("account.password", f"user:{uid}", "password changed")
+            ended = True
         if b.get("role"):
             if not admin:
                 return JSONResponse({"error": "only an admin can change a role"},
                                     status_code=403)
+            before = (usersmod.get(uid) or {}).get("role")
             usersmod.set_role(uid, str(b["role"]))
+            if before != b["role"]:
+                _ledger("account.role", f"user:{uid}", f"role {before} to {b['role']}")
+                ended = True
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    return {"ok": True, "user": usersmod.get(uid) and
-            {k: v for k, v in usersmod.get(uid).items()
-             if k not in ("pass_hash", "salt")}}
+    resp = JSONResponse({"ok": True, "user": usersmod.get(uid) and
+                         {k: v for k, v in usersmod.get(uid).items()
+                          if k not in ("pass_hash", "salt")}})
+    if ended:
+        # Those two ended every session of the account. The browser that made the change stays signed in
+        # with a new cookie, because a person changing their own password expects to carry on.
+        new_sid = ""
+        if uid == me:
+            cfg = state.machine_cfg()
+            fresh = remotemod.issue_session(cfg, uid)
+            _set_session_cookie(resp, request, fresh)
+            new_sid = str((remotemod.session_claims(cfg, fresh) or {}).get("jti") or "")
+        _end_account_tokens(uid, _session_jti_of(request) if new_sid else "", new_sid)
+        await _ws_recheck()
+    return resp
 
 
 @app.delete("/api/users/{uid}")
@@ -11863,9 +12145,12 @@ async def api_users_delete(uid: str, wipe: bool = False):
         return JSONResponse({"error": "you cannot delete the account you are using"},
                             status_code=400)
     try:
-        return usersmod.delete(uid, wipe=wipe)
+        out = usersmod.delete(uid, wipe=wipe)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    _end_account_tokens(uid)
+    await _ws_recheck()
+    return out
 
 
 # ---- sharing: the one place data crosses between people --------------------
@@ -12167,9 +12452,8 @@ async def api_setup_reset(body: dict, request: Request):
     session gets to trigger. The `SENSITIVE_FOR_APPS` guard blocks the app-referer
     case; this is the belt to that suspenders, and it also stops a signed-in
     executor from wiping the machine."""
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "a factory reset can only be run from the machine itself"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "a factory reset can only be run from the machine itself")):
+        return no
     if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
         return JSONResponse({"error": "only an admin can factory-reset this machine"},
                             status_code=403)
@@ -14657,7 +14941,7 @@ async def api_devices_sdcard(request: Request, body: dict):
     writes to a local path). The card then installs Bento on its first boot."""
     if (r := _require_admin()):
         return r
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "the SD card is written on the machine it is plugged into; "
                                       "use this machine's own screen or `bento pool sdcard`"}, status_code=403)
     from . import provision as provmod
@@ -15255,7 +15539,7 @@ async def api_network_firewall(request: Request, body: dict):
     with usersmod.as_user(""):
         cfg = state.machine_cfg()
         if act == "open":
-            if not remotemod.is_loopback(_client_addr(request)):
+            if not _at_machine(request):
                 return JSONResponse({"error": "open the firewall from this computer's own screen, "
                                               "or run `bento network firewall open` here"}, status_code=403)
             got = await asyncio.to_thread(hostfirewall.open_ports, cfg)
@@ -15420,7 +15704,17 @@ async def api_demo_warehouse(request: Request):
     """The warehouse demo (demos/warehouse.py): off, starting, ready or failed, and where it is.
     Its pages are on this machine's loopback, so a browser elsewhere is told it can't open them."""
     from .demos import warehouse as wh
-    return {**wh.status(), "here": remotemod.is_loopback(_client_addr(request)), "account": _demo_account()}
+    return {**wh.status(), **_demo_doors(), "here": remotemod.is_loopback(_client_addr(request)),
+            "account": _demo_account()}
+
+
+def _demo_doors() -> dict:
+    """The demo's addresses with its key in them, for its own user and an admin at the machine's screen.
+    Anybody else signed in here gets the plain ones, which open nothing."""
+    from .demos import warehouse as wh
+    if usersmod.enabled() and _demo_account().get("need") and not usersmod.is_admin(usersmod.current()):
+        return {}
+    return wh.keyed_urls()
 
 
 def _demo_account() -> dict:
@@ -15446,7 +15740,7 @@ async def api_demo_warehouse_act(request: Request, body: dict):
     the brain, which spends what the brain costs. With accounts only the demo's own user starts it (an
     admin made that user for it, and may stop it); `account` makes that user."""
     from .demos import warehouse as wh
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "The demo runs on this machine's own addresses, so start it on the "
                                       "machine itself (or with bento demo warehouse)."}, status_code=403)
     act = body.get("action")
@@ -15471,7 +15765,7 @@ async def api_demo_warehouse_act(request: Request, body: dict):
         usersmod.save_user_cfg(u["id"], ucfg)
         usersmod.reset_caches()
         _ledger("demo.account", f"user:{u['id']}", f"made the user {u['name']} for the warehouse demo")
-        return {**wh.status(), "here": True, "account": _demo_account()}
+        return {**wh.status(), **_demo_doors(), "here": True, "account": _demo_account()}
     if acct["need"] == "create":
         return JSONResponse({"error": "The demo runs as a user of its own. Create one for it first."}, status_code=403)
     if acct["need"] == "signin" and not (act == "stop" and usersmod.is_admin(usersmod.current())):
@@ -17445,7 +17739,7 @@ async def api_flows(request: Request):
                 # port: a server started on another port, reached over the LAN, or behind
                 # a tunnel would otherwise hand out a URL that quietly does not work.
                 t["url"] = flowsmod.hook_url(state["cfg"], f["name"], t,
-                                             base=str(request.base_url).rstrip("/"))
+                                             base=_base_url(request))
         out.append({**f, "triggers": trigs,
                     "grants": [g for g in store.list_grants()
                                if (g.get("source_ref") or "") == flowsmod.source_ref(f["name"])],
@@ -17949,8 +18243,14 @@ async def api_fabric_approvals():
 
 
 @app.post("/api/fabric/approvals/{aid}")
-async def api_fabric_approve(aid: str, body: dict):
+async def api_fabric_approve(aid: str, body: dict, request: Request):
     b = body or {}
+    # A question that must be a person's is not answered by a token, or by anything that came in on
+    # loopback alone: the gate let a signed-in session or somebody at this machine this far, and an
+    # app's token is neither.
+    entry = (state.get("pending_approvals") or {}).get(aid)
+    if entry and entry.get("must_person") and b.get("approved") and _valid_app_token(request):
+        return JSONResponse({"error": "A person has to answer this one."}, status_code=403)
     ok = await resolve_approval(aid, bool(b.get("approved")), b.get("remember") or False,
                                 uid=usersmod.current() if usersmod.enabled() else "")
     if not ok:
@@ -18268,13 +18568,55 @@ def _ws_origin_ok(ws) -> bool:
     return urlsplit(origin).netloc == ws.headers.get("host", "")
 
 
+# Every socket that passed the gate. A socket is authenticated once, at its handshake, so without this a
+# terminal and a running turn stayed live behind a lock, a sign-out and a deleted account.
+_WS_LIVE = weakref.WeakSet()
+
+
+async def _ws_recheck() -> int:
+    """Ask the gate again about every open socket, with the cookie each opened on, and close the ones it
+    now refuses. One question for every event (a lock, a sign-out, a password, a deleted account, a change
+    made from a terminal), and it also catches a cookie that has expired. A terminal session carries on
+    without its window: it belongs to the server, and the window only watched it."""
+    closed = 0
+    for ws in list(_WS_LIVE):
+        if ws.application_state == WebSocketState.DISCONNECTED or \
+                ws.client_state == WebSocketState.DISCONNECTED:
+            _WS_LIVE.discard(ws)
+            continue
+        if _ws_authed(ws):
+            continue
+        _WS_LIVE.discard(ws)
+        closed += 1
+        with contextlib.suppress(Exception):
+            await ws.close(code=4401)
+    return closed
+
+
+async def _perimeter_loop():
+    """What the events above cannot catch: a change from another process, an expiry, an orphan's status."""
+    while True:
+        await asyncio.sleep(30)
+        with contextlib.suppress(Exception):
+            await _ws_recheck()
+        with contextlib.suppress(Exception):
+            peercheck.reap()
+
+
 async def _ws_reject(ws) -> bool:
-    """One gate every socket passes before `accept()`: cross-origin first, then
+    """One gate every socket passes before `accept()`: the name, then cross-origin, then
     auth. Returns True when the handshake was refused (and already closed), so a
     handler reads `if await _ws_reject(ws): return`. Having ONE gate is the point
     — an origin check that each new socket has to remember to add is one a new
     socket will eventually forget, and this OS's sockets include a shell."""
+    host = ws.headers.get("host", "")
+    if not remotemod.host_allowed(state.machine_cfg(), host):
+        secevents.flag("host.refused", secevents.plain(host, 120), source=_client_addr(ws))
+        with contextlib.suppress(Exception):
+            await ws.close(code=4421)
+        return True
     if not _ws_origin_ok(ws):
+        secevents.flag("origin.refused", ws.url.path, source=_client_addr(ws))
         with contextlib.suppress(Exception):
             state["store"].log("system", "refused a cross-origin WebSocket",
                                {"origin": ws.headers.get("origin", ""),
@@ -18283,6 +18625,7 @@ async def _ws_reject(ws) -> bool:
             await ws.close(code=4403)     # 4403: our "forbidden origin"
         return True
     if not _ws_authed(ws):
+        _refused_words(ws)
         with contextlib.suppress(Exception):
             await ws.close(code=4401)
         return True
@@ -18292,6 +18635,7 @@ async def _ws_reject(ws) -> bool:
         with contextlib.suppress(Exception):
             await ws.close(code=4503)
         return True
+    _WS_LIVE.add(ws)
     return False
 
 
@@ -18299,21 +18643,7 @@ def _ws_authed(ws) -> bool:
     """Websockets do not pass through HTTP middleware, so the same gate is
     applied by hand here — a socket is a longer-lived and more capable channel
     than any REST call, and the terminal one is literally a shell."""
-    cfg = state.machine_cfg()
-    if remotemod.session_locked(cfg, ws.cookies.get(remotemod.COOKIE, "")):
-        return False              # same refusal as `_authed`, for the same reason
-    if usersmod.enabled():
-        # A machine with accounts is locked by them: only a valid signed session
-        # cookie gets a socket, whichever transport it arrived on. Loopback trust
-        # cannot survive multi-user for the same reason it cannot for HTTP — see
-        # _authed — so it is deliberately not consulted here.
-        return _ws_user(ws) is not None
-    if not remotemod.enabled(cfg):
-        return True
-    if cfg["remote"].get("trust_loopback", True) and \
-       remotemod.is_loopback((ws.client.host if ws.client else "") or ""):
-        return True
-    return remotemod.valid_session(cfg, ws.cookies.get(remotemod.COOKIE, ""))
+    return _authed(ws)
 
 
 def _ws_user(ws) -> str | None:
