@@ -21,6 +21,7 @@ from . import toolscope
 # package, so this direction cannot cycle.)
 from .executors import tool_detail
 from .policy import MAIN, Principal
+from . import tools as tools_mod
 from .tools import ALWAYS_ASK, APP_BOUND_TOOLS, ASK_FROM_SPECIALISTS, SPACE_SCOPED_TOOLS, Toolbox
 
 TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"   # = fabric.TAINTED_REPLY
@@ -854,13 +855,17 @@ class Agent:
                         lines.append(f"    usage notes: {s['instructions'][:400]}")
                 mem_text += ("\n\nConnected MCP servers — prefer their tools (mcp_<server>_<tool>) whenever "
                              "a task touches their domain:\n" + "\n".join(lines))
-        from .tools import sandbox_conf, shares_for
+        from .tools import jail_gap, sandbox_conf, shares_for
         sb_on, sb_root = sandbox_conf(self.cfg)
         shared = shares_for(self.cfg)
         sb_text = (f"SANDBOX: you are confined to {sb_root} — commands run jailed there, the rest of the "
                    f"filesystem is read-only and other home files are hidden. Work inside that folder"
                    f"{' and the shared folders below' if shared else ''}."
                    if sb_on else "")
+        if jail_gap(self.cfg):
+            sb_text = (f"SANDBOX: your file tools are confined to {sb_root}. The sandbox cannot start on this "
+                       "machine, so every command you run asks the person first, and with nobody there it "
+                       "is refused. Prefer the file tools.")
         # Named here because the agent never looked: a person shared /data/reports,
         # asked about it, and was told the agent could only see its workspace.
         if shared:
@@ -1088,6 +1093,13 @@ class Agent:
             must_person = f"typed into {args['_fg']}, not the shell"
         if dec.effect == "ask" and dec.rule == "taint":
             must_person = "after untrusted content"
+        # The sandbox is on and cannot start here: code runs only on a person's yes, each time, with
+        # no remember and whatever a grant or the autonomy says. tools.run_command refuses without it.
+        jail_gap = tools_mod.jail_gap(self.cfg) if name in tools_mod.JAILED_TOOLS and dec.effect != "deny" else ""
+        if jail_gap:
+            dec.effect = "ask"
+            dec.grant_offer = None
+            must_person = jail_gap
 
         approved = None
         _started = time.time()
@@ -1132,7 +1144,12 @@ class Agent:
                                                  dec.reason or reason)
             if approved:
                 await self._checkpoint(name, args)
-                output = await self._execute(name, args)
+                tok_jail = tools_mod._jail_waived.set(True) if jail_gap else None
+                try:
+                    output = await self._execute(name, args)
+                finally:
+                    if tok_jail is not None:
+                        tools_mod._jail_waived.reset(tok_jail)
             elif verdict is not None:
                 why = "; ".join(f"{b['agent']}: {b['why']}" for b in verdict["ballots"]
                                 if not b["yes"] and b["why"])

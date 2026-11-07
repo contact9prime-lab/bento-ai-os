@@ -19754,6 +19754,9 @@ function setTab(body,all){
       pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
         {desc:'Runs commands and the Terminal inside a sandbox.',
          more:'Everything outside the folder is read-only and other people\u2019s home files are hidden. A shell can reach whatever this jail allows, even past an executor\u2019s folders.',f:'sandbox jail bubblewrap shell'}),
+      ...((typeof PLATFORM!=='undefined'&&PLATFORM&&PLATFORM.jail&&PLATFORM.jail.words)
+        ?[pRow('Not working here','',{desc:'The sandbox cannot start on this machine, so each command asks you first.',
+           more:PLATFORM.jail.words,f:'sandbox jail bubblewrap missing not working'})]:[]),
       pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
       pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
         {desc:'Extra folders the agent and the Terminal can use, shared with chosen accounts.',

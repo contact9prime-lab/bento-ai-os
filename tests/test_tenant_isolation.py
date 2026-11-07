@@ -111,12 +111,12 @@ def test_the_shell_cannot_see_another_accounts_home(two):
 
 
 @pytest.mark.skipif(not toolsmod.sandbox_mechanism(), reason="needs a jail mechanism (bwrap)")
-def test_the_shell_runs_in_the_accounts_own_home(two):
+def test_the_shell_runs_in_the_accounts_own_workspace(two):
     _, bob = two
     tb = _box(_cfg(True), bob)
     with usersmod.as_user(bob):
         out = run(tb.run_command("pwd"))
-    assert bob in out
+    assert bob in out and out.strip().endswith("workspace")
 
 
 def test_the_shell_fails_closed_when_no_jail_is_available(two, monkeypatch):
@@ -139,10 +139,12 @@ def test_a_single_user_machine_keeps_reading_across_the_disk(tmp_path, monkeypat
     monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "config.json")
     usersmod.reset_caches()
     usersmod.set_current("")
-    f = tmp_path / "anywhere.txt"
-    f.write_text("ordinary file")
-    tb = _box(_cfg(False), "")
-    assert "ordinary file" in run(tb.read_file(str(f)))
+    # outside the home: inside it, only what an agent has business with is open (protected.py)
+    with tempfile.TemporaryDirectory() as elsewhere:
+        f = Path(elsewhere) / "anywhere.txt"
+        f.write_text("ordinary file")
+        tb = _box(_cfg(False), "")
+        assert "ordinary file" in run(tb.read_file(str(f)))
     usersmod.reset_caches()
 
 

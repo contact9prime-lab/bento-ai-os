@@ -1250,14 +1250,14 @@ def doctor(fix: bool = False, session: bool = False):
     ok("git available" if shutil.which("git") else "")
     if not shutil.which("git"):
         warn("git not installed — the Ship pillar (git_* tools) needs it")
-    from .tools import sandbox_mechanism
-    mech = sandbox_mechanism()
-    if mech:
-        ok(f"sandbox available ({mech})")
-    elif sys.platform == "linux":
-        warn("bubblewrap missing — sandbox falls back to unjailed commands (install: apt install bubblewrap)")
+    from .tools import jail_state
+    js = jail_state(cfg)
+    if js["mechanism"]:
+        ok(f"sandbox can run ({js['mechanism']})")
+    elif js["enabled"]:
+        warn(js["words"])
     else:
-        warn("no sandbox mechanism found — shell commands run unjailed")
+        warn("the sandbox is off, and could not start here anyway: " + js["why"])
     # Safe folders, and — the point of saying anything here — the ones that are
     # configured but not being used. A folder silently dropped for a typo looks
     # exactly like one the agent is refusing to touch.
