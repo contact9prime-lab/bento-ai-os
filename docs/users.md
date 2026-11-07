@@ -259,10 +259,10 @@ share, its mode and who it is for, plus any entry that was refused and why.
 **Every agent and every app sees them, whoever answers.** A share reaches:
 
 - the built-in agent, whose instructions list each shared folder and its mode;
-- Claude Code, Gemini CLI and Codex when they answer a chat. Claude Code gets
-  `--add-dir` for each folder, and a read-only one also gets a deny rule for editing
-  there. Codex can read the whole disk already and gets `--add-dir` for a read-write
-  one. Gemini CLI can't keep a folder read-only, so a run that may write gets only the
+- Claude Code, Gemini CLI and Codex when they answer a chat. Each is jailed, with a
+  read-only share mounted read-only. Claude Code gets `--add-dir` for each folder, and a
+  read-only one also gets a deny rule for editing there. Codex gets `--add-dir` for a
+  read-write one. Gemini CLI can't keep a folder read-only, so a run that may write gets only the
   read-write folders and is told which ones it doesn't have;
 - the Files app, which lists each shared folder beside the workspace;
 - file chips in Chat, downloads, the Office's filing cabinet and Telegram's and

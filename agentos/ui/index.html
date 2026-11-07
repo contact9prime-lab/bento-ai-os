@@ -20501,6 +20501,8 @@ async function saveSettings(){
       budget_usd:Number(val('s-exec-budget')||2),
       tools:[...document.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool),
       allow_source:on('s-exec-src'),
+      ...(el('s-exec-nojail')?{unjailed_ok:on('s-exec-nojail')}:{}),
+      ...(el('s-exec-accounts')?{shell_for_accounts:on('s-exec-accounts')}:{}),
     }};
   }
   if(!Object.keys(patch).length){if(el('v-tts'))setSavedMark(true);return}
@@ -20724,6 +20726,12 @@ async function renderExecutors(){
         ${tool('WebSearch','search the web')}${tool('WebFetch','read a page')}
         ${tool('Write','create files')}${tool('Edit','change files')}${tool('Bash','run commands')}
       </div>`,{stack:true,desc:'Anything left unticked can’t be used.',more:'You choose these before a run starts. This version of Claude Code can’t ask you for approval call by call.',f:'executor allowed tools permissions'})}
+    ${ex.jail&&!ex.jail.ok?pRow('Allow its shell with no jail',pSwitch('s-exec-nojail',c.unjailed_ok),
+      {desc:'Without a jail, its shell can reach everything you can.',
+       more:esc(ex.jail.why||''),f:'executor jail sandbox bubblewrap shell'}):''}
+    ${ex.accounts&&ex.jail&&ex.jail.ok?pRow('Let other accounts use its shell',pSwitch('s-exec-accounts',c.shell_for_accounts),
+      {desc:'Their turns could read this machine’s Claude sign-in.',
+       more:'The shell runs in a jail, but it shares that jail with the CLI, so the sign-in is in reach.',f:'executor jail accounts shell'}):''}
     <div class="ghint" id="exec-envelope">${esc(ex.envelope||'')}</div>`;
   const refresh=()=>{
     const t=[...box.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool);

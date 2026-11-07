@@ -4951,6 +4951,8 @@ async def api_executors(refresh: bool = False):
         model=conf.get("model", ""),
         budget_usd=float(conf.get("budget_usd") or execmod.default_budget()),
         allow_source=bool(conf.get("allow_source")),
+        unjailed_ok=bool(conf.get("unjailed_ok")),
+        shell_for_accounts=bool(conf.get("shell_for_accounts")),
     ).sanitized()
     return {"executors": [{
         "id": "claude_code", "title": "Claude Code",
@@ -4959,7 +4961,10 @@ async def api_executors(refresh: bool = False):
         "enabled": bool(conf.get("enabled")),
         "config": {"workspace": env.workspace, "tools": list(env.tools),
                    "model": env.model, "budget_usd": env.budget_usd,
-                   "allow_source": env.allow_source},
+                   "allow_source": env.allow_source, "unjailed_ok": env.unjailed_ok,
+                   "shell_for_accounts": env.shell_for_accounts},
+        "jail": execmod.jail_state(),
+        "accounts": usersmod.enabled(),
         "source_root": execmod.source_root(),
         "envelope": env.describe(),
         "billing": execmod.billing(),
@@ -5107,13 +5112,21 @@ async def api_put_config(patch: dict):
             # Letting the OS rewrite itself is its own decision, never implied by
             # merely turning an executor on.
             ex["allow_source"] = bool(got["allow_source"])
-        if any(k in got for k in ("tools", "allow_source", "workspace", "budget_usd", "enabled")):
+        # A person's written yes to what a jail can't make safe. Not on any agent's reach:
+        # these two only move from this route, which only an admin's browser can call.
+        for k in ("unjailed_ok", "shell_for_accounts"):
+            if k in got:
+                ex[k] = bool(got[k])
+        if any(k in got for k in ("tools", "allow_source", "workspace", "budget_usd", "enabled",
+                                  "unjailed_ok", "shell_for_accounts")):
             # what Claude Code, Gemini CLI and Codex may do with their own tools: ticking
             # Bash is the step that stops them asking, so it is on the record
             _ledger("executor.write", "executor:envelope",
                     f"tools: {', '.join(ex.get('tools') or []) or 'none'}; "
                     f"folder: {ex.get('workspace') or 'default'}; "
-                    f"may edit AgentOS: {bool(ex.get('allow_source'))}")
+                    f"may edit AgentOS: {bool(ex.get('allow_source'))}; "
+                    f"shell with no jail: {bool(ex.get('unjailed_ok'))}; "
+                    f"shell for other accounts: {bool(ex.get('shell_for_accounts'))}")
     if isinstance(patch.get("shortcuts"), dict):
         # {action: "Ctrl+Space"} — the shell's editable keymap, also the source
         # for the compositor bindings written by /api/shortcuts/apply
@@ -6259,7 +6272,10 @@ async def api_mcp_run(token: str, request: Request):
                             status_code=403)
     auth = request.headers.get("authorization") or ""
     bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-    if mcpbridge.get(token) is None or not secrets.compare_digest(bearer, token):
+    # the URL carries the token, or for Codex its digest (mcpbridge.url_id); the header is the secret
+    named = secrets.compare_digest(bearer, token) or secrets.compare_digest(mcpbridge.url_id(bearer), token)
+    token = bearer
+    if mcpbridge.get(token) is None or not named:
         return JSONResponse({"error": "unknown or expired run token — this bridge answers "
                                       "only the run it was minted for, and only while it "
                                       "runs"}, status_code=401)
@@ -6909,7 +6925,10 @@ async def api_store_mcp_install(body: dict):
         return JSONResponse({"error": f"'{reg_name}' not found in the public registry"},
                             status_code=404)
     name = (body.get("name") or cand["key"]).strip()
-    conf, missing = mcp_store.to_conf(cand, env_values=body.get("env") or {})
+    try:
+        conf, missing = mcp_store.to_conf(cand, env_values=body.get("env") or {})
+    except mcp_store.PackageRefused as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     state["cfg"].setdefault("mcp_servers", {})[name] = conf
     cfgmod.save_config(state["cfg"])
     mcp_store.record_install(
@@ -19350,6 +19369,7 @@ async def _run_chat(cid: str, data: dict):
             commits: list[tuple[bool, str]] = []
             # a message typed while it works reaches it at its next step (Run.steer)
             env.steerable = model == "claude-code"
+            env.person = True     # a person's own chat: the CLI reads their user-level settings
             try:
                 await execmod.run_task(text, env, _relay, run)
                 turn_done = True

@@ -161,7 +161,7 @@ def refusal(conf: dict) -> str:
     return ""
 
 
-def stdio_launch(conf: dict) -> tuple[str, list[str], dict]:
+def stdio_launch(conf: dict, name: str = "") -> tuple[str, list[str], dict]:
     """(program, arguments, environment) for a stdio server, jailed for an account.
 
     An account's program runs in the same jail as its Terminal: its own home, everyone
@@ -179,11 +179,17 @@ def stdio_launch(conf: dict) -> tuple[str, list[str], dict]:
             f"or use an absolute path in the server's command")
     own = {k: str(v) for k, v in (conf.get("env") or {}).items()}
     if not _restricted():
-        env = {k: v for k, v in os.environ.items()
-               if k in _ENV_KEEP or not (_ENV_SECRET.search(k) or k.startswith(_ENV_OURS))}
-        # child processes (npx → node → the server) must inherit the SAME
-        # extended PATH, or they fail even when npx itself resolved
-        return exe, cmd[1:] + args, {**env, "PATH": _extended_path(), **own}
+        # An allow-list: this process holds provider keys, and a server gets what its own settings
+        # name and nothing else of ours. npx -> node -> the server must inherit the SAME extended
+        # PATH, or they fail even when npx itself resolved.
+        from . import executors
+        env = {**{k: v for k, v in os.environ.items() if k in executors.ENV_KEEP or k.startswith("LC_")},
+               "PATH": _extended_path(), **own}
+        argv = [exe, *cmd[1:], *args]
+        # a server from the public registry is somebody else's program: jailed where a jail can start
+        if conf.get("jail") and executors.JAIL_ENFORCED and executors.jail_ready():
+            argv = executors.jail_server(argv, name or "server")
+        return argv[0], argv[1:], env
     if (why := refusal(conf)):
         raise RuntimeError(why)
     from .tools import bwrap_argv, folder_binds, sandbox_exec_argv, sandbox_mechanism
@@ -252,7 +258,7 @@ class MCPServer:
                 async with ctx as (read, write, _):
                     await self._serve(read, write, on_change)
             else:
-                exe, argv, env = stdio_launch(self.conf)
+                exe, argv, env = stdio_launch(self.conf, self.name)
                 params = StdioServerParameters(command=exe, args=argv, env=env)
                 async with stdio_client(params) as (read, write):
                     await self._serve(read, write, on_change)

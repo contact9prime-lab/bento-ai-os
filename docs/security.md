@@ -193,6 +193,34 @@ your own disk is yours, and marking every file read untrusted would escalate hal
 in the OS and train you to click through the prompt. A file you downloaded is the honest gap
 that leaves, and closing it needs provenance on the file rather than on the tool.
 
+## An agent CLI as the brain
+
+Claude Code, Gemini CLI and Codex run their own tools, and those calls never reach this OS's gate.
+So what they can reach is fixed before they start.
+
+- **Your words go on its input, never its command line.** A message can't be read as a flag, and
+  the bridge's token and the system prompt are 0600 files that are removed when the run ends.
+- **A folder's settings are never read.** A person's own chat keeps their user-level settings. A
+  schedule, a mission, a draft, a linked team or a Zero reads no settings at all.
+- **It runs in a jail** where bubblewrap can start: the machine read-only, your home and this OS's
+  data hidden, its own `/tmp`, `/run` and process list. It gets the folders named for the run, its
+  sign-in and this folder's sessions. The network stays open. `bento` isn't available inside.
+- **"Work on AgentOS itself" never opens the gate.** The security modules, `.git/hooks` and `.venv`
+  stay read-only even with it on.
+
+What the jail can't do: the CLI and its shell share it, so a shell can read the CLI's own sign-in.
+That is why a non-admin's shell needs an admin's yes (Settings → Executors).
+
+Where no jail can start, the shell is off until you accept that in Settings → Executors, and a
+non-admin gets no file tools and no shell. The envelope sentence on that page says which applies.
+
+A server installed from the public MCP registry is pinned to the version it listed, shows its
+command on the approval card, and runs in a jail of its own with the network and a home of its
+own. Every stdio server gets only the environment its own settings name.
+
+Gemini CLI and Codex follow their documented forms for all of this and were not run when it was
+written. Claude Code was, on 2.1.319.
+
 ## The known trade-offs (read this)
 
 - **Local trust:** the HTTP/WS surface has no authentication — protection is the localhost
@@ -207,7 +235,7 @@ that leaves, and closing it needs provenance on the file rather than on the tool
 - **Plaintext config:** `config.json` stores keys in plaintext under your user (a secrets
   vault is on the roadmap). File permissions are your last line there.
 - **Skills and MCP servers are code you invite in.** Install skills only from sources you
-  trust; MCP servers run with your user's rights. App permission manifests + the store's
+  trust; an MCP server you add by hand runs with your user's rights. App permission manifests + the store's
   checksum flow exist precisely because community marketplaces are the proven attack path.
 
 ## Check yourself

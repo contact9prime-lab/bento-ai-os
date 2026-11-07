@@ -1031,6 +1031,8 @@ def delegate(prompt: str, workdir: str | None, tools: str | None,
         budget_usd=budget if budget is not None
                    else float(conf.get("budget_usd", execmod.DEFAULT_BUDGET_USD)),
         shares=execmod.shares_of(cfg),
+        person=True,        # somebody at this terminal, in their own session
+        unjailed_ok=bool(conf.get("unjailed_ok")),
     ).sanitized()
     print(f"→ {env.describe()}\n")
 
