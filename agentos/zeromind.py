@@ -330,6 +330,7 @@ async def context(cfg: dict, store, query: str = "", conversation_id: str = "") 
 def mem_text(ctx: dict, hub: str) -> str:
     """The memory part of the lead's prompt, from a context answer (the same shape the
     built-in loop writes for a local one)."""
+    from .agent import _recalled
     if not ctx.get("ok"):
         return (f"\n=== Memory ===\n{ctx.get('error')}. Say so if the person asks what you "
                 f"remember, and don't pretend to.\n=== end memory ===\n")
@@ -337,11 +338,11 @@ def mem_text(ctx: dict, hub: str) -> str:
            "remember, recall, kg_add and kg_query read and write it there.\n")
     if ctx.get("memories"):
         out += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
-            f"- {'📌 ' if m.get('pinned') else ''}{m['content']}" for m in ctx["memories"]) + \
+            f"- {'📌 ' if m.get('pinned') else ''}{_recalled(m['content'])}" for m in ctx["memories"]) + \
             "\n=== end user memory ===\n"
     if ctx.get("session"):
         out += "\n=== Session memory (context of THIS conversation) ===\n" + "\n".join(
-            f"- {m['content']}" for m in ctx["session"]) + "\n=== end session memory ===\n"
+            f"- {_recalled(m['content'])}" for m in ctx["session"]) + "\n=== end session memory ===\n"
     if ctx.get("facts"):
         out += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
                 + "\n".join(f"- {f}" for f in ctx["facts"]) + "\n=== end knowledge graph ===\n")

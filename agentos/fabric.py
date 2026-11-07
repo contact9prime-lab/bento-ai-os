@@ -3181,7 +3181,9 @@ class ControlPlane(usersmod.Scoped):
             # machinery: the PDP's taint ceiling escalates risky steps to `ask` (or
             # refuses them under `strict`) and deliberately offers no "remember", so
             # "Always" cannot hand the next payload the same key.
-            taint.append({"tool": "webhook", "source": f"the {name} hook"})
+            taint.append({"tool": "device", "source": f"a device reading that started {name}"}
+                         if (origin or {}).get("surface") == "device" else
+                         {"tool": "webhook", "source": f"the {name} hook"})
 
         eff_autonomy = min_autonomy(self.cfg.get("autonomy", "balanced"),
                                     flow.get("autonomy_cap", "balanced"))

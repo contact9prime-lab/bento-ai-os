@@ -1211,7 +1211,7 @@ async def _device_fire(owner: str, rule: dict, ev: dict) -> None:
                                                        f"({devtrig.words(c, ev.get('name') or '')})", flow=flow["name"])
         with contextlib.suppress(Exception):
             await _start_flow(flow, text, origin={"surface": "device", "ref": f"{machine}/{c.get('item') or ''}"},
-                              trigger_id=rule["id"])
+                              trigger_id=rule["id"], tainted=True)
 
 
 # The device board (devboard.py): every machine's things as last heard, and the alarms among them.
@@ -19127,8 +19127,11 @@ async def _run_chat(cid: str, data: dict):
             # a run that never started.
             await evsend({"type": "status", "message": f"starting {ex_title}"})
             collected: list[str] = []
+            read_outside = [False]      # did its own tools read anything? auto-learn asks (knowledge.py)
 
             async def _relay(ev: dict):
+                if ev.get("type") == "tool_start" and knowledge.cli_tool_reads_outside(ev.get("name")):
+                    read_outside[0] = True
                 if ev.get("type") == "text_delta":
                     collected.append(ev.get("text", ""))
                 elif ev.get("type") == "tool_start" and collected and \
@@ -19188,7 +19191,7 @@ async def _run_chat(cid: str, data: dict):
                 await state["broadcast"]({"type": "apps"})
             header = ""
             result = {"content": "".join(collected),
-                      "steps": [{"type": "executor", "name": model,
+                      "steps": [{"type": "executor", "name": model, "read_outside": read_outside[0],
                                  "cost_usd": run.cost_usd, "turns": run.turns,
                                  "denials": run.denials, "envelope": env.describe()}],
                       # who actually answered, so a reloaded conversation still
