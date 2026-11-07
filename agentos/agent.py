@@ -21,6 +21,7 @@ from . import toolscope
 # package, so this direction cannot cycle.)
 from .executors import tool_detail
 from .policy import MAIN, Principal, person_rule
+from . import tools as tools_mod
 from .tools import APP_BOUND_TOOLS, SPACE_SCOPED_TOOLS, Toolbox
 
 TAINTED_REPLY = "[this reply carries content from an untrusted source]\n"   # = fabric.TAINTED_REPLY
@@ -920,13 +921,17 @@ class Agent:
                         lines.append(f"    usage notes: {s['instructions'][:400]}")
                 mem_text += ("\n\nConnected MCP servers — prefer their tools (mcp_<server>_<tool>) whenever "
                              "a task touches their domain:\n" + "\n".join(lines))
-        from .tools import sandbox_conf, shares_for
+        from .tools import jail_gap, sandbox_conf, shares_for
         sb_on, sb_root = sandbox_conf(self.cfg)
         shared = shares_for(self.cfg)
         sb_text = (f"SANDBOX: you are confined to {sb_root} — commands run jailed there, the rest of the "
                    f"filesystem is read-only and other home files are hidden. Work inside that folder"
                    f"{' and the shared folders below' if shared else ''}."
                    if sb_on else "")
+        if jail_gap(self.cfg):
+            sb_text = (f"SANDBOX: your file tools are confined to {sb_root}. The sandbox cannot start on this "
+                       "machine, so every command you run asks the person first, and with nobody there it "
+                       "is refused. Prefer the file tools.")
         # Named here because the agent never looked: a person shared /data/reports,
         # asked about it, and was told the agent could only see its workspace.
         if shared:
@@ -967,6 +972,11 @@ class Agent:
             home = _P(self.toolbox.store.path).parent        # the store's own home: whoever's turn
             files = timetravel.targets(name, args, self.toolbox._abs, cfgmod.soul_path(),
                                        (self.toolbox.cfg or {}).get("workspace", ""))
+            # The gate allowed the tool, and the tool's own path rule has not run yet. What it is
+            # about to refuse must not be copied: a denied write still put the victim's key in the
+            # caller's blobs. The soul is named by this OS, never by the call.
+            if name != "update_soul":
+                files = [f for f in files if not self.toolbox._sandbox_deny(f, write=True, flag=False)]
             pt = timetravel.checkpoint(self.toolbox.store.db, home, name, tool_detail(name, args), files,
                                        self.conversation_id, getattr(self, "run_id", ""), self.steps_used)
             await self.emit({"type": "checkpoint", "id": pt["id"], "tool": name, "unseen": bool(pt["unseen"])})
@@ -1164,6 +1174,13 @@ class Agent:
                 dec = Decision("allow")
         must_person = person_rule(self.principal, name, args, dec, self.toolbox.pdp)
         note_refusal(name, self.principal, dec)
+        # The sandbox is on and cannot start here: code runs only on a person's yes, each time, with
+        # no remember and whatever a grant or the autonomy says. tools.run_command refuses without it.
+        jail_gap = tools_mod.jail_gap(self.cfg) if name in tools_mod.JAILED_TOOLS and dec.effect != "deny" else ""
+        if jail_gap:
+            dec.effect = "ask"
+            dec.grant_offer = None
+            must_person = jail_gap
 
         approved = None
         _started = time.time()
@@ -1201,7 +1218,12 @@ class Agent:
                 return await self._park_here(name, args, call_id, dec, why)
             if approved:
                 await self._checkpoint(name, args)
-                output = await self._execute(name, args)
+                tok_jail = tools_mod._jail_waived.set(True) if jail_gap else None
+                try:
+                    output = await self._execute(name, args)
+                finally:
+                    if tok_jail is not None:
+                        tools_mod._jail_waived.reset(tok_jail)
             elif must_person:
                 output = (f"[denied] This step needs a person to say yes ({must_person}), and "
                           f"nobody said yes. Autonomy does not answer it. Try a read-only "

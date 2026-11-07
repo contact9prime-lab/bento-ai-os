@@ -153,13 +153,15 @@ def one_line(cfg: dict, key_text: str, hubs: list[str], tailscale_key: str = "")
     if tailscale_key and not _TSKEY.fullmatch(tailscale_key.strip()):
         raise ValueError("that is not a Tailscale auth key (it starts with tskey-)")
     url = f"{updates.raw_base(cfg)}/master/install.sh"
-    parts = ["--zero", f"--enroll={key_text}"]
+    parts = ["--zero"]
     hubs = clean_hubs(hubs)
     if hubs:
         parts.append("--hub=" + ",".join(hubs))
+    # In the environment of `sh`, never its arguments: `ps` on the Pi shows arguments to anybody.
+    keys = f"AGENTOS_ENROLL={key_text}"
     if tailscale_key:
-        parts.append(f"--tailscale-key={tailscale_key.strip()}")
-    return f"curl -fsSL {url} | sh -s -- " + " ".join(parts)
+        keys += f" TS_AUTHKEY={tailscale_key.strip()}"
+    return f"curl -fsSL {url} | {keys} sh -s -- " + " ".join(parts)
 
 
 # ---- the machine it became ----------------------------------------------------------------

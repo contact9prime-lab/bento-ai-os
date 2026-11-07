@@ -38,6 +38,7 @@ SECURITY_MODULES = frozenset({
     "agentos/protected.py",
     "agentos/provision.py",
     "agentos/remote.py",
+    "agentos/safeopen.py",
     "agentos/secevents.py",
     "agentos/server.py",
     "agentos/standby.py",
@@ -52,16 +53,28 @@ SECURITY_MODULES = frozenset({
 })
 
 # In any home (the machine's or an account's): never read or written by an agent. Reading a
-# vault key is reading every password; writing a database is writing your own grants.
+# vault key is reading every password; config.json holds provider keys and bot tokens in clear,
+# and a page that talks an agent into `read_file` then `fetch_url` has them; writing a database
+# is writing your own grants, and reading it is reading every conversation at once.
 SECRET_FILES = frozenset({
     "session.key", "vault.key", "vault.json", "users.json",
     "security-events.jsonl", "integrity.json", "integrity.anchor",
-})
-WRITE_LOCKED_FILES = frozenset({
     "config.json", "agentos.db", "agentos.db-wal", "agentos.db-shm", "provision.json",
-    "inventory.json", "update-history.json",
+    "git-askpass.sh", "registry_signing.key", "timetravel.key",
 })
-SECRET_DIRS = frozenset({"pki", ".standby", ".keep"})
+WRITE_LOCKED_FILES = frozenset({"inventory.json", "update-history.json"})
+# Sign-ins (MCP tokens, the WhatsApp device, the browser's cookies), and whole copies of a home
+# with all of the above in them (snapshots, time travel's blobs, a restore's staging).
+SECRET_DIRS = frozenset({"pki", ".standby", ".keep", "oauth", "whatsapp", "browser", "appwindow",
+                         "snapshots", ".timetravel", "edge-runs"})
+SECRET_PREFIXES = (".restoring-", ".before-restore-", ".backup-out-", ".stage-", "screen-")
+# The only parts of a home an agent has any business in. This is the real rule, and the names above
+# are the belt: a new file a future feature keeps in a home is closed until somebody opens it here.
+HOME_READABLE = frozenset({"workspace", "assets", "soul.md", "docs", "reports", "shared",
+                           "wallpapers", "wallpaper.png", "evals", "builds"})
+HOME_WRITABLE = frozenset({"workspace", "reports", "shared", "builds"})
+# What a process's own memory and environment say: the server's provider keys and passphrase.
+PROC_SECRETS = frozenset({"environ", "mem", "cmdline", "auxv", "stack", "syscall"})
 
 # A CLI runs what these say on its next start, outside the gate (a SessionStart hook, an MCP
 # server), so writing one into a workspace is writing a program.
@@ -95,14 +108,68 @@ def _home_relative(real: Path) -> tuple[str, ...] | None:
     return None
 
 
+def is_a_home(path) -> bool:
+    """The machine's home or an account's. Binding one into a jail hands back all of it."""
+    return _home_relative(_real(path)) == ()
+
+
+def home_of(path) -> Path | None:
+    """The home this path sits in (an account's, or the machine's), or None."""
+    real = _real(path)
+    for home in _homes():
+        try:
+            parts = real.relative_to(home).parts
+        except ValueError:
+            continue
+        return home / parts[0] / parts[1] if len(parts) >= 2 and parts[0] == "users" else home
+    return None
+
+
+def _proc_secret(real: Path) -> str:
+    """/proc/<pid>/environ and its kind. A jail has its own /proc; a server with no jail does not."""
+    p = real.parts
+    if len(p) >= 4 and p[1] == "proc" and p[-1] in PROC_SECRETS:
+        return f"{p[-1]} of a running process holds its secrets. No agent can read it."
+    return ""
+
+
 def secret(path) -> str:
     """Why an agent may not READ this path, or ''. Worded for the tool's refusal."""
-    parts = _home_relative(_real(path))
+    real = _real(path)
+    if (why := _proc_secret(real)):
+        return why
+    parts = _home_relative(real)
     if parts is None or not parts:
         return ""
-    if parts[-1] in SECRET_FILES or parts[0] in SECRET_DIRS:
+    # A project in the workspace may well have a config.json of its own. The names mean
+    # something only in the home itself, and a person's work is not a security file.
+    if parts[0] == "workspace":
+        return ""
+    if (parts[-1] in SECRET_FILES or parts[0] in SECRET_DIRS
+            or parts[0].startswith(SECRET_PREFIXES)):
         return f"{parts[-1]} is a security file. No agent can read it."
     return ""
+
+
+def outside_agent_area(path, write: bool = False, also=()) -> str:
+    """Why this part of a home is closed to an agent, or ''. Anything not named in HOME_READABLE
+    is closed, so a sign-in a later feature keeps in a home is not one forgotten line from a model.
+    `also` is the folders this agent works in (its workspace, a share), which may sit in a home."""
+    real = _real(path)
+    parts = _home_relative(real)
+    if not parts:
+        return ""
+    for folder in also:
+        if not folder:
+            continue
+        try:
+            real.relative_to(_real(folder))
+            return ""
+        except ValueError:
+            continue
+    if parts[0] in (HOME_WRITABLE if write else HOME_READABLE):
+        return ""
+    return f"{parts[0]} is part of this machine's own files. No agent can {'change' if write else 'read'} it."
 
 
 def write_refused(path) -> str:
@@ -119,7 +186,7 @@ def write_refused(path) -> str:
                                                           "packaging", "tests", ".github"):
         return f"{rel} is this OS's own code. No agent can change it."
     parts = _home_relative(real)
-    if parts and parts[-1] in WRITE_LOCKED_FILES:
+    if parts and parts[0] != "workspace" and parts[-1] in WRITE_LOCKED_FILES:
         return f"{parts[-1]} holds this machine's settings and permissions. No agent can change it."
     for part in real.parts:
         if part in AGENT_CONFIG_NAMES:

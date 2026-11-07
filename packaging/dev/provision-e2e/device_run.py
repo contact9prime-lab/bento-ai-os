@@ -69,7 +69,7 @@ def main():
         zr.start("big-box")
         st, z = zr.http("big-box", "POST", "/api/provision/zero", {"hubs": ["127.0.0.1"]})
         assert st == 200, z
-        enroll = zr.re.search(r"--enroll=(\S+)", z["line"]).group(1)
+        enroll = zr.re.search(r"AGENTOS_ENROLL=(\S+)", z["line"]).group(1)
         hubs = zr.re.search(r"--hub=(\S+)", z["line"]).group(1)
         assert zr.bento("pi-zero", "pool", "hub", hubs).returncode == 0
         zr.start("pi-zero", {"AGENTOS_ENROLL": enroll, **pi_env})

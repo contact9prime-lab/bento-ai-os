@@ -17,9 +17,11 @@ that, what you ask it is worked on by the hub's team, and any file they make com
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/<you>/bento-ai-os/master/install.sh \
-  | sh -s -- --zero --enroll=bento-enroll-1.… --hub=100.101.102.103,192.168.1.4 \
-             --tailscale-key=tskey-auth-…
+  | AGENTOS_ENROLL=bento-enroll-1.… TS_AUTHKEY=tskey-auth-… \
+    sh -s -- --zero --hub=100.101.102.103,192.168.1.4
 ```
+
+The two keys go in the environment because `ps` shows a command's arguments to anybody on the Pi.
 
 That's all. A minute or two later the Pi is on the hub's list as *set up*, and you get a
 toast saying it was heard over Tailscale or on your network.

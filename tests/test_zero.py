@@ -92,13 +92,15 @@ def test_the_one_line_carries_the_key_and_never_stores_the_tailscale_key(tmp_pat
         line = zero.one_line(cfg, k["text"], ["100.64.0.9", "192.168.1.4"], secret)
         with pytest.raises(ValueError, match="tskey-"):
             zero.one_line(cfg, k["text"], [], "my-password")
-    assert line.startswith("curl -fsSL https://raw.githubusercontent.com/someone/bento-ai-os/master/install.sh | sh -s -- ")
-    assert "--zero" in line and f"--enroll={k['text']}" in line and "--hub=100.64.0.9,192.168.1.4" in line
-    assert f"--tailscale-key={secret}" in line
+    assert line.startswith("curl -fsSL https://raw.githubusercontent.com/someone/bento-ai-os/master/install.sh | ")
+    assert "--zero" in line and f"AGENTOS_ENROLL={k['text']} " in line and "--hub=100.64.0.9,192.168.1.4" in line
+    assert f"TS_AUTHKEY={secret} " in line
+    args = line.split(" sh -s -- ")[1]
+    assert k["text"] not in args and secret not in args, "`ps` on the Pi shows arguments to anybody"
     for f in home.rglob("*"):
         if f.is_file():
             assert secret not in f.read_text(errors="ignore"), f"the Tailscale key ended up in {f}"
-    assert "--tailscale-key" not in zero.one_line(cfg, k["text"], [])
+    assert "TS_AUTHKEY" not in zero.one_line(cfg, k["text"], [])
 
 
 def test_install_sh_takes_the_zero_flags_and_asks_nothing():
@@ -106,7 +108,7 @@ def test_install_sh_takes_the_zero_flags_and_asks_nothing():
     for flag in ("--zero)", "--hub=*)", "--tailscale-key=*)"):
         assert flag in sh, flag
     assert re.search(r'\[ -n "\$ZERO" \] && INTERACTIVE=""', sh), "a Zero is zero touch"
-    assert "tailscale up" in sh and "--authkey" in sh
+    assert "tailscale up" in sh and '--authkey="file:' in sh, "the key goes in a file, never on the line"
     assert "bento pool hub" in sh, "the hub's addresses are written before the machine waits"
     assert not re.search(r'echo[^\n]*\$TS_KEY', sh), "the Tailscale key is never printed"
 

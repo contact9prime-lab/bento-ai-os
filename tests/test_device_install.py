@@ -268,8 +268,9 @@ def test_install_runs_the_plan_lets_the_key_in_and_then_needs_no_password(fake_s
                                             authorize=True, on_line=on_line))
     assert got["ok"] and got["authorized"] and lines[-1] == "done"
     remote = (fake_ssh / "remote.txt").read_text()
-    assert remote == remoteinstall.detached(remoteinstall.plan({}, key, authorize=True)), "what was shown is what ran"
-    assert f"--enroll={key}" in remote and "--lite" in remote
+    assert remote == remoteinstall.remote_command(remoteinstall.plan({}, key, authorize=True)), "what was shown is what ran"
+    assert key not in remote, "the key is on no command line, here or there"
+    assert "--enroll-file=" in remote and "--lite" in remote
     assert "--yes" not in remote, "--yes would install every optional extra nobody agreed to"
     assert "https://example.test/install.sh" in remote
     # next visit: the key, no password
@@ -749,3 +750,45 @@ def test_installing_again_stops_the_install_still_running_there(tmp_path):
     assert out.splitlines() == ["second one", "== bento install ended: 0"]
     with pytest.raises(ProcessLookupError):
         os.kill(old, 0)
+
+
+def test_the_enrolment_key_is_on_no_command_line_and_the_plan_says_how_it_travels():
+    key = "bento-enroll-1.0a1b2c3d." + "s" * 32 + "." + "f" * 16
+    shown = remoteinstall.plan({}, key, authorize=False)
+    assert key not in shown and key not in remoteinstall.remote_command(shown)
+    assert shown.startswith(remoteinstall.KEY_STAGE), "the step that receives it is shown, not hidden"
+    assert "umask 077" in shown
+    # the stage runs in the ssh session, where stdin is the key; the rest is detached from it
+    assert remoteinstall.remote_command(shown).startswith(remoteinstall.KEY_STAGE + 'D=')
+    sh = (Path(__file__).parent.parent / "install.sh").read_text()
+    assert "--enroll-file=*)" in sh and 'rm -f "$ENROLL_FILE"' in sh
+    assert 'bento pool enroll "$ENROLL"' not in sh, "the installer passes it on stdin"
+
+
+def test_the_installer_takes_the_key_from_its_file_and_deletes_it(tmp_path):
+    import subprocess
+    f = tmp_path / "enroll.key"
+    f.write_text("bento-enroll-1.x")
+    r = subprocess.run(["sh", str(Path(__file__).parent.parent / "install.sh"), f"--enroll-file={f}", "--help"],
+                       capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0
+    assert not f.exists(), "the file is gone as soon as it was read"
+
+
+def test_the_key_arrives_on_stdin_and_reaches_the_installer_as_a_file(tmp_path, monkeypatch):
+    """The whole path of what ssh sends, run by a real shell with a stand-in installer."""
+    import subprocess
+    home = tmp_path / "pi"
+    home.mkdir()
+    fake = tmp_path / "fake-install.sh"
+    fake.write_text('for a in "$@"; do case "$a" in --enroll-file=*) f="${a#--enroll-file=}";; esac; done\n'
+                    'ls -l "$f" | cut -c1-10\ncat "$f"; echo\necho "ARGS: $*"\n')
+    monkeypatch.setenv("AGENTOS_INSTALL_URL", f"file://{fake}")
+    monkeypatch.delenv("AGENTOS_REPO", raising=False)
+    key = "bento-enroll-1.0a1b2c3d." + "s" * 32
+    remote = remoteinstall.remote_command(remoteinstall.plan({}, key))
+    r = subprocess.run(["sh", "-c", remote], input=key, capture_output=True, text=True, timeout=30,
+                       env={"HOME": str(home), "PATH": os.environ["PATH"]})
+    assert "-rw-------" in r.stdout and key in r.stdout
+    assert "ARGS:" in r.stdout and key not in [ln for ln in r.stdout.splitlines() if ln.startswith("ARGS:")][0]
+    assert not (home / ".cache" / "bento-install" / "enroll.key").exists(), "removed once the install ended"

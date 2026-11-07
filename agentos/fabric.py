@@ -1992,7 +1992,8 @@ class ControlPlane(usersmod.Scoped):
         if zeromod.ships_to(lk):
             files, left = zeromod.pack(text, outputs.roots(self.cfg))
         elif linkfiles.may_send_back(self.store, getattr(self.toolbox, "pdp", None), lk["label"]):
-            files, left, kept = linkfiles.made_for_task(text, outputs.roots(self.cfg), since or time.time())
+            files, left, kept = linkfiles.made_for_task(
+                text, outputs.roots(self.cfg, admin=usersmod.is_admin(usersmod.current())), since or time.time())
         else:
             return {}
         if not files and not left and not kept:

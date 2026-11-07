@@ -661,21 +661,92 @@ class _TextExtractor(html.parser.HTMLParser):
             self.parts.append(data.strip())
 
 
+# A failed probe is tried again after this long: a sysctl or an install can fix it while the
+# server runs. A working one is kept for the life of the process.
+JAIL_RETRY_S = 300
+_JAIL: dict = {"mech": None, "why": "", "at": 0.0}
+# The flags the jail really uses, so an old bubblewrap or a container that refuses one of them
+# reads as "cannot be entered" here rather than as every command failing later.
+_JAIL_PROBE = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
+               "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent",
+               "--new-session", "--clearenv", "/bin/sh", "-c", "exit 0"]
+
+
+def _jail_probe() -> tuple[str, str]:
+    """(mechanism, why not). Runs the jail once. `which bwrap` was the old test, and it answered
+    yes on Docker's default seccomp and on Ubuntu 24.04's AppArmor rule, where the program exists
+    and every run of it dies on "setting up uid map: Permission denied"."""
+    if sys.platform == "darwin":
+        if not shutil.which("sandbox-exec"):
+            return "", "macOS has no sandbox-exec here."
+        try:
+            r = subprocess.run(["sandbox-exec", "-p", "(version 1)(allow default)", "/bin/sh", "-c", "exit 0"],
+                               capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError) as e:
+            return "", f"sandbox-exec could not start ({type(e).__name__})."
+        return ("sandbox-exec", "") if r.returncode == 0 else ("", "sandbox-exec refused to start here.")
+    if not shutil.which("bwrap"):
+        return "", "bubblewrap is not installed."
+    try:
+        r = subprocess.run(_JAIL_PROBE, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as e:
+        return "", f"bubblewrap could not start ({type(e).__name__})."
+    if r.returncode == 0:
+        return "bwrap", ""
+    last = ((r.stderr or "").strip().splitlines() or ["it exited with an error"])[-1][:160]
+    return "", f"bubblewrap is installed and this machine refuses it: {last}"
+
+
 def sandbox_mechanism() -> str:
-    """Which OS jail is available: 'bwrap' (Linux), 'sandbox-exec' (macOS), or ''."""
-    if sys.platform == "darwin" and shutil.which("sandbox-exec"):
-        return "sandbox-exec"
-    if shutil.which("bwrap"):
-        return "bwrap"
-    return ""
+    """The OS jail that can really be entered here: 'bwrap', 'sandbox-exec', or ''. Cached,
+    because every command asks and the probe is a process."""
+    now = time.time()
+    if _JAIL["mech"] is None or (not _JAIL["mech"] and now - _JAIL["at"] > JAIL_RETRY_S):
+        _JAIL["mech"], _JAIL["why"] = _jail_probe()
+        _JAIL["at"] = now
+    return _JAIL["mech"]
+
+
+def jail_why_not() -> str:
+    """Why `sandbox_mechanism()` is empty, in a sentence ('' when it works)."""
+    return "" if sandbox_mechanism() else (_JAIL["why"] or "No sandbox can start on this machine.")
 
 
 def sandbox_conf(cfg: dict) -> tuple[bool, str]:
-    """(enabled, absolute root). Root defaults to the workspace. Enabled only when a
-    jail mechanism exists for this OS (bubblewrap on Linux, sandbox-exec on macOS)."""
+    """(enabled, absolute root). Root defaults to the workspace. `enabled` is the setting and it
+    stays true on a machine with no working jail: the folder rule still holds in the file tools,
+    and the shell refuses or asks (jail_gap). It used to read false there, so a machine with the
+    sandbox on and no bubblewrap had no walls at all while config and docs said it did."""
     sb = cfg.get("sandbox") or {}
     root = os.path.realpath(os.path.expanduser(sb.get("root") or cfg["workspace"]))
-    return bool(sb.get("enabled")) and bool(sandbox_mechanism()), root
+    return bool(sb.get("enabled")), root
+
+
+# A person said yes to this one step knowing there are no walls (agent.py sets it around the call).
+_jail_waived = contextvars.ContextVar("jail_waived", default=False)
+# The tools that run code on this machine, and so need a jail or a person's yes.
+JAILED_TOOLS = ("run_command", "run_python", "terminal_send")
+
+
+def jail_gap(cfg: dict) -> str:
+    """Why a command cannot be jailed although the sandbox is on, or ''. With accounts the shell
+    refuses outright, so this is the one-person machine: a person's yes per step, nothing else."""
+    if usersmod.enabled() or not (cfg.get("sandbox") or {}).get("enabled") or sandbox_mechanism():
+        return ""
+    return ("The sandbox cannot run on this machine, so this would run with the server's own access. "
+            + jail_why_not())
+
+
+def jail_state(cfg: dict) -> dict:
+    """The one answer every face reads: Settings, `bento doctor`, the agent's prompt."""
+    on = bool((cfg.get("sandbox") or {}).get("enabled"))
+    mech = sandbox_mechanism()
+    words = ""
+    if on and not mech:
+        words = ("The sandbox is on and cannot start here. Files stay in the allowed folders, "
+                 "and each command asks you first. " + jail_why_not())
+    return {"enabled": on, "mechanism": mech, "working": bool(on and mech), "words": words,
+            "why": "" if mech else jail_why_not()}
 
 
 # --------------------------------------------------------------------------
@@ -917,54 +988,164 @@ def jail_python(exe: str) -> str:
     """An interpreter the jail can see. The server's own is usually a venv under /home,
     which bwrap blanks (`--tmpfs /home`), so run_python failed every time with "No such
     file or directory": found when a Research quant tried to backtest. A venv's python
-    links to a real interpreter; use that when it is outside /home, else the system's.
-    The venv's packages do not come along, and nothing here promises they would."""
+    links to a real interpreter; use that when it is outside what the jail hides, else the
+    system's, else the real one again, which bwrap_argv binds back (the image's only Python is
+    uv's, under /root). The venv's packages do not come along, and nothing here promises they would."""
     real = os.path.realpath(exe or "")
-    if real and os.path.exists(real) and not real.startswith("/home/"):
+    if real and os.path.exists(real) and not _under_any(real, ["/home", *_jail_hidden()]):
         return real
-    for cand in ("/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3"):
+    for cand in _SYSTEM_PYTHONS:
         if os.path.exists(cand):
             return cand
-    return "python3"
+    return real if real and os.path.exists(real) else "python3"
+
+
+_SYSTEM_PYTHONS = ("/usr/bin/python3", "/usr/local/bin/python3", "/opt/homebrew/bin/python3")
+# What a jailed program keeps of the server's environment. An allow-list, because the server holds
+# provider keys, BENTO_STORAGE_*, AGENTOS_PASSPHRASE and whatever a unit file adds next year, and
+# `cat /proc/self/environ` is classed safe. No DBUS_*, XDG_RUNTIME_DIR or DISPLAY: those are doors.
+JAIL_ENV = ("PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "LC_TIME", "LC_NUMERIC",
+            "TZ", "TERM", "COLORTERM", "USER", "LOGNAME",
+            "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS",
+            "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+            "http_proxy", "https_proxy", "no_proxy", "all_proxy")
+_SECRET_ENV = re.compile(r"(KEY|TOKEN|SECRET|PASS|CREDENTIAL|COOKIE|^BENTO_STORAGE|^AGENTOS_PASSPHRASE|^DBUS_)", re.I)
+
+
+def jail_env(root: str) -> dict:
+    """The whole environment of a jailed program. A proxy address with a password in it stays out."""
+    env = {k: os.environ[k] for k in JAIL_ENV
+           if k in os.environ and not ("PROXY" in k.upper() and "@" in os.environ[k])}
+    env.setdefault("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+    env.setdefault("TERM", "xterm-256color")
+    env.update({"HOME": root, "TMPDIR": "/tmp", "AGENTOS_SANDBOX": "1"})
+    return env
+
+
+def unjailed_env() -> dict:
+    """A command with the sandbox off, or that a person let through with no jail, still has no need
+    of the server's keys. A deny-list here, since it is meant to behave like the person's own shell."""
+    return {k: v for k, v in os.environ.items() if not _SECRET_ENV.search(k)}
+
+
+def _jail_hidden(hide: list[str] | None = None) -> list[str]:
+    """What no jail ever shows: this machine's AgentOS home wherever it is, and the OS user's own
+    home (ssh keys, a Claude Code sign-in). `--tmpfs /home` was the only cover, so a home under
+    /root, /var/lib or /data was in plain view: session.key, config.json, users.json."""
+    out: list[str] = []
+    try:
+        import pwd
+        osuser = pwd.getpwuid(os.getuid()).pw_dir
+    except (ImportError, KeyError):
+        osuser = ""
+    from . import config as cfgmod
+    for p in [*(hide or []), str(cfgmod.AGENTOS_HOME), os.path.expanduser("~"), osuser]:
+        rp = os.path.realpath(p) if p else ""
+        # a home of / or of a system folder is a broken passwd line; blanking it breaks every tool
+        if rp and rp not in out and os.path.isdir(rp) and not _under_any(
+                "/usr/bin", [rp]) and not _under_any("/etc/passwd", [rp]):
+            out.append(rp)
+    return out
+
+
+def _jail_path_ok(path: str) -> bool:
+    """A folder may be bound into a jail only if no agent is refused it anyway. A share naming the
+    home's pki folder would otherwise be a way round everything hidden above."""
+    from . import protected
+    return not protected.secret(path) and not protected.is_a_home(path)
+
+
+def jail_root(root: str) -> str:
+    """The folder to bind. A root that IS a home, or a private part of one, becomes that home's
+    workspace: binding it would hand back every file the jail exists to hide."""
+    from . import protected
+    real = os.path.realpath(root)
+    if _jail_path_ok(real):
+        return real
+    ws = os.path.join(str(protected.home_of(real) or real), "workspace")
+    os.makedirs(ws, exist_ok=True)
+    return ws
+
+
+def account_root(cfg: dict, uid: str | None = None) -> str:
+    """The folder an account's jail is built on: its workspace, never its home. The home holds its
+    vault key, config and database, and the whole of it used to be bound read-write, so `cat
+    vault.key` was a safe command. A workspace set outside the home is ignored here on purpose: a
+    non-admin choosing a workspace must never be a way to reach a folder. The first account's
+    `~/AgentOS` comes in as a share (users.share_own_workspace)."""
+    home = os.path.realpath(str(usersmod.home_for(usersmod.current() if uid is None else uid)))
+    ws = os.path.realpath(os.path.expanduser(str((cfg or {}).get("workspace") or "")))
+    root = ws if ws != home and ws.startswith(home + os.sep) and _jail_path_ok(ws) else os.path.join(home, "workspace")
+    os.makedirs(root, exist_ok=True)
+    return root
 
 
 def bwrap_argv(root: str, tail: list[str], chdir: str | None = None,
                hide: list[str] | None = None, extra: list[str] | None = None,
-               ro_extra: list[str] | None = None) -> list[str]:
-    """Jail: whole FS read-only, /home hidden, only `root` writable & visible.
+               ro_extra: list[str] | None = None, new_session: bool = True) -> list[str]:
+    """Jail: whole FS read-only, every home hidden, only `root` writable & visible.
 
     `hide` names extra directories to blank with a tmpfs BEFORE `root` is bound
-    back in — this is how one account's home is hidden from another's shell. The
-    whole FS is bound read-only, so a bare jail can still READ everything; tmpfs'ing
-    the users root and then re-binding only this user's home is what turns "cannot
-    write outside my workspace" into "cannot even see another tenant's files".
+    back in. `_jail_hidden` adds this machine's AgentOS home and the OS user's home
+    to it, wherever they are, so neither depends on sitting under /home.
 
     `extra` are shared folders bound WRITABLE, `ro_extra` the read-only ones. Both
-    come LAST, after the tmpfs'd `hide` list, for the same reason `root` does: a
-    bind is only visible if nothing blanks it afterwards. They have already been
-    refused if they sit at or above the accounts root, so re-binding them cannot
-    undo `hide`.
+    come after the blanking, for the same reason `root` does: a bind is only visible
+    if nothing blanks it afterwards. A bind that CONTAINS a hidden folder (a sandbox
+    root of `~`) brings it back, so that folder is blanked again after it.
 
     A read-only share MUST be --ro-bind here even though the whole filesystem is
     already bound read-only: it may sit under /home, which is tmpfs'd away, and
     without a bind of its own it would simply not exist inside the jail. Binding
-    it writable instead is the bug this argument exists to prevent — the file
+    it writable instead is the bug this argument exists to prevent, since the file
     tools would refuse a write the shell would happily perform.
+
+    /run is blanked whole, /run/user and /run/dbus with it: the session bus starts a process
+    outside the jail with `systemd-run --user`, and a read-only bind stops no connect() on a
+    socket, so /run/docker.sock was root. The network stays (agents need it), which leaves abstract
+    sockets in reach; the server's own door is guarded by a process check, not by this.
+
+    `new_session` cuts the command off the terminal, so it cannot push keystrokes at whatever reads
+    that terminal next. The interactive Terminal keeps it off, because a shell with no controlling
+    terminal has no job control. That costs nothing there: `TIOCSTI` only feeds the slave side of the
+    server's own pty, the one reader of that side is this same jailed shell, and nothing outside the
+    jail reads it. Kernels from 6.2 refuse the call anyway (dev.tty.legacy_tiocsti=0).
     """
+    root = jail_root(root)
+    if chdir is None or not _under_any(os.path.realpath(chdir), [root, *(extra or []), *(ro_extra or [])]):
+        chdir = root
+    hidden = _jail_hidden(hide)
     argv = ["bwrap", "--ro-bind", "/", "/", "--tmpfs", "/home"]
-    for h in (hide or []):
-        argv += ["--tmpfs", h]              # order matters: blank the siblings first…
-    argv += ["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
-             "--bind", root, root]          # …then this user's own home reappears
-    for e in (ro_extra or []):
-        argv += ["--ro-bind", e, e]         # …shared, but not to be written
-    for e in (extra or []):
-        argv += ["--bind", e, e]            # …and the ones shared read-write
-    argv += ["--chdir", chdir or root,
-             "--setenv", "HOME", root,
-             "--setenv", "AGENTOS_SANDBOX", "1",
-             "--die-with-parent",
-             *tail]
+    for h in hidden:
+        argv += ["--tmpfs", h]              # order matters: blank the homes first…
+    argv += ["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", "/run"]
+    # DNS is the one thing a program needs out of /run: resolv.conf is usually a link into it
+    resolv = os.path.realpath("/etc/resolv.conf")
+    if resolv.startswith("/run/") and os.path.exists(resolv):
+        argv += ["--ro-bind", resolv, resolv]
+    # the interpreter, when the only one this machine has lives in a home we just hid
+    if not any(os.path.exists(c) for c in _SYSTEM_PYTHONS):
+        base = os.path.realpath(sys.base_prefix)
+        if _under_any(base, ["/home", *hidden]):
+            argv += ["--ro-bind", base, base]
+    binds = [("--bind", root)]              # …then this user's own folder reappears
+    binds += [("--ro-bind", e) for e in (ro_extra or []) if _jail_path_ok(e)]   # shared, not to be written
+    binds += [("--bind", e) for e in (extra or []) if _jail_path_ok(e)]         # shared read-write
+    holders = [b for b in binds if any(h != b[1] and _under_any(h, [b[1]]) for h in hidden)]
+    for flag, path in holders:
+        argv += [flag, path, path]
+    for h in hidden:
+        if any(_under_any(h, [p]) for _, p in holders):
+            argv += ["--tmpfs", h]
+    for flag, path in binds:
+        if (flag, path) not in holders:
+            argv += [flag, path, path]
+    argv += ["--unshare-pid", "--unshare-ipc", "--unshare-uts", "--die-with-parent", "--clearenv"]
+    if new_session:
+        argv.append("--new-session")
+    for k, v in jail_env(root).items():
+        argv += ["--setenv", k, v]
+    argv += ["--chdir", chdir, *tail]
     return argv
 
 
@@ -989,7 +1170,17 @@ def _sandbox_exec_profile(root: str, hide: list[str] | None = None,
     machine and not on one with accounts, where reading `~/.agentos/users/<somebody
     else>/agentos.db` is the entire isolation gone — so the shell now refuses it on
     both operating systems, and `tests/test_tenant_isolation.py` asserts it on both.
+
+    The AgentOS home and the usual credential folders are now always hidden too. Not run on a
+    real Mac yet: there is none where this was written, so the profile's text is what is tested.
     """
+    from . import config as cfgmod
+    osh = os.path.expanduser("~")
+    hide = [*(hide or []), os.path.realpath(str(cfgmod.AGENTOS_HOME)),
+            *[os.path.join(osh, d) for d in (".ssh", ".gnupg", ".aws", ".claude", "Library/Keychains")]]
+    extra = [e for e in (extra or []) if _jail_path_ok(e)]
+    ro_extra = [e for e in (ro_extra or []) if _jail_path_ok(e)]
+
     def esc(p):
         return p.replace("\\", "\\\\").replace('"', '\\"')
     writable = [root, *(extra or []), "/tmp", "/private/tmp", "/private/var/tmp",
@@ -1018,9 +1209,12 @@ def sandbox_exec_argv(root: str, command: str, chdir: str | None = None,
                       extra: list[str] | None = None,
                       ro_extra: list[str] | None = None) -> list[str]:
     """Wrap a shell command in macOS sandbox-exec with a workspace write-jail."""
+    root = jail_root(root)
     prof = _sandbox_exec_profile(root, hide=hide, extra=extra, ro_extra=ro_extra)
     inner = f'cd {shlex.quote(chdir or root)} && {command}'
-    return ["sandbox-exec", "-p", prof, "/bin/bash", "-lc", inner]
+    # sandbox-exec has no --clearenv: env -i is the same allow-list inside the sandbox
+    env = [f"{k}={v}" for k, v in jail_env(root).items()]
+    return ["sandbox-exec", "-p", prof, "/usr/bin/env", "-i", *env, "/bin/bash", "-lc", inner]
 
 
 def jail_argv(root: str, command: str, chdir: str | None = None,
@@ -1180,12 +1374,24 @@ class Toolbox(usersmod.Scoped):
         return ("[denied] this belongs to another account on this machine. Each account's "
                 "files, memory and credentials are private to it.")
 
-    def _sandbox_deny(self, path, write: bool = False) -> str | None:
+    def _sandbox_deny(self, path, write: bool = False, flag: bool = True) -> str | None:
         """`write` is what makes a read-only share mean anything. A shared folder
-        the tools let you overwrite is not read-only, whatever the setting says."""
+        the tools let you overwrite is not read-only, whatever the setting says.
+
+        After the tenant line, the next check answers before the toggle or any grant is read: no
+        agent reads a vault key or writes the gate, on any machine, whatever anybody clicked."""
+        from . import protected
         if (t := self._tenant_deny(path, write=write)):
             return t
         enabled, root = sandbox_conf(self.cfg)
+        why = (protected.write_refused(path) if write else protected.secret(path)) \
+            or protected.outside_agent_area(path, write, [self.cfg.get("workspace") or "",
+                                                          root, *safe_folders(self.cfg, write=write)])
+        if why:
+            from . import secevents
+            flag and secevents.flag("protected.refused", os.path.basename(str(path))[:80],
+                           source="agent", uid=usersmod.current() or "")
+            return f"[denied] {why}"
         if not enabled:
             return None
         rp = os.path.realpath(str(path))
@@ -1221,22 +1427,19 @@ class Toolbox(usersmod.Scoped):
                 return ("[denied] this machine has accounts, so a command has to run in a "
                         "per-account jail, and none is available here. Install bubblewrap "
                         "(Linux) so each account's shell is confined to its own home.")
-            home = os.path.realpath(str(usersmod.home_for(usersmod.current())))
-            os.makedirs(home, exist_ok=True)
-            workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else home
-            if not (workdir == home or workdir.startswith(home + os.sep)) or not os.path.isdir(workdir):
-                workdir = home
+            home = account_root(self.cfg)
+            own = os.path.realpath(os.path.expanduser(self.cfg.get("workspace") or "")) or home
+            workdir = os.path.realpath(os.path.expanduser(cwd)) if cwd else own
             # The same boundary on both, expressed in each jail's own vocabulary:
-            # blank the users root, then give this account's home back. bwrap does it
+            # blank the users root, then give this account's workspace back. bwrap does it
             # with a tmpfs and a re-bind, sandbox-exec with a deny and a re-allow.
             hide = [os.path.realpath(str(usersmod.users_root()))]
             # The shared folders come back in after the blanking, so a command can
             # reach them from inside the per-account jail. They cannot be a way out:
             # check_safe_folder refuses anything at or above the accounts root.
             ro_extra, extra = folder_binds(self.cfg)
-            if cwd and _under_any(os.path.realpath(os.path.expanduser(cwd)),
-                                  [*ro_extra, *extra]):
-                workdir = os.path.realpath(os.path.expanduser(cwd))
+            if not _under_any(workdir, [home, *ro_extra, *extra]) or not os.path.isdir(workdir):
+                workdir = home
             if mech == "bwrap":
                 argv = bwrap_argv(home, ["/bin/bash", "-lc", command], chdir=workdir,
                                   hide=hide, extra=extra, ro_extra=ro_extra)
@@ -1251,6 +1454,10 @@ class Toolbox(usersmod.Scoped):
             os.makedirs(root, exist_ok=True)
             # bwrap on Linux, sandbox-exec on macOS
             argv = jail_argv(root, command, chdir=workdir, extra=extra, ro_extra=ro_extra)
+            if argv is None and not _jail_waived.get():
+                # Reached only without a person's yes (an app, a schedule). Unattended, there is
+                # nobody to take the risk, so nothing runs.
+                return f"[denied] {jail_gap(self.cfg) or jail_why_not()} A person has to say yes to each command."
         if argv:
             proc = await asyncio.create_subprocess_exec(
                 *argv,
@@ -1266,6 +1473,7 @@ class Toolbox(usersmod.Scoped):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=workdir,
+                env=unjailed_env(),
             )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
@@ -1278,34 +1486,56 @@ class Toolbox(usersmod.Scoped):
         return result if code == 0 else f"[exit code {code}]\n{result}"
 
     async def read_file(self, path: str) -> str:
+        from . import safeopen
         p = self._abs(path)
-        if (deny := self._sandbox_deny(p)):
+        real = os.path.realpath(str(p))
+        if (deny := self._sandbox_deny(real)):
             return deny
-        if not p.exists():
-            return f"[error] file not found: {p}"
-        if p.stat().st_size > 2_000_000:
-            return f"[error] file too large ({p.stat().st_size} bytes)"
+        # opened by the path just checked, link by link, so a link flipped since is refused
         try:
-            return _truncate(p.read_text(errors="replace"))
+            fd = safeopen.open_file(real)
+        except FileNotFoundError:
+            return f"[error] file not found: {p}"
         except IsADirectoryError:
             return f"[error] {p} is a directory — use list_dir"
+        except safeopen.Moved:
+            return f"[denied] {p} changed while it was being opened, or is not a plain file."
+        except OSError as e:
+            return f"[error] could not read {p}: {e.strerror or e}"
+        with os.fdopen(fd, "rb") as f:
+            size = os.fstat(f.fileno()).st_size
+            if size > 2_000_000:
+                return f"[error] file too large ({size} bytes)"
+            return _truncate(f.read().decode("utf-8", errors="replace"))
 
     async def write_file(self, path: str, content: str) -> str:
+        from . import safeopen
         p = self._abs(path)
-        if (deny := self._sandbox_deny(p, write=True)):
+        real = os.path.realpath(str(p))
+        if (deny := self._sandbox_deny(real, write=True)):
             return deny
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content)
+        try:
+            safeopen.write_bytes(real, content.encode("utf-8"))
+        except safeopen.Moved:
+            return f"[denied] {p} changed while it was being opened, or is not a plain file."
+        except OSError as e:
+            return f"[error] could not write {p}: {e.strerror or e}"
         return f"wrote {len(content)} chars to {p}"
 
     async def list_dir(self, path: str = "") -> str:
+        from . import safeopen
         p = self._abs(path or self.cfg["workspace"])
-        if (deny := self._sandbox_deny(p)):
+        real = os.path.realpath(str(p))
+        if (deny := self._sandbox_deny(real)):
             return deny
-        if not p.is_dir():
+        try:
+            entries = safeopen.list_dir(real)
+        except (FileNotFoundError, NotADirectoryError):
             return f"[error] not a directory: {p}"
-        entries = sorted(p.iterdir(), key=lambda e: (e.is_file(), e.name.lower()))
-        lines = [f"{'d' if e.is_dir() else 'f'}  {e.name}" for e in entries[:300]]
+        except safeopen.Moved:
+            return f"[denied] {p} changed while it was being opened."
+        entries.sort(key=lambda e: (not e[1], e[0].lower()))
+        lines = [f"{'d' if d else 'f'}  {n}" for n, d in entries[:300]]
         return f"{p}\n" + ("\n".join(lines) if lines else "(empty)")
 
     # -- accounts: the mailbox and the calendar the person let this machine read ----
@@ -1947,6 +2177,9 @@ class Toolbox(usersmod.Scoped):
             dest.write_bytes(r.content)
         else:
             p = Path(os.path.expanduser(source))
+            # the wallpaper is served to whoever asks: this was a way to read any file on the disk
+            if (deny := self._sandbox_deny(p)):
+                return deny
             if not p.is_file():
                 return f"[error] file not found: {p}"
             dest.write_bytes(p.read_bytes())
@@ -2040,14 +2273,16 @@ class Toolbox(usersmod.Scoped):
                     self.store, data, name=name, mime=mime, title=title, source="url",
                     origin_url=src, space_id=space_id, conversation_id=conversation_id)
             else:
+                from . import safeopen
                 p = Path(os.path.expanduser(src))
-                deny = self._sandbox_deny(p)
+                real = os.path.realpath(str(p))
+                deny = self._sandbox_deny(real)
                 if deny:
                     return deny
-                if not p.is_file():
+                if not os.path.isfile(real):
                     return f"[error] file not found: {p}"
                 row = await assetmod.put_bytes(
-                    self.store, p.read_bytes(), name=p.name, title=title or p.name,
+                    self.store, safeopen.read_bytes(real), name=p.name, title=title or p.name,
                     source="tool:save_asset", space_id=space_id,
                     conversation_id=conversation_id)
         except Exception as e:
@@ -2849,7 +3084,15 @@ class Toolbox(usersmod.Scoped):
                 "td,th{border:1px solid #232a35;padding:6px 9px;text-align:left}"
                 f".meta{{color:#5c6577;font-size:12px;margin-bottom:18px}}</style></head><body>"
                 f"<h1>{title}</h1><div class='meta'>Generated {_t.strftime('%Y-%m-%d %H:%M')}</div>{body}</body></html>")
-        (reports / fname).write_text(html)
+        # `reports` is in the workspace, where a jailed shell can make it a link to anywhere
+        from . import safeopen
+        real = os.path.realpath(str(reports / fname))
+        if (deny := self._sandbox_deny(real, write=True)):
+            return deny
+        try:
+            safeopen.write_bytes(real, html.encode("utf-8"))
+        except OSError as e:
+            return f"[error] could not save the report: {e.strerror or e}"
         self.store.log("system", f"report saved: reports/{fname}")
         if self.broadcast:
             await self.broadcast({"type": "files"})
@@ -4424,7 +4667,9 @@ class Toolbox(usersmod.Scoped):
             return "[error] nothing to run"
         from . import edgecode
         enabled, root = sandbox_conf(self.cfg)
-        base = root if enabled else os.path.expanduser(self.cfg["workspace"])
+        jailed = enabled or usersmod.enabled()
+        base = account_root(self.cfg) if usersmod.enabled() else (
+            jail_root(root) if enabled else os.path.expanduser(self.cfg["workspace"]))
         os.makedirs(base, exist_ok=True)
         # On a machine a hub set up, small code runs here inside the edge's limits and big
         # code goes to the hub (edgecode.py). Anywhere else nothing below changes.
@@ -4443,7 +4688,7 @@ class Toolbox(usersmod.Scoped):
         try:
             with open(path, "w") as fh:
                 fh.write(code)
-            py = jail_python(sys.executable) if enabled else sys.executable
+            py = jail_python(sys.executable) if jailed else sys.executable
             if hub:
                 out = await self.run_command(edgecode.local_command(py, path, cwd))
             else:

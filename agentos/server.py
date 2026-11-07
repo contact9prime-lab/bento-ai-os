@@ -216,8 +216,21 @@ def _start_account_bridges() -> list[str]:
     return started
 
 
+def _say_if_no_jail() -> None:
+    """A sandbox that is switched on and cannot start is a thing somebody must hear about once,
+    from the security record, not by reading a setting. `jail.missing` raises its own alert."""
+    from .tools import jail_state
+    js = jail_state(state.machine_cfg())
+    if js["enabled"] and not js["working"]:
+        from . import secevents
+        secevents.flag("jail.missing", js["why"], source="startup")
+        state["store"].log("system", js["words"])
+
+
 @app.on_event("startup")
 async def startup():
+    with contextlib.suppress(Exception):
+        await asyncio.to_thread(_say_if_no_jail)
     cfg = cfgmod.load_config()
     cfgmod.ensure_dirs(cfg)
     state["loop"] = asyncio.get_running_loop()
@@ -2484,6 +2497,33 @@ def _read_cpu() -> tuple[int, int]:
     return idle, sum(nums)
 
 
+class _OpenedFile(FileResponse):
+    """A file by its descriptor, so what was checked is what is sent. Starlette reopens it through
+    /proc/self/fd, which is the same file whatever has happened to the name since, and Range keeps
+    working. A link swapped in between the route's check and the send was a read of anybody's file."""
+
+    def __init__(self, fd: int, **kw):
+        self._fd = fd
+        base = "/proc/self/fd" if os.path.isdir("/proc/self/fd") else "/dev/fd"
+        super().__init__(f"{base}/{fd}", stat_result=os.fstat(fd), **kw)
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with contextlib.suppress(OSError):
+                os.close(self._fd)
+
+
+def _send_checked(p: Path, **kw):
+    """`p` is real and has passed its check. A 404 when it moved since, as for any file not there."""
+    from . import safeopen
+    try:
+        return _OpenedFile(safeopen.open_file(str(p)), **kw)
+    except OSError:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+
 def _files_root() -> Path:
     from .tools import sandbox_conf
     _, root = sandbox_conf(state["cfg"])
@@ -3135,7 +3175,7 @@ async def api_file_raw(path: str, download: int = 0):
         headers["Content-Disposition"] = f'attachment; filename="{p.name}"'
     if p.suffix.lower() in (".md", ".txt", ".log", ".csv", ".json"):
         mt = "text/plain; charset=utf-8"
-    return FileResponse(p, media_type=mt or "application/octet-stream", headers=headers)
+    return _send_checked(p, media_type=mt or "application/octet-stream", headers=headers)
 
 
 def _output_roots():
@@ -3180,7 +3220,7 @@ async def api_files_get(path: str, download: int = 0):
         headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(p.name)}"
     if p.suffix.lower() in (".md", ".txt", ".log", ".csv", ".json"):
         mt = "text/plain; charset=utf-8"
-    return FileResponse(p, media_type=mt or "application/octet-stream", headers=headers)
+    return _send_checked(p, media_type=mt or "application/octet-stream", headers=headers)
 
 
 @app.get("/api/native/apps")
@@ -3546,6 +3586,9 @@ async def api_platform(request: Request):
     zs = _zero().state(state.machine_cfg())
     state_["zero"] = ({"hub": zs.get("hub", ""), "on_hub": zs.get("execution") == "hub"}
                       if zs else {})
+    # The sandbox says itself whether it can start here: Settings shows the sentence.
+    from .tools import jail_state
+    state_["jail"] = jail_state(state.machine_cfg())
     # A hub with devices (Zeros it set up, or ESP32 boards of its own) opens a desktop on the
     # Devices scene (01h-devscene.js): the floor live, with its alarms, a desktop away from the Town.
     with contextlib.suppress(Exception):
@@ -13413,6 +13456,8 @@ async def api_timetravel_plan(pid: str):
         return timetravel.plan(db, home, pid)
     except KeyError:
         return JSONResponse({"error": "no such checkpoint"}, status_code=404)
+    except timetravel.Forged as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
 
 
 @app.post("/api/timetravel/{pid}/rewind")
@@ -13427,7 +13472,10 @@ async def api_timetravel_rewind(pid: str):
     if p["conversation_id"] and p["conversation_id"] in state["turns"]:
         return JSONResponse({"error": "That conversation is still working. Stop it or let it finish, then rewind."},
                             status_code=409)
-    got = await asyncio.to_thread(timetravel.rewind, db, home, pid)
+    try:
+        got = await asyncio.to_thread(timetravel.rewind, db, home, pid)
+    except timetravel.Forged as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     state["store"].log("system", f"time travel: rewound to before {p['tool']} ({pid}): " + ", ".join(got["words"]))
     await state["broadcast_user"]({"type": "timetravel", "rewound": pid, "conversation_id": p["conversation_id"]},
                                   usersmod.current())
@@ -18598,22 +18646,34 @@ def _terminal_argv(uid: str) -> tuple[list, str, str]:
     (folder_binds): a folder the agent can read and the Terminal cannot is a difference
     nobody can explain from the outside."""
     import os
-    from .tools import bwrap_argv, folder_binds, sandbox_conf, sandbox_mechanism
+    from .tools import account_root, bwrap_argv, folder_binds, jail_root, sandbox_conf, sandbox_exec_argv, \
+        sandbox_mechanism
     sb_ro, sb_extra = folder_binds(state.machine_cfg(), uid or None)
     shell = os.environ.get("SHELL", "/bin/bash")
+
+    def jailed(root, hide=None, chdir=None):
+        # new_session stays off here, and bwrap_argv says why: a Terminal needs its job control
+        if sandbox_mechanism() == "sandbox-exec":
+            return sandbox_exec_argv(root, "exec /bin/bash -l", chdir=chdir, hide=hide, extra=sb_extra, ro_extra=sb_ro)
+        return bwrap_argv(root, ["/bin/bash", "-l"], chdir=chdir, hide=hide, extra=sb_extra, ro_extra=sb_ro,
+                          new_session=False)
+
     if usersmod.enabled():
         if not sandbox_mechanism():
             return [], "", ("This machine has accounts, so the Terminal must run in a per-account "
                             "jail. Install bubblewrap to enable it.")
-        home = os.path.realpath(str(usersmod.home_for(uid)))
-        os.makedirs(home, exist_ok=True)
-        return (bwrap_argv(home, ["/bin/bash", "-l"], chdir=home,
-                           hide=[os.path.realpath(str(usersmod.users_root()))],
-                           extra=sb_extra, ro_extra=sb_ro), home, "")
+        ucfg = usersmod.cfg_for(uid, state.machine_cfg())
+        root = account_root(ucfg, uid)
+        # the first account keeps ~/AgentOS as its workspace, shared into the jail: it opens there
+        ws = os.path.realpath(os.path.expanduser(str(ucfg.get("workspace") or "")))
+        return jailed(root, [os.path.realpath(str(usersmod.users_root()))], chdir=ws), root, ""
     sandboxed, sb_root = sandbox_conf(state.machine_cfg())
-    if sandboxed:
+    if sandboxed and sandbox_mechanism():
+        sb_root = jail_root(sb_root)
         Path(sb_root).mkdir(parents=True, exist_ok=True)
-        return bwrap_argv(sb_root, ["/bin/bash", "-l"], extra=sb_extra, ro_extra=sb_ro), sb_root, ""
+        return jailed(sb_root), sb_root, ""
+    # No jail on a one-person machine: this window is that person's own shell. The agent cannot type
+    # into it without a yes each time (agent.py, tools.jail_gap).
     return [shell, "-l"], os.path.expanduser("~"), ""
 
 
@@ -18622,7 +18682,10 @@ def _terminal_spawn(uid: str, name: str = "", by: str = "you"):
     argv, cwd, why = _terminal_argv(uid)
     if why:
         raise RuntimeError(why)
-    s = ptyhub.spawn(uid, argv, cwd=cwd, name=name, by=by)
+    # a jail clears its own environment; a plain shell should not inherit the server's keys either
+    from .tools import unjailed_env
+    s = ptyhub.spawn(uid, argv, cwd=cwd, name=name, by=by,
+                     env=None if argv[0] in ("bwrap", "sandbox-exec") else unjailed_env())
     with usersmod.as_user(uid):
         state["store"].log("system", f"terminal session started: {s.name} (pid {s.pid}, by {by})")
     return s

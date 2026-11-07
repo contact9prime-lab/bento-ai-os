@@ -177,7 +177,7 @@ def main():
              hubs=z["hubs"], key=z["key"], standard_agents=[a["name"] for a in z["standard"]["agents"]],
              tailscale_key_on_disk=on_disk, cli_ok=cli.returncode == 0)
 
-        enroll = re.search(r"--enroll=(\S+)", z["line"]).group(1)
+        enroll = re.search(r"AGENTOS_ENROLL=(\S+)", z["line"]).group(1)
         hubs = re.search(r"--hub=(\S+)", z["line"]).group(1)
         set_hub = bento("pi-zero", "pool", "hub", hubs)
         assert set_hub.returncode == 0, set_hub.stderr

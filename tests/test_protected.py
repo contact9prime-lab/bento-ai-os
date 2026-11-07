@@ -20,10 +20,41 @@ def test_the_pki_folder_is_secret_all_the_way_down():
     assert pr.secret(cfgmod.AGENTOS_HOME / "pki" / "ssh_ed25519")
 
 
-def test_settings_may_be_read_but_not_written():
+def test_settings_are_neither_read_nor_written():
+    """config.json holds provider keys and bot tokens in clear (S-16), so reading it is the attack."""
     path = cfgmod.AGENTOS_HOME / "config.json"
-    assert pr.secret(path) == ""
+    assert pr.secret(path)
     assert pr.write_refused(path)
+
+
+def test_a_project_in_the_workspace_may_have_files_with_those_names():
+    ws = cfgmod.AGENTOS_HOME / "workspace" / "myproject"
+    for name in ("config.json", "inventory.json", "users.json"):
+        assert pr.secret(ws / name) == ""
+        assert pr.write_refused(ws / name) == ""
+
+
+def test_anything_in_a_home_not_named_as_open_is_closed():
+    """The list of secrets is the belt. A file a later feature keeps in a home is closed until
+    somebody opens it, so one forgotten line is not a model reading a sign-in."""
+    home = cfgmod.AGENTOS_HOME
+    assert pr.outside_agent_area(home / "some-new-feature" / "tokens.bin")
+    assert pr.outside_agent_area(home / "users" / "abc" / "some-new-feature.db")
+    assert pr.outside_agent_area(home / "assets" / "x.png") == ""
+    assert pr.outside_agent_area(home / "assets" / "x.png", write=True)
+    assert pr.outside_agent_area(home / "elsewhere", also=[home / "elsewhere"]) == ""
+
+
+@pytest.mark.parametrize("path", ["/proc/self/environ", "/proc/1/environ", "/proc/self/cmdline"])
+def test_a_process_environment_is_secret(path):
+    assert pr.secret(path)
+
+
+@pytest.mark.parametrize("name", ["oauth/x.json", "whatsapp/session/creds.json", "browser/profile/Cookies",
+                                  "snapshots/1/config.json", ".timetravel/blobs/aa/aa",
+                                  ".before-restore-1/vault.key", "screen-profile/Default/Cookies"])
+def test_sign_ins_and_copies_of_a_home_are_secret(name):
+    assert pr.secret(cfgmod.AGENTOS_HOME / name)
 
 
 def test_the_code_is_refused_for_writes_and_not_for_reads():

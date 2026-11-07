@@ -431,14 +431,22 @@ def stage_of(line: str) -> str:
     return ""
 
 
+# The enrolment key is a credential: on a command line it can be read by any process here for the
+# length of the install (`ps` is safe, and a reader can race to enrol a machine as the admin), and on
+# the other machine too. So it travels on ssh's stdin into a 0600 file the installer reads and
+# deletes. This line is part of the plan: what was shown is what runs, and only the key is not in it.
+KEY_FILE = '"$HOME/.cache/bento-install/enroll.key"'
+KEY_STAGE = f'mkdir -p "$HOME/.cache/bento-install"; (umask 077; cat > {KEY_FILE}); '
+
+
 def plan(cfg: dict | None, key_text: str, authorize: bool = False, screen: bool = False) -> str:
     """The exact command that will run on the other machine: shown before it runs. `screen`
     adds --screen: Bento opens on that machine's own screen when it starts (screen.py)."""
     # No --yes: that answers yes to every OPTIONAL extra (Claude Code, Codex, a boot
     # splash…), which nobody agreed to on this consent screen. With no terminal the
     # installer installs Bento itself and only reports the extras. Found by the live run.
-    flags = ["--lite"] + ([f"--enroll={key_text}"] if key_text else ["--wait"]) + (["--screen"] if screen else [])
-    cmd = f"curl -fsSL {shlex.quote(install_url(cfg))} | sh -s -- " + " ".join(shlex.quote(f) for f in flags)
+    flags = ["--lite", f"--enroll-file={KEY_FILE}" if key_text else "--wait"] + (["--screen"] if screen else [])
+    cmd = f"curl -fsSL {shlex.quote(install_url(cfg))} | sh -s -- " + " ".join(flags)
     if authorize and not public_key():
         try:
             ensure_key()                # "let this machine in" needs this machine's key
@@ -451,7 +459,15 @@ def plan(cfg: dict | None, key_text: str, authorize: bool = False, screen: bool 
     repo = os.environ.get("AGENTOS_REPO")
     if repo:                      # a test or a mirror: the installer clones from here
         cmd = cmd.replace("| sh -s", f"| AGENTOS_REPO={shlex.quote(repo)} sh -s")
-    return cmd
+    return (KEY_STAGE + cmd) if key_text else cmd
+
+
+def remote_command(shown: str) -> str:
+    """The plan as ssh sends it: the key's file is written in the ssh session, where stdin is the
+    key, and the rest runs detached from it."""
+    if shown.startswith(KEY_STAGE):
+        return KEY_STAGE + detached(shown[len(KEY_STAGE):])
+    return detached(shown)
 
 
 # The installer runs on its own there, writing to a log, and this machine follows the log.
@@ -478,7 +494,7 @@ def follow(skip: int = 0) -> str:
 
 def detached(cmd: str) -> str:
     """`cmd` run on its own there (setsid and nohup, its own pid file and log), then followed."""
-    inner = f'echo $$ > {INSTALL_DIR}/install.pid; {cmd}; echo "{END} $?"'
+    inner = f'echo $$ > {INSTALL_DIR}/install.pid; {cmd}; R=$?; rm -f {KEY_FILE}; echo "{END} $R"'
     # an earlier install still running there (pressed twice) is stopped first: two writing one
     # log garbled it. setsid made it the leader of its own group, so the group goes with it.
     return (f'D={INSTALL_DIR}; mkdir -p "$D"; O=$(cat "$D/install.pid" 2>/dev/null); '
@@ -510,8 +526,9 @@ async def install(cfg: dict, host: str, user: str, password: str, key_text: str,
             lines.append(ln)
         if on_line:
             await on_line(ln)
-    remote = detached(plan(cfg, key_text, authorize, screen))
-    code, out, err, via = await login_run(host, user, port, password, remote, INSTALL_TIMEOUT, take)
+    remote = remote_command(plan(cfg, key_text, authorize, screen))
+    code, out, err, via = await login_run(host, user, port, password, remote, INSTALL_TIMEOUT, take,
+                                          stdin=key_text if key_text else None)
     drops = 0
     while end[0] is None and code == 255 and seen[0] and drops < RECONNECTS:
         left = deadline - time.monotonic()

@@ -362,3 +362,24 @@ def test_settings_offers_it_and_a_remote_browser_is_told_where():
     assert "pGroup('Backup'" in settings and "paintBackup" in settings
     ob = (ROOT / "agentos/ui/src/js/14b-onboarding.js").read_text()
     assert "Restore a backup" in ob, "a new machine for somebody who already has one"
+
+
+# ---- S-87: the file does not choose where the workspace lands ----
+
+def test_a_crafted_manifest_cannot_choose_the_workspace_folder(tmp_path, monkeypatch):
+    me = tmp_path / "me"
+    me.mkdir()
+    monkeypatch.setenv("HOME", str(me))
+    home = me / ".agentos"
+    home.mkdir()
+    for evil in ("/etc/cron.d", str(me / ".ssh"), str(me), str(tmp_path), str(home), str(home / "pki"),
+                 str(tmp_path / "elsewhere")):
+        target, moved = backup._workspace_target({"workspace": evil}, home)
+        assert target == me / "AgentOS" and moved, evil
+    ok, moved = backup._workspace_target({"workspace": str(me / "work" / "bento")}, home)
+    assert ok == me / "work" / "bento" and not moved
+    own, moved = backup._workspace_target({"workspace": str(home / "workspace")}, home)
+    assert own == home / "workspace" and not moved
+    # another machine's folders follow the machine, as they always did
+    far, moved = backup._workspace_target({"workspace": "/home/ada/AgentOS", "user_home": "/home/ada"}, home)
+    assert far == me / "AgentOS" and not moved

@@ -27,7 +27,7 @@ import re
 import time
 
 FORMAT = "bento-trace/1"
-SECRET = re.compile(r"(api_?key|key$|token|secret|password|passphrase|cookie|credential|bearer|private|auth$|authorization)", re.I)
+SECRET = re.compile(r"(api_?key|key$|token|secret|password|passphrase|cookie|credential|bearer|private|auth$|authorization|_pat$)", re.I)
 MAX_EVENTS = 3000
 MAX_AUDIT = 5000
 MAX_LOGS = 2000
@@ -40,7 +40,8 @@ HOW_TO_READ = (
     "signing off) and an `audit` run; each has its `events`. `ledger` is every decision the "
     "permission gate made (effect allow/deny/ask, rule, reason, outcome). `logs` are the "
     "free-text diary lines. `setting` is what the machine looked like: the brain, autonomy, "
-    "the company and departments with each person's tools. Secrets are masked.")
+    "the company and departments with each person's tools. Secrets are masked by name and by "
+    "shape, and an MCP server appears as its shape only, so a masked value here is not a bug.")
 
 
 def mask(value, key: str = ""):
@@ -52,6 +53,47 @@ def mask(value, key: str = ""):
     if isinstance(value, str) and key and SECRET.search(key) and value:
         return "•••" + value[-4:] if len(value) > 8 else "•••"
     return value
+
+
+# A key's NAME is not where a credential has to be: `--api-key sk-…` in an MCP server's args, `?key=`
+# in a URL and a password in a database URL all sat under innocent names, and so did anything a
+# person pasted into a chat. So a string is read for the shapes too, wherever it is.
+_IN_TEXT = (
+    (re.compile(r"(?i)((?<![\w-])--?[a-z-]*(?:key|token|secret|pass(?:word|wd)?|auth)[= ]+)\S+"), r"\1•••"),
+    (re.compile(r"(?i)([?&][a-z_-]*(?:key|token|secret|pass(?:word|wd)?|auth|sig)=)[^&\s\"']+"), r"\1•••"),
+    (re.compile(r"(://[^/\s:@\"']+:)[^/\s@\"']+@"), r"\1•••@"),
+)
+
+
+def _scrub_text(text: str) -> str:
+    from .agentbundle import _LEAK_RULES
+    for _label, pat in _LEAK_RULES:
+        text = re.sub(pat, "•••", text)
+    for pat, repl in _IN_TEXT:
+        text = pat.sub(repl, text)
+    return text
+
+
+def scrub(value):
+    """The document as it may leave: every string read for credential shapes, at any depth."""
+    if isinstance(value, dict):
+        return {k: scrub(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [scrub(v) for v in value]
+    return _scrub_text(value) if isinstance(value, str) else value
+
+
+def _finished(doc: dict) -> dict:
+    """The last thing every trace goes through. A leak scan over the bytes, so a shape nobody thought
+    of when writing `scrub` still cannot leave: what it finds is named in the file, not the value."""
+    from .agentbundle import leak_scan
+    out = scrub(doc)
+    left = leak_scan(dumps(out))
+    if left:
+        out["masked_whole"] = [x["looks_like"] for x in left]
+        out = json.loads(re.sub(r'(?i)"(api_key|apikey|secret|token|password|passwd|private_key)"\s*:\s*"[^"]*"',
+                                r'"\1": "•••"', dumps(out)))
+    return out
 
 
 def _rows(store, sql: str, params: tuple = ()) -> list[dict]:
@@ -156,7 +198,7 @@ def conversation(store, cfg: dict, cid: str) -> dict:
         out["stage"] = []
     if "task_runs" in tables:
         out["schedule_runs"] = _rows(store, "SELECT * FROM task_runs WHERE conversation_id=?", (cid,))
-    return out
+    return _finished(out)
 
 
 def run(store, cfg: dict, rid: str) -> dict:
@@ -188,13 +230,22 @@ def run(store, cfg: dict, rid: str) -> dict:
         flow = store.get_flow(top["flow"]) if hasattr(store, "get_flow") else None
         if flow:
             out["mission"] = flow
-    return out
+    return _finished(out)
 
 
 def _config_view(cfg: dict) -> dict:
-    """The configuration as a person would see it, without the bulky caches."""
+    """The configuration as a person would see it, without the bulky caches. An MCP server goes as
+    its shape: env and header values become placeholders, by the one function that decides that."""
+    from .agentbundle import sanitize_mcp_conf
     drop = {"_uid", "widgets", "desktop", "shortcuts", "history"}
-    return {k: v for k, v in (cfg or {}).items() if k not in drop}
+    view = {k: v for k, v in (cfg or {}).items() if k not in drop}
+    for key in ("mcp_servers", "mcp"):
+        conf = view.get(key)
+        if isinstance(conf, dict):
+            view[key] = {n: sanitize_mcp_conf(n, c) if isinstance(c, dict) else c for n, c in conf.items()}
+        elif isinstance(conf, list):
+            view[key] = [sanitize_mcp_conf(str(c.get("name") or ""), c) if isinstance(c, dict) else c for c in conf]
+    return view
 
 
 def filename(doc: dict) -> str:

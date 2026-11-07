@@ -99,9 +99,11 @@ automatically. API keys can also come from environment variables — see [Models
 "sandbox": { "enabled": true, "root": "", "folders": [] }
 ```
 
-When enabled (and `bubblewrap` is installed), the agent's shell/file tools and the Terminal are
-confined to `root` (defaults to the workspace). Outside that folder the filesystem is read-only and
-other home directories are hidden. Turn it on/off and set the folder in **Settings → Sandbox**.
+When enabled, the agent's shell/file tools and the Terminal are confined to `root` (defaults to the
+workspace). Outside that folder the filesystem is read-only and every home is hidden. If `bubblewrap`
+cannot start here, file tools stay confined and each command asks you first
+([details](security.md#containers-and-a-sandbox-that-cannot-start)). Turn it on/off and set the folder in
+**Settings → Sandbox**.
 
 ### Safe folders
 
