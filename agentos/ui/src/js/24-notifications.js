@@ -47,7 +47,7 @@ async function openNotifPanel(){
   await renderNotifList();
   popOpen(p,{anchor:$('#tray-bell')});
   popIn(p,{origin:'top right'});
-  await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
+  await fetch('/api/notifications',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
   updateBell();
 }
 async function dismissNotif(id){

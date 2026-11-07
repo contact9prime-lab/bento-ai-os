@@ -20,6 +20,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, Response)
 
 from . import agentbundle
+from . import machineroutes
 from . import secevents
 from . import turnerrors
 from . import appcheck
@@ -2055,6 +2056,13 @@ def _my_name() -> str:
         return ""
 
 
+def _zero_waits_for_admin(key: dict) -> bool:
+    """Would a machine with this key be the first thing to open this machine's link door,
+    on the word of somebody who is not an admin?"""
+    owner = str(key.get("owner") or "")
+    return bool(owner) and not usersmod.is_admin(owner) and not state.get("team_listener")
+
+
 async def _provision_new(b: dict):
     """A machine turned on and said it is waiting. Ask whoever may set it up — and if it
     carries one of this machine's keys marked automatic, set it up now (the zero-touch
@@ -2066,6 +2074,13 @@ async def _provision_new(b: dict):
                 f"{b['name']} ({hw.get('board') or hw.get('arch') or 'a machine'}) at {b.get('addr')} "
                 f"is waiting to be set up, heard {zeromod.via_words(b.get('via', ''))}")
     auto = next((k for k in provmod.load()["keys"] if k.get("auto") and k["id"] == b.get("key_id")), None)
+    if auto and _zero_waits_for_admin(auto):
+        # Setting it up would open this machine's link port and start a community. Anyone
+        # may make their own Zero, but that part is the machine's, so an admin says yes once.
+        _sys_ledger("provision.held", f"provision:{b['fp'][:16]}",
+                    f"{b['name']} is held: its line came from an account that is not an admin, and "
+                    "this machine has not opened its link port yet")
+        auto = None
     if auto:
         # heard twice at once (the announcement and a direct ask): set it up once
         if b["fp"] in _PROV_BUSY or provmod.was_enabled_here(b["fp"]):
@@ -3533,7 +3548,10 @@ async def api_platform(request: Request):
     """
     from . import host
     state_ = host.platform_state()
-    state_["remote_client"] = not remotemod.is_loopback(_client_addr(request))
+    # An account that is not an admin is treated the same way, wherever it sits: the host's
+    # screen is not theirs, so a file opens in the browser and native apps say why they can't.
+    state_["remote_client"] = (not remotemod.is_loopback(_client_addr(request))
+                               or (usersmod.enabled() and not usersmod.is_admin(usersmod.current())))
     state_["hostname"] = socket.gethostname()
     # Is the desktop a native layer-shell surface right now, and could it be?
     # The UI shows this in About/System Settings, and the doctor uses the second
@@ -4010,6 +4028,11 @@ async def api_notifications():
     if not d:
         return {"available": False, "items": [], "unread": 0, "dnd": False,
                 "reason": "Your desktop environment shows notifications in hosted mode."}
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        # what the host's apps announce is whoever is at the screen's, and this is polled,
+        # so it answers "none here" rather than a 403
+        return {"available": False, "items": [], "unread": 0, "dnd": False,
+                "reason": machineroutes.REFUSAL}
     from . import attention
     st = d.state()  # items carry additive per-item `importance` once triage scored them
     dg = attention.digest_state(state["store"])
@@ -9097,6 +9120,20 @@ async def app_privilege_guard(request: Request, call_next):
 
 
 @app.middleware("http")
+async def machine_only_gate(request: Request, call_next):
+    """The machine's own routes, for an admin (machineroutes.py). Registered before
+    `resolve_user` so it runs after it, and it reads the path the router matches on."""
+    if machineroutes.machine_only(request.method, request.scope.get("path", "")) \
+            and usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        # `available`/`reason` are what the page's capability checks already read,
+        # so a pane says the sentence rather than drawing nothing
+        return JSONResponse({"error": machineroutes.REFUSAL, "ok": False, "available": False,
+                             "reason": machineroutes.REFUSAL},
+                            status_code=403, headers={"X-Bento-Admin-Only": "1"})
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def standby_gate(request: Request, call_next):
     """A side that is paired and not the one working serves its standing-by page and
     refuses the API, so nothing reads or changes a home that is not the live one.
@@ -10557,11 +10594,17 @@ def _running_version() -> str:
         return ""
 
 
+def _snap_of(sid: str) -> Path | None:
+    """A snapshot's folder. An id is the time it was taken, digits only: `..` here was
+    AGENTOS_HOME, and DELETE emptied every account on the machine."""
+    return _snap_dir() / sid if re.fullmatch(r"[0-9]{1,20}", sid or "") else None
+
+
 @app.post("/api/snapshots/{sid}/restore")
 async def api_snapshot_restore(sid: str):
     import shutil
-    d = _snap_dir() / sid
-    if not d.is_dir():
+    d = _snap_of(sid)
+    if d is None or not d.is_dir():
         return JSONResponse({"error": "not found"}, status_code=404)
     home = cfgmod.AGENTOS_HOME
     for f in ("config.json", "soul.md", "agentos.db"):
@@ -10590,7 +10633,9 @@ async def api_snapshot_restore(sid: str):
 @app.delete("/api/snapshots/{sid}")
 async def api_snapshot_delete(sid: str):
     import shutil
-    d = _snap_dir() / sid
+    d = _snap_of(sid)
+    if d is None:
+        return JSONResponse({"error": "no such snapshot"}, status_code=404)
     if d.is_dir():
         shutil.rmtree(d)
     return {"ok": True}
@@ -14389,6 +14434,8 @@ async def api_provision_zero(body: dict):
     await _provision_sync()
     u = usersmod.get(owner) if owner else None
     return {"line": line, "hubs": hubs, "addresses": addrs, "key": {k: key[k] for k in ("id", "label", "auto")},
+            "held": ("An admin has to set the first machine up here, because that opens this "
+                     "machine's link port." if _zero_waits_for_admin({"owner": owner}) else ""),
             "for": {"id": owner, "name": u["name"] if u else ""},
             "standard": provmod.standard()}
 
@@ -18383,6 +18430,16 @@ def _ws_authed(ws) -> bool:
     return remotemod.valid_session(cfg, ws.cookies.get(remotemod.COOKIE, ""))
 
 
+async def _ws_not_admin(ws) -> bool:
+    """A socket's half of machine_only_gate, which never sees one. True when it was
+    refused and closed: the host's screen and native apps are the machine's."""
+    if usersmod.enabled() and not usersmod.is_admin(_ws_user(ws) or ""):
+        with contextlib.suppress(Exception):
+            await ws.close(code=4403)
+        return True
+    return False
+
+
 def _ws_user(ws) -> str | None:
     """Which account this socket belongs to, from the SIGNED cookie only.
 
@@ -18432,6 +18489,8 @@ async def ws_vnc(ws: WebSocket):
     why it is the same job websockify does, and why AgentOS does not need it.
     """
     if await _ws_reject(ws):
+        return
+    if await _ws_not_admin(ws):
         return
     if not _vnc_running():
         # Refuse rather than hang: a client waiting forever on a socket that will
@@ -18604,6 +18663,8 @@ async def api_appstream_close(sid: str):
 async def ws_appstream(ws: WebSocket):
     """One window onto a projected app: frames out (binary), the person's input in."""
     if await _ws_reject(ws):
+        return
+    if await _ws_not_admin(ws):
         return
     uid = _ws_user(ws) or ""
     await ws.accept()

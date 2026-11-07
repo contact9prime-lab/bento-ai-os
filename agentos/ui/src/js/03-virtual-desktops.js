@@ -68,7 +68,7 @@ function switchDesk(n){
   // In session mode a desktop is a real sway workspace, so external windows move
   // with it instead of following you everywhere. The shell comes along too.
   if(typeof PLATFORM!=='undefined'&&PLATFORM.mode==='de')
-    fetch('/api/wm/desktop',{method:'POST',headers:{'Content-Type':'application/json'},
+    fetch('/api/wm/desktop',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
       body:JSON.stringify({desktop:n})}).then(()=>{
         if(typeof updateNativeWindows==='function')setTimeout(updateNativeWindows,200)}).catch(()=>{});
   const go=()=>{
