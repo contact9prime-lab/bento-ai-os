@@ -263,6 +263,24 @@ def client():
         yield cl
 
 
+def test_a_digest_may_stand_for_the_token_in_the_url_and_only_there(client, tmp_path):
+    """Codex can only name a server on its command line, so its URL holds a digest."""
+    from agentos import server as servermod
+    st = servermod.state
+    a = _agent(st["cfg"], st["toolbox"], ["system_info"], [])
+    a._task_text = "x"
+    token = mcpbridge.open_session(a, a._tools())
+    try:
+        msg = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+        url = "/api/mcp/run/" + mcpbridge.url_id(token)
+        assert client.post(url, json=msg, headers={"Authorization": f"Bearer {token}"}).status_code == 200
+        assert client.post(url, json=msg).status_code == 401
+        h = {"Authorization": f"Bearer {mcpbridge.url_id(token)}"}
+        assert client.post(url, json=msg, headers=h).status_code == 401, "the digest is not the secret"
+    finally:
+        mcpbridge.close_session(token)
+
+
 def test_the_route_wants_a_live_token_twice_and_is_loopback_only(client, tmp_path):
     assert client.post("/api/mcp/run/nope", json={"jsonrpc": "2.0", "id": 1,
                                                   "method": "ping"}).status_code == 401

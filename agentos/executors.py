@@ -3440,10 +3440,36 @@ def jail_cli(argv: list[str], *, engine: str, cwd: str, rw=(), ro=(), scratch: s
     entries += _state_entries(engine, home, cwd, person, scratch)
     if scratch:
         entries.append(("ro", _real(scratch)))
+    return _bwrap(entries) + ["--chdir", cwd, "--setenv", "AGENTOS_SANDBOX", "1",
+                  "--setenv", "DISABLE_AUTOUPDATER", "1", *argv]
+
+
+def jail_server(argv: list[str], name: str) -> list[str]:
+    """A tool server from the public registry, in a jail: it is somebody else's program, and
+    every one of its calls is gated but what it does on its own is not. It gets the network,
+    a home of its own that lasts between runs (npx and uvx cache there), and nothing of yours.
+    A server that needs a folder of yours can't be one of these until it is shared by hand."""
+    from . import config as _cfgmod
+    from . import users as usersmod
+    home, data, code = _real("~"), _real(_cfgmod.AGENTOS_HOME), source_root()
+    uid = usersmod.current() if usersmod.enabled() else ""
+    base = Path(usersmod.home_for(uid)) if uid else Path(data)
+    box = base / "mcp-boxes" / re.sub(r"[^A-Za-z0-9._-]", "-", name)[:60]
+    box.mkdir(parents=True, exist_ok=True, mode=0o700)
+    entries = [("tmpfs", p) for p in (*_HIDDEN, home, data) if os.path.isdir(p)]
+    resolv = _real("/etc/resolv.conf")
+    if resolv.startswith("/run/"):
+        entries.append(("ro", os.path.dirname(resolv)))
+    entries += [("ro", r) for r in _tool_roots(argv[0], home, code)]
+    entries.append(("rw", str(box)))
+    return _bwrap(entries) + ["--chdir", str(box), "--setenv", "HOME", str(box), *argv]
+
+
+def _bwrap(entries: list[tuple]) -> list[str]:
+    """Mounts in order, shallowest first: see `jail_cli`."""
     out = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
            "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--new-session", "--die-with-parent"]
-    order = sorted(entries, key=lambda e: len(Path(e[-1]).parts))     # stable: same depth keeps its order
-    for entry in order:
+    for entry in sorted(entries, key=lambda e: len(Path(e[-1]).parts)):   # stable: same depth keeps its order
         kind, path = entry[0], entry[-1]
         if kind == "tmpfs":
             out += ["--tmpfs", path]
@@ -3455,8 +3481,7 @@ def jail_cli(argv: list[str], *, engine: str, cwd: str, rw=(), ro=(), scratch: s
             out += ["--bind", path, path]
         elif kind == "rw-as":
             out += ["--bind", entry[1], path]
-    return out + ["--chdir", cwd, "--setenv", "AGENTOS_SANDBOX", "1",
-                  "--setenv", "DISABLE_AUTOUPDATER", "1", *argv]
+    return out
 
 
 def _someone_elses(path: str) -> bool:

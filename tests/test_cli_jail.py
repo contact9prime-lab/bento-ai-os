@@ -55,25 +55,6 @@ def test_nothing_private_is_in_argv_with_a_team_door(engine, tmp_path):
     assert "Bearer" not in text and "THE-SOUL" not in text and "TOKEN9" not in text
 
 
-def test_the_route_takes_a_digest_in_the_url_and_still_wants_the_token(tmp_path):
-    """Codex can only name a server on its command line, so its URL holds a digest."""
-    from fastapi.testclient import TestClient
-    from agentos import mcpbridge, server
-
-    class A:
-        principal = None
-    token = mcpbridge.open_session(A(), [], label="t", max_calls=1)
-    try:
-        c = TestClient(server.app, client=("127.0.0.1", 5000))
-        msg = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
-        url = "/api/mcp/run/" + mcpbridge.url_id(token)
-        assert c.post(url, json=msg, headers={"Authorization": f"Bearer {token}"}).status_code == 200
-        assert c.post(url, json=msg).status_code == 401
-        assert c.post(url, json=msg, headers={"Authorization": f"Bearer {mcpbridge.url_id(token)}"}).status_code == 401
-    finally:
-        mcpbridge.close_session(token)
-
-
 def test_the_private_files_are_0600(tmp_path):
     env = ex.Envelope(workspace=str(tmp_path), team_mcp=("u", "t"), context="c", scratch=str(tmp_path))
     cmd = ex.build_command("x", env)
@@ -463,3 +444,83 @@ def test_a_crashes_scratch_is_swept(tmp_path, monkeypatch):
     os.utime(old, (1, 1))
     fresh = ex._mkscratch()
     assert not old.exists() and os.path.isdir(fresh)
+
+
+# --- S-73: a server from the public registry
+
+from agentos import approvalcard, mcp_client, mcp_store  # noqa: E402
+
+CAND = {"registry_name": "io.github.x/weather", "registry_type": "npm", "identifier": "@x/weather",
+        "version": "1.2.3", "runtime_hint": "", "remote_url": "", "env": []}
+
+
+def test_a_registry_server_is_pinned_to_the_version_listed():
+    conf, _ = mcp_store.to_conf(CAND)
+    assert conf["command"] == "npx" and conf["args"] == "-y @x/weather@1.2.3" and conf["jail"] is True
+    conf, _ = mcp_store.to_conf({**CAND, "registry_type": "pypi", "identifier": "weather-mcp"})
+    assert conf["command"] == "uvx" and conf["args"] == "weather-mcp@1.2.3"
+    conf, _ = mcp_store.to_conf({**CAND, "registry_type": "oci", "identifier": "ghcr.io/x/y"})
+    assert conf["args"] == "run -i --rm ghcr.io/x/y:1.2.3" and conf["jail"] is False
+
+
+@pytest.mark.parametrize("change", [
+    {"version": ""}, {"version": "latest"}, {"version": "1.0; rm -rf"},
+    {"runtime_hint": "sh"}, {"runtime_hint": "sh -c 'id'"},
+    {"registry_type": "binary"}, {"registry_type": ""},
+    {"identifier": "--privileged"}, {"identifier": "x -v /:/host"}, {"identifier": ""},
+    {"env": [{"name": "NODE_OPTIONS"}]}, {"env": [{"name": "LD_PRELOAD"}]}, {"env": [{"name": "PATH"}]},
+    {"env": [{"name": "A B"}]},
+])
+def test_a_registry_entry_cant_choose_what_runs(change):
+    with pytest.raises(mcp_store.PackageRefused):
+        mcp_store.to_conf({**CAND, **change})
+
+
+def test_the_card_shows_the_command_that_will_run(monkeypatch):
+    monkeypatch.setattr(mcp_store, "_load_index", lambda: {"servers": [CAND]})
+    body = approvalcard.body("install_mcp_server", {"registry_name": CAND["registry_name"], "env": "API_KEY=sk-1"})
+    assert "npx -y @x/weather@1.2.3" in body, "the card and to_conf are one answer"
+    assert "API_KEY" in body and "sk-1" not in body
+    bad = {**CAND, "runtime_hint": "sh -c 'id'"}
+    monkeypatch.setattr(mcp_store, "_load_index", lambda: {"servers": [bad]})
+    assert "only starts" in approvalcard.body("install_mcp_server", {"registry_name": CAND["registry_name"]})
+
+
+def test_a_server_gets_only_the_environment_it_names(monkeypatch, tmp_path):
+    """Provider keys in this process's environment went to every stdio server."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-x")
+    monkeypatch.setenv("LANG", "C")
+    seen = {}
+
+    class Stop(Exception):
+        pass
+
+    def params(command, args, env):
+        seen.update(command=command, args=args, env=env)
+        raise Stop()
+    monkeypatch.setattr(mcp_client, "StdioServerParameters", params)
+    monkeypatch.setattr(mcp_client, "_resolve_command", lambda c: "/usr/bin/" + c)
+    srv = mcp_client.MCPServer("w", {"transport": "stdio", "command": "sh", "args": "-c true", "env": {"MINE": "1"}})
+
+    async def nop(_s):
+        pass
+    asyncio.run(srv._run(nop) if hasattr(srv, "_run") else srv.run(nop))
+    assert seen["env"]["MINE"] == "1" and seen["env"]["LANG"] == "C"
+    assert "OPENAI_API_KEY" not in seen["env"]
+    assert seen["command"] == "/usr/bin/sh", "a server added by hand stays as it was"
+
+
+@jail
+def test_a_store_server_runs_in_a_jail_with_a_home_of_its_own(world):
+    import subprocess
+    probe = world["ws"] / "probe.sh"
+    script = world["exe"].parent / "server.sh"
+    script.write_text(f'#!/bin/sh\ncat "{world["home"]}/canary.txt" 2>&1\ncat "{world["data"]}/agentos.db" 2>&1\n'
+                      'echo "home=$HOME"\necho kept > "$HOME/cache.txt" && echo wrote\n')
+    script.chmod(0o755)
+    argv = ex.jail_server([str(script)], "weather")
+    out = subprocess.run(argv, capture_output=True, text=True, timeout=20).stdout
+    assert "CANARY" not in out and "DB\n" not in out
+    box = world["data"] / "mcp-boxes" / "weather"
+    assert f"home={box}" in out and "wrote" in out and (box / "cache.txt").read_text() == "kept\n"
+    assert not probe.exists()

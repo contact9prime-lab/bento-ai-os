@@ -2422,7 +2422,10 @@ class Toolbox(usersmod.Scoped):
                 k, v = pair.split("=", 1)
                 env_values[k.strip()] = v.strip()
         key = (name or cand["key"]).strip().replace(" ", "-")
-        conf, missing = mcp_store.to_conf(cand, env_values=env_values)
+        try:
+            conf, missing = mcp_store.to_conf(cand, env_values=env_values)
+        except mcp_store.PackageRefused as e:
+            return f"[denied] {e}"
         self.cfg.setdefault("mcp_servers", {})[key] = conf
         cfgmod.save_config(self.cfg)
         mcp_store.record_install(

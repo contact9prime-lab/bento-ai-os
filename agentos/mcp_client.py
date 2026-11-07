@@ -134,9 +134,17 @@ class MCPServer:
                         f"or use an absolute path in the server's command")
                 # child processes (npx → node → the server) must inherit the SAME
                 # extended PATH, or they fail even when npx itself resolved
-                env = {**os.environ, "PATH": _extended_path(),
+                # an allow-list: this process holds provider keys, and a server gets what
+                # its own settings name and nothing else of ours
+                from . import executors
+                env = {**{k: v for k, v in os.environ.items()
+                          if k in executors.ENV_KEEP or k.startswith("LC_")},
+                       "PATH": _extended_path(),
                        **{k: str(v) for k, v in (self.conf.get("env") or {}).items()}}
-                params = StdioServerParameters(command=exe, args=cmd[1:] + args, env=env)
+                argv = [exe, *cmd[1:], *args]
+                if self.conf.get("jail") and executors.JAIL_ENFORCED and executors.jail_ready():
+                    argv = executors.jail_server(argv, self.name)
+                params = StdioServerParameters(command=argv[0], args=argv[1:], env=env)
                 async with stdio_client(params) as (read, write):
                     await self._serve(read, write, on_change)
         except asyncio.CancelledError:
