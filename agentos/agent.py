@@ -467,7 +467,7 @@ class Agent:
         self.conversation_id = conversation_id
         # The app this run works for, set by its caller (App Studio, an app's schedule)
         # and injected into APP_BOUND_TOOLS; '' for every other run.
-        self.app_id = ""
+        self.app_id = principal.id if getattr(principal, "kind", "") == "app" else ""
         self.principal = principal
         self.surface = surface
         self.space_id = space_id or ""

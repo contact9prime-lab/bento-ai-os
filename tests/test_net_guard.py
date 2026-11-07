@@ -181,6 +181,15 @@ def test_an_app_never_gets_the_allow_list(box, listener):
     assert _H.seen == []
 
 
+def test_an_apps_own_agent_is_held_to_the_same_rule(box):
+    from agentos.agent import Agent
+    from agentos.policy import Principal
+
+    async def noop(*a, **k):
+        return True
+    assert Agent({"workspace": "/tmp"}, box, "m", noop, noop, principal=Principal("app", "x")).app_id == "x"
+
+
 def test_an_apps_fetch_reaches_the_guard_through_the_real_route(listener):
     from fastapi.testclient import TestClient
     from agentos import server as servermod
