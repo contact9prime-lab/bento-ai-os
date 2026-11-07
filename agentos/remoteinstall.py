@@ -13,15 +13,19 @@ Four rules:
     the largest thing this OS does to anything it does not own, so it is admin only, there
     is no agent tool, and every step is a ledger row. What will be run is shown before it
     runs (`plan()`), and the check (`check()`) says what the machine is first.
-  * THE PASSWORD IS NEVER KEPT. It is handed to the system's own `ssh` through SSH_ASKPASS
-    from an environment variable of that one child process, and dropped. Nothing writes it
-    to disk, a log or the ledger. With "let this machine in from now on", the leader's own
-    key (`ensure_key`) is added to the account instead, and later visits need no password.
-  * THE OTHER MACHINE'S KEY IS PINNED. Bento keeps its own known_hosts; the first visit
-    records the host key (`accept-new`) and a later visit to a machine whose key changed is
-    refused by ssh itself. The fingerprint is shown with the check. A reformatted Pi has a
-    new key, so that refusal is `KeyChanged`, carrying both fingerprints, and forgetting the
-    old key (`forget_host`) is the person's act after they compared them.
+  * THE PASSWORD IS KEPT ONLY WHEN THE PERSON TICKS REMEMBER, in the vault, tied to that
+    machine's key (the server's `_saved_pw`). It is handed to the system's own `ssh` through
+    SSH_ASKPASS from an environment variable of that one child process. Nothing writes it to
+    a log or the ledger. With "let this machine in from now on", the leader's own key
+    (`ensure_key`) is added to the account, and later visits need no password.
+  * THE OTHER MACHINE'S KEY IS PINNED, AND A PERSON SAW IT FIRST. Bento keeps its own
+    known_hosts and never logs in to a machine it has no key for (`require_pin`): anybody on
+    the network can answer on a new address, and accepting whatever key it shows would hand
+    it the password. So the first visit is `NewKey`, carrying the key the machine shows, and
+    `pin_host` keeps it once the person said yes. A key already trusted at another address
+    needs no second yes, because DHCP moves machines and the key is what they are. A
+    reformatted Pi has a new key, so that refusal is `KeyChanged`, carrying both fingerprints,
+    and forgetting the old key (`forget_host`) is the person's act after they compared them.
   * IT USES THE SYSTEM'S `ssh`. Python's SSH libraries are LGPL or EPL, and this project
     ships only permissive code (CLAUDE.md, Licensing); OpenSSH is on every Pi and nearly
     every Linux and Mac already. With no `ssh` here, the card says which package adds it.
@@ -75,6 +79,18 @@ class KeyChanged(InstallError):
     def facts(self) -> dict:
         return {"host": self.host, "port": self.port, "old": fingerprint(self.host, self.port),
                 "new": seen_key(self.host, self.port)}
+
+
+class NewKey(InstallError):
+    """Bento has never seen this machine's key, and logs in to nothing until a person has."""
+
+    def __init__(self, host: str, port: int, seen: str):
+        self.host, self.port, self.seen = host, int(port or 22), seen
+        super().__init__(f"Bento has not met this machine before. Its key is {seen}. "
+                         f"Trust it, then try again")
+
+    def facts(self) -> dict:
+        return {"host": self.host, "port": self.port, "fingerprint": self.seen}
 
 
 def _home() -> Path:
@@ -154,7 +170,7 @@ def _base(host: str, user: str, port: int, password: str) -> tuple[list, dict, s
     kh = known_hosts()
     kh.parent.mkdir(parents=True, exist_ok=True)
     cmd = [ssh_bin(), "-p", str(int(port or 22)), "-o", f"UserKnownHostsFile={kh}",
-           "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10",
+           "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=10",
            "-o", "ServerAliveInterval=15", "-o", "LogLevel=ERROR"]
     env = {k: v for k, v in os.environ.items() if not k.startswith("SSH_")}
     scratch = ""
@@ -254,6 +270,75 @@ def seen_key(host: str, port: int = 22) -> str:
         return ""
 
 
+def _scan(host: str, port: int = 22) -> list[tuple[str, str]]:
+    """What the machine shows now, best kind first: [(fingerprint, known_hosts line)]."""
+    try:
+        r = subprocess.run(["ssh-keyscan", "-T", "5", "-p", str(int(port or 22)), "-t", "ed25519,ecdsa,rsa", host],
+                           capture_output=True, text=True, timeout=12)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    out = []
+    for kind in ("ed25519", "ecdsa", "rsa"):
+        for ln in r.stdout.splitlines():
+            parts = ln.split()
+            if ln.startswith("#") or len(parts) < 3 or kind not in parts[1]:
+                continue
+            try:
+                f = subprocess.run(["ssh-keygen", "-l", "-f", "-"], input=ln + "\n", capture_output=True,
+                                   text=True, timeout=10)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            m = re.search(r"(SHA256:[A-Za-z0-9+/=]+)", f.stdout)
+            if m:
+                out.append((m.group(1), ln))
+    return out
+
+
+def _trusted_keys() -> set[str]:
+    """Every key a person has trusted, at any address."""
+    try:
+        r = subprocess.run(["ssh-keygen", "-l", "-f", str(known_hosts())], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return set(re.findall(r"SHA256:[A-Za-z0-9+/=]+", r.stdout))
+
+
+def _keep_line(line: str) -> None:
+    kh = known_hosts()
+    kh.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(kh, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a") as f:
+        f.write(line.rstrip("\n") + "\n")
+
+
+def pin_host(host: str, port: int, want: str) -> bool:
+    """Keep the key a person just saw, if it is still the one the machine shows."""
+    from . import netscan
+    if not netscan.allowed(str(host or "")):
+        raise InstallError("Bento only keeps keys for machines on this network (a private address)")
+    for fp, line in _scan(host, port):
+        if fp == want:
+            _keep_line(line)
+            return True
+    return False
+
+
+def require_pin(host: str, port: int = 22) -> None:
+    """Before any login, and so before any password leaves. A pin is kept already, or this is a
+    key a person trusted at another address (a DHCP move), or a person has to look at it."""
+    if fingerprint(host, port):
+        return
+    shown = _scan(host, port)
+    if not shown:
+        raise InstallError("nothing answers SSH there (is SSH switched on for that machine?)")
+    known = _trusted_keys()
+    for fp, line in shown:
+        if fp in known:
+            _keep_line(line)
+            return
+    raise NewKey(host, port, shown[0][0])
+
+
 def _pinned(host: str, port: int = 22) -> str:
     try:
         return subprocess.run(["ssh-keygen", "-F", _target(host, port), "-f", str(known_hosts())],
@@ -295,6 +380,7 @@ async def _run(host, user, port, password, remote: str, timeout: float, on_line=
                stdin: str | None = None) -> tuple[int, str, str]:
     """One ssh call. `stdin` is written to the remote command and closed (harden.py hands
     sudo its password this way, so it is never on a command line either)."""
+    await asyncio.to_thread(require_pin, host, port)
     cmd, env, scratch = _base(host, user, port, password)
     try:
         p = await asyncio.create_subprocess_exec(*cmd, remote, env=env,

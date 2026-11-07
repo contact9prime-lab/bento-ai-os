@@ -732,19 +732,15 @@ def stop_mission(store, label: str, mission: str, stop: bool = True) -> dict:
 
 
 def forget_link_grants(store, label: str) -> int:
-    """A link ended: every cell that named it goes, both directions — and every standing
-    permission it held (those are team:<label>/* rows too)."""
+    """A link ended: everything that named it goes, both directions. Every row whose principal
+    is on that link, whatever its action, and every row of ours that names the link as where
+    something goes. Labels are reused once a link is gone, so a row left here would be consent
+    a later link with the same name inherited. A list of actions missed file.send."""
     n = 0
     for g in store.list_grants():
-        if g.get("action") in ("team.act", MISSION_ACTION, "code.run", "speech.hear") and g.get("principal_kind") == "team" and \
-                str(g.get("principal_id") or "").startswith(f"{label}/"):
-            n += bool(store.revoke_grant(g["id"]))
-            continue
-        if g.get("action") != "agent.message":
-            continue
         pid, res = str(g.get("principal_id") or ""), str(g.get("resource") or "")
         if (g.get("principal_kind") == "team" and pid.startswith(f"{label}/")) or \
-                res.endswith(f"@{label}"):
+                res.endswith(f"@{label}") or res == f"team:{label}":
             n += bool(store.revoke_grant(g["id"]))
     return n
 
@@ -1981,21 +1977,22 @@ class ControlPlane(usersmod.Scoped):
                 f"its full path in the answer.")
 
     def _ship_back(self, lk: dict, text: str, since: float = 0.0) -> dict:
-        """Files this answer names, back with it. For a Zero this hub set up to run here
-        (zero.ships_to): whatever it names under the roots. For any other linked team: only
-        what was MADE for this task, and only while the link's `file.send files:made` allows
-        it (linkfiles.py); a named file older than the task stays here, and the answer says so."""
+        """Files this answer names, back with it: only what was MADE for this task, never a
+        hidden one, under the roots the link's OWNER may reach, and only while the link's
+        `file.send files:made` allows it (linkfiles.py). A named file older than the task
+        stays here, and the answer says so. A Zero gets the same rule as any linked team: a
+        reply is model output and anybody at its screen can steer it, so naming a file must
+        not be a way to fetch it. Its row is written on first need, because a Zero made before
+        this rule has none."""
         from . import zero as zeromod
         from . import outputs
         from . import linkfiles
-        kept: list = []
         if zeromod.ships_to(lk):
-            files, left = zeromod.pack(text, outputs.roots(self.cfg))
-        elif linkfiles.may_send_back(self.store, getattr(self.toolbox, "pdp", None), lk["label"]):
-            files, left, kept = linkfiles.made_for_task(
-                text, outputs.roots(self.cfg, admin=usersmod.is_admin(usersmod.current())), since or time.time())
-        else:
+            linkfiles.ensure_zero_back(self.store, lk["label"])
+        if not linkfiles.may_send_back(self.store, getattr(self.toolbox, "pdp", None), lk["label"]):
             return {}
+        roots = outputs.roots(self.cfg, admin=usersmod.is_admin(lk.get("owner") or ""))
+        files, left, kept = linkfiles.made_for_task(text, roots, since or time.time())
         if not files and not left and not kept:
             return {}
         if files or left:

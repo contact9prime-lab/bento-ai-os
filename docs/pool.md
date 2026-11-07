@@ -85,7 +85,9 @@ place, or `bento pool key "kitchen Pis"`). Put the key on the new Pi before its 
 - save it as `bento-enroll.txt` on the SD card's boot partition, or
 - install with `install.sh --enroll=KEY`, or run `bento pool enroll KEY` on it.
 
-A Pi carrying your key needs no code. Mark the key **automatic** and the Pi is set up the
+A Pi carrying your key needs no code. An **automatic** key sets up one machine by itself and
+the next one carrying it asks you (`bento pool key NAME --auto --reusable` keeps going, for a
+batch of SD cards). Mark the key **automatic** and the Pi is set up the
 moment it is heard, with the profile you gave the key. You still get a toast saying so.
 
 ### From a terminal
@@ -146,7 +148,10 @@ machine's own permissions.
 ## Who leads
 
 The leader is chosen by rank, and only among machines whose own admin said they may lead
-(*This machine may lead*, or `bento pool lead on`). Leading spends that machine's model
+(*This machine may lead*, or `bento pool lead on`) and that the machine that started the
+community said can take over. Letting a machine in that offers to lead says so, and *Can't take
+over* (`bento pool vouch MACHINE off`) takes it back. That is signed, so a machine can't give
+it to itself, and a leader that took over can't give it to anybody. Leading spends that machine's model
 budget on every member's calls, so it is never assumed. A machine also needs a brain of its
 own to lead.
 

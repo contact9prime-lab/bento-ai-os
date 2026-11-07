@@ -29,7 +29,10 @@ Four rules keep it honest:
     to every page that browser ever shows.
   * NO SHELL ON THE SCREEN. The console road is a unit with a PAM session, never getty
     autologin: a keyboard plugged into the Pi reaches the kiosk, and Ctrl+Alt+F2 still asks
-    for a password.
+    for a password. The same policy file turns devtools off and blocks every address but this
+    page, because devtools on Bento's page reaches the Terminal socket on a machine with no
+    accounts. Only a machine that accepted root for the mic policy has it, and `screen status`
+    says whether it is there.
 
 TUI: `bento screen status|on|off`. GUI: Settings → Appearance → On this screen, and the
 Install form's "Open on its screen" (install.sh --screen). SUI: not applicable; a machine
@@ -213,7 +216,17 @@ X-GNOME-Autostart-enabled=true
 def policy_text(cfg: dict | None = None) -> str:
     import json
     origin = f"http://127.0.0.1:{_port(cfg)}"
-    return json.dumps({"AudioCaptureAllowedUrls": [origin], "AutoplayAllowlist": [origin]}, indent=1) + "\n"
+    # A keyboard on the Pi reaches this browser. Devtools on Bento's own page, or a chrome:// or
+    # file:// address, would be a shell for whoever is in the room. A policy holds where
+    # --kiosk only hides the buttons. Only this page is allowed, and its own framed apps.
+    return json.dumps({"AudioCaptureAllowedUrls": [origin], "AutoplayAllowlist": [origin],
+                       "DeveloperToolsAvailability": 2,
+                       "URLBlocklist": ["*"],
+                       # the Stage plays videos from this one host, in a frame
+                       "URLAllowlist": [f"127.0.0.1:{_port(cfg)}", "about:blank", "www.youtube-nocookie.com"],
+                       "DownloadRestrictions": 3, "PrintingEnabled": False,
+                       "IncognitoModeAvailability": 1, "BrowserAddPersonEnabled": False,
+                       "BrowserGuestModeEnabled": False}, indent=1) + "\n"
 
 
 #: The kiosk browser's profile, inside the home. backup.SKIP_TOP leaves it out of every walk of

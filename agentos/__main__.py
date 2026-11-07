@@ -3518,8 +3518,8 @@ def _standby_cli(args):
             say("  or Settings → System → Cloud standby. The code works once, for ten minutes.")
         elif act == "pair":
             if len(args.rest) != 2:
-                raise SystemExit("usage: bento standby pair URL CODE")
-            s = sb.pair(args.rest[0], args.rest[1])
+                raise SystemExit("usage: bento standby pair URL CODE [--plain-http]")
+            s = sb.pair(args.rest[0], args.rest[1], plain_ok=bool(getattr(args, "plain_http", False)))
             say(f"  ✓ Paired. {s['peer_host']} now stands by for this machine.")
             say("  Restart Bento here (or keep it running: a running server starts copying within a minute).")
         elif act == "copy":
@@ -4588,6 +4588,16 @@ def _pool_cli(args):
                 _cfgmod.save_config(cfg)
                 print("  This machine will think with the leader's brain (restart the server to use it now).")
             return show()
+        if a == "vouch":
+            if not rest:
+                sys.exit("  bento pool vouch MACHINE [off]")
+            off = rest[-1] == "off" and len(rest) > 1
+            try:
+                e = poolmod.set_vouch(" ".join(rest[:-1] if off else rest), not off)
+            except ValueError as err:
+                sys.exit(f"  {err}")
+            print(f"  {e.get('name')} {'may not' if off else 'may'} take over if the leader goes.")
+            return show()
         if a in ("approve", "remove"):
             if not val:
                 sys.exit(f"  bento pool {a} MACHINE")
@@ -4666,6 +4676,9 @@ def _ssh_says(e) -> str:
     """A refused login for the terminal. A changed host key (a reformatted machine) says both
     fingerprints and the command that forgets the old one."""
     from . import remoteinstall as ri
+    if isinstance(e, ri.NewKey):
+        return (f"  {e}.\n  If that is the key it should have: "
+                f"bento network trust {e.host} {e.seen}" + (f" --port {e.port}" if e.port != 22 else ""))
     if not isinstance(e, ri.KeyChanged):
         return "  " + str(e)
     f = e.facts()
@@ -4707,7 +4720,7 @@ def _network_cli(args):
                 sys.exit(f"  bento network {a} MACHINE (an address, a name or a MAC; see `bento network`)")
             return None
         r = inv.find(inv.rows(), rest[0])
-        if r is None and a in ("check", "secure", "install", "letin", "rekey", "controls", "switch", "remove", "update"):
+        if r is None and a in ("check", "secure", "install", "letin", "rekey", "trust", "controls", "switch", "remove", "update"):
             return {"ip": rest[0], "mac": "", "display": rest[0], "user": "", "ssh": True, "ports": [22],
                     "connections": [], "key": rest[0]}
         if r is None:
@@ -5015,7 +5028,8 @@ def _network_cli(args):
             sys.exit(_ssh_says(e))
         inv.note_security(r["ip"], r.get("mac") or "", c["done"], user, by="cli")
         for s_ in harden.STEPS:
-            print(f"  {'✓' if c['done'][s_['id']] else '·'} {s_['title']}")
+            shown = "✓" if c["done"][s_["id"]] else "?" if s_["id"] in c.get("unknown", []) else "·"
+            print(f"  {shown} {s_['title']}" + ("  (can't tell without root there)" if shown == "?" else ""))
         for p in c["problems"]:
             print(f"  ✗ {p}")
         ledger("device.check", f"device:{r['ip']}", f"checked {user}@{r['ip']}")
@@ -5098,6 +5112,19 @@ def _network_cli(args):
         inv.hide(r)
         ledger("device.forget", f"device:{r['ip'] or r['key']}", f"hid {r['display']}")
         print(f"  ✓ {r['display']} is hidden. `bento network show {r['ip'] or r['key']}` lists it again.")
+        return
+    if a == "trust":
+        r = machine()
+        if len(rest) < 2:
+            sys.exit("  bento network trust MACHINE SHA256:…   (the key it shows, as a login printed it)")
+        try:
+            ok = ri.pin_host(r["ip"], port(r), rest[1])
+        except ri.InstallError as e:
+            sys.exit(_ssh_says(e))
+        if not ok:
+            sys.exit("  That machine no longer shows that key.")
+        ledger("device.trust", f"device:{r['ip']}", f"trusted the SSH key of {r['ip']} ({rest[1]})")
+        print(f"  ✓ Bento will log in to {r['display']} with that key from now on.")
         return
     if a == "rekey":
         r = machine()
@@ -5308,8 +5335,11 @@ def _provision_cli(args, cfg, a, rest, val, run):
             print("  revoked" if prov.drop_key(rest[1] if len(rest) > 1 else "") else "  no such key")
             return
         prof = {"kiosk": bool(getattr(args, "kiosk", False))} if getattr(args, "kiosk", False) else {}
-        k = prov.make_key(val, bool(getattr(args, "auto", False)), prof)
-        print(f"  Enrolment key '{k['label']}'" + (" (sets machines up the moment they are heard)" if k["auto"] else ""))
+        k = prov.make_key(val, bool(getattr(args, "auto", False)), prof,
+                          reusable=bool(getattr(args, "reusable", False)))
+        print(f"  Enrolment key '{k['label']}'"
+              + (" (sets every machine up the moment it is heard)" if k["reusable"] and k["auto"] else
+                 " (sets one machine up the moment it is heard; the next one asks you)" if k["auto"] else ""))
         print(f"\n    {k['text']}\n")
         print("  Save it as bento-enroll.txt on a new Pi's SD card (the boot partition), or run")
         print("  `bento pool enroll KEY` there. It is shown once.")
@@ -5375,6 +5405,10 @@ def _provision_cli(args, cfg, a, rest, val, run):
     if a == "enroll":
         if not val:
             sys.exit("  bento pool enroll bento-enroll-1.…")
+        if val == "forget":
+            print("  This machine no longer carries a key. It shows a code instead." if prov.drop_own_key()
+                  else "  This machine carries no key.")
+            return
         # `-` reads it from stdin, which is how the installer passes it: arguments show in `ps`
         prov.adopt_key(sys.stdin.read().strip() if val == "-" else val)
         print("  This machine carries the key and waits to be set up. A running server announces it now.")
@@ -9216,6 +9250,8 @@ def main():
                       help="status | wait (on the cloud: show a pairing code) | pair URL CODE | "
                            "copy | takeover | move | back | adopt | keep | off | set")
     p_sb.add_argument("rest", nargs="*", help="for pair: the cloud's address and its code")
+    p_sb.add_argument("--plain-http", action="store_true",
+                      help="pair: accept plain http on a private network, which anyone on it can read")
     p_sb.add_argument("--grace", type=int, default=0, help="set: minutes of silence before taking over")
     p_sb.add_argument("--auto", dest="auto", action="store_true", default=None,
                       help="set: take over by itself")
@@ -9785,7 +9821,7 @@ def main():
                        help="disconnect: take the key off even when it is the only way in")
     p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")
     p_pool.add_argument("action", nargs="?", default="status",
-                        choices=["status", "show", "create", "join", "approve", "remove", "leave",
+                        choices=["status", "show", "create", "join", "approve", "remove", "vouch", "leave",
                                  "lead", "brain", "pin", "notes", "share", "forget", "task",
                                  "discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll",
                                  "zero", "standard", "hub", "mind",
@@ -9802,7 +9838,9 @@ def main():
     p_pool.add_argument("--kiosk", action="store_true",
                         help="enable / key: set the new machine up as a kiosk; install / sdcard: also open it on its screen")
     p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
-    p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
+    p_pool.add_argument("--auto", action="store_true", help="key: set the first machine that carries it up at once")
+    p_pool.add_argument("--reusable", action="store_true",
+                        help="key: with --auto, keep setting machines up with nobody asked (a batch of SD cards)")
     p_pool.add_argument("--tailscale-key", default="", help="zero: put this Tailscale auth key in the line (not kept)")
     p_pool.add_argument("--for", dest="for_account", default="",
                         help="zero / enable: the account it belongs to (its agents and integrations answer it)")

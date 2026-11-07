@@ -181,6 +181,11 @@ def main():
         step("3. Look at the network found it", networks=v["networks"], answered=v["found"],
              row={k: found[0].get(k) for k in ("ip", "name", "ssh", "banner")})
 
+        # the first visit shows the key, and a person says yes (remoteinstall.NewKey)
+        st, c = http(LEAD_HTTP, "POST", "/api/devices/check", {"ip": PI_IP, "port": SSH_PORT, "user": "pi"})
+        if st == 409 and c.get("first_key"):
+            http(LEAD_HTTP, "POST", "/api/devices/trust-key", {"ip": PI_IP, "port": SSH_PORT,
+                                                               "fingerprint": c["first_key"]["fingerprint"]})
         st, c = http(LEAD_HTTP, "POST", "/api/devices/check", {"ip": PI_IP, "port": SSH_PORT, "user": "pi",
                                                                "password": "wrong"})
         assert st == 400, c

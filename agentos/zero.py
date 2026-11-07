@@ -22,8 +22,8 @@ It is provisioning (provision.py) with four things added, and nothing beside it:
     with no question asked, which is still a ledger row and a toast.
   * THE HUB WORKS, THE FILES COME BACK. With `execution: hub` the Zero's lead hands tasks to
     the hub's lead (both cells written at the claim, so nobody is asked on a machine nobody
-    sits at), and files the hub's answer names travel back with it into the Zero's workspace
-    (`from-<hub>/`), capped, a ledger row on both sides.
+    sits at), and files made for the task that the hub's answer names travel back with it into
+    the Zero's workspace (`from-<hub>/`), capped, a ledger row on both sides.
 
 Kept free of HTTP and asyncio, like provision.py's file half.
 """
@@ -250,6 +250,8 @@ def hub_side(store, cfg: dict, label: str) -> list[str]:
     (the link's cell, written now because nobody sits at a Zero to answer the first card),
     and the standing permission above."""
     from . import fabric as fabricmod
+    from . import linkfiles
+    linkfiles.ensure_zero_back(store, label)
     acc = fabricmod.link_access(store, label)
     fabricmod.set_link_access(store, label, sorted(set(acc["theirs_may_ask"]) | {fabricmod.LEAD}))
     return ["its lead may hand tasks to this machine's lead"] + zero_standing(store, cfg, label)
@@ -379,6 +381,8 @@ async def hub_turn(cfg: dict, conversation_id: str, text: str, emit) -> dict:
         from pathlib import Path
         paths = linkfiles.receive(got.get("files"), Path(execmod.default_workspace(cfg)), lk["label"])
         out += files_line(paths, lk["label"], got.get("left"))
+    if got.get("kept"):
+        out += linkfiles.kept_line([teamlink.plain(k, 80, newlines=False) for k in got["kept"][:8]], lk["label"])
     await emit({"type": "text_delta", "text": out})
     return {"content": out, "steps": [{"type": "text", "text": out}],
             "tokens": {"input": 0, "output": 0}, "engine": f"hub:{hub}",

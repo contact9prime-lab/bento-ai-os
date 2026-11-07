@@ -214,6 +214,7 @@ def fake_ssh(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENTOS_INSTALL_URL", "https://example.test/install.sh")
     monkeypatch.delenv("AGENTOS_REPO", raising=False)
     monkeypatch.setenv("BENTO_SSH_PASSWORD", "leaked-from-the-parent")
+    monkeypatch.setattr(remoteinstall, "require_pin", lambda host, port=22: None)
     home = tmp_path / "home"
     with teamlink.at(home):
         yield bin_
@@ -229,7 +230,7 @@ def test_a_check_reads_the_machine_and_never_sees_the_password_on_a_command_line
     assert c["curl"] and not c["bento"] and c["free_mb"] == 20480 and c["problems"] == []
     call = _calls(fake_ssh)[0]
     assert call["via"] == "password" and "right-one" not in " ".join(call["args"])
-    assert "StrictHostKeyChecking=accept-new" in call["args"]
+    assert "StrictHostKeyChecking=yes" in call["args"], "a key nobody saw is never accepted"
     kh = [a for a in call["args"] if a.startswith("UserKnownHostsFile=")][0]
     assert kh.endswith("pki/known_hosts"), "Bento pins hosts in its own file"
     left = list((remoteinstall.known_hosts().parent).glob(".askpass-*"))
@@ -685,6 +686,7 @@ def test_a_dropped_connection_is_followed_again_and_the_install_finishes(tmp_pat
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("AGENTOS_SCAN_NETWORKS", "127.0.0.0/8")
     monkeypatch.setenv("AGENTOS_INSTALL_URL", inst.as_uri())
+    monkeypatch.setattr(remoteinstall, "require_pin", lambda host, port=22: None)
     monkeypatch.delenv("AGENTOS_REPO", raising=False)
     monkeypatch.setattr(remoteinstall, "RECONNECT_WAIT", 0.2)
     lines = []
@@ -719,6 +721,7 @@ def test_a_detached_install_that_fails_says_its_own_last_words(tmp_path, monkeyp
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("AGENTOS_SCAN_NETWORKS", "127.0.0.0/8")
     monkeypatch.setenv("AGENTOS_INSTALL_URL", inst.as_uri())
+    monkeypatch.setattr(remoteinstall, "require_pin", lambda host, port=22: None)
     monkeypatch.delenv("AGENTOS_REPO", raising=False)
     with teamlink.at(tmp_path / "home"):
         with pytest.raises(remoteinstall.InstallError) as e:
@@ -792,3 +795,139 @@ def test_the_key_arrives_on_stdin_and_reaches_the_installer_as_a_file(tmp_path, 
     assert "-rw-------" in r.stdout and key in r.stdout
     assert "ARGS:" in r.stdout and key not in [ln for ln in r.stdout.splitlines() if ln.startswith("ARGS:")][0]
     assert not (home / ".cache" / "bento-install" / "enroll.key").exists(), "removed once the install ended"
+
+
+def _mdns_answer(name: str) -> bytes:
+    enc = b"".join(bytes([len(p.encode())]) + p.encode() for p in name.split(".")) + b"\0"
+    return ((0).to_bytes(2, "big") + (0x8400).to_bytes(2, "big") + (0).to_bytes(2, "big") + (1).to_bytes(2, "big")
+            + (0).to_bytes(4, "big") + enc + (1).to_bytes(2, "big") + (1).to_bytes(2, "big")
+            + (120).to_bytes(4, "big") + (4).to_bytes(2, "big") + bytes([192, 168, 1, 50]))
+
+
+def test_a_name_on_the_network_reaches_nobody_with_escapes_in_it():
+    from agentos import netscan
+    name, ip = netscan.parse_mdns(_mdns_answer("rasp\x1b[31mberry‮pi.local"))[0]
+    assert "\x1b" not in name and "‮" not in name and ip == "192.168.1.50"
+    seen: dict = {}
+    netscan.remember(seen, {"ip": "10.0.0.1", "name": "x\x1b]52;c;AAA\x07y", "banner": "SSH\x1b[2J", "os": "‮evil"})
+    e = seen["10.0.0.1"]
+    assert not any(c in (e["name"] + e["banner"] + e["os"]) for c in "\x1b\x07‮")
+
+
+def test_a_device_list_full_of_names_keeps_what_a_person_installed():
+    from agentos import netscan
+    seen = {"aa:aa": {"ip": "10.0.0.2", "state": "installed", "last": 1}}
+    for i in range(400):
+        netscan.remember(seen, {"ip": f"10.1.{i // 250}.{i % 250}", "name": "flood"})
+    assert "aa:aa" in seen and len(seen) <= 256
+
+
+# ---- a password goes only to a machine a person looked at (S-70) --------------------------------
+
+@pytest.fixture()
+def keys(tmp_path, monkeypatch):
+    """Real ssh-keygen and known_hosts, a stand-in ssh-keyscan and ssh: the key shown is a file."""
+    if not shutil.which("ssh-keygen"):
+        pytest.skip("needs ssh-keygen")
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    gen = tmp_path / "gen"
+    gen.mkdir()
+    pubs = {}
+    for name in ("real", "attacker"):
+        subprocess_run = __import__("subprocess").run
+        subprocess_run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(gen / name)], check=True)
+        body = (gen / f"{name}.pub").read_text().split()
+        fp = subprocess_run(["ssh-keygen", "-l", "-f", str(gen / f"{name}.pub")], capture_output=True, text=True).stdout.split()[1]
+        pubs[name] = {"line": f"{body[0]} {body[1]}", "fp": fp}
+    (bin_ / "ssh-keyscan").write_text("#!/bin/sh\nfor h; do :; done\n[ -f \"$KEY_SHOWN\" ] && printf '%s %s\\n' \"$h\" \"$(cat \"$KEY_SHOWN\")\"\nexit 0\n")
+    (bin_ / "ssh").write_text("#!/bin/sh\necho \"$@\" >> \"$FAKE_LOGIN_LOG\"\n[ -n \"$BENTO_SSH_PASSWORD\" ] && echo \"pw:$BENTO_SSH_PASSWORD\" >> \"$FAKE_LOGIN_LOG\"\nexit 0\n")
+    for f in bin_.iterdir():
+        f.chmod(0o755)
+    shown = tmp_path / "shown"
+    monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("KEY_SHOWN", str(shown))
+    monkeypatch.setenv("FAKE_LOGIN_LOG", str(tmp_path / "ssh.log"))
+    monkeypatch.setenv("AGENTOS_SCAN_NETWORKS", "127.0.0.0/8")
+    with teamlink.at(tmp_path / "home"):
+        yield pubs, shown, tmp_path / "ssh.log"
+
+
+def test_no_password_leaves_for_a_machine_nobody_looked_at(keys):
+    pubs, shown, log = keys
+    shown.write_text(pubs["real"]["line"])
+    with pytest.raises(remoteinstall.NewKey) as e:
+        asyncio.run(remoteinstall._run("127.0.0.9", "pi", 22, "the-password", "true", 5))
+    assert e.value.facts()["fingerprint"] == pubs["real"]["fp"]
+    assert not log.exists(), "ssh was not even started"
+    assert remoteinstall.pin_host("127.0.0.9", 22, pubs["real"]["fp"])
+    assert asyncio.run(remoteinstall._run("127.0.0.9", "pi", 22, "the-password", "true", 5))[0] == 0
+    assert "pw:the-password" in log.read_text()
+
+
+def test_a_key_login_waits_too_so_it_cannot_pin_a_stranger_for_the_next_password(keys):
+    pubs, shown, log = keys
+    shown.write_text(pubs["attacker"]["line"])
+    remoteinstall.ensure_key("hub")
+    with pytest.raises(remoteinstall.NewKey):
+        asyncio.run(remoteinstall._run("127.0.0.9", "pi", 22, "", "true", 5))
+    assert not remoteinstall.fingerprint("127.0.0.9")
+
+
+def test_a_machine_that_moved_address_with_the_same_key_needs_no_second_yes(keys):
+    pubs, shown, log = keys
+    shown.write_text(pubs["real"]["line"])
+    assert remoteinstall.pin_host("127.0.0.9", 22, pubs["real"]["fp"])
+    assert asyncio.run(remoteinstall._run("127.0.0.10", "pi", 22, "pw", "true", 5))[0] == 0
+    assert remoteinstall.fingerprint("127.0.0.10") == pubs["real"]["fp"]
+
+
+def test_the_key_must_still_be_the_one_the_person_saw(keys):
+    pubs, shown, log = keys
+    shown.write_text(pubs["attacker"]["line"])
+    assert not remoteinstall.pin_host("127.0.0.9", 22, pubs["real"]["fp"])
+    assert not remoteinstall.fingerprint("127.0.0.9")
+
+
+def _route_home(tmp_path, monkeypatch):
+    from agentos import config as cfgmod, server, vault
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path / "vh")
+    (tmp_path / "vh").mkdir(exist_ok=True)
+    monkeypatch.setattr(server, "_net_mac", lambda ip: "aa:bb:cc:dd:ee:ff", raising=False)
+    return server, vault
+
+
+def test_a_saved_password_is_held_back_from_a_machine_showing_another_key(keys, tmp_path, monkeypatch):
+    """Found by MAC, which anybody on the network can claim on a new address."""
+    from agentos import secevents
+    pubs, shown, log = keys
+    server, vault = _route_home(tmp_path, monkeypatch)
+    flags = []
+    monkeypatch.setattr(secevents, "flag", lambda kind, *a, **k: flags.append(kind))
+    shown.write_text(pubs["real"]["line"])
+    assert remoteinstall.pin_host("127.0.0.9", 22, pubs["real"]["fp"])
+    assert server._remember_pw({"ip": "127.0.0.9", "user": "pi", "password": "s3cret", "remember": True}) == "saved"
+    assert server._device_creds({"ip": "127.0.0.9", "user": "pi"})[2] == "s3cret", "the same machine gets it"
+    # the MAC turns up on a new address with another key
+    shown.write_text(pubs["attacker"]["line"])
+    assert server._device_creds({"ip": "127.0.0.66", "user": "pi"})[2] == ""
+    assert "device.key" in flags
+    # the real machine moved: the same key, and it follows
+    shown.write_text(pubs["real"]["line"])
+    assert server._device_creds({"ip": "127.0.0.77", "user": "pi"})[2] == "s3cret"
+
+
+def test_a_password_saved_before_keys_were_kept_needs_a_pin_to_be_used(keys, tmp_path, monkeypatch):
+    pubs, shown, log = keys
+    server, vault = _route_home(tmp_path, monkeypatch)
+    vault.put(server._pw_name("127.0.0.9", "pi"), "old-style")
+    assert server._device_creds({"ip": "127.0.0.9", "user": "pi"})[2] == ""
+    shown.write_text(pubs["real"]["line"])
+    remoteinstall.pin_host("127.0.0.9", 22, pubs["real"]["fp"])
+    assert server._device_creds({"ip": "127.0.0.9", "user": "pi"})[2] == "old-style"
+    assert vault.get(server._pw_name("127.0.0.9", "pi"), actor="t").startswith(server.PW_BOUND), "bound from now on"
+
+
+def test_remember_is_not_ticked_for_you():
+    src = (Path(__file__).parent.parent / "agentos/ui/src/js/24j-provision.js").read_text()
+    assert "${saved?'':' checked'}" not in src

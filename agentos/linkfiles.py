@@ -26,7 +26,7 @@ Two directions, each its own consent:
 
 Everything that arrives is somebody else's bytes: plain names, `from-<team>/` in the
 workspace, capped, never executable, and a ledger row on both sides. A Zero's own hub
-keeps its own, wider rule (zero.ships_to).
+follows the same rule back: only what was made for that turn.
 """
 from __future__ import annotations
 
@@ -163,6 +163,14 @@ def ensure_back(store, cfg: dict, label: str) -> bool:
     if on and not _folder_rows(store, label):
         _set_folder(store, cfg, label, True)
     return on
+
+
+def ensure_zero_back(store, label: str) -> None:
+    """A Zero this machine set up: what is made for it goes back unless somebody switched it
+    off. An ordinary row, so the gate decides it and Permissions shows it."""
+    if not _rows(store, label):
+        store.add_grant("team", f"{label}/*", ACTION, MADE, source="provision",
+                        note=f"files your agents make for {label}'s tasks go back with the answer")
 
 
 def set_back(store, label: str, on: bool, cfg: dict | None = None) -> bool:

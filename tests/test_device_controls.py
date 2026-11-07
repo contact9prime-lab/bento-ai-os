@@ -68,6 +68,8 @@ def pi(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("PI_HOME", str(home))
     monkeypatch.setenv("PI_BIN", str(pib))
+    from agentos import remoteinstall as _ri
+    monkeypatch.setattr(_ri, "require_pin", lambda host, port=22: None)
     with teamlink.at(tmp_path / "hub"):
         kp = tmp_path / "hub" / "pki" / "ssh_ed25519"
         kp.parent.mkdir(parents=True, exist_ok=True)
@@ -221,6 +223,8 @@ def test_a_device_password_is_kept_encrypted_and_changes_only_when_asked(tmp_pat
     monkeypatch.setenv("AGENTOS_VAULT_KEYRING", "0")
     monkeypatch.setattr(server, "_net_mac", lambda ip: "aa:bb:cc:dd:ee:ff")
     monkeypatch.setattr(server, "_ledger", lambda *a, **k: None)
+    from agentos import remoteinstall as _ri
+    monkeypatch.setattr(_ri, "fingerprint", lambda host, port=22: "SHA256:pinned")
     with teamlink.at(tmp_path / "hub"):
         monkeypatch.setattr(vault, "_home", lambda: tmp_path / "hub")
         b = {"ip": "192.168.1.9", "user": "pi", "password": "raspberry-1"}

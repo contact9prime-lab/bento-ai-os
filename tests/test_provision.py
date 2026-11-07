@@ -9,6 +9,7 @@ its own home; discovery is real UDP broadcast on loopback and the claim is real 
 import asyncio
 import socket
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -355,3 +356,160 @@ def test_the_setup_wizard_and_the_terminal_defer_to_the_hub():
     assert "<input" not in hub and "pin" not in hub, "nothing to answer on the Pi"
     cli = (root / "agentos/__main__.py").read_text()
     assert "_prov.from_hub(cfg) and not getattr(args, \"again\", False)" in cli
+
+
+# ---- S-75, S-79, S-91, S-93: what a key is good for, and what a stranger's word costs --------
+
+def _beacon(fp, addr="10.0.0.9", key_id=""):
+    return provision.clean_beacon({"m": provision.MAGIC, "fp": fp, "name": "pi", "waiting": True,
+                                   "port": 8620, "hw": {}, "key_id": key_id}, addr)
+
+
+def test_an_automatic_key_sets_up_one_machine_and_the_second_asks_a_person(lan):
+    L, A, B, loop, heard = lan
+    with _at(L):
+        k = provision.zero_key("")
+    with _at(A):
+        provision.adopt_key(k["text"])
+    with _at(B):
+        provision.adopt_key(k["text"])      # the same line, pasted on a second machine
+    got = _scan(L, loop)
+    assert _enable(L, got["pi-kitchen"], loop)["how"] == "key", "an unclaimed line still works once"
+    with _at(L):
+        auto = {x["id"] for x in provision.load()["keys"] if x.get("auto")}
+        assert k["id"] not in auto, "spent: the automatic road no longer takes it"
+        fresh = provision.zero_key("")
+        assert fresh["id"] != k["id"] and fresh["auto"], "the next line carries a new key"
+    # a person pressing Enable is still a way in, with the same proof both ways
+    assert _enable(L, got["pi-garage"], loop)["how"] == "key"
+
+
+def test_a_machine_set_up_keeps_no_secret_that_sets_up_others(lan):
+    L, A, B, loop, heard = lan
+    with _at(L):
+        k = provision.zero_key("")
+    with _at(A):
+        provision.adopt_key(k["text"])
+    _enable(L, _scan(L, loop)["pi-kitchen"], loop)
+    with _at(A):
+        assert provision.load()["key"] == "", "a lost Zero must not hold a key"
+
+
+def test_a_machine_from_before_keys_were_cleared_forgets_its_copy_at_start(lan):
+    L, A, B, loop, heard = lan
+    with _at(A):
+        d = provision.load()
+        d.update(claimed={"by": "hub", "leader_fp": "f" * 64}, key="bento-enroll-1.0a1b2c3d." + "s" * 32 + "." + "f" * 16)
+        provision.save(d)
+        provision.adopt_boot_key()
+        assert provision.load()["key"] == ""
+
+
+def test_a_reusable_key_is_asked_for_by_name_and_keeps_going(lan):
+    L, A, B, loop, heard = lan
+    with _at(L):
+        k = provision.make_key("a batch of cards", auto=True, reusable=True)
+    with _at(A):
+        provision.adopt_key(k["text"])
+    _enable(L, _scan(L, loop)["pi-kitchen"], loop)
+    with _at(L):
+        assert next(x for x in provision.keys() if x["id"] == k["id"])["auto"]
+
+
+def test_removing_a_machine_ends_the_key_it_carried_and_its_set_up_status(lan):
+    L, A, B, loop, heard = lan
+    with _at(L):
+        k = provision.zero_key("")
+    with _at(A):
+        provision.adopt_key(k["text"])
+    t = _scan(L, loop)["pi-kitchen"]
+    r = _enable(L, t, loop)
+    with _at(L):
+        assert provision.was_enabled_here(t["fp"])
+        assert teamlink.remove("", r["label"])
+        assert not provision.was_enabled_here(t["fp"]), "coming back needs a person"
+        assert all(x["id"] != k["id"] for x in provision.keys()), "the key it carried is gone"
+
+
+def test_a_reusable_key_stops_being_automatic_when_a_machine_it_set_up_is_removed(lan):
+    L, A, B, loop, heard = lan
+    with _at(L):
+        k = provision.make_key("cards", auto=True, reusable=True)
+    with _at(A):
+        provision.adopt_key(k["text"])
+    r = _enable(L, _scan(L, loop)["pi-kitchen"], loop)
+    with _at(L):
+        teamlink.remove("", r["label"])
+        assert not next(x for x in provision.keys() if x["id"] == k["id"])["auto"]
+
+
+def test_a_keyed_machine_takes_no_code_and_codes_do_not_lock_out_its_key(lan):
+    L, A, B, loop, heard = lan
+    with _at(L):
+        k = provision.zero_key("")
+        ca = teamlink.ensure_pki()["ca"]
+        lfp = teamlink.ensure_pki()["host_fp"]
+    with _at(A):
+        provision.adopt_key(k["text"])
+        kk, mine = provision.parse_key(k["text"]), provision._my_fp()
+        code = provision.pin()
+        ok, err, _ = provision.check_claim({"how": "code", "leader": {"host_fp": lfp},
+                                            "proof": provision.proof(code, lfp, mine, "n")}, "n")
+        assert not ok and "takes no code" in err, "the right code is refused too: nobody can read it"
+        d = provision.load()
+        d["locked_until"] = time.time() + 600
+        provision.save(d)
+        ok, err, _ = provision.check_claim({"how": "key", "key_id": kk["id"], "leader": {"host_fp": lfp, "ca": ca},
+                                            "proof": provision.proof(kk["secret"], lfp, mine, "n")}, "n")
+        assert ok, err
+
+
+def test_wrong_codes_still_lock_a_machine_with_no_key(lan):
+    L, A, B, loop, heard = lan
+    with _at(A):
+        for _ in range(provision.PIN_TRIES * provision.PIN_ROUNDS):
+            provision.check_claim({"how": "code", "leader": {"host_fp": "c" * 64}, "proof": "x"}, "n")
+        assert provision.locked() > 0
+        ok, err, _ = provision.check_claim({"how": "code", "leader": {"host_fp": "c" * 64}, "proof": "x"}, "n")
+        assert not ok and "too many wrong codes" in err
+
+
+def test_a_flood_of_beacons_writes_a_handful_and_says_so_once(tmp_path, monkeypatch):
+    from agentos import secevents, config as cfgmod
+    monkeypatch.setattr(cfgmod, "AGENTOS_HOME", tmp_path)
+    flagged = []
+    monkeypatch.setattr(secevents, "flag", lambda kind, *a, **k: flagged.append(kind))
+    saves = []
+    with teamlink.at(tmp_path):
+        real = provision.save
+        monkeypatch.setattr(provision, "save", lambda d: (saves.append(1), real(d)))
+        new = sum(provision.note_seen(_beacon(f"{i:064x}")) for i in range(300))
+        assert new == provision.NEW_PER_ADDR, "one address introduces a few machines a minute"
+        assert len(saves) == provision.NEW_PER_ADDR, "and a refused one costs no write"
+        spread = sum(provision.note_seen(_beacon(f"{1000 + i:064x}", f"10.0.1.{i % 250}")) for i in range(300))
+        assert spread + new == provision.NEW_PER_ALL, "spoofed addresses share one budget"
+    assert flagged and set(flagged) == {"beacon.flood"}
+
+
+def test_a_budget_spent_on_strangers_never_hides_a_machine_already_known(tmp_path, monkeypatch):
+    with teamlink.at(tmp_path):
+        assert provision.note_seen(_beacon("a" * 64, "10.0.0.5"))
+        for i in range(100):
+            provision.note_seen(_beacon(f"{i + 1:064x}"))
+        b = _beacon("a" * 64, "10.0.0.6")
+        provision.note_seen(b)
+        assert provision.load()["seen"]["a" * 64]["addr"] == "10.0.0.6"
+
+
+def test_a_stranger_never_pushes_out_a_machine_a_person_acted_on(tmp_path, monkeypatch):
+    monkeypatch.setattr(provision, "NEW_PER_ADDR", 10 ** 6)
+    monkeypatch.setattr(provision, "NEW_PER_ALL", 10 ** 6)
+    with teamlink.at(tmp_path):
+        d = provision.load()
+        d["seen"]["e" * 64] = {"first": 1, "last": 1, "state": "enabled", "name": "mine"}
+        d["seen"]["d" * 64] = {"first": 1, "last": 1, "state": "ignored", "name": "hidden"}
+        provision.save(d)
+        for i in range(provision.MAX_SEEN + 20):
+            provision.note_seen(_beacon(f"{i + 1:064x}"))
+        seen = provision.load()["seen"]
+        assert "e" * 64 in seen and "d" * 64 in seen and len(seen) <= provision.MAX_SEEN

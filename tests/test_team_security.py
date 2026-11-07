@@ -292,3 +292,19 @@ def test_no_approver_answers_on_autonomy_without_asking_whether_a_person_is_requ
             body = m.group(3)[:900]
             if '"full"' in body and ("return" in body):
                 assert "needs_person" in body, f"{f.name}: {m.group(1)} answers on autonomy alone"
+
+
+def test_ending_a_link_leaves_no_row_a_new_link_with_that_name_would_inherit(tmp_path):
+    """Labels are reused. file.send back, file.send out and the `team.act` rows all name the
+    link; a list of actions in forget_link_grants left the first two behind."""
+    from agentos import fabric, memory
+    s = memory.Store(str(tmp_path / "t.db"))
+    s.add_grant("team", "pi/*", "file.send", "files:made", source="matrix", note="x")
+    s.add_grant("team", "pi/*", "code.run", "x", source="provision", note="x")
+    s.add_grant("team", "pi/*", "team.act", "*|fs.write|fs:/w/for-pi/*", source="files", note="x")
+    s.add_grant("agent", "main", "file.send", "team:pi", source="user", note="x")
+    s.add_grant("agent", "main", "agent.message", "agent:subagent/lead@pi", source="matrix", note="x")
+    s.add_grant("team", "pi-2/*", "file.send", "files:made", source="matrix", note="another link")
+    fabric.forget_link_grants(s, "pi")
+    left = [(g["principal_id"], g["action"]) for g in s.list_grants() if not g.get("revoked")]
+    assert left == [("pi-2/*", "file.send")]

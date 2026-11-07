@@ -156,12 +156,15 @@ def test_the_hub_refuses_a_machine_it_did_not_set_up_or_did_not_allow(tmp_path, 
     assert not out["ok"] and "no sandbox" in out["error"], "never unconfined"
 
 
-def test_the_grant_is_written_at_set_up_and_goes_with_the_link():
+def test_the_grant_is_written_at_set_up_and_goes_with_the_link(tmp_path):
     from agentos import fabric
+    st = Store(tmp_path / "g.db")
+    assert edgecode.grant(st, "pi")
+    fabric.forget_link_grants(st, "pi")
+    assert not [g for g in st.list_grants() if g["action"] == "code.run" and not g.get("revoked")]
     src = (ROOT / "agentos/server.py").read_text()
     enable = src[src.index("async def _provision_enable("):src.index("def _provision_view(")]
     assert "_edge().grant(" in enable
-    assert '"code.run"' in (ROOT / "agentos/fabric.py").read_text().split("def forget_link_grants")[1][:600]
     assert '"edge_run"' in (ROOT / "agentos/teamlink.py").read_text()
     assert fabric  # imported: the module the revocation lives in
 
@@ -189,3 +192,57 @@ def test_a_firewall_on_the_hub_is_said_with_its_ports_and_opened_on_a_yes(tmp_pa
     assert not hostfirewall.state(cfg)["words"], "opened: the line goes"
     cfg["team"] = {"link_port": 9000}
     assert hostfirewall.state(cfg)["words"], "a different port is asked about again"
+
+
+@JAIL
+def test_a_run_that_prints_forever_is_stopped_and_the_server_holds_little(tmp_path, monkeypatch):
+    store, pdp, lk = _hub(tmp_path, monkeypatch)
+    monkeypatch.setattr(edgecode, "HUB_OUT_BYTES", 2_000_000)
+    monkeypatch.setattr(edgecode, "HUB_SECONDS", 30)
+    out = asyncio.run(edgecode.answer(store, pdp, lk, {"code": "while True: print('x' * 4096)"}))
+    assert out["rc"] == -9 and "printed more than 2 MB" in out["output"]
+    assert len(out["output"]) <= edgecode.OUT_CAP + 200
+
+
+@JAIL
+def test_a_run_that_fills_its_folder_is_stopped(tmp_path, monkeypatch):
+    store, pdp, lk = _hub(tmp_path, monkeypatch)
+    monkeypatch.setattr(edgecode, "HUB_DISK_MB", 5)
+    monkeypatch.setattr(edgecode, "DISK_EVERY_S", 0.1)
+    monkeypatch.setattr(edgecode, "HUB_SECONDS", 30)
+    code = ("import time\nfor i in range(100000):\n    open(f'f{i}', 'wb').write(b'x' * 1000000)\n    time.sleep(.01)\n")
+    out = asyncio.run(edgecode.answer(store, pdp, lk, {"code": code}))
+    assert out["rc"] == -9 and "wrote more than 5 MB" in out["output"]
+
+
+@JAIL
+def test_a_run_cannot_fork_without_limit(tmp_path, monkeypatch):
+    if not edgecode._nproc_args():
+        pytest.skip("this kernel counts processes per user, so the limit is left off")
+    store, pdp, lk = _hub(tmp_path, monkeypatch)
+    monkeypatch.setattr(edgecode, "HUB_NPROC", 20)
+    code = ("import subprocess\nps=[]\ntry:\n    for i in range(60):\n"
+            "        ps.append(subprocess.Popen(['/usr/bin/sleep','30']))\nexcept OSError as e:\n"
+            "    print('refused at', len(ps))\nfor p in ps: p.kill()\n")
+    out = asyncio.run(edgecode.answer(store, pdp, lk, {"code": code}))
+    assert out["ok"] and "refused at" in out["output"], out
+
+
+@JAIL
+def test_the_jails_tmp_is_sized(tmp_path, monkeypatch):
+    store, pdp, lk = _hub(tmp_path, monkeypatch)
+    monkeypatch.setattr(edgecode, "HUB_TMP_MB", 4)
+    code = ("try:\n    open('/tmp/x','wb').write(b'x'*(16*1024*1024))\n    print('wrote it all')\n"
+            "except OSError as e:\n    print('full', e.errno)\n")
+    out = asyncio.run(edgecode.answer(store, pdp, lk, {"code": code}))
+    assert "full" in out["output"] or edgecode._tmp_args(str(tmp_path))[0] == "--bind", out
+
+
+def test_one_machine_cannot_queue_without_limit(tmp_path, monkeypatch):
+    store, pdp, lk = _hub(tmp_path, monkeypatch)
+    from agentos import tools as t
+    monkeypatch.setattr(t, "sandbox_mechanism", lambda: "bwrap")
+    monkeypatch.setattr(edgecode, "_python", lambda: "/usr/bin/python3")
+    monkeypatch.setitem(edgecode._QUEUED, "kitchen-pi", edgecode.HUB_QUEUE)
+    out = asyncio.run(edgecode.answer(store, pdp, lk, {"code": "print(1)"}))
+    assert not out["ok"] and "already here" in out["error"]
