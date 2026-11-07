@@ -237,6 +237,9 @@ def with_shares_note(env: "Envelope") -> str:
     return (env.context + "\n\n" + note) if env.context else note
 
 
+_LIVE_RUNS: dict = {}     # id(run) -> Run, for `stop_all`. Trimmed as new ones start.
+
+
 @dataclass
 class Run:
     """A live delegated run, so it can be watched and stopped."""
@@ -588,6 +591,11 @@ def context_for(ui_context: str) -> str:
         "owns those. Do not claim to have clicked, opened or focused anything.\n"
         + NO_DOOR_LINE
     )
+    # Awareness only, as for the built-in lead: the OS's own sentences, and it decides nothing.
+    from . import secevents
+    notice = secevents.agent_note()
+    if notice:
+        preamble += "\n" + notice
     return (preamble + ("\n\n" + body if body else "")).strip()
 
 
@@ -2972,6 +2980,12 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     env = env.sanitized()
     run = run or Run()
     run.engine = env.engine
+    from . import integrity
+    held = integrity.refusal()
+    if held:           # a forwarded CLI has its own tools, so the gate alone can't hold it
+        run.reported_error = True
+        await emit({"type": "error", "message": held})
+        return run
     env, note, refusal = confine(env)
     if refusal:
         await emit({"type": "error", "message": refusal})
@@ -3053,6 +3067,9 @@ async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | Non
         limit=STREAM_LINE_LIMIT,
     )
     run.proc = proc
+    for k in [k for k, r in _LIVE_RUNS.items() if r.proc is None or r.proc.returncode is not None]:
+        del _LIVE_RUNS[k]
+    _LIVE_RUNS[id(run)] = run
     if first is not None:
         # the prompt is the first message on the input; the input stays open for more
         run.stdin, run.steer_open = proc.stdin, True
@@ -3591,6 +3608,12 @@ async def run_on_bridge(task: str, system: str, url: str, token: str, emit,
     """Run one agent turn on the executor with the bridge as its only tool source."""
     run = run or Run()
     run.engine = engine if engine in DRIVEN else "claude-code"
+    from . import integrity
+    held = integrity.refusal()
+    if held:
+        run.reported_error = True
+        await emit({"type": "error", "message": held})
+        return run
     refusal = _bridge_refusal(run.engine)
     if refusal:
         await emit({"type": "error", "message": refusal})
@@ -3621,6 +3644,15 @@ async def run_on_bridge(task: str, system: str, url: str, token: str, emit,
         return run
     finally:
         _drop_scratch(scratch)
+
+
+def stop_all() -> int:
+    """Every CLI this server started that is still running, for the security hold: it has its
+    own tools, so refusing its next step at the gate wouldn't stop it."""
+    n = 0
+    for r in list(_LIVE_RUNS.values()):
+        n += 1 if stop(r) else 0
+    return n
 
 
 def stop(run: Run) -> bool:

@@ -1461,6 +1461,12 @@ class Agent:
         self._task_text = last_user
         steps: list[dict] = []
         self.partial_steps = steps  # same list object: mutations are visible to a canceller
+        from . import integrity
+        held = integrity.refusal()
+        if held:       # a security file changed: no model call, no step (integrity.py)
+            await self.emit({"type": "error", "message": held})
+            return {"content": held, "steps": [{"type": "error", "message": held}],
+                    "tokens": {"input": 0, "output": 0}}
         final_text = ""
         tokens = {"input": 0, "output": 0}
         carry = ""       # accumulated text across token-limit continuations

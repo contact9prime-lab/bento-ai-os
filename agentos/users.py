@@ -175,6 +175,8 @@ def _write(d: dict) -> None:
                          f"{registry_path()} first")
     p = registry_path()
     cfgmod.write_private(p, json.dumps(d, indent=2))      # it holds password hashes
+    from . import integrity
+    integrity.noted(p)
 
 
 def enabled() -> bool:
@@ -368,6 +370,8 @@ def adopt(uid: str) -> None:
     own = {k: machine[k] for k in USER_KEYS if k in machine}
     own.setdefault("setup_complete", bool(machine.get("setup_complete")))
     cfgmod.write_private(cfg_path_for(uid), json.dumps(own, indent=2))
+    from . import integrity
+    integrity.noted(cfg_path_for(uid))
     cfgmod.save_config(machine_view(machine))
     # and out of the live machine dict too, or its bridge kept polling the first
     # account's bot as the machine's until the next restart
@@ -758,6 +762,8 @@ def save_user_cfg(uid: str, cfg: dict) -> None:
     own = {k: cfg[k] for k in USER_KEYS if k in cfg}
     # it holds their channel tokens and credentials
     cfgmod.write_private(cfg_path_for(uid), json.dumps(own, indent=2))
+    from . import integrity
+    integrity.noted(cfg_path_for(uid))
 
 
 #: The server's own machine config, the live dict `state.machine_cfg()` returns.

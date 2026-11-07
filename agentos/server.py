@@ -25,6 +25,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
 
 from . import agentbundle
 from . import machineroutes
+from . import integrity
 from . import secevents
 from . import turnerrors
 from . import appcheck
@@ -242,6 +243,9 @@ async def startup():
     cfgmod.ensure_dirs(cfg)
     state["loop"] = asyncio.get_running_loop()
     secevents.on_alert(_security_alert)
+    integrity.on_hold(_integrity_held)
+    if integrity.armed():       # serve() only: the suite shares a checkout it must not trip on
+        asyncio.create_task(_integrity_loop())
     _running_build()        # pinned now: the build that is answering, not the one on disk later
     _pin_page()             # and the page that matches it (see index())
     # every home on the machine brought up to this code — the machine's and each
@@ -880,13 +884,16 @@ async def _zeros_keep_current():
                     lk = next((x for x in zeros if x.get("id") == t["id"]), None)
                     if not lk:
                         continue
+                    mode_now = mode
                     if mode == "auto":
-                        got = await tiesmod.ask_update(lk)
+                        got = await tiesmod.ask_update(lk, auto=True)
+                        if got.get("needs_person"):    # not signed: a person asks for it, or nobody
+                            mode_now = "ask"
                         with usersmod.as_user(t["owner"]):
                             fabricmod.audit_team(state["store"], "zero.update", f"link:{t['label']}",
                                                  f"asked {t['label']} ({t['version']}) to update to {__version__}: "
                                                  + ("started" if got.get("ok") else got.get("error") or "no answer"))
-                    elif (t["label"], __version__) not in _ZERO_TOLD:
+                    if (mode_now == "ask" and (t["label"], __version__) not in _ZERO_TOLD):
                         _ZERO_TOLD.add((t["label"], __version__))
                         await _tie_tell({"type": "zero_behind", "label": t["label"], "owner": t["owner"],
                                          "peer": t["peer"], "version": t["version"], "hub": __version__}, t["owner"])
@@ -1717,7 +1724,7 @@ async def _tie_hardware(lk: dict, why: str) -> dict:
 _ZERO_UPDATING: dict = {}
 
 
-async def _zero_update_from_hub(lk: dict) -> dict:
+async def _zero_update_from_hub(lk: dict, auto: bool = False) -> dict:
     """This machine's hub asks it to update: it does, on its own (updates.apply, no tests: they
     ran where the code was built), says so on its screen, and restarts. Only its own hub."""
     cfg = state.machine_cfg()
@@ -1727,6 +1734,13 @@ async def _zero_update_from_hub(lk: dict) -> dict:
         return {"ok": True, "started": True, "already": True}
     from . import updates as updmod
     from . import __version__
+    if auto:
+        # Nobody pressed anything: only a signed release installs by itself. Asked before
+        # answering, because after "started" the hub could no longer ask a person instead.
+        rel = await asyncio.to_thread(updmod.tip_release, cfg)
+        if rel.get("state") != "verified":
+            return {"ok": False, "needs_person": True,
+                    "error": "this update is not signed, so it waits for a person to ask for it"}
     _ZERO_UPDATING["on"] = True
     with usersmod.as_user(""):
         fabricmod.audit_team(state["store"], "zero.update", f"link:{lk.get('label')}",
@@ -1739,7 +1753,7 @@ async def _zero_update_from_hub(lk: dict) -> dict:
             async def say(m):
                 await state["broadcast"]({"type": "update_progress", "message": m})
             await say(f"updating, as {lk.get('label')} asked…")
-            res = await updmod.apply(cfg, run_tests=False,
+            res = await updmod.apply(cfg, run_tests=False, need_verified=auto, allow_unsigned=not auto,
                                      log=lambda m: loop.call_soon_threadsafe(asyncio.ensure_future, say(m)))
             await state["broadcast"]({"type": "update_done", **res})
             if res.get("ok") and res.get("from") != res.get("to"):     # something moved: restart into it
@@ -1781,7 +1795,7 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
     if req.get("op") == "device_events":
         return await _device_events_from(lk, req)
     if req.get("op") == "zero_update":
-        return await _zero_update_from_hub(lk)
+        return await _zero_update_from_hub(lk, auto=bool(req.get("auto")))
     if req.get("op") == "zero_say":
         return await _zero_say_from_hub(lk, req)
     if req.get("op") == "zero_refresh":
@@ -2938,6 +2952,7 @@ async def api_update_apply(request: Request, body: dict | None = None):
     res = await updmod.apply(
         state["cfg"], run_tests=bool(body.get("run_tests", True)),
         log=lambda m: loop.call_soon_threadsafe(asyncio.ensure_future, say(m)),
+        allow_unsigned=bool(body.get("allow_unsigned")),
         **({"switch": True} if body.get("switch") else {}))
     state["store"].log("system", f"update: {res}")
     if not res.get("ok"):
@@ -10967,6 +10982,12 @@ async def api_snapshot_restore(sid: str):
         meta = _j.loads((d / "meta.json").read_text())
     except Exception:
         meta = {}
+    # A person brought an older database and config back: not tampering. Code that differs is
+    # left for the watcher, because a snapshot can hold an agent's self-edit.
+    from . import integrity as _integ
+    from . import memory as _mem
+    _integ.noted(home / "config.json")
+    _mem.forget_ledger_anchor(home / "agentos.db")
     code = (d / "agentos").exists() and meta.get("version") == _running_version()
     if code:
         for py in (d / "agentos").glob("*.py"):
@@ -12018,10 +12039,40 @@ async def api_audit_summary(since: float = 0.0, space: str = ""):
     return state["store"].audit_summary(since=since, space=space)
 
 
+async def _tell_admins(ev: dict) -> None:
+    if not usersmod.enabled():
+        return await state["broadcast_user"](ev, "")
+    for u in usersmod.list_users():
+        if usersmod.is_admin(u["id"]):
+            await state["broadcast_user"](ev, u["id"])
+
+
+def _admin_phones() -> list:
+    """The bridges an alert goes out on: the machine's, and each admin's own."""
+    out = []
+    for name in ("telegram", "whatsapp"):
+        with contextlib.suppress(Exception):
+            if name in state:
+                out.append(state[name])
+    services = getattr(usersmod, "_services", {}) or {}
+    for uid, svc in list(services.items()):
+        if isinstance(svc, dict) and usersmod.is_admin(uid):
+            out += [svc[k] for k in ("telegram", "whatsapp") if svc.get(k) is not None]
+    return list({id(b): b for b in out}.values())
+
+
+async def _security_phone(line: str) -> None:
+    """One line to the person's phone, on what the bridge already has. A bridge with no owner
+    or no token answers in words and sends nothing, and a phone never holds up the server."""
+    for b in _admin_phones():
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(b.send(line), 10)
+
+
 def _security_alert(alert: dict) -> None:
-    """secevents raised an alert, possibly on another thread: every admin's screens hear it
-    (everyone's on a machine with no accounts). The source and detail are the attacker's words,
-    so the page gets them to display as text and the sentence comes from the OS."""
+    """secevents raised an alert, possibly on another thread: every admin's screens and phones
+    hear it (everyone's on a machine with no accounts). The source and detail are the attacker's
+    words, so the page gets them to display as text, and a phone gets only the OS's sentence."""
     loop = state.get("loop")
     if not loop or loop.is_closed():
         return
@@ -12029,14 +12080,82 @@ def _security_alert(alert: dict) -> None:
     async def tell():
         ev = {"type": "security_alert", "kind": alert["kind"], "words": alert["words"],
               "source": alert["source"], "count": alert["count"], "at": alert["at"]}
-        if not usersmod.enabled():
-            return await state["broadcast_user"](ev, "")
-        for u in usersmod.list_users():
-            if usersmod.is_admin(u["id"]):
-                await state["broadcast_user"](ev, u["id"])
+        await _tell_admins(ev)
+        if alert["kind"] != "integrity.dev":      # a developer's own edits are for their screen
+            await _security_phone(f"⚠ Bento security: {alert['words']}. See Settings → Permissions.")
 
     with contextlib.suppress(RuntimeError):
         loop.call_soon_threadsafe(lambda: loop.create_task(tell()))
+
+
+def _integrity_held(hold: dict) -> None:
+    """The agents were just stopped: every open turn and build ends, and the screens say why.
+    The gate already refuses their next step, this ends what a CLI is doing with its own tools."""
+    loop = state.get("loop")
+    if not loop or loop.is_closed():
+        return
+
+    async def stop():
+        from . import executors as execmod
+        with contextlib.suppress(Exception):
+            execmod.stop_all()
+        for t in list(state["turns"].values()):
+            ag = t.get("agent")
+            if ag is not None:
+                ag.aborted = True
+            task = t.get("task")
+            if task and not task.done():
+                asyncio.create_task(_force_cancel(task))
+        build = state.get("build") or {}
+        if build.get("agent"):
+            build["agent"].aborted = True
+        if build.get("task") and not build["task"].done():
+            asyncio.create_task(_force_cancel(build["task"], grace=15.0))
+        await _tell_admins({"type": "security_hold", "at": hold.get("at"), "files": hold.get("files") or []})
+
+    with contextlib.suppress(RuntimeError):
+        loop.call_soon_threadsafe(lambda: loop.create_task(stop()))
+
+
+LEDGER_CHECK_S = 600        # new rows only, so this costs what the new rows cost
+LEDGER_FULL_S = 24 * 3600
+
+
+async def _integrity_loop():
+    """The watcher, on threads: a tick is a stat per file, a ledger walk is SQLite. Nothing here
+    can raise out, because a broken watcher must not take the server down; a watcher that
+    could not start says so on the card."""
+    from . import standby as standbymod
+    w = None
+    try:
+        w = await asyncio.to_thread(integrity.start_watching, None, standbymod.passive)
+        state["ledger_checks"] = await asyncio.to_thread(integrity.verify_ledgers, True)
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! the integrity watcher could not start: {type(e).__name__}: {e}")
+        if w is None:
+            return
+    last_ledger = last_full = time.time()
+    while True:
+        await asyncio.sleep(integrity.WATCH_S)
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(w.tick)
+        now = time.time()
+        if now - last_ledger >= LEDGER_CHECK_S:
+            full = now - last_full >= LEDGER_FULL_S
+            with contextlib.suppress(Exception):
+                state["ledger_checks"] = await asyncio.to_thread(integrity.verify_ledgers, full)
+            last_ledger = now
+            last_full = now if full else last_full
+
+
+@app.get("/api/security/status")
+async def api_security_status():
+    """What the watcher knows, for an admin: the card's one read. Details are shown as text."""
+    denied = _require_admin()
+    if denied:
+        return denied
+    st = await asyncio.to_thread(integrity.status, None, state.get("ledger_checks"))
+    return {**st, "alerts": secevents.recent(10, alerts_only=True)}
 
 
 @app.get("/api/security/events")

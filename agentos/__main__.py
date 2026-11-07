@@ -390,6 +390,8 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
         print("  sign in with your passphrase; local use is unchanged.\n")
     if open_browser:
         _open_when_ready(url, port)
+    from . import integrity as _integrity
+    _integrity.arm()        # this process is the server: its startup starts the watcher
     from . import peercheck
     peercheck.arm()
     # proxy_headers off: uvicorn's default rewrites the client address from X-Forwarded-For for any peer
@@ -1234,6 +1236,14 @@ def doctor(fix: bool = False, session: bool = False):
         integ = db.execute("PRAGMA integrity_check").fetchone()[0]
         (ok if mode == "wal" else warn)(f"db journal_mode={mode}")
         (ok if integ == "ok" else bad)(f"db integrity: {integ}")
+        try:
+            from . import integrity as _integrity
+            _st = _integrity.status()
+            _st["watching"] = _server_up()
+            _st["line"] = _integrity.line(_st)
+            (bad if _st["held"] or _st["sealed"] == "bad" else ok)(f"security: {_st['line']}")
+        except Exception as e:  # noqa: BLE001 - a doctor keeps going
+            warn(f"security: could not check ({type(e).__name__})")
         # How much disk it is using, and what is using it. On an SD card this is
         # the number that matters and nothing reported it — a database that grows
         # every day is invisible until the machine cannot write at all.
@@ -5586,7 +5596,7 @@ def _esp_cli(rest, args):
     me = teamlink.machine_name(load_config())
     if rest[0].lower() in ("here", me.lower()):
         # this hub holds the boards itself (no Pi between): the same functions, run here. A
-        # running server picks a new node's stream up within half a minute.
+        # running server picks a new node's stream up within a minute.
         lk = {"label": me, "here": True}
         port = int(os.environ.get("AGENTOS_PORT") or load_config().get("port") or 8321)
         up = _server_answers(port)
@@ -8426,6 +8436,8 @@ def _update_cli(args) -> int:
 
     print()
     extra = {"switch": True} if sw else {}
+    if getattr(args, "allow_unsigned", False):
+        extra["allow_unsigned"] = True      # a person's word, for a machine with a release key pinned
     result = asyncio.run(upd.apply(cfg, run_tests=not args.no_tests,
                                    log=lambda m: print(f"  {m}"), **extra))
     if not result.get("ok"):
@@ -8477,7 +8489,8 @@ def _update_cli(args) -> int:
         before = head()
         py = other / ".venv" / "bin" / "python"
         cmd = [str(py if py.exists() else sys.executable), "-m", "agentos", "update", "--apply",
-               "--no-restart"] + (["--no-tests"] if args.no_tests else [])
+               "--no-restart"] + (["--no-tests"] if args.no_tests else []) + (
+                   ["--allow-unsigned"] if getattr(args, "allow_unsigned", False) else [])
         rc = subprocess.run(cmd, cwd=str(other)).returncode
         if rc:
             print(f"✗ {other} could not be updated (exit {rc}); the server keeps running it as it is")
@@ -8859,12 +8872,187 @@ def _fetch_allow_cli(args):
     print("\n".join(have) if have else "No local addresses are allowed. Fetches reach public addresses only.")
 
 
+def _server_up() -> bool:
+    """Does a server answer for this home? It is what's watching, and the terminal has no other
+    way to ask: its own process isn't the server."""
+    from . import desktop
+    return desktop.served_home_matches()
+
+
+def _integrity_person(args, phrase: str, what: str) -> bool:
+    """The door only a person goes through: a real terminal, not one Bento started, and a typed
+    phrase. On a machine with a signing key the record needs the key as well (integrity.seal)."""
+    from . import integrity
+    why = integrity.person_problem()
+    if why:
+        print(f"✗ {why}")
+        return False
+    print(what)
+    try:
+        got = input(f"  Type {phrase} to go on: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        got = ""
+    if got != phrase:
+        print("  Stopped. Nothing changed.")
+        return False
+    return True
+
+
+def _integrity_cli(args):
+    """`bento integrity`: status, seal, accept, dev, keygen, trust, sign-release, lock, unlock.
+    The watcher itself is the server's; these work with the server down, and read the same files."""
+    from . import integrity
+    from . import updates as upd
+    root = Path(args.root).resolve() if args.root else None
+    if root is None:
+        from . import desktop
+        root = desktop.served_root() or integrity.code_root()   # the copy the service really runs
+    act = args.action
+    if act == "status":
+        st = integrity.status(root)
+        st["watching"] = _server_up()
+        st["line"] = integrity.line(st)
+        if args.json:
+            print(json.dumps(st, indent=2))
+            return 0
+        print(f"  {st['line']}")
+        print(f"  code: {st['root']}")
+        if st["state"] == "changed":
+            print("  differs from the record: " + ", ".join(st["changed"][:8]))
+        print("  signed by: " + ({"signed": "your key", "release": f"release key {(st['update'] or {}).get('key_id')}"}
+                                 .get(st["signed"], "nobody. This record is unsigned, so a process running as this "
+                                      "user could rewrite it.")))
+        leds = integrity.verify_ledgers(full=True)
+        broke = [v for v in leds if not v.get("ok")]
+        print("  ledger: " + (f"changed. {broke[0].get('reason')} at row {broke[0].get('at_seq')}" if broke else
+                              f"intact, {sum(int(v.get('checked') or 0) for v in leds)} rows checked"))
+        print("  locked: " + ("yes, this user can't write the code" + (
+            f". {st['open_parents'][0]} is still yours, so whoever runs as you can rename what's in it"
+            if st["open_parents"] else "") if st["locked"] else
+            "no. Whoever runs as this user can change it. bento integrity lock is the real boundary."))
+        return 0 if not st["held"] else 1
+    if act in ("seal", "accept"):
+        phrase = integrity.SEAL_PHRASE if act == "seal" else integrity.ACCEPT_PHRASE
+        entry = integrity.record_for(root)
+        now = integrity.hash_tree(root)
+        verdict = integrity.judge(entry, now)
+        held = integrity.held()
+        head = [f"  Code: {root} ({len(now)} files)"]
+        names = list((held or {}).get("files") or []) + [c for c in verdict["changed"] if c not in ((held or {}).get("files") or [])]
+        if names:
+            head.append("  This will be taken as correct:")
+            head += [f"    {n}" for n in names[:20]]
+            if len(names) > 20:
+                head.append(f"    and {len(names) - 20} more")
+        elif act == "accept":
+            head.append("  Nothing differs from the record.")
+        if act == "accept" and not held and verdict["state"] in ("match", "none"):
+            print("  Nothing to accept: agents aren't held.")
+            return 0
+        if not _integrity_person(args, phrase, "\n".join(head)):
+            return 1
+        try:
+            integrity.seal(root, key_path=args.key or None, by=act)
+        except (ValueError, OSError) as e:
+            print(f"✗ {e}")
+            return 1
+        print("✓ " + ("Sealed" + (", signed." if args.key else ", unsigned. Any process running as this user could "
+                                  "rewrite it. bento integrity keygen makes a key that stays off this machine.")
+                      if act == "seal" else "Accepted. The server lets agents run within a minute."))
+        return 0
+    if act == "dev":
+        turn = (args.value or "").lower()
+        if turn not in ("on", "off"):
+            print("  bento integrity dev on|off")
+            return 2
+        said = ("  On this checkout, changed code will only warn. That includes a change an agent makes."
+                if turn == "on" else "  Changed code will stop the agents again.")
+        if not _integrity_person(args, "dev " + turn, said):
+            return 1
+        try:
+            integrity.seal(root, key_path=args.key or None, by="seal", dev=turn == "on")
+        except (ValueError, OSError) as e:
+            print(f"✗ {e}")
+            return 1
+        print(f"✓ Development mode is {turn} for {root}.")
+        return 0
+    if act == "keygen":
+        out = args.value or args.key
+        if not out:
+            print("  bento integrity keygen <path>. Choose a path on a USB stick or another machine.")
+            return 2
+        target = Path(out).expanduser()
+        try:
+            path, key_id, pub = integrity.keygen(target)
+        except (OSError, FileExistsError) as e:
+            print(f"✗ {e}")
+            return 1
+        print(f"✓ Private key: {path}\n  Public key:  {pub}\n  Key id:      {key_id}")
+        with contextlib.suppress(OSError):
+            if os.stat(path).st_dev == os.stat(integrity._home()).st_dev:
+                print("  ! That is on this machine's disk. Move it somewhere else: a signature only means "
+                      "something if this machine can't make one.")
+        print(f"  To seal with it here:   bento integrity trust {pub}")
+        print(f"  To sign releases, pin it in agentos/updates.py:  SIGNING_KEYS = {{\"{key_id}\": \"{pub}\"}}")
+        return 0
+    if act == "trust":
+        if not args.value:
+            print("  bento integrity trust <public key>")
+            return 2
+        if not _integrity_person(args, "trust", f"  From now on every seal on this machine must be signed by {args.value[:12]}…"):
+            return 1
+        try:
+            print(f"✓ Trusted {integrity.trust(args.value)}. Seal again with --key so the record is signed.")
+        except (ValueError, OSError) as e:
+            print(f"✗ {e}")
+            return 1
+        return 0
+    if act == "sign-release":
+        if not args.key:
+            print("  bento integrity sign-release --key <path> [tag]")
+            return 2
+        got = integrity.sign_release(args.key, root, args.value or "")
+        if not got["ok"]:
+            print(f"✗ {got['error']}")
+            return 1
+        print(f"✓ Signed {got['commit'][:12]} as tag {got['tag']} with {got['key_id']}.")
+        print(f"  Publish it:  git push origin {got['tag']}")
+        return 0
+    if act in ("lock", "unlock"):
+        script = integrity.lock_script(root) if act == "lock" else integrity.unlock_script(root)
+        print(f"  This runs as root:\n    {script}")
+        if act == "lock":
+            print("  Afterwards this user can't write the code, so updates need bento integrity unlock first.")
+        if not _integrity_person(args, act, ""):
+            return 1
+        ok, out = integrity.run_as_root(script, f"Bento needs root to {act} its code.")
+        if not ok:
+            print(f"✗ {out}" if out else "✗ That didn't run.")
+            print(f"  Run it yourself:  {integrity.hand_back(script)}")
+            return 1
+        if integrity.is_locked(root) != (act == "lock"):
+            print(f"✗ It ran, and this user {'can still' if act == 'lock' else 'still can not'} write the code.")
+            return 1
+        print(f"✓ {'Locked. This user can no longer write its own gate.' if act == 'lock' else 'Unlocked.'}")
+        if act == "lock" and integrity.open_parents(root):
+            print(f"  {integrity.open_parents(root)[0]} is still yours. Whoever runs as you can rename what's in it. "
+                  "Installing under /opt closes that.")
+        return 0
+    print(f"  unknown: {act}")
+    print(f"  (release keys pinned: {len(upd.SIGNING_KEYS)})")
+    return 2
+
+
 def _security_cli(args):
     """`bento security`: what the machine noticed. Reads the file, so it works with the server down."""
-    from . import secevents
+    from . import integrity, secevents
     if args.allow or args.disallow or args.local:
         return _fetch_allow_cli(args)
     rows = secevents.recent(args.limit, alerts_only=args.alerts)
+    if not args.json:
+        st = integrity.status()
+        st["watching"] = _server_up()
+        print(f"  {integrity.line(st)}")
     if args.json:
         print(json.dumps(rows, indent=2))
         return
@@ -9159,6 +9347,8 @@ def main():
                        help="if the checkout has your own uncommitted edits, park them "
                             "with `git stash` and update anyway (answers the prompt "
                             "for an unattended run)")
+    p_upd.add_argument("--allow-unsigned", action="store_true",
+                       help="install an update that isn't signed by a key this machine trusts")
     p_upd.add_argument("--no-tests", action="store_true",
                        help="skip the test gate (it is what rolls a bad update back)")
     p_upd.add_argument("--no-restart", action="store_true",
@@ -9299,6 +9489,15 @@ def main():
                             help="let fetches reach this local address (host, host:port or a network)")
     p_security.add_argument("--disallow", metavar="ADDRESS", help="take a local address off that list")
     p_security.add_argument("--local", action="store_true", help="list the local addresses fetches may reach")
+
+    p_integrity = verb("integrity", help="the code watcher: status, seal, accept a change, keys, the root lock")
+    p_integrity.add_argument("action", nargs="?", default="status",
+                             choices=["status", "seal", "accept", "dev", "keygen", "trust",
+                                      "sign-release", "lock", "unlock"])
+    p_integrity.add_argument("value", nargs="?", default="")
+    p_integrity.add_argument("--key", default="", help="the private key's path, when you use one")
+    p_integrity.add_argument("--root", default="", help="which copy of the code (default: the one the server runs)")
+    p_integrity.add_argument("--json", action="store_true")
 
     p_grants = verb("grants", help="who may do what without asking — list, add, revoke")
     p_grants.add_argument("action", nargs="?", default="list",
@@ -9968,6 +10167,8 @@ def main():
         _audit_cli(args)
     elif args.cmd == "security":
         _security_cli(args)
+    elif args.cmd == "integrity":
+        sys.exit(_integrity_cli(args))
     elif args.cmd == "grants":
         _grants_cli(args)
     elif args.cmd == "registry":

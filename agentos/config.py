@@ -458,6 +458,8 @@ def save_config(cfg: dict) -> None:
     AGENTOS_HOME.mkdir(parents=True, exist_ok=True)
     lock_home()
     write_private(CONFIG_PATH, json.dumps(cfg, indent=2))
+    from . import integrity
+    integrity.noted(CONFIG_PATH)      # the OS's own write, so the watcher can tell it from another's
 
 
 def write_private(path, data) -> None:

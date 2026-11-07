@@ -30,6 +30,8 @@ def _one(label: str, cfg: dict, store) -> dict:
     from . import avatars, hands
     hands.ensure_builtins(store)
     people = avatars.ensure(store, cfg)
+    # the ledger's key, here: the first time walks every old row, and that shouldn't be a turn's wait
+    store.audit_keyed()
     return {"home": label, "ok": True, "characters": len(people)}
 
 

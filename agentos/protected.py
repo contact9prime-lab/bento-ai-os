@@ -68,6 +68,8 @@ SECURITY_MODULES = frozenset({
 SECRET_FILES = frozenset({
     "session.key", "vault.key", "vault.json", "users.json",
     "security-events.jsonl", "integrity.json", "integrity.anchor", "entry.token",
+    "integrity.keys", "integrity.held", "integrity.writes", "integrity.updating", "integrity.lock",
+    "ledger.key", "ledger.anchor",
     "config.json", "agentos.db", "agentos.db-wal", "agentos.db-shm", "provision.json",
     "git-askpass.sh", "registry_signing.key", "timetravel.key",
     "session-denied.json", "session.locked",

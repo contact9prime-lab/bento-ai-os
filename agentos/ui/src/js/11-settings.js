@@ -489,6 +489,8 @@ function setTab(body,all){
     ],{f:'autonomy security untrusted injection'}));
     P.push(`<div class="pgroup" data-f="grants permissions allowed remembered missions matrix linked community apps review quarantine held"><h3>What's allowed right now</h3><div id="s-perm-sum"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     setTimeout(permSummaryPaint,0);
+    P.push(`<div class="pgroup sec-card" data-f="security watcher integrity seal signed lock alerts held changed code files"><h3>Security</h3><div id="s-sec-card"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(secCardPaint,0);
     P.push(pGroup('The ledger',[
       pRow('Stop what can’t be recorded',pSwitch('s-audit-strict',!!(cfg.security&&cfg.security.audit_fail_closed)),
         {desc:'Refuse an action if its ledger row could not be written.',

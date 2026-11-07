@@ -64,6 +64,7 @@ KINDS: dict[str, tuple[str, int, int]] = {
     "taint.steering": ("Outside content tried to steer the agent", 1, 300),
     "integrity.changed": ("A security file changed", 1, 300),
     "integrity.unsigned": ("This code is not signed by a key this machine trusts", 1, 86400),
+    "integrity.dev": ("Code changed on a development checkout", 1, 300),
     "ledger.broken": ("The ledger's chain does not verify", 1, 300),
     "protected.refused": ("An agent tried to reach a security file", 3, 300),
     "timetravel.forged": ("A time travel record did not carry this machine's signature", 1, 300),

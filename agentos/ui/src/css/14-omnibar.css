@@ -500,3 +500,8 @@ body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
 .deck-hidn{margin-left:8px;font-size:var(--fs-2xs);font-weight:600;letter-spacing:0;
   text-transform:none;color:var(--dim2);opacity:.75}
 @media (prefers-reduced-motion:reduce){.deck-ghost{transform:none}}
+
+/* Settings → Permissions → Security (11j-security.js) */
+.sec-card .sec-file{display:block;font:var(--fs-xs,12px) var(--mono,monospace);overflow-wrap:anywhere;margin-top:3px}
+.sec-card .sec-alert{margin-top:6px;overflow-wrap:anywhere}
+.sec-card .sec-alert small{display:block}

@@ -82,6 +82,10 @@ SKIP_TOP = {"snapshots", "speech-cache", "mcp_index.json", "logs", "boot.html",
             # waited 30 s on each of them (standbysync), about 90 s in all.
             "screen-profile"}
 SKIP_NAMES = {"__pycache__", "node_modules", ".DS_Store"}
+# the ledger's anchor names its newest row, and a copy taken mid-write would name one the copied
+# database doesn't have. A restored home starts without one (the key does travel: it verifies the
+# rows). The integrity files are this machine's own and are never moved: see PRIVATE.
+SKIP_FILES = {"ledger.anchor"}
 SKIP_SUFFIX = (".db-wal", ".db-shm", ".db-journal", ".pyc", ".tmp", ".part")
 #: This module's own working names inside the home, never backed up and never moved.
 PRIVATE = (".restoring-", ".before-restore-", ".restore-ready", ".backup-out-",
@@ -89,7 +93,10 @@ PRIVATE = (".restoring-", ".before-restore-", ".restore-ready", ".backup-out-",
            # the cloud standby's pairing, copies and state (standby.py): this machine's own
            ".standby",
            # where this machine keeps its home on GitHub (keep.py): this machine's own
-           ".keep")
+           ".keep",
+           # what the watcher knows about this machine's code (integrity.py). Which tree is
+           # sealed, and what is locked, are facts about this computer.
+           "integrity.")
 READY = ".restore-ready"
 LAST = "last-restore.json"
 
@@ -338,7 +345,7 @@ def _walk(home: Path):
         for f in sorted(files):
             if not rel_root.parts and (f in SKIP_TOP or _private(f)):
                 continue
-            if f in SKIP_NAMES or f.endswith(SKIP_SUFFIX):
+            if f in SKIP_NAMES or f in SKIP_FILES or f.endswith(SKIP_SUFFIX):
                 continue
             p = r / f
             if p.is_symlink() or not p.is_file():
@@ -726,6 +733,11 @@ def apply(staging, *, home=None, keyring: bool = True) -> dict:
         (home / LAST).write_text(json.dumps(report, indent=1))
     except OSError:
         pass
+    # The locked files are the restored ones now, by the OS's own hand. Only this machine's home:
+    # a test or a tool restoring elsewhere says nothing about it.
+    from . import integrity
+    if home.resolve() == integrity._home().resolve():
+        integrity.rebaseline_home()
     return report
 
 

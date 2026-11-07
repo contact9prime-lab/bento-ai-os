@@ -729,7 +729,12 @@ function handle(ev){
     // already on screen changes in place, and the Crew stage re-reads its sheets
     // the server noticed something: its own sentence, and what it was given shown as text by toast
     case 'security_alert':{
-      toast('⚠ Security: '+ev.words+(ev.source?' ('+ev.source+')':''),{kind:'warn',label:'Review',go:()=>{if(typeof permGo==='function')permGo('ledger');else openApp('settings')}});
+      toast('⚠ Security: '+ev.words+(ev.source?' ('+ev.source+')':''),{kind:'warn',label:'Review',go:()=>{if(typeof settingsGo==='function')settingsGo('permissions');else openApp('settings')}});
+      if(typeof secCardPaint==='function')secCardPaint();
+      break;}
+    case 'security_hold':{
+      toast('Agents are stopped because a security file changed.',{kind:'err',label:'Review',go:()=>{if(typeof settingsGo==='function')settingsGo('permissions');else openApp('settings')}});
+      if(typeof secCardPaint==='function')secCardPaint();
       break;}
     case 'approval_resolved':{
       delete APPROVALS[ev.id];
