@@ -10679,8 +10679,8 @@ async def api_install_skill(body: dict):
 
 @app.get("/api/wallpaper")
 async def api_wallpaper():
-    p = cfgmod.AGENTOS_HOME / "wallpaper.png"
-    if p.exists():
+    p = tools.wallpaper_file()
+    if p:
         return FileResponse(p, media_type="image/png",
                             headers={"Cache-Control": "no-store"})
     return JSONResponse({"exists": False}, status_code=404)
@@ -10815,16 +10815,19 @@ async def api_wallpaper_system():
             msg += (" — if you just denied an Automation prompt, allow it in System Settings → "
                     "Privacy & Security → Automation, or set a static image as your wallpaper")
         return JSONResponse({"error": msg}, status_code=404)
-    dest = cfgmod.AGENTOS_HOME / "wallpaper.png"
     # browsers can't render HEIC/TIFF (Apple's default wallpapers) — convert via sips
     if _sys.platform == "darwin" and path.suffix.lower() in (".heic", ".tif", ".tiff", ".bmp"):
+        dest = tools.wallpaper_home() / ".wallpaper-converted.png"
         r = subprocess.run(["sips", "-s", "format", "png", str(path), "--out", str(dest)],
                            capture_output=True, text=True, timeout=30)
         if r.returncode != 0:
             return JSONResponse({"error": f"could not convert {path.suffix} wallpaper: "
                                           f"{(r.stderr or r.stdout).strip()}"}, status_code=500)
     else:
-        shutil.copy2(path, dest)
+        data = path.read_bytes()
+    if not tools.image_kind(data):
+        return JSONResponse({"error": "the system wallpaper is not a picture this can show"}, status_code=415)
+    tools.save_wallpaper(data)
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True, "source": str(path)}
 
@@ -11138,40 +11141,54 @@ async def api_wallpapers_builtin():
 
 @app.get("/api/wallpapers")
 async def api_wallpapers():
-    d = cfgmod.AGENTOS_HOME / "wallpapers"
-    ids = sorted((p.stem for p in d.glob("*.png")), reverse=True) if d.exists() else []
-    return {"wallpapers": ids}
+    ids = {p.stem for d in _wallpaper_dirs() for p in d.glob("*.png")}
+    return {"wallpapers": sorted(ids, reverse=True)}
+
+
+def _wallpaper_dirs() -> list[Path]:
+    """A gallery is its owner's. An admin also sees the machine's older one."""
+    dirs = [tools.wallpaper_home() / "wallpapers"]
+    if usersmod.enabled() and usersmod.is_admin(usersmod.current() or ""):
+        dirs.append(cfgmod.AGENTOS_HOME / "wallpapers")
+    return [d for d in dirs if d.is_dir()]
+
+
+def _wallpaper_item(wid: str) -> Path | None:
+    if not re.fullmatch(r"[\w-]{1,80}", wid or ""):
+        return None
+    return next((d / f"{wid}.png" for d in _wallpaper_dirs() if (d / f"{wid}.png").is_file()), None)
 
 
 @app.get("/api/wallpapers/{wid}")
 async def api_wallpaper_file(wid: str):
-    p = (cfgmod.AGENTOS_HOME / "wallpapers" / f"{wid}.png")
-    if not p.is_file() or ".." in wid or "/" in wid:
+    p = _wallpaper_item(wid)
+    if not p:
         return JSONResponse({"error": "not found"}, status_code=404)
     return FileResponse(p, media_type="image/png")
 
 
 @app.post("/api/wallpapers/{wid}/set")
 async def api_wallpaper_set(wid: str):
-    p = (cfgmod.AGENTOS_HOME / "wallpapers" / f"{wid}.png")
-    if not p.is_file() or ".." in wid or "/" in wid:
+    p = _wallpaper_item(wid)
+    data = p.read_bytes() if p else b""
+    if not tools.image_kind(data):
         return JSONResponse({"error": "not found"}, status_code=404)
-    (cfgmod.AGENTOS_HOME / "wallpaper.png").write_bytes(p.read_bytes())
+    tools.save_wallpaper(data)
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True}
 
 
 @app.delete("/api/wallpapers/{wid}")
 async def api_wallpaper_delete(wid: str):
-    p = (cfgmod.AGENTOS_HOME / "wallpapers" / f"{wid}.png")
-    if p.is_file() and ".." not in wid and "/" not in wid:
+    p = _wallpaper_item(wid)
+    if p:
         p.unlink()
     return {"ok": True}
 
 
 @app.delete("/api/wallpaper")
 async def api_wallpaper_reset():
-    (cfgmod.AGENTOS_HOME / "wallpaper.png").unlink(missing_ok=True)
+    tools.clear_wallpaper()
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True}
 

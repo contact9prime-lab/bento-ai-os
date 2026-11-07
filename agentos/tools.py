@@ -693,6 +693,63 @@ def jail_argv(root: str, command: str, chdir: str | None = None,
     return None
 
 
+WALLPAPER_MAX = 40 * 1024 * 1024
+
+
+def wallpaper_home() -> Path:
+    """Where this person's wallpaper lives: their own home, the machine's with no accounts.
+    It was one machine-wide file any signed-in account could read back."""
+    return Path(usersmod.home_for(usersmod.current() or ""))
+
+
+def save_wallpaper(data: bytes) -> None:
+    """This person's wallpaper. An admin's is also the machine's, which is what the session's
+    background and lock screen read: nobody else's picture reaches those."""
+    home = wallpaper_home()
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "wallpaper.png").write_bytes(data)
+    if usersmod.enabled() and usersmod.is_admin(usersmod.current() or ""):
+        from . import config as cfgmod
+        (Path(cfgmod.AGENTOS_HOME) / "wallpaper.png").write_bytes(data)
+
+
+def clear_wallpaper() -> None:
+    (wallpaper_home() / "wallpaper.png").unlink(missing_ok=True)
+    if usersmod.enabled() and usersmod.is_admin(usersmod.current() or ""):
+        from . import config as cfgmod
+        (Path(cfgmod.AGENTOS_HOME) / "wallpaper.png").unlink(missing_ok=True)
+
+
+def wallpaper_file() -> Path | None:
+    """What this person sees: their own, else the machine's, and only if it is an image. A file
+    planted here before the bytes were checked is never served."""
+    from . import config as cfgmod
+    for p in (wallpaper_home() / "wallpaper.png", Path(cfgmod.AGENTOS_HOME) / "wallpaper.png"):
+        try:
+            with open(p, "rb") as fh:
+                if image_kind(fh.read(16)):
+                    return p
+        except OSError:
+            continue
+    return None
+
+
+def image_kind(data: bytes) -> str:
+    """What the bytes say they are, or ''. Never SVG: a page opened from this origin runs it."""
+    head = bytes(data[:16])
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+    if head.startswith((b"GIF87a", b"GIF89a")):
+        return "gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "webp"
+    if head.startswith(b"BM"):
+        return "bmp"
+    return ""
+
+
 def _truncate(text: str, limit: int | None = None) -> str:
     if limit is None:
         limit = output_limit.get()
@@ -1577,10 +1634,12 @@ class Toolbox(usersmod.Scoped):
         data, src = await self._generate_image(prompt, 1280, 720)
         if data is None:
             return f"[error] image generation failed — {src}"
-        gallery = cfgmod.AGENTOS_HOME / "wallpapers"
+        if not image_kind(data):
+            return "[error] image generation answered with something that is not an image"
+        gallery = wallpaper_home() / "wallpapers"
         gallery.mkdir(parents=True, exist_ok=True)
         (gallery / f"{int(_t.time())}.png").write_bytes(data)       # keep in the gallery
-        (cfgmod.AGENTOS_HOME / "wallpaper.png").write_bytes(data)   # apply as current
+        save_wallpaper(data)                                        # apply as current
         self.store.log("system", f"wallpaper generated via {src}: {prompt[:120]}")
         if self.broadcast:
             await self.broadcast({"type": "wallpaper"})
@@ -1592,12 +1651,22 @@ class Toolbox(usersmod.Scoped):
                     "came from the free service — try again later for the pinned one." + note)
         return f"wallpaper generated with {src} ({len(data) // 1024} KB), saved to the gallery, and applied.{note}"
 
+    def _local_source(self, source: str) -> tuple[Path | None, str]:
+        """A file a tool is about to copy somewhere it can be fetched again: (the real path, a
+        refusal). The same reach as read_file, plus the security files, which no read gets."""
+        p = Path(os.path.realpath(self._abs(source)))
+        if (deny := self._sandbox_deny(p)):
+            return None, deny
+        if (why := protected.secret(p)):
+            return None, f"[denied] {why}"
+        if not p.is_file():
+            return None, f"[error] file not found: {p}"
+        return p, ""
+
     async def set_wallpaper(self, source: str = "") -> str:
-        """Set the desktop wallpaper from a local file or URL; empty source resets to the default."""
-        from . import config as cfgmod
-        dest = cfgmod.AGENTOS_HOME / "wallpaper.png"
+        """Set the desktop wallpaper from a local image or URL; empty source resets to the default."""
         if not source.strip():
-            dest.unlink(missing_ok=True)
+            clear_wallpaper()
             if self.broadcast:
                 await self.broadcast({"type": "wallpaper"})
             return "wallpaper reset to the default"
@@ -1609,10 +1678,15 @@ class Toolbox(usersmod.Scoped):
             if status != 200 or not ctype.startswith("image"):
                 return f"[error] not an image (HTTP {status})"
         else:
-            p = Path(os.path.expanduser(source))
-            if not p.is_file():
-                return f"[error] file not found: {p}"
-            dest.write_bytes(p.read_bytes())
+            p, why = self._local_source(source)
+            if why:
+                return why
+            if p.stat().st_size > WALLPAPER_MAX:
+                return f"[error] that file is larger than {WALLPAPER_MAX // (1024 * 1024)} MB"
+            data = p.read_bytes()
+        if not image_kind(data):
+            return "[error] that file is not an image (PNG, JPEG, GIF or WebP)"
+        save_wallpaper(data)
         if self.broadcast:
             await self.broadcast({"type": "wallpaper"})
         return f"wallpaper set from {source}"
@@ -1703,12 +1777,9 @@ class Toolbox(usersmod.Scoped):
                     self.store, data, name=name, mime=mime, title=title, source="url",
                     origin_url=src, space_id=space_id, conversation_id=conversation_id)
             else:
-                p = Path(os.path.expanduser(src))
-                deny = self._sandbox_deny(p)
-                if deny:
-                    return deny
-                if not p.is_file():
-                    return f"[error] file not found: {p}"
+                p, why = self._local_source(src)
+                if why:
+                    return why
                 row = await assetmod.put_bytes(
                     self.store, p.read_bytes(), name=p.name, title=title or p.name,
                     source="tool:save_asset", space_id=space_id,
@@ -2505,16 +2576,31 @@ class Toolbox(usersmod.Scoped):
         slug = _re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:50] or "report"
         stamp = _t.strftime("%Y-%m-%d")
         fname = f"{stamp}-{slug}.html"
-        body = content if "<" in content and ">" in content else f"<pre>{content}</pre>"
-        html = (f"<!doctype html><html><head><meta charset='utf-8'><title>{title}</title>"
+        target = reports / fname
+        if target.is_symlink():
+            return "[denied] that report is a link, so nothing was saved there."
+        real = os.path.realpath(target)
+        if (deny := self._sandbox_deny(real, write=True)):
+            return deny
+        if (why := protected.write_refused(real)):
+            return f"[denied] {why}"
+        reports.mkdir(parents=True, exist_ok=True)
+        # The body may be HTML, which is the point of a report, and the page is served in a
+        # sandbox. The title is a line of text, so it stays text.
+        body = content if "<" in content and ">" in content else f"<pre>{_html.escape(content)}</pre>"
+        safe_title = _html.escape(title)
+        html = (f"<!doctype html><html><head><meta charset='utf-8'><title>{safe_title}</title>"
                 "<style>body{background:#0e1116;color:#e6ebf2;font-family:-apple-system,Segoe UI,Roboto,sans-serif;"
                 "line-height:1.6;max-width:820px;margin:0 auto;padding:34px}h1,h2,h3{color:#5eead4}"
                 "a{color:#22d3ee}code,pre{background:#171b22;border:1px solid #232a35;border-radius:6px;padding:2px 6px}"
                 "pre{padding:12px;overflow:auto;white-space:pre-wrap}table{border-collapse:collapse;width:100%}"
                 "td,th{border:1px solid #232a35;padding:6px 9px;text-align:left}"
                 f".meta{{color:#5c6577;font-size:12px;margin-bottom:18px}}</style></head><body>"
-                f"<h1>{title}</h1><div class='meta'>Generated {_t.strftime('%Y-%m-%d %H:%M')}</div>{body}</body></html>")
-        (reports / fname).write_text(html)
+                f"<h1>{safe_title}</h1><div class='meta'>Generated {_t.strftime('%Y-%m-%d %H:%M')}</div>{body}</body></html>")
+        # O_NOFOLLOW: the check above and this write are not one moment
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(html)
         self.store.log("system", f"report saved: reports/{fname}")
         if self.broadcast:
             await self.broadcast({"type": "files"})
