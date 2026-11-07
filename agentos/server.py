@@ -20,6 +20,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                PlainTextResponse, Response)
 
 from . import agentbundle
+from . import secevents
 from . import turnerrors
 from . import appcheck
 from . import approvalcard
@@ -219,6 +220,8 @@ def _start_account_bridges() -> list[str]:
 async def startup():
     cfg = cfgmod.load_config()
     cfgmod.ensure_dirs(cfg)
+    state["loop"] = asyncio.get_running_loop()
+    secevents.on_alert(_security_alert)
     _running_build()        # pinned now: the build that is answering, not the one on disk later
     _pin_page()             # and the page that matches it (see index())
     # every home on the machine brought up to this code — the machine's and each
@@ -11463,6 +11466,37 @@ async def api_audit(limit: int = 300, effect: str = "", action: str = "",
 @app.get("/api/audit/summary")
 async def api_audit_summary(since: float = 0.0, space: str = ""):
     return state["store"].audit_summary(since=since, space=space)
+
+
+def _security_alert(alert: dict) -> None:
+    """secevents raised an alert, possibly on another thread: every admin's screens hear it
+    (everyone's on a machine with no accounts). The source and detail are the attacker's words,
+    so the page gets them to display as text and the sentence comes from the OS."""
+    loop = state.get("loop")
+    if not loop or loop.is_closed():
+        return
+
+    async def tell():
+        ev = {"type": "security_alert", "kind": alert["kind"], "words": alert["words"],
+              "source": alert["source"], "count": alert["count"], "at": alert["at"]}
+        if not usersmod.enabled():
+            return await state["broadcast_user"](ev, "")
+        for u in usersmod.list_users():
+            if usersmod.is_admin(u["id"]):
+                await state["broadcast_user"](ev, u["id"])
+
+    with contextlib.suppress(RuntimeError):
+        loop.call_soon_threadsafe(lambda: loop.create_task(tell()))
+
+
+@app.get("/api/security/events")
+async def api_security_events(limit: int = 200, alerts: bool = False):
+    """The security record, for an admin. Read only: there is no route that clears it."""
+    denied = _require_admin()
+    if denied:
+        return denied
+    limit = max(1, min(int(limit), secevents.KEEP))
+    return {"events": secevents.recent(limit, alerts_only=alerts)}
 
 
 @app.get("/api/audit/verify")

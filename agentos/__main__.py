@@ -8794,6 +8794,23 @@ def _grants_why(args):
         print(f"  rule {g['id']}: {g['effect']} {g['action']} {g['resource']} ({g.get('source') or 'user'})")
 
 
+def _security_cli(args):
+    """`bento security`: what the machine noticed. Reads the file, so it works with the server down."""
+    from . import secevents
+    rows = secevents.recent(args.limit, alerts_only=args.alerts)
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+    if not rows:
+        print("Nothing on the security record.")
+        return
+    for ev in rows:
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(ev.get("at") or 0)))
+        mark = "!" if ev.get("alert") else " "
+        src = f" from {ev['source']}" if ev.get("source") else ""
+        print(f"{mark} {when}  {ev['words']}{src}" + (f"  ({ev['detail']})" if ev.get("detail") else ""))
+
+
 def _audit_cli(args):
     _, store = _open_store(getattr(args, "user", ""))
     if getattr(args, "verify", False):
@@ -9206,6 +9223,11 @@ def main():
     p_audit.add_argument("--limit", type=int, default=50)
     p_audit.add_argument("--verify", action="store_true",
                          help="check the ledger's hash chain for edited or deleted rows")
+
+    p_security = verb("security", help="what this machine noticed: failed sign-ins, forged tokens, changed security files")
+    p_security.add_argument("--limit", type=int, default=50)
+    p_security.add_argument("--alerts", action="store_true", help="only what raised an alert")
+    p_security.add_argument("--json", action="store_true")
 
     p_grants = verb("grants", help="who may do what without asking — list, add, revoke")
     p_grants.add_argument("action", nargs="?", default="list",
@@ -9869,6 +9891,8 @@ def main():
         _assets_cli(args)
     elif args.cmd == "audit":
         _audit_cli(args)
+    elif args.cmd == "security":
+        _security_cli(args)
     elif args.cmd == "grants":
         _grants_cli(args)
     elif args.cmd == "registry":

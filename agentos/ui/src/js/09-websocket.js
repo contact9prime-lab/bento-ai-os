@@ -727,6 +727,10 @@ function handle(ev){
       else if(typeof faceFacesPaint==='function'&&document.getElementById('s-faces')){KFACE.st=null;faceFacesPaint()}}); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
+    // the server noticed something: its own sentence, and what it was given shown as text by toast
+    case 'security_alert':{
+      toast('⚠ Security: '+ev.words+(ev.source?' ('+ev.source+')':''),{kind:'warn',label:'Review',go:()=>{if(typeof permGo==='function')permGo('ledger');else openApp('settings')}});
+      break;}
     case 'approval_resolved':{
       delete APPROVALS[ev.id];
       // its "approval needed" toast goes too: a Review that opens nothing is a dead button

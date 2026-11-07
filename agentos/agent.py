@@ -879,6 +879,13 @@ class Agent:
             memories=mem_text,
             machine=await _machine_state(self.toolbox),
         )
+        # Awareness only: the OS's own sentences, never an attacker's text, and the note says
+        # the model decides nothing. A specialist or an app's agent has no person to tell.
+        if self.principal == MAIN:
+            from . import secevents
+            notice = secevents.agent_note()
+            if notice:
+                base += "\n\n" + notice
         return (base + "\n\n" + self.extra_system) if self.extra_system else base
 
     async def _checkpoint(self, name: str, args: dict) -> None:
