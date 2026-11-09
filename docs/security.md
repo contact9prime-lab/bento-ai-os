@@ -439,6 +439,9 @@ asset from a URL, calendars, app and agent imports, skills. It refuses this mach
 link-local networks and cloud metadata addresses, resolves the name once and connects to the address
 it checked, so a name can't change its answer, and it checks again on every redirect.
 
+![Settings, Permissions, with the Local addresses row listing nas.local](screenshots/security-local-addresses.png)
+![The Local addresses row in Permissions on a phone-sized screen](screenshots/security-local-addresses-phone.png)
+
 You can open it for your own network in Settings → Permissions → Local addresses, or with `bento
 security --allow nas.local`. A model can't write that list, an app never gets it, and no list opens a
 metadata address or this server's own port. Loopback needs a named port.
