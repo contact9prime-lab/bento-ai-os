@@ -1141,20 +1141,23 @@ class Door:
         from . import teamlink
         teamlink._ROOT.set(self.root)    # this task is this machine, whatever started it
         addr = (writer.get_extra_info("peername") or ("?",))[0]
+        conn: dict = {}                   # this connection's proven claim, waiting for its profile
         try:
-            for _ in range(2):            # hello, then claim: one connection, two lines
+            for _ in range(3):            # hello, claim, profile: one connection, three lines
                 req = await teamlink._read_line(reader, limit=64 * 1024, timeout=20)
-                out = await self._dispatch(req, addr)
+                out = await self._dispatch(req, addr, conn)
                 writer.write((json.dumps(out) + "\n").encode())
                 await writer.drain()
-                if req.get("op") != "hello" or not out.get("ok"):
+                more = req.get("op") == "hello" or (req.get("op") == "claim" and conn.get("claim"))
+                if not out.get("ok") or not more:
                     break
         except Exception:
             pass
         finally:
             writer.close()
 
-    async def _dispatch(self, req: dict, addr: str) -> dict:
+    async def _dispatch(self, req: dict, addr: str, conn: dict | None = None) -> dict:
+        conn = {} if conn is None else conn
         cfg = self.cfg()
         if not waiting(cfg)[0]:
             return {"ok": False, "error": "this machine is not waiting to be set up"}
@@ -1164,7 +1167,13 @@ class Door:
             now = time.time()
             self._nonces = {n: t for n, t in self._nonces.items() if t > now - NONCE_TTL}
             self._nonces[nonce] = now
-            return {"ok": True, **here(cfg), "nonce": nonce}
+            # steps 2: the claim and the member's proof come first, the profile after it
+            return {"ok": True, **here(cfg), "nonce": nonce, "steps": 2}
+        if op == "profile":
+            pending = conn.pop("claim", None)
+            if not pending:
+                return {"ok": False, "error": "no proven claim on this connection — start again"}
+            return self._take(cfg, {**pending, "profile": req.get("profile") or {}}, addr, None)
         if op != "claim":
             return {"ok": False, "error": f"unknown request '{op}'"}
         nonce = str(req.get("nonce") or "")
@@ -1178,14 +1187,28 @@ class Door:
             from . import secevents
             secevents.flag("provision.refused", err, source=addr)
             return {"ok": False, "error": err}
-        got = apply_claim(cfg, req, addr)
         from . import teamlink
+        ident = teamlink.ensure_pki()
+        back = proof(secret, str(leader.get("host_fp")), ident["host_fp"],
+                     str(req.get("nonce2") or ""), side="member")
+        if req.get("steps") == 2:
+            # Prove this side before anything is taken: the leader checks proof_back and only
+            # then sends the profile (agent souls, names), so a device that copied a key id out
+            # of a beacon never receives it. Nothing is applied until the profile arrives.
+            conn["claim"] = {k: v for k, v in req.items() if k != "profile"}
+            return {"ok": True, "proof_back": back, "host_fp": ident["host_fp"]}
+        # a leader from before steps: it sent the profile already, so take it as it always was
+        return self._take(cfg, req, addr, back if req.get("how") == "key" else None)
+
+    def _take(self, cfg: dict, req: dict, addr: str, back: str | None) -> dict:
+        from . import teamlink
+        leader = req.get("leader") or {}
+        got = apply_claim(cfg, req, addr)
         ident = teamlink.ensure_pki()
         reply = {"ok": True, "name": teamlink.machine_name(cfg), "ca": ident["ca"],
                  "host_fp": ident["host_fp"], "port": teamlink.team_port(cfg), "hw": hardware()}
-        if req.get("how") == "key":
-            reply["proof_back"] = proof(secret, str(leader.get("host_fp")), ident["host_fp"],
-                                        str(req.get("nonce2") or ""), side="member")
+        if back:
+            reply["proof_back"] = back
         self.audit("provision.claimed",
                    f"set up by {leader.get('name') or 'a leader'} at {addr} ({req.get('how')}); "
                    f"profile {json.dumps(got['profile'])}")
@@ -1292,6 +1315,13 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
         hello = await say({"op": "hello"})
         if not hello.get("ok"):
             raise ValueError(hello.get("error") or "it did not answer")
+        if int(hello.get("steps") or 0) < 2:
+            # An older machine takes the profile before it proves who it is. Sending it would
+            # hand the standard profile to whatever answered, so say so and stop.
+            raise ValueError(f"{target.get('name') or 'that machine'} runs an older Bento"
+                             f"{' (' + str(hello.get('version')) + ')' if hello.get('version') else ''}"
+                             f" that can't prove itself before it's set up. Update it there "
+                             f"(`bento update`) or install it again, then set it up")
         nonce = str(hello.get("nonce") or "")
         d = load()
         key = next((k for k in d["keys"] if k["id"] == hello.get("key_id")), None)
@@ -1305,21 +1335,33 @@ async def enable(cfg: dict, target: dict, profile: dict | None = None, code: str
                 raise ValueError(f"{target.get('name') or 'that machine'} shows a six-digit code on its "
                                  f"screen (or `bento pool wait` there) — type it in")
             how, secret, prof = "code", code, profile_for(None, profile)
-        out = await say({"op": "claim", "nonce": nonce, "nonce2": nonce2, "how": how,
-                         "key_id": key["id"] if key else "",
-                         "proof": proof(secret, ident["host_fp"], fp, nonce),
-                         "leader": {"name": teamlink.machine_name(cfg), "ca": ident["ca"],
-                                    "host_fp": ident["host_fp"], "port": teamlink.team_port(cfg)},
-                         "pool": pool_info or {}, "profile": prof})
+        # Step one carries no profile: the member proves it holds the key (or knows the code
+        # on its screen) before it is told anything about this community.
+        proved = await say({"op": "claim", "steps": 2, "nonce": nonce, "nonce2": nonce2, "how": how,
+                            "key_id": key["id"] if key else "",
+                            "proof": proof(secret, ident["host_fp"], fp, nonce),
+                            "leader": {"name": teamlink.machine_name(cfg), "ca": ident["ca"],
+                                       "host_fp": ident["host_fp"], "port": teamlink.team_port(cfg)},
+                            "pool": pool_info or {}})
+        if not proved.get("ok"):
+            raise ValueError(proved.get("error") or "it refused")
+        if proved.get("host_fp") != fp:
+            raise ValueError("it answered with a different certificate — refused")
+        if not constcmp.same(str(proved.get("proof_back") or ""),
+                             proof(secret, ident["host_fp"], fp, nonce2, side="member")):
+            raise ValueError("it does not really hold the enrolment key — refused" if key else
+                             "it could not prove it knows the code on its screen — refused")
+        try:
+            out = await say({"op": "profile", "profile": prof})
+        except (OSError, asyncio.TimeoutError, ValueError, json.JSONDecodeError):
+            raise ValueError(f"{target.get('name') or 'that machine'} proved itself and then "
+                             f"stopped answering — look again and set it up again")
     finally:
         writer.close()
     if not out.get("ok"):
         raise ValueError(out.get("error") or "it refused")
     if out.get("host_fp") != fp or not str(out.get("ca") or "").startswith("-----BEGIN CERTIFICATE"):
         raise ValueError("it answered with a different certificate — refused")
-    if key and not constcmp.same(str(out.get("proof_back") or ""),
-                                       proof(secret, ident["host_fp"], fp, nonce2, side="member")):
-        raise ValueError("it does not really hold the enrolment key — refused")
     td = teamlink._load()
     td["links"] = [lk for lk in td["links"] if lk.get("peer_host_fp") != fp]
     name = teamlink._label(out.get("name") or target.get("name") or "machine")

@@ -513,3 +513,67 @@ def test_a_stranger_never_pushes_out_a_machine_a_person_acted_on(tmp_path, monke
             provision.note_seen(_beacon(f"{i + 1:064x}"))
         seen = provision.load()["seen"]
         assert "e" * 64 in seen and "d" * 64 in seen and len(seen) <= provision.MAX_SEEN
+
+
+# ---- the member proves itself before it hears the profile (audit followup 6) ----------------
+
+def _record_claims(monkeypatch):
+    seen = []
+    real = provision.apply_claim
+
+    def spy(cfg, req, addr):
+        seen.append(req)
+        return real(cfg, req, addr)
+    monkeypatch.setattr(provision, "apply_claim", spy)
+    return seen
+
+
+def test_a_device_that_copied_a_key_id_never_receives_the_profile(lan, monkeypatch):
+    L, A, B, loop, heard = lan
+    with _at(L):
+        k = provision.make_key("auto", auto=True, profile={"agent_name": "Secretname"})
+    with _at(A):
+        provision.adopt_key(k["text"])
+    t = _scan(L, loop)["pi-kitchen"]
+    seen = _record_claims(monkeypatch)
+    monkeypatch.setattr(provision, "check_claim", lambda req, nonce: (True, "", "not-the-secret"))
+    with pytest.raises(ValueError, match="does not really hold the enrolment key"):
+        _enable(L, t, loop, profile={"agent_name": "Secretname"})
+    assert not seen, "nothing was applied on the device"
+    assert A["cfg"]["agent_name"] == "Aria" and not A["cfg"].get("setup_complete")
+
+
+def test_a_code_machine_proves_it_knows_its_code_too(lan, monkeypatch):
+    L, A, B, loop, heard = lan
+    t = _scan(L, loop)["pi-kitchen"]
+    seen = _record_claims(monkeypatch)
+    monkeypatch.setattr(provision, "check_claim", lambda req, nonce: (True, "", "999999"))
+    with pytest.raises(ValueError, match="could not prove it knows the code"):
+        _enable(L, t, loop, code="123456" if _code(A) != "123456" else "654321")
+    assert not seen
+    with _at(L):
+        assert not provision.was_enabled_here(t["fp"])
+
+
+def test_the_real_claim_still_carries_the_profile_after_the_proof(lan):
+    L, A, B, loop, heard = lan
+    t = _scan(L, loop)["pi-kitchen"]
+    r = _enable(L, t, loop, code=_code(A), profile={"agent_name": "Juniper"})
+    assert r["ok"] and A["cfg"]["agent_name"] == "Juniper" and A["cfg"]["setup_complete"]
+
+
+def test_a_machine_on_older_code_gets_a_sentence_not_a_hang(lan, monkeypatch):
+    L, A, B, loop, heard = lan
+    t = _scan(L, loop)["pi-kitchen"]
+    real = provision.Door._dispatch
+
+    async def old(self, req, addr, conn=None):     # an older Door: no steps in its hello
+        out = await real(self, req, addr, conn)
+        out.pop("steps", None)
+        return out
+    monkeypatch.setattr(provision.Door, "_dispatch", old)
+    seen = _record_claims(monkeypatch)
+    t0 = time.time()
+    with pytest.raises(ValueError, match="runs an older Bento"):
+        _enable(L, t, loop, code=_code(A))
+    assert time.time() - t0 < 5 and not seen
