@@ -91,6 +91,13 @@ function stageEvent(ev){
   else{STAGE.tab='now';stagePaint();}
   if(Date.now()>STAGE.held)stageSay(ev.scene);
 }
+/* A blueprint filling itself in (bpfill.py): the part that landed is redrawn where you are. */
+function stageFill(ev){
+  const hit=(STAGE.scenes||[]).find(s=>s.id===ev.id);
+  if(!hit)return;
+  const old=hit.scene;hit.scene=ev.scene;
+  document.querySelectorAll('.bp-art').forEach(art=>{if(art._bp&&art._bp.sc===old)bpRefill(art._bp,ev.scene)});
+}
 function stagePaintIfOpen(){const w=typeof WM!=='undefined'&&WM.wins.get('stage');if(w)stagePaint()}
 function stageToApp(aid,ev){
   let frames=document.querySelectorAll('iframe[src^="/api/apps/'+aid+'/page"]');

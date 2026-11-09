@@ -70,6 +70,32 @@ line and an elevation scale. It doesn't stop at the outside. Every part opens.
 
 ![Three levels in: the buttressed core of the Burj Khalifa, exploded into its walls, with "you are here" on the tower](screenshots/stage-blueprint-inside.png)
 
+### Every part is filled in
+
+The agent puts an outline on the Stage straight away. Then each part is filled in on its own, in
+parallel, by the same brain with the web allowed: what it does, how it works, what it's made of, its
+limits, three to six numbers with their source, and the parts inside it, three levels down. You see
+the parts land one by one, marked "filling in" until they do, and the panel says how many are done
+and how much was looked up. A part that couldn't be filled in says why. Measured on Claude Code, a
+jet engine, the human heart and a smartphone supply chain each came out at 140 to 148 parts and 311
+to 420 numbers, in about five minutes, with 37 to 60 look-ups each.
+
+![A turbofan as a blueprint: ten modules, each card with its key numbers and the parts inside it, and the panel's key numbers for the whole engine](screenshots/stage-blueprint-depth.png)
+
+The first screen shows two levels. Each card carries its key numbers, how it works when there's
+room, and the names of what's inside it, so the thing is taken apart before you click anything.
+
+![A reactor plant while it fills in: some parts landed with their numbers, others marked as filling in](screenshots/stage-blueprint-filling.png)
+
+### How it works
+
+**How it works** at the top of a level draws what flows between its parts: air, power, fluid, heat,
+data, signal, control, material, money, load or people. Each kind has its own line, named in the key,
+and a flow between parts deeper down counts for the parts of this level that hold them. Point at a
+part to read its flows.
+
+![The turbofan's How it works view: the modules as boxes in rows, joined by lines for air, power, fluid, heat and control](screenshots/stage-blueprint-flows.png)
+
 The agent picks how each level is laid out: a **tower** for something built in layers along a height
 (drawn to scale when it knows the real widths), an **exploded** view for a thing made of parts round a
 core, and a **flow** for a process. The line says how sure it is: solid is known, dashed is an
@@ -180,6 +206,12 @@ Stage".
   subject, twelve to a level, 160 in all, and what is dropped is named with where it was
   (`parts[2].colour`). A width over 1 is the real width in the scene's unit, drawn to the same scale
   as the heights. `ask_deeper(part=)` asks for one part by its place in the whole.
+- `agentos/bpfill.py` fills a blueprint in after `show_scene` stores its outline: each thin top-level
+  part is asked of the machine's brain on its own (four at once; a CLI gets only its web tools), and
+  each answer goes through the same cleaner as the agent's before it is merged and sent as
+  `stage_fill`. A part keeps its id, name, heights and width, the 160-part cap is shared, and a
+  failure is kept in `fill.failed`. Telegram and WhatsApp wait up to four minutes for it before they
+  photograph the story.
 - `agentos/xray.py` builds an X-ray from `trace.conversation` / `trace.run`, the same gathering
   `bento trace` writes out, so the X-ray and the JSON can't disagree. It is read on request
   (`/api/stage/xray`) and never stored.

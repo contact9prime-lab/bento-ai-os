@@ -50,7 +50,7 @@ def test_a_blueprint_is_a_closed_set_at_every_level():
     # four levels under the subject, the fifth named rather than silently lost
     assert any("deeper than 4" in d for d in dropped)
     assert [p["id"] for p in sc["parts"]] == ["foundation", "spire", "spire-2"]
-    assert sc["links"] == [{"from": "spire", "to": "foundation", "verb": "stands on"}]
+    assert sc["links"] == [{"from": "spire", "to": "foundation", "verb": "stands on", "kind": ""}]
     assert "links[1] (names a part that is not there)" in dropped
     assert sc["unknowns"] == ["pile loads today"]
     # 0 to 1 is a share of the widest; over 1 is the real width, kept

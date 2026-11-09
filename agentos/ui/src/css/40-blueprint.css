@@ -89,6 +89,40 @@
   paint-order:stroke;stroke:#061a33;stroke-width:4px;stroke-linejoin:round}
 .bp-link.on,.bp-verb.on{opacity:1}
 
+/* a card's numbers and what is inside it: two levels on the first screen */
+.bp-fl{fill:rgba(186,230,253,.66);font:500 10.5px ui-monospace,SFMono-Regular,Menlo,monospace}
+.bp-fv{fill:#f0f9ff;font:700 11.5px ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.bp-howt{fill:rgba(224,242,254,.6);font-size:11px;font-style:italic}
+.bp-rule{stroke:rgba(125,211,252,.12);stroke-width:1}
+.bp-insidet{fill:rgba(165,243,252,.78);font:500 10.5px var(--sans);paint-order:stroke;stroke:#061a33;stroke-width:3px;stroke-linejoin:round}
+.bp-subs line{stroke:rgba(186,230,253,.42);stroke-width:1;stroke-dasharray:3 2}
+.bp-lbg{fill:rgba(6,26,51,.88)}
+.bp-thint{fill:rgba(186,230,253,.45)}
+.bp-thinp .bp-edge{stroke-opacity:.6}
+/* a part being filled in is drawn as work in progress, and stops when it lands */
+.bp-fillt{fill:#fde68a;color:#fde68a}
+.bp-filling .bp-edge{stroke:#fde68a;animation:bp-wait 1.6s ease-in-out infinite}
+@keyframes bp-wait{50%{stroke-opacity:.35}}
+.bp-note{margin:0 0 10px;padding:6px 9px;border-radius:6px;background:rgba(125,211,252,.07);
+  border:1px solid var(--bp-line);font-size:12.5px;line-height:1.4;color:rgba(224,242,254,.85)}
+.bp-note.bp-fillt{border-color:rgba(253,230,138,.4);background:rgba(253,230,138,.06)}
+.bp-in-list{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.bp-in-list li{display:grid;gap:1px}
+.bp-in-b{justify-self:start;background:none;border:0;padding:3px 0;color:#bae6fd;font:700 13px var(--sans);
+  cursor:pointer;text-align:left;min-height:28px}
+.bp-in-b:hover,.bp-in-b:focus-visible{color:#fff;text-decoration:underline}
+.bp-in-r{color:rgba(224,242,254,.62);font-size:12px;line-height:1.35}
+/* the two views of a level */
+.bp-modes{display:inline-flex;border:1px solid var(--bp-line);border-radius:7px;overflow:hidden;margin-right:6px}
+.bp-mode{background:none;border:0;color:rgba(186,230,253,.72);font:inherit;padding:6px 10px;cursor:pointer;min-height:30px}
+.bp-mode.on{background:rgba(125,211,252,.16);color:#fff}
+.bp-mode+.bp-mode{border-left:1px solid var(--bp-line)}
+/* what flows: each kind its own line, and its word on it */
+.bp-fl-line{fill:none;stroke:#fbbf24;stroke-opacity:.85;transition:opacity .2s}
+.bp-fl-word{fill:#fde68a;font:600 10.5px ui-monospace,monospace;paint-order:stroke;stroke:#061a33;stroke-width:4px;stroke-linejoin:round;opacity:0;transition:opacity .2s;pointer-events:none}
+.bp-fl-word.on{opacity:1}
+.bp-focus .bp-fl-line[data-from]:not(.on){opacity:.18}
+
 /* the one under your finger, and the rest stepping back */
 .bp-focus .bp-p:not(.on){opacity:.42}
 .bp-p.on .bp-edge,.bp-p:focus-visible .bp-edge{stroke:var(--bp-hi);stroke-width:2.4}
@@ -110,6 +144,7 @@
 @keyframes bp-back{from{opacity:0;transform:scale(1.12)}to{opacity:1;transform:none}}
 .bp-in .bp-p,.bp-back .bp-world{transform-box:fill-box;transform-origin:center}
 .bp-still *,.stg-art.still .bp *{animation:none!important;transition:none!important}
+@media (prefers-reduced-motion:reduce){.bp-filling .bp-edge{animation:none}}
 
 /* the title block, at the foot of the panel */
 .bp-info{display:grid;grid-template-columns:auto 1fr;margin-top:14px;border:1px solid var(--bp-line);border-radius:6px;overflow:hidden}
@@ -132,9 +167,9 @@
 .bp-status{display:inline-block;font:700 11px ui-monospace,monospace;border:1px solid;border-radius:999px;padding:3px 9px;margin:0 0 8px}
 .bp-role{margin:0 0 8px;font-weight:600;line-height:1.45;color:#e0f2fe;overflow-wrap:anywhere}
 .bp-detail{margin:0 0 10px;color:rgba(224,242,254,.78);line-height:1.5;font-size:13.5px;overflow-wrap:anywhere}
-.bp-facts{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:10px 0;padding:10px 0 2px;border-top:1px solid var(--bp-line)}
+.bp-facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(min(45%,9em),auto);gap:5px 12px;margin:10px 0;padding:10px 0 2px;border-top:1px solid var(--bp-line)}
 .bp-facts dt{color:rgba(186,230,253,.66);font:500 11px ui-monospace,monospace;text-transform:uppercase;letter-spacing:.06em;padding-top:2px}
-.bp-facts dd{margin:0;font:700 13.5px ui-monospace,monospace;color:#fff;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.bp-facts dd{margin:0;text-align:right;font:700 13.5px ui-monospace,monospace;color:#fff;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .bp-unk{margin:0;padding-left:18px;color:rgba(253,230,138,.85);font-size:13px;line-height:1.45}
 .bp-ev{margin-top:10px;font:500 11px ui-monospace,monospace;color:rgba(186,230,253,.6);overflow-wrap:anywhere}
 .bp-hint{margin:14px 0 0;color:rgba(186,230,253,.6);font-size:12.5px}
@@ -155,6 +190,7 @@
   .bp-legend{display:none}
   .bp-crumbs{margin-bottom:6px}
   .bp-crumb{max-width:150px}
+  .bp-mode{min-height:var(--tap,40px)}
   .bp-crumb,.bp-up{min-height:var(--tap,40px)}
 }
 /* the phone's sheet: the part under your finger, over the foot of the drawing */

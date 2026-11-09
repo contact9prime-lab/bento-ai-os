@@ -63,7 +63,7 @@ FIELDS = {
     "image": ("url", "asset", "alt", "credit"),
     "video": ("url", "start"),
     "film": ("shots", "look"),
-    "blueprint": ("subject", "form", "unit", "parts", "links", "unknowns"),
+    "blueprint": ("subject", "form", "unit", "parts", "links", "unknowns", "facts"),
 }
 
 # A blueprint takes a thing apart instead of presenting it: its parts, how they connect,
@@ -81,10 +81,19 @@ BP_DEPTH = 4             # levels of parts under the subject
 BP_CHILDREN = 12         # parts at one level: more than that is a list, not a drawing
 BP_NODES = 160           # parts in all; a blueprint is drawn on a phone too
 BP_FACTS = 6
-BP_LINKS = 40
+BP_LINKS = 160
 BP_UNKNOWNS = 6
-BP_PART = ("name", "id", "role", "detail", "facts", "from", "to", "width", "certainty", "status",
-           "source", "evidence", "form", "parts", "unknowns")
+BP_HEADLINE = 8          # the whole's own key numbers, the spec table
+# what a part carries besides its parts: what it does (role), HOW it works, what it is made
+# of, its limits or how it fails. A blueprint that only names parts is a list with lines.
+BP_PART = ("name", "id", "role", "detail", "how", "made_of", "limits", "facts", "from", "to",
+           "width", "certainty", "status", "source", "evidence", "form", "parts", "unknowns")
+# what flows along a link. Each is drawn with its own line and a word, never colour alone.
+BP_FLOWS = ("load", "power", "fluid", "heat", "air", "data", "signal", "control", "material",
+            "money", "people")
+# a part with fewer facts than this and no how is THIN: the page says so rather than letting
+# a name with a line under it pass for a part that was taken apart
+BP_THIN_FACTS = 2
 
 # A film is a short 3D animation the page plays from a shot list, asked for as "stage
 # generation should have video generation too … the AI should decide the level". The model
@@ -168,7 +177,7 @@ def clean(spec: dict) -> tuple[dict, list[str]]:
         r.get("value") is not None for r in sc.get("regions", []) + sc.get("points", [])))) or (
         kind == "film" and any(sh.get("value") is not None or sh.get("items")
                                for sh in sc.get("shots", []))) or (
-        kind == "blueprint" and _bp_measured(sc.get("parts", [])))
+        kind == "blueprint" and (bool(sc.get("facts")) or _bp_measured(sc.get("parts", []))))
     if measured and not sc["source"] and not sc["illustrative"]:
         raise ValueError("say where these numbers came from (source: a site, a dataset or "
                          "a URL), or set illustrative: true when they are an example")
@@ -375,11 +384,12 @@ class _KIND:
             if not a or not b or a == b:
                 dropped.append(f"links[{i}] (names a part that is not there)")
                 continue
-            links.append({"from": a, "to": b, "verb": _s(ln.get("verb"), 40)})
+            links.append(_bp_link(ln, a, b, f"links[{i}]", dropped))
         sc.update(subject=_s(spec.get("subject") or sc["title"], 80) or "The whole",
                   form=form or _bp_form_of(parts), unit=_s(spec.get("unit"), 12), parts=parts,
-                  links=links, unknowns=[_s(u, 160) for u in _list(spec.get("unknowns"))[:BP_UNKNOWNS]
-                                         if str(u or "").strip()])
+                  links=links, facts=_bp_facts(spec.get("facts"), BP_HEADLINE),
+                  unknowns=[_s(u, 160) for u in _list(spec.get("unknowns"))[:BP_UNKNOWNS]
+                            if str(u or "").strip()])
         if not sc["title"]:
             sc["title"] = sc["subject"]
 
@@ -408,6 +418,33 @@ def _bp_ref(v, seen: set) -> str:
         return v
     sl = _bp_slug(v)
     return sl if sl in seen else ""
+
+
+def _bp_link(ln: dict, a: str, b: str, at: str, dropped: list) -> dict:
+    kind = str(ln.get("kind") or "").strip().lower()
+    if kind and kind not in BP_FLOWS:
+        dropped.append(f"{at}.kind {kind!r}")
+        kind = ""
+    return {"from": a, "to": b, "verb": _s(ln.get("verb"), 40), "kind": kind}
+
+
+# what a model writes in a unit when there is none
+_NO_UNIT = {"n/a", "na", "none", "-", "—", "null"}
+
+
+def _bp_facts(raw, cap: int = BP_FACTS) -> list:
+    out = []
+    for f in _list(raw)[:cap]:
+        if isinstance(f, dict) and str(f.get("value") if f.get("value") is not None else "").strip():
+            unit = _s(f.get("unit"), 12)
+            out.append({"label": _s(f.get("label"), 40), "value": _s(f.get("value"), 28),
+                        "unit": "" if unit.lower() in _NO_UNIT else unit})
+    return out
+
+
+def bp_thin(p: dict) -> bool:
+    """A part that names a thing and says almost nothing about it."""
+    return len(p.get("facts") or []) < BP_THIN_FACTS and not p.get("how") and not p.get("detail")
 
 
 def _bp_form_of(parts: list) -> str:
@@ -450,17 +487,15 @@ def _bp_parts(raw, depth: int, where: str, seen: set, count: list, dropped: list
         if form and form not in BP_FORMS:
             dropped.append(f"{at}.form {form!r}")
             form = ""
-        facts = []
-        for f in _list(p.get("facts"))[:BP_FACTS]:
-            if isinstance(f, dict) and str(f.get("value") if f.get("value") is not None else "").strip():
-                facts.append({"label": _s(f.get("label"), 40), "value": _s(f.get("value"), 28),
-                              "unit": _s(f.get("unit"), 12)})
+        facts = _bp_facts(p.get("facts"))
         lo, hi = _num(p.get("from")), _num(p.get("to"))
         if lo is not None and hi is not None and hi < lo:
             lo, hi = hi, lo
         w = _num(p.get("width"))
         node = {"id": pid, "name": name, "role": _s(p.get("role"), 160),
-                "detail": _s(p.get("detail"), 600), "facts": facts, "certainty": cert,
+                "detail": _s(p.get("detail"), 600), "how": _s(p.get("how"), 600),
+                "made_of": _s(p.get("made_of"), 200), "limits": _s(p.get("limits"), 300),
+                "facts": facts, "certainty": cert,
                 "status": status, "source": _s(p.get("source"), 200),
                 "evidence": _s(p.get("evidence"), 240),
                 "unknowns": [_s(u, 160) for u in _list(p.get("unknowns"))[:4] if str(u or "").strip()],
@@ -603,6 +638,8 @@ def text(sc: dict) -> str:
     elif k == "blueprint":
         u = sc.get("unit") or ""
         out.append(f"  ⌖ {sc['form']} · {sum(1 for _ in bp_walk(sc['parts']))} parts")
+        if sc.get("facts"):
+            out.append("  " + " · ".join(f"{f['label']} {bp_value(f)}".strip() for f in sc["facts"]))
         out += _bp_lines(sc["parts"], "  ", u)
         for x in sc.get("unknowns") or []:
             out.append(f"  ? {x}")
@@ -643,8 +680,11 @@ def _bp_lines(parts: list, pad: str, unit: str) -> list[str]:
         facts = "; ".join(f"{f['label']} {bp_value(f)}".strip() for f in p.get("facts") or [])
         out.append(f"{pad}{'└─' if last else '├─'} {mark}{p['name']}{span}{cert}"
                    + (f" — {p['role']}" if p.get("role") else "") + (f"  · {facts}" if facts else ""))
+        more = pad + ("   " if last else "│  ")
+        if p.get("how"):
+            out.append(f"{more}  how: {p['how'][:160]}")
         if p.get("evidence"):
-            out.append(f"{pad}{'   ' if last else '│  '}  ↳ {p['evidence']}")
+            out.append(f"{more}  ↳ {p['evidence']}")
         out += _bp_lines(p.get("parts") or [], pad + ("   " if last else "│  "), unit)
     return out
 
@@ -959,13 +999,15 @@ BP_LINE = ("Asked what is inside something, how a building, a machine, a body, a
            "first, with from and to as heights in unit, and width as how wide each part really is in the "
            "same unit, so the outline is drawn to scale; only when you cannot know it, 0 to 1 as a share "
            "of the widest), exploded for a thing made of parts round a core (an engine, "
-           "a watch, a cell, a company) or flow for a process in order. Go deep enough that they can "
-           "explore without asking again: six to ten parts, each with three to six parts of its own, "
-           "and the interesting ones a third level. Every part says what it is for (role), a sentence "
-           "or two of how it works (detail), its real numbers as facts with the source, and how sure "
-           "anyone is (certainty known, estimated or unclear). Say how parts depend on each other in "
-           "links (from, to, a verb), and put what nobody outside can know in unknowns. A child part "
-           "may take another form (a tower's foundation drawn exploded).")
+           "a watch, a cell, a company) or flow for a process in order. Show the OUTLINE quickly: six to "
+           "ten parts, each with its role, how it works (how), two or three facts, and the names of the "
+           "parts inside it; the whole's own key numbers in facts; links between parts (from, to, a "
+           "verb, and kind: what flows along it, one of " + ", ".join(BP_FLOWS) + "); what nobody "
+           "outside can know in unknowns. The Stage then fills in every part on its own, looked up and "
+           "three levels deep, so show it once and do not show it again while it fills. Each part may "
+           "say what it is made of (made_of), its limits or how it fails (limits), and how sure anyone "
+           "is (certainty known, estimated or unclear). A child part may take another form (a tower's "
+           "foundation drawn exploded).")
 BIG_LINE = ("Answer BIG: the person watches your answers on the Stage, so anything worth seeing is "
             "SHOWN with show_scene before you write the text: three to six scenes, in story order. "
             "Tell a story, not a slide: open on what matters most (the headline numbers, or a "
