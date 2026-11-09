@@ -610,6 +610,7 @@ function handle(ev){
       if(JARVIS.on&&JARVIS.busy){JARVIS.busy=false;
         if(!speechLiveEnd(_cid,reply,()=>{if(JARVIS.on)jarvisListen();else jarvisSetPhase('idle')}))jarvisSpeakAndListen(reply);}
       else if(!speechLiveEnd(_cid,reply))speak(reply);
+      if(curBody&&typeof xrayLive==='function')xrayLive(_cid,curBody.closest('.msg'));
       setRunning(false); curBody=null; curThink=null; curText=''; loadConvs(); break;}
     case 'queue_update':{
       if(ev.queue&&ev.queue.length)QUEUES[_cid]=ev.queue; else delete QUEUES[_cid];

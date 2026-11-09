@@ -763,6 +763,31 @@ Six rules:
   note says "when they ask". `app` hands scenes to one of the person's apps (`appstage` event in APP_RUNTIME)
   instead of the Stage; "Open by itself" is per browser (`stage.auto`).
 
+**A blueprint takes a thing apart, and an X-ray is the record taken apart** (`stage.BP_*`, `_bp_parts`,
+`bp_walk`, `ask_deeper(part=)`, `agentos/xray.py`, `24v-blueprint.js`, `40-blueprint.css`, `/api/stage/xray`,
+`bento stage xray`; `docs/stage.md`, `tests/test_blueprint.py`). Asked for as "give me a fine blueprint of
+Burj Khalifa … I can literally drill into anything" and "a Jarvis-style blueprint, getting to the bottom of
+things rather than presenting the chart". Six rules:
+- **The parts nest, so drilling costs no model call.** Four levels under the subject, twelve to a level, 160
+  in all, read field by field and dropped BY PATH. Past the last level, "Take this apart" is `ask_deeper(part=)`,
+  checked before `_DEEPER` is written: a refused ask once moved the link off the scene it came from.
+- **A width over 1 is real**, in the scene's unit, at the height's scale. Shares (0 to 1) drew Claude Code's
+  Burj squat; measured on a live run, the guidance now asks for real widths. A part that runs most of the
+  height beside others is a shaft; one as wide as the tower is an envelope round the outline.
+- **Never colour alone**: status is an icon and a word (`BP_STATUS`), certainty is the line (solid, dashed,
+  dotted) with a legend. Checked with the dataviz validator on the navy sheet: red vs green is 6.5 for CVD.
+- **The guidance goes with Answer BIG off too** (`BP_LINE` in `note`): the owner's account has it off, and a
+  person asking for a blueprint is asking to see one.
+- **An X-ray is the trace, drawn.** `xray.turn`/`run` read `trace.conversation`/`trace.run` and nothing else,
+  so the X-ray and ⤓ JSON cannot disagree; a turn is its ledger rows between its question and the next one,
+  plus every run it started (however long that ran). Read on request, never stored, no Keep or versions.
+  What the record cannot see (a CLI's own session) is an unknown, in words.
+- **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
+  title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
+  ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that
+  never sits over the part it is about, and Details scrolls the art, never `scrollIntoView` (which scrolled
+  the Stage's own room).
+
 ## The Brief: a mission delivers ITEMS a person acts on, never a message
 
 `agentos/brief.py` is how a mission's result reaches somebody, and it is the reason

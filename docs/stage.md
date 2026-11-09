@@ -17,6 +17,7 @@ the chain of cause and effect. The written answer still comes too. The Stage pla
 | Picture | A photo, a diagram or an image the agent made, slowly moving |
 | Video | A YouTube video, such as a tutorial, played on the Stage |
 | Film | A short 3D animation, such as a rocket launch, a city growing or revenue rising, played from a shot list |
+| Blueprint | A thing taken apart: a building, a machine, a body, a company or a process, part by part, and every part opens |
 
 When a set of numbers both rises and falls, like a market's day, the Stage reads it by sign: rises
 are green and falls are red, every value carries its + or -, and a place on the map is as big as its
@@ -50,6 +51,51 @@ Without 3D graphics, with reduced motion on, and on your phone, a film is a stor
 shot with its line.
 
 ![The same film on a phone with reduced motion: a storyboard of cards, "1 · 5s · push, It starts in one small building" and "2 · 5s · orbit, 1,000, The first thousand customers find it"](screenshots/stage-film-storyboard.png)
+
+## Blueprints: take anything apart
+
+Ask "give me a fine blueprint of the Burj Khalifa", "what's inside a jet engine?" or "how is a cell
+built?" and the agent draws it as an engineer's drawing: cyan ink on a navy sheet, a grid, a ground
+line and an elevation scale. It doesn't stop at the outside. Every part opens.
+
+![The Burj Khalifa as a blueprint on the Stage: the tower drawn to scale from its piles to its spire, each band labelled, and the panel saying what is still unclear](screenshots/stage-blueprint.png)
+
+- **Point at a part** (or tap it on a phone) and the panel says what it is for, how it works, its
+  real numbers and how sure anyone is of them.
+- **Click it** (tap it again on a phone) and the drawing flies into that part: its own parts, drawn
+  the way that suits them. A tower's foundation opens as an exploded view of its raft, piles and
+  waterproofing. The trail at the top takes you back up, and so does Esc.
+- **Take this apart** on a part at the bottom asks the agent for that part as its own blueprint. It
+  plays here next, with the way back.
+
+![Three levels in: the buttressed core of the Burj Khalifa, exploded into its walls, with "you are here" on the tower](screenshots/stage-blueprint-inside.png)
+
+The agent picks how each level is laid out: a **tower** for something built in layers along a height
+(drawn to scale when it knows the real widths), an **exploded** view for a thing made of parts round a
+core, and a **flow** for a process. The line says how sure it is: solid is known, dashed is an
+estimate, dotted is unclear, and the legend says so. **Still unclear** lists what nobody outside can
+know. Numbers carry their source, as on every scene.
+
+On a phone the drawing takes the screen. A tap brings up a small sheet with the part and an Open
+button, and the details are just below.
+
+![On a 390px phone: the tower fills the screen and a tapped part shows its sheet with Open inside and Details](screenshots/stage-blueprint-phone.png)
+
+## X-ray: take an answer apart
+
+Every answer in Chat has **⌖ X-ray** under it. It takes that answer apart from this machine's own
+records and draws it as a blueprint: what you asked, the brain that answered and what it cost, every
+department and person it went to, every decision the permission gate made for them (allowed, asked
+you, refused), and the answer. Open the desk, then the person, then "run_python ×12", down to the one
+ledger row that was refused and the rule that refused it.
+
+![An X-ray of the Burj Khalifa answer: the question, Aria on Claude Code, and the answer, with the takeaway and its source in the panel](screenshots/stage-xray.png)
+
+Missions → History and the Run Inspector have the same button for a mission's run. Nothing in an X-ray
+is guessed: each part is a row, and what the record can't see is said. Claude Code's own reads and
+searches inside its session never pass Bento's gate, so the X-ray says so instead of leaving a gap.
+**↻ Read again** reads the records again while a run is still going, and **⤓ JSON** downloads the
+same record as one file to hand to an AI. In a terminal: `bento stage xray <chat or run id>`.
 
 ## Watching a story
 
@@ -119,8 +165,8 @@ stays closed. In the app:
 window.addEventListener('appstage', e => draw(e.detail.scene));
 ```
 
-`e.detail.scene.kind` is one of `chart`, `map`, `numbers`, `timeline`, `steps` or `table`, with the
-same fields the agent's `show_scene` tool takes. App Studio knows this: ask it for "an app that draws my
+`e.detail.scene.kind` is one of `chart`, `map`, `numbers`, `timeline`, `steps`, `table`, `image`,
+`video`, `film` or `blueprint`, with the same fields the agent's `show_scene` tool takes. App Studio knows this: ask it for "an app that draws my
 Stage".
 
 ## For developers
@@ -130,6 +176,13 @@ Stage".
 - `show_scene` is a safe tool: it draws on the person's own screen and stores a row. The conversation is
   injected by the agent loop, never chosen by the model. A forwarded Claude Code chat reaches it through
   the team door (`mcp__bento__show_scene`).
-- `24l-stage.js` draws everything with text nodes and SVG, never markup, because a scene's words are
-  often a web page's. The map is Natural Earth's 1:110m countries (public domain), loaded the first time
+- A blueprint is read field by field at every level (`_bp_parts`): parts nest four deep under the
+  subject, twelve to a level, 160 in all, and what is dropped is named with where it was
+  (`parts[2].colour`). A width over 1 is the real width in the scene's unit, drawn to the same scale
+  as the heights. `ask_deeper(part=)` asks for one part by its place in the whole.
+- `agentos/xray.py` builds an X-ray from `trace.conversation` / `trace.run`, the same gathering
+  `bento trace` writes out, so the X-ray and the JSON can't disagree. It is read on request
+  (`/api/stage/xray`) and never stored.
+- `24l-stage.js` and `24v-blueprint.js` draw everything with text nodes and SVG, never markup, because a scene's words are
+  often a web page's. The Telegram page embeds both (`PAINTER_JS`). The map is Natural Earth's 1:110m countries (public domain), loaded the first time
   a map is drawn.

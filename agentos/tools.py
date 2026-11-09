@@ -6372,13 +6372,15 @@ STAGE_TOOL_SCHEMAS = [
                        "steps (a chain: this leads to that), table, image (a picture: a photo, a "
                        "diagram, one you generated), video (a YouTube video, e.g. a tutorial) or film "
                        "(a short 3D animation the screen plays from your shot list: for something "
-                       "that moves, grows or gets built). Call "
+                       "that moves, grows or gets built) or blueprint (a thing taken apart: parts "
+                       "that nest, each with what it does, its numbers and how sure anyone is, which "
+                       "the person opens level by level). Call "
                        "it once per scene, in "
                        "story order, two to five scenes for an answer worth seeing. Numbers need a "
                        "source, or illustrative: true when they are only an example.",
         "parameters": {"type": "object", "properties": {
             "kind": {"type": "string", "enum": ["chart", "map", "numbers", "timeline", "steps", "table",
-                                                "image", "video", "film"]},
+                                                "image", "video", "film", "blueprint"]},
             "title": {"type": "string", "description": "the scene's headline, a few words"},
             "caption": {"type": "string", "description": "one or two sentences: what to notice"},
             "say": {"type": "string", "description": "the line read aloud with it, if different from the caption"},
@@ -6416,7 +6418,24 @@ STAGE_TOOL_SCHEMAS = [
                       "label}])}]. subject: city, tower, bars, rocket, factory, solar, road, conveyor, "
                       "crowd or globe. camera: orbit, push, rise, fly or top. Numbers need a source.",
                       "items": {"type": "object"}},
-            "look": {"type": "string", "enum": ["day", "dusk", "night"], "description": "film: the light"}},
+            "look": {"type": "string", "enum": ["day", "dusk", "night"], "description": "film: the light"},
+            "subject": {"type": "string", "description": "blueprint: the thing taken apart"},
+            "form": {"type": "string", "enum": ["tower", "exploded", "flow"], "description":
+                     "blueprint: tower (layers along a height, bottom first), exploded (parts round a "
+                     "core) or flow (a process in order)"},
+            "parts": {"type": "array", "description":
+                      "blueprint: 2 to 12 parts, [{name, role (what it is for), detail (how it works, a "
+                      "sentence or two), facts? [{label, value, unit?}], certainty? (known, estimated or "
+                      "unclear), from? to? (tower: heights in unit), width? (tower: its real width in unit, "
+                      "drawn to scale; 0 to 1 only as a share of the widest), source?, "
+                      "form? (how its own parts are laid out), parts? [the same shape, up to four levels], "
+                      "unknowns? [what is unclear about it]}]",
+                      "items": {"type": "object"}},
+            "links": {"type": "array", "description": "blueprint: how parts depend on each other, "
+                                                       "[{from, to, verb}] by part name",
+                      "items": {"type": "object"}},
+            "unknowns": {"type": "array", "items": {"type": "string"},
+                         "description": "blueprint: what nobody outside can know about it"}},
             "required": ["kind", "title"]},
     },
 ]

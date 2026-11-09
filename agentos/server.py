@@ -5780,6 +5780,26 @@ async def api_stage_story(conversation: str, answer_to: str = ""):
             "deeper": st.get("deeper", {}) if st else {}}
 
 
+@app.get("/api/stage/xray")
+async def api_stage_xray(conversation: str = "", answer_to: str = "", run: str = ""):
+    """One answer (or one run) taken apart from this machine's own records, as a blueprint
+    scene (agentos/xray.py). Read on request and never stored: the record is the scene."""
+    from . import xray as xraymod
+    store, cfg = state["store"], state["cfg"]
+    try:
+        if run:
+            sc = await asyncio.to_thread(xraymod.run, store, cfg, run)
+        elif conversation:
+            sc = await asyncio.to_thread(xraymod.turn, store, cfg, conversation, answer_to)
+        else:
+            return JSONResponse({"error": "say which chat or run"}, status_code=400)
+    except KeyError:
+        return JSONResponse({"error": "there is no record of that here"}, status_code=404)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=422)
+    return {"scene": sc, "conversation_id": conversation}
+
+
 @app.post("/api/stage/deeper")
 async def api_stage_deeper(body: dict):
     """Go deeper on one scene: remembers which, and returns the question the page sends
@@ -5791,7 +5811,7 @@ async def api_stage_deeper(body: dict):
         return JSONResponse({"error": "no such chat"}, status_code=404)
     try:
         text = stagemod.ask_deeper(state["store"], cid, str(b.get("answer_to") or ""),
-                                   int(b.get("seq") or 0))
+                                   int(b.get("seq") or 0), part=str(b.get("part") or ""))
     except (ValueError, TypeError) as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     return {"text": text, "conversation_id": cid}

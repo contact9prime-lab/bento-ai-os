@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.13 — 2026-11-09
+
+**Take anything apart: blueprints on the Stage.** Ask for "a fine blueprint of the Burj Khalifa" and
+it's drawn as an engineer's drawing, to scale, on a navy sheet. Every part opens: point at one to
+read what it does, its numbers and how sure anyone is, click to fly into it, and the trail takes you
+back up. At the bottom, **Take this apart** asks for that part as its own blueprint. Solid lines are
+known, dashed are estimates, dotted are unclear, and "Still unclear" says what nobody outside can
+know. It works on a phone too: a tap brings up the part with an Open button.
+
+**X-ray an answer.** Every answer in Chat has **⌖ X-ray**. It takes that answer apart from this
+machine's own records: what you asked, the brain and what it cost, each department and person it
+went to, every decision the permission gate made (allowed, asked you, refused), and the answer. Open
+it down to the one ledger row that was refused. Missions → History and the Run Inspector have it for
+a mission's run, and `bento stage xray` prints it in a terminal.
+
+**Fixed:** on a phone, a story with a deeper story made the Stage wider than the screen.
+
 ## 0.7.12 — 2026-11-06
 
 **Alarms are a table, and you can see the old ones.** What's open comes first, then what happened

@@ -1064,6 +1064,7 @@ function renderFlowRun(body,w){
         ${FG.ended?'':`<button class="endbtn" onclick="${FG.kind==='freetalk'?'freeTalkStop(FG.run)':'cancelRun(FG.run)'}">⏹ Stop</button>`}
         ${FG.kind==='freetalk'?'':`<button class="endbtn" onclick="fgRerun()">↻ Run again</button>
         <button class="endbtn" onclick="openFLW&&openFLW(FG.flow)">✎ Edit mission</button>`}
+        <button class="endbtn" onclick="stageXray({run:FG.run},'X-ray · '+(FG.flow||'run'))" title="Take this run apart on the Stage">⌖ X-ray</button>
         <button class="endbtn" onclick="fgOpenBoardRaw()">Raw events</button></div>
       <div class="fr-runs fg-runs"></div>
     </div>
