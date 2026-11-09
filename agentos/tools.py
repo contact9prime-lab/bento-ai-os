@@ -737,11 +737,35 @@ def _tool_env() -> dict:
     return {k: v for k, v in os.environ.items() if not _ENV_SECRET.search(k)}
 
 
-def _python_binds() -> list[str]:
-    """The folders this interpreter lives in, when the jail would blank them (a venv under
-    /home). Read-only, and nothing but Python is in them."""
-    return [p for p in {os.path.realpath(sys.prefix), os.path.realpath(sys.base_prefix)}
-            if p.startswith("/home/") and os.path.isdir(p)]
+def _python_binds(exe: str | None = None, prefixes: tuple | None = None,
+                  hidden: list[str] | None = None) -> list[str]:
+    """The folders this interpreter lives in, when the jail would blank them (a venv under /home).
+    Read-only, and nothing but Python is in them. Every hop of the interpreter's links counts: uv
+    reaches its Python through a folder link (`cpython-3.13-linux-…` to the full version), and the
+    venv's `python` names the link, so binding only the resolved folder left a path that didn't
+    exist in the jail (found by CI, where Python comes from uv under /home/runner)."""
+    exe = exe or sys.executable
+    prefixes = prefixes if prefixes is not None else (sys.prefix, sys.base_prefix)
+    # whatever the jail blanks: /home, and a home anywhere else (/root, /data)
+    hidden = hidden if hidden is not None else ["/home", *_jail_hidden()]
+    out: list[str] = []
+
+    def add(path: str) -> None:
+        for p in (path, os.path.realpath(path)):
+            if os.path.isdir(p) and p not in out and _under_any(p, hidden):
+                out.append(p)
+
+    for p in prefixes:
+        add(p)
+    hop = exe
+    for _ in range(12):
+        folder = os.path.dirname(hop)
+        # an interpreter in .../bin finds its library in the folder above, by the name it was run as
+        add(os.path.dirname(folder) if os.path.basename(folder) == "bin" else folder)
+        if not os.path.islink(hop):
+            break
+        hop = os.path.normpath(os.path.join(folder, os.readlink(hop)))
+    return out
 
 
 def _dashed(value) -> bool:

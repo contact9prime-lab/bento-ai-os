@@ -3,6 +3,7 @@ audit's point (S-16, S-18, S-55) was that the argv looked fine and the secrets w
 import asyncio
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -523,3 +524,28 @@ def test_a_folder_is_listed_through_its_descriptor(tmp_path):
     (tmp_path / "l").symlink_to(tmp_path / "d")
     with pytest.raises(safeopen.Moved):
         safeopen.list_dir(str(tmp_path / "l"))
+
+
+@pytest.mark.skipif(not shutil.which("bwrap"), reason="needs bubblewrap")
+def test_a_python_reached_through_a_folder_link_still_runs_in_the_jail(tmp_path, monkeypatch):
+    """uv's layout: venv/bin/python -> pythons/cpython-3.x/bin/python3, where cpython-3.x is itself a link
+    to the full version. All of it under a home the jail blanks. CI found this; a system Python never shows it."""
+    if not toolsmod.sandbox_mechanism():
+        pytest.skip("this machine cannot enter a jail")
+    home = tmp_path / "home" / "runner"
+    full = home / "pythons" / "cpython-3.x.y" / "bin"
+    full.mkdir(parents=True)
+    (full / "python3").symlink_to(os.path.realpath(sys.executable))
+    (home / "pythons" / "cpython-3.x").symlink_to(home / "pythons" / "cpython-3.x.y")
+    venv = home / "work" / "repo" / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").symlink_to(home / "pythons" / "cpython-3.x" / "bin" / "python3")
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    binds = toolsmod._python_binds(str(venv / "python"), (), hidden=[str(home)])
+    assert str(home / "pythons" / "cpython-3.x") in binds, "the link the venv names, not only where it leads"
+    # the home it lives in is hidden, as /home/runner is on CI
+    argv = toolsmod.bwrap_argv(str(ws), [str(venv / "python"), "-c", "print('ran')"],
+                               hide=[str(home)], own_ro=binds)
+    out = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+    assert out.stdout.strip() == "ran", out.stderr
