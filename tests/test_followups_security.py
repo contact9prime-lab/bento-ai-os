@@ -41,18 +41,65 @@ def test_the_github_token_goes_only_to_its_own_host():
     assert box._git_auth_env("https://git.corp.example/o/r")["AGENTOS_GIT_HOST"] == "git.corp.example"
 
 
+def _pin_and_plain(store):
+    pinned = store.add_memory("the door code rule", scope="user", pinned=1, source="user")
+    plain = store.add_memory("likes tea in the morning", scope="user", source="auto")
+    return pinned, plain
+
+
+CORRECT_BOTH = {"updates": [{"old": "the door code rule", "new": "rewritten by a model"},
+                            {"old": "likes tea in the morning", "new": "likes coffee in the morning"}],
+                "retractions": ["the door code rule"]}
+
+
 def test_auto_learn_leaves_a_pinned_memory_alone(tmp_path, monkeypatch):
+    """The real after-turn pass, with a model answer that corrects and retracts a pin."""
+    import json as _json
     store = Store(tmp_path / "t.db")
-    mid = store.add_memory("the door code rule", scope="user", pinned=1, source="user")
+    pinned, plain = _pin_and_plain(store)
 
     async def fake(cfg, model, prompt):
-        return '{"updates": [{"old": "the door code rule", "new": "rewritten by a model"}]}'
+        return _json.dumps(CORRECT_BOTH)
+
+    async def idle(model, max_wait=900):
+        return None
     monkeypatch.setattr(providers, "complete", fake)
-    src = [n for n in dir(knowledge) if "learn" in n.lower() or "extract" in n.lower()]
-    assert src
-    text = (ROOT / "knowledge.py").read_text()
-    assert 'hit and hit.get("pinned")' in text
-    assert store.find_memory("the door code rule")["id"] == mid
+    monkeypatch.setattr(knowledge, "wait_model_idle", idle)
+    monkeypatch.setattr(knowledge, "turn_tainted", lambda store, cid: False)
+    cid = store.create_conversation("t")
+    asyncio.run(knowledge.extract_from_turn({"default_model": "stand-in"}, store, cid, "hi", "hello"))
+    mems = {m["id"]: m["content"] for m in store.search_memories("", limit=50, scope="user")}
+    assert mems.get(pinned) == "the door code rule", "a pin is the person's"
+    assert mems.get(plain) == "likes coffee in the morning", "the pass really ran"
+    assert any("pinned memory alone" in (r.get("message") or "") for r in store.list_logs(limit=20))
+
+
+def test_a_zeros_learning_on_its_hub_leaves_a_pin_alone(tmp_path, monkeypatch):
+    from agentos import zero as zeromod
+    from agentos import zeromind
+    store = Store(tmp_path / "hub.db")
+    sid = store.create_space("zero:pi", "") if hasattr(store, "create_space") else ""
+    sid = sid.get("id") if isinstance(sid, dict) else sid
+    monkeypatch.setattr(zeromod, "ships_to", lambda lk: True)
+    monkeypatch.setattr(zeromind, "section", lambda store, lk: sid)
+    pinned = store.add_memory("the door code rule", scope="user", pinned=1, source="zero:pi", space_id=sid)
+    plain = store.add_memory("likes tea in the morning", scope="user", source="zero:pi", space_id=sid)
+    out = asyncio.run(zeromind.answer(store, {}, {"label": "pi"}, {"action": "learn", **CORRECT_BOTH}))
+    assert out.get("ok") is not False, out
+    mems = {m["id"]: m["content"] for m in store.search_memories("", limit=50, space=store.only(sid))}
+    assert mems.get(pinned) == "the door code rule"
+    assert mems.get(plain) == "likes coffee in the morning"
+
+
+def test_a_non_ascii_bearer_at_the_run_bridge_is_a_401():
+    from fastapi.testclient import TestClient
+    from agentos import server
+    with TestClient(server.app) as c:
+        for bearer in ("é", "caf\u00e9-token", "\u00ff" * 40):
+            # a header is bytes on the wire: latin-1 is what an HTTP client really sends for these
+            r = c.post("/api/mcp/run/abc", headers={"Authorization": ("Bearer " + bearer).encode("latin-1")},
+                       json={})
+            assert r.status_code == 401, (bearer, r.status_code)
 
 
 # -- item 1: a tool that reaches the host is an admin's --------------------------------------------
