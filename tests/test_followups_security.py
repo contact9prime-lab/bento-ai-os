@@ -379,3 +379,49 @@ def test_the_door_says_a_company_is_not_made_from_here():
     door = src[src.index("def open_team_door("):src.index("def _pool_note(")]
     assert "dept_note + COMPANY_DOOR_LINE" in door
     assert "can't set up" in ex.COMPANY_DOOR_LINE and "Office" in ex.COMPANY_DOOR_LINE
+
+
+# ---- a browser you start through Bento is let in; one Bento starts for itself is told why (item 15) ----
+
+def _opened(monkeypatch):
+    from agentos import desktop
+    seen = []
+    monkeypatch.setattr(desktop, "open_path", lambda target: seen.append(target) or "")
+    return seen
+
+
+def test_a_person_opening_this_desktop_in_the_hosts_browser_gets_a_ticket(monkeypatch):
+    from fastapi.testclient import TestClient
+    from agentos import remote, server
+    seen = _opened(monkeypatch)
+    from agentos import config as cfgmod
+    port = server._port_of(cfgmod.load_config())
+    with TestClient(server.app) as c:
+        assert c.post("/api/open", json={"url": f"http://127.0.0.1:{port}/"}).status_code == 200
+        assert c.post("/api/open", json={"url": "https://example.com/x"}).status_code == 200
+        assert c.post("/api/open", json={"url": f"http://127.0.0.1:{port}/api/config"}).status_code == 200
+    own, other, api = seen
+    assert "desk=" in own and remote.spend_ticket(own.split("desk=")[1])
+    assert other == "https://example.com/x", "only this desktop's own page gets one"
+    assert "desk=" not in api, "an API address is not a page to be let into"
+
+
+def test_an_agent_opening_this_desktop_gets_no_ticket(tmp_path, monkeypatch):
+    from agentos import server
+    seen = _opened(monkeypatch)
+    from agentos import config as cfgmod
+    port = server._port_of(cfgmod.load_config())
+    tb = Toolbox({"workspace": str(tmp_path)}, Store(str(tmp_path / "a.db")))
+    asyncio.run(tb.open_app(f"http://127.0.0.1:{port}/"))
+    assert seen and "desk=" not in seen[0]
+
+
+def test_a_browser_bento_started_is_told_why_and_asked_nothing(monkeypatch):
+    from fastapi.testclient import TestClient
+    from agentos import peercheck, server
+    monkeypatch.setattr(server, "_peer_verdict", lambda conn: peercheck.CHILD)
+    with TestClient(server.app) as c:
+        d = c.get("/api/users/who").json()
+    assert d["refused"] == server.CHILD_PAGE_WORDS
+    page = (Path(agentos.__file__).parent / "ui" / "login.html").read_text()
+    assert "d.refused" in page and "f.hidden=true" in page

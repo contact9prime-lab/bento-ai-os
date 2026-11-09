@@ -3217,7 +3217,14 @@ async def api_open(body: dict):
     elif url:
         if not url.startswith(("http://", "https://")):
             return JSONResponse({"error": "only http(s) URLs"}, status_code=400)
-        target = url
+        # A person asked for this desktop in the host's browser. That browser is this server's child,
+        # so peercheck would refuse it, and a one-person machine with no key has no sign-in to offer:
+        # it carries a one-time ticket. Only this route does it, because only a person's page calls it;
+        # an agent's open goes through tools.open_on_host and gets none.
+        if _is_own_desktop(url):
+            target = remotemod.ticket_url(url)
+        else:
+            target = url
     elif rel:
         p = _safe_file(rel)
         if p is None or not p.exists():
@@ -3230,6 +3237,18 @@ async def api_open(body: dict):
         return JSONResponse({"error": err}, status_code=500)
     state["store"].log("system", f"opened in host: {target[:120]}")
     return {"ok": True, "target": target}
+
+
+def _is_own_desktop(url: str) -> bool:
+    """This server's own page on loopback, not an API path."""
+    from urllib.parse import urlsplit
+    try:
+        u = urlsplit(url)
+        port = u.port or (443 if u.scheme == "https" else 80)
+    except ValueError:
+        return False
+    return (remotemod.is_loopback(u.hostname or "") or (u.hostname or "") == "localhost") \
+        and port == _port_of(state.machine_cfg()) and not u.path.startswith(("/api/", "/ws"))
 
 
 @app.get("/api/files/raw")
@@ -9483,6 +9502,9 @@ def _authed(conn) -> bool:
 
 CHILD_WORDS = ("This is running inside Bento, so it can't act as you on this machine. "
                "Run it in a terminal outside Bento, or sign in.")
+# The same refusal, as a browser sees it: Bento (or an app it started) opened this window.
+CHILD_PAGE_WORDS = ("Bento started this browser, so it isn't let in on its own. Open Bento from your own "
+                    "browser, or use Open in browser from the desktop.")
 OTHER_USER_WORDS = "Another user on this computer can't use this person's Bento. Sign in."
 LOCKED_WORDS = "This desktop is locked. Unlock it in its browser, or sign in with the passphrase."
 
@@ -12480,7 +12502,10 @@ async def api_users_who(request: Request):
                username and a password, and only the cookie knows.
     """
     cfg = state.machine_cfg()
+    why = _refused_words(request) if not _authed(request) else ""
     return {**_me(), "any": usersmod.enabled(),
+            # why this browser is at a closed door, in the OS's words, so the page can say it
+            "refused": CHILD_PAGE_WORDS if why == CHILD_WORDS else why,
             "lock": remotemod.lock_kind(cfg),
             "locked": remotemod.session_locked(
                 cfg, request.cookies.get(remotemod.COOKIE, ""))}
