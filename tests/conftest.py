@@ -22,6 +22,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# The suite's fake CLIs live in temp folders, which a forwarded CLI's jail hides. The tests that
+# are about the jail switch it back on (tests/test_cli_jail.py).
+from agentos import executors as _executors  # noqa: E402
+_executors.JAIL_ENFORCED = False
+
 
 @pytest.fixture(autouse=True)
 def _never_touch_the_real_config(tmp_path, monkeypatch):
@@ -31,6 +36,11 @@ def _never_touch_the_real_config(tmp_path, monkeypatch):
     # the real diary would clear the real machine's alarms and write that back into it.
     from agentos import devboard
     monkeypatch.setattr(devboard.Alarms, "restored", True)
+    # The watcher's hold is process state: one test's hold must not stop every agent in the tests
+    # after it, which is what it is built to do in a real server.
+    from agentos import integrity
+    monkeypatch.setattr(integrity, "_hold", None)
+    monkeypatch.setattr(integrity, "_cache", (0.0, None))
 
     home = tmp_path / "agentos-home"
     home.mkdir(parents=True, exist_ok=True)
@@ -42,4 +52,9 @@ def _never_touch_the_real_config(tmp_path, monkeypatch):
     # every time on a machine running Ollama; other route tests flickered). A test that
     # wants a model sets one.
     monkeypatch.setenv("AGENTOS_NO_AUTOPICK", "1")
+    # TestClient's own name for the server. The Host guard reads this at call time.
+    monkeypatch.setenv("AGENTOS_ALLOWED_HOSTS", "testserver")
+    # Switching remote access off stops tunnels. In a test that must never reach the real tailscale.
+    from agentos import tunnel
+    monkeypatch.setattr(tunnel, "_which", lambda name: "")
     yield

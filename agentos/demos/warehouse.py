@@ -38,8 +38,10 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import hmac
 import json
 import os
+import secrets
 import shutil
 import signal
 import socket
@@ -51,6 +53,8 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+from .. import constcmp
 
 HUB = "warehouse-hub"
 ZONES = ("zone-cold", "zone-dock", "zone-aisle")
@@ -166,6 +170,43 @@ def urls() -> dict:
     return {"floor": f"http://127.0.0.1:{FLOOR}/", "hub": f"http://127.0.0.1:{http_port(HUB)}/"}
 
 
+# Each demo server is a whole Bento on this machine's loopback, with no accounts. Anything else running
+# here (a jailed shell of the real machine, say) would arrive there as "the person at the machine", turn
+# the demo's sandbox off and open its Terminal, which is an unjailed shell of this Unix user. So each run
+# makes one key, kept in a file in the demo's folder (under the home a jail blanks) and never in an
+# environment variable, which /proc shows to anything else. Its servers trust loopback for nothing else,
+# and the floor asks for the same key.
+ENTRY = "entry.token"
+
+
+def entry_key() -> str:
+    with contextlib.suppress(OSError):
+        return (where() / ENTRY).read_text().strip()
+    return ""
+
+
+def _mint_entry() -> str:
+    from .. import config as cfgmod
+    key = secrets.token_urlsafe(24)
+    cfgmod.write_private(where() / ENTRY, key)
+    return key
+
+
+def keyed_urls() -> dict:
+    """The two addresses that get a person in, for somebody who may have them: its user, an admin and
+    the terminal. They are the demo's whole lock, so they are never in plain status()."""
+    key, u = entry_key(), urls()
+    return {"floor": f"{u['floor']}?k={key}", "hub": f"{u['hub']}?entry={key}"} if key else u
+
+
+def _hub_headers() -> dict:
+    return {"Content-Type": "application/json", "Authorization": f"Bearer {entry_key()}"}
+
+
+def _floor_url(path: str) -> str:
+    return f"http://127.0.0.1:{FLOOR}{path}?k={entry_key()}"
+
+
 def hub_board(timeout: float = 3) -> dict | None:
     """The demo hub's Devices board (/api/devices/board), for this machine's own Devices scene:
     the demo's devices are its hub's, a Bento of its own, so the screen a person is looking at
@@ -173,7 +214,8 @@ def hub_board(timeout: float = 3) -> dict | None:
     if os.environ.get("AGENTOS_DEMO_MACHINE") or status().get("phase") != "ready":
         return None
     with contextlib.suppress(Exception):
-        with urllib.request.urlopen(urls()["hub"] + "api/devices/board", timeout=timeout) as r:
+        req = urllib.request.Request(urls()["hub"] + "api/devices/board", headers=_hub_headers())
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read() or b"{}")
     return None
 
@@ -183,7 +225,7 @@ def hub_ack(alarm: str, timeout: float = 3) -> dict | None:
     with contextlib.suppress(Exception):
         req = urllib.request.Request(urls()["hub"] + "api/devices/alarms/ack", method="POST",
                                      data=json.dumps({"id": alarm}).encode(),
-                                     headers={"Content-Type": "application/json"})
+                                     headers=_hub_headers())
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read() or b"{}")
     return None
@@ -194,7 +236,7 @@ def hub_alarms(rules: list, timeout: float = 5) -> dict | None:
     with contextlib.suppress(Exception):
         req = urllib.request.Request(urls()["hub"] + "api/devices/alarms", method="PUT",
                                      data=json.dumps({"alarms": rules}).encode(),
-                                     headers={"Content-Type": "application/json"})
+                                     headers=_hub_headers())
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read() or b"{}")
     return None
@@ -330,13 +372,13 @@ def stop() -> dict:
 
 def floor() -> dict:
     """Every node's readings, from the floor page's own server."""
-    with urllib.request.urlopen(f"http://127.0.0.1:{FLOOR}/state", timeout=5) as r:
+    with urllib.request.urlopen(_floor_url("/state"), timeout=5) as r:
         return json.loads(r.read())
 
 
 def poke(node: str, entity: str, value) -> dict:
     """Cause something on the floor (trip a compressor, open a door), as the floor page's buttons do."""
-    req = urllib.request.Request(f"http://127.0.0.1:{FLOOR}/poke", method="POST",
+    req = urllib.request.Request(_floor_url("/poke"), method="POST",
                                  data=json.dumps({"node": node, "entity": entity, "value": value}).encode(),
                                  headers={"Content-Type": "application/json"})
     try:
@@ -355,6 +397,8 @@ def _home(m: str) -> Path:
 def _env(m: str, extra: dict | None = None) -> dict:
     env = {k: v for k, v in os.environ.items() if not k.startswith("AGENTOS_")}
     env.update({"AGENTOS_HOME": str(_home(m)), "AGENTOS_VAULT_KEYRING": "0", "PYTHONUNBUFFERED": "1",
+                # cookies ignore ports: each server's own, or signing in here signs you out of your Bento
+                "AGENTOS_SESSION_COOKIE": f"agentos_demo_{m.replace('-', '_')}",
                 # a machine of the demo is never the screen that shows the demo (hub_board)
                 "AGENTOS_DEMO_MACHINE": m,
                 "AGENTOS_DISCOVER_UDP": str(UDP), "NO_PROXY": "127.0.0.1,localhost", "no_proxy": "127.0.0.1,localhost",
@@ -394,12 +438,14 @@ def _config(m: str, brain: dict) -> None:
         # a real Ollama here would be picked as the zone's own brain; a zone thinks with its hub
         cfg["providers"] = {"ollama": {"base_url": "http://127.0.0.1:9"}}
     path.write_text(json.dumps(cfg, indent=1))
+    from .. import config as cfgmod
+    cfgmod.write_private(home / ENTRY, entry_key())
 
 
 def _http(m: str, method: str, path: str, body=None, timeout: float = 60):
     req = urllib.request.Request(f"http://127.0.0.1:{http_port(m)}{path}", method=method,
                                  data=json.dumps(body).encode() if body is not None else None,
-                                 headers={"Content-Type": "application/json"})
+                                 headers=_hub_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.loads(r.read() or b"{}")
@@ -461,6 +507,7 @@ class _Supervisor:
             self.procs["brain"] = subprocess.Popen(
                 [sys.executable, "-m", "agentos.demos.warehouse_brain", str(BRAIN)], cwd=where(),
                 env=_env(HUB), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _mint_entry()
         for m in MACHINES:
             _config(m, brain.get("keys") or {})
         self.step(1)
@@ -556,7 +603,7 @@ class _Supervisor:
                 {"name": e.name, "domain": e.domain, "value": e.value, "uom": e.uom, "decimals": e.decimals}
                 for e in n.ents.values() if e.category != "diagnostic"]} for n in ns]
         return {"phase": st["phase"], "step": st["step"], "done": st["done"], "of": st["of"], "brain": st["brain"],
-                "error": st["error"], "hub": st["hub"], "try": list(TRY), "zones": zones}
+                "error": st["error"], "hub": keyed_urls()["hub"], "try": list(TRY), "zones": zones}
 
     def poke(self, d: dict) -> dict:
         n = next((n for ns in self.nodes.values() for n in ns if n.host_name == d.get("node")), None)
@@ -591,10 +638,18 @@ class _Supervisor:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _keyed(self) -> bool:
+                got = parse_qs(urlsplit(self.path).query).get("k", [""])[0]
+                return bool(got) and constcmp.same(got, entry_key())
+
             def do_GET(self):
-                if self.path in ("/", "/index.html"):
+                path = urlsplit(self.path).path
+                if path in ("/", "/index.html"):
                     return self._send(200, page, "text/html; charset=utf-8")
-                if self.path == "/state":
+                if path == "/state":
+                    # it carries the hub's address with its key in it
+                    if not self._keyed():
+                        return self._send(403, b'{"error":"open the floor from Bento or bento demo warehouse"}')
                     return self._send(200, json.dumps(sup.state()).encode())
                 self._send(404, b"{}")
 
@@ -603,8 +658,10 @@ class _Supervisor:
                 origin = self.headers.get("Origin")
                 if origin and origin.rstrip("/") not in (f"http://127.0.0.1:{FLOOR}", f"http://localhost:{FLOOR}"):
                     return self._send(403, b'{"ok":false,"error":"only the floor page can do that"}')
-                if self.path != "/poke":
+                if urlsplit(self.path).path != "/poke":
                     return self._send(404, b"{}")
+                if not self._keyed():
+                    return self._send(403, b'{"ok":false,"error":"open the floor from Bento or bento demo warehouse"}')
                 try:
                     d = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
                 except ValueError:

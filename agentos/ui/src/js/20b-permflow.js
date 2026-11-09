@@ -109,7 +109,7 @@ function pfWhy(){
   if(gid){
     const g=t&&t.grant;
     doors=`<div class="pf-rule">Decided by a rule${g?`: <b>${esc(g.effect)}</b> ${esc(g.action)} <code>${esc(g.resource)}</code> <span class="badge">${esc(g.source||'user')}</span>`:''}
-      <button class="endbtn" onclick="permRevoke('${esc(gid)}')">Remove this rule</button></div>`;
+      <button class="endbtn" onclick="permRevoke('${jsq(gid)}')">Remove this rule</button></div>`;
   }else if(stage==='default'){
     doors=`<div class="pf-rule">No rule covers this yet.
       <button class="endbtn" onclick="pfAttach('allow')">Always allow it</button>

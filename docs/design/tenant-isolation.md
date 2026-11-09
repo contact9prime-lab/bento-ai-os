@@ -156,13 +156,19 @@ What now holds whenever accounts exist, verified against a running toolbox:
   cross-tenant reads through these tools were wide open with the sandbox off. Now
   `_tenant_deny` gates all of them.
 - **`run_command` is jailed per account and fails closed.** On a machine with
-  accounts the shell runs in a `bwrap` jail rooted at the acting account's home
-  with the whole `users/` tree tmpfs-blanked and only that account's home bound
-  back — so a shell cannot even *see* another account's files, not merely not write
-  them. If no jail mechanism exists, the command is refused rather than run
+  accounts the shell runs in a `bwrap` jail rooted at the acting account's workspace,
+  with the AgentOS home and the OS user's home tmpfs-blanked wherever they are and only
+  that workspace bound back — so a shell cannot even *see* another account's files, or
+  its own vault key and config. It has its own PID, IPC and UTS namespaces, a cleared
+  environment and a blank `/run`. If no jail mechanism exists, the command is refused rather than run
   unconfined: no jail cannot mean no walls.
+- **The jail keeps its network**, because agents need curl, pip and git, so a jailed command can reach
+  this server on loopback. What cuts it off from the person's authority is `agentos/peercheck.py`: a
+  loopback connection from a descendant of the server gets no trust on any route or socket, on Linux. A
+  token still works there, because a token does not rest on that trust. See
+  [remote access](../remote-access.md#loopback-is-trusted-and-only-for-a-person).
 - **The Terminal WebSocket** opens the same per-account jail in that account's own
-  home (not the OS user's `$HOME`), or refuses if no jail is available.
+  workspace (not the OS user's `$HOME`), or refuses if no jail is available.
 - **A single-user machine is untouched** — no second tenant to wall off, so the
   agent still reads across the disk as before.
 - **Safe folders are the one deliberate opening, and they cannot widen this one.**

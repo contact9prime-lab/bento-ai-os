@@ -141,6 +141,22 @@ install a copy:
 
 ![The shared library showing market-watcher — "agent · shared by ada" — with Install a copy and Remove buttons](screenshots/sharing-library.png)
 
+**What only an admin may touch.** A machine has one screen, one Wi-Fi radio, one compositor
+and one set of installed packages, so the routes that drive those are refused for anyone else:
+the host's windows and pixels, native apps, Wi-Fi and Bluetooth, sound and power, installing
+software, opening a port, publishing the machine, snapshots. The list is one table,
+`agentos/machineroutes.py`, and a test fails on any new route that isn't decided there.
+
+**A workspace stays inside your own home.** It is the root of the Files app, of a forwarded
+CLI's folder and of the agent's jail, so someone who is not an admin can't set it anywhere
+else, and a value stored before this rule falls back to their own folder when it's read. A
+folder outside the home is given by sharing it (Safe folders, below).
+
+**A tool server runs as the account.** A program as an MCP server runs in the same jail as that
+account's Terminal, and doesn't start at all where there's no jail. A server with a URL has to
+be on the public internet, because the connection comes from this machine. A sign-in to one
+(OAuth) belongs to one account and one address.
+
 ## Adding the first account
 
 This is the consequential moment, and the UI says so before the button:
@@ -243,10 +259,10 @@ share, its mode and who it is for, plus any entry that was refused and why.
 **Every agent and every app sees them, whoever answers.** A share reaches:
 
 - the built-in agent, whose instructions list each shared folder and its mode;
-- Claude Code, Gemini CLI and Codex when they answer a chat. Claude Code gets
-  `--add-dir` for each folder, and a read-only one also gets a deny rule for editing
-  there. Codex can read the whole disk already and gets `--add-dir` for a read-write
-  one. Gemini CLI can't keep a folder read-only, so a run that may write gets only the
+- Claude Code, Gemini CLI and Codex when they answer a chat. Each is jailed, with a
+  read-only share mounted read-only. Claude Code gets `--add-dir` for each folder, and a
+  read-only one also gets a deny rule for editing there. Codex gets `--add-dir` for a
+  read-write one. Gemini CLI can't keep a folder read-only, so a run that may write gets only the
   read-write folders and is told which ones it doesn't have;
 - the Files app, which lists each shared folder beside the workspace;
 - file chips in Chat, downloads, the Office's filing cabinet and Telegram's and
@@ -289,8 +305,8 @@ phone that added AgentOS to its home screen months ago has that URL cached and a
 What signing in gets somebody is their own **data**, kept private from the other
 accounts. Through AgentOS's own surfaces that boundary holds even at the shell: the
 agent's file tools refuse another account's home, and `run_command` and the
-Terminal run inside a per-account `bwrap` jail — rooted at that account's home with
-every other account's home blanked out — or refuse to run if no jail is available
+Terminal run inside a per-account `bwrap` jail — rooted at that account's workspace, with
+every home blanked out, its own included — or refuse to run if no jail is available
 (no jail cannot mean no walls). An executor cannot `cat` another account's memory
 through AgentOS. The one exception is a folder an admin has deliberately shared
 with them, which is the whole subject of [Safe
@@ -329,6 +345,8 @@ signed cookie with a lock inside it, and three things follow from where it lives
   check, so the API and every WebSocket — the terminal included — go quiet with the
   page. A desktop that kept streaming a turn behind the lock screen would be a lock
   over the pixels only;
+- the cookie from before the lock is ended (`remote.end_session`, kept on disk until it would have
+  expired), so a copy of it does not open the screen, and open sockets are closed at once;
 - it keeps **who** you are. `resolve_user` still resolves a locked cookie's owner, so
   coming back asks for one password and not a username. That is the entire difference
   from Sign out, and the lock screen says whose desktop it is guarding.

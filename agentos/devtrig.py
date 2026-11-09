@@ -238,20 +238,24 @@ def onoff(item: str, domain: str = "") -> bool:
 
 def brief(rule: dict, ev: dict) -> str:
     """What the mission is told about why it started: the reading, where it came from, the rule.
-    Numbers and names only: a text sensor's words never reach here."""
+    The item's id and a number: a node chooses its own sensor names and units, and a spoofed node
+    must not get a sentence into a mission's first message. A text sensor's words never reach here."""
     c = rule.get("config") or {}
     at = time.strftime("%H:%M:%S", time.localtime(float(ev.get("at") or time.time())))
     m = c.get("machine") or ev.get("machine") or "a machine"
     if c.get("when") in MACHINE_WHENS:
         return f"Started because {m} {WORDS[c['when']]} (at {at})."
-    name = str(ev.get("name") or "").strip() or c.get("item")
+    name = c.get("item")
     v = ev.get("value")
     unit = str(ev.get("unit") or "")
+    if not re.fullmatch(r"[A-Za-z0-9°%/µ².]{1,8}", unit):
+        unit = ""
     if onoff(str(c.get("item") or ""), ev.get("domain") or ""):
         reads = ("on" if _num(v) else "off") if not str(c.get("item") or "").startswith("gpio.") else (
             "high" if _num(v) else "low")
     else:
-        reads = f"{v}{'' if unit in ('', '°C') else ' '}{unit}".strip()
+        n = _num(v)
+        reads = "an unreadable value" if n is None else f"{n:g}{'' if unit in ('', '°C') else ' '}{unit}".strip()
     held = f", held for {_span(int(ev['held']))}" if ev.get("held") else ""
     return (f"Started because {name} on {m} ({m}/{c.get('item')}) reads {reads} at {at}{held}. "
             f"The rule: {words(c)}.")

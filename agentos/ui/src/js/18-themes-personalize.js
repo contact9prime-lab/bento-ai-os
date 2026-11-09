@@ -4,11 +4,11 @@ async function renderThemes(body){
   if(typeof pTipBind==='function')pTipBind();   // the ⓘ tips below work before Settings has ever opened
   const swatch=t=>{const v=t.v||t.vars||{};
     return `<span style="display:flex;gap:3px">${['bg2','acc','acc2','txt'].map(k=>`<i style="width:14px;height:14px;border-radius:4px;background:${v[k]||'#333'};border:1px solid rgba(255,255,255,.15)"></i>`).join('')}</span>`;};
-  const cards=Object.entries(allThemes()).map(([k,t])=>`<div class="catcard" style="cursor:pointer" onclick="applyTheme('${esc(k)}');refreshApp('themes')">
+  const cards=Object.entries(allThemes()).map(([k,t])=>`<div class="catcard" style="cursor:pointer" onclick="applyTheme('${jsq(k)}');refreshApp('themes')">
       <span class="cn">${esc(t.label||t.name||k)} ${CURRENT_THEME===k?'✓':''}</span>
       <div style="margin:6px 0 4px">${swatch(t)}</div>
       <span class="cd">${t.mode||'dark'}${t.font?' · '+esc(t.font.family||'custom font'):''}${t.css?' · custom CSS':''}${t.shell?' · full shell':''}</span>
-      ${t.custom?`<button class="endbtn" style="position:absolute;top:8px;right:8px;padding:1px 7px" onclick="event.stopPropagation();themeDel('${esc(k)}')">✕</button>`:''}
+      ${t.custom?`<button class="endbtn" style="position:absolute;top:8px;right:8px;padding:1px 7px" onclick="event.stopPropagation();themeDel('${jsq(k)}')">✕</button>`:''}
     </div>`).join('');
   body.innerHTML=`<div class="pad">
     <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop. Click one to apply it. ${pInfo('Colours, fonts, windows, menu bar, dock, icons and widgets all change. A theme can even bring a completely new interface built by AI.')}</p>
@@ -25,7 +25,7 @@ async function renderThemes(body){
       ['reduced','Reduced','Only the focused window blurs, so the cost stays the same however many are open'],
       ['off','Off','No blur anywhere and panels go solid. Best on a Raspberry Pi or a VM'],
     ].map(([k,label,tip])=>`<button class="endbtn${GLASS.pref===k?' on':''}" title="${esc(tip)}"
-        onclick="setGlass('${k}')">${GLASS.pref===k?'✓ ':''}${esc(label)}</button>`).join('')}</div>
+        onclick="setGlass('${jsq(k)}')">${GLASS.pref===k?'✓ ':''}${esc(label)}</button>`).join('')}</div>
     <p class="mut" style="margin-top:6px">${esc(({auto:'Automatic',full:'Full glass',reduced:'Reduced',off:'Off'})[GLASS.pref]||'')}:
       ${esc(({auto:'currently drawing at "'+glassLevel()+'"',full:'every surface blurs, as the theme designed it',
         reduced:'only the focused window blurs',
@@ -49,7 +49,7 @@ function themeAI(){
   const t=allThemes()[CURRENT_THEME]||{};
   const cur=`Currently applied theme: "${t.label||t.name||CURRENT_THEME}"${t.custom?' (custom — refine it in place)':' (built-in)'}, mode ${t.mode||'dark'}, vars ${JSON.stringify(t.v||t.vars||{})}${t.css?', has custom css':''}${t.shell?', has a full replacement shell':''}.`;
   openApp('chat');
-  if(input){input.value='Theme request: '+p+'\n\n'+cur+'\nUse the create_theme tool. If this is a REFINEMENT of the theme we are already working on (or of the applied custom theme), call create_theme with that SAME name and only the fields to change — vars merge key-by-key and css/font/shell are kept unless passed. Only pick a new name for a genuinely new theme. For a new theme, give a full set of CSS variables and custom css for the chrome (#menubar, #taskbar dock, .win, .aicon). If I asked for a completely different interface (not just a restyle), fetch GET /api/registry to see every endpoint available and pass shell_html — a full replacement UI.';input.dispatchEvent(new Event('input'));send()}
+  if(input){input.value='Theme request: '+p+'\n\n'+cur+'\nUse the create_theme tool. If this is a REFINEMENT of the theme we are already working on (or of the applied custom theme), call create_theme with that SAME name and only the fields to change — vars merge key-by-key and css/font/shell are kept unless passed. Only pick a new name for a genuinely new theme. For a new theme, give a full set of CSS variables and custom css for the chrome (#menubar, #taskbar dock, .win, .aicon). If I asked for a completely different interface (not just a restyle), use create_theme_shell: a page that replaces the desktop and can only draw.';input.dispatchEvent(new Event('input'));send()}
   toast('designing your theme…');
 }
 async function themeSave(theme,apply){
@@ -64,7 +64,7 @@ function themeExport(){
 }
 async function themeImport(){
   try{const t=JSON.parse($('#th-imp').value);if(!t.name)return toast('theme needs a "name"');
-    await themeSave(t,true);await loadThemes();applyTheme(t.name);toast('imported '+t.name);refreshApp('themes');
+    await themeSave(t,true);await loadThemes();applyTheme(t.name);const fn=themeFontNote(t.font&&t.font.url);toast(fn?'! imported '+t.name+'. '+fn:'imported '+t.name);refreshApp('themes');
   }catch(e){toast('invalid JSON: '+e.message)}
 }
 async function themeDel(name){
@@ -159,7 +159,8 @@ function themeBuilder(from){
       <label>Font<select id="tb-font">${TB_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${((WB.font&&WB.font.family)||'')===f?'selected':''}>${esc(l)}</option>`).join('')}<option value="__custom" ${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'selected':''}>Another web font…</option></select></label>
       <div id="tb-fcustom" style="display:${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'flex':'none'};gap:8px;flex-wrap:wrap">
         <input id="tb-furl" value="${esc((WB.font&&WB.font.url)||'')}" placeholder="https://fonts.googleapis.com/css2?family=…" style="flex:2;min-width:200px">
-        <input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="family, e.g. Sora" style="flex:1;min-width:120px"></div>
+        <input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="family, e.g. Sora" style="flex:1;min-width:120px">
+        <p class="mut" id="tb-fnote" style="flex-basis:100%;margin:0">${esc(themeFontNote((WB.font&&WB.font.url)||''))}</p></div>
       <label class="tb-slide">Text size <input type="range" id="tb-fs" min="12" max="17" step="1" value="${fsb}"><output id="tb-fs-o">${fsb}px</output></label></div>
     <div class="tb-sec"><b>Wallpaper</b>
       <select id="tb-wall"><option value="">Keep whatever is set</option><option value="__gen" ${WB.css.includes('/*tb:wall*/')?'selected':''}>Made from these colours</option>
@@ -191,7 +192,7 @@ function themeBuilder(from){
     const [blur,pct]=TB_GLASS[b.dataset.g];WB.v['glass-blur']=blur;WB.v['glass-tint']=`color-mix(in srgb,var(--bg2) ${pct}%,transparent)`;preview()};
   q('#tb-font').onchange=e=>{const f=e.target.value;q('#tb-fcustom').style.display=f==='__custom'?'flex':'none';
     if(f==='__custom')return;WB.font=f?{family:f,url:'https://fonts.googleapis.com/css2?family='+encodeURIComponent(f).replace(/%20/g,'+')+':wght@400;500;600;700&display=swap'}:null;preview()};
-  q('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value;preview()};
+  q('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value;q('#tb-fnote').textContent=themeFontNote(e.target.value);preview()};
   q('#tb-ffam').oninput=e=>{WB.font=WB.font||{};WB.font.family=e.target.value;preview()};
   q('#tb-fs').oninput=e=>{const n=+e.target.value;Object.assign(WB.v,{'fs-xs':(n-3)+'px','fs-sm':(n-2)+'px','fs-md':(n-1)+'px','fs-base':n+'px','fs-lg':(n+2)+'px'});q('#tb-fs-o').textContent=n+'px';preview()};
   q('#tb-wall').onchange=e=>{const x=e.target.value;WB.css=WB.css.replace(/\/\*tb:wall\*\/[^\n]*\n?/g,'');WB.wall_img='';
@@ -224,7 +225,14 @@ async function tbSave(exportOnly){
   const out={name:WB.name,mode:WB.mode,v:WB.v,css:WB.css,font:WB.font||undefined,wall_img:WB.wall_img||undefined};
   if(exportOnly){const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=WB.name.replace(/\s+/g,'-')+'.theme.json';a.click();return}
-  await themeSave(out,true);await loadThemes();applyTheme(WB.name);toast('saved '+WB.name);refreshApp('themes');
+  await themeSave(out,true);await loadThemes();applyTheme(WB.name);
+  const fnote=themeFontNote(out.font&&out.font.url);toast(fnote?'! saved '+WB.name+'. '+fnote:'saved '+WB.name);refreshApp('themes');
+}
+/* The desktop's content policy takes stylesheets from Google Fonts only (_DESKTOP_CSP in server.py),
+   so another address would fail with nothing on screen to say why. */
+function themeFontNote(url){
+  url=String(url||'').trim();
+  return url&&!url.startsWith('https://fonts.googleapis.com/')?"This font won't load. This desktop only takes fonts from fonts.googleapis.com.":'';
 }
 
 /* ================= personalize app + wallpaper gallery ================= */
@@ -237,7 +245,7 @@ async function renderPersonalize(body){
     <p class="mut" style="margin:2px 0 8px">Each theme brings its own wallpaper. Pick one here to keep it whatever the theme.
       ${pInfo("They're small SVG files that stay sharp at any resolution.")}</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
-      ${BUILTIN_WALLS.map(id=>`<button onclick="pzBuiltin('${id}')" title="${esc(id)}"
+      ${BUILTIN_WALLS.map(id=>`<button onclick="pzBuiltin('${jsq(id)}')" title="${esc(id)}"
         style="position:relative;padding:0;border-radius:9px;overflow:hidden;aspect-ratio:16/9;
           border:2px solid ${id===picked?'var(--acc)':'var(--line)'}">
         <img src="${builtinWallURL(id)}" alt="${esc(id)} wallpaper" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy">
@@ -257,9 +265,9 @@ async function renderPersonalize(body){
     </div>
     <label style="margin-top:16px">Your generated wallpapers (click to apply)</label>
     <div id="pz-gal" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px">
-      ${gal.length?gal.map(id=>`<div style="position:relative;border-radius:9px;overflow:hidden;border:1px solid var(--line);aspect-ratio:16/9;cursor:pointer" onclick="pzSet('${id}')">
+      ${gal.length?gal.map(id=>`<div style="position:relative;border-radius:9px;overflow:hidden;border:1px solid var(--line);aspect-ratio:16/9;cursor:pointer" onclick="pzSet('${jsq(id)}')">
         <img src="/api/wallpapers/${id}" style="width:100%;height:100%;object-fit:cover" loading="lazy">
-        <button class="endbtn" style="position:absolute;top:4px;right:4px;padding:1px 6px" onclick="event.stopPropagation();pzDel('${id}')">✕</button>
+        <button class="endbtn" style="position:absolute;top:4px;right:4px;padding:1px 6px" onclick="event.stopPropagation();pzDel('${jsq(id)}')">✕</button>
       </div>`).join(''):'<p class="mut">No wallpapers yet. Generate one above.</p>'}
     </div>
     <p class="mut" style="margin-top:12px">Uses the image provider set in Settings. ${pInfo('Gemini or OpenAI with a key. Without one it uses the free pollinations.ai, at a lower resolution.')}

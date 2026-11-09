@@ -47,7 +47,8 @@ def test_it_opens_once_the_server_answers(browser, monkeypatch):
     deadline = time.time() + 3
     while not browser and time.time() < deadline:
         time.sleep(0.05)
-    assert browser == ["http://127.0.0.1:8321"]
+    # a browser this server starts is its own child, so it carries a ticket to be let in
+    assert len(browser) == 1 and browser[0].startswith("http://127.0.0.1:8321/?desk=")
 
 
 def test_it_opens_exactly_once(browser, monkeypatch):

@@ -86,8 +86,9 @@ function fmt(e){
   if(e.domain==='switch'||e.domain==='light'||e.domain==='fan')return e.value?'on':'off';
   if(typeof e.value==='number')return e.value.toFixed(e.decimals??1).replace('-','−')+(e.uom?' '+e.uom:'');
   return String(e.value)}
+const KEY=encodeURIComponent(new URLSearchParams(location.search).get('k')||'');
 async function poke(node,entity,value){
-  try{const r=await fetch('/poke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node,entity,value})});
+  try{const r=await fetch('/poke?k='+KEY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({node,entity,value})});
     const d=await r.json();if(!d.ok)return toast(d.error||'That didn’t work');load()}catch(e){toast('The demo isn’t answering')}}
 function paint(){
   document.getElementById('hub').href=S.hub;
@@ -115,7 +116,9 @@ function paint(){
           on:()=>poke(n.node,e.name,!e.value)},e.domain==='switch'?(e.value?'Turn off':'Turn on'):(/door/i.test(e.name)?(e.value?'Shut':'Open'):'Flip')):null;
         return h('div',{cls:'row'},h('span',{},e.name),h('span',{},v,flip?' ':null,flip))}))))));
 }
-async function load(){try{S=await (await fetch('/state')).json();paint()}catch(e){
+async function load(){try{const r=await fetch('/state?k='+KEY);
+    if(r.status===403){const b=document.getElementById('banner');b.hidden=false;b.className='banner bad';b.textContent='Open the floor from Bento, or with bento demo warehouse status.';return}
+    S=await r.json();paint()}catch(e){
   const b=document.getElementById('banner');b.hidden=false;b.className='banner bad';b.textContent='The demo isn’t running. Start it again from Devices, or with bento demo warehouse.'}}
 load();setInterval(()=>{if(!document.hidden)load()},1500);
 </script>

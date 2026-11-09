@@ -98,7 +98,7 @@ def test_codex_is_sandboxed_to_the_workspace():
     cmd = execmod.build_command("tidy this", env("codex", ("Read", "Edit")))
     assert cmd[cmd.index("--sandbox") + 1] == "workspace-write"
     assert "danger-full-access" not in " ".join(cmd)
-    assert cmd[-1].endswith("tidy this"), "the prompt is the last argument"
+    assert cmd[-1] == "-" and "tidy this" not in cmd, "the prompt is on stdin"
 
 
 def test_context_and_conversation_travel_in_the_prompt():
@@ -106,7 +106,7 @@ def test_context_and_conversation_travel_in_the_prompt():
     so the context and the conversation so far are IN the prompt, labelled."""
     e = env("gemini-cli", context="The person is looking at Notes.",
             transcript="Person: what is 2+2\nYou: 4")
-    prompt = execmod.build_command("and times three?", e)[2]
+    prompt = execmod.prompt_of("and times three?", e)
     assert "CONTEXT" in prompt and "Notes" in prompt
     assert "THE CONVERSATION SO FAR" in prompt and "You: 4" in prompt
     assert prompt.index("THE CONVERSATION") < prompt.index("and times three?")
@@ -195,7 +195,7 @@ def test_a_failed_codex_command_is_a_failed_step_and_a_failed_turn_is_said():
 FAKE_GEMINI = r"""#!/usr/bin/env python3
 import json, sys
 args = sys.argv[1:]
-prompt = args[args.index("--prompt") + 1]
+prompt = sys.stdin.read()
 with open(sys.argv[0] + ".log", "a") as f:
     f.write(json.dumps(args) + "\n")
 for ev in ({"type": "init", "session_id": "g1", "model": "gemini-2.5-flash"},

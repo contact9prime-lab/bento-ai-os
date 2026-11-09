@@ -151,8 +151,13 @@ def test_the_bridge_command_confines_the_executor_to_our_tools():
     assert "--strict-mcp-config" in cmd                       # nothing from ~/.claude.json
     assert cmd[cmd.index("--allowedTools") + 1] == "mcp__bento"
     assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
-    assert "--system-prompt" in cmd and "--append-system-prompt" not in cmd
-    assert '"Authorization": "Bearer T"' in s and '"type": "http"' in s
+    assert "--setting-sources" in cmd and cmd[cmd.index("--setting-sources") + 1] == ""   # no hook runs
+    assert "SYS" not in s and "do it" not in s and "Bearer" not in s, "nothing private in argv"
+    assert open(cmd[cmd.index("--system-prompt-file") + 1]).read() == "SYS"
+    path = cmd[cmd.index("--mcp-config") + 1]
+    assert (os.stat(path).st_mode & 0o777) == 0o600
+    conf = open(path).read()
+    assert '"Authorization": "Bearer T"' in conf and '"type": "http"' in conf
     assert cmd[cmd.index("--model") + 1] == "sonnet"
 
 
@@ -256,6 +261,24 @@ def client():
     from agentos import server as servermod
     with TestClient(servermod.app) as cl:
         yield cl
+
+
+def test_a_digest_may_stand_for_the_token_in_the_url_and_only_there(client, tmp_path):
+    """Codex can only name a server on its command line, so its URL holds a digest."""
+    from agentos import server as servermod
+    st = servermod.state
+    a = _agent(st["cfg"], st["toolbox"], ["system_info"], [])
+    a._task_text = "x"
+    token = mcpbridge.open_session(a, a._tools())
+    try:
+        msg = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+        url = "/api/mcp/run/" + mcpbridge.url_id(token)
+        assert client.post(url, json=msg, headers={"Authorization": f"Bearer {token}"}).status_code == 200
+        assert client.post(url, json=msg).status_code == 401
+        h = {"Authorization": f"Bearer {mcpbridge.url_id(token)}"}
+        assert client.post(url, json=msg, headers=h).status_code == 401, "the digest is not the secret"
+    finally:
+        mcpbridge.close_session(token)
 
 
 def test_the_route_wants_a_live_token_twice_and_is_loopback_only(client, tmp_path):

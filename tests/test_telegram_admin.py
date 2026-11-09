@@ -346,8 +346,7 @@ def test_a_message_starting_with_a_slash_reaches_the_model_as_prose():
     assert ex.as_prose("summarise my inbox") == "summarise my inbox"
 
     env = ex.Envelope(workspace="/tmp/ws")
-    cmd = ex.build_command("/help", env)
-    assert cmd[cmd.index("--print") + 1] == " /help", \
+    assert ex.prompt_of("/help", env) == " /help", \
         "the prompt handed to the CLI must not begin with a slash"
 
 

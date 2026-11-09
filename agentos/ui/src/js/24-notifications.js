@@ -30,7 +30,7 @@ async function renderNotifList(){
       <div class="np-app">${esc(app)} · ${new Date(n.time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}${n.importance>=2?' · <b>important</b>':''}</div>
       <div class="np-sum">${esc(n.summary)}</div>
       ${n.body?`<div class="np-body">${esc(n.body)}</div>`:''}
-      <button class="np-x" onclick="dismissNotif(${n.id})">✕</button>
+      <button class="np-x" onclick="dismissNotif(${+n.id})">✕</button>
     </div>`).join('')}</div>`).join('')
     ||`<div class="np-empty">${svgBell(22)}<b>You\u2019re all caught up</b><span>Notifications from your apps, missions and linked teams land here.</span></div>`);
   const dnd=$('#np-dnd');
@@ -47,7 +47,7 @@ async function openNotifPanel(){
   await renderNotifList();
   popOpen(p,{anchor:$('#tray-bell')});
   popIn(p,{origin:'top right'});
-  await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
+  await fetch('/api/notifications',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
   updateBell();
 }
 async function dismissNotif(id){

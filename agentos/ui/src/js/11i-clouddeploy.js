@@ -59,7 +59,7 @@ function cloudStorageStep(list){
   CLOUDDEP.signup=top.signup;
   const how=p=>`<div class="cd-way"><b>${esc(p.name)}</b>${p.free?` <span class="mut">${esc(p.free)}. ${esc(p.card)}</span>`:''}
       <ol class="cd-steps">${p.steps.map(x=>`<li>${esc(x)}</li>`).join('')}<li>Endpoint: ${esc(p.endpoint)}</li></ol>
-      ${p.signup?`<div><button class="endbtn" onclick="cloudDeployOpen(${JSON.stringify(p.signup).replace(/"/g,'&quot;')})">Open ${esc(p.name)}</button></div>`:''}</div>`;
+      ${p.signup?`<div><button class="endbtn" onclick="cloudDeployOpen(${esc(JSON.stringify(p.signup))})">Open ${esc(p.name)}</button></div>`:''}</div>`;
   return `<div class="cd-step"><span class="mut">1. A free storage bucket for its memory. ${esc(top.name)}: ${esc(top.free)}. ${esc(top.card)}</span>
       <div><button class="endbtn" onclick="cloudDeployOpen(CLOUDDEP.signup)">Make a ${esc(top.name.split(' ')[0])} bucket</button>
         ${pInfo('Your password seals everything before it leaves the machine, so the storage only ever holds noise.')}</div>

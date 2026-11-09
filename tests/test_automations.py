@@ -140,7 +140,7 @@ def test_the_automation_tools_are_registered_and_dispatchable():
 
 def test_save_then_list_then_run(toolbox):
     fired = []
-    toolbox.broadcast = lambda ev: asyncio.sleep(0, result=fired.append(ev))
+    toolbox.broadcast_user = lambda ev, uid: asyncio.sleep(0, result=fired.append(ev))
 
     out = asyncio.run(toolbox.save_automation(
         "Start work", json.dumps([{"kind": "app", "app": "chat"},
@@ -152,7 +152,7 @@ def test_save_then_list_then_run(toolbox):
 
     assert "ran automation 'Start work'" in asyncio.run(toolbox.run_automation("start work"))
     ran = [e for e in fired if e["type"] == "automation.run"]
-    assert len(ran) == 1 and ran[0]["automation"]["name"] == "Start work"
+    assert len(ran) == 1 and ran[0]["name"] == "Start work" and "steps" not in ran[0]
 
 
 def test_saving_an_existing_name_reports_an_edit(toolbox):

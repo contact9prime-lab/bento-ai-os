@@ -69,8 +69,9 @@ command — the exact install command in Settings → Executors.
 | `pricing` | `{ "<model-glob>": {in, out} }` — USD per **million** tokens, used by the cost ledger (`agentos usage`, `/api/usage`). Overrides the shipped table; a model with no match is recorded in tokens only, never as $0 |
 | `memory` | `{ auto_extract, model, inject_user, inject_session, inject_facts, embed_model, rollup_after_hours, kg_dedup }` — auto-learn mines every chat turn for user memories, session memories, and knowledge-graph facts, and applies corrections/retractions. `model` picks the extraction model (empty = `default_model`; a small fast model works well). `inject_*` counts control how many of each go into the system prompt. `embed_model` enables semantic recall (empty = auto-detect an installed Ollama embedding model such as `nomic-embed-text`). `rollup_after_hours` distills idle conversations' session memory into user memory (0 disables). `kg_dedup` periodically merges duplicate graph entities |
 
-Edit through the UI when possible; the agent can also change most of these with its
-`configure_agentos` tool. If you edit the file by hand, restart the service
+Edit through the UI when possible. The agent's `configure_agentos` tool reaches only its own
+name, `default_model`, `max_steps` and the `memory` numbers: security, permissions and channels
+are yours, in Settings. If you edit the file by hand, restart the service
 (`systemctl --user restart agentos`).
 
 ---
@@ -99,9 +100,11 @@ automatically. API keys can also come from environment variables — see [Models
 "sandbox": { "enabled": true, "root": "", "folders": [] }
 ```
 
-When enabled (and `bubblewrap` is installed), the agent's shell/file tools and the Terminal are
-confined to `root` (defaults to the workspace). Outside that folder the filesystem is read-only and
-other home directories are hidden. Turn it on/off and set the folder in **Settings → Sandbox**.
+When enabled, the agent's shell/file tools and the Terminal are confined to `root` (defaults to the
+workspace). Outside that folder the filesystem is read-only and every home is hidden. If `bubblewrap`
+cannot start here, file tools stay confined and each command asks you first
+([details](security.md#containers-and-a-sandbox-that-cannot-start)). Turn it on/off and set the folder in
+**Settings → Sandbox**.
 
 ### Safe folders
 

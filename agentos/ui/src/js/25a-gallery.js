@@ -22,7 +22,7 @@ async function renderGallery(body,w){
     sub:items.length?`${items.length} item${items.length===1?'':'s'}`:'',
     search:{id:'gal-q',placeholder:'Search title, prompt or source…'},
     actions:`<span class="seg" id="gal-kinds">${KINDS.map(k=>
-        `<button class="${k===galKind?'on':''}" onclick="galSetKind('${k}')">${LABEL[k]}</button>`).join('')}</span>
+        `<button class="${k===galKind?'on':''}" onclick="galSetKind('${jsq(k)}')">${LABEL[k]}</button>`).join('')}</span>
       <button class="pghost" onclick="galPick()">Upload</button>`,
   });
   const q=$('#gal-q');
@@ -48,7 +48,7 @@ function galTile(a){
        :`<span class="galmark">${badge||'●'}</span>`);
   const meta=[a.duration?galDur(a.duration):'',a.width?a.width+'×'+a.height:'',
               Math.round((a.bytes||0)/1024)+' KB'].filter(Boolean).join(' · ');
-  return `<button class="galtile ${galSel===a.id?'on':''}" onclick="galOpen('${a.id}')" title="${esc(a.title||'')}">
+  return `<button class="galtile ${galSel===a.id?'on':''}" onclick="galOpen('${jsq(a.id)}')" title="${esc(a.title||'')}">
     <span class="galart">${art}${badge?`<span class="galbadge">${badge}</span>`:''}</span>
     <span class="galcap"><span class="galname">${esc(a.title||a.kind)}</span><span class="galmeta">${esc(meta)}</span></span>
   </button>`;
@@ -84,9 +84,9 @@ function galDetail(a){
       ${row('From prompt',a.prompt)}
       ${row('When',when)}
       <div class="row" style="margin-top:10px">
-        <button class="endbtn" onclick="window.open('${a.url}','_blank')">Open</button>
+        <button class="endbtn" onclick="window.open('${jsq(a.url)}','_blank')">Open</button>
         <a class="endbtn" href="${a.url}" download style="text-decoration:none;text-align:center">Download</a>
-        <button class="endbtn" onclick="galDelete('${a.id}')">Delete</button>
+        <button class="endbtn" onclick="galDelete('${jsq(a.id)}')">Delete</button>
       </div>
     </div></div>`;
 }

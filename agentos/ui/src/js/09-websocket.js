@@ -727,6 +727,15 @@ function handle(ev){
       else if(typeof faceFacesPaint==='function'&&document.getElementById('s-faces')){KFACE.st=null;faceFacesPaint()}}); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
+    // the server noticed something: its own sentence, and what it was given shown as text by toast
+    case 'security_alert':{
+      toast('⚠ Security: '+ev.words+(ev.source?' ('+ev.source+')':''),{kind:'warn',label:'Review',go:()=>{if(typeof settingsGo==='function')settingsGo('permissions');else openApp('settings')}});
+      if(typeof secCardPaint==='function')secCardPaint();
+      break;}
+    case 'security_hold':{
+      toast('Agents are stopped because a security file changed.',{kind:'err',label:'Review',go:()=>{if(typeof settingsGo==='function')settingsGo('permissions');else openApp('settings')}});
+      if(typeof secCardPaint==='function')secCardPaint();
+      break;}
     case 'approval_resolved':{
       delete APPROVALS[ev.id];
       // its "approval needed" toast goes too: a Review that opens nothing is a dead button
@@ -848,7 +857,7 @@ function handle(ev){
     // the server never runs an automation itself — it says "run this" and the
     // desktop does, so a schedule, the agent's tool and the palette all land in
     // the same runner
-    case 'automation.run': onAutomationBroadcast(ev.automation); break;
+    case 'automation.run': onAutomationBroadcast(ev); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'eval_result': case 'evals_done':

@@ -1979,10 +1979,11 @@ A review in 0.6.18 found the PDP sound and its INPUTS wrong, each confirmed by r
   `safe`, so `run_python` (whose docstring claimed it passed the gate) ran unasked at every
   autonomy level and was exempt from the untrusted-content rule. A new tool asks until
   somebody decides; the test fails on a tool that is neither.
-- **A shell command is safe only in its read-only form.** `env`, `awk`, `sed` and
-  `printenv` left `SAFE_COMMANDS` (they run programs or leak keys); `_segment_writes` names
-  what turns `curl`, `wget`, `sort`, `ip`, `find`, `xrandr`… into a write or a run, and a
-  lone `&` is dangerous. A download in the shell taints the turn (`tools.FETCHES`).
+- **A shell command is safe only in its read-only form, and that is an allow-list.** `shell_parse`
+  splits words as a shell does; `_SAFE_FLAGS`/`_GIT_SPECS` list the exact flags each safe program may
+  take, so a quoted, attached, abbreviated or new flag asks until it is listed. A path-qualified program,
+  `curl` and `wget` are never safe. A download in the shell taints the turn, decided from the parsed
+  program (`tools.FETCHES`).
 - **A Rule lowers risk for your agent, never for an app or for the taint ceiling.** The
   gate gets `base_risk` (the tool's risk before any Rule) and judges untrusted content,
   read-only channels and apps on it. A Rule or grant written for one command covers that
@@ -2005,6 +2006,41 @@ A review in 0.6.18 found the PDP sound and its INPUTS wrong, each confirmed by r
 
 The gate's grant cache also keys on SQLite's `data_version` (`Store.outside_writes`), so a
 grant written from a terminal (`bento grants`) is seen by a running server at once.
+
+## Security is not the AI's to control, and it is tested where it can't touch the machine
+
+The owner's rule (2026-11): no AI overrules security or touches the security files, a watcher notices a change,
+and an attack is flagged. A model-reachable path to a security setting or security code is a defect at any
+autonomy level. The audit and its 97 fixes are in `docs/security-testing.md`; these are the parts that will bite:
+
+- **One list of what no agent may touch** (`agentos/protected.py`): secret files are never read, settings,
+  databases and code never written, `.claude`/`.git`-style folders never written, whatever a grant says. A home
+  is closed by allow-list (`HOME_READABLE`/`HOME_WRITABLE`). Use it; never make a second list.
+- **`configure_agentos` is an allow-list** (`CONFIG_SAFE_KEYS`). `develop_agentos`, `restart_agentos`,
+  `update_soul`, `share_folder`, `set_engine` are ALWAYS_ASK, and `protected.develop_refused` holds even with a yes.
+  ALWAYS_ASK offers no Remember and a card's grant never satisfies it (`policy.wrote_on_purpose`).
+  `policy.person_rule` is the one last word after the gate, for `call_tool` and `/api/tool` alike.
+- **Loopback is a person only after `_at_machine`**: a known Host (`remote.host_allowed`), no proxy headers,
+  not a process this server started (`agentos/peercheck.py`, with the server a subreaper). A browser the OS
+  starts on a person's act carries `remote.ticket_url`; never exempt descendants in general.
+- **The machine's routes are one table** (`agentos/machineroutes.py`, one middleware); a new mutating route must
+  be there, check for itself, or be listed in `tests/test_machine_routes.py`. Host tools are `HOST_TOOLS`,
+  checked once in `Toolbox.execute`.
+- **The jail is built on the workspace, never a home** (`tools.bwrap_argv`: `--clearenv` with `JAIL_ENV`, pid,
+  ipc and uts unshared, `/run` blank). A caller that must hand a program a secret builds the env from
+  `jail_env` and passes `own_env=True`, never `--setenv`. Agent CLIs run in `executors.jail_cli`, take words on
+  stdin (`tests/test_cli_jail.py` scans argv), and read no folder's settings.
+- **`netguard` is the one client for an address somebody named.** `safeopen` opens what was checked.
+  `constcmp.same` compares secrets.
+- **The watcher** (`agentos/integrity.py`) is off until `serve()` arms it; a hold is step 0 of the gate and only
+  `bento integrity accept` at a person's terminal clears it. Only `updates.apply`/`rollback` re-baseline. A new
+  writer of `config.json` or `users.json` calls `integrity.noted`. The ledger is an HMAC under `ledger.key`
+  with `ledger.anchor` outside the database.
+- **Attacks go in `secevents.flag`**, one alert per incident, the OS's words only to a model.
+- **Testing never touches the machine.** A server on a throwaway home still controls this computer through
+  `hostctl` (D-Bus), so a test or proof never calls a machine route as an admin, and runs in a jail with `/run`
+  empty (no system bus). `python -I` ignores PYTHONPATH and runs the installed checkout instead: don't. The
+  tests reset the watcher's hold between tests (`conftest.py`).
 
 ## Everything a principal does goes in the ledger
 
@@ -2797,21 +2833,12 @@ Permissions and "Allow & remember" read and write the same cells. These hold:
   rows count (`permissions.talk` writes the roster's pairs), so a desk cell never widens a
   mission and swarm never reaches into one; at the desk, definition rows do NOT count, so
   enabling a mission is never consent for its specialists to message each other outside it.
-- **Democracy is swarm with a vote, never a fifth way to answer a person's question.**
-  `team.talk == "democracy"` makes the PDP return `ask` with `rule="democracy"` in exactly
-  the places swarm returns `allow` (an empty local cell at 2e, `_swarm_opens` for the lead),
-  and the agent loop hands that ask to `ControlPlane.council` instead of the approver, but
-  only when `must_person` is empty. The council (`council_of`) is up to three seats: the lead
-  (when the machine has a brain and the lead is not proposing) and specialists, different
-  brains first, the proposer never, the one asked included. With the usual three specialists
-  that still makes three voters, which is why the lead sits. Fewer than two voters is no
-  council, and the person is asked. `read_vote` is strict: not yes or no is no. A ballot is
-  a run of kind `vote` with NO tools. The vote question tells voters a step the person asked
-  for is sensible unless harmful: the first live run voted a requested hand-over down 0 of 3
-  as "too simple to delegate". Every vote is a `team.vote` audit row (principal kind
-  `council`). A huddle in democracy ends with a vote on the last word said, stored as one
-  `[vote] …` line (`vote_line`) that the page's turn pattern ignores and `huddleParse` draws.
-  `tests/test_democracy.py`.
+- **Democracy is advice to a person, never a decision.** The owner's rule is that no security is
+  controlled by AI, so `ControlPlane.council` returns a view for the person's card and has no approve
+  field; `must_person` is set, so with nobody there the answer is no, and the ledger effect is `advice`.
+  The council is up to three seats (`council_of`), ballots run with NO tools, `read_vote` is strict, and
+  every vote is a `team.vote` row. Swarm and democracy never open on a tainted or unattended turn
+  (`PDP._swarm_may`). `tests/test_democracy.py`.
 - **Asking back the direct asker is a clarification, not a loop.** It is handed UP
   (`_clarify`, keyed on the asked one's run): the asker's `ask_agent` returns "X asks you back"
   and the asker — which holds its whole context — asks again. Never start a fresh run of the
@@ -3192,7 +3219,9 @@ mode the souls and memory and kb should be with the hub and sectioned". Five rul
   kept in `_space_clause`/`search_memories` beside it: one space's rows and nothing global. A Zero reads
   and writes only its section (never the hub's global rows, never another Zero's); the hub's own team
   working a Zero's task runs in that space (`_lead_for_link`'s `space`, `delegate` carries `_space`) and
-  sees section + global, the ordinary rule. Every write from a Zero is filed in its space whatever it asked.
+  reads exactly the section too (`spaces.section`, `Store.section_ids`, in the one visibility rule), because
+  what it answers goes back to that room. Its soul is the Zero's, and `everywhere` can't write past it. Every
+  write from a Zero is filed in its space whatever it asked.
 - **Answered only for a machine this hub set up to run there** (`zero.ships_to`), in the link owner's
   account; the space id is kept on the machine's `provision.enabled` entry so a renamed space is not split.
   Its soul is a file under the soul's folder (`zeros/<label>.md`); a change is a `zero.soul` ledger row.

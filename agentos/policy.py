@@ -34,6 +34,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
+from . import integrity
 from . import users as usersmod
 
 
@@ -66,6 +67,7 @@ class Decision:
 # which one decided each row. A request stops at the first step that decides, so
 # everything before it was passed and everything after it never looked.
 STAGES = (
+    ("held", "Security hold", "A security file changed, so agents wait until a person clears it."),
     ("hard", "Hard blocks", "Commands that would wreck the machine are always refused."),
     ("builtin", "Built-in protection", "Apps, agents and other machines may never change the OS's own rules."),
     ("reach", "Hands", "The tools, folders and sites this agent can reach at all."),
@@ -78,12 +80,12 @@ STAGES = (
     ("person", "Always a person", "Power, installs, code from a specialist and setting a device are confirmed every time."),
 )
 _STAGE_OF_RULE = {
-    "hard-block": "hard", "audit-unavailable": "hard",
+    "integrity-hold": "held", "hard-block": "hard", "audit-unavailable": "hard",
     "builtin-deny": "builtin", "reach": "reach", "channel-read-only": "channel",
     "taint": "taint", "quarantined": "rate", "steered": "rate",
     "message-off": "team", "message-flow": "team", "department-same": "team",
     "swarm": "default", "democracy": "default", "io-gate": "rules", "device-ungranted": "default",
-    "person": "person",
+    "person": "person", "not-offered": "builtin",
 }
 
 
@@ -106,7 +108,7 @@ _SELF_MOD = ["tool:configure_agentos*", "tool:update_soul*", "tool:develop_agent
 # Defining a flow writes grants, so anything that could define one could grant itself
 # whatever it liked by writing a flow that says so. Only the user's own agent may, and even
 # then the flow is created disabled — enabling is what grants, and that stays a human act.
-_NO_FLOW_WRITE = [("flow.write", "*")]
+_NO_FLOW_WRITE = [("flow.write", "*"), ("flow.enable", "*")]
 # Defining a subagent is the same shape of decision as defining a flow: the
 # definition IS a capability set (a model, a tool list, a skill list), so anything
 # that could write one could hand itself capabilities by naming them in a new
@@ -127,7 +129,26 @@ _NO_PLUGIN_WRITE = [("plugin.install", "*"), ("plugin.enable", "*")]
 _NO_MCP_INSTALL = [("mcp.install", "*")]
 # And a skill from the open: a stranger's procedure the agent will follow from then on.
 _NO_SKILL_INSTALL = [("skill.install", "*")]
-_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE + _NO_MCP_INSTALL + _NO_SKILL_INSTALL
+# What this machine is: its folders, its engine, its code, its power, its network, how every
+# signed-in browser looks. A definition, an imported bundle or an app naming one of these
+# gets nothing, whatever its grants say, and with accounts `_admin_only` is a second lock on
+# some of them. MACHINE_TOOLS is the list `tests/test_gate_hardening.py` holds every tool
+# against, so a new tool has to be placed. `create_theme` writes script that every browser
+# runs. `run_tests` is OUTSIDER_TOOLS: a mission's engineer runs them (jobs.py), and the
+# tool's own jail is what bounds that; nothing from outside the team has business there.
+MACHINE_TOOLS = ("share_folder", "set_engine", "update_agentos", "power_action", "create_theme",
+                 "wifi", "bluetooth", "power_profile", "lock_screen", "manage_models",
+                 "trainforge_service", "create_theme_shell")
+_NO_MACHINE = [("folder.share", "*"), ("system.engine", "*"), ("system.update", "*"),
+               ("system.power", "*"), ("tool.use", "tool:create_theme*"), ("tool.use", "tool:wifi*"),
+               ("tool.use", "tool:bluetooth*"), ("tool.use", "tool:power_profile*"),
+               ("tool.use", "tool:lock_screen*"), ("tool.use", "tool:manage_models*"),
+               ("tool.use", "tool:trainforge_service*")]
+OUTSIDER_TOOLS = ("run_tests", "run_evals")
+_NO_OUTSIDER = [("tool.use", "tool:run_tests*"), ("tool.use", "tool:run_evals*")]
+# And a page drawn over the whole desktop: the person's, and nobody else's to ask for.
+_NO_THEME_SHELL = [("theme.shell", "*")]
+_DEFINE = _NO_FLOW_WRITE + _NO_AGENT_WRITE + _NO_PLUGIN_WRITE + _NO_MCP_INSTALL + _NO_SKILL_INSTALL + _NO_MACHINE + _NO_THEME_SHELL
 # Asking the person for an ability is the team's: the lead, a specialist, a mission's master.
 # Never an app's, a peer's, a linked team's or a pool's: none of them is on this team.
 _NO_CAPABILITY = [("capability.grant", "*")]
@@ -141,9 +162,9 @@ _NO_HUDDLE = [("agent.huddle", "*")]
 # agent would be starting work under that agent's name with nobody's consent.
 _NO_MESSAGE = [("agent.message", "*")]
 BUILTIN_DENY = {
-    "app": [("tool.use", p) for p in _SELF_MOD] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
+    "app": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
     "subagent": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE,
-    "workflow": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
+    "workflow": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
     # A flow's master orchestrator is the one principal in the OS that exists to invoke
     # other agents, so the blanket agent.invoke deny above would defeat its purpose. It
     # is still barred from rewriting the OS, and delegation is not free: `_default` gives
@@ -157,17 +178,17 @@ BUILTIN_DENY = {
     # when its key is minted, revoked with it — and `_default` denies a peer
     # everything ungranted, so these rows are belt on top of braces: even a
     # hand-written grant must never let a peer near the OS or another agent.
-    "peer": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
+    "peer": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
     # A linked team's agent (another machine over mTLS, or another account here). Its
     # whole legitimate reach is asking one of YOUR agents a question — agent.message,
     # granted cell by cell — and `_default` refuses everything else before any model
     # default. These rows are belt on top of braces, as for a peer.
-    "team": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_CAPABILITY,
+    "team": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_CAPABILITY,
     # A machine of this machine's community (pool.py): on a leader, a member that thinks
     # with the leader's brain (model.use, granted at admission); on a member, the
     # community handing it work (pool.work, granted at joining). `_default` refuses a
     # pool principal everything else; these rows are the belt on top, as for a peer.
-    "pool": [("tool.use", p) for p in _SELF_MOD] + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
+    "pool": [("tool.use", p) for p in _SELF_MOD] + _NO_OUTSIDER + [("agent.invoke", "*")] + _DEFINE + _NO_HUDDLE + _NO_MESSAGE + _NO_CAPABILITY,
 }
 
 # tool name -> (action, resource template); anything unlisted is plain tool.use
@@ -205,12 +226,145 @@ TALK_MODES = ("off", "matrix", "swarm", "democracy")
 def team_talk(cfg: dict) -> str:
     """How specialists may message each other: 'off', 'matrix' (the default — each
     pair is a grant, and an empty cell asks) or 'swarm' (every cell a person has not
-    explicitly blocked is open), or 'democracy': where swarm would open, a council of
-    the team votes and a majority decides (2 of 3), and you are asked only when there
-    is no council to ask (fabric.ControlPlane.council). One reading, used by the gate,
-    the tool and every surface that shows the switch."""
+    explicitly blocked is open), or 'democracy': you are asked, and the team's view of the
+    step is on the card (fabric.ControlPlane.council). A vote never decides: no security is
+    controlled by AI. One reading, used by the gate, the tool and every surface that shows
+    the switch."""
     v = str(((cfg or {}).get("team") or {}).get("talk") or "matrix").lower()
     return v if v in TALK_MODES else "matrix"
+
+
+def effective_autonomy(cfg: dict, surface: str = "") -> str:
+    """The autonomy a surface really runs at: its channel posture over the machine's setting.
+    The gate lowers a decision on this, so an approver answering on the raw setting answered
+    yes to the very question "ask over Telegram" had just raised."""
+    posture = channel_posture(cfg or {}, surface)
+    if posture == "ask":
+        return "balanced"
+    if posture == "full":
+        return "full"
+    return str((cfg or {}).get("autonomy") or "balanced")
+
+
+# Why a person is not asked for a step ALWAYS_ASK names: consent somebody read in full before
+# giving it. A flow's definition (its consent screen, at Enable) and an app's manifest (at
+# install) are that. So is a rule a person wrote by hand in Permissions. A card's Remember
+# is not: it was one click on one step, and it answered a question about something else.
+_CONSENT_SOURCES = ("definition", "manifest")
+
+
+def wrote_on_purpose(grant: dict | None) -> bool:
+    if not grant or grant.get("effect", "allow") != "allow":
+        return False
+    src = str(grant.get("source") or "")
+    if src in _CONSENT_SOURCES:
+        return True
+    return src == "user" and not str(grant.get("note") or "").lower().startswith("allowed")
+
+
+def person_rule(principal, name: str, args: dict, dec, pdp=None, level: str = "") -> str:
+    """The gate's last word on a tool call: why this step must be a person's ('' when it
+    need not). It may turn the decision into an ask. One function, because the agent loop
+    and /api/tool used to hold two copies and an app's device set skipped "every set is
+    asked" through the second one."""
+    from .tools import ALWAYS_ASK, ASK_FROM_SPECIALISTS, RADIO_TOOLS
+    must = ""
+    args = args or {}
+    # A radio's change is asked every time, and reading its status is not a change
+    if (name in ALWAYS_ASK or (name in RADIO_TOOLS and level == "risky")) and dec.effect in ("allow", "ask"):
+        # confirmed every time, full autonomy included, and never remembered from a card
+        row = pdp.grant_row(dec.rule) if pdp is not None and dec.effect == "allow" else None
+        if not wrote_on_purpose(row):
+            dec.effect = "ask"
+            dec.grant_offer = None
+            must = "confirmed every time"
+    elif name in ASK_FROM_SPECIALISTS and getattr(principal, "kind", "") == "subagent" \
+            and dec.effect == "allow" and dec.rule in ("default", ""):
+        # code from a specialist: a person says yes each time, and may remember it
+        dec.effect = "ask"
+        must = "code from a specialist"
+    elif name == "device_set" and dec.effect == "allow":
+        # a set changes something in the room: a grant says it MAY, a person says yes to
+        # each one, whatever the grant or the autonomy (devio.py). From a Zero's own
+        # screen the approver sends it to the owner's Telegram (server._linked_approval)
+        dec.effect = "ask"
+        dec.grant_offer = None
+        must = "every set is asked"
+    elif name == "terminal_send" and args.get("_fg") and dec.effect == "allow" \
+            and dec.rule in ("default", ""):
+        # keys into a running program in the person's terminal: a person says yes
+        dec.effect = "ask"
+        dec.grant_offer = None
+        must = f"typed into {args['_fg']}, not the shell"
+    if dec.effect == "ask" and dec.rule == "taint":
+        must = "after untrusted content"
+    elif not must and dec.effect == "ask" and dec.rule == "default" \
+            and getattr(dec, "action", "") in ("agent.message", "device.get"):
+        # Autonomy is what an agent may do. An empty cell of the matrix and a reading nobody
+        # permitted are questions autonomy has no answer to: a channel's full-autonomy approver
+        # said yes to both. The card's remember stays, because it writes the cell or the grant.
+        must = "who may ask whom" if dec.action == "agent.message" else "a reading nobody permitted"
+    return must
+
+
+def _glob_free(text: str) -> str:
+    """Model-written text inside a pattern: its * ? [ stand for themselves. `* x` offered
+    `**`, and a path of `*/x` offered every file on the disk."""
+    return re.sub(r"[*?\[]", lambda m: f"[{m.group(0)}]", text)
+
+
+def _has_glob(pattern: str) -> bool:
+    """A wildcard that is one, not one _glob_free made literal."""
+    return bool(re.search(r"[*?]", re.sub(r"\[[*?\[]\]", "", pattern or "")))
+
+
+# Programs "Always" may cover whole, whatever they are run with. Everything else is remembered
+# by its first word of work (`git push`, `npm test`, `make build`), or exactly as typed when
+# it opens with a flag. An interpreter or anything that runs another program is never whole:
+# `python3 test.py` must not grow into `python3 -c`, nor `git push` into `git -c core.sshCommand=`.
+OFFER_WHOLE = {"cd", "ls", "cat", "pwd", "echo", "head", "tail", "wc", "grep", "rg", "tree", "du", "df",
+               "stat", "mkdir", "touch", "true", "pytest", "ruff", "mypy", "black", "flake8", "tsc",
+               "eslint", "prettier", "jest", "vitest"}
+# A second word that names what runs next, so the third is the thing the person approved
+_OFFER_RUNS_NEXT = {"run", "run-script", "exec", "x", "dlx"}
+
+
+def command_offer(cmd: str) -> str:
+    """What "Always" on this command line covers, as the pattern after `tool:run_command `.
+    "Approved always, it still asks again" must stay fixed for ordinary commands, and each
+    command in a chain is matched on its own (command_covered), so a chain gets one pattern
+    per command in it. A line a wildcard can never cover (a redirect, a substitution, a word
+    this cannot read) is remembered as exactly itself."""
+    from .tools import BACKGROUND, DANGEROUS_META, shell_parse
+    cmd = (cmd or "").strip()
+    exact = _glob_free(cmd)
+    segs = None if DANGEROUS_META.search(cmd) or BACKGROUND.search(cmd) else shell_parse(cmd)
+    if not segs:
+        return exact
+    pats = []
+    for words in segs:
+        head = words[:3]
+        if any(w.any_quote or w.escaped or w.glob or w.brace or re.search(r"[{},]", w.value)
+               for w in head[:2]):
+            return exact
+        vals = [w.value for w in words]
+        if vals[0] in OFFER_WHOLE:
+            pat = f"{vals[0]}*"
+        elif len(vals) == 1:
+            pat = vals[0]
+        elif vals[1].startswith("-"):
+            pat = _glob_free(" ".join(vals))
+        elif vals[1] in _OFFER_RUNS_NEXT and len(vals) > 2:
+            pat = _glob_free(" ".join(vals[:3])) + "*"
+        else:
+            pat = f"{vals[0]} {vals[1]}*"
+        if pat not in pats:
+            pats.append(pat)
+    if len(pats) == 1:
+        return pats[0]
+    if any(re.search(r"[{},]", p) for p in pats):
+        return exact
+    return "{" + ",".join(pats) + "}"
 
 
 def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
@@ -243,6 +397,12 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return "mcp.install", f"mcp:{who or '*'}"
     if name in _FS_READ:
         return "fs.read", f"fs:{args.get('path', '') or '*'}"
+    # A local file copied to a place it can be fetched from again is a read of that file:
+    # fs grants and denies, folder envelopes and hands all decide it, as for read_file.
+    if name in ("set_wallpaper", "save_asset"):
+        src = str(args.get("source") or "").strip()
+        if src and not src.startswith(("http://", "https://")):
+            return "fs.read", f"fs:{src}"
     if name == "write_file":
         return "fs.write", f"fs:{args.get('path', '') or '*'}"
     if name == "fetch_url":
@@ -323,6 +483,8 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
         return action, res
     if name == "use_skill":
         return "skill.use", f"skill:{args.get('name', '') or '*'}"
+    if name == "create_theme_shell":
+        return "theme.shell", f"theme:{str(args.get('name') or '').strip() or '*'}"
     if name == "install_skill":
         return "skill.install", f"skill:{str(args.get('source') or '').strip() or '*'}"
     # An ability for somebody: its own action, so apps, peers and linked teams are refused
@@ -332,8 +494,12 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     # Writing a flow is its own capability, not another tool.use string: a flow definition
     # IS a set of standing permissions, so "may define a flow" and "may fetch a URL" are not
     # the same kind of question and must be grantable apart.
-    if name in ("create_flow", "enable_flow"):
+    # Enabling is its own: "may draft a flow" must never cover switching it on, which is the
+    # moment its declared permissions become real (Remember on a "stays disabled" card did).
+    if name == "create_flow":
         return "flow.write", f"flow:{args.get('name', '') or '*'}"
+    if name == "enable_flow":
+        return "flow.enable", f"flow:{args.get('name', '') or '*'}"
     # Building an agent is not "using a tool". It writes a standing definition that
     # says which model, tools and skills that agent will hold, so it is grantable
     # (and deniable) apart from everything else — see _NO_AGENT_WRITE.
@@ -379,6 +545,9 @@ def action_of(name: str, args: dict, mcp=None, ocp=None) -> tuple[str, str]:
     # reason this vocabulary exists rather than a single tool name match.
     if name == "update_agentos":
         return "system.update", "system:agentos"
+    if name == "power_action":
+        # per action: allowing the screen to lock must never cover a reboot
+        return "system.power", f"power:{args.get('action', '') or '*'}"
     if name == "set_engine":
         return "system.engine", f"engine:{args.get('engine', '') or '*'}"
     if name == "share_folder":
@@ -449,7 +618,7 @@ def command_covered(pattern: str, command: str, match=None) -> bool:
     from .tools import BACKGROUND, CONNECTORS, DANGEROUS_META
     match = match or (lambda p, v: fnmatch.fnmatchcase(v, p))
     cmd = (command or "").strip()
-    if "*" not in (pattern or "") or pattern.strip() == "*":
+    if not _has_glob(pattern or "") or pattern.strip() == "*":
         return match(pattern or "*", cmd)
     if DANGEROUS_META.search(cmd) or BACKGROUND.search(cmd):
         return False
@@ -505,7 +674,11 @@ TAINT_MODES = ("off", "ask", "strict")
 # After untrusted content these are held for a person like a risky step, because a web
 # page that can get one line into memory or a skill is a page that speaks in every later
 # turn. Reading stays free; only the write that outlives the turn is shown.
-TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation"}
+TAINT_WATCH = {"remember", "forget", "kg_add", "save_skill", "save_automation",
+               # a routine replays steps as if you had started it: never on a page's say-so
+               "run_automation",
+               # history a person trusts later, and a page's words are not theirs to commit
+               "git_init", "git_commit", "git_branch"}
 
 # Paranoid is "ask before anything that isn't just reading". Before 0.6.18 it behaved
 # exactly like balanced, under a label that said "asks before every action".
@@ -768,6 +941,27 @@ def _fs_real(resource: str, workspace: str = "") -> str:
     return "fs:" + os.path.realpath(p)
 
 
+_FS_ACTIONS = ("fs.read", "fs.write", "folder.share")
+
+
+def _fs_pattern(pattern: str, workspace: str = "") -> str:
+    """A file grant in the same terms as the path it is matched against: `~` expanded, relative
+    taken from the workspace, the folder part resolved. The part from the first wildcard on
+    is left alone. A pattern that opens with a wildcard names no folder and stays as written."""
+    if not pattern.startswith("fs:"):
+        return pattern
+    raw = pattern[3:]
+    m = re.search(r"[*?\[]", raw)
+    head, tail = (raw[:m.start()], raw[m.start():]) if m else (raw, "")
+    if not head:
+        return pattern
+    base = os.path.expanduser(head)
+    if not os.path.isabs(base):
+        base = os.path.join(os.path.expanduser(workspace or "~"), base)
+    real = os.path.realpath(base)
+    return "fs:" + real + ("/" if head.endswith("/") and not real.endswith("/") else "") + tail
+
+
 def _hidden(resource: str) -> bool:
     """A hidden file or folder anywhere in the path — .bashrc, .ssh, .config/autostart,
     .git/hooks: the places where a written file becomes code that runs. A standing
@@ -839,6 +1033,11 @@ def surface_allows(grant_surfaces: str, surface: str) -> bool:
     if not surface:
         return False
     return surface in {s.strip() for s in gs.split(",") if s.strip()}
+
+
+# Whose resource is a wildcard of its own making, not a model's word: looking, and nothing else.
+_OFFER_MAY_BE_WIDE = {"browser.read", "media.read", "flow.read", "space.read", "folder.read",
+                      "terminal.read", "appwindow.read", "plugin.read", "calendar.read", "device.get"}
 
 
 class PDP(usersmod.Scoped):
@@ -1064,14 +1263,19 @@ class PDP(usersmod.Scoped):
                         f"{principal.label} was quarantined: {reason}.",
                         rule="quarantined")
 
+    def _swarm_may(self, ctx: dict) -> bool:
+        """Is this a turn swarm was switched on for? Somebody is there, and nothing from
+        outside has been read: both are checked before an empty cell opens."""
+        return ctx.get("surface") not in ("task", "webhook") and not ctx.get("taint")
+
     def _swarm_opens(self, principal: Principal, action: str, resource: str, ctx: dict) -> bool:
-        """Does swarm (or democracy's vote) let the lead start this specialist, or this
-        huddle, without asking the person? The same places for both modes: only the
-        answer differs (swarm opens, democracy puts it to the council)."""
+        """Does swarm let the lead start this specialist, or this huddle, without asking the
+        person? Democracy names the same places: there it means the person is asked with the
+        team's view on the card."""
         if principal.kind != "user" or team_talk(self.cfg) not in ("swarm", "democracy"):
             return False
-        if ctx.get("surface") in ("task", "webhook"):
-            return False                 # nobody is there: unattended work still asks
+        if not self._swarm_may(ctx):
+            return False                 # nobody is there, or a page's words: it still asks
         kind, _, names = resource.partition(":")[2].partition("/")
         if (action, kind) not in (("agent.invoke", "subagent"), ("agent.huddle", "huddle")):
             return False                 # run_flow and anything else keep their own question
@@ -1235,6 +1439,7 @@ class PDP(usersmod.Scoped):
         but not write it" while running as inbox-triage."""
         out = []
         mine = f"flow:{flow}" if flow else ""
+        files = action in _FS_ACTIONS and resource.startswith("fs:")
         for g in self._grants():
             if g["principal_kind"] not in (principal.kind, "*"):
                 continue
@@ -1246,13 +1451,27 @@ class PDP(usersmod.Scoped):
                 continue
             if not _match(g.get("principal_id") or "*", principal.id):
                 continue
-            if _match(g.get("action") or "*", action) and resource_match(g.get("resource") or "*", resource):
+            want = g.get("resource") or "*"
+            if files:
+                want = _fs_pattern(want, self.cfg.get("workspace", ""))
+            if _match(g.get("action") or "*", action) and resource_match(want, resource):
                 out.append(g)
         return out
+
+    def grant_row(self, rule: str) -> dict | None:
+        """The grants row a decision's rule names, or None for a rule that is not a row."""
+        if not re.fullmatch(r"[0-9a-f]{12}", rule or ""):
+            return None
+        return next((g for g in self._grants() if g.get("id") == rule), None)
 
     def decide(self, principal: Principal, action: str, resource: str,
                context: dict | None = None) -> Decision:
         ctx = context or {}
+        if action in _FS_ACTIONS and resource.startswith("fs:") and resource != "fs:*":
+            # A glob is not a path: `fs:/p/proj/*` matched `/p/proj/../../home/u/.bashrc`, and
+            # `/data/x/../secret/k` slipped past a deny on `/data/secret/*`. Everything from
+            # here on, the ledger row included, sees where the file really is.
+            resource = _fs_real(resource, self.cfg.get("workspace", ""))
         dec = self._decide(principal, action, resource, ctx)
         dec.action, dec.resource = action, resource
         dec.audit_id = self._record(principal, action, resource, ctx, dec)
@@ -1307,6 +1526,10 @@ class PDP(usersmod.Scoped):
                 context: dict | None = None) -> Decision:
         ctx = context or {}
         risk = ctx.get("risk", "safe")
+        # 0. the security hold (integrity.py). Before everything, whoever asks and whatever the
+        # autonomy: the code that would decide this may be the code that changed.
+        if integrity.held():
+            return Decision("deny", integrity.REFUSAL, rule="integrity-hold")
         # 1. hard blocks (BLOCKED_PATTERNS + legacy deny policies, via risk_of)
         if risk == "blocked":
             return Decision("deny", ctx.get("reason") or "blocked", rule="hard-block")
@@ -1511,14 +1734,17 @@ class PDP(usersmod.Scoped):
             to = resource.rsplit("/", 1)[-1]
             # a colleague on ANOTHER team (to@link) is never opened by swarm: crossing to
             # somebody else's machine or account is asked for, cell by cell
-            if team_talk(self.cfg) == "swarm" and "@" not in to:
+            # Swarm is a person's setting and it means the desk. A turn that has read
+            # something from outside, or that nobody is watching, was not what they opened
+            # it for: a page's words must not recruit an agent, so those go back to asking.
+            opened = "@" not in to and self._swarm_may(ctx)
+            if team_talk(self.cfg) == "swarm" and opened:
                 return Decision("allow", rule="swarm")
-            if team_talk(self.cfg) == "democracy" and "@" not in to:
-                # the same empty cell swarm would open, put to a vote of the team; the
-                # agent loop hands a `democracy` ask to the council, and only when there
-                # is no council (fewer than two agents to vote) does it reach a person
-                return Decision("ask", f"{principal.id} wants to ask {to} a question. The team "
-                                       f"votes on it, and a majority decides.",
+            if team_talk(self.cfg) == "democracy" and opened:
+                # the same empty cell swarm would open: the person is asked, and the agent
+                # loop puts the team's view on their card
+                return Decision("ask", f"{principal.id} wants to ask {to} a question. The team's "
+                                       f"view is below, and the answer is yours.",
                                 rule="democracy", grant_offer=offer)
             return Decision("ask", f"{principal.id} wants to ask {to} a question. "
                                    f"{to} answers on its own model with its own permissions. "
@@ -1629,6 +1855,7 @@ class PDP(usersmod.Scoped):
         # A channel may set its own autonomy — deliberately in both directions.
         # "Act freely at the desk, ask over Telegram" and its reverse are both
         # things people mean; the machine default applies where nothing is set.
+        # effective_autonomy is this same reading, for the approvers.
         posture = channel_posture(self.cfg, ctx.get("surface", ""))
         if posture == "ask":
             autonomy = "balanced"
@@ -1656,7 +1883,7 @@ class PDP(usersmod.Scoped):
                 and self._swarm_opens(principal, action, resource, ctx):
             if team_talk(self.cfg) == "democracy":
                 return Decision("ask", (reason or self._invoke_reason(resource))
-                                + " The team votes on it, and a majority decides.",
+                                + " The team's view is below, and the answer is yours.",
                                 rule="democracy", grant_offer=offer)
             return Decision("allow", rule="swarm")
         if action in ("agent.invoke", "agent.huddle") and autonomy != "full":
@@ -1674,41 +1901,35 @@ class PDP(usersmod.Scoped):
                             rule="default", grant_offer=offer)
         return Decision("allow", rule="default")
 
-    def _offer(self, principal: Principal, action: str, resource: str, ctx: dict) -> dict:
+    def _offer(self, principal: Principal, action: str, resource: str, ctx: dict) -> dict | None:
         """A sensibly-generalized grant for the "allow & remember" button — broad enough
         to stop re-prompting for the same intent, narrow enough to stay meaningful."""
         name, args = ctx.get("tool") or "", ctx.get("args") or {}
         res = resource
         if name == "run_command":
-            # "Always" has to cover the next command like this one. It wrote one pattern
-            # for the first program, and a pattern covers a chain one command at a time
-            # and never a line with a redirect or a substitution (command_covered), so
-            # `cd app && npm test` or `pytest 2>&1 | tail` asked again after Always.
-            # A chain gets a pattern per program in it; a line a wildcard can never cover
-            # is remembered as exactly itself.
-            from .tools import BACKGROUND, CONNECTORS, DANGEROUS_META
             cmd = (args.get("command") or "").strip()
-            progs = []
-            for seg in CONNECTORS.split(cmd):
-                w = seg.strip().split()
-                if w and w[0] not in progs:
-                    progs.append(w[0])
             if not cmd:
-                res = "tool:run_command*"
-            elif DANGEROUS_META.search(cmd) or BACKGROUND.search(cmd):
-                res = f"tool:run_command {cmd}"
-            elif len(progs) == 1:
-                res = f"tool:run_command {progs[0]}*"
-            else:
-                res = "tool:run_command {" + ",".join(f"{p}*" for p in progs) + "}"
+                return None         # nothing to remember, and `tool:run_command` means every command
+            res = f"tool:run_command {command_offer(cmd)}"
         elif action == "tool.use" and name:
             res = f"tool:{name}*"
         elif action in ("fs.read", "fs.write"):
-            parent = os.path.dirname(resource[3:].rstrip("/"))
-            res = f"fs:{parent}/*" if parent else resource
+            # its folder, unless that folder is too wide to mean anything: a file in your
+            # home must not offer your home, which holds .ssh and .bashrc
+            real = resource[3:].rstrip("/")
+            parent = os.path.dirname(real)
+            wide = standing_refusal("fs.write", f"fs:{parent}/*") if parent else "root"
+            ws = os.path.realpath(os.path.expanduser(self.cfg.get("workspace") or "")) \
+                if self.cfg.get("workspace") else ""
+            if wide and ws and (parent == ws or parent.startswith(ws + "/")):
+                wide = ""            # inside your workspace, wherever that lives
+            res = f"fs:{_glob_free(parent)}/*" if parent and not wide else f"fs:{_glob_free(real)}"
         elif action == "net.fetch":
             u = urlsplit(resource[4:])
-            res = f"net:{u.scheme}://{u.netloc}/*" if u.netloc else resource
+            res = f"net:{u.scheme}://{_glob_free(u.netloc)}/*" if u.netloc else f"net:{_glob_free(resource[4:])}"
+        elif action not in _OFFER_MAY_BE_WIDE and _has_glob(res):
+            # delegate(subagent="*") offered every agent, skill or server there is
+            return None
         return {"principal_kind": principal.kind, "principal_id": principal.id,
                 "action": action, "resource": res,
                 # not a grant column: where "Allow for this chat" scopes the grant

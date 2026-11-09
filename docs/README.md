@@ -44,7 +44,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [The town](island.md) | Your office as a town on an island, islands, canals, in a castle or a forest: buildings that open while they work, a district for each department, a train, ferry or gondola that carries work, the time of day as a slider, and a builder |
 | [Your company](company.md) | Describe your business and its objective, and get departments of agents with the missions, schedules and tasks it needs. Keep several companies, each its own office. Give a department work with `@Sales`, decide who may ask whom per department, and start each department with a kit |
 | [Agents](agents.md) | Every agent's brain (AI providers), hands (executors: tools, folders, web, MCP), permissions and skills — and the map of who reaches what |
-| [The team](team.md) | Each agent on its own brain (a provider model, or Claude Code, Gemini CLI or Codex), huddles, the matrix of who may ask whom, swarm and democracy (2 of 3 decide), linked teams, and lending an agent for a few minutes |
+| [The team](team.md) | Each agent on its own brain (a provider model, or Claude Code, Gemini CLI or Codex), huddles, the matrix of who may ask whom, swarm and democracy (the team advises, you decide), linked teams, and lending an agent for a few minutes |
 | [The drama reel](drama.md) | Your crew's real arguments, refusals and fixes told as four acts, saved as a 15 second clip (9:16 or square) or a 4-panel strip to share |
 | [The Arena](arena.md) | The same task to two or four brains at once, side by side, with tokens a second, cost, refusals and time for each |
 | [Watch me once](watch.md) | Do the same few steps twice and the desktop offers to make them one click, pinned to the desktop and, if you like, played every morning |
@@ -74,6 +74,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [WhatsApp](whatsapp.md) | Your agent on WhatsApp — the Cloud API setup, the webhook, and Meta's 24-hour window |
 | [Remote access](remote-access.md) | Reach the desktop from your phone — the opt-in switch, the lock, and what it is not |
 | [Security](security.md) | Threat model, trust boundaries, `agentos doctor`, incident recovery |
+| [How security is tested](security-testing.md) | What protects the machine, the tests that hold each part, and what is not proved yet |
 | [Integrations](integrations.md) | Telegram, MCP tool servers, native desktop apps, system control, files & reports |
 | [OpenClaw plugins](openclaw-plugins.md) | Extending OpenClaw from AgentOS — the scan, the consent screen, real permissions, and quarantine |
 | [Agent sharing](agent-sharing.md) | Share your agent as one file, fork somebody else's — no data, no credentials, nothing enabled |
@@ -83,6 +84,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [Architecture](architecture.md) | How it's built — modules, data, request flow |
 | [Roadmap](roadmap.md) | Product vision, differentiation vs chat-first assistants, feature pillars |
 | [UX review, Sept 2026](design/ux-review-2026-09.md) | What a new person meets on a fresh install, measured in a real browser — defects, structural issues, and a plan |
+| [Design: An OS user per account](design/os-accounts.md) | Planned: each account's agents run as their own Linux or macOS user, and root needs an admin's typed yes |
 | [Design: Subagents](design/subagents.md) | The execution fabric — subagents, task envelopes, mTLS enrollment, docker/remote workers |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 

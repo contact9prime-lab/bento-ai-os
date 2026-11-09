@@ -80,7 +80,8 @@ def test_on_off_changes_and_a_machine_that_stops_answering():
 def test_the_mission_is_told_the_reading_where_it_came_from_and_the_rule():
     r = _rule(item=DOOR, when="on")
     b = devtrig.brief(r, {"item": DOOR, "value": 1, "name": "Cold room A: Cold room door", "at": 0})
-    assert "Cold room A: Cold room door on zone-cold" in b and "reads on" in b and f"zone-cold/{DOOR}" in b
+    # the item's id: a node chooses its own name, and a spoofed one must not write this sentence
+    assert "Cold room A" not in b and f"{DOOR} on zone-cold" in b and "reads on" in b and f"zone-cold/{DOOR}" in b
     assert b.endswith(f"The rule: when zone-cold/{DOOR} turns on.")
     t = devtrig.brief(_rule(item=TEMP, when="above", value=-15), {"item": TEMP, "value": -14.2, "unit": "°C", "held": 130})
     assert "reads -14.2°C" in t and "held for 2 min 10 s" in t
@@ -214,7 +215,7 @@ def test_the_hub_starts_the_mission_when_its_rule_is_met(tmp_path, monkeypatch):
             assert len(started) == 1
             name, text, origin, kw = started[0]
             assert name == "door-watch" and origin == {"surface": "device", "ref": f"{here}/{DOOR}"}
-            assert text.startswith("Started because Cold room A: Cold room door") and "reads on" in text
+            assert text.startswith(f"Started because {DOOR}") and "reads on" in text
             assert kw["trigger_id"] and not any(e == "changed" for e, _ in said), \
                 "a contact changes all day: live and judged, never a diary line"
             comp = {"item": "esp.cold-1.switch.compressor", "domain": "switch", "name": "Cold room A: Compressor",

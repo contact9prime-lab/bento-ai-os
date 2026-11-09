@@ -236,6 +236,13 @@ def _why(e: Exception) -> str:
     return str(e)[:120] or e.__class__.__name__
 
 
+def _plain(text, limit: int) -> str:
+    """A node's own words as they are kept: one line, no terminal escapes or bidi overrides.
+    Anyone on the network can be a node, and `bento network esp` prints these."""
+    from .teamlink import plain
+    return plain(text, limit, newlines=False)
+
+
 def _entity(d: dict) -> dict | None:
     """One ESPHome state event, as this module keeps it: domain, name, unit, value."""
     nid = str(d.get("name_id") or "")
@@ -247,9 +254,12 @@ def _entity(d: dict) -> dict | None:
         name = name.rsplit("/", 1)[-1]
     if domain not in DOMAINS or not name:
         return None
-    e = {"domain": domain, "name": name[:60], "slug": slug(name)}
+    name = _plain(name, 60)
+    if not name:
+        return None
+    e = {"domain": domain, "name": name, "slug": slug(name)}
     if d.get("uom"):
-        e["unit"] = str(d["uom"])[:8]
+        e["unit"] = _plain(d["uom"], 8)
     v = d.get("value")
     st = str(d.get("state") or "")
     if domain in ONOFF:
@@ -257,7 +267,7 @@ def _entity(d: dict) -> dict | None:
     elif domain == "sensor":
         e["value"] = round(float(v), 3) if isinstance(v, (int, float)) and v == v else None
     else:
-        e["value"] = str(v if v is not None else st)[:60]
+        e["value"] = _plain(v if v is not None else st, 60)
     return e
 
 
@@ -295,7 +305,7 @@ def snapshot(n: dict) -> dict:
                     continue
                 if event == "ping":
                     pinged = True
-                    title = str(d.get("title") or "")[:60] if isinstance(d, dict) else ""
+                    title = _plain(d.get("title"), 60) if isinstance(d, dict) else ""
                 elif isinstance(d, dict) and (e := _entity(d)) and len(got) < MAX_ENTITIES:
                     got[f"{e['domain']}.{e['slug']}"] = e
     except Exception as e:
@@ -660,7 +670,7 @@ class _Stream(threading.Thread):
                 heard = True
                 if event == "ping":
                     if isinstance(d, dict) and d.get("title"):
-                        title = str(d["title"])[:60]
+                        title = _plain(d["title"], 60)
                 elif isinstance(d, dict) and (e := _entity(d)):
                     key = f"{e['domain']}.{e['slug']}"
                     if key not in ents and len(ents) >= MAX_ENTITIES:
@@ -786,8 +796,9 @@ async def discover(timeout: float = 1.5) -> list[dict]:
         if not ip or not address_ok(ip):
             continue
         port = web[1] if web else 80
-        found[host] = {"name": node_name(host), "title": t.get("friendly_name") or host, "host": ip, "port": port,
-                       "web": bool(web), "platform": t.get("platform", ""), "board": t.get("board", ""),
+        found[host] = {"name": node_name(host), "title": _plain(t.get("friendly_name") or host, 60), "host": ip, "port": port,
+                       "web": bool(web), "platform": _plain(t.get("platform", ""), 60),
+                       "board": _plain(t.get("board", ""), 60),
                        "mac": t.get("mac", ""), "version": t.get("version", ""), "added": (ip, port) in kept}
     return sorted(found.values(), key=lambda d: d["name"])[:MAX_NODES * 2]
 

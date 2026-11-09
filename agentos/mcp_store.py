@@ -91,7 +91,8 @@ def _normalize(item: dict) -> dict:
         "key": _slug(name),
         "registry_name": name,
         "description": (srv.get("description") or "").strip(),
-        "version": _get(srv, "version", "versionDetail", default="") or "",
+        # the package's own version is what runs; the server's is a fallback
+        "version": str(_get(pkg, "version", default="") or _get(srv, "version", default="") or ""),
         "homepage": repo.get("url", "") if isinstance(repo, dict) else "",
         "registry_type": _get(pkg, "registry_type", "registryType", default=""),
         "identifier": _get(pkg, "identifier", "name", default=""),
@@ -507,6 +508,88 @@ async def lookup(registry_name: str, store=None) -> dict | None:
     return None
 
 
+class PackageRefused(ValueError):
+    """A registry entry this OS won't run. The message is a sentence for the person."""
+
+
+#: How each kind of package runs. A registry's words decide which row and nothing else: its
+#: `runtime_hint` was the command, so an entry could say `sh -c 'id'`. A hint is accepted only
+#: when it names the runner this row would use anyway.
+RUNNERS = {"npm": ("npx", "-y {pkg}@{ver}"), "pypi": ("uvx", "{pkg}@{ver}"),
+           "oci": ("docker", "run -i --rm {pkg}:{ver}")}
+_PACKAGE_NAME = re.compile(r"^@?[A-Za-z0-9][A-Za-z0-9._/-]*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})?$")
+_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+_ENV_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+#: A registry entry names the settings it wants, and these would run a program or move what runs.
+_ENV_REFUSED = re.compile(r"^(PATH|HOME|SHELL|BASH_ENV|ENV|NODE_OPTIONS|NODE_PATH|NPM_CONFIG_.*|PYTHON.*|"
+                          r"LD_.*|DYLD_.*|UV_.*|PIP_.*|GIT_.*)$", re.I)
+
+
+def _package_command(cand: dict) -> tuple[str, str]:
+    """(command, args) for a registry package, pinned to the version that was listed. `npx -y
+    name` runs whatever the name means on the day it connects, which is not what anybody agreed to."""
+    try:
+        return _pinned(cand)
+    except PackageRefused:
+        from . import secevents
+        secevents.flag("store.package_refused", str(cand.get("registry_name") or "")[:80], source="registry")
+        raise
+
+
+def _pinned(cand: dict) -> tuple[str, str]:
+    kind = str(cand.get("registry_type") or "")
+    who = cand.get("registry_name") or cand.get("identifier") or "This server"
+    if kind not in RUNNERS:
+        raise PackageRefused(f"{who} is packaged in a way this OS doesn't run ({kind or 'unknown'}).")
+    runner, shape = RUNNERS[kind]
+    hint = str(cand.get("runtime_hint") or "")
+    if hint and hint != runner:
+        raise PackageRefused(f"{who} asks to be started with '{hint[:40]}', and this OS only starts "
+                             f"this kind of package with {runner}.")
+    pkg, ver = str(cand.get("identifier") or ""), str(cand.get("version") or "")
+    if not _PACKAGE_NAME.match(pkg):
+        raise PackageRefused(f"{who} has a package name this OS won't run.")
+    if kind == "oci" and (":" in pkg.rsplit("/", 1)[-1] or "@sha256:" in pkg):
+        return runner, f"run -i --rm {pkg}"     # the image reference already says which
+    if not _VERSION.match(ver) or ver.lower() in ("latest", "next", "*"):
+        raise PackageRefused(f"{who} doesn't name a version, so nobody could say what would run.")
+    return runner, shape.format(pkg=pkg, ver=ver)
+
+
+def card_text(registry_name: str, env: str = "") -> str:
+    """What an install card says will run. It is `to_conf`'s answer, so what the person agrees
+    to is what starts. `npm:` picks the newest version at install, then keeps it."""
+    from . import executors
+    name = (registry_name or "").strip()
+    env_names = [p.split("=", 1)[0].strip() for p in str(env or "").split(",") if "=" in p]
+    env_line = f"\nWith these settings: {', '.join(env_names)}" if env_names else ""
+    if name.startswith("npm:"):
+        cand = {"registry_type": "npm", "identifier": name[4:].strip(), "version": "0"}
+        try:
+            _package_command(cand)
+        except PackageRefused as e:
+            return str(e)
+        cmd = f"npx -y {name[4:].strip()}@<newest version now, kept from then on>"
+    else:
+        from . import mcp_catalog
+        cand = mcp_catalog.get(name) or next(
+            (c for c in _load_index()["servers"] if c["registry_name"] == name), None)
+        if not cand:
+            return f"{name}\nThis isn't in the list on this machine, so its command is checked when it is fetched."
+        if cand.get("remote_url"):
+            return f"{name}\nConnects to {cand['remote_url']}. Nothing runs on this machine."
+        try:
+            runner, args = _package_command(cand)
+        except PackageRefused as e:
+            return str(e)
+        cmd = f"{runner} {args}"
+        if runner == "docker":
+            return f"{name}\nRuns this:\n{cmd}{env_line}\nIt runs in a Docker container, with the network."
+    where = ("It runs in a jail with the network, and can't see your home or this OS's data."
+             if executors.jail_ready() else "This machine has no jail, so it can reach anything you can.")
+    return f"{name}\nRuns this:\n{cmd}{env_line}\n{where}"
+
+
 def to_conf(cand: dict, env_values: dict | None = None) -> tuple[dict, list[str]]:
     """Derive an AgentOS mcp_servers config from a candidate.
     Returns (conf, missing_env): missing_env lists required keys the user must still
@@ -536,19 +619,15 @@ def to_conf(cand: dict, env_values: dict | None = None) -> tuple[dict, list[str]
         if headers:
             conf["headers"] = headers
     else:
-        rt = cand.get("registry_type", "")
-        ident = cand.get("identifier", "")
-        hint = cand.get("runtime_hint", "")
-        if rt == "npm":
-            conf = {"transport": "stdio", "command": hint or "npx", "args": f"-y {ident}"}
-        elif rt == "pypi":
-            conf = {"transport": "stdio", "command": hint or "uvx", "args": ident}
-        elif rt == "oci":
-            conf = {"transport": "stdio", "command": "docker", "args": f"run -i --rm {ident}"}
-        else:  # unknown package type: fall back to the runtime hint verbatim
-            conf = {"transport": "stdio", "command": hint or ident, "args": ""}
+        runner, args = _package_command(cand)
+        # `jail` is what mcp_client reads: a store server never runs loose. Docker is its own
+        # container and needs the Docker socket, which a jail hides.
+        conf = {"transport": "stdio", "command": runner, "args": args, "jail": runner != "docker"}
     env = {}
     for ev in cand.get("env", []):
+        if not _ENV_NAME.match(str(ev.get("name") or "")) or _ENV_REFUSED.match(ev["name"]):
+            raise PackageRefused(f"{cand.get('registry_name') or 'This server'} asks to set {str(ev.get('name'))[:40]}, "
+                                 "which could change what runs, so this OS won't install it.")
         val = str(env_values.get(ev["name"], "")).strip()
         if val:
             env[ev["name"]] = val

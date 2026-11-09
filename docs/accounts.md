@@ -29,7 +29,7 @@ channel rules' mirror image:
 |---|---|---|
 | **Sign in with Google / Microsoft** | Gmail, Google Workspace, Outlook.com, Microsoft 365 | nothing — a consent page, and a grant you can revoke from your account |
 | **Through an MCP server** | a mail or calendar MCP server you already run | which server |
-| **An app password** | iCloud, Fastmail, any IMAP server; any ICS address or CalDAV server | the address, an app password |
+| **An app password** | iCloud, Fastmail, any IMAP server; any ICS address or CalDAV server (one on your own network has to be listed in Settings → Permissions → Local addresses first) | the address, an app password |
 
 One sign-in serves both accounts: you tick what it may read (mail, calendar,
 and — separately, never by default — send), the consent page names exactly

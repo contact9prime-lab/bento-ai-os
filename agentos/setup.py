@@ -104,6 +104,9 @@ def factory_reset(cfg: dict, store) -> None:
         usersmod.set_current("")
     except Exception:
         pass
+    # the locked files are gone or new on purpose, and only this path (loopback + admin) says so
+    from . import integrity
+    integrity.rebaseline_home()
     # rebuild defaults in place so every live reference (toolbox, scheduler, …) sees them
     import copy
     defaults = copy.deepcopy(cfgmod.DEFAULTS)

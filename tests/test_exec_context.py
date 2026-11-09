@@ -71,11 +71,10 @@ def test_a_cli_that_cannot_resume_always_gets_the_thread():
 def test_the_carried_thread_reaches_claude_codes_prompt():
     env = ex.Envelope(workspace="/tmp/w", session_id="S1", transcript="Person: explain it")
     cmd = ex.build_command("write a ppt for it", env)
-    prompt = cmd[cmd.index("--print") + 1]
+    prompt = ex.prompt_of("write a ppt for it", env)
     assert "Person: explain it" in prompt and prompt.rstrip().endswith("write a ppt for it")
     assert cmd[cmd.index("--resume") + 1] == "S1"
-    plain = ex.build_command("hi", ex.Envelope(workspace="/tmp/w"))
-    assert plain[plain.index("--print") + 1] == ex.as_prose("hi"), "nothing to carry, nothing added"
+    assert ex.prompt_of("hi", ex.Envelope(workspace="/tmp/w")) == ex.as_prose("hi"), "nothing to carry, nothing added"
 
 
 def test_a_child_never_inherits_the_parents_claude_session(monkeypatch):
@@ -95,7 +94,7 @@ def _stub(tmp_path: Path) -> Path:
     stub.write_text(f"""#!{sys.executable}
 import json, sys
 a = sys.argv[1:]
-open({str(log)!r}, "a").write(json.dumps(a) + "\\n")
+open({str(log)!r}, "a").write(json.dumps([a, sys.stdin.read()]) + "\\n")
 sid = a[a.index("--resume") + 1] if "--resume" in a else "NEW"
 if sid not in ("LIVE", "NEW"):
     print("No conversation found with session ID: " + sid, file=sys.stderr)
@@ -122,10 +121,11 @@ async def test_a_session_the_cli_no_longer_has_is_replaced_by_the_thread(tmp_pat
                       transcript="", fallback="Person: explain a differential")
     with mock.patch.object(ex, "claude_exe", lambda: str(log.parent / "claude")):
         run = await ex.run_task("write a ppt for it", env, emit)
-    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    calls, stdins = [r[0] for r in rows], [r[1] for r in rows]
     assert len(calls) == 2
     assert "--resume" not in calls[1], "the retry starts a new session"
-    assert "explain a differential" in calls[1][calls[1].index("--print") + 1]
+    assert "explain a differential" in stdins[1]
     assert run.session_id == "NEW"
     assert not [e for e in seen if e["type"] == "error"], "the missing session is not the person's error"
     assert any("earlier session is gone" in str(e.get("message")) for e in seen)
@@ -137,7 +137,7 @@ async def test_a_live_session_is_resumed_once(tmp_path):
     env = ex.Envelope(workspace=str(tmp_path / "ws"), session_id="LIVE")
     with mock.patch.object(ex, "claude_exe", lambda: str(log.parent / "claude")):
         run = await ex.run_task("hi", env, lambda ev: asyncio.sleep(0))
-    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    calls = [json.loads(line)[0] for line in log.read_text().splitlines()]
     assert len(calls) == 1 and calls[0][calls[0].index("--resume") + 1] == "LIVE"
     assert run.session_id == "LIVE"
 
@@ -181,7 +181,7 @@ def test_a_message_typed_while_claude_code_works_reaches_the_run():
     assert env.sanitized().steerable, "the flag survives sanitising"
     cmd = ex.build_command("hello", env)
     assert "--input-format" in cmd and "stream-json" in cmd and "hello" not in cmd
-    assert "hello" in " ".join(ex.build_command("hello", ex.Envelope(workspace="/tmp")))
+    assert "hello" not in " ".join(ex.build_command("hello", ex.Envelope(workspace="/tmp")))
     run = ex.Run()
     assert run.steer("x") is False, "no open input: the caller queues it"
 

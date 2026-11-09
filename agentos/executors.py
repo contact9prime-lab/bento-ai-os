@@ -27,13 +27,15 @@ Two things make this safe enough to offer:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 # Tools we offer to hand over, in the CLI's own vocabulary. Deliberately a short
@@ -110,9 +112,24 @@ class Envelope:
     # never did, so Claude Code answered "I can't see that folder" about one the
     # person had shared. `envelope_from` fills it from `tools.shares_for`.
     shares: tuple = ()
+    # A person is at this turn and it is their own session: only then does the CLI read
+    # their user-level settings and MCP servers. Everything else (a schedule, a mission, a
+    # draft, a linked team, a Zero, anything tainted) starts with none, so nothing a file
+    # says can run. Off unless a surface says so. See `_settings_flags`.
+    person: bool = False
+    # An admin's written yes for the two things a jail cannot make safe (Settings → Executors).
+    unjailed_ok: bool = False           # Bash on a machine with no jail
+    shell_for_accounts: bool = False    # Bash for non-admins: the CLI's credentials are in reach
 
     def describe(self) -> str:
-        """One sentence a person can approve or refuse."""
+        """One sentence a person can approve or refuse. It describes what a run would
+        really get on this machine, after `confine`."""
+        narrowed, note, refusal = confine(self)
+        if refusal:
+            return refusal
+        return narrowed._describe() + _jail_words(narrowed, note)
+
+    def _describe(self) -> str:
         tools = ", ".join(self.tools) if self.tools else "no tools"
         writes = any(t in self.tools for t in ("Write", "Edit", "Bash"))
         where = self.workspace
@@ -142,7 +159,11 @@ class Envelope:
         # UI-supplied and it lands in a system prompt, so it gets the same
         # treatment the local agent's extra_system gets: capped, and stripped of
         # control characters that could forge structure in the prompt.
-        ctx = "".join(c for c in str(self.context or "")[:4096]
+        # The page's own text is capped where it enters (context_for). This one holds what this OS
+        # composes too: its identity, Stage, company, team and door notes come to about 8,000
+        # characters, and at 4096 the team list was cut in half and the rule to use this OS's doors
+        # was gone. Still a limit, because a context is sent with every turn.
+        ctx = "".join(c for c in str(self.context or "")[:MAX_CONTEXT]
                       if c in "\n\t" or ord(c) >= 32)
         return Envelope(workspace=ws, tools=tools, model=self.model,
                         budget_usd=budget, session_id=self.session_id, context=ctx,
@@ -151,7 +172,9 @@ class Envelope:
                         transcript=str(self.transcript or "")[-6000:],
                         fallback=str(self.fallback or "")[-6000:],
                         extra_env=dict(self.extra_env or {}), scratch=self.scratch,
-                        shares=_clean_shares(self.shares), steerable=bool(self.steerable))
+                        shares=_clean_shares(self.shares), steerable=bool(self.steerable),
+                        person=bool(self.person), unjailed_ok=bool(self.unjailed_ok),
+                        shell_for_accounts=bool(self.shell_for_accounts))
 
 
 def _clean_shares(raw) -> tuple:
@@ -216,6 +239,9 @@ def with_shares_note(env: "Envelope") -> str:
     if not note:
         return env.context
     return (env.context + "\n\n" + note) if env.context else note
+
+
+_LIVE_RUNS: dict = {}     # id(run) -> Run, for `stop_all`. Trimmed as new ones start.
 
 
 @dataclass
@@ -400,7 +426,8 @@ def default_workspace(cfg: dict) -> str:
     instead, so a deck Claude Code made for somebody signed in landed in a folder their
     Files app never shows, and every account's forwarded turns shared one folder."""
     from . import config as _cfgmod
-    return os.path.expanduser(str((cfg or {}).get("workspace") or (_cfgmod.AGENTOS_HOME / "workspace")))
+    from . import users as _users
+    return os.path.expanduser(str(_users.workspace_of(cfg or {}) or (_cfgmod.AGENTOS_HOME / "workspace")))
 
 
 def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code") -> "Envelope":
@@ -412,14 +439,18 @@ def envelope_from(cfg: dict, workspace_default: str, engine: str = "claude-code"
     ex = (cfg or {}).get("executors") or {}
     conf = ex.get("claude_code") or {}
     engine = engine if engine in DRIVEN else "claude-code"
+    from . import users as _users
     return Envelope(
-        workspace=conf.get("workspace") or workspace_default,
+        # both are checked: Settings → Executors is the machine's folder, not somebody else's
+        workspace=_users.confine_folder(cfg, conf.get("workspace") or workspace_default),
         tools=tuple(conf.get("tools") or DEFAULT_TOOLS),
         model=str((ex.get(_exec_conf_key(engine)) or {}).get("model", "")),
         budget_usd=float(conf.get("budget_usd") or default_budget()),
         allow_source=bool(conf.get("allow_source")),
         engine=engine,
         shares=shares_of(cfg),
+        unjailed_ok=bool(conf.get("unjailed_ok")),
+        shell_for_accounts=bool(conf.get("shell_for_accounts")),
     ).sanitized()
 
 
@@ -464,6 +495,9 @@ async def forward(engine: str, text: str, cfg: dict, workspace_default: str,
     # Always, even when the surface supplies nothing of its own: a forwarded
     # Telegram or scheduled turn otherwise arrives believing it owns the desktop.
     env.context = context_for(context)
+    # A phone channel's turn is the person's own; a linked team's or a Zero's is not (its
+    # surface is "team" and it carries taint), and neither is a schedule, which has no team.
+    env.person = bool(team) and not team.get("taint") and team.get("surface") in ("telegram", "whatsapp")
     # `team`: {toolbox, store, approver, conversation_id, surface} from a phone
     # channel, so a turn sent from Telegram or WhatsApp can hand over too
     token = open_team_door(env, cfg, team.get("toolbox"), team.get("store"), sink,
@@ -537,6 +571,10 @@ DOOR_LINE = ("- AgentOS's own tools reach you as mcp__bento__*: your team, its d
              "tools are for the work that is yours to do.")
 
 
+MAX_UI_CONTEXT = 4096     # what a page may add to a prompt
+MAX_CONTEXT = 24000       # what a forwarded turn's system prompt may hold, this OS's notes included
+
+
 def context_for(ui_context: str) -> str:
     """Translate the UI's per-surface context for an executor.
 
@@ -551,7 +589,7 @@ def context_for(ui_context: str) -> str:
     App Studio — false, and App Studio cannot edit Settings either. That belongs
     per-app, in `app_note`, where the kind is actually known.
     """
-    lines = [ln for ln in str(ui_context or "").splitlines()
+    lines = [ln for ln in str(ui_context or "")[:MAX_UI_CONTEXT].splitlines()
              if not ln.startswith(_LOCAL_TOOLS_HINT)]
     body = "\n".join(lines).strip()
     preamble = (
@@ -561,6 +599,11 @@ def context_for(ui_context: str) -> str:
         "owns those. Do not claim to have clicked, opened or focused anything.\n"
         + NO_DOOR_LINE
     )
+    # Awareness only, as for the built-in lead: the OS's own sentences, and it decides nothing.
+    from . import secevents
+    notice = secevents.agent_note()
+    if notice:
+        preamble += "\n" + notice
     return (preamble + ("\n\n" + body if body else "")).strip()
 
 
@@ -573,7 +616,7 @@ def _store_of(cfg: dict):
         return None
 
 
-def identity_note(cfg: dict, store=None, company: bool = True) -> str:
+def identity_note(cfg: dict, store=None, company: bool = True, space_id: str = "") -> str:
     """Who the forwarded turn speaks as: the agent's name, its soul, and (for a turn with no
     team door) the company it works for. A forwarded CLI's own prompt knows none of this,
     and `context_for` only said what it cannot do: on Claude Code, Aria answered chat and
@@ -583,7 +626,8 @@ def identity_note(cfg: dict, store=None, company: bool = True) -> str:
     try:
         from . import zeromind
         # a Zero's soul is on its hub: the hub's last word, or the copy here while it is away
-        soul = " ".join((zeromind.soul_now(cfg) if zeromind.on_hub(cfg or {})
+        here = zeromind.section_soul(store, space_id)     # a turn for a Zero: its soul, not the hub's
+        soul = " ".join((here if here is not None else zeromind.soul_now(cfg) if zeromind.on_hub(cfg or {})
                          else _cfgmod.load_soul()).split())[:1500]
     except Exception:
         soul = ""
@@ -1950,6 +1994,13 @@ def team_hint(subagents: list) -> str:
                          "`@name <the task>` in chat, which reaches that specialist directly.")
 
 
+#: A jailed CLI has no `bento`, and setting up a company has no door tool: creating departments and
+#: moving a surface's space is a person's review (preview, ticks, apply). So the lead says where it is.
+COMPANY_DOOR_LINE = ("\n\nYou can't set up, switch or remove a company from here. If you're asked to, "
+                     "tell the person it's on the desktop, in the Office under Company, or "
+                     "`bento company new` in a terminal on this machine.")
+
+
 def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
                    conversation_id: str = "", surface: str = "gui", space_id: str = "",
                    text: str = "", taint: list | None = None, only: tuple | None = None) -> str:
@@ -1967,8 +2018,8 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
     Chat, Telegram and WhatsApp call this; a scheduled turn does not (nobody is there
     to approve a hand-over, and a mission is the way to give a schedule a team)."""
     subs = [sa for sa in (store.list_subagents() if store else []) if sa.get("enabled") is not False]
-    # Where the person is asking from, for a `bento …` the agent runs in its shell: a
-    # company started from Telegram moves Telegram to it, not the desktop.
+    # Where the person is asking from, for a `bento …` run by an agent an admin let out of the
+    # jail: a company started from Telegram moves Telegram to it, not the desktop.
     from .policy import SURFACES as _SURFACES
     env.extra_env["AGENTOS_SURFACE"] = surface if surface in _SURFACES else "gui"
     if toolbox is None:
@@ -2016,7 +2067,7 @@ def open_team_door(env: "Envelope", cfg: dict, toolbox, store, emit, approver,
         from . import stage as _stage
         stage_note = "\n\n" + _stage.note(cfg, tool="mcp__bento__show_scene", surface=surface)
     env.context = (env.context or "").replace(NO_DOOR_LINE, DOOR_LINE) \
-        + identity_note(cfg, store, company=False) + stage_note + dept_note \
+        + identity_note(cfg, store, company=False, space_id=space_id) + stage_note + dept_note + COMPANY_DOOR_LINE \
         + team_note(subs, in_departments=grouped) + linked_note(cfg, store) + _zero_note(cfg) \
         + _pool_note(door) \
         + workspace_note() + capability_note()
@@ -2118,10 +2169,11 @@ def permission_mode(env: Envelope) -> str:
       Write/Edit      acceptEdits    exactly what was granted, without prompting
       Bash            bypassPermissions
 
-    `bypassPermissions` is not a widening here and is never reached by default:
-    it applies only when someone ticked Bash, and the run is still confined to
-    `--tools` and `--add-dir`. Its alternative is a run that hangs forever on a
-    prompt with no human attached, which is a worse failure and not a safer one.
+    `bypassPermissions` is never reached by default: it applies only when someone
+    ticked Bash. `--add-dir` does NOT bound a shell: a command line reaches whatever
+    the user can, and only `jail_cli` stops that, which is why `confine` takes Bash away
+    where no jail can start. Its alternative here is a run that hangs forever on a prompt
+    with no human attached, which is a worse failure and not a safer one.
     """
     if any(t in env.tools for t in ("Bash",)):
         return "bypassPermissions"
@@ -2148,13 +2200,47 @@ def as_prose(task: str) -> str:
     return " " + task if task.startswith("/") else task
 
 
+def _settings_flags(env: Envelope) -> list[str]:
+    """Which of its own settings a Claude Code run reads.
+
+    With no flag it reads the working folder's `.claude/settings.json` and `.mcp.json`, and
+    those run commands (a SessionStart hook, a stdio server) with `--tools ""` on and
+    whatever the permission mode. Measured on 2.1.319: `--setting-sources user` drops the
+    folder's settings, its local settings and `.mcp.json` and keeps the person's own;
+    `--setting-sources ""` drops those too, and `--strict-mcp-config` then drops their MCP
+    servers. A folder never gets a say, because one gated write there would be a program
+    for every later turn."""
+    if env.person:
+        return ["--setting-sources", "user"]
+    return ["--setting-sources", "", "--strict-mcp-config"]
+
+
+def _private_file(scratch: str, name: str, text: str) -> str:
+    """A 0600 file in the run's scratch folder. What goes in one (the bridge's token, the
+    system prompt with the person's soul) must not be on a command line: `/proc/*/cmdline`
+    is readable by anything of the same user, jailed shells included."""
+    path = Path(scratch) / name
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    return str(path)
+
+
+def _mcp_file(scratch: str, url: str, token: str) -> str:
+    return _private_file(scratch, "mcp.json", json.dumps({"mcpServers": {BRIDGE_SERVER: {
+        "type": "http", "url": url, "headers": {"Authorization": f"Bearer {token}"},
+        "timeout": BRIDGE_CALL_MS}}}))
+
+
 def build_command(task: str, env: Envelope) -> list[str]:
-    """The exact argv for a delegated run.
+    """The exact argv for a delegated run. The task is never in it, for any CLI: the words
+    arrive on stdin (`prompt_of`), because anything in argv can be read as a flag and a
+    message that was exactly `--settings={...}` ran commands on a fenced run.
 
     `--print` with `--output-format stream-json` is what turns the CLI into
     something a program can drive; the CLI additionally requires `--verbose` for
     that pairing. Everything else here is the envelope, expressed in flags:
-    `--add-dir` bounds the filesystem, `--tools` bounds the capability set,
+    `--add-dir` bounds its file tools, `--tools` bounds the capability set,
     `--max-budget-usd` bounds the spend, and `--permission-mode dontAsk` keeps a
     headless run from blocking forever on a prompt nobody can answer — the run is
     already limited to what we allowed, so there is nothing left to ask about.
@@ -2164,9 +2250,12 @@ def build_command(task: str, env: Envelope) -> list[str]:
     if env.engine == "codex":
         return _codex_command(task, env)
     exe = claude_exe() or "claude"
-    # A steerable turn sends its prompt on the input instead (run_task), and keeps it open
-    cmd = [exe, "--print", *(("--input-format", "stream-json") if env.steerable else (_claude_prompt(task, env),)),
+    scratch = _scratch(env)
+    # A steerable turn sends its prompt as a message and keeps its input open (Run.steer);
+    # any other run writes the prompt on the input and closes it
+    cmd = [exe, "--print", *(("--input-format", "stream-json") if env.steerable else ()),
            "--output-format", "stream-json", "--verbose",
+           *_settings_flags(env),
            "--add-dir", env.workspace,
            *(("--add-dir", source_root()) if env.allow_source else ()),
            "--tools", ",".join(env.tools) if env.tools else "",
@@ -2190,15 +2279,13 @@ def build_command(task: str, env: Envelope) -> list[str]:
         # permission mode does not refuse it. Not --strict-mcp-config: this is the
         # person's own chat session, and what their Claude Code already had stays.
         url, token = env.team_mcp
-        cmd += ["--mcp-config", json.dumps({"mcpServers": {BRIDGE_SERVER: {
-                    "type": "http", "url": url, "headers": {"Authorization": f"Bearer {token}"},
-                    "timeout": BRIDGE_CALL_MS}}}),
+        cmd += ["--mcp-config", _mcp_file(scratch, url, token),
                 "--allowedTools", f"mcp__{BRIDGE_SERVER}"]
     if env.context:
         # The executor's equivalent of the local agent's extra_system: what the
         # person is looking at while they type. A delegated copilot turn without
         # it is a stranger being asked to "fix this" with no idea what "this" is.
-        cmd += ["--append-system-prompt", env.context]
+        cmd += ["--append-system-prompt-file", _private_file(scratch, "context.md", env.context)]
     if env.model:
         cmd += ["--model", env.model]
     if env.session_id:
@@ -2215,6 +2302,11 @@ def _claude_prompt(task: str, env: Envelope) -> str:
              "so your session does not have it):" if env.session_id
              else "THE CONVERSATION SO FAR:")
     return f" {label}\n{env.transcript}\n\nTHE REQUEST:\n{as_prose(task).lstrip()}"
+
+
+def prompt_of(task: str, env: Envelope) -> str:
+    """What a run is told, on its stdin. `build_command` never carries it."""
+    return _claude_prompt(task, env) if env.engine == "claude-code" else _prompt_for(task, env)
 
 
 def _prompt_for(task: str, env: Envelope) -> str:
@@ -2237,9 +2329,12 @@ def _gemini_command(task: str, env: Envelope) -> list[str]:
     The envelope becomes its approval mode. Headless, Gemini CLI runs only the tools
     that need no confirmation — its read-only ones — so the default envelope stays
     read-only with no flag at all; Write/Edit becomes `auto_edit`, a shell becomes
-    `yolo`. There is no spend flag, and `describe()` says so rather than pretending."""
+    `yolo`. There is no spend flag, and `describe()` says so rather than pretending.
+
+    The prompt is on stdin, which its docs give for headless use (`echo "…" | gemini`), so
+    there is no `--prompt`. Not run here: Gemini CLI was not installed where this changed."""
     exe = _find_bin(("gemini",)) or "gemini"
-    cmd = [exe, "--prompt", _prompt_for(task, env), "--output-format", "stream-json"]
+    cmd = [exe, "--output-format", "stream-json"]
     if "Bash" in env.tools:
         cmd += ["--approval-mode", "yolo"]
     elif any(t in env.tools for t in ("Write", "Edit")):
@@ -2282,7 +2377,9 @@ def _codex_command(task: str, env: Envelope) -> list[str]:
         extra, envv = bridge_parts("codex", *env.team_mcp, scratch=_scratch(env))
         cmd += extra
         env.extra_env.update(envv)
-    return cmd + [_prompt_for(task, env)]
+    # `-` reads the instructions from stdin (its --help). Nothing after it is ever a word of
+    # the task. Not run here: Codex was not installed where this changed.
+    return cmd + ["-"]
 
 
 def _mkscratch() -> str:
@@ -2296,7 +2393,24 @@ def _mkscratch() -> str:
     base = Path(_cfgmod.AGENTOS_HOME) / "run"
     base.mkdir(parents=True, exist_ok=True)
     os.chmod(base, 0o700)
+    _sweep_scratch(base)
     return tempfile.mkdtemp(prefix="bento-run-", dir=str(base))
+
+
+#: A run's folder is removed when it ends; a crash leaves it. Its token died with the
+#: process, its prompt did not, so what a crash left is removed by the next run.
+SCRATCH_KEEP_S = 2 * 86400
+
+
+def _sweep_scratch(base: Path) -> None:
+    import shutil
+    cutoff = time.time() - SCRATCH_KEEP_S
+    try:
+        for d in os.scandir(base):
+            if d.name.startswith("bento-run-") and d.stat().st_mtime < cutoff:
+                shutil.rmtree(d.path, ignore_errors=True)
+    except OSError:
+        pass
 
 
 def _scratch(env: "Envelope") -> str:
@@ -2355,7 +2469,10 @@ def bridge_parts(engine: str, url: str, token: str, scratch: str = "",
             sp.write_text(system)
             envv["GEMINI_SYSTEM_MD"] = str(sp)
     elif engine == "codex":
-        argv += ["-c", f"mcp_servers.{BRIDGE_SERVER}.url={_toml(url)}",
+        # the URL goes on a command line here, so it names the session by a digest
+        from . import mcpbridge
+        safe_url = url.rsplit("/", 1)[0] + "/" + mcpbridge.url_id(token) if url.endswith("/" + token) else url
+        argv += ["-c", f"mcp_servers.{BRIDGE_SERVER}.url={_toml(safe_url)}",
                  "-c", f"mcp_servers.{BRIDGE_SERVER}.bearer_token_env_var={_toml('BENTO_RUN_TOKEN')}",
                  "-c", f"mcp_servers.{BRIDGE_SERVER}.default_tools_approval_mode={_toml('approve')}"]
         envv["BENTO_RUN_TOKEN"] = token
@@ -2388,10 +2505,29 @@ PARENT_SESSION_VARS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHIL
                        "CLAUDE_CODE_REMOTE_SESSION_ID", "CLAUDE_AFTER_LAST_COMPACT")
 
 
-def child_env() -> dict:
-    """The environment a delegated run gets: this one, minus the API credentials."""
+#: What a delegated run may see of this process's environment. An allow-list: this process
+#: holds provider keys and whatever its starter exported, and a CLI's shell prints all of it
+#: with `env`. A CLI's own sign-in stays (ENV_ENGINE); no other provider's key goes with it.
+ENV_KEEP = frozenset({
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TERM", "TZ", "TMPDIR",
+    "COLORTERM", "NO_COLOR", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "all_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS",
+})
+ENV_ENGINE = {
+    "claude-code": (("CLAUDE_", "ANTHROPIC_", "DISABLE_"), ()),
+    "gemini-cli": (("GEMINI_",), ("GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT",
+                                  "GOOGLE_CLOUD_LOCATION", "GOOGLE_GENAI_USE_VERTEXAI", "GOOGLE_GENAI_USE_GCA")),
+    "codex": (("CODEX_",), ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORG_ID", "OPENAI_PROJECT")),
+}
+
+
+def child_env(engine: str = "claude-code") -> dict:
+    """The environment a delegated run gets: the allow-list, minus Claude's API billing."""
+    prefixes, names = ENV_ENGINE.get(engine, ENV_ENGINE["claude-code"])
     env = {k: v for k, v in os.environ.items()
-           if k not in API_BILLING_VARS and k not in PARENT_SESSION_VARS}
+           if (k in ENV_KEEP or k in names or k.startswith("LC_") or k.startswith(prefixes))
+           and k not in API_BILLING_VARS and k not in PARENT_SESSION_VARS}
     env["CLAUDE_CODE_ENTRYPOINT"] = "agentos"
     # The CLI shells out to its own helpers (node, ripgrep, git). Under systemd
     # this process's PATH lacks ~/.local/bin, so hand the child the same extended
@@ -2860,6 +2996,17 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     env = env.sanitized()
     run = run or Run()
     run.engine = env.engine
+    from . import integrity
+    held = integrity.refusal()
+    if held:           # a forwarded CLI has its own tools, so the gate alone can't hold it
+        run.reported_error = True
+        await emit({"type": "error", "message": held})
+        return run
+    env, note, refusal = confine(env)
+    if refusal:
+        await emit({"type": "error", "message": refusal})
+        run.reported_error = True
+        return run
     Path(env.workspace).mkdir(parents=True, exist_ok=True)
     emit = _taint_door(env, emit)
 
@@ -2870,27 +3017,40 @@ async def run_task(task: str, env: Envelope, emit, run: Run | None = None) -> Ru
     # sentence the UI shows in the working row, and (via actMove) starts its clock.
     await emit({"type": "status",
                 "message": "starting up — waking the agent and its tools"})
+    if note:
+        await emit({"type": "status", "message": note})
+    if JAIL_ENFORCED and jail_ready():
+        env.context = (env.context + "\n\n" if env.context else "") + JAIL_NOTE
 
     # only Claude Code reads a stream of messages on its input
     if env.steerable and env.engine not in ("claude-code", ""):
         env = Envelope(**{**env.__dict__, "steerable": False})
-    first = _claude_prompt(task, env) if env.steerable else None
+
+    async def once(e: Envelope) -> Run:
+        words = prompt_of(task, e)
+        cmd = _jailed(build_command(task, e), e)
+        return await _drive(cmd, e.workspace, emit, run, e.extra_env,
+                            first=words if e.steerable else None,
+                            prompt=None if e.steerable else words)
     try:
-        cmd = build_command(task, env)
-        run = await _drive(cmd, env.workspace, emit, run, env.extra_env, first=first)
+        _scratch(env)
+        try:
+            run = await once(env)
+            if run.resume_missing and not run.stopped:
+                # The saved session is gone (its files deleted, a restored backup, another
+                # home). Say so once and run again as a new session told the thread so far,
+                # rather than failing a turn the person can do nothing about.
+                await emit({"type": "status",
+                            "message": "the earlier session is gone, so it gets the conversation so far"})
+                env = Envelope(**{**env.__dict__, "session_id": "", "transcript": env.fallback})
+                run.resume_missing = run.reported_error = False
+                run.session_id = ""
+                run = await once(env)
+        except JailRefused as e:
+            await emit({"type": "error", "message": str(e)})
+            run.reported_error = True
     finally:
         _drop_scratch(env.scratch)
-    if run.resume_missing and not run.stopped:
-        # The saved session is gone (its files deleted, a restored backup, another
-        # home). Say so once and run again as a new session told the thread so far,
-        # rather than failing a turn the person can do nothing about.
-        await emit({"type": "status",
-                    "message": "the earlier session is gone, so it gets the conversation so far"})
-        env = Envelope(**{**env.__dict__, "session_id": "", "transcript": env.fallback})
-        run.resume_missing = run.reported_error = False
-        run.session_id = ""
-        run = await _drive(build_command(task, env), env.workspace, emit, run,
-                           first=_claude_prompt(task, env) if env.steerable else None)
     return run
 
 
@@ -2902,28 +3062,38 @@ def _drop_scratch(path: str) -> None:
 
 
 async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | None = None,
-                 first: str | None = None) -> Run:
+                 first: str | None = None, prompt: str | None = None) -> Run:
     """Start the CLI with `cmd` and stream its events through `emit` until it exits.
 
     The one subprocess loop for both kinds of run — a chat turn inside an envelope
     (`run_task`) and a mission on the bridge (`run_on_bridge`) — so the startup
     deadline, the oversized-line recovery and the exit reporting cannot drift
     between them.
+
+    `prompt` is written on stdin and the input closed; `first` is a steerable turn's first
+    message, and its input stays open. Neither ever reaches argv.
     """
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=cwd,
-        stdin=asyncio.subprocess.PIPE if first is not None else asyncio.subprocess.DEVNULL,
+        stdin=asyncio.subprocess.PIPE if (first is not None or prompt is not None) else asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env={**child_env(), **(extra_env or {})},
+        env={**child_env(run.engine), **(extra_env or {})},
         limit=STREAM_LINE_LIMIT,
     )
     run.proc = proc
+    for k in [k for k, r in _LIVE_RUNS.items() if r.proc is None or r.proc.returncode is not None]:
+        del _LIVE_RUNS[k]
+    _LIVE_RUNS[id(run)] = run
     if first is not None:
         # the prompt is the first message on the input; the input stays open for more
         run.stdin, run.steer_open = proc.stdin, True
         run.stdin.write((json.dumps({"type": "user", "message": {"role": "user", "content": first}}) + "\n").encode())
+    elif prompt is not None:
+        # the transport keeps what the pipe won't take yet, and close() flushes it first
+        proc.stdin.write(prompt.encode("utf-8", "replace"))
+        proc.stdin.close()
 
     def _close_input():
         # the turn has its answer: no more messages go to it (a later one is queued as
@@ -3007,16 +3177,396 @@ async def _drive(cmd: list[str], cwd: str, emit, run: Run, extra_env: dict | Non
     return run
 
 
+# --- the jail a forwarded CLI runs in ------------------------------------------
+#
+# A forwarded CLI's tools never reach this OS's gate, so with Bash ticked it was a shell with
+# no gate, no jail and no ledger. This is the seam: it composes on the outside of the argv a
+# builder made and knows nothing else about the run. It is not `tools.bwrap_argv`, which keeps
+# a jailed shell's home writable; a CLI's jail has to keep its credentials working and take
+# everything else in the home away.
+
+#: Told to every jailed run, or it reads a missing home as a broken machine and goes looking.
+JAIL_NOTE = ("You run in a jail. You can reach the folders named for this run and nothing else of the "
+             "person's: their home, keys and other projects are hidden, and `bento` isn't available. "
+             "When you need something outside, say so instead of hunting for it.")
+
+#: Off only in the test suite (tests/conftest.py), whose fake CLIs live in a temp folder this
+#: jail hides. Python state on purpose: no environment variable or setting can switch it.
+JAIL_ENFORCED = True
+
+
+class JailRefused(Exception):
+    """A run this jail cannot make safe. The message is a sentence for the person."""
+
+
+# What each CLI keeps under its state folder. `keep` stays writable: its sign-in, and for
+# Claude Code the sessions it resumes. `config` is what the person wrote, which runs or steers
+# the next session, including one they start themselves in a terminal outside any jail: it is
+# read-only for the person's own turns and absent otherwise. Everything else there (transcript
+# indexes, other chats' todos, history) is masked, so a turn can't read what another turn said.
+CLI_STATE = {
+    "claude-code": {"dir": ".claude", "env": "CLAUDE_CONFIG_DIR",
+                    "keep": {".credentials.json", "projects"},
+                    "config": {"settings.json", "CLAUDE.md", "hooks", "skills", "agents", "commands",
+                               "plugins", "output-styles", "rules"},
+                    "home_file": ".claude.json", "project": ()},
+    "gemini-cli": {"dir": ".gemini", "env": "GEMINI_CLI_HOME",
+                   "keep": {"oauth_creds.json", "google_accounts.json", "installation_id", "user_id",
+                            "mcp-oauth-tokens.json", "tmp", "history"},
+                   "config": {"settings.json", "GEMINI.md", "commands", "extensions", "skills", "agents",
+                              "policies"},
+                   "home_file": "", "project": (".gemini",)},
+    "codex": {"dir": ".codex", "env": "CODEX_HOME",
+              "keep": {"auth.json", "sessions", "log", "version.json", "tmp"},
+              "config": {"config.toml", "AGENTS.md", "prompts", "skills", "rules"},
+              "home_file": "", "project": (".codex",)},
+}
+# Config that does not exist yet still gets a mount point, or a jailed shell could create it
+# for the person's next terminal session. A missing settings.json must stay valid JSON.
+_MUST_EXIST = {"settings.json": "{}\n", "CLAUDE.md": "", "GEMINI.md": "", "AGENTS.md": "", "config.toml": ""}
+
+# Under the home, what a shell needs to run programs: code and caches of code. Never a place
+# that holds a key (`~/.cargo/credentials`, `~/.npmrc`, `~/.ssh`, `~/.aws`, `~/.config`).
+HOME_TOOLS = (".local/bin", ".local/lib", ".local/share/claude", ".local/share/uv/python", ".local/share/pipx",
+              ".nvm", ".fnm", ".volta", ".bun/bin", ".deno/bin", ".cargo/bin", ".rustup/toolchains", ".pyenv",
+              ".rbenv", ".asdf", "go/bin", ".npm-global", ".gitconfig", ".config/git/config",
+              ".config/git/ignore", ".tool-versions")
+
+#: Mounted empty in the jail, with the home and this OS's data. /run has the session's sockets
+#: (D-Bus, the keyring, Docker's).
+_HIDDEN = ("/home", "/run", "/tmp", "/var/tmp", "/mnt", "/media")
+
+_jail_ok: bool | None = None
+
+
+def jail_ready(refresh: bool = False) -> bool:
+    """Can this machine start the jail? Asked of bwrap itself, once: a machine may have the
+    binary and refuse it (no user namespaces in a container, AppArmor's restriction)."""
+    global _jail_ok
+    if _jail_ok is None or refresh:
+        _jail_ok = False
+        exe = shutil.which("bwrap") if sys.platform.startswith("linux") else None
+        if exe:
+            try:
+                _jail_ok = subprocess.run(
+                    [exe, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp",
+                     "--unshare-pid", "--unshare-ipc", "--new-session", "--die-with-parent", "/bin/true"],
+                    capture_output=True, timeout=10).returncode == 0
+            except (OSError, subprocess.SubprocessError):
+                _jail_ok = False
+    return _jail_ok
+
+
+def jail_state() -> dict:
+    """What Settings and `bento doctor` say about it. `component` is what would fix it."""
+    if not JAIL_ENFORCED or jail_ready():
+        return {"ok": True, "why": "", "component": ""}
+    if sys.platform.startswith("linux"):
+        if shutil.which("bwrap"):
+            return {"ok": False, "component": "",
+                    "why": "This machine refuses to start a jail, usually because user namespaces are off."}
+        return {"ok": False, "component": "bubblewrap", "why": "This machine has no jail. Installing bubblewrap adds one."}
+    return {"ok": False, "component": "", "why": "A jail for agent CLIs isn't available on this system yet."}
+
+
+def _own_machine() -> bool:
+    """Is the person behind this turn entitled to the machine's own CLI sign-in and settings?
+    True with no accounts (`is_admin('')`) and for an admin. A background job runs as its owner."""
+    from . import users as usersmod
+    return not usersmod.enabled() or usersmod.is_admin(usersmod.current())
+
+
+#: Every native tool that touches a disk or runs a program. What's left reads the web.
+_DISK_TOOLS = ("Bash", "Read", "Write", "Edit", "Glob", "Grep")
+
+
+def confine(env: "Envelope") -> tuple:
+    """(the envelope a run really gets, a sentence if it was narrowed, a refusal or '').
+
+    The one place that decides, read by `run_task` and by `describe`, so what Settings says
+    is what a run gets. A jail keeps a CLI's shell off the machine, but the CLI and its shell
+    share one sandbox, so a shell can always read the CLI's own sign-in. That is why a
+    non-admin's shell needs an admin's written yes even with a jail: it hands them the
+    machine's subscription."""
+    if not JAIL_ENFORCED:
+        return env, "", ""
+    tools, note = tuple(env.tools), ""
+    own = _own_machine()
+    extra: dict = {} if own else {"person": False, "allow_source": False}
+    if jail_ready():
+        if not own and "Bash" in tools and not env.shell_for_accounts:
+            tools = tuple(t for t in tools if t != "Bash")
+            note = "The shell is off for this account, because an admin hasn't allowed it."
+    elif not own:
+        if env.engine != "claude-code":
+            title = EXECUTORS_BY_ID.get(env.engine, {}).get("title", env.engine)
+            return env, "", (f"{title} can't run for this account here, because this machine has no jail "
+                             "to keep it out of other accounts' files.")
+        tools = tuple(t for t in tools if t not in _DISK_TOOLS)
+        note = "File tools and the shell are off for this account, because this machine has no jail."
+    elif "Bash" in tools and not env.unjailed_ok:
+        tools = tuple(t for t in tools if t != "Bash")
+        note = "The shell is off because this machine has no jail. You can accept that in Settings, Executors."
+    if tools != tuple(env.tools):
+        extra["tools"] = tools
+    return (replace(env, **extra) if extra else env), note, ""
+
+
+def _jail_words(env: "Envelope", note: str) -> str:
+    """The envelope's sentence about the jail, for every face that shows it."""
+    if not JAIL_ENFORCED:
+        return ""
+    if note:
+        return ". " + note
+    if jail_ready():
+        return ". It runs in a jail: your home and this OS's data are hidden"
+    if "Bash" in env.tools:
+        return ". There is no jail here, so its shell can reach anything you can"
+    return ""
+
+
+def _bridge_refusal(engine: str) -> str:
+    """A fenced run has no tools of its own to confine. Codex keeps a read-only shell, and
+    with no jail that shell reads every account's files."""
+    if JAIL_ENFORCED and engine not in FENCED_ENGINES and not jail_ready() and not _own_machine():
+        title = EXECUTORS_BY_ID.get(engine, {}).get("title", engine)
+        return f"{title} can't run for this account here, because this machine has no jail."
+    return ""
+
+
+def _real(path) -> str:
+    return os.path.realpath(os.path.expanduser(str(path)))
+
+
+def _under(path: str, parent: str) -> bool:
+    return path == parent or path.startswith(parent.rstrip(os.sep) + os.sep)
+
+
+def _session_folder(cwd: str) -> str:
+    """The folder under `projects/` Claude Code keeps a working folder's sessions in."""
+    return re.sub(r"[^a-zA-Z0-9]", "-", cwd)
+
+
+def _is_ours(name: str, cwd: str) -> bool:
+    key = _session_folder(cwd)
+    return name == key or (len(key) > 200 and name.startswith(key[:200]))   # it shortens long ones
+
+
+def _tool_roots(exe: str, home: str, code: str) -> list[str]:
+    """What a shell needs from under the hidden home: HOME_TOOLS, PATH's folders and where
+    their links lead (`~/.local/bin/claude` is a link into `~/.local/share/claude`). Never
+    this OS's own code or data, which is what `bento` on PATH points at."""
+    from . import config as _cfgmod
+    data = _real(_cfgmod.AGENTOS_HOME)
+    hidden = (home, *_HIDDEN)
+    roots = {os.path.join(home, t) for t in HOME_TOOLS}
+    dirs = [p for p in (child_env().get("PATH") or "").split(os.pathsep) if p]
+    real_dirs = {_real(d) for d in dirs}
+    is_hidden = lambda p: any(_under(p, h) for h in hidden)     # noqa: E731
+    roots |= {d for d in real_dirs if is_hidden(d)}
+    for f in [exe] + [os.path.join(d, n) for d in dirs if is_hidden(_real(d)) for n in _listdir(d)]:
+        target = _real(f)
+        if is_hidden(target) and not _under(target, code) and not _under(target, data):
+            parent = os.path.dirname(target)
+            if parent in real_dirs:
+                continue                # the program itself sits in a PATH folder: it is bound
+            # a program in `…/bin/` usually needs `…/lib/` beside it, but never `~/.local` whole
+            up = os.path.dirname(parent) if os.path.basename(parent) == "bin" else parent
+            roots.add(parent if up in (home, os.path.join(home, ".local"), os.path.join(home, ".config")) else up)
+    return sorted(r for r in roots if os.path.exists(r) and r != home
+                  and not _under(r, code) and not _under(r, data))
+
+
+def _listdir(d: str) -> list[str]:
+    try:
+        return os.listdir(d)
+    except OSError:
+        return []
+
+
+def _state_entries(engine: str, home: str, cwd: str, person: bool, scratch: str) -> list[tuple]:
+    """The CLI's own state folder, as jail entries (see `jail_cli`)."""
+    spec = CLI_STATE[engine]
+    state = _real(os.environ.get(spec["env"]) or os.path.join(home, spec["dir"]))
+    os.makedirs(state, mode=0o700, exist_ok=True)
+    out: list[tuple] = [("rw", state)]
+    names = set(_listdir(state)) | set(spec["config"])
+    for name in sorted(names):
+        path = os.path.join(state, name)
+        if name in spec["keep"]:
+            continue
+        if name in spec["config"]:
+            if not os.path.exists(path) and name in _MUST_EXIST:
+                with contextlib.suppress(OSError):   # a mount point can't appear from nothing valid
+                    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, "w") as f:
+                        f.write(_MUST_EXIST[name])
+            if person and os.path.exists(path):
+                out.append(("ro", path))
+                continue
+            out.append(("mask-file" if name in _MUST_EXIST else "tmpfs", path))
+            continue
+        out.append(("tmpfs" if os.path.isdir(path) else "mask-file", path))
+    if engine == "claude-code":
+        # keep this folder's sessions, so --resume works, and no other folder's
+        projects = os.path.join(state, "projects")
+        for name in _listdir(projects):
+            if not _is_ours(name, cwd):
+                out.append(("tmpfs", os.path.join(projects, name)))
+        # ~/.claude.json holds MCP commands a terminal session would run, so the jail gets a
+        # copy: the CLI's small state writes are lost, which costs nothing
+        src = os.path.join(home, spec["home_file"])
+        copy = os.path.join(scratch, "claude.json")
+        try:
+            data = json.loads(Path(src).read_text())
+            if not person:
+                for k in ("mcpServers", "projects", "customApiKeyResponses"):
+                    data.pop(k, None)
+            elif isinstance(data.get("projects"), dict):
+                data["projects"] = {k: v for k, v in data["projects"].items() if _real(k) == cwd}
+            _private_file(scratch, "claude.json", json.dumps(data))
+            out.append(("rw-as", copy, src))
+        except (OSError, ValueError):
+            pass
+    return out
+
+
+def jail_cli(argv: list[str], *, engine: str, cwd: str, rw=(), ro=(), scratch: str = "",
+             person: bool = False, allow_source: bool = False) -> list[str]:
+    """`argv` inside a jail: the machine read-only, the home and this OS's data gone, a private
+    /tmp, /run and process table, the network as it was. `rw`/`ro` are the folders the run was
+    given. Paths keep their real names, because Claude Code files a session under its working
+    folder's path, so a session started in the jail resumes in the jail.
+
+    Every mount is one (kind, path) entry and they are applied shallowest first, so a folder
+    inside something hidden reappears and something hidden inside a given folder stays hidden,
+    whichever way round they nest."""
+    from . import config as _cfgmod
+    from . import protected, secevents
+    home, data, code = _real("~"), _real(_cfgmod.AGENTOS_HOME), source_root()
+    cwd = _real(cwd)
+    given = [("rw", _real(p)) for p in rw if p] + [("ro", _real(p)) for p in ro if p]
+    for mode, path in given:
+        if _under(home, path) or path == data:
+            raise JailRefused(f"{path} is too wide to give an agent's CLI, because it holds your whole "
+                              "home or this OS's data. Pick a folder inside it.")
+        if any(os.path.exists(os.path.join(path, f)) for f in ("vault.key", "agentos.db")):
+            secevents.flag("cli.folder_refused", "holds a home's private files", source=engine)
+            raise JailRefused(f"{path} holds an account's private data, so an agent's CLI can't have it. "
+                              "Pick another folder.")
+        if set(Path(path).parts) & {".ssh", ".gnupg", ".aws", ".kube"}:
+            raise JailRefused(f"{path} holds keys, so an agent's CLI can't have it. Pick another folder.")
+        if _someone_elses(path):
+            secevents.flag("cli.folder_refused", "another account's folder", source=engine)
+            raise JailRefused("That folder belongs to another account on this machine.")
+    entries: list[tuple] = [("tmpfs", p) for p in (*_HIDDEN, home, data) if os.path.isdir(p)]
+    resolv = _real("/etc/resolv.conf")         # usually a link into /run, which is hidden
+    if resolv.startswith("/run/"):
+        entries.append(("ro", os.path.dirname(resolv)))
+    entries += [("ro", r) for r in _tool_roots(argv[0], home, code)]
+    entries += given
+    wide = [p for m, p in given if m == "rw" and _under(code, p)]
+    if allow_source:
+        entries.append(("rw", code))
+    elif wide:
+        entries.append(("ro", code))           # the code sits inside a folder it was given
+    if allow_source or wide:
+        # What a person's yes to "work on AgentOS" never covers: the gate's own files, and
+        # what runs next time without anybody reading it.
+        for rel in sorted(protected.SECURITY_MODULES):
+            if os.path.exists(os.path.join(code, rel)):
+                entries.append(("ro", os.path.join(code, rel)))
+        for rel in (".git/hooks", ".git/config", ".venv"):
+            if os.path.exists(os.path.join(code, rel)):
+                entries.append(("ro", os.path.join(code, rel)))
+    for name in CLI_STATE[engine]["project"]:    # no flag switches these off for this CLI
+        for mode, path in given:
+            entries.append(("tmpfs", os.path.join(path, name)))
+    entries += _state_entries(engine, home, cwd, person, scratch)
+    if scratch:
+        entries.append(("ro", _real(scratch)))
+    return _bwrap(entries) + ["--chdir", cwd, "--setenv", "AGENTOS_SANDBOX", "1",
+                  "--setenv", "DISABLE_AUTOUPDATER", "1", *argv]
+
+
+def jail_server(argv: list[str], name: str) -> list[str]:
+    """A tool server from the public registry, in a jail: it is somebody else's program, and
+    every one of its calls is gated but what it does on its own is not. It gets the network,
+    a home of its own that lasts between runs (npx and uvx cache there), and nothing of yours.
+    A server that needs a folder of yours can't be one of these until it is shared by hand."""
+    from . import config as _cfgmod
+    from . import users as usersmod
+    home, data, code = _real("~"), _real(_cfgmod.AGENTOS_HOME), source_root()
+    uid = usersmod.current() if usersmod.enabled() else ""
+    base = Path(usersmod.home_for(uid)) if uid else Path(data)
+    box = base / "mcp-boxes" / re.sub(r"[^A-Za-z0-9._-]", "-", name)[:60]
+    box.mkdir(parents=True, exist_ok=True, mode=0o700)
+    entries = [("tmpfs", p) for p in (*_HIDDEN, home, data) if os.path.isdir(p)]
+    resolv = _real("/etc/resolv.conf")
+    if resolv.startswith("/run/"):
+        entries.append(("ro", os.path.dirname(resolv)))
+    entries += [("ro", r) for r in _tool_roots(argv[0], home, code)]
+    entries.append(("rw", str(box)))
+    return _bwrap(entries) + ["--chdir", str(box), "--setenv", "HOME", str(box), *argv]
+
+
+def _bwrap(entries: list[tuple]) -> list[str]:
+    """Mounts in order, shallowest first: see `jail_cli`."""
+    out = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+           "--unshare-pid", "--unshare-ipc", "--unshare-uts", "--new-session", "--die-with-parent"]
+    for entry in sorted(entries, key=lambda e: len(Path(e[-1]).parts)):   # stable: same depth keeps its order
+        kind, path = entry[0], entry[-1]
+        if kind == "tmpfs":
+            out += ["--tmpfs", path]
+        elif kind == "mask-file":
+            out += ["--ro-bind", "/dev/null", path]
+        elif kind == "ro" and os.path.exists(path):
+            out += ["--ro-bind", path, path]
+        elif kind == "rw" and os.path.exists(path):
+            out += ["--bind", path, path]
+        elif kind == "rw-as":
+            out += ["--bind", entry[1], path]
+    return out
+
+
+def _someone_elses(path: str) -> bool:
+    """Is this inside another account's home? A folder setting and a share are both only
+    words until here, and the jail would bind whatever it was told."""
+    from . import config as _cfgmod
+    from . import users as usersmod
+    if not usersmod.enabled():
+        return False
+    accounts = _real(Path(_cfgmod.AGENTOS_HOME) / "users")
+    if not _under(path, accounts):
+        return False
+    uid = usersmod.current()
+    return not (uid and _under(path, _real(usersmod.home_for(uid))))
+
+
+def _jailed(cmd: list[str], env: "Envelope") -> list[str]:
+    """A chat turn's command in its jail, where this machine can start one. `confine` has
+    already taken away whatever isn't safe when it can't."""
+    if not (JAIL_ENFORCED and jail_ready()):
+        return cmd
+    rw = [env.workspace] + [p for p, m in env.shares if m == "rw"]
+    ro = [p for p, m in env.shares if m == "ro"]
+    return jail_cli(cmd, engine=env.engine, cwd=env.workspace, rw=rw, ro=ro, scratch=_scratch(env),
+                    person=env.person, allow_source=env.allow_source)
+
+
+
 # --- a mission on the bridge: the executor's model, this OS's hands -----------
 
 BRIDGE_SERVER = "bento"       # must match mcpbridge.SERVER_NAME: tools arrive as mcp__bento__<name>
 
 
 def build_bridge_command(task: str, system: str, url: str, token: str,
-                         budget_usd: float, model: str = "") -> list[str]:
-    """The argv for a run whose only tools are this OS's, over MCP.
+                         budget_usd: float, model: str = "", scratch: str = "") -> list[str]:
+    """The argv for a run whose only tools are this OS's, over MCP. `task` goes on stdin
+    (`run_on_bridge`), and the token and the system prompt in 0600 files.
 
-    Three flags are the whole confinement, and each one is load-bearing:
+    Four flags are the whole confinement, and each one is load-bearing:
+    `--setting-sources ""` so no settings file can run a hook,
     `--tools ""` switches every native tool off (no Read, no Bash, no WebFetch),
     `--strict-mcp-config` ignores every MCP server the user's own Claude Code
     config would otherwise add, and `--allowedTools mcp__bento` permits exactly
@@ -3027,17 +3577,16 @@ def build_bridge_command(task: str, system: str, url: str, token: str,
     for files it has not got.
     """
     exe = claude_exe() or "claude"
-    mcp = {"mcpServers": {BRIDGE_SERVER: {"type": "http", "url": url,
-                                          "headers": {"Authorization": f"Bearer {token}"},
-                                          "timeout": BRIDGE_CALL_MS}}}
-    cmd = [exe, "--print", as_prose(task),
+    scratch = scratch or _mkscratch()
+    cmd = [exe, "--print",
            "--output-format", "stream-json", "--verbose",
+           "--setting-sources", "", "--no-session-persistence",
            "--tools", "",
-           "--strict-mcp-config", "--mcp-config", json.dumps(mcp),
+           "--strict-mcp-config", "--mcp-config", _mcp_file(scratch, url, token),
            "--allowedTools", f"mcp__{BRIDGE_SERVER}",
            "--permission-mode", "dontAsk",
            "--max-budget-usd", f"{max(0.05, float(budget_usd or 0)):.2f}",
-           "--system-prompt", system]
+           "--system-prompt-file", _private_file(scratch, "system.md", system)]
     if model:
         cmd += ["--model", model]
     return cmd
@@ -3054,7 +3603,7 @@ def build_bridge_run(engine: str, task: str, system: str, url: str, token: str,
     if engine == "gemini-cli":
         extra, envv = bridge_parts(engine, url, token, scratch=scratch, system=system,
                                    fence=True, cwd=cwd)
-        cmd = [_find_bin(("gemini",)) or "gemini", "--prompt", as_prose(task),
+        cmd = [_find_bin(("gemini",)) or "gemini",
                "--output-format", "stream-json", *extra]
         if model:
             cmd += ["--model", model]
@@ -3065,8 +3614,8 @@ def build_bridge_run(engine: str, task: str, system: str, url: str, token: str,
                "--sandbox", "read-only", "--cd", cwd or os.getcwd(), *extra]
         if model:
             cmd += ["--model", model]
-        return cmd + [as_prose(task)], envv
-    return build_bridge_command(task, system, url, token, budget_usd, model), {}
+        return cmd + ["-"], envv
+    return build_bridge_command(task, system, url, token, budget_usd, model, scratch), {}
 
 
 async def run_on_bridge(task: str, system: str, url: str, token: str, emit,
@@ -3075,20 +3624,51 @@ async def run_on_bridge(task: str, system: str, url: str, token: str, emit,
     """Run one agent turn on the executor with the bridge as its only tool source."""
     run = run or Run()
     run.engine = engine if engine in DRIVEN else "claude-code"
-    cwd = cwd or os.getcwd()
-    Path(cwd).mkdir(parents=True, exist_ok=True)
+    from . import integrity
+    held = integrity.refusal()
+    if held:
+        run.reported_error = True
+        await emit({"type": "error", "message": held})
+        return run
+    refusal = _bridge_refusal(run.engine)
+    if refusal:
+        await emit({"type": "error", "message": refusal})
+        run.reported_error = True
+        return run
     title = EXECUTORS_BY_ID.get(run.engine, {}).get("title", run.engine)
     await emit({"type": "status", "message": (
         f"starting {title} with this OS's tools, its own switched off"
         if run.engine in FENCED_ENGINES else
         f"starting {title} with this OS's tools; its own shell stays on, read-only")})
-    scratch = _mkscratch() if run.engine != "claude-code" else ""
+    scratch = _mkscratch()
     try:
+        # A fenced run has none of its own tools, so it needs no folder. It starts in an empty
+        # one, where no `.claude`, `.gemini` or `.mcp.json` can be waiting for it. Codex keeps
+        # its read-only shell in the folder it was given.
+        fenced = run.engine in FENCED_ENGINES
+        where = str(Path(scratch) / "cwd") if fenced else (cwd or os.getcwd())
+        Path(where).mkdir(parents=True, exist_ok=True)
         cmd, envv = build_bridge_run(run.engine, task, system, url, token,
-                                     budget_usd or default_budget(), model, cwd, scratch)
-        return await _drive(cmd, cwd, emit, run, envv)
+                                     budget_usd or default_budget(), model, where, scratch)
+        if JAIL_ENFORCED and jail_ready():
+            cmd = jail_cli(cmd, engine=run.engine, cwd=where, scratch=scratch,
+                           rw=(where,) if fenced else (), ro=() if fenced else (where,))
+        return await _drive(cmd, where, emit, run, envv, prompt=as_prose(task))
+    except JailRefused as e:
+        await emit({"type": "error", "message": str(e)})
+        run.reported_error = True
+        return run
     finally:
         _drop_scratch(scratch)
+
+
+def stop_all() -> int:
+    """Every CLI this server started that is still running, for the security hold: it has its
+    own tools, so refusing its next step at the gate wouldn't stop it."""
+    n = 0
+    for r in list(_LIVE_RUNS.values()):
+        n += 1 if stop(r) else 0
+    return n
 
 
 def stop(run: Run) -> bool:

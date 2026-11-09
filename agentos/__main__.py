@@ -240,7 +240,9 @@ def _server_answers(port: int, timeout: float = 1.5) -> bool:
         from . import config as _c
         return theirs == _c.home_id()
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/platform",
+        # /login, which is open to everybody: this also runs inside the server's own process, and that
+        # asking for the API would read as a process of its own trying to use the person's access
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/login",
                                     timeout=timeout) as r:
             return r.status < 500 and ours(r.headers)
     except urllib.error.HTTPError as e:
@@ -267,7 +269,9 @@ def _open_when_ready(url: str, port: int, timeout: float = 90.0) -> None:
         deadline = time.time() + timeout
         while time.time() < deadline:
             if _server_answers(port):
-                webbrowser.open(url)
+                # it would be this server's child, so it comes with a ticket for a cookie (peercheck)
+                from . import remote as remotemod
+                webbrowser.open(remotemod.ticket_url(url))
                 return
             time.sleep(0.25)
         print(f"\n  (the server has not answered after {int(timeout)}s — not opening a "
@@ -386,7 +390,15 @@ def serve(host: str, port: int, open_browser: bool, if_running: str = "ask"):
         print("  sign in with your passphrase; local use is unchanged.\n")
     if open_browser:
         _open_when_ready(url, port)
-    uvicorn.run("agentos.server:app", host=host, port=port, log_level="warning")
+    from . import integrity as _integrity
+    _integrity.arm()        # this process is the server: its startup starts the watcher
+    from . import peercheck
+    peercheck.arm()
+    # proxy_headers off: uvicorn's default rewrites the client address from X-Forwarded-For for any peer
+    # on 127.0.0.1, so a visitor's "X-Forwarded-For: 127.0.0.1" through a proxy became a loopback client.
+    # remote.client_addr reads the header itself and never lets it say loopback.
+    uvicorn.run("agentos.server:app", host=host, port=port, log_level="warning",
+                proxy_headers=False, forwarded_allow_ips="")
 
 
 def ask(prompt: str, model: str | None, full: bool):
@@ -1031,6 +1043,8 @@ def delegate(prompt: str, workdir: str | None, tools: str | None,
         budget_usd=budget if budget is not None
                    else float(conf.get("budget_usd", execmod.DEFAULT_BUDGET_USD)),
         shares=execmod.shares_of(cfg),
+        person=True,        # somebody at this terminal, in their own session
+        unjailed_ok=bool(conf.get("unjailed_ok")),
     ).sanitized()
     print(f"→ {env.describe()}\n")
 
@@ -1222,6 +1236,14 @@ def doctor(fix: bool = False, session: bool = False):
         integ = db.execute("PRAGMA integrity_check").fetchone()[0]
         (ok if mode == "wal" else warn)(f"db journal_mode={mode}")
         (ok if integ == "ok" else bad)(f"db integrity: {integ}")
+        try:
+            from . import integrity as _integrity
+            _st = _integrity.status()
+            _st["watching"] = _server_up()
+            _st["line"] = _integrity.line(_st)
+            (bad if _st["held"] or _st["sealed"] == "bad" else ok)(f"security: {_st['line']}")
+        except Exception as e:  # noqa: BLE001 - a doctor keeps going
+            warn(f"security: could not check ({type(e).__name__})")
         # How much disk it is using, and what is using it. On an SD card this is
         # the number that matters and nothing reported it — a database that grows
         # every day is invisible until the machine cannot write at all.
@@ -1250,14 +1272,14 @@ def doctor(fix: bool = False, session: bool = False):
     ok("git available" if shutil.which("git") else "")
     if not shutil.which("git"):
         warn("git not installed — the Ship pillar (git_* tools) needs it")
-    from .tools import sandbox_mechanism
-    mech = sandbox_mechanism()
-    if mech:
-        ok(f"sandbox available ({mech})")
-    elif sys.platform == "linux":
-        warn("bubblewrap missing — sandbox falls back to unjailed commands (install: apt install bubblewrap)")
+    from .tools import jail_state
+    js = jail_state(cfg)
+    if js["mechanism"]:
+        ok(f"sandbox can run ({js['mechanism']})")
+    elif js["enabled"]:
+        warn(js["words"])
     else:
-        warn("no sandbox mechanism found — shell commands run unjailed")
+        warn("the sandbox is off, and could not start here anyway: " + js["why"])
     # Safe folders, and — the point of saying anything here — the ones that are
     # configured but not being used. A folder silently dropped for a typo looks
     # exactly like one the agent is refusing to touch.
@@ -3496,8 +3518,8 @@ def _standby_cli(args):
             say("  or Settings → System → Cloud standby. The code works once, for ten minutes.")
         elif act == "pair":
             if len(args.rest) != 2:
-                raise SystemExit("usage: bento standby pair URL CODE")
-            s = sb.pair(args.rest[0], args.rest[1])
+                raise SystemExit("usage: bento standby pair URL CODE [--plain-http]")
+            s = sb.pair(args.rest[0], args.rest[1], plain_ok=bool(getattr(args, "plain_http", False)))
             say(f"  ✓ Paired. {s['peer_host']} now stands by for this machine.")
             say("  Restart Bento here (or keep it running: a running server starts copying within a minute).")
         elif act == "copy":
@@ -4566,6 +4588,16 @@ def _pool_cli(args):
                 _cfgmod.save_config(cfg)
                 print("  This machine will think with the leader's brain (restart the server to use it now).")
             return show()
+        if a == "vouch":
+            if not rest:
+                sys.exit("  bento pool vouch MACHINE [off]")
+            off = rest[-1] == "off" and len(rest) > 1
+            try:
+                e = poolmod.set_vouch(" ".join(rest[:-1] if off else rest), not off)
+            except ValueError as err:
+                sys.exit(f"  {err}")
+            print(f"  {e.get('name')} {'may not' if off else 'may'} take over if the leader goes.")
+            return show()
         if a in ("approve", "remove"):
             if not val:
                 sys.exit(f"  bento pool {a} MACHINE")
@@ -4644,6 +4676,9 @@ def _ssh_says(e) -> str:
     """A refused login for the terminal. A changed host key (a reformatted machine) says both
     fingerprints and the command that forgets the old one."""
     from . import remoteinstall as ri
+    if isinstance(e, ri.NewKey):
+        return (f"  {e}.\n  If that is the key it should have: "
+                f"bento network trust {e.host} {e.seen}" + (f" --port {e.port}" if e.port != 22 else ""))
     if not isinstance(e, ri.KeyChanged):
         return "  " + str(e)
     f = e.facts()
@@ -4685,7 +4720,7 @@ def _network_cli(args):
                 sys.exit(f"  bento network {a} MACHINE (an address, a name or a MAC; see `bento network`)")
             return None
         r = inv.find(inv.rows(), rest[0])
-        if r is None and a in ("check", "secure", "install", "letin", "rekey", "controls", "switch", "remove", "update"):
+        if r is None and a in ("check", "secure", "install", "letin", "rekey", "trust", "controls", "switch", "remove", "update"):
             return {"ip": rest[0], "mac": "", "display": rest[0], "user": "", "ssh": True, "ports": [22],
                     "connections": [], "key": rest[0]}
         if r is None:
@@ -4993,7 +5028,8 @@ def _network_cli(args):
             sys.exit(_ssh_says(e))
         inv.note_security(r["ip"], r.get("mac") or "", c["done"], user, by="cli")
         for s_ in harden.STEPS:
-            print(f"  {'✓' if c['done'][s_['id']] else '·'} {s_['title']}")
+            shown = "✓" if c["done"][s_["id"]] else "?" if s_["id"] in c.get("unknown", []) else "·"
+            print(f"  {shown} {s_['title']}" + ("  (can't tell without root there)" if shown == "?" else ""))
         for p in c["problems"]:
             print(f"  ✗ {p}")
         ledger("device.check", f"device:{r['ip']}", f"checked {user}@{r['ip']}")
@@ -5076,6 +5112,19 @@ def _network_cli(args):
         inv.hide(r)
         ledger("device.forget", f"device:{r['ip'] or r['key']}", f"hid {r['display']}")
         print(f"  ✓ {r['display']} is hidden. `bento network show {r['ip'] or r['key']}` lists it again.")
+        return
+    if a == "trust":
+        r = machine()
+        if len(rest) < 2:
+            sys.exit("  bento network trust MACHINE SHA256:…   (the key it shows, as a login printed it)")
+        try:
+            ok = ri.pin_host(r["ip"], port(r), rest[1])
+        except ri.InstallError as e:
+            sys.exit(_ssh_says(e))
+        if not ok:
+            sys.exit("  That machine no longer shows that key.")
+        ledger("device.trust", f"device:{r['ip']}", f"trusted the SSH key of {r['ip']} ({rest[1]})")
+        print(f"  ✓ Bento will log in to {r['display']} with that key from now on.")
         return
     if a == "rekey":
         r = machine()
@@ -5286,8 +5335,11 @@ def _provision_cli(args, cfg, a, rest, val, run):
             print("  revoked" if prov.drop_key(rest[1] if len(rest) > 1 else "") else "  no such key")
             return
         prof = {"kiosk": bool(getattr(args, "kiosk", False))} if getattr(args, "kiosk", False) else {}
-        k = prov.make_key(val, bool(getattr(args, "auto", False)), prof)
-        print(f"  Enrolment key '{k['label']}'" + (" (sets machines up the moment they are heard)" if k["auto"] else ""))
+        k = prov.make_key(val, bool(getattr(args, "auto", False)), prof,
+                          reusable=bool(getattr(args, "reusable", False)))
+        print(f"  Enrolment key '{k['label']}'"
+              + (" (sets every machine up the moment it is heard)" if k["reusable"] and k["auto"] else
+                 " (sets one machine up the moment it is heard; the next one asks you)" if k["auto"] else ""))
         print(f"\n    {k['text']}\n")
         print("  Save it as bento-enroll.txt on a new Pi's SD card (the boot partition), or run")
         print("  `bento pool enroll KEY` there. It is shown once.")
@@ -5353,7 +5405,12 @@ def _provision_cli(args, cfg, a, rest, val, run):
     if a == "enroll":
         if not val:
             sys.exit("  bento pool enroll bento-enroll-1.…")
-        prov.adopt_key(val)
+        if val == "forget":
+            print("  This machine no longer carries a key. It shows a code instead." if prov.drop_own_key()
+                  else "  This machine carries no key.")
+            return
+        # `-` reads it from stdin, which is how the installer passes it: arguments show in `ps`
+        prov.adopt_key(sys.stdin.read().strip() if val == "-" else val)
         print("  This machine carries the key and waits to be set up. A running server announces it now.")
         return
     if a == "wait":
@@ -5573,7 +5630,7 @@ def _esp_cli(rest, args):
     me = teamlink.machine_name(load_config())
     if rest[0].lower() in ("here", me.lower()):
         # this hub holds the boards itself (no Pi between): the same functions, run here. A
-        # running server picks a new node's stream up within half a minute.
+        # running server picks a new node's stream up within a minute.
         lk = {"label": me, "here": True}
         port = int(os.environ.get("AGENTOS_PORT") or load_config().get("port") or 8321)
         up = _server_answers(port)
@@ -5931,6 +5988,9 @@ def _timetravel_cli(args):
     except KeyError:
         print(f"no checkpoint {args.id!r}")
         sys.exit(2)
+    except tt.Forged as e:
+        print(str(e))
+        sys.exit(2)
     print(f"going back to before {pl['point']['tool']} ({pl['point']['detail']}) would undo {pl['steps']} step(s):")
     for w in pl["words"]:
         print("  - " + w)
@@ -6060,7 +6120,7 @@ def _demo_cli(args):
     if not args.name:
         st = wh.status()
         print("  warehouse   a hub, three zone Pis and six ESP32 nodes running a warehouse (simulated)")
-        print(f"              {st['phase']}" + (f": {st['floor']}" if st["phase"] == "ready" else ""))
+        print(f"              {st['phase']}" + (f": {wh.keyed_urls()['floor']}" if st["phase"] == "ready" else ""))
         print("\n  bento demo warehouse          start it (on your brain, or --scripted)")
         print("  bento demo warehouse stop     stop it")
         return
@@ -6074,7 +6134,7 @@ def _demo_cli(args):
         if st.get("error"):
             print(f"  {st['error']}")
         if st["phase"] == "ready":
-            print(f"  floor  {st['floor']}\n  hub    {st['hub']}\n  brain  {st['brain']}")
+            print(f"  floor  {wh.keyed_urls()['floor']}\n  hub    {wh.keyed_urls()['hub']}\n  brain  {st['brain']}")
         return
     if a == "floor":
         try:
@@ -6121,8 +6181,9 @@ def _demo_cli(args):
             st = wh.status()
         if st["phase"] != "ready":
             sys.exit(st.get("error") or f"it stopped. Logs: {st['dir']}")
-    print(f"\n  the floor  {st['floor']}   readings live, and trouble to cause")
-    print(f"  the hub    {st['hub']}   ask it in Chat")
+    doors = wh.keyed_urls()
+    print(f"\n  the floor  {doors['floor']}   readings live, and trouble to cause")
+    print(f"  the hub    {doors['hub']}   ask it in Chat")
     print("\n  try asking:")
     for t in st["try"]:
         print(f"    {t}")
@@ -6130,7 +6191,7 @@ def _demo_cli(args):
     print("  bento demo warehouse stop                         ends it")
     if args.open:
         import webbrowser
-        webbrowser.open(st["floor"])
+        webbrowser.open(wh.keyed_urls()["floor"])
 
 
 def _demo_value(e: dict) -> str:
@@ -6652,7 +6713,7 @@ def _team_cli(args):
                   f"  bento team talk matrix|swarm|democracy|off\n"
                   f"    matrix: each pair asks you first\n"
                   f"    swarm: they work together, and your agent hands them work, without asking\n"
-                  f"    democracy: the same steps go to a vote of three of your agents, and 2 of 3 decide")
+                  f"    democracy: you are asked for the same steps, with what three of your agents think")
             return
         mcfg = cfgmod.load_config()
         mcfg.setdefault("team", {})["talk"] = want
@@ -7927,6 +7988,18 @@ def _remote_cli(args):
             r["pass_hash"], r["pass_salt"] = remotemod.hash_passphrase(pw)
     if args.bind:
         r["bind"] = args.bind
+    allow, forget = getattr(args, "allow_host", None) or [], getattr(args, "forget_host", None) or []
+    if allow or forget:
+        names = [str(h).lower() for h in (r.get("allowed_hosts") or [])]
+        for h in allow:
+            h = h.strip().lower()
+            if h != "*" and not remotemod.parse_host(h.removeprefix("*.")):
+                print(f"{h} isn't a host name")
+                sys.exit(1)
+            if h not in names:
+                names.append(h)
+        names = [h for h in names if h not in [x.strip().lower() for x in forget]]
+        r["allowed_hosts"] = names
     if args.on:
         if not r.get("pass_hash") and not by_accounts:
             print("this machine has no lock, and an open port here is an open shell.\n"
@@ -7936,7 +8009,13 @@ def _remote_cli(args):
         r["enabled"] = True
     if args.off:
         r["enabled"] = False
-    if args.on or args.off or pw or args.bind or args.port:
+        # a tailnet keeps publishing past a restart, so off has to reach it here
+        import asyncio as _aio
+
+        from . import tunnel as tunmod
+        for t in _aio.run(tunmod.stop_published(cfg)):
+            print(f"stopped {t}, which was publishing this machine")
+    if args.on or args.off or pw or args.bind or args.port or allow or forget:
         remotemod.sanitize_remote(cfg)
         cfgmod.save_config(cfg)
         if args.port:
@@ -7966,6 +8045,10 @@ def _remote_cli(args):
         print(f"  reach:   {a}")
     if st["enabled"]:
         print("  restart AgentOS for a bind change to take effect.")
+    elif args.off:
+        print("  a running server keeps its address until it restarts: bento service restart")
+    if st["allowed_hosts"]:
+        print(f"  also answers to: {', '.join(st['allowed_hosts'])}")
 
 
 # ---------------------------------------------------------------------------
@@ -8020,7 +8103,7 @@ def _user_cli(args):
         print(f"✓ {u['name']} ({u['role']}) — home {usersmod.home_for(u['id'])}")
         return
 
-    if act in ("role", "passwd", "remove"):
+    if act in ("role", "passwd", "signout", "remove"):
         u = usersmod.by_name(args.name or "")
         if not u:
             print(f"no user called {args.name!r}")
@@ -8031,6 +8114,9 @@ def _user_cli(args):
             elif act == "passwd":
                 usersmod.set_password(u["id"], args.password or getpass.getpass("new password: "))
                 print("✓ password changed")
+            elif act == "signout":
+                usersmod.end_sessions(u["id"])
+                print(f"✓ every device signed in as {u['name']} is signed out")
             else:
                 # `--wipe` is separate and explicit: taking somebody's access away
                 # and destroying what they made are two decisions.
@@ -8384,6 +8470,8 @@ def _update_cli(args) -> int:
 
     print()
     extra = {"switch": True} if sw else {}
+    if getattr(args, "allow_unsigned", False):
+        extra["allow_unsigned"] = True      # a person's word, for a machine with a release key pinned
     result = asyncio.run(upd.apply(cfg, run_tests=not args.no_tests,
                                    log=lambda m: print(f"  {m}"), **extra))
     if not result.get("ok"):
@@ -8435,7 +8523,8 @@ def _update_cli(args) -> int:
         before = head()
         py = other / ".venv" / "bin" / "python"
         cmd = [str(py if py.exists() else sys.executable), "-m", "agentos", "update", "--apply",
-               "--no-restart"] + (["--no-tests"] if args.no_tests else [])
+               "--no-restart"] + (["--no-tests"] if args.no_tests else []) + (
+                   ["--allow-unsigned"] if getattr(args, "allow_unsigned", False) else [])
         rc = subprocess.run(cmd, cwd=str(other)).returncode
         if rc:
             print(f"✗ {other} could not be updated (exit {rc}); the server keeps running it as it is")
@@ -8794,6 +8883,223 @@ def _grants_why(args):
         print(f"  rule {g['id']}: {g['effect']} {g['action']} {g['resource']} ({g.get('source') or 'user'})")
 
 
+def _fetch_allow_cli(args):
+    """The terminal's face of Settings → Permissions → Local addresses (netguard.py). A person at
+    the machine's own terminal: no agent tool reaches this list."""
+    from . import config as cfgmod
+    from . import netguard
+    cfg = cfgmod.load_config()
+    sec = cfg.setdefault("security", {})
+    have = list(sec.get(netguard.CONFIG_KEY) or [])
+    if args.allow:
+        clean, why = netguard.clean_entry(args.allow)
+        if why:
+            print(f"✗ {why}")
+            sys.exit(1)
+        have = [*have, clean] if clean not in have else have
+    if args.disallow:
+        have = [h for h in have if h != args.disallow.strip().lower()]
+    if args.allow or args.disallow:
+        sec[netguard.CONFIG_KEY] = have
+        cfgmod.save_config(cfg)
+        print("Saved. Restart AgentOS if it is running, so it keeps this list.")
+    print("\n".join(have) if have else "No local addresses are allowed. Fetches reach public addresses only.")
+
+
+def _server_up() -> bool:
+    """Does a server answer for this home? It is what's watching, and the terminal has no other
+    way to ask: its own process isn't the server."""
+    from . import desktop
+    return desktop.served_home_matches()
+
+
+def _integrity_person(args, phrase: str, what: str) -> bool:
+    """The door only a person goes through: a real terminal, not one Bento started, and a typed
+    phrase. On a machine with a signing key the record needs the key as well (integrity.seal)."""
+    from . import integrity
+    why = integrity.person_problem()
+    if why:
+        print(f"✗ {why}")
+        return False
+    print(what)
+    try:
+        got = input(f"  Type {phrase} to go on: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        got = ""
+    if got != phrase:
+        print("  Stopped. Nothing changed.")
+        return False
+    return True
+
+
+def _integrity_cli(args):
+    """`bento integrity`: status, seal, accept, dev, keygen, trust, sign-release, lock, unlock.
+    The watcher itself is the server's; these work with the server down, and read the same files."""
+    from . import integrity
+    from . import updates as upd
+    root = Path(args.root).resolve() if args.root else None
+    if root is None:
+        from . import desktop
+        root = desktop.served_root() or integrity.code_root()   # the copy the service really runs
+    act = args.action
+    if act == "status":
+        st = integrity.status(root)
+        st["watching"] = _server_up()
+        st["line"] = integrity.line(st)
+        if args.json:
+            print(json.dumps(st, indent=2))
+            return 0
+        print(f"  {st['line']}")
+        print(f"  code: {st['root']}")
+        if st["state"] == "changed":
+            print("  differs from the record: " + ", ".join(st["changed"][:8]))
+        print("  signed by: " + ({"signed": "your key", "release": f"release key {(st['update'] or {}).get('key_id')}"}
+                                 .get(st["signed"], "nobody. This record is unsigned, so a process running as this "
+                                      "user could rewrite it.")))
+        leds = integrity.verify_ledgers(full=True)
+        broke = [v for v in leds if not v.get("ok")]
+        print("  ledger: " + (f"changed. {broke[0].get('reason')} at row {broke[0].get('at_seq')}" if broke else
+                              f"intact, {sum(int(v.get('checked') or 0) for v in leds)} rows checked"))
+        print("  locked: " + ("yes, this user can't write the code" + (
+            f". {st['open_parents'][0]} is still yours, so whoever runs as you can rename what's in it"
+            if st["open_parents"] else "") if st["locked"] else
+            "no. Whoever runs as this user can change it. bento integrity lock is the real boundary."))
+        return 0 if not st["held"] else 1
+    if act in ("seal", "accept"):
+        phrase = integrity.SEAL_PHRASE if act == "seal" else integrity.ACCEPT_PHRASE
+        entry = integrity.record_for(root)
+        now = integrity.hash_tree(root)
+        verdict = integrity.judge(entry, now)
+        held = integrity.held()
+        head = [f"  Code: {root} ({len(now)} files)"]
+        names = list((held or {}).get("files") or []) + [c for c in verdict["changed"] if c not in ((held or {}).get("files") or [])]
+        if names:
+            head.append("  This will be taken as correct:")
+            head += [f"    {n}" for n in names[:20]]
+            if len(names) > 20:
+                head.append(f"    and {len(names) - 20} more")
+        elif act == "accept":
+            head.append("  Nothing differs from the record.")
+        if act == "accept" and not held and verdict["state"] in ("match", "none"):
+            print("  Nothing to accept: agents aren't held.")
+            return 0
+        if not _integrity_person(args, phrase, "\n".join(head)):
+            return 1
+        try:
+            integrity.seal(root, key_path=args.key or None, by=act)
+        except (ValueError, OSError) as e:
+            print(f"✗ {e}")
+            return 1
+        print("✓ " + ("Sealed" + (", signed." if args.key else ", unsigned. Any process running as this user could "
+                                  "rewrite it. bento integrity keygen makes a key that stays off this machine.")
+                      if act == "seal" else "Accepted. The server lets agents run within a minute."))
+        return 0
+    if act == "dev":
+        turn = (args.value or "").lower()
+        if turn not in ("on", "off"):
+            print("  bento integrity dev on|off")
+            return 2
+        said = ("  On this checkout, changed code will only warn. That includes a change an agent makes."
+                if turn == "on" else "  Changed code will stop the agents again.")
+        if not _integrity_person(args, "dev " + turn, said):
+            return 1
+        try:
+            integrity.seal(root, key_path=args.key or None, by="seal", dev=turn == "on")
+        except (ValueError, OSError) as e:
+            print(f"✗ {e}")
+            return 1
+        print(f"✓ Development mode is {turn} for {root}.")
+        return 0
+    if act == "keygen":
+        out = args.value or args.key
+        if not out:
+            print("  bento integrity keygen <path>. Choose a path on a USB stick or another machine.")
+            return 2
+        target = Path(out).expanduser()
+        try:
+            path, key_id, pub = integrity.keygen(target)
+        except (OSError, FileExistsError) as e:
+            print(f"✗ {e}")
+            return 1
+        print(f"✓ Private key: {path}\n  Public key:  {pub}\n  Key id:      {key_id}")
+        with contextlib.suppress(OSError):
+            if os.stat(path).st_dev == os.stat(integrity._home()).st_dev:
+                print("  ! That is on this machine's disk. Move it somewhere else: a signature only means "
+                      "something if this machine can't make one.")
+        print(f"  To seal with it here:   bento integrity trust {pub}")
+        print(f"  To sign releases, pin it in agentos/updates.py:  SIGNING_KEYS = {{\"{key_id}\": \"{pub}\"}}")
+        return 0
+    if act == "trust":
+        if not args.value:
+            print("  bento integrity trust <public key>")
+            return 2
+        if not _integrity_person(args, "trust", f"  From now on every seal on this machine must be signed by {args.value[:12]}…"):
+            return 1
+        try:
+            print(f"✓ Trusted {integrity.trust(args.value)}. Seal again with --key so the record is signed.")
+        except (ValueError, OSError) as e:
+            print(f"✗ {e}")
+            return 1
+        return 0
+    if act == "sign-release":
+        if not args.key:
+            print("  bento integrity sign-release --key <path> [tag]")
+            return 2
+        got = integrity.sign_release(args.key, root, args.value or "")
+        if not got["ok"]:
+            print(f"✗ {got['error']}")
+            return 1
+        print(f"✓ Signed {got['commit'][:12]} as tag {got['tag']} with {got['key_id']}.")
+        print(f"  Publish it:  git push origin {got['tag']}")
+        return 0
+    if act in ("lock", "unlock"):
+        script = integrity.lock_script(root) if act == "lock" else integrity.unlock_script(root)
+        print(f"  This runs as root:\n    {script}")
+        if act == "lock":
+            print("  Afterwards this user can't write the code, so updates need bento integrity unlock first.")
+        if not _integrity_person(args, act, ""):
+            return 1
+        ok, out = integrity.run_as_root(script, f"Bento needs root to {act} its code.")
+        if not ok:
+            print(f"✗ {out}" if out else "✗ That didn't run.")
+            print(f"  Run it yourself:  {integrity.hand_back(script)}")
+            return 1
+        if integrity.is_locked(root) != (act == "lock"):
+            print(f"✗ It ran, and this user {'can still' if act == 'lock' else 'still can not'} write the code.")
+            return 1
+        print(f"✓ {'Locked. This user can no longer write its own gate.' if act == 'lock' else 'Unlocked.'}")
+        if act == "lock" and integrity.open_parents(root):
+            print(f"  {integrity.open_parents(root)[0]} is still yours. Whoever runs as you can rename what's in it. "
+                  "Installing under /opt closes that.")
+        return 0
+    print(f"  unknown: {act}")
+    print(f"  (release keys pinned: {len(upd.SIGNING_KEYS)})")
+    return 2
+
+
+def _security_cli(args):
+    """`bento security`: what the machine noticed. Reads the file, so it works with the server down."""
+    from . import integrity, secevents
+    if args.allow or args.disallow or args.local:
+        return _fetch_allow_cli(args)
+    rows = secevents.recent(args.limit, alerts_only=args.alerts)
+    if not args.json:
+        st = integrity.status()
+        st["watching"] = _server_up()
+        print(f"  {integrity.line(st)}")
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+    if not rows:
+        print("Nothing on the security record.")
+        return
+    for ev in rows:
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(float(ev.get("at") or 0)))
+        mark = "!" if ev.get("alert") else " "
+        src = f" from {ev['source']}" if ev.get("source") else ""
+        print(f"{mark} {when}  {ev['words']}{src}" + (f"  ({ev['detail']})" if ev.get("detail") else ""))
+
+
 def _audit_cli(args):
     _, store = _open_store(getattr(args, "user", ""))
     if getattr(args, "verify", False):
@@ -8944,6 +9250,8 @@ def main():
                       help="status | wait (on the cloud: show a pairing code) | pair URL CODE | "
                            "copy | takeover | move | back | adopt | keep | off | set")
     p_sb.add_argument("rest", nargs="*", help="for pair: the cloud's address and its code")
+    p_sb.add_argument("--plain-http", action="store_true",
+                      help="pair: accept plain http on a private network, which anyone on it can read")
     p_sb.add_argument("--grace", type=int, default=0, help="set: minutes of silence before taking over")
     p_sb.add_argument("--auto", dest="auto", action="store_true", default=None,
                       help="set: take over by itself")
@@ -9075,6 +9383,8 @@ def main():
                        help="if the checkout has your own uncommitted edits, park them "
                             "with `git stash` and update anyway (answers the prompt "
                             "for an unattended run)")
+    p_upd.add_argument("--allow-unsigned", action="store_true",
+                       help="install an update that isn't signed by a key this machine trusts")
     p_upd.add_argument("--no-tests", action="store_true",
                        help="skip the test gate (it is what rolls a bad update back)")
     p_upd.add_argument("--no-restart", action="store_true",
@@ -9206,6 +9516,24 @@ def main():
     p_audit.add_argument("--limit", type=int, default=50)
     p_audit.add_argument("--verify", action="store_true",
                          help="check the ledger's hash chain for edited or deleted rows")
+
+    p_security = verb("security", help="what this machine noticed: failed sign-ins, forged tokens, changed security files")
+    p_security.add_argument("--limit", type=int, default=50)
+    p_security.add_argument("--alerts", action="store_true", help="only what raised an alert")
+    p_security.add_argument("--json", action="store_true")
+    p_security.add_argument("--allow", metavar="ADDRESS",
+                            help="let fetches reach this local address (host, host:port or a network)")
+    p_security.add_argument("--disallow", metavar="ADDRESS", help="take a local address off that list")
+    p_security.add_argument("--local", action="store_true", help="list the local addresses fetches may reach")
+
+    p_integrity = verb("integrity", help="the code watcher: status, seal, accept a change, keys, the root lock")
+    p_integrity.add_argument("action", nargs="?", default="status",
+                             choices=["status", "seal", "accept", "dev", "keygen", "trust",
+                                      "sign-release", "lock", "unlock"])
+    p_integrity.add_argument("value", nargs="?", default="")
+    p_integrity.add_argument("--key", default="", help="the private key's path, when you use one")
+    p_integrity.add_argument("--root", default="", help="which copy of the code (default: the one the server runs)")
+    p_integrity.add_argument("--json", action="store_true")
 
     p_grants = verb("grants", help="who may do what without asking — list, add, revoke")
     p_grants.add_argument("action", nargs="?", default="list",
@@ -9369,7 +9697,7 @@ def main():
     p_user = verb("user", help="accounts — several people on one machine, "
                                          "each with their own home")
     p_user.add_argument("action", nargs="?", default="list",
-                        choices=["list", "add", "role", "passwd", "remove"])
+                        choices=["list", "add", "role", "passwd", "signout", "remove"])
     p_user.add_argument("name", nargs="?", default="")
     p_user.add_argument("--role", default="executor", choices=["admin", "executor"])
     p_user.add_argument("--display", default="", help="the name shown on screen")
@@ -9493,7 +9821,7 @@ def main():
                        help="disconnect: take the key off even when it is the only way in")
     p_pool = verb("pool", help="a community of machines: one leader with the keys, members that share")
     p_pool.add_argument("action", nargs="?", default="status",
-                        choices=["status", "show", "create", "join", "approve", "remove", "leave",
+                        choices=["status", "show", "create", "join", "approve", "remove", "vouch", "leave",
                                  "lead", "brain", "pin", "notes", "share", "forget", "task",
                                  "discover", "machines", "enable", "ignore", "key", "keys", "wait", "enroll",
                                  "zero", "standard", "hub", "mind",
@@ -9510,7 +9838,9 @@ def main():
     p_pool.add_argument("--kiosk", action="store_true",
                         help="enable / key: set the new machine up as a kiosk; install / sdcard: also open it on its screen")
     p_pool.add_argument("--agent-name", default="", help="enable: what the new machine's agent is called")
-    p_pool.add_argument("--auto", action="store_true", help="key: set machines that carry it up at once")
+    p_pool.add_argument("--auto", action="store_true", help="key: set the first machine that carries it up at once")
+    p_pool.add_argument("--reusable", action="store_true",
+                        help="key: with --auto, keep setting machines up with nobody asked (a batch of SD cards)")
     p_pool.add_argument("--tailscale-key", default="", help="zero: put this Tailscale auth key in the line (not kept)")
     p_pool.add_argument("--for", dest="for_account", default="",
                         help="zero / enable: the account it belongs to (its agents and integrations answer it)")
@@ -9669,6 +9999,10 @@ def main():
     p_remote = verb("remote", help="show or change remote access (reach this desktop from your phone)")
     p_remote.add_argument("--on", action="store_true", help="enable remote access (needs a passphrase)")
     p_remote.add_argument("--off", action="store_true", help="disable it and go back to loopback only")
+    p_remote.add_argument("--allow-host", action="append", default=[], metavar="NAME",
+                          help="a name this machine also answers to (a domain in front of it). *.example.com covers a domain")
+    p_remote.add_argument("--forget-host", action="append", default=[], metavar="NAME",
+                          help="stop answering to a name added with --allow-host")
     p_remote.add_argument("--passphrase", default="", help="set the sign-in passphrase (prompted if omitted)")
     p_remote.add_argument("--bind", default="", help="interface to listen on once enabled (default 0.0.0.0)")
     p_remote.add_argument("--port", type=int, default=0,
@@ -9869,6 +10203,10 @@ def main():
         _assets_cli(args)
     elif args.cmd == "audit":
         _audit_cli(args)
+    elif args.cmd == "security":
+        _security_cli(args)
+    elif args.cmd == "integrity":
+        sys.exit(_integrity_cli(args))
     elif args.cmd == "grants":
         _grants_cli(args)
     elif args.cmd == "registry":

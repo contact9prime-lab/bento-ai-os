@@ -10,8 +10,9 @@ spaces and the visibility rule already understand it. Two things make it a SECTI
 than a project:
 
   * the Zero reads and writes ONLY its own rows (Store.only): never the hub's global
-    memory, never another Zero's. The hub's agents working a task for it see the section
-    and the hub's global rows, which is the ordinary space rule; they are the hub's team.
+    memory, never another Zero's. So does the hub's team working for it, lead and hand-overs
+    alike (Store.section_ids): what they answer goes back to whoever is at that screen, so
+    what they can read is what that screen can read. A hub's global memory is for the hub.
   * a Zero cannot write anywhere else: every write is filed under its space whatever it
     asked, and an entity is shared but an assertion is the section's.
 
@@ -52,16 +53,40 @@ def section(store, lk: dict) -> str:
     d, e = _entry(lk)
     sid = str(e.get("space") or "")
     if sid and store.get_space(sid):
+        store.mark_section(sid)          # one made before sections read exactly
         return sid
     label = str(lk.get("label") or "zero")
     sid = store.create_space(SECTION.format(label=label),
                              description=f"What the Zero {label} remembers and knows. It sees only "
-                                         f"this section; the hub's agents working for it see this "
-                                         f"and what is true everywhere.")
+                                         f"this section, and so do the hub's agents working for it.")
+    store.mark_section(sid)
     if e:
         e["space"] = sid
         provision.save(d)
     return sid
+
+
+def link_of_section(space_id: str, owner: str) -> dict | None:
+    """The link of the Zero whose section `space_id` is, if it belongs to `owner`. Found through
+    the machine's own record and its certificate. A label is unique only per account, and comes
+    from the Zero's hostname, so two people's Pis can both be `raspberrypi`."""
+    from . import provision, teamlink
+    if not space_id:
+        return None
+    fp = next((fp for fp, e in provision.load()["enabled"].items() if e.get("space") == space_id), "")
+    lk = teamlink._by_fp(fp) if fp else None
+    if not lk or (lk.get("owner") or "") != (owner or "") or not zeromod.ships_to(lk):
+        return None
+    return lk
+
+
+def section_soul(store, space_id: str) -> str | None:
+    """The soul for a turn in a Zero's section: that Zero's, never the hub's. None elsewhere."""
+    from .tools import _zero_label_of
+    if not store or not store.is_section(space_id):
+        return None
+    label = _zero_label_of(space_id)
+    return soul_of(label) if label else ""
 
 
 def soul_file(label: str) -> Path:
@@ -217,7 +242,10 @@ async def answer(store, cfg: dict, lk: dict, req: dict) -> dict:
         for u in (req.get("updates") or [])[:5]:
             if isinstance(u, dict):
                 hit = mine.get(str(u.get("old") or "").strip().lower())
-                if hit and _text(u.get("new")):
+                if hit and hit.get("pinned"):
+                    store.log("memory", "left a pinned memory alone: auto-learn wanted to correct it",
+                              {"memory": hit["id"]})
+                elif hit and _text(u.get("new")):
                     store.update_memory(hit["id"], content=_text(u.get("new")))
                     added["updated"] += 1
         for old in (req.get("retractions") or [])[:5]:
@@ -330,6 +358,7 @@ async def context(cfg: dict, store, query: str = "", conversation_id: str = "") 
 def mem_text(ctx: dict, hub: str) -> str:
     """The memory part of the lead's prompt, from a context answer (the same shape the
     built-in loop writes for a local one)."""
+    from .agent import _recalled
     if not ctx.get("ok"):
         return (f"\n=== Memory ===\n{ctx.get('error')}. Say so if the person asks what you "
                 f"remember, and don't pretend to.\n=== end memory ===\n")
@@ -337,11 +366,11 @@ def mem_text(ctx: dict, hub: str) -> str:
            "remember, recall, kg_add and kg_query read and write it there.\n")
     if ctx.get("memories"):
         out += "\n=== User memory (durable facts about your user & machine) ===\n" + "\n".join(
-            f"- {'📌 ' if m.get('pinned') else ''}{m['content']}" for m in ctx["memories"]) + \
+            f"- {'📌 ' if m.get('pinned') else ''}{_recalled(m['content'])}" for m in ctx["memories"]) + \
             "\n=== end user memory ===\n"
     if ctx.get("session"):
         out += "\n=== Session memory (context of THIS conversation) ===\n" + "\n".join(
-            f"- {m['content']}" for m in ctx["session"]) + "\n=== end session memory ===\n"
+            f"- {_recalled(m['content'])}" for m in ctx["session"]) + "\n=== end session memory ===\n"
     if ctx.get("facts"):
         out += ("\n=== Knowledge graph highlights (query more with kg_query) ===\n"
                 + "\n".join(f"- {f}" for f in ctx["facts"]) + "\n=== end knowledge graph ===\n")

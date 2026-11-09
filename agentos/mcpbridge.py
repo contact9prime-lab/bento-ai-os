@@ -42,6 +42,7 @@ it through `bento job run`, which starts the same flow the same way.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 import time
@@ -54,6 +55,13 @@ SERVER_NAME = "bento"          # the MCP server name the executor sees: mcp__ben
 
 #: token -> Session. In memory on purpose: a session is an Agent object.
 SESSIONS: dict[str, "Session"] = {}
+
+
+def url_id(token: str) -> str:
+    """What stands for the token in a URL that has to go on a command line (Codex's `-c`
+    flags are its only way to name a server). It can't be turned back into the token, and the
+    route still wants the token itself as the Bearer."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 @dataclass
@@ -222,7 +230,8 @@ async def handle(token: str, msg: dict) -> tuple[int, dict | None]:
                 s.seen.append(CONNECTED)
                 return 200, _text(rid, refusal, is_error=True)
         s.seen.append(name)
-        output, ok, _image, _untrusted = await s.agent.call_tool(name, args, call_id)
+        # `offered`: held against this run's list above, the same check the loop makes itself
+        output, ok, _image, _untrusted = await s.agent.call_tool(name, args, call_id, offered=True)
     return 200, _text(rid, str(output or ""), is_error=not ok)
 
 

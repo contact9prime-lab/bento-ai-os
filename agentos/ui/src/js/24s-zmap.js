@@ -208,7 +208,7 @@ function zmPersonDetail(p){
     ${(p.skills||[]).length?`<div><span class="ag-k">Skills</span>${p.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' ')}</div>`:''}
     <div><span class="ag-k">Permissions</span>${p.autonomy?'autonomy '+esc(p.autonomy)+' · ':''}${p.allow||0} allowed, ${p.deny||0} refused${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}</div>
     ${(p.missions||[]).length?`<div><span class="ag-k">Missions</span>${p.missions.map(esc).join(', ')}</div>`:''}
-    <div class="zm-acts">${p.lead?'':`<button class="endbtn" onclick="agentEdit('${esc(p.name)}')">Edit</button>`}<button class="endbtn" onclick="openApp('permissions')">Permissions</button></div></div>`;
+    <div class="zm-acts">${p.lead?'':`<button class="endbtn" onclick="agentEdit('${jsq(p.name)}')">Edit</button>`}<button class="endbtn" onclick="openApp('permissions')">Permissions</button></div></div>`;
 }
 function zmAvatar(key){try{return typeof avatarSrc==='function'?avatarSrc(key):''}catch(e){return ''}}
 function zmTieNode(t,where){

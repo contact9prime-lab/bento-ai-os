@@ -11,7 +11,7 @@
    TUI: `bento network`, `bento network check|secure|label|forget`. SUI: identical, a page;
    nothing here touches the compositor. A Zero has no Network tab (00k-zeroface.js): its
    network is its hub's business. */
-var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{},hwp:{},hwread:{},esp:{}};
+var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{},first:{},hwp:{},hwread:{},esp:{}};
 
 /* A person who is not an admin opens Devices too: the demo user does. The routes refuse them in
    the server's words ("only an admin can do that"), which read like a broken pane; say what it means. */
@@ -248,7 +248,7 @@ function netSecureForm(r){
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
       ${c&&!c.problems.length&&steps.some(s=>!c.done[s.id])?`<button class="wiz-next" data-net="go" data-key="${esc(r.key)}">Secure it</button>`:''}</div>
     ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
-    ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}
+    ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}${sshFirstKeyHTML(r.ip,netPort(r),NET.first[r.ip])}${sshFirstKeyHTML(r.ip,netPort(r),NET.first[r.ip])}
     ${c&&c.done.passwords?`<div class="net-letin"><p class="mut">Password logins are off there, so only keys get in. Bento’s key still does.</p>
       <div class="dev-acts"><button class="endbtn" data-net="letkey" data-key="${esc(r.key)}">Add my key</button>
       <button class="endbtn" data-net="letpw" data-key="${esc(r.key)}">Turn password logins back on</button></div></div>`:''}
@@ -258,7 +258,7 @@ function netSecureForm(r){
       const on=sel[s.id]!==false;
       return `<div class="net-step${done?' done':''}">
         ${done?'<span class="net-tick">✓</span>':`<input type="checkbox" data-step="${esc(s.id)}" data-ip="${esc(r.ip)}" ${on?'checked':''} aria-label="${esc(s.title)}">`}
-        <div><b>${esc(s.title)}</b>${done?' <span class="mut">already done</span>':''}<br><span class="mut">${esc(s.why)}</span>
+        <div><b>${esc(s.title)}</b>${done?' <span class="mut">already done</span>':(c.unknown||[]).includes(s.id)?' <span class="mut">can’t tell without its sudo password</span>':''}<br><span class="mut">${esc(s.why)}</span>
         ${p&&!done?`<details><summary>What runs there</summary><code class="dev-plan">${esc(p.runs)}</code></details>`:''}</div></div>`}).join('')}
       ${c.problems.map(p=>`<p class="warn">✗ ${esc(p)}</p>`).join('')}
       ${c.host_key?`<p class="mut">Its key: ${esc(c.host_key)}</p>`:''}</div>`:''}
@@ -400,7 +400,7 @@ async function netAct(act,b){
         else{const d=await post('/api/network/remove',cr);delete NET.ctl[r.ip];NET.open='';
           toast(d.ok?`✓ Bento removed from ${r.display||r.ip}. Installing it again sets it up as a new machine.`
             :`✗ Not all of it went: ${(d.left||[]).join(', ')||'read its switches again'}`,{kind:d.ok?'ok':'warn'})}
-      }catch(e){const d=e.data||{};if(d.key_changed)NET.rekey[r.ip]=d.key_changed;NET.err[r.ip]=e.message;
+      }catch(e){const d=e.data||{};if(d.key_changed)NET.rekey[r.ip]=d.key_changed;if(d.first_key)NET.first[r.ip]=d.first_key;NET.err[r.ip]=e.message;
         if(d.state)NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state}}
       b.disabled=false;b.textContent=was;return netPaint()}
     if(act==='install'||act==='secure'||act==='unlink'){NET.more='';const same=NET.open===r.key&&NET.mode===act;
@@ -468,6 +468,7 @@ async function netAct(act,b){
       catch(e){delete NET.check[r.ip];
         // kept under Check it, like the install form: a changed key needs a decision, not a toast
         if(e.data&&e.data.key_changed){NET.err[r.ip]=String(e.message||e);NET.rekey[r.ip]=e.data.key_changed;return}
+        if(e.data&&e.data.first_key){NET.err[r.ip]=String(e.message||e);NET.first[r.ip]=e.data.first_key;return}
         delete NET.err[r.ip];delete NET.rekey[r.ip];throw e}finally{netPaint()}
       return}
     if(act==='letkey'||act==='letpw'){const c=creds();if(!c.user){toast('Who logs in there? Type the user name.');return}

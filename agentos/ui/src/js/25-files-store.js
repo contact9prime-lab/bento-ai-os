@@ -95,7 +95,7 @@ async function renderStore(body,w){
     box.innerHTML=`<p class="mut" style="margin-bottom:10px">One-click apps — install instantly, then open or pin them to the desktop.</p>
       <div class="cat">${d.templates.map(t=>`<div class="catcard" data-f="${esc(t.name+' '+t.desc)}">
         <span class="cn">${esc(t.name)}</span><span class="cd">${esc(t.desc)}</span>
-        <button class="save" style="margin-top:8px;padding:6px" ${t.installed?'disabled':''} onclick="storeInstall('${t.id}')">${t.installed?'✓ Installed':'Install'}</button>
+        <button class="save" style="margin-top:8px;padding:6px" ${t.installed?'disabled':''} onclick="storeInstall('${jsq(t.id)}')">${t.installed?'✓ Installed':'Install'}</button>
       </div>`).join('')}</div>`;
   } else if(STORE_TAB==='extensions'){
     const r=await fetch('/api/mcp');const md=await r.json();
@@ -107,7 +107,7 @@ async function renderStore(body,w){
       <div class="cat">${MCP_CATALOG.filter(e=>e.g===gi).map(e=>`<div class="catcard${have.has(e.k)?' inst':''}" data-f="${esc(e.n+' '+e.d)}">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
         ${mcpBadge(e)}
-        <button class="save" style="margin-top:8px;padding:6px" ${have.has(e.k)?'disabled':''} onclick="mcpPreset('${e.k}');toast('connecting ${esc(e.n)}…')">${have.has(e.k)?'✓ Connected':'Add'}</button>
+        <button class="save" style="margin-top:8px;padding:6px" ${have.has(e.k)?'disabled':''} onclick="mcpPreset('${jsq(e.k)}');toast('connecting ${jsq(e.n)}…')">${have.has(e.k)?'✓ Connected':'Add'}</button>
       </div>`).join('')}</div></div>`).join('')}`;
   } else if(STORE_TAB==='skills'){
     const d=await (await fetch('/api/skills')).json();
@@ -319,7 +319,7 @@ async function storeFedSearch(){
   boxEl.innerHTML=d.apps.map(a=>`<div class="catcard">
     <span class="cn">${esc(a.source)}</span><span class="cd">${esc(a.description||'')}</span>
     <span class="mut" style="font-size:11px">★ ${a.stars}</span>
-    <button class="save" style="margin-top:8px;padding:6px" onclick="storeImportStage({source:'${esc(a.source)}'})">Install…</button>
+    <button class="save" style="margin-top:8px;padding:6px" onclick="storeImportStage({source:'${jsq(a.source)}'})">Install…</button>
   </div>`).join('');
 }
 async function storeImportFile(){

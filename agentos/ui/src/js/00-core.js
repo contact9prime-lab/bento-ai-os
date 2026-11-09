@@ -80,7 +80,28 @@ let curBody=null, curThink=null, curText='';
 let feed=null, chatEl=null, input=null, sendBtn=null;   // bound when the Chat window is open
 
 /* ================= helpers ================= */
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+/* For HTML text and attribute values. It is not enough inside an inline handler: the browser
+   turns &#39; back into a quote BEFORE the JavaScript is read. In a handler use jsq, or better,
+   doAttrs. tests/test_ui_handlers.py refuses esc() or a bare string in one. */
+var ESC_MAP={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','\\':'&#92;'};
+function esc(s){return String(s).replace(/[&<>"'\\]/g,c=>ESC_MAP[c])}
+/* The inside of a '…' JavaScript string inside a "…" attribute. Nothing that means anything
+   to HTML or to JavaScript survives, so neither reading can end the string. */
+function jsq(s){return String(s).replace(/[^A-Za-z0-9 _.,:\/@+=~-]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'))}
+/* A click that carries somebody else's words, with no JavaScript in the markup at all:
+   <button ${doAttrs('briefAct',id,'decide',option)}>. Only DO_FNS can be reached. */
+var DO_FNS=new Set(['briefAct','briefOpenMail','tlPassHuddle','tlStandRemove','tlMissionStop',
+  'ocpReview','ocpInstall','ocpEnable','ocpUpdate','ocpNative','ocpVerify','ocpReport','ocpHold','ocpUninstall','ocpSendBrief',
+  'teamLinkAnswer','teamLinkWithdraw','openTeamChat','teamLinkRemove',
+  'mcpSignOut','mcpSignIn','mcpToggle','mcpDel','mcpConnectCurated','modelSetDefault','modelDelete','chanSave',
+  'wifiJoin','wifiAct','btRemove','speechSet']);
+function doAttrs(fn,...args){return ` data-do="${esc(fn)}" data-do-args="${esc(JSON.stringify(args))}"`}
+document.addEventListener('click',e=>{
+  const b=e.target&&e.target.closest&&e.target.closest('[data-do]');if(!b||b.disabled)return;
+  const fn=b.dataset.do;if(!DO_FNS.has(fn)||typeof window[fn]!=='function')return;
+  let args=[];try{args=JSON.parse(b.dataset.doArgs||'[]')}catch(_){return}
+  window[fn].apply(b,args);
+},true);
 function md(src){
   const blocks=[]; src=src.replace(/```(\w*)\n?([\s\S]*?)(```|$)/g,(m,l,c)=>{blocks.push('<pre><code>'+esc(c)+'</code></pre>');return '\x00B'+(blocks.length-1)+'\x00';});
   let h=esc(src);
@@ -123,6 +144,17 @@ function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
    knows; the ~400 older calls are read by their first words ("could not…" is a
    failure, "saved…" a success). A guess only picks an icon — the words are always
    shown as written, so a wrong guess costs a colour, never the message. */
+/* A machine-only route refused this account (machineroutes.py). One door, so every button that
+   reaches one says why. A read is not something the person pressed, and a call the desktop makes
+   by itself says `quiet`. */
+if(window.fetch&&!window.__adminFetch){
+  window.__adminFetch=window.fetch;
+  window.fetch=async function(u,o){
+    const r=await window.__adminFetch.apply(this,arguments);
+    if(r.status===403&&r.headers.get('X-Bento-Admin-Only')&&o&&o.method&&o.method!=='GET'&&!o.quiet)toast('Only an admin can do that on this machine.',{kind:'warn'});
+    return r;
+  };
+}
 var TOAST_IC={ok:'M5 12.5l4.5 4.5L19 7.5',err:'M7 7l10 10M17 7L7 17',warn:'M12 6.5v7M12 17v.5',info:'M12 10.5v7M12 6.5v.5'};
 function toastKind(t,act){
   if(act&&act.kind&&TOAST_IC[act.kind])return act.kind;

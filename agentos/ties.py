@@ -197,8 +197,9 @@ def update_mode(cfg: dict) -> str:
     return m if m in UPDATE_MODES else "ask"
 
 
-async def ask_update(lk: dict) -> dict:
-    """Ask a Zero this hub set up to update itself. It answers at once and works after."""
+async def ask_update(lk: dict, auto: bool = False) -> dict:
+    """Ask a Zero this hub set up to update itself. It answers at once and works after.
+    `auto`: nobody pressed a button, so it installs only a signed release and otherwise says so."""
     from . import teamlink
     from . import zero as zeromod
     if not zeromod.ships_to(lk):
@@ -211,7 +212,7 @@ async def ask_update(lk: dict) -> dict:
         return {"ok": True, "current": True, "version": have,
                 "said": f"{lk.get('label')} is already on {have}, the same as this hub"}
     try:
-        got = await teamlink.call(lk, {"op": "zero_update"}, timeout=30)
+        got = await teamlink.call(lk, {"op": "zero_update", **({"auto": True} if auto else {})}, timeout=60)
     except Exception as e:
         got = {"ok": False, "error": _why(e)}
     if not got.get("ok") and "unknown request" in str(got.get("error") or ""):
@@ -227,7 +228,9 @@ def inventory_row(lk: dict) -> dict | None:
     then address): the machine whose name every sensor is listed under."""
     from . import inventory
     for r in inventory.rows():
-        if any(x.get("label") == lk.get("label") for x in r.get("links") or []):
+        if any(x.get("fp") == lk.get("peer_host_fp") if lk.get("peer_host_fp")
+               else x.get("label") == lk.get("label") and x.get("owner") == (lk.get("owner") or "")
+               for x in r.get("links") or []):
             return r
     return None
 

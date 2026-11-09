@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.8.0 — 2026-11-09
+
+**Security: no AI controls it.** A security audit found 97 issues, and this release fixes them. No agent can
+change autonomy, Rules, the sandbox, tool servers or the gate's own code, whatever its autonomy, and a card's
+Remember never covers a step that must be asked every time. What protects the machine and how each part was
+tested is in [How security is tested](docs/security-testing.md).
+
+**A watcher stops the agents when security code changes.** If the code or a security file changes, you hear it
+on every screen and on your phone, and agents stop until you run `bento integrity accept` at a terminal outside
+Bento. Your own edits on a development checkout do this too: `bento integrity dev on` makes them warn instead.
+`bento integrity lock` makes the code root-owned, which is the real boundary.
+
+**Attacks are on the record.** Failed sign-ins, forged cookies and tokens, refused hosts, a process Bento
+started trying to act as you, and a run of refused steps go in one security record with one alert per
+incident. `bento security` reads it, and so does Settings → Permissions → Security. Your agent is told so it
+can warn you.
+
+**The jail is real.** A command an agent runs sees its own workspace and nothing else of your home, none of the
+server's keys, no other processes and no session bus. Agent CLIs (Claude Code with Bash ticked too) run in a
+jail, get your words on their input instead of the command line, and never read a folder's own settings.
+
+**A browser page can't drive your Bento.** A page that points its name at this machine is refused, turning
+remote access off closes the door at once, and outside text never runs as script on the desktop.
+
+**Accounts stay in their own home.** A non-admin's workspace, files, tool servers, sign-ins and socket
+messages are their own, and the machine's controls are an admin's.
+
+**What you'll notice:**
+- `curl`, `wget` and unusual flags on read-only commands now ask first.
+- Fetches to your LAN, like a calendar or a NAS, need to be listed under Settings → Permissions → Local
+  addresses.
+- A jailed Claude Code shell can't use your SSH keys or `sudo`.
+- A new machine's host key is shown once before any login.
+- A Zero's automatic key sets up one machine.
+- Democracy mode advises you rather than deciding.
+- `bento` verbs typed in Bento's own Terminal that call the server are refused. Use a terminal outside Bento.
+
+No release notes were written for this one; the commits since 0.7.12 are what changed (`bento update` lists them).
+
 ## 0.7.12 — 2026-11-06
 
 **Alarms are a table, and you can see the old ones.** What's open comes first, then what happened

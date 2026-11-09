@@ -28,9 +28,9 @@ async function renderHands(){
     +d.profiles.map(p=>`<div class="hands-card" data-name="${esc(p.name)}">
       <div class="hands-h"><b>${esc(p.name)}</b>${p.builtin?'<span class="brainchip">built in</span>':''}
         <span class="sp"></span>
-        <button class="endbtn" onclick="handsEdit('${esc(p.name)}')">Edit</button>
-        <button class="endbtn" onclick="handsEdit('${esc(p.name)}',true)">Duplicate</button>
-        ${p.builtin?'':`<button class="endbtn" onclick="handsDelete('${esc(p.name)}')">Delete</button>`}</div>
+        <button class="endbtn" onclick="handsEdit('${jsq(p.name)}')">Edit</button>
+        <button class="endbtn" onclick="handsEdit('${jsq(p.name)}',true)">Duplicate</button>
+        ${p.builtin?'':`<button class="endbtn" onclick="handsDelete('${jsq(p.name)}')">Delete</button>`}</div>
       <div class="hands-sum">${esc(p.summary)}</div>
       ${p.description?`<div class="mut hands-desc">${esc(p.description)}</div>`:''}
       <div class="mut hands-used">${(p.used_by||[]).length?'Used by '+p.used_by.map(n=>esc(n)).join(', '):'No agent uses it yet'}</div>
@@ -161,7 +161,7 @@ async function renderAgentsList(){
   const rest=others.filter(a=>!seen.has(a.name.toLowerCase()));
   if(rest.length)sections.push({co:{name:'Default company',default:true},parts:[],loose:rest});
   const coHead=c=>`<div class="ag-co"><b>▦ ${esc(c.name)}</b>${c.default?' <span class="mut">agents in no company</span>'
-    :c.open?' <span class="brainchip">open</span>':` <button class="endbtn" onclick="agentsOpenCompany('${esc(c.id)}')">Open it</button>`}</div>`;
+    :c.open?' <span class="brainchip">open</span>':` <button class="endbtn" onclick="agentsOpenCompany('${jsq(c.id)}')">Open it</button>`}</div>`;
   const body=sections.map(sc=>coHead(sc.co)+sc.parts.map(pt=>`<div class="ag-dept"><span>${esc(pt.dept.name)}</span>${pt.dept.head?` <small class="mut">head: ${esc(pt.dept.head)}</small>`:''}</div>`
       +pt.agents.map(agCardHTML).join('')).join('')+(sc.loose.length&&sc.parts.length?'<div class="ag-dept"><span>In no department</span></div>':'')
       +sc.loose.map(agCardHTML).join('')).join('');
@@ -181,13 +181,13 @@ function agCardHTML(a){
   const opts=cur=>((AGENTS.data||{}).profiles||[]).map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
   {const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
-      <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${esc(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
-        <span class="sp"></span><button class="endbtn" onclick="agentEdit('${esc(a.key)}')">Edit</button></div>
+      <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${jsq(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
+        <span class="sp"></span><button class="endbtn" onclick="agentEdit('${jsq(a.key)}')">Edit</button></div>
       ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
       <div class="ag-rows">
-        <div><span class="ag-k">Look</span><button class="endbtn" onclick="avatarEdit('${esc(a.key)}')">Change…</button><button class="endbtn" onclick="avatarDesignAsk('${esc(a.key)}')">✦ Describe it</button></div>
+        <div><span class="ag-k">Look</span><button class="endbtn" onclick="avatarEdit('${jsq(a.key)}')">Change…</button><button class="endbtn" onclick="avatarDesignAsk('${jsq(a.key)}')">✦ Describe it</button></div>
         <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">(${esc(a.brain.note)})</span>`:''}</div>
-        <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
+        <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${jsq(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
         <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet, so it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
           <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
         <div><span class="ag-k">Skills</span>${(a.skills||[]).length?a.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' '):'<span class="mut">none</span>'}</div>

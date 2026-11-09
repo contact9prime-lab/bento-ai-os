@@ -28,6 +28,7 @@ import base64
 import contextlib
 import json
 import os
+import re
 import socket
 import struct
 import time
@@ -162,6 +163,31 @@ def _is_shell_node(node: dict, app: str, title: str, port: int) -> bool:
     if cmd and (f"127.0.0.1:{port}" in cmd or "agentos/boot.html" in cmd):
         return True
     return "agentos" in (app or "").lower() or (title or "").strip() == "AgentOS"
+
+
+# What may go into a sway command or a config line. Sway splits on `;` and a config on a
+# newline, so anything else in one of these is a second command run as the server's user
+# (`exec_always`). A closed shape for each, the way /api/nightlight reads its times.
+_OUTPUT_SHAPES = {
+    "name": re.compile(r"[A-Za-z0-9_.:*-]{1,64}"),
+    "mode": re.compile(r"[0-9]{1,5}x[0-9]{1,5}(@[0-9]{1,4}(\.[0-9]{1,4})?Hz)?"),
+    "scale": re.compile(r"[0-9]{1,2}(\.[0-9]{1,4})?"),
+    "transform": re.compile(r"normal|90|180|270|flipped|flipped-90|flipped-180|flipped-270"),
+    "position": re.compile(r"-?[0-9]{1,6}[, ]-?[0-9]{1,6}"),
+}
+
+
+def clean_output(values: dict) -> dict:
+    """The output settings that were given, each checked, or ValueError naming the first bad one."""
+    out = {}
+    for k, shape in _OUTPUT_SHAPES.items():
+        v = values.get(k)
+        if v is None or v == "":
+            continue
+        if not shape.fullmatch(str(v)):
+            raise ValueError(f"that is not a valid display {k}")
+        out[k] = v
+    return out
 
 
 class Compositor:
@@ -657,7 +683,8 @@ class Compositor:
                          enabled: bool | None = None) -> None:
         """Apply one output change. sway validates values and we surface its
         error verbatim — no second list of legal modes to keep in sync."""
-        name = str(name).replace('"', "")
+        clean_output({"name": name, "mode": mode, "scale": scale, "transform": transform})
+        name = str(name)
         parts: list[str] = []
         if enabled is not None:
             parts.append("enable" if enabled else "disable")

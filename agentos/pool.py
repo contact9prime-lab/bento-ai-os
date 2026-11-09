@@ -21,14 +21,25 @@ database of shared notes (`pool.db`), and the rules:
     models) sends each model call to the leader (`pool_llm`), which runs it on its own
     provider, under its own gate and rate ceiling, and records the usage as its own. The
     member's keys are never sent anywhere; it may have none.
-  * THE LEADER IS ELECTED BY RANK, and only among machines that agreed to lead. A machine
-    may lead only if its own admin said so (`lead_ok`) and it has a brain of its own: leading
-    spends that machine's money on everybody's calls, so it is never assumed. The leader
+  * THE LEADER IS ELECTED BY RANK, and only among machines that agreed to lead AND that the
+    community vouched for. A machine may lead only if its own admin said so (`lead_ok`), it has
+    a brain of its own (leading spends that machine's money on everybody's calls, so it is never
+    assumed), and the machine that started the community signed it in (`vouch`). The leader
     stays while it answers. When it stops answering for DEAD_S, every member computes the
-    SAME successor from the last roster (a pinned machine first, then the most capable, then
-    the fingerprint), asks it (`pool_elect`), and that machine promotes itself only after
-    failing to reach the old leader itself. Each promotion raises the TERM, and a machine
-    that hears a higher term follows it, so an old leader coming back steps down.
+    SAME successor from the last roster (a pinned machine first, then the most capable by the
+    numbers vouched for, then the fingerprint), asks it (`pool_elect`), and that machine
+    promotes itself only after failing to reach the old leader itself. Each promotion raises
+    the TERM. A higher term alone moves nobody (`_refuse_follow`): the new leader must be
+    vouched for, a member follows only when its own leader no longer answers as leader, and a
+    leader steps down only when no other member is still being led by it. Every change is a
+    security event.
+
+    What that does NOT stop, and cannot without a vote over the network: a vouched machine that
+    has been broken into, at a moment the leader really is away or has nobody else to vouch for
+    it (two machines), can lead. It then sees the members' prompts and hands them work, and
+    both reach them marked as coming from outside (`pool/` models run tainted, `pool_work` runs
+    tainted), and it can tell them they were removed. Vouching for a machine is that trust.
+    The machine that started the community cannot be replaced as the one that vouches.
   * SHARED MEMORY is notes, kept by the leader in order (`seq`) and copied to every member
     on each heartbeat. A member's note waits locally (`pending`) until the leader takes it.
     Notes are other machines' words, so reading them is `community_recall`, an UNTRUSTED
@@ -62,6 +73,7 @@ NOTE_CHARS = 1000
 WORK_TIMEOUT = 600          # a piece of a bigger task
 LLM_TIMEOUT = 300
 MAX_PIECES = 8              # pieces one pool_task may hand out
+MAX_TERM = 1 << 53
 
 
 # ---- the file ------------------------------------------------------------------------
@@ -82,7 +94,7 @@ def db_path() -> Path:
 def _blank() -> dict:
     return {"pool": None, "role": "", "term": 0, "leader": {}, "pin": "", "lead_ok": False,
             "members": {}, "roster": [], "models": [], "last_ok": 0.0, "note": "",
-            "use_brain": False}
+            "use_brain": False, "self_vouch": {}}
 
 
 def load() -> dict:
@@ -177,15 +189,173 @@ def score(cap: dict) -> int:
     return int(cap.get("ram_mb") or 0) + 512 * int(cap.get("cores") or 0)
 
 
+def rank(entry: dict) -> int:
+    """A machine's score with the numbers it was vouched at. What a machine says about its
+    own memory later must not move it up the line of succession."""
+    v = entry.get("vouch") or {}
+    return score({**(entry.get("cap") or {}), "ram_mb": v.get("ram_mb", 0), "cores": v.get("cores", 0)})
+
+
 def eligible(entry: dict) -> bool:
-    return entry.get("state", "member") == "member" and score(entry.get("cap") or {}) >= 0
+    """May this machine lead? Its own admin's consent and brain, as it reports them, and the
+    community's vouch, which it cannot give itself. Pure: a roster's vouches were checked when
+    it arrived (`clean_roster`), and a leader signed its own."""
+    return entry.get("state", "member") == "member" and bool(entry.get("vouch")) and rank(entry) >= 0
 
 
 def successors(roster: list, gone: str, pin: str = "") -> list:
     """Who leads next, in order, when `gone` stops answering. Every member computes this
     from the same roster, so they agree without a vote that needs the network."""
     c = [e for e in roster if e.get("fp") != gone and eligible(e)]
-    return sorted(c, key=lambda e: (e.get("fp") != pin, -score(e.get("cap") or {}), e.get("fp", "")))
+    return sorted(c, key=lambda e: (e.get("fp") != pin, -rank(e), e.get("fp", "")))
+
+
+# ---- who vouches ---------------------------------------------------------------------------
+#
+# The machine that started the community signs which machines may lead. Its certificate is
+# pinned with the community when a machine joins, over a link a person approved, and never
+# replaced by anything a later leader says. So a machine that talked its way into leading
+# still cannot make another one eligible, or itself more so.
+
+def _founder_of(d: dict) -> dict:
+    return ((d.get("pool") or {}).get("founder")) or {}
+
+
+def _vouch_bytes(pool_id: str, fp: str, ram_mb: int, cores: int) -> bytes:
+    return f"bento-pool-vouch|{pool_id}|{fp}|{int(ram_mb)}|{int(cores)}".encode()
+
+
+def _sign_vouch(pool_id: str, fp: str, cap: dict) -> dict:
+    import base64
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from . import teamlink
+    ident = teamlink.ensure_pki()
+    ram, cores = int(cap.get("ram_mb") or 0), int(cap.get("cores") or 0)
+    key = serialization.load_pem_private_key(Path(ident["host_key"]).read_bytes(), password=None)
+    sig = key.sign(_vouch_bytes(pool_id, fp, ram, cores), ec.ECDSA(hashes.SHA256()))
+    return {"ram_mb": ram, "cores": cores, "sig": base64.b64encode(sig).decode()}
+
+
+def vouch_ok(d: dict, fp: str, v) -> bool:
+    """Was this vouch signed by the machine this one pinned as the community's founder?"""
+    import base64
+    from cryptography import x509
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    founder = _founder_of(d)
+    if not isinstance(v, dict) or not founder.get("cert"):
+        return False
+    try:
+        x509.load_pem_x509_certificate(founder["cert"].encode()).public_key().verify(
+            base64.b64decode(str(v.get("sig") or ""), validate=True),
+            _vouch_bytes((d.get("pool") or {}).get("id", ""), fp, int(v.get("ram_mb") or 0), int(v.get("cores") or 0)),
+            ec.ECDSA(hashes.SHA256()))
+    except (InvalidSignature, ValueError, TypeError):
+        return False
+    return True
+
+
+def _pin_pool(d: dict, got, leader_fp: str = "") -> None:
+    """The community as another machine described it. Its id and founder are this machine's
+    once known, whatever a later leader sends; a founder is taken once, from the machine a
+    person linked to, and only if the certificate is the one it names."""
+    from . import teamlink
+    if not isinstance(got, dict) or not got.get("id"):
+        return
+    have = d.get("pool") or {}
+    out = {"id": have.get("id") or teamlink.plain(got.get("id"), 24, newlines=False),
+           "name": teamlink.plain(got.get("name"), 40, newlines=False) or have.get("name", ""),
+           "created": have.get("created") or got.get("created")}
+    founder = have.get("founder")
+    offered = got.get("founder") if isinstance(got.get("founder"), dict) else {}
+    if not founder and offered.get("cert") and (not leader_fp or offered.get("fp") == leader_fp):
+        try:
+            if teamlink.fingerprint(str(offered["cert"])) == offered.get("fp"):
+                founder = {"fp": offered["fp"], "cert": str(offered["cert"])}
+        except Exception:
+            founder = None
+    if founder:
+        out["founder"] = founder
+    d["pool"] = out
+
+
+def clean_roster(rows, d: dict) -> list:
+    """A roster as it ARRIVES: the closed set, plain words, and a vouch kept only if the
+    founder really signed it. A machine with a bad vouch stays a member and cannot lead."""
+    from . import teamlink
+    out = []
+    for e in (rows if isinstance(rows, list) else [])[:MAX_MEMBERS + 1]:
+        if not isinstance(e, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(e.get("fp") or "")):
+            continue
+        ca = str(e.get("ca") or "")
+        row = {"fp": e["fp"], "ca": ca if ca.startswith("-----BEGIN CERTIFICATE") else "",
+               "url": teamlink.plain(e.get("url"), 300, newlines=False),
+               "name": teamlink.plain(e.get("name"), 40, newlines=False), "cap": clean_cap(e.get("cap")),
+               "state": "member" if e.get("state") == "member" else "pending", "seen": 0}
+        try:
+            row["seen"] = float(e.get("seen") or 0)
+        except (TypeError, ValueError):
+            pass
+        if vouch_ok(d, e["fp"], e.get("vouch")):
+            v = e["vouch"]
+            row["vouch"] = {"ram_mb": int(v.get("ram_mb") or 0), "cores": int(v.get("cores") or 0), "sig": v["sig"]}
+        out.append(row)
+    return out
+
+
+def is_founder(d: dict) -> bool:
+    return _founder_of(d).get("fp") == me()["fp"]
+
+
+def set_vouch(fp_or_name: str, on: bool) -> dict:
+    """A person on the founding machine says this machine may, or may not, take over."""
+    d = load()
+    if d["role"] != "leader":
+        raise ValueError("only the community's leader can say who may take over")
+    ensure_founder(d)
+    if not is_founder(d):
+        raise ValueError("only the machine that started this community can say who may take over")
+    e = _find_member(d, fp_or_name)
+    if not e or e.get("state") != "member":
+        raise ValueError(f"no member called '{fp_or_name}' here")
+    if on:
+        e["vouch"] = _sign_vouch(d["pool"]["id"], e["fp"], e.get("cap") or {})
+    else:
+        e.pop("vouch", None)
+        if d.get("pin") == e["fp"]:
+            d["pin"] = ""
+    save(d)
+    return e
+
+
+def ensure_founder(d: dict) -> bool:
+    """A community from before vouching has no founder. Its leader becomes it, once, and the
+    members whose admin agreed to lead keep that standing: a person let each of them in."""
+    if not d.get("pool") or d["role"] != "leader" or _founder_of(d):
+        return False
+    from . import teamlink
+    m = me()
+    d["pool"]["founder"] = {"fp": m["fp"], "cert": teamlink.ensure_pki()["host"]}
+    for e in d["members"].values():
+        if e.get("state") == "member" and score(e.get("cap") or {}) >= 0 and not e.get("vouch"):
+            e["vouch"] = _sign_vouch(d["pool"]["id"], e["fp"], e.get("cap") or {})
+    save(d)
+    return True
+
+
+def _term(v) -> int:
+    """A term another machine stated: a number in range, or 0."""
+    try:
+        return max(0, min(MAX_TERM, int(v)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _flag(kind: str, detail: str, fp: str = "") -> None:
+    from . import secevents
+    secevents.flag(kind, detail, source=short(fp))
 
 
 # ---- the community, from this machine --------------------------------------------------
@@ -200,7 +370,8 @@ def create(cfg: dict, name: str) -> dict:
                          "or a local model) — set one under AI providers first")
     nm = teamlink.plain(name, 40, newlines=False).strip() or f"{teamlink.machine_name(cfg)}'s community"
     m = me()
-    d.update(pool={"id": secrets.token_hex(6), "name": nm, "created": time.time()}, role="leader",
+    d.update(pool={"id": secrets.token_hex(6), "name": nm, "created": time.time(),
+                   "founder": {"fp": m["fp"], "cert": teamlink.ensure_pki()["host"]}}, role="leader",
              term=1, leader={"fp": m["fp"], "name": teamlink.machine_name(cfg)}, lead_ok=True,
              members={}, roster=[], note="")
     save(d)
@@ -273,6 +444,7 @@ def view(cfg: dict | None = None) -> dict:
     return {"pool": d["pool"], "role": d["role"], "term": d["term"], "leader": d.get("leader") or {},
             "lead_ok": bool(d.get("lead_ok")), "use_brain": bool(d.get("use_brain")),
             "pin": d.get("pin", ""), "note": d.get("note", ""), "machines": rows,
+            "founder": is_founder(d) if d["pool"] else False,
             "pending": pending, "models": d.get("models") or [],
             "heard": int(now - d["last_ok"]) if d.get("last_ok") else None,
             "notes": notes_count(), "line": line(d)}
@@ -285,7 +457,7 @@ def _row(e: dict, now: float) -> dict:
             "role": e.get("role", "member"), "alive": bool(seen and now - seen < DEAD_S),
             "seen": int(now - seen) if seen else None, "cap": e.get("cap") or {},
             "reach": bool(e.get("url")), "busy": bool((e.get("cap") or {}).get("busy")),
-            "eligible": eligible(e)}
+            "eligible": eligible(e), "vouched": bool(e.get("vouch"))}
 
 
 def line(d: dict | None = None) -> str:
@@ -490,24 +662,35 @@ def roster_for_members(d: dict, cfg: dict) -> list:
     """What every member is told: who is in, how to reach them, and who may lead. The
     leader is in it too, with its own CA, so a member could re-link to it after a move."""
     m = me()
+    cap = capability(cfg)
+    if is_founder(d) and not d.get("self_vouch"):
+        d["self_vouch"] = _sign_vouch(d["pool"]["id"], m["fp"], cap)
+        save(d)                  # signed once, not on every member's heartbeat
+    mine = {"vouch": d["self_vouch"]} if d.get("self_vouch") else {}
     out = [{"fp": m["fp"], "ca": m["ca"], "url": "", "name": (d.get("leader") or {}).get("name", ""),
-            "cap": capability(cfg), "state": "member", "seen": time.time()}]
+            "cap": cap, "state": "member", "seen": time.time(), **mine}]
     for e in d["members"].values():
         if e.get("state") == "member":
-            out.append({k: e.get(k) for k in ("fp", "ca", "url", "name", "cap", "state", "seen")})
+            out.append({k: e[k] for k in ("fp", "ca", "url", "name", "cap", "state", "seen", "vouch") if k in e})
     return out
 
 
-def approve(store, fp_or_name: str) -> dict:
-    """Let a machine in. Writes the one grant that lets it think with this machine's brain."""
+def approve(store, fp_or_name: str, may_lead: bool = True) -> dict:
+    """Let a machine in. Writes the one grant that lets it think with this machine's brain.
+    A person doing that with its offer to lead on the screen also vouches for it, numbers as
+    they are now; `may_lead=False` is a machine let in with nobody looking (one set up from
+    here). A person can take the vouch away, or give it, later (`set_vouch`)."""
     d = load()
     if d["role"] != "leader":
         raise ValueError("only the community's leader lets machines in")
+    ensure_founder(d)
     e = _find_member(d, fp_or_name)
     if not e:
         raise ValueError(f"no machine called '{fp_or_name}' is asking to join")
     e["state"] = "member"
     e["joined"] = time.time()
+    if may_lead and is_founder(d) and score(e.get("cap") or {}) >= 0:
+        e["vouch"] = _sign_vouch(d["pool"]["id"], e["fp"], e.get("cap") or {})
     save(d)
     store.add_grant("pool", principal_id(e["fp"]), "model.use", "model:*", source="pool",
                     note=f"a member of the community '{d['pool']['name']}' thinks with this machine's brain",
@@ -591,6 +774,7 @@ class Pool:
         self.busy = 0
         self._task = None
         self._asked = False         # a leader asks once after it starts whether it was replaced
+        self._since = time.time()   # a beat from before this start says nothing about now
 
     async def call(self, lk, req, timeout=30, limit=None):
         from . import teamlink
@@ -624,9 +808,16 @@ class Pool:
             return {"ok": False, "error": f"unknown community request '{op}'"}
         return await fn(lk, req)
 
+    def _in_community(self, d: dict, fp: str) -> bool:
+        return bool(fp) and (fp in d["members"] or fp == (d.get("leader") or {}).get("fp")
+                             or any(e.get("fp") == fp for e in d.get("roster") or []))
+
     async def _pool_who(self, lk, req):
         d = load()
-        return {"ok": True, "role": d["role"], "term": d["term"], "pool": d["pool"],
+        if not self._in_community(d, lk.get("peer_host_fp", "")):
+            return {"ok": True, "role": "", "term": 0, "pool": None, "leader": {}}
+        return {"ok": True, "role": d["role"], "term": d["term"],
+                "pool": {k: v for k, v in (d["pool"] or {}).items() if k != "founder"} or None,
                 "leader": d.get("leader") or {}}
 
     async def _pool_join(self, lk, req):
@@ -648,7 +839,7 @@ class Pool:
         if provision.was_enabled_here(fp):
             # set up from here (provision.py): the person who pressed Enable already let
             # it in, so its request to join is the end of that act, not a new question
-            e = approve(self.store(), fp)
+            e = approve(self.store(), fp, may_lead=False)
             self._audit("pool.approve", f"pool:{short(fp)}",
                         f"{e['name']} joined '{d['pool']['name']}' (set up from this machine)")
             await self._emit("pool", {"name": e["name"]})
@@ -672,18 +863,29 @@ class Pool:
     async def _pool_beat(self, lk, req):
         d = load()
         fp = lk.get("peer_host_fp", "")
-        term = int(req.get("term") or 0)
+        term = _term(req.get("term"))
         if d["role"] != "leader":
+            # who leads is told only to the community's own
+            if not self._in_community(d, fp):
+                return {"ok": True, "state": "not_leader", "leader": {}, "term": 0}
             return {"ok": True, "state": "not_leader", "leader": d.get("leader") or {}, "term": d["term"]}
-        if term > d["term"]:
-            # somebody newer leads: this machine was away while the community moved on
-            await self._step_down(d, req.get("leader") or {}, term)
-            return {"ok": True, "state": "not_leader", "leader": load().get("leader") or {}, "term": term}
+        # Who is asking comes before anything it says: a higher term from any link used to
+        # demote the leader to whoever the request named.
         e = d["members"].get(fp)
         if not e:
             return {"ok": True, "state": "unknown"}
         if e.get("state") != "member":
             return {"ok": True, "state": e.get("state")}
+        named = req.get("leader") if isinstance(req.get("leader"), dict) else {}
+        if term > d["term"] and named.get("fp") and named["fp"] != me()["fp"]:
+            # a member says somebody newer leads: believed only if that machine says so itself
+            why = await self._refuse_follow(d, str(named["fp"]), term, ask=True)
+            if not why:
+                await self._step_down(d, {"fp": named["fp"], "name": self._known(d).get(named["fp"], {}).get("name", "")}, term)
+                return {"ok": True, "state": "not_leader", "leader": load().get("leader") or {}, "term": term}
+            _flag("pool.claim", f"a member named another leader, refused: {why}", fp)
+            d = load()
+            e = d["members"].get(fp) or e
         e["seen"] = time.time()
         e["cap"] = clean_cap(req.get("cap"))
         if lk.get("url"):
@@ -767,30 +969,81 @@ class Pool:
             self.busy -= 1
 
     async def _pool_claim(self, lk, req):
-        """Another machine says it leads now. Followed only when its term is newer and it
-        is a machine the roster says may lead."""
+        """Another machine says it leads now. Followed only when its term is newer, the
+        community vouched for it, and this machine has no reason of its own to doubt it."""
         d = load()
-        term = int(req.get("term") or 0)
+        term = _term(req.get("term"))
         fp = lk.get("peer_host_fp", "")
         if not d["pool"] or term <= d["term"]:
             return {"ok": True, "followed": False}
+        why = await self._refuse_follow(d, fp, term)
+        if why:
+            _flag("pool.claim", why, fp)
+            return {"ok": False, "error": why}
+        await self._step_down(d, {"fp": fp, "name": self._known(d).get(fp, {}).get("name", "")}, term)
+        return {"ok": True, "followed": True}
+
+    def _known(self, d: dict) -> dict:
+        """Every machine of this community as this machine knows it, by fingerprint."""
         known = {e.get("fp"): e for e in (d.get("roster") or [])}
         if d["role"] == "leader":
             known.update(d["members"])
+        return known
+
+    async def _refuse_follow(self, d: dict, fp: str, term: int, ask: bool = False) -> str:
+        """Why this machine will not follow `fp` as leader at `term`, or '' when it will. There
+        is no vote, because the machines that would vote are the ones that can't reach each
+        other. So each decides from what it can check itself:
+
+          * the community vouched for `fp` (a signature it cannot make itself);
+          * a member's own leader no longer answers as leader, the rule `_pool_elect` already
+            has: one machine's claim is not the community losing its leader;
+          * a leader is not still leading anyone else. A leader that came back has heard
+            nobody since it started, and one being pushed out hears them every BEAT_S;
+          * with `ask`, when the news is second hand, `fp` itself says it leads."""
+        known = self._known(d)
         if fp not in known or not eligible({**known[fp], "state": "member"}):
-            return {"ok": False, "error": "that machine is not one this community lets lead"}
-        await self._step_down(d, {"fp": fp, "name": known[fp].get("name", "")}, term)
-        return {"ok": True, "followed": True}
+            return "that machine is not one this community lets lead"
+        now = time.time()
+        if d["role"] == "leader":
+            floor = max(now - DEAD_S, self._since)
+            if any(e.get("fp") != fp and e.get("state") == "member" and float(e.get("seen") or 0) > floor
+                   for e in d["members"].values()):
+                return "this community's leader is still leading the others"
+        else:
+            old = leader_link(d)
+            if old and old.get("peer_host_fp") != fp:
+                try:
+                    got = await self.call(old, {"op": "pool_who"}, timeout=8)
+                except Exception:
+                    got = {}
+                if got.get("ok") and got.get("role") == "leader" and _term(got.get("term")) >= int(d["term"]):
+                    return "this community's leader still answers"
+        if ask:
+            from . import teamlink
+            lk = teamlink._by_fp(fp)
+            try:
+                said = await self.call(lk, {"op": "pool_who"}, timeout=8) if lk and lk.get("url") else {}
+            except Exception:
+                said = {}
+            if not (said.get("ok") and said.get("role") == "leader" and _term(said.get("term")) >= term):
+                return "that machine does not say it leads"
+        return ""
 
     async def _pool_elect(self, lk, req):
         """A member says the leader is away and this machine is next. Promote only after
         failing to reach the old leader from HERE: one member's broken cable is not the
         community losing its leader."""
         d = load()
+        if not self._in_community(d, lk.get("peer_host_fp", "")):
+            return {"ok": True, "role": "", "refused": "this machine is not in your community"}
         if d["role"] == "leader":
             return {"ok": True, "role": "leader", "term": d["term"]}
         if d["role"] != "member" or not d.get("lead_ok") or not has_brain(self.cfg()):
             return {"ok": True, "role": d["role"], "refused": "this machine may not lead"}
+        mine = self._known(d).get(me()["fp"]) or {}
+        if not mine.get("vouch"):
+            return {"ok": True, "role": d["role"], "refused": "this community has not vouched for this machine"}
         old = leader_link(d)
         if old:
             got = await self.call(old, {"op": "pool_who"}, timeout=8)
@@ -803,6 +1056,8 @@ class Pool:
 
     async def _step_down(self, d, leader: dict, term: int):
         was_leader = d["role"] == "leader"
+        _flag("pool.leader", f"now following {leader.get('name') or short(leader.get('fp', ''))} at term {term}",
+              leader.get("fp", ""))
         if was_leader:
             drop_leader_grants(self.store(), d)
             # what this machine knew as leader becomes its roster as a member
@@ -830,6 +1085,9 @@ class Pool:
         for e in d.get("roster") or []:
             if e.get("fp") == old and old:
                 members[old] = {**e, "state": "member", "label": "", "seen": 0}
+            if e.get("fp") == m["fp"] and e.get("vouch"):
+                d["self_vouch"] = e["vouch"]
+        _flag("pool.leader", f"this machine took over at term {int(d['term']) + 1}: {why}", m["fp"])
         d.update(role="leader", term=int(d["term"]) + 1, members=members,
                  leader={"fp": m["fp"], "name": teamlink.machine_name(cfg)}, last_ok=time.time())
         save(d)
@@ -852,7 +1110,7 @@ class Pool:
             lk = teamlink._by_fp(fp)
             if not lk or not lk.get("url"):
                 return 0
-            got = await self.call(lk, {"op": "pool_claim", "term": d["term"]}, timeout=8)
+            got = await self.call(lk, {"op": "pool_claim", "term": d["term"]}, timeout=20)
             return 1 if got.get("ok") else 0
         res = await asyncio.gather(*(one(fp) for fp in list(d["members"])), return_exceptions=True)
         told = sum(r for r in res if isinstance(r, int))
@@ -869,6 +1127,7 @@ class Pool:
         return {"role": ""}
 
     async def _beat(self, d: dict) -> dict:
+        from . import teamlink
         was = d["role"]
         lk = leader_link(d)
         cfg = self.cfg()
@@ -881,13 +1140,15 @@ class Pool:
         if got.get("ok") and got.get("state") == "member":
             notes_apply(got.get("notes") or [])
             d = load()
-            d.update(role="member", term=int(got.get("term") or d["term"]), last_ok=time.time(),
-                     roster=got.get("roster") or [], models=got.get("models") or [],
-                     pin=got.get("pin", ""), note="")
-            if got.get("leader"):
-                d["leader"] = got["leader"]
-            if got.get("pool"):
-                d["pool"] = got["pool"]
+            _pin_pool(d, got.get("pool"), (d.get("leader") or {}).get("fp", ""))
+            d.update(role="member", term=_term(got.get("term")) or d["term"], last_ok=time.time(),
+                     roster=clean_roster(got.get("roster"), d),
+                     models=[teamlink.plain(m, 120, newlines=False) for m in (got.get("models") or [])[:20]],
+                     pin=str(got.get("pin") or "")[:64], note="")
+            # the leader's name may change; which machine it is follows only the rules above
+            d["leader"] = {**(d.get("leader") or {}),
+                           "name": teamlink.plain((got.get("leader") or {}).get("name"), 40, newlines=False)
+                           or (d.get("leader") or {}).get("name", "")}
             save(d)
             ensure_peer_links(d["roster"])
             if was != "member":
@@ -909,11 +1170,23 @@ class Pool:
             await self._emit("pool", {})
             return {"role": "", "removed": True}
         if got.get("ok") and got.get("state") == "not_leader":
-            nl = got.get("leader") or {}
-            if nl.get("fp") and nl["fp"] != (d.get("leader") or {}).get("fp"):
-                d["leader"], d["term"] = {"fp": nl["fp"], "name": nl.get("name", "")}, int(got.get("term") or d["term"])
+            # the machine we followed says somebody else leads now: the same rules as any claim,
+            # and that machine must say so itself
+            nl = got.get("leader") if isinstance(got.get("leader"), dict) else {}
+            term = _term(got.get("term"))
+            if nl.get("fp") and nl["fp"] != (d.get("leader") or {}).get("fp") and nl["fp"] != me()["fp"]:
+                why = "its term is not newer" if term <= d["term"] else \
+                    await self._refuse_follow({**d, "leader": {}}, str(nl["fp"]), term, ask=True)
+                if why:
+                    _flag("pool.claim", f"told of another leader, refused: {why}", str(nl["fp"]))
+                    return {"role": d["role"], "moved": False}
+                d = load()
+                name = self._known(d).get(nl["fp"], {}).get("name", "")
+                _flag("pool.leader", f"now following {name or short(nl['fp'])} at term {term}", str(nl["fp"]))
+                d["leader"], d["term"] = {"fp": nl["fp"], "name": name}, term
                 save(d)
-            return {"role": d["role"], "moved": True}
+                return {"role": d["role"], "moved": True}
+            return {"role": d["role"], "moved": False}
         # the leader did not answer
         d["note"] = got.get("error", "")
         save(d)
@@ -937,8 +1210,9 @@ class Pool:
             got = await self.call(lk, {"op": "pool_elect"}, timeout=20)
             if got.get("ok") and got.get("role") == "leader":
                 d = load()
+                _flag("pool.leader", f"the leader stopped answering; following {c.get('name') or short(c['fp'])}", c["fp"])
                 d.update(leader={"fp": c["fp"], "name": c.get("name", "")},
-                         term=max(int(d["term"]), int(got.get("term") or 0)), last_ok=time.time())
+                         term=max(int(d["term"]), _term(got.get("term"))), last_ok=time.time())
                 save(d)
                 self._audit("pool.follow", "pool:" + short(c["fp"]),
                             f"the leader stopped answering; following {c.get('name')}")
@@ -953,6 +1227,8 @@ class Pool:
         away for a day), and whenever nobody has been heard from in a while."""
         from . import teamlink
         now = time.time()
+        if ensure_founder(d):
+            d = load()
         live = [e for e in d["members"].values()
                 if e.get("state") == "member" and e.get("seen") and now - e["seen"] < DEAD_S]
         members = [e for e in d["members"].values() if e.get("state") == "member"]
@@ -963,10 +1239,15 @@ class Pool:
                 if not lk or not lk.get("url"):
                     continue
                 got = await self.call(lk, {"op": "pool_who"}, timeout=8)
-                if got.get("ok") and int(got.get("term") or 0) > d["term"] and got.get("role") in ("leader", "member"):
-                    nl = got.get("leader") or {}
+                term = _term(got.get("term"))
+                if got.get("ok") and term > d["term"] and got.get("role") in ("leader", "member"):
+                    nl = got.get("leader") if isinstance(got.get("leader"), dict) else {}
                     if nl.get("fp") and nl["fp"] != me()["fp"]:
-                        await self._step_down(d, nl, int(got["term"]))
+                        why = await self._refuse_follow(d, str(nl["fp"]), term, ask=True)
+                        if why:
+                            _flag("pool.claim", f"a member named another leader, refused: {why}", e["fp"])
+                            continue
+                        await self._step_down(d, {"fp": nl["fp"], "name": self._known(d).get(nl["fp"], {}).get("name", "")}, term)
                         return {"role": "member", "stepped_down": True}
         return {"role": "leader", "live": len(live)}
 
@@ -1132,8 +1413,10 @@ async def join(cfg: dict, label: str, owner: str = "", call=None) -> dict:
     if not got.get("ok"):
         raise ValueError(got.get("error") or "the other machine refused")
     d = load()
-    d.update(pool=got.get("pool"), role="pending" if got.get("state") == "pending" else "member",
-             term=int(got.get("term") or 0), leader={"fp": lk["peer_host_fp"], "name": lk.get("peer_name") or label},
+    d["pool"] = None
+    _pin_pool(d, got.get("pool"))
+    d.update(role="pending" if got.get("state") == "pending" else "member",
+             term=_term(got.get("term")), leader={"fp": lk["peer_host_fp"], "name": lk.get("peer_name") or label},
              last_ok=time.time(), note="")
     save(d)
     return view(cfg)

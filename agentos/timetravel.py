@@ -20,7 +20,13 @@ What it holds, and how:
   timeline, and every surface says so at that checkpoint instead of promising a rewind it
   cannot make. Nor can an agent CLI's own native edits; only its calls to this OS's tools.
 
-Four rules keep it safe:
+Five rules keep it safe:
+
+- **A rewind writes files as the server, so a row is never trusted because it is there.** Each
+  checkpoint is signed with a key in the machine's home, out of every jail's reach, and bound to
+  the home it belongs to; a blob must hash to its name; and every path is checked again at the
+  moment of the rewind (`refusal`). A forged row in an account's own database made the server
+  write attacker bytes over the machine's users.json, and its author admin.
 
 - **Preview and rewind are one computation** (`plan`), the jobs rule: what the scrubber
   shows is what `rewind` does.
@@ -35,12 +41,17 @@ with the server down.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import hmac
 import json
+import os
+import re
 import secrets
 import shutil
 import time
 from pathlib import Path
+from . import constcmp
 
 TABLES = ("memories", "kg_nodes", "kg_edges", "skills")
 KEEP_DAYS = 7
@@ -59,6 +70,48 @@ def _now() -> float:
     return time.time()
 
 
+class Forged(ValueError):
+    """A checkpoint this machine did not sign. Nothing it names is touched."""
+
+
+KEY_FILE = "timetravel.key"
+_SIGNED = ("id", "ts", "seq", "conversation_id", "run_id", "step", "tool", "detail", "files", "unseen")
+
+
+def _key(make: bool = True) -> bytes:
+    """The machine's signing key, read at call time because tests and a restore move the home.
+    It sits in the machine's home, never an account's, so an account's shell has no way to it."""
+    from . import config as cfgmod
+    p = Path(cfgmod.AGENTOS_HOME) / KEY_FILE
+    try:
+        return p.read_bytes()
+    except OSError:
+        if not make:
+            return b""
+    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(secrets.token_bytes(32))
+    except FileExistsError:
+        pass
+    return p.read_bytes()
+
+
+def _mac(home: Path, row: dict, key: bytes) -> str:
+    """Over the row's words and the home it belongs to, so a row copied from one account's
+    database to another's reads as forged there."""
+    body = json.dumps([os.path.realpath(str(home))] + [row.get(k) for k in _SIGNED],
+                      ensure_ascii=False, sort_keys=True, default=str)
+    return hmac.new(key, body.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def signed(home: Path, row: dict) -> bool:
+    """`row` as it is in the table (`files` still its JSON text)."""
+    key, mac = _key(make=False), str(row.get("mac") or "")
+    return bool(key and mac) and constcmp.same(_mac(home, row, key), mac)
+
+
 # ---- the journal -----------------------------------------------------------------
 
 DDL = """
@@ -66,7 +119,8 @@ CREATE TABLE IF NOT EXISTS _tt_undo (seq INTEGER PRIMARY KEY AUTOINCREMENT, ts R
   tbl TEXT NOT NULL, op TEXT NOT NULL, rid INTEGER NOT NULL, old TEXT);
 CREATE TABLE IF NOT EXISTS _tt_points (id TEXT PRIMARY KEY, ts REAL NOT NULL, seq INTEGER NOT NULL,
   conversation_id TEXT DEFAULT '', run_id TEXT DEFAULT '', step INTEGER DEFAULT 0, tool TEXT DEFAULT '',
-  detail TEXT DEFAULT '', files TEXT DEFAULT '[]', unseen INTEGER DEFAULT 0, state TEXT DEFAULT 'live');
+  detail TEXT DEFAULT '', files TEXT DEFAULT '[]', unseen INTEGER DEFAULT 0, state TEXT DEFAULT 'live',
+  mac TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS _tt_state (k TEXT PRIMARY KEY, v TEXT);
 INSERT OR IGNORE INTO _tt_state(k, v) VALUES ('paused', '0');
 CREATE INDEX IF NOT EXISTS idx_tt_points_ts ON _tt_points(ts);
@@ -79,6 +133,8 @@ def install(db) -> None:
     """The journal and its triggers, rebuilt from the live columns. Called by Store at
     every open, after its migrations."""
     db.executescript(DDL)
+    if "mac" not in {r[1] for r in db.execute('PRAGMA table_info("_tt_points")')}:
+        db.execute("ALTER TABLE _tt_points ADD COLUMN mac TEXT DEFAULT ''")
     have = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     for t in TABLES:
         for kind in ("i", "u", "d"):
@@ -119,20 +175,56 @@ def _blob(home: Path, data: bytes) -> str:
 
 
 def _read_blob(home: Path, h: str) -> bytes:
-    return (home_dir(home) / "blobs" / h[:2] / h).read_bytes()
+    if not re.fullmatch(r"[0-9a-f]{64}", str(h)):
+        raise Forged("that is not a blob's name")
+    data = (home_dir(home) / "blobs" / h[:2] / h).read_bytes()
+    if hashlib.sha256(data).hexdigest() != h:
+        raise Forged("a kept copy does not match its name")
+    return data
+
+
+def refusal(path: str, home: Path) -> str:
+    """Why a rewind may not write this path now, or ''. The same lines the file tools hold: a
+    rewind runs as the server, so without this it is the widest write on the machine."""
+    from . import protected
+    from . import users as usersmod
+    real = os.path.realpath(path)
+    if real != path:
+        return "a link now sits on the way to that path"
+    if real == os.path.realpath(str(Path(home) / "soul.md")):
+        return ""                                      # the agent's own soul, named by this OS
+    try:
+        cfg = usersmod.cfg_for()
+    except Exception:  # noqa: BLE001 - no settings to read means nothing extra is allowed
+        cfg = {}
+    why = protected.write_refused(real) or protected.outside_agent_area(real, True, [cfg.get("workspace") or ""])
+    if why:
+        return why
+    if usersmod.enabled():
+        from .tools import _under_any, safe_folders
+        if not _under_any(real, [os.path.realpath(str(home)), *safe_folders(cfg, write=True)]):
+            return "that path belongs to another account"
+    return ""
 
 
 def capture(home: Path, path: Path) -> dict:
-    """The file as it is now: its bytes kept by content, or the fact it was not there."""
-    path = Path(path)
-    if not path.exists():
-        return {"path": str(path), "existed": False}
-    if not path.is_file():
-        return {"path": str(path), "existed": True, "skipped": "not a file"}
-    size = path.stat().st_size
-    if size > FILE_CAP:
-        return {"path": str(path), "existed": True, "skipped": f"over {FILE_CAP // (1024 * 1024)} MB", "size": size}
-    return {"path": str(path), "existed": True, "blob": _blob(home, path.read_bytes()), "size": size}
+    """The file as it is now: its bytes kept by content, or the fact it was not there. Opened
+    link by link at its real path, and a security file is never copied into the blobs at all."""
+    from . import protected, safeopen
+    real = os.path.realpath(str(path))
+    if protected.secret(real):
+        return {"path": real, "existed": True, "skipped": "a security file"}
+    try:
+        fd = safeopen.open_file(real)
+    except FileNotFoundError:
+        return {"path": real, "existed": False}
+    except OSError:
+        return {"path": real, "existed": True, "skipped": "not a file"}
+    with os.fdopen(fd, "rb") as f:
+        size = os.fstat(f.fileno()).st_size
+        if size > FILE_CAP:
+            return {"path": real, "existed": True, "skipped": f"over {FILE_CAP // (1024 * 1024)} MB", "size": size}
+        return {"path": real, "existed": True, "blob": _blob(home, f.read()), "size": size}
 
 
 def targets(tool: str, args: dict, resolve, soul_path=None, workspace: str = "") -> list[Path]:
@@ -164,18 +256,48 @@ def checkpoint(db, home: Path, tool: str, detail: str = "", files: list[Path] = 
     row = {"id": pid, "ts": _now(), "seq": _seq(db), "conversation_id": conversation_id or "",
            "run_id": run_id or "", "step": int(step or 0), "tool": tool, "detail": str(detail or "")[:200],
            "files": caps, "unseen": int(tool in UNSEEN_TOOLS), "state": "live"}
-    db.execute("INSERT INTO _tt_points(id, ts, seq, conversation_id, run_id, step, tool, detail, files, unseen, state)"
-               " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+    files_json = json.dumps(caps)
+    mac = ""
+    with contextlib.suppress(OSError):
+        mac = _mac(home, {**row, "files": files_json}, _key())
+    db.execute("INSERT INTO _tt_points(id, ts, seq, conversation_id, run_id, step, tool, detail, files, unseen, state, mac)"
+               " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                (pid, row["ts"], row["seq"], row["conversation_id"], row["run_id"], row["step"], tool,
-                row["detail"], json.dumps(caps), row["unseen"], "live"))
+                row["detail"], files_json, row["unseen"], "live", mac))
     db.commit()
     return row
 
 
 def _point(r) -> dict:
-    d = dict(r)
-    d["files"] = json.loads(d.get("files") or "[]")
+    d = dict(r) if not isinstance(r, dict) else r
+    d["raw_files"] = d.get("files") or "[]"
+    try:
+        d["files"] = json.loads(d["raw_files"])
+    except ValueError:
+        d["files"] = []
     return d
+
+
+def _rows(db, q: str, args=()) -> list[dict]:
+    """Rows as dicts whatever row factory this connection has."""
+    cur = db.execute(q, args)
+    cols = [c[0] for c in cur.description]
+    return [_point(dict(zip(cols, tuple(r)))) for r in cur.fetchall()]
+
+
+def _public(d: dict) -> dict:
+    return {k: v for k, v in d.items() if k not in ("raw_files", "mac")}
+
+
+def _genuine(home: Path, d: dict) -> bool:
+    return signed(home, {**d, "files": d.get("raw_files", "[]")})
+
+
+def _trusted_files(home: Path, d: dict) -> list[dict]:
+    """A row's files if this machine signed them. A row with none has nothing to lie about."""
+    if not d["files"]:
+        return []
+    return d["files"] if _genuine(home, d) else []
 
 
 def points(db, conversation_id: str = "", limit: int = 200, live_only: bool = False) -> list[dict]:
@@ -190,12 +312,17 @@ def points(db, conversation_id: str = "", limit: int = 200, live_only: bool = Fa
         q += " WHERE " + " AND ".join(where)
     q += " ORDER BY ts DESC LIMIT ?"
     args.append(int(limit))
-    return [_point(r) for r in db.execute(q, args)][::-1]
+    return [_public(r) for r in _rows(db, q, args)][::-1]
 
 
 def get(db, pid: str) -> dict | None:
-    r = db.execute("SELECT * FROM _tt_points WHERE id=?", (pid,)).fetchone()
-    return _point(r) if r else None
+    rows = _rows(db, "SELECT * FROM _tt_points WHERE id=?", (pid,))
+    return _public(rows[0]) if rows else None
+
+
+def _since(db, ts: float, live_only: bool) -> list[dict]:
+    q = "SELECT * FROM _tt_points WHERE ts >= ?" + (" AND state='live'" if live_only else "")
+    return _rows(db, q + " ORDER BY ts LIMIT ?", (ts, KEEP_POINTS * 2))
 
 
 # ---- what going back would undo ------------------------------------------------------
@@ -203,23 +330,54 @@ def get(db, pid: str) -> dict | None:
 _LABEL = {"memories": "memory", "kg_nodes": "graph entity", "kg_edges": "graph fact", "skills": "skill"}
 
 
+def _flag_forged(pid: str) -> None:
+    from . import secevents
+    from . import users as usersmod
+    secevents.flag("timetravel.forged", str(pid)[:40], source="rewind", uid=usersmod.current() or "")
+
+
+def _files_of(home: Path, rows: list[dict]) -> tuple[dict[str, dict], list[dict]]:
+    """The files these checkpoints would put back, the earliest copy of each, and what is refused
+    with why. Preview and rewind both read this, so neither can promise what the other refuses."""
+    files: dict[str, dict] = {}
+    refused: list[dict] = []
+    for x in rows:
+        if x["files"] and not _genuine(home, x):
+            _flag_forged(x["id"])
+            refused.append({"path": "(a checkpoint)", "why": "not signed by this machine"})
+            continue
+        for f in x["files"]:
+            path = str(f.get("path") or "")
+            if not path or path in files:
+                continue
+            why = refusal(path, home)
+            if why:
+                refused.append({"path": path, "why": why})
+            else:
+                files[path] = f                  # the earliest copy is the state back then
+    return files, refused
+
+
 def plan(db, home: Path, pid: str) -> dict:
     """Going back to just before checkpoint `pid`: every row change since it, every file
     a later step changed (with the earliest copy, which is how it was then), and the steps
     whose changes cannot be undone. The scrubber shows this; `rewind` does exactly this."""
-    p = get(db, pid)
-    if not p:
+    found = _rows(db, "SELECT * FROM _tt_points WHERE id=?", (pid,))
+    if not found:
         raise KeyError(pid)
-    later = [x for x in points(db, limit=KEEP_POINTS * 2, live_only=True) if x["ts"] >= p["ts"]]
+    # A forged row chooses `seq` and `ts`, which decide how much gets undone, so it stops here. A
+    # row from before signing is refused the same way when it names files.
+    if not _genuine(home, found[0]) and (found[0]["files"] or found[0].get("mac")):
+        _flag_forged(pid)
+        raise Forged("That checkpoint was not signed by this machine, so nothing was changed.")
+    p = _public(found[0])
+    later = _since(db, p["ts"], live_only=True)
     rows = db.execute("SELECT seq, tbl, op FROM _tt_undo WHERE seq > ? ORDER BY seq", (p["seq"],)).fetchall()
     counts: dict[str, dict] = {}
     for _, tbl, op in rows:
         c = counts.setdefault(tbl, {"added": 0, "changed": 0, "removed": 0})
         c[{"i": "added", "u": "changed", "d": "removed"}[op]] += 1
-    files: dict[str, dict] = {}
-    for x in later:
-        for f in x["files"]:
-            files.setdefault(f["path"], f)       # the earliest copy is the state back then
+    files, refused = _files_of(home, later)
     words = []
     for tbl, c in counts.items():
         lab = _LABEL.get(tbl, tbl)
@@ -236,7 +394,7 @@ def plan(db, home: Path, pid: str) -> dict:
     unseen = [x for x in later if x["unseen"]]
     return {"point": p, "steps": len(later), "rows": len(rows), "counts": counts,
             "restore": [f["path"] for f in restore], "remove": [f["path"] for f in drop],
-            "skipped": [{"path": f["path"], "why": f["skipped"]} for f in skipped],
+            "skipped": [{"path": f["path"], "why": f["skipped"]} for f in skipped] + refused,
             "unseen": [{"tool": x["tool"], "detail": x["detail"]} for x in unseen],
             "words": words or ["nothing to undo since then"],
             "warning": (f"{len(unseen)} step{'s' if len(unseen) != 1 else ''} ran a shell command or git; "
@@ -263,6 +421,9 @@ def rewind(db, home: Path, pid: str) -> dict:
             else:
                 vals = json.loads(old or "{}")
                 cols = list(vals)
+                # these become SQL, so only a column the table really has
+                if not set(cols) <= {r[1] for r in db.execute(f'PRAGMA table_info("{tbl}")')}:
+                    raise Forged("A journal row names a column that does not exist.")
                 if op == "u":
                     db.execute(f'UPDATE "{tbl}" SET ' + ", ".join(f'"{c}"=?' for c in cols) + " WHERE rowid=?",
                                [vals[c] for c in cols] + [rid])
@@ -278,14 +439,13 @@ def rewind(db, home: Path, pid: str) -> dict:
     finally:
         db.execute("UPDATE _tt_state SET v='0' WHERE k='paused'")
         db.commit()
-    later = [x for x in points(db, limit=KEEP_POINTS * 2) if x["ts"] >= p["ts"]]
-    seen: dict[str, dict] = {}
-    for x in later:
-        for f in x["files"]:
-            seen.setdefault(f["path"], f)
+    from . import safeopen
+    seen, _ = _files_of(home, _since(db, p["ts"], live_only=False))
     for path, f in seen.items():
         if f.get("skipped"):
             continue
+        # read before anything moves: a blob that fails its check leaves the file where it is
+        data = _read_blob(home, f["blob"]) if f.get("existed") and f.get("blob") else None
         cur = Path(path)
         if cur.exists():
             rel = str(cur).lstrip("/")
@@ -293,9 +453,8 @@ def rewind(db, home: Path, pid: str) -> dict:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(cur), str(dest))
             moved.append(str(dest))
-        if f.get("existed") and f.get("blob"):
-            cur.parent.mkdir(parents=True, exist_ok=True)
-            cur.write_bytes(_read_blob(home, f["blob"]))
+        if data is not None:
+            safeopen.write_bytes(path, data)
     return {**pl, "aside": str(aside) if moved else "", "moved": moved}
 
 

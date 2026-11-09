@@ -40,7 +40,7 @@ from agentos.server import _validate_app_html  # noqa: E402
     ("git branch -D main", "risky"),
     ("ls && git push", "risky"),
     ("rm -rf /", "blocked"),
-    ("curl https://example.com", "safe"),
+    ("curl https://example.com", "risky"),
 ])
 def test_classify_command(cmd, want):
     assert classify_command(cmd) == want

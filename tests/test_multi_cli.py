@@ -155,7 +155,7 @@ class _CLIs:
     def __init__(self):
         self.seen = []
 
-    async def __call__(self, cmd, cwd, emit, run, extra_env=None):
+    async def __call__(self, cmd, cwd, emit, run, extra_env=None, prompt=None, first=None):
         env = extra_env or {}
         if run.engine == "gemini-cli":
             s = json.loads(Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).read_text())
@@ -167,9 +167,9 @@ class _CLIs:
             token = env[json.loads(next(a for a in cmd if "bearer_token_env_var" in a)
                                    .split("=", 1)[1])]
         else:
-            conf = json.loads(cmd[cmd.index("--mcp-config") + 1])["mcpServers"]["bento"]
+            conf = json.loads(Path(cmd[cmd.index("--mcp-config") + 1]).read_text())["mcpServers"]["bento"]
             url, token = conf["url"], conf["headers"]["Authorization"].split()[-1]
-        assert url.endswith(token)
+        assert url.endswith(mcpbridge.url_id(token) if run.engine == "codex" else token)
         _, listed = await mcpbridge.handle(token, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         names = {t["name"] for t in listed["result"]["tools"]}
         _, res = await mcpbridge.handle(token, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
@@ -217,7 +217,7 @@ def test_a_cli_that_never_asked_for_its_tools_is_an_error(tmp_path, installed, m
     store.save_subagent({"name": "researcher", "soul": "r", "tools": ["recall"],
                          "model": "gemini-cli/gemini-2.5-pro"})
 
-    async def talker(cmd, cwd, emit, run, extra_env=None):
+    async def talker(cmd, cwd, emit, run, extra_env=None, prompt=None, first=None):
         await emit({"type": "text_delta", "text": "I searched everything. Done."})
         return run
     monkeypatch.setattr(executors, "_drive", talker)

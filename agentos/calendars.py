@@ -32,6 +32,7 @@ import xml.etree.ElementTree as ET
 from urllib.parse import urljoin, urlparse
 
 import httpx
+from . import netguard
 
 try:
     from zoneinfo import ZoneInfo
@@ -399,8 +400,10 @@ def _auth(c: dict):
 
 
 async def _get_ics(c: dict) -> str:
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True,
-                                 headers={"User-Agent": "AgentOS/0.1"}, auth=_auth(c)) as cl:
+    # the address is whatever this account typed, and this server fetches it: a calendar on a
+    # home network is listed in Settings → Permissions → Local addresses
+    async with netguard.client(timeout=30.0, follow_redirects=True,
+                               headers={"User-Agent": "AgentOS/0.1"}, auth=_auth(c)) as cl:
         r = await cl.get(c["url"])
         r.raise_for_status()
         return r.text
@@ -466,8 +469,8 @@ def _rfc3339(d: dt.datetime) -> str:
 
 
 async def _caldav_events(c: dict, ws: dt.datetime, we: dt.datetime) -> dict:
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True,
-                                 headers={"User-Agent": "AgentOS/0.1"}, auth=_auth(c)) as cl:
+    async with netguard.client(timeout=30.0, follow_redirects=True,
+                               headers={"User-Agent": "AgentOS/0.1"}, auth=_auth(c)) as cl:
         cals = await _caldav_calendars(cl, c["url"])
         report = (f'<?xml version="1.0"?><C:calendar-query xmlns:D="DAV:" '
                   f'xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><D:getetag/>'

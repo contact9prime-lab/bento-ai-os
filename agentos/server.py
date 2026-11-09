@@ -1,6 +1,7 @@
 """AgentOS server: web UI, WebSocket event stream, REST API."""
 
 import asyncio
+import base64
 import contextlib
 import hmac
 import json
@@ -9,17 +10,23 @@ import re
 import secrets
 import html as html_mod
 import socket
+import threading
 import time
 import uuid
 import traceback
+import weakref
 from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from urllib.parse import urlsplit
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
-                               PlainTextResponse, Response)
+                               PlainTextResponse, RedirectResponse, Response)
 
 from . import agentbundle
+from . import machineroutes
+from . import integrity
+from . import secevents
 from . import turnerrors
 from . import appcheck
 from . import approvalcard
@@ -33,6 +40,7 @@ from . import onboarding as onboardmod
 from . import users as usersmod
 from . import knowledge
 from . import providers
+from . import peercheck
 from . import remote as remotemod
 from . import mcpbridge
 from . import accounts as accountsmod
@@ -61,8 +69,10 @@ from .telegram import TelegramBridge
 from . import whatsapp as whatsappmod
 from .whatsapp import WhatsAppBridge
 from . import tools
+from . import netguard
 from .tools import ALWAYS_ASK, Toolbox
 from .trainforge import TrainForge
+from . import constcmp
 
 UI_DIR = Path(__file__).parent / "ui"
 
@@ -215,10 +225,28 @@ def _start_account_bridges() -> list[str]:
     return started
 
 
+def _say_if_no_jail() -> None:
+    """A sandbox that is switched on and cannot start is a thing somebody must hear about once,
+    from the security record, not by reading a setting. `jail.missing` raises its own alert."""
+    from .tools import jail_state
+    js = jail_state(state.machine_cfg())
+    if js["enabled"] and not js["working"]:
+        from . import secevents
+        secevents.flag("jail.missing", js["why"], source="startup")
+        state["store"].log("system", js["words"])
+
+
 @app.on_event("startup")
 async def startup():
+    with contextlib.suppress(Exception):
+        await asyncio.to_thread(_say_if_no_jail)
     cfg = cfgmod.load_config()
     cfgmod.ensure_dirs(cfg)
+    state["loop"] = asyncio.get_running_loop()
+    secevents.on_alert(_security_alert)
+    integrity.on_hold(_integrity_held)
+    if integrity.armed():       # serve() only: the suite shares a checkout it must not trip on
+        asyncio.create_task(_integrity_loop())
     _running_build()        # pinned now: the build that is answering, not the one on disk later
     _pin_page()             # and the page that matches it (see index())
     # every home on the machine brought up to this code — the machine's and each
@@ -387,7 +415,8 @@ async def startup():
     # An OAuth server asks for consent from inside its own connection attempt, which
     # has no way to reach a screen. This is the way back out to the user.
     from . import mcp_oauth
-    mcp_oauth.set_notifier(broadcast, ui_probe=lambda: bool(clients))
+    # The consent URL is one person's: on a machine with accounts it reaches only them.
+    mcp_oauth.set_notifier(_owner_send(), ui_probe=lambda: bool(clients))
     # The vault: every read of a secret is one diary line saying who it was for,
     # and a config that still holds a password in clear hands it over now.
     vaultmod.set_reader_log(lambda name, actor: state["store"].log(
@@ -467,6 +496,8 @@ async def startup():
     # where the linked machines are now, and whether they answer: Devices → Events
     from . import teamlink as _tl
     _tl.ON_MOVED = _tie_moved
+    asyncio.create_task(_perimeter_loop())
+    threading.Thread(target=remotemod.learn_names, daemon=True).start()
     if not idle:
         asyncio.create_task(_ties_watch())
         asyncio.create_task(_screen_revive())
@@ -619,19 +650,17 @@ async def startup():
                 cfg["setup_complete"] = False
             cfgmod.save_config(cfg)
 
-    # one-time permissions migration: apps that predate the framework get a VISIBLE
-    # legacy full-access grant (revocable in the Permissions app) so nothing breaks;
-    # approving their manifest later swaps it for scoped grants
+    # One-time permissions migration: an app that predates the framework gets a draft manifest to
+    # review. It used to get an `app * *` grant too, decided by one config key, so a config that lost
+    # that key handed every app with no manifest the whole machine at the next start. An unapproved
+    # app now asks, like any other.
     if not cfg.get("permissions_migrated") and cfgmod.CONFIG_PATH.exists():
         for a in store.list_apps():
             if (a.get("manifest_status") or "none") == "none":
-                store.add_grant("app", a["id"], "*", "*", source="legacy",
-                                note="pre-permissions app — full access until you approve "
-                                     "its manifest")
                 _propose_manifest(a["id"])  # draft from its source, ready for review
         cfg["permissions_migrated"] = True
         cfgmod.save_config(cfg)
-        store.log("system", "permissions framework: legacy grants seeded for existing apps")
+        store.log("system", "permissions framework: manifests drafted for existing apps")
 
 
 def _team_who(owner: str) -> dict:
@@ -775,12 +804,14 @@ async def _zero_job(task: dict):
     (fabric.zero_chat, with its tools, its taint, its section and its brain), then sent to its
     screen (wire op zero_say). None when the task's space is no Zero's section."""
     from . import teamlink
-    from . import zero as zeromod
+    from . import zeromind
     from .tools import _zero_label_of
     label = _zero_label_of(task.get("space_id") or "")
     if not label:
         return None
-    lk = next((x for x in teamlink._load()["links"] if x.get("label") == label and zeromod.ships_to(x)), None)
+    # the task's own account and the section's certificate, never the label: labels repeat
+    # between accounts, and the first match ran one person's schedule as another
+    lk = zeromind.link_of_section(task.get("space_id") or "", usersmod.current() or "")
     if not lk:
         return "", f"[error] {label} is no longer linked here, so its schedule had nowhere to run"
     owner = lk.get("owner") or ""
@@ -854,13 +885,16 @@ async def _zeros_keep_current():
                     lk = next((x for x in zeros if x.get("id") == t["id"]), None)
                     if not lk:
                         continue
+                    mode_now = mode
                     if mode == "auto":
-                        got = await tiesmod.ask_update(lk)
+                        got = await tiesmod.ask_update(lk, auto=True)
+                        if got.get("needs_person"):    # not signed: a person asks for it, or nobody
+                            mode_now = "ask"
                         with usersmod.as_user(t["owner"]):
                             fabricmod.audit_team(state["store"], "zero.update", f"link:{t['label']}",
                                                  f"asked {t['label']} ({t['version']}) to update to {__version__}: "
                                                  + ("started" if got.get("ok") else got.get("error") or "no answer"))
-                    elif (t["label"], __version__) not in _ZERO_TOLD:
+                    if (mode_now == "ask" and (t["label"], __version__) not in _ZERO_TOLD):
                         _ZERO_TOLD.add((t["label"], __version__))
                         await _tie_tell({"type": "zero_behind", "label": t["label"], "owner": t["owner"],
                                          "peer": t["peer"], "version": t["version"], "hub": __version__}, t["owner"])
@@ -1206,8 +1240,9 @@ async def _device_fire(owner: str, rule: dict, ev: dict) -> None:
         await _device_event(owner, "trigger", machine, f"{machine}: started mission {flow['name']} "
                                                        f"({devtrig.words(c, ev.get('name') or '')})", flow=flow["name"])
         with contextlib.suppress(Exception):
+            # tainted: a reading started this, and a node on the network can say anything
             await _start_flow(flow, text, origin={"surface": "device", "ref": f"{machine}/{c.get('item') or ''}"},
-                              trigger_id=rule["id"])
+                              trigger_id=rule["id"], tainted=True)
 
 
 # The device board (devboard.py): every machine's things as last heard, and the alarms among them.
@@ -1690,7 +1725,7 @@ async def _tie_hardware(lk: dict, why: str) -> dict:
 _ZERO_UPDATING: dict = {}
 
 
-async def _zero_update_from_hub(lk: dict) -> dict:
+async def _zero_update_from_hub(lk: dict, auto: bool = False) -> dict:
     """This machine's hub asks it to update: it does, on its own (updates.apply, no tests: they
     ran where the code was built), says so on its screen, and restarts. Only its own hub."""
     cfg = state.machine_cfg()
@@ -1700,6 +1735,13 @@ async def _zero_update_from_hub(lk: dict) -> dict:
         return {"ok": True, "started": True, "already": True}
     from . import updates as updmod
     from . import __version__
+    if auto:
+        # Nobody pressed anything: only a signed release installs by itself. Asked before
+        # answering, because after "started" the hub could no longer ask a person instead.
+        rel = await asyncio.to_thread(updmod.tip_release, cfg)
+        if rel.get("state") != "verified":
+            return {"ok": False, "needs_person": True,
+                    "error": "this update is not signed, so it waits for a person to ask for it"}
     _ZERO_UPDATING["on"] = True
     with usersmod.as_user(""):
         fabricmod.audit_team(state["store"], "zero.update", f"link:{lk.get('label')}",
@@ -1712,7 +1754,7 @@ async def _zero_update_from_hub(lk: dict) -> dict:
             async def say(m):
                 await state["broadcast"]({"type": "update_progress", "message": m})
             await say(f"updating, as {lk.get('label')} asked…")
-            res = await updmod.apply(cfg, run_tests=False,
+            res = await updmod.apply(cfg, run_tests=False, need_verified=auto, allow_unsigned=not auto,
                                      log=lambda m: loop.call_soon_threadsafe(asyncio.ensure_future, say(m)))
             await state["broadcast"]({"type": "update_done", **res})
             if res.get("ok") and res.get("from") != res.get("to"):     # something moved: restart into it
@@ -1754,7 +1796,7 @@ async def _team_on_ask(lk: dict, req: dict) -> dict:
     if req.get("op") == "device_events":
         return await _device_events_from(lk, req)
     if req.get("op") == "zero_update":
-        return await _zero_update_from_hub(lk)
+        return await _zero_update_from_hub(lk, auto=bool(req.get("auto")))
     if req.get("op") == "zero_say":
         return await _zero_say_from_hub(lk, req)
     if req.get("op") == "zero_refresh":
@@ -1965,6 +2007,9 @@ def _device_heard(name: str, ip: str):
     if any(e.get("addr") == ip for e in provmod.load()["seen"].values()):
         return                          # it runs Bento: provision.py has it
     d = provmod.load()
+    # a new name is a write, a knock and maybe a toast, and anyone on the network can say one
+    if not any(e.get("ip") == ip for e in d["devices"].values()) and not provmod.newcomer_allowed(ip):
+        return
     if netscan.remember(d["devices"], {"ip": ip, "name": name}):
         provmod.save(d)
         asyncio.ensure_future(_device_look(ip, name))
@@ -2052,6 +2097,13 @@ def _my_name() -> str:
         return ""
 
 
+def _zero_waits_for_admin(key: dict) -> bool:
+    """Would a machine with this key be the first thing to open this machine's link door,
+    on the word of somebody who is not an admin?"""
+    owner = str(key.get("owner") or "")
+    return bool(owner) and not usersmod.is_admin(owner) and not state.get("team_listener")
+
+
 async def _provision_new(b: dict):
     """A machine turned on and said it is waiting. Ask whoever may set it up — and if it
     carries one of this machine's keys marked automatic, set it up now (the zero-touch
@@ -2063,6 +2115,13 @@ async def _provision_new(b: dict):
                 f"{b['name']} ({hw.get('board') or hw.get('arch') or 'a machine'}) at {b.get('addr')} "
                 f"is waiting to be set up, heard {zeromod.via_words(b.get('via', ''))}")
     auto = next((k for k in provmod.load()["keys"] if k.get("auto") and k["id"] == b.get("key_id")), None)
+    if auto and _zero_waits_for_admin(auto):
+        # Setting it up would open this machine's link port and start a community. Anyone
+        # may make their own Zero, but that part is the machine's, so an admin says yes once.
+        _sys_ledger("provision.held", f"provision:{b['fp'][:16]}",
+                    f"{b['name']} is held: its line came from an account that is not an admin, and "
+                    "this machine has not opened its link port yet")
+        auto = None
     if auto:
         # heard twice at once (the announcement and a direct ask): set it up once
         if b["fp"] in _PROV_BUSY or provmod.was_enabled_here(b["fp"]):
@@ -2481,6 +2540,33 @@ def _read_cpu() -> tuple[int, int]:
     return idle, sum(nums)
 
 
+class _OpenedFile(FileResponse):
+    """A file by its descriptor, so what was checked is what is sent. Starlette reopens it through
+    /proc/self/fd, which is the same file whatever has happened to the name since, and Range keeps
+    working. A link swapped in between the route's check and the send was a read of anybody's file."""
+
+    def __init__(self, fd: int, **kw):
+        self._fd = fd
+        base = "/proc/self/fd" if os.path.isdir("/proc/self/fd") else "/dev/fd"
+        super().__init__(f"{base}/{fd}", stat_result=os.fstat(fd), **kw)
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with contextlib.suppress(OSError):
+                os.close(self._fd)
+
+
+def _send_checked(p: Path, **kw):
+    """`p` is real and has passed its check. A 404 when it moved since, as for any file not there."""
+    from . import safeopen
+    try:
+        return _OpenedFile(safeopen.open_file(str(p)), **kw)
+    except OSError:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+
 def _files_root() -> Path:
     from .tools import sandbox_conf
     _, root = sandbox_conf(state["cfg"])
@@ -2490,9 +2576,28 @@ def _files_root() -> Path:
 def _safe_file(rel: str) -> Path | None:
     root = _files_root().resolve()
     p = (root / rel).resolve()
-    if p == root or root in p.parents:
+    if (p == root or root in p.parents) and not _file_refused(p):
         return p
     return None
+
+
+def _file_refused(p: Path) -> bool:
+    """The check every file route passes, on the REAL path, whatever root it came from.
+    Nobody reads a session key or a vault through the Files app. On a machine with accounts,
+    someone who is not an admin reaches their own home and the folders shared with them.
+    The agent's file tools have held this line for a long time (`_tenant_deny`); the routes
+    never called it, so a workspace of `/` handed over every account and the session key."""
+    from . import protected
+    if protected.secret(p):
+        return True
+    if not usersmod.enabled() or usersmod.is_admin(usersmod.current()):
+        return False
+    from .tools import _under_any, shares_for
+    real = os.path.realpath(str(p))
+    home = os.path.realpath(str(usersmod.home_for(usersmod.current())))
+    if real == home or real.startswith(home + os.sep):
+        return False
+    return not _under_any(real, [s["path"] for s in shares_for(state["cfg"])])
 
 
 @app.get("/api/locale")
@@ -2607,6 +2712,16 @@ async def api_input_set(body: dict):
     from . import session as sessionmod
     cfg = state["cfg"]
     inp = cfg.setdefault("input", {})
+    b = body or {}
+    try:
+        sessionmod.clean_keyboard(b.get("keyboard") if isinstance(b.get("keyboard"), dict) else {}, strict=True)
+        for k in ("repeat_delay", "repeat_rate"):
+            if (b.get("keyboard") or {}).get(k) not in (None, ""):
+                int(b["keyboard"][k])
+        if (b.get("touchpad") or {}).get("accel") not in (None, ""):
+            float(b["touchpad"]["accel"])
+    except (TypeError, ValueError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     for section in ("keyboard", "touchpad"):
         if isinstance(body.get(section), dict):
             inp.setdefault(section, {}).update(body[section])
@@ -2795,9 +2910,8 @@ async def api_restart(request: Request):
     The restart is scheduled after the response flushes, or the caller cannot tell
     "it restarted" from "it died".
     """
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "a restart can only be started from this machine"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "a restart can only be started from this machine")):
+        return no
     from . import desktop as desktopmod
 
     async def _finish():
@@ -2826,9 +2940,8 @@ async def api_update_apply(request: Request, body: dict | None = None):
     handler kills the connection carrying the result, and a browser cannot tell
     "the update worked and the server went away" from "the update failed".
     """
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "an update can only be started from this machine"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "an update can only be started from this machine")):
+        return no
     from . import updates as updmod
     body = body or {}
     if (body.get("skip") or "").strip():          # "not now, and stop asking for this one"
@@ -2843,6 +2956,7 @@ async def api_update_apply(request: Request, body: dict | None = None):
     res = await updmod.apply(
         state["cfg"], run_tests=bool(body.get("run_tests", True)),
         log=lambda m: loop.call_soon_threadsafe(asyncio.ensure_future, say(m)),
+        allow_unsigned=bool(body.get("allow_unsigned")),
         **({"switch": True} if body.get("switch") else {}))
     state["store"].log("system", f"update: {res}")
     if not res.get("ok"):
@@ -2868,9 +2982,8 @@ async def api_update_rollback(request: Request):
     """Take the last update back (updates.rollback), then restart into the older code.
     Loopback only, like installing one: it replaces the code that enforces every other
     permission here."""
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "a rollback can only be started from this machine"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "a rollback can only be started from this machine")):
+        return no
     from . import updates as updmod
 
     async def say(msg):
@@ -2900,9 +3013,8 @@ async def api_update_restart(request: Request):
     """Restart into the code on disk — what the "an update is waiting" notice's button
     does. Loopback only, like installing: restarting is replacing the code that
     enforces every other permission here. The page is told to reload first."""
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "restart it from the machine itself: bento service restart"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "restart it from the machine itself: bento service restart")):
+        return no
 
     async def _go():
         await state["broadcast"]({"type": "reload", "delay": 6000})
@@ -3056,6 +3168,8 @@ async def api_files(path: str = "", root: str = ""):
         p = (base / path).resolve() if path else base
         if not (p == base or base in p.parents):
             p = base
+        if _file_refused(p):
+            return JSONResponse({"error": "that folder is not shared with you"}, status_code=404)
     else:
         base = _files_root()
         base.mkdir(parents=True, exist_ok=True)
@@ -3096,14 +3210,21 @@ async def api_open(body: dict):
         # a file an agent made, by its full path: only from the folders you may reach
         from . import outputs
         p = outputs.reachable(full, _output_roots())
-        if p is None:
+        if p is None or _file_refused(p):
             return JSONResponse({"error": "not found, or not in a folder you can reach"},
                                 status_code=404)
         target = str(p)
     elif url:
         if not url.startswith(("http://", "https://")):
             return JSONResponse({"error": "only http(s) URLs"}, status_code=400)
-        target = url
+        # A person asked for this desktop in the host's browser. That browser is this server's child,
+        # so peercheck would refuse it, and a one-person machine with no key has no sign-in to offer:
+        # it carries a one-time ticket. Only this route does it, because only a person's page calls it;
+        # an agent's open goes through tools.open_on_host and gets none.
+        if _is_own_desktop(url):
+            target = remotemod.ticket_url(url)
+        else:
+            target = url
     elif rel:
         p = _safe_file(rel)
         if p is None or not p.exists():
@@ -3118,8 +3239,20 @@ async def api_open(body: dict):
     return {"ok": True, "target": target}
 
 
+def _is_own_desktop(url: str) -> bool:
+    """This server's own page on loopback, not an API path."""
+    from urllib.parse import urlsplit
+    try:
+        u = urlsplit(url)
+        port = u.port or (443 if u.scheme == "https" else 80)
+    except ValueError:
+        return False
+    return (remotemod.is_loopback(u.hostname or "") or (u.hostname or "") == "localhost") \
+        and port == _port_of(state.machine_cfg()) and not u.path.startswith(("/api/", "/ws"))
+
+
 @app.get("/api/files/raw")
-async def api_file_raw(path: str, download: int = 0):
+async def api_file_raw(path: str, download: int = 0, view: int = 0):
     import mimetypes
     p = _safe_file(path)
     if p is None or not p.is_file():
@@ -3127,12 +3260,15 @@ async def api_file_raw(path: str, download: int = 0):
     mt, _ = mimetypes.guess_type(str(p))
     # render text/html/images inline in the Browser; everything else downloads
     inline = (mt or "").startswith(("text/", "image/")) or (mt == "application/pdf") or p.suffix.lower() in (".html", ".htm", ".md", ".txt", ".json", ".csv", ".log")
+    if _active_doc(mt, p.name) and not view:
+        inline = False
     headers = {}
     if download or not inline:
-        headers["Content-Disposition"] = f'attachment; filename="{p.name}"'
+        from urllib.parse import quote
+        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(p.name)}"
     if p.suffix.lower() in (".md", ".txt", ".log", ".csv", ".json"):
         mt = "text/plain; charset=utf-8"
-    return FileResponse(p, media_type=mt or "application/octet-stream", headers=headers)
+    return _send_checked(p, media_type=mt or "application/octet-stream", headers=headers)
 
 
 def _output_roots():
@@ -3161,23 +3297,27 @@ async def api_files_recent(limit: int = 30):
 
 
 @app.get("/api/files/get")
-async def api_files_get(path: str, download: int = 0):
-    """One file by its full path, from the folders outputs.roots allows. Images, PDFs,
-    text and HTML show inline; everything else (a .pptx, a .zip) downloads."""
+async def api_files_get(path: str, download: int = 0, view: int = 0):
+    """One file by its full path, from the folders outputs.roots allows. Images, PDFs
+    and text show inline; everything else (a .pptx, a .zip) downloads. HTML, SVG and XML
+    can carry script, so they download unless the page asks to `view` one, and either way
+    they come with `sandbox` (`security_headers`): no script, no cookie, not this origin."""
     import mimetypes
     from . import outputs
     p = outputs.reachable(path, _output_roots())
-    if p is None:
+    if p is None or _file_refused(p):
         return JSONResponse({"error": "not found, or not in a folder you can reach"}, status_code=404)
     mt, _ = mimetypes.guess_type(str(p))
     inline = (mt or "").startswith(("text/", "image/")) or mt == "application/pdf"
+    if _active_doc(mt, p.name) and not view:
+        inline = False
     headers = {}
     if download or not inline:
         from urllib.parse import quote
         headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(p.name)}"
     if p.suffix.lower() in (".md", ".txt", ".log", ".csv", ".json"):
         mt = "text/plain; charset=utf-8"
-    return FileResponse(p, media_type=mt or "application/octet-stream", headers=headers)
+    return _send_checked(p, media_type=mt or "application/octet-stream", headers=headers)
 
 
 @app.get("/api/native/apps")
@@ -3212,10 +3352,8 @@ async def api_native_store_act(request: Request, body: dict):
     right place to authorise it. The user is asked in the UI first; the exact
     command is always returned.
     """
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse(
-            {"error": "installing software is only allowed from the machine itself"},
-            status_code=403)
+    if (no := _local_admin_refusal(request, "installing software is only allowed from the machine itself")):
+        return no
     from . import appstore
     action = str((body or {}).get("action") or "install")
     pkg = str((body or {}).get("id") or "")
@@ -3473,6 +3611,11 @@ async def api_wm_output_configure(body: dict):
         kw["position"] = (int(p.get("x", 0)), int(p.get("y", 0)))
     if body.get("enabled") is not None:
         kw["enabled"] = bool(body["enabled"])
+    from .compositor import clean_output
+    try:
+        clean_output({"name": name, **{k: v for k, v in kw.items() if k != "position"}})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     ok, msg = host.configure_output(name, **kw)
     # A display setting must outlive the session that made it: applying a mode
     # over IPC lasts until logout, so the accepted layout is also written to a
@@ -3483,7 +3626,8 @@ async def api_wm_output_configure(body: dict):
             cfg = state["cfg"]
             outs = cfg.setdefault("displays", {})
             saved = outs.setdefault(name, {})
-            saved.update({k: v for k, v in body.items() if k != "name"})
+            saved.update({k: v for k, v in body.items()
+                          if k in ("mode", "scale", "transform", "position", "enabled")})
             if isinstance(saved.get("position"), dict):
                 p = saved["position"]
                 saved["position"] = f"{int(p.get('x', 0))},{int(p.get('y', 0))}"
@@ -3509,7 +3653,10 @@ async def api_platform(request: Request):
     """
     from . import host
     state_ = host.platform_state()
-    state_["remote_client"] = not remotemod.is_loopback(_client_addr(request))
+    # An account that is not an admin is treated the same way, wherever it sits: the host's
+    # screen is not theirs, so a file opens in the browser and native apps say why they can't.
+    state_["remote_client"] = (not remotemod.is_loopback(_client_addr(request))
+                               or (usersmod.enabled() and not usersmod.is_admin(usersmod.current())))
     state_["hostname"] = socket.gethostname()
     # Is the desktop a native layer-shell surface right now, and could it be?
     # The UI shows this in About/System Settings, and the doctor uses the second
@@ -3543,6 +3690,9 @@ async def api_platform(request: Request):
     zs = _zero().state(state.machine_cfg())
     state_["zero"] = ({"hub": zs.get("hub", ""), "on_hub": zs.get("execution") == "hub"}
                       if zs else {})
+    # The sandbox says itself whether it can start here: Settings shows the sentence.
+    from .tools import jail_state
+    state_["jail"] = jail_state(state.machine_cfg())
     # A hub with devices (Zeros it set up, or ESP32 boards of its own) opens a desktop on the
     # Devices scene (01h-devscene.js): the floor live, with its alarms, a desktop away from the Town.
     with contextlib.suppress(Exception):
@@ -3953,8 +4103,8 @@ async def api_component_install(body: dict, request: Request):
     silently while reporting "could not install". Loopback-only — this changes
     the machine.
     """
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "only from this machine"}, status_code=403)
+    if (no := _local_admin_refusal(request, "only from this machine")):
+        return no
     from . import components as compmod
     cid = str((body or {}).get("id") or "")
     res = await compmod.install(cid)
@@ -3986,6 +4136,11 @@ async def api_notifications():
     if not d:
         return {"available": False, "items": [], "unread": 0, "dnd": False,
                 "reason": "Your desktop environment shows notifications in hosted mode."}
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        # what the host's apps announce is whoever is at the screen's, and this is polled,
+        # so it answers "none here" rather than a 403
+        return {"available": False, "items": [], "unread": 0, "dnd": False,
+                "reason": machineroutes.REFUSAL}
     from . import attention
     st = d.state()  # items carry additive per-item `importance` once triage scored them
     dg = attention.digest_state(state["store"])
@@ -4657,6 +4812,9 @@ async def api_brain_fallbacks_set(body: dict):
         got = fallbackmod.clean((body or {}).get("fallbacks") or [], cfg)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    if any(_agent_cli_refused(f["executor"]) for f in got):
+        return JSONResponse({"error": "only an admin can choose which agent answers on this machine"},
+                            status_code=403)
     cfg["brain_fallbacks"] = got
     cfgmod.save_config(cfg)
     return await api_brain_fallbacks()
@@ -4688,6 +4846,67 @@ async def api_set_brain(body: dict):
     return {"ok": True, "message": msg, **out}
 
 
+def _mask_secrets(value, key: str = "", under_env: bool = False):
+    """Every secret-named value masked at any depth, so a new section cannot forget. The env
+    and headers of a tool server have names nobody here chose, so every value under those is
+    masked. `auth` also names how a server signs in ("oauth"), which is not a secret."""
+    from . import trace as tracemod
+    if isinstance(value, dict):
+        return {k: _mask_secrets(v, str(k), under_env or k in ("env", "headers"))
+                for k, v in value.items() if k not in _NEVER_SENT}
+    if isinstance(value, list):
+        if key == "args":
+            # `--api-key` and its value are two items, which only the list as a whole can show
+            flag = re.compile(r"(?i)^--?[a-z_-]*(?:key|token|secret|pass(?:word|wd)?|auth)$")
+            return ["•••" if isinstance(v, str) and i and isinstance(value[i - 1], str) and flag.match(value[i - 1])
+                    else _mask_secrets(v, key, under_env) for i, v in enumerate(value)]
+        return [_mask_secrets(v, key, under_env) for v in value]
+    if isinstance(value, str) and value and not value.startswith("•••"):
+        if value in ("oauth", "bearer", "none") and key.lower() == "auth":
+            return value
+        if under_env or tracemod.SECRET.search(key):
+            return "•••" + value[-4:] if len(value) > 8 else "•••"
+        if key in _HOLDS_TEXT_SECRETS:
+            return tracemod._scrub_text(value)
+    return value
+
+
+# A value with an innocent name that can hold a credential inside it: a tool server's address,
+# its command line, and what its errors repeat of them. A token in a URL's path can't be told
+# from the path, so that one still shows.
+_HOLDS_TEXT_SECRETS = frozenset({"url", "base_url", "endpoint", "auth_url", "command", "args", "error"})
+
+
+# Offline-cracking material and half the session key: no reader has a use for them.
+_NEVER_SENT = frozenset({"pass_hash", "pass_salt", "salt"})
+
+
+def _keep_masked(new, old, key: str = ""):
+    """What a page read through `_mask_secrets` and sent back: a value it still shows as a
+    mask means "unchanged", so the real one stays. Saving the mask over it would lose a key.
+    A URL or command edited around its mask keeps the old value whole, because moving the secret
+    to a new host on a write would be a way to read it."""
+    if isinstance(new, dict):
+        was = old if isinstance(old, dict) else {}
+        return {k: _keep_masked(v, was.get(k), str(k)) for k, v in new.items()}
+    if isinstance(new, list) and key in _HOLDS_TEXT_SECRETS:
+        was = old if isinstance(old, list) else []
+        shown = _mask_secrets(was, key)
+        by_mask = dict(zip(shown, was))
+        out = []
+        for i, v in enumerate(new):
+            if not (isinstance(v, str) and "•••" in v):
+                out.append(v)
+            elif i < len(was) and shown[i] == v:
+                out.append(was[i])
+            elif v in by_mask:
+                out.append(by_mask[v])
+        return out
+    if isinstance(new, str) and (new.startswith("•••") or (key in _HOLDS_TEXT_SECRETS and "•••" in new)):
+        return old if isinstance(old, str) else ""
+    return new
+
+
 @app.get("/api/config")
 async def api_get_config():
     cfg = json.loads(json.dumps(state["cfg"]))
@@ -4710,7 +4929,7 @@ async def api_get_config():
     if cfg.get("github", {}).get("token"):
         cfg["github"]["token"] = "•••" + cfg["github"]["token"][-4:]
         cfg["github"]["_has_token"] = True
-    return cfg
+    return _mask_secrets(cfg)
 
 
 @app.get("/api/tunnel")
@@ -4781,8 +5000,12 @@ async def api_channels():
 
 
 @app.put("/api/channels/{channel_id}")
-async def api_channel_save(channel_id: str, body: dict):
+async def api_channel_save(channel_id: str, body: dict, request: Request):
     from . import channels as chmod
+    # the Remote browser channel is the same switch as /api/remote, so it has the same door
+    if channel_id == "remote" and (no := _local_admin_refusal(
+            request, "remote access can only be changed from the machine itself")):
+        return no
     ok, message = chmod.save(state["cfg"], channel_id, body or {})
     cfgmod.save_config(state["cfg"])
     await state["broadcast"]({"type": "channels"})
@@ -4804,13 +5027,15 @@ async def api_executors(refresh: bool = False):
         await asyncio.to_thread(execmod.forget_probes)
     conf = (state["cfg"].get("executors") or {}).get("claude_code") or {}
     info = execmod.available()
-    workspace = conf.get("workspace") or execmod.default_workspace(state["cfg"])
+    workspace = usersmod.confine_folder(state["cfg"], conf.get("workspace") or execmod.default_workspace(state["cfg"]))
     env = execmod.Envelope(
         workspace=workspace,
         tools=tuple(conf.get("tools") or execmod.DEFAULT_TOOLS),
         model=conf.get("model", ""),
         budget_usd=float(conf.get("budget_usd") or execmod.default_budget()),
         allow_source=bool(conf.get("allow_source")),
+        unjailed_ok=bool(conf.get("unjailed_ok")),
+        shell_for_accounts=bool(conf.get("shell_for_accounts")),
     ).sanitized()
     return {"executors": [{
         "id": "claude_code", "title": "Claude Code",
@@ -4819,7 +5044,10 @@ async def api_executors(refresh: bool = False):
         "enabled": bool(conf.get("enabled")),
         "config": {"workspace": env.workspace, "tools": list(env.tools),
                    "model": env.model, "budget_usd": env.budget_usd,
-                   "allow_source": env.allow_source},
+                   "allow_source": env.allow_source, "unjailed_ok": env.unjailed_ok,
+                   "shell_for_accounts": env.shell_for_accounts},
+        "jail": execmod.jail_state(),
+        "accounts": usersmod.enabled(),
         "source_root": execmod.source_root(),
         "envelope": env.describe(),
         "billing": execmod.billing(),
@@ -4865,6 +5093,9 @@ async def api_put_config(patch: dict):
             return JSONResponse(
                 {"error": "only an admin can change machine settings on this machine "
                           f"({', '.join(sorted(theirs)[:6])})"}, status_code=403)
+    if "workspace" in (patch or {}) and (why := usersmod.workspace_problem(mine, patch["workspace"])):
+        secevents.flag("account.reach", "a workspace outside the account's home", uid=mine or "")
+        return JSONResponse({"error": why}, status_code=403)
     cfg = state["cfg"]
     # Three of these decide what runs without asking. A change to any of them is a
     # permission change, so it is on the record with the grants' own changes.
@@ -4964,13 +5195,21 @@ async def api_put_config(patch: dict):
             # Letting the OS rewrite itself is its own decision, never implied by
             # merely turning an executor on.
             ex["allow_source"] = bool(got["allow_source"])
-        if any(k in got for k in ("tools", "allow_source", "workspace", "budget_usd", "enabled")):
+        # A person's written yes to what a jail can't make safe. Not on any agent's reach:
+        # these two only move from this route, which only an admin's browser can call.
+        for k in ("unjailed_ok", "shell_for_accounts"):
+            if k in got:
+                ex[k] = bool(got[k])
+        if any(k in got for k in ("tools", "allow_source", "workspace", "budget_usd", "enabled",
+                                  "unjailed_ok", "shell_for_accounts")):
             # what Claude Code, Gemini CLI and Codex may do with their own tools: ticking
             # Bash is the step that stops them asking, so it is on the record
             _ledger("executor.write", "executor:envelope",
                     f"tools: {', '.join(ex.get('tools') or []) or 'none'}; "
                     f"folder: {ex.get('workspace') or 'default'}; "
-                    f"may edit AgentOS: {bool(ex.get('allow_source'))}")
+                    f"may edit AgentOS: {bool(ex.get('allow_source'))}; "
+                    f"shell with no jail: {bool(ex.get('unjailed_ok'))}; "
+                    f"shell for other accounts: {bool(ex.get('shell_for_accounts'))}")
     if isinstance(patch.get("shortcuts"), dict):
         # {action: "Ctrl+Space"} — the shell's editable keymap, also the source
         # for the compositor bindings written by /api/shortcuts/apply
@@ -4988,6 +5227,14 @@ async def api_put_config(patch: dict):
         # Settings → Permissions → The ledger: refuse an action whose ledger row failed
         if isinstance(patch["security"].get("audit_fail_closed"), bool):
             cfg.setdefault("security", {})["audit_fail_closed"] = patch["security"]["audit_fail_closed"]
+        # Settings → Permissions → Local addresses: what a person lets fetches reach (netguard.py)
+        if isinstance(patch["security"].get(netguard.CONFIG_KEY), list):
+            kept, dropped = netguard.clean_entries(patch["security"][netguard.CONFIG_KEY])
+            if dropped:
+                return JSONResponse({"error": dropped[0]}, status_code=400)
+            if kept != (cfg.get("security") or {}).get(netguard.CONFIG_KEY, []):
+                _ledger("system.fetch_allow", "config:security.fetch_allow", f"local addresses → {kept}"[:300])
+            cfg.setdefault("security", {})[netguard.CONFIG_KEY] = kept
     if isinstance(patch.get("history"), dict):
         h = cfg.setdefault("history", {})
         for k in ("tool_trace", "compact", "model"):
@@ -5096,7 +5343,7 @@ async def api_clear_conversation(cid: str):
 
 @app.get("/api/mcp")
 async def api_mcp():
-    return {"available": MCP_AVAILABLE, "servers": state["mcp"].status()}
+    return {"available": MCP_AVAILABLE, "servers": _mask_secrets(state["mcp"].status())}
 
 
 @app.put("/api/mcp")
@@ -5104,6 +5351,11 @@ async def api_put_mcp(body: dict):
     """Replace the MCP server config and reconnect."""
     servers = body.get("servers")
     if isinstance(servers, dict):
+        servers = _keep_masked(servers, state["cfg"].get("mcp_servers") or {})
+        from . import mcp_client
+        for name, conf in servers.items():
+            if (why := mcp_client.refusal(conf if isinstance(conf, dict) else {})):
+                return JSONResponse({"error": f"{name}: {why}"}, status_code=403)
         state["cfg"]["mcp_servers"] = servers
         cfgmod.save_config(state["cfg"])
         await state["mcp"].reload()
@@ -5435,9 +5687,9 @@ async def _agent_bundle_of(body: dict):
         if not candidates:
             return None, "", JSONResponse(
                 {"error": f"'{source}' is not a URL or an owner/repo"}, status_code=400)
-        import httpx
         last = ""
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        # a name somebody typed or pasted, fetched by this server: the guarded client, every hop
+        async with netguard.client(timeout=30, follow_redirects=True) as client:
             for cand in candidates:
                 try:
                     r = await client.get(cand)
@@ -5975,7 +6227,7 @@ async def api_accounts():
     cfg = state["cfg"]
     return {"accounts": accountsmod.state(cfg, mcp_servers=_connected_mcp()),
             "signin": signinmod.doors(cfg), "vault": vaultmod.status(),
-            "pending": signinmod.pending_status(),
+            "pending": signinmod.pending_status(usersmod.current() or ""),
             "admin": usersmod.is_admin(usersmod.current())}
 
 
@@ -6048,7 +6300,7 @@ async def api_signin_out(provider: str):
     cfg = state["cfg"]
     if provider not in signinmod.PROVIDERS:
         return JSONResponse({"error": f"no sign-in called '{provider}'"}, status_code=404)
-    signinmod.cancel(provider)
+    signinmod.cancel(provider, usersmod.current() or "")
     existed = await asyncio.to_thread(signinmod.disconnect, cfg, provider)
     cfgmod.save_config(cfg)
     state["store"].log("accounts", f"signed out of {provider}")
@@ -6111,7 +6363,10 @@ async def api_mcp_run(token: str, request: Request):
                             status_code=403)
     auth = request.headers.get("authorization") or ""
     bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-    if mcpbridge.get(token) is None or not secrets.compare_digest(bearer, token):
+    # the URL carries the token, or for Codex its digest (mcpbridge.url_id); the header is the secret
+    named = constcmp.same(bearer, token) or constcmp.same(mcpbridge.url_id(bearer), token)
+    token = bearer
+    if mcpbridge.get(token) is None or not named:
         return JSONResponse({"error": "unknown or expired run token — this bridge answers "
                                       "only the run it was minted for, and only while it "
                                       "runs"}, status_code=401)
@@ -6379,7 +6634,7 @@ async def api_whatsapp(request: Request):
     reach = await wamod.reachability(state["cfg"])
     # Fall back to how this request actually arrived, so a machine already behind a
     # reverse proxy is not told to go and set up a tunnel it does not need.
-    base = str(request.base_url).rstrip("/")
+    base = _base_url(request)
     if not reach["reachable"] and base.startswith("https://"):
         reach = {"reachable": True, "base": base, "via": "this address",
                  "webhook": wamod.webhook_url(state["cfg"], base), "why": ""}
@@ -6433,7 +6688,7 @@ async def api_whatsapp_link(request: Request):
     # Loopback only, like every other route that changes what this machine is
     # connected to: a linked WhatsApp device IS a credential, and starting one
     # is not something a remote browser should be able to do on your behalf.
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "only from this machine"}, status_code=403)
     from . import whatsapp as wamod
     from . import wa_baileys
@@ -6466,7 +6721,7 @@ async def api_whatsapp_link(request: Request):
 async def api_whatsapp_unlink(request: Request):
     """Unlink the device, forget the credentials, and clear the paired owner.
     Not merely a disconnect: the stored keys ARE the linked device."""
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "only from this machine"}, status_code=403)
     res = await state["whatsapp"].unlink()
     await state["broadcast"]({"type": "config"})
@@ -6483,7 +6738,7 @@ async def api_whatsapp_test():
 async def api_whatsapp_verify(request: Request):
     """Meta's one-time handshake. Echo the challenge as plain text, or 403.
 
-    Compared with `compare_digest` inside the bridge: this value is chosen by the
+    Compared in constant time inside the bridge: this value is chosen by the
     user and checked against a value from the internet, which is the exact shape of
     a timing oracle.
     """
@@ -6761,7 +7016,10 @@ async def api_store_mcp_install(body: dict):
         return JSONResponse({"error": f"'{reg_name}' not found in the public registry"},
                             status_code=404)
     name = (body.get("name") or cand["key"]).strip()
-    conf, missing = mcp_store.to_conf(cand, env_values=body.get("env") or {})
+    try:
+        conf, missing = mcp_store.to_conf(cand, env_values=body.get("env") or {})
+    except mcp_store.PackageRefused as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     state["cfg"].setdefault("mcp_servers", {})[name] = conf
     cfgmod.save_config(state["cfg"])
     mcp_store.record_install(
@@ -6858,6 +7116,8 @@ async def api_mcp_oauth_callback(name: str, code: str = "", state_: str = "",
     st = qp.get("state") or state_ or None
     err = error or qp.get("error", "")
     ok = mcp_oauth.resolve(name, code or qp.get("code", ""), st, error=err)
+    # Both come from the URL, and this route takes no cookie and needs no sign-in waiting.
+    name, err = html_mod.escape(str(name)), html_mod.escape(str(err))
     if not ok:
         msg, detail = "Nothing was waiting", (
             f"AgentOS is not currently signing in to '{name}'. The attempt may have "
@@ -6900,7 +7160,7 @@ async def api_mcp_oauth_connect(name: str):
         url = mcp_oauth.pending_url(name)
         if url:
             return {"ok": True, "url": url, "authorized": False}
-    return {"ok": True, "url": "", "authorized": mcp_oauth.has_tokens(name)}
+    return {"ok": True, "url": "", "authorized": mcp_oauth.has_tokens(name, conf.get("url", ""))}
 
 
 @app.delete("/api/mcp/oauth/{name}")
@@ -7105,16 +7365,19 @@ async def api_save_theme(body: dict):
     if not name:
         return JSONResponse({"error": "theme needs a name"}, status_code=400)
     state["store"].save_theme(name, json.dumps(body))
-    await state["broadcast"]({"type": "themes"})
+    # A theme lives in this person's own database, so it is news for their screens only.
+    # Sent machine-wide, one account's theme (css, and a shell) landed on another's desktop.
+    me = usersmod.current()
+    await state["broadcast_user"]({"type": "themes"}, me)
     if body.get("apply"):
-        await state["broadcast"]({"type": "theme_apply", "theme": body})
+        await state["broadcast_user"]({"type": "theme_apply", "theme": body}, me)
     return {"ok": True, "name": name}
 
 
 @app.delete("/api/themes/{name}")
 async def api_delete_theme(name: str):
     state["store"].delete_theme(name)
-    await state["broadcast"]({"type": "themes"})
+    await state["broadcast_user"]({"type": "themes"}, usersmod.current())
     return {"ok": True}
 
 
@@ -7833,9 +8096,8 @@ async def api_app_import(body: dict):
         if not candidates:
             return JSONResponse({"error": f"'{source}' is not a URL or an owner/repo"},
                                 status_code=400)
-        import httpx
         last = ""
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        async with netguard.client(timeout=30, follow_redirects=True) as client:
             for cand in candidates:
                 try:
                     r = await client.get(cand)
@@ -8238,7 +8500,7 @@ async def request_approval(name: str, args: dict, reason: str, offer: dict | Non
     card = approvalcard.card(name, args, _approval_said())
     entry = {"fut": fut, "offer": offer, "ws": ws, "name": name, "uid": uid,
              "args": args, "reason": reason, "run_id": run_id, "card": card,
-             "flow": flow, "asked_at": time.time()}
+             "flow": flow, "asked_at": time.time(), "must_person": _approval_must_person()}
     state["pending_approvals"][aid] = entry
     ev = {"type": "approval_request", "id": aid, "name": name, "args": args,
           "reason": reason, "offer": offer, "run_id": run_id, "flow": flow, "card": card}
@@ -8322,7 +8584,8 @@ async def request_price(model: str, evsend=None) -> bool:
         return True                       # already being asked about; don't stack cards
     pid = uuid.uuid4().hex[:8]
     fut = asyncio.get_event_loop().create_future()
-    state.setdefault("pending_prices", {})[pid] = {"fut": fut, "model": model}
+    state.setdefault("pending_prices", {})[pid] = {"fut": fut, "model": model,
+                                                   "uid": usersmod.current()}
     state.setdefault("price_pending", {})[model] = True
     found = await usagemod.discover_price(state["cfg"], model)
     ev = {"type": "price_request", "id": pid, "model": model, "suggested": found}
@@ -8347,10 +8610,14 @@ async def request_price(model: str, evsend=None) -> bool:
         state.get("price_pending", {}).pop(model, None)
 
 
-async def resolve_price(pid: str, action: str, price_in: float = 0, price_out: float = 0):
-    """Answer a price card: `set` | `skip` | `cancel`."""
+async def resolve_price(pid: str, action: str, price_in: float = 0, price_out: float = 0,
+                        uid: str | None = None):
+    """Answer a price card: `set` | `skip` | `cancel`. Only the account being asked answers."""
     entry = state.get("pending_prices", {}).get(pid)
     if not entry or entry["fut"].done():
+        return
+    if uid is not None and str(entry.get("uid", "") or "") != str(uid or ""):
+        secevents.flag("ws.foreign_turn", "price", source="ws", uid=uid)
         return
     model = entry["model"]
     if action == "set":
@@ -8750,6 +9017,11 @@ def _approval_mine(entry: dict, uid) -> bool:
     return (entry.get("uid") or "") == (uid or "")
 
 
+def _approval_must_person() -> bool:
+    from .policy import needs_person
+    return bool(needs_person())
+
+
 async def resolve_approval(aid: str, approved: bool, remember=False, uid=None) -> bool:
     """Settle an approval. `remember` is the scope the person chose ('chat', 'hour',
     'always', or True from an older page). Returns False when there is nothing to
@@ -8805,14 +9077,19 @@ async def _approval_send(entry: dict, ev: dict):
 async def shell_command(action: str, args: dict | None = None, timeout: float = 8.0):
     """Send one command to the connected shell and await its answer. Returns
     (ok, data); never raises — no shell / no answer comes back as (False, sentence)."""
-    if not state.get("clients"):
+    # Only this account's own pages: whichever browser answered first used to be the answer, so
+    # one person's agent could list another's open windows or change their theme.
+    uid = usersmod.current() or ""
+    owners = state.get("client_uids") or {}
+    if not any(owners.get(ws, "") == uid for ws in state.get("clients") or ()):
         return False, ("no desktop shell is connected (open the AgentOS UI in a "
                        "browser) — shell actions need a live shell")
-    cid = uuid.uuid4().hex[:8]
+    cid = uuid.uuid4().hex[:16]
     fut = asyncio.get_event_loop().create_future()
     state.setdefault("shell_pending", {})[cid] = fut
-    await state["broadcast"]({"type": "shell_cmd", "id": cid, "action": action,
-                              "args": args or {}})
+    state.setdefault("shell_owner", {})[cid] = uid
+    await state["broadcast_user"]({"type": "shell_cmd", "id": cid, "action": action,
+                                   "args": args or {}}, uid)
     try:
         res = await asyncio.wait_for(fut, timeout=timeout)
         return bool(res.get("ok")), res.get("data")
@@ -8822,6 +9099,7 @@ async def shell_command(action: str, args: dict | None = None, timeout: float = 
                        "shell_cmd support")
     finally:
         state["shell_pending"].pop(cid, None)
+        state["shell_owner"].pop(cid, None)
 
 
 @app.post("/api/shell/result")
@@ -8829,6 +9107,8 @@ async def api_shell_result(body: dict):
     """The shell's answer to a shell_cmd event (contract above). Sensitive: user-built
     apps are blocked from posting here — they could spoof shell results."""
     fut = state.get("shell_pending", {}).get(str(body.get("id", "")))
+    if fut is not None and state.get("shell_owner", {}).get(str(body.get("id", "")), "") != (usersmod.current() or ""):
+        fut = None                  # another account's command: it reads as unknown to them
     if fut is None or fut.done():
         return JSONResponse({"error": "unknown or expired shell_cmd id"}, status_code=404)
     fut.set_result({"ok": bool(body.get("ok")), "data": body.get("data")})
@@ -8924,6 +9204,14 @@ def _same_origin(request: Request):
     return urlsplit(o).netloc == request.headers.get("host", "")
 
 
+def _session_jti_of(request: Request) -> str:
+    """The id in this browser's cookie even when its generation was just ended by this very request."""
+    with contextlib.suppress(Exception):
+        body = request.cookies.get(remotemod.COOKIE, "").rpartition(".")[0]
+        return str(json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4))).get("jti") or "")
+    return ""
+
+
 def _session_jti(request: Request) -> str:
     """The id of this browser's session cookie, '' with none."""
     claims = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE, ""))
@@ -8971,6 +9259,17 @@ def _valid_app_token(request: Request) -> bool:
     return bool(tok) and tok in state.get("app_tokens", {})
 
 
+def _page_fetch(request: Request) -> bool:
+    """Is this a fetch of an app page, and not a frame or a tab navigating to it? A GET
+    navigation sends no Origin, and Sec-Fetch-Mode says so where the browser sends it (it
+    doesn't over plain http off loopback). No header at all is a non-browser client, which
+    has no cookie and no frame to read it from."""
+    if request.method not in ("GET", "HEAD"):
+        return True
+    mode = request.headers.get("sec-fetch-mode", "")
+    return bool(request.headers.get("origin")) or (bool(mode) and mode != "navigate")
+
+
 def _cors_headers(request: Request) -> dict:
     """Let the opaque app read its own runtime responses. The authority is the app
     token, not the origin, so reflecting `null` is safe: a foreign site's sandboxed
@@ -8989,6 +9288,19 @@ async def csrf_origin_guard(request: Request, call_next):
     app_runtime = _is_app_runtime(path)
     if method == "OPTIONS" and app_runtime:          # the opaque app's CORS preflight
         return Response(status_code=204, headers=_cors_headers(request))
+    is_page = path.startswith("/api/apps/") and path.endswith("/page")
+    if is_page and _page_fetch(request):
+        # A frame loads its page by navigating. Fetching one is another app reading
+        # that app's source and a fresh token for it, so it is never served as data.
+        secevents.flag("origin.refused", "fetched an app page", source=_client_addr(request))
+        return JSONResponse({"error": "denied: an app page opens in a frame"}, status_code=403)
+    if app_runtime and not is_page and method not in _MUTATING \
+            and _same_origin(request) is False and not _valid_app_token(request):
+        # the read half of the rule below: loopback trust must not answer an opaque frame
+        secevents.flag("origin.refused", "a tokenless read of the app runtime",
+                       source=_client_addr(request))
+        return JSONResponse({"error": "denied: this needs a valid app token "
+                             "(cross-origin request)"}, status_code=403)
     if method in _MUTATING and not path.startswith(REMOTE_OPEN_PATHS):
         so = _same_origin(request)
         if app_runtime:
@@ -8996,16 +9308,18 @@ async def csrf_origin_guard(request: Request, call_next):
             # e.g. an automation step running a tool as the user). A cross-origin
             # request with no token is a foreign site or a tokenless app — refused.
             if not (_valid_app_token(request) or so is True or so is None):
+                secevents.flag("origin.refused", f"{method} {path}", source=_client_addr(request))
                 return JSONResponse({"error": "denied: this needs a valid app token "
                                      "(cross-origin request)"}, status_code=403)
         elif so is False:
             # A cross-origin mutation of a non-runtime route is either an app trying
             # to escape its sandbox or a cross-site forgery. Neither is the user.
+            secevents.flag("origin.refused", f"{method} {path}", source=_client_addr(request))
             return JSONResponse({"error": "denied: cross-origin request refused (apps "
                                  "reach the OS only through appTool and its grants)"},
                                 status_code=403)
     resp = await call_next(request)
-    if app_runtime and _same_origin(request) is False:
+    if app_runtime and not is_page and _same_origin(request) is False:
         for k, v in _cors_headers(request).items():
             resp.headers.setdefault(k, v)
     return resp
@@ -9033,6 +9347,20 @@ async def app_privilege_guard(request: Request, call_next):
                         {"error": "denied: apps cannot change OS configuration — "
                                   "capabilities go through appTool() and the permission grants"},
                         status_code=403)
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def machine_only_gate(request: Request, call_next):
+    """The machine's own routes, for an admin (machineroutes.py). Registered before
+    `resolve_user` so it runs after it, and it reads the path the router matches on."""
+    if machineroutes.machine_only(request.method, request.scope.get("path", "")) \
+            and usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        # `available`/`reason` are what the page's capability checks already read,
+        # so a pane says the sentence rather than drawing nothing
+        return JSONResponse({"error": machineroutes.REFUSAL, "ok": False, "available": False,
+                             "reason": machineroutes.REFUSAL},
+                            status_code=403, headers={"X-Bento-Admin-Only": "1"})
     return await call_next(request)
 
 
@@ -9109,18 +9437,45 @@ REMOTE_OPEN_PATHS = ("/login", "/api/remote/login", "/api/users/login",
                      "/api/standby/peer/")
 
 
-def _client_addr(request: Request) -> str:
-    return (request.client.host if request.client else "") or ""
+def _client_addr(conn) -> str:
+    """Who to treat this request or socket as. A proxy on this machine arrives from 127.0.0.1, so a
+    proxied visitor's own address is used, and never loopback (remote.client_addr)."""
+    return remotemod.client_addr((conn.client.host if conn.client else "") or "", conn.headers)
 
 
-def _authed(request: Request) -> bool:
+def _peer_verdict(conn) -> str:
+    """peercheck's answer for this connection. Nothing to look at is NO_ANSWER: a test's in-process client."""
+    client, server = conn.client, conn.scope.get("server")
+    if not client or not server or server[1] is None:
+        return peercheck.NO_ANSWER
+    return peercheck.classify(client.host, client.port, server[0], server[1])
+
+
+def _at_machine(conn) -> bool:
+    """Is this somebody at this machine? A real loopback peer, carrying nobody else, that this server did
+    not start. Everything that loopback used to mean goes through here."""
+    return remotemod.is_loopback(_client_addr(conn)) and _peer_verdict(conn) not in peercheck.REFUSED
+
+
+def _authed(conn) -> bool:
+    """May this request or socket come in? One function for both, because an HTTP gate and a socket gate
+    that disagree are how the shell ends up behind the weaker one."""
     cfg = state.machine_cfg()
+    token = conn.cookies.get(remotemod.COOKIE, "")
     # A locked screen outranks every reason to let somebody in, loopback included:
     # the person who locked it is the person sitting at that keyboard, and "you are
     # physically here" is exactly the claim they just withdrew. Checked first so the
     # API and the sockets go quiet with the page — a desktop that kept streaming a
     # turn behind the lock screen would be a lock over the pixels only.
-    if remotemod.session_locked(cfg, request.cookies.get(remotemod.COOKIE, "")):
+    if remotemod.session_locked(cfg, token):
+        return False
+    # An accounts file we cannot read means nobody can say who may come in. It must never read as "no
+    # accounts, so nothing to gate": the person at the machine can still reach it to repair it.
+    if usersmod.unreadable():
+        return _at_machine(conn)
+    local = remotemod.is_loopback(_client_addr(conn))
+    # Remote off means the network gets nothing, even with the socket still bound until the next restart.
+    if not local and not remotemod.enabled(cfg):
         return False
     # Adding a second person is what turns this machine into one that needs a login.
     # Loopback trust cannot survive it: "whoever is sitting here" is exactly the
@@ -9128,13 +9483,52 @@ def _authed(request: Request) -> bool:
     # and without this everybody at the keyboard would share the machine store
     # rather than reaching their own.
     if usersmod.enabled():
-        uid = remotemod.session_user(cfg, request.cookies.get(remotemod.COOKIE, ""))
+        uid = remotemod.session_user(cfg, token)
         return bool(uid) and usersmod.get(uid) is not None
-    if not remotemod.enabled(cfg):
-        return True                                     # loopback-only: nothing to gate
-    if cfg["remote"].get("trust_loopback", True) and remotemod.is_loopback(_client_addr(request)):
+    if remotemod.valid_session(cfg, token):
         return True
-    return remotemod.valid_session(cfg, request.cookies.get(remotemod.COOKIE, ""))
+    if not local:
+        return False
+    # Below here is trust with no credential at all, so only a real person at this machine gets it.
+    if remotemod.entry_token():
+        bearer = conn.headers.get("authorization", "")
+        return bearer.startswith("Bearer ") and remotemod.entry_matches(bearer[7:].strip())
+    if remotemod.desk_locked(cfg):
+        return False
+    if remotemod.enabled(cfg) and not cfg["remote"].get("trust_loopback", True):
+        return False
+    return _peer_verdict(conn) not in peercheck.REFUSED
+
+
+CHILD_WORDS = ("This is running inside Bento, so it can't act as you on this machine. "
+               "Run it in a terminal outside Bento, or sign in.")
+# The same refusal, as a browser sees it: Bento (or an app it started) opened this window.
+CHILD_PAGE_WORDS = ("Bento started this browser, so it isn't let in on its own. Open Bento from your own "
+                    "browser, or use Open in browser from the desktop.")
+OTHER_USER_WORDS = "Another user on this computer can't use this person's Bento. Sign in."
+LOCKED_WORDS = "This desktop is locked. Unlock it in its browser, or sign in with the passphrase."
+
+
+def _refused_words(conn) -> str:
+    """Why this was refused, when the reason is worth a sentence, and on the record when it is an attack.
+    Called only on a refusal of something that is not open to everybody."""
+    cfg = state.machine_cfg()
+    token = conn.cookies.get(remotemod.COOKIE, "")
+    src = _client_addr(conn)
+    if token and remotemod.cookie_forged(cfg, token):
+        secevents.flag("session.forged", conn.url.path, source=src)
+    if not remotemod.is_loopback(src) or remotemod.valid_session(cfg, token):
+        return ""
+    verdict = _peer_verdict(conn)
+    if verdict == peercheck.OTHER_USER:
+        secevents.flag("peer.other_user", conn.url.path, source=src)
+        return OTHER_USER_WORDS
+    if verdict in peercheck.REFUSED:
+        secevents.flag("child.refused", conn.url.path, source=verdict)
+        return CHILD_WORDS
+    if not usersmod.enabled() and remotemod.desk_locked(cfg):
+        return LOCKED_WORDS
+    return ""
 
 
 @app.middleware("http")
@@ -9168,21 +9562,83 @@ async def resolve_user(request: Request, call_next):
         usersmod._current.reset(token)
 
 
+def _take_entry(request: Request):
+    """A browser this server started carries a ticket (`?desk=`), and a demo's page its key (`?entry=`):
+    swap it for a cookie, and take it out of the address bar. Only for somebody really on loopback on a
+    machine with no accounts, where a session cookie means the machine. None when this is neither."""
+    q = request.query_params
+    if request.method != "GET" or request.url.path.startswith(("/api/", "/ws")) or not ("desk" in q or "entry" in q):
+        return None
+    if usersmod.enabled() or not remotemod.is_loopback(_client_addr(request)):
+        return None
+    if remotemod.desk_locked(state.machine_cfg()) and not remotemod.entry_token():
+        return None             # a new browser is not a way round a lock
+    if not (remotemod.entry_matches(q.get("entry", "")) or remotemod.spend_ticket(q.get("desk", ""))):
+        return None
+    resp = RedirectResponse(request.url.path, status_code=303, headers=NO_STORE)
+    _set_session_cookie(resp, request, remotemod.issue_session(state.machine_cfg()))
+    return resp
+
+
 @app.middleware("http")
 async def remote_access_gate(request: Request, call_next):
+    entered = _take_entry(request)
+    if entered is not None:
+        return entered
     if _authed(request) or _app_token_admits(request):
         return await call_next(request)
     path = request.url.path
     if path.startswith(REMOTE_OPEN_PATHS):
         return await call_next(request)
+    words = _refused_words(request)
     # an API caller gets a machine-readable 401; a browser gets the sign-in page
     if path.startswith("/api/") or path.startswith("/ws"):
-        return JSONResponse({"error": "sign in required", "login": "/login"},
+        return JSONResponse({"error": words or "sign in required", "login": "/login"},
                             status_code=401, headers=NO_STORE)
     return FileResponse(UI_DIR / "login.html", headers=NO_STORE)
 
 
 _HOME_ID = cfgmod.home_id()
+
+
+# Sandboxed apps keep their own freedom inside the frame: the flags match the iframe's.
+_APP_PAGE_CSP = "sandbox allow-scripts allow-forms; frame-ancestors 'self'"
+# A document under /api/ draws itself with inline styles and nothing else. `sandbox` makes it
+# an opaque origin with no script, so what a file says it is cannot reach this desktop.
+_API_DOC_CSP = ("sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; "
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
+# What the desktop really reaches, found by reading the bundle and watching a real page:
+#   fonts.googleapis.com, fonts.gstatic.com  the themes' web fonts
+#   https: images                            a Stage scene's picture, an app's or a server's icon
+#   www.youtube-nocookie.com                 a Stage video, in a frame
+#   127.0.0.1, localhost in frames           the Train app's own service on this machine
+_DESKTOP_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                "font-src 'self' data: https://fonts.gstatic.com; "
+                "img-src 'self' data: blob: https:; media-src 'self' data: blob:; "
+                "connect-src 'self'%s; "
+                "frame-src 'self' https://www.youtube-nocookie.com http://127.0.0.1:* http://localhost:*; "
+                "worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; "
+                "form-action 'self'; frame-ancestors 'none'")
+_HOST_OK = re.compile(r"^[A-Za-z0-9.\-]+(:[0-9]+)?$|^\[[0-9A-Fa-f:.]+\](:[0-9]+)?$")
+_ACTIVE_TYPES = ("text/html", "application/xhtml", "image/svg", "text/xml", "application/xml",
+                 "text/xsl", "application/xslt", "application/mathml", "multipart/")
+_ACTIVE_SUFFIXES = (".html", ".htm", ".shtml", ".xhtml", ".xht", ".svg", ".svgz", ".xml", ".xsl",
+                    ".xslt", ".mht", ".mhtml")
+
+
+def _active_doc(content_type: str | None, name: str = "") -> bool:
+    """Would a browser run this as a document of its own? Then it never gets our origin."""
+    ct = (content_type or "").split(";")[0].strip().lower()
+    return ct.startswith(_ACTIVE_TYPES) or ct.endswith("+xml") \
+        or str(name or "").lower().endswith(_ACTIVE_SUFFIXES)
+
+
+def _desktop_csp(request: Request) -> str:
+    # 'self' covers ws: on current browsers. Older WebKit, which a session host may be
+    # built on, needs the socket named, and only a host that looks like a host goes in.
+    host = request.headers.get("host", "")
+    return _DESKTOP_CSP % (f" ws://{host} wss://{host}" if _HOST_OK.match(host) else "")
 
 
 @app.middleware("http")
@@ -9205,9 +9661,14 @@ async def security_headers(request: Request, call_next):
     should ever frame it — so `frame-ancestors 'none'`. An APP page is meant to
     be framed, but only by the desktop that served it — so `frame-ancestors
     'self'`, which keeps a foreign site from embedding somebody's app and
-    reading their clicks. A full script-src CSP is deliberately NOT set here: the
-    hand-written desktop uses inline handlers throughout, and a policy that
-    breaks the whole OS to add a header nobody measured is the wrong trade.
+    reading their clicks.
+
+    The rest is what a page may load and run, and it is a choke point on purpose, so
+    a new route cannot forget it: the app page is `sandbox` whether or not a frame
+    asked for it, the desktop gets `_desktop_csp`, and anything else under /api/ that
+    a browser would run as a document (a server-rendered page, a file somebody made)
+    gets `_API_DOC_CSP`. The desktop keeps `'unsafe-inline'` because the bundle uses
+    inline handlers throughout. It still stops a remote script loading.
     """
     resp = await call_next(request)
     # which home this server serves (config.home_id), on every answer, a locked 401
@@ -9227,11 +9688,24 @@ async def security_headers(request: Request, call_next):
     path = request.url.path
     is_app_page = path.startswith("/api/apps/") and path.rstrip("/").endswith("/page")
     if is_app_page:
-        # framed by the desktop (same origin), by nobody else
-        resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'self'")
-    elif not path.startswith("/api/") and not path.startswith("/ws"):
+        # Framed by the desktop (same origin), by nobody else. `sandbox` is in the RESPONSE
+        # because the iframe attribute only protects a page opened in a frame: a click on
+        # this URL in a chat ran the app on the desktop's origin, with the cookie.
+        resp.headers.setdefault("Content-Security-Policy", _APP_PAGE_CSP)
+    elif path.startswith("/api/"):
+        if _active_doc(resp.headers.get("content-type", ""), ""):
+            resp.headers.setdefault("Content-Security-Policy", _API_DOC_CSP)
+    elif not path.startswith("/ws"):
         # a document: the desktop, the login page, the manifest. Never framed.
-        resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        if resp.headers.get("content-type", "").lower().startswith("text/html"):
+            resp.headers.setdefault("Content-Security-Policy", _desktop_csp(request))
+        else:
+            resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        if path == "/remote-desktop":
+            # The Remote Desktop app draws this page in a frame of the desktop, and nobody else may
+            resp.headers["Content-Security-Policy"] = resp.headers["Content-Security-Policy"].replace(
+                "frame-ancestors 'none'", "frame-ancestors 'self'")
+            resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         resp.headers.setdefault("X-Frame-Options", "DENY")
     return resp
 
@@ -9245,6 +9719,40 @@ def _is_https(request) -> bool:
     if (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip() == "https":
         return True
     return request.url.scheme == "https"
+
+
+# The doors that do not rest on who the caller seems to be: each holds its own secret, and the name a
+# webhook's sender or a paired machine uses for this one is its own business.
+HOST_OPEN = ("/api/hooks/", "/api/agent/mcp", "/api/mcp/run/", "/api/accounts/oauth/callback/",
+             "/api/standby/peer/")
+
+
+def _host_words(host: str) -> str:
+    return (f"This machine doesn't answer to the name {host or 'in this request'}. If that name is yours, "
+            f"run bento remote --allow-host {remotemod.parse_host(host) or 'NAME'} on the machine, "
+            "or set AGENTOS_ALLOWED_HOSTS where it is hosted.")
+
+
+@app.middleware("http")
+async def host_guard(request: Request, call_next):
+    """Registered last, so it runs first, before anything decides who this is. A page at evil.example can
+    re-point its name at 127.0.0.1: the browser then sends a matching Host and Origin from a loopback
+    address, and every other check here passes. The name is the one thing it cannot make ours."""
+    host = request.headers.get("host", "")
+    if request.url.path.startswith(HOST_OPEN) or remotemod.host_allowed(state.machine_cfg(), host):
+        return await call_next(request)
+    secevents.flag("host.refused", secevents.plain(host, 120), source=_client_addr(request))
+    words = _host_words(host)
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"error": words}, status_code=421, headers=NO_STORE)
+    return Response(words, status_code=421, media_type="text/plain; charset=utf-8", headers=NO_STORE)
+
+
+def _base_url(request) -> str:
+    """This server's address as this request reached it. uvicorn is pinned not to rewrite the scheme, so
+    the proxy's word for it is read here, and it is only ever used to build a link."""
+    base = str(request.base_url).rstrip("/")
+    return "https://" + base[len("http://"):] if _is_https(request) and base.startswith("http://") else base
 
 
 def _set_session_cookie(resp, request, token: str, days: int = 30) -> None:
@@ -9300,6 +9808,20 @@ async def api_resume_app(aid: str):
     return {"ok": True}
 
 
+def _automation_words(data: dict, text: str) -> str:
+    """An `agent` step of a routine is not the person typing. The agent reads it as what it is,
+    and when an agent's turn started the routine, its words are fenced like anything else
+    from outside, which is also what marks the conversation for later turns (agent._TAINT_MARK)."""
+    from . import secevents
+    name = secevents.plain(data.pop("automation", ""), 80) or "a routine"
+    taint = tools.automation_taint(str(data.pop("automation_run", "") or ""))
+    if taint:
+        from .agent import fence
+        from .policy import taint_summary
+        text = fence(taint_summary(taint), text)
+    return f"[From the saved routine \"{name}\". The person did not type this just now.]\n{text}"
+
+
 @app.post("/api/tool")
 async def api_run_tool(body: dict, request: Request):
     """Let a user-built app invoke an agent or MCP tool and get its output. Every call
@@ -9330,17 +9852,24 @@ async def api_run_tool(body: dict, request: Request):
     # item under any mission, or speak in a message chain as somebody it is not.
     if not isinstance(args, dict):
         return JSONResponse({"error": "args must be an object"}, status_code=400)
-    args = {k: v for k, v in args.items() if not str(k).startswith("_")}
+    from .agent import gate_fields, note_refusal, strip_forged
+    args = strip_forged(name, args, source=principal.label)
+    # what only the OS can say (the site, the terminal's foreground, who asked): the same
+    # fields the agent loop fills, so the gate decides the same thing for both
+    args = gate_fields(name, args, principal.id or principal.label)
     level, reason = toolbox.risk_of(name, args)
     # apps render inside the desktop, so their calls arrive via the GUI gate
     surface = "gui" if principal.kind == "app" else "api"
+    # A step of a routine an agent started carries what that agent's turn had read. The page
+    # replays it, and it holds a server-made ticket. A person pressing Run has none.
     dec = state["pdp"].decide_tool(principal, name, args, level, reason=reason,
                                    autonomy=state["cfg"].get("autonomy", ""),
                                    surface=surface,
+                                   taint=tools.automation_taint(str(body.get("automation_run") or "")),
                                    base_risk=toolbox.base_risk(name, args))
-    if name in ALWAYS_ASK and dec.effect == "allow" and dec.rule in ("default", ""):
-        dec.effect = "ask"   # power/session actions confirm every time, autonomy aside
-        dec.grant_offer = None
+    from .policy import person_rule
+    person_rule(principal, name, args, dec, state["pdp"])
+    note_refusal(name, principal, dec)
 
     def _plog(outcome: str, approved=None):
         state["store"].log("policy",
@@ -9475,8 +10004,7 @@ async def api_policy_trace(body: dict):
     It is a probe (audit=False): nothing runs, nothing is metered, no ledger row.
     The agent loop's last word (ALWAYS_ASK, code from a specialist) is applied
     here as it is there, so the answer is what a real call would get."""
-    from .policy import Principal, STAGES, stage_of
-    from .tools import ALWAYS_ASK, ASK_FROM_SPECIALISTS
+    from .policy import Principal, STAGES, person_rule, stage_of
     toolbox, cfg, store = state["toolbox"], state["cfg"], state["store"]
     pdp = getattr(toolbox, "pdp", None)
     if pdp is None:
@@ -9499,8 +10027,7 @@ async def api_policy_trace(body: dict):
                           autonomy=cfg.get("autonomy", ""), surface=surface,
                           taint=taint, audit=False)
     effect, rule, why = dec.effect, dec.rule, dec.reason
-    if dec.effect == "allow" and dec.rule in ("default", "") and (
-            tool in ALWAYS_ASK or (tool in ASK_FROM_SPECIALISTS and kind == "subagent")):
+    if person_rule(principal, tool, args, dec, pdp) and dec.rule != "taint":
         effect, rule = "ask", "person"
         why = "This is confirmed by a person every time, whatever the autonomy."
     stage = stage_of(rule, dec.action)
@@ -9761,7 +10288,7 @@ async def api_backup(body: dict):
 
 
 def _restore_refusal(request: Request):
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "A restore replaces this whole machine, so it can only be "
                                       "started on the machine itself (or with bento restore)."},
                             status_code=403)
@@ -10382,8 +10909,9 @@ async def api_standby_offer(request: Request):
 @app.post("/api/standby/pair")
 async def api_standby_pair(body: dict, request: Request):
     b = body or {}
-    out = await _standby_do(request, standbymod.pair, "standby.pair",
-                            str(b.get("url", "")), str(b.get("code", "")))
+    out = await _standby_do(request, lambda: standbymod.pair(str(b.get("url", "")), str(b.get("code", "")),
+                                                             plain_ok=b.get("plain_http") is True),
+                            "standby.pair")
     if isinstance(out, dict) and out.get("role") == "primary":
         _standby_start()
     return out
@@ -10497,11 +11025,17 @@ def _running_version() -> str:
         return ""
 
 
+def _snap_of(sid: str) -> Path | None:
+    """A snapshot's folder. An id is the time it was taken, digits only: `..` here was
+    AGENTOS_HOME, and DELETE emptied every account on the machine."""
+    return _snap_dir() / sid if re.fullmatch(r"[0-9]{1,20}", sid or "") else None
+
+
 @app.post("/api/snapshots/{sid}/restore")
 async def api_snapshot_restore(sid: str):
     import shutil
-    d = _snap_dir() / sid
-    if not d.is_dir():
+    d = _snap_of(sid)
+    if d is None or not d.is_dir():
         return JSONResponse({"error": "not found"}, status_code=404)
     home = cfgmod.AGENTOS_HOME
     for f in ("config.json", "soul.md", "agentos.db"):
@@ -10516,6 +11050,12 @@ async def api_snapshot_restore(sid: str):
         meta = _j.loads((d / "meta.json").read_text())
     except Exception:
         meta = {}
+    # A person brought an older database and config back: not tampering. Code that differs is
+    # left for the watcher, because a snapshot can hold an agent's self-edit.
+    from . import integrity as _integ
+    from . import memory as _mem
+    _integ.noted(home / "config.json")
+    _mem.forget_ledger_anchor(home / "agentos.db")
     code = (d / "agentos").exists() and meta.get("version") == _running_version()
     if code:
         for py in (d / "agentos").glob("*.py"):
@@ -10530,7 +11070,9 @@ async def api_snapshot_restore(sid: str):
 @app.delete("/api/snapshots/{sid}")
 async def api_snapshot_delete(sid: str):
     import shutil
-    d = _snap_dir() / sid
+    d = _snap_of(sid)
+    if d is None:
+        return JSONResponse({"error": "no such snapshot"}, status_code=404)
     if d.is_dir():
         shutil.rmtree(d)
     return {"ok": True}
@@ -10605,14 +11147,13 @@ async def api_install_skill(body: dict):
     """Install skills from a raw .md URL or a git repo (scans *.md files)."""
     import tempfile
 
-    import httpx
     src = (body.get("source") or "").strip()
     store = state["store"]
     if not src:
         return {"ok": False, "error": "no source given"}
     try:
         if src.endswith(".md") or "raw.githubusercontent.com" in src:
-            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            async with netguard.client(timeout=30, follow_redirects=True) as client:
                 r = await client.get(src)
             if r.status_code != 200:
                 return {"ok": False, "error": f"HTTP {r.status_code}"}
@@ -10621,10 +11162,15 @@ async def api_install_skill(body: dict):
             store.save_skill(name, desc, content, source=src)
             store.log("system", f"skill installed from URL: {name}")
             return {"ok": True, "count": 1}
-        # treat as a git repo
+        # treat as a git repo. Only a web address: `ext::` runs a command and a leading dash is
+        # an option. git does the connecting, so this judges the address it starts from.
+        if not src.startswith(("https://", "http://")):
+            return {"ok": False, "error": "a skill repo has to be an http or https address"}
+        await netguard.check_url(src)
         with tempfile.TemporaryDirectory() as tmp:
             proc = await asyncio.create_subprocess_exec(
-                "git", "clone", "--depth", "1", src, tmp,
+                "git", "-c", "protocol.ext.allow=never", "-c", "core.hooksPath=/dev/null",
+                "clone", "--depth", "1", "--", src, tmp,
                 stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
             _, err = await asyncio.wait_for(proc.communicate(), timeout=120)
             if proc.returncode != 0:
@@ -10662,10 +11208,10 @@ async def api_install_skill(body: dict):
 
 @app.get("/api/wallpaper")
 async def api_wallpaper():
-    p = cfgmod.AGENTOS_HOME / "wallpaper.png"
-    if p.exists():
+    p = tools.wallpaper_file()
+    if p:
         return FileResponse(p, media_type="image/png",
-                            headers={"Cache-Control": "no-store"})
+                            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
     return JSONResponse({"exists": False}, status_code=404)
 
 
@@ -10798,16 +11344,21 @@ async def api_wallpaper_system():
             msg += (" — if you just denied an Automation prompt, allow it in System Settings → "
                     "Privacy & Security → Automation, or set a static image as your wallpaper")
         return JSONResponse({"error": msg}, status_code=404)
-    dest = cfgmod.AGENTOS_HOME / "wallpaper.png"
     # browsers can't render HEIC/TIFF (Apple's default wallpapers) — convert via sips
     if _sys.platform == "darwin" and path.suffix.lower() in (".heic", ".tif", ".tiff", ".bmp"):
+        dest = tools.wallpaper_home() / ".wallpaper-converted.png"
         r = subprocess.run(["sips", "-s", "format", "png", str(path), "--out", str(dest)],
                            capture_output=True, text=True, timeout=30)
         if r.returncode != 0:
             return JSONResponse({"error": f"could not convert {path.suffix} wallpaper: "
                                           f"{(r.stderr or r.stdout).strip()}"}, status_code=500)
+        data = dest.read_bytes()
+        dest.unlink(missing_ok=True)
     else:
-        shutil.copy2(path, dest)
+        data = path.read_bytes()
+    if not tools.image_kind(data):
+        return JSONResponse({"error": "the system wallpaper is not a picture this can show"}, status_code=415)
+    tools.save_wallpaper(data)
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True, "source": str(path)}
 
@@ -10888,19 +11439,22 @@ async def api_remote_login(body: dict, request: Request):
     addr = _client_addr(request)
     if usersmod.enabled():
         return await api_users_login(body, request)
-    if not remotemod.enabled(cfg):
+    if not remotemod.enabled(cfg) and not remotemod.desk_locked(cfg):
         return {"ok": True}                        # nothing to sign in to
-    wait = remotemod.locked_for(addr)
+    addr = _login_source(request)
+    wait = remotemod.locked_for(addr) or (0 if _at_machine(request) else remotemod.target_locked_for("passphrase"))
     if wait:
         return JSONResponse({"error": f"too many attempts — try again in {wait}s"},
                             status_code=429)
     if not remotemod.check_passphrase(cfg, (body or {}).get("passphrase", "")):
-        held = remotemod.note_failure(addr)
+        held = _login_failed(addr, "passphrase", "the passphrase")
         state["store"].log("system", "remote sign-in failed", {"from": addr})
         return JSONResponse(
             {"error": "wrong passphrase" + (f" — locked out for {held}s" if held else "")},
             status_code=401)
     remotemod.note_success(addr)
+    remotemod.note_target_success("passphrase")
+    remotemod.set_desk_locked(False)               # whoever holds the key has unlocked this machine
     state["store"].log("system", "remote sign-in", {"from": addr})
     resp = JSONResponse({"ok": True})
     _set_session_cookie(resp, request, remotemod.issue_session(cfg),
@@ -10909,9 +11463,44 @@ async def api_remote_login(body: dict, request: Request):
 
 
 @app.post("/api/remote/logout")
-async def api_remote_logout():
+async def api_remote_logout(request: Request):
+    return await _sign_out(request)
+
+
+def _login_source(request: Request) -> str:
+    """Whose backoff a guess counts against. Everything on loopback shares one address, so a jailed
+    command guessing must not lock out the person whose browser is also 127.0.0.1."""
+    addr = _client_addr(request)
+    if remotemod.is_loopback(addr) and _peer_verdict(request) in peercheck.REFUSED:
+        return "child"
+    return addr
+
+
+def _login_failed(addr: str, target: str, what: str) -> int:
+    """One wrong password, on the source's count and the account's, and on the record. Returns how long
+    the source must now wait."""
+    held = remotemod.note_failure(addr)
+    held_target = remotemod.note_target_failure(target)
+    secevents.flag("login.failed", what, source=addr)
+    if held or held_target:
+        secevents.flag("login.locked", what, source=addr)
+    return held
+
+
+def _end_token_session(sid: str):
+    for k, e in list(state.get("app_tokens", {}).items()):
+        if sid and e.get("sid") == sid:
+            state["app_tokens"].pop(k, None)
+
+
+async def _sign_out(request: Request):
+    """This browser's session ends, and so does any copy of its cookie: its apps, its sockets, the id."""
+    claims = remotemod.session_claims(state.machine_cfg(), request.cookies.get(remotemod.COOKIE, ""))
+    _end_token_session(str((claims or {}).get("jti") or ""))
+    remotemod.end_session(claims)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(remotemod.COOKIE, path="/")
+    await _ws_recheck()
     return resp
 
 
@@ -10967,7 +11556,13 @@ async def api_session_lock(request: Request):
     new_sid = str((remotemod.session_claims(cfg, locked) or {}).get("jti") or "")
     for e in _app_tokens_of_session(_session_jti(request)):
         e["locked"], e["sid"] = True, new_sid
+    # The cookie from before the lock must not open the screen from a copy, and on a machine with no
+    # accounts a window that sends no cookie at all must not walk round it.
+    remotemod.end_session(remotemod.session_claims(cfg, request.cookies.get(remotemod.COOKIE, "")))
+    if not usersmod.enabled():
+        remotemod.set_desk_locked(True)
     state["store"].log("system", "desktop locked")
+    await _ws_recheck()
     return resp
 
 
@@ -10988,11 +11583,13 @@ async def api_session_unlock(body: dict, request: Request):
                             status_code=401, headers=NO_STORE)
     if not claims.get("lk"):
         return {"ok": True}          # already open: a double submit, not an error
-    addr = _client_addr(request)
-    if (wait := remotemod.locked_for(addr)):
+    addr = _login_source(request)
+    uid = str(claims.get("uid") or "")
+    target = (usersmod.get(uid) or {}).get("name", uid) if uid else "passphrase"
+    wait = remotemod.locked_for(addr) or (0 if _at_machine(request) else remotemod.target_locked_for(target))
+    if wait:
         return JSONResponse({"error": f"too many attempts — wait {wait}s"},
                             status_code=429)
-    uid = str(claims.get("uid") or "")
     pw = str((body or {}).get("password") or "")
     if usersmod.enabled():
         if not uid or usersmod.get(uid) is None:
@@ -11002,9 +11599,12 @@ async def api_session_unlock(body: dict, request: Request):
     else:
         ok = remotemod.check_passphrase(cfg, pw)
     if not ok:
-        remotemod.note_failure(addr)
+        _login_failed(addr, target, f"unlock of {target}")
         return JSONResponse({"error": "that password does not match"}, status_code=401)
     remotemod.note_success(addr)
+    remotemod.note_target_success(target)
+    remotemod.set_desk_locked(False)
+    remotemod.end_session(claims)
     resp = JSONResponse({"ok": True})
     opened = remotemod.issue_session(cfg, uid)
     _set_session_cookie(resp, request, opened)
@@ -11030,13 +11630,12 @@ async def api_remote_configure(body: dict, request: Request):
     come from loopback. An agent, an app, or someone already signed in remotely
     cannot widen this on their own.
     """
-    cfg = state["cfg"]
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse(
-            {"error": "remote access can only be changed from the machine itself"},
-            status_code=403)
+    if (no := _local_admin_refusal(request, "remote access can only be changed from the machine itself")):
+        return no
+    cfg = state.machine_cfg()
     body = body or {}
     r = cfg.setdefault("remote", {})
+    was_on = remotemod.enabled(cfg)
 
     if "passphrase" in body:
         pw = body["passphrase"] or ""
@@ -11048,6 +11647,8 @@ async def api_remote_configure(body: dict, request: Request):
             remotemod.reset_failures()
         else:
             r["pass_hash"] = r["pass_salt"] = ""      # clearing it also disarms below
+        remotemod.set_desk_locked(False)
+        remotemod.quiet_forgeries()                   # every old cookie now reads as a bad signature
 
     if "enabled" in body:
         want = bool(body["enabled"])
@@ -11062,15 +11663,35 @@ async def api_remote_configure(body: dict, request: Request):
     for k in ("bind", "session_days", "trust_loopback"):
         if k in body:
             r[k] = body[k]
+    if "allowed_hosts" in body:
+        names = [str(h).strip().lower() for h in (body["allowed_hosts"] or []) if str(h).strip()]
+        bad = [h for h in names if h != "*" and not remotemod.parse_host(h.removeprefix("*."))]
+        if bad:
+            return JSONResponse({"error": f"{bad[0]} isn't a host name"}, status_code=400)
+        r["allowed_hosts"] = names
 
     remotemod.sanitize_remote(cfg)
     cfgmod.save_config(cfg)
-    state["store"].log("system", f"remote access {'enabled' if remotemod.enabled(cfg) else 'disabled'}",
+    on = remotemod.enabled(cfg)
+    state["store"].log("system", f"remote access {'enabled' if on else 'disabled'}",
                        {"bind": r.get("bind")})
+    _ledger("remote.write", "remote", f"remote access {'on' if on else 'off'}")
     await state["broadcast"]({"type": "remote"})
     st = remotemod.status(cfg)
-    st["restart_required"] = remotemod.enabled(cfg) and \
-        os.environ.get("AGENTOS_BOUND_HOST", "127.0.0.1") != remotemod.bind_host(cfg)
+    bound = os.environ.get("AGENTOS_BOUND_HOST", "127.0.0.1")
+    st["restart_required"] = bound != remotemod.bind_host(cfg)
+    if not on:
+        # Off means off now. A tunnel keeps its own door open past a restart (`tailscale serve --bg`), and
+        # the socket stays bound until one, so say what is still there rather than imply it is gone.
+        st["tunnels_stopped"] = []
+        if was_on:
+            from . import tunnel as tunmod
+            st["tunnels_stopped"] = await tunmod.stop_published(cfg)
+        if not remotemod.is_loopback(bound):
+            st["still_bound"] = bound
+            st["note"] = (f"Remote access is off. The server still listens on {bound} until it restarts, "
+                          "and refuses everything from the network.")
+    await _ws_recheck()
     return st
 
 
@@ -11106,7 +11727,9 @@ async def api_automation_run(key: str):
         return JSONResponse({"error": f"no automation named {key!r}"}, status_code=404)
     state["store"].mark_automation_run(a["id"])
     state["store"].log("automation", f"ran {a['name']}", {"steps": len(a["steps"])})
-    await state["broadcast"]({"type": "automation.run", "automation": a})
+    # Its id and to its owner: the steps come from that person's own list, read by their page.
+    await state["broadcast_user"]({"type": "automation.run", "id": a["id"], "name": a["name"]},
+                                  usersmod.current())
     return {"ok": True, "name": a["name"], "steps": len(a["steps"])}
 
 
@@ -11121,40 +11744,54 @@ async def api_wallpapers_builtin():
 
 @app.get("/api/wallpapers")
 async def api_wallpapers():
-    d = cfgmod.AGENTOS_HOME / "wallpapers"
-    ids = sorted((p.stem for p in d.glob("*.png")), reverse=True) if d.exists() else []
-    return {"wallpapers": ids}
+    ids = {p.stem for d in _wallpaper_dirs() for p in d.glob("*.png")}
+    return {"wallpapers": sorted(ids, reverse=True)}
+
+
+def _wallpaper_dirs() -> list[Path]:
+    """A gallery is its owner's. An admin also sees the machine's older one."""
+    dirs = [tools.wallpaper_home() / "wallpapers"]
+    if usersmod.enabled() and usersmod.is_admin(usersmod.current() or ""):
+        dirs.append(cfgmod.AGENTOS_HOME / "wallpapers")
+    return [d for d in dirs if d.is_dir()]
+
+
+def _wallpaper_item(wid: str) -> Path | None:
+    if not re.fullmatch(r"[\w-]{1,80}", wid or ""):
+        return None
+    return next((d / f"{wid}.png" for d in _wallpaper_dirs() if (d / f"{wid}.png").is_file()), None)
 
 
 @app.get("/api/wallpapers/{wid}")
 async def api_wallpaper_file(wid: str):
-    p = (cfgmod.AGENTOS_HOME / "wallpapers" / f"{wid}.png")
-    if not p.is_file() or ".." in wid or "/" in wid:
+    p = _wallpaper_item(wid)
+    if not p:
         return JSONResponse({"error": "not found"}, status_code=404)
-    return FileResponse(p, media_type="image/png")
+    return FileResponse(p, media_type="image/png", headers={"X-Content-Type-Options": "nosniff"})
 
 
 @app.post("/api/wallpapers/{wid}/set")
 async def api_wallpaper_set(wid: str):
-    p = (cfgmod.AGENTOS_HOME / "wallpapers" / f"{wid}.png")
-    if not p.is_file() or ".." in wid or "/" in wid:
+    p = _wallpaper_item(wid)
+    data = p.read_bytes() if p else b""
+    if not tools.image_kind(data):
         return JSONResponse({"error": "not found"}, status_code=404)
-    (cfgmod.AGENTOS_HOME / "wallpaper.png").write_bytes(p.read_bytes())
+    tools.save_wallpaper(data)
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True}
 
 
 @app.delete("/api/wallpapers/{wid}")
 async def api_wallpaper_delete(wid: str):
-    p = (cfgmod.AGENTOS_HOME / "wallpapers" / f"{wid}.png")
-    if p.is_file() and ".." not in wid and "/" not in wid:
+    p = _wallpaper_item(wid)
+    if p:
         p.unlink()
     return {"ok": True}
 
 
 @app.delete("/api/wallpaper")
 async def api_wallpaper_reset():
-    (cfgmod.AGENTOS_HOME / "wallpaper.png").unlink(missing_ok=True)
+    tools.clear_wallpaper()
     await state["broadcast"]({"type": "wallpaper"})
     return {"ok": True}
 
@@ -11349,8 +11986,13 @@ async def api_asset_file(aid: str):
     if not path:
         return JSONResponse(
             {"error": "the file behind this asset is missing from disk"}, status_code=410)
-    return FileResponse(path, media_type=row.get("mime") or "application/octet-stream",
-                        headers={"Cache-Control": "max-age=31536000, immutable"})
+    mime = row.get("mime") or "application/octet-stream"
+    hdrs = {"Cache-Control": "max-age=31536000, immutable"}
+    # A fetched asset keeps the type the remote server gave it. An SVG stays viewable (the
+    # gallery opens it, and `sandbox` keeps its script off); HTML and XML download.
+    if _active_doc(mime, "") and mime.split(";")[0].strip().lower() != "image/svg+xml":
+        hdrs["Content-Disposition"] = "attachment"
+    return FileResponse(path, media_type=mime, headers=hdrs)
 
 
 @app.get("/api/assets/{aid}/thumb")
@@ -11463,6 +12105,135 @@ async def api_audit(limit: int = 300, effect: str = "", action: str = "",
 @app.get("/api/audit/summary")
 async def api_audit_summary(since: float = 0.0, space: str = ""):
     return state["store"].audit_summary(since=since, space=space)
+
+
+async def _tell_admins(ev: dict) -> None:
+    if not usersmod.enabled():
+        return await state["broadcast_user"](ev, "")
+    for u in usersmod.list_users():
+        if usersmod.is_admin(u["id"]):
+            await state["broadcast_user"](ev, u["id"])
+
+
+def _admin_phones() -> list:
+    """The bridges an alert goes out on: the machine's, and each admin's own."""
+    out = []
+    for name in ("telegram", "whatsapp"):
+        with contextlib.suppress(Exception):
+            if name in state:
+                out.append(state[name])
+    services = getattr(usersmod, "_services", {}) or {}
+    for uid, svc in list(services.items()):
+        if isinstance(svc, dict) and usersmod.is_admin(uid):
+            out += [svc[k] for k in ("telegram", "whatsapp") if svc.get(k) is not None]
+    return list({id(b): b for b in out}.values())
+
+
+async def _security_phone(line: str) -> None:
+    """One line to the person's phone, on what the bridge already has. A bridge with no owner
+    or no token answers in words and sends nothing, and a phone never holds up the server."""
+    for b in _admin_phones():
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(b.send(line), 10)
+
+
+def _security_alert(alert: dict) -> None:
+    """secevents raised an alert, possibly on another thread: every admin's screens and phones
+    hear it (everyone's on a machine with no accounts). The source and detail are the attacker's
+    words, so the page gets them to display as text, and a phone gets only the OS's sentence."""
+    loop = state.get("loop")
+    if not loop or loop.is_closed():
+        return
+
+    async def tell():
+        ev = {"type": "security_alert", "kind": alert["kind"], "words": alert["words"],
+              "source": alert["source"], "count": alert["count"], "at": alert["at"]}
+        await _tell_admins(ev)
+        if alert["kind"] != "integrity.dev":      # a developer's own edits are for their screen
+            await _security_phone(f"⚠ Bento security: {alert['words']}. See Settings → Permissions.")
+
+    with contextlib.suppress(RuntimeError):
+        loop.call_soon_threadsafe(lambda: loop.create_task(tell()))
+
+
+def _integrity_held(hold: dict) -> None:
+    """The agents were just stopped: every open turn and build ends, and the screens say why.
+    The gate already refuses their next step, this ends what a CLI is doing with its own tools."""
+    loop = state.get("loop")
+    if not loop or loop.is_closed():
+        return
+
+    async def stop():
+        from . import executors as execmod
+        with contextlib.suppress(Exception):
+            execmod.stop_all()
+        for t in list(state["turns"].values()):
+            ag = t.get("agent")
+            if ag is not None:
+                ag.aborted = True
+            task = t.get("task")
+            if task and not task.done():
+                asyncio.create_task(_force_cancel(task))
+        build = state.get("build") or {}
+        if build.get("agent"):
+            build["agent"].aborted = True
+        if build.get("task") and not build["task"].done():
+            asyncio.create_task(_force_cancel(build["task"], grace=15.0))
+        await _tell_admins({"type": "security_hold", "at": hold.get("at"), "files": hold.get("files") or []})
+
+    with contextlib.suppress(RuntimeError):
+        loop.call_soon_threadsafe(lambda: loop.create_task(stop()))
+
+
+LEDGER_CHECK_S = 600        # new rows only, so this costs what the new rows cost
+LEDGER_FULL_S = 24 * 3600
+
+
+async def _integrity_loop():
+    """The watcher, on threads: a tick is a stat per file, a ledger walk is SQLite. Nothing here
+    can raise out, because a broken watcher must not take the server down; a watcher that
+    could not start says so on the card."""
+    from . import standby as standbymod
+    w = None
+    try:
+        w = await asyncio.to_thread(integrity.start_watching, None, standbymod.passive)
+        state["ledger_checks"] = await asyncio.to_thread(integrity.verify_ledgers, True)
+    except Exception as e:  # noqa: BLE001
+        print(f"  ! the integrity watcher could not start: {type(e).__name__}: {e}")
+        if w is None:
+            return
+    last_ledger = last_full = time.time()
+    while True:
+        await asyncio.sleep(integrity.WATCH_S)
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(w.tick)
+        now = time.time()
+        if now - last_ledger >= LEDGER_CHECK_S:
+            full = now - last_full >= LEDGER_FULL_S
+            with contextlib.suppress(Exception):
+                state["ledger_checks"] = await asyncio.to_thread(integrity.verify_ledgers, full)
+            last_ledger = now
+            last_full = now if full else last_full
+
+
+@app.get("/api/security/status")
+async def api_security_status():
+    """What the watcher knows, for an admin: the card's one read. Details are shown as text."""
+    denied = _require_admin()
+    if denied:
+        return denied
+    st = await asyncio.to_thread(integrity.status, None, state.get("ledger_checks"))
+    return {**st, "alerts": secevents.recent(10, alerts_only=True)}
+
+
+@app.get("/api/security/events")
+async def api_security_events(limit: int = 200, alerts: bool = False):
+    """The security record, for an admin. Read only: there is no route that clears it."""
+    denied = _require_admin()
+    if denied:
+        return denied
+    limit = max(1, min(int(limit), secevents.KEEP))
+    return {"events": secevents.recent(limit, alerts_only=alerts)}
 
 
 @app.get("/api/audit/verify")
@@ -11640,7 +12411,17 @@ async def api_setup_state():
 @app.post("/api/setup")
 async def api_setup_apply(body: dict):
     from . import setup as setupmod
-    report = setupmod.apply_setup(state["cfg"], body or {})
+    choices = dict(body or {})
+    held = []
+    # Every new account walks this wizard, so the route stays open. A provider key and the
+    # machine's autostart are the machine's, and they are the two things it may not set.
+    if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
+        for k, words in (("providers", "provider keys"), ("autostart", "starting at boot")):
+            if choices.pop(k, None):
+                held.append(words)
+    report = setupmod.apply_setup(state["cfg"], choices)
+    if held:
+        report["held"] = f"Only an admin can change {' and '.join(held)} on this machine."
     state["store"].log("system", "first-run setup completed via wizard", report)
     await state["broadcast"]({"type": "config"})
     return {"ok": True, "report": report}
@@ -11687,6 +12468,14 @@ def _require_admin():
     return None
 
 
+def _local_admin_refusal(request, words: str):
+    """For what changes the whole machine: somebody really at this machine, who is also its admin. Being
+    on loopback alone also describes a signed-in non-admin at the keyboard, and their jailed Terminal."""
+    if not _at_machine(request):
+        return JSONResponse({"error": words}, status_code=403)
+    return _require_admin()
+
+
 def _ledger(action: str, resource: str, reason: str = "", surface: str = "gui"):
     """A person's decision about permissions, on the record like the gate's own. For
     the changes that are not grants (grants audit themselves): letting something out of
@@ -11713,7 +12502,10 @@ async def api_users_who(request: Request):
                username and a password, and only the cookie knows.
     """
     cfg = state.machine_cfg()
+    why = _refused_words(request) if not _authed(request) else ""
     return {**_me(), "any": usersmod.enabled(),
+            # why this browser is at a closed door, in the OS's words, so the page can say it
+            "refused": CHILD_PAGE_WORDS if why == CHILD_WORDS else why,
             "lock": remotemod.lock_kind(cfg),
             "locked": remotemod.session_locked(
                 cfg, request.cookies.get(remotemod.COOKIE, ""))}
@@ -11723,19 +12515,22 @@ async def api_users_who(request: Request):
 async def api_users_login(body: dict, request: Request):
     name = str((body or {}).get("name") or "").strip().lower()
     pw = str((body or {}).get("password") or "")
-    addr = _client_addr(request)
-    wait = remotemod.locked_for(addr)
+    addr = _login_source(request)
+    # An account's own count holds whoever guesses at it, from anywhere. The person at the machine is
+    # exempt, or a stranger guessing could keep the owner out of their own desktop.
+    wait = remotemod.locked_for(addr) or (0 if _at_machine(request) else remotemod.target_locked_for(name))
     if wait:
         return JSONResponse({"error": f"too many attempts — wait {wait}s"},
                             status_code=429)
-    u = usersmod.by_name(name)
     # One message for both failures, on purpose: "no such user" tells somebody
-    # probing which names exist.
-    if not u or not usersmod.check_password(u["id"], pw):
-        remotemod.note_failure(addr)
+    # probing which names exist. And the same work for both, or the clock says it.
+    u = usersmod.verify_login(name, pw)
+    if not u:
+        _login_failed(addr, name, f"sign-in as {name}")
         return JSONResponse({"error": "that username and password do not match"},
                             status_code=401)
     remotemod.note_success(addr)
+    remotemod.note_target_success(name)
     tok = remotemod.issue_session(state.machine_cfg(), u["id"])
     resp = JSONResponse({"ok": True, "id": u["id"], "name": u["name"],
                          "role": u["role"]})
@@ -11746,14 +12541,52 @@ async def api_users_login(body: dict, request: Request):
 
 @app.post("/api/users/logout")
 async def api_users_logout(request: Request):
-    # the apps this browser opened stop with the session: their tokens are dropped
-    sid = _session_jti(request)
-    for k, e in list(state.get("app_tokens", {}).items()):
-        if sid and e.get("sid") == sid:
-            state["app_tokens"].pop(k, None)
+    return await _sign_out(request)
+
+
+@app.post("/api/session/everywhere")
+async def api_session_everywhere(request: Request, body: dict | None = None):
+    """Every device signed in as this account stops, this one included. An admin may name somebody else's
+    account. On a machine with no accounts it is the machine's sessions, and there must be a key to come
+    back with."""
+    cfg = state.machine_cfg()
+    me = usersmod.current()
     resp = JSONResponse({"ok": True})
-    resp.delete_cookie(remotemod.COOKIE, path="/")
+    if usersmod.enabled():
+        uid = str((body or {}).get("uid") or me)
+        if uid != me and not usersmod.is_admin(me):
+            return JSONResponse({"error": "only an admin can sign somebody else out"}, status_code=403)
+        if not usersmod.get(uid):
+            return JSONResponse({"error": "no such user"}, status_code=404)
+        usersmod.end_sessions(uid)
+        _end_account_tokens(uid)
+        if uid == me:
+            resp.delete_cookie(remotemod.COOKIE, path="/")
+        _ledger("session.end", f"user:{uid}", "signed out everywhere")
+    else:
+        if not remotemod.lock_kind(cfg):
+            return JSONResponse({"error": "This machine has no sign-in to end. Set a passphrase first."},
+                                status_code=400)
+        r = cfg.setdefault("remote", {})
+        r["sgen"] = int(r.get("sgen") or 0) + 1
+        cfgmod.save_config(cfg)
+        _end_account_tokens("")
+        resp.delete_cookie(remotemod.COOKIE, path="/")
+        _ledger("session.end", "machine", "signed out everywhere")
+    await _ws_recheck()
     return resp
+
+
+def _end_account_tokens(uid: str, keep_sid: str = "", new_sid: str = "") -> None:
+    """An app's token is good for the session that opened it, so it ends with that account's sessions.
+    `keep_sid` is the browser that made the change and has just been given a new cookie."""
+    for k, e in list(state.get("app_tokens", {}).items()):
+        if str(e.get("uid") or "") != uid:
+            continue
+        if keep_sid and e.get("sid") == keep_sid:
+            e["sid"] = new_sid
+        else:
+            state["app_tokens"].pop(k, None)
 
 
 @app.get("/api/users")
@@ -11793,10 +12626,11 @@ async def api_users_create(body: dict, request: Request):
 
 
 @app.put("/api/users/{uid}")
-async def api_users_update(uid: str, body: dict):
+async def api_users_update(uid: str, body: dict, request: Request):
     b = body or {}
     me = usersmod.current()
     admin = usersmod.is_admin(me)
+    ended = False
     # Your own password is yours. Everything else about an account is the machine's.
     if not admin and uid != me:
         return JSONResponse({"error": "only an admin can change another account"},
@@ -11806,19 +12640,42 @@ async def api_users_update(uid: str, body: dict):
             # changing your own asks for the one you have now: an unattended open
             # session must not be a way to take the account over. An admin resetting
             # somebody else's (they forgot it) needs only their own session.
-            if uid == me and not usersmod.check_password(uid, str(b.get("current") or "")):
-                return JSONResponse({"error": "that isn't your current password"}, status_code=403)
+            if uid == me:
+                who = (usersmod.get(uid) or {}).get("name", uid)
+                if (wait := remotemod.target_locked_for(who)):
+                    return JSONResponse({"error": f"too many attempts — wait {wait}s"}, status_code=429)
+                if not usersmod.check_password(uid, str(b.get("current") or "")):
+                    _login_failed(_login_source(request), who, f"current password of {who}")
+                    return JSONResponse({"error": "that isn't your current password"}, status_code=403)
             usersmod.set_password(uid, str(b["password"]))
+            _ledger("account.password", f"user:{uid}", "password changed")
+            ended = True
         if b.get("role"):
             if not admin:
                 return JSONResponse({"error": "only an admin can change a role"},
                                     status_code=403)
+            before = (usersmod.get(uid) or {}).get("role")
             usersmod.set_role(uid, str(b["role"]))
+            if before != b["role"]:
+                _ledger("account.role", f"user:{uid}", f"role {before} to {b['role']}")
+                ended = True
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
-    return {"ok": True, "user": usersmod.get(uid) and
-            {k: v for k, v in usersmod.get(uid).items()
-             if k not in ("pass_hash", "salt")}}
+    resp = JSONResponse({"ok": True, "user": usersmod.get(uid) and
+                         {k: v for k, v in usersmod.get(uid).items()
+                          if k not in ("pass_hash", "salt")}})
+    if ended:
+        # Those two ended every session of the account. The browser that made the change stays signed in
+        # with a new cookie, because a person changing their own password expects to carry on.
+        new_sid = ""
+        if uid == me:
+            cfg = state.machine_cfg()
+            fresh = remotemod.issue_session(cfg, uid)
+            _set_session_cookie(resp, request, fresh)
+            new_sid = str((remotemod.session_claims(cfg, fresh) or {}).get("jti") or "")
+        _end_account_tokens(uid, _session_jti_of(request) if new_sid else "", new_sid)
+        await _ws_recheck()
+    return resp
 
 
 @app.delete("/api/users/{uid}")
@@ -11829,9 +12686,12 @@ async def api_users_delete(uid: str, wipe: bool = False):
         return JSONResponse({"error": "you cannot delete the account you are using"},
                             status_code=400)
     try:
-        return usersmod.delete(uid, wipe=wipe)
+        out = usersmod.delete(uid, wipe=wipe)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    _end_account_tokens(uid)
+    await _ws_recheck()
+    return out
 
 
 # ---- sharing: the one place data crosses between people --------------------
@@ -12133,9 +12993,8 @@ async def api_setup_reset(body: dict, request: Request):
     session gets to trigger. The `SENSITIVE_FOR_APPS` guard blocks the app-referer
     case; this is the belt to that suspenders, and it also stops a signed-in
     executor from wiping the machine."""
-    if not remotemod.is_loopback(_client_addr(request)):
-        return JSONResponse({"error": "a factory reset can only be run from the machine itself"},
-                            status_code=403)
+    if (no := _local_admin_refusal(request, "a factory reset can only be run from the machine itself")):
+        return no
     if usersmod.enabled() and not usersmod.is_admin(usersmod.current()):
         return JSONResponse({"error": "only an admin can factory-reset this machine"},
                             status_code=403)
@@ -13273,7 +14132,7 @@ async def api_arena_list():
     models = await providers.available_models(cfg)
     brains = await asyncio.to_thread(execmod.brains, cfg, models)
     live = [k[1] for k in _ARENAS if k[0] == uid]
-    return {"choices": arenamod.choices(brains), "recent": arenamod.recent(uid), "live": live,
+    return {"choices": arenamod.choices(_brains_for_caller(brains)), "recent": arenamod.recent(uid), "live": live,
             "min": arenamod.MIN, "max": arenamod.MAX}
 
 
@@ -13291,7 +14150,7 @@ async def api_arena_start(body: dict):
     models = await providers.available_models(cfg)
     brains = await asyncio.to_thread(execmod.brains, cfg, models)
     try:
-        seats = arenamod.contenders(brains, (body or {}).get("contenders"))
+        seats = arenamod.contenders(_brains_for_caller(brains), (body or {}).get("contenders"))
         a = arenamod.new((body or {}).get("task", ""), seats, execmod.default_workspace(cfg))
     except arenamod.ArenaError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
@@ -13360,6 +14219,8 @@ async def api_timetravel_plan(pid: str):
         return timetravel.plan(db, home, pid)
     except KeyError:
         return JSONResponse({"error": "no such checkpoint"}, status_code=404)
+    except timetravel.Forged as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
 
 
 @app.post("/api/timetravel/{pid}/rewind")
@@ -13374,7 +14235,10 @@ async def api_timetravel_rewind(pid: str):
     if p["conversation_id"] and p["conversation_id"] in state["turns"]:
         return JSONResponse({"error": "That conversation is still working. Stop it or let it finish, then rewind."},
                             status_code=409)
-    got = await asyncio.to_thread(timetravel.rewind, db, home, pid)
+    try:
+        got = await asyncio.to_thread(timetravel.rewind, db, home, pid)
+    except timetravel.Forged as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
     state["store"].log("system", f"time travel: rewound to before {p['tool']} ({pid}): " + ", ".join(got["words"]))
     await state["broadcast_user"]({"type": "timetravel", "rewound": pid, "conversation_id": p["conversation_id"]},
                                   usersmod.current())
@@ -13397,7 +14261,8 @@ async def api_timetravel_fork(pid: str, body: dict):
     model = str((body or {}).get("model") or "")
     if model:
         brains = await asyncio.to_thread(execmod.brains, state["cfg"], await providers.available_models(state["cfg"]))
-        ok = {c["model"] if c["kind"] == "provider" else c["executor"] for c in arenamod.choices(brains)}
+        ok = {c["model"] if c["kind"] == "provider" else c["executor"]
+              for c in arenamod.choices(_brains_for_caller(brains))}
         if model not in ok:
             return JSONResponse({"error": f"{model!r} is not a brain this machine can run right now"}, status_code=400)
     store = state["store"]
@@ -14088,6 +14953,23 @@ async def api_pool_approve(body: dict):
     return _pool_view()
 
 
+@app.post("/api/pool/vouch")
+async def api_pool_vouch(body: dict):
+    """Whether a member may take over if the leader goes. Only the machine that started the
+    community can say, because the signature is what every other machine checks."""
+    if (r := _require_admin()):
+        return r
+    from . import pool as poolmod
+    b = body or {}
+    try:
+        with usersmod.as_user(""):
+            e = poolmod.set_vouch(str(b.get("who") or ""), b.get("on") is not False)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    await _pool_changed(f"{e.get('name')} {'may' if b.get('on') is not False else 'may not'} take over")
+    return _pool_view()
+
+
 @app.post("/api/pool/remove")
 async def api_pool_remove(body: dict):
     if (r := _require_admin()):
@@ -14288,6 +15170,8 @@ async def api_provision_zero(body: dict):
     await _provision_sync()
     u = usersmod.get(owner) if owner else None
     return {"line": line, "hubs": hubs, "addresses": addrs, "key": {k: key[k] for k in ("id", "label", "auto")},
+            "held": ("An admin has to set the first machine up here, because that opens this "
+                     "machine's link port." if _zero_waits_for_admin({"owner": owner}) else ""),
             "for": {"id": owner, "name": u["name"] if u else ""},
             "standard": provmod.standard()}
 
@@ -14310,7 +15194,8 @@ async def api_provision_key(body: dict):
         return r
     from . import provision as provmod
     b = body or {}
-    k = provmod.make_key(str(b.get("label") or ""), bool(b.get("auto")), b.get("profile"))
+    k = provmod.make_key(str(b.get("label") or ""), bool(b.get("auto")), b.get("profile"),
+                         reusable=bool(b.get("reusable")))
     _ledger("provision.key", f"provision:key/{k['id']}",
             f"made an enrolment key '{k['label']}'" + (" (automatic)" if k["auto"] else ""))
     await _provision_sync()
@@ -14436,7 +15321,9 @@ def _ssh_refusal(e) -> JSONResponse:
     body = {"error": str(e)}
     if isinstance(e, ri.KeyChanged):
         body["key_changed"] = e.facts()
-    return JSONResponse(body, status_code=409 if "key_changed" in body else 400)
+    if isinstance(e, ri.NewKey):
+        body["first_key"] = e.facts()
+    return JSONResponse(body, status_code=409 if "key_changed" in body or "first_key" in body else 400)
 
 
 @app.post("/api/devices/forget-key")
@@ -14457,14 +15344,34 @@ async def api_devices_forget_key(body: dict):
     return {"forgot": old}
 
 
+@app.post("/api/devices/trust-key")
+async def api_devices_trust_key(body: dict):
+    """A person looked at the key a machine shows and said yes. Kept only if the machine still
+    shows that one. Until then Bento logs in to nothing there. Admin only, and a ledger row."""
+    if (r := _require_admin()):
+        return r
+    from . import remoteinstall as ri
+    b = body or {}
+    ip, port, fp = str(b.get("ip") or ""), int(b.get("port") or 22), str(b.get("fingerprint") or "")
+    try:
+        ok = await asyncio.to_thread(ri.pin_host, ip, port, fp)
+    except ri.InstallError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if not ok:
+        return JSONResponse({"error": "that machine no longer shows that key"}, status_code=409)
+    _ledger("device.trust", f"device:{ip}", f"trusted the SSH key of {ip} ({fp})")
+    return {"trusted": fp}
+
+
 def _device_creds(b: dict) -> tuple[str, str, str, int]:
     """The address, user, password and SSH port for one login. A blank password is the one saved
-    for that machine and user in this computer's vault, if one was; a typed one is used as typed
-    and saved only by `_remember_pw`, after it worked and when the person asked."""
-    ip, user, pw = str(b.get("ip") or ""), str(b.get("user") or ""), str(b.get("password") or "")
+    for that machine and user in this computer's vault, if one was and if this machine shows the
+    key it was saved for. A typed one is used as typed and saved only by `_remember_pw`, after it
+    worked and when the person asked."""
+    ip, user, pw, port = str(b.get("ip") or ""), str(b.get("user") or ""), str(b.get("password") or ""), int(b.get("port") or 22)
     if not pw and ip and user:
-        pw = _saved_pw(ip, user)
-    return ip, user, pw, int(b.get("port") or 22)
+        pw = _saved_pw(ip, user, port)
+    return ip, user, pw, port
 
 
 def _pw_name(ip: str, user: str) -> str:
@@ -14475,10 +15382,33 @@ def _pw_name(ip: str, user: str) -> str:
     return "ssh." + (mac or ip).replace(":", "-") + "." + user
 
 
-def _saved_pw(ip: str, user: str) -> str:
-    from . import vault
+PW_BOUND = "bound:"                    # a saved password's value: bound:<host key>\n<password>
+
+
+def _saved_pw(ip: str, user: str, port: int = 22) -> str:
+    """The saved password, only for the machine it was saved for. An entry is found by MAC, and
+    anybody on the network can claim a MAC on a new address, so what decides is the host key:
+    the pin here must be the one it was saved with, or the machine must be showing that key.
+    One saved before keys were kept is bound to a pin already here, or held back."""
+    from . import remoteinstall as ri
+    from . import secevents, vault
     with usersmod.as_user(""):             # the machines on the network are the machine's
-        return vault.get(_pw_name(ip, user), actor="device login")
+        raw = vault.get(_pw_name(ip, user), actor="device login") or ""
+    if not raw:
+        return ""
+    pinned = ri.fingerprint(ip, port)
+    if not raw.startswith(PW_BOUND):
+        if not pinned:
+            return ""
+        with contextlib.suppress(Exception), usersmod.as_user(""):
+            vault.put(_pw_name(ip, user), f"{PW_BOUND}{pinned}\n{raw}")
+        return raw
+    head, _, pw = raw.partition("\n")
+    want = head[len(PW_BOUND):]
+    if pinned == want or (not pinned and ri.pin_host(ip, port, want)):
+        return pw
+    secevents.flag("device.key", f"{user}@{ip}", source=ip)
+    return ""
 
 
 def _pw_saved(ip: str, user: str) -> bool:
@@ -14498,9 +15428,13 @@ def _remember_pw(b: dict) -> str:
     if not (ip and user and pw and b.get("remember")):
         return ""
     had = _pw_saved(ip, user)
+    from . import remoteinstall as ri
+    key = ri.fingerprint(ip, int(b.get("port") or 22))
+    if not key:
+        return "not saved: this machine has no key on record for it"
     try:
         with usersmod.as_user(""):
-            vault.put(_pw_name(ip, user), pw)
+            vault.put(_pw_name(ip, user), f"{PW_BOUND}{key}\n{pw}")
     except Exception as e:                 # a locked vault says so; the login itself worked
         return f"not saved: {e}"
     _ledger("device.password", f"device:{ip}", f"{'replaced the saved' if had else 'saved the'} password for "
@@ -14623,7 +15557,7 @@ async def api_devices_sdcard(request: Request, body: dict):
     writes to a local path). The card then installs Bento on its first boot."""
     if (r := _require_admin()):
         return r
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "the SD card is written on the machine it is plugged into; "
                                       "use this machine's own screen or `bento pool sdcard`"}, status_code=403)
     from . import provision as provmod
@@ -15221,7 +16155,7 @@ async def api_network_firewall(request: Request, body: dict):
     with usersmod.as_user(""):
         cfg = state.machine_cfg()
         if act == "open":
-            if not remotemod.is_loopback(_client_addr(request)):
+            if not _at_machine(request):
                 return JSONResponse({"error": "open the firewall from this computer's own screen, "
                                               "or run `bento network firewall open` here"}, status_code=403)
             got = await asyncio.to_thread(hostfirewall.open_ports, cfg)
@@ -15386,7 +16320,17 @@ async def api_demo_warehouse(request: Request):
     """The warehouse demo (demos/warehouse.py): off, starting, ready or failed, and where it is.
     Its pages are on this machine's loopback, so a browser elsewhere is told it can't open them."""
     from .demos import warehouse as wh
-    return {**wh.status(), "here": remotemod.is_loopback(_client_addr(request)), "account": _demo_account()}
+    return {**wh.status(), **_demo_doors(), "here": remotemod.is_loopback(_client_addr(request)),
+            "account": _demo_account()}
+
+
+def _demo_doors() -> dict:
+    """The demo's addresses with its key in them, for its own user and an admin at the machine's screen.
+    Anybody else signed in here gets the plain ones, which open nothing."""
+    from .demos import warehouse as wh
+    if usersmod.enabled() and _demo_account().get("need") and not usersmod.is_admin(usersmod.current()):
+        return {}
+    return wh.keyed_urls()
 
 
 def _demo_account() -> dict:
@@ -15412,7 +16356,7 @@ async def api_demo_warehouse_act(request: Request, body: dict):
     the brain, which spends what the brain costs. With accounts only the demo's own user starts it (an
     admin made that user for it, and may stop it); `account` makes that user."""
     from .demos import warehouse as wh
-    if not remotemod.is_loopback(_client_addr(request)):
+    if not _at_machine(request):
         return JSONResponse({"error": "The demo runs on this machine's own addresses, so start it on the "
                                       "machine itself (or with bento demo warehouse)."}, status_code=403)
     act = body.get("action")
@@ -15437,7 +16381,7 @@ async def api_demo_warehouse_act(request: Request, body: dict):
         usersmod.save_user_cfg(u["id"], ucfg)
         usersmod.reset_caches()
         _ledger("demo.account", f"user:{u['id']}", f"made the user {u['name']} for the warehouse demo")
-        return {**wh.status(), "here": True, "account": _demo_account()}
+        return {**wh.status(), **_demo_doors(), "here": True, "account": _demo_account()}
     if acct["need"] == "create":
         return JSONResponse({"error": "The demo runs as a user of its own. Create one for it first."}, status_code=403)
     if acct["need"] == "signin" and not (act == "stop" and usersmod.is_admin(usersmod.current())):
@@ -17411,7 +18355,7 @@ async def api_flows(request: Request):
                 # port: a server started on another port, reached over the LAN, or behind
                 # a tunnel would otherwise hand out a URL that quietly does not work.
                 t["url"] = flowsmod.hook_url(state["cfg"], f["name"], t,
-                                             base=str(request.base_url).rstrip("/"))
+                                             base=_base_url(request))
         out.append({**f, "triggers": trigs,
                     "grants": [g for g in store.list_grants()
                                if (g.get("source_ref") or "") == flowsmod.source_ref(f["name"])],
@@ -17837,7 +18781,7 @@ async def api_flow_hook(name: str, trigger_id: str, request: Request):
         return JSONResponse({"error": "this hook is quarantined — release it in "
                                       "Settings → Quarantine, or `bento quarantine`"},
                             status_code=429)
-    if not hmac.compare_digest(str(given), str(trig.get("secret") or "\0")):
+    if not constcmp.same(str(given), str(trig.get("secret") or "\0")):
         store.log("error", f"webhook: bad secret for flow '{name}'",
                   {"trigger": trigger_id, "from": addr})
         return JSONResponse({"error": "bad secret"}, status_code=401)
@@ -17915,8 +18859,14 @@ async def api_fabric_approvals():
 
 
 @app.post("/api/fabric/approvals/{aid}")
-async def api_fabric_approve(aid: str, body: dict):
+async def api_fabric_approve(aid: str, body: dict, request: Request):
     b = body or {}
+    # A question that must be a person's is not answered by a token, or by anything that came in on
+    # loopback alone: the gate let a signed-in session or somebody at this machine this far, and an
+    # app's token is neither.
+    entry = (state.get("pending_approvals") or {}).get(aid)
+    if entry and entry.get("must_person") and b.get("approved") and _valid_app_token(request):
+        return JSONResponse({"error": "A person has to answer this one."}, status_code=403)
     ok = await resolve_approval(aid, bool(b.get("approved")), b.get("remember") or False,
                                 uid=usersmod.current() if usersmod.enabled() else "")
     if not ok:
@@ -17988,11 +18938,24 @@ async def api_fabric_observability():
             "live": state["fabric"].live_instances()}
 
 
+def _model_gate(*models: str):
+    """The decision and the ledger row a chat turn gets for spending on a model (agent.py). A deny
+    grant stops it, and every call says who spent what on the record. Returns the refusal, or None."""
+    from .policy import MAIN
+    for m in models:
+        dec = state["pdp"].decide(MAIN, "model.use", f"model:{m}", {"surface": "gui"})
+        if dec.effect == "deny":
+            return JSONResponse({"error": f"you may not use {m} ({dec.reason or 'Permissions'})"}, status_code=403)
+    return None
+
+
 @app.post("/api/plane/llm")
 async def api_plane_llm(body: dict):
     """Model plane: data planes reach LLMs through the control plane's provider config,
     never with their own keys. L0 calls in-process; L1+ will call this over mTLS."""
     model = body.get("model") or state["cfg"].get("default_model", "")
+    if (refused := _model_gate(model)):
+        return refused
     messages = body.get("messages") or []
     text, calls, usage = [], [], {"input": 0, "output": 0}
     try:
@@ -18234,13 +19197,55 @@ def _ws_origin_ok(ws) -> bool:
     return urlsplit(origin).netloc == ws.headers.get("host", "")
 
 
+# Every socket that passed the gate. A socket is authenticated once, at its handshake, so without this a
+# terminal and a running turn stayed live behind a lock, a sign-out and a deleted account.
+_WS_LIVE = weakref.WeakSet()
+
+
+async def _ws_recheck() -> int:
+    """Ask the gate again about every open socket, with the cookie each opened on, and close the ones it
+    now refuses. One question for every event (a lock, a sign-out, a password, a deleted account, a change
+    made from a terminal), and it also catches a cookie that has expired. A terminal session carries on
+    without its window: it belongs to the server, and the window only watched it."""
+    closed = 0
+    for ws in list(_WS_LIVE):
+        if ws.application_state == WebSocketState.DISCONNECTED or \
+                ws.client_state == WebSocketState.DISCONNECTED:
+            _WS_LIVE.discard(ws)
+            continue
+        if _ws_authed(ws):
+            continue
+        _WS_LIVE.discard(ws)
+        closed += 1
+        with contextlib.suppress(Exception):
+            await ws.close(code=4401)
+    return closed
+
+
+async def _perimeter_loop():
+    """What the events above cannot catch: a change from another process, an expiry, an orphan's status."""
+    while True:
+        await asyncio.sleep(30)
+        with contextlib.suppress(Exception):
+            await _ws_recheck()
+        with contextlib.suppress(Exception):
+            peercheck.reap()
+
+
 async def _ws_reject(ws) -> bool:
-    """One gate every socket passes before `accept()`: cross-origin first, then
+    """One gate every socket passes before `accept()`: the name, then cross-origin, then
     auth. Returns True when the handshake was refused (and already closed), so a
     handler reads `if await _ws_reject(ws): return`. Having ONE gate is the point
     — an origin check that each new socket has to remember to add is one a new
     socket will eventually forget, and this OS's sockets include a shell."""
+    host = ws.headers.get("host", "")
+    if not remotemod.host_allowed(state.machine_cfg(), host):
+        secevents.flag("host.refused", secevents.plain(host, 120), source=_client_addr(ws))
+        with contextlib.suppress(Exception):
+            await ws.close(code=4421)
+        return True
     if not _ws_origin_ok(ws):
+        secevents.flag("origin.refused", ws.url.path, source=_client_addr(ws))
         with contextlib.suppress(Exception):
             state["store"].log("system", "refused a cross-origin WebSocket",
                                {"origin": ws.headers.get("origin", ""),
@@ -18249,6 +19254,7 @@ async def _ws_reject(ws) -> bool:
             await ws.close(code=4403)     # 4403: our "forbidden origin"
         return True
     if not _ws_authed(ws):
+        _refused_words(ws)
         with contextlib.suppress(Exception):
             await ws.close(code=4401)
         return True
@@ -18258,6 +19264,7 @@ async def _ws_reject(ws) -> bool:
         with contextlib.suppress(Exception):
             await ws.close(code=4503)
         return True
+    _WS_LIVE.add(ws)
     return False
 
 
@@ -18265,21 +19272,17 @@ def _ws_authed(ws) -> bool:
     """Websockets do not pass through HTTP middleware, so the same gate is
     applied by hand here — a socket is a longer-lived and more capable channel
     than any REST call, and the terminal one is literally a shell."""
-    cfg = state.machine_cfg()
-    if remotemod.session_locked(cfg, ws.cookies.get(remotemod.COOKIE, "")):
-        return False              # same refusal as `_authed`, for the same reason
-    if usersmod.enabled():
-        # A machine with accounts is locked by them: only a valid signed session
-        # cookie gets a socket, whichever transport it arrived on. Loopback trust
-        # cannot survive multi-user for the same reason it cannot for HTTP — see
-        # _authed — so it is deliberately not consulted here.
-        return _ws_user(ws) is not None
-    if not remotemod.enabled(cfg):
+    return _authed(ws)
+
+
+async def _ws_not_admin(ws) -> bool:
+    """A socket's half of machine_only_gate, which never sees one. True when it was
+    refused and closed: the host's screen and native apps are the machine's."""
+    if usersmod.enabled() and not usersmod.is_admin(_ws_user(ws) or ""):
+        with contextlib.suppress(Exception):
+            await ws.close(code=4403)
         return True
-    if cfg["remote"].get("trust_loopback", True) and \
-       remotemod.is_loopback((ws.client.host if ws.client else "") or ""):
-        return True
-    return remotemod.valid_session(cfg, ws.cookies.get(remotemod.COOKIE, ""))
+    return False
 
 
 def _ws_user(ws) -> str | None:
@@ -18331,6 +19334,8 @@ async def ws_vnc(ws: WebSocket):
     why it is the same job websockify does, and why AgentOS does not need it.
     """
     if await _ws_reject(ws):
+        return
+    if await _ws_not_admin(ws):
         return
     if not _vnc_running():
         # Refuse rather than hang: a client waiting forever on a socket that will
@@ -18504,6 +19509,8 @@ async def ws_appstream(ws: WebSocket):
     """One window onto a projected app: frames out (binary), the person's input in."""
     if await _ws_reject(ws):
         return
+    if await _ws_not_admin(ws):
+        return
     uid = _ws_user(ws) or ""
     await ws.accept()
     s = _aps.get(uid, ws.query_params.get("id") or "")
@@ -18545,22 +19552,34 @@ def _terminal_argv(uid: str) -> tuple[list, str, str]:
     (folder_binds): a folder the agent can read and the Terminal cannot is a difference
     nobody can explain from the outside."""
     import os
-    from .tools import bwrap_argv, folder_binds, sandbox_conf, sandbox_mechanism
+    from .tools import account_root, bwrap_argv, folder_binds, jail_root, sandbox_conf, sandbox_exec_argv, \
+        sandbox_mechanism
     sb_ro, sb_extra = folder_binds(state.machine_cfg(), uid or None)
     shell = os.environ.get("SHELL", "/bin/bash")
+
+    def jailed(root, hide=None, chdir=None):
+        # new_session stays off here, and bwrap_argv says why: a Terminal needs its job control
+        if sandbox_mechanism() == "sandbox-exec":
+            return sandbox_exec_argv(root, "exec /bin/bash -l", chdir=chdir, hide=hide, extra=sb_extra, ro_extra=sb_ro)
+        return bwrap_argv(root, ["/bin/bash", "-l"], chdir=chdir, hide=hide, extra=sb_extra, ro_extra=sb_ro,
+                          new_session=False)
+
     if usersmod.enabled():
         if not sandbox_mechanism():
             return [], "", ("This machine has accounts, so the Terminal must run in a per-account "
                             "jail. Install bubblewrap to enable it.")
-        home = os.path.realpath(str(usersmod.home_for(uid)))
-        os.makedirs(home, exist_ok=True)
-        return (bwrap_argv(home, ["/bin/bash", "-l"], chdir=home,
-                           hide=[os.path.realpath(str(usersmod.users_root()))],
-                           extra=sb_extra, ro_extra=sb_ro), home, "")
+        ucfg = usersmod.cfg_for(uid, state.machine_cfg())
+        root = account_root(ucfg, uid)
+        # the first account keeps ~/AgentOS as its workspace, shared into the jail: it opens there
+        ws = os.path.realpath(os.path.expanduser(str(ucfg.get("workspace") or "")))
+        return jailed(root, [os.path.realpath(str(usersmod.users_root()))], chdir=ws), root, ""
     sandboxed, sb_root = sandbox_conf(state.machine_cfg())
-    if sandboxed:
+    if sandboxed and sandbox_mechanism():
+        sb_root = jail_root(sb_root)
         Path(sb_root).mkdir(parents=True, exist_ok=True)
-        return bwrap_argv(sb_root, ["/bin/bash", "-l"], extra=sb_extra, ro_extra=sb_ro), sb_root, ""
+        return jailed(sb_root), sb_root, ""
+    # No jail on a one-person machine: this window is that person's own shell. The agent cannot type
+    # into it without a yes each time (agent.py, tools.jail_gap).
     return [shell, "-l"], os.path.expanduser("~"), ""
 
 
@@ -18569,7 +19588,10 @@ def _terminal_spawn(uid: str, name: str = "", by: str = "you"):
     argv, cwd, why = _terminal_argv(uid)
     if why:
         raise RuntimeError(why)
-    s = ptyhub.spawn(uid, argv, cwd=cwd, name=name, by=by)
+    # a jail clears its own environment; a plain shell should not inherit the server's keys either
+    from .tools import unjailed_env
+    s = ptyhub.spawn(uid, argv, cwd=cwd, name=name, by=by,
+                     env=None if argv[0] in ("bwrap", "sandbox-exec") else unjailed_env())
     with usersmod.as_user(uid):
         state["store"].log("system", f"terminal session started: {s.name} (pid {s.pid}, by {by})")
     return s
@@ -18695,6 +19717,19 @@ def _queue_add(cid: str, data: dict) -> dict:
     return item
 
 
+def _turn_mine(slot: dict, uid: str, gone: bool = False) -> bool:
+    """Is this running turn or build this account's? `gone` also says yes to a slot that has
+    ended, which is nobody's to protect (a Stop that arrives just after the turn ended)."""
+    if gone and not slot:
+        return True
+    return str((slot or {}).get("uid", "") or "") == str(uid or "")
+
+
+def _queue_mine(cid: str, uid: str) -> bool:
+    """Every message waiting in this chat was sent by this account (an empty queue is)."""
+    return all(str(i.get("uid", "") or "") == str(uid or "") for i in state["queues"].get(cid) or [])
+
+
 def _queue_public(cid: str) -> list[dict]:
     """The queue as the UI sees it — text and decision only, never image payloads."""
     return [{"id": i["id"], "text": i["text"], "images": len(i["images"]),
@@ -18757,7 +19792,8 @@ async def _queue_flush(cid: str):
             "surface": item["surface"], "origin": item["origin"],
             "context": item["context"], "conversation_id": cid,
             "uid": item.get("uid", "")}
-    state["turns"][cid] = {"agent": None, "task": None, "model": ""}   # claim, then start
+    # claim, then start, with the owner on it: `_queue_broadcast` and every owner check read it
+    state["turns"][cid] = {"agent": None, "task": None, "model": "", "uid": item.get("uid", "")}
     state["turns"][cid]["task"] = asyncio.create_task(run_chat(cid, data))
     await _queue_broadcast(cid, started={"id": item["id"], "text": item["text"]})
 
@@ -18824,6 +19860,29 @@ async def run_chat(cid: str, data: dict):
         return await _run_chat(cid, data)
 
 
+def _agent_cli_refused(requested: str) -> str:
+    """Why this account may not name that agent CLI for one turn, or '' when it may.
+
+    An agent CLI runs on the MACHINE's login and spend, which is why choosing one as the
+    machine's brain is an admin's call (`api_set_brain`). Naming it per turn is the same
+    choice, so it gets the same answer. Riding the brain an admin already chose is fine."""
+    from . import executors as execmod
+    requested = str(requested or "")
+    if requested == "aria" or requested not in execmod.ENGINES:
+        return ""
+    if not usersmod.enabled() or usersmod.is_admin(usersmod.current()):
+        return ""
+    if str(state.machine_cfg().get("engine") or "aria") == requested:
+        return ""
+    return "Only an admin can choose which agent answers on this machine, so this wasn't sent."
+
+
+def _brains_for_caller(brains: dict) -> dict:
+    """The brain list without the agent CLIs this account may not name."""
+    return {**brains, "executors": [e for e in (brains or {}).get("executors") or []
+                                    if e.get("kind") != "agent" or not _agent_cli_refused(e.get("id"))]}
+
+
 class _FallingBack(Exception):
     """The turn goes to the next brain: nothing is saved for this one."""
 
@@ -18858,6 +19917,11 @@ async def _run_chat(cid: str, data: dict):
     # surface it arrived from — chat, omnibar, copilot panel. An explicit engine
     # in the request still wins, so one chat can opt out of the machine setting.
     from . import executors as execmod
+    if (why := _agent_cli_refused(data.get("model") or "")):
+        await evsend({"type": "error", "message": why})
+        await evsend({"type": "turn_end", "conversation_id": cid})
+        turns.pop(cid, None)
+        return
     engine = execmod.resolve_engine(cfg, data.get("model") or "")
     if engine != "aria":
         model = engine
@@ -19062,8 +20126,11 @@ async def _run_chat(cid: str, data: dict):
             # a run that never started.
             await evsend({"type": "status", "message": f"starting {ex_title}"})
             collected: list[str] = []
+            read_outside = [False]      # did its own tools read anything? auto-learn asks (knowledge.py)
 
             async def _relay(ev: dict):
+                if ev.get("type") == "tool_start" and knowledge.cli_tool_reads_outside(ev.get("name")):
+                    read_outside[0] = True
                 if ev.get("type") == "text_delta":
                     collected.append(ev.get("text", ""))
                 elif ev.get("type") == "tool_start" and collected and \
@@ -19084,6 +20151,7 @@ async def _run_chat(cid: str, data: dict):
             commits: list[tuple[bool, str]] = []
             # a message typed while it works reaches it at its next step (Run.steer)
             env.steerable = model == "claude-code"
+            env.person = True     # a person's own chat: the CLI reads their user-level settings
             try:
                 await execmod.run_task(text, env, _relay, run)
                 turn_done = True
@@ -19123,7 +20191,7 @@ async def _run_chat(cid: str, data: dict):
                 await state["broadcast"]({"type": "apps"})
             header = ""
             result = {"content": "".join(collected),
-                      "steps": [{"type": "executor", "name": model,
+                      "steps": [{"type": "executor", "name": model, "read_outside": read_outside[0],
                                  "cost_usd": run.cost_usd, "turns": run.turns,
                                  "denials": run.denials, "envelope": env.describe()}],
                       # who actually answered, so a reloaded conversation still
@@ -19278,7 +20346,9 @@ async def _run_chat(cid: str, data: dict):
             if (not said or said.startswith("[error]")) and fallbackmod.unavailable(turn_errors + [said]):
                 fb_tried.append(fallbackmod.key(engine if engine != "aria" else "aria",
                                                 "" if engine != "aria" else model))
-                fb_next = fallbackmod.next_for(cfg, fb_tried)
+                fb_next = fallbackmod.next_for(cfg, fb_tried + [
+                    fallbackmod.key(f["executor"], f["model"]) for f in fallbackmod.chain(cfg)
+                    if _agent_cli_refused(f["executor"])])
         except Exception:
             fb_next = None
         # Saving the reply comes first and alone. Everything after it is
@@ -19569,6 +20639,8 @@ async def api_evals_run(body: dict | None = None):
     models = [m for m in models if m]
     if not models:
         return JSONResponse({"error": "no model configured to test"}, status_code=400)
+    if (refused := _model_gate(*models)):
+        return refused
     bcast = state.get("broadcast")
 
     async def progress(r):
@@ -19724,7 +20796,10 @@ async def build_status():
     """Reconnect support: a reloaded App Studio asks whether a build is still running."""
     b = state.get("build") or {}
     running = bool(b.get("task") and not b["task"].done())
-    return {"running": running, "app_id": b.get("app_id", ""),
+    if not _turn_mine(b, usersmod.current()):
+        # one build at a time, so somebody else's still says "busy", and nothing about it
+        return {"running": running, "app_id": "", "prompt": "", "started_at": 0, "mine": False}
+    return {"running": running, "app_id": b.get("app_id", ""), "mine": True,
             "prompt": b.get("prompt", ""), "started_at": b.get("started_at", 0)}
 
 
@@ -19739,11 +20814,26 @@ async def run_build(data: dict):
 async def _run_build(data: dict):
     cfg, store, toolbox = state["cfg"], state["store"], state["toolbox"]
     build = state["build"]
-    bcast = state["broadcast"]
+    owner = str(data.get("uid", "") or "")
+
+    async def bcast(ev: dict):
+        # the prompt and the app's source are in these events, so they are the owner's only
+        await state["broadcast_user"](ev, owner)
+
     prompt = (data.get("prompt") or "").strip()
     if not prompt:
         return
+    # What an app said about itself, sent on by the page's "Fix it". It reached that page by
+    # postMessage, so it is the app's text and never the person's request.
+    from .teamlink import plain as _plain
+    app_error = _plain(str(data.get("app_error") or ""))[:300]
+    if app_error:
+        from .agent import fence
+        prompt += "\n\nThe error the app reported:\n" + fence("the app's own error message", app_error)
     req_model = (data.get("model") or "").strip()
+    if (why := _agent_cli_refused(req_model)):
+        await bcast({"type": "build_error", "message": why})
+        return
     # empty or "auto" ⇒ let the builder pick the most build-capable model available
     model = "" if req_model.lower() in ("", "auto") else req_model
     app_id = data.get("app_id") or ""
@@ -19915,6 +21005,9 @@ async def _run_build(data: dict):
                           extra_system=extra, tool_filter=tf)
             agent.app_id = build_app_id
             agent.nudge_unfinished = False   # the build path owns its own retries
+            if app_error:
+                # the turn acts on the app's own words, so a step that changes things asks
+                agent.taint.append({"tool": "app_error", "source": "the app's own error message"})
             build["agent"] = agent
             knowledge.turn_started()
             try:
@@ -20266,7 +21359,7 @@ async def _run_build(data: dict):
             # anything the repair pass could not fix ships as an explicit warning,
             # never as a silent "success"
             manifest_status, remaining = _finish_build_checks(built["id"])
-        await state["broadcast"]({"type": "apps"})
+        await bcast({"type": "apps"})
         if built:
             await terminal({"type": "build_done", "app_id": built["id"], "name": built["name"],
                             "summary": result["content"][:600],
@@ -20356,12 +21449,33 @@ async def ws_endpoint(ws: WebSocket):
         while True:
             raw = await ws.receive_text()
             data = json.loads(raw)
+            if not isinstance(data, dict):
+                continue
+            # Who this message is from is the socket's signed cookie, before any branch can
+            # read it. `uid` and the turn's own `_` fields are set by this server, so what a
+            # client sent under those names goes here, on arrival: a queued message used to
+            # keep the client's `uid` and run as whoever it named.
+            forged = [k for k in data if k == "uid" or str(k).startswith("_")]
+            for k in forged:
+                data.pop(k, None)
+            if forged:
+                secevents.flag("gate.forged_field", "a socket message named " + ",".join(forged)[:60],
+                               source="ws", uid=ws_uid)
+            data["uid"] = ws_uid
             t = data.get("type")
             if t == "chat":
                 text = (data.get("text") or "").strip()
                 if not text and not _chat_images(data):
                     continue
+                if data.get("automation"):
+                    data["text"] = text = _automation_words(data, text)
                 cid = data.get("conversation_id")
+                if cid and cid in turns and not _turn_mine(turns[cid], ws_uid):
+                    # somebody else's running chat: it is not a chat of theirs to steer
+                    secevents.flag("ws.foreign_turn", "chat", source="ws", uid=ws_uid)
+                    await send({"type": "error", "conversation_id": cid,
+                                "message": "That chat isn't yours, so nothing was sent."})
+                    continue
                 if cid and cid in turns:
                     # busy: queue it instead of dropping it. The running agent decides
                     # at its next step boundary whether this belongs to what it is
@@ -20410,21 +21524,23 @@ async def ws_endpoint(ws: WebSocket):
                 # claim before the task starts, stamped with the owner so a
                 # state_sync racing the task creation still scopes it correctly
                 turns[cid] = {"agent": None, "task": None, "model": "", "uid": ws_uid}
-                data["uid"] = ws_uid   # server-set, never from the client
                 turns[cid]["task"] = asyncio.create_task(run_chat(cid, data))
             elif t == "build":
                 if build.get("task") and not build["task"].done():
                     await send({"type": "build_error", "message": "A build is already running — wait for it."})
                 else:
-                    data["uid"] = ws_uid
                     build["uid"] = ws_uid   # whose build it is, for the World's "at work"
                     build["task"] = asyncio.create_task(run_build(data))
             elif t == "build_abort":
+                if not _turn_mine(build, ws_uid):   # one build at a time, and it is its owner's to stop
+                    if build.get("task") and not build["task"].done():
+                        secevents.flag("ws.foreign_turn", "build_abort", source="ws", uid=ws_uid)
+                    continue
                 build["cancel_requested"] = True
                 if build.get("agent"):
                     build["agent"].aborted = True
                 if build.get("task") and not build["task"].done():
-                    await state["broadcast"]({"type": "build_text", "text": "\n(cancelling…)\n"})
+                    await state["broadcast_user"]({"type": "build_text", "text": "\n(cancelling…)\n"}, ws_uid)
                     asyncio.create_task(_force_cancel(build["task"], grace=15.0))
             elif t == "approval":
                 await resolve_approval(data.get("id", ""), bool(data.get("approved")),
@@ -20432,9 +21548,12 @@ async def ws_endpoint(ws: WebSocket):
                                        uid=ws_uid if usersmod.enabled() else "")
             elif t == "price":
                 await resolve_price(data.get("id", ""), str(data.get("action") or "cancel"),
-                                    float(data.get("in") or 0), float(data.get("out") or 0))
+                                    float(data.get("in") or 0), float(data.get("out") or 0), uid=ws_uid)
             elif t == "queue_remove":
                 cid = data.get("conversation_id")
+                if cid and not _queue_mine(cid, ws_uid):
+                    secevents.flag("ws.foreign_turn", "queue_remove", source="ws", uid=ws_uid)
+                    continue
                 if cid and _queue_drop(cid, str(data.get("id") or "")):
                     ag = (turns.get(cid) or {}).get("agent")
                     if ag is not None:   # never triage a message the user took back
@@ -20445,7 +21564,9 @@ async def ws_endpoint(ws: WebSocket):
                     await _queue_broadcast(cid, removed=data.get("id"))
             elif t == "abort":
                 cid = data.get("conversation_id")
-                if cid:  # stop one conversation's turn
+                if cid and not (_queue_mine(cid, ws_uid) and _turn_mine(turns.get(cid) or {}, ws_uid, gone=True)):
+                    secevents.flag("ws.foreign_turn", "abort", source="ws", uid=ws_uid)
+                elif cid:  # stop one conversation's turn
                     # stop means stop: the backlog goes with it, or the next queued
                     # message would start the instant this turn dies
                     if _queue_drop(cid):
@@ -20455,19 +21576,20 @@ async def ws_endpoint(ws: WebSocket):
                         await _queue_broadcast(cid, cleared=True)
                     if cid in turns:
                         _stop(turns[cid])
-                else:    # legacy/global abort: stop every running turn + build
-                    for qcid in list(state["queues"]):
+                else:    # legacy/global abort: stop everything of THIS account's
+                    for qcid in [c for c in state["queues"] if _queue_mine(c, ws_uid)]:
                         _queue_drop(qcid)
                         await _queue_broadcast(qcid, cleared=True)
-                    for tinfo in list(turns.values()):
+                    for tinfo in [i for i in turns.values() if _turn_mine(i, ws_uid)]:
                         if tinfo.get("agent") is not None:
                             tinfo["agent"].clear_inbox()
                         _stop(tinfo)
-                    build["cancel_requested"] = True
-                    if build.get("agent"):
-                        build["agent"].aborted = True
-                    if build.get("task") and not build["task"].done():
-                        asyncio.create_task(_force_cancel(build["task"], grace=15.0))
+                    if _turn_mine(build, ws_uid):
+                        build["cancel_requested"] = True
+                        if build.get("agent"):
+                            build["agent"].aborted = True
+                        if build.get("task") and not build["task"].done():
+                            asyncio.create_task(_force_cancel(build["task"], grace=15.0))
                     for entry in state["pending_approvals"].values():
                         # this person's questions only: a Stop on one account's desk
                         # must not refuse what another account is being asked

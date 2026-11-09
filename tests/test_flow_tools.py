@@ -57,7 +57,7 @@ def test_enabling_is_a_separate_capability_that_always_asks(tb):
     assert "enable_flow" in ALWAYS_ASK, \
         "enabling must confirm every time, full autonomy included"
     action, resource = action_of("enable_flow", {"name": "x"})
-    assert (action, resource) == ("flow.write", "flow:x")
+    assert (action, resource) == ("flow.enable", "flow:x"), "drafting a flow must not cover enabling it"
     level, why = tb.risk_of("enable_flow", {"name": "x"})
     assert level == "risky" and "rant" in why
 

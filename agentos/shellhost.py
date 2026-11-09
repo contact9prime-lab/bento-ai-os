@@ -60,8 +60,10 @@ that interpreter; the generated session script re-execs into it.
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -184,12 +186,32 @@ BRIDGE_JS = r"""
    itself: come to the front, and reserve screen space for its own chrome. */
 window.AGENTOS_SUI = {version: 1, host: 'layer-shell'};
 document.documentElement.setAttribute('data-sui', '1');
-window.suiCall = function (cmd, args) {
-  try { window.webkit.messageHandlers.agentos.postMessage(
-          JSON.stringify(Object.assign({cmd: cmd}, args || {}))); }
-  catch (e) { /* not running in the session host */ }
-};
+(function () {
+  var token = __TOKEN__;
+  window.suiCall = function (cmd, args) {
+    try { window.webkit.messageHandlers.agentos.postMessage(
+            JSON.stringify(Object.assign({}, args || {}, {cmd: cmd, token: token}))); }
+    catch (e) { /* not running in the session host */ }
+  };
+})();
 """
+
+
+def bridge_script(token: str) -> str:
+    """The bridge with this session's token inside a closure.
+
+    WebKit exposes `window.webkit.messageHandlers` to every frame of a page, and a message
+    arrives here with no word of which frame sent it. So an app's sandboxed frame could call
+    "quit". This script is injected in the top frame only, and a frame cannot read another's
+    closure, so holding the token is what being the desktop's own page means."""
+    return BRIDGE_JS.replace("__TOKEN__", json.dumps(token))
+
+
+def bridge_sender_ok(data, token: str) -> bool:
+    """Did this message come through the top frame's `suiCall`?"""
+    # Encoded here rather than through constcmp: this file runs under a system python, on its own.
+    return isinstance(data, dict) and hmac.compare_digest(
+        str(data.get("token") or "").encode("utf-8", "surrogatepass"), token.encode("utf-8", "surrogatepass"))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -260,9 +282,10 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         pass
 
+    bridge_token = secrets.token_urlsafe(24)
     ucm = WebKit2.UserContentManager()
     ucm.add_script(WebKit2.UserScript.new(
-        BRIDGE_JS, WebKit2.UserContentInjectedFrames.TOP_FRAME,
+        bridge_script(bridge_token), WebKit2.UserContentInjectedFrames.TOP_FRAME,
         WebKit2.UserScriptInjectionTime.START, None, None))
     ucm.register_script_message_handler("agentos")
 
@@ -428,6 +451,10 @@ def main(argv: list[str] | None = None) -> int:
             val = msg.get_js_value() if hasattr(msg, "get_js_value") else msg
             data = json.loads(val.to_string())
         except Exception:
+            return
+        if not bridge_sender_ok(data, bridge_token):
+            print("agentos shell-host: refused a bridge message that did not come from the desktop's page",
+                  file=sys.stderr)
             return
         cmd = data.get("cmd")
         if cmd == "raise":

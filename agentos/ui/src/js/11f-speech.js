@@ -20,7 +20,7 @@ async function speechPaint(){
       <button class="endbtn" onclick="speechTry(this)">Try it</button></div>
     ${st.ok?'':`<p class="sp-why">${esc(st.why||'')}</p>`}
     ${cloud?`<div class="sp-row">${secretField('v-key',(c.keys||{})[cur]?(c.openai_from_provider&&cur==='openai'?'using your OpenAI provider key':'a key is saved'):'paste your '+t[cur]+' API key')}
-      <button class="endbtn" onclick="speechKey()">Save key</button>${(c.keys||{})[cur]&&!(c.openai_from_provider&&cur==='openai')?`<button class="endbtn" onclick="speechSet({keys:{${cur}:''}})">Remove</button>`:''}</div>`:''}
+      <button class="endbtn" onclick="speechKey()">Save key</button>${(c.keys||{})[cur]&&!(c.openai_from_provider&&cur==='openai')?`<button class="endbtn" ${doAttrs('speechSet',{keys:{[cur]:''}})}>Remove</button>`:''}</div>`:''}
     ${cur==='browser'?'':`<div class="sp-row"><label class="sp-lab">Your lead’s voice</label><select id="v-srv-voice" onchange="speechSet({voice:this.value})"><option value="">loading…</option></select></div>
       <p class="mut sp-note">Every other agent gets a different voice from this engine, the same one each time.</p>`}`;
   // the browser's own voice picker below is this engine's twin; with another engine on,

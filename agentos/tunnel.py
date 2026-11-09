@@ -343,6 +343,24 @@ async def stop(cfg: dict) -> tuple[bool, str]:
     return True, "no longer published — this machine is private again"
 
 
+async def stop_published(cfg: dict) -> list[str]:
+    """Whatever publishes this machine, stopped because remote access was switched off. `stop` is for a
+    person pressing Stop: this looks first, and leaves a tailnet's other services alone unless it is
+    this machine's port that is published, because `tailscale serve reset` removes everything."""
+    stopped = []
+    if await _stop_cloudflared():
+        stopped.append("cloudflared")
+    cli = _which("tailscale")
+    if cli:
+        code, out = await _run([cli, "serve", "status", "--json"], timeout=20)
+        port = f":{int(cfg.get('port') or 8321)}"
+        if code == 0 and port in (out or ""):
+            code, _ = await _run([cli, "serve", "reset"], timeout=30)
+            if code == 0:
+                stopped.append("tailscale")
+    return stopped
+
+
 # Kept as data so the exact command can be shown before anything runs — the same
 # contract components.py keeps for every optional piece.
 CF_INSTALL_CMD = (

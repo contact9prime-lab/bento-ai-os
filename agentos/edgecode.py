@@ -25,6 +25,7 @@ import contextlib
 import os
 import shutil
 import signal
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -41,6 +42,12 @@ HUB_CPU_SECONDS = 900
 HUB_MEMORY_MB = 2048
 HUB_FILE_MB = 200               # no one file the run writes may grow past this
 OUT_CAP = 64_000                # characters of output sent back
+HUB_OUT_BYTES = 8_000_000       # what one run may print before it is stopped
+HUB_DISK_MB = 1024              # what its folder may grow to before it is stopped
+HUB_TMP_MB = 256                # its /tmp, which is memory
+HUB_NPROC = 128                 # processes inside the jail
+HUB_QUEUE = 4                   # runs one machine may have waiting for the slot
+DISK_EVERY_S = 2.0
 SEND_FILES = 64                 # files one folder may carry to the hub
 SEND_FILE_CAP = 1_500_000       # bytes, one file
 SEND_TOTAL_CAP = 2_500_000      # bytes, all of them (base64 fits a pinned link's 4 MiB line)
@@ -48,6 +55,7 @@ BACK_FILES = 16
 SCRIPT = ".bento-run.py"
 
 _SLOT: dict = {}                # one asyncio.Semaphore per loop: one run at a time on the hub
+_QUEUED: dict = {}              # link label -> its runs here, waiting or running
 
 
 # ---- the edge -------------------------------------------------------------------------------
@@ -238,11 +246,88 @@ def jail_argv(run: str, py: str) -> list[str]:
             argv += ["--ro-bind", p, p]
     for p in ("/etc/alternatives", "/etc/ld.so.cache", "/etc/ssl", "/etc/localtime"):
         argv += ["--ro-bind-try", p, p]
-    return argv + ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+    return argv + ["--proc", "/proc", "--dev", "/dev", *_tmp_args(run),
                    "--bind", run, "/work", "--chdir", "/work",
                    "--setenv", "HOME", "/work", "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin",
                    "--setenv", "PYTHONDONTWRITEBYTECODE", "1", "--setenv", "MPLBACKEND", "Agg",
-                   py, f"/work/{SCRIPT}"]
+                   *_nproc_args(), py, f"/work/{SCRIPT}"]
+
+
+_BWRAP_SIZE: list = []
+
+
+def _tmp_args(run: str) -> list[str]:
+    """A /tmp that cannot eat this machine's memory. A tmpfs with no size is half of RAM to
+    anybody who writes to it. bubblewrap before 0.8 has no --size, so there /tmp is a hidden
+    folder in the run's own, which the disk watch counts."""
+    if not _BWRAP_SIZE:
+        try:
+            out = subprocess.run(["bwrap", "--help"], capture_output=True, text=True, timeout=5)
+            _BWRAP_SIZE.append("--size" in (out.stdout + out.stderr))
+        except (OSError, subprocess.SubprocessError):
+            _BWRAP_SIZE.append(False)
+    if _BWRAP_SIZE[0]:
+        return ["--size", str(HUB_TMP_MB * 1024 * 1024), "--tmpfs", "/tmp"]
+    tmp = Path(run) / ".tmp"
+    tmp.mkdir(exist_ok=True)
+    return ["--bind", str(tmp), "/tmp"]
+
+
+def _nproc_args() -> list[str]:
+    """A process limit, set INSIDE the jail. The kernel counts RLIMIT_NPROC per user, and
+    since 5.14 per user namespace: set outside, on a desktop already past the number, the jail
+    could not even start, and before 5.14 inside would fail the same way, so it is left off."""
+    try:
+        major, minor = (int(x) for x in os.uname().release.split(".")[:2])
+    except ValueError:
+        return []
+    if (major, minor) < (5, 14) or not os.path.exists("/usr/bin/prlimit"):
+        return []
+    return ["/usr/bin/prlimit", f"--nproc={HUB_NPROC}"]
+
+
+def _folder_size(root: Path) -> int:
+    total = 0
+    for dirpath, _dirs, names in os.walk(root):
+        for n in names:
+            with contextlib.suppress(OSError):
+                total += os.lstat(os.path.join(dirpath, n)).st_size
+    return total
+
+
+async def _read_capped(proc, run: Path) -> tuple[bytes, str]:
+    """What it printed, up to HUB_OUT_BYTES, and why it was stopped ('' if it was not). Reading
+    everything into the server first (communicate) let one print loop fill this machine's
+    memory; a run writing to its own folder forever had only a per-file limit."""
+    head = bytearray()
+    why = ""
+
+    async def watch_disk():
+        nonlocal why
+        while True:
+            await asyncio.sleep(DISK_EVERY_S)
+            if await asyncio.to_thread(_folder_size, run) > HUB_DISK_MB * 1024 * 1024:
+                why = f"it wrote more than {HUB_DISK_MB} MB"
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                return
+    watcher = asyncio.ensure_future(watch_disk())
+    try:
+        while True:
+            chunk = await proc.stdout.read(65536)
+            if not chunk:
+                break
+            if why:
+                continue                 # stopped: read to the end, or wait() never returns
+            head += chunk
+            if len(head) > HUB_OUT_BYTES:
+                why = f"it printed more than {HUB_OUT_BYTES // 1_000_000} MB"
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+        await proc.wait()
+    finally:
+        watcher.cancel()
+    return bytes(head), why
 
 
 def limited(argv: list[str]) -> list[str]:
@@ -284,18 +369,26 @@ async def answer(store, pdp, lk: dict, req: dict) -> dict:
         before = {str(p.relative_to(run)): p.stat().st_mtime_ns for p in run.rglob("*") if p.is_file()}
         slot = _SLOT.setdefault(id(asyncio.get_running_loop()), asyncio.Semaphore(1))
         t0 = time.time()
-        async with slot:
-            proc = await asyncio.create_subprocess_exec(
-                *limited(jail_argv(str(run), _python())), stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT, start_new_session=True)
-            try:
-                out, _ = await asyncio.wait_for(proc.communicate(), timeout=HUB_SECONDS)
-                rc = proc.returncode
-            except asyncio.TimeoutError:
-                with contextlib.suppress(ProcessLookupError):
-                    os.killpg(proc.pid, signal.SIGKILL)
-                await proc.wait()
-                out, rc = f"[stopped after {HUB_SECONDS} s on the hub]".encode(), -9
+        if _QUEUED.get(label, 0) >= HUB_QUEUE:
+            return {"ok": False, "error": f"{HUB_QUEUE} of this machine's runs are already here. Try again later"}
+        _QUEUED[label] = _QUEUED.get(label, 0) + 1
+        try:
+            async with slot:
+                proc = await asyncio.create_subprocess_exec(
+                    *limited(jail_argv(str(run), _python())), stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT, start_new_session=True)
+                try:
+                    out, why = await asyncio.wait_for(_read_capped(proc, run), timeout=HUB_SECONDS)
+                    rc = proc.returncode
+                    if why:
+                        out, rc = out[:OUT_CAP] + f"\n[stopped on the hub: {why}]".encode(), -9
+                except asyncio.TimeoutError:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    await proc.wait()
+                    out, rc = f"[stopped after {HUB_SECONDS} s on the hub]".encode(), -9
+        finally:
+            _QUEUED[label] -= 1
         text = out.decode(errors="replace")
         if len(text) > OUT_CAP:
             text = text[:OUT_CAP // 2] + f"\n… {len(text) - OUT_CAP} characters cut …\n" + text[-OUT_CAP // 2:]

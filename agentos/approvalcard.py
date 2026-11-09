@@ -63,6 +63,8 @@ GOALS = {
     "run_python": "Run Python code",
     "install_mcp_server": "Install a tool server",
     "install_skill": "Install a skill from the internet",
+    "create_theme": "Change how the whole desktop looks",
+    "create_theme_shell": "Draw a page over the whole desktop",
     "request_capability": "Give a department or an agent an ability it lacks",
     "add_mcp_server": "Add a tool server",
     "install_openclaw_plugin": "Install a plugin",
@@ -157,6 +159,10 @@ def body(name: str, args: dict) -> str:
         who = str(args.get("who") or args.get("_from") or "an agent")
         what = {"run_code": "run Python code (each run is still asked)"}.get(str(args.get("ability") or ""), "")
         return f"{who} asks to {what or args.get('ability')}.\nWhy: {args.get('why') or '(not said)'}"
+    if name == "install_mcp_server":
+        # the command that will run, with its version: the name alone says nothing about that
+        from . import mcp_store
+        return mcp_store.card_text(str(args.get("registry_name") or ""), str(args.get("env") or ""))
     if name == "install_skill":
         # what is installed is the text read earlier, so that text is the body
         from . import skillhub

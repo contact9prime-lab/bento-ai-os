@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import time
 from pathlib import Path
 
@@ -114,7 +115,13 @@ async def refresh(cfg: dict, store, budget: int = MAX_FILES_PER_PASS) -> int:
     changed = 0
     for p, mt in todo:
         try:
-            text = p.read_text(errors="replace")
+            # read link by link: a link a jailed shell left in the workspace must not make a
+            # security file searchable (safeopen refuses it, protected names the rest)
+            from . import protected, safeopen
+            real = os.path.realpath(p)
+            if p.is_symlink() or protected.secret(real):
+                continue
+            text = safeopen.read_bytes(real).decode("utf-8", errors="replace")
         except OSError:
             continue
         store.db.execute("DELETE FROM search_index WHERE path=?", (str(p),))

@@ -51,7 +51,7 @@ function agentQueueFlush(cid){
   setTimeout(()=>agentTurn(o),150);
 }
 function agentTurn(o){
-  // o: {text, cid?, origin, title?, context?, sink, onCid?}
+  // o: {text, cid?, origin, title?, context?, sink, onCid?, automation?: {name, run}}
   if(!ws||ws.readyState!==1){toast('not connected to the server');return false}
   if(o.cid&&RUNNING.has(o.cid)){
     TURN_QUEUE.push(o);
@@ -81,7 +81,7 @@ function agentTurn(o){
   if(o.sink&&o.sink.start)o.sink.start({conversation_id:o.cid||''});
   ws.send(JSON.stringify({type:'chat',text:o.text,conversation_id:o.cid||null,
     images:o.images||[],model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
-    context:o.context||''}));
+    context:o.context||'',...(o.automation?{automation:o.automation.name,automation_run:o.automation.run||''}:{})}));
   return true;
 }
 

@@ -130,6 +130,6 @@ def test_the_page_and_the_terminal_offer_it():
     srv = (ROOT / "agentos/server.py").read_text()
     assert '@app.post("/api/update/rollback")' in srv and '"can_switch": can_switch' in srv
     route = srv.split('@app.post("/api/update/rollback")', 1)[1].split("\n@app.", 1)[0]
-    assert "is_loopback" in route, "rolling back replaces the code: this machine only"
+    assert "_local_admin_refusal" in route, "rolling back replaces the code: this machine's admin only"
     main = (ROOT / "agentos/__main__.py").read_text()
     assert '"--rollback"' in main and "upd.rollback(cfg" in main

@@ -202,11 +202,11 @@ function pmRuleRow(g,whoName){
   const tech=(g.action||'')+' · '+(g.resource||'')+(g.note?' — '+g.note:'');
   return `<div class="pm-rule ${deny?'deny':'allow'}${dead?' dead':''}" title="${esc(tech)}">
     ${ro||dead?`<span class="pm-eff">${deny?'✕':'✓'}</span>`
-      :`<button class="pm-eff" title="switch to ${deny?'allow':'refuse'}" aria-label="switch to ${deny?'allow':'refuse'}" onclick="permToggle('${g.id}','${deny?'allow':'deny'}')">${deny?'✕':'✓'}</button>`}
+      :`<button class="pm-eff" title="switch to ${deny?'allow':'refuse'}" aria-label="switch to ${deny?'allow':'refuse'}" onclick="permToggle('${jsq(g.id)}','${jsq(deny?'allow':'deny')}')">${deny?'✕':'✓'}</button>`}
     <div class="pm-say">${whoName?`<b>${esc(whoName)}</b> `:''}${esc(pmSay(g))}
       <span class="pm-src">${esc(pmSource(g))}${g.created_at?` · <span title="${esc(new Date(g.created_at*1000).toLocaleString())}">${deny?'set':'approved'} ${esc(pmWhen(g.created_at))}</span>`:''}</span>${permLasts(g)}${dead?`<span class="badge" title="${esc(new Date(g.revoked_at*1000).toLocaleString())}">removed ${esc(pmWhen(g.revoked_at))}</span>`:''}</div>
     ${dead?'':ro?`<button class="pm-x" title="Edit in Patterns" aria-label="Edit in Patterns" onclick="PERM.tab='rules';refreshApp('permissions')">↗</button>`
-      :`${g.surfaces&&g.surfaces!=='*'?permSurfBadge(g):''}<button class="pm-x" title="Remove this rule" aria-label="Remove this rule" onclick="permRevoke('${g.id}')">✕</button>`}
+      :`${g.surfaces&&g.surfaces!=='*'?permSurfBadge(g):''}<button class="pm-x" title="Remove this rule" aria-label="Remove this rule" onclick="permRevoke('${jsq(g.id)}')">✕</button>`}
   </div>`;
 }
 /* "today 20:41", "yesterday 09:12", "18 Oct", "3 Mar 2025": when a rule was made. */

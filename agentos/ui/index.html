@@ -2315,6 +2315,11 @@ body.deck-dragging .deck-tile,body.deck-dragging .deck-gname{cursor:grabbing}
 .deck-hidn{margin-left:8px;font-size:var(--fs-2xs);font-weight:600;letter-spacing:0;
   text-transform:none;color:var(--dim2);opacity:.75}
 @media (prefers-reduced-motion:reduce){.deck-ghost{transform:none}}
+
+/* Settings → Permissions → Security (11j-security.js) */
+.sec-card .sec-file{display:block;font:var(--fs-xs,12px) var(--mono,monospace);overflow-wrap:anywhere;margin-top:3px}
+.sec-card .sec-alert{margin-top:6px;overflow-wrap:anywhere}
+.sec-card .sec-alert small{display:block}
 /* ================= cross-device layout =================
    AgentOS runs the same desktop on a phone, a tablet and a workstation. Nothing
    here changes what the OS *is* — the menu bar, the dock, the prompt bar, the
@@ -7125,7 +7130,28 @@ let curBody=null, curThink=null, curText='';
 let feed=null, chatEl=null, input=null, sendBtn=null;   // bound when the Chat window is open
 
 /* ================= helpers ================= */
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+/* For HTML text and attribute values. It is not enough inside an inline handler: the browser
+   turns &#39; back into a quote BEFORE the JavaScript is read. In a handler use jsq, or better,
+   doAttrs. tests/test_ui_handlers.py refuses esc() or a bare string in one. */
+var ESC_MAP={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','\\':'&#92;'};
+function esc(s){return String(s).replace(/[&<>"'\\]/g,c=>ESC_MAP[c])}
+/* The inside of a '…' JavaScript string inside a "…" attribute. Nothing that means anything
+   to HTML or to JavaScript survives, so neither reading can end the string. */
+function jsq(s){return String(s).replace(/[^A-Za-z0-9 _.,:\/@+=~-]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'))}
+/* A click that carries somebody else's words, with no JavaScript in the markup at all:
+   <button ${doAttrs('briefAct',id,'decide',option)}>. Only DO_FNS can be reached. */
+var DO_FNS=new Set(['briefAct','briefOpenMail','tlPassHuddle','tlStandRemove','tlMissionStop',
+  'ocpReview','ocpInstall','ocpEnable','ocpUpdate','ocpNative','ocpVerify','ocpReport','ocpHold','ocpUninstall','ocpSendBrief',
+  'teamLinkAnswer','teamLinkWithdraw','openTeamChat','teamLinkRemove',
+  'mcpSignOut','mcpSignIn','mcpToggle','mcpDel','mcpConnectCurated','modelSetDefault','modelDelete','chanSave',
+  'wifiJoin','wifiAct','btRemove','speechSet']);
+function doAttrs(fn,...args){return ` data-do="${esc(fn)}" data-do-args="${esc(JSON.stringify(args))}"`}
+document.addEventListener('click',e=>{
+  const b=e.target&&e.target.closest&&e.target.closest('[data-do]');if(!b||b.disabled)return;
+  const fn=b.dataset.do;if(!DO_FNS.has(fn)||typeof window[fn]!=='function')return;
+  let args=[];try{args=JSON.parse(b.dataset.doArgs||'[]')}catch(_){return}
+  window[fn].apply(b,args);
+},true);
 function md(src){
   const blocks=[]; src=src.replace(/```(\w*)\n?([\s\S]*?)(```|$)/g,(m,l,c)=>{blocks.push('<pre><code>'+esc(c)+'</code></pre>');return '\x00B'+(blocks.length-1)+'\x00';});
   let h=esc(src);
@@ -7168,6 +7194,17 @@ function scrollDown(){if(chatEl)chatEl.scrollTop=chatEl.scrollHeight}
    knows; the ~400 older calls are read by their first words ("could not…" is a
    failure, "saved…" a success). A guess only picks an icon — the words are always
    shown as written, so a wrong guess costs a colour, never the message. */
+/* A machine-only route refused this account (machineroutes.py). One door, so every button that
+   reaches one says why. A read is not something the person pressed, and a call the desktop makes
+   by itself says `quiet`. */
+if(window.fetch&&!window.__adminFetch){
+  window.__adminFetch=window.fetch;
+  window.fetch=async function(u,o){
+    const r=await window.__adminFetch.apply(this,arguments);
+    if(r.status===403&&r.headers.get('X-Bento-Admin-Only')&&o&&o.method&&o.method!=='GET'&&!o.quiet)toast('Only an admin can do that on this machine.',{kind:'warn'});
+    return r;
+  };
+}
 var TOAST_IC={ok:'M5 12.5l4.5 4.5L19 7.5',err:'M7 7l10 10M17 7L7 17',warn:'M12 6.5v7M12 17v.5',info:'M12 10.5v7M12 6.5v.5'};
 function toastKind(t,act){
   if(act&&act.kind&&TOAST_IC[act.kind])return act.kind;
@@ -10593,7 +10630,7 @@ function worldMenuHTML(){
     <button class="endbtn wd-calm" onclick="worldCalm()">🍵 Calm everyone down</button>
     ${WORLD.why?`<p class="wd-why">${esc(WORLD.why)}</p>`:''}
     <div class="wd-h">Worlds</div>
-    <div class="wd-worlds">${list.map(w=>`<div class="wd-wrow"><button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${esc(w.id)}')">
+    <div class="wd-worlds">${list.map(w=>`<div class="wd-wrow"><button class="wd-w${w.id===WORLD.id?' on':''}" onclick="worldGo('${jsq(w.id)}')">
         <b>${esc(w.name)}</b><span>${esc(w.emotions.slice(0,6).map(e=>e.emoji).join(' '))}</span>
         <small>${esc(w.ladder.join(' → '))}</small></button>${w.builtin?'':
         /* your own worlds are deleted from their row: at the bottom of a long menu the
@@ -10705,18 +10742,18 @@ function worldCard(name,quiet){
   WORLD.open=name;const m=a.mood,l=a.level;
   if(a.guest){
     const g=a.guest;card.hidden=false;card.style.setProperty('--mh',m.hue);
-    card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
+    card.innerHTML=`<button class="wd-x" onclick="worldCard('${jsq(name)}')" aria-label="Close">✕</button>
       <div class="wd-who">${avatarRecipeImg(g.look,'wd-face',g.agent)}<div><b>${esc(g.agent)}</b>
         <div class="wd-feel">a guest from ${esc(g.team?g.team+'’s team':g.label)}</div></div></div>
       <p class="wd-quiet">Lent to you for a little while. It answers in words only, from its own machine, and leaves when the pass ends.</p>
       <div class="wd-grow"><span>Time left</span><small class="wd-left" data-pass-until="${+g.until}">${worldLeft(g)}</small></div>
-      <div class="wd-acts"><button class="endbtn" onclick="tlPassHuddle('${esc(g.agent)}','${esc(g.label)}')">Bring into a huddle</button></div>`;
+      <div class="wd-acts"><button class="endbtn" ${doAttrs('tlPassHuddle',g.agent,g.label)}>Bring into a huddle</button></div>`;
     if(typeof tlPassTick==='function')tlPassTick();
     return;
   }
   const ago=s=>s<60?'just now':s<3600?Math.round(s/60)+' min ago':Math.round(s/3600)+' h ago';
   card.hidden=false;card.style.setProperty('--mh',m.hue);
-  card.innerHTML=`<button class="wd-x" onclick="worldCard('${esc(name)}')" aria-label="Close">✕</button>
+  card.innerHTML=`<button class="wd-x" onclick="worldCard('${jsq(name)}')" aria-label="Close">✕</button>
     <div class="wd-who">${avatarImg(name,'wd-face')}<div><b>${esc(worldLabel(name))}</b>
       <div class="wd-feel">${esc(m.emoji)} ${esc(m.name)}${a.busy?' · at work':''}</div>
       ${(o=>o?`<div class="wd-org" style="--dc:${esc(o.hex)}">${esc(o.title?o.title+' · '+o.dept:o.head?'Head of '+o.dept:o.dept)}</div>`:'')(worldOrg(name))}</div></div>
@@ -10728,8 +10765,8 @@ function worldCard(name,quiet){
     ${a.friend?`<p class="wd-friend">Works best with ${esc(worldLabel(a.friend))}</p>`:''}
     ${worldStaff(name).length?`<div class="wd-h">${esc(worldStaffHead(name))}</div><ul class="wd-staff">${worldStaff(name).map(x=>
       `<li><b>${esc(x.mood.emoji)}</b> ${esc(x.name)} <small>${esc(x.mood.name)}${x.busy?' · at work':''}</small></li>`).join('')}</ul>`:''}
-    <div class="wd-acts">${a.busy&&a.work?`<button class="endbtn wd-work" onclick="worldOpenWork('${esc(name)}')">${a.work.kind==='build'?'Open App Studio':a.work.kind==='run'?'Open the run':'Open the chat'}</button>`:''}<button class="endbtn wd-pat" onclick="worldPat('${esc(name)}')">Pat on the back</button>
-      <button class="endbtn wd-calm1" onclick="worldCalm('${esc(name)}')">Calm down</button></div>`;
+    <div class="wd-acts">${a.busy&&a.work?`<button class="endbtn wd-work" onclick="worldOpenWork('${jsq(name)}')">${a.work.kind==='build'?'Open App Studio':a.work.kind==='run'?'Open the run':'Open the chat'}</button>`:''}<button class="endbtn wd-pat" onclick="worldPat('${jsq(name)}')">Pat on the back</button>
+      <button class="endbtn wd-calm1" onclick="worldCalm('${jsq(name)}')">Calm down</button></div>`;
 }
 /* Calm the team (or one agent) down: the person's act, like a pat on the back. Every
    feeling fades to its quiet tail and the world's resting mood shows; the why list says
@@ -10762,7 +10799,7 @@ function worldAsk(){
   if(WORLD.busyAsk)return;
   box.innerHTML=`<div class="wd-who">${avatarImg('@agent','wd-face')}<div><b>${esc(lead)}</b>
       <p class="wd-q">${esc(c.question||'How are you feeling today?')}</p></div></div>
-    <div class="wd-choices">${(c.choices||[]).map(ch=>`<button class="wd-ch" onclick="worldAnswer('${esc(ch.id)}')"><span>${esc(ch.emoji)}</span>${esc(ch.label)}</button>`).join('')}</div>
+    <div class="wd-choices">${(c.choices||[]).map(ch=>`<button class="wd-ch" onclick="worldAnswer('${jsq(ch.id)}')"><span>${esc(ch.emoji)}</span>${esc(ch.label)}</button>`).join('')}</div>
     <input id="wd-words" maxlength="280" placeholder="In a few words, if you like">
     <div class="wd-acts"><button class="endbtn wd-skip" onclick="worldAnswer('',true)">Not today</button>
       <small>Only this world keeps it.</small></div>`;
@@ -12938,20 +12975,30 @@ function _applyThemeObj(t){
 
 /* ================= experience shells ================= */
 let EXPERIENCE='standard';
+var SHELL_CSP="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com; img-src data: blob: https:; media-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'";
+/* The one thing a shell may ask of the desktop: open one of its apps. Only from the frame we drew. */
+window.addEventListener('message',e=>{
+  const d=e.data;if(!d||d.bento_shell!=='open')return;
+  const f=document.querySelector('#custom-shell iframe');
+  if(!f||e.source!==f.contentWindow)return;
+  const id=String(d.app||'');
+  if(typeof APPS!=='undefined'&&Object.prototype.hasOwnProperty.call(APPS,id)&&!id.startsWith('ua_'))openApp(id);
+});
 function setExperience(exp,shellHtml){
   const cs=$('#custom-shell');
   if(exp==='custom'&&cs){
-    // An AI-designed shell fully replaces the desktop. It runs in a same-origin iframe:
-    // its scripts get their own global scope (no collisions with the desktop's globals)
-    // while keeping full access to the REST API and the /ws websocket.
+    // A shell is text somebody's model wrote, so it runs like an app: an opaque-origin
+    // frame holding no cookie, with no network of its own (SHELL_CSP). It used to be a
+    // same-origin frame with the REST API and the terminal socket, which made a theme the
+    // way to run script as whoever had this page open.
     try{
       cs.innerHTML='';
       const f=document.createElement('iframe');
       f.style.cssText='flex:1;width:100%;height:100%;border:none;background:var(--bg)';
+      f.setAttribute('sandbox','allow-scripts');
+      f.title='Theme shell';
+      f.srcdoc='<!doctype html><meta http-equiv="Content-Security-Policy" content="'+SHELL_CSP+'">'+(shellHtml||'');
       cs.appendChild(f);
-      f.contentDocument.open();
-      f.contentDocument.write(shellHtml||'');
-      f.contentDocument.close();
     }catch(e){cs.innerHTML='';toast('shell failed to load: '+e.message);exp='standard'}
   }else if(cs){cs.innerHTML=''}
   if(exp===EXPERIENCE&&exp!=='custom')return;
@@ -13117,7 +13164,7 @@ function switchDesk(n){
   // In session mode a desktop is a real sway workspace, so external windows move
   // with it instead of following you everywhere. The shell comes along too.
   if(typeof PLATFORM!=='undefined'&&PLATFORM.mode==='de')
-    fetch('/api/wm/desktop',{method:'POST',headers:{'Content-Type':'application/json'},
+    fetch('/api/wm/desktop',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
       body:JSON.stringify({desktop:n})}).then(()=>{
         if(typeof updateNativeWindows==='function')setTimeout(updateNativeWindows,200)}).catch(()=>{});
   const go=()=>{
@@ -13232,7 +13279,16 @@ function ctxShow(e,m,opts){
 }
 function showCtxItems(e,items,opts){
   const m=$('#ctxmenu');
-  m.innerHTML=items.map((it,i)=>it===null?'<hr>':`<button data-i="${i}"${it.danger?' style="color:var(--err)"':''}>${it.label}</button>`).join('');
+  // A label is text, and may be somebody's: an app's own name reaches the Window and Help menus.
+  m.innerHTML='';
+  items.forEach((it,i)=>{
+    if(it===null){m.appendChild(document.createElement('hr'));return}
+    const b=document.createElement('button');b.dataset.i=i;
+    if(it.danger)b.style.color='var(--err)';
+    b.textContent=it.label;
+    if(it.keys){const k=document.createElement('span');k.className='mk';k.textContent=it.keys;b.appendChild(k)}
+    m.appendChild(b);
+  });
   m.querySelectorAll('button').forEach(b=>b.onclick=()=>{popClose(m);const it=items[+b.dataset.i];if(it&&it.fn)it.fn()});
   ctxShow(e,m,opts);
 }
@@ -13776,7 +13832,7 @@ function listFilter(scope,q){
 }
 function emptyBox(title,hint,action,askApp,askPrompt){
   // every empty state is an invitation: the ✦ chip opens this app's copilot
-  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${esc(askApp)}',${JSON.stringify(askPrompt||'').replace(/"/g,'&quot;')})"><span data-ic="sparkles">✦</span> Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
+  const ask=askApp?`<button class="cp-chip" style="margin-top:10px" onclick="copilotAsk('${jsq(askApp)}',${esc(JSON.stringify(askPrompt||''))})"><span data-ic="sparkles">✦</span> Ask ${esc((typeof agentName==='function'&&agentName())||'the agent')}</button>`:'';
   return `<div class="empty">${SVG_EMPTY}<div class="et">${esc(title)}</div>${hint?`<div class="eh">${hint}</div>`:''}${action||''}${ask}</div>`;
 }
 /* open (if needed) an app + its copilot panel, prefill and send */
@@ -13869,7 +13925,7 @@ function agentQueueFlush(cid){
   setTimeout(()=>agentTurn(o),150);
 }
 function agentTurn(o){
-  // o: {text, cid?, origin, title?, context?, sink, onCid?}
+  // o: {text, cid?, origin, title?, context?, sink, onCid?, automation?: {name, run}}
   if(!ws||ws.readyState!==1){toast('not connected to the server');return false}
   if(o.cid&&RUNNING.has(o.cid)){
     TURN_QUEUE.push(o);
@@ -13899,7 +13955,7 @@ function agentTurn(o){
   if(o.sink&&o.sink.start)o.sink.start({conversation_id:o.cid||''});
   ws.send(JSON.stringify({type:'chat',text:o.text,conversation_id:o.cid||null,
     images:o.images||[],model:'',surface:'gui',origin:o.origin||'user',title:o.title||'',
-    context:o.context||''}));
+    context:o.context||'',...(o.automation?{automation:o.automation.name,automation_run:o.automation.run||''}:{})}));
   return true;
 }
 
@@ -14574,7 +14630,7 @@ function menuNative(w){
 function raiseShell(on){
   if(typeof suiRaise==='function'&&suiRaise(on))return Promise.resolve();
   if(PLATFORM.mode!=='de')return Promise.resolve();
-  return fetch('/api/shell/raise',{method:'POST',headers:{'Content-Type':'application/json'},
+  return fetch('/api/shell/raise',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},
     body:JSON.stringify({on:on!==false})}).catch(()=>{});
 }
 /* ---- the menu bar renders the focused window's menus ---- */
@@ -14617,9 +14673,7 @@ function paintMenuBar(box,menus,live){
       let set=menus;
       try{set=live()||menus}catch(e){}
       const items=(set[+b.dataset.i]||menus[+b.dataset.i])[1];
-      showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},
-        items.map(it=>it&&({...it,
-          label:it.keys?`${it.label}<span class="mk">${esc(it.keys)}</span>`:it.label})),
+      showCtxItems({clientX:r.left,clientY:r.bottom+2,preventDefault(){}},items,
         {anchor:b,close:()=>b.classList.remove('on')});
     };
     b.onclick=()=>{if(b.classList.contains('on'))popClose($('#ctxmenu'));else open()};
@@ -16281,7 +16335,7 @@ function deckWidgetsHTML(){
   const here=(WIDGETS||[]).filter(w=>w.place==='deck'&&apps[w.app_id]);
   return here.map(w=>`<div class="deck-group deck-wgroup" data-w="${esc(w.app_id)}">
     <div class="deck-gname">${esc(apps[w.app_id].name)}
-      <button class="deck-wx" title="Unpin" onclick="setWidgetPlace('${esc(w.app_id)}','')">✕</button></div>
+      <button class="deck-wx" title="Unpin" onclick="setWidgetPlace('${jsq(w.app_id)}','')">✕</button></div>
     <div class="deck-wframe"><iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget" sandbox="allow-scripts allow-forms"></iframe></div>
   </div>`).join('');
 }
@@ -16736,7 +16790,7 @@ function renderPlacedWidgets(){
     const list=WIDGETS.filter(w=>w.place==='bar'&&apps[w.app_id]);
     bar.classList.toggle('on',list.length>0);
     bar.innerHTML=list.map(w=>`<div class="barwidget"><div class="bw-h">${esc(apps[w.app_id].name)}
-        <button onclick="setWidgetPlace('${esc(w.app_id)}','')" title="Unpin">✕</button></div>
+        <button onclick="setWidgetPlace('${jsq(w.app_id)}','')" title="Unpin">✕</button></div>
       <iframe src="/api/apps/${esc(w.app_id)}/page?surface=widget&size=${esc((apps[w.app_id].widget_size)||'m')}" sandbox="allow-scripts allow-forms"></iframe></div>`).join('');
   }
   // menu bar: a thin always-visible readout
@@ -18145,6 +18199,15 @@ function handle(ev){
       else if(typeof faceFacesPaint==='function'&&document.getElementById('s-faces')){KFACE.st=null;faceFacesPaint()}}); break;
     // a character changed (the editor, the agent's set_avatar, a reroll): every face
     // already on screen changes in place, and the Crew stage re-reads its sheets
+    // the server noticed something: its own sentence, and what it was given shown as text by toast
+    case 'security_alert':{
+      toast('⚠ Security: '+ev.words+(ev.source?' ('+ev.source+')':''),{kind:'warn',label:'Review',go:()=>{if(typeof settingsGo==='function')settingsGo('permissions');else openApp('settings')}});
+      if(typeof secCardPaint==='function')secCardPaint();
+      break;}
+    case 'security_hold':{
+      toast('Agents are stopped because a security file changed.',{kind:'err',label:'Review',go:()=>{if(typeof settingsGo==='function')settingsGo('permissions');else openApp('settings')}});
+      if(typeof secCardPaint==='function')secCardPaint();
+      break;}
     case 'approval_resolved':{
       delete APPROVALS[ev.id];
       // its "approval needed" toast goes too: a Review that opens nothing is a dead button
@@ -18266,7 +18329,7 @@ function handle(ev){
     // the server never runs an automation itself — it says "run this" and the
     // desktop does, so a schedule, the agent's tool and the palette all land in
     // the same runner
-    case 'automation.run': onAutomationBroadcast(ev.automation); break;
+    case 'automation.run': onAutomationBroadcast(ev); break;
     case 'theme_apply':{const t=ev.theme;if(t){if(t.name)CUSTOM_THEMES[t.name]=t;applyThemeObj(t);if(t.name){CURRENT_THEME=t.name;localStorage.setItem('theme',t.name)}toast('theme applied: '+(t.name||''));refreshApp('themes')} break;}
     case 'train_setup': TRAIN_SETUP_LISTENERS.forEach(fn=>{try{fn(ev)}catch(e){}}); break;
     case 'eval_result': case 'evals_done':
@@ -19316,7 +19379,7 @@ function fileChipIcon(ext){
   return `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 3h8l5 5v13H6Z" fill="${c}" opacity=".18"/><path d="M6 3h8l5 5v13H6Z M14 3v5h5" fill="none" stroke="${c}" stroke-width="1.6" stroke-linejoin="round"/><text x="12.5" y="18" text-anchor="middle" font-size="5.2" font-weight="800" fill="${c}" font-family="system-ui,sans-serif">${esc((ext||'').slice(0,4).toUpperCase())}</text></svg>`;
 }
 function fileChipSize(n){return n<1024?n+' B':n<1e6?Math.round(n/1024)+' KB':(n/1e6).toFixed(1)+' MB'}
-function fileGetURL(path,download){return '/api/files/get?path='+encodeURIComponent(path)+(download?'&download=1':'')}
+function fileGetURL(path,download){return '/api/files/get?path='+encodeURIComponent(path)+(download?'&download=1':'&view=1')}
 async function fileOpen(path,ext){
   if(typeof remoteClient==='function'&&remoteClient()){
     // opening on the host would start an app in another room: show it here instead
@@ -19571,7 +19634,7 @@ function secretField(id,ph,cls){
 function pSecret(id,hasKey,masked,ph){
   if(!hasKey)return secretField(id,ph);
   return `<span class="psecret" id="${id}-wrap"><i>saved</i><code>${esc(masked||'••••')}</code>
-    <button class="endbtn" onclick="pSecretReplace('${id}')">Replace</button></span>`;
+    <button class="endbtn" onclick="pSecretReplace('${jsq(id)}')">Replace</button></span>`;
 }
 function pSecretReplace(id){
   const w=document.getElementById(id+'-wrap');if(!w)return;
@@ -19750,6 +19813,9 @@ function setTab(body,all){
       pRow('Folder jail',pSwitch('s-sb-on',cfg.sandbox&&cfg.sandbox.enabled),
         {desc:'Runs commands and the Terminal inside a sandbox.',
          more:'Everything outside the folder is read-only and other people\u2019s home files are hidden. A shell can reach whatever this jail allows, even past an executor\u2019s folders.',f:'sandbox jail bubblewrap shell'}),
+      ...((typeof PLATFORM!=='undefined'&&PLATFORM&&PLATFORM.jail&&PLATFORM.jail.words)
+        ?[pRow('Not working here','',{desc:'The sandbox cannot start on this machine, so each command asks you first.',
+           more:PLATFORM.jail.words,f:'sandbox jail bubblewrap missing not working'})]:[]),
       pRow('Folder',pText('s-sb-root',(cfg.sandbox&&cfg.sandbox.root)||cfg.workspace),{f:'sandbox root folder'}),
       pRow('Shared folders','<button class="endbtn" onclick="openApp(\'users\')">Open Users</button>',
         {desc:'Extra folders the agent and the Terminal can use, shared with chosen accounts.',
@@ -19837,10 +19903,10 @@ function setTab(body,all){
       pRow('Agents message each other',pSelect('s-team-talk',[
           ['matrix','Ask me first (the matrix below)'],
           ['swarm','Swarm: they work together freely'],
-          ['democracy','Democracy: 2 of 3 decide'],
+          ['democracy','Democracy: you decide, with the team\'s view'],
           ['off','Off']],(cfg.team&&cfg.team.talk)||'matrix'),
         {desc:'Let an agent ask a colleague for help in the middle of a task.',
-         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy those same steps go to a vote of three of your agents, on different brains where they can be, and a majority decides. Huddles end with a vote too. Loops are refused and each task has a question limit.',
+         more:'The colleague answers with its own model and permissions. In Swarm your lead also hands your specialists work without asking. In Democracy you are asked for those same steps, and the card shows what three of your agents think. Their view is advice. Huddles end with their view too. Loops are refused and each task has a question limit.',
          f:'team agents message talk each other swarm democracy vote quorum matrix permission ask'}),
       pRow('Who may ask whom','<div id="s-team-matrix" class="team-matrix mut">loading…</div>',
         {stack:true,desc:'Rows ask, columns answer. Tap a cell to switch between ask me, allow and block.',
@@ -19943,6 +20009,10 @@ function setTab(body,all){
         {desc:'How much your agent does before it asks you.',
          more:'Some steps always ask a person, like sending mail or acting on what a web page said. Applies right away.',
          f:'autonomy paranoid balanced full ask approve risky level'}),
+      pRow('Local addresses',pText('s-fetch-allow',((cfg.security&&cfg.security.fetch_allow)||[]).join(', '),'nas.local, 192.168.1.20:8080'),
+        {desc:'Things on your own network your agents and calendars may fetch.',
+         more:'Anything on this machine or a private network is refused until it is listed here. Apps can never reach them. Loopback needs a port.',
+         f:'local address network lan private fetch allow ssrf nas calendar'}),
       pRow('After reading a web page or an MCP reply',pSelect('s-taint',[
         ['ask','Ask before changing anything'],
         ['strict','Refuse to change anything'],
@@ -19953,6 +20023,8 @@ function setTab(body,all){
     ],{f:'autonomy security untrusted injection'}));
     P.push(`<div class="pgroup" data-f="grants permissions allowed remembered missions matrix linked community apps review quarantine held"><h3>What's allowed right now</h3><div id="s-perm-sum"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
     setTimeout(permSummaryPaint,0);
+    P.push(`<div class="pgroup sec-card" data-f="security watcher integrity seal signed lock alerts held changed code files"><h3>Security</h3><div id="s-sec-card"><div class="prow"><div class="pl"><small>…</small></div></div></div></div>`);
+    setTimeout(secCardPaint,0);
     P.push(pGroup('The ledger',[
       pRow('Stop what can’t be recorded',pSwitch('s-audit-strict',!!(cfg.security&&cfg.security.audit_fail_closed)),
         {desc:'Refuse an action if its ledger row could not be written.',
@@ -20318,7 +20390,7 @@ function verRollback(d){
   const r=d&&d.rollback;if(!r)return '';
   const when=r.at?new Date(r.at*1000).toLocaleString([],{dateStyle:'medium',timeStyle:'short'}):'';
   return `<div class="upd-back"><span class="mut">Updated${when?' '+esc(when):''}${r.version?' from '+esc(r.version):''}${r.branch?' on '+esc(r.branch):''}.</span>
-    <button class="endbtn" onclick="updateRollback(this,'${esc(r.to)}','${esc(r.version||r.to)}')">Roll back to ${esc(r.version||r.to)}</button></div>`;
+    <button class="endbtn" onclick="updateRollback(this,'${jsq(r.to)}','${jsq(r.version||r.to)}')">Roll back to ${esc(r.version||r.to)}</button></div>`;
 }
 async function updateRollback(btn,to,label){
   if(!confirm('Roll back to '+label+' ('+to+')? AgentOS restarts on the older code. Your data stays, and you can update again later.'))return;
@@ -20446,6 +20518,7 @@ async function saveSettings(){
   if(on('s-sb-on')!==undefined)patch.sandbox={enabled:on('s-sb-on'),root:(val('s-sb-root')||'').trim()};
   if(val('s-taint')!==undefined||on('s-audit-strict')!==undefined){
     patch.security={};
+    if(val('s-fetch-allow')!==undefined)patch.security.fetch_allow=list('s-fetch-allow');
     if(val('s-taint')!==undefined)patch.security.taint=val('s-taint');
     if(on('s-audit-strict')!==undefined)patch.security.audit_fail_closed=on('s-audit-strict');
   }
@@ -20483,13 +20556,16 @@ async function saveSettings(){
       budget_usd:Number(val('s-exec-budget')||2),
       tools:[...document.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool),
       allow_source:on('s-exec-src'),
+      ...(el('s-exec-nojail')?{unjailed_ok:on('s-exec-nojail')}:{}),
+      ...(el('s-exec-accounts')?{shell_for_accounts:on('s-exec-accounts')}:{}),
     }};
   }
   if(!Object.keys(patch).length){if(el('v-tts'))setSavedMark(true);return}
   let ok=false;
-  try{ok=(await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)})).ok}catch(e){}
+  let why='';
+  try{const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});ok=r.ok;if(!ok)why=(await r.json().catch(()=>({}))).error||''}catch(e){}
   setSavedMark(ok);
-  if(!ok){toast('could not save that setting');return}
+  if(!ok){toast(why?'could not save: '+why:'could not save that setting');return}
   loadModels();loadConfig();
 }
 /* Settings save themselves. There used to be one Save at the foot of every tab, and
@@ -20501,7 +20577,7 @@ async function saveSettings(){
    before its first await, so a field committed by clicking another tab is still in the
    page when it is read. Cards with a form of their own (a channel, a mail account, the
    locale) keep their own button: those talk to another service and can be refused. */
-var SET_AUTO=/^(s-(workspace|steps|name|sb-on|sb-root|taint|audit-strict|hist-compact|ollama-url|ant-|oai-|or-|cus-|goo-|build-model|img-|gh-|upd-on|upd-repo|upd-branch|exec-)|v-(tts|voice|rate|lang|agents|live)$)/;
+var SET_AUTO=/^(s-(workspace|steps|name|sb-on|sb-root|taint|fetch-allow|audit-strict|hist-compact|ollama-url|ant-|oai-|or-|cus-|goo-|build-model|img-|gh-|upd-on|upd-repo|upd-branch|exec-)|v-(tts|voice|rate|lang|agents|live)$)/;
 function setAutoSave(e){
   const t=e&&e.target;if(!t)return;
   if(!(t.dataset&&t.dataset.tool)&&!SET_AUTO.test(t.id||''))return;
@@ -20641,8 +20717,8 @@ async function renderExecutors(){
     const how=off.command?`Install runs ${off.command}${off.available?'':'. '+(off.reason||'It is not available here')}`
       :'There is no installer for it here. Install it yourself and it shows up.';
     const more=[rest,r.why_not&&r.why_not!=='not installed'?r.why_not:'',how,'Licence: '+(r.licence||'unknown')].filter(Boolean).join(' ');
-    const btns=(off.command?`<button class="endbtn" title="${esc(off.command)}" onclick="execInstallComponent('${esc(r.id)}',this)">Install</button>`:'')
-      +(r.docs?`<button class="endbtn" onclick="openInBrowser('${esc(r.docs)}')">Docs</button>`:'');
+    const btns=(off.command?`<button class="endbtn" title="${esc(off.command)}" onclick="execInstallComponent('${jsq(r.id)}',this)">Install</button>`:'')
+      +(r.docs?`<button class="endbtn" onclick="openInBrowser('${jsq(r.docs)}')">Docs</button>`:'');
     return pRow(r.title,btns||'<span class="mut">install it yourself</span>',
       {desc:esc(first(r.what))+` <span class="chdot">${esc(r.licence||'licence unknown')}</span>`,more,f:'install executor '+r.id+' '+r.title});
   });
@@ -20668,7 +20744,7 @@ async function renderExecutors(){
           {desc:`Runs <code>${esc(ex.install_cmd)}</code> in your own account, without sudo.`,
            f:'install claude code executor'})}
         <pre id="exec-instlog" class="exec-log" hidden></pre>`:''}
-      ${ex.install?`<p class="mut"><button class="endbtn" onclick="openInBrowser('${esc(ex.install)}')">Read the docs</button></p>`:''}`;
+      ${ex.install?`<p class="mut"><button class="endbtn" onclick="openInBrowser('${jsq(ex.install)}')">Read the docs</button></p>`:''}`;
     return;
   }
   const c=ex.config||{}, tools=c.tools||[];
@@ -20706,6 +20782,12 @@ async function renderExecutors(){
         ${tool('WebSearch','search the web')}${tool('WebFetch','read a page')}
         ${tool('Write','create files')}${tool('Edit','change files')}${tool('Bash','run commands')}
       </div>`,{stack:true,desc:'Anything left unticked can’t be used.',more:'You choose these before a run starts. This version of Claude Code can’t ask you for approval call by call.',f:'executor allowed tools permissions'})}
+    ${ex.jail&&!ex.jail.ok?pRow('Allow its shell with no jail',pSwitch('s-exec-nojail',c.unjailed_ok),
+      {desc:'Without a jail, its shell can reach everything you can.',
+       more:esc(ex.jail.why||''),f:'executor jail sandbox bubblewrap shell'}):''}
+    ${ex.accounts&&ex.jail&&ex.jail.ok?pRow('Let other accounts use its shell',pSwitch('s-exec-accounts',c.shell_for_accounts),
+      {desc:'Their turns could read this machine’s Claude sign-in.',
+       more:'The shell runs in a jail, but it shares that jail with the CLI, so the sign-in is in reach.',f:'executor jail accounts shell'}):''}
     <div class="ghint" id="exec-envelope">${esc(ex.envelope||'')}</div>`;
   const refresh=()=>{
     const t=[...box.querySelectorAll('[data-tool]')].filter(i=>i.checked).map(i=>i.dataset.tool);
@@ -20869,7 +20951,7 @@ function chanCard(c){
     ${c.id==='whatsapp'?'<div id="wa-extra" class="wa-extra"></div>':''}
     ${(c.scoped_grants?`<div class="ghint mut">${c.scoped_grants} permission rule${c.scoped_grants==1?'':'s'} apply to this channel. See the Permissions app.</div>`:'')}
     <div class="prow"><div class="pl"><small id="ch-${c.id}-msg" class="mut"></small></div>
-      <div class="pc"><button class="endbtn" onclick="chanSave('${esc(c.id)}')">Save</button></div></div>
+      <div class="pc"><button class="endbtn" ${doAttrs('chanSave',c.id)}>Save</button></div></div>
   </div>`;
 }
 async function chanSave(id){
@@ -20945,7 +21027,7 @@ async function paintTeamMatrix(){
       if(a===b)return '<td><div class="tm-self" aria-hidden="true"></div></td>';
       const v=cells[a+'>'+b]||'', cls=v==='allow'?'allow':v==='deny'?'deny':talk==='swarm'?'swarm':talk==='democracy'?'vote':'';
       return `<td><button class="tm-cell ${cls}" data-a="${esc(a)}" data-b="${esc(b)}" data-v="${v}" title="${esc(a)} → ${esc(b)}: ${label(v)}" aria-label="${esc(a)} may ask ${esc(b)}: ${label(v)}">${label(v)}</button></td>`}).join('')}</tr>`).join('')}</table>
-    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: your lead and two other agents vote on each empty cell, and 2 of 3 decide. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
+    <div class="tm-legend">${talk==='swarm'?'Swarm: every cell you haven’t blocked is open.':talk==='democracy'?'Vote: you are asked for each empty cell, and the card shows what three of your agents think. Allow and block still win.':'Ask: you are asked the first time, and “Allow & remember” fills the cell.'}
       ${dn.length>=2?` <button class="co-link tm-level" data-mode="department">Decide it per department instead</button>`:''}</div>`;
   box.querySelector('.tm-level')?.addEventListener('click',e=>teamMatrixLevel(e.target.dataset.mode));
   box.querySelectorAll('.tm-cell').forEach(b=>b.onclick=async()=>{
@@ -21026,11 +21108,11 @@ function tlkReqHTML(r){
   const team=id.agent_name?` <span class="mut">· ${esc(id.agent_name)}’s team${id.person?', '+esc(id.person):''}</span>`:'';
   if(r.kind==='account')return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} asks to link teams with you.</p>
       <small class="mut">You’re both on this machine, so there’s nothing to compare.</small></div>
-    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+    <div class="tlk-req-act"><button class="pact" ${doAttrs('teamLinkAnswer',r.id,'approve')}>Approve</button><button class="endbtn" ${doAttrs('teamLinkAnswer',r.id,'deny')}>Deny</button></div></div>`;
   return `<div class="tlk-req">${face}<div><p><b>${who}</b>${team} <span class="mut">(${esc(r.addr||'')})</span> asks to link its team with yours.</p>
       <div class="tlk-sas-row">Check that ${who} shows <span class="tlk-sas">${esc(r.sas||'')}</span></div>
       <small class="mut">If the digits differ, something is in between you, so deny it. After you approve, you still choose which of your agents they can ask.</small></div>
-    <div class="tlk-req-act"><button class="pact" onclick="teamLinkAnswer('${esc(r.id)}','approve')">Approve</button><button class="endbtn" onclick="teamLinkAnswer('${esc(r.id)}','deny')">Deny</button></div></div>`;
+    <div class="tlk-req-act"><button class="pact" ${doAttrs('teamLinkAnswer',r.id,'approve')}>Approve</button><button class="endbtn" ${doAttrs('teamLinkAnswer',r.id,'deny')}>Deny</button></div></div>`;
 }
 function tlkOutHTML(r){
   const who=esc(r.name||r.to_name||'?');
@@ -21042,7 +21124,7 @@ function tlkOutHTML(r){
     :st==='denied'?`<b>${who}</b> said no.`
     :st==='expired'?`Nobody at <b>${who}</b> answered in ten minutes.`
     :`<b>${who}</b>: ${esc(r.error||st)}`;
-  return `<div class="tlk-req out"><div><p>${line}</p></div>${st==='pending'?`<div class="tlk-req-act"><button class="endbtn" onclick="teamLinkWithdraw('${esc(r.id)}')">Withdraw</button></div>`:''}</div>`;
+  return `<div class="tlk-req out"><div><p>${line}</p></div>${st==='pending'?`<div class="tlk-req-act"><button class="endbtn" ${doAttrs('teamLinkWithdraw',r.id)}>Withdraw</button></div>`:''}</div>`;
 }
 async function paintTeamLinks(){
   const box=document.getElementById('s-team-links');if(!box)return;
@@ -21058,9 +21140,9 @@ async function paintTeamLinks(){
   const links=(d.links||[]).map(l=>{const id=l.peer_identity||{};return `<div class="tlk-card">
       <div class="tlk-head">${avatarRecipeImg(id.agent,'av-tool',(id.agent_name||'their agent'))}<b>${esc(l.label)}</b>${id.agent_name?`<span class="mut">${esc(id.agent_name)}’s team${id.person?' · '+esc(id.person):''}</span>`:''}<span class="brainchip">${l.kind==='account'?'account here':'machine · mTLS'}</span>
         <span class="mut">${esc(l.kind==='machine'?(l.url||'they can reach you, you can’t reach them'):'')}</span>
-        <button class="endbtn" onclick="openTeamChat('${esc(l.label)}')">Message</button>
-        <button class="endbtn" onclick="teamLinkCheck('${esc(l.label)}',this)">Check</button>
-        <button class="endbtn" onclick="teamLinkRemove('${esc(l.label)}')">Remove</button></div>
+        <button class="endbtn" ${doAttrs('openTeamChat',l.label)}>Message</button>
+        <button class="endbtn" onclick="teamLinkCheck('${jsq(l.label)}',this)">Check</button>
+        <button class="endbtn" ${doAttrs('teamLinkRemove',l.label)}>Remove</button></div>
       ${l.pass?tlPassHTML(l):`<label class="tlk-sub tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="lead" ${(l.theirs_may_ask||[]).includes('lead')?'checked':''}> ${avatarImg('@agent','av-tool')}<span>They may hand whole tasks to ${esc(agentName())}, who works them with your team${pInfo('Your lead takes the task, hands parts to your specialists and departments, and answers. It can’t touch this machine’s files or shell for them, and anything that needs a person comes to you.')}</span></label>
       <div class="tlk-sub">Their agents may ask: ${mine.length?mine.map(n=>`<label class="tlk-chk"><input type="checkbox" data-link="${esc(l.label)}" data-agent="${esc(n)}" ${(l.theirs_may_ask||[]).includes(n)?'checked':''}> ${avatarImg(n,'av-tool')}${esc(n)}</label>`).join(''):'<span class="mut">you have no specialists here, so their work comes to your lead</span>'}</div>
       <div class="tlk-sub tlk-runs"><span>Their work here runs on</span>${typeof tieBrainSelect==='function'?tieBrainSelect({label:l.label,owner:l.owner||'',brain:l.brain||{}}).replace('data-tie="brain"','data-link-brain="'+esc(l.label)+'"'):''}</div>
@@ -21144,7 +21226,7 @@ function tlPassHTML(l){
   const face=avatarImg(lent?p.agent:p.agent+'@'+l.label,'av-tool');
   return `<div class="tlk-pass">${face}
     <span>${lent?`You lent <b>${esc(p.agent)}</b>. It answers in words only.`:`<b>${esc(p.agent)}</b> is on loan to you.`} ${left} left</span>
-    ${lent?'':`<button class="endbtn" onclick="tlPassHuddle('${esc(p.agent)}','${lab}')">Bring into a huddle</button>`}</div>`;
+    ${lent?'':`<button class="endbtn" ${doAttrs('tlPassHuddle',p.agent,l.label)}>Bring into a huddle</button>`}</div>`;
 }
 async function tlPassHuddle(agent,label){
   // a huddle seats two or more: the guest and one of yours. Prefilled, never sent.
@@ -21182,12 +21264,12 @@ function tlStandHTML(l,mine,d){
   return `<details class="tlk-stand" data-stand="${lab}"${TL_STAND_OPEN[l.label]?' open':''}><summary>Without asking me${rows.length?' · '+rows.length:''}</summary>
     <p class="mut tlk-why">Questions from ${lab} can make your agents read and answer, but any change needs a person here to say yes. ${pInfo('Allow one thing ahead of time: one agent, one action, in one folder. If the agent also read a web page or an email on the way, you’re asked again.')}</p>
     ${d.standing_note?`<p class="mut tlk-why">${esc(d.standing_note)}</p>`:''}
-    ${rows.map(x=>`<div class="tlk-stand-row">${x.agent==='*'?'':avatarImg(x.agent,'av-tool')}<span><b>${x.agent==='*'?'Any agent here':esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" onclick="tlStandRemove('${lab}','${esc(x.id)}')">Remove</button></div>`).join('')}
+    ${rows.map(x=>`<div class="tlk-stand-row">${x.agent==='*'?'':avatarImg(x.agent,'av-tool')}<span><b>${x.agent==='*'?'Any agent here':esc(x.agent)}</b> may ${esc(TL_ACT_WORDS[x.action]||x.action)} <code>${esc(tlScope(x.scope))}</code>${x.expires_at?` <small class="mut">until ${new Date(x.expires_at*1000).toLocaleDateString()}</small>`:''}</span><button class="endbtn" ${doAttrs('tlStandRemove',l.label,x.id)}>Remove</button></div>`).join('')}
     ${mine.length?`<div class="tlk-actions tlk-stand-add"><select data-sa="agent" aria-label="Which of your agents">${mine.map(n=>`<option>${esc(n)}</option>`).join('')}</select>
       <select data-sa="action" aria-label="May do">${(d.standing_actions||[]).map(a=>`<option value="${esc(a)}">${esc(TL_ACT_WORDS[a]||a)}</option>`).join('')}</select>
       <input data-sa="scope" placeholder="~/shared · or ${esc((d.standing_tools||[]).join(', '))}" autocomplete="off" autocapitalize="off" spellcheck="false">
       <input data-sa="days" type="number" min="1" inputmode="numeric" placeholder="days (blank: until removed)">
-      <button class="pact" onclick="tlStandAdd('${lab}',this)">Allow</button></div>`
+      <button class="pact" onclick="tlStandAdd('${jsq(l.label)}',this)">Allow</button></div>`
       :'<p class="mut tlk-why">You have no specialists yet. This is for them.</p>'}
   </details>`;
 }
@@ -21205,7 +21287,7 @@ function tlMissionsHTML(l){
         <span class="brainchip">${m.stopped?'stopped by you':m.enabled===false?'off on their side':'on'}</span>
         ${(m.agents||[]).map(a=>avatarImg(a,'av-tool')+esc(a)).join(' ')}
         <div class="mut tlk-why">${m.schedule?esc(m.schedule)+' · ':''}asked ${m.runs} time${m.runs===1?'':'s'}, last ${esc(when(m.last_used))}${m.text?' · '+esc(m.text):''}</div></div>
-      <button class="endbtn" onclick="tlMissionStop('${lab}','${esc(m.mission)}',${m.stopped?'false':'true'})">${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
+      <button class="endbtn" ${doAttrs('tlMissionStop',l.label,m.mission,!m.stopped)}>${m.stopped?'Allow again':'Stop'}</button></div>`).join('')}
   </div>`;
 }
 async function tlMissionStop(label,mission,stop){
@@ -21400,7 +21482,7 @@ async function waPanel(){
     ? `<div class="wa-line"><b>Other numbers that wrote in</b></div>`
       +chats.map(c=>`<div class="item wa-row"><div class="grow">
           <code>+${esc(c.wa_id)}</code> ${esc(c.name||'')}</div>
-        <button class="endbtn" onclick="waAllow('${esc(c.wa_id)}',${c.allowed?0:1})">
+        <button class="endbtn" onclick="waAllow('${jsq(c.wa_id)}',${c.allowed?0:1})">
           ${c.allowed?'Block':'Allow'}</button></div>`).join('')
     : '';
   // The way back. Without it, choosing the Business API once is a one-way door:
@@ -21602,7 +21684,7 @@ async function renderOcPlugins(){
         ${p.held?`<div class="sub" style="color:var(--err)">held: ${esc(p.held_reason)}. Release it in Permissions → Quarantine.</div>`:''}
       </div>
       ${state}
-      <button class="endbtn" onclick="ocpReview('${esc(p.id)}')">Review</button>
+      <button class="endbtn" ${doAttrs('ocpReview',p.id)}>Review</button>
     </div>`;
   }).join('');
   box.innerHTML = `<h3>OpenClaw plugins</h3>
@@ -21635,7 +21717,7 @@ async function ocpSearch(){
   out.innerHTML = d.results.map(r => `<div class="item">
       <div class="grow"><b>${esc(r.name)}</b>${r.version?`<span class="mut"> ${esc(r.version)}</span>`:''}
         <div class="sub mut">${esc(r.summary||'no summary')}</div></div>
-      <button class="endbtn" onclick="ocpInstall('${esc(r.spec)}')">Install</button>
+      <button class="endbtn" ${doAttrs('ocpInstall',r.spec)}>Install</button>
     </div>`).join('');
 }
 
@@ -21711,14 +21793,14 @@ async function ocpReview(pid){
     ${ocpDisclaimer(p)}
     <div class="prow" style="margin-top:12px;flex-wrap:wrap">
       ${p.enabled
-        ? `<button class="endbtn" onclick="ocpEnable('${esc(p.id)}',false)">Turn off</button>`
-        : `<button class="endbtn" onclick="ocpEnable('${esc(p.id)}',true)">Turn on</button>`}
-      <button class="endbtn" onclick="ocpUpdate('${esc(p.id)}')">Update</button>
-      ${((p.native||{}).buildable)?`<button class="endbtn" onclick="ocpNative('${esc(p.id)}')">Build it natively instead</button>`:''}
-      <button class="endbtn" onclick="ocpVerify('${esc(p.id)}')">Check the native build</button>
-      <button class="endbtn" onclick="ocpReport('${esc(p.id)}')">Report</button>
-      ${p.enabled?`<button class="endbtn" onclick="ocpHold('${esc(p.id)}')">Hold it now</button>`:''}
-      <button class="endbtn" onclick="ocpUninstall('${esc(p.id)}')">Uninstall</button>
+        ? `<button class="endbtn" ${doAttrs('ocpEnable',p.id,false)}>Turn off</button>`
+        : `<button class="endbtn" ${doAttrs('ocpEnable',p.id,true)}>Turn on</button>`}
+      <button class="endbtn" ${doAttrs('ocpUpdate',p.id)}>Update</button>
+      ${((p.native||{}).buildable)?`<button class="endbtn" ${doAttrs('ocpNative',p.id)}>Build it natively instead</button>`:''}
+      <button class="endbtn" ${doAttrs('ocpVerify',p.id)}>Check the native build</button>
+      <button class="endbtn" ${doAttrs('ocpReport',p.id)}>Report</button>
+      ${p.enabled?`<button class="endbtn" ${doAttrs('ocpHold',p.id)}>Hold it now</button>`:''}
+      <button class="endbtn" ${doAttrs('ocpUninstall',p.id)}>Uninstall</button>
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Close</button>
     </div>
     <div class="ghint mut">Changes take effect after OpenClaw's gateway restarts.</div>
@@ -21776,8 +21858,8 @@ async function ocpNative(pid){
       ${pInfo("It comes from the plugin's own manifest, so it only asks for what the plugin declared.")}</div>
     <pre style="white-space:pre-wrap;font-size:12px;max-height:340px;overflow:auto">${esc(d.prompt)}</pre>
     <div class="prow" style="flex-wrap:wrap">
-      <button class="endbtn" onclick="ocpSendBrief(${JSON.stringify(pid).replace(/"/g,'&quot;')})">Hand it to the agent</button>
-      <button class="endbtn" onclick="ocpReview('${esc(pid)}')">Back</button>
+      <button class="endbtn" ${doAttrs('ocpSendBrief',pid)}>Hand it to the agent</button>
+      <button class="endbtn" ${doAttrs('ocpReview',pid)}>Back</button>
     </div></div>`;
   window.__ocpBrief = window.__ocpBrief || {};
   window.__ocpBrief[pid] = d.prompt;
@@ -21814,7 +21896,7 @@ async function ocpVerify(pid){
     ${(d.results||[]).map(r=>`<div class="mtool"><code>${r.ok?'✓':'✗'} ${esc(r.target)}</code>
         <span>${esc(r.item)}: ${esc(r.note)}</span></div>`).join('')}
     <div class="ghint mut">${esc(d.note||'')}</div>
-    <div class="prow"><button class="endbtn" onclick="ocpReview('${esc(pid)}')">Back</button></div>
+    <div class="prow"><button class="endbtn" ${doAttrs('ocpReview',pid)}>Back</button></div>
   </div>`;
   toast(d.line || '');
 }
@@ -21848,9 +21930,9 @@ async function ocpReport(pid){
         ${lost}</details>`:''}
     <h3 style="margin-top:12px">What would you like to do?</h3>
     <div class="prow" style="flex-wrap:wrap">
-      ${(d.proposal||{}).build_the_rest?`<button class="endbtn" onclick="ocpNative('${esc(pid)}')">Have the agent build the rest</button>`:''}
+      ${(d.proposal||{}).build_the_rest?`<button class="endbtn" ${doAttrs('ocpNative',pid)}>Have the agent build the rest</button>`:''}
       <button class="endbtn" onclick="document.getElementById('ocp-review').innerHTML=''">Continue as it is</button>
-      ${(d.proposal||{}).keep_the_plugin?`<button class="endbtn" onclick="ocpReview('${esc(pid)}')">Keep running the original</button>`:''}
+      ${(d.proposal||{}).keep_the_plugin?`<button class="endbtn" ${doAttrs('ocpReview',pid)}>Keep running the original</button>`:''}
     </div>
     <div class="ghint mut">If the port covers what you actually use, it's fine to stop here.</div>
   </div>`;
@@ -22002,7 +22084,7 @@ async function renderAgsHost(){
     const last = p.last_fetch ? new Date(p.last_fetch*1000).toLocaleString() : 'never';
     return `<div class="item"><div class="grow"><b>${esc(p.name)}</b>
         <span class="mut"> last take: ${esc(last)}</span></div>${st}
-      ${p.revoked?'':`<button class="endbtn" onclick="agsRevokePeer('${esc(p.name)}')">Revoke</button>`}
+      ${p.revoked?'':`<button class="endbtn" onclick="agsRevokePeer('${jsq(p.name)}')">Revoke</button>`}
     </div>`;
   }).join('');
   box.innerHTML = `
@@ -22239,9 +22321,9 @@ function acctSigninCard(){
     const status=on?`signed in as <b>${esc(rec.email)}</b> · reads ${esc(uses.join(' and ')||'nothing yet')}${(rec.uses||[]).includes('send')?' · can send':''}${rec.problem?' · <span class="warn">'+esc(rec.problem)+'</span>':''}`
       :(s.available?'not signed in':'');
     const pend=ACCTS.pending.find(p=>p.provider===s.id);
-    const btns=on?`<button class="endbtn" onclick="acctSignin('${s.id}')">Sign in again</button>
-        <button class="endbtn" onclick="acctSignout('${s.id}')">Sign out</button>`
-      :(s.available?`<button class="endbtn acct-signin" onclick="acctSignin('${s.id}')">Sign in with ${esc(s.label)}</button>`
+    const btns=on?`<button class="endbtn" onclick="acctSignin('${jsq(s.id)}')">Sign in again</button>
+        <button class="endbtn" onclick="acctSignout('${jsq(s.id)}')">Sign out</button>`
+      :(s.available?`<button class="endbtn acct-signin" onclick="acctSignin('${jsq(s.id)}')">Sign in with ${esc(s.label)}</button>`
         :`<button class="endbtn" disabled title="${esc(s.why)}">Sign in with ${esc(s.label)}</button>`);
     const why=(!on&&!s.available)?`<span class="acct-why">Register an app for this machine first. <a href="#" onclick="acctShowClients();return false">App registration ↓</a></span>`:'';
     const wait=pend?`<div class="ghint">waiting for you to finish signing in (${pend.waiting_for}s). <a href="${esc(pend.url)}" target="_blank" rel="noopener">open the page again</a></div>`:'';
@@ -22290,7 +22372,7 @@ function acctCard(a){
   const doorOpts=[['form',a.id==='mail'?'App password (below)':'An address or app password (below)'],['mcp','Through an MCP server']]
     .concat(ACCTS.signin.filter(s=>s.signed_in&&s.signed_in.email).map(s=>[s.id,'Signed in with '+s.label]));
   const doorSel=pSelect('ac-'+a.id+'-'+wayKey,doorOpts,signedWay?way:(way==='mcp'?'mcp':'form'))
-    .replace('<select','<select onchange="acctDoor(\''+a.id+'\')"');
+    .replace('<select','<select onchange="acctDoor(\''+jsq(a.id)+'\')"');
   const mcpRow=way==='mcp'?pRow('MCP server',pSelect('ac-'+a.id+'-mcp_server',[['','choose a connected server']].concat((a.mcp_servers||[]).map(n=>[n,n])),a.mcp_server||''),
       {desc:(a.mcp_servers||[]).length?'Missions will use this server\'s tools for this account.':'No MCP server is connected yet. Add one in the MCP app first.',f:a.id+' mcp server'}):'';
   const fields=signedWay||way==='mcp'?'':`<details class="acct-adv chsteps"><summary>Another provider: an app password${a.id==='calendar'?' or an ICS address':''}</summary>`+a.fields.map(f=>{
@@ -22310,8 +22392,8 @@ function acctCard(a){
     ${a.hint&&!signedWay?`<div class="ghint acct-hint" id="ac-${a.id}-hint">${esc(a.hint)}</div>`:`<div class="ghint acct-hint mut" id="ac-${a.id}-hint"></div>`}
     ${fields}
     <div class="prow"><div class="pl"><small id="ac-${a.id}-msg" class="mut"></small></div>
-      <div class="pc"><button class="endbtn" onclick="acctTest('${esc(a.id)}')">Test</button>
-        <button class="endbtn" onclick="acctSave('${esc(a.id)}')">Save</button></div></div>
+      <div class="pc"><button class="endbtn" onclick="acctTest('${jsq(a.id)}')">Test</button>
+        <button class="endbtn" onclick="acctSave('${jsq(a.id)}')">Save</button></div></div>
   </div>`;
 }
 /* this install's OAuth clients — the machine's, so an admin's; the redirect URI is
@@ -22440,9 +22522,9 @@ async function renderHands(){
     +d.profiles.map(p=>`<div class="hands-card" data-name="${esc(p.name)}">
       <div class="hands-h"><b>${esc(p.name)}</b>${p.builtin?'<span class="brainchip">built in</span>':''}
         <span class="sp"></span>
-        <button class="endbtn" onclick="handsEdit('${esc(p.name)}')">Edit</button>
-        <button class="endbtn" onclick="handsEdit('${esc(p.name)}',true)">Duplicate</button>
-        ${p.builtin?'':`<button class="endbtn" onclick="handsDelete('${esc(p.name)}')">Delete</button>`}</div>
+        <button class="endbtn" onclick="handsEdit('${jsq(p.name)}')">Edit</button>
+        <button class="endbtn" onclick="handsEdit('${jsq(p.name)}',true)">Duplicate</button>
+        ${p.builtin?'':`<button class="endbtn" onclick="handsDelete('${jsq(p.name)}')">Delete</button>`}</div>
       <div class="hands-sum">${esc(p.summary)}</div>
       ${p.description?`<div class="mut hands-desc">${esc(p.description)}</div>`:''}
       <div class="mut hands-used">${(p.used_by||[]).length?'Used by '+p.used_by.map(n=>esc(n)).join(', '):'No agent uses it yet'}</div>
@@ -22573,7 +22655,7 @@ async function renderAgentsList(){
   const rest=others.filter(a=>!seen.has(a.name.toLowerCase()));
   if(rest.length)sections.push({co:{name:'Default company',default:true},parts:[],loose:rest});
   const coHead=c=>`<div class="ag-co"><b>▦ ${esc(c.name)}</b>${c.default?' <span class="mut">agents in no company</span>'
-    :c.open?' <span class="brainchip">open</span>':` <button class="endbtn" onclick="agentsOpenCompany('${esc(c.id)}')">Open it</button>`}</div>`;
+    :c.open?' <span class="brainchip">open</span>':` <button class="endbtn" onclick="agentsOpenCompany('${jsq(c.id)}')">Open it</button>`}</div>`;
   const body=sections.map(sc=>coHead(sc.co)+sc.parts.map(pt=>`<div class="ag-dept"><span>${esc(pt.dept.name)}</span>${pt.dept.head?` <small class="mut">head: ${esc(pt.dept.head)}</small>`:''}</div>`
       +pt.agents.map(agCardHTML).join('')).join('')+(sc.loose.length&&sc.parts.length?'<div class="ag-dept"><span>In no department</span></div>':'')
       +sc.loose.map(agCardHTML).join('')).join('');
@@ -22593,13 +22675,13 @@ function agCardHTML(a){
   const opts=cur=>((AGENTS.data||{}).profiles||[]).map(p=>`<option value="${esc(p.name)}" ${p.name===cur?'selected':''}>${esc(p.name)}</option>`).join('');
   {const au=a.authority,fams=Object.entries(au.families||{});
       return `<div class="ag-card">
-      <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${esc(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
-        <span class="sp"></span><button class="endbtn" onclick="agentEdit('${esc(a.key)}')">Edit</button></div>
+      <div class="ag-h"><button class="ag-face" onclick="avatarEdit('${jsq(a.key)}')" title="Change how ${esc(a.name)} looks" aria-label="Change how ${esc(a.name)} looks">${avatarImg(a.key,'av-tool')}</button><b>${esc(a.name)}</b>${a.builtin?'<span class="brainchip">built in</span>':''}
+        <span class="sp"></span><button class="endbtn" onclick="agentEdit('${jsq(a.key)}')">Edit</button></div>
       ${a.soul?`<div class="mut ag-soul">${esc(a.soul)}</div>`:''}
       <div class="ag-rows">
-        <div><span class="ag-k">Look</span><button class="endbtn" onclick="avatarEdit('${esc(a.key)}')">Change…</button><button class="endbtn" onclick="avatarDesignAsk('${esc(a.key)}')">✦ Describe it</button></div>
+        <div><span class="ag-k">Look</span><button class="endbtn" onclick="avatarEdit('${jsq(a.key)}')">Change…</button><button class="endbtn" onclick="avatarDesignAsk('${jsq(a.key)}')">✦ Describe it</button></div>
         <div><span class="ag-k">Brain</span>${esc(a.brain.provider_name)} · ${esc(a.brain.short)}${a.brain.note?` <span class="mut">(${esc(a.brain.note)})</span>`:''}</div>
-        <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${esc(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
+        <div><span class="ag-k">Executor</span><select aria-label="Executor for ${esc(a.name)}" onchange="setAgentHands('${jsq(a.key)}',this.value)">${opts(a.hands.name)}</select> <span class="mut">${esc(a.hands.summary)}</span></div>
         <div><span class="ag-k">Permissions</span>autonomy ${esc(au.autonomy)}${au.allow||au.deny?` · ${au.allow} allowed, ${au.deny} refused`:' · nothing granted yet, so it asks'}${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}${au.in_missions?` <span class="mut">· ${au.in_missions} more inside missions</span>`:''}
           <button class="endbtn" onclick="openApp('permissions')">Open</button></div>
         <div><span class="ag-k">Skills</span>${(a.skills||[]).length?a.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' '):'<span class="mut">none</span>'}</div>
@@ -22648,7 +22730,7 @@ async function speechPaint(){
       <button class="endbtn" onclick="speechTry(this)">Try it</button></div>
     ${st.ok?'':`<p class="sp-why">${esc(st.why||'')}</p>`}
     ${cloud?`<div class="sp-row">${secretField('v-key',(c.keys||{})[cur]?(c.openai_from_provider&&cur==='openai'?'using your OpenAI provider key':'a key is saved'):'paste your '+t[cur]+' API key')}
-      <button class="endbtn" onclick="speechKey()">Save key</button>${(c.keys||{})[cur]&&!(c.openai_from_provider&&cur==='openai')?`<button class="endbtn" onclick="speechSet({keys:{${cur}:''}})">Remove</button>`:''}</div>`:''}
+      <button class="endbtn" onclick="speechKey()">Save key</button>${(c.keys||{})[cur]&&!(c.openai_from_provider&&cur==='openai')?`<button class="endbtn" ${doAttrs('speechSet',{keys:{[cur]:''}})}>Remove</button>`:''}</div>`:''}
     ${cur==='browser'?'':`<div class="sp-row"><label class="sp-lab">Your lead’s voice</label><select id="v-srv-voice" onchange="speechSet({voice:this.value})"><option value="">loading…</option></select></div>
       <p class="mut sp-note">Every other agent gets a different voice from this engine, the same one each time.</p>`}`;
   // the browser's own voice picker below is this engine's twin; with another engine on,
@@ -22842,7 +22924,7 @@ async function paintStandby(){
       <label class="bk-ws"><input type="checkbox" id="sb-sync" ${d.sync==='active'?'checked':''} onchange="standbySet({sync:this.checked?'active':'copies'})"> Active sync: send every change within seconds ${pInfo('Each chat message, memory, setting and file goes to the cloud as a small sealed update, so a takeover picks up from your last change. Off, the cloud gets a whole copy at most every 10 minutes.')}</label>
       <label class="bk-ws"><input type="checkbox" id="sb-ws" ${d.workspace?'checked':''} onchange="standbySet({workspace:this.checked})"> Include your workspace folder in the copies</label>
       <div><button class="endbtn" onclick="standbyAct('/api/standby/copy',this)">Copy now</button>
-      <button class="endbtn" onclick="standbyAct('/api/standby/move',this,'Hand over to ${esc(d.peer_host)} now? It carries on with your missions and channels, and this machine waits until you bring it back.')">Move to the cloud now</button>
+      <button class="endbtn" onclick="standbyAct('/api/standby/move',this,'Hand over to ${jsq(d.peer_host)} now? It carries on with your missions and channels, and this machine waits until you bring it back.')">Move to the cloud now</button>
       <button class="endbtn" onclick="standbyAct('/api/standby/off',this,'Unpair the two machines? The cloud forgets its copies.')">Unpair</button></div></div>`;
     return}
   // the standby, while it is the one working (a quiet standby shows its own page instead)
@@ -22872,7 +22954,10 @@ async function standbyPair(btn){
   const url=document.getElementById('sb-url').value.trim(),code=document.getElementById('sb-code').value.trim();
   if(!url||!code)return toast('Give the cloud machine’s address and its code',{kind:'warn'});
   btn.disabled=true;btn.textContent='Pairing…';
-  try{const d=await standbyPost('/api/standby/pair',{url,code});toast(`Paired. ${d.peer_host} now stands by for this machine.`);paintStandby()}
+  try{let d;try{d=await standbyPost('/api/standby/pair',{url,code})}
+    catch(e){if(!String(e.message).includes('--plain-http')||!confirm('Plain http shows the pairing secret to anyone on this network. Pair anyway?'))throw e;
+      d=await standbyPost('/api/standby/pair',{url,code,plain_http:true})}
+    toast(`Paired. ${d.peer_host} now stands by for this machine.`);paintStandby()}
   catch(e){toast('Not paired: '+e.message,{kind:'err'})}finally{btn.disabled=false;btn.textContent='Pair'}
 }
 async function standbyOffer(btn){
@@ -22955,7 +23040,7 @@ function cloudStorageStep(list){
   CLOUDDEP.signup=top.signup;
   const how=p=>`<div class="cd-way"><b>${esc(p.name)}</b>${p.free?` <span class="mut">${esc(p.free)}. ${esc(p.card)}</span>`:''}
       <ol class="cd-steps">${p.steps.map(x=>`<li>${esc(x)}</li>`).join('')}<li>Endpoint: ${esc(p.endpoint)}</li></ol>
-      ${p.signup?`<div><button class="endbtn" onclick="cloudDeployOpen(${JSON.stringify(p.signup).replace(/"/g,'&quot;')})">Open ${esc(p.name)}</button></div>`:''}</div>`;
+      ${p.signup?`<div><button class="endbtn" onclick="cloudDeployOpen(${esc(JSON.stringify(p.signup))})">Open ${esc(p.name)}</button></div>`:''}</div>`;
   return `<div class="cd-step"><span class="mut">1. A free storage bucket for its memory. ${esc(top.name)}: ${esc(top.free)}. ${esc(top.card)}</span>
       <div><button class="endbtn" onclick="cloudDeployOpen(CLOUDDEP.signup)">Make a ${esc(top.name.split(' ')[0])} bucket</button>
         ${pInfo('Your password seals everything before it leaves the machine, so the storage only ever holds noise.')}</div>
@@ -22991,6 +23076,85 @@ function cloudDeployGo(id){
   const el=document.getElementById(id);
   if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
 }
+/* Settings → Permissions → Security: what the watcher knows (agentos/integrity.py, /api/security/status).
+   Everything here is shown through text nodes. A file name and an alert's detail are whatever an
+   attacker made them, and they come from another process's words. There is no button that clears a
+   hold or seals anything, because those are a person's at a terminal, and the card says so.
+   TUI: `bento integrity status`, `bento security`, `bento doctor`. SUI: the same page. */
+function secEl(tag,cls,text){
+  const e=document.createElement(tag);
+  if(cls)e.className=cls;
+  if(text!=null)e.textContent=String(text);
+  return e;
+}
+function secRow(label,value,cls){
+  const r=secEl('div','prow'+(cls?' '+cls:'')),pl=secEl('div','pl');
+  pl.appendChild(secEl('b','',label));
+  if(value)pl.appendChild(secEl('small','',value));
+  r.appendChild(pl);
+  return r;
+}
+function secWhen(t){
+  try{return new Date(Number(t)*1000).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}catch(e){return ''}
+}
+function secDetails(st){
+  const out=[];
+  out.push(secRow('Seal',st.sealed==='none'?'Not sealed. A change made while Bento is stopped goes unseen. Run bento integrity seal.'
+    :st.sealed==='bad'?'The record does not check out.'
+    :st.sealed==='signed'?'Sealed'+(st.at?' on '+secWhen(st.at):'')+'.'
+    :'Sealed'+(st.at?' on '+secWhen(st.at):'')+', with no signature. A process running as this user could rewrite it.'));
+  out.push(secRow('Signed',st.signed==='signed'?'By a key you keep off this machine.'
+    :st.signed==='release'?'By the release key '+((st.update&&st.update.key_id)||'')+'.'
+    :'Unsigned. Run bento integrity keygen to make a key that stays off this machine.'));
+  out.push(secRow('Root lock',st.locked?'This user can\'t change the code.'+((st.open_parents&&st.open_parents.length)?' The folder above it is still this user\'s.':'')
+    :'Off. Run bento integrity lock to stop this user changing its own gate.'));
+  if(st.dev)out.push(secRow('Development checkout','Changed code only warns here, an agent\'s change included.'+((st.dev_changes&&st.dev_changes.length)?' Changed: '+st.dev_changes.slice(-5).join(', '):'')));
+  const leds=st.ledgers||[];
+  if(leds.length){
+    const bad=leds.filter(l=>!l.ok);
+    out.push(secRow('Ledger',bad.length?'A row was changed or removed: '+bad[0].reason:'Checked at start and every ten minutes. Intact.'));
+  }
+  return out;
+}
+var SEC_OPEN=false;
+async function secCardPaint(){
+  const box=document.getElementById('s-sec-card');if(!box)return;
+  let st;
+  try{st=await apiJSON('/api/security/status')}
+  catch(e){const g=box.closest('.pgroup');if(g)g.hidden=true;return}
+  const held=st.held,alerts=st.alerts||[],kids=[];
+  const head=secEl('div','prow'+(held?' danger':'')),pl=secEl('div','pl');
+  pl.appendChild(secEl('b','',held?'Agents are stopped':'Watching the code'));
+  pl.appendChild(secEl('small','',(st.line||'').replace(/^Agents are stopped because /,'')));
+  head.appendChild(pl);
+  const more=secEl('button','endbtn',SEC_OPEN?'Less':'Details');
+  more.onclick=()=>{SEC_OPEN=!SEC_OPEN;secCardPaint()};
+  head.appendChild(more);
+  kids.push(head);
+  if(held&&(held.files||[]).length){
+    const list=secEl('div','prow stack');
+    const inner=secEl('div','pl');
+    inner.appendChild(secEl('b','','What changed'));
+    (held.files||[]).slice(0,12).forEach(f=>inner.appendChild(secEl('code','sec-file',f)));
+    inner.appendChild(secEl('small','','Clear it at this machine\'s terminal, outside Bento: bento integrity accept'));
+    list.appendChild(inner);kids.push(list);
+  }
+  if(alerts.length&&(SEC_OPEN||held)){
+    const list=secEl('div','prow stack'),inner=secEl('div','pl');
+    inner.appendChild(secEl('b','','Recent alerts'));
+    alerts.slice(0,SEC_OPEN?10:3).forEach(a=>{
+      const line=secEl('div','sec-alert');
+      line.appendChild(secEl('span','mut',secWhen(a.at)+'  '));
+      line.appendChild(secEl('span','',a.words||''));
+      const d=[a.source,a.detail].filter(Boolean).join(': ');
+      if(d)line.appendChild(secEl('small','',d));
+      inner.appendChild(line);
+    });
+    list.appendChild(inner);kids.push(list);
+  }
+  if(SEC_OPEN)secDetails(st).forEach(r=>kids.push(r));
+  box.replaceChildren(...kids);
+}
 /* ================= memory app ================= */
 let memTab='user';
 async function renderMemory(body){
@@ -23006,18 +23170,18 @@ async function renderMemory(body){
   let items='';
   if(memTab==='user'){
     items=user.map(m=>`<div class="item" data-f="${esc(m.content)}"><div class="grow">${srcBadge(m)}${esc(m.content)}<div class="sub">${when(m)}</div></div>
-      <button title="${m.pinned?'unpin':'pin (always injected first)'}" style="${m.pinned?'':'opacity:.45'};font-size:11px" onclick="pinMemory('${m.id}',${m.pinned?0:1})">${m.pinned?'pinned':'pin'}</button>
-      <button title="edit" onclick="editMemory('${m.id}')">✎</button>
-      <button title="delete" onclick="delMemory('${m.id}')">✕</button></div>`).join('')
+      <button title="${m.pinned?'unpin':'pin (always injected first)'}" style="${m.pinned?'':'opacity:.45'};font-size:11px" onclick="pinMemory('${jsq(m.id)}',${m.pinned?0:1})">${m.pinned?'pinned':'pin'}</button>
+      <button title="edit" onclick="editMemory('${jsq(m.id)}')">✎</button>
+      <button title="delete" onclick="delMemory('${jsq(m.id)}')">✕</button></div>`).join('')
       ||emptyBox('No user memories yet','They appear here as you chat (auto-learn), when the agent calls <code>remember</code>, or when you add one below.','','memory','What should you remember about me? Interview me briefly.');
   }else{
     const groups={};
     sess.forEach(m=>{(groups[m.conversation_id||'?']=groups[m.conversation_id||'?']||{title:m.conversation_title||'(deleted conversation)',items:[]}).items.push(m)});
     items=Object.entries(groups).map(([cid,g])=>`<div data-fgroup><div class="ptitle" style="margin-top:10px">${esc(g.title)}</div>`+
       g.items.map(m=>`<div class="item" data-f="${esc(g.title+' '+m.content)}"><div class="grow">${srcBadge(m)}${esc(m.content)}<div class="sub">${when(m)}</div></div>
-        <button title="promote to user memory (durable)" onclick="promoteMemory('${m.id}')">⤴</button>
-        <button title="edit" onclick="editMemory('${m.id}')">✎</button>
-        <button title="delete" onclick="delMemory('${m.id}')">✕</button></div>`).join('')+'</div>').join('')
+        <button title="promote to user memory (durable)" onclick="promoteMemory('${jsq(m.id)}')">⤴</button>
+        <button title="edit" onclick="editMemory('${jsq(m.id)}')">✎</button>
+        <button title="delete" onclick="delMemory('${jsq(m.id)}')">✕</button></div>`).join('')+'</div>').join('')
       ||emptyBox('No session memories yet','These capture the working context of each conversation (goals, decisions, constraints) and are injected only into that conversation.');
   }
   window.__mems=Object.fromEntries(d.memories.map(m=>[m.id,m.content]));
@@ -23204,10 +23368,10 @@ async function renderSpaces(body){
     <div class="grow"><b>${s.icon?esc(s.icon)+' ':''}${esc(s.name)}</b>
       ${s.id===cur?'<span class="badge" style="margin-left:6px">active</span>':''}
       <div class="sub">${esc(s.description||'no description — the agent uses this to decide what belongs here')}</div></div>
-    <button onclick="switchSpace('${s.id}')" ${s.id===cur?'disabled':''}>Work here</button>
-    <button title="stop offering this space; nothing is deleted" onclick="spaceDispose('${s.id}','archive')">Archive</button>
-    <button title="move everything in it to the shared scope" onclick="spaceDispose('${s.id}','global')">Make shared</button>
-    <button title="delete the space and everything scoped to it" onclick="spaceDispose('${s.id}','delete')">✕</button></div>`;
+    <button onclick="switchSpace('${jsq(s.id)}')" ${s.id===cur?'disabled':''}>Work here</button>
+    <button title="stop offering this space; nothing is deleted" onclick="spaceDispose('${jsq(s.id)}','archive')">Archive</button>
+    <button title="move everything in it to the shared scope" onclick="spaceDispose('${jsq(s.id)}','global')">Make shared</button>
+    <button title="delete the space and everything scoped to it" onclick="spaceDispose('${jsq(s.id)}','delete')">✕</button></div>`;
   const pb=panelShell(body,{title:'Spaces',sub:'the things you are working on',
     actions:`<button class="pact" onclick="newSpace()">New space</button>`});
   pb.innerHTML=`
@@ -23306,17 +23470,17 @@ async function renderFabAgents(body){
   // ago its face, the same one it will wear on the stage and beside its messages
   const [sa]=await Promise.all([fetch('/api/subagents').then(r=>r.json()),avatarsLoad()]);
   window.__subagents=Object.fromEntries(sa.subagents.map(s=>[s.name,s]));
-  const cards=sa.subagents.map(s=>`<div class="teamcard" onclick="openSAW('${esc(s.name)}')">
+  const cards=sa.subagents.map(s=>`<div class="teamcard" onclick="openSAW('${jsq(s.name)}')">
       ${avatarImg(s.name,'av-card')||`<div class="tile">${esc((s.name||'?')[0].toUpperCase())}</div>`}
       <div class="grow">
         <div class="n">${esc(s.name)}${s.builtin?'<span class="badge">built-in</span>':''}</div>
         <div class="meta">${s.brain?brainChip(s.brain.model,s.brain.provider_name):esc(s.model||'inherits OS model')}${s.brain&&s.brain.note?` <span class="mut" title="pinned to ${esc(s.brain.pinned)}">· ${esc(s.brain.note)}</span>`:''} · ${s.tools.length?s.tools.length+' tools':'safe read-only set'}${(s.skills||[]).length?' · '+s.skills.length+' skills':''} · autonomy ≤ ${esc(s.autonomy_cap)} · ${s.max_steps} steps / ${s.max_seconds}s</div>
         <div class="persona">${esc((s.soul||'').slice(0,120))}</div>
       </div>
-      ${AVATARS.off?'':`<button title="change how ${esc(s.name)} looks — everywhere it appears" onclick="event.stopPropagation();avatarEdit('${esc(s.name)}')">Look</button>`}
-      <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${esc(s.name)}')">Test in chat</button>
-      ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${esc(s.name)}')">Share</button>`:''}
-      <button title="delete" onclick="event.stopPropagation();delSubagent('${s.id}')">✕</button></div>`).join('')
+      ${AVATARS.off?'':`<button title="change how ${esc(s.name)} looks — everywhere it appears" onclick="event.stopPropagation();avatarEdit('${jsq(s.name)}')">Look</button>`}
+      <button title="try it in chat: @${esc(s.name)}" onclick="event.stopPropagation();testSubagent('${jsq(s.name)}')">Test in chat</button>
+      ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser)?`<button title="share a copy with everybody on this machine" onclick="event.stopPropagation();usersShare('agent','${jsq(s.name)}')">Share</button>`:''}
+      <button title="delete" onclick="event.stopPropagation();delSubagent('${jsq(s.id)}')">✕</button></div>`).join('')
     ||'<p class="mut">No specialists yet — press ＋ New agent and describe the first one in a sentence.</p>';
   body.innerHTML=`<div class="pad">${fabTabs()}
     <button class="save" style="margin:0 0 12px" onclick="openSAW()">＋ New agent</button>
@@ -23509,9 +23673,9 @@ function drawSAW(){
       <label for="sw-model">Brain</label><select id="sw-model">${opts}</select>
       <div class="sub saw-hint">A pinned model is used when Settings → Agents lets agents use their own; otherwise it answers on this machine's brain.</div>`;
   }else if(st===2){
-    const chips=Object.keys(SAW_PRESETS).map(p=>`<button class="sawchip" onclick="sawPreset('${p}')">${p}</button>`).join('')
+    const chips=Object.keys(SAW_PRESETS).map(p=>`<button class="sawchip" onclick="sawPreset('${jsq(p)}')">${p}</button>`).join('')
       +`<button class="sawchip" onclick="SAW.d.tools=[];sawRefreshList()">Clear all</button>`;
-    const skl=SAW.skills.map(s=>`<label class="sawrow ${d.skills.includes(s.name)?'on':''}"><input type="checkbox" ${d.skills.includes(s.name)?'checked':''} onchange="sawSkill('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+    const skl=SAW.skills.map(s=>`<label class="sawrow ${d.skills.includes(s.name)?'on':''}"><input type="checkbox" ${d.skills.includes(s.name)?'checked':''} onchange="sawSkill('${jsq(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
         <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.description||'').slice(0,110))}</div></div></label>`).join('')
       ||'<p class="mut">No skills installed yet — add some in the Skills app.</p>';
     inner=`<div class="sawsub">Pick from what is already on this machine — its tools, connected MCP servers and installed skills. Nothing to type.</div>
@@ -23581,7 +23745,7 @@ function sawRefreshList(){
   });
   const row=t=>{const on=d.tools.includes(t.name);
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
-      onchange="sawTool('${esc(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      onchange="sawTool('${jsq(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(t.name)}</div><div class="d">${esc((t.description||'').slice(0,130))}</div></div></label>`};
   box.innerHTML=Object.entries(groups).map(([g,ts])=>
     `<div class="sawgrp">${esc(g)} · ${ts.length}</div>`+ts.slice(0,80).map(row).join('')).join('')
@@ -23645,14 +23809,14 @@ async function fabPlaneStats(){
   const dur=r=>r.finished_at?`${Math.round(r.finished_at-r.started_at)}s`:'…';
   const badge=s=>`<b style="color:${s==='ok'?'var(--ok,#34d399)':s==='running'?'var(--acc,#5eead4)':'var(--err,#f87171)'}">${esc(s)}</b>`;
   const live=runs.live.map(i=>`<div class="item"><div class="grow"><b>${esc(i.ref)}</b> <span class="sub">beat ${Math.round(Date.now()/1000-i.last_beat)}s ago${i.stale?' · <b style="color:var(--err,#f87171)">STALE</b>':''}</span></div>
-      <button onclick="cancelRun('${i.run_id}')">⏹</button></div>`).join('');
+      <button onclick="cancelRun('${jsq(i.run_id)}')">⏹</button></div>`).join('');
   const planes=Object.entries(o.per_plane).map(([k,p])=>`<tr><td>${esc(k)}</td><td>${p.runs}</td><td>${p.ok}</td>
       <td>${p.faults?`<b style="color:var(--err,#f87171)">${p.faults}</b>`:0}</td>
       <td>${p.runs?Math.round(p.secs/p.runs):0}s</td><td>${p.tokens_in+p.tokens_out}</td></tr>`).join('');
-  const rows=runs.runs.map(r=>`<div class="item" style="cursor:pointer" onclick="showRun('${r.id}')">
+  const rows=runs.runs.map(r=>`<div class="item" style="cursor:pointer" onclick="showRun('${jsq(r.id)}')">
       <div class="grow"><span class="lbadge" style="margin-right:4px">${r.kind==='workflow'?'flow':'agent'}</span><b>${esc(r.ref)}</b> ${badge(r.status)}
         <div class="sub">${new Date(r.started_at*1000).toLocaleString()} · ${dur(r)} · ${(r.tokens_in||0)+(r.tokens_out||0)} tok · model ${esc(r.model||'—')}${r.fault?' · <span style="color:var(--err,#f87171)">'+esc(r.fault.slice(0,80))+'</span>':''}</div></div>
-      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${r.id}')">⏹</button>`:''}</div>`).join('')
+      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${jsq(r.id)}')">⏹</button>`:''}</div>`).join('')
     ||'<p class="mut">No fabric runs yet — delegate a task or run a workflow.</p>';
   body.innerHTML=`<div class="pad">${fabTabs()}
     ${live?`<div class="ptitle">Live data planes</div>${live}`:''}
@@ -23903,7 +24067,7 @@ function fgSvgInner(){
     const sub=n.depth===0
       ?`${FG.nodes.size-1} delegation${FG.nodes.size===2?'':'s'}${tok?' · '+tok+' tok':''}`
       :`${st}${tok?' · '+tok+' tok':''}${n.handle?' · '+n.handle:''}`;
-    boxes+=`<g style="cursor:pointer" onclick="fgSelect('${n.id}')">
+    boxes+=`<g style="cursor:pointer" onclick="fgSelect('${jsq(n.id)}')">
       <rect x="${x}" y="${y}" rx="10" width="${BW}" height="${BH}"
         fill="${FG.sel===n.id?'rgba(94,234,212,.10)':'rgba(255,255,255,.04)'}"
         stroke="${fgCol(st)}" stroke-width="${FG.sel===n.id?2.6:1.6}">${st==='running'||st==='paused'?
@@ -23972,7 +24136,7 @@ function fgPaint(){
   const rows=[...FG.art.values()];
   all('.fg-board').forEach(bd=>{
     bd.innerHTML=rows.length?rows.map(a=>`<div class="item" style="cursor:pointer;padding:5px 0"
-        onclick="fgOpenHandle('${esc(a.handle)}')">
+        onclick="fgOpenHandle('${jsq(a.handle)}')">
         <div class="grow"><b>${esc(a.handle)}</b> <span class="sub">${esc(a.agent||a.kind)} · ${esc(a.status||'')}
         · ${a.bytes||0} B${a.tainted?' · <span style="color:var(--warn,#f59e0b)">tainted</span>':''}</span>
         <div class="sub">${esc((a.preview||'').slice(0,120))}</div></div></div>`).join('')
@@ -23994,7 +24158,7 @@ function fgPaint(){
       hd.innerHTML=`<b>${esc(FG.flow||'')}</b> <span class="sub">run ${esc(FG.run.slice(0,8))} · `
         +`<b style="color:${fgCol(m.status)}">${esc(m.status||'…')}</b>`
         +` · ${kids.length} delegation${kids.length===1?'':'s'}${tok?' · '+tok+' tok':''}</span>`
-        +(FG.ended?'':` <button style="float:right" onclick="cancelRun('${FG.run}')">⏹ Stop</button>`);
+        +(FG.ended?'':` <button style="float:right" onclick="cancelRun('${jsq(FG.run)}')">⏹ Stop</button>`);
     });
   }
   fgPaintDetail();
@@ -24018,7 +24182,7 @@ function fgPaintDetail(){
   box.innerHTML=`<div class="ptitle" style="margin-top:0">${esc(n.label||'')}
       <span class="sub">${esc(n.status||'')}${n.model?' · '+esc(n.model.split('/').pop()):''}
       ${n.handle?' · → '+esc(n.handle):''}</span>
-      ${n.child_run?`<button style="float:right" onclick="showRunInAudit('${esc(n.child_run)}')">full run</button>`:''}</div>
+      ${n.child_run?`<button style="float:right" onclick="showRunInAudit('${jsq(n.child_run)}')">full run</button>`:''}</div>
     ${n.task?`<div class="sub" style="margin-bottom:6px"><b>asked:</b> ${esc(n.task)}</div>`:''}
     ${n.fault?`<div class="sub" style="color:var(--err,#f87171)"><b>fault:</b> ${esc(n.fault)}</div>`:''}
     ${n.approval&&n.approval!=='allowed'?`<div class="sub" style="color:var(--warn,#f59e0b)">⏸ approval ${esc(n.approval)}</div>`:''}
@@ -24084,7 +24248,7 @@ async function renderFabFlows(body,w){
     const dot=f.enabled?'var(--ok,#34d399)':(f.draft&&f.draft.model?'var(--acc,#5eead4)':'var(--dim2,#5b6474)');
     return `<div class="item" style="cursor:pointer;padding:7px 8px;border-radius:8px;
         background:${f.name===FLOW_SEL?'rgba(94,234,212,.08)':'transparent'}"
-        onclick="flowSelect('${esc(f.name)}')">
+        onclick="flowSelect('${jsq(f.name)}')">
       <span style="color:${dot};font-size:9px;margin-right:6px">●</span>
       <div class="grow"><b>${esc(f.name)}</b>
         <div class="sub">${f.enabled?'live':(f.draft&&f.draft.model?'drafted':'off')}${
@@ -24143,10 +24307,10 @@ function flowDetail(f,run){
       <span class="sub">· ${f.enabled?'live':'not enabled'}</span>
       <span style="float:right">
         <button class="save" style="margin:0;display:inline-block;width:auto;padding:4px 12px"
-          onclick="enableFlow('${esc(f.name)}',${f.enabled?'false':'true'})">${f.enabled?'Turn off':'Enable'}</button>
-        <button onclick="openFLW('${esc(f.name)}')">✎ Edit</button>
+          onclick="enableFlow('${jsq(f.name)}',${f.enabled?'false':'true'})">${f.enabled?'Turn off':'Enable'}</button>
+        <button onclick="openFLW('${jsq(f.name)}')">✎ Edit</button>
         <button title="${drafted?'discard this draft':'delete'}"
-          onclick="${drafted?`discardFlow('${esc(f.name)}')`:`delFlow('${esc(f.name)}')`}">✕</button></span></div>
+          onclick="${drafted?`discardFlow('${jsq(f.name)}')`:`delFlow('${jsq(f.name)}')`}">✕</button></span></div>
     <div class="sub" style="margin:2px 0 8px">${esc(f.mission||'')}</div>
     <div style="border:1px solid var(--line,#232a35);border-radius:10px;padding:6px;overflow-x:auto">${fgPredictSvg(f)}</div>
     <div class="row" style="margin-top:8px;gap:10px;align-items:flex-start">
@@ -24166,15 +24330,15 @@ function flowDetail(f,run){
     ${drafted&&(f.draft.agents_created||[]).length?`<div class="sub">✦ created for it: ${esc(f.draft.agents_created.join(', '))}</div>`:''}
     ${drafted?(f.draft.warnings||[]).map(w=>`<div class="sub" style="color:var(--warn,#f59e0b)">⚠ ${esc(w)}</div>`).join(''):''}
     ${hook?`<div class="sub" style="margin-top:6px">hook: <code style="font-size:11px">${esc(hook.url||'')}</code>
-      <button onclick="navigator.clipboard.writeText('${esc(hook.url||'')}');toast('hook URL copied')">copy</button></div>`:''}
+      <button onclick="navigator.clipboard.writeText('${jsq(hook.url||'')}');toast('hook URL copied')">copy</button></div>`:''}
     <div class="row" style="margin-top:10px"><input id="fl-in-${esc(f.name)}" placeholder="input for this run (optional)…">
       <button class="save" style="margin:0;flex:0 0 ${f.enabled?'80':'110'}px"
         title="${f.enabled?'run it now':'try it with you watching — it holds no permissions, so every risky step asks you'}"
-        onclick="runFlow('${esc(f.name)}')">${f.enabled?'Run':'Test run'}</button></div>
+        onclick="runFlow('${jsq(f.name)}')">${f.enabled?'Run':'Test run'}</button></div>
     <div class="sub" style="margin-top:4px">${f.enabled
       ?'Opens the Run Inspector — the graph, the log and every tool call.'
       :'A test run works with you watching: every risky step stops and asks. Nothing fires on its own until you Enable.'}</div>
-    ${run?`<div class="sub" style="margin-top:8px;cursor:pointer" onclick="fgWatch('${run.id}')">
+    ${run?`<div class="sub" style="margin-top:8px;cursor:pointer" onclick="fgWatch('${jsq(run.id)}')">
       last run: ${esc(run.status)} · ${new Date(run.started_at*1000).toLocaleString()}${
       run.fault?' · <span style="color:var(--err,#f87171)">'+esc(run.fault.slice(0,70))+'</span>':''} → open</div>`:''}`;
 }
@@ -24266,10 +24430,10 @@ async function renderFabRuns(body){
     :s==='partial'?'var(--warn,#f59e0b)':'var(--err,#f87171)'}">${esc(s)}</b>`;
   const chips=['<button class="sawchip'+(EXEC_FILTER?'':' on')+'" onclick="execFilter(\'\')">all flows</button>']
     .concat((d.flows||[]).map(f=>`<button class="sawchip${EXEC_FILTER===f?' on':''}"
-      onclick="execFilter('${esc(f)}')">${esc(f)}</button>`)).join(' ');
+      onclick="execFilter('${jsq(f)}')">${esc(f)}</button>`)).join(' ');
   const rows=(d.runs||[]).map(r=>{
     const when=new Date(r.started_at*1000);
-    return `<div class="item" style="cursor:pointer" onclick="fgWatch('${r.id}')">
+    return `<div class="item" style="cursor:pointer" onclick="fgWatch('${jsq(r.id)}')">
       <div class="grow">
         <b>${esc(r.flow||r.ref)}</b> ${badge(r.status)}
         <span class="sub">· ${r.delegations} delegation${r.delegations===1?'':'s'}
@@ -24280,20 +24444,20 @@ async function renderFabRuns(body){
         ${r.fault?`<div class="sub" style="color:var(--err,#f87171)">${esc(r.fault.slice(0,140))}</div>`:''}
         ${r.output?`<div class="sub">${esc(r.output.slice(0,150))}</div>`:''}
       </div>
-      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${r.id}')">⏹</button>`:''}
+      ${r.status==='running'?`<button onclick="event.stopPropagation();cancelRun('${jsq(r.id)}')">⏹</button>`:''}
       </div>`;
   }).join('')||`<p class="mut">Nothing has run yet${EXEC_FILTER?' for “'+esc(EXEC_FILTER)+'”':''}.
     Runs started by a trigger, from chat, from Telegram or by hand all land here.</p>`;
   const live=(d.live||[]).map(i=>`<div class="item"><div class="grow"><b>${esc(i.ref)}</b>
       <span class="sub">${esc(i.state||'running')} · beat ${Math.round(Date.now()/1000-i.last_beat)}s ago
       ${i.stale?'· <b style="color:var(--err,#f87171)">STALE</b>':''}</span></div>
-      <button onclick="fgWatch('${i.run_id}')">watch</button></div>`).join('');
+      <button onclick="fgWatch('${jsq(i.run_id)}')">watch</button></div>`).join('');
   const m=o.main_agent||{};
   const planes=Object.entries(o.per_plane||{}).map(([k,p])=>`<tr><td>${esc(k)}</td><td>${p.runs}</td>
       <td>${p.faults?`<b style="color:var(--err,#f87171)">${p.faults}</b>`:0}</td>
       <td>${p.runs?Math.round(p.secs/p.runs):0}s</td><td>${p.tokens_in+p.tokens_out}</td></tr>`).join('');
   const other=(all.runs||[]).filter(r=>r.kind!=='flow').slice(0,12).map(r=>
-    `<div class="sub" style="cursor:pointer" onclick="showRun('${r.id}')">${esc(r.kind)} ·
+    `<div class="sub" style="cursor:pointer" onclick="showRun('${jsq(r.id)}')">${esc(r.kind)} ·
       <b>${esc(r.ref)}</b> ${esc(r.status)} · ${new Date(r.started_at*1000).toLocaleString()}</div>`).join('');
   body.innerHTML=`<div class="pad">${fabTabs()}
     ${live?`<div class="ptitle" style="margin-top:0">Running now</div>${live}`:''}
@@ -24418,7 +24582,7 @@ async function fgRuns(){
   const col=st=>st==='ok'?'ok':st==='running'?'run':(st==='partial'||st==='cancelled'||st==='parked')?'warn':'err';
   const html=runs.length>1?`<span class="fr-runs-l">Recent runs</span>`+runs.slice().reverse().map(r=>{
       const t=new Date((r.started_at||0)*1000),took=r.finished_at?fgWhen((r.finished_at-r.started_at)*1000):'running';
-      return `<button class="fr-run ${col(r.status)}${r.id===FG.run?' on':''}" onclick="fgWatch('${esc(r.id)}')"
+      return `<button class="fr-run ${col(r.status)}${r.id===FG.run?' on':''}" onclick="fgWatch('${jsq(r.id)}')"
         title="${esc(t.toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit'})+' · '+(r.status||'')+' · '+took)}"
         aria-label="${esc('run at '+t.toLocaleString()+', '+(r.status||''))}"></button>`}).join(''):'';
   document.querySelectorAll('.fg-runs').forEach(el=>el.innerHTML=html);
@@ -24446,8 +24610,8 @@ function fgPaintStory(box){
         <div class="fr-bubble">${esc(String(e.text||'').slice(0,e.phase==='say'?3000:700))}</div></div></div>`;
       case 'done':return `<div class="fr-ev ${e.ok?'ok':'err'}">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who)}</b> ${
         e.ok?'finished':'stopped ('+esc(e.status||'error')+')'}</div>${e.fault?`<div class="fr-note err">${esc(e.fault)}</div>`:''}
-        ${e.handle?`<button class="fr-link" onclick="fgOpenHandle('${esc(e.handle)}')">See what came back</button>`:''}
-        ${e.node?`<button class="fr-link" onclick="fgSelect('${esc(e.node)}')">Every step</button>`:''}</div></div>`;
+        ${e.handle?`<button class="fr-link" onclick="fgOpenHandle('${jsq(e.handle)}')">See what came back</button>`:''}
+        ${e.node?`<button class="fr-link" onclick="fgSelect('${jsq(e.node)}')">Every step</button>`:''}</div></div>`;
       case 'wait':if(e.resumed)return `<div class="fr-ev sys ${e.state==='allowed'?'ok':'warn'}">${fgFace('')}<div class="fr-line">${tm}<b>Carried on</b> · you said ${e.state==='allowed'?'allow':'deny'}</div></div>`;
         if(e.state==='parked')return `<div class="fr-ev warn">${fgFace(e.who)}<div><div class="fr-line">${tm}<b>${esc(e.who||'an agent')}</b> is waiting for you to allow <code>${esc(e.tool)}</code></div>
         <div class="fr-note">Nobody answered, so the mission is paused here. Answer in the Brief and it carries on.</div>
@@ -24610,7 +24774,7 @@ function flwRoster(nm,on){
 function flwLinkedHTML(d){
   const on=(d.roster||[]).filter(x=>String(x.subagent).includes('@'));
   const rows=on.map(x=>`<label class="sawrow on"><input type="checkbox" checked
-      onchange="flwRoster('${esc(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      onchange="flwRoster('${jsq(x.subagent)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(x.subagent)} <span class="lbadge">linked team</span></div>
         <div class="d">works on ${esc(String(x.subagent).split('@')[1])}’s machine under their permissions; its answer is untrusted here</div></div></label>`).join('');
   if(!(FLW.links||[]).length)return rows+(rows?'':'<p class="mut flw-linked-why">Agents on another machine or account can join a mission once you link with them (Settings → Network & Teams).</p>');
@@ -24630,7 +24794,7 @@ async function flwLinkedWho(){
   const r=await fetch('/api/team/links/'+encodeURIComponent(l)+'/roster').then(r=>r.json()).catch(()=>({error:'no answer'}));
   if(!document.body.contains(box))return;
   box.innerHTML=!r.ok?esc(r.error||'not reachable')
-    :(r.agents||[]).length?'You may ask: '+r.agents.map(a=>`<button class="sawchip" onclick="flwAddLinked('${esc(a.name)}')">${esc(a.name)}</button>`).join(' ')
+    :(r.agents||[]).length?'You may ask: '+r.agents.map(a=>`<button class="sawchip" onclick="flwAddLinked('${jsq(a.name)}')">${esc(a.name)}</button>`).join(' ')
     :esc(l)+' has not let your team ask any of their agents yet — that is their choice, on their side.';
 }
 function flwSink(kind,on){
@@ -24734,11 +24898,11 @@ function drawFLW(){
       <span style="width:16px;text-align:center">✦</span>
       <div class="grow"><div class="n">${esc(a.name)} <span class="lbadge">will be created on save</span></div>
         <div class="d">${esc((a.soul||'').slice(0,90))}${(a.tools||[]).length?' · '+esc((a.tools||[]).join(', ')):''}</div></div>
-      <button onclick="event.preventDefault();flwNewAgent(${esc(JSON.stringify(a)).replace(/"/g,'&quot;')})" title="edit and create it now">✎</button>
-      <button onclick="event.preventDefault();flwDropNewAgent('${esc(a.name)}')" title="drop it">✕</button></label>`).join('');
+      <button onclick="event.preventDefault();flwNewAgent(${esc(JSON.stringify(a))})" title="edit and create it now">✎</button>
+      <button onclick="event.preventDefault();flwDropNewAgent('${jsq(a.name)}')" title="drop it">✕</button></label>`).join('');
   const roster=pending+(FLW.subs.map(s=>{const on=(d.roster||[]).some(x=>x.subagent===s.name);
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
-      onchange="flwRoster('${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      onchange="flwRoster('${jsq(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(s.name)}</div><div class="d">${esc((s.soul||'').slice(0,90))}</div></div></label>`;
   }).join('')||(pending?'':'<p class="mut">No subagents yet — create one below; the master orchestrates, it does not do the work itself.</p>'))
     +flwLinkedHTML(d);
@@ -24746,17 +24910,17 @@ function drawFLW(){
   const tl=FLW.tools.filter(t=>!q||t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q))
     .slice(0,60).map(t=>{const on=p.tools.includes(t.name);
       return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
-        onchange="flwToggle('tools','${esc(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+        onchange="flwToggle('tools','${jsq(t.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
         <div class="grow"><div class="n">${esc(t.name)}</div><div class="d">${esc((t.description||'').slice(0,100))}</div></div></label>`}).join('');
   const skl=FLW.skills.map(s=>{const on=p.skills.includes(s.name);
     return `<label class="sawrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''}
-      onchange="flwToggle('skills','${esc(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
+      onchange="flwToggle('skills','${jsq(s.name)}',this.checked);this.closest('.sawrow').classList.toggle('on',this.checked)">
       <div class="grow"><div class="n">${esc(s.name)}</div></div></label>`}).join('')
     ||'<p class="mut">No skills installed.</p>';
   const sinkBox=['origin','telegram','gui','notify','report'].map(k=>{
     const on=(d.sinks||[]).some(x=>x.kind===k);
     return `<label class="sawchip ${on?'on':''}" style="cursor:pointer"><input type="checkbox" style="margin-right:5px"
-      ${on?'checked':''} onchange="flwSink('${k}',this.checked);this.closest('label').classList.toggle('on',this.checked)">${k}</label>`;
+      ${on?'checked':''} onchange="flwSink('${jsq(k)}',this.checked);this.closest('label').classList.toggle('on',this.checked)">${k}</label>`;
   }).join(' ');
   const trigs=(d.triggers||[]).map((t,i)=>{
     const c=t.config||{};
@@ -24818,7 +24982,7 @@ function drawFLW(){
       ${FLW.draft.notes?`<div class="sub" style="margin-top:4px">assumed: ${esc(FLW.draft.notes)}</div>`:''}
       ${(FLW.draft.warnings||[]).map(w=>`<div class="sub" style="color:var(--warn,#f59e0b)">⚠ ${esc(w)}</div>`).join('')}
       ${(FLW.draft.suggested_mcp||[]).map(p=>`<div class="sub flw-part">✦ might help: <b>${esc(p.title)}</b> — ${esc(p.why||p.description)}
-        ${p.connected?'<span class="mut">(connected — grant it under Permissions)</span>':`<button class="sawchip" onclick="openApp('mcp');toast('find ${esc(p.title)} in the Store and Connect it — then grant it here')">Connect</button>`}</div>`).join('')}
+        ${p.connected?'<span class="mut">(connected — grant it under Permissions)</span>':`<button class="sawchip" onclick="openApp('mcp');toast('find ${jsq(p.title)} in the Store and Connect it — then grant it here')">Connect</button>`}</div>`).join('')}
       ${FLW.draft.request?`<button class="sawchip" style="margin-top:6px" onclick="flwDraftAgain()">✦ Draft again</button>`:''}
       </div>`:''}
     <label>Name</label><input id="flw-name" value="${esc(d.name)}" placeholder="e.g. vendor-digest" ${FLW.exists?'disabled':''}>
@@ -24861,7 +25025,7 @@ function drawFLW(){
     ${trigs||'<p class="mut">Nothing yet — it runs when you press Run.</p>'}
     <div class="row" style="gap:6px;flex-wrap:wrap">
       ${['cron','message','webhook','os_event','flow_done','device'].map(k=>
-        `<button class="sawchip" onclick="flwCollect();flwAddTrigger('${k}')">＋ ${k}</button>`).join('')}
+        `<button class="sawchip" onclick="flwCollect();flwAddTrigger('${jsq(k)}')">＋ ${k}</button>`).join('')}
     </div>
 
     <div class="sawgrp">Where the answer goes</div>
@@ -24992,7 +25156,7 @@ async function renderDocs(body){
   const d=await fetch('/api/docs').then(r=>r.json());
   if(!d.docs.length){body.innerHTML='<div class="pad"><p class="mut">No documentation found on this install.</p></div>';return}
   docsCur=docsCur||d.docs[0].file;
-  const items=d.docs.map(x=>`<div class="item" style="cursor:pointer;${x.file===docsCur?'border-left:3px solid var(--acc,#5eead4)':''}" onclick="docsCur='${esc(x.file)}';refreshApp('docs')">
+  const items=d.docs.map(x=>`<div class="item" style="cursor:pointer;${x.file===docsCur?'border-left:3px solid var(--acc,#5eead4)':''}" onclick="docsCur='${jsq(x.file)}';refreshApp('docs')">
     <div class="grow">${esc(x.title)}</div></div>`).join('');
   const doc=await fetch('/api/docs/'+docsCur).then(r=>r.json());
   body.innerHTML=`<div style="display:flex;height:100%;min-height:0">
@@ -25677,9 +25841,9 @@ function jobRow(j){
       <div class="sub">${lastLine}</div>
       <div class="sub">${j.enabled?'next: '+esc(j.next):'switched off'} · this week: ${j.runs_7d} run${j.runs_7d===1?'':'s'}, ${j.ok_7d} ok · ${(j.tokens_7d||0).toLocaleString()} tokens · holds ${j.grants} permission${j.grants===1?'':'s'}</div>
     </div>
-    <button class="endbtn" onclick="jobRunNow('${esc(j.name)}')">Run now</button>
-    ${last.run_id?`<button class="endbtn" onclick="jobHistoryFor({mission:'${esc(j.name)}'})">Runs</button>`:''}
-    <button class="endbtn" onclick="openFLW('${esc(j.name)}')">Edit</button>
+    <button class="endbtn" onclick="jobRunNow('${jsq(j.name)}')">Run now</button>
+    ${last.run_id?`<button class="endbtn" onclick="jobHistoryFor({mission:'${jsq(j.name)}'})">Runs</button>`:''}
+    <button class="endbtn" onclick="openFLW('${jsq(j.name)}')">Edit</button>
   </div>`;
 }
 async function renderJobs(body,w){
@@ -26983,7 +27147,7 @@ function jobHistRow(r){
   const door=r.run_id?`<button class="endbtn" data-open-run="${esc(r.run_id)}">Open run</button>`
     :r.conversation_id?`<button class="endbtn" data-open-conv="${esc(r.conversation_id)}">Open in Chat</button>`:'';
   // a run that refreshed an app is read in the app itself
-  const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${esc(r.app_id)}')">Open app</button>`:'';
+  const app=r.app_name?`<button class="endbtn" onclick="taskOpenApp('${jsq(r.app_id)}')">Open app</button>`:'';
   // everything this run did as one JSON file, to read or hand to an AI (trace.py)
   const tr=r.run_id?`<a class="endbtn" download href="/api/trace/run/${encodeURIComponent(r.run_id)}" title="Download what this run did as JSON">⤓ JSON</a>`
     :r.conversation_id?`<a class="endbtn" download href="/api/trace/conversation/${encodeURIComponent(r.conversation_id)}" title="Download what this run did as JSON">⤓ JSON</a>`:'';
@@ -27030,14 +27194,14 @@ async function renderTasks(body){
     const last=t.last_status?`last run ${st[t.last_status]||t.last_status}${t.last_at?' '+jobAgo(t.last_at):''}`:'has not run yet';
     return `<div class="item task-row" data-f="${esc(t.title||t.prompt)}"><div class="grow">
       ${t.flow?`<span class="job-hkind">mission</span> `:''}${esc(t.title||t.prompt)}
-      ${t.app_name?`<div class="sub task-app">for <b>${esc(t.app_name)}</b> <button class="endbtn" onclick="taskOpenApp('${esc(t.app_id)}')">Open app</button></div>`
+      ${t.app_name?`<div class="sub task-app">for <b>${esc(t.app_name)}</b> <button class="endbtn" onclick="taskOpenApp('${jsq(t.app_id)}')">Open app</button></div>`
         :t.app_gone?'<div class="sub">for an app that was deleted</div>':''}
       <div class="sub">${esc(t.words||'')} · ${t.enabled?(t.next_run?'next: '+new Date(t.next_run*1000).toLocaleString():'waiting for its event'):'switched off'}</div>
       <div class="sub"><span class="task-last ${esc(t.last_status||'')}">${esc(last)}</span>${t.runs_7d?` · ${t.runs_7d} run${t.runs_7d===1?'':'s'} this week`:''}${t.failed_7d?` · <b class="job-bad">${t.failed_7d} failed</b>`:''}</div>
       ${t.last_said?`<div class="sub job-hsaid">${esc(t.last_said)}</div>`:''}</div>
-    <button class="endbtn" onclick="jobHistoryFor({task_id:'${esc(t.id)}'})">Runs</button>
-    <button title="${t.enabled?'Pause':'Resume'}" aria-label="${t.enabled?'Pause':'Resume'}" onclick="toggleTask('${t.id}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
-    <button title="Delete" aria-label="Delete" onclick="delTask('${t.id}')">✕</button></div>`}).join('');
+    <button class="endbtn" onclick="jobHistoryFor({task_id:'${jsq(t.id)}'})">Runs</button>
+    <button title="${t.enabled?'Pause':'Resume'}" aria-label="${t.enabled?'Pause':'Resume'}" onclick="toggleTask('${jsq(t.id)}',${t.enabled?0:1})">${t.enabled?'⏸':'▶'}</button>
+    <button title="Delete" aria-label="Delete" onclick="delTask('${jsq(t.id)}')">✕</button></div>`}).join('');
   const pb=panelShell(body,{
     title:'Schedule',
     sub:`${d.tasks.length} task${d.tasks.length===1?'':'s'} · ${d.tasks.filter(t=>t.enabled).length} active`,
@@ -27187,7 +27351,9 @@ function automationStepLabel(s){
   return s.kind;
 }
 
-async function runAutomationStep(s){
+/* `a` is the routine and `run` the server's ticket when an agent started it: what that agent's
+   turn had read goes along with each step (tools.automation_ticket). Pressing Run has none. */
+async function runAutomationStep(s,a,run){
   switch(s.kind){
     case 'app':      if(APPS[s.app]){openApp(s.app);if(s.view)automationView(s.app,s.view)} else toast('automation: no app "'+s.app+'"'); break;
     case 'place':    {const p=(typeof PLACES!=='undefined'?PLACES:[]).find(x=>x.label===s.place);
@@ -27197,11 +27363,11 @@ async function runAutomationStep(s){
     case 'wallpaper':await setBuiltinWallpaper(s.wallpaper); break;
     case 'desktop':  switchDesk(Math.max(1,Math.min(DESKS,+s.desk||1))); break;
     case 'wait':     await new Promise(r=>setTimeout(r,Math.min(60000,+s.ms||0))); break;
-    case 'agent':    palAsk(s.prompt); break;
+    case 'agent':    palAsk(s.prompt,{name:(a&&a.name)||'a routine',run:run||''}); break;
     // tool and python go to the server, where the permission gate lives — an
     // automation gets no more reach than the agent does, it just skips the model
-    case 'tool':     await runAutomationTool(s.tool,s.args); break;
-    case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code})); break;
+    case 'tool':     await runAutomationTool(s.tool,s.args,run); break;
+    case 'python':   await runAutomationTool('run_python',JSON.stringify({code:s.code}),run); break;
   }
 }
 /* An app opened at a view: a Settings tab, a Missions tab, a Logs filter. The three a
@@ -27211,12 +27377,12 @@ function automationView(app,view){
   if(app==='jobs'&&typeof JOB_TABS!=='undefined'&&JOB_TABS.indexOf(view)>=0){JOBS.tab=view;return refreshApp('jobs')}
   if(app==='logs'){const w=winsOf('logs')[0];if(w){w.kind=view;w.app.render(w.el.querySelector('.wbody'),w)}}
 }
-async function runAutomationTool(name,args){
+async function runAutomationTool(name,args,run){
   let parsed={};
   try{parsed=args?JSON.parse(args):{}}catch(e){return toast('automation: '+name+' args are not valid JSON')}
   try{
     const r=await fetch('/api/tool',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,args:parsed})});
+      body:JSON.stringify({name,args:parsed,...(run?{automation_run:run}:{})})});
     const d=await r.json();
     // /api/tool answers {output} on success and {error} when the permission gate
     // says no (403) — an automation must surface the refusal, not swallow it
@@ -27236,7 +27402,7 @@ function automationOutput(name,out){
     +esc(out.slice(0,4000))+'</pre>';
 }
 let AUTO_RUNNING=false;
-async function runAutomation(a){
+async function runAutomation(a,run){
   if(typeof a==='string')a=automationByName(a)||AUTOMATIONS.find(x=>x.id===a);
   if(!a)return toast('no such automation');
   if(AUTO_RUNNING)return toast('an automation is already running');
@@ -27245,7 +27411,7 @@ async function runAutomation(a){
   toast('▶ '+a.name);
   try{
     for(const s of (a.steps||[])){
-      await runAutomationStep(s);
+      await runAutomationStep(s,a,run);
       // a beat between steps: windows animate in, and a theme swap runs a view
       // transition — firing the next step mid-flight looks (and feels) broken
       if(s.kind!=='wait')await new Promise(r=>setTimeout(r,160));
@@ -27254,10 +27420,15 @@ async function runAutomation(a){
   AUTO_RUNNING=false;
   document.body.classList.remove('auto-running');
 }
-/* Fired by the server (a schedule, the agent's run_automation tool, another
-   window) — the payload carries the whole automation so this client runs the
-   same steps even if its list is stale. */
-function onAutomationBroadcast(a){if(a&&a.steps)runAutomation(a)}
+/* Fired by the server (a schedule, the agent's run_automation tool, another window). It
+   names an automation, and the steps come from this account's own list, re-read here so a
+   stale list still runs the current steps. Steps in the event are ignored: a page must run
+   nothing it did not read from its own account. */
+async function onAutomationBroadcast(ev){
+  await loadAutomations();
+  const a=AUTOMATIONS.find(x=>x.id===(ev&&ev.id));
+  if(a)runAutomation(a,ev.run);
+}
 
 async function saveAutomation(name,steps,icon){
   const r=await fetch('/api/automations',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -27625,11 +27796,11 @@ async function renderMCP(body){
       </details>`:''}
     </div>${badge(s)}
     ${s.auth==='oauth'?(s.authorized
-        ?`<button title="sign out and forget the tokens" onclick="mcpSignOut('${esc(s.name)}')">Sign out</button>`
-        :`<button class="pact" title="sign in with your browser" onclick="mcpSignIn('${esc(s.name)}')">Sign in</button>`):''}
-    ${REG[s.name]&&REG[s.name].doc_file?`<button title="open this server's generated manual in Docs" onclick="docsCur='${esc(REG[s.name].doc_file)}';openApp('docs');refreshApp('docs')">📖</button>`:''}
-    <button title="enable/disable" onclick="mcpToggle('${esc(s.name)}')">${s.enabled?'⏸':'▶'}</button>
-    <button title="remove" onclick="mcpDel('${esc(s.name)}')">✕</button></div>`}).join('');
+        ?`<button title="sign out and forget the tokens" ${doAttrs('mcpSignOut',s.name)}>Sign out</button>`
+        :`<button class="pact" title="sign in with your browser" ${doAttrs('mcpSignIn',s.name)}>Sign in</button>`):''}
+    ${REG[s.name]&&REG[s.name].doc_file?`<button title="open this server's generated manual in Docs" onclick="docsCur='${jsq(REG[s.name].doc_file)}';openApp('docs');refreshApp('docs')">📖</button>`:''}
+    <button title="enable/disable" ${doAttrs('mcpToggle',s.name)}>${s.enabled?'⏸':'▶'}</button>
+    <button title="remove" ${doAttrs('mcpDel',s.name)}>✕</button></div>`}).join('');
   const pb=panelShell(body,{
     title:'MCP Servers',
     sub:`${d.servers.filter(s=>s.status==='connected').length} connected · ${d.servers.length} configured`,
@@ -27646,7 +27817,7 @@ async function renderMCP(body){
       return `<div data-fgroup>
       <div class="sect">${esc(cat.title)} <span class="mut" style="font-weight:400">· sign in with your browser, no key to paste</span></div>
       <div class="cat">${es.map(e=>`
-        <button class="catcard${e.installed?' inst':''}" data-f="${esc(e.title+' '+e.description+' '+e.vendor)}" onclick="mcpConnectCurated('${esc(e.registry_name)}')">
+        <button class="catcard${e.installed?' inst':''}" data-f="${esc(e.title+' '+e.description+' '+e.vendor)}" ${doAttrs('mcpConnectCurated',e.registry_name)}>
           <span class="cn">${esc(e.title)}</span><span class="cd">${esc(e.description)}</span>
           <span class="ck">${e.installed?'added':'OAuth — opens your browser'}</span>
         </button>`).join('')}
@@ -27655,7 +27826,7 @@ async function renderMCP(body){
     <div data-fgroup>
     <div class="sect">${esc(g)}</div>
     <div class="cat">${MCP_CATALOG.filter(e=>e.g===gi).map(e=>`
-      <button class="catcard${MCPCFG[e.k]?' inst':''}" data-f="${esc(e.n+' '+e.d)}" onclick="mcpPreset('${e.k}')">
+      <button class="catcard${MCPCFG[e.k]?' inst':''}" data-f="${esc(e.n+' '+e.d)}" onclick="mcpPreset('${jsq(e.k)}')">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
         ${mcpBadge(e)}
       </button>`).join('')}
@@ -27852,8 +28023,8 @@ async function renderTelegram(body){
         <div class="grow"><b>${esc(c.title||c.chat_id)}</b>${c.username?` <span class="mut">@${esc(c.username)}</span>`:''}${c.chat_id===d.owner_chat_id?' <span class="badge ok">owner</span>':''}
           <div class="sub">${esc(c.type)} · ${c.msg_count} msg · last ${new Date(c.last_seen*1000).toLocaleString()}</div></div>
         <span class="badge ${c.allowed?'ok':'err'}">${c.allowed?'enabled':'blocked'}</span>
-        <button title="${c.allowed?'disable':'enable'}" onclick="tgAllow(${c.chat_id},${c.allowed?0:1})">${c.allowed?'⏸':'▶'}</button>
-        <button onclick="tgDelChat(${c.chat_id})">✕</button>
+        <button title="${c.allowed?'disable':'enable'}" onclick="tgAllow(${+c.chat_id},${c.allowed?0:1})">${c.allowed?'⏸':'▶'}</button>
+        <button onclick="tgDelChat(${+c.chat_id})">✕</button>
       </div>`).join('')||'<p class="mut">No chats registered yet.</p>'}
     </div>
   </div>`;
@@ -28080,11 +28251,11 @@ async function renderThemes(body){
   if(typeof pTipBind==='function')pTipBind();   // the ⓘ tips below work before Settings has ever opened
   const swatch=t=>{const v=t.v||t.vars||{};
     return `<span style="display:flex;gap:3px">${['bg2','acc','acc2','txt'].map(k=>`<i style="width:14px;height:14px;border-radius:4px;background:${v[k]||'#333'};border:1px solid rgba(255,255,255,.15)"></i>`).join('')}</span>`;};
-  const cards=Object.entries(allThemes()).map(([k,t])=>`<div class="catcard" style="cursor:pointer" onclick="applyTheme('${esc(k)}');refreshApp('themes')">
+  const cards=Object.entries(allThemes()).map(([k,t])=>`<div class="catcard" style="cursor:pointer" onclick="applyTheme('${jsq(k)}');refreshApp('themes')">
       <span class="cn">${esc(t.label||t.name||k)} ${CURRENT_THEME===k?'✓':''}</span>
       <div style="margin:6px 0 4px">${swatch(t)}</div>
       <span class="cd">${t.mode||'dark'}${t.font?' · '+esc(t.font.family||'custom font'):''}${t.css?' · custom CSS':''}${t.shell?' · full shell':''}</span>
-      ${t.custom?`<button class="endbtn" style="position:absolute;top:8px;right:8px;padding:1px 7px" onclick="event.stopPropagation();themeDel('${esc(k)}')">✕</button>`:''}
+      ${t.custom?`<button class="endbtn" style="position:absolute;top:8px;right:8px;padding:1px 7px" onclick="event.stopPropagation();themeDel('${jsq(k)}')">✕</button>`:''}
     </div>`).join('');
   body.innerHTML=`<div class="pad">
     <p class="mut" style="margin-bottom:10px">Themes restyle the whole desktop. Click one to apply it. ${pInfo('Colours, fonts, windows, menu bar, dock, icons and widgets all change. A theme can even bring a completely new interface built by AI.')}</p>
@@ -28101,7 +28272,7 @@ async function renderThemes(body){
       ['reduced','Reduced','Only the focused window blurs, so the cost stays the same however many are open'],
       ['off','Off','No blur anywhere and panels go solid. Best on a Raspberry Pi or a VM'],
     ].map(([k,label,tip])=>`<button class="endbtn${GLASS.pref===k?' on':''}" title="${esc(tip)}"
-        onclick="setGlass('${k}')">${GLASS.pref===k?'✓ ':''}${esc(label)}</button>`).join('')}</div>
+        onclick="setGlass('${jsq(k)}')">${GLASS.pref===k?'✓ ':''}${esc(label)}</button>`).join('')}</div>
     <p class="mut" style="margin-top:6px">${esc(({auto:'Automatic',full:'Full glass',reduced:'Reduced',off:'Off'})[GLASS.pref]||'')}:
       ${esc(({auto:'currently drawing at "'+glassLevel()+'"',full:'every surface blurs, as the theme designed it',
         reduced:'only the focused window blurs',
@@ -28125,7 +28296,7 @@ function themeAI(){
   const t=allThemes()[CURRENT_THEME]||{};
   const cur=`Currently applied theme: "${t.label||t.name||CURRENT_THEME}"${t.custom?' (custom — refine it in place)':' (built-in)'}, mode ${t.mode||'dark'}, vars ${JSON.stringify(t.v||t.vars||{})}${t.css?', has custom css':''}${t.shell?', has a full replacement shell':''}.`;
   openApp('chat');
-  if(input){input.value='Theme request: '+p+'\n\n'+cur+'\nUse the create_theme tool. If this is a REFINEMENT of the theme we are already working on (or of the applied custom theme), call create_theme with that SAME name and only the fields to change — vars merge key-by-key and css/font/shell are kept unless passed. Only pick a new name for a genuinely new theme. For a new theme, give a full set of CSS variables and custom css for the chrome (#menubar, #taskbar dock, .win, .aicon). If I asked for a completely different interface (not just a restyle), fetch GET /api/registry to see every endpoint available and pass shell_html — a full replacement UI.';input.dispatchEvent(new Event('input'));send()}
+  if(input){input.value='Theme request: '+p+'\n\n'+cur+'\nUse the create_theme tool. If this is a REFINEMENT of the theme we are already working on (or of the applied custom theme), call create_theme with that SAME name and only the fields to change — vars merge key-by-key and css/font/shell are kept unless passed. Only pick a new name for a genuinely new theme. For a new theme, give a full set of CSS variables and custom css for the chrome (#menubar, #taskbar dock, .win, .aicon). If I asked for a completely different interface (not just a restyle), use create_theme_shell: a page that replaces the desktop and can only draw.';input.dispatchEvent(new Event('input'));send()}
   toast('designing your theme…');
 }
 async function themeSave(theme,apply){
@@ -28140,7 +28311,7 @@ function themeExport(){
 }
 async function themeImport(){
   try{const t=JSON.parse($('#th-imp').value);if(!t.name)return toast('theme needs a "name"');
-    await themeSave(t,true);await loadThemes();applyTheme(t.name);toast('imported '+t.name);refreshApp('themes');
+    await themeSave(t,true);await loadThemes();applyTheme(t.name);const fn=themeFontNote(t.font&&t.font.url);toast(fn?'! imported '+t.name+'. '+fn:'imported '+t.name);refreshApp('themes');
   }catch(e){toast('invalid JSON: '+e.message)}
 }
 async function themeDel(name){
@@ -28235,7 +28406,8 @@ function themeBuilder(from){
       <label>Font<select id="tb-font">${TB_FONTS.map(([f,l])=>`<option value="${esc(f)}" ${((WB.font&&WB.font.family)||'')===f?'selected':''}>${esc(l)}</option>`).join('')}<option value="__custom" ${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'selected':''}>Another web font…</option></select></label>
       <div id="tb-fcustom" style="display:${WB.font&&WB.font.family&&!TB_FONTS.some(x=>x[0]===WB.font.family)?'flex':'none'};gap:8px;flex-wrap:wrap">
         <input id="tb-furl" value="${esc((WB.font&&WB.font.url)||'')}" placeholder="https://fonts.googleapis.com/css2?family=…" style="flex:2;min-width:200px">
-        <input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="family, e.g. Sora" style="flex:1;min-width:120px"></div>
+        <input id="tb-ffam" value="${esc((WB.font&&WB.font.family)||'')}" placeholder="family, e.g. Sora" style="flex:1;min-width:120px">
+        <p class="mut" id="tb-fnote" style="flex-basis:100%;margin:0">${esc(themeFontNote((WB.font&&WB.font.url)||''))}</p></div>
       <label class="tb-slide">Text size <input type="range" id="tb-fs" min="12" max="17" step="1" value="${fsb}"><output id="tb-fs-o">${fsb}px</output></label></div>
     <div class="tb-sec"><b>Wallpaper</b>
       <select id="tb-wall"><option value="">Keep whatever is set</option><option value="__gen" ${WB.css.includes('/*tb:wall*/')?'selected':''}>Made from these colours</option>
@@ -28267,7 +28439,7 @@ function themeBuilder(from){
     const [blur,pct]=TB_GLASS[b.dataset.g];WB.v['glass-blur']=blur;WB.v['glass-tint']=`color-mix(in srgb,var(--bg2) ${pct}%,transparent)`;preview()};
   q('#tb-font').onchange=e=>{const f=e.target.value;q('#tb-fcustom').style.display=f==='__custom'?'flex':'none';
     if(f==='__custom')return;WB.font=f?{family:f,url:'https://fonts.googleapis.com/css2?family='+encodeURIComponent(f).replace(/%20/g,'+')+':wght@400;500;600;700&display=swap'}:null;preview()};
-  q('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value;preview()};
+  q('#tb-furl').oninput=e=>{WB.font=WB.font||{};WB.font.url=e.target.value;q('#tb-fnote').textContent=themeFontNote(e.target.value);preview()};
   q('#tb-ffam').oninput=e=>{WB.font=WB.font||{};WB.font.family=e.target.value;preview()};
   q('#tb-fs').oninput=e=>{const n=+e.target.value;Object.assign(WB.v,{'fs-xs':(n-3)+'px','fs-sm':(n-2)+'px','fs-md':(n-1)+'px','fs-base':n+'px','fs-lg':(n+2)+'px'});q('#tb-fs-o').textContent=n+'px';preview()};
   q('#tb-wall').onchange=e=>{const x=e.target.value;WB.css=WB.css.replace(/\/\*tb:wall\*\/[^\n]*\n?/g,'');WB.wall_img='';
@@ -28300,7 +28472,14 @@ async function tbSave(exportOnly){
   const out={name:WB.name,mode:WB.mode,v:WB.v,css:WB.css,font:WB.font||undefined,wall_img:WB.wall_img||undefined};
   if(exportOnly){const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=WB.name.replace(/\s+/g,'-')+'.theme.json';a.click();return}
-  await themeSave(out,true);await loadThemes();applyTheme(WB.name);toast('saved '+WB.name);refreshApp('themes');
+  await themeSave(out,true);await loadThemes();applyTheme(WB.name);
+  const fnote=themeFontNote(out.font&&out.font.url);toast(fnote?'! saved '+WB.name+'. '+fnote:'saved '+WB.name);refreshApp('themes');
+}
+/* The desktop's content policy takes stylesheets from Google Fonts only (_DESKTOP_CSP in server.py),
+   so another address would fail with nothing on screen to say why. */
+function themeFontNote(url){
+  url=String(url||'').trim();
+  return url&&!url.startsWith('https://fonts.googleapis.com/')?"This font won't load. This desktop only takes fonts from fonts.googleapis.com.":'';
 }
 
 /* ================= personalize app + wallpaper gallery ================= */
@@ -28313,7 +28492,7 @@ async function renderPersonalize(body){
     <p class="mut" style="margin:2px 0 8px">Each theme brings its own wallpaper. Pick one here to keep it whatever the theme.
       ${pInfo("They're small SVG files that stay sharp at any resolution.")}</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
-      ${BUILTIN_WALLS.map(id=>`<button onclick="pzBuiltin('${id}')" title="${esc(id)}"
+      ${BUILTIN_WALLS.map(id=>`<button onclick="pzBuiltin('${jsq(id)}')" title="${esc(id)}"
         style="position:relative;padding:0;border-radius:9px;overflow:hidden;aspect-ratio:16/9;
           border:2px solid ${id===picked?'var(--acc)':'var(--line)'}">
         <img src="${builtinWallURL(id)}" alt="${esc(id)} wallpaper" style="width:100%;height:100%;object-fit:cover;display:block" loading="lazy">
@@ -28333,9 +28512,9 @@ async function renderPersonalize(body){
     </div>
     <label style="margin-top:16px">Your generated wallpapers (click to apply)</label>
     <div id="pz-gal" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px">
-      ${gal.length?gal.map(id=>`<div style="position:relative;border-radius:9px;overflow:hidden;border:1px solid var(--line);aspect-ratio:16/9;cursor:pointer" onclick="pzSet('${id}')">
+      ${gal.length?gal.map(id=>`<div style="position:relative;border-radius:9px;overflow:hidden;border:1px solid var(--line);aspect-ratio:16/9;cursor:pointer" onclick="pzSet('${jsq(id)}')">
         <img src="/api/wallpapers/${id}" style="width:100%;height:100%;object-fit:cover" loading="lazy">
-        <button class="endbtn" style="position:absolute;top:4px;right:4px;padding:1px 6px" onclick="event.stopPropagation();pzDel('${id}')">✕</button>
+        <button class="endbtn" style="position:absolute;top:4px;right:4px;padding:1px 6px" onclick="event.stopPropagation();pzDel('${jsq(id)}')">✕</button>
       </div>`).join(''):'<p class="mut">No wallpapers yet. Generate one above.</p>'}
     </div>
     <p class="mut" style="margin-top:12px">Uses the image provider set in Settings. ${pInfo('Gemini or OpenAI with a key. Without one it uses the free pollinations.ai, at a lower resolution.')}
@@ -28399,8 +28578,8 @@ async function renderSnapshots(body){
   const items=snaps.map(s=>`<div class="item" data-f="${esc(s.label||('Snapshot '+s.id))}">
       <div class="grow"><b>${esc(s.label||('Snapshot '+s.id))}</b>
         <div class="sub">${new Date((s.created_at||s.id)*1000).toLocaleString()}${s.has_source?' · includes source':''}</div></div>
-      <button class="endbtn" onclick="snapRestore('${s.id}')">↩ Restore</button>
-      <button onclick="snapDel('${s.id}')">✕</button></div>`).join('');
+      <button class="endbtn" onclick="snapRestore('${jsq(s.id)}')">↩ Restore</button>
+      <button onclick="snapDel('${jsq(s.id)}')">✕</button></div>`).join('');
   const pb=panelShell(body,{
     title:'Snapshots',
     sub:`${snaps.length} restore point${snaps.length===1?'':'s'}`,
@@ -28552,7 +28731,7 @@ async function renderAudit(body,w){
       <span class="audpill ${cls}"${change?` title="a ${esc(a.effect||'')} rule was ${a.action==='grant.revoke'?'removed':'written'}"`:''}>${change?'changed':esc(a.effect||'?')}</span>
       <div class="grow"><code>${esc(a.action||'')}</code> ${esc(a.resource||'')} ${out} ${where}
         <div class="sub">${esc(who)} · via ${esc(a.surface||'unknown')} · ${a.stage
-          ?`<a href="#" class="aud-at" onclick="audPath(event,'${esc(a.id)}')" title="see the path it took through the gate">decided at ${esc(audStage(a.stage))}</a>`
+          ?`<a href="#" class="aud-at" onclick="audPath(event,'${jsq(a.id)}')" title="see the path it took through the gate">decided at ${esc(audStage(a.stage))}</a>`
           :'rule '+esc(a.rule||'default')}
           ${a.duration_ms?' · '+a.duration_ms+'ms':''}
           ${a.reason?'<br>'+esc(a.reason):''}${a.detail?'<br>'+esc(a.detail.slice(0,200)):''}</div></div></div>`;
@@ -28673,8 +28852,8 @@ function permGrantsView(box){
   const openAll=!!q||groups.length<=4||f.src!=='all'||f.eff!=='all';
   const kind={user:'your agent',subagent:'specialist',flow:'mission',app:'app',team:'linked team'};
   box.innerHTML=`<div class="pr-bar">
-      <span class="seg">${[['all','All'],['allow','Allows'],['deny','Refuses']].map(([k,l])=>`<button class="${f.eff===k?'on':''}" onclick="PERM.gf.eff='${k}';permBody()">${l}</button>`).join('')}</span>
-      <span class="pr-chips">${PERM_SRC.filter(([k])=>k==='all'||counts[k]).map(([k,l])=>`<button class="pr-chip${f.src===k?' on':''}" onclick="PERM.gf.src='${k}';permBody()">${l} <i>${counts[k]}</i></button>`).join('')}</span>
+      <span class="seg">${[['all','All'],['allow','Allows'],['deny','Refuses']].map(([k,l])=>`<button class="${f.eff===k?'on':''}" onclick="PERM.gf.eff='${jsq(k)}';permBody()">${l}</button>`).join('')}</span>
+      <span class="pr-chips">${PERM_SRC.filter(([k])=>k==='all'||counts[k]).map(([k,l])=>`<button class="pr-chip${f.src===k?' on':''}" onclick="PERM.gf.src='${jsq(k)}';permBody()">${l} <i>${counts[k]}</i></button>`).join('')}</span>
       <label class="pr-rev"><input type="checkbox" id="perm-rev" ${PERM.showRevoked?'checked':''}> show removed</label>
     </div>
     <p class="mut pr-sum">${total} rule${total===1?'':'s'} for ${groups.length} ${groups.length===1?'agent or app':'agents and apps'}. Tap ✓ or ✕ to switch a rule; anything not listed asks first.</p>
@@ -28705,10 +28884,10 @@ function permReview(box){
         <span class="mut">${a.description?esc(a.description):''}</span>
         <span class="pa-meta">${gs.length?gs.length+' rule'+(gs.length===1?'':'s')+' · '+esc(pmSay(gs[0]).replace(/^may /,'can '))+(gs.length>1?' and more':''):'no rules: asks first for everything'}</span></div>
       <span class="pa-acts">
-        ${kind==='wait'?`<button class="endbtn pa-go" onclick="reviewManifest('${a.id}')">Review</button>`:''}
-        ${gs.length?`<button class="endbtn" onclick="PERM.sel='who:app:${a.id}';PERM.tab='map';refreshApp('permissions')">Its rules</button>`:''}
-        <button class="endbtn" title="${kind==='none'?'Read the app and draft the permissions it needs':'Read the app again and draft its permissions'}" onclick="permRescan('${a.id}')">${kind==='none'?'Scan':'Rescan'}</button>
-        <button class="pm-x" title="Export ${esc(a.name)}" aria-label="Export" onclick="window.open('/api/apps/${a.id}/export')">⤓</button>
+        ${kind==='wait'?`<button class="endbtn pa-go" onclick="reviewManifest('${jsq(a.id)}')">Review</button>`:''}
+        ${gs.length?`<button class="endbtn" onclick="PERM.sel='who:app:${jsq(a.id)}';PERM.tab='map';refreshApp('permissions')">Its rules</button>`:''}
+        <button class="endbtn" title="${kind==='none'?'Read the app and draft the permissions it needs':'Read the app again and draft its permissions'}" onclick="permRescan('${jsq(a.id)}')">${kind==='none'?'Scan':'Rescan'}</button>
+        <button class="pm-x" title="Export ${esc(a.name)}" aria-label="Export" onclick="window.open('/api/apps/${jsq(a.id)}/export')">⤓</button>
       </span></div>`};
   const wait=apps.filter(a=>(a.manifest_status||'none')==='proposed');
   const ok=apps.filter(a=>a.manifest_status==='approved');
@@ -28738,7 +28917,7 @@ function permAttachView(box){
         <span style="width:22px;height:22px;border-radius:6px;background:${tileBg(p.id)};flex:0 0 22px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${esc((p.label[0]||'?').toUpperCase())}</span>
         <div class="grow" style="min-width:0"><span style="font-size:12.5px">${esc(p.label)}</span><div class="mut" style="font-size:10px">${esc(p.kind)}</div></div></div>`).join('')||'<p class="mut">none yet</p>'}</div></div>
     <div><div class="tmsec" style="margin:0 0 6px">2 · Capability</div>
-      ${(o.actions||[]).map(a=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.action===a?'border-color:var(--acc,#5eead4);color:var(--acc,#5eead4)':''}" onclick="PERM.att.action='${a}';PERM.att.res=new Set();permBody()">${a}</button>`).join('')}
+      ${(o.actions||[]).map(a=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.action===a?'border-color:var(--acc,#5eead4);color:var(--acc,#5eead4)':''}" onclick="PERM.att.action='${jsq(a)}';PERM.att.res=new Set();permBody()">${a}</button>`).join('')}
       <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
         <span class="mut" style="font-size:12px">Effect:</span>
         <button class="endbtn" onclick="PERM.att.effect=PERM.att.effect==='allow'?'deny':'allow';permBody()" style="color:${att.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)'};border-color:${att.effect==='deny'?'var(--err,#f87171)':'var(--ok,#5eead4)'}">${att.effect==='deny'?'✕ deny':'✓ allow'}</button>
@@ -28746,7 +28925,7 @@ function permAttachView(box){
       </div>
       <div style="margin-top:14px">
         <span class="mut" style="font-size:12px">IO gates <span style="font-size:10px">(none picked = every surface)</span>:</span><div style="margin-top:5px">
-        ${PERM_SURFACES.map(s=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.surf.has(s)?'border-color:var(--acc2,#22d3ee);color:var(--acc2,#22d3ee)':''}" onclick="PERM.att.surf.has('${s}')?PERM.att.surf.delete('${s}'):PERM.att.surf.add('${s}');permBody()">${s}</button>`).join('')}</div>
+        ${PERM_SURFACES.map(s=>`<button class="endbtn" style="margin:0 4px 4px 0;${att.surf.has(s)?'border-color:var(--acc2,#22d3ee);color:var(--acc2,#22d3ee)':''}" onclick="PERM.att.surf.has('${jsq(s)}')?PERM.att.surf.delete('${jsq(s)}'):PERM.att.surf.add('${jsq(s)}');permBody()">${s}</button>`).join('')}</div>
         <span class="mut" style="font-size:11px">the rule only applies to calls arriving via these surfaces — elsewhere the IO is denied and logged</span>
       </div></div>
     <div><div class="tmsec" style="margin:0 0 6px">3 · Resources <span class="mut">(${att.res.size} picked)</span></div>
@@ -28788,7 +28967,7 @@ function permSurfBadge(g){
   const scoped=g.surfaces&&g.surfaces!=='*';
   return `<button class="endbtn" style="font-size:10px;${scoped?'color:var(--acc2,#22d3ee);border-color:var(--acc2,#22d3ee)':''}"
     title="IO gates — which ways in this rule applies on (desktop, terminal, Telegram, WhatsApp, API, tasks, webhooks). Click to change."
-    onclick="permSurfaces('${g.id}','${esc(g.surfaces||'*')}')">⛩ ${scoped?esc(g.surfaces):'all'}</button>`;
+    onclick="permSurfaces('${jsq(g.id)}','${jsq(g.surfaces||'*')}')">⛩ ${scoped?esc(g.surfaces):'all'}</button>`;
 }
 async function permSurfaces(gid,cur){
   const v=await osPrompt('IO gates for this rule',{message:'Comma-separated from: '+PERM_SURFACES.join(', ')+' (* = every surface)',value:cur||'*'});
@@ -28889,11 +29068,11 @@ function permQuarantine(box){
         ev.tool?', calling <code>'+esc(String(ev.tool).split('→').pop())+'</code>':''}</div>`:''}
       <div class="sub" style="margin-top:6px">Nothing it asks for runs while it is held.</div>
       <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">
-        <button onclick="permRelease('${q.id}','once')"
+        <button onclick="permRelease('${jsq(q.id)}','once')"
           title="let it run again — it can be held again if it does this once more">Let it run once</button>
-        <button onclick="permRelease('${q.id}','forever')"
+        <button onclick="permRelease('${jsq(q.id)}','forever')"
           title="never hold this again for going too fast — recorded as your decision">Allow forever</button>
-        <button style="color:var(--err,#f87171)" onclick="permRelease('${q.id}','deleted')"
+        <button style="color:var(--err,#f87171)" onclick="permRelease('${jsq(q.id)}','deleted')"
           title="delete it">Delete it</button>
       </div></div>`;
   }).join('')||`<p class="mut">Nothing is quarantined. If an app, agent or flow starts calling
@@ -29047,7 +29226,7 @@ function pfWhy(){
   if(gid){
     const g=t&&t.grant;
     doors=`<div class="pf-rule">Decided by a rule${g?`: <b>${esc(g.effect)}</b> ${esc(g.action)} <code>${esc(g.resource)}</code> <span class="badge">${esc(g.source||'user')}</span>`:''}
-      <button class="endbtn" onclick="permRevoke('${esc(gid)}')">Remove this rule</button></div>`;
+      <button class="endbtn" onclick="permRevoke('${jsq(gid)}')">Remove this rule</button></div>`;
   }else if(stage==='default'){
     doors=`<div class="pf-rule">No rule covers this yet.
       <button class="endbtn" onclick="pfAttach('allow')">Always allow it</button>
@@ -29303,11 +29482,11 @@ function pmRuleRow(g,whoName){
   const tech=(g.action||'')+' · '+(g.resource||'')+(g.note?' — '+g.note:'');
   return `<div class="pm-rule ${deny?'deny':'allow'}${dead?' dead':''}" title="${esc(tech)}">
     ${ro||dead?`<span class="pm-eff">${deny?'✕':'✓'}</span>`
-      :`<button class="pm-eff" title="switch to ${deny?'allow':'refuse'}" aria-label="switch to ${deny?'allow':'refuse'}" onclick="permToggle('${g.id}','${deny?'allow':'deny'}')">${deny?'✕':'✓'}</button>`}
+      :`<button class="pm-eff" title="switch to ${deny?'allow':'refuse'}" aria-label="switch to ${deny?'allow':'refuse'}" onclick="permToggle('${jsq(g.id)}','${jsq(deny?'allow':'deny')}')">${deny?'✕':'✓'}</button>`}
     <div class="pm-say">${whoName?`<b>${esc(whoName)}</b> `:''}${esc(pmSay(g))}
       <span class="pm-src">${esc(pmSource(g))}${g.created_at?` · <span title="${esc(new Date(g.created_at*1000).toLocaleString())}">${deny?'set':'approved'} ${esc(pmWhen(g.created_at))}</span>`:''}</span>${permLasts(g)}${dead?`<span class="badge" title="${esc(new Date(g.revoked_at*1000).toLocaleString())}">removed ${esc(pmWhen(g.revoked_at))}</span>`:''}</div>
     ${dead?'':ro?`<button class="pm-x" title="Edit in Patterns" aria-label="Edit in Patterns" onclick="PERM.tab='rules';refreshApp('permissions')">↗</button>`
-      :`${g.surfaces&&g.surfaces!=='*'?permSurfBadge(g):''}<button class="pm-x" title="Remove this rule" aria-label="Remove this rule" onclick="permRevoke('${g.id}')">✕</button>`}
+      :`${g.surfaces&&g.surfaces!=='*'?permSurfBadge(g):''}<button class="pm-x" title="Remove this rule" aria-label="Remove this rule" onclick="permRevoke('${jsq(g.id)}')">✕</button>`}
   </div>`;
 }
 /* "today 20:41", "yesterday 09:12", "18 Oct", "3 Mar 2025": when a rule was made. */
@@ -29350,7 +29529,7 @@ function skillsCatalogHTML(installed){
   const have=e=>installed.some(x=>(x.source||'')===e.src);
   return `<div data-fgroup><div class="sect">Catalog — open-source skills (MIT / Apache-2.0), one click to install</div>
     <div class="cat">${SKILLS_CATALOG.map(e=>`
-      <button class="catcard${have(e)?' inst':''}" data-f="${esc(e.n+' '+e.d)}" onclick="installSkillFrom('${e.src}','${esc(e.n)}')">
+      <button class="catcard${have(e)?' inst':''}" data-f="${esc(e.n+' '+e.d)}" onclick="installSkillFrom('${jsq(e.src)}','${jsq(e.n)}')">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
         <span class="ck" style="color:var(--ok)">${e.lic}</span>
       </button>`).join('')}
@@ -29366,8 +29545,8 @@ async function renderSkills(body){
   const r=await fetch('/api/skills');const d=await r.json();
   const items=d.skills.map(s=>`<div class="item" data-f="${esc(s.name+' '+(s.description||''))}">
       <div class="grow"><b>${esc(s.name)}</b><div class="sub">${esc(s.description||'')}</div></div>
-      <button title="edit" onclick="editSkill('${s.id}')">✎</button>
-      <button onclick="delSkill('${s.id}')">✕</button></div>`).join('');
+      <button title="edit" onclick="editSkill('${jsq(s.id)}')">✎</button>
+      <button onclick="delSkill('${jsq(s.id)}')">✕</button></div>`).join('');
   const pb=panelShell(body,{
     title:'Skills',
     sub:`${d.skills.length} installed — procedures the agent loads when relevant`,
@@ -29652,7 +29831,7 @@ async function renderModels(body){
   // provider's model list and wondered why nothing happened. Now the whole row
   // is the control and it says what it does.
   const configured=all.map(m=>`<div class="item${m.id===dft?' on':''}" data-f="${esc(m.id+' '+m.provider)}"
-      style="cursor:pointer" onclick="modelSetDefault('${esc(m.id)}')"
+      style="cursor:pointer" ${doAttrs('modelSetDefault',m.id)}
       title="${m.id===dft?'This is what answers every turn':'Answer with '+esc(m.id)}">
       <div class="grow"><b>${esc(m.name)}</b> ${provBadge(m.provider)} ${m.id===dft?'<span class="badge ok">✓ answering</span>':''}
         <div class="sub">${esc(m.id)}</div></div>
@@ -29689,14 +29868,14 @@ async function renderModels(body){
     <div id="mdl-list">${(d.models||[]).map(m=>`<div class="item" data-f="${esc(m.name+' '+(m.family||'')+' '+(m.params||''))}">
       <div class="grow"><b>${esc(m.name)}</b> ${running.has(m.name)?'<span class="badge ok">● loaded</span>':''}
         <div class="sub">${fmtB(m.size)}${m.params?' · '+esc(m.params):''}${m.family?' · '+esc(m.family):''}</div></div>
-      <button onclick="modelDelete('${esc(m.name)}')" title="delete">✕</button></div>`).join('')||emptyBox('No local models yet','Pull one from the catalog below — downloads run in the background and show progress here.')}</div>
+      <button ${doAttrs('modelDelete',m.name)} title="delete">✕</button></div>`).join('')||emptyBox('No local models yet','Pull one from the catalog below — downloads run in the background and show progress here.')}</div>
     <div id="mdl-prog" class="mut" style="margin:8px 0"></div></div>
     <div data-fgroup><div class="sect">Get more models</div>
     <div class="cat">${MODEL_CATALOG.map(e=>`
       <div class="catcard${installed.has(e.n)?' inst':''}" data-f="${esc(e.n+' '+e.d)}">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
         <span class="ck" style="color:var(--dim2)">${esc(e.s)}</span>
-        <button class="save" style="margin-top:8px;padding:6px" ${installed.has(e.n)?'disabled':''} onclick="modelPull('${e.n}')">${installed.has(e.n)?'✓ Installed':'Pull'}</button>
+        <button class="save" style="margin-top:8px;padding:6px" ${installed.has(e.n)?'disabled':''} onclick="modelPull('${jsq(e.n)}')">${installed.has(e.n)?'✓ Installed':'Pull'}</button>
       </div>`).join('')}</div>
     <div class="row" style="margin-top:8px"><input id="mdl-name" placeholder="any model from ollama.com/library — e.g. qwen3:8b" list="mdl-sug">
       <datalist id="mdl-sug">${MODEL_SUGGEST.map(s=>`<option value="${s}">`).join('')}</datalist>
@@ -29740,7 +29919,7 @@ function cap(id){return PLATFORM.capabilities?.[id]||{available:false,supported:
 function capNote(id){
   const c=cap(id);if(c.available)return '';
   return `<p class="mut" style="margin-top:6px;opacity:.8">${esc(c.reason||'Not available here.')}
-    ${c.component?`<button class="endbtn" style="margin-left:6px" onclick="installComponent('${esc(c.component)}')">Install…</button>`:''}</p>`;
+    ${c.component?`<button class="endbtn" style="margin-left:6px" onclick="installComponent('${jsq(c.component)}')">Install…</button>`:''}</p>`;
 }
 async function installComponent(id){
   let comp=null;
@@ -29791,7 +29970,7 @@ async function renderControl(body){
   const sharedComp=shared?(['audio.devices','brightness.set','net.wifi.join','power.profile']
     .map(id=>cap(id)).find(c=>c.reason===shared&&c.component)||{}).component:'';
   body.innerHTML=`<div class="pad">
-    ${shared?`<p class="mut cc-owned">${esc(shared)}${sharedComp?` <button class="endbtn" onclick="installComponent('${esc(sharedComp)}')">Install…</button>`:''}</p>`:''}
+    ${shared?`<p class="mut cc-owned">${esc(shared)}${sharedComp?` <button class="endbtn" onclick="installComponent('${jsq(sharedComp)}')">Install…</button>`:''}</p>`:''}
     <div class="provbox cc-tile"><div class="ptitle"><span class="cc-ic">${uiIcon('volume',16)}</span>Sound</div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
         <button class="endbtn" id="c-mute" style="flex:0 0 72px">${a.muted?'Unmute':'Mute'}</button>
@@ -29843,7 +30022,7 @@ async function renderControl(body){
         <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
           <span class="mut" style="flex:0 0 110px;overflow:hidden;text-overflow:ellipsis">${esc(disp.monitor||disp.name)}</span>
           <input type="range" min="1" max="100" value="${disp.percent??50}" style="flex:1"
-            onchange="setBrightness('${esc(disp.name)}','${disp.kind}',this.value)">
+            onchange="setBrightness('${jsq(disp.name)}','${jsq(disp.kind)}',this.value)">
         </div>`).join('')||'<p class="mut" style="margin-top:6px">no adjustable displays</p>';
     }catch(e){br.innerHTML='<p class="mut" style="margin-top:6px">brightness unavailable</p>'}
   // the shared reason is said once at the top; the tile says so rather than going blank
@@ -29864,7 +30043,7 @@ async function renderControl(body){
     try{
       const p=await (await fetch('/api/power/profile')).json();
       prof.innerHTML=(p.profiles||[]).map(x=>
-        `<button class="endbtn ${x===p.active?'on':''}" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${esc(x)}')">${esc(x)}</button>`).join('');
+        `<button class="endbtn ${x===p.active?'on':''}" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${jsq(x)}')">${esc(x)}</button>`).join('');
     }catch(e){}
   }else prof.innerHTML=ccNote('power.profile');
 
@@ -29917,7 +30096,7 @@ async function sysNet(el){
   if(d.error){el.innerHTML=`<p class="mut">${esc(d.error)}</p>`;return}
   el.innerHTML=`<div class="provbox"><div class="ptitle">Wi-Fi</div>
     <div class="row" style="margin-top:8px">
-      <button class="endbtn" onclick="wifiAct({action:'${d.wifi_enabled?'disable':'enable'}'})">${d.wifi_enabled?'Turn Wi-Fi off':'Turn Wi-Fi on'}</button>
+      <button class="endbtn" onclick="wifiAct({action:'${jsq(d.wifi_enabled?'disable':'enable')}'})">${d.wifi_enabled?'Turn Wi-Fi off':'Turn Wi-Fi on'}</button>
       <button class="endbtn" onclick="wifiAct({action:'airplane',on:true})">✈ Airplane mode</button>
       <button class="endbtn" onclick="refreshApp('syssettings')">↻ Rescan</button>
     </div></div>
@@ -29927,8 +30106,8 @@ async function sysNet(el){
         <div style="font-weight:${n.connected?'700':'500'}">${esc(n.ssid)} ${n.connected?'<span class="mut">· connected</span>':''}</div>
         <div class="mut" style="font-size:11px">${esc(n.security)}${n.saved?' · saved':''}</div>
       </div>
-      ${n.connected?'':`<button class="endbtn" onclick="wifiJoin('${esc(n.ssid).replace(/'/g,"\\'")}','${n.security}',${n.saved})">Join</button>`}
-      ${n.saved?`<button class="endbtn" onclick="wifiAct({action:'forget',ssid:'${esc(n.ssid).replace(/'/g,"\\'")}'})">Forget</button>`:''}
+      ${n.connected?'':`<button class="endbtn" ${doAttrs('wifiJoin',n.ssid,n.security,!!n.saved)}>Join</button>`}
+      ${n.saved?`<button class="endbtn" ${doAttrs('wifiAct',{action:'forget',ssid:n.ssid})}>Forget</button>`:''}
     </div>`).join('')||'<p class="mut">no networks in range</p>'}`;
 }
 async function wifiJoin(ssid,security,saved){
@@ -29950,8 +30129,8 @@ async function sysBt(el){
   const ad=(d.adapters||[])[0];
   el.innerHTML=`<div class="provbox"><div class="ptitle">Bluetooth</div>
     ${ad?`<div class="row" style="margin-top:8px">
-      <button class="endbtn" onclick="btAct({action:'power',adapter:'${ad.path}',on:${!ad.powered}})">${ad.powered?'Turn off':'Turn on'}</button>
-      <button class="endbtn" onclick="btAct({action:'discover',adapter:'${ad.path}',on:${!ad.discovering}})">${ad.discovering?'Stop scanning':'Scan for devices'}</button>
+      <button class="endbtn" onclick="btAct({action:'power',adapter:'${jsq(ad.path)}',on:${!ad.powered}})">${ad.powered?'Turn off':'Turn on'}</button>
+      <button class="endbtn" onclick="btAct({action:'discover',adapter:'${jsq(ad.path)}',on:${!ad.discovering}})">${ad.discovering?'Stop scanning':'Scan for devices'}</button>
     </div>`:'<p class="mut" style="margin-top:6px">no adapter</p>'}</div>
     ${(d.devices||[]).map(dev=>`<div class="provbox" style="display:flex;align-items:center;gap:10px">
       <div style="flex:1;min-width:0">
@@ -29960,10 +30139,10 @@ async function sysBt(el){
           ${dev.battery!=null?`<span class="mut">· 🔋${dev.battery}%</span>`:''}</div>
         <div class="mut" style="font-size:11px">${esc(dev.address)}</div>
       </div>
-      ${dev.connected?`<button class="endbtn" onclick="btAct({action:'disconnect',device:'${dev.path}'})">Disconnect</button>`
-        :dev.paired?`<button class="endbtn" onclick="btAct({action:'connect',device:'${dev.path}'})">Connect</button>`
-        :`<button class="endbtn" onclick="btAct({action:'pair',device:'${dev.path}'})">Pair</button>`}
-      ${dev.paired?`<button class="endbtn" onclick="btRemove('${dev.path}','${esc(dev.name).replace(/'/g,"\\'")}')">✕</button>`:''}
+      ${dev.connected?`<button class="endbtn" onclick="btAct({action:'disconnect',device:'${jsq(dev.path)}'})">Disconnect</button>`
+        :dev.paired?`<button class="endbtn" onclick="btAct({action:'connect',device:'${jsq(dev.path)}'})">Connect</button>`
+        :`<button class="endbtn" onclick="btAct({action:'pair',device:'${jsq(dev.path)}'})">Pair</button>`}
+      ${dev.paired?`<button class="endbtn" ${doAttrs('btRemove',dev.path,dev.name)}>✕</button>`:''}
     </div>`).join('')||'<p class="mut">no devices — scan to discover nearby ones</p>'}`;
 }
 async function btRemove(path,name){
@@ -29987,12 +30166,12 @@ async function sysDisplays(el){
       return `<option value="${v}" ${on?'selected':''}>${v}</option>`}).join('');
     return `<div class="provbox"><div class="ptitle">${esc(o.name)} ${o.active?'':'· off'} <span class="mut">${esc([o.make,o.model].filter(Boolean).join(' '))}</span></div>
       <div class="row" style="margin-top:8px;align-items:center;gap:8px;flex-wrap:wrap">
-        <select onchange="outCfg('${esc(o.name)}',{mode:this.value})">${modes}</select>
-        <select onchange="outCfg('${esc(o.name)}',{scale:+this.value})">
+        <select onchange="outCfg('${jsq(o.name)}',{mode:this.value})">${modes}</select>
+        <select onchange="outCfg('${jsq(o.name)}',{scale:+this.value})">
           ${[1,1.25,1.5,1.75,2].map(s=>`<option value="${s}" ${Math.abs((o.scale||1)-s)<.01?'selected':''}>${s*100}%</option>`).join('')}</select>
-        <select onchange="outCfg('${esc(o.name)}',{transform:this.value})">
+        <select onchange="outCfg('${jsq(o.name)}',{transform:this.value})">
           ${['normal','90','180','270'].map(t=>`<option ${o.transform===t?'selected':''}>${t}</option>`).join('')}</select>
-        <button class="endbtn" onclick="outCfg('${esc(o.name)}',{enabled:${!o.active}})">${o.active?'Turn off':'Turn on'}</button>
+        <button class="endbtn" onclick="outCfg('${jsq(o.name)}',{enabled:${!o.active}})">${o.active?'Turn off':'Turn on'}</button>
       </div></div>`}).join('')||'<p class="mut">no outputs reported</p>';
   el.insertAdjacentHTML('beforeend',await nightLightBox());
 }
@@ -30068,14 +30247,14 @@ async function sysSound(el){
   if(!d||d.error){el.innerHTML=`<div class="provbox"><div class="ptitle">Sound</div>${capNote('audio.devices')||`<p class="mut" style="margin-top:6px">${esc(d?.error||'unavailable')}</p>`}</div>`;return}
   el.innerHTML=`<div class="provbox"><div class="ptitle">Output devices</div>
     ${(d.sinks||[]).map(s=>`<div class="row" style="margin-top:8px;align-items:center">
-      <button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${s.id})">${s.default?'✓ ':''}${esc(s.description)}</button>
+      <button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${+s.id})">${s.default?'✓ ':''}${esc(s.description)}</button>
     </div>`).join('')||'<p class="mut" style="margin-top:6px">none</p>'}</div>
   <div class="provbox"><div class="ptitle">Input devices</div>
-    ${(d.sources||[]).map(s=>`<div class="row" style="margin-top:8px"><button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${s.id})">${s.default?'✓ ':''}${esc(s.description)}</button></div>`).join('')||'<p class="mut" style="margin-top:6px">none</p>'}</div>
+    ${(d.sources||[]).map(s=>`<div class="row" style="margin-top:8px"><button class="endbtn" style="${s.default?'border-color:var(--acc,#5eead4)':''}" onclick="audioDefault(${+s.id})">${s.default?'✓ ':''}${esc(s.description)}</button></div>`).join('')||'<p class="mut" style="margin-top:6px">none</p>'}</div>
   <div class="provbox"><div class="ptitle">App volumes</div>
     ${(d.streams||[]).map(s=>`<div style="display:flex;align-items:center;gap:10px;margin-top:8px">
       <span class="mut" style="flex:0 0 130px;overflow:hidden;text-overflow:ellipsis">${esc(s.app)}</span>
-      <input type="range" min="0" max="100" value="70" style="flex:1" onchange="audioVol(${s.id},this.value)">
+      <input type="range" min="0" max="100" value="70" style="flex:1" onchange="audioVol(${+s.id},this.value)">
     </div>`).join('')||'<p class="mut" style="margin-top:6px">nothing playing</p>'}</div>`;
 }
 async function audioDefault(id){await fetch('/api/audio/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'default',id})});toast('✓ default changed');setTimeout(()=>refreshApp('syssettings'),400)}
@@ -30086,7 +30265,7 @@ async function sysPower(el){
   let profHtml='';
   if(cap('power.profile').available){
     try{const p=await (await fetch('/api/power/profile')).json();
-      profHtml=(p.profiles||[]).map(x=>`<button class="endbtn" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${esc(x)}')">${x===p.active?'✓ ':''}${esc(x)}</button>`).join('');
+      profHtml=(p.profiles||[]).map(x=>`<button class="endbtn" style="${x===p.active?'border-color:var(--acc,#5eead4)':''}" onclick="setPowerProfile('${jsq(x)}')">${x===p.active?'✓ ':''}${esc(x)}</button>`).join('');
     }catch(e){}
   }else profHtml=capNote('power.profile');
   el.innerHTML=`<div class="provbox"><div class="ptitle">Battery</div>
@@ -30110,7 +30289,7 @@ async function sysSession(el){
   el.innerHTML=`<div class="provbox"><div class="ptitle">Desktop mode</div>
       <p class="mut" style="margin-top:6px">${esc(PLATFORM.summary||'')} (running: <b>${esc(PLATFORM.mode)}</b>, detected: ${esc(PLATFORM.detected_mode)})</p>
       <div class="row" style="margin-top:8px">${modes.map(m=>
-        `<button class="endbtn" style="${m===pin?'border-color:var(--acc,#5eead4)':''}" onclick="pinMode('${m}')">${m===pin?'✓ ':''}${m}</button>`).join('')}</div>
+        `<button class="endbtn" style="${m===pin?'border-color:var(--acc,#5eead4)':''}" onclick="pinMode('${jsq(m)}')">${m===pin?'✓ ':''}${m}</button>`).join('')}</div>
       <p class="mut" style="margin-top:8px">"auto" follows how you logged in. Pinning takes effect on the next server start.</p></div>
     <div class="provbox"><div class="ptitle">AgentOS as your desktop</div>
       <p class="mut" style="margin-top:6px">Install AgentOS as a login session — it appears next to Ubuntu at the login
@@ -30148,7 +30327,7 @@ async function sysComponents(el){
         ${c.available&&!c.installed?`<div class="mut" style="font-size:11px;margin-top:3px;font-family:monospace">${esc(c.command)}</div>`:''}
       </div>
       ${c.installed?'<span class="mut">✓ installed</span>'
-        :c.available?`<button class="endbtn" onclick="installComponent('${c.id}')">Install…</button>`
+        :c.available?`<button class="endbtn" onclick="installComponent('${jsq(c.id)}')">Install…</button>`
         :`<span class="mut" style="max-width:200px;text-align:right;font-size:11.5px">${esc(c.reason||'unavailable here')}</span>`}
     </div>`;
   el.innerHTML=head+COMPGROUPS.map(([g,label,note])=>{
@@ -30210,6 +30389,14 @@ async function sysRemote(el){
         <a href="#" onclick="openApp('users');return false">Users</a> — they lock this
         themselves, and give each person their own desktop.</p>`}
 
+      ${!byAccounts&&set?`<button class="endbtn" style="margin-top:10px" onclick="rmEndEverywhere()">Sign out every device</button>`:''}
+
+      <label style="margin-top:14px">Other names for this machine ${pInfo('A page can point its own name at this machine to reach it, so Bento only answers to names it knows. Add a domain in front of it here. Its own name, its addresses and Tailscale names already work.')}</label>
+      <div class="row" style="gap:8px">
+        <input id="rm-hosts" value="${esc((REMOTE.allowed_hosts||[]).join(', '))}" placeholder="bento.example.com" style="flex:1">
+        <button class="endbtn" onclick="rmSetHosts()">Save</button>
+      </div>
+
       <div class="row" style="margin-top:16px;gap:10px;align-items:center">
         <button class="save" style="margin:0;width:auto;padding:10px 18px${on?';background:var(--err);color:#fff':''}"
                 onclick="rmToggle(${on?'false':'true'})" ${set?'':'disabled title="set a passphrase or add accounts first"'}>
@@ -30223,10 +30410,10 @@ async function sysRemote(el){
       ${(TUNNEL.reachable||[]).length?`<div class="rm-addr">${TUNNEL.reachable.map(a=>`
           <div class="rm-row"><code>${esc(a.url)}</code>
             <span class="rm-via ${a.via==='Tailscale'?'far':''}">${esc(a.via)} · ${esc(a.who)}</span>
-            <button class="endbtn" onclick="rmCopy('${esc(a.url)}')">Copy</button></div>`).join('')}</div>`
+            <button class="endbtn" onclick="rmCopy('${jsq(a.url)}')">Copy</button></div>`).join('')}</div>`
         :(REMOTE.addresses||[]).length?`<div class="rm-addr">${REMOTE.addresses.map(a=>`
           <div class="rm-row"><code>${esc(a)}</code>
-            <button class="endbtn" onclick="rmCopy('${esc(a)}')">Copy</button></div>`).join('')}</div>`
+            <button class="endbtn" onclick="rmCopy('${jsq(a)}')">Copy</button></div>`).join('')}</div>`
         :'<p class="mut" style="margin-top:6px">No network address detected.</p>'}
     ${/* The LAN list alone made a machine that was already reachable from
           anywhere look like it only worked in the same room. If there is a
@@ -30245,18 +30432,18 @@ async function sysRemote(el){
       <p class="mut" style="margin-top:8px;line-height:1.6">
         <b>${esc(p.title)}</b> — ${esc(p.what||'')}
         ${p.available?(p.needs?`<br><span style="color:var(--warn)">${esc(p.needs)}</span>${
-            p.needs_url?` <button class="endbtn" onclick="openInBrowser('${esc(p.needs_url)}')">Open</button>`:''}`
+            p.needs_url?` <button class="endbtn" onclick="openInBrowser('${jsq(p.needs_url)}')">Open</button>`:''}`
           :'<br>ready to publish a proper https:// address.')
          :`<br>${esc(p.reason||'')}${p.install_cmd?`
             <br><span class="mut">${esc(p.install_note||'')}</span>
             <br><code class="rm-cmd">${esc(p.install_cmd)}</code>
             <br><button class="endbtn" id="tun-inst-${esc(p.id)}"
-                 onclick="tunInstall('${esc(p.id)}')">Install ${esc(p.title)}</button>`
-           :''}${p.install?` <button class="endbtn" onclick="openInBrowser('${esc(p.install)}')">Docs</button>`:''}`}</p>`).join('')}
+                 onclick="tunInstall('${jsq(p.id)}')">Install ${esc(p.title)}</button>`
+           :''}${p.install?` <button class="endbtn" onclick="openInBrowser('${jsq(p.install)}')">Docs</button>`:''}`}</p>`).join('')}
     ${(TUNNEL.published&&TUNNEL.url)?`<div class="rm-offer live">
         <b>Published${TUNNEL.kind==='public'?' to the internet':''}:</b>
         <code>${esc(TUNNEL.url)}</code>
-        <button class="endbtn" onclick="rmCopy('${esc(TUNNEL.url)}')">Copy</button>
+        <button class="endbtn" onclick="rmCopy('${jsq(TUNNEL.url)}')">Copy</button>
         <button class="endbtn" onclick="tunStop()">Stop</button></div>`
       :(TUNNEL.providers||[]).some(p=>p.available&&!p.needs)?`
         <p class="mut" style="margin-top:8px">
@@ -30299,8 +30486,20 @@ async function rmToggle(on){
       {confirmText:'Turn it on',danger:true}))return;
   const d=await rmPost({enabled:on});
   if(!d)return;
-  toast(on?'remote access on — restart AgentOS to start listening':'remote access off');
+  const gone=(d.tunnels_stopped||[]).length?` Stopped ${d.tunnels_stopped.join(' and ')}.`:'';
+  toast(on?'remote access on — restart AgentOS to start listening':(d.note||'remote access off')+gone);
   refreshApp('syssettings');
+}
+async function rmSetHosts(){
+  const names=$('#rm-hosts').value.split(',').map(x=>x.trim()).filter(Boolean);
+  if(await rmPost({allowed_hosts:names})){toast('✓ saved');refreshApp('syssettings')}
+}
+async function rmEndEverywhere(){
+  if(!await osConfirm('Sign out every device?','Every phone and browser signed in here will have to sign in again.',{confirmText:'Sign out',danger:true}))return;
+  const r=await fetch('/api/session/everywhere',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(d.error||'could not sign them out');
+  toast('✓ every device is signed out');refreshApp('syssettings');
 }
 function rmCopy(a){navigator.clipboard.writeText(a).then(()=>toast('copied: '+a),()=>toast(a))}
 
@@ -30472,6 +30671,7 @@ function usersRoster(){
             `<option value="${esc(r)}"${r===u.role?' selected':''}>${esc(usersRoleName(r))}</option>`).join('')}</select>`
         : `<span class="usr-tag ${u.role==='admin'?'adm':''}">${esc(usersRoleName(u.role))}</span>`}
       ${isMe||me.admin?`<button class="usr-pw" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">${isMe?'Change my password…':'Reset password…'}</button>`:''}
+      ${isMe||me.admin?`<button class="usr-end" data-uid="${esc(u.id)}" data-me="${isMe?1:''}">Sign out everywhere</button>`:''}
       ${me.admin&&!isMe?`<button class="usr-del danger" data-uid="${esc(u.id)}"
         data-name="${esc(u.name)}">Remove</button>`:''}
     </div>`;
@@ -30637,6 +30837,7 @@ function usersWire(pb,w){
   if(form)form.onsubmit=e=>{e.preventDefault();usersCreate(pb,w)};
   const out=pb.querySelector('#usr-signout');
   if(out)out.onclick=()=>usersSignOut();
+  document.querySelectorAll('.usr-end').forEach(b=>b.onclick=()=>usersEndEverywhere(b.dataset.uid,!!b.dataset.me));
 
   /* shared folders */
   const ff=pb.querySelector('#usr-fform');
@@ -30774,6 +30975,15 @@ async function lockDesktop(){
   }catch(e){toast('could not lock the desktop: '+e)}
 }
 
+async function usersEndEverywhere(uid,mine){
+  if(!await osConfirm('Sign out everywhere?',mine?'Every browser and phone signed in as you has to sign in again, this one too.'
+      :'Every browser and phone signed in as this person has to sign in again.',{confirmText:'Sign out everywhere',danger:true}))return;
+  const r=await fetch('/api/session/everywhere',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid})});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return toast(d.error||'could not sign them out');
+  if(mine)return location.reload();
+  toast('✓ signed out everywhere');
+}
 async function usersSignOut(){
   if(!await osConfirm('Sign out?','Anything running keeps running — it belongs to '+
     'your account, not to this window.',{confirmText:'Sign out'}))return;
@@ -30829,7 +31039,7 @@ async function renderNotifList(){
       <div class="np-app">${esc(app)} · ${new Date(n.time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}${n.importance>=2?' · <b>important</b>':''}</div>
       <div class="np-sum">${esc(n.summary)}</div>
       ${n.body?`<div class="np-body">${esc(n.body)}</div>`:''}
-      <button class="np-x" onclick="dismissNotif(${n.id})">✕</button>
+      <button class="np-x" onclick="dismissNotif(${+n.id})">✕</button>
     </div>`).join('')}</div>`).join('')
     ||`<div class="np-empty">${svgBell(22)}<b>You\u2019re all caught up</b><span>Notifications from your apps, missions and linked teams land here.</span></div>`);
   const dnd=$('#np-dnd');
@@ -30846,7 +31056,7 @@ async function openNotifPanel(){
   await renderNotifList();
   popOpen(p,{anchor:$('#tray-bell')});
   popIn(p,{origin:'top right'});
-  await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
+  await fetch('/api/notifications',{method:'POST',quiet:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'read'})});
   updateBell();
 }
 async function dismissNotif(id){
@@ -31281,7 +31491,7 @@ async function hsControl(){
            machine, native apps included.</p>${web}
          <p class="mut" style="margin-top:10px">Or point a native VNC client through a tunnel:</p>
          <div class="rm-addr"><div class="rm-row"><code>${esc(d.tunnel)}</code>
-           <button class="endbtn" onclick="rmCopy('${esc(d.tunnel)}')">Copy</button></div></div>
+           <button class="endbtn" onclick="rmCopy('${jsq(d.tunnel)}')">Copy</button></div></div>
          <p class="mut" style="margin-top:8px">${esc(d.note)}</p>
          <button class="endbtn" style="margin-top:10px" onclick="hsControlSet('stop')">Stop remote control</button>`
       : `<p class="mut" style="margin-top:6px">Installed and ready. Start it to control the machine from
@@ -31324,7 +31534,7 @@ async function renderRemoteDesk(body,w){
         <code>127.0.0.1</code>.</p>
       ${missing?`<p class="mut" style="margin-top:8px">Needs <b>${esc(missing)}</b>, a distribution
           package AgentOS does not bundle.</p>
-        <button class="pact" style="margin-top:10px" onclick="installComponent('${esc(missing)}')">Install ${esc(missing)}…</button>`
+        <button class="pact" style="margin-top:10px" onclick="installComponent('${jsq(missing)}')">Install ${esc(missing)}…</button>`
        :`<p class="mut" style="margin-top:8px">Everything is installed — the service is just off.</p>
          <button class="pact" style="margin-top:10px" onclick="hsControlSet('start').then(()=>refreshApp('remotedesk'))">Turn Remote Desktop on</button>`}
       <p class="mut" style="margin-top:10px">See also <b>Host Screen</b>, which shows the same
@@ -31378,19 +31588,19 @@ function briefItemHTML(it,idx){
   const meta=[it.who?esc(it.who):'',it.due?'by '+esc(it.due):'',it.mission?'<i>'+esc(it.mission)+'</i>':''].filter(Boolean).join(' · ');
   let hands='';
   if(open&&it.kind==='decide'){
-    hands=(it.options||[]).map(o=>`<button class="endbtn br-opt" onclick="briefAct('${esc(it.id)}','decide','${esc(o)}')">${esc(o)}</button>`).join('');
+    hands=(it.options||[]).map(o=>`<button class="endbtn br-opt" ${doAttrs('briefAct',it.id,'decide',o)}>${esc(o)}</button>`).join('');
   }else if(open){
-    hands=`<button class="endbtn" onclick="briefAct('${esc(it.id)}','done')">Done</button>
-      <button class="endbtn" onclick="briefAct('${esc(it.id)}','later')">Later</button>`;
+    hands=`<button class="endbtn" ${doAttrs('briefAct',it.id,'done')}>Done</button>
+      <button class="endbtn" ${doAttrs('briefAct',it.id,'later')}>Later</button>`;
   }else{
     const who=(typeof agentName==='function')?agentName():'the agent';
     hands=`<span class="br-state">${it.state==='decided'?'decided: '+esc(it.decision||'')+(it.answer_cid?'':' · '+esc(who)+' is writing the reply…'):esc(it.state)}</span>
-      <button class="endbtn" onclick="briefAct('${esc(it.id)}','reopen')">Reopen</button>`;
+      <button class="endbtn" ${doAttrs('briefAct',it.id,'reopen')}>Reopen</button>`;
   }
-  if(it.draft&&open)hands+=`<button class="endbtn" onclick="briefSend('${esc(it.id)}')" title="Send the draft as you — it will ask first">Send draft…</button>`;
-  if(src.type==='mail'&&src.ref)hands+=`<button class="endbtn" onclick="briefOpenMail('${esc(src.ref)}')">Open mail</button>`;
+  if(it.draft&&open)hands+=`<button class="endbtn" onclick="briefSend('${jsq(it.id)}')" title="Send the draft as you — it will ask first">Send draft…</button>`;
+  if(src.type==='mail'&&src.ref)hands+=`<button class="endbtn" ${doAttrs('briefOpenMail',src.ref)}>Open mail</button>`;
   if(src.type==='report'&&src.ref)hands+=`<button class="endbtn" onclick="openApp('files')">Open report</button>`;
-  if(it.answer_cid)hands+=`<button class="endbtn" onclick="openApp('chat');setTimeout(()=>openConv('${esc(it.answer_cid)}'),500)">The reply</button>`;
+  if(it.answer_cid)hands+=`<button class="endbtn" onclick="openApp('chat');setTimeout(()=>openConv('${jsq(it.answer_cid)}'),500)">The reply</button>`;
   return `<div class="br-item k-${esc(it.kind)} s-${esc(it.state)}" data-id="${esc(it.id)}">
     <div class="br-head"><span class="br-kind">${esc(kindTag)}</span>${(it.twins||[]).length?`<span class="br-twins" title="Filed by ${it.twins.length+1} runs; one tap answers all of them">×${it.twins.length+1}</span>`:''}${idx!=null?`<span class="br-n">${idx+1}</span>`:''}</div>
     <b class="br-title">${esc(it.title)}</b>
@@ -31433,7 +31643,7 @@ async function renderBrief(body){
   }
   const c=pg.counts||{};
   const tiles=[['needs_you','Need you'],['decide','Decide'],['fyi','FYI'],['done','Done for you']]
-    .map(([k,l])=>`<button class="br-tile k-${k}" onclick="briefJump('${k}')" ${c[k]?'':'disabled'}><b>${c[k]||0}</b><span>${l}</span></button>`).join('');
+    .map(([k,l])=>`<button class="br-tile k-${k}" onclick="briefJump('${jsq(k)}')" ${c[k]?'':'disabled'}><b>${c[k]||0}</b><span>${l}</span></button>`).join('');
   const h=new Date().getHours(),greet=h<5?'Good evening':h<12?'Good morning':h<17?'Good afternoon':'Good evening';
   body.innerHTML=`<div class="pad br-app">
     <div class="br-hero"><div class="br-glow"></div>
@@ -31632,7 +31842,7 @@ async function tcThread(main){
   const w=tcWho(t);
   main.innerHTML=`<div class="tc-head">${document.body.classList.contains('dev-mobile')?'<button class="endbtn tc-back" onclick="TEAMCHAT.cur=\'\';refreshApp(\'teamchat\')">‹</button>':''}
       ${w.face}<div class="tc-head-txt"><b>${esc(w.name)}</b><small class="mut">${esc(w.sub)}</small></div>
-      <label class="tlk-chk tc-mute"><input type="checkbox" ${t.muted?'':'checked'} onchange="tcMute('${esc(label)}',!this.checked)"><span>Take messages</span></label></div>
+      <label class="tlk-chk tc-mute"><input type="checkbox" ${t.muted?'':'checked'} onchange="tcMute('${jsq(label)}',!this.checked)"><span>Take messages</span></label></div>
     <div class="tc-feed" id="tc-feed"><p class="mut pad">Reading…</p></div>
     <div class="tc-compose"><textarea id="tc-in" rows="2" placeholder="Write to ${esc(label)}…" maxlength="4000"></textarea>
       <button class="pact" id="tc-send">Send</button></div>
@@ -33595,8 +33805,8 @@ async function freeTalkPaint(){
   if(run){
     box.innerHTML=`<div class="ft-live"><div class="ft-faces">${run.agents.map(n=>avatarImg(n,'av-tool')).join('')}</div>
       <div class="ft-now"><b>Your team is talking</b><span class="mut">${run.messages} of ${run.max_messages} messages · <span class="ft-clock">${ftLeft(run)}</span> left${run.topic?' · '+esc(run.topic):''}</span></div>
-      <div class="ft-acts"><button class="endbtn" onclick="freeTalkOpen('${esc(run.conversation_id)}')">Watch in Chat</button>
-      <button class="endbtn danger" onclick="freeTalkStop('${esc(run.id)}')">Stop</button></div></div>`;
+      <div class="ft-acts"><button class="endbtn" onclick="freeTalkOpen('${jsq(run.conversation_id)}')">Watch in Chat</button>
+      <button class="endbtn danger" onclick="freeTalkStop('${jsq(run.id)}')">Stop</button></div></div>`;
     ftTick();
     return;
   }
@@ -33607,7 +33817,7 @@ async function freeTalkPaint(){
   const opt=(arr,cur,unit)=>arr.map(v=>`<option value="${v}" ${+cur===v?'selected':''}>${v} ${unit}</option>`).join('');
   box.innerHTML=`<div class="ft-form">
     <div class="ft-who">${names.map(n=>`<label class="ft-agent${FREETALK.agents.includes(n)?' on':''}">
-      <input type="checkbox" ${FREETALK.agents.includes(n)?'checked':''} onchange="freeTalkPick('${esc(n)}',this.checked)">${avatarImg(n,'av-tool')}${esc(n)}</label>`).join('')}</div>
+      <input type="checkbox" ${FREETALK.agents.includes(n)?'checked':''} onchange="freeTalkPick('${jsq(n)}',this.checked)">${avatarImg(n,'av-tool')}${esc(n)}</label>`).join('')}</div>
     <input id="ft-topic" type="text" maxlength="500" placeholder="What about? Leave empty to let them choose" value="${esc(FREETALK.topic)}" oninput="FREETALK.topic=this.value">
     <div class="ft-limits">
       <label>For up to <select id="ft-min" onchange="FREETALK.minutes=+this.value">${opt(o.minutes||[5,10,20],FREETALK.minutes,'min')}</select></label>
@@ -33674,8 +33884,8 @@ async function talkLogPaint(){
         <span class="mut ft-when">${ftAgo(e.when)}${e.kind!=='ask'?' · '+e.messages+' message'+(e.messages===1?'':'s'):''}</span></div>
       ${e.title?`<div class="ft-t">${esc(e.title)}</div>`:''}
       ${e.kind==='ask'&&e.detail?`<div class="ft-a mut">${esc(e.detail)}</div>`:''}
-      <div class="ft-acts">${e.conversation_id?`<button class="endbtn" onclick="freeTalkOpen('${esc(e.conversation_id)}')">Open in Chat</button>`:''}
-        <button class="endbtn" onclick="fgWatch('${esc(e.run_id)}')">Replay the run</button></div></div>`;
+      <div class="ft-acts">${e.conversation_id?`<button class="endbtn" onclick="freeTalkOpen('${jsq(e.conversation_id)}')">Open in Chat</button>`:''}
+        <button class="endbtn" onclick="fgWatch('${jsq(e.run_id)}')">Replay the run</button></div></div>`;
   }).join('');
 }
 
@@ -33697,7 +33907,7 @@ function freeTalkCard(sid,meta,make){
   const run=(FREETALK.talks||[]).find(t=>t.id===sid&&t.status==='running');
   m.innerHTML=`<div class="who">${freeTalkWho(meta.agents)}</div><div class="huddle" data-kind="freetalk" data-ft="${esc(sid)}">
     <div class="hud-head ft-head"><span>${meta.topic?esc(meta.topic):'about anything useful to you'} · up to ${esc(meta.minutes||'?')} min or ${esc(meta.messages||'?')} messages · ${meta.mode==='act'?'talk and use tools':'talk only'}</span>
-    ${run?`<button class="endbtn danger ft-stop" onclick="freeTalkStop('${esc(sid)}')">Stop</button>`:''}</div></div>`;
+    ${run?`<button class="endbtn danger ft-stop" onclick="freeTalkStop('${jsq(sid)}')">Stop</button>`:''}</div></div>`;
   feed.appendChild(m);
   return m.querySelector('.huddle');
 }
@@ -35258,7 +35468,7 @@ async function poolPaint(){
         const c=m.cap||{},st=m.here?'this machine':m.state==='pending'?'asking to join':m.alive?'up':m.seen!=null?`last heard ${poolAgo(m.seen)}`:'not heard yet';
         const acts=v.role==='leader'&&!m.here&&can?(m.state==='pending'
           ?`<button class="endbtn" data-pool="approve" data-who="${esc(m.fp)}">Let in</button><button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Turn away</button>`
-          :`<button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Remove</button>`):'';
+          :`${v.founder?`<button class="endbtn" data-pool="${m.vouched?'unvouch':'vouch'}" data-who="${esc(m.fp)}">${m.vouched?'Can’t take over':'Can take over'}</button>`:''}<button class="endbtn" data-pool="remove" data-who="${esc(m.fp)}">Remove</button>`):'';
         return `<div class="pool-m${m.alive||m.here?' up':''}"><b>${m.role==='leader'?'★ ':''}${esc(m.name)}</b>
           <span class="mut">${esc(st)} · ${c.ram_mb||0} MB · ${c.cores||0} cores${c.board?' · '+esc(c.board):''}${m.eligible?' · may lead':''}${m.busy?' · working':''}</span>${acts}</div>`}).join('')||'<span class="mut">Nobody yet.</span>'}</div>`,
       {stack:true,desc:'Every machine in the community and when it was last heard.',f:'community machines members roster'}));
@@ -35267,7 +35477,7 @@ async function poolPaint(){
         ?pSelect('pool-pin',[['','The most capable'],...next.map(m=>[m.fp,m.name])],v.pin||'')
         :'<span class="mut">No other machine may lead yet.</span>',
       {desc:'If this machine goes away, this one leads next.',
-       more:'Only machines whose own admin switched on This machine may lead are listed.',
+       more:'Only machines whose own admin switched on This machine may lead, and that the machine that started the community said can take over, are listed.',
        f:'community pin next leader failover'}));
     rows.push(pRow('This machine may lead',pSwitch('pool-lead',!!v.lead_ok),
       {desc:'If the leader goes away, this machine can take over and pay for the thinking.',
@@ -35299,8 +35509,9 @@ async function poolAct(act,who){
   if(act==='notes')return poolNotes();
   if(act==='leave'&&!confirm('Leave the community? This machine stops sharing notes and taking work.'))return;
   const body=act==='create'?{name:(document.getElementById('pool-name')||{}).value||''}
-    :act==='join'?{label:(document.getElementById('pool-join-to')||{}).value||''}:{who};
-  const r=await fetch('/api/pool/'+act,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    :act==='join'?{label:(document.getElementById('pool-join-to')||{}).value||''}
+    :act==='unvouch'?{who,on:false}:{who};
+  const r=await fetch('/api/pool/'+(act==='unvouch'?'vouch':act),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json().catch(()=>({}));
   if(!r.ok){toast(d.error||'could not do that');return}
   toast({create:'✓ community started',join:'✓ asked to join',approve:'✓ let in',remove:'✓ removed',leave:'✓ left the community'}[act]||'✓ done');
@@ -35390,11 +35601,11 @@ async function provPaint(){
   more.push(provDevicesHTML(v,can));
   const ks=(v.keys||[]).filter(k=>!k.single);
   more.push(pRow('Enrolment keys',`${ks.map(k=>`<span class="prov-k">${esc(k.label)}
-      <label class="prov-opt">${pSwitch('prov-auto-'+k.id,!!k.auto)} automatic</label>
+      <label class="prov-opt">${pSwitch('prov-auto-'+k.id,!!k.auto)} automatic</label>${k.spent?' <span class="ghint">Used once. The next machine asks you.</span>':''}
       <button class="endbtn" data-prov="dropkey" data-kid="${esc(k.id)}">Revoke</button></span>`).join('')}
       <button class="endbtn" data-prov="key"${can?'':' disabled'}>Make a key</button>`,
     {desc:'Put a key on a new machine and nobody has to read a code off its screen.',
-     more:'Save it as bento-enroll.txt on the SD card’s boot partition, or install with --enroll. Automatic sets the machine up the moment it is heard.',
+     more:'Save it as bento-enroll.txt on the SD card’s boot partition, or install with --enroll. Automatic sets one machine up the moment it is heard, and the next one asks you. Turn it on again for one more, or use bento pool key --auto --reusable for a batch of cards.',
      f:'provision enrolment key zero touch sd card automatic'}));
   more.push('<div id="prov-out" aria-live="polite"></div>');
   rows.push(`<div class="prov-add${PROV.more?' open':''}">${pRow('Add a machine',
@@ -35424,7 +35635,7 @@ function provZeroHTML(v,can){
       :'Paste one line on a Pi and it is set up from here, with nobody at it.',
      more:'It installs Bento in Light mode, joins Tailscale when you add a key, and gets the standard setup below as soon as it is heard. The key goes into the line and nowhere else.',
      f:'zero pi curl one line install tailscale zero touch hub'}));
-  if(z)rows.push(`<div class="zero-out">${z.for&&z.for.name?`<p class="mut">For ${esc(z.for.name)}</p>`:''}<code class="zero-line">${esc(z.line)}</code>
+  if(z)rows.push(`<div class="zero-out">${z.for&&z.for.name?`<p class="mut">For ${esc(z.for.name)}</p>`:''}${z.held?`<p class="mut">${esc(z.held)}</p>`:''}<code class="zero-line">${esc(z.line)}</code>
       <button class="endbtn" data-prov="zerocopy">Copy</button>
       <p class="mut">${(z.addresses||[]).map(a=>`${esc(a.addr)} ${a.via==='tailscale'?'over Tailscale':'on your network'}`).join(' · ')
         ||'This hub has no address another machine can reach.'}${(z.addresses||[]).some(a=>a.via==='tailscale')?'':
@@ -35467,7 +35678,7 @@ async function provAgents(){
    used once (or this machine's key), shows what the machine is and the exact command, and runs
    the real installer with a key made for that one machine, so it is set up the moment it is
    heard. The SD card writer is for the screen the card is plugged into. */
-var DEV={open:'',check:{},log:{},err:{},rekey:{}};
+var DEV={open:'',check:{},log:{},err:{},rekey:{},first:{}};
 function provDevicesHTML(v,can){
   /* The machines themselves (with Install Bento) are the inventory above, in Network
      (24n-network.js); this keeps the two ways in that need no machine yet. */
@@ -35503,7 +35714,7 @@ function provDevForm(d){
     <div class="dev-opts"><label class="prov-opt"><input type="checkbox" id="dev-auth"> Let this machine in from now on</label>
     <label class="prov-opt">${pSwitch('dev-kiosk',true)} Open on its screen ${pInfo('Bento opens full screen on it when it starts: the Office, listening. On Raspberry Pi OS Lite this installs cage and Chromium to draw it.')}</label></div>
     ${DEV.err[d.ip]?`<p class="warn dev-err">✗ ${esc(DEV.err[d.ip])}</p>`:''}
-    ${sshRekeyHTML(d.ip,sshPort,DEV.rekey[d.ip])}
+    ${sshRekeyHTML(d.ip,sshPort,DEV.rekey[d.ip])}${sshFirstKeyHTML(d.ip,sshPort,DEV.first[d.ip])}
     ${c?`<div class="dev-facts dev-found"><b>${esc([c.board||c.arch,c.os].filter(Boolean).join(' · '))}</b>
       <span class="mut">${esc([c.ram_mb+' MB memory',c.free_mb+' MB free'].join(' · '))}${c.bento?' · Bento is already there':''}</span>
       ${c.host_key?`<span class="mut dev-hostkey">Its key: ${esc(c.host_key)}</span>`:''}
@@ -35523,11 +35734,16 @@ function devPwSaved(ip,user){
   const r=(((typeof NET!=='undefined'&&NET.v)||{}).rows||[]).find(x=>x.ip===ip);
   return !!(r&&r.pw_saved&&(!user||r.user===user));
 }
+function sshFirstKeyHTML(ip,port,k){
+  if(!k)return '';
+  return `<div class="dev-rekey"><p class="mut">Bento hasn’t met this machine before. Its key is <code>${esc(k.fingerprint||'')}</code></p>
+    <button class="endbtn" data-prov="trustkey" data-ip="${esc(ip)}" data-port="${Number(port)||22}" data-fp="${esc(k.fingerprint||'')}">That’s the one: trust it</button></div>`;
+}
 function devPwHTML(id,ip,user){
   const saved=devPwSaved(ip,user);
   return `<label>Password <input id="${id}" type="text" class="dev-secret" autocomplete="off" data-lpignore="true"
       placeholder="${saved?'saved, encrypted: leave blank':'blank: use this machine’s key'}"></label>
-    <div class="dev-pw-opts"><label class="prov-opt"><input type="checkbox" id="${id}-keep"${saved?'':' checked'}>
+    <div class="dev-pw-opts"><label class="prov-opt"><input type="checkbox" id="${id}-keep">
       ${saved?'Replace the saved one with what I type':'Remember it, encrypted on this computer'}</label>
       ${saved?`<button class="dev-pw-forget" data-pwforget="${esc(ip)}" data-pwid="${esc(id)}">Forget the saved one</button>`:''}</div>`;
 }
@@ -35680,6 +35896,10 @@ async function provAct(act,b){
   const post=async(url,body,method)=>{const r=await fetch(url,{method:method||'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
     const d=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(d.error||('could not do that ('+r.status+')')),{data:d});return d};
   try{
+    if(act==='trustkey'){const ip=b.dataset.ip;
+      await post('/api/devices/trust-key',{ip,port:Number(b.dataset.port)||22,fingerprint:b.dataset.fp});
+      delete DEV.first[ip];delete DEV.err[ip];if(typeof NET!=='undefined'&&NET.first){delete NET.first[ip];delete NET.err[ip]}
+      toast('✓ trusted. Check it again.');if(typeof netPaint==='function')netPaint();return provPaint()}
     if(act==='rekey'){const ip=b.dataset.ip,k=DEV.rekey[ip]||(typeof NET!=='undefined'&&NET.rekey&&NET.rekey[ip])||{};
       if(!await osConfirm(`Forget the old key of ${ip}?`,
         `Do this only if you reformatted or reinstalled it. Old key: ${k.old||'unknown'}. It now shows: ${k.new||'unknown'}. The next login keeps the new one.`,
@@ -35703,6 +35923,7 @@ async function provAct(act,b){
       try{DEV.check[b.dataset.ip]=Object.assign(await post('/api/devices/check',{ip:b.dataset.ip,port:Number(b.dataset.port)||22,...c}),{user:c.user});delete DEV.err[b.dataset.ip]}
       catch(e){delete DEV.check[b.dataset.ip];DEV.err[b.dataset.ip]=String(e.message||e);
         if(e.data&&e.data.key_changed){DEV.rekey[b.dataset.ip]=e.data.key_changed;return}
+        if(e.data&&e.data.first_key){DEV.first[b.dataset.ip]=e.data.first_key;return}
         delete DEV.rekey[b.dataset.ip];throw e}
       finally{provPaint()}
       return}
@@ -38383,7 +38604,7 @@ function taskDeskOf(i){
    TUI: `bento network`, `bento network check|secure|label|forget`. SUI: identical, a page;
    nothing here touches the compositor. A Zero has no Network tab (00k-zeroface.js): its
    network is its hub's business. */
-var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{},hwp:{},hwread:{},esp:{}};
+var NET={ctl:{},v:null,open:'',mode:'',more:'',hiddenOpen:false,check:{},runs:{},steps:{},err:{},rekey:{},first:{},hwp:{},hwread:{},esp:{}};
 
 /* A person who is not an admin opens Devices too: the demo user does. The routes refuse them in
    the server's words ("only an admin can do that"), which read like a broken pane; say what it means. */
@@ -38620,7 +38841,7 @@ function netSecureForm(r){
     <div class="dev-acts"><button class="endbtn" data-net="check" data-key="${esc(r.key)}">Check it</button>
       ${c&&!c.problems.length&&steps.some(s=>!c.done[s.id])?`<button class="wiz-next" data-net="go" data-key="${esc(r.key)}">Secure it</button>`:''}</div>
     ${NET.err[r.ip]?`<p class="warn dev-err">✗ ${esc(NET.err[r.ip])}</p>`:''}
-    ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}
+    ${sshRekeyHTML(r.ip,netPort(r),NET.rekey[r.ip])}${sshFirstKeyHTML(r.ip,netPort(r),NET.first[r.ip])}${sshFirstKeyHTML(r.ip,netPort(r),NET.first[r.ip])}
     ${c&&c.done.passwords?`<div class="net-letin"><p class="mut">Password logins are off there, so only keys get in. Bento’s key still does.</p>
       <div class="dev-acts"><button class="endbtn" data-net="letkey" data-key="${esc(r.key)}">Add my key</button>
       <button class="endbtn" data-net="letpw" data-key="${esc(r.key)}">Turn password logins back on</button></div></div>`:''}
@@ -38630,7 +38851,7 @@ function netSecureForm(r){
       const on=sel[s.id]!==false;
       return `<div class="net-step${done?' done':''}">
         ${done?'<span class="net-tick">✓</span>':`<input type="checkbox" data-step="${esc(s.id)}" data-ip="${esc(r.ip)}" ${on?'checked':''} aria-label="${esc(s.title)}">`}
-        <div><b>${esc(s.title)}</b>${done?' <span class="mut">already done</span>':''}<br><span class="mut">${esc(s.why)}</span>
+        <div><b>${esc(s.title)}</b>${done?' <span class="mut">already done</span>':(c.unknown||[]).includes(s.id)?' <span class="mut">can’t tell without its sudo password</span>':''}<br><span class="mut">${esc(s.why)}</span>
         ${p&&!done?`<details><summary>What runs there</summary><code class="dev-plan">${esc(p.runs)}</code></details>`:''}</div></div>`}).join('')}
       ${c.problems.map(p=>`<p class="warn">✗ ${esc(p)}</p>`).join('')}
       ${c.host_key?`<p class="mut">Its key: ${esc(c.host_key)}</p>`:''}</div>`:''}
@@ -38772,7 +38993,7 @@ async function netAct(act,b){
         else{const d=await post('/api/network/remove',cr);delete NET.ctl[r.ip];NET.open='';
           toast(d.ok?`✓ Bento removed from ${r.display||r.ip}. Installing it again sets it up as a new machine.`
             :`✗ Not all of it went: ${(d.left||[]).join(', ')||'read its switches again'}`,{kind:d.ok?'ok':'warn'})}
-      }catch(e){const d=e.data||{};if(d.key_changed)NET.rekey[r.ip]=d.key_changed;NET.err[r.ip]=e.message;
+      }catch(e){const d=e.data||{};if(d.key_changed)NET.rekey[r.ip]=d.key_changed;if(d.first_key)NET.first[r.ip]=d.first_key;NET.err[r.ip]=e.message;
         if(d.state)NET.ctl[r.ip]={...(NET.ctl[r.ip]||{}),state:d.state}}
       b.disabled=false;b.textContent=was;return netPaint()}
     if(act==='install'||act==='secure'||act==='unlink'){NET.more='';const same=NET.open===r.key&&NET.mode===act;
@@ -38840,6 +39061,7 @@ async function netAct(act,b){
       catch(e){delete NET.check[r.ip];
         // kept under Check it, like the install form: a changed key needs a decision, not a toast
         if(e.data&&e.data.key_changed){NET.err[r.ip]=String(e.message||e);NET.rekey[r.ip]=e.data.key_changed;return}
+        if(e.data&&e.data.first_key){NET.err[r.ip]=String(e.message||e);NET.first[r.ip]=e.data.first_key;return}
         delete NET.err[r.ip];delete NET.rekey[r.ip];throw e}finally{netPaint()}
       return}
     if(act==='letkey'||act==='letpw'){const c=creds();if(!c.user){toast('Who logs in there? Type the user name.');return}
@@ -39852,7 +40074,7 @@ function zmPersonDetail(p){
     ${(p.skills||[]).length?`<div><span class="ag-k">Skills</span>${p.skills.map(x=>`<span class="brainchip">${esc(x)}</span>`).join(' ')}</div>`:''}
     <div><span class="ag-k">Permissions</span>${p.autonomy?'autonomy '+esc(p.autonomy)+' · ':''}${p.allow||0} allowed, ${p.deny||0} refused${fams.length?' <span class="mut">('+fams.map(([k,v])=>esc(k)+' '+v.allow+(v.deny?'/'+v.deny+'✗':'')).join(', ')+')</span>':''}</div>
     ${(p.missions||[]).length?`<div><span class="ag-k">Missions</span>${p.missions.map(esc).join(', ')}</div>`:''}
-    <div class="zm-acts">${p.lead?'':`<button class="endbtn" onclick="agentEdit('${esc(p.name)}')">Edit</button>`}<button class="endbtn" onclick="openApp('permissions')">Permissions</button></div></div>`;
+    <div class="zm-acts">${p.lead?'':`<button class="endbtn" onclick="agentEdit('${jsq(p.name)}')">Edit</button>`}<button class="endbtn" onclick="openApp('permissions')">Permissions</button></div></div>`;
 }
 function zmAvatar(key){try{return typeof avatarSrc==='function'?avatarSrc(key):''}catch(e){return ''}}
 function zmTieNode(t,where){
@@ -41194,7 +41416,7 @@ async function renderStore(body,w){
     box.innerHTML=`<p class="mut" style="margin-bottom:10px">One-click apps — install instantly, then open or pin them to the desktop.</p>
       <div class="cat">${d.templates.map(t=>`<div class="catcard" data-f="${esc(t.name+' '+t.desc)}">
         <span class="cn">${esc(t.name)}</span><span class="cd">${esc(t.desc)}</span>
-        <button class="save" style="margin-top:8px;padding:6px" ${t.installed?'disabled':''} onclick="storeInstall('${t.id}')">${t.installed?'✓ Installed':'Install'}</button>
+        <button class="save" style="margin-top:8px;padding:6px" ${t.installed?'disabled':''} onclick="storeInstall('${jsq(t.id)}')">${t.installed?'✓ Installed':'Install'}</button>
       </div>`).join('')}</div>`;
   } else if(STORE_TAB==='extensions'){
     const r=await fetch('/api/mcp');const md=await r.json();
@@ -41206,7 +41428,7 @@ async function renderStore(body,w){
       <div class="cat">${MCP_CATALOG.filter(e=>e.g===gi).map(e=>`<div class="catcard${have.has(e.k)?' inst':''}" data-f="${esc(e.n+' '+e.d)}">
         <span class="cn">${esc(e.n)}</span><span class="cd">${esc(e.d)}</span>
         ${mcpBadge(e)}
-        <button class="save" style="margin-top:8px;padding:6px" ${have.has(e.k)?'disabled':''} onclick="mcpPreset('${e.k}');toast('connecting ${esc(e.n)}…')">${have.has(e.k)?'✓ Connected':'Add'}</button>
+        <button class="save" style="margin-top:8px;padding:6px" ${have.has(e.k)?'disabled':''} onclick="mcpPreset('${jsq(e.k)}');toast('connecting ${jsq(e.n)}…')">${have.has(e.k)?'✓ Connected':'Add'}</button>
       </div>`).join('')}</div></div>`).join('')}`;
   } else if(STORE_TAB==='skills'){
     const d=await (await fetch('/api/skills')).json();
@@ -41418,7 +41640,7 @@ async function storeFedSearch(){
   boxEl.innerHTML=d.apps.map(a=>`<div class="catcard">
     <span class="cn">${esc(a.source)}</span><span class="cd">${esc(a.description||'')}</span>
     <span class="mut" style="font-size:11px">★ ${a.stars}</span>
-    <button class="save" style="margin-top:8px;padding:6px" onclick="storeImportStage({source:'${esc(a.source)}'})">Install…</button>
+    <button class="save" style="margin-top:8px;padding:6px" onclick="storeImportStage({source:'${jsq(a.source)}'})">Install…</button>
   </div>`).join('');
 }
 async function storeImportFile(){
@@ -41475,7 +41697,7 @@ async function renderGallery(body,w){
     sub:items.length?`${items.length} item${items.length===1?'':'s'}`:'',
     search:{id:'gal-q',placeholder:'Search title, prompt or source…'},
     actions:`<span class="seg" id="gal-kinds">${KINDS.map(k=>
-        `<button class="${k===galKind?'on':''}" onclick="galSetKind('${k}')">${LABEL[k]}</button>`).join('')}</span>
+        `<button class="${k===galKind?'on':''}" onclick="galSetKind('${jsq(k)}')">${LABEL[k]}</button>`).join('')}</span>
       <button class="pghost" onclick="galPick()">Upload</button>`,
   });
   const q=$('#gal-q');
@@ -41501,7 +41723,7 @@ function galTile(a){
        :`<span class="galmark">${badge||'●'}</span>`);
   const meta=[a.duration?galDur(a.duration):'',a.width?a.width+'×'+a.height:'',
               Math.round((a.bytes||0)/1024)+' KB'].filter(Boolean).join(' · ');
-  return `<button class="galtile ${galSel===a.id?'on':''}" onclick="galOpen('${a.id}')" title="${esc(a.title||'')}">
+  return `<button class="galtile ${galSel===a.id?'on':''}" onclick="galOpen('${jsq(a.id)}')" title="${esc(a.title||'')}">
     <span class="galart">${art}${badge?`<span class="galbadge">${badge}</span>`:''}</span>
     <span class="galcap"><span class="galname">${esc(a.title||a.kind)}</span><span class="galmeta">${esc(meta)}</span></span>
   </button>`;
@@ -41537,9 +41759,9 @@ function galDetail(a){
       ${row('From prompt',a.prompt)}
       ${row('When',when)}
       <div class="row" style="margin-top:10px">
-        <button class="endbtn" onclick="window.open('${a.url}','_blank')">Open</button>
+        <button class="endbtn" onclick="window.open('${jsq(a.url)}','_blank')">Open</button>
         <a class="endbtn" href="${a.url}" download style="text-decoration:none;text-align:center">Download</a>
-        <button class="endbtn" onclick="galDelete('${a.id}')">Delete</button>
+        <button class="endbtn" onclick="galDelete('${jsq(a.id)}')">Delete</button>
       </div>
     </div></div>`;
 }
@@ -41618,10 +41840,10 @@ async function renderStudio(body,w){
   STUDIO._logKey=STUDIO.sel||'new';
   const cur=d.apps.find(a=>a.id===STUDIO.sel)||null;
   const sideItems=d.apps.map(a=>`
-    <button class="stapp${a.id===STUDIO.sel?' on':''}" data-f="${esc(a.name+' '+(a.description||''))}" onclick="studioSelect('${a.id}')">
+    <button class="stapp${a.id===STUDIO.sel?' on':''}" data-f="${esc(a.name+' '+(a.description||''))}" onclick="studioSelect('${jsq(a.id)}')">
       ${iconTile(a.icon,a.name,a.id,26)}
       <span class="nm"><b>${esc(a.name)}</b><span>${esc(a.description||'')}</span></span>
-      <span class="stren" title="rename this app" onclick="event.stopPropagation();renameUserApp('${a.id}','studio')">✏️</span>
+      <span class="stren" title="rename this app" onclick="event.stopPropagation();renameUserApp('${jsq(a.id)}','studio')">✏️</span>
     </button>`).join('');
   const pb=panelShell(body,{
     title:'App Studio',
@@ -41850,20 +42072,20 @@ window.addEventListener('message',ev=>{
   const d=ev.data;
   if(!d||d.agentos!=='app_error')return;
   if(!STUDIO.sel||d.app_id!==STUDIO.sel||!STUDIO.log||!STUDIO.log.isConnected||STUDIO.building)return;
-  if(STUDIO._lastErr===d.message)return;   // don't spam repeats (e.g. errors in a poll loop)
-  STUDIO._lastErr=d.message;
-  studioLog(`<span style="color:var(--err)">app runtime error: ${esc(d.message)}${d.source&&d.source!==':0'?' @ '+esc(d.source):''}</span>
-    <button style="font-size:11px;padding:3px 10px;margin-left:6px" onclick="studioAutoFix()">Fix automatically</button>`);
-  // a just-deployed app that errors on first load gets ONE automatic repair build
-  if(STUDIO._justBuilt&&Date.now()-STUDIO._justBuilt<8000&&!STUDIO._autofixed){
-    STUDIO._autofixed=true;
-    studioLog('<span class="mut">the fresh build crashed on load — repairing automatically…</span>');
-    studioAutoFix();
-  }
+  // Only the frame showing this app. What it says is the app's own text, so a person decides
+  // whether to act on it: this used to start a build by itself, as if they had asked.
+  const prefix='/api/apps/'+STUDIO.sel+'/page';
+  if(![...document.querySelectorAll('iframe')].some(f=>f.contentWindow===ev.source&&(f.getAttribute('src')||'').startsWith(prefix)))return;
+  const msg=String(d.message||'').slice(0,300);
+  if(STUDIO._lastErr===msg)return;   // don't spam repeats (e.g. errors in a poll loop)
+  STUDIO._lastErr=msg;
+  studioLog(`<span style="color:var(--err)">app runtime error: ${esc(msg)}${d.source&&d.source!==':0'?' @ '+esc(String(d.source).slice(0,120)):''}</span>
+    <button style="font-size:11px;padding:3px 10px;margin-left:6px" onclick="studioAutoFix()">Fix it</button>`);
 });
 function studioAutoFix(){
   const p=$('#st-prompt');if(!p||!STUDIO._lastErr)return;
-  p.value='Fix this runtime error, keep everything else identical: '+STUDIO._lastErr;
+  STUDIO._fixErr=STUDIO._lastErr;     // travels apart from the request, fenced by the server
+  p.value='Fix the runtime error this app reported, and keep everything else identical.';
   STUDIO._lastErr=null;
   studioBuild();
 }
@@ -41873,18 +42095,18 @@ function studioActions(){
   const app=(USERAPPS||[]).find(a=>a.id===STUDIO.sel);
   const size=(app&&app.widget_size)||'m';
   box.innerHTML=STUDIO.sel
-    ?`<button class="endbtn" onclick="openApp('ua_${STUDIO.sel}')">↗ Open window</button>
-      <button class="endbtn" onclick="${pinned?`unpinWidget('${STUDIO.sel}')`:`pinWidget('${STUDIO.sel}')`};studioActions()">${pinned?'Unpin':'Pin to Desktop '+curDesk}</button>
+    ?`<button class="endbtn" onclick="openApp('ua_${jsq(STUDIO.sel)}')">↗ Open window</button>
+      <button class="endbtn" onclick="${pinned?`unpinWidget('${jsq(STUDIO.sel)}')`:`pinWidget('${jsq(STUDIO.sel)}')`};studioActions()">${pinned?'Unpin':'Pin to Desktop '+curDesk}</button>
       <span class="wgsize" title="How big this app is when pinned as a widget">
         <span class="mut">Widget</span>
         ${Object.entries(WIDGET_SIZES).map(([k,d])=>
-          `<button class="${k===size?'on':''}" onclick="setWidgetSize('${STUDIO.sel}','${k}')" title="${d.label} — ${d.w}×${d.h}">${k.toUpperCase()}</button>`).join('')}
+          `<button class="${k===size?'on':''}" onclick="setWidgetSize('${jsq(STUDIO.sel)}','${jsq(k)}')" title="${d.label} — ${d.w}×${d.h}">${k.toUpperCase()}</button>`).join('')}
       </span>
       <button class="endbtn" onclick="studioPreviewSurface()">${STUDIO.surface==='widget'?'Preview desktop':'Preview widget'}</button>
-      <button class="endbtn" onclick="window.open('/api/apps/${STUDIO.sel}/export')">Export</button>
+      <button class="endbtn" onclick="window.open('/api/apps/${jsq(STUDIO.sel)}/export')">Export</button>
       ${(typeof USERS!=='undefined'&&(USERS.me||{}).multiuser&&app)
-        ?`<button class="endbtn" onclick="usersShare('app',${JSON.stringify(app.name).replace(/"/g,'&quot;')})">Share</button>`:''}
-      <button class="endbtn" onclick="studioDel('${STUDIO.sel}')">Delete</button>`:'';
+        ?`<button class="endbtn" onclick="usersShare('app',${esc(JSON.stringify(app.name))})">Share</button>`:''}
+      <button class="endbtn" onclick="studioDel('${jsq(STUDIO.sel)}')">Delete</button>`:'';
 }
 /* The preview switches between the app's two surfaces, at the exact size the
    widget will be — so "does it still read at S?" is answered before pinning. */
@@ -41961,7 +42183,7 @@ async function studioVersions(){
       <span class="mut" style="flex:0 0 40px">${ago(v.created_at)}</span>
       <span style="flex:1;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(v.note||'')}">${esc(v.note||'')}</span>
       ${v===cur?'<span style="font-size:10.5px;color:var(--ok)">live</span>'
-        :`<button style="flex:0 0 auto;font-size:11px;padding:2px 10px" onclick="studioRestore(${v.version})">Restore</button>`}
+        :`<button style="flex:0 0 auto;font-size:11px;padding:2px 10px" onclick="studioRestore(${+v.version})">Restore</button>`}
     </div>`).join('')||'<p class="mut" style="font-size:12px">No versions yet — every build or edit creates one.</p>');
 }
 /* Permissions, in the same window the app was built in. An app that needs the
@@ -42094,6 +42316,7 @@ function studioBuild(){
   const nm=($('#st-name')?.value||'').trim();
   if(nm)msg.name=nm;
   if(!STUDIO.sel&&STUDIO.newIcon)msg.icon=STUDIO.newIcon;
+  if(STUDIO._fixErr){msg.app_error=STUDIO._fixErr;STUDIO._fixErr=null}
   ws.send(JSON.stringify(msg));
   p.value='';
 }
@@ -42192,7 +42415,7 @@ function studioBuildEvent(ev){
       if(ev.app_id){
         const wasNew=(STUDIO._logKey||'new')==='new';
         STUDIO.sel=ev.app_id;STUDIO._lastErr=null;
-        STUDIO._justBuilt=Date.now();STUDIO._autofixed=false;   // arm the load-crash auto-repair
+        
         STUDIO.newName='';STUDIO.newIcon='';                    // consumed by this build
         studioLog(`<span style="color:var(--ok)">✓ ${esc(ev.name||'app')} ready — deployed live</span>`);
         if(ev.warnings&&ev.warnings.length)
@@ -42224,7 +42447,7 @@ async function renderMission(body,w){
   body.style.cssText='padding:16px;overflow:auto;height:100%';
   body.innerHTML='<div class="mut">loading lifecycle state…</div>';
   const lane=(title,app,rows,accent)=>`
-    <div class="provbox" style="cursor:pointer;margin:0" onclick="openApp('${app}')">
+    <div class="provbox" style="cursor:pointer;margin:0" onclick="openApp('${jsq(app)}')">
       <div class="ptitle" style="display:flex;justify-content:space-between;align-items:center">
         <span>${title}</span><span style="font-size:10px;color:var(--mut)">open ↗</span></div>
       ${rows.map(([k,v,warn])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
@@ -42812,7 +43035,7 @@ async function omniShoot(){
     omniFocus();
   }catch(e){toast('screenshot failed')}
 }
-async function omniAsk(q){
+async function omniAsk(q,automation){
   q=(q||'').trim();
   const imgs=OMNI.imgs.slice();
   if(!q&&!imgs.length)return;
@@ -42835,7 +43058,7 @@ async function omniAsk(q){
       &&!(typeof devChatKeeps==='function'&&devChatKeeps()))close()},30000);
   }});
   const ok=agentTurn({text:q,cid:OMNI.cid,origin:'omni',title:omniTitle(q),images:imgs,
-    context:omniContext(),sink,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
+    context:omniContext(),sink,automation,onCid:id=>{OMNI.cid=id;card.dataset.cid=id},
     onQueued:stop=>{
       const tools=card.querySelector('.oc-tools');
       // Only one stop on a card that has not started: "Stop" would kill the turn
@@ -43253,10 +43476,10 @@ function palIntentAsync(q){
     }catch(e){}
   },350);
 }
-function palAsk(q){
+function palAsk(q,automation){
   // quick asks flow through the omnibar's Desktop thread (an answer card),
   // not a full Chat window — escalation is one click on the card
-  if(typeof omniAsk==='function'){omniAsk(q);return}
+  if(typeof omniAsk==='function'){omniAsk(q,automation);return}
   openApp('chat');
   if(input){input.value=q;input.dispatchEvent(new Event('input'));send()}
 }
