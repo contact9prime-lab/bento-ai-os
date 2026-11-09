@@ -36,6 +36,11 @@ def _never_touch_the_real_config(tmp_path, monkeypatch):
     # the real diary would clear the real machine's alarms and write that back into it.
     from agentos import devboard
     monkeypatch.setattr(devboard.Alarms, "restored", True)
+    # The watcher's hold is process state: one test's hold must not stop every agent in the tests
+    # after it, which is what it is built to do in a real server.
+    from agentos import integrity
+    monkeypatch.setattr(integrity, "_hold", None)
+    monkeypatch.setattr(integrity, "_cache", (0.0, None))
 
     home = tmp_path / "agentos-home"
     home.mkdir(parents=True, exist_ok=True)

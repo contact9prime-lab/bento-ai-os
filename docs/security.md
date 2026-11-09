@@ -1,5 +1,8 @@
 # Security & threat model
 
+What each layer defends, the tests behind it and what is not proved yet are in
+[How Bento's security is built and tested](security-testing.md).
+
 An agent with real hands needs a real trust story. AgentOS's posture: **secure by default,
 visible by design** — the 2026 wave of self-hosted agents showed exactly how this goes wrong
 (exposed gateways on 0.0.0.0, no auth, unvetted marketplaces, blanket-trusted commands), and

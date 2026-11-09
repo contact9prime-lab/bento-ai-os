@@ -74,6 +74,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [WhatsApp](whatsapp.md) | Your agent on WhatsApp — the Cloud API setup, the webhook, and Meta's 24-hour window |
 | [Remote access](remote-access.md) | Reach the desktop from your phone — the opt-in switch, the lock, and what it is not |
 | [Security](security.md) | Threat model, trust boundaries, `agentos doctor`, incident recovery |
+| [How security is tested](security-testing.md) | What protects the machine, the tests that hold each part, and what is not proved yet |
 | [Integrations](integrations.md) | Telegram, MCP tool servers, native desktop apps, system control, files & reports |
 | [OpenClaw plugins](openclaw-plugins.md) | Extending OpenClaw from AgentOS — the scan, the consent screen, real permissions, and quarantine |
 | [Agent sharing](agent-sharing.md) | Share your agent as one file, fork somebody else's — no data, no credentials, nothing enabled |
