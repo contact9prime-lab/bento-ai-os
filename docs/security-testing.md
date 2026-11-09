@@ -114,6 +114,19 @@ These are open, and nothing above should be read as covering them:
 
 ## Latest full run
 
-The full suite on the combined fixes, run inside the jail described above:
+The full suite on the combined fixes, run inside the jail described above, on 2026-11-09:
 
-RESULT_PLACEHOLDER
+| | Tests |
+|---|---|
+| Passed | 5,886 |
+| Failed | 4 |
+| Skipped | 114 |
+
+The four that failed and most of the skips are tests that need what the jail takes away on purpose: a real
+Chrome sandbox, a real D-Bus, or a bubblewrap jail of their own, which can't start inside another one. The
+same code run outside that jail earlier passed 5,966 tests, with 19 skipped and 10 failures that were in
+`test_ochost.py` and failed on `master` too. CI runs the suite on Linux without the outer jail, so those
+tests run there.
+
+No command that changes the machine was run during either run: the stand-ins for `nmcli`, `systemctl` and
+the others recorded only status reads.
