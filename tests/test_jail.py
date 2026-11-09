@@ -542,7 +542,9 @@ def test_a_python_reached_through_a_folder_link_still_runs_in_the_jail(tmp_path,
     (venv / "python").symlink_to(home / "pythons" / "cpython-3.x" / "bin" / "python3")
     ws = tmp_path / "ws"
     ws.mkdir()
-    binds = toolsmod._python_binds(str(venv / "python"), (), hidden=[str(home)])
+    # what the real interpreter at the end of the links needs too: on CI that is uv's, under /home/runner
+    binds = toolsmod._python_binds(str(venv / "python"), (sys.prefix, sys.base_prefix),
+                                   hidden=[str(home), "/home", *toolsmod._jail_hidden()])
     assert str(home / "pythons" / "cpython-3.x") in binds, "the link the venv names, not only where it leads"
     # the home it lives in is hidden, as /home/runner is on CI
     argv = toolsmod.bwrap_argv(str(ws), [str(venv / "python"), "-c", "print('ran')"],
