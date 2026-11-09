@@ -84,6 +84,7 @@ Code, Gemini CLI or Codex, and each specialist can run on a different one. The
 | [Architecture](architecture.md) | How it's built — modules, data, request flow |
 | [Roadmap](roadmap.md) | Product vision, differentiation vs chat-first assistants, feature pillars |
 | [UX review, Sept 2026](design/ux-review-2026-09.md) | What a new person meets on a fresh install, measured in a real browser — defects, structural issues, and a plan |
+| [Design: An OS user per account](design/os-accounts.md) | Planned: each account's agents run as their own Linux or macOS user, and root needs an admin's typed yes |
 | [Design: Subagents](design/subagents.md) | The execution fabric — subagents, task envelopes, mTLS enrollment, docker/remote workers |
 | [Troubleshooting](troubleshooting.md) | Common issues and fixes |
 

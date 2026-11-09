@@ -97,6 +97,10 @@ that already existed.
 
 These are open, and nothing above should be read as covering them:
 
+- **One OS user for everyone.** Every account and every agent still runs as the OS user that installed
+  Bento, which here can use sudo and docker. The jail and `protected.py` are what keep accounts apart
+  today. A separate OS user per account is designed and on the roadmap:
+  [An OS user per account](design/os-accounts.md).
 - **Same-user code outside the jail.** A process running as your user, outside Bento's jail, can edit
   files. The watcher notices; only `bento integrity lock` (the code owned by root) stops it, and that
   command has not yet been run on a real machine.
