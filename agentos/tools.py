@@ -1072,16 +1072,31 @@ class Toolbox(usersmod.Scoped):
             row = stagemod.add(self.store, _conv, scene)
         except ValueError as e:
             return f"[error] {e}"
-        ev = {"type": "stage", **row}
-        try:
+        uid = usersmod.current()
+
+        async def tell(ev):
             send = getattr(self, "broadcast_user", None)
             if send:
-                asyncio.create_task(send(ev, usersmod.current()))
+                await send(ev, uid)
             elif self.broadcast:
-                asyncio.create_task(self.broadcast(ev))
+                await self.broadcast(ev)
+        filling = []
+        if scene["kind"] == "blueprint":
+            # the outline is on screen at once; each part is filled in on its own (bpfill.py)
+            from . import bpfill, executors as _ex
+            if _ex.has_brain(self.cfg):
+                try:
+                    filling = bpfill.start(self.store, self.cfg, row, tell)
+                except Exception:
+                    filling = []
+        try:
+            asyncio.create_task(tell({"type": "stage", **row}))
         except Exception:
             pass
         out = f"[on the Stage · scene {row['seq']} · {scene['kind']} · {scene['title'] or scene['kind']}]"
+        if filling:
+            out += (f" (filling in {len(filling)} parts on its own, looked up; do not show it again, "
+                    f"carry on with your answer)")
         if dropped:
             out += f" (not drawn: {', '.join(dropped)})"
         return out
@@ -6424,16 +6439,21 @@ STAGE_TOOL_SCHEMAS = [
                      "blueprint: tower (layers along a height, bottom first), exploded (parts round a "
                      "core) or flow (a process in order)"},
             "parts": {"type": "array", "description":
-                      "blueprint: 2 to 12 parts, [{name, role (what it is for), detail (how it works, a "
-                      "sentence or two), facts? [{label, value, unit?}], certainty? (known, estimated or "
+                      "blueprint: 2 to 12 parts, [{name, role (what it is for), how (how it works, a "
+                      "sentence or two), made_of?, limits? (its limits or how it fails), detail?, "
+                      "facts? [{label, value, unit?}], certainty? (known, estimated or "
                       "unclear), from? to? (tower: heights in unit), width? (tower: its real width in unit, "
                       "drawn to scale; 0 to 1 only as a share of the widest), source?, "
                       "form? (how its own parts are laid out), parts? [the same shape, up to four levels], "
                       "unknowns? [what is unclear about it]}]",
                       "items": {"type": "object"}},
             "links": {"type": "array", "description": "blueprint: how parts depend on each other, "
-                                                       "[{from, to, verb}] by part name",
+                                                       "[{from, to, verb, kind}] by part name; kind is "
+                                                       "what flows: load, power, fluid, heat, air, data, "
+                                                       "signal, control, material, money or people",
                       "items": {"type": "object"}},
+            "facts": {"type": "array", "items": {"type": "object"},
+                      "description": "blueprint: the whole's own key numbers, [{label, value, unit?}]"},
             "unknowns": {"type": "array", "items": {"type": "string"},
                          "description": "blueprint: what nobody outside can know about it"}},
             "required": ["kind", "title"]},

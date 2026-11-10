@@ -782,6 +782,15 @@ things rather than presenting the chart". Six rules:
   so the X-ray and ⤓ JSON cannot disagree; a turn is its ledger rows between its question and the next one,
   plus every run it started (however long that ran). Read on request, never stored, no Keep or versions.
   What the record cannot see (a CLI's own session) is an unknown, in words.
+- **A blueprint is built in two stages, and the second is ours** (`agentos/bpfill.py`, `stage_fill`,
+  `tests/test_blueprint_fill.py`). Reported as "it's not detailed enough": measured, the live blueprints had
+  40 parts, about one fact each, no "how it works", and nothing looked up. The agent shows an outline;
+  `show_scene` then asks the machine's brain for each thin top-level part on its own (`PARALLEL` at once,
+  a CLI with only `WebSearch`/`WebFetch`), and merges each answer through stage's own cleaner as it lands.
+  A part keeps its id, name, heights and width; the node cap is shared; a failure stays named in
+  `fill.failed`; `filling.until` bounds the mark. A phone's pictures wait `PHONE_WAIT_S` for it. The
+  first screen shows two levels (each card's numbers and what is inside it), and **How it works** draws
+  the links of a level, a link deeper down counting for the parts that hold it, each kind its own line.
 - **Labels never overlap and the panel holds the rest.** Labels compress, then drop their second line; the
   title block, "you are here" and the links of a tower live in the spec panel. Sized from `clientWidth`, a
   ResizeObserver dropped when the drawing leaves; on a phone the scene scrolls and a tap brings a sheet that

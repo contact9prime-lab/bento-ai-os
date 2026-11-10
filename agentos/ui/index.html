@@ -6989,6 +6989,40 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
   paint-order:stroke;stroke:#061a33;stroke-width:4px;stroke-linejoin:round}
 .bp-link.on,.bp-verb.on{opacity:1}
 
+/* a card's numbers and what is inside it: two levels on the first screen */
+.bp-fl{fill:rgba(186,230,253,.66);font:500 10.5px ui-monospace,SFMono-Regular,Menlo,monospace}
+.bp-fv{fill:#f0f9ff;font:700 11.5px ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+.bp-howt{fill:rgba(224,242,254,.6);font-size:11px;font-style:italic}
+.bp-rule{stroke:rgba(125,211,252,.12);stroke-width:1}
+.bp-insidet{fill:rgba(165,243,252,.78);font:500 10.5px var(--sans);paint-order:stroke;stroke:#061a33;stroke-width:3px;stroke-linejoin:round}
+.bp-subs line{stroke:rgba(186,230,253,.42);stroke-width:1;stroke-dasharray:3 2}
+.bp-lbg{fill:rgba(6,26,51,.88)}
+.bp-thint{fill:rgba(186,230,253,.45)}
+.bp-thinp .bp-edge{stroke-opacity:.6}
+/* a part being filled in is drawn as work in progress, and stops when it lands */
+.bp-fillt{fill:#fde68a;color:#fde68a}
+.bp-filling .bp-edge{stroke:#fde68a;animation:bp-wait 1.6s ease-in-out infinite}
+@keyframes bp-wait{50%{stroke-opacity:.35}}
+.bp-note{margin:0 0 10px;padding:6px 9px;border-radius:6px;background:rgba(125,211,252,.07);
+  border:1px solid var(--bp-line);font-size:12.5px;line-height:1.4;color:rgba(224,242,254,.85)}
+.bp-note.bp-fillt{border-color:rgba(253,230,138,.4);background:rgba(253,230,138,.06)}
+.bp-in-list{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.bp-in-list li{display:grid;gap:1px}
+.bp-in-b{justify-self:start;background:none;border:0;padding:3px 0;color:#bae6fd;font:700 13px var(--sans);
+  cursor:pointer;text-align:left;min-height:28px}
+.bp-in-b:hover,.bp-in-b:focus-visible{color:#fff;text-decoration:underline}
+.bp-in-r{color:rgba(224,242,254,.62);font-size:12px;line-height:1.35}
+/* the two views of a level */
+.bp-modes{display:inline-flex;border:1px solid var(--bp-line);border-radius:7px;overflow:hidden;margin-right:6px}
+.bp-mode{background:none;border:0;color:rgba(186,230,253,.72);font:inherit;padding:6px 10px;cursor:pointer;min-height:30px}
+.bp-mode.on{background:rgba(125,211,252,.16);color:#fff}
+.bp-mode+.bp-mode{border-left:1px solid var(--bp-line)}
+/* what flows: each kind its own line, and its word on it */
+.bp-fl-line{fill:none;stroke:#fbbf24;stroke-opacity:.85;transition:opacity .2s}
+.bp-fl-word{fill:#fde68a;font:600 10.5px ui-monospace,monospace;paint-order:stroke;stroke:#061a33;stroke-width:4px;stroke-linejoin:round;opacity:0;transition:opacity .2s;pointer-events:none}
+.bp-fl-word.on{opacity:1}
+.bp-focus .bp-fl-line[data-from]:not(.on){opacity:.18}
+
 /* the one under your finger, and the rest stepping back */
 .bp-focus .bp-p:not(.on){opacity:.42}
 .bp-p.on .bp-edge,.bp-p:focus-visible .bp-edge{stroke:var(--bp-hi);stroke-width:2.4}
@@ -7010,6 +7044,7 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 @keyframes bp-back{from{opacity:0;transform:scale(1.12)}to{opacity:1;transform:none}}
 .bp-in .bp-p,.bp-back .bp-world{transform-box:fill-box;transform-origin:center}
 .bp-still *,.stg-art.still .bp *{animation:none!important;transition:none!important}
+@media (prefers-reduced-motion:reduce){.bp-filling .bp-edge{animation:none}}
 
 /* the title block, at the foot of the panel */
 .bp-info{display:grid;grid-template-columns:auto 1fr;margin-top:14px;border:1px solid var(--bp-line);border-radius:6px;overflow:hidden}
@@ -7032,9 +7067,9 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
 .bp-status{display:inline-block;font:700 11px ui-monospace,monospace;border:1px solid;border-radius:999px;padding:3px 9px;margin:0 0 8px}
 .bp-role{margin:0 0 8px;font-weight:600;line-height:1.45;color:#e0f2fe;overflow-wrap:anywhere}
 .bp-detail{margin:0 0 10px;color:rgba(224,242,254,.78);line-height:1.5;font-size:13.5px;overflow-wrap:anywhere}
-.bp-facts{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:10px 0;padding:10px 0 2px;border-top:1px solid var(--bp-line)}
+.bp-facts{display:grid;grid-template-columns:minmax(0,1fr) minmax(min(45%,9em),auto);gap:5px 12px;margin:10px 0;padding:10px 0 2px;border-top:1px solid var(--bp-line)}
 .bp-facts dt{color:rgba(186,230,253,.66);font:500 11px ui-monospace,monospace;text-transform:uppercase;letter-spacing:.06em;padding-top:2px}
-.bp-facts dd{margin:0;font:700 13.5px ui-monospace,monospace;color:#fff;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.bp-facts dd{margin:0;text-align:right;font:700 13.5px ui-monospace,monospace;color:#fff;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .bp-unk{margin:0;padding-left:18px;color:rgba(253,230,138,.85);font-size:13px;line-height:1.45}
 .bp-ev{margin-top:10px;font:500 11px ui-monospace,monospace;color:rgba(186,230,253,.6);overflow-wrap:anywhere}
 .bp-hint{margin:14px 0 0;color:rgba(186,230,253,.6);font-size:12.5px}
@@ -7055,6 +7090,7 @@ body.dev-mobile .dvs-grid{grid-template-columns:1fr}
   .bp-legend{display:none}
   .bp-crumbs{margin-bottom:6px}
   .bp-crumb{max-width:150px}
+  .bp-mode{min-height:var(--tap,40px)}
   .bp-crumb,.bp-up{min-height:var(--tap,40px)}
 }
 /* the phone's sheet: the part under your finger, over the foot of the drawing */
@@ -18438,6 +18474,7 @@ function handle(ev){
     /* A schedule saved into an app's data (update_app_data): every open frame of that
        app hears it as an `appdata` event and reloads what it shows. */
     case 'stage': if(typeof stageEvent==='function')stageEvent(ev); break;
+    case 'stage_fill': if(typeof stageFill==='function')stageFill(ev); break;
     case 'stage_board': STAGE.lib=null; if(typeof stagePaintIfOpen==='function'){if(WM.wins.get('stage'))stageLoadLib()} break;
     case 'stage_settings': if(ev.settings){STAGE.settings=ev.settings;stagePaintIfOpen()} break;
     case 'app_data':
@@ -37445,6 +37482,13 @@ function stageEvent(ev){
   else{STAGE.tab='now';stagePaint();}
   if(Date.now()>STAGE.held)stageSay(ev.scene);
 }
+/* A blueprint filling itself in (bpfill.py): the part that landed is redrawn where you are. */
+function stageFill(ev){
+  const hit=(STAGE.scenes||[]).find(s=>s.id===ev.id);
+  if(!hit)return;
+  const old=hit.scene;hit.scene=ev.scene;
+  document.querySelectorAll('.bp-art').forEach(art=>{if(art._bp&&art._bp.sc===old)bpRefill(art._bp,ev.scene)});
+}
 function stagePaintIfOpen(){const w=typeof WM!=='undefined'&&WM.wins.get('stage');if(w)stagePaint()}
 function stageToApp(aid,ev){
   let frames=document.querySelectorAll('iframe[src^="/api/apps/'+aid+'/page"]');
@@ -41344,7 +41388,7 @@ var BP_CERT_WORD={known:'known',estimated:'estimated',unclear:'unclear'};
 
 function bpKids(n){return (n&&n.parts)||[]}
 function bpNode(st){   // the level on screen: the subject, or the part at the end of the path
-  let n={name:st.sc.subject||st.sc.title,parts:st.sc.parts,form:st.sc.form,role:'',root:true};
+  let n={name:st.sc.subject||st.sc.title,parts:st.sc.parts,form:st.sc.form,role:'',root:true,facts:st.sc.facts||[]};
   for(const id of st.path){const k=bpKids(n).find(p=>p.id===id);if(!k)break;n=k}
   return n;
 }
@@ -41355,6 +41399,15 @@ function bpVal(f){const v=String(f.value==null?'':f.value),u=String(f.unit||'');
   if(!u||v.indexOf(u)>=0)return v;return /^[A-Za-z]/.test(u)?v+' '+u:v+u}
 function bpFmt(n){if(n==null||!isFinite(n))return '';const a=Math.abs(n);
   return a>=1000?Math.round(n).toLocaleString():a>=10?String(Math.round(n)):String(Math.round(n*10)/10)}
+/* a part that names a thing and says almost nothing about it (stage.bp_thin) */
+function bpThin(p){return (p.facts||[]).length<2&&!p.how&&!p.detail}
+/* the parts bpfill.py is filling in right now; a server stopped mid-fill leaves `until` behind */
+function bpFillingIds(sc){const f=sc&&sc.filling;return f&&Date.now()/1000<(f.until||0)?(f.ids||[]):[]}
+function bpIsFilling(st,p){return bpFillingIds(st.sc).indexOf(p.id)>=0}
+function bpFailed(st,p){return ((st.sc.fill&&st.sc.fill.failed)||[]).find(f=>f.id===p.id)}
+/* what to call the parts inside, in a line: "Mast, Antenna and 4 more" */
+function bpInside(p,max){const k=bpKids(p).map(x=>x.name);if(!k.length)return '';
+  max=max||4;return k.length<=max?k.join(' · '):k.slice(0,max).join(' · ')+' +'+(k.length-max)}
 function bpHover(){try{return matchMedia('(hover:hover)').matches}catch(e){return false}}
 
 /* ---------- the scene ---------- */
@@ -41389,6 +41442,15 @@ function stageBlueprint(art,sc){
   if(typeof STAGE!=='undefined'&&STAGE.playing&&!window.STAGE_REPORT)bpTour(st);
 }
 
+/* bpfill.py landed a part: the same place, the new words */
+function bpRefill(st,sc){
+  st.sc=sc;
+  let n={parts:sc.parts},ok=[];
+  for(const id of st.path){const k=bpKids(n).find(p=>p.id===id);if(!k)break;ok.push(id);n=k}
+  st.path=ok;
+  if(st.sel&&!bpKids(bpNode(st)).some(k=>k.id===st.sel))st.sel=null;
+  st.peek=null;bpRender(st,'');
+}
 function bpNarrow(st){return st.art.clientWidth<700}
 function bpRender(st,how){
   const {svg,draw}=st.el;
@@ -41410,10 +41472,11 @@ function bpRender(st,how){
   const world=sSvg('g',{class:'bp-world'});svg.append(world);
   const form=node.form||(node.root?st.sc.form:'')||'exploded';
   st.needH=0;
-  const L=(form==='tower'?bpTower:form==='flow'?bpFlow:bpExploded)(world,node,kids,W,H,st);
+  const flows=st.mode==='flows'&&bpFlowEdges(st,kids).length;
+  const L=flows?bpFlows(world,node,kids,W,H,st):(form==='tower'?bpTower:form==='flow'?bpFlow:bpExploded)(world,node,kids,W,H,st);
   if(st.needH>H+2&&bpNarrow(st)&&!st.grown){st.grown=true;st.wantH=st.needH;const r=bpRender(st,how);st.grown=false;return r}
   st.items=L;
-  bpLinks(world,L,st,form);
+  // links over the cards cut their words: How it works draws them, the panel lists them
   if(!stageReduced()&&!window.STAGE_STILL&&how){
     const scan=sSvg('rect',{class:'bp-scan',x:0,y:0,width:W,height:3});svg.append(scan)}
   st.form=form;
@@ -41498,8 +41561,9 @@ function bpWrap(parent,x,y,str,w,lines,cls,lh,anchor){
   }
   return n;
 }
-function bpSub(p){   // the second line under a part's name: its first fact, else its role
-  const f=(p.facts||[])[0];return f?((f.label?f.label+' ':'')+bpVal(f)):(p.role||'')}
+function bpSub(p){   // the second line under a part's name: its first two facts, else its role
+  const fs=(p.facts||[]).filter(f=>f.value!==''&&f.value!=null).slice(0,2);
+  return fs.length?fs.map(f=>(f.label?f.label+' ':'')+bpVal(f)).join(' · '):(p.role||'')}
 
 /* ---------- tower: built in layers along a height, bottom first ---------- */
 function bpTower(world,node,kids,W,H,st){
@@ -41562,7 +41626,13 @@ function bpTower(world,node,kids,W,H,st){
     bpBadge(g,p,cx+w/2,y0);
     // an elevation mark at the top of each section
     world.append(sSvg('path',{d:`M${cx-w/2-9} ${y0-5}l4 5l4 -5z`,class:'bp-elev'}));
-    out.push({p,g,box:[cx-w/2,y0,w,h],anchor:[cx+w/2,y0+h/2],left:[cx-w/2,y0+h/2]});
+    // what is inside a section, where it sits: a line at each inner part's boundary
+    const ks=bpKids(p).filter(c=>c.from!=null&&c.to!=null);
+    if(ks.length>1&&h>20){const sub=sSvg('g',{class:'bp-subs'});
+      ks.forEach(c=>[c.from,c.to].forEach(v=>{if(v>a&&v<b){const ly=y(v);sub.append(sSvg('line',{x1:cx-w/2,y1:ly,x2:cx+w/2,y2:ly}))}}));
+      g.append(sub)}
+    if(bpIsFilling(st,p))g.classList.add('bp-filling');
+    out.push({p,g,st,box:[cx-w/2,y0,w,h],anchor:[cx+w/2,y0+h/2],left:[cx-w/2,y0+h/2]});
   });
   // a part as wide as the tower that runs its height wraps it (a facade, a skin): drawn as an
   // envelope round the outline, not as a line down the middle
@@ -41578,7 +41648,7 @@ function bpTower(world,node,kids,W,H,st){
     bpShape(g,'path',{d},p);
     const hy=y(Math.max(secs[0][0],a))-(y(Math.max(secs[0][0],a))-y(Math.min(secs[secs.length-1][1],b)))*.62;
     const hw=(secs.find(([s0,s1])=>y(s0)>=hy&&y(s1)<=hy)||secs[0])[2];
-    out.push({p,g,box:[cx-hw/2-pad,hy-6,hw+pad*2,12],anchor:[cx+hw/2+pad,hy],left:[cx-hw/2-pad,hy]});
+    out.push({p,g,st,box:[cx-hw/2-pad,hy-6,hw+pad*2,12],anchor:[cx+hw/2+pad,hy],left:[cx-hw/2-pad,hy]});
     shaft[i]=false;
   });
   // the shafts inside, side by side on the centreline
@@ -41589,7 +41659,7 @@ function bpTower(world,node,kids,W,H,st){
     const g=bpPartG(world,p,stacked.length+k,st);g.classList.add('bp-shaft');
     bpShape(g,'rect',{x,y:y0,width:w,height:h},p);
     g.append(sSvg('rect',{x:x-6,y:y0,width:w+12,height:h,class:'bp-hit'}));
-    out.push({p,g,box:[x,y0,w,h],anchor:[x+w,y0+h*.3],left:[x,y0+h*.3]});
+    out.push({p,g,st,box:[x,y0,w,h],anchor:[x+w,y0+h*.3],left:[x,y0+h*.3]});
   });
   // the overall height, as a dimension line beside the tower
   const above=Math.max(...spans.map(s=>s[1]));
@@ -41612,8 +41682,12 @@ function bpLabels(world,items,W,H,top,bot,cx,maxW,two,narrow){
     const lx=right?cx+maxW/2+(narrow?22:44):cx-maxW/2-60;
     const tw=right?W-lx-14:lx-74;
     const lo=top+8,hi=H-bot-6,avail=hi-lo,n=col.length;
-    // two lines a label while they fit; one when they do not; never on top of each other
-    let gap=narrow?30:34;const one=n*gap>avail;if(one)gap=Math.max(15,Math.min(20,avail/Math.max(1,n)));
+    // three lines a label while they fit (name, numbers, what is inside), then two, then one;
+    // never on top of each other
+    let gap=narrow?44:48,lines=3;
+    if(n*gap>avail){gap=narrow?30:34;lines=2}
+    if(n*gap>avail){gap=Math.max(15,Math.min(20,avail/Math.max(1,n)));lines=1}
+    const one=lines===1;
     const yy=col.map(it=>it.anchor[1]);
     for(let k=0;k<n;k++)yy[k]=Math.max(yy[k],k?yy[k-1]+gap:lo);
     for(let k=n-1;k>=0;k--)yy[k]=Math.min(yy[k],k===n-1?hi:yy[k+1]-gap);
@@ -41624,8 +41698,17 @@ function bpLabels(world,items,W,H,top,bot,cx,maxW,two,narrow){
       it.g.append(sSvg('circle',{cx:ax,cy:ay,r:2,class:'bp-dot'}));
       const lab=sSvg('g',{class:'bp-label'});it.g.append(lab);
       lab.append(sSvg('rect',{x:right?lx-4:lx-tw-4,y:ty-16,width:tw+8,height:one?gap:gap-2,class:'bp-hit'}));
-      bpText(lab,lx,ty,it.p.name,tw,'bp-name',right?'start':'end');
-      const sub=!one&&bpSub(it.p);if(sub)bpText(lab,lx,ty+14,sub,tw,'bp-subt',right?'start':'end');
+      // a backing in the paper's colour: the ground line or a leader passing under a label
+      // once read "Floors=Concourse=8"
+      const bg=sSvg('rect',{class:'bp-lbg',rx:3});lab.append(bg);
+      const ts=[bpText(lab,lx,ty,it.p.name,tw,'bp-name',right?'start':'end')];
+      const sub=!one&&bpSub(it.p);if(sub)ts.push(bpText(lab,lx,ty+14,sub,tw,'bp-subt',right?'start':'end'));
+      const fil=bpIsFilling(it.st||{sc:{}},it.p);
+      const in3=lines===3&&(fil?'◌ filling in…':bpInside(it.p,4));
+      if(in3)ts.push(bpText(lab,lx,ty+28,(fil?'':'⊂ ')+in3,tw,fil?'bp-insidet bp-fillt':'bp-insidet',right?'start':'end'));
+      try{const ws=ts.map(t=>t.getComputedTextLength());const mw=Math.max(...ws);
+        bg.setAttribute('x',right?lx-3:lx-mw-3);bg.setAttribute('y',ty-12);
+        bg.setAttribute('width',mw+6);bg.setAttribute('height',14*ts.length+2)}catch(e){bg.remove()}
       it.label=[lx,ty];
     });
   });
@@ -41633,59 +41716,96 @@ function bpLabels(world,items,W,H,top,bot,cx,maxW,two,narrow){
 /* ---------- exploded: a thing made of parts round a core ---------- */
 function bpExploded(world,node,kids,W,H,st){
   const out=[],n=kids.length,narrow=W<560;
-  const few=n<=6;
-  const bw=narrow?Math.min(W/2-20,170):Math.max(140,Math.min(few?250:200,W*(few?.22:.19))),bh=narrow?72:few?96:76;
-  const cx=W/2,cy=narrow?66:H/2-6;
   const svg=bpSvgOf(world);
-  // the housing: the whole, drawn assembled, with the parts pulled out of it
-  const core=sSvg('g',{class:'bp-core'});world.append(core);
-  const cr=narrow?46:Math.min(70,H*.13);
-  core.append(sSvg('circle',{cx,cy,r:cr*1.9,class:'bp-ring'}),sSvg('circle',{cx,cy,r:cr*1.35,class:'bp-ring2'}),
-    sSvg('circle',{cx,cy,r:cr,class:'bp-hub'}));
-  // the whole's name, centred in the hub on one or two lines
-  const probe=sSvg('text',{class:'bp-corename'},node.name||'');core.append(probe);
-  const two=probe.getComputedTextLength&&probe.getComputedTextLength()>cr*1.7;probe.remove();
-  bpWrap(core,cx,cy+(two?-3:4),node.name,cr*1.7,two?2:1,'bp-corename',15,'middle');
-  if(narrow){   // a phone: the core on top and the parts in two columns under it
-    // one spine down the gap between the columns, a branch to each part: no line crosses a box
-    const cols=2,cw=(W-36)/cols,y0=cy+cr+28,rows=Math.ceil(kids.length/cols);
-    world.append(sSvg('line',{x1:cx,y1:cy+cr,x2:cx,y2:y0+(rows-1)*(bh+14)+bh/2,class:'bp-ex'}));
+  if(narrow){   // a phone: the whole on top and the parts in two columns under it, scrolled
+    const cols=n>3?2:1,cw=(W-36)/cols,bh=cols===2?150:128,cy=40;
+    const core=sSvg('g',{class:'bp-core'});world.append(core);
+    core.append(sSvg('rect',{x:18,y:cy-22,width:W-36,height:44,rx:22,class:'bp-hub'}));
+    bpWrap(core,W/2,cy+5,node.name,W-70,1,'bp-corename',15,'middle');
+    const y0=cy+48,rows=Math.ceil(n/cols);
+    world.append(sSvg('line',{x1:W/2,y1:cy+22,x2:W/2,y2:y0+(rows-1)*(bh+14)+bh/2,class:'bp-ex'}));
     kids.forEach((p,i)=>{const c=i%cols,r=Math.floor(i/cols);
-      const x=18+c*cw+4,y=y0+r*(bh+14),w=cw-8;
-      world.append(sSvg('line',{x1:cx,y1:y+bh/2,x2:c?x:x+w,y2:y+bh/2,class:'bp-ex'}));
+      const x=18+c*cw+(cols>1?4:0),y=y0+r*(bh+14),w=cw-(cols>1?8:0);
+      if(cols>1)world.append(sSvg('line',{x1:W/2,y1:y+bh/2,x2:c?x:x+w,y2:y+bh/2,class:'bp-ex'}));
       out.push(bpBox(world,p,i,st,x,y,w,bh))});
+    st.needH=y0+rows*(bh+14)+20;
     return out;
   }
-  const rx=(W-bw)/2-22,ry=(H-bh)/2-38;
+  if(n<=4){   // a few big parts pulled out round the hub
+    const bw=Math.min(300,W*.3),bh=Math.min(176,H*.4);
+    const cx=W/2,cy=H/2-6,cr=Math.min(62,H*.12);
+    const core=sSvg('g',{class:'bp-core'});world.append(core);
+    core.append(sSvg('circle',{cx,cy,r:cr*1.9,class:'bp-ring'}),sSvg('circle',{cx,cy,r:cr*1.35,class:'bp-ring2'}),
+      sSvg('circle',{cx,cy,r:cr,class:'bp-hub'}));
+    const probe=sSvg('text',{class:'bp-corename'},node.name||'');core.append(probe);
+    const two=probe.getComputedTextLength&&probe.getComputedTextLength()>cr*1.7;probe.remove();
+    bpWrap(core,cx,cy+(two?-3:4),node.name,cr*1.7,two?2:1,'bp-corename',15,'middle');
+    const rx=(W-bw)/2-18,ry=(H-bh)/2-14;
+    kids.forEach((p,i)=>{
+      const a=-Math.PI*3/4+i*Math.PI/2,px=cx+Math.cos(a)*rx,py=cy+Math.sin(a)*ry;
+      const sx=cx+Math.cos(a)*cr*1.35,sy=cy+Math.sin(a)*cr*1.35;
+      const ex=px+(px<cx?bw/2:-bw/2),ey=py+(py<cy?bh/2:-bh/2);
+      world.append(sSvg('line',{x1:sx,y1:sy,x2:ex,y2:ey,class:'bp-ex','marker-end':bpId(svg,'a')}));
+      out.push(bpBox(world,p,i,st,px-bw/2,py-bh/2,bw,bh))});
+    return out;
+  }
+  // the whole, assembled, as a band across the middle; its parts pulled out above and below,
+  // each on a dimension line from the place it fits. Two levels at once: every card shows
+  // what is inside it, so the first screen is the thing taken apart, not a list of names.
+  const per=Math.ceil(n/2),gap=14,pad=16;
+  const bw=(W-pad*2-gap*(per-1))/per,band=40,lane=26;
+  const bh=Math.max(96,Math.min(210,(H-pad*2-band-lane*2)/2));
+  const by=pad+bh+lane,cx=W/2;
+  const core=sSvg('g',{class:'bp-core'});world.append(core);
+  core.append(sSvg('rect',{x:pad,y:by,width:W-pad*2,height:band,rx:band/2,class:'bp-hub'}));
+  bpText(core,cx,by+band/2+5,node.name,W*.5,'bp-corename','middle');
+  const rowOf=i=>i<per?0:1;
   kids.forEach((p,i)=>{
-    const a=-Math.PI/2+i*2*Math.PI/Math.max(1,n)+(n%2?0:Math.PI/n);
-    const px=cx+Math.cos(a)*rx,py=cy+Math.sin(a)*ry;
-    const x=px-bw/2,y=py-bh/2;
-    // the explosion line: from where it sits in the whole to where it was pulled out to
-    const sx=cx+Math.cos(a)*cr*1.35,sy=cy+Math.sin(a)*cr*1.35;
-    const t=Math.min(Math.abs((bw/2+6)/(Math.cos(a)||1e-9)),Math.abs((bh/2+6)/(Math.sin(a)||1e-9)));
-    world.append(sSvg('line',{x1:sx,y1:sy,x2:px-Math.cos(a)*t,y2:py-Math.sin(a)*t,class:'bp-ex','marker-end':bpId(svg,'a')}));
-    world.append(sSvg('path',{d:`M${sx-4} ${sy}h8M${sx} ${sy-4}v8`,class:'bp-reg'}));
+    const r=rowOf(i),c=r?i-per:i,inRow=r?n-per:per;
+    const off=(per-inRow)*(bw+gap)/2;
+    const x=pad+off+c*(bw+gap),y=r?by+band+lane:pad;
+    const mx=x+bw/2,y1=r?by+band:by,y2=r?y:y+bh;
+    world.append(sSvg('line',{x1:mx,y1,x2:mx,y2:r?y2-2:y2+2,class:'bp-ex','marker-end':bpId(svg,'a')}));
+    world.append(sSvg('path',{d:`M${mx-4} ${y1}h8`,class:'bp-reg'}));
     out.push(bpBox(world,p,i,st,x,y,bw,bh));
   });
   return out;
 }
 function bpBox(world,p,i,st,x,y,w,h){
   const g=bpPartG(world,p,i,st);
+  const filling=bpIsFilling(st,p),thin=!filling&&bpThin(p);
+  if(filling)g.classList.add('bp-filling');
+  if(thin)g.classList.add('bp-thinp');
   g.append(sSvg('rect',{x,y,width:w,height:h,rx:3,class:'bp-fill'}));
   bpShape(g,'rect',{x,y,width:w,height:h,rx:3},p);
   // corner ticks, as a drawing frames a detail
   [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([a,b,s,t])=>
     g.append(sSvg('path',{d:`M${a+7*s} ${b-3*t}H${a-3*s}V${b+7*t}`,class:'bp-tick'})));
-  bpText(g,x+10,y+19,p.name,w-(p.status?30:20),'bp-name');
-  // what it is for, on as many lines as the box has room for; then its first number
-  const room=Math.max(1,Math.floor((h-46)/13));
-  const f=(p.facts||[])[0];
-  let used=0;
-  if(p.role)used=bpWrap(g,x+10,y+35,p.role,w-20,f&&room>1?room-1:room,'bp-rolet',13);
-  if(f&&used<room)bpText(g,x+10,y+35+used*13,(f.label?f.label+' ':'')+bpVal(f),w-20,'bp-subt');
-  const k=bpKids(p).length;
-  bpText(g,x+10,y+h-9,k?'⊕ '+k+' part'+(k===1?'':'s')+' inside':(p.evidence?'⌖ record':''),w-20,'bp-more');
+  const iw=w-20,L=x+10,R=x+w-10;
+  bpText(g,L,y+19,p.name,iw-(p.status?14:0),'bp-name');
+  // a card is read top down: what it is for, its numbers, then what is inside it. The lines
+  // the box has are shared out with numbers first, because a number is what a name lacks.
+  const facts=(p.facts||[]).filter(f=>f.value!==''&&f.value!=null);
+  const inside=bpInside(p,w>220?5:3);
+  let lines=Math.max(0,Math.floor((h-22-36)/13.5)+1);
+  const insN=inside&&lines>1?1:0;lines-=insN;
+  const roleN=p.role?(lines>=6?2:lines>=1?1:0):0;lines-=roleN;
+  const fN=Math.min(facts.length,w>200?5:3,lines);
+  let cy=y+36;const foot=y+h-9;
+  if(roleN)cy+=bpWrap(g,L,cy,p.role,iw,roleN,'bp-rolet',13)*13.5+2;
+  facts.slice(0,fN).forEach(f=>{
+    const v=bpText(g,R,cy,bpVal(f),iw*.5,'bp-fv','end');
+    const vw=v.getComputedTextLength?v.getComputedTextLength():iw*.4;
+    bpText(g,L,cy,f.label||'·',Math.max(20,iw-vw-10),'bp-fl');
+    g.append(sSvg('line',{x1:L,y1:cy+4,x2:R,y2:cy+4,class:'bp-rule'}));
+    cy+=13.5});
+  // room left over goes to how it works, which is what a tall card was missing
+  const left=lines-fN;
+  if(p.how&&left>=2){cy+=3;cy+=bpWrap(g,L,cy,p.how,iw,Math.min(5,left),'bp-howt',13)*13}
+  if(insN)bpText(g,L,cy+1,'⊂ '+inside,iw,'bp-insidet');
+  const k=bpKids(p).length,deep=bpCount(p.parts);
+  const ft=filling?'◌ filling in…':k?'⊕ '+k+' inside'+(deep>k?' · '+deep+' in all':''):thin?'· little known yet':(p.evidence?'⌖ record':'');
+  bpText(g,L,foot,ft,iw,'bp-more'+(filling?' bp-fillt':thin?' bp-thint':''));
   bpBadge(g,p,x+w-12,y+12);
   return {p,g,box:[x,y,w,h],anchor:[x+w,y+h/2],left:[x,y+h/2]};
 }
@@ -41693,7 +41813,9 @@ function bpBox(world,p,i,st,x,y,w,h){
 function bpFlow(world,node,kids,W,H,st){
   const out=[],n=kids.length;
   const few=n<=4;
-  const gap=W<560?16:34,bw=W<560?W-56:Math.max(150,Math.min(few?270:220,(W-48-gap*(few?n-1:3))/(few?Math.max(n,3):4))),bh=W<560?70:few?104:84;
+  const gap=W<560?16:34,bw=W<560?W-56:Math.max(150,Math.min(few?270:240,(W-48-gap*(few?n-1:3))/(few?Math.max(n,3):4)));
+  const rowsGuess=Math.ceil(n/Math.max(1,Math.floor((W-40+gap)/(bw+gap))));
+  const bh=W<560?132:Math.max(96,Math.min(few?170:150,(H-60)/Math.max(1,rowsGuess)-44));
   const per=Math.max(1,Math.min(n,Math.floor((W-40+gap)/(bw+gap))));
   const rows=Math.ceil(n/per),rowH=bh+(per===1?20:44);
   const total=rows*rowH-(rowH-bh),y0=Math.max(46,(H-total)/2-6);
@@ -41712,23 +41834,90 @@ function bpFlow(world,node,kids,W,H,st){
   return out;
 }
 
-/* ---------- how parts depend on each other ---------- */
-function bpLinks(world,items,st,form){
-  if(form==='tower')return;
-  const at={};items.forEach(it=>at[it.p.id]=it);
-  const svg=bpSvgOf(world);
-  const ids=new Set(items.map(it=>it.p.id));
-  (st.sc.links||[]).filter(l=>ids.has(l.from)&&ids.has(l.to)).slice(0,14).forEach((l,i)=>{
-    const a=at[l.from],b=at[l.to];
-    const [ax,ay]=form==='tower'?a.left:[a.box[0]+a.box[2]/2,a.box[1]+a.box[3]/2];
-    const [bx,by]=form==='tower'?b.left:[b.box[0]+b.box[2]/2,b.box[1]+b.box[3]/2];
-    const mx=form==='tower'?Math.min(ax,bx)-40-i*10:(ax+bx)/2+(by-ay)*.18,my=form==='tower'?(ay+by)/2:(ay+by)/2-(bx-ax)*.18;
-    const path=sSvg('path',{d:`M${ax} ${ay}Q${mx} ${my} ${bx} ${by}`,class:'bp-link','marker-end':bpId(svg,'a'),
-      'data-from':l.from,'data-to':l.to});
-    world.insertBefore(path,world.firstChild);
-    if(l.verb){const t=sSvg('text',{x:(ax+2*mx+bx)/4,y:(ay+2*my+by)/4-4,'text-anchor':'middle',class:'bp-verb',
-      'data-from':l.from,'data-to':l.to},l.verb);world.append(t)}
+/* ---------- how it works: what flows between the parts of this level ----------
+   A link between two parts deeper down counts for the parts of THIS level that hold them, so
+   the top of a jet engine shows air and power moving between its sections even though the
+   links were written between blades and shafts. Each kind is its own line and its own word. */
+var BP_FLOW_STYLE={load:['',2.6],power:['10 4',1.8],fluid:['6 3 1.5 3',1.8],heat:['2 3',1.8],air:['1 5',2.2],
+  data:['8 3 2 3',1.6],signal:['3 3',1.6],control:['12 3 3 3',1.6],material:['',1.6],money:['5 5',1.6],people:['1.5 3',2]};
+function bpFlowEdges(st,kids){
+  const own={};kids.forEach(k=>{own[k.id]=k.id;for(const [d] of bpWalkJs(k.parts))own[d.id]=k.id});
+  const seen={},out=[];
+  (st.sc.links||[]).forEach(l=>{const a=own[l.from],b=own[l.to];if(!a||!b||a===b)return;
+    const key=a+'>'+b+'>'+(l.kind||'');if(seen[key]){seen[key].n++;return}
+    const e={from:a,to:b,verb:l.verb||'',kind:l.kind||'',n:1};seen[key]=e;out.push(e)});
+  return out.slice(0,24);
+}
+function bpWalkJs(parts,acc){acc=acc||[];(parts||[]).forEach(p=>{acc.push([p]);bpWalkJs(p.parts,acc)});return acc}
+function bpFlows(world,node,kids,W,H,st){
+  const edges=bpFlowEdges(st,kids),svg=bpSvgOf(world),out=[];
+  const used=kids.filter(k=>edges.some(e=>e.from===k.id||e.to===k.id));
+  // layers by the longest path from a part nothing flows into; a loop is cut where it closes
+  const state={},back=new Set();
+  const dfs=u=>{state[u]=1;edges.forEach((e,i)=>{if(e.from!==u)return;
+    if(state[e.to]===1)back.add(i);else if(!state[e.to])dfs(e.to)});state[u]=2};
+  used.forEach(k=>{if(!state[k.id])dfs(k.id)});
+  const layer={};used.forEach(k=>layer[k.id]=0);
+  for(let pass=0;pass<used.length;pass++){let moved=false;
+    edges.forEach((e,i)=>{if(!back.has(i)&&layer[e.to]<layer[e.from]+1){layer[e.to]=layer[e.from]+1;moved=true}});
+    if(!moved)break}
+  const cols=[];used.forEach(k=>{(cols[layer[k.id]]=cols[layer[k.id]]||[]).push(k)});
+  const live=cols.filter(Boolean),narrow=W<560;
+  // the layers run left to right and wrap into rows, the next row coming back (a snake), so
+  // a long chain stays readable instead of shrinking ten boxes into one line
+  const gx=narrow?0:64,minW=narrow?W-60:170;
+  const per=narrow?1:Math.max(1,Math.min(live.length,Math.floor((W-40+gx)/(minW+gx))));
+  const bw=narrow?W-60:Math.min(230,(W-40-gx*(per-1))/per),bh=56,gy=12,rowGap=narrow?30:46;
+  const rows=[];live.forEach((col,i)=>{(rows[Math.floor(i/per)]=rows[Math.floor(i/per)]||[]).push(col)});
+  const rowH=rows.map(r=>Math.max(...r.map(c=>c.length))*(bh+gy)-gy);
+  const total=rowH.reduce((a,b)=>a+b,0)+rowGap*(rows.length-1);
+  const pos={};let ry=Math.max(18,(H-34-total)/2);
+  rows.forEach((r,ri)=>{
+    const x0=(W-(r.length*bw+(r.length-1)*gx))/2;
+    r.forEach((col,ci)=>{const c=ri%2?r.length-1-ci:ci;
+      const top=ry+(rowH[ri]-(col.length*(bh+gy)-gy))/2;
+      col.forEach((k,ki)=>{pos[k.id]=[x0+c*(bw+gx),top+ki*(bh+gy)]})});
+    ry+=rowH[ri]+rowGap});
+  st.needH=ry+40;
+  const words=edges.length<=6;
+  edges.forEach((e,i)=>{
+    const [ax,ay]=pos[e.from],[bx,by]=pos[e.to];const sty=BP_FLOW_STYLE[e.kind]||['4 4',1.4];
+    const acx=ax+bw/2,acy=ay+bh/2,bcx=bx+bw/2,bcy=by+bh/2,dx=bcx-acx,dy=bcy-acy;
+    let s1,s2,n1,n2;
+    if(Math.abs(dx)>=Math.abs(dy)*1.4&&Math.abs(dx)>bw*.6){const r=dx>0?1:-1;
+      s1=[acx+r*bw/2,acy];s2=[bcx-r*bw/2,bcy];n1=[r,0];n2=[-r,0]}
+    else if(Math.abs(dy)>bh*.6){const r=dy>0?1:-1;
+      s1=[acx,acy+r*bh/2];s2=[bcx,bcy-r*bh/2];n1=[0,r];n2=[0,-r]}
+    else{s1=[acx+bw/2,acy];s2=[bcx+bw/2,bcy];n1=[1,0];n2=[1,0]}   // side by side: out and back round
+    const k=Math.max(30,Math.min(90,Math.hypot(dx,dy)/2.5))+(i%3)*6;
+    const c1=[s1[0]+n1[0]*k,s1[1]+n1[1]*k],c2=[s2[0]+n2[0]*k,s2[1]+n2[1]*k];
+    const d=`M${s1[0]} ${s1[1]}C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${s2[0]} ${s2[1]}`;
+    const path=sSvg('path',{d,class:'bp-fl-line k-'+(e.kind||'none'),'marker-end':bpId(svg,'a'),'data-from':e.from,'data-to':e.to});
+    if(sty[0])path.setAttribute('stroke-dasharray',sty[0]);path.setAttribute('stroke-width',sty[1]);
+    world.append(path);
+    const word=(e.kind?e.kind+(e.verb?' · ':''):'')+(e.verb||'')+(e.n>1?' ×'+e.n:'');
+    // the midpoint of the curve; crowded, a word shows with the part you point at
+    const mx=(s1[0]+3*c1[0]+3*c2[0]+s2[0])/8,my=(s1[1]+3*c1[1]+3*c2[1]+s2[1])/8;
+    if(word)world.append(sSvg('text',{x:mx,y:my-5,'text-anchor':'middle','class':'bp-fl-word'+(words?' on always':''),'data-from':e.from,'data-to':e.to},word));
   });
+  used.forEach((k,i)=>{const [x,y]=pos[k.id];
+    const g=bpPartG(world,k,i,st);g.append(sSvg('rect',{x,y,width:bw,height:bh,rx:6,class:'bp-fill'}));
+    bpShape(g,'rect',{x,y,width:bw,height:bh,rx:6},k);
+    bpText(g,x+10,y+21,k.name,bw-20,'bp-name');
+    bpText(g,x+10,y+39,bpSub(k)||k.role||'',bw-20,'bp-subt');
+    out.push({p:k,g,box:[x,y,bw,bh],anchor:[x+bw,y+bh/2],left:[x,y+bh/2]})});
+  // the key: each kind on the sheet, with its own line
+  const kinds=[...new Set(edges.map(e=>e.kind).filter(Boolean))];
+  const left=kids.length-used.length;
+  let kx=18;const ky=H-14;
+  kinds.forEach(kd=>{const sty=BP_FLOW_STYLE[kd];
+    const ln=sSvg('line',{x1:kx,y1:ky-4,x2:kx+22,y2:ky-4,class:'bp-fl-line k-'+kd});
+    if(sty[0])ln.setAttribute('stroke-dasharray',sty[0]);ln.setAttribute('stroke-width',sty[1]);world.append(ln);
+    const t=bpText(world,kx+27,ky,kd,0,'bp-tiny');kx+=27+(t.getComputedTextLength?t.getComputedTextLength():40)+14});
+  const tail=[edges.length>6?(bpHover()?'point at a part to read its flows':'tap a part to read its flows'):'',
+    left>0?left+' part'+(left===1?'':'s')+' with no known flow':''].filter(Boolean).join(' · ');
+  if(tail)bpText(world,W-16,ky,tail,0,'bp-tiny','end');
+  return out;
 }
 
 /* ---------- the title block, as on a drawing: at the foot of the panel ---------- */
@@ -41752,6 +41941,13 @@ function bpCrumbs(st){
     const b=sEl('button','bp-crumb'+(i===st.path.length-1?' on':''),n.name);
     const to=st.path.slice(0,i+1);b.onclick=()=>bpGo(st,to);c.append(b)});
   c.append(sEl('span','bp-sp'));
+  // two ways to read a level: what it is made of, and what flows between its parts
+  const ne=bpFlowEdges(st,bpKids(bpNode(st))).length;
+  if(ne){const seg=sEl('span','bp-modes');seg.setAttribute('role','group');
+    [['parts','Parts'],['flows','How it works · '+ne]].forEach(([m,w])=>{
+      const b=sEl('button','bp-mode'+((st.mode||'parts')===m?' on':''),w);b.setAttribute('aria-pressed',String((st.mode||'parts')===m));
+      b.onclick=()=>{st.mode=m;st.sel=null;st.peek=null;bpRender(st,'in')};seg.append(b)});
+    c.append(seg)}
   if(st.path.length){const up=sEl('button','bp-up','↥ Up');up.title='Back up one level (Esc)';up.onclick=()=>bpGo(st,st.path.slice(0,-1),'back');c.append(up)}
   // the legend: what a dashed or dotted line means
   const lg=sEl('span','bp-legend');
@@ -41785,8 +41981,9 @@ function bpSpec(st){
     el.append(sEl('div','bp-h',node.name||st.sc.subject));
     if(node.root&&st.sc.caption)el.append(sEl('p','bp-role',st.sc.caption));
     if(node.role)el.append(sEl('p','bp-role',node.role));
-    if(node.detail)el.append(sEl('p','bp-detail',node.detail));
-    bpFacts(el,node.facts);
+    if(node.root)bpFillNote(st,el);
+    bpAbout(el,node);
+    if((node.facts||[]).length){el.append(sEl('div','bp-k2 bp-k2b',node.root?'Key numbers':'Numbers'));bpFacts(el,node.facts)}
     const un=(node.root?st.sc.unknowns:node.unknowns)||[];
     if(un.length){el.append(sEl('div','bp-k2','Still unclear'));const u=sEl('ul','bp-unk');un.forEach(x=>u.append(sEl('li','',x)));el.append(u)}
     const hint=sEl('p','bp-hint',bpHover()?'Point at a part to read it. Click to open it.':'Tap a part to read it. Tap again to open it.');
@@ -41802,12 +41999,20 @@ function bpSpec(st){
   if(p.status&&BP_STATUS[p.status]){const [ic,w,col]=BP_STATUS[p.status];
     const s=sEl('span','bp-status',ic+' '+w);s.style.color=col;s.style.borderColor=col;el.append(s)}
   if(p.role)el.append(sEl('p','bp-role',p.role));
-  if(p.detail)el.append(sEl('p','bp-detail',p.detail));
+  if(bpIsFilling(st,p))el.append(sEl('p','bp-note bp-fillt','◌ Filling this part in. It updates here when it lands.'));
+  else{const f=bpFailed(st,p);
+    if(f)el.append(sEl('p','bp-note','Couldn\'t fill this part in: '+f.why));
+    else if(bpThin(p))el.append(sEl('p','bp-note','Only a little is known about this part.'))}
+  bpAbout(el,p);
   if(p.from!=null||p.to!=null){
     const u=st.sc.unit?' '+st.sc.unit:'';
     bpFacts(el,[{label:'from',value:bpFmt(p.from),unit:u.trim()},{label:'to',value:bpFmt(p.to),unit:u.trim()}].concat(p.facts||[]));
   }else bpFacts(el,p.facts);
   if((p.unknowns||[]).length){el.append(sEl('div','bp-k2','Still unclear'));const u=sEl('ul','bp-unk');p.unknowns.forEach(x=>u.append(sEl('li','',x)));el.append(u)}
+  if(bpKids(p).length){el.append(sEl('div','bp-k2 bp-k2b','Inside'));const u=sEl('ul','bp-in-list');
+    bpKids(p).forEach(c=>{const li=sEl('li','');const b=sEl('button','bp-in-b',c.name);
+      b.onclick=()=>{bpOpen(st,p);setTimeout(()=>{st.sel=c.id;bpSpec(st);bpMark(st)},460)};
+      li.append(b);if(c.role)li.append(sEl('span','bp-in-r',c.role));u.append(li)});el.append(u)}
   if(p.evidence)el.append(sEl('div','bp-ev',p.evidence));
   if(p.source)el.append(typeof stageSource==='function'?stageSource(p.source):sEl('div','st-src','Source: '+p.source));
   const n=bpKids(p).length;
@@ -41829,6 +42034,23 @@ function bpPanelFoot(st,el,p){
     ls.slice(0,8).forEach(l=>u.append(sEl('li','',name(l.from)+' '+(l.verb||'→')+' '+name(l.to))));el.append(u)}
   const loc=bpLocator(st);if(loc)el.append(loc);
   el.append(bpTitleBlock(st));
+}
+/* how it works, what it is made of, its limits: the three things a name never says */
+function bpAbout(el,p){
+  if(p.how){el.append(sEl('div','bp-k2 bp-k2b','How it works'));el.append(sEl('p','bp-detail',p.how))}
+  if(p.detail)el.append(sEl('p','bp-detail',p.detail));
+  if(p.made_of){el.append(sEl('div','bp-k2 bp-k2b','Made of'));el.append(sEl('p','bp-detail',p.made_of))}
+  if(p.limits){el.append(sEl('div','bp-k2','Limits'));el.append(sEl('p','bp-detail',p.limits))}
+}
+/* where the filling in is: how many parts landed, looked up or not, and which could not */
+function bpFillNote(st,el){
+  const f=st.sc.fill;if(!f)return;
+  const going=bpFillingIds(st.sc).length,done=(f.done||[]).length,bad=(f.failed||[]).length;
+  const all=done+bad+going;
+  let w=going?'◌ Filling in '+(done+bad)+' of '+all+' parts…':'Filled in '+done+' of '+all+' parts';
+  if(f.looked_up)w+=' · '+f.looked_up+' look-up'+(f.looked_up===1?'':'s');
+  else if(done&&!going)w+=' · from what the model knew, nothing looked up';
+  el.append(sEl('p','bp-note'+(going?' bp-fillt':''),w));
 }
 function bpFacts(el,facts){
   if(!(facts||[]).length)return;
@@ -41862,7 +42084,7 @@ function bpMark(st){
   const id=st.peek||st.sel;
   st.el.svg.classList.toggle('bp-focus',!!id);
   (st.items||[]).forEach(it=>it.g.classList.toggle('on',it.p.id===id));
-  st.el.svg.querySelectorAll('.bp-link,.bp-verb').forEach(l=>l.classList.toggle('on',!!id&&(l.dataset.from===id||l.dataset.to===id)));
+  st.el.svg.querySelectorAll('.bp-link,.bp-verb,.bp-fl-line[data-from],.bp-fl-word').forEach(l=>l.classList.toggle('on',l.classList.contains('always')||(!!id&&(l.dataset.from===id||l.dataset.to===id))));
 }
 
 /* ---------- moving through it ---------- */

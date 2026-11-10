@@ -828,6 +828,7 @@ function handle(ev){
     /* A schedule saved into an app's data (update_app_data): every open frame of that
        app hears it as an `appdata` event and reloads what it shows. */
     case 'stage': if(typeof stageEvent==='function')stageEvent(ev); break;
+    case 'stage_fill': if(typeof stageFill==='function')stageFill(ev); break;
     case 'stage_board': STAGE.lib=null; if(typeof stagePaintIfOpen==='function'){if(WM.wins.get('stage'))stageLoadLib()} break;
     case 'stage_settings': if(ev.settings){STAGE.settings=ev.settings;stagePaintIfOpen()} break;
     case 'app_data':

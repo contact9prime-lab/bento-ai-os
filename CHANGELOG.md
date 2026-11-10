@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.14 — 2026-11-10
+
+**Blueprints go much deeper.** The agent now puts an outline on the Stage straight away, and then
+every part is filled in on its own, in parallel, with the web allowed: what it does, how it works,
+what it's made of, its limits, three to six numbers with their source, and the parts inside it, three
+levels down. Parts land one by one while you watch, and the panel says how many are done and how much
+was looked up. A part that couldn't be filled in says so and why.
+
+**The first screen shows two levels.** Each part's card carries its key numbers and what's inside it,
+so you see the thing taken apart before you click anything. Towers get three-line labels and the
+inner divisions of each section.
+
+**How it works.** A second view of any level draws what flows between its parts: air, power, fluid,
+heat, data, money and more, each with its own line and its word on it.
+
+**Fixed:** a tower label sitting on the ground line read as "Floors=Concourse=8".
+
 ## 0.7.13 — 2026-11-09
 
 **Take anything apart: blueprints on the Stage.** Ask for "a fine blueprint of the Burj Khalifa" and
